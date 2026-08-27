@@ -205,4 +205,31 @@ IvorysqlOraDefineGucs(void)
 							PGC_SIGHUP,
 							GUC_UNIT_MS,
 							NULL, NULL, NULL);
+
+	DefineCustomIntVariable("ivorysql_ora.scheduler_log_history",
+							"Days of DBMS_SCHEDULER job run history to keep.",
+							"Zero keeps no history, as Oracle's log_history"
+							" attribute does; automatic purging is turned off"
+							" by emptying ivorysql_ora.scheduler_purge_schedule"
+							" instead.",
+							&scheduler_log_history,
+							30,
+							0,
+							SCHED_MAX_LOG_HISTORY,
+							PGC_SIGHUP,
+							0,
+							NULL, NULL, NULL);
+
+	DefineCustomStringVariable("ivorysql_ora.scheduler_purge_schedule",
+							   "When the scheduler purges expired job run history.",
+							   "An Oracle calendaring expression, like a job's"
+							   " repeat_interval.  Empty turns automatic purging"
+							   " off.  A malformed one is reported and the"
+							   " default used, so that a typo cannot stop a"
+							   " database's scheduling.",
+							   &scheduler_purge_schedule,
+							   SCHED_DEFAULT_PURGE_SCHEDULE,
+							   PGC_SIGHUP,
+							   0,
+							   NULL, NULL, NULL);
 }

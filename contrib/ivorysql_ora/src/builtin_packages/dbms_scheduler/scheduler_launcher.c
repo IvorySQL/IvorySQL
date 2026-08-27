@@ -95,6 +95,8 @@ int			scheduler_poll_interval = 5;
 int			scheduler_max_job_workers = 4;
 int			scheduler_job_timeout = 0;
 int			scheduler_max_failures = 0;
+int			scheduler_log_history = 30;
+char	   *scheduler_purge_schedule = NULL;
 
 bool		scheduler_launcher_registered = false;
 
@@ -114,6 +116,16 @@ bool		scheduler_launcher_registered = false;
  * it until a slot came free.
  */
 #define SCHED_MIN_SLEEP_MS				100
+
+/*
+ * Rows an automatic purge deletes per statement, and statements it runs per
+ * cycle.  The product is what one wake-up will remove, so a table carrying a
+ * long backlog drains over several cycles rather than in a single transaction
+ * whose WAL and dead rows arrive all at once.  Steady-state purging deletes
+ * one day of history and never reaches either limit.
+ */
+#define SCHED_PURGE_BATCH				10000
+#define SCHED_PURGE_MAX_BATCHES			20
 
 /* Launcher's view of one database scheduler worker */
 typedef struct SchedDbWorker
@@ -761,6 +773,137 @@ scheduler_cleanup_orphans(void)
 }
 
 /*
+ * When automatic purging is next due, or 0 when it is turned off.
+ *
+ * A malformed calendar is reported and the built-in default used rather than
+ * thrown, and that is the whole reason this is a function.  Calendar syntax
+ * errors are ERRCODE_INVALID_PARAMETER_VALUE, which sched_error_is_transient()
+ * quite correctly does not forgive, so an unguarded evaluation would make a
+ * typo in ivorysql_ora.scheduler_purge_schedule exit this database's
+ * scheduler - and the launcher does not restart one that quit.  A misspelled
+ * retention schedule must not be able to stop the jobs.
+ *
+ * The report is not throttled beyond what the caller already does: it keeps
+ * the deadline this returns and asks again only after a purge or a reload, so
+ * a schedule left malformed is reported once per purge - daily, with the
+ * default the fallback uses.
+ *
+ * "after" is the anchor as well as the lower bound, so a schedule that does
+ * not pin its time of day (a bare FREQ=DAILY) inherits it from whenever this
+ * was last computed rather than keeping a fixed phase across restarts.  That
+ * is the Oracle rule for components no BY clause constrains, and for a
+ * maintenance task "a day from now" is the reading that needs least
+ * explaining; schedules that pin the hour, including the default, are
+ * unaffected.
+ */
+static TimestampTz
+sched_next_purge_time(TimestampTz after)
+{
+	TimestampTz next = 0;
+	MemoryContext oldcxt = CurrentMemoryContext;
+
+	if (scheduler_purge_schedule == NULL ||
+		scheduler_purge_schedule[0] == '\0')
+		return 0;				/* purging turned off */
+
+	PG_TRY();
+	{
+		if (!sched_calendar_next(scheduler_purge_schedule, after, after, &next))
+			next = 0;
+	}
+	PG_CATCH();
+	{
+		ErrorData  *edata;
+
+		MemoryContextSwitchTo(oldcxt);
+		edata = CopyErrorData();
+		FlushErrorState();
+
+		ereport(LOG,
+				(errmsg("ivorysql scheduler: ignoring ivorysql_ora.scheduler_purge_schedule, using \"%s\" instead",
+						SCHED_DEFAULT_PURGE_SCHEDULE),
+				 errdetail_internal("%s", edata->message)));
+		FreeErrorData(edata);
+
+		if (!sched_calendar_next(SCHED_DEFAULT_PURGE_SCHEDULE, after, after,
+								 &next))
+			next = 0;
+	}
+	PG_END_TRY();
+
+	/*
+	 * A calendar that never comes round again (an exhausted BYDATE, say) would
+	 * otherwise leave the deadline at 0, which reads as "turned off" - true
+	 * enough for this schedule, and the reload that changes it recomputes.
+	 */
+	return next;
+}
+
+/*
+ * Delete job run history that has outlived ivorysql_ora.scheduler_log_history.
+ *
+ * Sets *drained when nothing purgeable is left, so that a first purge of a
+ * table that has been accumulating since before this feature existed can be
+ * spread over several cycles instead of being one enormous transaction.  Each
+ * batch is its own transaction, which is what bounds the WAL it writes and
+ * the row versions it leaves for vacuum.
+ */
+static void
+scheduler_purge_expired(bool *drained)
+{
+	TimestampTz cutoff;
+	uint64		total = 0;
+	int			batch;
+
+	*drained = true;
+
+	/* Oracle's reading of zero: keep no history */
+	if (scheduler_log_history == 0)
+		cutoff = DT_NOEND;
+	else
+		cutoff = GetCurrentTimestamp() -
+			(TimestampTz) scheduler_log_history * USECS_PER_DAY;
+
+	for (batch = 0; batch < SCHED_PURGE_MAX_BATCHES; batch++)
+	{
+		uint64		deleted;
+
+		CHECK_FOR_INTERRUPTS();
+
+		SetCurrentStatementStartTimestamp();
+		StartTransactionCommand();
+		PushActiveSnapshot(GetTransactionSnapshot());
+		SPI_connect();
+
+		deleted = sched_purge_log(cutoff, NULL, NULL, SCHED_PURGE_BATCH);
+
+		SPI_finish();
+		PopActiveSnapshot();
+		CommitTransactionCommand();
+
+		total += deleted;
+		if (deleted < SCHED_PURGE_BATCH)
+			break;				/* the last batch was not full: nothing left */
+	}
+
+	if (batch >= SCHED_PURGE_MAX_BATCHES)
+		*drained = false;
+
+	if (total > 0)
+	{
+		if (*drained)
+			ereport(LOG,
+					(errmsg("ivorysql scheduler: purged " UINT64_FORMAT " expired job run log record(s)",
+							total)));
+		else
+			ereport(LOG,
+					(errmsg("ivorysql scheduler: purged " UINT64_FORMAT " expired job run log record(s), more remain",
+							total),
+					 errdetail("Purging continues on the following cycles until the backlog is gone.")));
+	}
+}
+
+/*
  * Find due jobs, advance their schedule and create their 'r' log rows in one
  * transaction, then hand back the list for dispatching.  Limited to "limit"
  * jobs (the number of free job worker slots).
@@ -1086,6 +1229,18 @@ SchedulerDatabaseWorkerMain(Datum main_arg)
 	volatile int cycle_failures = 0;
 	volatile bool orphans_cleaned = false;
 
+	/*
+	 * When history is next purged, 0 meaning "work it out" - which is also
+	 * the state a configuration reload puts it back into, so that a changed
+	 * schedule takes effect on the next cycle.  Nothing is purged at start
+	 * up: the first purge waits for the schedule to come round, so that
+	 * restarting a server does not run one every time.
+	 */
+	volatile TimestampTz purge_next = 0;
+
+	/* set while a purge is working through a backlog a cycle at a time */
+	volatile bool purge_draining = false;
+
 	strlcpy(dbname, MyBgworkerEntry->bgw_extra, NAMEDATALEN);
 
 	pqsignal(SIGHUP, SignalHandlerForConfigReload);
@@ -1139,6 +1294,9 @@ SchedulerDatabaseWorkerMain(Datum main_arg)
 		{
 			ConfigReloadPending = false;
 			ProcessConfigFile(PGC_SIGHUP);
+
+			/* recompute the purge deadline from whatever the schedule now says */
+			purge_next = 0;
 		}
 
 		/* per-cycle allocations (job slots live in TopMemoryContext) */
@@ -1175,6 +1333,71 @@ SchedulerDatabaseWorkerMain(Datum main_arg)
 			{
 				scheduler_cleanup_orphans();
 				orphans_cleaned = true;
+			}
+
+			MemoryContextSwitchTo(worker_ctx);
+
+			/*
+			 * Automatic log retention.  Unlike the orphan cleanup above this
+			 * catches its own errors instead of riding the cycle's handler:
+			 * closing interrupted runs is a precondition for scheduling
+			 * correctly, where purging history is housekeeping, and a
+			 * housekeeping failure that happens not to be transient - a
+			 * privilege withdrawn from the metadata owner, say - must not be
+			 * what stops this database's jobs from running.
+			 */
+			if (purge_next == 0)
+				purge_next = sched_next_purge_time(GetCurrentTimestamp());
+
+			if (purge_next != 0 &&
+				(purge_draining || GetCurrentTimestamp() >= purge_next))
+			{
+				MemoryContext purge_cxt = CurrentMemoryContext;
+
+				PG_TRY(2);
+				{
+					bool		drained;
+
+					scheduler_purge_expired(&drained);
+					MemoryContextSwitchTo(purge_cxt);
+
+					/*
+					 * A purge that emptied the backlog moves on to the next
+					 * scheduled time; one that hit its per-cycle limit leaves
+					 * the deadline where it is and comes straight back.
+					 */
+					purge_draining = !drained;
+					if (drained)
+						purge_next =
+							sched_next_purge_time(GetCurrentTimestamp());
+				}
+				PG_CATCH(2);
+				{
+					ErrorData  *edata;
+
+					HOLD_INTERRUPTS();
+					EmitErrorReport();
+
+					MemoryContextSwitchTo(purge_cxt);
+					edata = CopyErrorData();
+					FlushErrorState();
+
+					AbortOutOfAnyTransaction();
+					MemoryContextSwitchTo(purge_cxt);
+					QueryCancelPending = false;
+					RESUME_INTERRUPTS();
+
+					ereport(LOG,
+							(errmsg("ivorysql scheduler: could not purge expired job run log records"),
+							 errdetail_internal("%s", edata->message),
+							 errhint("Job scheduling continues; the purge is retried at its next scheduled time.")));
+					FreeErrorData(edata);
+
+					/* do not retry in a tight loop; wait for the next one */
+					purge_draining = false;
+					purge_next = sched_next_purge_time(GetCurrentTimestamp());
+				}
+				PG_END_TRY(2);
 			}
 
 			/*
@@ -1246,6 +1469,22 @@ SchedulerDatabaseWorkerMain(Datum main_arg)
 				 */
 				timeout_ms = sched_sleep_until(next_due, timeout_ms);
 			}
+
+			/*
+			 * Wake for the purge too, outside the free-slots test above: a
+			 * purge needs no worker slot, so busy slots must not be able to
+			 * hold it back to the next poll boundary.  sched_sleep_until()
+			 * caps rather than replaces, so asking it twice leaves the nearer
+			 * of the two deadlines.
+			 *
+			 * Not while draining, though.  The deadline is in the past then,
+			 * and narrowing to it would spin the cycle at the sleep floor;
+			 * letting the ordinary wait stand paces the backlog at one batch
+			 * per cycle instead.
+			 */
+			if (!purge_draining)
+				timeout_ms = sched_sleep_until(purge_next, timeout_ms);
+
 			cycle_failures = 0;
 		}
 		PG_CATCH();

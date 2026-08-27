@@ -81,6 +81,7 @@ PG_FUNCTION_INFO_V1(ora_dbms_scheduler_drop_job);
 PG_FUNCTION_INFO_V1(ora_dbms_scheduler_drop_program);
 PG_FUNCTION_INFO_V1(ora_dbms_scheduler_drop_schedule);
 PG_FUNCTION_INFO_V1(ora_dbms_scheduler_evaluate_calendar_string);
+PG_FUNCTION_INFO_V1(ora_dbms_scheduler_purge_log);
 PG_FUNCTION_INFO_V1(ora_dbms_scheduler_run_job);
 PG_FUNCTION_INFO_V1(ora_dbms_scheduler_stop_job);
 PG_FUNCTION_INFO_V1(ora_dbms_scheduler_set_job_argument_value_pos);
@@ -445,6 +446,31 @@ sched_check_commit_semantics(const char *value)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("invalid commit_semantics value \"%s\"", value),
 				 errhint("Valid values are STOP_ON_FIRST_ERROR, TRANSACTIONAL and ABSORB_ERRORS.")));
+}
+
+/*
+ * Normalize and validate PURGE_LOG's which_log.  All three Oracle values are
+ * accepted; the window half of each has nothing to purge here, since this
+ * implementation has no windows and so keeps no window log.
+ */
+static char *
+sched_check_which_log(const char *value)
+{
+	if (value == NULL)
+		return "JOB_AND_WINDOW_LOG";	/* as if it had been left out */
+
+	if (pg_strcasecmp(value, "JOB_LOG") == 0)
+		return "JOB_LOG";
+	if (pg_strcasecmp(value, "WINDOW_LOG") == 0)
+		return "WINDOW_LOG";
+	if (pg_strcasecmp(value, "JOB_AND_WINDOW_LOG") == 0)
+		return "JOB_AND_WINDOW_LOG";
+
+	ereport(ERROR,
+			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			 errmsg("invalid which_log value \"%s\"", value),
+			 errhint("Valid values are JOB_LOG, WINDOW_LOG and JOB_AND_WINDOW_LOG.")));
+	return NULL;				/* keep compiler quiet */
 }
 
 /*
@@ -2345,6 +2371,211 @@ ora_dbms_scheduler_stop_job(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_SYSTEM_ERROR),
 				 errmsg("could not signal process %d running job \"%s\".\"%s\"",
 						worker_pid, job.owner, job.name)));
+
+	SPI_finish();
+	PG_RETURN_VOID();
+}
+
+/* ------------------------------------------------------------------
+ * PURGE_LOG
+ * ------------------------------------------------------------------
+ */
+
+/*
+ * Delete job run history.  Shared by PURGE_LOG and by the scheduler's
+ * automatic retention, which differ only in how they arrive at the arguments.
+ *
+ * A row goes when it is older than "cutoff" and matches "owner" and
+ * "job_name", each of which is optional: a cutoff of DT_NOEND (+infinity,
+ * under which every row is old) drops the age restriction, and a NULL owner
+ * or job_name drops that one.  Only the restrictions that apply are built
+ * into the statement, so purging one job's history can use
+ * scheduler_job_run_details_job_idx rather than being flattened into a seq
+ * scan by a "$n IS NULL OR col = $n" catch-all.  No argument value is ever
+ * formatted into the text; only $n placeholders are.
+ *
+ * "batch_limit" above zero deletes at most that many rows, oldest first, so
+ * that a first purge of a table that has been accumulating for months can be
+ * driven in bounded transactions.  The subquery walks the primary key from
+ * its low end and stops once it has enough, which is why no index on
+ * log_date is needed - log_id and log_date rise together, and this table is
+ * written on every job run, so it is the wrong place for a second index.
+ *
+ * Runs in progress are never deleted, whatever the arguments say: the worker
+ * that owns an 'r' row is still going to update it by log_id, and what it
+ * writes is the only record that the run happened at all.  ('r' rows do not
+ * accumulate: scheduler_cleanup_orphans() closes the ones a crash leaves
+ * behind at the next scheduler start.)
+ *
+ * Returns the number of rows deleted.  The caller must be SPI-connected.
+ */
+uint64
+sched_purge_log(TimestampTz cutoff, const char *owner, const char *job_name,
+				int batch_limit)
+{
+	StringInfoData pred;
+	StringInfoData sql;
+	Oid			argtypes[4];
+	Datum		values[4];
+	int			nargs = 0;
+
+	initStringInfo(&pred);
+	appendStringInfoString(&pred, "status <> 'r'");
+
+	if (!TIMESTAMP_IS_NOEND(cutoff))
+	{
+		argtypes[nargs] = TIMESTAMPTZOID;
+		values[nargs++] = TimestampTzGetDatum(cutoff);
+		appendStringInfo(&pred, " AND log_date < $%d", nargs);
+	}
+	if (owner != NULL)
+	{
+		argtypes[nargs] = TEXTOID;
+		values[nargs++] = CStringGetTextDatum(owner);
+		appendStringInfo(&pred, " AND job_owner = $%d", nargs);
+	}
+	if (job_name != NULL)
+	{
+		argtypes[nargs] = TEXTOID;
+		values[nargs++] = CStringGetTextDatum(job_name);
+		appendStringInfo(&pred, " AND job_name = $%d", nargs);
+	}
+
+	initStringInfo(&sql);
+	if (batch_limit > 0)
+	{
+		argtypes[nargs] = INT4OID;
+		values[nargs++] = Int32GetDatum(batch_limit);
+		appendStringInfo(&sql,
+						 "DELETE FROM sys.scheduler_job_run_details"
+						 " WHERE log_id IN (SELECT log_id"
+						 "   FROM sys.scheduler_job_run_details"
+						 "   WHERE %s ORDER BY log_id LIMIT $%d)",
+						 pred.data, nargs);
+	}
+	else
+		appendStringInfo(&sql,
+						 "DELETE FROM sys.scheduler_job_run_details WHERE %s",
+						 pred.data);
+
+	return sched_meta_dml(sql.data, nargs, argtypes, values, NULL);
+}
+
+/*
+ * PURGE_LOG
+ *
+ * Delete rows from the job run log.
+ *
+ * Oracle's which_log chooses between the job log and the window log; there
+ * are no windows here, so only the job half of a value has anything to do and
+ * WINDOW_LOG on its own purges nothing.
+ *
+ * A superuser purges whatever the arguments select.  For anyone else the
+ * purge is confined to their own jobs, the way the USER_SCHEDULER_* views
+ * show only their own rows: the call succeeds, it just cannot reach another
+ * user's history.  That is a filter rather than a check, and it applies only
+ * when no job is named - a job named as someone else's is refused outright by
+ * sched_parse_name().
+ */
+Datum
+ora_dbms_scheduler_purge_log(PG_FUNCTION_ARGS)
+{
+	int32		log_history;
+	char	   *raw_which_log = text_arg_or_null(fcinfo, 1);
+	char	   *raw_name = text_arg_or_null(fcinfo, 2);
+	char	   *which_log;
+	char	   *owner = NULL;
+	char	   *job_name = NULL;
+	TimestampTz cutoff;
+
+	/*
+	 * A null log_history is refused rather than read as the default of 0.
+	 * Elsewhere in this file a null argument means "not supplied, use the
+	 * default", and by that rule this one would be 0, which is also Oracle's
+	 * default.  But 0 here is not a neutral default, it is the most
+	 * destructive value the argument has, and the usual way to arrive at a
+	 * null is purge_log(log_history => v_days) with v_days never assigned.
+	 * Refusing it also leaves the choice open: accepting null as 0 later is a
+	 * compatible relaxation, where the reverse would break callers.
+	 */
+	if (PG_ARGISNULL(0))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("log_history must not be null"),
+				 errhint("Pass 0 to purge the whole log.")));
+	log_history = PG_GETARG_INT32(0);
+
+	/*
+	 * A negative retention would put the cutoff in the future and so quietly
+	 * behave as "delete everything", the same trap as the null above.
+	 */
+	if (log_history < 0 || log_history > SCHED_MAX_LOG_HISTORY)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("log_history %d is out of range (0 .. %d)",
+						log_history, SCHED_MAX_LOG_HISTORY)));
+
+	/*
+	 * Oracle takes a comma-separated list of job or job class names here, as
+	 * in PURGE_LOG(log_history => 10, job_name => 'job1, sys.class2').  Only
+	 * a single job name is supported, and the list has to be turned away
+	 * explicitly: sched_parse_name() reads an unquoted part up to the next
+	 * '.' or the end of the string, so 'a,b' would come back as the one name
+	 * A,B and the purge would match nothing at all.  A quoted name that
+	 * really does contain a comma is refused along with it, which is the
+	 * price of testing before parsing.
+	 */
+	if (raw_name != NULL && strchr(raw_name, ',') != NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("purging the log of a list of jobs is not supported"),
+				 errhint("Call PURGE_LOG once per job, or leave job_name out to purge every job's log.")));
+
+	SPI_connect();
+
+	which_log = sched_check_which_log(raw_which_log);
+
+	if (raw_name != NULL)
+	{
+		SchedName	job;
+
+		/*
+		 * Resolves an unqualified name against the invoking user and refuses
+		 * another user's name unless the caller is a superuser.  There is no
+		 * check that the job still exists: the log has no foreign key to it
+		 * precisely because history outlives its job, so the rows a purge is
+		 * most often aimed at are those whose job is already gone.  A name
+		 * that matches nothing deletes nothing, which also leaves a cleanup
+		 * script safe to run twice.
+		 */
+		sched_parse_name(raw_name, "job", &job);
+		owner = job.owner;
+		job_name = job.name;
+	}
+	else if (!superuser())
+	{
+		/*
+		 * Read the caller's name here, before the first sched_meta_dml():
+		 * that escalates to the metadata tables' owner, so a current_user in
+		 * the statement text would name the extension owner and the
+		 * restriction would restrict nothing.
+		 */
+		owner = GetUserNameFromId(GetUserId(), false);
+	}
+
+	/* Oracle's reading of zero: keep no history */
+	if (log_history == 0)
+		cutoff = DT_NOEND;
+	else
+		cutoff = GetCurrentTimestamp() -
+			(TimestampTz) log_history * USECS_PER_DAY;
+
+	if (strcmp(which_log, "WINDOW_LOG") == 0)
+		ereport(WARNING,
+				(errmsg("there is no window log to purge"),
+				 errhint("Use JOB_LOG or JOB_AND_WINDOW_LOG to purge the job run log.")));
+	else
+		(void) sched_purge_log(cutoff, owner, job_name, 0);
 
 	SPI_finish();
 	PG_RETURN_VOID();

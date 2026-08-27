@@ -5,7 +5,7 @@
 --   CREATE_JOB (2 overloads), CREATE_PROGRAM, CREATE_SCHEDULE,
 --   DEFINE_PROGRAM_ARGUMENT (2), DISABLE, DROP_JOB, DROP_PROGRAM,
 --   DROP_PROGRAM_ARGUMENT (2), DROP_SCHEDULE, ENABLE,
---   EVALUATE_CALENDAR_STRING, RUN_JOB, SET_JOB_ARGUMENT_VALUE (2)
+--   EVALUATE_CALENDAR_STRING, PURGE_LOG, RUN_JOB, SET_JOB_ARGUMENT_VALUE (2)
 -- plus the USER_/DBA_SCHEDULER_* dictionary views.
 --
 -- Background execution is exercised by the TAP test (t/001_dbms_scheduler.pl);
@@ -1194,12 +1194,208 @@ SELECT count(*) > 0 AS log_retained FROM user_scheduler_job_run_details;
  t
 (1 row)
 
+--
+-- PURGE_LOG
+--
+-- The log the tests above left behind is replaced with rows of known age,
+-- owner and status.  log_date is written but never selected: every check here
+-- is a count or a status, so nothing in the output moves with the clock.  All
+-- the jobs have been dropped by now, which is the point of purging by name
+-- below: history outlives its job, so a purge has to reach it anyway.
+DELETE FROM sys.scheduler_job_run_details;
+INSERT INTO sys.scheduler_job_run_details
+    (job_owner, job_name, status, log_date)
+  VALUES
+    ('regress_dbms_scheduler', 'PURGE_OLD',  's', now() - '30 days'::pg_catalog.interval),
+    ('regress_dbms_scheduler', 'PURGE_OLD',  'f', now() - '20 days'::pg_catalog.interval),
+    ('regress_dbms_scheduler', 'PURGE_NEW',  's', now() - '1 day'::pg_catalog.interval),
+    ('regress_dbms_scheduler', 'PURGE_LIVE', 'r', now() - '40 days'::pg_catalog.interval),
+    ('sched_regress_u1',       'U1_LOG',     's', now() - '30 days'::pg_catalog.interval),
+    ('sched_regress_u2',       'U2_LOG',     's', now() - '1 day'::pg_catalog.interval);
+SELECT job_owner, job_name, status, count(*) FROM sys.scheduler_job_run_details
+  GROUP BY 1, 2, 3 ORDER BY 1, 2, 3;
+       job_owner        |  job_name  | status | count 
+------------------------+------------+--------+-------
+ regress_dbms_scheduler | PURGE_LIVE | r      |     1
+ regress_dbms_scheduler | PURGE_NEW  | s      |     1
+ regress_dbms_scheduler | PURGE_OLD  | f      |     1
+ regress_dbms_scheduler | PURGE_OLD  | s      |     1
+ sched_regress_u1       | U1_LOG     | s      |     1
+ sched_regress_u2       | U2_LOG     | s      |     1
+(6 rows)
+
+-- arguments that are refused purge nothing.  A null log_history is not read
+-- as the default of 0: 0 deletes the whole log, so an unset variable would be
+-- unrecoverable rather than merely wrong.
+BEGIN
+  dbms_scheduler.purge_log(log_history => NULL);
+END;
+/
+ERROR:  log_history must not be null
+HINT:  Pass 0 to purge the whole log.
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_purge_log(log_history, which_log,
+			job_name)"
+PL/iSQL function sys.dbms_scheduler.purge_log line 170 at PERFORM
+SQL statement "CALL dbms_scheduler.purge_log(log_history => NULL)"
+PL/iSQL function inline_code_block line 2 at CALL
+BEGIN
+  dbms_scheduler.purge_log(log_history => -1);
+END;
+/
+ERROR:  log_history -1 is out of range (0 .. 1000000)
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_purge_log(log_history, which_log,
+			job_name)"
+PL/iSQL function sys.dbms_scheduler.purge_log line 170 at PERFORM
+SQL statement "CALL dbms_scheduler.purge_log(log_history => -1)"
+PL/iSQL function inline_code_block line 2 at CALL
+BEGIN
+  dbms_scheduler.purge_log(log_history => 1000001);
+END;
+/
+ERROR:  log_history 1000001 is out of range (0 .. 1000000)
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_purge_log(log_history, which_log,
+			job_name)"
+PL/iSQL function sys.dbms_scheduler.purge_log line 170 at PERFORM
+SQL statement "CALL dbms_scheduler.purge_log(log_history => 1000001)"
+PL/iSQL function inline_code_block line 2 at CALL
+BEGIN
+  dbms_scheduler.purge_log(which_log => 'JOB_HISTORY');
+END;
+/
+ERROR:  invalid which_log value "JOB_HISTORY"
+HINT:  Valid values are JOB_LOG, WINDOW_LOG and JOB_AND_WINDOW_LOG.
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_purge_log(log_history, which_log,
+			job_name)"
+PL/iSQL function sys.dbms_scheduler.purge_log line 170 at PERFORM
+SQL statement "CALL dbms_scheduler.purge_log(which_log => 'JOB_HISTORY')"
+PL/iSQL function inline_code_block line 2 at CALL
+-- Oracle takes a comma-separated list of job and job class names here; one
+-- name at a time is supported, and the list has to be refused rather than
+-- parsed as a single odd name that matches nothing
+BEGIN
+  dbms_scheduler.purge_log(job_name => 'purge_old,purge_new');
+END;
+/
+ERROR:  purging the log of a list of jobs is not supported
+HINT:  Call PURGE_LOG once per job, or leave job_name out to purge every job's log.
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_purge_log(log_history, which_log,
+			job_name)"
+PL/iSQL function sys.dbms_scheduler.purge_log line 170 at PERFORM
+SQL statement "CALL dbms_scheduler.purge_log(job_name => 'purge_old,purge_new')"
+PL/iSQL function inline_code_block line 2 at CALL
+BEGIN
+  dbms_scheduler.purge_log(job_name => 'no_such_owner.purge_old');
+END;
+/
+ERROR:  user "NO_SUCH_OWNER" does not exist
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_purge_log(log_history, which_log,
+			job_name)"
+PL/iSQL function sys.dbms_scheduler.purge_log line 170 at PERFORM
+SQL statement "CALL dbms_scheduler.purge_log(job_name => 'no_such_owner.purge_old')"
+PL/iSQL function inline_code_block line 2 at CALL
+SELECT count(*) AS rows_untouched FROM sys.scheduler_job_run_details;
+ rows_untouched 
+----------------
+              6
+(1 row)
+
+-- there is no window log, so WINDOW_LOG succeeds and purges nothing
+BEGIN
+  dbms_scheduler.purge_log(which_log => 'WINDOW_LOG');
+END;
+/
+WARNING:  there is no window log to purge
+HINT:  Use JOB_LOG or JOB_AND_WINDOW_LOG to purge the job run log.
+-- a job name that matches nothing is not an error: the log has no foreign key
+-- to the job, and a cleanup script has to stay safe to run twice
+BEGIN
+  dbms_scheduler.purge_log(job_name => 'no_such_job');
+END;
+/
+-- keeping more history than exists purges nothing (upper end of the range)
+BEGIN
+  dbms_scheduler.purge_log(log_history => 1000000);
+END;
+/
+SELECT count(*) AS rows_untouched FROM sys.scheduler_job_run_details;
+ rows_untouched 
+----------------
+              6
+(1 row)
+
+-- retention confined to one job: that job's 30-day row goes, its 20-day row
+-- stays, and no other owner is touched
+BEGIN
+  dbms_scheduler.purge_log(log_history => 25, which_log => 'JOB_LOG',
+      job_name => 'purge_old');
+END;
+/
+SELECT job_owner, job_name, status, count(*) FROM sys.scheduler_job_run_details
+  GROUP BY 1, 2, 3 ORDER BY 1, 2, 3;
+       job_owner        |  job_name  | status | count 
+------------------------+------------+--------+-------
+ regress_dbms_scheduler | PURGE_LIVE | r      |     1
+ regress_dbms_scheduler | PURGE_NEW  | s      |     1
+ regress_dbms_scheduler | PURGE_OLD  | f      |     1
+ sched_regress_u1       | U1_LOG     | s      |     1
+ sched_regress_u2       | U2_LOG     | s      |     1
+(5 rows)
+
+-- a plain user cannot reach another user's history by naming it ...
+SET SESSION AUTHORIZATION sched_regress_u1;
+BEGIN
+  dbms_scheduler.purge_log(job_name => 'regress_dbms_scheduler.purge_new');
+END;
+/
+ERROR:  insufficient privileges to operate on scheduler objects owned by "regress_dbms_scheduler"
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_purge_log(log_history, which_log,
+			job_name)"
+PL/iSQL function sys.dbms_scheduler.purge_log line 170 at PERFORM
+SQL statement "CALL dbms_scheduler.purge_log(job_name => 'regress_dbms_scheduler.purge_new')"
+PL/iSQL function inline_code_block line 2 at CALL
+-- ... and purging everything reaches only their own rows
+BEGIN
+  dbms_scheduler.purge_log();
+END;
+/
+SELECT count(*) AS mine_left FROM user_scheduler_job_run_details;
+ mine_left 
+-----------
+         0
+(1 row)
+
+SET SESSION AUTHORIZATION regress_dbms_scheduler;
+SELECT job_owner, job_name, status, count(*) FROM sys.scheduler_job_run_details
+  GROUP BY 1, 2, 3 ORDER BY 1, 2, 3;
+       job_owner        |  job_name  | status | count 
+------------------------+------------+--------+-------
+ regress_dbms_scheduler | PURGE_LIVE | r      |     1
+ regress_dbms_scheduler | PURGE_NEW  | s      |     1
+ regress_dbms_scheduler | PURGE_OLD  | f      |     1
+ sched_regress_u2       | U2_LOG     | s      |     1
+(4 rows)
+
+-- a superuser purges every owner, but never a run still in progress
+BEGIN
+  dbms_scheduler.purge_log(which_log => 'job_and_window_log');
+END;
+/
+SELECT job_owner, job_name, status FROM sys.scheduler_job_run_details
+  ORDER BY job_owner, job_name;
+       job_owner        |  job_name  | status 
+------------------------+------------+--------
+ regress_dbms_scheduler | PURGE_LIVE | r
+(1 row)
+
 -- cleanup
 RESET SESSION AUTHORIZATION;
 DROP USER sched_regress_u1;
 DROP USER sched_regress_u2;
 DROP TABLE sched_reg_t;
 DROP PROCEDURE sched_reg_proc;
+-- load bearing: the PURGE_LOG tests deliberately leave an 'r' row behind, and
+-- PURGE_LOG will never remove one.  Without this it would leak into whatever
+-- runs next against this database.
 DELETE FROM sys.scheduler_job_run_details;
 DROP ROLE regress_dbms_scheduler;
 RESET timezone;
