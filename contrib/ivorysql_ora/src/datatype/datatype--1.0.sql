@@ -9326,8 +9326,8 @@ CREATE OPERATOR <= (
 
 CREATE FUNCTION sys.binary_float_pl(sys.binary_float, sys.binary_float)
 RETURNS sys.binary_float
-AS 'float4pl'
-LANGUAGE internal
+AS 'MODULE_PATHNAME', 'ora_binary_float_pl'
+LANGUAGE C
 PARALLEL SAFE
 STRICT
 IMMUTABLE;
@@ -9341,8 +9341,8 @@ CREATE OPERATOR + (
 
 CREATE FUNCTION sys.binary_float_mi(sys.binary_float, sys.binary_float)
 RETURNS sys.binary_float
-AS 'float4mi'
-LANGUAGE internal
+AS 'MODULE_PATHNAME', 'ora_binary_float_mi'
+LANGUAGE C
 PARALLEL SAFE
 STRICT
 IMMUTABLE;
@@ -9355,8 +9355,8 @@ CREATE OPERATOR - (
 
 CREATE FUNCTION sys.binary_float_mul(sys.binary_float, sys.binary_float)
 RETURNS sys.binary_float
-AS 'float4mul'
-LANGUAGE internal
+AS 'MODULE_PATHNAME', 'ora_binary_float_mul'
+LANGUAGE C
 PARALLEL SAFE
 STRICT
 IMMUTABLE;
@@ -9370,8 +9370,8 @@ CREATE OPERATOR * (
 
 CREATE FUNCTION sys.binary_float_div(sys.binary_float, sys.binary_float)
 RETURNS sys.binary_float
-AS 'float4div'
-LANGUAGE internal
+AS 'MODULE_PATHNAME', 'ora_binary_float_div'
+LANGUAGE C
 PARALLEL SAFE
 STRICT
 IMMUTABLE;
@@ -9742,8 +9742,8 @@ CREATE OPERATOR <= (
 
 CREATE FUNCTION sys.binary_double_pl(sys.binary_double, sys.binary_double)
 RETURNS sys.binary_double
-AS 'float8pl'
-LANGUAGE internal
+AS 'MODULE_PATHNAME', 'ora_binary_double_pl'
+LANGUAGE C
 PARALLEL SAFE
 STRICT
 IMMUTABLE;
@@ -9757,8 +9757,8 @@ CREATE OPERATOR + (
 
 CREATE FUNCTION sys.binary_double_mi(sys.binary_double, sys.binary_double)
 RETURNS sys.binary_double
-AS 'float8mi'
-LANGUAGE internal
+AS 'MODULE_PATHNAME', 'ora_binary_double_mi'
+LANGUAGE C
 PARALLEL SAFE
 STRICT
 IMMUTABLE;
@@ -9771,8 +9771,8 @@ CREATE OPERATOR - (
 
 CREATE FUNCTION sys.binary_double_mul(sys.binary_double, sys.binary_double)
 RETURNS sys.binary_double
-AS 'float8mul'
-LANGUAGE internal
+AS 'MODULE_PATHNAME', 'ora_binary_double_mul'
+LANGUAGE C
 PARALLEL SAFE
 STRICT
 IMMUTABLE;
@@ -9786,8 +9786,8 @@ CREATE OPERATOR * (
 
 CREATE FUNCTION sys.binary_double_div(sys.binary_double, sys.binary_double)
 RETURNS sys.binary_double
-AS 'float8div'
-LANGUAGE internal
+AS 'MODULE_PATHNAME', 'ora_binary_double_div'
+LANGUAGE C
 PARALLEL SAFE
 STRICT
 IMMUTABLE;
@@ -9927,8 +9927,8 @@ CREATE OPERATOR <= (
 
 CREATE FUNCTION sys.binary_float_pl_binary_double(sys.binary_float, sys.binary_double)
 RETURNS sys.binary_double
-AS 'float48pl'
-LANGUAGE internal
+AS 'MODULE_PATHNAME', 'ora_binary_float_double_pl'
+LANGUAGE C
 PARALLEL SAFE
 STRICT
 IMMUTABLE;
@@ -9942,8 +9942,8 @@ CREATE OPERATOR + (
 
 CREATE FUNCTION sys.binary_float_mi_binary_double(sys.binary_float, sys.binary_double)
 RETURNS sys.binary_double
-AS 'float48mi'
-LANGUAGE internal
+AS 'MODULE_PATHNAME', 'ora_binary_float_double_mi'
+LANGUAGE C
 PARALLEL SAFE
 STRICT
 IMMUTABLE;
@@ -9956,8 +9956,8 @@ CREATE OPERATOR - (
 
 CREATE FUNCTION sys.binary_float_mul_binary_double(sys.binary_float, sys.binary_double)
 RETURNS sys.binary_double
-AS 'float48mul'
-LANGUAGE internal
+AS 'MODULE_PATHNAME', 'ora_binary_float_double_mul'
+LANGUAGE C
 PARALLEL SAFE
 STRICT
 IMMUTABLE;
@@ -9971,8 +9971,8 @@ CREATE OPERATOR * (
 
 CREATE FUNCTION sys.binary_float_div_binary_double(sys.binary_float, sys.binary_double)
 RETURNS sys.binary_double
-AS 'float48div'
-LANGUAGE internal
+AS 'MODULE_PATHNAME', 'ora_binary_float_double_div'
+LANGUAGE C
 PARALLEL SAFE
 STRICT
 IMMUTABLE;
@@ -10099,8 +10099,8 @@ CREATE OPERATOR <= (
 
 CREATE FUNCTION sys.binary_double_pl_binary_float(sys.binary_double, sys.binary_float)
 RETURNS sys.binary_double
-AS 'float84pl'
-LANGUAGE internal
+AS 'MODULE_PATHNAME', 'ora_binary_double_float_pl'
+LANGUAGE C
 PARALLEL SAFE
 STRICT
 IMMUTABLE;
@@ -10114,8 +10114,8 @@ CREATE OPERATOR + (
 
 CREATE FUNCTION sys.binary_double_mi_binary_float(sys.binary_double, sys.binary_float)
 RETURNS sys.binary_double
-AS 'float84mi'
-LANGUAGE internal
+AS 'MODULE_PATHNAME', 'ora_binary_double_float_mi'
+LANGUAGE C
 PARALLEL SAFE
 STRICT
 IMMUTABLE;
@@ -10128,8 +10128,8 @@ CREATE OPERATOR - (
 
 CREATE FUNCTION sys.binary_double_mul_binary_float(sys.binary_double, sys.binary_float)
 RETURNS sys.binary_double
-AS 'float84mul'
-LANGUAGE internal
+AS 'MODULE_PATHNAME', 'ora_binary_double_float_mul'
+LANGUAGE C
 PARALLEL SAFE
 STRICT
 IMMUTABLE;
@@ -10143,8 +10143,8 @@ CREATE OPERATOR * (
 
 CREATE FUNCTION sys.binary_double_div_binary_float(sys.binary_double, sys.binary_float)
 RETURNS sys.binary_double
-AS 'float84div'
-LANGUAGE internal
+AS 'MODULE_PATHNAME', 'ora_binary_double_float_div'
+LANGUAGE C
 PARALLEL SAFE
 STRICT
 IMMUTABLE;

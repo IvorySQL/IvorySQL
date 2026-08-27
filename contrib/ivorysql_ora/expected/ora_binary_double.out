@@ -399,7 +399,16 @@ UPDATE BINARY_DOUBLE_TBL
    SET f1 = BINARY_DOUBLE_TBL.f1 * '-1'
    WHERE BINARY_DOUBLE_TBL.f1 > '0.0';
 SELECT '' AS bad, f.f1 * '1e200' from BINARY_DOUBLE_TBL f;
-ERROR:  value out of range: overflow
+ bad |     ?column?     
+-----+------------------
+     | 0
+     | -3.484e+201
+     | 
+     | -1.0043e+203
+     | -Inf
+     | -1.2345678901234
+(6 rows)
+
 SELECT '' AS bad, f.f1 ^ '1e200' from BINARY_DOUBLE_TBL f;
 ERROR:  value out of range: overflow
 SELECT 0 ^ 0 + 0 ^ 1 + 0 ^ 0.0 + 0 ^ 0.5;
@@ -415,7 +424,16 @@ ERROR:  cannot take logarithm of a negative number
 SELECT '' AS bad, exp(f.f1) from BINARY_DOUBLE_TBL f;
 ERROR:  value out of range: underflow
 SELECT '' AS bad, f.f1 / '0.0' from BINARY_DOUBLE_TBL f;
-ERROR:  division by zero
+ bad | ?column? 
+-----+----------
+     | Nan
+     | -Inf
+     | 
+     | -Inf
+     | -Inf
+     | -Inf
+(6 rows)
+
 SELECT '' AS five, * FROM BINARY_DOUBLE_TBL;
  five |          f1           
 ------+-----------------------
@@ -677,5 +695,89 @@ SELECT to_binary_double(42::sys.binary_float);
  to_binary_double 
 ------------------
  42
+(1 row)
+
+--
+-- IEEE 754 exception semantics
+--
+-- Oracle returns Infinity, zero or NaN where PostgreSQL raises. Expected
+-- values measured against Oracle Database 21c Express Edition.
+--
+-- overflow
+SELECT 1e308d * 10;
+ ?column? 
+----------
+ Inf
+(1 row)
+
+SELECT 1e308d + 1e308d;
+ ?column? 
+----------
+ Inf
+(1 row)
+
+-- underflow
+SELECT 1e-320d / 1e10;
+ ?column? 
+----------
+ 0
+(1 row)
+
+SELECT 1e308d * 0;
+ ?column? 
+----------
+ 0
+(1 row)
+
+-- Underflow of a negative value, and underflow via multiplication. The first
+-- would be -0 under pure IEEE; Oracle keeps a single zero, so both are 0.
+SELECT (0d - 1e-320d) / 1e10;
+ ?column? 
+----------
+ 0
+(1 row)
+
+SELECT 1e-200d * 1e-200d;
+ ?column? 
+----------
+ 0
+(1 row)
+
+-- division by zero
+SELECT 1d / 0d;
+ ?column? 
+----------
+ Inf
+(1 row)
+
+SELECT (0d - 1d) / 0d;
+ ?column? 
+----------
+ -Inf
+(1 row)
+
+SELECT 0d / 0d;
+ ?column? 
+----------
+ Nan
+(1 row)
+
+-- ordinary arithmetic, unaffected
+SELECT 2d * 3d;
+ ?column? 
+----------
+ 6
+(1 row)
+
+SELECT 7d / 2d;
+ ?column? 
+----------
+ 3.5
+(1 row)
+
+SELECT (0d - 1e308d) * 10;
+ ?column? 
+----------
+ -Inf
 (1 row)
 

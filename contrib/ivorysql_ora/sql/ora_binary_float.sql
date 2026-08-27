@@ -89,7 +89,6 @@ SELECT '' AS five, * FROM BINARY_FLOAT_TBL;
 -- drop table
 DROP TABLE BINARY_FLOAT_TBL;
 
-
 --SIMPLE_FLOAT
 CREATE TABLE SIMPLE_FLOAT_TBL (f1 binary_float);
 
@@ -192,3 +191,52 @@ SELECT to_binary_float('-inf');
 SELECT to_binary_float(42::numeric);
 SELECT to_binary_float(42::sys.binary_float);
 SELECT to_binary_float(42::sys.binary_double);
+--
+-- IEEE 754 exception semantics
+--
+-- See ora_binary_double.sql. Expected values measured against Oracle
+-- Database 21c Express Edition.
+--
+
+-- overflow and underflow
+SELECT 3.4e38f * 10;
+SELECT 1e-45f / 1e10;
+
+-- Underflow of a negative value, and underflow via multiplication. The first
+-- would be -0 under pure IEEE; Oracle keeps a single zero, so both are 0
+-- (measured: dividing one by each result yields Inf, never -Inf).
+SELECT (0f - 1e-45f) / 1e10;
+SELECT 1e-20f * 1e-30f;
+
+-- division by zero
+SELECT 1f / 0f;
+SELECT 0f / 0f;
+
+-- Signed results. The sign of an operand has to survive into the exception
+-- value: a rule that returned +Inf for these would still pass every case
+-- above. Written as a subtraction from zero rather than as unary minus,
+-- which resolves to float8 on these types and would take the expression out
+-- of binary_float arithmetic altogether.
+SELECT (0f - 3.4e38f) * 10;
+SELECT (0f - 3.4e38f) - 3.4e38f;
+SELECT (0f - 1f) / 0f;
+
+-- ordinary arithmetic, and mixed precision promoting to binary_double
+SELECT 1.5f + 2.5f;
+SELECT 1f + 1d;
+
+-- Mixed precision in both operand orders. BINARY_DOUBLE outranks BINARY_FLOAT,
+-- so every combination yields binary_double; the operand order matters because
+-- each direction is a separate operator.
+SELECT pg_typeof(1f + 1d), pg_typeof(1d + 1f);
+SELECT pg_typeof(1f - 1d), pg_typeof(1d - 1f);
+SELECT pg_typeof(1f * 1d), pg_typeof(1d * 1f);
+SELECT pg_typeof(1f / 1d), pg_typeof(1d / 1f);
+
+-- The result must also keep binary_double range and precision, not merely be
+-- labelled with the type. A binary_float result would overflow the first two,
+-- and would round the third to exactly 1.
+SELECT 3.4e38f * 10d;
+SELECT 10d * 3.4e38f;
+SELECT 1f + 1e-10d;
+
