@@ -58,7 +58,6 @@ CREATE OR REPLACE PACKAGE dbms_transaction AUTHID CURRENT_USER IS
 
     PROCEDURE read_only;
     PROCEDURE read_write;
-    FUNCTION local_transaction_id(create_transaction IN BOOLEAN DEFAULT FALSE) RETURN VARCHAR2;
 
 END dbms_transaction;
 
@@ -92,17 +91,6 @@ CREATE OR REPLACE PACKAGE BODY dbms_transaction IS
     PROCEDURE read_write IS
     BEGIN
         EXECUTE 'SET TRANSACTION READ WRITE';
-    END;
-
-    FUNCTION local_transaction_id(create_transaction IN BOOLEAN DEFAULT FALSE) RETURN VARCHAR2 IS
-        xid_text VARCHAR2(32);
-    BEGIN
-        IF create_transaction THEN
-            SELECT pg_current_xact_id()::text INTO xid_text;
-        ELSE
-            SELECT pg_current_xact_id_if_assigned()::text INTO xid_text;
-        END IF;
-        RETURN xid_text;
     END;
 
 END dbms_transaction;

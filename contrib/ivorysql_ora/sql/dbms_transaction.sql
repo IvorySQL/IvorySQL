@@ -3,7 +3,7 @@
 --
 -- tests for DBMS_TRANSACTION:
 --   COMMIT / ROLLBACK, SAVEPOINT / ROLLBACK_SAVEPOINT,
---   READ_ONLY / READ_WRITE, LOCAL_TRANSACTION_ID,
+--   READ_ONLY / READ_WRITE,
 --   legacy no-ops, and the documented-unsupported distributed
 --   transaction recovery subprograms.
 --
@@ -113,20 +113,6 @@ BEGIN;
     insert into dbms_tx_t values (15, 'allowed with read_write');
 COMMIT;
 select * from dbms_tx_t where id = 15;
-
--- LOCAL_TRANSACTION_ID
-select dbms_transaction.local_transaction_id() is null as no_xid_without_create from dual;
-BEGIN;
-    select dbms_transaction.local_transaction_id(true) is not null as xid_created from dual;
-    select dbms_transaction.local_transaction_id() is not null as xid_now_visible from dual;
-    -- calling again with create_transaction=true on an already-assigned
-    -- transaction just returns the existing id, it does not assign a new one
-    select dbms_transaction.local_transaction_id(true) = dbms_transaction.local_transaction_id() as xid_stable from dual;
-COMMIT;
-
--- the transaction (and its id) ends with the commit above -- a fresh
--- transaction has no id again until something assigns one
-select dbms_transaction.local_transaction_id() is null as no_xid_in_new_transaction from dual;
 
 --
 -- SAVEPOINT / ROLLBACK_SAVEPOINT: additional boundary conditions
@@ -304,38 +290,6 @@ FROM pg_available_extensions WHERE name = 'dblink' \gset
     END;    
     $$;
 
-    -- LOCAL_TRANSACTION_ID: an autonomous transaction gets its own transaction
-    -- id, distinct from (and independent of) the calling transaction's id --
-    -- and the autonomous insert is visible immediately, before the outer
-    -- transaction commits.
-    create table dbms_tx_autonomous (which text, xid text);
-
-    create or replace procedure dbms_tx_autonomous_xid() as
-    pragma autonomous_transaction;
-    begin
-        insert into dbms_tx_autonomous values ('inner', dbms_transaction.local_transaction_id(true));
-    end;
-    /
-
-    begin;
-    insert into dbms_tx_autonomous values ('outer', dbms_transaction.local_transaction_id(true));
-    call dbms_tx_autonomous_xid();
-    select which, xid is not null as has_xid from dbms_tx_autonomous order by which;
-    commit;
-    select count(distinct xid) = 2 as outer_and_inner_xids_differ from dbms_tx_autonomous;
-
-    -- the autonomous insert survives even though the calling transaction rolls
-    -- back -- COMMIT/ROLLBACK of the outer transaction have no effect on it.
-    truncate dbms_tx_autonomous;
-    begin;
-    insert into dbms_tx_autonomous values ('outer_rolled_back', dbms_transaction.local_transaction_id(true));
-    call dbms_tx_autonomous_xid();
-    rollback;
-    select which from dbms_tx_autonomous order by which;
-
-    drop procedure dbms_tx_autonomous_xid();
-    drop table dbms_tx_autonomous;
-
     --
     -- SAVEPOINT / ROLLBACK_SAVEPOINT / COMMIT / ROLLBACK inside an autonomous
     -- transaction: the dblink call that executes the autonomous procedure is a
@@ -453,10 +407,7 @@ select current_user;
 
 -- no explicit GRANT needed: EXECUTE on the package is granted to PUBLIC
 -- when dbms_transaction is installed
-select dbms_transaction.local_transaction_id() is null as no_xid_without_create;
-
 begin;
-select dbms_transaction.local_transaction_id(true) is not null as xid_created;
 call dbms_transaction.savepoint('other_user_sp');
 call dbms_transaction.rollback_savepoint('other_user_sp');
 commit;
