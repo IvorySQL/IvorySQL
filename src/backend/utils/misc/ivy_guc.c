@@ -384,52 +384,6 @@ static struct config_real Ivy_ConfigureNamesReal[] =
 static struct config_enum Ivy_ConfigureNamesEnum[] =
 {
 #endif
-#ifdef IVY_GUC_ENUM_PARAMS
-
-	{
-		{"ivorysql.database_mode", PGC_INTERNAL, PRESET_OPTIONS,
-			gettext_noop("Set database mode"),
-			NULL,
-			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
-		},
-		&database_mode,
-		DB_PG, db_mode_options,
-		check_database_mode, NULL, NULL
-	},
-
-	{
-		{"ivorysql.compatible_mode", PGC_USERSET, CLIENT_CONN_STATEMENT,
-			gettext_noop("Set default sql parser compatibility mode"),
-			NULL,
-			GUC_REPORT | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE | GUC_DISALLOW_IN_DB_ROLE_SETTING
-		},
-		&compatible_db,
-		PG_PARSER, db_parser_options,
-		check_compatible_mode, assign_compatible_mode, NULL
-	},
-
-	{
-		{"ivorysql.identifier_case_switch", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
-			gettext_noop("Set character case conversion mode."),
-			NULL
-		},
-		&identifier_case_switch,
-		INTERCHANGE, case_conversion_mode,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"nls_length_semantics", PGC_USERSET, COMPAT_ORACLE_OPTIONS,
-			gettext_noop("Compatible Oracle NLS parameter for character data type."),
-			gettext_noop("Valid values are CHAR, BYTE."),
-			GUC_IS_NAME | GUC_NOT_IN_SAMPLE
-		},
-		&nls_length_semantics,
-		NLS_LENGTH_BYTE, nls_length_options,
-		check_nls_length_semantics, NULL, NULL
-	},
-
-#endif
 #if 0
 	/* End-of-list marker */
 	{

@@ -53,12 +53,10 @@ END;
 $$;
 /
 CALL test_proc3a();
-ERROR:  invalid transaction termination
-CONTEXT:  PL/iSQL function test_proc3a() line 3 at COMMIT
+NOTICE:  done
 CREATE TEMP TABLE tt1(f1 int);
 CALL test_proc3a();
-ERROR:  invalid transaction termination
-CONTEXT:  PL/iSQL function test_proc3a() line 3 at COMMIT
+NOTICE:  done
 -- nested CALL
 TRUNCATE TABLE test1;
 CREATE PROCEDURE test_proc4(y int)
@@ -217,10 +215,7 @@ END
 $$;
 /
 CALL test_proc7cc(10);
-ERROR:  invalid transaction termination
-CONTEXT:  PL/iSQL function test_proc7c(pg_catalog.int4,pg_catalog.int4,pg_catalog.numeric) line 5 at COMMIT
-SQL statement "CALL test_proc7c(_x, _a, _b)"
-PL/iSQL function test_proc7cc(pg_catalog.int4) line 4 at CALL
+NOTICE:  _x: 10,_a: 1, _b: 5
 -- named parameters and defaults
 CREATE PROCEDURE test_proc8a(INOUT a int, INOUT b int)
 LANGUAGE plisql

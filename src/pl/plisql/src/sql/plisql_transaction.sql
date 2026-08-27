@@ -121,7 +121,7 @@ $$;
 CALL transaction_test5();
 
 
--- SECURITY DEFINER currently disallow transaction statements
+-- SECURITY DEFINER procedures allow transaction statements in Oracle mode
 CREATE PROCEDURE transaction_test5b()
 LANGUAGE plisql
 SECURITY DEFINER
@@ -650,23 +650,75 @@ $$;
 SELECT * FROM test1;
 
 
--- Test nested procedure calls with COMMIT/ROLLBACK (Issue #1007)
---
--- Note: Oracle-syntax procedures (CREATE PROCEDURE ... IS) default to
--- AUTHID DEFINER (prosecdef=true), which forces atomic mode and blocks
--- COMMIT/ROLLBACK. Use AUTHID CURRENT_USER to allow transaction control.
--- This matches Oracle behavior where COMMIT is allowed regardless of AUTHID.
+-- Test transaction control in an AUTHID DEFINER procedure (Issue #1187).
+-- Verify that the procedure retains its owner's privileges after transaction
+-- boundaries and that the caller's effective user is restored on return.
+CREATE ROLE regress_transaction_caller;
+CREATE TABLE test_definer_xact (event text, effective_user name);
 
--- Tests below verify COMMIT/ROLLBACK in nested procedure calls
--- using AUTHID CURRENT_USER (Oracle-compatible syntax).
--- Without AUTHID CURRENT_USER, Oracle-syntax procedures default to
--- SECURITY DEFINER (prosecdef=true), which forces atomic mode and
--- blocks COMMIT/ROLLBACK. This is a known limitation (see Test 0).
+CREATE OR REPLACE PROCEDURE transaction_definer AUTHID DEFINER IS
+BEGIN
+    INSERT INTO test_definer_xact VALUES ('before commit', current_user);
+    COMMIT;
+    INSERT INTO test_definer_xact VALUES ('before rollback', current_user);
+    ROLLBACK;
+    INSERT INTO test_definer_xact VALUES ('after rollback', current_user);
+END;
+/
+
+REVOKE EXECUTE ON PROCEDURE transaction_definer FROM PUBLIC;
+GRANT EXECUTE ON PROCEDURE transaction_definer TO regress_transaction_caller;
+SET ROLE regress_transaction_caller;
+CALL transaction_definer();
+SELECT current_user = 'regress_transaction_caller'::name AS caller_restored;
+RESET ROLE;
+SELECT event, effective_user = current_user AS ran_as_owner
+FROM test_definer_xact ORDER BY event;
+DROP PROCEDURE transaction_definer;
+DROP TABLE test_definer_xact;
+DROP ROLE regress_transaction_caller;
+
+-- Test that transaction control in a security-definer procedure is safe even
+-- when the procedure body switches ivorysql.compatible_mode before COMMIT.
+-- compatible_db is a GUC and can be changed by EXECUTE 'SET ...' inside the
+-- procedure, so exec_transaction must restore the outer user based on the
+-- security context flag alone rather than the mutable compatible_db.  Before
+-- the fix this crashed the backend at the COMMIT statement.
+CREATE ROLE regress_transaction_mode_switcher;
+CREATE TABLE test_definer_mode_xact (event text, effective_user name);
+
+CREATE OR REPLACE PROCEDURE transaction_definer_mode_switch AUTHID DEFINER IS
+    i int;
+BEGIN
+    FOR i IN 1..2 LOOP
+        INSERT INTO test_definer_mode_xact VALUES ('privilege check', current_user);
+        IF i = 1 THEN
+            EXECUTE 'SET ivorysql.compatible_mode = ''pg''';
+            COMMIT;
+        END IF;
+    END LOOP;
+END;
+/
+
+REVOKE EXECUTE ON PROCEDURE transaction_definer_mode_switch FROM PUBLIC;
+GRANT EXECUTE ON PROCEDURE transaction_definer_mode_switch TO regress_transaction_mode_switcher;
+SET ROLE regress_transaction_mode_switcher;
+CALL transaction_definer_mode_switch();
+SET ivorysql.compatible_mode = oracle;
+SELECT current_user = 'regress_transaction_mode_switcher'::name AS caller_restored;
+RESET ROLE;
+SELECT count(*) FROM test_definer_mode_xact;
+DROP PROCEDURE transaction_definer_mode_switch;
+DROP TABLE test_definer_mode_xact;
+DROP ROLE regress_transaction_mode_switcher;
+
+-- Test nested security-definer procedure calls with COMMIT/ROLLBACK
+-- (Issue #1007).  Oracle-syntax procedures default to AUTHID DEFINER.
 
 CREATE TABLE test_nested_commit (id int);
 
 -- Inner procedure with COMMIT
-CREATE OR REPLACE PROCEDURE nested_inner_commit AUTHID CURRENT_USER IS
+CREATE OR REPLACE PROCEDURE nested_inner_commit IS
 BEGIN
     INSERT INTO test_nested_commit VALUES (1);
     COMMIT;
@@ -675,7 +727,7 @@ END;
 /
 
 -- Outer procedure calling inner with CALL keyword
-CREATE OR REPLACE PROCEDURE nested_outer_commit AUTHID CURRENT_USER IS
+CREATE OR REPLACE PROCEDURE nested_outer_commit IS
 BEGIN
     INSERT INTO test_nested_commit VALUES (0);
     CALL nested_inner_commit();
@@ -689,7 +741,7 @@ CALL nested_outer_commit();
 SELECT * FROM test_nested_commit ORDER BY id;
 
 -- Test 2: Oracle-style call (without CALL keyword) with COMMIT
-CREATE OR REPLACE PROCEDURE nested_outer_oracle_style AUTHID CURRENT_USER IS
+CREATE OR REPLACE PROCEDURE nested_outer_oracle_style IS
 BEGIN
     INSERT INTO test_nested_commit VALUES (10);
     nested_inner_commit();  -- Oracle-style call
@@ -702,7 +754,7 @@ CALL nested_outer_oracle_style();
 SELECT * FROM test_nested_commit ORDER BY id;
 
 -- Test 3: Deeply nested Oracle-style calls (4 levels) with COMMIT
-CREATE OR REPLACE PROCEDURE nested_level4 AUTHID CURRENT_USER IS
+CREATE OR REPLACE PROCEDURE nested_level4 IS
 BEGIN
     INSERT INTO test_nested_commit VALUES (104);
     COMMIT;
@@ -710,7 +762,7 @@ BEGIN
 END;
 /
 
-CREATE OR REPLACE PROCEDURE nested_level3 AUTHID CURRENT_USER IS
+CREATE OR REPLACE PROCEDURE nested_level3 IS
 BEGIN
     INSERT INTO test_nested_commit VALUES (103);
     nested_level4();  -- Oracle-style call
@@ -718,7 +770,7 @@ BEGIN
 END;
 /
 
-CREATE OR REPLACE PROCEDURE nested_level2 AUTHID CURRENT_USER IS
+CREATE OR REPLACE PROCEDURE nested_level2 IS
 BEGIN
     INSERT INTO test_nested_commit VALUES (102);
     nested_level3();  -- Oracle-style call
@@ -726,7 +778,7 @@ BEGIN
 END;
 /
 
-CREATE OR REPLACE PROCEDURE nested_level1 AUTHID CURRENT_USER IS
+CREATE OR REPLACE PROCEDURE nested_level1 IS
 BEGIN
     INSERT INTO test_nested_commit VALUES (101);
     nested_level2();  -- Oracle-style call
@@ -739,7 +791,7 @@ CALL nested_level1();
 SELECT * FROM test_nested_commit ORDER BY id;
 
 -- Test 4: ROLLBACK in nested procedure with CALL keyword
-CREATE OR REPLACE PROCEDURE nested_inner_rollback AUTHID CURRENT_USER IS
+CREATE OR REPLACE PROCEDURE nested_inner_rollback IS
 BEGIN
     INSERT INTO test_nested_commit VALUES (201);
     ROLLBACK;
@@ -747,7 +799,7 @@ BEGIN
 END;
 /
 
-CREATE OR REPLACE PROCEDURE nested_outer_rollback AUTHID CURRENT_USER IS
+CREATE OR REPLACE PROCEDURE nested_outer_rollback IS
 BEGIN
     INSERT INTO test_nested_commit VALUES (200);
     CALL nested_inner_rollback();
@@ -760,7 +812,7 @@ CALL nested_outer_rollback();
 SELECT * FROM test_nested_commit ORDER BY id;
 
 -- Test 5: Oracle-style call (without CALL keyword) with ROLLBACK
-CREATE OR REPLACE PROCEDURE nested_outer_rollback_oracle_style AUTHID CURRENT_USER IS
+CREATE OR REPLACE PROCEDURE nested_outer_rollback_oracle_style IS
 BEGIN
     INSERT INTO test_nested_commit VALUES (300);
     nested_inner_rollback();  -- Oracle-style call
@@ -770,6 +822,48 @@ END;
 
 TRUNCATE test_nested_commit;
 CALL nested_outer_rollback_oracle_style();
+SELECT * FROM test_nested_commit ORDER BY id;
+
+-- Test 6: Keep nested COMMIT coverage for AUTHID CURRENT_USER procedures.
+CREATE OR REPLACE PROCEDURE nested_invoker_inner_commit AUTHID CURRENT_USER IS
+BEGIN
+    INSERT INTO test_nested_commit VALUES (401);
+    COMMIT;
+    INSERT INTO test_nested_commit VALUES (402);
+END;
+/
+
+CREATE OR REPLACE PROCEDURE nested_invoker_outer_commit AUTHID CURRENT_USER IS
+BEGIN
+    INSERT INTO test_nested_commit VALUES (400);
+    CALL nested_invoker_inner_commit();
+    INSERT INTO test_nested_commit VALUES (403);
+END;
+/
+
+TRUNCATE test_nested_commit;
+CALL nested_invoker_outer_commit();
+SELECT * FROM test_nested_commit ORDER BY id;
+
+-- Test 7: Keep nested ROLLBACK coverage for AUTHID CURRENT_USER procedures.
+CREATE OR REPLACE PROCEDURE nested_invoker_inner_rollback AUTHID CURRENT_USER IS
+BEGIN
+    INSERT INTO test_nested_commit VALUES (501);
+    ROLLBACK;
+    INSERT INTO test_nested_commit VALUES (502);
+END;
+/
+
+CREATE OR REPLACE PROCEDURE nested_invoker_outer_rollback AUTHID CURRENT_USER IS
+BEGIN
+    INSERT INTO test_nested_commit VALUES (500);
+    CALL nested_invoker_inner_rollback();
+    INSERT INTO test_nested_commit VALUES (503);
+END;
+/
+
+TRUNCATE test_nested_commit;
+CALL nested_invoker_outer_rollback();
 SELECT * FROM test_nested_commit ORDER BY id;
 
 -- Clean up nested commit tests
@@ -783,6 +877,10 @@ DROP PROCEDURE nested_level4;
 DROP PROCEDURE nested_inner_rollback;
 DROP PROCEDURE nested_outer_rollback;
 DROP PROCEDURE nested_outer_rollback_oracle_style;
+DROP PROCEDURE nested_invoker_inner_commit;
+DROP PROCEDURE nested_invoker_outer_commit;
+DROP PROCEDURE nested_invoker_inner_rollback;
+DROP PROCEDURE nested_invoker_outer_rollback;
 DROP TABLE test_nested_commit;
 
 
