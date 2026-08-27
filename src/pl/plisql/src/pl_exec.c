@@ -24,6 +24,7 @@
 #include "access/htup_details.h"
 #include "access/transam.h"
 #include "access/tupconvert.h"
+#include "access/xact.h"
 #include "catalog/pg_package.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
@@ -2340,6 +2341,15 @@ exec_stmts(PLiSQL_execstate * estate, List *stmts)
 		int			rc;
 
 		estate->err_stmt = stmt;
+
+		/*
+		 * Refresh the statement start timestamp for each statement, so that
+		 * statement-scoped values such as SYSDATE/CURRENT_DATE (which use
+		 * GetCurrentStatementStartTimestamp()) advance between PL/iSQL
+		 * statements while staying fixed within a single one, matching
+		 * Oracle's PL/SQL behavior.
+		 */
+		SetCurrentStatementStartTimestamp();
 
 		/* Let the plugin know that we are about to execute this statement */
 		if (*plisql_plugin_ptr && (*plisql_plugin_ptr)->stmt_beg)

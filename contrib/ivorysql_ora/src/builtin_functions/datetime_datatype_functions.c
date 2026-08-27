@@ -223,7 +223,13 @@ static int	ora_timezone_name_to_num(const char *name);
 Datum
 sysdate(PG_FUNCTION_ARGS)
 {
-	TimestampTz timestamp = GetCurrentTimestamp();
+	/*
+	 * Return the statement start timestamp so that the value is fixed for
+	 * the whole of a single statement, matching Oracle's SYSDATE semantics:
+	 * SYSDATE does not advance within a statement, but it does advance
+	 * between statements in the same transaction.
+	 */
+	TimestampTz timestamp = GetCurrentStatementStartTimestamp();
 	Timestamp	result;
 	struct pg_tm tt,
 			   *tm = &tt;
@@ -258,8 +264,13 @@ sysdate(PG_FUNCTION_ARGS)
 Datum
 ora_current_date(PG_FUNCTION_ARGS)
 {
-
-	TimestampTz timestamp = GetCurrentTimestamp();
+	/*
+	 * Return the statement start timestamp so that the value is fixed for
+	 * the whole of a single statement, matching Oracle's CURRENT_DATE
+	 * semantics: CURRENT_DATE does not advance within a statement, but it
+	 * does advance between statements in the same transaction.
+	 */
+	TimestampTz timestamp = GetCurrentStatementStartTimestamp();
 	Timestamp	result;
 	struct pg_tm tt,
 			   *tm = &tt;
