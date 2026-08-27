@@ -146,15 +146,27 @@ IMMUTABLE;
  * dropping the numeric/date wrappers would break lengthc(192).  Conversely
  * sys.binary_float and sys.oratimestampltz are intentionally absent: they
  * resolve via the preferred types sys.binary_double and sys.oratimestamptz.
- * sys.clob/nclob/long are domains over text and fold onto lengthc(text).
+ * sys.long is a domain over text and folds onto lengthc(text).
  *
- * Oracle rejects binary arguments with ORA-00932, but we cannot: pg_cast has
- * an implicit bytea -> sys.oravarcharchar entry, so bytea/raw/blob reach the
- * oravarcharchar overload and are counted as their hex text, exactly as they
- * already are by sys.ltrim() and the rest of this extension.  Removing the
- * oravarcharchar overload is not an option -- it is what keeps CHAR blank
- * padding out of rtrim().  Note length()/lengthb() escape this only because
- * pg_catalog.length(bytea) and sys.lengthb(bytea) are exact matches.
+ * The numeric and datetime wrappers are not a liberty we take: Oracle does
+ * not list DATE/TIMESTAMP/NUMBER as LENGTHC inputs either, but it reaches
+ * them through the generic implicit argument conversion and answers
+ * normally -- LENGTHC(SYSDATE) is 19, LENGTHC(SYSTIMESTAMP) 35,
+ * LENGTHC(192.922) 7 -- exactly as sys.length() already does here.
+ *
+ * The LOB types are the real exception.  Oracle's LENGTH entry says
+ * LENGTHC/LENGTH2/LENGTH4 "do not allow char to be a CLOB or NCLOB", and an
+ * instance rejects BLOB the same way, so sys.clob, sys.nclob and sys.blob
+ * get exact-match overloads bound to ora_lengthc_unsupported() below.
+ * Without them nothing would be rejected: the first two are domains over
+ * text and the third one over bytea, which has an implicit cast to
+ * sys.oravarcharchar.
+ *
+ * RAW stays accepted, because Oracle accepts it -- LENGTHC(HEXTORAW(
+ * '616263')) is 6, the length of the hex text.  We agree on the mechanism
+ * but not on the number: PG's bytea output carries a "\x" prefix, so our
+ * answers are Oracle's plus two.  That belongs to the extension-wide
+ * bytea -> sys.oravarcharchar cast, not to lengthc.
  */
 
 CREATE FUNCTION sys.lengthc(text)
@@ -240,6 +252,59 @@ RETURNS integer
 AS 'select sys.lengthc($1::sys.oravarcharchar)'
 LANGUAGE SQL
 IMMUTABLE PARALLEL SAFE STRICT;
+
+/*
+ * bytea and the two non-LOB domains over it.  These only restate the
+ * coercion that used to happen on its own, and they have to be spelled out
+ * because sys.lengthc(sys.blob) below made bytea ambiguous: a bytea reaches
+ * both the blob overload (domain relabel) and the oravarcharchar one
+ * (implicit cast), and category U has no preferred type to break the tie.
+ * The text side needs no such help -- sys.clob/nclob/long all lose to
+ * lengthc(text), text being the preferred type of category S.
+ */
+CREATE FUNCTION sys.lengthc(pg_catalog.bytea)
+RETURNS integer
+AS 'select sys.lengthc($1::sys.oravarcharchar)'
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.lengthc(sys.raw)
+RETURNS integer
+AS 'select sys.lengthc($1::sys.oravarcharchar)'
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.lengthc(sys.long_raw)
+RETURNS integer
+AS 'select sys.lengthc($1::sys.oravarcharchar)'
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT;
+
+/*
+ * The three LOB types Oracle's LENGTHC refuses; see
+ * ora_lengthc_unsupported().  NOT STRICT on purpose -- Oracle rejects the
+ * type while parsing, so a NULL CLOB has to be a type error here too.
+ */
+CREATE FUNCTION sys.lengthc(sys.clob)
+RETURNS integer
+AS 'MODULE_PATHNAME','ora_lengthc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.lengthc(sys.nclob)
+RETURNS integer
+AS 'MODULE_PATHNAME','ora_lengthc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.lengthc(sys.blob)
+RETURNS integer
+AS 'MODULE_PATHNAME','ora_lengthc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
 
 CREATE FUNCTION sys.length(integer)
 RETURNS integer

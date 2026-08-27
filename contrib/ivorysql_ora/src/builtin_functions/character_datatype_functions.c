@@ -55,6 +55,7 @@ PG_FUNCTION_INFO_V1(oracharoctetlen);
 PG_FUNCTION_INFO_V1(oravarcharlen);
 PG_FUNCTION_INFO_V1(oravarcharoctetlen);
 PG_FUNCTION_INFO_V1(ora_lengthc);
+PG_FUNCTION_INFO_V1(ora_lengthc_unsupported);
 PG_FUNCTION_INFO_V1(rtrim1);
 PG_FUNCTION_INFO_V1(rtrim2);
 PG_FUNCTION_INFO_V1(ltrim1);
@@ -291,6 +292,47 @@ ora_lengthc(PG_FUNCTION_ARGS)
 	pfree(output_chars);
 
 	PG_RETURN_INT32(result);
+}
+
+/*
+ * ora_lengthc_unsupported --- reject the LOB types Oracle's LENGTHC rejects.
+ *
+ * Oracle documents LENGTHC as accepting only CHAR, VARCHAR2, NCHAR and
+ * NVARCHAR2, and names CLOB and NCLOB as excluded; a real instance answers
+ * LENGTHC(TO_CLOB('abc')), LENGTHC(TO_NCLOB('abc')) and
+ * LENGTHC(TO_BLOB(...)) with ORA-00932.  Non-LOB types are a different
+ * story: DATE, TIMESTAMP, NUMBER and RAW all reach LENGTHC through the
+ * generic implicit argument conversion there and are answered normally, so
+ * they keep their working overloads.
+ *
+ * Simply not declaring an overload would reject nothing.  sys.clob and
+ * sys.nclob are domains over text and sys.blob is a domain over bytea, so
+ * plain resolution folds them onto lengthc(text) and
+ * lengthc(sys.oravarcharchar).  An exact-match overload is what stops them,
+ * because func_get_detail() prefers an exact match over both domain folding
+ * and implicit coercion.
+ *
+ * Deliberately not STRICT: Oracle rejects the type while parsing, so a NULL
+ * of a rejected type has to error out too rather than quietly return NULL.
+ */
+Datum
+ora_lengthc_unsupported(PG_FUNCTION_ARGS)
+{
+	Oid			argtype = get_fn_expr_argtype(fcinfo->flinfo, 0);
+
+	if (OidIsValid(argtype))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+				 errmsg("inconsistent datatypes: lengthc() does not accept %s",
+						format_type_be(argtype)),
+				 errdetail("Oracle's LENGTHC accepts only CHAR, VARCHAR2, NCHAR and NVARCHAR2.")));
+	else
+		ereport(ERROR,
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+				 errmsg("inconsistent datatypes: lengthc() does not accept this data type"),
+				 errdetail("Oracle's LENGTHC accepts only CHAR, VARCHAR2, NCHAR and NVARCHAR2.")));
+
+	PG_RETURN_NULL();			/* keep the compiler quiet */
 }
 
 Datum

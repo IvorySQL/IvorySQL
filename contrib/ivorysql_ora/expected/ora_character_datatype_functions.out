@@ -2743,39 +2743,63 @@ select lengthc(' ') from dual;
        1
 (1 row)
 
--- (7) domains over text fold onto lengthc(text)
+-- (7) the LOB types are rejected, the way Oracle's LENGTHC rejects them.
+-- Its documented inputs are CHAR/VARCHAR2/NCHAR/NVARCHAR2 only, and an
+-- instance answers LENGTHC of TO_CLOB/TO_NCLOB/TO_BLOB with ORA-00932 while
+-- LENGTH(TO_CLOB('abc')) still returns 3.  sys.clob/nclob are domains over
+-- text and sys.blob over bytea, so plain resolution would fold them onto the
+-- text/oravarcharchar overloads; the rejection comes from the exact-match
+-- overloads bound to ora_lengthc_unsupported().  Those are not STRICT, so a
+-- NULL of a rejected type is a type error rather than a NULL result.
+--
+-- sys.long is deliberately still accepted: LONG is not a LOB, Oracle's LONG
+-- columns are barely usable in expressions at all, and sys.length(long)
+-- works here -- singling out lengthc would only diverge from length().
 select lengthc(cast('abc' as clob)) from dual;
- lengthc 
----------
-       3
-(1 row)
-
+ERROR:  inconsistent datatypes: lengthc() does not accept clob
+DETAIL:  Oracle's LENGTHC accepts only CHAR, VARCHAR2, NCHAR and NVARCHAR2.
 select lengthc(cast('abc' as nclob)) from dual;
- lengthc 
----------
-       3
-(1 row)
-
+ERROR:  inconsistent datatypes: lengthc() does not accept nclob
+DETAIL:  Oracle's LENGTHC accepts only CHAR, VARCHAR2, NCHAR and NVARCHAR2.
+select lengthc(cast('e'||chr(769) as clob)) from dual;
+ERROR:  inconsistent datatypes: lengthc() does not accept clob
+DETAIL:  Oracle's LENGTHC accepts only CHAR, VARCHAR2, NCHAR and NVARCHAR2.
+select lengthc(cast(null as clob)) from dual;
+ERROR:  inconsistent datatypes: lengthc() does not accept clob
+DETAIL:  Oracle's LENGTHC accepts only CHAR, VARCHAR2, NCHAR and NVARCHAR2.
 select lengthc(cast('abc' as long)) from dual;
  lengthc 
 ---------
        3
 (1 row)
 
-select lengthc(cast('e'||chr(769) as clob)) from dual;
+-- the supported route for LOB content, and the Oracle-portable spelling
+select lengthc(cast(cast('e'||chr(769) as clob) as text)) from dual;
  lengthc 
 ---------
        1
 (1 row)
 
-select lengthc(cast(repeat('e'||chr(769), 1000) as clob)) from dual;
- lengthc 
----------
-    1000
-(1 row)
-
 -- (8) numeric/date overloads; binary_float and timestamptz resolve via
--- the preferred types binary_double and oratimestamptz
+-- the preferred types binary_double and oratimestamptz.
+--
+-- Oracle does not list DATE/TIMESTAMP/NUMBER as LENGTHC inputs either, but
+-- unlike the LOB types in (7) it accepts them through the generic implicit
+-- argument conversion: an instance returns LENGTHC(SYSDATE) = 19,
+-- LENGTHC(SYSTIMESTAMP) = 35, LENGTHC(192) = 3, LENGTHC(192.922) = 7.  What
+-- is pinned down here is that conversion path, and the answer depends on the
+-- NLS format -- hence the alter session below.
+--
+-- Note the alter session is not what lets lengthc take a datetime at all --
+-- LENGTHC(SYSTIMESTAMP) answers 35 off the untouched NLS_TIMESTAMP_TZ_FORMAT
+-- -- it is what makes the answer reproducible.  It also decides whether the
+-- literals below parse: run these standalone and Oracle fails inside the
+-- CAST rather than in lengthc, because the default formats are DD-MON-RR and
+-- DD-MON-RR HH.MI.SSXFF AM.  '2019-12-12' as DATE then gets ORA-01861
+-- (literal does not match format string) and as TIMESTAMP it gets ORA-01843
+-- (invalid month, from reading "19" where MON is expected).  With the
+-- formats set Oracle accepts them, as lenient as we are about a literal
+-- shorter than the format string.
 alter session set nls_date_format = 'YYYY-MM-DD HH24:MI:SS';
 alter session set nls_timestamp_format = 'YYYY-MM-DD HH24:MI:SS';
 select length(192), lengthc(192) from dual;
@@ -2862,11 +2886,18 @@ from (values ('abc'), (''), (' '), ('今天'),
  t
 (1 row)
 
--- (10) binary input.  Oracle raises ORA-00932 here; IvorySQL instead counts
--- the hex text, because pg_cast has an implicit bytea -> sys.oravarcharchar
--- entry that every sys function with an oravarcharchar overload inherits
--- (compare sys.ltrim('abc'::bytea), which likewise yields \x616263).
--- length()/lengthb() differ only because they have exact bytea matches.
+-- (10) binary input.  Oracle accepts RAW here: it goes through the same
+-- implicit conversion as (8) and counts the hex text, so
+-- LENGTHC(HEXTORAW('616263')) is 6.  IvorySQL accepts it too, via the
+-- implicit bytea -> sys.oravarcharchar cast that every sys function with an
+-- oravarcharchar overload inherits (compare sys.ltrim('abc'::bytea), which
+-- likewise yields \x616263).  We agree on the mechanism but not on the
+-- number: PG's bytea output carries the "\x" prefix, so each answer below is
+-- Oracle's plus two.  That is the cast's semantics, not lengthc's.
+-- length()/lengthb() sit this out because they have exact bytea matches.
+--
+-- BLOB is a different matter: it is a LOB, so Oracle rejects it and so do
+-- we -- see (7).
 select length(cast('ab' as raw(2))), lengthb(cast('ab' as raw(2))),
        lengthc(cast('ab' as raw(2))) from dual;
  length | lengthb | lengthc 
@@ -2880,6 +2911,9 @@ select length('abc'::bytea), lengthb('abc'::bytea), lengthc('abc'::bytea) from d
       3 |       3 |       8
 (1 row)
 
+select lengthc(cast('abc'::bytea as blob)) from dual;
+ERROR:  inconsistent datatypes: lengthc() does not accept blob
+DETAIL:  Oracle's LENGTHC accepts only CHAR, VARCHAR2, NCHAR and NVARCHAR2.
 -- (11) attribute guardrails: IMMUTABLE is required for expression indexes
 CREATE TABLE TEST_LENGTHC_IDX(c varchar2(50));
 CREATE INDEX TEST_LENGTHC_IDX_I ON TEST_LENGTHC_IDX (lengthc(c));
@@ -2892,18 +2926,24 @@ SELECT pg_catalog.pg_get_function_arguments(p.oid) AS args,
            args           | provolatile | proisstrict | proparallel 
 --------------------------+-------------+-------------+-------------
  binary_double            | i           | t           | s
+ blob                     | i           | f           | s
+ bytea                    | i           | t           | s
  char                     | i           | t           | s
  char                     | i           | t           | s
+ clob                     | i           | f           | s
  date                     | i           | t           | s
+ long_raw                 | i           | t           | s
+ nclob                    | i           | f           | s
  number                   | i           | t           | s
  pg_catalog.int4          | i           | t           | s
  pg_catalog.numeric       | i           | t           | s
+ raw                      | i           | t           | s
  text                     | i           | t           | s
  timestamp                | i           | t           | s
  timestamp with time zone | i           | t           | s
  varchar2                 | i           | t           | s
  varchar2                 | i           | t           | s
-(12 rows)
+(18 rows)
 
 /*
  * round
