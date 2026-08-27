@@ -1006,19 +1006,6 @@ typedef enum PLiSQL_trigtype
 	PLISQL_NOT_TRIGGER
 }			PLiSQL_trigtype;
 
-/* Classification supplied directly by Oracle object method syntax. */
-typedef enum PLiSQL_object_method_kind
-{
-	PLISQL_OBJECT_METHOD_NONE,
-	PLISQL_OBJECT_METHOD_MEMBER_FUNCTION,
-	PLISQL_OBJECT_METHOD_MEMBER_PROCEDURE,
-	PLISQL_OBJECT_METHOD_STATIC_FUNCTION,
-	PLISQL_OBJECT_METHOD_STATIC_PROCEDURE,
-	PLISQL_OBJECT_METHOD_CONSTRUCTOR,
-	PLISQL_OBJECT_METHOD_MAP,
-	PLISQL_OBJECT_METHOD_ORDER
-}			PLiSQL_object_method_kind;
-
 /*
  * Complete compiled function
  */
@@ -1041,7 +1028,6 @@ typedef struct PLiSQL_function
 	bool		fn_retset;
 	bool		fn_readonly;
 	char		fn_prokind;
-	PLiSQL_object_method_kind object_method_kind;
 
 	int			fn_nargs;
 	int			fn_argvarnos[FUNC_MAX_ARGS];

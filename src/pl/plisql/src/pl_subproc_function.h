@@ -147,7 +147,6 @@ typedef struct PLiSQL_subproc_function
 	List *properties;				/* function propers, list of PLSQL_subproc_proper */
 	PLiSQL_type *rettype;
 	bool		is_proc;			/* wether it is procedure or function */
-	PLiSQL_object_method_kind object_method_kind;
 	bool		has_poly_argument;		/* wether it has poly argument */
 	char		*src;				/* block src for polymorphic argtype function or procedure */
 	PLiSQL_function *function;			/* function that save action and dautms */
@@ -200,9 +199,6 @@ extern void plisql_check_subprocfunc_properties(PLiSQL_subproc_function *subproc
 							List *properties, bool isdeclare);
 extern PLiSQL_subproc_function *plisql_build_subproc_function(char *funcname, List *args,
 							PLiSQL_type *rettype, int location); 
-extern void plisql_set_object_method_kind(
-	PLiSQL_subproc_function *subprocfunc,
-	PLiSQL_object_method_kind method_kind);
 extern PLiSQL_function_argitem *plisql_build_object_self_arg(int argmode);
 extern PLiSQL_type *plisql_build_object_self_type(void);
 extern void plisql_add_subproc_function(PLiSQL_subproc_function *inlinefunc);
