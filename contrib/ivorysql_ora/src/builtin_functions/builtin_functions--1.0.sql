@@ -677,7 +677,7 @@ AS 'MODULE_PATHNAME', 'ora_tz_offset'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
-IMMUTABLE;
+STABLE;
 
 CREATE FUNCTION sys.months_between(sys.oradate, sys.oradate)
 RETURNS double precision
@@ -1132,7 +1132,7 @@ AS 'MODULE_PATHNAME','uid'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
-IMMUTABLE;
+STABLE;
 
 /*
  * Oracle USERENV support
