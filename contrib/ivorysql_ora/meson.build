@@ -32,7 +32,8 @@ ivorysql_ora_sources = files(
   'src/builtin_packages/dbms_lock/dbms_lock.c',
   'src/builtin_packages/utl_raw/utl_raw.c',
   'src/builtin_packages/utl_encode/utl_encode.c',
-  'src/builtin_packages/dbms_session/dbms_session.c'
+  'src/builtin_packages/dbms_session/dbms_session.c',
+  'src/builtin_packages/dbms_transaction/dbms_transaction.c'
 )
 
 if host_system == 'windows'

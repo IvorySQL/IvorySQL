@@ -42,6 +42,12 @@ $node->start;
 $node->safe_psql(
 	'postgres',
 	"SELECT 'init' FROM pg_create_physical_replication_slot('regress_pg_waldump_slot', true, false);
+-- Start a fresh WAL segment so that the records below don't have to
+-- share a segment with whatever WAL bootstrap already produced (this
+-- can vary a lot, e.g. much more with an Oracle-compatible initdb
+-- template that preloads plisql/ivorysql_ora, leaving little headroom
+-- in the first segment).
+SELECT pg_switch_wal();
 CREATE TABLE test_table AS SELECT generate_series(1,100) a;
 -- Force FPWs on the next writes.
 CHECKPOINT;
