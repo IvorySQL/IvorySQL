@@ -150,7 +150,9 @@ pkgconfig.generate(
 
 install_headers(
   'libpq-fe.h',
+  'libpq-ivy.h',
   'libpq-events.h',
+  'ivy_sema.h',
 )
 
 install_headers(
