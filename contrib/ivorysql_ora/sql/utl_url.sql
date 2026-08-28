@@ -133,6 +133,20 @@ SELECT utl_url.unescape('%D6%D0%CE%C4', 'GBK') AS cjk_gbk;
 -- url_charset)
 SELECT utl_url.unescape('café%21', 'LATIN1') AS mixed_literal_pct;
 
+-- The same contract on the decode side: an omitted and an explicit NULL
+-- url_charset both mean "the bytes are already in the database encoding"
+SELECT utl_url.unescape('%C3%A9') AS default_charset,
+       utl_url.unescape('%C3%A9', NULL) AS explicit_null_charset;
+
+-- A lone LATIN1 %E9 group decodes to é through the explicit charset
+SELECT utl_url.unescape('%E9', 'LATIN1') AS latin1_decode;
+
+-- With the database-encoding default, a lone %E9 is not valid UTF8 text,
+-- so the call reports an encoding error -- where Oracle's omitted-
+-- url_charset default (utl_http.body_charset, ISO-8859-1) would return é.
+-- Declared deviation, pinned here so the difference stays visible.
+SELECT utl_url.unescape('%E9');
+
 -- An unrecognized character set is rejected (Oracle reports ORA-01482)
 SELECT utl_url.unescape('a%20b', 'NO_SUCH_CHARSET');
 

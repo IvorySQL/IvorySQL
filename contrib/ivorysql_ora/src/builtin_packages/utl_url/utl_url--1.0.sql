@@ -82,9 +82,14 @@ CREATE OR REPLACE PACKAGE utl_url AS
      *   url          IN VARCHAR2 - the URL to unescape
      *   url_charset  IN VARCHAR2 - character set the unescaped bytes are
      *                              assumed to be in; they are converted from
-     *                              it to the database encoding.  NULL (the
-     *                              default) means the bytes are already in the
-     *                              database encoding.
+     *                              it to the database encoding.  An omitted
+     *                              url_charset and an explicit NULL are
+     *                              equivalent here and both mean the bytes
+     *                              are already in the database encoding;
+     *                              Oracle's omitted form defaults to
+     *                              utl_http.body_charset (ISO-8859-1)
+     *                              instead (declared deviation, see the
+     *                              ESCAPE documentation above).
      * Returns:
      *   VARCHAR2 - the unescaped URL, or NULL when url IS NULL
      *
