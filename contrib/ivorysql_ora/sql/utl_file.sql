@@ -155,10 +155,12 @@ declare
     f sys.ora_utl_file_file_type;
     fexists boolean;
     file_length number;
+    seek_offset integer;
     block_size integer;
 begin
     utl_file.fgetattr('data_directory', 'regressflush.txt',
                       fexists, file_length, block_size);
+    seek_offset := file_length;
     f := utl_file.fopen('data_directory', 'regressflush.txt', 'r');
 
     begin
@@ -178,7 +180,7 @@ begin
     end;
 
     begin
-        utl_file.fseek(f, file_length + 1, NULL);
+        utl_file.fseek(f, seek_offset + 1, NULL);
     exception
         when others then
             raise notice 'absolute offset past EOF: %, position: %', sqlerrm,
@@ -186,24 +188,25 @@ begin
     end;
 
     begin
-        utl_file.fseek(f, NULL, file_length + 1);
+        utl_file.fseek(f, NULL, seek_offset + 1);
     exception
         when others then
             raise notice 'relative offset past EOF: %, position: %', sqlerrm,
                          utl_file.fgetpos(f);
     end;
 
+    utl_file.fseek(f, 1, NULL);
     begin
-        utl_file.fseek(f, NULL, -1);
+        utl_file.fseek(f, NULL, -2);
     exception
         when others then
             raise notice 'relative offset before start: %, position: %', sqlerrm,
                          utl_file.fgetpos(f);
     end;
 
-    utl_file.fseek(f, file_length, NULL);
+    utl_file.fseek(f, seek_offset, NULL);
     raise notice 'offset at EOF accepted: %',
-                 utl_file.fgetpos(f) = file_length;
+                 utl_file.fgetpos(f) = seek_offset;
 
     utl_file.fclose(f);
 end;
