@@ -48,17 +48,23 @@ CREATE OR REPLACE PACKAGE utl_url AS
      *                                         delimiters (default FALSE)
      *   url_charset            IN VARCHAR2  - character set the characters are
      *                                         converted to before being
-     *                                         escaped.  NULL (the default)
-     *                                         means the database encoding,
-     *                                         with no conversion.  Note:
-     *                                         Oracle's documented default is
+     *                                         escaped.  An omitted
+     *                                         url_charset and an explicit
+     *                                         NULL are equivalent here and
+     *                                         both mean the database
+     *                                         encoding, with no conversion.
+     *                                         Oracle distinguishes the two
+     *                                         forms: an omitted argument
+     *                                         defaults to
      *                                         utl_http.body_charset
-     *                                         (ISO-8859-1); using the database
-     *                                         encoding instead is a deliberate
-     *                                         deviation, since ISO-8859-1
-     *                                         cannot represent non-Latin text
-     *                                         and UTL_HTTP is not available
-     *                                         here.
+     *                                         (ISO-8859-1) while an explicit
+     *                                         NULL selects the database
+     *                                         character set.  Using the
+     *                                         database encoding for both is
+     *                                         a deliberate deviation:
+     *                                         ISO-8859-1 cannot represent
+     *                                         non-Latin text and UTL_HTTP
+     *                                         is not available here.
      * Returns:
      *   VARCHAR2 - the escaped URL, or NULL when url IS NULL
      */

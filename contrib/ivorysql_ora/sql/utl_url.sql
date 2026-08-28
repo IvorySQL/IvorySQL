@@ -78,6 +78,17 @@ SELECT utl_url.escape('中文', FALSE, 'GB18030') AS cjk_gb18030;
 SELECT utl_url.escape('a b', FALSE, 'ISO-8859-1') AS iana_name,
        utl_url.escape('a b', FALSE, 'LATIN1') AS pg_name;
 
+-- The url_charset contract: omitting the argument and passing an explicit
+-- NULL are the same thing here -- both mean "the database encoding, do not
+-- convert".  Oracle makes them different: an omitted url_charset defaults
+-- to utl_http.body_charset (ISO-8859-1) while an explicit NULL selects the
+-- database character set.  Defaulting to the database encoding instead of
+-- ISO-8859-1 is the declared deviation of this port (ISO-8859-1 cannot
+-- represent non-Latin text; see the package documentation), and this case
+-- pins the contract so the difference stays visible.
+SELECT utl_url.escape('é') AS default_charset,
+       utl_url.escape('é', FALSE, NULL) AS explicit_null_charset;
+
 -- An unrecognized character set is rejected
 SELECT utl_url.escape('a b', FALSE, 'NO_SUCH_CHARSET');
 
