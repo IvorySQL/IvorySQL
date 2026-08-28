@@ -3370,6 +3370,37 @@ SELECT INSTR('Information for the information age requires information.', 'infor
      0
 (1 row)
 
+-- position = 0 returns 0 (Oracle documents this); position/occurrence edge cases
+SELECT INSTR('abcabc', 'abc', 0) FROM DUAL;
+ instr 
+-------
+     0
+(1 row)
+
+SELECT INSTR('abcabc', 'b', 0, 2) FROM DUAL;
+ instr 
+-------
+     0
+(1 row)
+
+SELECT INSTR('abcabc', 'b', 3, 0) FROM DUAL;	-- error: occurrence must be positive
+ERROR:  The parameter of occurrence must be positive
+SELECT INSTR('abcabc', 'b', 3, -1) FROM DUAL;	-- error: occurrence must be positive
+ERROR:  The parameter of occurrence must be positive
+SELECT INSTR('abc', 'a', -2147483648) FROM DUAL;	-- out-of-range position, must not crash
+ instr 
+-------
+     0
+(1 row)
+
+SELECT INSTRB('CORPORATE FLOOR', 'OR', 0, 2) FROM DUAL;
+ instrb 
+--------
+      0
+(1 row)
+
+SELECT INSTRB('CORPORATE FLOOR', 'OR', 5, 0) FROM DUAL;	-- error: occurrence must be positive
+ERROR:  The parameter of occurrence must be positive
 /*
  * asciistr
  */

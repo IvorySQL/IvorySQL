@@ -1320,6 +1320,15 @@ SELECT INSTR('Information for the information age requires information.', 'infor
 SELECT INSTR('Information for the information age requires information.', 'information', 2);
 SELECT INSTR('Information for the information age requires information.', 'information', 1, 4);
 
+-- position = 0 returns 0 (Oracle documents this); position/occurrence edge cases
+SELECT INSTR('abcabc', 'abc', 0) FROM DUAL;
+SELECT INSTR('abcabc', 'b', 0, 2) FROM DUAL;
+SELECT INSTR('abcabc', 'b', 3, 0) FROM DUAL;	-- error: occurrence must be positive
+SELECT INSTR('abcabc', 'b', 3, -1) FROM DUAL;	-- error: occurrence must be positive
+SELECT INSTR('abc', 'a', -2147483648) FROM DUAL;	-- out-of-range position, must not crash
+SELECT INSTRB('CORPORATE FLOOR', 'OR', 0, 2) FROM DUAL;
+SELECT INSTRB('CORPORATE FLOOR', 'OR', 5, 0) FROM DUAL;	-- error: occurrence must be positive
+
 /*
  * asciistr
  */
