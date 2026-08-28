@@ -71,6 +71,14 @@ alter function s1.f_alter(arg1 OUT int) compile;
 alter function s1.f_alter(arg1 text) compile;
 alter function s1.f_alter(arg1 number, arg2 number, arg3 number default 10) compile;
 alter function s1.f_alter(arg1 number, arg2 number, arg3 number) compile;
+
+-- to_char must reject overlength time zone abbreviations instead of
+-- overflowing its output buffer (upstream CVE-2026-14669)
+set timezone = '<AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA>-07:30';
+select to_char(cast(now() as sys.oratimestamptz), 'TZ') from dual;
+select to_char(cast(now() as sys.oratimestamptz), 'tz') from dual;
+reset timezone;
+
 -- clean
 drop table dtos_tb1tidid004134318;
 drop table char_tb2;
