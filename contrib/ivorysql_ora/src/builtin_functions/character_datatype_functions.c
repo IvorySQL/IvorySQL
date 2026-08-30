@@ -541,7 +541,7 @@ ora_regexp_instr(PG_FUNCTION_ARGS)
 		if(!PG_ARGISNULL(4))
 		{
 			ret_opt = PG_GETARG_INT32(4);
-			if(ret_opt < 0)
+			if(ret_opt < 0 || ret_opt > 1)
 				ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					errmsg("argument '%d' is out of range",ret_opt)));

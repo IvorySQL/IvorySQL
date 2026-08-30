@@ -738,6 +738,9 @@ select regexp_instr('barbar', 'b[^b]+', 1, 1, 0, 'i',0) from dual;
 
 select regexp_instr('barbar', 'b[^b]+', 1, 1, 1, 'i',0) from dual;
 
+-- return_option accepts only 0 (start) or 1 (end).
+select regexp_instr('barbar', 'b[^b]+', 1, 1, 2, 'i',0) from dual;
+
 select regexp_instr('barbar', '(b[^b]+)', 1, 2, 0, 'i',0) from dual;
 
 select regexp_instr('barbar', '(b[^b]+)', 1, 2, 1, 'i',0) from dual;
