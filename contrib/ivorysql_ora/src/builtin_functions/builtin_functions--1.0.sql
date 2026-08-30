@@ -1571,8 +1571,13 @@ CREATE or REPLACE FUNCTION sys.sys_context(a varchar2, b varchar2, c number)
 RETURNS varchar2 AS $$
 DECLARE
 	res varchar2;
+	requested_length integer := c::integer;
 BEGIN
-	SELECT left(sys.sys_context(a, b), c::integer) INTO res;
+	/* Oracle ignores an out-of-range length and uses the default of 256. */
+	IF requested_length < 1 OR requested_length > 4000 THEN
+		requested_length := 256;
+	END IF;
+	SELECT left(sys.sys_context(a, b), requested_length) INTO res;
 	RETURN res;
 END;
 $$ LANGUAGE plisql SECURITY INVOKER;

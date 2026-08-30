@@ -6,6 +6,13 @@ SET nls_timestamp_format = 'DD-MON-YY HH24:MI:SS.US';
 SET nls_timestamp_tz_format = 'DD-MON-YY HH24:MI:SS.US TZ';
 set default_text_search_config = 'pg_catalog.simple';
 
+-- SYS_CONTEXT uses the default length (256) for an invalid length argument.
+SELECT set_config('length_test.value', repeat('x', 300), false) IS NOT NULL AS context_set;
+SELECT length(sys_context('length_test', 'value', 12)) AS valid_length,
+       length(sys_context('length_test', 'value', 0)) AS zero_length,
+       length(sys_context('length_test', 'value', 4001)) AS oversized_length;
+RESET length_test.value;
+
 -- error
 select decode(NULL, 1, 2018, 2, timestamp'2018-2-1 00:00:00', timestamp'2018-5-1 00:00:00');
 select decode('abc', 123, 123,4, date'2018-8-1', 5) from dual;

@@ -5,6 +5,22 @@ SET nls_date_format = 'DD-MON-YY';
 SET nls_timestamp_format = 'DD-MON-YY HH24:MI:SS.US';
 SET nls_timestamp_tz_format = 'DD-MON-YY HH24:MI:SS.US TZ';
 set default_text_search_config = 'pg_catalog.simple';
+-- SYS_CONTEXT uses the default length (256) for an invalid length argument.
+SELECT set_config('length_test.value', repeat('x', 300), false) IS NOT NULL AS context_set;
+ context_set 
+-------------
+ t
+(1 row)
+
+SELECT length(sys_context('length_test', 'value', 12)) AS valid_length,
+       length(sys_context('length_test', 'value', 0)) AS zero_length,
+       length(sys_context('length_test', 'value', 4001)) AS oversized_length;
+ valid_length | zero_length | oversized_length 
+--------------+-------------+------------------
+           12 |         256 |              256
+(1 row)
+
+RESET length_test.value;
 -- error
 select decode(NULL, 1, 2018, 2, timestamp'2018-2-1 00:00:00', timestamp'2018-5-1 00:00:00');
 ERROR:  DECODE could not convert type timestamp to number
