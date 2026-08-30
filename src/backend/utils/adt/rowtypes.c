@@ -127,13 +127,28 @@ compare_oracle_object_records(Oid typeOid, HeapTupleHeader record1,
 	ObjectComparePlanKey planKey;
 	ObjectComparePlanEntry *planEntry;
 	bool		found;
+	int			save_nestlevel = -1;
 
-	if (ORA_PARSER != compatible_db || !get_typisobject(typeOid))
+	if (!get_typisobject(typeOid))
 		return false;
 
 	method = GetObjectTypeComparisonMethod(typeOid, &isOrder);
 	if (method == NULL)
 		return false;
+
+	/*
+	 * Object comparison semantics are fixed by the type's MAP or ORDER
+	 * declaration, not by the caller's compatibility mode.  Package method
+	 * calls use Oracle syntax, so parse and execute this internal call with
+	 * Oracle semantics and restore the caller's mode afterwards.
+	 */
+	if (compatible_db != ORA_PARSER)
+	{
+		save_nestlevel = NewGUCNestLevel();
+		(void) set_config_option("ivorysql.compatible_mode", "oracle",
+								 PGC_USERSET, PGC_S_SESSION,
+								 GUC_ACTION_SAVE, true, 0, false);
+	}
 
 	typeTuple = SearchSysCache1(TYPEOID, ObjectIdGetDatum(typeOid));
 	if (!HeapTupleIsValid(typeTuple))
@@ -210,6 +225,8 @@ compare_oracle_object_records(Oid typeOid, HeapTupleHeader record1,
 	pfree(sql.data);
 	pfree(method);
 	pfree(schemaName);
+	if (save_nestlevel >= 0)
+		AtEOXact_GUC(false, save_nestlevel);
 	return true;
 }
 
@@ -1010,8 +1027,7 @@ record_cmp(FunctionCallInfo fcinfo)
 	tupTypmod1 = HeapTupleHeaderGetTypMod(record1);
 	tupType2 = HeapTupleHeaderGetTypeId(record2);
 	tupTypmod2 = HeapTupleHeaderGetTypMod(record2);
-	if (tupType1 == tupType2 && ORA_PARSER == compatible_db &&
-		get_typisobject(tupType1))
+	if (tupType1 == tupType2 && get_typisobject(tupType1))
 	{
 		if (compare_oracle_object_records(tupType1, record1, record2, &result))
 		{

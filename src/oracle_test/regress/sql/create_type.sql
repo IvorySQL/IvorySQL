@@ -671,6 +671,27 @@ END;
 SELECT map_object_type(11, 'z') = map_object_type(1, 'a') AS map_equal,
        map_object_type(2, 'z') < map_object_type(9, 'a') AS map_less
 FROM dual;
+CREATE TABLE map_object_index_test
+(
+    id integer,
+    value map_object_type
+);
+INSERT INTO map_object_index_test VALUES
+    (11, map_object_type(11, 'eleven')),
+    (2, map_object_type(2, 'two')),
+    (9, map_object_type(9, 'nine'));
+CREATE INDEX map_object_value_idx ON map_object_index_test (value);
+SET ivorysql.compatible_mode = pg;
+SET enable_seqscan = off;
+SELECT id
+FROM map_object_index_test
+WHERE value = ROW(1, 'probe')::map_object_type
+ORDER BY id;
+REINDEX INDEX map_object_value_idx;
+SET ivorysql.compatible_mode = oracle;
+SELECT id FROM map_object_index_test ORDER BY value;
+RESET enable_seqscan;
+DROP TABLE map_object_index_test;
 SELECT CAST(NULL AS map_object_type) < map_object_type(9, 'a') AS map_null
 FROM dual;
 SELECT objects.v
@@ -739,6 +760,27 @@ END;
 SELECT order_object_type(4, 'z') > order_object_type(2, 'a') AS order_greater,
        order_object_type(7, 'x') = order_object_type(7, 'y') AS order_equal
 FROM dual;
+CREATE TABLE order_object_index_test
+(
+    id integer,
+    value order_object_type
+);
+INSERT INTO order_object_index_test VALUES
+    (7, order_object_type(7, 'seven')),
+    (2, order_object_type(2, 'two')),
+    (9, order_object_type(9, 'nine'));
+CREATE INDEX order_object_value_idx ON order_object_index_test (value);
+SET ivorysql.compatible_mode = pg;
+SET enable_seqscan = off;
+SELECT id
+FROM order_object_index_test
+WHERE value = ROW(17, 'probe')::order_object_type
+ORDER BY id;
+REINDEX INDEX order_object_value_idx;
+SET ivorysql.compatible_mode = oracle;
+SELECT id FROM order_object_index_test ORDER BY value;
+RESET enable_seqscan;
+DROP TABLE order_object_index_test;
 SELECT CAST(NULL AS order_object_type) < order_object_type(1, 'one') AS order_null
 FROM dual;
 SELECT objects.v
