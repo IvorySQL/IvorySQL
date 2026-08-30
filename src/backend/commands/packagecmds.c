@@ -214,7 +214,18 @@ CreatePackage_internal(const char *pkgname,
 		Form_pg_package oldpkg = (Form_pg_package) GETSTRUCT(oldtup);
 
 		if (!replace)
-			elog(ERROR, "package \"%s\" already exists", pkgname);
+		{
+			if (OidIsValid(typeOid))
+				ereport(ERROR,
+						(errcode(ERRCODE_DUPLICATE_OBJECT),
+						 errmsg("name \"%s\" is already used by a package", pkgname),
+						 errdetail("Object type method namespaces share the package "
+								   "namespace and cannot reuse an existing package's name.")));
+
+			ereport(ERROR,
+					(errcode(ERRCODE_DUPLICATE_OBJECT),
+					 errmsg("package \"%s\" already exists", pkgname)));
+		}
 
 		/* doesn't allow to replace editable if it has define */
 		if (editable != oldpkg->editable)

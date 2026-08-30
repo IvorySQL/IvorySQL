@@ -213,6 +213,13 @@ END;
 CREATE TYPE object_type_name_conflict AS OBJECT (id integer);
 DROP FUNCTION object_type_name_conflict;
 
+-- Object types and ordinary packages share the hidden method namespace.
+CREATE PACKAGE object_type_package_conflict IS
+END;
+/
+CREATE TYPE object_type_package_conflict AS OBJECT (id integer);
+DROP PACKAGE object_type_package_conflict;
+
 -- Object method specifications, bodies, implicit SELF, and attribute names.
 CREATE OR REPLACE TYPE person_object_type AS OBJECT
 (
