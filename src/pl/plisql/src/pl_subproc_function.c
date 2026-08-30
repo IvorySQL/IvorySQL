@@ -127,6 +127,7 @@ static void plisql_subprocfunc_HashTableInsert(HTAB *hashp,
 static Node *plisql_get_subprocfunc_argdefaults(ParseState *pstate,
 												PLiSQL_subproc_function * subprocfunc, int argno);
 static void plisql_init_subprocfunc_compile(PLiSQL_subproc_function * subprocfunc);
+static bool plisql_object_method_has_self(ObjectTypeMethodKind method_kind);
 
 static void plsql_init_glovalvar_from_stack(PLiSQL_execstate * estate, int dno,
 											int *start_level);
@@ -380,13 +381,7 @@ plisql_build_variable_from_funcargs(PLiSQL_subproc_function * subprocfunc, bool 
 			 * assignment semantics for SELF attributes.
 			 */
 			if (i == 0 && argmode == PROARGMODE_IN &&
-				argitem->argname != NULL &&
-				pg_strcasecmp(argitem->argname, "self") == 0 &&
-				get_typisobject(argdtype->typoid) &&
-				subprocfunc->rettype != NULL &&
-				subprocfunc->rettype->typoid == argdtype->typoid &&
-				pg_strcasecmp(subprocfunc->func_name,
-							  get_rel_name(get_typ_typrelid(argdtype->typoid))) == 0)
+				subprocfunc->object_method_kind == OBJECT_METHOD_CONSTRUCTOR)
 				((PLiSQL_rec *) argvariable)->info = PROARGMODE_INOUT;
 		}
 		function->fn_argvarnos[i] = argvariable->dno;
@@ -412,9 +407,7 @@ plisql_build_variable_from_funcargs(PLiSQL_subproc_function * subprocfunc, bool 
 		 * parameters and local declarations naturally shadow these entries.
 		 */
 		if (i == 0 && argvariable->dtype == PLISQL_DTYPE_REC &&
-			argitem->argname != NULL &&
-			pg_strcasecmp(argitem->argname, "self") == 0 &&
-			get_typisobject(argdtype->typoid))
+			plisql_object_method_has_self(subprocfunc->object_method_kind))
 		{
 			PLiSQL_rec *self = (PLiSQL_rec *) argvariable;
 			TupleDesc	tupdesc;
@@ -949,6 +942,30 @@ plisql_build_object_self_arg(int argmode)
 	argument->argmode = argmode;
 	argument->nocopy = (argmode == ARGMODE_INOUT);
 	return argument;
+}
+
+void
+plisql_set_object_method_kind(PLiSQL_subproc_function *subprocfunc,
+							  ObjectTypeMethodKind method_kind)
+{
+	if (subprocfunc->object_method_kind != OBJECT_METHOD_NONE &&
+		subprocfunc->object_method_kind != method_kind)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+				 errmsg("object method kind does not match its previous declaration")));
+
+	subprocfunc->object_method_kind = method_kind;
+	subprocfunc->function->object_method_kind = method_kind;
+}
+
+static bool
+plisql_object_method_has_self(ObjectTypeMethodKind method_kind)
+{
+	return method_kind == OBJECT_METHOD_MEMBER_FUNCTION ||
+		method_kind == OBJECT_METHOD_MEMBER_PROCEDURE ||
+		method_kind == OBJECT_METHOD_CONSTRUCTOR ||
+		method_kind == OBJECT_METHOD_MAP ||
+		method_kind == OBJECT_METHOD_ORDER;
 }
 
 /*
@@ -1819,6 +1836,8 @@ plisql_build_subproc_function_internal(char *funcname, List *args,
 	funcs = (PLiSQL_subproc_function *) palloc0(sizeof(PLiSQL_subproc_function));
 	funcs->function = (PLiSQL_function *) palloc0(sizeof(PLiSQL_function));
 	function = funcs->function;
+	funcs->object_method_kind = OBJECT_METHOD_NONE;
+	function->object_method_kind = OBJECT_METHOD_NONE;
 
 	funcs->func_name = pstrdup(funcname);
 	funcs->arg = args;
@@ -3052,6 +3071,7 @@ plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
 	function->fn_is_trigger = subprocfunc->function->fn_is_trigger;
 
 	function->fn_prokind = subprocfunc->function->fn_prokind;
+	function->object_method_kind = subprocfunc->object_method_kind;
 	function->nstatements = 0;
 	function->requires_procedure_resowner = false;
 	function->fn_nargs = subprocfunc->function->fn_nargs;
@@ -3240,30 +3260,13 @@ is_object_constructor_subproc(PLiSQL_function *pfunc, PLiSQL_nsitem *nse,
 	{
 		int			fno = lfirst_int(lc);
 		PLiSQL_subproc_function *subprocfunc;
-		PLiSQL_function_argitem *selfarg;
-		Oid			selftype;
-		char	   *typename;
 
 		if (fno < 0 || fno >= pfunc->nsubprocfuncs)
 			elog(ERROR, "invalid fno :%d", fno);
 
 		subprocfunc = pfunc->subprocfuncs[fno];
-		if (subprocfunc->is_proc || subprocfunc->rettype == NULL ||
-			subprocfunc->arg == NIL ||
-			pg_strcasecmp(subprocfunc->func_name, funcname) != 0)
-			continue;
-
-		selfarg = linitial(subprocfunc->arg);
-		selftype = selfarg->type->typoid;
-		if (selfarg->argmode != ARGMODE_IN ||
-			selfarg->argname == NULL ||
-			pg_strcasecmp(selfarg->argname, "self") != 0 ||
-			!get_typisobject(selftype) ||
-			subprocfunc->rettype->typoid != selftype)
-			continue;
-
-		typename = get_rel_name(get_typ_typrelid(selftype));
-		if (typename != NULL && pg_strcasecmp(typename, funcname) == 0)
+		if (subprocfunc->object_method_kind == OBJECT_METHOD_CONSTRUCTOR &&
+			pg_strcasecmp(subprocfunc->func_name, funcname) == 0)
 			return true;
 	}
 

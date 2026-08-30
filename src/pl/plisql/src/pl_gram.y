@@ -1203,22 +1203,30 @@ function_heading	: K_FUNCTION ora_function_name func_args K_RETURN decl_datatype
 							$$ = plisql_build_subproc_function($3,
 								lcons(plisql_build_object_self_arg(ARGMODE_IN), $4),
 								$6, @3);
+							plisql_set_object_method_kind($$,
+								OBJECT_METHOD_MEMBER_FUNCTION);
 						}
 					| K_MAP K_MEMBER K_FUNCTION ora_function_name func_args K_RETURN decl_datatype
 						{
 							$$ = plisql_build_subproc_function($4,
 								lcons(plisql_build_object_self_arg(ARGMODE_IN), $5),
 								$7, @4);
+							plisql_set_object_method_kind($$,
+								OBJECT_METHOD_MAP);
 						}
 					| K_ORDER K_MEMBER K_FUNCTION ora_function_name func_args K_RETURN decl_datatype
 						{
 							$$ = plisql_build_subproc_function($4,
 								lcons(plisql_build_object_self_arg(ARGMODE_IN), $5),
 								$7, @4);
+							plisql_set_object_method_kind($$,
+								OBJECT_METHOD_ORDER);
 						}
 					| K_STATIC K_FUNCTION ora_function_name func_args K_RETURN decl_datatype
 						{
 							$$ = plisql_build_subproc_function($3, $4, $6, @3);
+							plisql_set_object_method_kind($$,
+								OBJECT_METHOD_STATIC_FUNCTION);
 						}
 					| K_CONSTRUCTOR K_FUNCTION ora_function_name func_args
 					  K_RETURN K_SELF K_AS K_RESULT
@@ -1226,6 +1234,8 @@ function_heading	: K_FUNCTION ora_function_name func_args K_RETURN decl_datatype
 							$$ = plisql_build_subproc_function($3,
 								lcons(plisql_build_object_self_arg(ARGMODE_IN), $4),
 								plisql_build_object_self_type(), @3);
+							plisql_set_object_method_kind($$,
+								OBJECT_METHOD_CONSTRUCTOR);
 						}
 						;
 function_properties :	function_properite_list { $$ = $1; }
@@ -1313,10 +1323,14 @@ procedure_heading : K_PROCEDURE ora_function_name func_args
 							$$ = plisql_build_subproc_function($3,
 								lcons(plisql_build_object_self_arg(ARGMODE_INOUT), $4),
 								NULL, @3);
+							plisql_set_object_method_kind($$,
+								OBJECT_METHOD_MEMBER_PROCEDURE);
 						}
 					| K_STATIC K_PROCEDURE ora_function_name func_args
 						{
 							$$ = plisql_build_subproc_function($3, $4, NULL, @3);
+							plisql_set_object_method_kind($$,
+								OBJECT_METHOD_STATIC_PROCEDURE);
 						}
 						;
 
@@ -4384,33 +4398,17 @@ make_return_stmt(int location, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yysc
 	new->expr	  = NULL;
 	new->retvarno = -1;
 
-	/*
-	 * An Oracle object constructor returns its initialized SELF value with a
-	 * bare RETURN statement.  RETURN SELF is not legal Oracle syntax.  Detect
-	 * constructors from their hidden first SELF argument, object result type,
-	 * and type-matching routine name rather than changing ordinary functions
-	 * that happen to return an object value.
-	 */
-	if (!plisql_curr_compile->fn_retset &&
-		plisql_curr_compile->fn_prokind == PROKIND_FUNCTION &&
-		plisql_curr_compile->fn_nargs > 0 &&
-		OidIsValid(plisql_curr_compile->fn_rettype) &&
-		get_typisobject(plisql_curr_compile->fn_rettype) &&
-		plisql_curr_compile->namelabel != NULL)
+	/* A bare RETURN in an object constructor returns initialized SELF. */
+	if (plisql_curr_compile->object_method_kind == OBJECT_METHOD_CONSTRUCTOR)
 	{
-		Oid			typrelid = get_typ_typrelid(plisql_curr_compile->fn_rettype);
-		char	   *type_name = OidIsValid(typrelid) ? get_rel_name(typrelid) : NULL;
-		int			self_varno = plisql_curr_compile->fn_argvarnos[0];
+		int			self_varno;
 
-		if (type_name != NULL &&
-			pg_strcasecmp(plisql_curr_compile->namelabel, type_name) == 0 &&
-			self_varno >= 0 && self_varno < plisql_nDatums &&
-			plisql_Datums[self_varno]->dtype == PLISQL_DTYPE_REC &&
-			pg_strcasecmp(((PLiSQL_rec *)
-				plisql_Datums[self_varno])->refname, "self") == 0)
+		Assert(plisql_curr_compile->fn_nargs > 0);
+		self_varno = plisql_curr_compile->fn_argvarnos[0];
+
+		if (self_varno >= 0 && self_varno < plisql_nDatums &&
+			plisql_Datums[self_varno]->dtype == PLISQL_DTYPE_REC)
 			constructor_self_varno = self_varno;
-		if (type_name != NULL)
-			pfree(type_name);
 	}
 
 	if (constructor_self_varno >= 0)

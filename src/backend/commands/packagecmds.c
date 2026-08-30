@@ -789,6 +789,9 @@ build_object_package_source(List *methods)
 
 		switch (method->kind)
 		{
+			case OBJECT_METHOD_NONE:
+				elog(ERROR, "object method has no method kind");
+				break;
 			case OBJECT_METHOD_MEMBER_FUNCTION:
 				appendStringInfoString(&buf, "member function ");
 				break;
