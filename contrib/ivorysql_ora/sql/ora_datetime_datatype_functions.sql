@@ -805,3 +805,12 @@ drop table ds_tb;
 reset NLS_TIMESTAMP_FORMAT;
 reset NLS_TIMESTAMP_TZ_FORMAT;
 reset NLS_DATE_FORMAT;
+
+-- bigint TO_DATE wrappers inherit the session dependence of their text overloads.
+SELECT count(*) = 2 AS bigint_to_date_is_stable
+FROM pg_proc p
+JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'sys'
+  AND p.proname = 'to_date'
+  AND pg_get_function_identity_arguments(p.oid) IN ('bigint', 'bigint, text')
+  AND p.provolatile = 's';
