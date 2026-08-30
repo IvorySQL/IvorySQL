@@ -71,6 +71,12 @@ alter function s1.f_alter(arg1 OUT int) compile;
 alter function s1.f_alter(arg1 text) compile;
 alter function s1.f_alter(arg1 number, arg2 number, arg3 number default 10) compile;
 alter function s1.f_alter(arg1 number, arg2 number, arg3 number) compile;
+-- calls to functions taking type "internal" are rejected from SQL
+-- (upstream CVE-2026-14680); every route must fail cleanly
+select xid8recv(NULL) from dual;
+select pg_ddl_command_recv(NULL::internal) from dual;
+select cast(NULL as internal) is null from dual;
+
 -- clean
 drop table dtos_tb1tidid004134318;
 drop table char_tb2;

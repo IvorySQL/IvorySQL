@@ -84,6 +84,22 @@ ERROR:  syntax error at or near "default"
 LINE 1: ... s1.f_alter(arg1 number, arg2 number, arg3 number default 10...
                                                              ^
 alter function s1.f_alter(arg1 number, arg2 number, arg3 number) compile;
+-- calls to functions taking type "internal" are rejected from SQL
+-- (upstream CVE-2026-14680); every route must fail cleanly
+select xid8recv(NULL) from dual;
+ERROR:  function xid8recv(unknown) does not exist
+LINE 1: select xid8recv(NULL) from dual;
+               ^
+DETAIL:  No function of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
+select pg_ddl_command_recv(NULL::internal) from dual;
+ERROR:  cannot cast type unknown to internal
+LINE 1: select pg_ddl_command_recv(NULL::internal) from dual;
+                                       ^
+select cast(NULL as internal) is null from dual;
+ERROR:  cannot cast type unknown to internal
+LINE 1: select cast(NULL as internal) is null from dual;
+               ^
 -- clean
 drop table dtos_tb1tidid004134318;
 drop table char_tb2;
