@@ -246,6 +246,101 @@ test_gb18030_json(pe_test_config *tc)
 	destroyPQExpBuffer(raw_buf);
 }
 
+/*
+ * Exercise JSON strings containing complete and truncated GB18030 multibyte
+ * characters.  A complete character whose trailing byte is 0x5C ('\') must
+ * not be mistaken for a backslash, while a truncated character must be
+ * rejected at the correct input position.
+ *
+ * The bytes below encode a JSON object whose value includes U+8846 in
+ * GB18030.  That code point is encoded as 0xD0 0x5C, so its second byte is
+ * the ASCII backslash.  Previously this raised "invalid input syntax for
+ * type json: Escape sequence ... is invalid".
+ */
+static void
+test_gb18030_json_multibyte(pe_test_config *tc)
+{
+	static const unsigned char valid_input[] = {
+		0x7b, 0x22, 0x6a, 0x61, 0x22, 0x3a, 0x22,	/* {"ja":" */
+		0xa5, 0xab, 0xa5, 0xca, 0xa5, 0xc0, 0xa1, 0xa2, /* U+30AB etc. */
+		0xa5, 0xa2, 0xa5, 0xe1, 0xa5, 0xea, 0xa5, 0xab, /* U+30A2 etc. */
+		0xba, 0xcf,				/* U+5408 */
+		0xd0, 0x5c,				/* U+8846; second byte is '\' */
+		0xb9, 0xfa,				/* U+56FD */
+		0x22, 0x7d				/* "} */
+	};
+	static const unsigned char truncated_input[] = {
+		0x7b, 0x22, 0x6a, 0x61, 0x22, 0x3a, 0x22,	/* {"ja":" */
+		0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47,	/* ABCDEFG */
+		0xd0,					/* truncated GB18030 lead byte */
+	};
+	size_t		input_len = sizeof(valid_input);
+	PQExpBuffer raw_buf;
+	JsonLexContext *lex;
+	JsonSemAction sem = {0};	/* no callbacks */
+	JsonParseErrorType json_error;
+	bool		ok;
+
+	/* Catch any attempt to read beyond the supplied JSON text. */
+	raw_buf = createPQExpBuffer();
+	appendBinaryPQExpBuffer(raw_buf, (const char *) valid_input, input_len);
+	appendPQExpBufferStr(raw_buf, NEVER_ACCESS_STR);
+	VALGRIND_MAKE_MEM_NOACCESS(&raw_buf->data[input_len],
+							   raw_buf->len - input_len);
+
+	/* need_escapes=true exercises the jsonb input path */
+	lex = makeJsonLexContextCstringLen(NULL, raw_buf->data, input_len,
+									   PG_GB18030, true);
+	json_error = pg_parse_json(lex, &sem);
+	report_result(tc, json_error == JSON_SUCCESS,
+				  "GB18030 multibyte backslash - pg_parse_json",
+				  "", "need_escapes=true",
+				  json_error == JSON_SUCCESS ?
+				  "accepted" : json_errdetail(json_error, lex));
+	freeJsonLexContext(lex);
+
+	/* need_escapes=false exercises the validation-only path */
+	lex = makeJsonLexContextCstringLen(NULL, raw_buf->data, input_len,
+									   PG_GB18030, false);
+	json_error = pg_parse_json(lex, &sem);
+	report_result(tc, json_error == JSON_SUCCESS,
+				  "GB18030 multibyte backslash - pg_parse_json",
+				  "", "need_escapes=false",
+				  json_error == JSON_SUCCESS ?
+				  "accepted" : json_errdetail(json_error, lex));
+	freeJsonLexContext(lex);
+	destroyPQExpBuffer(raw_buf);
+
+	/*
+	 * The truncated input advances beyond an ASCII run before ending at the
+	 * lead byte, so the reported position must not use the stale run start.
+	 */
+	input_len = sizeof(truncated_input);
+	raw_buf = createPQExpBuffer();
+	appendBinaryPQExpBuffer(raw_buf, (const char *) truncated_input, input_len);
+	appendPQExpBufferStr(raw_buf, NEVER_ACCESS_STR);
+	VALGRIND_MAKE_MEM_NOACCESS(&raw_buf->data[input_len],
+							   raw_buf->len - input_len);
+
+	lex = makeJsonLexContextCstringLen(NULL, raw_buf->data, input_len,
+									   PG_GB18030, false);
+	json_error = pg_parse_json(lex, &sem);
+
+	/*
+	 * The input must be rejected as an invalid token, and the reported token
+	 * must end at the truncated lead byte rather than at the ASCII run start.
+	 */
+	ok = (json_error == JSON_INVALID_TOKEN &&
+		  lex->token_terminator == raw_buf->data + input_len - 1);
+	report_result(tc, ok,
+				  "GB18030 truncated multibyte - pg_parse_json",
+				  "", "incomplete char at EOF",
+				  ok ? "token ends at truncated character" :
+				  json_errdetail(json_error, lex));
+	freeJsonLexContext(lex);
+	destroyPQExpBuffer(raw_buf);
+}
+
 
 static bool
 escape_literal(PGconn *conn, PQExpBuffer target,
@@ -958,6 +1053,7 @@ main(int argc, char *argv[])
 
 	test_gb18030_page_multiple(&tc);
 	test_gb18030_json(&tc);
+	test_gb18030_json_multibyte(&tc);
 
 	for (int i = 0; i < lengthof(pe_test_vectors); i++)
 	{
