@@ -540,4 +540,25 @@ psql_fails_like(
 	qr/backslash commands are restricted; only \\unrestrict is allowed/,
 	'meta-command in restrict mode fails');
 
+# Whole-line slash options use a separate scanner in Oracle mode.  Confirm
+# that it honors the request to strip trailing whitespace and semicolons.
+{
+	local $ENV{PG_TEST_INITDB_EXTRA_OPTS} = '-m oracle';
+	my $oracle_node = PostgreSQL::Test::Cluster->new('oracle_slash');
+
+	$oracle_node->init;
+	$oracle_node->start;
+	$oracle_node->safe_psql(
+		'postgres',
+		'CREATE FUNCTION slash_semicolon_test() RETURNS integer '
+		  . q{LANGUAGE SQL AS 'SELECT 1'});
+
+	local $ENV{PGOPTIONS} = '-c ivorysql.compatible_mode=oracle';
+	psql_like(
+		$oracle_node,
+		'\\sf public.slash_semicolon_test ;',
+		qr/CREATE OR REPLACE FUNCTION public\.slash_semicolon_test\(\)/,
+		'Oracle \\sf strips a trailing semicolon');
+}
+
 done_testing();
