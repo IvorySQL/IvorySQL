@@ -384,10 +384,10 @@ BEGIN
     v.bump(4);
 	feature_object_type.increment_value(n);
     IF v.value <> 107 THEN
-		raise_application_error(-20001, 'unexpected member procedure result');
+		RAISE EXCEPTION 'unexpected member procedure result';
     END IF;
 	IF n <> 11 THEN
-		raise_application_error(-20002, 'unexpected static procedure result');
+		RAISE EXCEPTION 'unexpected static procedure result';
 	END IF;
 END;
 /
@@ -427,12 +427,12 @@ DECLARE
 BEGIN
     value := fallback_arity_probe(10, 20);
     IF value <> 30 THEN
-        raise_application_error(-20001, 'unexpected arity fallback result');
+        RAISE EXCEPTION 'unexpected arity fallback result';
     END IF;
 
     value := fallback_kind_probe(40);
     IF value <> 40 THEN
-        raise_application_error(-20002, 'unexpected kind fallback result');
+        RAISE EXCEPTION 'unexpected kind fallback result';
     END IF;
 END;
 /
