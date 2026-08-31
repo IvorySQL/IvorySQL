@@ -1377,16 +1377,19 @@ create function psql_df_internal (float8)
   returns float8
   language internal immutable parallel safe strict
   as 'dsin';
+/
 
 create function psql_df_sql (x integer)
   returns integer
   security definer
   begin atomic select x + 1; end;
+/
 
 create function psql_df_plpgsql ()
   returns void
   language plpgsql
   as $$ begin return; end; $$;
+/
 
 comment on function psql_df_plpgsql () is 'some comment';
 
