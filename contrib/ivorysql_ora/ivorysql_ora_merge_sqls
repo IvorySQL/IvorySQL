@@ -10,3 +10,4 @@ src/builtin_packages/utl_raw/utl_raw
 src/builtin_packages/utl_encode/utl_encode
 src/builtin_packages/dbms_session/dbms_session
 src/builtin_packages/dbms_transaction/dbms_transaction
+src/builtin_packages/dbms_assert/dbms_assert
