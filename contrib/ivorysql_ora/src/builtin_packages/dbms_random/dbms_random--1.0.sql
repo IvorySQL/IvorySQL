@@ -31,12 +31,12 @@
 CREATE FUNCTION sys.ora_dbms_random_initialize(seed NUMBER)
 RETURNS VOID
 AS 'MODULE_PATHNAME', 'ora_dbms_random_initialize'
-LANGUAGE C VOLATILE;
+LANGUAGE C VOLATILE STRICT;
 
 CREATE FUNCTION sys.ora_dbms_random_seed_number(seed NUMBER)
 RETURNS VOID
 AS 'MODULE_PATHNAME', 'ora_dbms_random_seed_number'
-LANGUAGE C VOLATILE;
+LANGUAGE C VOLATILE STRICT;
 
 CREATE FUNCTION sys.ora_dbms_random_seed_text(seed VARCHAR2)
 RETURNS VOID

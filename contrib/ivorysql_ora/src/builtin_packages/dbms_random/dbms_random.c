@@ -246,12 +246,9 @@ ora_dbms_random_string(PG_FUNCTION_ARGS)
 			chrset_size = strlen(printable);
 			break;
 		default:
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("invalid character class \"%s\"", opt),
-					 errhint("Valid classes are u, l, a, x and p.")));
-			charset = NULL;		/* quieten compiler */
-			chrset_size = 0;
+			/* Oracle defaults an unrecognized option to uppercase letters. */
+			charset = upper_only;
+			chrset_size = 26;
 			break;
 	}
 
@@ -302,34 +299,46 @@ ora_dbms_random_value(PG_FUNCTION_ARGS)
 /*
  * DBMS_RANDOM.VALUE(low, high)
  *
- * Returns a random NUMBER in [low, high).  Oracle raises VALUE_ERROR when
- * low > high; we report an equivalent parameter error.
+ * Returns a random NUMBER in [low, high).  An empty or inverted range cannot
+ * satisfy that contract, so report an equivalent parameter error.
  */
 Datum
 ora_dbms_random_value_range(PG_FUNCTION_ARGS)
 {
-	double		low;
-	double		high;
-	double		val;
+	Numeric		low;
+	Numeric		high;
+	Numeric		fraction;
+	Numeric		range;
+	Numeric		offset;
+	Numeric		result;
 
 	if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
 		PG_RETURN_NULL();
 
-	low = DatumGetFloat8(DirectFunctionCall1(numeric_float8,
-											 NumericGetDatum(PG_GETARG_NUMERIC(0))));
-	high = DatumGetFloat8(DirectFunctionCall1(numeric_float8,
-											  NumericGetDatum(PG_GETARG_NUMERIC(1))));
+	low = PG_GETARG_NUMERIC(0);
+	high = PG_GETARG_NUMERIC(1);
 
-	if (low > high)
+	if (DatumGetInt32(DirectFunctionCall2(numeric_cmp,
+											NumericGetDatum(low),
+											NumericGetDatum(high))) >= 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("the lower bound must not be greater than the upper bound")));
 
 	ensure_seeded();
-	val = low + (high - low) * pg_prng_double(&random_state);
+	fraction = DatumGetNumeric(DirectFunctionCall1(float8_numeric,
+													Float8GetDatum(pg_prng_double(&random_state))));
+	range = DatumGetNumeric(DirectFunctionCall2(numeric_sub,
+													NumericGetDatum(high),
+													NumericGetDatum(low)));
+	offset = DatumGetNumeric(DirectFunctionCall2(numeric_mul,
+													 NumericGetDatum(range),
+													 NumericGetDatum(fraction)));
+	result = DatumGetNumeric(DirectFunctionCall2(numeric_add,
+													NumericGetDatum(low),
+													NumericGetDatum(offset)));
 
-	PG_RETURN_DATUM(DirectFunctionCall1(float8_numeric,
-										Float8GetDatum(val)));
+	PG_RETURN_NUMERIC(result);
 }
 
 /*

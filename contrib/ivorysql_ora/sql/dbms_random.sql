@@ -35,8 +35,15 @@ select min(v) >= 10 and max(v) < 20 as range_ok
 from (select dbms_random.value(10, 20) as v
       from generate_series(1, 200) t) s;
 
--- low > high is rejected
+-- empty or inverted VALUE ranges are rejected
 select dbms_random.value(20, 10) from dual;
+select dbms_random.value(10, 10) from dual;
+
+-- VALUE retains NUMBER bounds that cannot be represented exactly as float8
+call dbms_random.seed(cast(99 as number));
+select min(v) >= 10000000000000001 and max(v) < 10000000000000002 as large_range_ok
+from (select dbms_random.value(10000000000000001, 10000000000000002) as v
+      from generate_series(1, 200) t) s;
 
 --
 -- STRING: deterministic with a seed, honors the character class
@@ -51,10 +58,16 @@ select dbms_random.string('P', 8) as printable;
 -- string of length 0 is empty
 select length(dbms_random.string('U', 0)) as empty_len;
 
--- invalid character class and negative length are rejected
-select dbms_random.string('Z', 4) from dual;
+-- unknown character classes default to uppercase; malformed input is rejected
+select dbms_random.string('Z', 4) ~ '^[A-Z]{4}$' as unknown_class_is_upper from dual;
 select dbms_random.string('UU', 4) from dual;
 select dbms_random.string('U', -1) from dual;
+
+-- NULL numeric seeds do not enter the C numeric conversion path
+call dbms_random.initialize(cast(NULL as number));
+select dbms_random.random() is not null as works_after_null_initialize;
+call dbms_random.seed(cast(NULL as number));
+select dbms_random.random() is not null as works_after_null_seed;
 
 --
 -- RANDOM stays in BINARY_INTEGER range; NORMAL is a plain number
