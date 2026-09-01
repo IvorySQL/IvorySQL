@@ -1,0 +1,190 @@
+--
+-- dbms_assert.sql
+--
+-- tests for the DBMS_ASSERT package:
+--   ENQUOTE_NAME / ENQUOTE_LITERAL / NOOP / SIMPLE_SQL_NAME /
+--   QUALIFIED_SQL_NAME / SCHEMA_NAME / SQL_OBJECT_NAME
+--
+--
+-- SIMPLE_SQL_NAME: valid names pass through unchanged
+--
+select dbms_assert.simple_sql_name('employees') as plain;
+   plain   
+-----------
+ employees
+(1 row)
+
+select dbms_assert.simple_sql_name('"Mixed Case"') as quoted;
+    quoted    
+--------------
+ "Mixed Case"
+(1 row)
+
+select dbms_assert.simple_sql_name('_dollar$9') as odd_chars;
+ odd_chars 
+-----------
+ _dollar$9
+(1 row)
+
+select dbms_assert.simple_sql_name('测试') as multibyte;
+ multibyte 
+-----------
+ 测试
+(1 row)
+
+-- not simple names
+select dbms_assert.simple_sql_name('a b') as has_space;
+ERROR:  string is not simple SQL name
+CONTEXT:  PL/iSQL function sys.dbms_assert.simple_sql_name line 28 at RETURN
+select dbms_assert.simple_sql_name('9abc') as leading_digit;
+ERROR:  string is not simple SQL name
+CONTEXT:  PL/iSQL function sys.dbms_assert.simple_sql_name line 28 at RETURN
+select dbms_assert.simple_sql_name('a;drop table x') as injection;
+ERROR:  string is not simple SQL name
+CONTEXT:  PL/iSQL function sys.dbms_assert.simple_sql_name line 28 at RETURN
+select dbms_assert.simple_sql_name('a;') as trailing_semi;
+ERROR:  string is not simple SQL name
+CONTEXT:  PL/iSQL function sys.dbms_assert.simple_sql_name line 28 at RETURN
+select dbms_assert.simple_sql_name('"unterminated') as unterminated;
+ERROR:  string is not simple SQL name
+CONTEXT:  PL/iSQL function sys.dbms_assert.simple_sql_name line 28 at RETURN
+select dbms_assert.simple_sql_name('') as empty;
+ empty 
+-------
+ 
+(1 row)
+
+-- with empty strings preserved (not folded to NULL), '' hits the
+-- explicit empty-input validation instead
+set ivorysql.enable_emptystring_to_NULL = off;
+select dbms_assert.simple_sql_name('') as empty_preserved;
+ERROR:  string is not simple SQL name
+CONTEXT:  PL/iSQL function sys.dbms_assert.simple_sql_name line 28 at RETURN
+set ivorysql.enable_emptystring_to_NULL = on;
+select dbms_assert.simple_sql_name('a.b') as dotted;
+ERROR:  string is not simple SQL name
+CONTEXT:  PL/iSQL function sys.dbms_assert.simple_sql_name line 28 at RETURN
+--
+-- QUALIFIED_SQL_NAME: dot-separated chains pass
+--
+select dbms_assert.qualified_sql_name('schema.table') as two_part;
+   two_part   
+--------------
+ schema.table
+(1 row)
+
+select dbms_assert.qualified_sql_name('db.schema.table') as three_part;
+   three_part    
+-----------------
+ db.schema.table
+(1 row)
+
+select dbms_assert.qualified_sql_name('"S"."T"') as quoted_parts;
+ quoted_parts 
+--------------
+ "S"."T"
+(1 row)
+
+-- not qualified names
+select dbms_assert.qualified_sql_name('a..b') as empty_part;
+ERROR:  string is not qualified SQL name
+CONTEXT:  PL/iSQL function sys.dbms_assert.qualified_sql_name line 18 at RETURN
+select dbms_assert.qualified_sql_name('a b.c') as space_in_part;
+ERROR:  string is not qualified SQL name
+CONTEXT:  PL/iSQL function sys.dbms_assert.qualified_sql_name line 18 at RETURN
+select dbms_assert.qualified_sql_name('a;') as trailing_semi;
+ERROR:  string is not qualified SQL name
+CONTEXT:  PL/iSQL function sys.dbms_assert.qualified_sql_name line 18 at RETURN
+--
+-- ENQUOTE_NAME: always returns a double-quoted identifier, with embedded
+-- quotes doubled; the optional flag upper-cases the name before quoting
+--
+select dbms_assert.enquote_name('employees') as quoted;
+   quoted    
+-------------
+ "employees"
+(1 row)
+
+select dbms_assert.enquote_name('employees', true) as capitalized;
+ capitalized 
+-------------
+ "EMPLOYEES"
+(1 row)
+
+select dbms_assert.enquote_name('MixedCase') as case_preserved;
+ case_preserved 
+----------------
+ "MixedCase"
+(1 row)
+
+select dbms_assert.enquote_name('MixedCase', true) as case_upper;
+ case_upper  
+-------------
+ "MIXEDCASE"
+(1 row)
+
+select dbms_assert.enquote_name('"Already"') as already_quoted;
+ already_quoted 
+----------------
+ """Already"""
+(1 row)
+
+--
+-- ENQUOTE_LITERAL: doubles embedded single quotes
+--
+select dbms_assert.enquote_literal('it''s') as literal;
+ literal 
+---------
+ 'it''s'
+(1 row)
+
+select dbms_assert.enquote_literal('plain') as plain_literal;
+ plain_literal 
+---------------
+ 'plain'
+(1 row)
+
+--
+-- NOOP: returns the input untouched
+--
+select dbms_assert.noop('anything; goes -- here') as noop_out;
+        noop_out        
+------------------------
+ anything; goes -- here
+(1 row)
+
+--
+-- SCHEMA_NAME: must exist and be usable
+--
+select dbms_assert.schema_name('public') as public_schema;
+ public_schema 
+---------------
+ public
+(1 row)
+
+select dbms_assert.schema_name('no_such_schema_777') as missing_schema;
+ERROR:  invalid schema name
+CONTEXT:  PL/iSQL function sys.dbms_assert.schema_name line 23 at RETURN
+select dbms_assert.schema_name('a.b') as dotted_schema;
+ERROR:  invalid schema name
+CONTEXT:  PL/iSQL function sys.dbms_assert.schema_name line 23 at RETURN
+--
+-- SQL_OBJECT_NAME: must be an existing relation
+--
+create table assert_objects(id int);
+select dbms_assert.object_name('assert_objects') as existing_table;
+ existing_table 
+----------------
+ assert_objects
+(1 row)
+
+select dbms_assert.sql_object_name('assert_objects') as existing_table_oracle_name;
+ existing_table_oracle_name 
+----------------------------
+ assert_objects
+(1 row)
+
+select dbms_assert.object_name('no_such_table_777') as missing_table;
+ERROR:  invalid object name
+CONTEXT:  PL/iSQL function sys.dbms_assert.object_name line 33 at RETURN
+drop table assert_objects;
