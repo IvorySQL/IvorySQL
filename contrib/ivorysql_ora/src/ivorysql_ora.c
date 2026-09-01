@@ -242,5 +242,6 @@ ivorysql_ora_ProcessUtility(PlannedStmt *pstmt,
 	{
 		ora_dbms_output_reset();
 		ora_dbms_session_reset();
+		ora_dbms_random_reset();
 	}
 }

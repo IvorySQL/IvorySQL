@@ -1,0 +1,148 @@
+--
+-- dbms_random.sql
+--
+-- tests for the DBMS_RANDOM package:
+--   INITIALIZE / SEED / TERMINATE / NORMAL / RANDOM / STRING / VALUE
+-- Seeded sequences are deterministic, so exact values can be asserted.
+--
+--
+-- Deterministic sequence after INITIALIZE
+--
+call dbms_random.initialize(42);
+select dbms_random.random() as r1,
+       dbms_random.random() as r2,
+       dbms_random.random() as r3;
+     r1     |     r2     |     r3     
+------------+------------+------------
+ 1776835382 | 1002646612 | 1043717732
+(1 row)
+
+-- reseeding with the same value replays the same sequence
+call dbms_random.seed(cast(42 as number));
+select dbms_random.random() as r1_replayed,
+       dbms_random.random() as r2_replayed;
+ r1_replayed | r2_replayed 
+-------------+-------------
+ 1776835382  | 1002646612
+(1 row)
+
+-- text seeds are hashed
+call dbms_random.seed('hello world');
+select dbms_random.random() as from_text_seed;
+ from_text_seed 
+----------------
+ -1232974089
+(1 row)
+
+--
+-- VALUE: [0, 1)
+--
+call dbms_random.seed(cast(7 as number));
+select dbms_random.value() >= 0 and dbms_random.value() < 1 as value_in_unit_range;
+ value_in_unit_range 
+---------------------
+ t
+(1 row)
+
+-- VALUE(low, high) stays within the requested bounds
+call dbms_random.seed(cast(99 as number));
+select min(v) >= 10 and max(v) < 20 as range_ok
+from (select dbms_random.value(10, 20) as v
+      from generate_series(1, 200) t) s;
+ range_ok 
+----------
+ t
+(1 row)
+
+-- low > high is rejected
+select dbms_random.value(20, 10) from dual;
+ERROR:  the lower bound must not be greater than the upper bound
+CONTEXT:  PL/iSQL function sys.dbms_random.value line 43 at RETURN
+--
+-- STRING: deterministic with a seed, honors the character class
+--
+call dbms_random.seed(cast(1234 as number));
+select dbms_random.string('U', 8) as upper_only;
+ upper_only 
+------------
+ QREBJFGB
+(1 row)
+
+select dbms_random.string('L', 8) as lower_only;
+ lower_only 
+------------
+ ygpxpgvk
+(1 row)
+
+select dbms_random.string('A', 8) as alpha_mixed;
+ alpha_mixed 
+-------------
+ eXpJRSKu
+(1 row)
+
+select dbms_random.string('X', 8) as upper_alnum;
+ upper_alnum 
+-------------
+ WKRQI633
+(1 row)
+
+select dbms_random.string('P', 8) as printable;
+ printable 
+-----------
+ C^IQlh%;
+(1 row)
+
+-- string of length 0 is empty
+select length(dbms_random.string('U', 0)) as empty_len;
+ empty_len 
+-----------
+         0
+(1 row)
+
+-- invalid character class and negative length are rejected
+select dbms_random.string('Z', 4) from dual;
+ERROR:  invalid character class "Z"
+HINT:  Valid classes are u, l, a, x and p.
+CONTEXT:  PL/iSQL function sys.dbms_random.string line 33 at RETURN
+select dbms_random.string('UU', 4) from dual;
+ERROR:  the character class must be a single character: u, l, a, x or p
+CONTEXT:  PL/iSQL function sys.dbms_random.string line 33 at RETURN
+select dbms_random.string('U', -1) from dual;
+ERROR:  the length must not be negative
+CONTEXT:  PL/iSQL function sys.dbms_random.string line 33 at RETURN
+--
+-- RANDOM stays in BINARY_INTEGER range; NORMAL is a plain number
+--
+call dbms_random.seed(cast(-5 as number));
+select dbms_random.random() between -2147483648 and 2147483647 as random_in_range;
+ random_in_range 
+-----------------
+ t
+(1 row)
+
+select dbms_random.normal() is not null as normal_is_number;
+ normal_is_number 
+------------------
+ t
+(1 row)
+
+-- TERMINATE is a no-op that keeps working afterwards
+call dbms_random.terminate();
+select dbms_random.value() >= 0 as works_after_terminate;
+ works_after_terminate 
+-----------------------
+ t
+(1 row)
+
+--
+-- The generator state is reset by DISCARD ALL, so the next value comes
+-- from a fresh entropy-seeded state (cannot be asserted exactly).
+--
+call dbms_random.seed(cast(1 as number));
+discard all;
+select dbms_random.value() >= 0 as works_after_discard;
+ works_after_discard 
+---------------------
+ t
+(1 row)
+
