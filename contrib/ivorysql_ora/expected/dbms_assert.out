@@ -26,6 +26,18 @@ select dbms_assert.simple_sql_name('_dollar$9') as odd_chars;
  _dollar$9
 (1 row)
 
+select dbms_assert.simple_sql_name('emp#1') as hash_char;
+ hash_char 
+-----------
+ emp#1
+(1 row)
+
+select dbms_assert.simple_sql_name('  employees  ') as outer_space;
+  outer_space  
+---------------
+   employees  
+(1 row)
+
 select dbms_assert.simple_sql_name('测试') as multibyte;
  multibyte 
 -----------
@@ -95,14 +107,20 @@ CONTEXT:  PL/iSQL function sys.dbms_assert.qualified_sql_name line 18 at RETURN
 select dbms_assert.qualified_sql_name('a;') as trailing_semi;
 ERROR:  string is not qualified SQL name
 CONTEXT:  PL/iSQL function sys.dbms_assert.qualified_sql_name line 18 at RETURN
+select dbms_assert.qualified_sql_name('   ') as whitespace_only;
+ERROR:  string is not qualified SQL name
+CONTEXT:  PL/iSQL function sys.dbms_assert.qualified_sql_name line 18 at RETURN
+select dbms_assert.qualified_sql_name('""') as empty_quoted;
+ERROR:  string is not qualified SQL name
+CONTEXT:  PL/iSQL function sys.dbms_assert.qualified_sql_name line 18 at RETURN
 --
--- ENQUOTE_NAME: always returns a double-quoted identifier, with embedded
--- quotes doubled; the optional flag upper-cases the name before quoting
+-- ENQUOTE_NAME: adds quotes to unquoted input, preserves valid quoted input,
+-- validates embedded quote pairs, and upper-cases unquoted input by default
 --
 select dbms_assert.enquote_name('employees') as quoted;
    quoted    
 -------------
- "employees"
+ "EMPLOYEES"
 (1 row)
 
 select dbms_assert.enquote_name('employees', true) as capitalized;
@@ -111,7 +129,7 @@ select dbms_assert.enquote_name('employees', true) as capitalized;
  "EMPLOYEES"
 (1 row)
 
-select dbms_assert.enquote_name('MixedCase') as case_preserved;
+select dbms_assert.enquote_name('MixedCase', false) as case_preserved;
  case_preserved 
 ----------------
  "MixedCase"
@@ -126,15 +144,34 @@ select dbms_assert.enquote_name('MixedCase', true) as case_upper;
 select dbms_assert.enquote_name('"Already"') as already_quoted;
  already_quoted 
 ----------------
- """Already"""
+ "Already"
+(1 row)
+
+select dbms_assert.enquote_name('"a""b"') as paired_quote;
+ paired_quote 
+--------------
+ "a""b"
+(1 row)
+
+select dbms_assert.enquote_name('a"b') as unpaired_quote;
+ERROR:  string is not simple SQL name
+CONTEXT:  PL/iSQL function sys.dbms_assert.enquote_name line 8 at RETURN
+select dbms_assert.enquote_name('SCOTT."EMP"') as qualified_quoted;
+ERROR:  string is not simple SQL name
+CONTEXT:  PL/iSQL function sys.dbms_assert.enquote_name line 8 at RETURN
+select dbms_assert.enquote_name('"SCOTT.EMP"') as quoted_period;
+ quoted_period 
+---------------
+ "SCOTT.EMP"
 (1 row)
 
 --
--- ENQUOTE_LITERAL: doubles embedded single quotes
+-- ENQUOTE_LITERAL: requires paired internal quotes and preserves input that
+-- is already enclosed in single quotes
 --
-select dbms_assert.enquote_literal('it''s') as literal;
- literal 
----------
+select dbms_assert.enquote_literal('it''''s') as paired_literal;
+ paired_literal 
+----------------
  'it''s'
 (1 row)
 
@@ -144,6 +181,15 @@ select dbms_assert.enquote_literal('plain') as plain_literal;
  'plain'
 (1 row)
 
+select dbms_assert.enquote_literal('''already quoted''') as already_quoted_literal;
+ already_quoted_literal 
+------------------------
+ 'already quoted'
+(1 row)
+
+select dbms_assert.enquote_literal('it''s') as unpaired_literal;
+ERROR:  invalid quoted literal
+CONTEXT:  PL/iSQL function sys.dbms_assert.enquote_literal line 3 at RETURN
 --
 -- NOOP: returns the input untouched
 --
@@ -162,6 +208,23 @@ select dbms_assert.schema_name('public') as public_schema;
  public
 (1 row)
 
+-- Run as a non-owner, non-superuser so object_aclcheck cannot bypass ACL_USAGE.
+create role dbms_assert_acl_user nosuperuser;
+create schema dbms_assert_acl_test;
+revoke all on schema dbms_assert_acl_test from public;
+set role dbms_assert_acl_user;
+select has_schema_privilege(current_user, 'dbms_assert_acl_test', 'USAGE') as has_usage;
+ has_usage 
+-----------
+ f
+(1 row)
+
+select dbms_assert.schema_name('dbms_assert_acl_test') as no_usage_schema;
+ERROR:  invalid schema name
+CONTEXT:  PL/iSQL function sys.dbms_assert.schema_name line 23 at RETURN
+reset role;
+drop schema dbms_assert_acl_test;
+drop role dbms_assert_acl_user;
 select dbms_assert.schema_name('no_such_schema_777') as missing_schema;
 ERROR:  invalid schema name
 CONTEXT:  PL/iSQL function sys.dbms_assert.schema_name line 23 at RETURN

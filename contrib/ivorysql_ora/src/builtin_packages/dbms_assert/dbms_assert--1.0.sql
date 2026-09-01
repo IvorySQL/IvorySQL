@@ -29,7 +29,7 @@ RETURNS VARCHAR2
 AS 'MODULE_PATHNAME', 'ora_dbms_assert_enquote_literal'
 LANGUAGE C VOLATILE STRICT;
 
-CREATE FUNCTION sys.ora_dbms_assert_enquote_name(str VARCHAR2, capitalize BOOLEAN DEFAULT FALSE)
+CREATE FUNCTION sys.ora_dbms_assert_enquote_name(str VARCHAR2, capitalize BOOLEAN DEFAULT TRUE)
 RETURNS VARCHAR2
 AS 'MODULE_PATHNAME', 'ora_dbms_assert_enquote_name'
 LANGUAGE C VOLATILE STRICT;
@@ -63,7 +63,7 @@ LANGUAGE C VOLATILE STRICT;
 CREATE OR REPLACE PACKAGE dbms_assert IS
 
   FUNCTION enquote_literal(str VARCHAR2) RETURN VARCHAR2;
-  FUNCTION enquote_name(str VARCHAR2, capitalize BOOLEAN DEFAULT FALSE) RETURN VARCHAR2;
+  FUNCTION enquote_name(str VARCHAR2, capitalize BOOLEAN DEFAULT TRUE) RETURN VARCHAR2;
   FUNCTION noop(str VARCHAR2) RETURN VARCHAR2;
   FUNCTION qualified_sql_name(str VARCHAR2) RETURN VARCHAR2;
   FUNCTION schema_name(str VARCHAR2) RETURN VARCHAR2;
@@ -80,7 +80,7 @@ CREATE OR REPLACE PACKAGE BODY dbms_assert IS
     RETURN sys.ora_dbms_assert_enquote_literal(str);
   END;
 
-  FUNCTION enquote_name(str VARCHAR2, capitalize BOOLEAN DEFAULT FALSE) RETURN VARCHAR2 IS
+  FUNCTION enquote_name(str VARCHAR2, capitalize BOOLEAN DEFAULT TRUE) RETURN VARCHAR2 IS
   BEGIN
     RETURN sys.ora_dbms_assert_enquote_name(str, capitalize);
   END;
