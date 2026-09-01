@@ -587,7 +587,7 @@ SELECT overloaded_constructor_type.make_named(13, 'thirteen') FROM dual;
 SELECT overloaded_constructor_type(1, 'one', 3) FROM dual;
 DROP TYPE overloaded_constructor_type;
 
--- Quoted and schema-qualified self types bypass unqualified STANDARD lookup.
+-- Quoted identifiers and schema-qualified object return types compile correctly.
 CREATE SCHEMA object_type_corner;
 CREATE TYPE object_type_corner."QuotedFactoryType" AS OBJECT
 (
