@@ -11,6 +11,12 @@ SELECT set_config('length_test.value', repeat('x', 300), false) IS NOT NULL AS c
 SELECT length(sys_context('length_test', 'value', 12)) AS valid_length,
        length(sys_context('length_test', 'value', 0)) AS zero_length,
        length(sys_context('length_test', 'value', 4001)) AS oversized_length;
+SELECT length(sys_context('length_test', 'value', NULL)) AS null_length,
+       length(sys_context('length_test', 'value', 0.5)) AS fractional_invalid_length,
+       length(sys_context('length_test', 'value', 2147483648)) AS integer_overflow_length,
+       length(sys_context('length_test', 'value', 12.9)) AS fractional_valid_length;
+SELECT set_config('length_test.value', repeat('界', 100), false) IS NOT NULL AS multibyte_context_set;
+SELECT octet_length(sys_context('length_test', 'value', 5)) <= 5 AS multibyte_within_limit;
 RESET length_test.value;
 
 -- error
