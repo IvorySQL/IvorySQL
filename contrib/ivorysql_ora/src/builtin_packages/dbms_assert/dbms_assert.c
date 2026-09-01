@@ -72,6 +72,11 @@ PG_FUNCTION_INFO_V1(ora_dbms_assert_object_name);
 		(errcode(ERRCODE_INVALID_NAME), \
 		 errmsg("string is not qualified SQL name")))
 
+#define INVALID_QUOTED_LITERAL_EXCEPTION() \
+	ereport(ERROR, \
+		(errcode(ERRCODE_INVALID_PARAMETER_VALUE), \
+		 errmsg("invalid quoted literal")))
+
 #define EMPTY_STR(str)		((VARSIZE(str) - VARHDRSZ) == 0)
 
 static bool check_sql_name(char *cp, int len);
@@ -102,8 +107,8 @@ is_ident_start(unsigned char c)
 static bool
 is_ident_cont(unsigned char c)
 {
-	/* Can be a digit or a dollar sign ... */
-	if ((c >= '0' && c <= '9') || c == '$')
+	/* Can be a digit, dollar sign, or number sign ... */
+	if ((c >= '0' && c <= '9') || c == '$' || c == '#')
 		return true;
 	/* ... or an identifier start character */
 	return is_ident_start(c);
@@ -116,7 +121,7 @@ is_ident_cont(unsigned char c)
  * quoted parts are only scanned for balanced quotes (no downcasing, no
  * truncation), and any character that cannot appear in an SQL identifier
  * chain makes the whole string invalid.  Returns true when the complete
- * input is a valid (possibly empty) qualified identifier.
+ * input is a valid nonempty qualified identifier.
  */
 static bool
 ParseIdentifierString(char *rawstring)
@@ -128,32 +133,41 @@ ParseIdentifierString(char *rawstring)
 		nextp++;				/* skip leading whitespace */
 
 	if (*nextp == '\0')
-		return true;			/* allow empty string */
+		return false;			/* reject whitespace-only input */
 
 	/* At the top of the loop, we are at start of a new identifier. */
 	do
 	{
 		if (*nextp == '\"')
 		{
-			char	   *endp;
+			bool		have_content = false;
 
-			/* Quoted name --- collapse quote-quote pairs, no downcasing */
+			/* Quoted name --- accept adjacent quote pairs as content. */
+			nextp++;
 			for (;;)
 			{
-				endp = strchr(nextp + 1, '\"');
-				if (endp == NULL)
+				if (*nextp == '\0')
 					return false;	/* mismatched quotes */
 
-				if (endp[1] != '\"')
-					break;		/* found end of quoted name */
+				if (*nextp == '\"')
+				{
+					if (nextp[1] == '\"')
+					{
+						have_content = true;
+						nextp += 2;
+						continue;
+					}
 
-				/* Collapse adjacent quotes into one quote, and look again */
-				memmove(endp, endp + 1, strlen(endp));
-				nextp = endp;
+					if (!have_content)
+						return false;	/* empty quoted identifier */
+
+					nextp++;
+					break;
+				}
+
+				have_content = true;
+				nextp++;
 			}
-
-			/* endp now points at the terminating quote */
-			nextp = endp + 1;
 		}
 		else
 		{
@@ -203,7 +217,41 @@ ParseIdentifierString(char *rawstring)
 Datum
 ora_dbms_assert_enquote_literal(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_DATUM(DirectFunctionCall1(quote_literal, PG_GETARG_DATUM(0)));
+	text	   *str = PG_GETARG_TEXT_PP(0);
+	char	   *data = VARDATA_ANY(str);
+	int			len = VARSIZE_ANY_EXHDR(str);
+	bool		enclosed;
+	int			first;
+	int			last;
+	int			i;
+	text	   *result;
+	char	   *dest;
+
+	enclosed = len >= 2 && data[0] == '\'' && data[len - 1] == '\'';
+	first = enclosed ? 1 : 0;
+	last = enclosed ? len - 1 : len;
+
+	for (i = first; i < last; i++)
+	{
+		if (data[i] == '\'')
+		{
+			if (i + 1 >= last || data[i + 1] != '\'')
+				INVALID_QUOTED_LITERAL_EXCEPTION();
+			i++;
+		}
+	}
+
+	if (enclosed)
+		PG_RETURN_TEXT_P(str);
+
+	result = (text *) palloc(VARHDRSZ + len + 2);
+	SET_VARSIZE(result, VARHDRSZ + len + 2);
+	dest = VARDATA(result);
+	dest[0] = '\'';
+	memcpy(dest + 1, data, len);
+	dest[len + 1] = '\'';
+
+	PG_RETURN_TEXT_P(result);
 }
 
 /****************************************************************
@@ -211,7 +259,7 @@ ora_dbms_assert_enquote_literal(PG_FUNCTION_ARGS)
  *
  * Syntax:
  *   FUNCTION ENQUOTE_NAME(str VARCHAR2) RETURNS VARCHAR2;
- *   FUNCTION ENQUOTE_NAME(str VARCHAR2, capitalize BOOLEAN DEFAULT FALSE)
+ *   FUNCTION ENQUOTE_NAME(str VARCHAR2, capitalize BOOLEAN DEFAULT TRUE)
  *       RETURNS VARCHAR2;
  *
  * Purpose:
@@ -222,18 +270,27 @@ ora_dbms_assert_enquote_literal(PG_FUNCTION_ARGS)
 Datum
 ora_dbms_assert_enquote_name(PG_FUNCTION_ARGS)
 {
+	text	   *name_text = PG_GETARG_TEXT_PP(0);
 	char	   *name;
+	int			len;
 	bool		capitalize = PG_GETARG_BOOL(1);
 	StringInfoData str;
 	char	   *p;
 
 	/*
-	 * Oracle's ENQUOTE_NAME always returns the name enclosed in double
-	 * quotes (with embedded quotes doubled), so the name keeps its exact
-	 * case and any special characters regardless of how quote_ident would
-	 * spell it.  The optional flag upper-cases the name before quoting.
+	 * Already quoted names are validated and returned unchanged.  Otherwise
+	 * Oracle adds the enclosing quotes, optionally upper-cases the input, and
+	 * verifies that any embedded double quotes are adjacent pairs.
 	 */
-	name = text_to_cstring(PG_GETARG_TEXT_PP(0));
+	name = text_to_cstring(name_text);
+	len = strlen(name);
+
+	if (name[0] == '\"')
+	{
+		if (!check_sql_name(name, len))
+			ISNOT_SIMPLE_SQL_NAME_EXCEPTION();
+		PG_RETURN_TEXT_P(name_text);
+	}
 
 	if (capitalize)
 		for (p = name; *p; p++)
@@ -241,13 +298,11 @@ ora_dbms_assert_enquote_name(PG_FUNCTION_ARGS)
 
 	initStringInfo(&str);
 	appendStringInfoChar(&str, '"');
-	for (p = name; *p; p++)
-	{
-		if (*p == '"')
-			appendStringInfoChar(&str, '"');
-		appendStringInfoChar(&str, *p);
-	}
+	appendStringInfoString(&str, name);
 	appendStringInfoChar(&str, '"');
+
+	if (!check_sql_name(str.data, str.len))
+		ISNOT_SIMPLE_SQL_NAME_EXCEPTION();
 
 	PG_RETURN_TEXT_P(cstring_to_text(str.data));
 }
@@ -358,7 +413,7 @@ ora_dbms_assert_schema_name(PG_FUNCTION_ARGS)
  *
  * Purpose:
  *   Verifies that the input string is a single (possibly quoted) SQL
- *   identifier, with no separators, operators or whitespace around it.
+ *   identifier.  Leading and trailing whitespace are allowed and preserved.
  ****************************************************************/
 static bool
 check_sql_name(char *cp, int len)
@@ -431,7 +486,15 @@ ora_dbms_assert_simple_sql_name(PG_FUNCTION_ARGS)
 	len = VARSIZE(sname) - VARHDRSZ;
 	cp = VARDATA(sname);
 
-	if (!check_sql_name(cp, len))
+	while (len > 0 && isspace((unsigned char) *cp))
+	{
+		cp++;
+		len--;
+	}
+	while (len > 0 && isspace((unsigned char) cp[len - 1]))
+		len--;
+
+	if (len == 0 || !check_sql_name(cp, len))
 		ISNOT_SIMPLE_SQL_NAME_EXCEPTION();
 
 	PG_RETURN_TEXT_P(sname);
