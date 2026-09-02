@@ -2919,21 +2919,28 @@ DETAIL:  Oracle's LENGTHC accepts only CHAR, VARCHAR2, NCHAR and NVARCHAR2.
 -- their answer is whatever nls_date_format says, so an index over them would
 -- go stale on the next alter session, and CREATE INDEX has to refuse it.
 --
--- length(d) is shown alongside to record that it does NOT refuse it yet.
--- sys.length/sys.lengthb declare their own datetime wrappers IMMUTABLE
--- (builtin_functions--1.0.sql:1429-1448, 1470-1485) even though the cast
--- inside them reaches the STABLE sys.oradate_out(); the wrapper hides that
--- from contain_mutable_functions(), which never looks inside a SQL function
--- body.  Fixing those is a separate change -- they are three whole function
--- families' worth of user-visible behaviour -- so the asymmetry is pinned
--- down here rather than left to be discovered.
+-- LENGTH and LENGTHB datetime overloads follow the same rule because their
+-- implicit text conversion also depends on the session's NLS formats.
 CREATE TABLE TEST_LENGTHC_IDX(c varchar2(50), d date);
 CREATE INDEX TEST_LENGTHC_IDX_I ON TEST_LENGTHC_IDX (lengthc(c));
 CREATE INDEX TEST_LENGTHC_IDX_D ON TEST_LENGTHC_IDX (lengthc(d));
 ERROR:  functions in index expression must be marked IMMUTABLE
 LINE 1: ...ATE INDEX TEST_LENGTHC_IDX_D ON TEST_LENGTHC_IDX (lengthc(d)...
                                                              ^
-CREATE INDEX TEST_LENGTHC_IDX_L ON TEST_LENGTHC_IDX (length(d));
+SELECT count(*) = 6 AS datetime_lengths_are_stable
+FROM pg_catalog.pg_proc
+WHERE oid = ANY (ARRAY['sys.length(sys.oradate)'::regprocedure,
+                       'sys.length(sys.oratimestamp)'::regprocedure,
+                       'sys.length(sys.oratimestamptz)'::regprocedure,
+                       'sys.lengthb(sys.oradate)'::regprocedure,
+                       'sys.lengthb(sys.oratimestamp)'::regprocedure,
+                       'sys.lengthb(sys.oratimestamptz)'::regprocedure])
+  AND provolatile = 's';
+ datetime_lengths_are_stable 
+-----------------------------
+ t
+(1 row)
+
 DROP TABLE TEST_LENGTHC_IDX;
 /*
  * round
