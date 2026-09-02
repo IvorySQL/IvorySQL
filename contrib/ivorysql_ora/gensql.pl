@@ -86,8 +86,13 @@ sub sql_merge
 
 		# Open(create if necessary) ivorysql_ora--x.x(--x.x).sql.
 		if ($first_arg eq 'meson'){
-			open(OUTFILE, ">contrib/ivorysql_ora/ivorysql_ora--$v.sql")
-                        || croak "Could not open ivorysql_ora--$v.sql : $!";
+			# Never open the real output file here: meson runs this script
+			# with cwd = build root and captures STDOUT into exactly this
+			# path (custom_target capture: true). Opening it with ">" makes
+			# the separator newlines below interleave with the captured
+			# STDOUT on two fds of the same file and corrupt its head.
+			open(OUTFILE, ">", File::Spec->devnull())
+			|| croak "Could not open devnull: $!";
 		}
 		else {
 			open(OUTFILE, ">ivorysql_ora--$v.sql")
@@ -135,7 +140,11 @@ sub sql_merge
 			if (-e "$set--$v.sql")
 			{
 				# Add a newline.
-				print OUTFILE "\n";
+				if ($first_arg eq 'meson') {
+					print STDOUT "\n";
+				} else {
+					print OUTFILE "\n";
+				}
 				# Open a sql file.
 				open(INFILE, "<", File::Spec->rel2abs("$set--$v.sql"));
 				while (my $line = <INFILE>)
