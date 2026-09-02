@@ -10599,10 +10599,27 @@ WITH INOUT
 AS IMPLICIT;
 
 /* will move to oracharchar partition */
-create or replace function sys.oid_cc_eq(oid_l pg_catalog.oid, cc_r sys.oracharchar) RETURNS BOOLEAN AS $$ SELECT $1::sys.oracharchar=trim(leading '0' from $2) $$ LANGUAGE SQL;
-create or replace function sys.cc_oid_eq(cc_l sys.oracharchar, oid_r pg_catalog.oid) RETURNS BOOLEAN AS $$ SELECT trim(leading '0' from $1)=$2::sys.oracharchar $$ LANGUAGE SQL;
-create or replace function sys.oid_cc_ne(oid_l pg_catalog.oid, cc_r sys.oracharchar) RETURNS BOOLEAN AS $$ SELECT not sys.oid_cc_eq(oid_l, cc_r) $$ LANGUAGE SQL;
-create or replace function sys.cc_oid_ne(cc_l sys.oracharchar, oid_r pg_catalog.oid) RETURNS BOOLEAN AS $$ SELECT not sys.cc_oid_eq(cc_l, oid_r) $$ LANGUAGE SQL;
+create or replace function sys.oid_cc_eq(oid_l pg_catalog.oid, cc_r sys.oracharchar)
+RETURNS BOOLEAN AS $$
+SELECT $1::sys.oracharchar =
+	coalesce(nullif(trim(leading '0' from $2), ''), '0')
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+create or replace function sys.cc_oid_eq(cc_l sys.oracharchar, oid_r pg_catalog.oid)
+RETURNS BOOLEAN AS $$
+SELECT coalesce(nullif(trim(leading '0' from $1), ''), '0') =
+	$2::sys.oracharchar
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+create or replace function sys.oid_cc_ne(oid_l pg_catalog.oid, cc_r sys.oracharchar)
+RETURNS BOOLEAN AS $$
+SELECT not sys.oid_cc_eq(oid_l, cc_r)
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+create or replace function sys.cc_oid_ne(cc_l sys.oracharchar, oid_r pg_catalog.oid)
+RETURNS BOOLEAN AS $$
+SELECT not sys.cc_oid_eq(cc_l, oid_r)
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
 create operator = (procedure=sys.oid_cc_eq, LEFTARG=pg_catalog.oid, RIGHTARG=sys.oracharchar);
 create operator = (procedure=sys.cc_oid_eq, LEFTARG=sys.oracharchar, RIGHTARG=pg_catalog.oid);
 create operator <> (procedure=sys.oid_cc_ne, LEFTARG=pg_catalog.oid, RIGHTARG=sys.oracharchar);
