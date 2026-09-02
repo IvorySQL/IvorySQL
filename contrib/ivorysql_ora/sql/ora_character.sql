@@ -28,6 +28,16 @@ SELECT coalesce(lengthb(cast('中文' AS varchar2(2 byte))), 0) = 0;
 SELECT cast('abcdef' AS varchar2(4 byte)) = 'abcd';
 SELECT cast('abc' AS varchar2(4 byte)) = 'abc';
 
+-- Explicit CHAR(n BYTE) casts must not split multibyte characters.  CHAR
+-- values are padded back to the declared byte length after clipping.
+SELECT cast('中文' AS char(6 byte)) = '中文'
+       AND lengthb(cast('中文' AS char(6 byte))) = 6;
+SELECT cast('中文' AS char(5 byte)) = '中'
+       AND lengthb(cast('中文' AS char(5 byte))) = 5;
+SELECT lengthb(cast('中文' AS char(2 byte))) = 2;
+SELECT cast('abcdef' AS char(4 byte)) = 'abcd';
+SELECT cast('abc' AS char(4 byte)) = 'abc';
+
 INSERT INTO TEST_ORACHAR SELECT generate_series(1,10), generate_series(1,10);
 
 INSERT INTO TEST_ORAVARCHAR SELECT generate_series(1,10), generate_series(1,10);
