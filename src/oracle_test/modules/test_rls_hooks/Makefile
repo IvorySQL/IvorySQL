@@ -9,6 +9,8 @@ PGFILEDESC = "test_rls_hooks - example use of RLS hooks"
 
 REGRESS = test_rls_hooks
 
+ORA_REGRESS = $(REGRESS)
+
 ifdef USE_PGXS
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
