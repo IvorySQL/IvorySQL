@@ -67,6 +67,8 @@ static void plisql_addfunction_references(PLiSQL_function *func,
 														PackageCacheItem *item);
 static void plisql_get_package_depends(PLiSQL_function *func,
 								List **funclist, List **itemlist);
+static void plisql_invalidate_dependent_function(PLiSQL_function *func);
+static PLiSQL_function *plisql_refresh_package_funcexpr(FuncExpr *funcexpr);
 
 static List *plisql_package_sort(List *pkglist);
 
@@ -453,7 +455,7 @@ plisql_free_package_function(PackageCacheItem *items)
 
 		/* remove function */
 		elog(DEBUG1, "realy free function %u", dfunc->fn_oid);
-		delete_function(dfunc);
+		plisql_invalidate_dependent_function(dfunc);
 	}
 
 	/* free packages */
@@ -556,7 +558,7 @@ plisql_free_packagelist(List *pkglist)
 		dfunc = (PLiSQL_function *) lfirst(lc);
 
 		elog(DEBUG1, "realy free function %u", dfunc->fn_oid);
-		delete_function(dfunc);
+		plisql_invalidate_dependent_function(dfunc);
 	}
 
 	/* second delete packages */
@@ -759,6 +761,20 @@ plisql_get_package_depends(PLiSQL_function *func, List **funclist,
 		*funclist = list_append_unique(*funclist, funcs);
 	}
 	return;
+}
+
+
+/*
+ * A package dependency can invalidate a function without changing its
+ * pg_proc tuple.  Invalidate the cached tuple identity before freeing the
+ * compiled tree so an existing FmgrInfo fn_extra pointer cannot treat the
+ * emptied function structure as a still-valid compiled function.
+ */
+static void
+plisql_invalidate_dependent_function(PLiSQL_function *func)
+{
+	func->fn_xmin = InvalidTransactionId;
+	delete_function(func);
 }
 
 
@@ -2338,6 +2354,7 @@ plisql_get_package_func(FunctionCallInfo fcinfo, bool forValidator)
 	funcexpr = (FuncExpr *) fcinfo->flinfo->fn_expr;
 
 	Assert(funcexpr->function_from == FUNC_FROM_PACKAGE);
+	pfunc = plisql_refresh_package_funcexpr(funcexpr);
 
 	if (!OidIsValid(funcexpr->pkgoid))
 		elog(ERROR, "funcexpr include invalid pkgoid");
@@ -2353,9 +2370,6 @@ plisql_get_package_func(FunctionCallInfo fcinfo, bool forValidator)
 		psource->status = PLISQL_PACKAGE_NO_INIT;
 		elog(ERROR, "existing state of packages has been discarded");
 	}
-	pfunc = &psource->source;
-
-	pfunc = (PLiSQL_function *) funcexpr->parent_func;
 	fno = (int) funcexpr->funcid;
 
 	if (pfunc == NULL)
@@ -2483,6 +2497,7 @@ plisql_remove_function_relations(PLiSQL_function *func)
 
 		plisql_remove_function_references(func, refcache);
 	}
+	func->pkgcachelist = NIL;
 
 	return;
 }
@@ -3497,6 +3512,44 @@ plisql_get_subprocs_from_package(Oid pkgoid,
 }
 
 /*
+ * Refresh a package function expression after its package cache entry has
+ * been discarded.  Cached plans can outlive the package memory context that
+ * parent_func originally referenced, so resolve the saved package/function
+ * identity against the current cache entry before dereferencing it.
+ */
+static PLiSQL_function *
+plisql_refresh_package_funcexpr(FuncExpr *funcexpr)
+{
+	PackageCacheItem *item;
+	PLiSQL_package *psource;
+
+	if (!FUNC_EXPR_FROM_PACKAGE(funcexpr->function_from))
+	{
+		if (funcexpr->parent_func == NULL)
+			elog(ERROR, "parent_func has not been set");
+		return (PLiSQL_function *) funcexpr->parent_func;
+	}
+	if (!OidIsValid(funcexpr->pkgoid))
+		elog(ERROR, "package FuncExpr has an invalid package OID");
+
+	item = PackageCacheLookup(&funcexpr->pkgoid);
+	if (item != NULL)
+	{
+		psource = (PLiSQL_package *) item->source;
+		if (funcexpr->parent_func == &psource->source)
+			return &psource->source;
+	}
+
+	funcexpr->parent_func = NULL;
+	set_pkginfo_from_funcexpr(funcexpr);
+	if (funcexpr->parent_func == NULL)
+		elog(ERROR, "package FuncExpr could not be refreshed");
+
+	return (PLiSQL_function *) funcexpr->parent_func;
+}
+
+
+/*
  * get subproc arginfo
  */
 int
@@ -3514,10 +3567,7 @@ plisql_get_subproc_arg_info (FuncExpr *fexpr,
 	if (FUNC_EXPR_FROM_PG_PROC(fexpr->function_from))
 		elog(ERROR, "FuncExpr is not an internal function");
 
-	if (fexpr->parent_func == NULL)
-		elog(ERROR, "parent_func has not been set");
-
-	function = (PLiSQL_function *) fexpr->parent_func;
+	function = plisql_refresh_package_funcexpr(fexpr);
 
 	if (fexpr->funcid < 0 || fexpr->funcid >= function->nsubprocfuncs)
 		elog(ERROR, "invalid fno %d", fexpr->funcid);
@@ -3575,10 +3625,7 @@ plisql_get_subproc_prokind (FuncExpr *fexpr)
 	if (FUNC_EXPR_FROM_PG_PROC(fexpr->function_from))
 		elog(ERROR, "FuncExpr is not an internal function");
 
-	if (fexpr->parent_func == NULL)
-		elog(ERROR, "parent_func has not been set");
-
-	function = (PLiSQL_function *) fexpr->parent_func;
+	function = plisql_refresh_package_funcexpr(fexpr);
 
 	if (fexpr->funcid < 0 || fexpr->funcid >= function->nsubprocfuncs)
 		elog(ERROR, "invalid fno %d", fexpr->funcid);
@@ -3605,10 +3652,7 @@ plisql_subproc_should_change_return_type(FuncExpr *fexpr,
 	if (FUNC_EXPR_FROM_PG_PROC(fexpr->function_from))
 		elog(ERROR, "FuncExpr is not an internal function");
 
-	if (fexpr->parent_func == NULL)
-		elog(ERROR, "parent_func has not been set");
-
-	function = (PLiSQL_function *) fexpr->parent_func;
+	function = plisql_refresh_package_funcexpr(fexpr);
 
 	if (fexpr->funcid < 0 || fexpr->funcid >= function->nsubprocfuncs)
 		elog(ERROR, "invalid fno %d", fexpr->funcid);
@@ -3824,4 +3868,3 @@ release_package_func_usecount(FunctionCallInfo fcinfo)
 
 	return;
 }
-
