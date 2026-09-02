@@ -128,7 +128,7 @@ static struct config_bool Ivy_ConfigureNamesBool[] =
 		{"ivorysql.enable_case_switch", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("whether enable case conversion feature in oracle compatible mode."),
 			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+			GUC_NOT_IN_SAMPLE
 		},
 		&enable_case_switch,
 		true,
@@ -401,7 +401,7 @@ static struct config_enum Ivy_ConfigureNamesEnum[] =
 		{"ivorysql.compatible_mode", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Set default sql parser compatibility mode"),
 			NULL,
-			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE | GUC_DISALLOW_IN_DB_ROLE_SETTING
 		},
 		&compatible_db,
 		PG_PARSER, db_parser_options,
