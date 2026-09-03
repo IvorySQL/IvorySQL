@@ -46,7 +46,8 @@ typedef enum PLiSQL_nsitem_type
 	PLISQL_NSTYPE_VAR,			/* scalar variable */
 	PLISQL_NSTYPE_REC,			/* composite variable */
 	PLISQL_NSTYPE_SUBPROC_FUNC, /* subproc function */
-	PLISQL_NSTYPE_SUBPROC_PROC	/* subproc proc */
+	PLISQL_NSTYPE_SUBPROC_PROC,	/* subproc proc */
+	PLISQL_NSTYPE_REFCURSOR	/* REF CURSOR type alias */
 }			PLiSQL_nsitem_type;
 
 /*
@@ -476,8 +477,9 @@ typedef struct PLiSQL_nsitem
 	PLiSQL_nsitem_type itemtype;
 
 	/*
-	 * For labels, itemno is a value of enum PLiSQL_label_type. For other
-	 * itemtypes, itemno is the associated PLiSQL_datum's dno.
+	 * For labels, itemno is a value of enum PLiSQL_label_type.  For REF CURSOR
+	 * type aliases, it is REFCURSOROID.  For other itemtypes, itemno is the
+	 * associated PLiSQL_datum's dno.
 	 */
 	int			itemno;
 	struct PLiSQL_nsitem *prev;

@@ -90,6 +90,15 @@ static const uint16 UnreservedPLKeywordTokens[] = {
 	 (prev_token) == K_ELSE || \
 	 (prev_token) == K_LOOP)
 
+/* Tokens that can immediately precede the first word of a declaration. */
+#define AT_DECL_START(prev_token) \
+	((prev_token) == 0 || \
+	 (prev_token) == ';' || \
+	 (prev_token) == K_AS || \
+	 (prev_token) == K_DECLARE || \
+	 (prev_token) == K_IS || \
+	 (prev_token) == GREATER_GREATER)
+
 
 /* Auxiliary data about a token (other than the token type) */
 typedef struct
@@ -157,6 +166,9 @@ typedef struct PLiSQL_yylex_global_proper
 	/* Current token's code (corresponds to plsql_yylval and plsql_yylloc) */
 	int			plisql_yytoken;
 
+	/* Prevent recursive recognition while peeking past TYPE. */
+	bool		checking_refcursor_type_decl;
+
 	int			num_pushbacks;
 	int			pushback_token[MAX_PUSHBACKS];
 	TokenAuxData pushback_auxdata[MAX_PUSHBACKS];
@@ -174,6 +186,7 @@ typedef struct PLiSQL_yylex_global_proper
 /* Internal functions */
 static int	internal_yylex(TokenAuxData *auxdata, yyscan_t yyscanner);
 static void push_back_token(int token, TokenAuxData *auxdata, yyscan_t yyscanner);
+static bool is_refcursor_type_decl(yyscan_t yyscanner);
 static void location_lineno_init(yyscan_t yyscanner);
 
 /*
@@ -412,11 +425,56 @@ plisql_yylex(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 		 */
 	}
 
+	/*
+	 * TYPE is deliberately unreserved, so a grammar production beginning
+	 * with K_TYPE would conflict with declarations of variables named
+	 * "type".  Recognize only the unambiguous TYPE name IS REF prefix and
+	 * return a synthetic token for that declaration form.
+	 */
+	if (tok1 == K_TYPE &&
+		plisql_IdentifierLookup == IDENTIFIER_LOOKUP_DECLARE &&
+		AT_DECL_START(yyextra->plisql_yytoken) &&
+		!yyextra->checking_refcursor_type_decl &&
+		is_refcursor_type_decl(yyscanner))
+		tok1 = K_TYPE_REFCURSOR;
+
 	*yylvalp = aux1.lval;
 	*yyllocp = aux1.lloc;
 	yyextra->plisql_yyleng = aux1.leng;
 	yyextra->plisql_yytoken = tok1;
 	return tok1;
+}
+
+/*
+ * Look ahead far enough to distinguish a REF CURSOR type declaration from
+ * an ordinary declaration whose variable name is "type".  Push every token
+ * back so that the grammar still consumes the complete declaration.
+ */
+static bool
+is_refcursor_type_decl(yyscan_t yyscanner)
+{
+	TokenAuxData lookahead[3];
+	int			tokens[3];
+	int			i;
+	bool		result;
+
+	yyextra->checking_refcursor_type_decl = true;
+	for (i = 0; i < lengthof(tokens); i++)
+	{
+		tokens[i] = plisql_yylex(&lookahead[i].lval,
+								  &lookahead[i].lloc, yyscanner);
+		lookahead[i].leng = yyextra->plisql_yyleng;
+	}
+	yyextra->checking_refcursor_type_decl = false;
+
+	for (i = lengthof(tokens) - 1; i >= 0; i--)
+		push_back_token(tokens[i], &lookahead[i], yyscanner);
+
+	result = (tokens[0] == T_WORD ||
+			  plisql_token_is_unreserved_keyword(tokens[0])) &&
+			 tokens[1] == K_IS && tokens[2] == K_REF;
+
+	return result;
 }
 
 /*
