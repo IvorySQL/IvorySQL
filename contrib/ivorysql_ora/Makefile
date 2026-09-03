@@ -33,6 +33,7 @@ OBJS = \
 	src/builtin_packages/dbms_utility/dbms_utility.o \
 	src/builtin_packages/dbms_lock/dbms_lock.o \
 	src/builtin_packages/utl_encode/utl_encode.o \
+	src/builtin_packages/utl_url/utl_url.o \
 	src/builtin_packages/dbms_session/dbms_session.o \
 	src/builtin_packages/dbms_transaction/dbms_transaction.o
 
@@ -61,6 +62,11 @@ cleansql:
 
 # REGRESS_OPTS mainly used for installcheck or debug.
 #REGRESS_OPTS = --port=1521
+# The utl_url regression tests exercise multibyte input and charset
+# conversions, so pin the test database to UTF8 instead of relying on
+# whatever encoding initdb derives from the invoking environment's locale.
+ENCODING = UTF8
+
 ORA_REGRESS = \
 	ora_character \
 	ora_datetime \
@@ -87,6 +93,7 @@ ORA_REGRESS = \
 	utl_file \
 	utl_raw \
 	utl_encode \
+	utl_url \
 	dbms_session \
 	dbms_transaction
 
