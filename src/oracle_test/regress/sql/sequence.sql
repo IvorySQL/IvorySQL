@@ -494,6 +494,12 @@ select seq_session1.nextval from dual;
 select seq_session1.nextval from dual;
 DROP SEQUENCE seq_session1;
 
+-- Reject duplicate and conflicting SESSION/GLOBAL options.
+CREATE SEQUENCE seq_dup_session SESSION SESSION;
+CREATE SEQUENCE seq_dup_global GLOBAL GLOBAL;
+CREATE SEQUENCE seq_conflict_sg SESSION GLOBAL;
+CREATE SEQUENCE seq_conflict_gs GLOBAL SESSION;
+
 create sequence seq start with 6 minvalue 3 maxvalue 8 cycle session nocache;
 select seq.nextval from dual;
 select seq.nextval from dual;
