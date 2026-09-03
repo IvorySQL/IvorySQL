@@ -19,15 +19,27 @@ CREATE FUNCTION sys.ora_format_call_stack() RETURNS TEXT
 AS 'MODULE_PATHNAME', 'ora_format_call_stack'
 LANGUAGE C VOLATILE;
 
+CREATE FUNCTION sys.ora_get_time() RETURNS sys.number
+AS 'MODULE_PATHNAME', 'ora_get_time'
+LANGUAGE C VOLATILE;
+
+CREATE FUNCTION sys.ora_get_cpu_time() RETURNS sys.number
+AS 'MODULE_PATHNAME', 'ora_get_cpu_time'
+LANGUAGE C VOLATILE;
+
 COMMENT ON FUNCTION sys.ora_format_error_backtrace() IS 'Internal function for DBMS_UTILITY.FORMAT_ERROR_BACKTRACE';
 COMMENT ON FUNCTION sys.ora_format_error_stack() IS 'Internal function for DBMS_UTILITY.FORMAT_ERROR_STACK';
 COMMENT ON FUNCTION sys.ora_format_call_stack() IS 'Internal function for DBMS_UTILITY.FORMAT_CALL_STACK';
+COMMENT ON FUNCTION sys.ora_get_time() IS 'DBMS_UTILITY.GET_TIME 的内部实现';
+COMMENT ON FUNCTION sys.ora_get_cpu_time() IS 'DBMS_UTILITY.GET_CPU_TIME 的内部实现';
 
 -- DBMS_UTILITY Package Definition
 CREATE OR REPLACE PACKAGE dbms_utility IS
   FUNCTION FORMAT_ERROR_BACKTRACE RETURN TEXT;
   FUNCTION FORMAT_ERROR_STACK RETURN TEXT;
   FUNCTION FORMAT_CALL_STACK RETURN TEXT;
+  FUNCTION GET_TIME RETURN NUMBER;
+  FUNCTION GET_CPU_TIME RETURN NUMBER;
 END dbms_utility;
 
 CREATE OR REPLACE PACKAGE BODY dbms_utility IS
@@ -44,5 +56,15 @@ CREATE OR REPLACE PACKAGE BODY dbms_utility IS
   FUNCTION FORMAT_CALL_STACK RETURN TEXT IS
   BEGIN
     RETURN sys.ora_format_call_stack();
+  END;
+
+  FUNCTION GET_TIME RETURN NUMBER IS
+  BEGIN
+    RETURN sys.ora_get_time();
+  END;
+
+  FUNCTION GET_CPU_TIME RETURN NUMBER IS
+  BEGIN
+    RETURN sys.ora_get_cpu_time();
   END;
 END dbms_utility;
