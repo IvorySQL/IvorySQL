@@ -284,7 +284,21 @@ struct ParseState
 	uint8 	   *merge_on_attrno;
 	bool 		p_isVarParamState;
 	bool		do_from_call;
+	void	   *p_orajoin_state;
 };
+
+typedef enum OraJoinType
+{
+	None,
+	LEFT_ORA_JOIN,
+	RIGHT_ORA_JOIN
+} OraJoinType;
+
+typedef struct OraJoinState
+{
+	Var		   *var;
+	ColumnRef  *cref;
+} OraJoinState;
 
 /*
  * An element of a namespace list.

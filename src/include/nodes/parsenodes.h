@@ -320,6 +320,7 @@ typedef struct ColumnRef
 	NodeTag		type;
 	List	   *fields;			/* field names (String nodes) or A_Star */
 	ParseLoc	location;		/* token location, or -1 if unknown */
+	bool		ora_join_op_exists;	/* If Oracle Join operator was used (+) */
 } ColumnRef;
 
 /*
@@ -2387,6 +2388,8 @@ typedef struct SelectStmt
 	struct SelectStmt *larg;	/* left child */
 	struct SelectStmt *rarg;	/* right child */
 	/* Eventually add fields for CORRESPONDING spec here */
+
+	bool		ora_join_op_exists;
 } SelectStmt;
 
 

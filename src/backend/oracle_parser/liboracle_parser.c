@@ -682,6 +682,9 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 		case PACKAGE:
 			cur_token_length = 7;
 			break;
+		case '(':
+			cur_token_length = 1;
+			break;
 		default:
 			return cur_token;
 	}
@@ -863,6 +866,39 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 			else if (cur_token == USCONST)
 			{
 				cur_token = SCONST;
+			}
+			break;
+
+		case '(':
+			{
+				if (next_token == '+')
+				{
+					/* Get third token using ora_core_yylex() and don't push it into cache arrays */
+					next_token = ora_internal_yylex(yyscanner, llocp, &aux1);
+					if (next_token == ')')
+					{
+						cur_token = ORAJOINOPR;
+						/*
+						* Compute the span length from the start of '(' to the end
+						* of the third token, rather than assuming a fixed width
+						* of 3. Whitespace or comments between '(', '+', and ')'
+						* mean the actual source span can be longer than "(+)" .
+						*/
+						cur_token_length = (aux1.lloc + aux1.leng) - cur_yylloc;
+						*llocp = cur_yylloc;
+						yyextra->lookahead_end = yyextra->core_yy_extra.scanbuf + *llocp + cur_token_length;
+
+						/* Now revert the un-truncation of the current token */
+						yyextra->lookahead_hold_char = *(yyextra->lookahead_end);
+						*(yyextra->lookahead_end) = '\0';
+						yyextra->loc_pushback++;
+
+						yyextra->have_lookahead = true;
+						return cur_token;
+					}
+
+					push_back_token(yyscanner, next_token, &aux1);
+				}
 			}
 			break;
 	}
