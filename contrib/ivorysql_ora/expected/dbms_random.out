@@ -54,10 +54,19 @@ from (select dbms_random.value(10, 20) as v
  t
 (1 row)
 
--- equal VALUE bounds are rejected; reverse ranges are supported
-select dbms_random.value(10, 10) from dual;
-ERROR:  the two bounds must not be equal
-CONTEXT:  PL/iSQL function sys.dbms_random.value line 43 at RETURN
+-- equal VALUE bounds return the shared bound; reverse ranges are supported
+select dbms_random.value(-1, -1) as negative_equal_bound from dual;
+ negative_equal_bound 
+----------------------
+ -1
+(1 row)
+
+select dbms_random.value(10, 10) as positive_equal_bound from dual;
+ positive_equal_bound 
+----------------------
+ 10
+(1 row)
+
 call dbms_random.seed(cast(99 as number));
 select min(v) > 0 and max(v) <= 11 as reverse_range_ok
 from (select dbms_random.value(11, 0) as v
