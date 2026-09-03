@@ -367,12 +367,14 @@ insert into datetest values (NEXT_DAY(date '2018-01-23 13:12:34','mon'));
 ERROR:  trailing characters remain in input string after datetime format
 insert into datetest values (NEXT_DAY(date '2018-02-12',2));
 insert into datetest values (NEXT_DAY(date '2018-02-12','monday'));
+insert into datetest values (NEXT_DAY(date '2018-02-12','星期一'));
 select * from datetest;
          aa          
 ---------------------
  2018-02-19 00:00:00
  2018-02-19 00:00:00
-(2 rows)
+ 2018-02-19 00:00:00
+(3 rows)
 
 drop table datetest;
 --MONTHS_BETWEEN
