@@ -155,8 +155,55 @@ _PG_fini(void)
 }
 
 /*
- * ProcessUtility hook to intercept DISCARD ALL/PACKAGES commands.
- * Resets DBMS_OUTPUT buffer state after these commands execute.
+ * Reject ALTER ROLE ... SET ivorysql.dbtimezone = ... (with or without
+ * IN DATABASE, and ALTER ROLE ALL ... SET) at the command level.
+ *
+ * check_dbtimezone() (src/guc/guc.c) already refuses to apply such a
+ * value at connection time (GucSource PGC_S_USER / PGC_S_DATABASE_USER /
+ * PGC_S_GLOBAL) -- but by then the ALTER ROLE command has already
+ * succeeded and left a row in pg_db_role_setting that gets rejected (and
+ * its WARNING re-printed) on *every* future connection for that
+ * role/database, until manually cleaned up. Reject the command itself
+ * instead of leaving that landmine behind.
+ *
+ * RESET / RESET ALL are let through: they remove a pg_db_role_setting
+ * entry rather than adding one that can never take effect.
+ */
+static void
+reject_alter_role_dbtimezone(Node *parsetree)
+{
+	AlterRoleSetStmt *stmt;
+	VariableSetStmt *setstmt;
+
+	if (nodeTag(parsetree) != T_AlterRoleSetStmt)
+		return;
+
+	stmt = (AlterRoleSetStmt *) parsetree;
+	setstmt = stmt->setstmt;
+
+	if (setstmt == NULL || setstmt->name == NULL)
+		return;					/* RESET ALL, or malformed */
+
+	if (setstmt->kind == VAR_RESET || setstmt->kind == VAR_RESET_ALL)
+		return;					/* clearing an override is always fine */
+
+	if (pg_strcasecmp(setstmt->name, "ivorysql.dbtimezone") == 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
+				 errmsg("parameter \"ivorysql.dbtimezone\" cannot be set"),
+				 errdetail("\"ivorysql.dbtimezone\" can only be set with "
+						   "ALTER DATABASE ... SET, not within a session "
+						   "or per-role."),
+				 errhint("Use ALTER DATABASE ... SET ivorysql.dbtimezone "
+						 "instead, or ALTER ROLE ... RESET "
+						 "ivorysql.dbtimezone to remove a stale per-role "
+						 "override.")));
+}
+
+/*
+ * ProcessUtility hook to intercept DISCARD ALL/PACKAGES commands and
+ * ALTER ROLE ... SET ivorysql.dbtimezone.
+ * Resets DBMS_OUTPUT buffer state after DISCARD ALL/PACKAGES executes.
  */
 static void
 ivorysql_ora_ProcessUtility(PlannedStmt *pstmt,
@@ -170,6 +217,8 @@ ivorysql_ora_ProcessUtility(PlannedStmt *pstmt,
 {
 	Node	   *parsetree = pstmt->utilityStmt;
 	bool		is_discard_reset = false;
+
+	reject_alter_role_dbtimezone(parsetree);
 
 	/* Check if this is DISCARD ALL or DISCARD PACKAGES */
 	if (nodeTag(parsetree) == T_DiscardStmt)

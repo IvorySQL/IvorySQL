@@ -19,6 +19,15 @@ CREATE TABLE TEST_ORACHAR(a char(5 byte), b char(5 char));
 
 CREATE TABLE TEST_ORAVARCHAR(a varchar2(5 char), b varchar2(5 byte));
 
+-- Explicit VARCHAR2(n BYTE) casts retain only complete characters
+SELECT cast('中文' AS varchar2(6 byte)) = '中文'
+       AND lengthb(cast('中文' AS varchar2(6 byte))) = 6;
+SELECT cast('中文' AS varchar2(5 byte)) = '中'
+       AND lengthb(cast('中文' AS varchar2(5 byte))) = 3;
+SELECT coalesce(lengthb(cast('中文' AS varchar2(2 byte))), 0) = 0;
+SELECT cast('abcdef' AS varchar2(4 byte)) = 'abcd';
+SELECT cast('abc' AS varchar2(4 byte)) = 'abc';
+
 INSERT INTO TEST_ORACHAR SELECT generate_series(1,10), generate_series(1,10);
 
 INSERT INTO TEST_ORAVARCHAR SELECT generate_series(1,10), generate_series(1,10);

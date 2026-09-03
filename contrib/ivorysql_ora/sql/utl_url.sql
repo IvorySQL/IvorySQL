@@ -1,0 +1,126 @@
+--
+-- utl_url.sql
+--
+-- Tests for the UTL_URL package (ESCAPE function)
+--
+-- The escaped form of a multibyte character depends on the character set the
+-- character is converted to, so the multibyte cases below pass 'UTF8'
+-- explicitly rather than relying on the database encoding.
+--
+
+-- ============================================================
+-- Tests for UTL_URL.ESCAPE
+-- ============================================================
+
+-- NULL input returns NULL
+SELECT utl_url.escape(NULL) IS NULL AS escape_null;
+
+-- Empty input
+SELECT utl_url.escape('') AS escape_empty, utl_url.escape('') IS NULL AS empty_is_null;
+
+-- Unreserved characters are never escaped
+SELECT utl_url.escape('AZaz09-_.!~*''()') AS unreserved;
+
+-- Space and the other illegal characters are escaped, reserved ones are not
+SELECT utl_url.escape('a b/c?d=e&f') AS default_mode;
+
+-- With escape_reserved_chars = TRUE the delimiters are escaped as well
+SELECT utl_url.escape('a b/c?d=e&f', TRUE) AS reserved_mode;
+
+-- The reserved delimiters: passed through by default, escaped on request.
+-- '%' and '#' are not passthrough delimiters and are escaped even in the
+-- default mode.
+SELECT utl_url.escape(';/?:@&=+$%,#') AS reserved_default;
+SELECT utl_url.escape(';/?:@&=+$%,#', TRUE) AS reserved_escaped;
+
+-- A literal '%' is always escaped, even in default mode, so that
+-- already-escaped input is double-escaped (matching Oracle)
+SELECT utl_url.escape('a%b') AS pct_default;
+SELECT utl_url.escape('a%b', TRUE) AS pct_reserved;
+SELECT utl_url.escape('a%20b') AS preescaped_default;
+SELECT utl_url.escape('a%20b', TRUE) AS preescaped_reserved;
+
+-- '#' is always escaped, including default mode, matching Oracle.
+SELECT utl_url.escape('a#b') AS hash_default;
+SELECT utl_url.escape('a#b', TRUE) AS hash_reserved;
+
+-- A real-world URL with a pre-escaped component and a fragment
+SELECT utl_url.escape('http://h/p?q=a%20b#frag') AS url_default;
+
+-- '#' alone
+SELECT utl_url.escape('#') AS hash_only_default;
+SELECT utl_url.escape('#', TRUE) AS hash_only_reserved;
+
+-- a fragment/query-like string in both modes
+SELECT utl_url.escape('a#b?c=d', FALSE) AS hash_query_default;
+SELECT utl_url.escape('a#b?c=d', TRUE) AS hash_query_reserved;
+
+-- Illegal ASCII characters are always escaped
+SELECT utl_url.escape('<>"{}|\\^[]`') AS illegal_ascii;
+
+-- Control characters are escaped
+SELECT utl_url.escape('a' || chr(9) || 'b' || chr(10) || 'c') AS control_chars;
+
+-- Examples from the Oracle documentation
+SELECT utl_url.escape('http://www.acme.com/a url with space.html') AS doc_escape;
+SELECT utl_url.escape('http://oracle-base.com/my page.html', TRUE) AS doc_escape_reserved;
+SELECT utl_url.escape('Is the use of the "$" sign okay?', TRUE) AS doc_escape_value;
+
+-- Multibyte characters: each byte of the converted character gets its own %XX
+SELECT utl_url.escape('中文测试', FALSE, 'UTF8') AS cjk_utf8;
+
+-- Explicit character set conversion: the same characters in GB18030
+SELECT utl_url.escape('中文', FALSE, 'GB18030') AS cjk_gb18030;
+
+-- The charset name may be spelled the IANA way or the PostgreSQL way
+SELECT utl_url.escape('a b', FALSE, 'ISO-8859-1') AS iana_name,
+       utl_url.escape('a b', FALSE, 'LATIN1') AS pg_name;
+
+-- The url_charset contract: omitting the argument and passing an explicit
+-- NULL are the same thing here -- both mean "the database encoding, do not
+-- convert".  Oracle makes them different: an omitted url_charset defaults
+-- to utl_http.body_charset (ISO-8859-1) while an explicit NULL selects the
+-- database character set.  Defaulting to the database encoding instead of
+-- ISO-8859-1 is the declared deviation of this port (ISO-8859-1 cannot
+-- represent non-Latin text; see the package documentation), and this case
+-- pins the contract so the difference stays visible.
+SELECT utl_url.escape('é') AS default_charset,
+       utl_url.escape('é', FALSE, NULL) AS explicit_null_charset;
+
+-- An unrecognized character set is rejected
+SELECT utl_url.escape('a b', FALSE, 'NO_SUCH_CHARSET');
+
+-- A character with no representation in the target character set is rejected
+SELECT utl_url.escape('中文', FALSE, 'LATIN1');
+
+-- ============================================================
+-- PL/iSQL package interface
+-- ============================================================
+
+DECLARE
+    v_url     VARCHAR2(200) := 'http://example.com/a b/中文?x=1&y=2';
+    v_escaped VARCHAR2(400);
+    line      TEXT;
+    status    INTEGER;
+BEGIN
+    dbms_output.enable();
+    v_escaped := utl_url.escape(v_url);
+    dbms_output.put_line('escaped=' || v_escaped);
+    dbms_output.get_line(line, status);
+    RAISE NOTICE '%', line;
+END;
+/
+
+-- All three arguments through the package
+DECLARE
+    v_escaped VARCHAR2(400);
+    line      TEXT;
+    status    INTEGER;
+BEGIN
+    dbms_output.enable();
+    v_escaped := utl_url.escape('a b$c', TRUE, 'UTF8');
+    dbms_output.put_line('escaped=' || v_escaped);
+    dbms_output.get_line(line, status);
+    RAISE NOTICE '%', line;
+END;
+/

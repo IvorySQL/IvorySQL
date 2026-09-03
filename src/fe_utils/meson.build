@@ -7,6 +7,12 @@ run_command(
    '../backend/oracle_parser/ora_keywords.c'],
   check:false)
 
+run_command(
+  [ln,
+   '-s',
+   '../oracle_fe_utils/ora_string_utils.c'],
+  check:false)
+
 fe_utils_sources = files(
   'archive.c',
   'astreamer_file.c',

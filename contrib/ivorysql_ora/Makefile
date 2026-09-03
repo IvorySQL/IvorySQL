@@ -33,7 +33,9 @@ OBJS = \
 	src/builtin_packages/dbms_utility/dbms_utility.o \
 	src/builtin_packages/dbms_lock/dbms_lock.o \
 	src/builtin_packages/utl_encode/utl_encode.o \
-	src/builtin_packages/dbms_session/dbms_session.o
+	src/builtin_packages/utl_url/utl_url.o \
+	src/builtin_packages/dbms_session/dbms_session.o \
+	src/builtin_packages/dbms_transaction/dbms_transaction.o
 
 EXTENSION = ivorysql_ora
 
@@ -60,6 +62,11 @@ cleansql:
 
 # REGRESS_OPTS mainly used for installcheck or debug.
 #REGRESS_OPTS = --port=1521
+# The utl_url regression tests exercise multibyte input and charset
+# conversions, so pin the test database to UTF8 instead of relying on
+# whatever encoding initdb derives from the invoking environment's locale.
+ENCODING = UTF8
+
 ORA_REGRESS = \
 	ora_character \
 	ora_datetime \
@@ -67,10 +74,12 @@ ORA_REGRESS = \
 	ora_number \
 	ora_binary_float \
 	ora_binary_double \
+	ora_nanvl \
 	ora_raw_long \
 	ora_character_datatype_functions \
 	ora_datetime_datatype_functions \
 	ora_misc_functions \
+	ora_vsize \
 	ora_merge \
 	datatype_and_func_bugs \
 	ora_sysview \
@@ -84,11 +93,9 @@ ORA_REGRESS = \
 	utl_file \
 	utl_raw \
 	utl_encode \
-	dbms_session
-
-ifeq ($(with_libxml),yes) 
-SHLIB_LINK += -lxml2
-endif
+	utl_url \
+	dbms_session \
+	dbms_transaction
 
 # Include path for plisql.h (needed by dbms_utility)
 PG_CPPFLAGS += -I$(top_srcdir)/src/pl/plisql/src
@@ -102,6 +109,10 @@ subdir = contrib/ivorysql_ora
 top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
+endif
+
+ifeq ($(with_libxml),yes)
+SHLIB_LINK += -lxml2
 endif
 
 

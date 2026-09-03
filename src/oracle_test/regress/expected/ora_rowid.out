@@ -1,5 +1,5 @@
 --
--- Test Compatible Oracle ROWID pseudo
+-- Test Oracle-Compatible ROWID Pseudo-Column
 --
 --
 --1, Support rowid feature via default_with_rowids GUC parameter

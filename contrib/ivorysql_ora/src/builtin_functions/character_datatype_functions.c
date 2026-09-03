@@ -32,11 +32,13 @@
 #include "varatt.h"
 
 #include "access/detoast.h"
+#include "common/unicode_norm.h"
 #include "lib/stringinfo.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "regex/regex.h"
 #include "utils/builtins.h"
+#include "utils/memutils.h"
 #include "utils/numeric.h"
 
 
@@ -52,6 +54,8 @@ PG_FUNCTION_INFO_V1(oracharlen);
 PG_FUNCTION_INFO_V1(oracharoctetlen);
 PG_FUNCTION_INFO_V1(oravarcharlen);
 PG_FUNCTION_INFO_V1(oravarcharoctetlen);
+PG_FUNCTION_INFO_V1(ora_lengthc);
+PG_FUNCTION_INFO_V1(ora_lengthc_unsupported);
 PG_FUNCTION_INFO_V1(rtrim1);
 PG_FUNCTION_INFO_V1(rtrim2);
 PG_FUNCTION_INFO_V1(ltrim1);
@@ -157,6 +161,178 @@ oravarcharoctetlen(PG_FUNCTION_ARGS)
 
 	/* We need not detoast the input at all */
 	PG_RETURN_INT32(toast_raw_datum_size(str) - VARHDRSZ);
+}
+
+/*
+ * lengthc() --- Oracle's LENGTHC.
+ *
+ * Returns the number of complete Unicode characters, that is, the number of
+ * code points the string has *after* NFC normalization.  A base character
+ * followed by a combining mark counts as one, so LENGTHC('e' || chr(769)) is
+ * 1 where LENGTH() is 2 and LENGTHB() is 3.  Conversely NFC can also lengthen
+ * a string -- composition exclusions such as U+0958, whose NFC form is the
+ * two code points U+0915 U+093C -- so the result is neither an upper nor a
+ * lower bound of LENGTH().
+ *
+ * One C symbol serves text, sys.oracharchar, sys.oracharbyte,
+ * sys.oravarcharchar and sys.oravarcharbyte: all of them are plain varlena
+ * strings, and PG_GETARG_TEXT_PP copes with any of them, TOASTed and
+ * short-header values included.
+ *
+ * NB: we deliberately do NOT strip trailing blanks.  Oracle's CHAR is
+ * blank-padded and LENGTHC(CAST('ab' AS CHAR(5))) is 5; this matches
+ * oracharlen() above, which likewise skips bcTruelen().  Do not "simplify"
+ * the CHAR variants into a SQL wrapper casting to text or oravarcharchar --
+ * both of those casts are implemented by rtrim() and would silently destroy
+ * the padding semantics.
+ *
+ * NB: like pg_catalog.normalize(), the result depends on the Unicode tables
+ * compiled into the server (PG_UNICODE_VERSION), so a major upgrade that
+ * brings in new tables could in principle invalidate an expression index on
+ * lengthc().  That is an accepted, pre-existing exposure -- do not downgrade
+ * this function to STABLE on account of it, or lengthc() would become less
+ * usable than length().
+ */
+Datum
+ora_lengthc(PG_FUNCTION_ARGS)
+{
+	text	   *arg = PG_GETARG_TEXT_PP(0);
+	const unsigned char *str = (const unsigned char *) VARDATA_ANY(arg);
+	int			nbytes = VARSIZE_ANY_EXHDR(arg);
+	int			nchars;
+	int			result;
+	char32_t   *input_chars;
+	char32_t   *output_chars;
+	const unsigned char *p;
+	int			i;
+
+	/*
+	 * Single-byte server encodings: one byte is one character, and a
+	 * decomposed sequence is not even representable, so every string is
+	 * already in NFC and LENGTHC == LENGTH == LENGTHB.
+	 */
+	if (pg_database_encoding_max_length() == 1)
+		PG_RETURN_INT32(nbytes);
+
+	/*
+	 * Canonical composition is only defined for Unicode.  The legacy
+	 * multibyte server encodings (EUC_*, MULE_INTERNAL) have no standalone
+	 * combining marks in their repertoire, so again every string is already
+	 * in NFC and the plain character count is the right answer.
+	 *
+	 * Note we intentionally do not raise an error the way
+	 * pg_catalog.normalize() does: Oracle's LENGTHC is perfectly usable in a
+	 * non-Unicode database character set, where it simply behaves like
+	 * LENGTH, and failing here would make the function unusable on such
+	 * clusters -- including the SQL_ASCII cluster that "make oracle-check"
+	 * produces under LANG=C.
+	 */
+	if (GetDatabaseEncoding() != PG_UTF8)
+		PG_RETURN_INT32(pg_mbstrlen_with_len((const char *) str, nbytes));
+
+	/*
+	 * Fast path: a pure ASCII string needs no work at all.  Every ASCII code
+	 * point is a starter whose NFC_QuickCheck value is Yes, and no canonical
+	 * composition has an ASCII character as its second element, so such a
+	 * string is NFC-invariant and contributes one character per byte.  This
+	 * also covers the empty string.
+	 */
+	for (i = 0; i < nbytes; i++)
+	{
+		if (str[i] >= 0x80)
+			break;
+	}
+	if (i == nbytes)
+		PG_RETURN_INT32(nbytes);
+
+	nchars = pg_mbstrlen_with_len((const char *) str, nbytes);
+
+	/*
+	 * Guard the 4x expansion of the code point array so that huge values get
+	 * a comprehensible error instead of palloc's "invalid memory alloc
+	 * request size".  Only reachable for inputs of a few hundred MB.
+	 */
+	if ((Size) nchars + 1 > MaxAllocSize / sizeof(char32_t))
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("string is too long for lengthc()"),
+				 errdetail("lengthc() can normalize at most %zu characters.",
+						   MaxAllocSize / sizeof(char32_t) - 1)));
+
+	/* convert to char32_t, same as unicode_normalize_func() does */
+	input_chars = (char32_t *) palloc((nchars + 1) * sizeof(char32_t));
+	p = str;
+	for (i = 0; i < nchars; i++)
+	{
+		input_chars[i] = utf8_to_unicode(p);
+		p += pg_utf_mblen(p);
+	}
+	input_chars[i] = (char32_t) '\0';
+	Assert((const char *) p == (const char *) str + nbytes);
+
+	/*
+	 * The UAX #15 quick check: text that is already in NFC -- all precomposed
+	 * Latin, all CJK, all precomposed Hangul syllables -- needs no
+	 * normalization, and then the code point count is the answer.  This skips
+	 * the two further arrays unicode_normalize() would allocate.
+	 */
+	if (unicode_is_normalized_quickcheck(UNICODE_NFC, input_chars) == UNICODE_NORM_QC_YES)
+	{
+		pfree(input_chars);
+		PG_RETURN_INT32(nchars);
+	}
+
+	output_chars = unicode_normalize(UNICODE_NFC, input_chars);
+	pfree(input_chars);
+
+	result = 0;
+	for (char32_t *wp = output_chars; *wp; wp++)
+		result++;
+
+	pfree(output_chars);
+
+	PG_RETURN_INT32(result);
+}
+
+/*
+ * ora_lengthc_unsupported --- reject the LOB types Oracle's LENGTHC rejects.
+ *
+ * Oracle documents LENGTHC as accepting only CHAR, VARCHAR2, NCHAR and
+ * NVARCHAR2, and names CLOB and NCLOB as excluded; a real instance answers
+ * LENGTHC(TO_CLOB('abc')), LENGTHC(TO_NCLOB('abc')) and
+ * LENGTHC(TO_BLOB(...)) with ORA-00932.  Non-LOB types are a different
+ * story: DATE, TIMESTAMP, NUMBER and RAW all reach LENGTHC through the
+ * generic implicit argument conversion there and are answered normally, so
+ * they keep their working overloads.
+ *
+ * Simply not declaring an overload would reject nothing.  sys.clob and
+ * sys.nclob are domains over text and sys.blob is a domain over bytea, so
+ * plain resolution folds them onto lengthc(text) and
+ * lengthc(sys.oravarcharchar).  An exact-match overload is what stops them,
+ * because func_get_detail() prefers an exact match over both domain folding
+ * and implicit coercion.
+ *
+ * Deliberately not STRICT: Oracle rejects the type while parsing, so a NULL
+ * of a rejected type has to error out too rather than quietly return NULL.
+ */
+Datum
+ora_lengthc_unsupported(PG_FUNCTION_ARGS)
+{
+	Oid			argtype = get_fn_expr_argtype(fcinfo->flinfo, 0);
+
+	if (OidIsValid(argtype))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+				 errmsg("inconsistent datatypes: lengthc() does not accept %s",
+						format_type_be(argtype)),
+				 errdetail("Oracle's LENGTHC accepts only CHAR, VARCHAR2, NCHAR and NVARCHAR2.")));
+	else
+		ereport(ERROR,
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+				 errmsg("inconsistent datatypes: lengthc() does not accept this data type"),
+				 errdetail("Oracle's LENGTHC accepts only CHAR, VARCHAR2, NCHAR and NVARCHAR2.")));
+
+	PG_RETURN_NULL();			/* keep the compiler quiet */
 }
 
 Datum
