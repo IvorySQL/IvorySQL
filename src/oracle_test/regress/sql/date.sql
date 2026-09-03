@@ -379,3 +379,57 @@ select make_time(24, 0, 2.1);
 create table sysdate_test (v1 DATE DEFAULT SYSDATE);
 select attname, typname from pg_attribute, pg_type where attrelid in (select oid from pg_class where relname = 'sysdate_test') and attnum > 0 and atttypid = pg_type.oid;
 drop table sysdate_test;
+
+-- #1697: sysdate/current_date must be constant within a single statement.
+-- Chained MATERIALIZED CTEs force an explicit evaluation order: the first
+-- reads happen in "before", then pg_sleep(1) in "after"'s FROM clause runs,
+-- and only then are the second reads evaluated.  Sibling target-list
+-- expressions have no guaranteed evaluation order, so putting pg_sleep(1)
+-- there would not reliably test elapsed-time behavior.  A per-call clock
+-- read would differ across the sleep.
+WITH
+     before (a, c) AS MATERIALIZED
+       (SELECT to_char(sysdate, 'YYYYMMDDHH24MISS'),
+               to_char(current_date, 'YYYYMMDDHH24MISS')),
+     after (b, d) AS MATERIALIZED
+       (SELECT to_char(sysdate, 'YYYYMMDDHH24MISS'),
+               to_char(current_date, 'YYYYMMDDHH24MISS')
+        FROM before, pg_sleep(1))
+SELECT (a = b) AS sysdate_stable, (c = d) AS current_date_stable
+FROM before, after;
+
+-- #1697: sysdate/current_date are fixed per statement, not per transaction.
+-- Oracle's SYSDATE/CURRENT_DATE do not advance within a single statement,
+-- but they DO advance between statements in the same transaction (e.g. a
+-- PL/SQL block that reads them around a sleep shows two different times).
+-- The three statements below all run inside one explicit transaction; the
+-- reads around pg_sleep(1) are separate statements, so they must differ.
+BEGIN;
+CREATE TEMP TABLE sysdate_xact_test(a text, c text);
+INSERT INTO sysdate_xact_test
+SELECT to_char(sysdate, 'YYYYMMDDHH24MISS'), to_char(current_date, 'YYYYMMDDHH24MISS');
+SELECT pg_sleep(1);
+INSERT INTO sysdate_xact_test
+SELECT to_char(sysdate, 'YYYYMMDDHH24MISS'), to_char(current_date, 'YYYYMMDDHH24MISS');
+COMMIT;
+SELECT (min(a) <> max(a)) AS sysdate_advanced,
+       (min(c) <> max(c)) AS current_date_advanced
+FROM sysdate_xact_test;
+
+-- Same rule inside a PL/iSQL block: each block statement has its own
+-- statement timestamp, so the reads around the sleep must advance too.
+DO $$
+DECLARE
+  d1 DATE; d2 DATE; d3 DATE; d4 DATE;
+BEGIN
+  d1 := sysdate;
+  d2 := current_date;
+  PERFORM pg_sleep(1);
+  d3 := sysdate;
+  d4 := current_date;
+  IF d1 < d3 AND d2 < d4 THEN
+    RAISE NOTICE 'OK: sysdate/current_date advance across statements';
+  ELSE
+    RAISE EXCEPTION 'sysdate/current_date did not advance';
+  END IF;
+END $$;
