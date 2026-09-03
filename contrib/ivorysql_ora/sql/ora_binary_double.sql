@@ -122,7 +122,6 @@ SELECT ||/ binary_double '27' AS three;
 
 SELECT '' AS five, f.f1, ||/f.f1 AS cbrt_f1 FROM BINARY_DOUBLE_TBL f;
 
-
 SELECT '' AS five, * FROM BINARY_DOUBLE_TBL;
 
 UPDATE BINARY_DOUBLE_TBL
@@ -250,4 +249,33 @@ SELECT to_binary_double('-inf');
 SELECT to_binary_double(42::numeric);
 SELECT to_binary_double(42::sys.binary_double);
 SELECT to_binary_double(42::sys.binary_float);
+--
+-- IEEE 754 exception semantics
+--
+-- Oracle returns Infinity, zero or NaN where PostgreSQL raises. Expected
+-- values measured against Oracle Database 21c Express Edition.
+--
+
+-- overflow
+SELECT 1e308d * 10;
+SELECT 1e308d + 1e308d;
+
+-- underflow
+SELECT 1e-320d / 1e10;
+SELECT 1e308d * 0;
+
+-- Underflow of a negative value, and underflow via multiplication. The first
+-- would be -0 under pure IEEE; Oracle keeps a single zero, so both are 0.
+SELECT (0d - 1e-320d) / 1e10;
+SELECT 1e-200d * 1e-200d;
+
+-- division by zero
+SELECT 1d / 0d;
+SELECT (0d - 1d) / 0d;
+SELECT 0d / 0d;
+
+-- ordinary arithmetic, unaffected
+SELECT 2d * 3d;
+SELECT 7d / 2d;
+SELECT (0d - 1e308d) * 10;
 
