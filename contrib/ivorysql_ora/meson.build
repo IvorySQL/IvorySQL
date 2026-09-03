@@ -66,3 +66,14 @@ install_data(
   'preload_ora_misc.sql',
   install_dir: dir_data,
 )
+
+tests += {
+  'name': 'ivorysql_ora',
+  'sd': meson.current_source_dir(),
+  'bd': meson.current_build_dir(),
+  'tap': {
+    'tests': [
+      't/001_asciistr_encoding.pl',
+    ],
+  },
+}
