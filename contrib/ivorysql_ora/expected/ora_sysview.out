@@ -13,6 +13,16 @@ SHOW IVORYSQL.IDENTIFIER_CASE_SWITCH;
  interchange
 (1 row)
 
+-- ORA_CASE_TRANS accepts VARCHAR2 values and must not truncate them as names.
+SELECT length(sys.ora_case_trans(repeat('a', 80)::varchar2)) = 80
+       AND sys.ora_case_trans(repeat('a', 80)::varchar2) = repeat('A', 80)::varchar2
+       AND sys.ora_case_trans(repeat('A', 80)::varchar2) = repeat('a', 80)::varchar2
+       AS preserves_long_values;
+ preserves_long_values 
+-----------------------
+ t
+(1 row)
+
 -- create a procedure
 CREATE TABLE TB_TODEL(ID INT);
 CREATE OR REPLACE PROCEDURE PROC_DEL_TB(I INT) IS
