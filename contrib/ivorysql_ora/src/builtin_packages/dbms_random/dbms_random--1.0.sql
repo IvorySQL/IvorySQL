@@ -74,7 +74,7 @@ AS 'MODULE_PATHNAME', 'ora_dbms_random_value_range'
 LANGUAGE C VOLATILE;
 
 -- DBMS_RANDOM Package Definition
-CREATE OR REPLACE PACKAGE dbms_random IS
+CREATE OR REPLACE PACKAGE dbms_random AUTHID CURRENT_USER IS
 
   PROCEDURE initialize(val IN NUMBER);
   PROCEDURE seed(val IN NUMBER);
