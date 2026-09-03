@@ -50,6 +50,12 @@ jobs:
         meson test --verbose --no-rebuild
       timeout-minutes: 30
 
+    - name: run oracle meson test
+      run: |
+        cd build
+        meson test --verbose --no-rebuild --setup oracle
+      timeout-minutes: 30
+
     - name: collect test logs
       if: always()
       run: |
@@ -57,7 +63,7 @@ jobs:
 
         # Collect Meson test logs
         if [ -d build/meson-logs ] && [ "$(ls -A build/meson-logs 2>/dev/null)" ]; then
-          cp build/meson-logs/* ${{ github.workspace }}/test-logs/ 2>/dev/null || true
+          cp -R build/meson-logs ${{ github.workspace }}/test-logs/
           echo "Copied meson log"
         else
           echo "No meson log found"
@@ -65,7 +71,9 @@ jobs:
 
         # test results
         if [ -d build/testrun ]; then
-          find build/testrun -type f \( -name "*.log" -o -name "*.diff" -o -name "regression.diffs" \) -exec cp {} ${{ github.workspace }}/test-logs/ \; 2>/dev/null || true
+          find build/testrun -type f \( -name "*.log" -o -name "*.diff" -o -name "regression.diffs" \) -print0 \
+            | tar --null -cf - --files-from=- \
+            | tar -xf - -C ${{ github.workspace }}/test-logs/
           echo "Collected test run logs"
         fi
 
@@ -87,13 +95,10 @@ jobs:
         tar -czf test-logs.tar.gz test-logs/
         echo "Compressed test logs: $(du -h test-logs.tar.gz | cut -f1)"
 
-    - name: upload failure logs (raw directories for deep debugging)
+    - name: upload failure logs
       if: failure()
       uses: actions/upload-artifact@v4
       with:
-        name: postgres-test-failures-${{ github.sha }}.raw
-        path: |
-          build/meson-logs/
-          build/testrun/
+        name: oracle-meson-test-failures-${{ github.sha }}
+        path: test-logs.tar.gz
         retention-days: 30
-        compression-level: 6

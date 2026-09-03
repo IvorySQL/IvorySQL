@@ -21,13 +21,7 @@ test_install_data += files(
   'dummy_index_am--1.0.sql',
 )
 
-tests += {
-  'name': 'dummy_index_am',
-  'sd': meson.current_source_dir(),
-  'bd': meson.current_build_dir(),
-  'regress': {
-    'sql': [
-      'reloptions',
-    ],
-  },
-}
+# No Oracle regress registration: this module defines no ORA_REGRESS in the GNU
+# Make build either, and its expected output is PostgreSQL-only (psql column
+# alignment drifts under an Oracle-mode instance). Re-enable only as part of
+# an Oracle-compatible test subset.

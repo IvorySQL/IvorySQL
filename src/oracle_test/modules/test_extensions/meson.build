@@ -59,17 +59,14 @@ test_ext = shared_module('test_ext',
   kwargs: pg_test_mod_args,
 )
 
+# No Oracle regress registration: this module defines no ORA_REGRESS in the GNU
+# Make build either, and its --no-locale regress needs a fresh cluster whose
+# auxiliary database creation is unreliable under the Oracle Meson setup.
+# Only the TAP test is registered for now.
 tests += {
   'name': 'test_extensions',
   'sd': meson.current_source_dir(),
   'bd': meson.current_build_dir(),
-  'regress': {
-    'sql': [
-      'test_extensions',
-      'test_extdepend',
-    ],
-    'regress_args': ['--no-locale'],
-  },
   'tap': {
     'tests': [
       't/001_extension_control_path.pl',

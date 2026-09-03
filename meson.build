@@ -3715,13 +3715,29 @@ subdir('contrib')
 subdir('src/test')
 subdir('src/interfaces/ecpg/test')
 
+postgres_test_install_data = test_install_data
+postgres_test_install_libs = test_install_libs
+postgres_testprep_targets = testprep_targets
+test_install_data = []
+test_install_libs = []
+testprep_targets = []
+subdir('src/oracle_test')
+oracle_test_install_data = test_install_data
+oracle_test_install_libs = test_install_libs
+oracle_testprep_targets = testprep_targets
+test_install_data = postgres_test_install_data
+test_install_libs = postgres_test_install_libs
+testprep_targets = postgres_testprep_targets
+
 subdir('doc/src/sgml')
 
 generated_sources_ac += {'': ['GNUmakefile']}
 
-# After processing src/test, add test_install_libs to the testprep_targets
-# to build them
-testprep_targets += test_install_libs
+# After processing the test trees, add their libraries to the corresponding
+# testprep targets, then retain the combined list for the all/testprep targets.
+postgres_testprep_targets += test_install_libs
+oracle_testprep_targets += oracle_test_install_libs
+testprep_targets = postgres_testprep_targets + oracle_testprep_targets
 
 
 # If there are any files in the source directory that we also generate in the
@@ -3839,9 +3855,19 @@ install_test_files_args = [
   '--install', contrib_data_dir, test_install_data,
   '--install', dir_lib_pkg, test_install_libs,
 ]
+oracle_install_test_files_args = [
+  install_files,
+  '--prefix', dir_prefix,
+  '--install', contrib_data_dir, oracle_test_install_data,
+  '--install', dir_lib_pkg, oracle_test_install_libs,
+]
 run_target('install-test-files',
   command: [python] + install_test_files_args,
-  depends: testprep_targets,
+  depends: postgres_testprep_targets,
+)
+run_target('install-oracle-test-files',
+  command: [python] + oracle_install_test_files_args,
+  depends: oracle_testprep_targets,
 )
 
 
@@ -3852,6 +3878,7 @@ run_target('install-test-files',
 
 # DESTDIR for the installation we'll run tests in
 test_install_destdir = meson.project_build_root() / 'tmp_install/'
+oracle_test_install_destdir = meson.project_build_root() / 'tmp_install_oracle/'
 
 # DESTDIR + prefix appropriately munged
 if build_system != 'windows'
@@ -3859,6 +3886,10 @@ if build_system != 'windows'
   assert(dir_prefix.startswith('/')) # enforced by meson
   temp_install_bindir = '@0@@1@'.format(test_install_destdir, dir_prefix / dir_bin)
   temp_install_libdir = '@0@@1@'.format(test_install_destdir, dir_prefix / dir_lib)
+  oracle_temp_install_bindir = '@0@@1@'.format(
+    oracle_test_install_destdir, dir_prefix / dir_bin)
+  oracle_temp_install_libdir = '@0@@1@'.format(
+    oracle_test_install_destdir, dir_prefix / dir_lib)
 else
   # drives, drive-relative paths, etc make this complicated on windows, call
   # into a copy of meson's logic for it
@@ -3868,6 +3899,15 @@ else
     test_install_destdir]
   temp_install_bindir = run_command(command, dir_prefix / dir_bin, check: true).stdout().strip()
   temp_install_libdir = run_command(command, dir_prefix / dir_lib, check: true).stdout().strip()
+
+  command = [
+    python, '-c',
+    'import sys; from pathlib import PurePath; d1=sys.argv[1]; d2=sys.argv[2]; print(str(PurePath(d1, *PurePath(d2).parts[1:])))',
+    oracle_test_install_destdir]
+  oracle_temp_install_bindir = run_command(
+    command, dir_prefix / dir_bin, check: true).stdout().strip()
+  oracle_temp_install_libdir = run_command(
+    command, dir_prefix / dir_lib, check: true).stdout().strip()
 endif
 
 meson_install_args = meson_args + ['install'] + {
@@ -3894,6 +3934,24 @@ test('install_test_files',
     is_parallel: false,
     suite: ['setup'])
 
+test('oracle_tmp_install',
+    meson_bin, args: meson_install_args ,
+    env: {'DESTDIR': oracle_test_install_destdir},
+    priority: setup_tests_priority,
+    timeout: 300,
+    is_parallel: false,
+    depends: installed_targets,
+    suite: ['oracle_setup'])
+
+test('oracle_install_test_files',
+    python,
+    args: oracle_install_test_files_args + [
+      '--destdir', oracle_test_install_destdir,
+    ],
+    priority: setup_tests_priority,
+    is_parallel: false,
+    suite: ['oracle_setup'])
+
 test_result_dir = meson.project_build_root() / 'testrun'
 
 
@@ -3904,19 +3962,28 @@ test_result_dir = meson.project_build_root() / 'testrun'
 testport = 40000
 
 test_env = environment()
+oracle_test_env = environment()
 
 test_initdb_template = meson.project_build_root() / 'tmp_install' / 'initdb-template'
+oracle_test_initdb_template = (
+  meson.project_build_root() / 'tmp_install_oracle' / 'initdb-template'
+)
 test_env.set('PG_REGRESS', pg_regress.full_path())
 test_env.set('REGRESS_SHLIB', regress_module.full_path())
 test_env.set('INITDB_TEMPLATE', test_initdb_template)
+oracle_test_env.set('PG_REGRESS', oracle_pg_regress.full_path())
+oracle_test_env.set('REGRESS_SHLIB', oracle_regress_module.full_path())
+oracle_test_env.set('INITDB_TEMPLATE', oracle_test_initdb_template)
 # for Cluster.pm's portlock logic
 test_env.set('top_builddir', meson.project_build_root())
+oracle_test_env.set('top_builddir', meson.project_build_root())
 
 # Add the temporary installation to the library search path on platforms where
 # that works (everything but windows, basically). On windows everything
 # library-like gets installed into bindir, solving that issue.
 if library_path_var != ''
   test_env.prepend(library_path_var, temp_install_libdir)
+  oracle_test_env.prepend(library_path_var, oracle_temp_install_libdir)
 endif
 
 
@@ -3949,6 +4016,30 @@ sys.exit(sp.returncode)
      env: test_env,
      suite: ['setup'])
 
+test('oracle_initdb_cache',
+     python,
+     args: [
+       '-c', '''
+import shutil
+import sys
+import subprocess
+
+shutil.rmtree(sys.argv[1], ignore_errors=True)
+sp = subprocess.run(sys.argv[2:] + [sys.argv[1]])
+sys.exit(sp.returncode)
+''',
+       oracle_test_initdb_template,
+       oracle_temp_install_bindir / 'initdb',
+       '-m', 'oracle', '-C', 'normal',
+       '--auth', 'trust', '--no-sync', '--no-instructions', '--lc-messages=C',
+       '--no-clean'
+     ],
+     priority: setup_tests_priority - 1,
+     timeout: 300,
+     is_parallel: false,
+     env: oracle_test_env,
+     suite: ['oracle_setup'])
+
 
 
 ###############################################################
@@ -3961,11 +4052,30 @@ sys.exit(sp.returncode)
 # (which don't support running against a running server).
 
 running_suites = []
+oracle_running_suites = []
 install_suites = []
+postgres_install_suites = []
 
 testwrap = files('src/tools/testwrap')
 
 foreach test_dir : tests
+  is_oracle_test = test_dir['sd'].startswith(
+    meson.project_source_root() / 'src/oracle_test/')
+  test_group = test_dir['name']
+  if is_oracle_test
+    test_group = 'oracle_' + test_group
+  endif
+  test_suites = [test_group]
+  if is_oracle_test
+    test_suites += 'oracle'
+  endif
+  test_bindir = (
+    is_oracle_test ? oracle_temp_install_bindir : temp_install_bindir
+  )
+  test_destdir = (
+    is_oracle_test ? oracle_test_install_destdir : test_install_destdir
+  )
+
   testwrap_base = [
     testwrap,
     '--basedir', meson.project_build_root(),
@@ -3986,18 +4096,19 @@ foreach test_dir : tests
 
     if kind in ['regress', 'isolation', 'ecpg']
       if kind == 'regress'
-        runner = pg_regress
+        runner = is_oracle_test ? oracle_pg_regress : pg_regress
         fallback_dbname = 'regression_@0@'
       elif kind == 'isolation'
-        runner = pg_isolation_regress
+        runner = (
+          is_oracle_test ? oracle_pg_isolation_regress : pg_isolation_regress
+        )
         fallback_dbname = 'isolation_regression_@0@'
       elif kind == 'ecpg'
         runner = pg_regress_ecpg
         fallback_dbname = 'ecpg_regression_@0@'
       endif
 
-      test_group = test_dir['name']
-      test_group_running = test_dir['name'] + '-running'
+      test_group_running = test_group + '-running'
 
       test_output = test_result_dir / test_group / kind
       test_output_running = test_result_dir / test_group_running/ kind
@@ -4005,7 +4116,7 @@ foreach test_dir : tests
       # Unless specified by the test, choose a non-conflicting database name,
       # to avoid conflicts when running against existing server.
       dbname = t.get('dbname',
-        fallback_dbname.format(test_dir['name']))
+        fallback_dbname.format(test_group))
 
       test_command_base = [
         runner.full_path(),
@@ -4026,8 +4137,8 @@ foreach test_dir : tests
         test_selection += t.get('sql', [])
       endif
 
-      env = test_env
-      env.prepend('PATH', temp_install_bindir, test_dir['bd'])
+      env = is_oracle_test ? oracle_test_env : test_env
+      env.prepend('PATH', test_bindir, test_dir['bd'])
 
       test_kwargs = {
         'protocol': 'tap',
@@ -4051,10 +4162,13 @@ foreach test_dir : tests
           '--temp-instance', test_output / 'tmp_check',
           '--port', testport.to_string(),
         ],
-        suite: test_group,
+        suite: test_suites,
         kwargs: test_kwargs,
       )
       install_suites += test_group
+      if not is_oracle_test
+        postgres_install_suites += test_group
+      endif
 
       # some tests can't support running against running DB
       if t.get('runningcheck', true)
@@ -4075,36 +4189,44 @@ foreach test_dir : tests
           kwargs: test_kwargs,
         )
         running_suites += test_group_running
+        if is_oracle_test
+          oracle_running_suites += test_group_running
+        endif
       endif
 
-      testport += 1
+      testport += is_oracle_test ? 2 : 1
     elif kind == 'tap'
       testwrap_tap = testwrap_base
       if not tap_tests_enabled
         testwrap_tap += ['--skip', 'TAP tests not enabled']
       endif
 
-      test_command = [
-        perl.full_path(),
+      test_command = [perl.full_path()]
+      if is_oracle_test
+        test_command += [
+          '-I', meson.project_source_root() / 'src/oracle_test/perl',
+        ]
+      endif
+      test_command += [
         '-I', meson.project_source_root() / 'src/test/perl',
         '-I', test_dir['sd'],
       ]
 
       # Add temporary install, the build directory for non-installed binaries and
       # also test/ for non-installed test binaries built separately.
-      env = test_env
-      env.prepend('PATH', temp_install_bindir, test_dir['bd'], test_dir['bd'] / 'test')
-      temp_install_datadir = '@0@@1@'.format(test_install_destdir, dir_prefix / dir_data)
+      env = is_oracle_test ? oracle_test_env : test_env
+      env.prepend('PATH', test_bindir, test_dir['bd'], test_dir['bd'] / 'test')
+      temp_install_datadir = '@0@@1@'.format(
+        test_destdir, dir_prefix / dir_data)
       env.set('share_contrib_dir', temp_install_datadir / 'contrib')
 
       foreach name, value : t.get('env', {})
         env.set(name, value)
       endforeach
 
-      test_group = test_dir['name']
       test_kwargs = {
         'protocol': 'tap',
-        'suite': test_group,
+        'suite': test_suites,
         'timeout': 1000,
         'depends': test_deps + t.get('deps', []),
         'env': env,
@@ -4120,11 +4242,11 @@ foreach test_dir : tests
           onetap_p = fs.stem(onetap_p)
         endif
 
-        test(test_dir['name'] / onetap_p,
+        test(test_group / onetap_p,
           python,
           kwargs: test_kwargs,
           args: testwrap_tap + [
-            '--testgroup', test_dir['name'],
+            '--testgroup', test_group,
             '--testname', onetap_p,
             '--', test_command,
             test_dir['sd'] / onetap,
@@ -4132,6 +4254,9 @@ foreach test_dir : tests
         )
       endforeach
       install_suites += test_group
+      if not is_oracle_test
+        postgres_install_suites += test_group
+      endif
     else
       error('unknown kind @0@ of test in @1@'.format(kind, test_dir['sd']))
     endif
@@ -4143,9 +4268,13 @@ endforeach # directories with tests
 # repeat condition so meson realizes version dependency
 add_test_setup('tmp_install',
   is_default: true,
-  exclude_suites: running_suites)
+  exclude_suites: running_suites + ['oracle', 'oracle_setup'])
+add_test_setup('oracle',
+  exclude_suites: running_suites + postgres_install_suites + ['setup'])
 add_test_setup('running',
-  exclude_suites: ['setup'] + install_suites)
+  exclude_suites: (
+    ['setup', 'oracle_setup'] + install_suites + oracle_running_suites
+  ))
 
 
 
