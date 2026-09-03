@@ -1132,6 +1132,164 @@ select lengthb(cast('2020-06-18 14:40:20' as date)) from dual;
 select lengthb(cast('2020-06-18 14:40:20' as timestamp)) from dual;
 
 /*
+ * lengthc
+ *
+ * LENGTHC counts complete Unicode characters, i.e. code points after NFC
+ * normalization.  NB: the cases below assume a UTF8 database, as does the
+ * rest of this file (see length('今天') above).  On a non-UTF8 cluster
+ * lengthc() deliberately degrades to length() instead of erroring the way
+ * pg_catalog.normalize() does; that path is verified manually.
+ */
+-- (1) ASCII equivalence and three-way comparison
+select length('Highgo DB!'), lengthb('Highgo DB!'), lengthc('Highgo DB!') from dual;
+select length('今天'), lengthb('今天'), lengthc('今天') from dual;
+select sys.lengthc('明天') from dual;
+
+-- (2) CHAR blank padding is counted, not trimmed
+select lengthc(cast('ab' as char(5))) from dual;
+select lengthc(cast('abc' as char(5 byte))) from dual;
+select lengthc(cast('abc' as char(5 char))) from dual;
+select lengthc(cast('Highgo DB!' as char(20))) from dual;
+select lengthc(cast('今天是Monday' as char(20))) from dual;
+select lengthc(cast('Highgo DB!' as varchar2(20))) from dual;
+-- padding kept + NFC composition + three different answers, all in one row
+select length(cast('e'||chr(769) as char(10 char))),
+       lengthb(cast('e'||chr(769) as char(10 char))),
+       lengthc(cast('e'||chr(769) as char(10 char))) from dual;
+
+CREATE TABLE TEST_LENGTHC_CHAR(a char(5 byte), b char(5 char));
+INSERT INTO TEST_LENGTHC_CHAR VALUES('aaa', 'bbb');
+INSERT INTO TEST_LENGTHC_CHAR VALUES('e'||chr(769), 'e'||chr(769));
+SELECT length(a), lengthc(a), length(b), lengthc(b) FROM TEST_LENGTHC_CHAR;
+DROP TABLE TEST_LENGTHC_CHAR;
+
+-- (3) actual normalization
+select length('e'||chr(769)), lengthb('e'||chr(769)), lengthc('e'||chr(769)) from dual;
+select length(chr(233)), lengthc(chr(233)) from dual;
+select length(decompose('áéíóú')), lengthc(decompose('áéíóú')) from dual;
+-- QC_NO plus canonical reordering: U+0301 (ccc 230) before U+0328 (ccc 202)
+select length('a'||chr(769)||chr(808)), lengthc('a'||chr(769)||chr(808)) from dual;
+-- conjoining jamo L+V+T compose algorithmically into one syllable
+select length(chr(4370)||chr(4449)||chr(4523)), lengthc(chr(4370)||chr(4449)||chr(4523)) from dual;
+
+-- (4) NFC can also lengthen: U+0958 is a composition exclusion
+select length(chr(2392)), lengthb(chr(2392)), lengthc(chr(2392)) from dual;
+select asciistr(compose(chr(2392))) from dual;
+
+-- (5) supplementary plane / no UCS-2 confusion
+select length(chr(119070)), lengthb(chr(119070)), lengthc(chr(119070)) from dual;
+select lengthc(chr(119070)||chr(119070)) from dual;
+
+-- (6) NULL and empty string
+select lengthc(null) from dual;
+select lengthc('') from dual;
+select lengthc(' ') from dual;
+
+-- (7) the LOB types are rejected, the way Oracle's LENGTHC rejects them.
+-- Its documented inputs are CHAR/VARCHAR2/NCHAR/NVARCHAR2 only, and an
+-- instance answers LENGTHC of TO_CLOB/TO_NCLOB/TO_BLOB with ORA-00932 while
+-- LENGTH(TO_CLOB('abc')) still returns 3.  sys.clob/nclob are domains over
+-- text and sys.blob over bytea, so plain resolution would fold them onto the
+-- text/oravarcharchar overloads; the rejection comes from the exact-match
+-- overloads bound to ora_lengthc_unsupported().  Those are not STRICT, so a
+-- NULL of a rejected type is a type error rather than a NULL result.
+--
+-- sys.long is deliberately still accepted: LONG is not a LOB, Oracle's LONG
+-- columns are barely usable in expressions at all, and sys.length(long)
+-- works here -- singling out lengthc would only diverge from length().
+select lengthc(cast('abc' as clob)) from dual;
+select lengthc(cast('abc' as nclob)) from dual;
+select lengthc(cast('e'||chr(769) as clob)) from dual;
+select lengthc(cast(null as clob)) from dual;
+select lengthc(cast('abc' as long)) from dual;
+-- the supported route for LOB content, and the Oracle-portable spelling
+select lengthc(cast(cast('e'||chr(769) as clob) as text)) from dual;
+
+-- (8) numeric/date overloads; binary_float and timestamptz resolve via
+-- the preferred types binary_double and oratimestamptz.
+--
+-- Oracle does not list DATE/TIMESTAMP/NUMBER as LENGTHC inputs either, but
+-- unlike the LOB types in (7) it accepts them through the generic implicit
+-- argument conversion: an instance returns LENGTHC(SYSDATE) = 19,
+-- LENGTHC(SYSTIMESTAMP) = 35, LENGTHC(192) = 3, LENGTHC(192.922) = 7.  What
+-- is pinned down here is that conversion path, and the answer depends on the
+-- NLS format -- hence the alter session below.
+--
+-- Note the alter session is not what lets lengthc take a datetime at all --
+-- LENGTHC(SYSTIMESTAMP) answers 35 off the untouched NLS_TIMESTAMP_TZ_FORMAT
+-- -- it is what makes the answer reproducible.  It also decides whether the
+-- literals below parse: run these standalone and Oracle fails inside the
+-- CAST rather than in lengthc, because the default formats are DD-MON-RR and
+-- DD-MON-RR HH.MI.SSXFF AM.  '2019-12-12' as DATE then gets ORA-01861
+-- (literal does not match format string) and as TIMESTAMP it gets ORA-01843
+-- (invalid month, from reading "19" where MON is expected).  With the
+-- formats set Oracle accepts them, as lenient as we are about a literal
+-- shorter than the format string.
+alter session set nls_date_format = 'YYYY-MM-DD HH24:MI:SS';
+alter session set nls_timestamp_format = 'YYYY-MM-DD HH24:MI:SS';
+select length(192), lengthc(192) from dual;
+select length(192.922), lengthc(192.922) from dual;
+select length(cast(192 as int2)), lengthc(cast(192 as int2)) from dual;
+select length(cast(192 as int4)), lengthc(cast(192 as int4)) from dual;
+select length(cast(192 as int8)), lengthc(cast(192 as int8)) from dual;
+select length(cast(192.922 as numeric)), lengthc(cast(192.922 as numeric)) from dual;
+select length(cast(192.922 as number)), lengthc(cast(192.922 as number)) from dual;
+select lengthc(cast(1.5 as binary_double)) from dual;
+select lengthc(cast(1.5 as binary_float)) from dual;
+select length(cast('2019-12-12' as date)), lengthc(cast('2019-12-12' as date)) from dual;
+select length(cast('2019-12-12' as timestamp)), lengthc(cast('2019-12-12' as timestamp)) from dual;
+
+-- (9) differential invariant against pg_catalog.normalize(); this pins down
+-- both the ASCII fast path and the NFC quick-check fast path at once.
+-- CHAR values must not go in here: cast(char as text) rtrims.
+select bool_and(sys.lengthc(s) = pg_catalog.length(pg_catalog.normalize(s, 'NFC'))) as lengthc_matches_nfc
+from (values ('abc'), (''), (' '), ('今天'),
+             ('e'||chr(769)), (chr(233)), (chr(2392)),
+             ('a'||chr(769)||chr(808)),
+             (chr(4370)||chr(4449)||chr(4523)),
+             (chr(119070)),
+             (repeat('a',5000)||'e'||chr(769)),
+             (repeat('今',5000)||'e'||chr(769)),
+             (repeat('e'||chr(769), 5000))
+      ) t(s);
+
+-- (10) binary input.  Oracle accepts RAW here: it goes through the same
+-- implicit conversion as (8) and counts the hex text, so
+-- LENGTHC(HEXTORAW('616263')) is 6.  IvorySQL accepts it too, via the
+-- implicit bytea -> sys.oravarcharchar cast that every sys function with an
+-- oravarcharchar overload inherits (compare sys.ltrim('abc'::bytea), which
+-- likewise yields \x616263).  We agree on the mechanism but not on the
+-- number: PG's bytea output carries the "\x" prefix, so each answer below is
+-- Oracle's plus two.  That is the cast's semantics, not lengthc's.
+-- length()/lengthb() sit this out because they have exact bytea matches.
+--
+-- BLOB is a different matter: it is a LOB, so Oracle rejects it and so do
+-- we -- see (7).
+select length(cast('ab' as raw(2))), lengthb(cast('ab' as raw(2))),
+       lengthc(cast('ab' as raw(2))) from dual;
+select length('abc'::bytea), lengthb('abc'::bytea), lengthc('abc'::bytea) from dual;
+select lengthc(cast('abc'::bytea as blob)) from dual;
+
+-- (11) lengthc() must stay IMMUTABLE on the character types, or it cannot
+-- carry an expression index.  The datetime overloads are STABLE on purpose:
+-- their answer is whatever nls_date_format says, so an index over them would
+-- go stale on the next alter session, and CREATE INDEX has to refuse it.
+--
+-- length(d) is shown alongside to record that it does NOT refuse it yet.
+-- sys.length/sys.lengthb declare their own datetime wrappers IMMUTABLE
+-- (builtin_functions--1.0.sql:1429-1448, 1470-1485) even though the cast
+-- inside them reaches the STABLE sys.oradate_out(); the wrapper hides that
+-- from contain_mutable_functions(), which never looks inside a SQL function
+-- body.  Fixing those is a separate change -- they are three whole function
+-- families' worth of user-visible behaviour -- so the asymmetry is pinned
+-- down here rather than left to be discovered.
+CREATE TABLE TEST_LENGTHC_IDX(c varchar2(50), d date);
+CREATE INDEX TEST_LENGTHC_IDX_I ON TEST_LENGTHC_IDX (lengthc(c));
+CREATE INDEX TEST_LENGTHC_IDX_D ON TEST_LENGTHC_IDX (lengthc(d));
+CREATE INDEX TEST_LENGTHC_IDX_L ON TEST_LENGTHC_IDX (length(d));
+DROP TABLE TEST_LENGTHC_IDX;
+
+/*
  * round
  */
 select round(cast(1.234 as double precision), 2), trunc(cast(1.234 as double precision), 2) from dual;

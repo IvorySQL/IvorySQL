@@ -257,7 +257,7 @@ oravarcharbyte(PG_FUNCTION_ARGS)
 	}
 	else
 	{
-		len = maxlen;
+		len = pg_mbcliplen(s_data, len, maxlen);
 	}
 
 	result = (VarChar *) palloc(len + VARHDRSZ);

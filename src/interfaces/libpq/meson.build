@@ -17,9 +17,20 @@ libpq_sources = files(
   'libpq-events.c',
   'pqexpbuffer.c',
   'ivy-exec.c',
-  'ivy_sema.c',
 )
 libpq_so_sources = [] # for shared lib, in addition to the above
+
+if cdata.has('USE_UNNAMED_POSIX_SEMAPHORES') or cdata.has('USE_NAMED_POSIX_SEMAPHORES')
+  libpq_sources += files('posix_ivysema.c')
+endif
+
+if cdata.has('USE_SYSV_SEMAPHORES')
+  libpq_sources += files('sysv_ivysema.c')
+endif
+
+if cdata.has('USE_WIN32_SEMAPHORES')
+  libpq_sources += files('win32_ivysema.c')
+endif
 
 if host_system == 'windows'
   libpq_sources += files('pthread-win32.c', 'win32.c')
@@ -27,6 +38,9 @@ if host_system == 'windows'
     '--NAME', 'libpq',
     '--FILEDESC', 'PostgreSQL Access Library',])
 endif
+
+# autoconf generates the file there, ensure we get a conflict
+generated_sources_ac += {'src/interfaces/libpq': ['ivy_sema.c']}
 
 if ssl.found()
   libpq_sources += files('fe-secure-common.c')
@@ -136,7 +150,9 @@ pkgconfig.generate(
 
 install_headers(
   'libpq-fe.h',
+  'libpq-ivy.h',
   'libpq-events.h',
+  'ivy_sema.h',
 )
 
 install_headers(

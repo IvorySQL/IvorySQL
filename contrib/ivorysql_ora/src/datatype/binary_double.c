@@ -329,3 +329,125 @@ binary_double_send(PG_FUNCTION_ARGS)
 	PG_RETURN_BYTEA_P(pq_endtypsend(&buf));
 }
 
+
+/* ---------------------------------------------------------------------------
+ * Oracle BINARY_DOUBLE arithmetic
+ *
+ * See the corresponding comment in binary_float.c.  BINARY_DOUBLE is IEEE 754
+ * binary64 and honours IEEE exception semantics, where PostgreSQL's core
+ * float8 operators deliberately raise instead.
+ *
+ * Measured against Oracle Database 21c Express Edition:
+ *
+ *		1e308d * 10		-> inf		PostgreSQL: ERROR 22003 overflow
+ *		1e-320d / 1e10	-> 0		PostgreSQL: ERROR 22003 underflow
+ *		1d / 0d			-> inf		PostgreSQL: ERROR 22012 division by zero
+ *		-1d / 0d		-> -inf
+ *		0d / 0d			-> nan
+ *		(0d - 1e-320d) / 1e10	-> 0	a positive zero: Oracle keeps no -0
+ *		1e-200d * 1e-200d	-> 0
+ *
+ * The mixed-precision variants promote to binary64 before operating, matching
+ * Oracle's numeric conversion precedence: BINARY_DOUBLE outranks BINARY_FLOAT.
+ * ------------------------------------------------------------------------- */
+
+/*
+ * Zero-sign normalisation, as in binary_float.c: Oracle keeps a single zero,
+ * so an arithmetic result of -0 becomes +0.
+ */
+static inline float8
+ora_binary_double_result(float8 result)
+{
+	if (result == 0.0)
+		result = 0.0;
+	return result;
+}
+
+PG_FUNCTION_INFO_V1(ora_binary_double_pl);
+PG_FUNCTION_INFO_V1(ora_binary_double_mi);
+PG_FUNCTION_INFO_V1(ora_binary_double_mul);
+PG_FUNCTION_INFO_V1(ora_binary_double_div);
+PG_FUNCTION_INFO_V1(ora_binary_float_double_pl);
+PG_FUNCTION_INFO_V1(ora_binary_float_double_mi);
+PG_FUNCTION_INFO_V1(ora_binary_float_double_mul);
+PG_FUNCTION_INFO_V1(ora_binary_float_double_div);
+PG_FUNCTION_INFO_V1(ora_binary_double_float_pl);
+PG_FUNCTION_INFO_V1(ora_binary_double_float_mi);
+PG_FUNCTION_INFO_V1(ora_binary_double_float_mul);
+PG_FUNCTION_INFO_V1(ora_binary_double_float_div);
+
+Datum
+ora_binary_double_pl(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_FLOAT8(ora_binary_double_result(PG_GETARG_FLOAT8(0) + PG_GETARG_FLOAT8(1)));
+}
+
+Datum
+ora_binary_double_mi(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_FLOAT8(ora_binary_double_result(PG_GETARG_FLOAT8(0) - PG_GETARG_FLOAT8(1)));
+}
+
+Datum
+ora_binary_double_mul(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_FLOAT8(ora_binary_double_result(PG_GETARG_FLOAT8(0) * PG_GETARG_FLOAT8(1)));
+}
+
+Datum
+ora_binary_double_div(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_FLOAT8(ora_binary_double_result(PG_GETARG_FLOAT8(0) / PG_GETARG_FLOAT8(1)));
+}
+
+/* binary_float OP binary_double -> binary_double */
+
+Datum
+ora_binary_float_double_pl(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_FLOAT8(ora_binary_double_result((float8) PG_GETARG_FLOAT4(0) + PG_GETARG_FLOAT8(1)));
+}
+
+Datum
+ora_binary_float_double_mi(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_FLOAT8(ora_binary_double_result((float8) PG_GETARG_FLOAT4(0) - PG_GETARG_FLOAT8(1)));
+}
+
+Datum
+ora_binary_float_double_mul(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_FLOAT8(ora_binary_double_result((float8) PG_GETARG_FLOAT4(0) * PG_GETARG_FLOAT8(1)));
+}
+
+Datum
+ora_binary_float_double_div(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_FLOAT8(ora_binary_double_result((float8) PG_GETARG_FLOAT4(0) / PG_GETARG_FLOAT8(1)));
+}
+
+/* binary_double OP binary_float -> binary_double */
+
+Datum
+ora_binary_double_float_pl(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_FLOAT8(ora_binary_double_result(PG_GETARG_FLOAT8(0) + (float8) PG_GETARG_FLOAT4(1)));
+}
+
+Datum
+ora_binary_double_float_mi(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_FLOAT8(ora_binary_double_result(PG_GETARG_FLOAT8(0) - (float8) PG_GETARG_FLOAT4(1)));
+}
+
+Datum
+ora_binary_double_float_mul(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_FLOAT8(ora_binary_double_result(PG_GETARG_FLOAT8(0) * (float8) PG_GETARG_FLOAT4(1)));
+}
+
+Datum
+ora_binary_double_float_div(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_FLOAT8(ora_binary_double_result(PG_GETARG_FLOAT8(0) / (float8) PG_GETARG_FLOAT4(1)));
+}

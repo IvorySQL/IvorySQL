@@ -670,3 +670,69 @@ number_binary_double(PG_FUNCTION_ARGS)
 
 	PG_RETURN_DATUM(result);
 }
+
+/* ---------------------------------------------------------------------------
+ * Oracle BINARY_FLOAT arithmetic
+ *
+ * Oracle's BINARY_FLOAT is IEEE 754 binary32 and honours IEEE exception
+ * semantics.  PostgreSQL's float4_pl() and friends deliberately diverge from
+ * IEEE -- they raise rather than produce Infinity or zero -- so the core
+ * float4pl/mi/mul/div functions cannot be reused for this type.
+ *
+ * Measured against Oracle Database 21c Express Edition:
+ *
+ *		3.4e38f * 10	-> inf		PostgreSQL: ERROR 22003 overflow
+ *		1e-45f / 1e10	-> 0		PostgreSQL: ERROR 22003 underflow
+ *		1f / 0f			-> inf		PostgreSQL: ERROR 22012 division by zero
+ *		0f / 0f			-> nan		PostgreSQL: ERROR 22012 division by zero
+ *
+ * These wrappers return the IEEE result directly, except that a zero result
+ * always carries a positive sign, because Oracle keeps a single zero (see
+ * ora_binary_float_result below).  The functions are declared STRICT in SQL,
+ * so NULL operands never reach here.
+ * ------------------------------------------------------------------------- */
+
+/*
+ * Oracle keeps a single zero.  IEEE 754 produces -0 from the underflow of a
+ * negative value and from multiplying zero by a negative, but Oracle returns
+ * +0 for every such case -- measured on 21c by dividing one by the result,
+ * which yields Inf, never -Inf.  Normalise the sign so the exception values
+ * match Oracle exactly.  This is the one place these wrappers depart from
+ * IEEE, and they depart to follow Oracle.
+ */
+static inline float4
+ora_binary_float_result(float4 result)
+{
+	if (result == 0.0f)
+		result = 0.0f;
+	return result;
+}
+
+PG_FUNCTION_INFO_V1(ora_binary_float_pl);
+PG_FUNCTION_INFO_V1(ora_binary_float_mi);
+PG_FUNCTION_INFO_V1(ora_binary_float_mul);
+PG_FUNCTION_INFO_V1(ora_binary_float_div);
+
+Datum
+ora_binary_float_pl(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_FLOAT4(ora_binary_float_result(PG_GETARG_FLOAT4(0) + PG_GETARG_FLOAT4(1)));
+}
+
+Datum
+ora_binary_float_mi(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_FLOAT4(ora_binary_float_result(PG_GETARG_FLOAT4(0) - PG_GETARG_FLOAT4(1)));
+}
+
+Datum
+ora_binary_float_mul(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_FLOAT4(ora_binary_float_result(PG_GETARG_FLOAT4(0) * PG_GETARG_FLOAT4(1)));
+}
+
+Datum
+ora_binary_float_div(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_FLOAT4(ora_binary_float_result(PG_GETARG_FLOAT4(0) / PG_GETARG_FLOAT4(1)));
+}
