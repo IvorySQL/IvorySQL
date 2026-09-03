@@ -38,7 +38,7 @@ from (select dbms_random.value(10, 20) as v
 -- equal VALUE bounds are rejected; reverse ranges are supported
 select dbms_random.value(10, 10) from dual;
 call dbms_random.seed(cast(99 as number));
-select min(v) >= 0 and max(v) <= 11 as reverse_range_ok
+select min(v) > 0 and max(v) <= 11 as reverse_range_ok
 from (select dbms_random.value(11, 0) as v
       from generate_series(1, 200) t) s;
 

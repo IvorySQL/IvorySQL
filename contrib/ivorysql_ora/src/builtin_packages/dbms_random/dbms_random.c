@@ -339,7 +339,7 @@ ora_dbms_random_value_range(PG_FUNCTION_ARGS)
 													NumericGetDatum(high))) == 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("the lower bound must not be greater than the upper bound")));
+				 errmsg("the two bounds must not be equal")));
 
 	ensure_seeded();
 	fraction = DatumGetNumeric(DirectFunctionCall1(float8_numeric,
