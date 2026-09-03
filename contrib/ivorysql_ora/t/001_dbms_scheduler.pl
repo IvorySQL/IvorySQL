@@ -1,0 +1,673 @@
+# Copyright 2026 IvorySQL Global Development Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# End-to-end test of DBMS_SCHEDULER background job execution: the launcher
+# and per-database scheduler workers, repeating and one-shot jobs, failure
+# logging, DISABLE, and recovery after a server restart.
+
+use strict;
+use warnings FATAL => 'all';
+
+use PostgreSQL::Test::Cluster;
+use PostgreSQL::Test::Utils;
+use Test::More;
+
+my $node = PostgreSQL::Test::Cluster->new('scheduler');
+$node->init;
+# background scheduling is off by default; this test is all about it
+$node->append_conf(
+	'postgresql.conf', qq{
+ivorysql.scheduler = on
+ivorysql.scheduler_databases = 'ivorysql'
+ivorysql.scheduler_poll_interval = 1
+ivorysql.scheduler_job_timeout = 2s
+ivorysql.scheduler_max_failures = 2
+});
+$node->start;
+
+my $db = 'ivorysql';
+
+# Oracle-syntax statements go through the oracle listener port.
+sub ora_sql
+{
+	my ($sql) = @_;
+	return $node->safe_psql($db, $sql, connect_to_oraport => 1);
+}
+
+# the launcher is registered at shared_preload time and starts one
+# database scheduler for the configured database
+$node->poll_query_until($db,
+	"SELECT count(*) > 0 FROM pg_stat_activity WHERE backend_type = 'ivorysql scheduler worker'"
+) or die "database scheduler worker did not start";
+ok(1, 'scheduler launcher and database worker started');
+
+ora_sql(q{CREATE TABLE sched_tap_t (id int, note varchar2(100))});
+
+# ---------------------------------------------------------------------
+# a repeating job runs on its calendar and sees BG_JOB_ID/SCHEDULER_JOB
+# ---------------------------------------------------------------------
+ora_sql(q{
+BEGIN
+  dbms_scheduler.create_job(job_name => 'tap_repeat', job_type => 'PLSQL_BLOCK',
+    job_action => 'BEGIN INSERT INTO sched_tap_t VALUES (1, ''bg=''||CASE WHEN SYS_CONTEXT(''USERENV'',''BG_JOB_ID'') IS NULL THEN ''unset'' ELSE ''set'' END||'' job=''||SYS_CONTEXT(''USERENV'',''SCHEDULER_JOB'')); END;',
+    repeat_interval => 'FREQ=SECONDLY;INTERVAL=2',
+    enabled => TRUE);
+END;});
+
+$node->poll_query_until($db,
+	"SELECT count(*) >= 2 FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_REPEAT' AND status = 's'"
+) or die "repeating job did not run twice";
+ok(1, 'repeating job ran at least twice in the background');
+
+is( $node->safe_psql(
+		$db,
+		"SELECT DISTINCT note FROM sched_tap_t WHERE id = 1"),
+	'bg=set job=TAP_REPEAT',
+	'BG_JOB_ID and SCHEDULER_JOB are set inside a background job');
+
+# run counts and state are maintained
+my $state = $node->safe_psql($db,
+	"SELECT enabled, state, run_count >= 2 FROM sys.scheduler_jobs WHERE job_name = 'TAP_REPEAT'"
+);
+is($state, 't|SCHEDULED|t', 'repeating job stays enabled and scheduled');
+
+# ---------------------------------------------------------------------
+# DISABLE stops future runs
+# ---------------------------------------------------------------------
+ora_sql(q{BEGIN dbms_scheduler.disable('tap_repeat'); END;});
+my $count_after_disable = $node->safe_psql($db,
+	"SELECT count(*) FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_REPEAT'");
+sleep(4);
+is( $node->safe_psql(
+		$db,
+		"SELECT count(*) FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_REPEAT'"),
+	$count_after_disable,
+	'disabled job produces no further runs');
+
+# ---------------------------------------------------------------------
+# one-shot job: runs once, then is disabled with its outcome recorded
+# ---------------------------------------------------------------------
+ora_sql(q{
+BEGIN
+  dbms_scheduler.create_job(job_name => 'tap_oneshot', job_type => 'PLSQL_BLOCK',
+    job_action => 'BEGIN INSERT INTO sched_tap_t VALUES (2, ''oneshot''); END;',
+    enabled => TRUE);
+END;});
+
+$node->poll_query_until($db,
+	"SELECT state = 'SUCCEEDED' AND NOT enabled AND run_count = 1 FROM sys.scheduler_jobs WHERE job_name = 'TAP_ONESHOT'"
+) or die "one-shot job did not complete";
+ok(1, 'one-shot job ran exactly once and was disabled');
+
+# ---------------------------------------------------------------------
+# a failing job records status 'f' with the error message
+# ---------------------------------------------------------------------
+ora_sql(q{
+BEGIN
+  dbms_scheduler.create_job(job_name => 'tap_fail', job_type => 'PLSQL_BLOCK',
+    job_action => 'DECLARE v NUMBER; BEGIN v := 1/0; END;',
+    enabled => TRUE);
+END;});
+
+$node->poll_query_until($db,
+	"SELECT count(*) = 1 FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_FAIL' AND status = 'f'"
+) or die "failing job did not record a failure";
+is( $node->safe_psql(
+		$db,
+		"SELECT state, failure_count, (SELECT error_message FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_FAIL' AND status = 'f') FROM sys.scheduler_jobs WHERE job_name = 'TAP_FAIL'"),
+	'FAILED|1|division by zero',
+	'failed job records state, failure count and error message');
+
+# ---------------------------------------------------------------------
+# a job running past scheduler_job_timeout is cancelled
+# ---------------------------------------------------------------------
+ora_sql(q{
+BEGIN
+  dbms_scheduler.create_job(job_name => 'tap_timeout', job_type => 'PLSQL_BLOCK',
+    job_action => 'SELECT pg_sleep(60)',
+    enabled => TRUE);
+END;});
+
+$node->poll_query_until($db,
+	"SELECT count(*) = 1 FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_TIMEOUT' AND status = 'f' AND error_message LIKE '%statement timeout%'"
+) or die "long-running job was not cancelled";
+ok(1, 'a job running past scheduler_job_timeout is cancelled');
+
+is( $node->safe_psql(
+		$db,
+		"SELECT state, failure_count, run_duration < '30 seconds'::pg_catalog.interval FROM sys.scheduler_jobs j JOIN sys.scheduler_job_run_details d USING (job_name) WHERE job_name = 'TAP_TIMEOUT'"),
+	'FAILED|1|t',
+	'cancelled job is recorded as failed and did not run to completion');
+
+# ---------------------------------------------------------------------
+# a repeating job is disabled once it hits scheduler_max_failures
+# ---------------------------------------------------------------------
+ora_sql(q{
+BEGIN
+  dbms_scheduler.create_job(job_name => 'tap_maxfail', job_type => 'PLSQL_BLOCK',
+    job_action => 'DECLARE v NUMBER; BEGIN v := 1/0; END;',
+    repeat_interval => 'FREQ=SECONDLY;INTERVAL=2',
+    enabled => TRUE);
+END;});
+
+$node->poll_query_until($db,
+	"SELECT NOT enabled AND state = 'FAILED' AND failure_count = 2 AND next_run_date IS NULL FROM sys.scheduler_jobs WHERE job_name = 'TAP_MAXFAIL'"
+) or die "repeatedly failing job was not disabled";
+ok(1, 'a repeating job is disabled after scheduler_max_failures failures');
+
+# ENABLE clears the count.  Read it back in the same transaction as the ENABLE,
+# so the scheduler cannot slip another failed run in between.
+ora_sql(q{
+BEGIN
+  dbms_scheduler.enable('tap_maxfail');
+  INSERT INTO sched_tap_t SELECT 5, 'fc=' || failure_count
+    FROM sys.scheduler_jobs WHERE job_name = 'TAP_MAXFAIL';
+  dbms_scheduler.disable('tap_maxfail');
+END;});
+is($node->safe_psql($db, "SELECT note FROM sched_tap_t WHERE id = 5"),
+	'fc=0', 'ENABLE clears the failure count');
+
+# ---------------------------------------------------------------------
+# STOP_JOB cancels a running job, using the worker pid on its log row
+# ---------------------------------------------------------------------
+# raise the timeout first, so the job survives long enough to be stopped
+$node->safe_psql($db,
+	"ALTER SYSTEM SET ivorysql.scheduler_job_timeout = '5min'");
+$node->reload;
+$node->poll_query_until($db,
+	"SELECT setting = '300000' FROM pg_settings WHERE name = 'ivorysql.scheduler_job_timeout'"
+) or die "raised timeout did not take effect";
+
+ora_sql(q{
+BEGIN
+  dbms_scheduler.create_job(job_name => 'tap_stop', job_type => 'PLSQL_BLOCK',
+    job_action => 'SELECT pg_sleep(300)',
+    enabled => TRUE);
+END;});
+
+$node->poll_query_until($db,
+	"SELECT count(*) = 1 FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_STOP' AND status = 'r' AND worker_pid IS NOT NULL"
+) or die "running job did not publish its worker pid";
+ok(1, 'a running job publishes its worker pid on the log row');
+
+ora_sql(q{BEGIN dbms_scheduler.stop_job('tap_stop'); END;});
+
+$node->poll_query_until($db,
+	"SELECT count(*) = 1 FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_STOP' AND status = 'f'"
+) or die "STOP_JOB did not stop the job";
+ok(1, 'STOP_JOB cancels the running job');
+
+is( $node->safe_psql(
+		$db,
+		"SELECT state, failure_count FROM sys.scheduler_jobs WHERE job_name = 'TAP_STOP'"),
+	'FAILED|1',
+	'a stopped job is recorded as a failed run');
+
+# ---------------------------------------------------------------------
+# a run that outlives its repeat interval is not joined by a second one:
+# the next run waits for it and starts as soon as it is over, and the
+# scheduled times that went by in the meantime collapse into that one run
+# ---------------------------------------------------------------------
+ora_sql(q{
+BEGIN
+  dbms_scheduler.create_job(job_name => 'tap_overlap', job_type => 'PLSQL_BLOCK',
+    job_action => 'DECLARE v NUMBER; BEGIN SELECT count(*) INTO v FROM (SELECT pg_sleep(4)) s; END;',
+    repeat_interval => 'FREQ=SECONDLY;INTERVAL=1',
+    enabled => TRUE);
+END;});
+
+# Each run takes four seconds against a one second interval, so a scheduler
+# that did not hold the job back would have four of them going at once.  A
+# claimed run is on the books as 'r' from the moment it is dispatched, which
+# is what makes this countable without racing the workers themselves.
+my $max_running = 0;
+for (1 .. 40)
+{
+	my $running = $node->safe_psql($db,
+		"SELECT count(*) FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_OVERLAP' AND status = 'r'"
+	);
+	$max_running = $running if $running > $max_running;
+	last
+	  if $node->safe_psql($db,
+		"SELECT count(*) >= 3 FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_OVERLAP' AND status = 's'"
+	  ) eq 't';
+	sleep 1;
+}
+is($max_running, 1, 'a job never has two runs going at the same time');
+
+ora_sql(q{BEGIN dbms_scheduler.disable('tap_overlap'); END;});
+
+is( $node->safe_psql(
+		$db, q{
+SELECT count(*) FROM (
+  SELECT actual_start_date,
+         lag(actual_start_date + run_duration) OVER (ORDER BY log_id) AS prev_end
+    FROM sys.scheduler_job_run_details
+   WHERE job_name = 'TAP_OVERLAP' AND status = 's') t
+ WHERE prev_end IS NOT NULL AND actual_start_date < prev_end}),
+	'0',
+	'no two runs of a job overlap in time');
+
+# The run that was held back keeps the scheduled time it was meant to start
+# at, so it starts late by about as long as the run before it took, rather
+# than waiting for the next scheduled time.  The ones in between are gone:
+# three runs of four seconds cover more than three of the one second
+# scheduled times, and there is a run for each of those three only.
+is( $node->safe_psql(
+		$db, q{
+SELECT count(*) FROM sys.scheduler_job_run_details
+ WHERE job_name = 'TAP_OVERLAP' AND status = 's'
+   AND log_id > (SELECT min(log_id) FROM sys.scheduler_job_run_details
+                  WHERE job_name = 'TAP_OVERLAP')
+   AND actual_start_date - req_start_date < '2 seconds'::pg_catalog.interval}),
+	'0',
+	'a held-back run starts right after the run before it, not on the next scheduled time');
+
+$node->poll_query_until($db,
+	"SELECT count(*) = 0 FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_OVERLAP' AND status = 'r'"
+) or die "the run in progress when the job was disabled never finished";
+
+is( $node->safe_psql(
+		$db,
+		"SELECT run_count >= 3 AND run_count = (SELECT count(*) FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_OVERLAP') FROM sys.scheduler_jobs WHERE job_name = 'TAP_OVERLAP'"
+	),
+	't',
+	'the job is counted once per run, not once per scheduled time');
+
+# ---------------------------------------------------------------------
+# a job worker that is terminated before it can record its outcome does
+# not leave the job stuck in RUNNING, which would take it out of the
+# schedule for good now that a running job is not dispatched again
+# ---------------------------------------------------------------------
+ora_sql(q{
+BEGIN
+  dbms_scheduler.create_job(job_name => 'tap_killed', job_type => 'PLSQL_BLOCK',
+    job_action => 'SELECT pg_sleep(300)',
+    repeat_interval => 'FREQ=SECONDLY;INTERVAL=2',
+    enabled => TRUE);
+END;});
+
+$node->poll_query_until($db,
+	"SELECT count(*) = 1 FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_KILLED' AND status = 'r' AND worker_pid IS NOT NULL"
+) or die "job did not start";
+
+# force => true terminates the worker, which is fatal to it: it never reaches
+# the transaction that writes the outcome of the run.
+ora_sql(q{BEGIN dbms_scheduler.stop_job('tap_killed', force => TRUE); END;});
+
+$node->poll_query_until($db,
+	"SELECT count(*) = 1 FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_KILLED' AND status = 'f' AND error_message LIKE 'job worker terminated%'"
+) or die "the terminated run was never closed out";
+ok(1, 'a run whose worker was terminated is closed out as failed');
+
+$node->poll_query_until($db,
+	"SELECT count(*) >= 2 FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_KILLED'"
+) or die "job was not scheduled again after its worker was terminated";
+ok(1, 'the job is scheduled again after its worker was terminated');
+
+ora_sql(q{
+BEGIN
+  dbms_scheduler.disable('tap_killed');
+  dbms_scheduler.stop_job('tap_killed', force => TRUE);
+END;});
+
+# ---------------------------------------------------------------------
+# nothing but the run itself clears the RUNNING state, which is what holds
+# a second instance back: DROP_PROGRAM / DROP_SCHEDULE with force disable
+# the jobs that use them, and leave a job whose run is still going alone
+# ---------------------------------------------------------------------
+ora_sql(q{
+BEGIN
+  dbms_scheduler.create_program('tap_dropprog', 'PLSQL_BLOCK', 'SELECT pg_sleep(300)');
+  dbms_scheduler.enable('tap_dropprog');
+  dbms_scheduler.create_schedule('tap_dropsched',
+      repeat_interval => 'FREQ=SECONDLY;INTERVAL=2');
+  dbms_scheduler.create_job(job_name => 'tap_dropdep',
+      program_name => 'tap_dropprog', schedule_name => 'tap_dropsched',
+      enabled => TRUE);
+END;});
+
+$node->poll_query_until($db,
+	"SELECT state = 'RUNNING' FROM sys.scheduler_jobs WHERE job_name = 'TAP_DROPDEP'"
+) or die "the job on the dropped-dependency program did not start";
+
+ora_sql(q{BEGIN dbms_scheduler.drop_schedule('tap_dropsched', force => TRUE); END;});
+is( $node->safe_psql(
+		$db,
+		"SELECT enabled, state FROM sys.scheduler_jobs WHERE job_name = 'TAP_DROPDEP'"),
+	'f|RUNNING',
+	'DROP_SCHEDULE force disables a running job without clearing RUNNING');
+
+ora_sql(q{BEGIN dbms_scheduler.drop_program('tap_dropprog', force => TRUE); END;});
+is( $node->safe_psql(
+		$db,
+		"SELECT enabled, state FROM sys.scheduler_jobs WHERE job_name = 'TAP_DROPDEP'"),
+	'f|RUNNING',
+	'DROP_PROGRAM force disables a running job without clearing RUNNING');
+
+# the run itself is what puts the state right, disabled job or not
+ora_sql(q{BEGIN dbms_scheduler.stop_job('tap_dropdep', force => TRUE); END;});
+$node->poll_query_until($db,
+	"SELECT state <> 'RUNNING' FROM sys.scheduler_jobs WHERE job_name = 'TAP_DROPDEP'"
+) or die "the disabled job was left in the RUNNING state";
+ok(1, 'the run leaves the RUNNING state behind when it ends');
+
+# ---------------------------------------------------------------------
+# a job does not wait for a poll boundary: ENABLE wakes the scheduler, and
+# each cycle then sleeps only until the job's own next run date.  Both are
+# measured against a poll interval far longer than the test is willing to
+# wait, so neither can be passed by polling.
+# ---------------------------------------------------------------------
+$node->safe_psql($db,
+	"ALTER SYSTEM SET ivorysql.scheduler_poll_interval = 30");
+$node->reload;
+$node->poll_query_until($db,
+	"SELECT setting = '30' FROM pg_settings WHERE name = 'ivorysql.scheduler_poll_interval'"
+) or die "raised poll interval did not take effect";
+# let the scheduler finish the cycle it is in and pick the new interval up
+sleep 3;
+
+my $t0 = time();
+ora_sql(q{
+BEGIN
+  dbms_scheduler.create_job(job_name => 'tap_wake', job_type => 'PLSQL_BLOCK',
+    job_action => 'BEGIN INSERT INTO sched_tap_t VALUES (9, ''wake''); END;',
+    repeat_interval => 'FREQ=SECONDLY;INTERVAL=2',
+    enabled => TRUE);
+END;});
+
+# ENABLE has to have woken the scheduler: it was sleeping out a 30 second
+# interval with nothing scheduled, so nothing else would run this job now.
+my $first = 0;
+for (1 .. 10)
+{
+	$first = $node->safe_psql($db,
+		"SELECT count(*) FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_WAKE'"
+	);
+	last if $first > 0;
+	sleep 1;
+}
+ok($first > 0 && time() - $t0 < 10,
+	'ENABLE wakes the scheduler instead of leaving the job for the next poll');
+
+# ...and the runs after it come every two seconds, which only holds if each
+# cycle sleeps to the next run date rather than to the poll interval.
+sleep 7;
+my $runs = $node->safe_psql($db,
+	"SELECT count(*) FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_WAKE'");
+ok($runs >= 3,
+	"a cycle sleeps until the next run date, not to the poll boundary ($runs runs)");
+
+ora_sql(q{BEGIN dbms_scheduler.disable('tap_wake'); END;});
+$node->safe_psql($db,
+	"ALTER SYSTEM SET ivorysql.scheduler_poll_interval = 1");
+$node->reload;
+$node->poll_query_until($db,
+	"SELECT setting = '1' FROM pg_settings WHERE name = 'ivorysql.scheduler_poll_interval'"
+) or die "restored poll interval did not take effect";
+
+# ---------------------------------------------------------------------
+# STORED_PROCEDURE job with program arguments runs in the background
+# ---------------------------------------------------------------------
+ora_sql(q{
+CREATE OR REPLACE PROCEDURE sched_tap_proc(x NUMBER, y VARCHAR2) IS
+BEGIN
+  INSERT INTO sched_tap_t VALUES (x, y);
+END;});
+ora_sql(q{
+BEGIN
+  dbms_scheduler.create_program('tap_prog', 'STORED_PROCEDURE', 'sched_tap_proc', 2);
+  dbms_scheduler.define_program_argument(program_name => 'tap_prog',
+      argument_position => 1, argument_name => 'x', argument_type => 'NUMBER');
+  dbms_scheduler.define_program_argument(program_name => 'tap_prog',
+      argument_position => 2, argument_name => 'y', argument_type => 'VARCHAR2',
+      default_value => 'prog-default');
+  dbms_scheduler.enable('tap_prog');
+  dbms_scheduler.create_schedule('tap_sched', repeat_interval => 'FREQ=SECONDLY;INTERVAL=2');
+  dbms_scheduler.create_job(job_name => 'tap_named', program_name => 'tap_prog',
+      schedule_name => 'tap_sched');
+  dbms_scheduler.set_job_argument_value('tap_named', 1, '3');
+  dbms_scheduler.enable('tap_named');
+END;});
+
+$node->poll_query_until($db,
+	"SELECT count(*) > 0 FROM sched_tap_t WHERE id = 3 AND note = 'prog-default'"
+) or die "named-program job did not run";
+ok(1, 'named-program job runs with job arguments and program defaults');
+ora_sql(q{BEGIN dbms_scheduler.disable('tap_named'); END;});
+
+# ---------------------------------------------------------------------
+# scheduling survives a server restart; interrupted 'r' rows are closed
+# ---------------------------------------------------------------------
+ora_sql(q{
+BEGIN
+  dbms_scheduler.create_job(job_name => 'tap_restart', job_type => 'PLSQL_BLOCK',
+    job_action => 'BEGIN INSERT INTO sched_tap_t VALUES (4, ''after-restart''); END;',
+    repeat_interval => 'FREQ=SECONDLY;INTERVAL=2',
+    enabled => TRUE);
+END;});
+$node->restart;
+
+$node->poll_query_until($db,
+	"SELECT count(*) >= 1 FROM sched_tap_t WHERE id = 4"
+) or die "job did not run after restart";
+ok(1, 'background scheduling resumes after a restart');
+
+is( $node->safe_psql(
+		$db,
+		"SELECT count(*) FROM sys.scheduler_job_run_details WHERE status = 'r' AND log_date < (SELECT pg_postmaster_start_time())"),
+	'0',
+	'no interrupted running-state log rows survive a restart');
+
+ora_sql(q{BEGIN dbms_scheduler.disable('tap_restart'); END;});
+
+# ---------------------------------------------------------------------
+# a job whose stored calendar cannot be parsed is taken out on its own,
+# without killing the database scheduler or the jobs queued behind it
+# ---------------------------------------------------------------------
+ora_sql(q{
+BEGIN
+  dbms_scheduler.create_job(job_name => 'tap_badcal', job_type => 'PLSQL_BLOCK',
+    job_action => 'BEGIN NULL; END;',
+    repeat_interval => 'FREQ=SECONDLY;INTERVAL=2',
+    enabled => TRUE);
+  dbms_scheduler.create_job(job_name => 'tap_survivor', job_type => 'PLSQL_BLOCK',
+    job_action => 'BEGIN NULL; END;',
+    repeat_interval => 'FREQ=SECONDLY;INTERVAL=2',
+    enabled => TRUE);
+END;});
+
+# CREATE_JOB validates the calendar, so a bad one can only be stored by writing
+# it directly.  The back-dated next_run_date also puts this job at the head of
+# the claim query's ORDER BY, ahead of tap_survivor.
+$node->safe_psql(
+	$db, q{
+UPDATE sys.scheduler_jobs
+   SET repeat_interval = 'FREQ=NOSUCHTHING',
+       next_run_date = now() - interval '1 hour'
+ WHERE job_name = 'TAP_BADCAL'});
+
+$node->poll_query_until($db,
+	"SELECT NOT enabled AND state = 'DISABLED' AND next_run_date IS NULL FROM sys.scheduler_jobs WHERE job_name = 'TAP_BADCAL'"
+) or die "job with an unparsable calendar was not disabled";
+ok(1, 'a job whose calendar cannot be parsed is disabled');
+
+# The scheduler has to still be alive, and the job that sorted behind the
+# broken one has to still be claimed rather than rolled back along with it.
+my $survived = $node->safe_psql($db,
+	"SELECT count(*) FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_SURVIVOR' AND status = 's'"
+);
+$node->poll_query_until($db,
+	"SELECT count(*) > $survived FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_SURVIVOR' AND status = 's'"
+) or die "database scheduler stopped claiming other jobs";
+ok(1, 'the database scheduler keeps running the remaining jobs');
+
+ora_sql(q{BEGIN dbms_scheduler.disable('tap_survivor'); END;});
+
+# ---------------------------------------------------------------------
+# expired run history is purged automatically, on its own schedule
+# ---------------------------------------------------------------------
+# The real schedule is daily, which a test cannot wait for, so it is moved to
+# every second.  A retention of one day is likewise beyond waiting for, so the
+# rows to purge are given an age directly.
+$node->safe_psql($db, q{
+INSERT INTO sys.scheduler_job_run_details (job_owner, job_name, status, log_date)
+  VALUES ('tap_purge_owner', 'TAP_PURGE_OLD', 's', now() - '10 days'::pg_catalog.interval),
+         ('tap_purge_owner', 'TAP_PURGE_NEW', 's', now())});
+
+$node->safe_psql($db,
+	"ALTER SYSTEM SET ivorysql.scheduler_log_history = 5");
+$node->safe_psql($db,
+	"ALTER SYSTEM SET ivorysql.scheduler_purge_schedule = 'FREQ=SECONDLY'");
+$node->reload;
+$node->poll_query_until($db,
+	"SELECT setting = 'FREQ=SECONDLY' FROM pg_settings WHERE name = 'ivorysql.scheduler_purge_schedule'"
+) or die "purge schedule did not take effect";
+
+$node->poll_query_until($db,
+	"SELECT count(*) = 0 FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_PURGE_OLD'"
+) or die "expired log row was not purged";
+ok(1, 'the scheduler purges log rows older than scheduler_log_history');
+
+is( $node->safe_psql(
+		$db,
+		"SELECT count(*) FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_PURGE_NEW'"),
+	'1',
+	'a log row inside the retention window is kept');
+
+# A run in progress must survive whatever its age: the worker that owns the row
+# is still going to write its outcome there.
+$node->safe_psql($db, q{
+INSERT INTO sys.scheduler_job_run_details (job_owner, job_name, status, log_date)
+  VALUES ('tap_purge_owner', 'TAP_PURGE_LIVE', 'r', now() - '10 days'::pg_catalog.interval)});
+sleep(3);
+is( $node->safe_psql(
+		$db,
+		"SELECT count(*) FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_PURGE_LIVE'"),
+	'1',
+	'a run still in progress is never purged, however old its row');
+
+# ---------------------------------------------------------------------
+# a malformed purge schedule is reported and the default used, rather than
+# taking the database's scheduling down with it
+# ---------------------------------------------------------------------
+# Calendar syntax errors are not in the transient class, so an unguarded
+# evaluation would exit this worker for good and the launcher does not restart
+# one that quit.  A typo in a retention setting must not be able to stop jobs.
+my $logpos = -s $node->logfile;
+$node->safe_psql($db,
+	"ALTER SYSTEM SET ivorysql.scheduler_purge_schedule = 'FREQ=NOSUCHTHING'");
+$node->reload;
+
+$node->wait_for_log(
+	qr/ignoring ivorysql\.scheduler_purge_schedule, using "FREQ=DAILY/,
+	$logpos)
+  or die "malformed purge schedule was not reported";
+ok(1, 'a malformed purge schedule falls back to the default');
+
+# the scheduler has to still be there, and still running jobs
+ora_sql(q{BEGIN dbms_scheduler.enable('tap_survivor'); END;});
+my $alive = $node->safe_psql($db,
+	"SELECT count(*) FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_SURVIVOR' AND status = 's'"
+);
+$node->poll_query_until($db,
+	"SELECT count(*) > $alive FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_SURVIVOR' AND status = 's'"
+) or die "database scheduler stopped after a bad purge schedule";
+ok(1, 'a malformed purge schedule does not stop job scheduling');
+ora_sql(q{BEGIN dbms_scheduler.disable('tap_survivor'); END;});
+
+# put purging back where the rest of the test expects it
+$node->safe_psql($db,
+	"ALTER SYSTEM RESET ivorysql.scheduler_purge_schedule");
+$node->safe_psql($db,
+	"ALTER SYSTEM RESET ivorysql.scheduler_log_history");
+$node->reload;
+
+# ---------------------------------------------------------------------
+# a database scheduler that stops on its own is reported once and left
+# stopped; reloading the configuration retries it
+# ---------------------------------------------------------------------
+$logpos = -s $node->logfile;
+
+# a database that does not exist yet: the worker starts, fails to connect and
+# is gone, which is what the launcher has to notice
+$node->safe_psql($db,
+	"ALTER SYSTEM SET ivorysql.scheduler_databases = 'ivorysql,sched_late'"
+);
+$node->reload;
+
+$node->wait_for_log(qr/scheduler for database "sched_late" stopped; not restarting it/,
+	$logpos)
+  or die "launcher did not report the stopped scheduler";
+ok(1, 'a database scheduler that stops on its own is reported');
+
+# The launcher cycles every 10s, so this covers several cycles.  Any retry
+# would log the same line again.
+sleep 25;
+
+# Every reload retries the database, and a reload is not a signal aimed at the
+# scheduler, so the retry has to stay quiet about a cause that has not changed.
+$node->reload;
+$node->poll_query_until($db, 'SELECT true') or die "node did not come back";
+sleep 12;    # one more launcher cycle, enough to reach the verdict again
+
+my $reports = () = (PostgreSQL::Test::Utils::slurp_file($node->logfile, $logpos) =~
+	  /scheduler for database "sched_late" stopped; not restarting it/g);
+is($reports, 1, 'the stopped scheduler is reported once across retries');
+
+# creating the database is not enough on its own - the retry needs a reload
+$node->safe_psql($db, 'CREATE DATABASE sched_late');
+$logpos = -s $node->logfile;
+$node->reload;
+
+$node->wait_for_log(qr/ivorysql scheduler started for database "sched_late"/, $logpos)
+  or die "reload did not retry the database given up on";
+ok(1, 'reloading the configuration retries a database given up on');
+
+# ---------------------------------------------------------------------
+# an error that cannot clear up on its own ends the worker on the first
+# report instead of being retried until the cycle limit
+# ---------------------------------------------------------------------
+$node->safe_psql($db, 'CREATE DATABASE sched_broken');
+$logpos = -s $node->logfile;
+$node->safe_psql($db,
+	"ALTER SYSTEM SET ivorysql.scheduler_databases = 'ivorysql,sched_late,sched_broken'"
+);
+$node->reload;
+$node->wait_for_log(qr/ivorysql scheduler started for database "sched_broken"/,
+	$logpos)
+  or die "scheduler for sched_broken did not start";
+
+# Renaming the table the dispatch query reads makes every cycle fail with
+# undefined_table, which no amount of waiting fixes.  Views track the table by
+# OID, so they follow the rename rather than breaking.
+$logpos = -s $node->logfile;
+$node->safe_psql('sched_broken',
+	'ALTER TABLE sys.scheduler_jobs RENAME TO scheduler_jobs_gone');
+
+$node->wait_for_log(qr/scheduler for database "sched_broken" cannot continue, exiting/,
+	$logpos)
+  or die "worker did not exit on an error that cannot clear up";
+ok(1, 'an error that cannot clear up ends the worker');
+
+my $errors = () = (PostgreSQL::Test::Utils::slurp_file($node->logfile, $logpos) =~
+	  /scheduler metadata table "sys\.scheduler_jobs" does not exist/g);
+is($errors, 1, 'such an error is reported once, not retried to the cycle limit');
+
+$node->wait_for_log(qr/scheduler for database "sched_broken" stopped; not restarting it/,
+	$logpos)
+  or die "launcher did not give up on the broken database";
+ok(1, 'the launcher gives up on the database whose scheduler could not continue');
+
+done_testing();
