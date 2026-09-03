@@ -315,8 +315,8 @@ ora_dbms_random_value(PG_FUNCTION_ARGS)
 /*
  * DBMS_RANDOM.VALUE(low, high)
  *
- * Returns a random NUMBER in [low, high).  An empty or inverted range cannot
- * satisfy that contract, so report an equivalent parameter error.
+ * Returns a random NUMBER in [low, high) or (high, low] for a reverse range.
+ * Equal bounds do not define a range.
  */
 Datum
 ora_dbms_random_value_range(PG_FUNCTION_ARGS)
@@ -335,8 +335,8 @@ ora_dbms_random_value_range(PG_FUNCTION_ARGS)
 	high = PG_GETARG_NUMERIC(1);
 
 	if (DatumGetInt32(DirectFunctionCall2(numeric_cmp,
-											NumericGetDatum(low),
-											NumericGetDatum(high))) >= 0)
+													NumericGetDatum(low),
+													NumericGetDatum(high))) == 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("the lower bound must not be greater than the upper bound")));
