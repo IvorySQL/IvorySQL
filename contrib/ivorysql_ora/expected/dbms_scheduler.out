@@ -748,7 +748,7 @@ PL/iSQL function sys.dbms_scheduler.enable line 117 at PERFORM
 SQL statement "CALL dbms_scheduler.enable('reg_job_named', commit_semantics => 'WHENEVER')"
 PL/iSQL function inline_code_block line 2 at CALL
 -- Enabling a job warns when it will not run automatically, which depends on
--- ivorysql_ora.scheduler and ivorysql_ora.scheduler_databases in the instance
+-- ivorysql.scheduler and ivorysql.scheduler_databases in the instance
 -- under test.  Silence it so the expected output is stable either way.
 SET client_min_messages TO error;
 BEGIN

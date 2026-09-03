@@ -47,15 +47,15 @@
  * anywhere near INT_MAX would not.
  *
  * Note that PURGE_LOG's log_history argument and the
- * ivorysql_ora.scheduler_log_history GUC share this limit and share Oracle's
+ * ivorysql.scheduler_log_history GUC share this limit and share Oracle's
  * reading of zero, which is "keep no history" - not "do not purge".  Turning
  * automatic purging off is done by emptying
- * ivorysql_ora.scheduler_purge_schedule instead.
+ * ivorysql.scheduler_purge_schedule instead.
  */
 #define SCHED_MAX_LOG_HISTORY	1000000
 
 /*
- * When automatic purging runs, unless ivorysql_ora.scheduler_purge_schedule
+ * When automatic purging runs, unless ivorysql.scheduler_purge_schedule
  * says otherwise.  Oracle does not document the time its own purge job keeps,
  * only that it purges "once per day"; this is the interval its
  * DAILY_PURGE_SCHEDULE is shipped with, so a DBA who knows Oracle finds the

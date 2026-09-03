@@ -29,15 +29,15 @@
  * list that may also name job classes.
  *
  * Background scheduling is off by default.  Jobs run automatically only when
- * ivorysql_ora is preloaded (the oracle-mode default), ivorysql_ora.scheduler
- * is set to on, and the database is listed in ivorysql_ora.scheduler_databases.
+ * ivorysql_ora is preloaded (the oracle-mode default), ivorysql.scheduler
+ * is set to on, and the database is listed in ivorysql.scheduler_databases.
  * Everything else in the package works regardless: RUN_JOB executes a job
  * synchronously in the current session.
  *
  * Job run history is purged automatically by each database's scheduler:
- * ivorysql_ora.scheduler_log_history sets how many days to keep (Oracle's
+ * ivorysql.scheduler_log_history sets how many days to keep (Oracle's
  * log_history, and zero means the same thing it does there - keep none), and
- * ivorysql_ora.scheduler_purge_schedule says when to purge, as a calendaring
+ * ivorysql.scheduler_purge_schedule says when to purge, as a calendaring
  * expression, or turns purging off when empty.  PURGE_LOG purges on demand.
  *
  * contrib/ivorysql_ora/src/builtin_packages/dbms_scheduler/dbms_scheduler--1.0.sql
