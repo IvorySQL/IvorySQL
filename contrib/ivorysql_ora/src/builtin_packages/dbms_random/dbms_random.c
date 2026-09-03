@@ -42,8 +42,8 @@
 
 #include "../../include/ivorysql_ora.h"
 
-/* Oracle's BINARY_INTEGER range for RANDOM() */
-#define DBMS_RANDOM_MAX_STRING_LEN	32767
+/* Oracle's DBMS_RANDOM.STRING() maximum length */
+#define DBMS_RANDOM_MAX_STRING_LEN	4000
 
 /* Per-backend generator state */
 static pg_prng_state random_state;
@@ -203,17 +203,26 @@ ora_dbms_random_string(PG_FUNCTION_ARGS)
 	const char *charset;
 	size_t		chrset_size;
 	StringInfoData str;
-	char	   *opt;
+	const char *opt;
+	Numeric		truncated_len;
 	int			len;
 	int			i;
 
-	if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
+	if (PG_ARGISNULL(1))
 		ereport(ERROR,
 				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
 				 errmsg("an argument is NULL")));
 
-	opt = text_to_cstring(PG_GETARG_TEXT_PP(0));
-	if (opt[0] == '\0' || opt[1] != '\0')
+	if (PG_ARGISNULL(0))
+		opt = "U";
+	else
+	{
+		opt = text_to_cstring(PG_GETARG_TEXT_PP(0));
+		if (opt[0] == '\0')
+			opt = "U";
+	}
+
+	if (opt[1] != '\0')
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("the character class must be a single character: u, l, a, x or p")));
@@ -252,16 +261,23 @@ ora_dbms_random_string(PG_FUNCTION_ARGS)
 			break;
 	}
 
-	len = DatumGetInt32(DirectFunctionCall1(numeric_int4,
-												NumericGetDatum(PG_GETARG_NUMERIC(1))));
-	if (len < 0)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("the length must not be negative")));
-	if (len > DBMS_RANDOM_MAX_STRING_LEN)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("the length must not exceed %d", DBMS_RANDOM_MAX_STRING_LEN)));
+	truncated_len = DatumGetNumeric(DirectFunctionCall2(numeric_trunc,
+															NumericGetDatum(PG_GETARG_NUMERIC(1)),
+															Int32GetDatum(0)));
+	if (DatumGetInt32(DirectFunctionCall2(numeric_cmp,
+														NumericGetDatum(truncated_len),
+														DirectFunctionCall1(int4_numeric,
+																			Int32GetDatum(0)))) <= 0)
+		PG_RETURN_NULL();
+
+	if (DatumGetInt32(DirectFunctionCall2(numeric_cmp,
+														NumericGetDatum(truncated_len),
+														DirectFunctionCall1(int4_numeric,
+																			Int32GetDatum(DBMS_RANDOM_MAX_STRING_LEN)))) > 0)
+		len = DBMS_RANDOM_MAX_STRING_LEN;
+	else
+		len = DatumGetInt32(DirectFunctionCall1(numeric_int4,
+														NumericGetDatum(truncated_len)));
 
 	ensure_seeded();
 

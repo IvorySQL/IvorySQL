@@ -55,13 +55,22 @@ select dbms_random.string('A', 8) as alpha_mixed;
 select dbms_random.string('X', 8) as upper_alnum;
 select dbms_random.string('P', 8) as printable;
 
--- string of length 0 is empty
-select length(dbms_random.string('U', 0)) as empty_len;
+-- Oracle-compatible STRING NULL, length, and option behavior
+select dbms_random.string(null, null) from dual;
+select dbms_random.string(null, -1) is null as null_opt_negative_len_is_null from dual;
+select dbms_random.string('U', 0) is null as zero_len_is_null from dual;
+select dbms_random.string(null, 5) ~ '^[A-Z]{5}$' as null_opt_is_upper from dual;
+select dbms_random.string('', 5) ~ '^[A-Z]{5}$' as empty_opt_is_upper from dual;
+select length(dbms_random.string('U', '12')) as text_len;
+select length(dbms_random.string('U', 1e2)) as exponent_len;
+select length(dbms_random.string('U', '1e2')) as text_exponent_len;
+select length(dbms_random.string('U', 11.22)) as fractional_len;
+select length(dbms_random.string('U', '32767')) as capped_text_len;
+select length(dbms_random.string('U', '32768')) as capped_text_len_over;
 
 -- unknown character classes default to uppercase; malformed input is rejected
 select dbms_random.string('Z', 4) ~ '^[A-Z]{4}$' as unknown_class_is_upper from dual;
 select dbms_random.string('UU', 4) from dual;
-select dbms_random.string('U', -1) from dual;
 
 -- NULL numeric seeds do not enter the C numeric conversion path
 call dbms_random.initialize(cast(NULL as number));

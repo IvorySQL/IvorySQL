@@ -203,7 +203,8 @@ reject_alter_role_dbtimezone(Node *parsetree)
 /*
  * ProcessUtility hook to intercept DISCARD ALL/PACKAGES commands and
  * ALTER ROLE ... SET ivorysql.dbtimezone.
- * Resets DBMS_OUTPUT buffer state after DISCARD ALL/PACKAGES executes.
+ * Resets DBMS_OUTPUT buffer state, DBMS_SESSION context, and DBMS_RANDOM
+ * generator state after DISCARD ALL/PACKAGES executes.
  */
 static void
 ivorysql_ora_ProcessUtility(PlannedStmt *pstmt,
@@ -237,7 +238,7 @@ ivorysql_ora_ProcessUtility(PlannedStmt *pstmt,
 		standard_ProcessUtility(pstmt, queryString, readOnlyTree,
 								context, params, queryEnv, dest, qc);
 
-	/* Reset DBMS_OUTPUT buffer and DBMS_SESSION context after DISCARD ALL/PACKAGES */
+	/* Reset DBMS_OUTPUT, DBMS_SESSION, and DBMS_RANDOM after DISCARD ALL/PACKAGES */
 	if (is_discard_reset)
 	{
 		ora_dbms_output_reset();

@@ -55,6 +55,8 @@ extern void ora_dbms_output_reset(void);
 
 /* DBMS_SESSION */
 extern void ora_dbms_session_reset(void);
+
+/* DBMS_RANDOM */
 extern void ora_dbms_random_reset(void);
 
 #endif	/* IVORYSQL_ORA_H_ */
