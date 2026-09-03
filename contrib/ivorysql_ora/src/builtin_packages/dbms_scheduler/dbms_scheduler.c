@@ -607,7 +607,7 @@ sched_check_args_complete(const char *job_owner, const char *job_name,
 }
 
 /*
- * Is the current database covered by ivorysql_ora.scheduler_databases?
+ * Is the current database covered by ivorysql.scheduler_databases?
  *
  * Only used to warn about jobs that will never fire, so a malformed list
  * counts as "not covered"; the launcher reports the syntax error itself.
@@ -875,12 +875,12 @@ sched_enable_job(const SchedName *job)
 		ereport(WARNING,
 				(errmsg("the scheduler background launcher is not running; job \"%s\".\"%s\" will not run automatically",
 						job->owner, job->name),
-				 errhint("Add ivorysql_ora to shared_preload_libraries and set ivorysql_ora.scheduler = on.")));
+				 errhint("Add ivorysql_ora to shared_preload_libraries and set ivorysql.scheduler = on.")));
 	else if (!sched_current_database_is_scheduled())
 		ereport(WARNING,
 				(errmsg("database \"%s\" is not scheduled; job \"%s\".\"%s\" will not run automatically",
 						get_database_name(MyDatabaseId), job->owner, job->name),
-				 errhint("Add the database to ivorysql_ora.scheduler_databases.")));
+				 errhint("Add the database to ivorysql.scheduler_databases.")));
 	else
 		sched_request_scheduler_wakeup();
 }

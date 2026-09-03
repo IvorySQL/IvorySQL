@@ -140,7 +140,7 @@ IvorysqlOraDefineGucs(void)
 								NULL);
 
 	/* DBMS_SCHEDULER background scheduling */
-	DefineCustomBoolVariable("ivorysql_ora.scheduler",
+	DefineCustomBoolVariable("ivorysql.scheduler",
 							 "Enables the DBMS_SCHEDULER background launcher.",
 							 NULL,
 							 &scheduler_enabled,
@@ -149,7 +149,7 @@ IvorysqlOraDefineGucs(void)
 							 0,
 							 NULL, NULL, NULL);
 
-	DefineCustomStringVariable("ivorysql_ora.scheduler_databases",
+	DefineCustomStringVariable("ivorysql.scheduler_databases",
 							   "Databases in which DBMS_SCHEDULER jobs are executed.",
 							   "Comma-separated list of database names."
 							   "  An empty list schedules jobs in no database.",
@@ -159,7 +159,7 @@ IvorysqlOraDefineGucs(void)
 							   GUC_LIST_INPUT,
 							   NULL, NULL, NULL);
 
-	DefineCustomIntVariable("ivorysql_ora.scheduler_poll_interval",
+	DefineCustomIntVariable("ivorysql.scheduler_poll_interval",
 							"Interval between DBMS_SCHEDULER job polls, in seconds.",
 							NULL,
 							&scheduler_poll_interval,
@@ -170,7 +170,7 @@ IvorysqlOraDefineGucs(void)
 							GUC_UNIT_S,
 							NULL, NULL, NULL);
 
-	DefineCustomIntVariable("ivorysql_ora.scheduler_max_job_workers",
+	DefineCustomIntVariable("ivorysql.scheduler_max_job_workers",
 							"Maximum concurrent DBMS_SCHEDULER job workers per database.",
 							NULL,
 							&scheduler_max_job_workers,
@@ -181,7 +181,7 @@ IvorysqlOraDefineGucs(void)
 							0,
 							NULL, NULL, NULL);
 
-	DefineCustomIntVariable("ivorysql_ora.scheduler_max_failures",
+	DefineCustomIntVariable("ivorysql.scheduler_max_failures",
 							"Disables a DBMS_SCHEDULER job after this many consecutive failed background runs.",
 							"Zero disables the limit.  ENABLE clears a job's"
 							" failure count, as it does in Oracle.",
@@ -193,7 +193,7 @@ IvorysqlOraDefineGucs(void)
 							0,
 							NULL, NULL, NULL);
 
-	DefineCustomIntVariable("ivorysql_ora.scheduler_job_timeout",
+	DefineCustomIntVariable("ivorysql.scheduler_job_timeout",
 							"Cancels a background DBMS_SCHEDULER job that runs longer than this.",
 							"Zero disables the limit.  Only background runs are"
 							" affected; RUN_JOB obeys the calling session's"
@@ -206,11 +206,11 @@ IvorysqlOraDefineGucs(void)
 							GUC_UNIT_MS,
 							NULL, NULL, NULL);
 
-	DefineCustomIntVariable("ivorysql_ora.scheduler_log_history",
+	DefineCustomIntVariable("ivorysql.scheduler_log_history",
 							"Days of DBMS_SCHEDULER job run history to keep.",
 							"Zero keeps no history, as Oracle's log_history"
 							" attribute does; automatic purging is turned off"
-							" by emptying ivorysql_ora.scheduler_purge_schedule"
+							" by emptying ivorysql.scheduler_purge_schedule"
 							" instead.",
 							&scheduler_log_history,
 							30,
@@ -220,7 +220,7 @@ IvorysqlOraDefineGucs(void)
 							0,
 							NULL, NULL, NULL);
 
-	DefineCustomStringVariable("ivorysql_ora.scheduler_purge_schedule",
+	DefineCustomStringVariable("ivorysql.scheduler_purge_schedule",
 							   "When the scheduler purges expired job run history.",
 							   "An Oracle calendaring expression, like a job's"
 							   " repeat_interval.  Empty turns automatic purging"

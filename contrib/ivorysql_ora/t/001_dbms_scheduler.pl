@@ -28,11 +28,11 @@ $node->init;
 # background scheduling is off by default; this test is all about it
 $node->append_conf(
 	'postgresql.conf', qq{
-ivorysql_ora.scheduler = on
-ivorysql_ora.scheduler_databases = 'ivorysql'
-ivorysql_ora.scheduler_poll_interval = 1
-ivorysql_ora.scheduler_job_timeout = 2s
-ivorysql_ora.scheduler_max_failures = 2
+ivorysql.scheduler = on
+ivorysql.scheduler_databases = 'ivorysql'
+ivorysql.scheduler_poll_interval = 1
+ivorysql.scheduler_job_timeout = 2s
+ivorysql.scheduler_max_failures = 2
 });
 $node->start;
 
@@ -183,10 +183,10 @@ is($node->safe_psql($db, "SELECT note FROM sched_tap_t WHERE id = 5"),
 # ---------------------------------------------------------------------
 # raise the timeout first, so the job survives long enough to be stopped
 $node->safe_psql($db,
-	"ALTER SYSTEM SET ivorysql_ora.scheduler_job_timeout = '5min'");
+	"ALTER SYSTEM SET ivorysql.scheduler_job_timeout = '5min'");
 $node->reload;
 $node->poll_query_until($db,
-	"SELECT setting = '300000' FROM pg_settings WHERE name = 'ivorysql_ora.scheduler_job_timeout'"
+	"SELECT setting = '300000' FROM pg_settings WHERE name = 'ivorysql.scheduler_job_timeout'"
 ) or die "raised timeout did not take effect";
 
 ora_sql(q{
@@ -370,10 +370,10 @@ ok(1, 'the run leaves the RUNNING state behind when it ends');
 # wait, so neither can be passed by polling.
 # ---------------------------------------------------------------------
 $node->safe_psql($db,
-	"ALTER SYSTEM SET ivorysql_ora.scheduler_poll_interval = 30");
+	"ALTER SYSTEM SET ivorysql.scheduler_poll_interval = 30");
 $node->reload;
 $node->poll_query_until($db,
-	"SELECT setting = '30' FROM pg_settings WHERE name = 'ivorysql_ora.scheduler_poll_interval'"
+	"SELECT setting = '30' FROM pg_settings WHERE name = 'ivorysql.scheduler_poll_interval'"
 ) or die "raised poll interval did not take effect";
 # let the scheduler finish the cycle it is in and pick the new interval up
 sleep 3;
@@ -411,10 +411,10 @@ ok($runs >= 3,
 
 ora_sql(q{BEGIN dbms_scheduler.disable('tap_wake'); END;});
 $node->safe_psql($db,
-	"ALTER SYSTEM SET ivorysql_ora.scheduler_poll_interval = 1");
+	"ALTER SYSTEM SET ivorysql.scheduler_poll_interval = 1");
 $node->reload;
 $node->poll_query_until($db,
-	"SELECT setting = '1' FROM pg_settings WHERE name = 'ivorysql_ora.scheduler_poll_interval'"
+	"SELECT setting = '1' FROM pg_settings WHERE name = 'ivorysql.scheduler_poll_interval'"
 ) or die "restored poll interval did not take effect";
 
 # ---------------------------------------------------------------------
@@ -527,12 +527,12 @@ INSERT INTO sys.scheduler_job_run_details (job_owner, job_name, status, log_date
          ('tap_purge_owner', 'TAP_PURGE_NEW', 's', now())});
 
 $node->safe_psql($db,
-	"ALTER SYSTEM SET ivorysql_ora.scheduler_log_history = 5");
+	"ALTER SYSTEM SET ivorysql.scheduler_log_history = 5");
 $node->safe_psql($db,
-	"ALTER SYSTEM SET ivorysql_ora.scheduler_purge_schedule = 'FREQ=SECONDLY'");
+	"ALTER SYSTEM SET ivorysql.scheduler_purge_schedule = 'FREQ=SECONDLY'");
 $node->reload;
 $node->poll_query_until($db,
-	"SELECT setting = 'FREQ=SECONDLY' FROM pg_settings WHERE name = 'ivorysql_ora.scheduler_purge_schedule'"
+	"SELECT setting = 'FREQ=SECONDLY' FROM pg_settings WHERE name = 'ivorysql.scheduler_purge_schedule'"
 ) or die "purge schedule did not take effect";
 
 $node->poll_query_until($db,
@@ -567,11 +567,11 @@ is( $node->safe_psql(
 # one that quit.  A typo in a retention setting must not be able to stop jobs.
 my $logpos = -s $node->logfile;
 $node->safe_psql($db,
-	"ALTER SYSTEM SET ivorysql_ora.scheduler_purge_schedule = 'FREQ=NOSUCHTHING'");
+	"ALTER SYSTEM SET ivorysql.scheduler_purge_schedule = 'FREQ=NOSUCHTHING'");
 $node->reload;
 
 $node->wait_for_log(
-	qr/ignoring ivorysql_ora\.scheduler_purge_schedule, using "FREQ=DAILY/,
+	qr/ignoring ivorysql\.scheduler_purge_schedule, using "FREQ=DAILY/,
 	$logpos)
   or die "malformed purge schedule was not reported";
 ok(1, 'a malformed purge schedule falls back to the default');
@@ -589,9 +589,9 @@ ora_sql(q{BEGIN dbms_scheduler.disable('tap_survivor'); END;});
 
 # put purging back where the rest of the test expects it
 $node->safe_psql($db,
-	"ALTER SYSTEM RESET ivorysql_ora.scheduler_purge_schedule");
+	"ALTER SYSTEM RESET ivorysql.scheduler_purge_schedule");
 $node->safe_psql($db,
-	"ALTER SYSTEM RESET ivorysql_ora.scheduler_log_history");
+	"ALTER SYSTEM RESET ivorysql.scheduler_log_history");
 $node->reload;
 
 # ---------------------------------------------------------------------
@@ -603,7 +603,7 @@ $logpos = -s $node->logfile;
 # a database that does not exist yet: the worker starts, fails to connect and
 # is gone, which is what the launcher has to notice
 $node->safe_psql($db,
-	"ALTER SYSTEM SET ivorysql_ora.scheduler_databases = 'ivorysql,sched_late'"
+	"ALTER SYSTEM SET ivorysql.scheduler_databases = 'ivorysql,sched_late'"
 );
 $node->reload;
 
@@ -642,7 +642,7 @@ ok(1, 'reloading the configuration retries a database given up on');
 $node->safe_psql($db, 'CREATE DATABASE sched_broken');
 $logpos = -s $node->logfile;
 $node->safe_psql($db,
-	"ALTER SYSTEM SET ivorysql_ora.scheduler_databases = 'ivorysql,sched_late,sched_broken'"
+	"ALTER SYSTEM SET ivorysql.scheduler_databases = 'ivorysql,sched_late,sched_broken'"
 );
 $node->reload;
 $node->wait_for_log(qr/ivorysql scheduler started for database "sched_broken"/,

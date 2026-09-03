@@ -19,15 +19,15 @@
  *
  * A single launcher process (registered at shared_preload time) starts one
  * database scheduler worker for every database listed in
- * ivorysql_ora.scheduler_databases.  Each database scheduler scans
+ * ivorysql.scheduler_databases.  Each database scheduler scans
  * sys.scheduler_jobs for due jobs, advances their next run date, writes a
  * 'r' (running) log row and spawns a job worker per due job, capped by
- * ivorysql_ora.scheduler_max_job_workers.
+ * ivorysql.scheduler_max_job_workers.
  *
  * A scan is not on a fixed timer.  Each cycle ends by sleeping until the time
  * the next job is actually due, so a job starts when its own schedule says
  * rather than at whatever poll boundary comes after it;
- * ivorysql_ora.scheduler_poll_interval is the longest such sleep, not the
+ * ivorysql.scheduler_poll_interval is the longest such sleep, not the
  * period.  A job enabled while that sleep is under way is not in the deadline
  * it was computed from, so ENABLE wakes this process through its latch (see
  * sched_request_scheduler_wakeup()).  That wake-up is best effort and the
@@ -189,7 +189,7 @@ scheduler_database_list(void)
 	if (!SplitIdentifierString(rawstring, ',', &elemlist))
 	{
 		ereport(WARNING,
-				(errmsg("invalid list syntax in ivorysql_ora.scheduler_databases")));
+				(errmsg("invalid list syntax in ivorysql.scheduler_databases")));
 		list_free(elemlist);
 		pfree(rawstring);
 		return NIL;
@@ -204,7 +204,7 @@ scheduler_database_list(void)
 		if (strlen(dbname) >= NAMEDATALEN)
 		{
 			ereport(WARNING,
-					(errmsg("database name \"%s\" in ivorysql_ora.scheduler_databases is too long",
+					(errmsg("database name \"%s\" in ivorysql.scheduler_databases is too long",
 							dbname)));
 			continue;
 		}
@@ -779,7 +779,7 @@ scheduler_cleanup_orphans(void)
  * thrown, and that is the whole reason this is a function.  Calendar syntax
  * errors are ERRCODE_INVALID_PARAMETER_VALUE, which sched_error_is_transient()
  * quite correctly does not forgive, so an unguarded evaluation would make a
- * typo in ivorysql_ora.scheduler_purge_schedule exit this database's
+ * typo in ivorysql.scheduler_purge_schedule exit this database's
  * scheduler - and the launcher does not restart one that quit.  A misspelled
  * retention schedule must not be able to stop the jobs.
  *
@@ -820,7 +820,7 @@ sched_next_purge_time(TimestampTz after)
 		FlushErrorState();
 
 		ereport(LOG,
-				(errmsg("ivorysql scheduler: ignoring ivorysql_ora.scheduler_purge_schedule, using \"%s\" instead",
+				(errmsg("ivorysql scheduler: ignoring ivorysql.scheduler_purge_schedule, using \"%s\" instead",
 						SCHED_DEFAULT_PURGE_SCHEDULE),
 				 errdetail_internal("%s", edata->message)));
 		FreeErrorData(edata);
@@ -840,7 +840,7 @@ sched_next_purge_time(TimestampTz after)
 }
 
 /*
- * Delete job run history that has outlived ivorysql_ora.scheduler_log_history.
+ * Delete job run history that has outlived ivorysql.scheduler_log_history.
  *
  * Sets *drained when nothing purgeable is left, so that a first purge of a
  * table that has been accumulating since before this feature existed can be

@@ -422,7 +422,7 @@ BEGIN
 END;
 /
 -- Enabling a job warns when it will not run automatically, which depends on
--- ivorysql_ora.scheduler and ivorysql_ora.scheduler_databases in the instance
+-- ivorysql.scheduler and ivorysql.scheduler_databases in the instance
 -- under test.  Silence it so the expected output is stable either way.
 SET client_min_messages TO error;
 BEGIN
