@@ -47,7 +47,9 @@ SELECT vsize('你好'::text);
      6
 (1 row)
 
--- numeric data
+-- numeric data: byte length in Oracle's internal NUMBER format
+-- (one exponent byte, one mantissa byte per two significant decimal
+-- digits, plus a terminator byte for negative values; zero is one byte)
 SELECT vsize(0::number);
  vsize 
 -------
@@ -75,13 +77,13 @@ SELECT vsize(1.23::number);
 SELECT vsize(123::int4);
  vsize 
 -------
-     4
+     3
 (1 row)
 
 SELECT vsize(123::int8);
  vsize 
 -------
-     8
+     3
 (1 row)
 
 SELECT vsize(1.23::float8);
@@ -94,6 +96,50 @@ SELECT vsize('NaN'::float8);
  vsize 
 -------
      8
+(1 row)
+
+-- NUMBER-format boundaries, values cross-checked against Oracle:
+-- trailing zeros are not stored, negatives carry a terminator byte
+SELECT vsize(100);
+ vsize 
+-------
+     2
+(1 row)
+
+SELECT vsize(1000000);
+ vsize 
+-------
+     2
+(1 row)
+
+SELECT vsize(-1);
+ vsize 
+-------
+     3
+(1 row)
+
+SELECT vsize(-1200);
+ vsize 
+-------
+     3
+(1 row)
+
+SELECT vsize(12345.67);
+ vsize 
+-------
+     5
+(1 row)
+
+SELECT vsize(0.0000000001);
+ vsize 
+-------
+     2
+(1 row)
+
+SELECT vsize(12345678901234567890123456789012345678);
+ vsize 
+-------
+    20
 (1 row)
 
 -- other fixed-width types
