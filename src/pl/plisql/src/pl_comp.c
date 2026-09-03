@@ -1941,9 +1941,100 @@ resolve_column_ref(ParseState *pstate, PLiSQL_expr * expr,
                              errhint("Use double quotes to quote it."),
 							 parser_errposition(pstate, cref->location)));
 			}
+			else if (nnames == 1 && name3 != NULL)
+			{
+				/*
+				 * "v.field.subfield" as a read: v matched unqualified as
+				 * the record itself (nnames == 1, not block-qualified), so
+				 * name2 names a first-level field of v and name3 names a
+				 * field of THAT field's own composite value. Core SQL's
+				 * assignment-target machinery already handles this kind of
+				 * multi-level indirection natively when v.field is an
+				 * assignment target; this is the read-side (expression)
+				 * equivalent, which plisql must build for itself since it
+				 * hands the whole expression to the core parser as a
+				 * ColumnRef. Find/build the first-level RECFIELD, and if
+				 * its own type is a resolvable composite, wrap it in a
+				 * FieldSelect for the second-level field instead of giving
+				 * up (which would surface as a generic "invalid
+				 * identifier" even though the type is fully known).
+				 */
+				PLiSQL_rec *rec = (PLiSQL_rec *) estate->datums[nse->itemno];
+				int			i;
+
+				i = rec->firstfield;
+				while (i >= 0)
+				{
+					PLiSQL_recfield *fld = (PLiSQL_recfield *) estate->datums[i];
+
+					Assert(fld->dtype == PLISQL_DTYPE_RECFIELD &&
+						   fld->recparentno == nse->itemno);
+					if (strcmp(fld->fieldname, name2) == 0)
+					{
+						Oid			ftypeid;
+						int32		ftypmod;
+						Oid			fcollation;
+
+						plisql_exec_get_datum_type_info(estate,
+														(PLiSQL_datum *) fld,
+														&ftypeid, &ftypmod, &fcollation);
+
+						if (type_is_rowtype(ftypeid))
+						{
+							TupleDesc	tupdesc;
+							int			attnum;
+
+							/*
+							 * noError: ftypeid/ftypmod may be a rowtype
+							 * whose structure isn't resolvable here (e.g.
+							 * an anonymous RECORDOID with no blessed
+							 * typmod) without that being a real error --
+							 * fall through to "not composite, or no
+							 * matching subfield" instead of erroring out
+							 * of the parse.
+							 */
+							tupdesc = lookup_rowtype_tupdesc_noerror(ftypeid, ftypmod, true);
+							if (tupdesc != NULL)
+							{
+								for (attnum = 0; attnum < tupdesc->natts; attnum++)
+								{
+									Form_pg_attribute attr = TupleDescAttr(tupdesc, attnum);
+
+									if (attr->attisdropped)
+										continue;
+									if (strcmp(NameStr(attr->attname), name3) == 0)
+									{
+										FieldSelect *fselect = makeNode(FieldSelect);
+
+										/*
+										 * Only now, with a confirmed match,
+										 * register this datum in
+										 * expr->paramnos -- registering it
+										 * earlier would leave a stray unused
+										 * paramno set if no subfield matched.
+										 */
+										fselect->arg = (Expr *) make_datum_param(expr, i, cref->location);
+										fselect->fieldnum = attr->attnum;
+										fselect->resulttype = attr->atttypid;
+										fselect->resulttypmod = attr->atttypmod;
+										fselect->resultcollid = attr->attcollation;
+										ReleaseTupleDesc(tupdesc);
+										return (Node *) fselect;
+									}
+								}
+								ReleaseTupleDesc(tupdesc);
+							}
+						}
+						/* not composite, or no matching subfield */
+						break;
+					}
+					i = fld->nextfield;
+				}
+			}
 			break;
 		case PLISQL_NSTYPE_SUBPROC_FUNC:
 		case PLISQL_NSTYPE_SUBPROC_PROC:
+		case PLISQL_NSTYPE_ROWTYPE:
 			break;
 		default:
 			elog(ERROR, "unrecognized plisql itemtype: %d", nse->itemtype);
@@ -2045,6 +2136,7 @@ plisql_parse_word(char *paramname, char *word1, const char *yytxt, bool lookup,
 
 				case PLISQL_NSTYPE_SUBPROC_FUNC:
 				case PLISQL_NSTYPE_SUBPROC_PROC:
+				case PLISQL_NSTYPE_ROWTYPE:
 					break;
 
 				default:
@@ -2314,6 +2406,7 @@ plisql_parse_tripword(char *paramname, char *word1, char *word2, char *word3,
 						PLiSQL_recfield *new;
 
 						rec = (PLiSQL_rec *) (plisql_Datums[ns->itemno]);
+
 						if (nnames == 1)
 						{
 							/*
@@ -2434,6 +2527,15 @@ plisql_parse_wordtype(char *ident)
 				return dtype;
 			case PLISQL_NSTYPE_REC:
 				return ((PLiSQL_rec *) (plisql_Datums[nse->itemno]))->datatype;
+			case PLISQL_NSTYPE_ROWTYPE:
+
+				/*
+				 * A "TYPE ... IS RECORD" declaration isn't a variable, so
+				 * "rec_t%TYPE" (where rec_t names the declaration itself,
+				 * not a variable of that type) doesn't resolve here; fall
+				 * through to the "does not exist" error below.
+				 */
+				break;
 			default:
 				break;
 		}
@@ -3325,32 +3427,48 @@ plisql_finish_datums(PLiSQL_function * function)
 {
 	Size		copiable_size = 0;
 	int			i;
+	bool		datums_updated = false;
 
 	/*
 	 * maybe compile a package body which function->ndatums is not null
+	 *
+	 * Package-body compilation seeds plisql_Datums from function->datums
+	 * (see package_body_init()); every other function->item != NULL target
+	 * starts with zero datums. So when the count is unchanged here, it's
+	 * already the same array we'd be copying back -- skip re-copying it.
 	 */
 	if (function->item != NULL)
 	{
 		Assert(function->ndatums <= plisql_nDatums);
 
-		if (function->ndatums == plisql_nDatums)
-			return;
-		if (function->ndatums != 0)
-			function->datums = repalloc(function->datums,
-								sizeof(PLiSQL_datum *) * plisql_nDatums);
-		else
-			function->datums = palloc_array(PLiSQL_datum *, plisql_nDatums);
-		function->ndatums = plisql_nDatums;
+		if (function->ndatums != plisql_nDatums)
+		{
+			if (function->ndatums != 0)
+				function->datums = repalloc(function->datums,
+									sizeof(PLiSQL_datum *) * plisql_nDatums);
+			else
+				function->datums = palloc_array(PLiSQL_datum *, plisql_nDatums);
+			function->ndatums = plisql_nDatums;
+			datums_updated = true;
+		}
 	}
 	else
 	{
 		function->ndatums = plisql_nDatums;
 		function->datums = palloc_array(PLiSQL_datum *, plisql_nDatums);
+		datums_updated = true;
 	}
-	for (i = 0; i < plisql_nDatums; i++)
-	{
-		function->datums[i] = plisql_Datums[i];
 
+	/* Copy datums from global array if they were updated */
+	if (datums_updated)
+	{
+		for (i = 0; i < plisql_nDatums; i++)
+			function->datums[i] = plisql_Datums[i];
+	}
+
+	/* Always recalculate copiable_size to account for new datums being added */
+	for (i = 0; i < function->ndatums; i++)
+	{
 		/* This must agree with copy_plisql_datums on what is copiable */
 		switch (function->datums[i]->dtype)
 		{

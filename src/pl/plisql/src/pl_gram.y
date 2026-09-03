@@ -275,6 +275,8 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location, YYSTYPE *yylv
 %type <stmt> ora_pl_package
 %type <str> ora_first_opt_block_label
 %type <boolean> opt_ora_decl_start
+%type <list>	record_attr_list
+%type <datum>	record_attr
 
 /*
  * Basic non-keyword token types.  These are hard-wired into the core lexer.
@@ -380,6 +382,7 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location, YYSTYPE *yylv
 %token <keyword>	K_NOT
 %token <keyword>	K_NOTICE
 %token <keyword>	K_NULL
+%token <keyword>	K_OF
 %token <keyword>	K_OPEN
 %token <keyword>	K_OPTION
 %token <keyword>	K_OR
@@ -400,6 +403,7 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location, YYSTYPE *yylv
 %token <keyword>	K_PROCEDURE
 %token <keyword>	K_QUERY
 %token <keyword>	K_RAISE
+%token <keyword>	K_RECORD
 %token <keyword>	K_RELATIVE
 %token <keyword>	K_RELIES_ON
 %token <keyword>	K_RESULT_CACHE
@@ -740,7 +744,108 @@ decl_stmt		: decl_statement
 					}
 				;
 
-decl_statement	: decl_varname decl_const decl_datatype decl_collate decl_notnull decl_defval
+decl_statement	: K_TYPE decl_varname K_IS K_RECORD '('
+					{ plisql_ns_push($2.name, PLISQL_LABEL_OTHER); }
+				  record_attr_list ')' ';'
+					{
+						PLiSQL_row *new;
+						int i;
+						ListCell *l;
+
+						/* pop local namespace for record fields */
+						plisql_ns_pop();
+
+						new = palloc0(sizeof(PLiSQL_row));
+						new->dtype = PLISQL_DTYPE_ROW;
+						new->refname = pstrdup($2.name);
+						new->lineno = plisql_location_to_lineno(@1, yyscanner);
+						new->rowtupdesc = NULL;
+						new->nfields = list_length($7);
+						new->fieldnames = palloc(new->nfields * sizeof(char *));
+						new->varnos = palloc(new->nfields * sizeof(int));
+
+						i = 0;
+						foreach (l, $7)
+						{
+							PLiSQL_variable *arg = (PLiSQL_variable *) lfirst(l);
+							Assert(!arg->isconst);
+							new->fieldnames[i] = arg->refname;
+							new->varnos[i] = arg->dno;
+							i++;
+						}
+						list_free($7);
+
+						/*
+						 * Build and bless a TupleDesc so this record type has a
+						 * known structure (typmod) that can be used to instantiate
+						 * record variables of this type at runtime without requiring
+						 * a full row assignment first.
+						 */
+						{
+							TupleDesc tupdesc = CreateTemplateTupleDesc(new->nfields);
+							for (i = 0; i < new->nfields; i++)
+							{
+								PLiSQL_datum *fdatum = plisql_Datums[new->varnos[i]];
+								Oid typoid;
+								int32 typmod;
+								Oid typcoll;
+
+								if (fdatum->dtype == PLISQL_DTYPE_VAR)
+								{
+									PLiSQL_var *fvar = (PLiSQL_var *) fdatum;
+									typoid = fvar->datatype->typoid;
+									typmod = fvar->datatype->atttypmod;
+									typcoll = fvar->datatype->collation;
+								}
+								else if (fdatum->dtype == PLISQL_DTYPE_REC)
+								{
+									/*
+									 * A field whose own declared type is
+									 * itself composite (any named composite
+									 * type, or another TYPE ... IS RECORD)
+									 * is built by plisql_build_variable() as
+									 * a PLiSQL_rec, not a PLiSQL_var. Carry
+									 * its real typoid/typmod through so the
+									 * field is a fully resolvable composite
+									 * type (a real catalog type, or
+									 * RECORDOID plus its own blessed
+									 * typmod), both for whole-field
+									 * assignment and for nested field
+									 * access via resolve_column_ref()'s
+									 * FieldSelect construction.
+									 */
+									PLiSQL_rec *frec = (PLiSQL_rec *) fdatum;
+
+									typoid = frec->rectypeid;
+									typmod = (frec->datatype != NULL) ? frec->datatype->atttypmod : -1;
+									typcoll = InvalidOid;
+								}
+								else
+								{
+									typoid = RECORDOID;
+									typmod = -1;
+									typcoll = InvalidOid;
+								}
+								TupleDescInitEntry(tupdesc, (AttrNumber)(i + 1),
+												   new->fieldnames[i], typoid, typmod, 0);
+								TupleDescInitEntryCollation(tupdesc, (AttrNumber)(i + 1), typcoll);
+							}
+							TupleDescFinalize(tupdesc);
+							new->rowtupdesc = BlessTupleDesc(tupdesc);
+						}
+
+						plisql_adddatum((PLiSQL_datum *) new);
+						plisql_ns_additem(PLISQL_NSTYPE_ROWTYPE, new->dno, new->refname);
+					}
+				| K_TYPE decl_varname K_IS K_TABLE K_OF decl_datatype ';'
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("\"TYPE %s IS TABLE OF\" is not supported",
+										$2.name),
+								 parser_errposition(@1)));
+					}
+				| decl_varname decl_const decl_datatype decl_collate decl_notnull decl_defval
 					{
 						PLiSQL_variable	*var;
 
@@ -947,6 +1052,52 @@ opt_scrollable :
 				| K_SCROLL
 					{
 						$$ = CURSOR_OPT_SCROLL;
+					}
+				;
+
+record_attr_list : record_attr
+					{
+						$$ = list_make1($1);
+					}
+				| record_attr_list ',' record_attr
+					{
+						$$ = lappend($1, $3);
+					}
+				;
+
+record_attr		: decl_varname decl_datatype decl_notnull arg_decl_defval
+					{
+						PLiSQL_variable	*var;
+
+						/*
+						 * Per-field DEFAULT and NOT NULL are parsed but not
+						 * yet backed by any storage or enforcement: a
+						 * PLiSQL_row (the TYPE ... IS RECORD declaration
+						 * itself) has no per-field default array, and
+						 * nothing applies these defaults when a record
+						 * variable of this type is instantiated. Silently
+						 * accepting and discarding DEFAULT is a correctness
+						 * hazard, and accepting NOT NULL without ever being
+						 * able to satisfy it crashes at instantiation time
+						 * (the same "parser should have rejected NOT NULL"
+						 * invariant that decl_statement's plain variable
+						 * declaration enforces at compile time). Reject both
+						 * clearly instead, matching the "TYPE ... IS TABLE
+						 * OF" stub just above.
+						 */
+						if ($4 != NULL)
+							ereport(ERROR,
+									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+									 errmsg("DEFAULT is not supported for TYPE ... IS RECORD fields"),
+									 parser_errposition(@4)));
+						if ($3)
+							ereport(ERROR,
+									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+									 errmsg("NOT NULL is not supported for TYPE ... IS RECORD fields"),
+									 parser_errposition(@3)));
+
+						var = plisql_build_variable($1.name, $1.lineno, $2, true);
+						$$ = (PLiSQL_datum *) var;
 					}
 				;
 
@@ -3337,6 +3488,7 @@ unreserved_keyword	:
 				| K_NO
 				| K_NOCOPY
 				| K_NOTICE
+				| K_OF
 				| K_OPEN
 				| K_OPTION
 				| K_OUT
@@ -3355,6 +3507,7 @@ unreserved_keyword	:
 				| K_PRIOR
 				| K_QUERY
 				| K_RAISE
+				| K_RECORD
 				| K_RELATIVE
 				| K_RELIES_ON
 				| K_RESULT_CACHE
@@ -3373,7 +3526,6 @@ unreserved_keyword	:
 				| K_TABLE
 				| K_TABLE_NAME
 				| K_TRIGGER
-				| K_TYPE
 				| K_USE_COLUMN
 				| K_USE_VARIABLE
 				| K_USING_NLS_COMP
@@ -3764,6 +3916,7 @@ read_datatype(int tok, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 	char	   *type_name;
 	int			startlocation;
 	PLiSQL_type *result = NULL;
+	PLiSQL_nsitem *rcns = NULL;
 	int			parenlevel = 0;
 
 	/* Should only be called while parsing DECLARE sections */
@@ -3794,6 +3947,32 @@ read_datatype(int tok, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 			else if (tok_is_keyword(tok, yylvalp,
 									K_ROWTYPE, "rowtype"))
 				result = plisql_parse_wordrowtype(dtname);
+		}
+		else
+		{
+			rcns = plisql_ns_lookup(plisql_ns_top(), false, dtname, NULL, NULL, NULL);
+
+			/* handle the record type defined in PL block */
+			if (rcns && rcns->itemtype == PLISQL_NSTYPE_ROWTYPE)
+			{
+				PLiSQL_row *rtype = (PLiSQL_row *) plisql_Datums[rcns->itemno];
+
+				/*
+				 * Use the blessed TupleDesc's typmod so that variables of
+				 * this type carry enough structure information to be
+				 * instantiated without a prior full-row assignment.
+				 */
+				int32 rec_typmod = (rtype->rowtupdesc != NULL)
+								   ? rtype->rowtupdesc->tdtypmod
+								   : -1;
+				result = plisql_build_datatype(RECORDOID, rec_typmod,
+											   InvalidOid, NULL);
+				if (result)
+				{
+					plisql_push_back_token(tok, yylvalp, yyllocp, yyscanner);
+					return result;
+				}
+			}
 		}
 	}
 	else if (plisql_token_is_unreserved_keyword(tok))
@@ -4935,6 +5114,22 @@ parse_datatype(const char *string, int location, yyscan_t yyscanner)
 		pfree(refname);
 		result = plisql_parse_package_type(newtypName, parse_by_pkg_type, true);
 		pfree(newtypName);
+
+		/* If not found in standard, try the current package's own types */
+		if (result == NULL && plisql_compile_packageitem != NULL)
+		{
+			const char *pkgname = plisql_compile_packageitem->source.fn_signature;
+			const char *quoted_pkgname = quote_identifier(pkgname);
+			size_t pkglen = strlen(quoted_pkgname) + 1 + strlen(string) + 1;
+			char *pkgrefname = (char *) palloc0(pkglen);
+			TypeName *pkgtypName;
+
+			snprintf(pkgrefname, pkglen, "%s.%s", quoted_pkgname, string);
+			pkgtypName = typeStringToTypeName(pkgrefname, NULL);
+			pfree(pkgrefname);
+			result = plisql_parse_package_type(pkgtypName, parse_by_pkg_type, true);
+			pfree(pkgtypName);
+		}
 	}
 	else
 		result = plisql_parse_package_type(typeName, parse_by_pkg_type, false);
