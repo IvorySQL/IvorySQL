@@ -607,6 +607,122 @@ SELECT NVL (NULL, ()$!~);--报错
 
 
 --
+--LNNVL
+--
+--Truth table from the Oracle documentation: a = 2, b = NULL
+create table lnnvl_tb (a int, b int);
+insert into lnnvl_tb values (2, NULL);
+SELECT LNNVL(a = 1) FROM lnnvl_tb;
+SELECT LNNVL(a = 2) FROM lnnvl_tb;
+SELECT LNNVL(a IS NULL) FROM lnnvl_tb;
+SELECT LNNVL(b = 1) FROM lnnvl_tb;
+SELECT LNNVL(b IS NULL) FROM lnnvl_tb;
+SELECT LNNVL(a = b) FROM lnnvl_tb;
+drop table lnnvl_tb;
+
+--LNNVL and the plain condition partition the table, so rows whose
+--condition is unknown are not lost by both of them
+create table lnnvl_tb (id int, v numeric);
+insert into lnnvl_tb values (1,0.30),(2,0.10),(3,NULL),(4,0.25),(5,NULL);
+SELECT count(*) FROM lnnvl_tb WHERE v >= 0.2;
+SELECT count(*) FROM lnnvl_tb WHERE LNNVL(v >= 0.2);
+SELECT count(*) FROM lnnvl_tb;
+
+--NOT IN over a subquery containing NULL matches nothing, LNNVL avoids that
+create table lnnvl_bl (d int);
+insert into lnnvl_bl values (1), (NULL);
+SELECT count(*) FROM lnnvl_tb WHERE id NOT IN (SELECT d FROM lnnvl_bl);
+SELECT count(*) FROM lnnvl_tb WHERE LNNVL(id IN (SELECT d FROM lnnvl_bl));
+
+--As the WHEN condition of a searched CASE expression
+SELECT id, CASE WHEN LNNVL(v >= 0.2) THEN 'kept' ELSE 'dropped' END FROM lnnvl_tb ORDER BY id;
+
+--Inside a view; unlike a grammar-level rewrite, the function call is
+--preserved verbatim in the stored rule
+create view lnnvl_vw as SELECT id FROM lnnvl_tb WHERE LNNVL(v >= 0.2);
+SELECT pg_get_viewdef('lnnvl_vw'::regclass, true);
+drop view lnnvl_vw;
+drop table lnnvl_bl;
+drop table lnnvl_tb;
+
+--Inside PL/iSQL
+create or replace function lnnvl_f(p int) returns text as $$
+begin
+  if LNNVL(p > 1) then return 'true-branch'; else return 'false-branch'; end if;
+end;
+$$ language plisql;
+/
+
+SELECT lnnvl_f(0), lnnvl_f(5), lnnvl_f(NULL);
+drop function lnnvl_f(int);
+
+--Condition forms that are accepted
+SELECT LNNVL('ab' LIKE 'a%');
+SELECT LNNVL('ab' NOT LIKE 'a%');
+SELECT LNNVL(NULL IS NULL);
+SELECT LNNVL(NULL IS NOT NULL);
+SELECT LNNVL(1 <> 1);
+--A subquery is accepted, unlike a value list
+SELECT LNNVL(1 IN (SELECT 1 FROM dual));
+SELECT LNNVL(1 NOT IN (SELECT 2 FROM dual));
+SELECT LNNVL(EXISTS (SELECT 1 FROM dual));
+SELECT LNNVL(1 = ANY (SELECT 1 FROM dual));
+--LNNVL of an LNNVL
+SELECT LNNVL(LNNVL(1 = 2));
+
+--LNNVL is a plain function, not a keyword, so the name is still free
+--for use as a column name
+create table lnnvl_kw (lnnvl int);
+insert into lnnvl_kw values (7);
+SELECT lnnvl FROM lnnvl_kw;
+drop table lnnvl_kw;
+
+--A NULL argument must yield true.  This is what makes LNNVL useful, and it
+--only holds because sys.lnnvl is not declared STRICT
+SELECT LNNVL(NULL);
+SELECT LNNVL(NULL::pg_catalog.bool);
+
+--Oracle's grammar rejects the following forms, since it accepts only a single
+--simple condition.  Implementing LNNVL as an ordinary function makes IvorySQL
+--accept a superset: any boolean expression works, so these all return a value
+--rather than raising an error.  Anything that runs on Oracle keeps running
+--here; the reverse is not guaranteed.
+SELECT LNNVL(1 = 1 AND 2 = 2);
+SELECT LNNVL(1 = 1 OR 2 = 2);
+SELECT LNNVL((1 = 1 AND 2 = 2));
+SELECT LNNVL(1 BETWEEN 0 AND 5);
+SELECT LNNVL(1 NOT BETWEEN 0 AND 5);
+SELECT LNNVL(NOT (1 = 1));
+SELECT LNNVL(NOT (1 = 1 AND 2 = 2));
+SELECT LNNVL(NOT EXISTS (SELECT 1 FROM dual));
+SELECT LNNVL(1 IN (1,2));
+SELECT LNNVL(1 NOT IN (1,2));
+
+--The argument still has to be a boolean; there is no integer overload and no
+--implicit cast from integer
+SELECT LNNVL(1);--error
+
+--A compound condition is written as several LNNVL calls combined
+--with AND/OR
+SELECT LNNVL(1 = 1) OR LNNVL(2 = 3);
+SELECT LNNVL(1 = 1) AND LNNVL(2 = 3);
+SELECT NOT LNNVL(1 = 1);
+create table lnnvl_tb (a int, b int);
+insert into lnnvl_tb values (2, NULL), (1, 1), (NULL, 2);
+SELECT count(*) FROM lnnvl_tb WHERE LNNVL(a > 1) OR LNNVL(b < 2);
+drop table lnnvl_tb;
+
+--In PostgreSQL mode sys is not in the implicit search_path, so the unqualified
+--name does not resolve.  Being an ordinary function, it is still reachable when
+--schema-qualified -- unlike a grammar-level implementation, which no lexer in
+--PostgreSQL mode would recognise at all
+SET ivorysql.compatible_mode = pg;
+SELECT lnnvl(1 = 2);--error
+SELECT sys.lnnvl(1 = 2);
+RESET ivorysql.compatible_mode;
+
+
+--
 --NVL2
 --
 --expr1为空

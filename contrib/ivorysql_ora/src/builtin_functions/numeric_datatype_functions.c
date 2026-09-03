@@ -28,12 +28,25 @@
  */
 
 #include "postgres.h"
+#include <math.h>
 #include "fmgr.h"
+#include "utils/builtins.h"
 #include "utils/formatting.h"
 #include "utils/numeric.h"
 
+/* Functions implemented in contrib/ivorysql_ora/src/datatype/binary_float.c and contrib/ivorysql_ora/src/datatype/binary_double.c */
+extern Datum binary_float_in(PG_FUNCTION_ARGS);
+extern Datum binary_double_in(PG_FUNCTION_ARGS);
+extern Datum number_binary_float(PG_FUNCTION_ARGS);
+extern Datum number_binary_double(PG_FUNCTION_ARGS);
+
 PG_FUNCTION_INFO_V1(number_bitand);
 PG_FUNCTION_INFO_V1(ora_to_number);
+PG_FUNCTION_INFO_V1(number_nanvl);
+PG_FUNCTION_INFO_V1(binary_float_nanvl);
+PG_FUNCTION_INFO_V1(binary_double_nanvl);
+PG_FUNCTION_INFO_V1(ora_to_binary_float);
+PG_FUNCTION_INFO_V1(ora_to_binary_double);
 
 
 Datum
@@ -66,4 +79,224 @@ ora_to_number(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 	else
 		PG_RETURN_NUMERIC(result);
+}
+
+/*
+ * number_nanvl
+ * Oracle NANVL(expr1, expr2) for NUMBER: returns expr2 when expr1
+ * is NaN, otherwise returns expr1. PostgreSQL's numeric type (unlike
+ * Oracle's NUMBER) can hold a NaN value, so this reuses the existing
+ * numeric_is_nan() rather than assuming expr1 is never NaN.
+ *
+ * Oracle only inspects expr1: expr2 is evaluated (and thus only
+ * matters) when expr1 is NaN, so this function cannot be STRICT --
+ * a NULL expr2 must not force a NULL result when expr1 is a normal
+ * (non-NaN) value.
+ */
+Datum
+number_nanvl(PG_FUNCTION_ARGS)
+{
+	Numeric		arg1;
+
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+
+	arg1 = PG_GETARG_NUMERIC(0);
+
+	if (!numeric_is_nan(arg1))
+		PG_RETURN_NUMERIC(arg1);
+
+	if (PG_ARGISNULL(1))
+		PG_RETURN_NULL();
+
+	PG_RETURN_NUMERIC(PG_GETARG_NUMERIC(1));
+}
+
+/*
+ * binary_float_nanvl
+ * Oracle NANVL(expr1, expr2) for BINARY_FLOAT: returns expr2 when
+ * expr1 is NaN, otherwise returns expr1. See number_nanvl() for why
+ * this cannot be STRICT.
+ */
+Datum
+binary_float_nanvl(PG_FUNCTION_ARGS)
+{
+	float4		arg1;
+
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+
+	arg1 = PG_GETARG_FLOAT4(0);
+
+	if (!isnan(arg1))
+		PG_RETURN_FLOAT4(arg1);
+
+	if (PG_ARGISNULL(1))
+		PG_RETURN_NULL();
+
+	PG_RETURN_FLOAT4(PG_GETARG_FLOAT4(1));
+}
+
+/*
+ * binary_double_nanvl
+ * Oracle NANVL(expr1, expr2) for BINARY_DOUBLE: returns expr2 when
+ * expr1 is NaN, otherwise returns expr1. See number_nanvl() for why
+ * this cannot be STRICT.
+ */
+Datum
+binary_double_nanvl(PG_FUNCTION_ARGS)
+{
+	float8		arg1;
+
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+
+	arg1 = PG_GETARG_FLOAT8(0);
+
+	if (!isnan(arg1))
+		PG_RETURN_FLOAT8(arg1);
+
+	if (PG_ARGISNULL(1))
+		PG_RETURN_NULL();
+
+	PG_RETURN_FLOAT8(PG_GETARG_FLOAT8(1));
+}
+
+/*
+ * ora_to_binary_float_internal
+ * Convert a character string, with an optional number format model, to a
+ * single-precision floating-point value in the same manner as Oracle's
+ * TO_BINARY_FLOAT function.
+ *
+ * When a format model is supplied, the string is first converted to a
+ * NUMBER value using the same number format model logic as TO_NUMBER,
+ * and then that value is converted to BINARY_FLOAT.  Otherwise the string
+ * is parsed directly as a floating-point literal, which also accepts the
+ * Oracle special values 'NaN', 'Infinity' (or 'INF') and their negations.
+ */
+static float4
+ora_to_binary_float_internal(text *value, text *fmt, bool *isnull)
+{
+	Datum		result;
+
+	*isnull = false;
+
+	if (fmt)
+	{
+		Numeric		num = ora_to_number_internal(value, fmt);
+
+		if (num == NULL)
+		{
+			*isnull = true;
+			return (float4) 0;
+		}
+
+		result = DirectFunctionCall1(number_binary_float,
+									 NumericGetDatum(num));
+	}
+	else
+	{
+		char	   *numstr = text_to_cstring(value);
+
+		result = DirectFunctionCall1(binary_float_in,
+									 CStringGetDatum(numstr));
+		pfree(numstr);
+	}
+
+	return DatumGetFloat4(result);
+}
+
+/*
+ * ora_to_binary_double_internal
+ * Convert a character string, with an optional number format model, to a
+ * double-precision floating-point value in the same manner as Oracle's
+ * TO_BINARY_DOUBLE function.
+ *
+ * This is the double-precision counterpart of
+ * ora_to_binary_float_internal().
+ */
+static float8
+ora_to_binary_double_internal(text *value, text *fmt, bool *isnull)
+{
+	Datum		result;
+
+	*isnull = false;
+
+	if (fmt)
+	{
+		Numeric		num = ora_to_number_internal(value, fmt);
+
+		if (num == NULL)
+		{
+			*isnull = true;
+			return (float8) 0;
+		}
+
+		result = DirectFunctionCall1(number_binary_double,
+									 NumericGetDatum(num));
+	}
+	else
+	{
+		char	   *numstr = text_to_cstring(value);
+
+		result = DirectFunctionCall1(binary_double_in,
+									 CStringGetDatum(numstr));
+		pfree(numstr);
+	}
+
+	return DatumGetFloat8(result);
+}
+
+/*
+ * ora_to_binary_float
+ * Oracle compatible TO_BINARY_FLOAT function.
+ *
+ * Converts a character string to a value of BINARY_FLOAT data type.
+ * The optional second argument is a number format model that describes
+ * how the character string should be interpreted.
+ */
+Datum
+ora_to_binary_float(PG_FUNCTION_ARGS)
+{
+	text	   *value = PG_GETARG_TEXT_P(0);
+	text	   *fmt = NULL;
+	float4		result;
+	bool		isnull;
+
+	if (PG_NARGS() > 1)
+		fmt = PG_GETARG_TEXT_P(1);
+
+	result = ora_to_binary_float_internal(value, fmt, &isnull);
+
+	if (isnull)
+		PG_RETURN_NULL();
+
+	PG_RETURN_FLOAT4(result);
+}
+
+/*
+ * ora_to_binary_double
+ * Oracle compatible TO_BINARY_DOUBLE function.
+ *
+ * Converts a character string to a value of BINARY_DOUBLE data type.
+ * The optional second argument is a number format model that describes
+ * how the character string should be interpreted.
+ */
+Datum
+ora_to_binary_double(PG_FUNCTION_ARGS)
+{
+	text	   *value = PG_GETARG_TEXT_P(0);
+	text	   *fmt = NULL;
+	float8		result;
+	bool		isnull;
+
+	if (PG_NARGS() > 1)
+		fmt = PG_GETARG_TEXT_P(1);
+
+	result = ora_to_binary_double_internal(value, fmt, &isnull);
+
+	if (isnull)
+		PG_RETURN_NULL();
+
+	PG_RETURN_FLOAT8(result);
 }

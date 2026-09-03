@@ -1048,7 +1048,7 @@ findDependentObjects(const ObjectAddress *object,
 
 					if (foundDep->deptype == DEPENDENCY_TYPE)
 					{
-						/* Add function Oid to the dependancy-oids list */
+						/* Add function Oid to the dependency-oids list */
 						if (numDependentFuncPkgOids >= maxDependentFuncPkgOids)
 						{
 							/* enlarge array if needed */
@@ -1071,7 +1071,7 @@ findDependentObjects(const ObjectAddress *object,
 
 					if (foundDep->deptype == DEPENDENCY_TYPE)
 					{
-						/* Add package Oid to the dependancy-oids list */
+						/* Add package Oid to the dependency-oids list */
 						if (numDependentFuncPkgOids >= maxDependentFuncPkgOids)
 						{
 							/* enlarge array if needed */
@@ -1093,7 +1093,7 @@ findDependentObjects(const ObjectAddress *object,
 
 					if (foundDep->deptype == DEPENDENCY_TYPE)
 					{
-						/* Add package body Oid to the dependancy-oids list */
+						/* Add package body Oid to the dependency-oids list */
 						if (numDependentFuncPkgOids >= maxDependentFuncPkgOids)
 						{
 							/* enlarge array if needed */
@@ -1180,7 +1180,7 @@ findDependentObjects(const ObjectAddress *object,
 	}
 
 	/*
-	 * Find out the dependent funciton which uses %TYPE or %ROWTYPE in
+	 * Find out the dependent function which uses %TYPE or %ROWTYPE in
 	 * parameters datatype or return datatype.
 	 */
 	for (int i = 0; i < numDependentFuncPkgOids; i++)

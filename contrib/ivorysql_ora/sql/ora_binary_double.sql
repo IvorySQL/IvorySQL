@@ -122,7 +122,6 @@ SELECT ||/ binary_double '27' AS three;
 
 SELECT '' AS five, f.f1, ||/f.f1 AS cbrt_f1 FROM BINARY_DOUBLE_TBL f;
 
-
 SELECT '' AS five, * FROM BINARY_DOUBLE_TBL;
 
 UPDATE BINARY_DOUBLE_TBL
@@ -222,4 +221,61 @@ insert into binaryd_tb values (binary_double_infinity);
 insert into binaryd_tb values (Binary_Double_Infinity);
 select * from binaryd_tb;
 drop table binaryd_tb;
+
+-- Oracle-compatible TO_BINARY_DOUBLE function
+-- Single-argument form, text input
+SELECT to_binary_double('0.0');
+SELECT to_binary_double('3.14');
+SELECT to_binary_double('   -34.84   ');
+SELECT to_binary_double('1.2345678901234e+200');
+SELECT to_binary_double('1.2345678901234e-200');
+
+-- Two-argument form with a number format model
+SELECT to_binary_double('1,234.5', '9,999.9');
+SELECT to_binary_double('  1234.5', '9999.9');
+
+-- Empty format model returns NULL instead of crashing
+SELECT to_binary_double('123', '');
+
+-- Oracle special values: NaN and Infinity
+SELECT to_binary_double('NaN');
+SELECT to_binary_double('nan');
+SELECT to_binary_double('Infinity');
+SELECT to_binary_double('inf');
+SELECT to_binary_double('-Infinity');
+SELECT to_binary_double('-inf');
+
+-- Conversion overloads from other numeric types
+SELECT to_binary_double(42::numeric);
+SELECT to_binary_double(42::sys.binary_double);
+SELECT to_binary_double(42::sys.binary_float);
+--
+-- IEEE 754 exception semantics
+--
+-- Oracle returns Infinity, zero or NaN where PostgreSQL raises. Expected
+-- values measured against Oracle Database 21c Express Edition.
+--
+
+-- overflow
+SELECT 1e308d * 10;
+SELECT 1e308d + 1e308d;
+
+-- underflow
+SELECT 1e-320d / 1e10;
+SELECT 1e308d * 0;
+
+-- Underflow of a negative value, and underflow via multiplication. The first
+-- would be -0 under pure IEEE; Oracle keeps a single zero, so both are 0.
+SELECT (0d - 1e-320d) / 1e10;
+SELECT 1e-200d * 1e-200d;
+
+-- division by zero
+SELECT 1d / 0d;
+SELECT (0d - 1d) / 0d;
+SELECT 0d / 0d;
+
+-- ordinary arithmetic, unaffected
+SELECT 2d * 3d;
+SELECT 7d / 2d;
+SELECT (0d - 1e308d) * 10;
 
