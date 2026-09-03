@@ -549,7 +549,20 @@ ora_pl_package: ora_decl_sect K_END opt_label
 				new->n_initvars = $1.n_initvars;
 				new->initvarnos = $1.initvarnos;
 
-				plisql_compile_packageitem->special_cur = plisql_ns_top();
+				/*
+				 * This production (a package spec/body with no top-level
+				 * BEGIN block) runs for the spec compile AND for any body
+				 * compile that lacks an init block. special_cur must only
+				 * ever capture the spec's own namespace boundary (see its
+				 * declaration in pl_package.h): it is what qualified
+				 * external lookups in plisql_package_parse() search, so
+				 * body-only declarations must never end up in it. Guard
+				 * this the same way the status update below it already
+				 * is, or a body-only member becomes externally visible
+				 * the moment its package body is first compiled.
+				 */
+				if (!plisql_compile_packageitem->finish_compile_special)
+					plisql_compile_packageitem->special_cur = plisql_ns_top();
 				plisql_IdentifierLookup = IDENTIFIER_LOOKUP_NORMAL;
 				/* Remember variables declared in decl_stmts */
 				check_labels($1.label, $3, @3, yyscanner);
