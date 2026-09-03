@@ -790,6 +790,10 @@ SELECT '' AS to_number_14, to_number('12.34');
 SELECT '' AS to_number_15, to_number('-1122.34');
 SELECT '' AS to_number_16, to_number('12.34','9G999D99');
 SELECT '' AS to_number_17, to_number('1122.34','9G999D99');
+-- Without a format model, trailing spaces are accepted in the integer part.
+SELECT '' AS to_number_18, to_number('123 ');
+-- Whitespace between digits remains invalid.
+SELECT '' AS to_number_19, to_number('123 4');
 
 --
 -- Input syntax
@@ -939,4 +943,3 @@ SELECT BITAND('6','8') re FROM DUAL;
 SELECT BITAND(6,'8') re FROM DUAL;
 SELECT BITAND('6',8) re FROM DUAL;
 /* End - bug0000478 */
-

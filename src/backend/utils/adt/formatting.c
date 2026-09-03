@@ -7444,6 +7444,18 @@ Numeric ora_to_number_internal(text *value, text *fmt)
 					precision++;
 				else if (*tem == '.')
 					isleft = false;
+				else if (*tem == ' ')
+				{
+					/* allow trailing whitespace only (same as the scale side) */
+					while (*tem == ' ')
+						tem++;
+
+					if (*tem == '\0')
+						break;
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("invalid number format model")));
+				}
 				else
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -8593,4 +8605,3 @@ float8_to_char(PG_FUNCTION_ARGS)
 	NUM_TOCHAR_finish;
 	PG_RETURN_TEXT_P(result);
 }
-
