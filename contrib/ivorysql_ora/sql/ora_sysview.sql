@@ -11,6 +11,14 @@ SELECT length(sys.ora_case_trans(repeat('a', 80)::varchar2)) = 80
        AND sys.ora_case_trans(repeat('A', 80)::varchar2) = repeat('a', 80)::varchar2
        AS preserves_long_values;
 
+CREATE VIEW V_CASE_TRANS_LONG AS
+SELECT repeat('a', 80)::varchar2 AS value;
+SELECT length(sys.ora_case_trans(pg_get_viewdef('V_CASE_TRANS_LONG'::regclass)::varchar2)) =
+       length(pg_get_viewdef('V_CASE_TRANS_LONG'::regclass))
+       AND length(pg_get_viewdef('V_CASE_TRANS_LONG'::regclass)) > 63
+       AS preserves_long_view_text;
+DROP VIEW V_CASE_TRANS_LONG;
+
 -- create a procedure
 CREATE TABLE TB_TODEL(ID INT);
 CREATE OR REPLACE PROCEDURE PROC_DEL_TB(I INT) IS
