@@ -156,3 +156,12 @@ call dbms_session.reset_package();
 select sys_context('rp_ns', 'key') as ctx_after_reset;
 
 DROP PACKAGE rp_pkg;
+
+
+-- USERENV attributes that used to raise or return NULL: each connection is
+-- served by a dedicated backend process, and there is a single instance
+select sys_context('USERENV', 'SERVER') as server_type,
+       sys_context('USERENV', 'INSTANCE') as instance_num;
+select sys_context('USERENV', 'INSTANCE_NAME') as instance_name,
+       sys_context('USERENV', 'SERVICE_NAME') as service_name;
+select sys_context('USERENV', 'NETWORK_PROTOCOL') as network_protocol;
