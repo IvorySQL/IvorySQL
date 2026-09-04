@@ -41,6 +41,7 @@ EXTENSION = ivorysql_ora
 
 # SQL(s) which need to be generated only if which is specified here.
 DATA = ivorysql_ora--1.0.sql
+TAP_TESTS = 1
 
 all: gensql
 
