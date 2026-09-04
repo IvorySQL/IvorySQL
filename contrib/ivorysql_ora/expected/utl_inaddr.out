@@ -1,0 +1,134 @@
+--
+-- UTL_INADDR package regression tests
+--
+-- These tests use only loopback addresses and local host configuration, with
+-- no external DNS or network access.  Environment-specific values are reduced
+-- to stable INFO messages.
+--
+-- The internal functions retain their defaults, volatility, and parallel mode.
+DECLARE
+  v_count INTEGER;
+BEGIN
+  SELECT count(*)
+    INTO v_count
+    FROM pg_catalog.pg_proc p
+    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'sys'
+     AND p.proname IN ('utl_inaddr_get_host_address',
+                       'utl_inaddr_get_host_name')
+     AND p.pronargs = 1
+     AND p.pronargdefaults = 1
+     AND p.prorettype = 'pg_catalog.text'::pg_catalog.regtype
+     AND p.provolatile = 'v'
+     AND p.proparallel = 'r'
+     AND NOT p.proisstrict;
+  IF v_count != 2 THEN
+    RAISE EXCEPTION 'UTL_INADDR internal function metadata is incomplete';
+  END IF;
+  RAISE INFO 'UTL_INADDR catalog contract: ok';
+END;
+/
+INFO:  UTL_INADDR catalog contract: ok
+-- A numeric IPv4 address should survive forward resolution unchanged.
+DECLARE
+  v_address VARCHAR2(4000);
+BEGIN
+  v_address := utl_inaddr.get_host_address('127.0.0.1');
+  IF v_address != '127.0.0.1' THEN
+    RAISE EXCEPTION 'unexpected loopback resolution result: %', v_address;
+  END IF;
+  RAISE INFO 'UTL_INADDR numeric IPv4 lookup: ok';
+END;
+/
+INFO:  UTL_INADDR numeric IPv4 lookup: ok
+-- localhost may prefer IPv4 or IPv6, so assert only that a value is returned.
+DECLARE
+  v_address VARCHAR2(4000);
+BEGIN
+  v_address := utl_inaddr.get_host_address('localhost');
+  IF v_address IS NULL OR length(v_address) = 0 THEN
+    RAISE EXCEPTION 'localhost did not resolve to an address';
+  END IF;
+  RAISE INFO 'UTL_INADDR localhost forward lookup: ok';
+END;
+/
+INFO:  UTL_INADDR localhost forward lookup: ok
+-- The loopback address should reverse-resolve through the hosts database.
+DECLARE
+  v_hostname VARCHAR2(4000);
+BEGIN
+  v_hostname := utl_inaddr.get_host_name('127.0.0.1');
+  IF v_hostname IS NULL OR length(v_hostname) = 0 THEN
+    RAISE EXCEPTION 'loopback did not resolve to a host name';
+  END IF;
+  RAISE INFO 'UTL_INADDR loopback reverse lookup: ok';
+END;
+/
+INFO:  UTL_INADDR loopback reverse lookup: ok
+-- With no argument, GET_HOST_NAME returns the local name without its domain.
+DECLARE
+  v_hostname VARCHAR2(4000);
+BEGIN
+  v_hostname := utl_inaddr.get_host_name();
+  IF v_hostname IS NULL OR length(v_hostname) = 0 OR
+     instr(v_hostname, '.') != 0 THEN
+    RAISE EXCEPTION 'unexpected local short name: %', v_hostname;
+  END IF;
+  RAISE INFO 'UTL_INADDR default host name: ok';
+END;
+/
+INFO:  UTL_INADDR default host name: ok
+-- With no argument, GET_HOST_ADDRESS resolves the local host name.
+DECLARE
+  v_address VARCHAR2(4000);
+BEGIN
+  v_address := utl_inaddr.get_host_address();
+  IF v_address IS NULL OR length(v_address) = 0 THEN
+    RAISE EXCEPTION 'local host name did not resolve to an address';
+  END IF;
+  RAISE INFO 'UTL_INADDR default host address: ok';
+END;
+/
+INFO:  UTL_INADDR default host address: ok
+-- An invalid numeric address must map to Oracle UNKNOWN_HOST (ORA-29257).
+DECLARE
+  unknown_host EXCEPTION;
+  PRAGMA EXCEPTION_INIT(unknown_host, -29257);
+  v_hostname VARCHAR2(4000);
+BEGIN
+  v_hostname := utl_inaddr.get_host_name('not-an-ip-address');
+  RAISE EXCEPTION 'invalid address did not raise UNKNOWN_HOST: %', v_hostname;
+EXCEPTION
+  WHEN unknown_host THEN
+    RAISE INFO 'UTL_INADDR invalid address mapping: ok';
+END;
+/
+INFO:  UTL_INADDR invalid address mapping: ok
+-- An overlong label is rejected locally without a DNS request.
+DECLARE
+  unknown_host EXCEPTION;
+  PRAGMA EXCEPTION_INIT(unknown_host, -29257);
+  v_address VARCHAR2(4000);
+BEGIN
+  v_address := utl_inaddr.get_host_address(repeat('a', 300));
+  RAISE EXCEPTION 'invalid host did not raise UNKNOWN_HOST: %', v_address;
+EXCEPTION
+  WHEN unknown_host THEN
+    RAISE INFO 'UTL_INADDR invalid host mapping: ok';
+END;
+/
+INFO:  UTL_INADDR invalid host mapping: ok
+-- The C layer reports failure as NULL for the package to map to UNKNOWN_HOST.
+DECLARE
+  v_name VARCHAR2(4000);
+  v_address VARCHAR2(4000);
+BEGIN
+  v_name := sys.utl_inaddr_get_host_name('not-an-ip-address');
+  v_address := sys.utl_inaddr_get_host_address(repeat('a', 300));
+  IF v_name IS NOT NULL OR v_address IS NOT NULL THEN
+    RAISE EXCEPTION 'internal resolution failure contract is broken';
+  END IF;
+  RAISE INFO 'UTL_INADDR internal failure contract: ok';
+END;
+/
+INFO:  UTL_INADDR internal failure contract: ok
