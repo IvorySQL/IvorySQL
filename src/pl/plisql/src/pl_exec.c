@@ -1419,9 +1419,10 @@ plisql_exec_event_trigger(PLiSQL_function * func, EventTriggerData *trigdata)
 }
 
 /*
- * If func is a package member, return its package-qualified name (e.g.
- * "schema"."package".funcname) for use in error context messages; otherwise
- * return NULL.
+ * If func belongs to a package, return its package-qualified name for use in
+ * error context messages.  Package members are rendered as
+ * "schema"."package".funcname, while the package initialization block is
+ * rendered as just "schema"."package".  Otherwise return NULL.
  *
  * A package member's fn_signature is only ever the bare routine name (see
  * quote_qualified_identifier(NULL, funcname) in
@@ -1462,7 +1463,15 @@ plisql_package_qualified_signature(PLiSQL_function *func)
 	ReleaseSysCache(pkgTup);
 	pfree(nspname);
 
-	result = psprintf("%s.%s", pkgqual, func->fn_signature);
+	/*
+	 * The package initialization block is represented by the package's root
+	 * function, whose signature is already the package name.  Appending that
+	 * signature would produce schema.package.package in error backtraces.
+	 */
+	if (func == &((PLiSQL_package *) func->item->source)->source)
+		result = pstrdup(pkgqual);
+	else
+		result = psprintf("%s.%s", pkgqual, func->fn_signature);
 	pfree(pkgqual);
 
 	return result;
