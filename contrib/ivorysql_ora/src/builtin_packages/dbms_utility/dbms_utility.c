@@ -54,7 +54,7 @@ PG_FUNCTION_INFO_V1(ora_get_cpu_time);
 #define MICROSECONDS_PER_CENTISECOND INT64CONST(10000)
 #define ORACLE_TIMER_MODULUS UINT64CONST(0x100000000)
 
-/* GET_TIME 使用后端本地起点；Oracle 只保证起点任意且差值可用。 */
+/* GET_TIME uses a backend-local epoch; Oracle only guarantees usable deltas. */
 static instr_time get_time_epoch;
 static bool get_time_epoch_initialized = false;
 static TimingClockSourceType get_time_clock_source;
@@ -79,8 +79,9 @@ static plisql_get_call_stack_fn get_call_stack_fn = NULL;
 static bool lookup_attempted = false;
 
 /*
- * 将非负的百分之一秒计数转换为 Oracle 计时器的有符号 32 位范围。
- * 显式计算负半区，避免依赖无符号整数转有符号整数的实现定义行为。
+ * Convert a nonnegative centisecond count to Oracle's signed 32-bit timer
+ * range.  Compute the negative half explicitly instead of relying on an
+ * implementation-defined unsigned-to-signed conversion.
  */
 static Numeric
 oracle_timer_number(uint64 centiseconds)
@@ -549,10 +550,11 @@ ora_format_call_stack(PG_FUNCTION_ARGS)
 }
 
 /*
- * ora_get_time - DBMS_UTILITY.GET_TIME 的实现
+ * ora_get_time - implementation of DBMS_UTILITY.GET_TIME
  *
- * 返回从后端本地任意起点开始计算的百分之一秒数。instr_time 在支持的
- * 平台上使用单调时钟，因此系统时间调整不会破坏短区间的耗时测量。
+ * Return centiseconds from an arbitrary backend-local epoch.  instr_time uses
+ * a monotonic clock on supported platforms, so system clock adjustments do
+ * not invalidate short elapsed-time measurements.
  */
 Datum
 ora_get_time(PG_FUNCTION_ARGS)
@@ -576,7 +578,7 @@ ora_get_time(PG_FUNCTION_ARGS)
 	INSTR_TIME_SUBTRACT(now, get_time_epoch);
 	elapsed_ns = INSTR_TIME_GET_NANOSEC(now);
 
-	/* 相同计时源相减不应为负；防御异常计时源切换造成的倒退。 */
+	/* Guard against a backward jump caused by an unexpected clock change. */
 	if (elapsed_ns < 0)
 		elapsed_ns = 0;
 
@@ -585,10 +587,11 @@ ora_get_time(PG_FUNCTION_ARGS)
 }
 
 /*
- * ora_get_cpu_time - DBMS_UTILITY.GET_CPU_TIME 的实现
+ * ora_get_cpu_time - implementation of DBMS_UTILITY.GET_CPU_TIME
  *
- * Oracle 的 CPU 时间包括当前进程消耗的用户态与系统态时间。PostgreSQL
- * 为 Windows 提供 getrusage 兼容层，因此这里无需维护平台专用分支。
+ * Oracle CPU time includes user and system time consumed by the current
+ * process.  PostgreSQL provides a getrusage compatibility layer for Windows,
+ * so no platform-specific branch is required here.
  */
 Datum
 ora_get_cpu_time(PG_FUNCTION_ARGS)

@@ -30,8 +30,8 @@ LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION sys.ora_format_error_backtrace() IS 'Internal function for DBMS_UTILITY.FORMAT_ERROR_BACKTRACE';
 COMMENT ON FUNCTION sys.ora_format_error_stack() IS 'Internal function for DBMS_UTILITY.FORMAT_ERROR_STACK';
 COMMENT ON FUNCTION sys.ora_format_call_stack() IS 'Internal function for DBMS_UTILITY.FORMAT_CALL_STACK';
-COMMENT ON FUNCTION sys.ora_get_time() IS 'DBMS_UTILITY.GET_TIME 的内部实现';
-COMMENT ON FUNCTION sys.ora_get_cpu_time() IS 'DBMS_UTILITY.GET_CPU_TIME 的内部实现';
+COMMENT ON FUNCTION sys.ora_get_time() IS 'Internal implementation of DBMS_UTILITY.GET_TIME';
+COMMENT ON FUNCTION sys.ora_get_cpu_time() IS 'Internal implementation of DBMS_UTILITY.GET_CPU_TIME';
 
 -- DBMS_UTILITY Package Definition
 CREATE OR REPLACE PACKAGE dbms_utility IS

@@ -506,11 +506,11 @@ CALL bug_schema.schema_caller();
 DROP SCHEMA bug_schema CASCADE;
 
 -- ============================================================
--- GET_TIME 与 GET_CPU_TIME 测试
+-- GET_TIME and GET_CPU_TIME tests
 -- ============================================================
 
--- 测试 20：内部计时函数必须保持无参数、返回 Oracle NUMBER 且为
--- VOLATILE 的包契约。
+-- Test 20: Internal timer functions must remain argument-free, return Oracle
+-- NUMBER, and retain the VOLATILE package contract.
 DO $$
 DECLARE
   v_total INTEGER;
@@ -552,8 +552,8 @@ BEGIN
 END;
 $$;
 
--- 测试 21：两个公开包函数均返回 Oracle NUMBER，且结果处于文档规定的
--- 有符号 32 位计时器范围内。
+-- Test 21: Both public package functions return Oracle NUMBER values within
+-- the documented signed 32-bit timer range.
 DO $$
 DECLARE
   v_wall NUMBER;
@@ -583,8 +583,9 @@ BEGIN
 END;
 $$;
 
--- 测试 22：GET_TIME 测量实际流逝时间，而不是事务或语句时间。使用宽松
--- 下限，避免依赖调度器的精确唤醒时刻。
+-- Test 22: GET_TIME measures real elapsed time rather than transaction or
+-- statement time.  Use a loose lower bound to avoid depending on an exact
+-- scheduler wake-up time.
 DO $$
 DECLARE
   v_start NUMBER;
@@ -610,8 +611,8 @@ BEGIN
 END;
 $$;
 
--- 测试 23：GET_CPU_TIME 包含用户态与系统态 CPU 时间，且不会把休眠
--- 区间等同为 CPU 工作时间。
+-- Test 23: GET_CPU_TIME includes user and system CPU time without treating a
+-- sleeping interval as CPU work.
 DO $$
 DECLARE
   v_wall_start NUMBER;
@@ -641,8 +642,8 @@ BEGIN
                     (v_cpu_finish - (-2147483648)) + 1;
   END IF;
 
-  IF v_cpu_elapsed > v_wall_elapsed THEN
-    RAISE EXCEPTION 'sleep consumed more CPU than wall time: CPU %, wall %',
+  IF v_wall_elapsed < 5 OR v_cpu_elapsed >= v_wall_elapsed THEN
+    RAISE EXCEPTION 'sleep timer separation failed: CPU %, wall %',
       v_cpu_elapsed, v_wall_elapsed;
   END IF;
 
@@ -650,8 +651,9 @@ BEGIN
 END;
 $$;
 
--- 测试 24：CPU 密集型工作必须最终使 GET_CPU_TIME 按百分之一秒精度推进。
--- 即使实现退化为常量，采样上限也能保证循环终止。
+-- Test 24: CPU-intensive work must eventually advance GET_CPU_TIME at
+-- centisecond precision.  The sample limit also guarantees termination if an
+-- implementation regresses to a constant value.
 DO $$
 DECLARE
   v_start NUMBER;
@@ -688,8 +690,8 @@ BEGIN
 END;
 $$;
 
--- 测试 25：计时函数可在存储函数内使用，覆盖 Oracle 应用中通过两次
--- 采样统计代码耗时的常见模式。
+-- Test 25: Timer functions work inside stored functions, covering the common
+-- Oracle application pattern of measuring code with two samples.
 CREATE OR REPLACE FUNCTION test_dbms_utility_timers RETURN BOOLEAN AS
   v_wall_start NUMBER;
   v_wall_finish NUMBER;
