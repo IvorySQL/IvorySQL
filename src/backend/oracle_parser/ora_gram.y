@@ -266,6 +266,7 @@ static void determineLanguage(List *options);
 	PartitionElem *partelem;
 	PartitionSpec *partspec;
 	PartitionBoundSpec *partboundspec;
+	SinglePartitionSpec *singlepartspec;
 	RoleSpec   *rolespec;
 	PublicationObjSpec *publicationobjectspec;
 	PublicationAllObjSpec *publicationallobjectspec;
@@ -668,6 +669,8 @@ static void determineLanguage(List *options);
 %type <partelem>	part_elem
 %type <list>		part_params
 %type <partboundspec> PartitionBoundSpec
+%type <singlepartspec> SinglePartitionSpec
+%type <list>		partitions_list
 %type <list>		hash_partbound
 %type <defelt>		hash_partbound_elem
 
@@ -843,7 +846,7 @@ static void determineLanguage(List *options);
 	SAVEPOINT SCALAR SCALE SCHEMA SCHEMAS SCROLL SEARCH SECOND_P SECURITY SELECT
 	SEQUENCE SEQUENCES
 	SERIALIZABLE SERVER SESSION SESSION_USER SET SETS SETOF SHARD SHARE SHOW
-	SIMILAR SIMPLE SKIP SMALLINT SNAPSHOT SOME SOURCE SPECIFICATION SQL_P STABLE STANDALONE_P
+	SIMILAR SIMPLE SKIP SMALLINT SNAPSHOT SOME SOURCE SPECIFICATION SPLIT SQL_P STABLE STANDALONE_P
 	START STATEMENT STATISTICS STDIN STDOUT STORAGE STORED STRICT_P STRING_P STRIP_P
 	SUBSCRIPTION SUBSTRING SUPPORT SYMMETRIC SYSDATE SYSID SYSTEM_P SYSTEM_USER SYSTIMESTAMP
 
@@ -2637,6 +2640,23 @@ ora_alter_view_cmd:
 			}
 		;
 
+partitions_list:
+			SinglePartitionSpec							{ $$ = list_make1($1); }
+			| partitions_list ',' SinglePartitionSpec	{ $$ = lappend($1, $3); }
+		;
+
+SinglePartitionSpec:
+			PARTITION qualified_name PartitionBoundSpec
+				{
+					SinglePartitionSpec *n = makeNode(SinglePartitionSpec);
+
+					n->name = $2;
+					n->bound = $3;
+
+					$$ = n;
+				}
+		;
+
 partition_cmd:
 			/* ALTER TABLE <name> ATTACH PARTITION <table_name> FOR VALUES */
 			ATTACH PARTITION qualified_name PartitionBoundSpec
@@ -2674,6 +2694,20 @@ partition_cmd:
 					n->subtype = AT_DetachPartitionFinalize;
 					cmd->name = $3;
 					cmd->bound = NULL;
+					cmd->concurrent = false;
+					n->def = (Node *) cmd;
+					$$ = (Node *) n;
+				}
+			/* ALTER TABLE <name> SPLIT PARTITION <partition_name> INTO () */
+			| SPLIT PARTITION qualified_name INTO '(' partitions_list ')'
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					PartitionCmd *cmd = makeNode(PartitionCmd);
+
+					n->subtype = AT_SplitPartition;
+					cmd->name = $3;
+					cmd->bound = NULL;
+					cmd->partlist = $6;
 					cmd->concurrent = false;
 					n->def = (Node *) cmd;
 					$$ = (Node *) n;
@@ -21857,6 +21891,7 @@ unreserved_keyword:
 			| SNAPSHOT
 			| SOURCE
 			| SPECIFICATION
+			| SPLIT
 			| SQL_P
 			| SQL_MACRO
 			| STABLE
@@ -22600,6 +22635,7 @@ bare_label_keyword:
 			| SOME
 			| SOURCE
 			| SPECIFICATION
+			| SPLIT
 			| SQL_P
 			| SQL_MACRO
 			| STABLE
