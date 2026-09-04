@@ -686,7 +686,7 @@ static inline int BufferLockDisownInternal(Buffer buffer, BufferDesc *buf_hdr);
 static inline bool BufferLockAttempt(BufferDesc *buf_hdr, BufferLockMode mode);
 static void BufferLockQueueSelf(BufferDesc *buf_hdr, BufferLockMode mode);
 static void BufferLockDequeueSelf(BufferDesc *buf_hdr);
-static void BufferLockWakeup(BufferDesc *buf_hdr, bool unlocked);
+static void BufferLockWakeup(BufferDesc *buf_hdr, bool wake_exclusive);
 static void BufferLockProcessRelease(BufferDesc *buf_hdr, BufferLockMode mode, uint64 lockstate);
 static inline uint64 BufferLockReleaseSub(BufferLockMode mode);
 
@@ -792,7 +792,7 @@ PrefetchBuffer(Relation reln, ForkNumber forkNum, BlockNumber blockNum)
 
 	if (RelationUsesLocalBuffers(reln))
 	{
-		/* see comments in ReadBufferExtended */
+		/* see comments in ReadBuffer_common */
 		if (RELATION_IS_OTHER_TEMP(reln))
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -930,18 +930,9 @@ ReadBufferExtended(Relation reln, ForkNumber forkNum, BlockNumber blockNum,
 	Buffer		buf;
 
 	/*
-	 * Reject attempts to read non-local temporary relations; we would be
-	 * likely to get wrong data since we have no visibility into the owning
-	 * session's local buffers.
-	 */
-	if (RELATION_IS_OTHER_TEMP(reln))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("cannot access temporary tables of other sessions")));
-
-	/*
 	 * Read the buffer, and update pgstat counters to reflect a cache hit or
-	 * miss.
+	 * miss.  The other-session temp-relation check is enforced by
+	 * ReadBuffer_common().
 	 */
 	buf = ReadBuffer_common(reln, RelationGetSmgr(reln), 0,
 							forkNum, blockNum, mode, strategy);
@@ -1294,6 +1285,18 @@ ReadBuffer_common(Relation rel, SMgrRelation smgr, char smgr_persistence,
 	char		persistence;
 
 	/*
+	 * Reject attempts to read non-local temporary relations; we would be
+	 * likely to get wrong data since we have no visibility into the owning
+	 * session's local buffers.  This is the canonical place for the check,
+	 * covering the ReadBufferExtended() entry point and any other caller that
+	 * supplies a Relation.
+	 */
+	if (rel && RELATION_IS_OTHER_TEMP(rel))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot access temporary tables of other sessions")));
+
+	/*
 	 * Backward compatibility path, most code should use ExtendBufferedRel()
 	 * instead, as acquiring the extension lock inside ExtendBufferedRel()
 	 * scales a lot better.
@@ -1382,6 +1385,12 @@ StartReadBuffersImpl(ReadBuffersOperation *operation,
 	Assert(*nblocks == 1 || allow_forwarding);
 	Assert(*nblocks > 0);
 	Assert(*nblocks <= MAX_IO_COMBINE_LIMIT);
+
+	/* see comments in ReadBuffer_common */
+	if (operation->rel && RELATION_IS_OTHER_TEMP(operation->rel))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot access temporary tables of other sessions")));
 
 	if (operation->persistence == RELPERSISTENCE_TEMP)
 	{
@@ -4599,7 +4608,7 @@ FlushBuffer(BufferDesc *buf, SMgrRelation reln, IOObject io_object,
 	 * When a strategy is not in use, the write can only be a "regular" write
 	 * of a dirty shared buffer (IOCONTEXT_NORMAL IOOP_WRITE).
 	 */
-	pgstat_count_io_op_time(IOOBJECT_RELATION, io_context,
+	pgstat_count_io_op_time(io_object, io_context,
 							IOOP_WRITE, io_start, 1, BLCKSZ);
 
 	pgBufferUsage.shared_blks_written++;
@@ -4630,7 +4639,7 @@ FlushUnlockedBuffer(BufferDesc *buf, SMgrRelation reln,
 	Buffer		buffer = BufferDescriptorGetBuffer(buf);
 
 	BufferLockAcquire(buffer, buf, BUFFER_LOCK_SHARE_EXCLUSIVE);
-	FlushBuffer(buf, reln, IOOBJECT_RELATION, IOCONTEXT_NORMAL);
+	FlushBuffer(buf, reln, io_object, io_context);
 	BufferLockUnlock(buffer, buf);
 }
 
@@ -5823,8 +5832,6 @@ MarkBufferDirtyHint(Buffer buffer, bool buffer_std)
 {
 	BufferDesc *bufHdr;
 
-	bufHdr = GetBufferDescriptor(buffer - 1);
-
 	if (!BufferIsValid(buffer))
 		elog(ERROR, "bad buffer ID: %d", buffer);
 
@@ -5833,6 +5840,8 @@ MarkBufferDirtyHint(Buffer buffer, bool buffer_std)
 		MarkLocalBufferDirty(buffer);
 		return;
 	}
+
+	bufHdr = GetBufferDescriptor(buffer - 1);
 
 	MarkSharedBufferDirtyHint(buffer, bufHdr,
 							  pg_atomic_read_u64(&bufHdr->state),
@@ -5845,7 +5854,7 @@ MarkBufferDirtyHint(Buffer buffer, bool buffer_std)
  * Used to clean up after errors.
  *
  * Currently, we can expect that resource owner cleanup, via
- * ResOwnerReleaseBufferPin(), took care of releasing buffer content locks per
+ * ResOwnerReleaseBuffer(), took care of releasing buffer content locks per
  * se; the only thing we need to deal with here is clearing any PIN_COUNT
  * request that was in progress.
  */
@@ -5994,7 +6003,7 @@ BufferLockAcquire(Buffer buffer, BufferDesc *buf_hdr, BufferLockMode mode)
 
 		pgstat_report_wait_end();
 
-		/* Retrying, allow BufferLockRelease to release waiters again. */
+		/* Retrying, allow BufferLockReleaseSub to release waiters again. */
 		pg_atomic_fetch_and_u64(&buf_hdr->state, ~BM_LOCK_WAKE_IN_PROGRESS);
 	}
 

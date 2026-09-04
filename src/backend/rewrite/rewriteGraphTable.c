@@ -23,6 +23,7 @@
 #include "catalog/pg_propgraph_label.h"
 #include "catalog/pg_propgraph_label_property.h"
 #include "catalog/pg_propgraph_property.h"
+#include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/optimizer.h"
@@ -91,10 +92,10 @@ struct path_element
 
 static Node *replace_property_refs(Oid propgraphid, Node *node, const List *mappings);
 static List *build_edge_vertex_link_quals(HeapTuple edgetup, int edgerti, int refrti, Oid refid, AttrNumber catalog_key_attnum, AttrNumber catalog_ref_attnum, AttrNumber catalog_eqop_attnum);
-static List *generate_queries_for_path_pattern(RangeTblEntry *rte, List *element_patterns);
-static Query *generate_query_for_graph_path(RangeTblEntry *rte, List *path);
+static List *generate_queries_for_path_pattern(RangeTblEntry *rte, List *path_pattern);
+static Query *generate_query_for_graph_path(RangeTblEntry *rte, List *graph_path);
 static Node *generate_setop_from_pathqueries(List *pathqueries, List **rtable, List **targetlist);
-static List *generate_queries_for_path_pattern_recurse(RangeTblEntry *rte, List *pathqueries, List *cur_path, List *path_pattern_lists, int elempos);
+static List *generate_queries_for_path_pattern_recurse(RangeTblEntry *rte, List *pathqueries, List *cur_path, List *path_elem_lists, int elempos);
 static Query *generate_query_for_empty_path_pattern(RangeTblEntry *rte);
 static Query *generate_union_from_pathqueries(List **pathqueries);
 static List *get_path_elements_for_path_factor(Oid propgraphid, struct path_factor *pf);
@@ -152,7 +153,7 @@ rewriteGraphTable(Query *parsetree, int rt_index)
  * returned.
  *
  * Between every two vertex elements in the path there is an edge element that
- * connects them.  An edge connects two vertexes identified by the source and
+ * connects them.  An edge connects two vertices identified by the source and
  * destination keys respectively. The connection between an edge and its
  * adjacent vertex is naturally computed as an equi-join between edge and vertex
  * table on their respective keys. Hence the query representing one path
@@ -162,10 +163,10 @@ rewriteGraphTable(Query *parsetree, int rt_index)
  * done by generate_queries_for_path_pattern_recurse().
  * generate_query_for_graph_path() constructs a query for a given path.
  *
- * A path pattern may result into no path if any of the element pattern yields no
- * elements or edge patterns yield no edges connecting adjacent vertex patterns.
- * In such a case a dummy query which returns no result is returned
- * (generate_query_for_empty_path_pattern()).
+ * A path pattern may end up producing no path if any of the element patterns
+ * yields no elements or the edge patterns yield no edges connecting adjacent
+ * vertex patterns.  In such a case a dummy query which returns no result is
+ * returned (generate_query_for_empty_path_pattern()).
  *
  * 'path_pattern' is given path pattern to be applied on the property graph in
  * the GRAPH_TABLE clause represented by given 'rte'.
@@ -273,7 +274,7 @@ generate_queries_for_path_pattern(RangeTblEntry *rte, List *path_pattern)
 		 *
 		 * If multiple edge patterns share the same variable name, they
 		 * constrain the adjacent vertex patterns since an edge can connect
-		 * only one pair of vertexes. These adjacent vertex patterns need to
+		 * only one pair of vertices. These adjacent vertex patterns need to
 		 * be merged even though they have different variables. Such element
 		 * patterns form a walk of graph where vertex and edges are repeated.
 		 * For example, in (a)-[b]->(c)<-[b]-(d), (a) and (d) represent the
@@ -288,7 +289,7 @@ generate_queries_for_path_pattern(RangeTblEntry *rte, List *path_pattern)
 				if (prev_pf->dest_pf && prev_pf->dest_pf != pf)
 					ereport(ERROR,
 							errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-							errmsg("an edge cannot connect more than two vertexes even in a cyclic pattern"));
+							errmsg("an edge cannot connect more than two vertices even in a cyclic pattern"));
 				prev_pf->dest_pf = pf;
 			}
 			else if (prev_pf->kind == EDGE_PATTERN_LEFT)
@@ -297,7 +298,7 @@ generate_queries_for_path_pattern(RangeTblEntry *rte, List *path_pattern)
 				if (prev_pf->src_pf && prev_pf->src_pf != pf)
 					ereport(ERROR,
 							errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-							errmsg("an edge cannot connect more than two vertexes even in a cyclic pattern"));
+							errmsg("an edge cannot connect more than two vertices even in a cyclic pattern"));
 				prev_pf->src_pf = pf;
 			}
 			else
@@ -312,7 +313,7 @@ generate_queries_for_path_pattern(RangeTblEntry *rte, List *path_pattern)
 				if (pf->src_pf && pf->src_pf != prev_pf)
 					ereport(ERROR,
 							errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-							errmsg("an edge cannot connect more than two vertexes even in a cyclic pattern"));
+							errmsg("an edge cannot connect more than two vertices even in a cyclic pattern"));
 				pf->src_pf = prev_pf;
 			}
 			else if (pf->kind == EDGE_PATTERN_LEFT)
@@ -321,7 +322,7 @@ generate_queries_for_path_pattern(RangeTblEntry *rte, List *path_pattern)
 				if (pf->dest_pf && pf->dest_pf != prev_pf)
 					ereport(ERROR,
 							errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-							errmsg("an edge cannot connect more than two vertexes even in a cyclic pattern"));
+							errmsg("an edge cannot connect more than two vertices even in a cyclic pattern"));
 				pf->dest_pf = prev_pf;
 			}
 			else
@@ -360,6 +361,9 @@ static List *
 generate_queries_for_path_pattern_recurse(RangeTblEntry *rte, List *pathqueries, List *cur_path, List *path_elem_lists, int elempos)
 {
 	List	   *path_elems = list_nth_node(List, path_elem_lists, elempos);
+
+	/* Guard against stack overflow due to complex path patterns. */
+	check_stack_depth();
 
 	foreach_ptr(struct path_element, pe, path_elems)
 	{
@@ -499,9 +503,9 @@ generate_query_for_graph_path(RangeTblEntry *rte, List *graph_path)
 		 * SQL/PGQ standard (Ref. Section 11.19, Access rule 2 and General
 		 * rule 4) does not specify whose access privileges to use when
 		 * accessing the element tables: property graph owner's or current
-		 * user's. It is safer to use current user's privileges so as not to
-		 * make property graphs as a hole for unpriviledged data access. This
-		 * is inline with the views being security_invoker by default.
+		 * user's. It is safer to use current user's privileges to avoid
+		 * unprivileged data access through a property graph. This is inline
+		 * with the views being security_invoker by default.
 		 */
 		rel = table_open(pe->reloid, AccessShareLock);
 		pni = addRangeTableEntryForRelation(make_parsestate(NULL), rel, AccessShareLock,
@@ -698,6 +702,9 @@ generate_setop_from_pathqueries(List *pathqueries, List **rtable, List **targetl
 	List	   *rtargetlist;
 	ParseNamespaceItem *pni;
 
+	/* Guard against stack overflow due to many path queries. */
+	check_stack_depth();
+
 	/* Recursion termination condition. */
 	if (list_length(pathqueries) == 0)
 	{
@@ -706,6 +713,13 @@ generate_setop_from_pathqueries(List *pathqueries, List **rtable, List **targetl
 	}
 
 	lquery = linitial_node(Query, pathqueries);
+
+	/*
+	 * Each path query will become a subquery of the UNION statement. So any
+	 * Vars that already refer outside the path query must be adjusted for
+	 * additional query level.
+	 */
+	IncrementVarSublevelsUp((Node *) lquery, 1, 1);
 
 	pni = addRangeTableEntryForSubquery(make_parsestate(NULL), lquery, NULL,
 										false, false);

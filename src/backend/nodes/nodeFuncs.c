@@ -1029,8 +1029,16 @@ exprCollation(const Node *expr)
 			{
 				const JsonConstructorExpr *ctor = (const JsonConstructorExpr *) expr;
 
+				/*
+				 * Collation comes from coercion if present, otherwise from
+				 * func.  The func fallback is needed in cases where func
+				 * already produces the final output type and no coercion is
+				 * needed (cf. the JSCTOR_JSON_ARRAY_QUERY case).
+				 */
 				if (ctor->coercion)
 					coll = exprCollation((Node *) ctor->coercion);
+				else if (ctor->func)
+					coll = exprCollation((Node *) ctor->func);
 				else
 					coll = InvalidOid;
 			}
@@ -1295,8 +1303,11 @@ exprSetCollation(Node *expr, Oid collation)
 			{
 				JsonConstructorExpr *ctor = (JsonConstructorExpr *) expr;
 
+				/* See comment in exprCollation() */
 				if (ctor->coercion)
 					exprSetCollation((Node *) ctor->coercion, collation);
+				else if (ctor->func)
+					exprSetCollation((Node *) ctor->func, collation);
 				else
 					Assert(!OidIsValid(collation)); /* result is always a
 													 * json[b] type */
@@ -2187,6 +2198,7 @@ expression_tree_walker_impl(Node *node,
 		case T_RangeTblRef:
 		case T_SortGroupClause:
 		case T_CTESearchClause:
+		case T_GraphLabelRef:
 		case T_GraphPropertyRef:
 		case T_MergeSupportFunc:
 			/* primitive node types with no expression subnodes */
@@ -2637,6 +2649,8 @@ expression_tree_walker_impl(Node *node,
 			{
 				ForPortionOfExpr *forPortionOf = (ForPortionOfExpr *) node;
 
+				if (WALK(forPortionOf->rangeVar))
+					return true;
 				if (WALK(forPortionOf->targetFrom))
 					return true;
 				if (WALK(forPortionOf->targetTo))
@@ -2644,6 +2658,8 @@ expression_tree_walker_impl(Node *node,
 				if (WALK(forPortionOf->targetRange))
 					return true;
 				if (WALK(forPortionOf->overlapsExpr))
+					return true;
+				if (WALK(forPortionOf->rangeTargetList))
 					return true;
 			}
 			break;
@@ -2748,6 +2764,8 @@ expression_tree_walker_impl(Node *node,
 			{
 				GraphElementPattern *gep = (GraphElementPattern *) node;
 
+				if (WALK(gep->labelexpr))
+					return true;
 				if (WALK(gep->subexpr))
 					return true;
 				if (WALK(gep->whereClause))
@@ -3112,6 +3130,8 @@ expression_tree_mutator_impl(Node *node,
 		case T_RangeTblRef:
 		case T_SortGroupClause:
 		case T_CTESearchClause:
+		case T_GraphLabelRef:
+		case T_GraphPropertyRef:
 		case T_MergeSupportFunc:
 			return copyObject(node);
 		case T_WithCheckOption:
@@ -3863,6 +3883,30 @@ expression_tree_mutator_impl(Node *node,
 				MUTATE(newnode->coldefexprs, tf->coldefexprs, List *);
 				MUTATE(newnode->colvalexprs, tf->colvalexprs, List *);
 				MUTATE(newnode->passingvalexprs, tf->passingvalexprs, List *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_GraphElementPattern:
+			{
+				GraphElementPattern *gep = (GraphElementPattern *) node;
+				GraphElementPattern *newnode;
+
+				FLATCOPY(newnode, gep, GraphElementPattern);
+				MUTATE(newnode->labelexpr, gep->labelexpr, Node *);
+				MUTATE(newnode->subexpr, gep->subexpr, List *);
+				MUTATE(newnode->whereClause, gep->whereClause, Node *);
+				newnode->quantifier = list_copy(gep->quantifier);
+				return (Node *) newnode;
+			}
+			break;
+		case T_GraphPattern:
+			{
+				GraphPattern *gp = (GraphPattern *) node;
+				GraphPattern *newnode;
+
+				FLATCOPY(newnode, gp, GraphPattern);
+				MUTATE(newnode->path_pattern_list, gp->path_pattern_list, List *);
+				MUTATE(newnode->whereClause, gp->whereClause, Node *);
 				return (Node *) newnode;
 			}
 			break;
@@ -4861,6 +4905,8 @@ raw_expression_tree_walker_impl(Node *node,
 			{
 				GraphElementPattern *gep = (GraphElementPattern *) node;
 
+				if (WALK(gep->labelexpr))
+					return true;
 				if (WALK(gep->subexpr))
 					return true;
 				if (WALK(gep->whereClause))

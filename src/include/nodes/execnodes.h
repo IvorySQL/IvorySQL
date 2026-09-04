@@ -479,7 +479,8 @@ typedef struct ForPortionOfState
 	NodeTag		type;
 
 	char	   *fp_rangeName;	/* the column named in FOR PORTION OF */
-	Oid			fp_rangeType;	/* the type of the FOR PORTION OF expression */
+	Oid			fp_rangeType;	/* the base type (not domain) of the FOR
+								 * PORTION OF expression */
 	int			fp_rangeAttno;	/* the attno of the range column */
 	Datum		fp_targetRange; /* the range/multirange from FOR PORTION OF */
 	TypeCacheEntry *fp_leftoverstypcache;	/* type cache entry of the range */
@@ -1516,13 +1517,15 @@ typedef struct ModifyTableState
 	double		mt_merge_deleted;
 
 	/*
-	 * Lists of valid updateColnosLists, mergeActionLists, and
-	 * mergeJoinConditions.  These contain only entries for unpruned
-	 * relations, filtered from the corresponding lists in ModifyTable.
+	 * Lists of valid updateColnosLists, mergeActionLists,
+	 * mergeJoinConditions, and fdwPrivLists.  These contain only entries for
+	 * unpruned relations, filtered from the corresponding lists in
+	 * ModifyTable.
 	 */
 	List	   *mt_updateColnosLists;
 	List	   *mt_mergeActionLists;
 	List	   *mt_mergeJoinConditions;
+	List	   *mt_fdwPrivLists;
 } ModifyTableState;
 
 /* ----------------

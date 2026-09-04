@@ -2197,7 +2197,10 @@ generateClonedIndexStmt(RangeVar *heapRel, Relation source_idx,
  * extended statistic "source_statsid", for the rel identified by heapRel and
  * heapRelid.
  *
- * Attribute numbers in expression Vars are adjusted according to attmap.
+ * stxkeys in the source statistic holds attribute numbers from the parent
+ * relation.  Those attnums, along with the attribute numbers referenced by
+ * Vars inside the expression tree, are remapped to the new relation's
+ * numbering according to attmap.
  */
 static CreateStatsStmt *
 generateClonedExtStatsStmt(RangeVar *heapRel, Oid heapRelid,
@@ -2255,7 +2258,8 @@ generateClonedExtStatsStmt(RangeVar *heapRel, Oid heapRelid,
 		StatsElem  *selem = makeNode(StatsElem);
 		AttrNumber	attnum = statsrec->stxkeys.values[i];
 
-		selem->name = get_attname(heapRelid, attnum, false);
+		selem->name =
+			get_attname(heapRelid, attmap->attnums[attnum - 1], false);
 		selem->expr = NULL;
 
 		def_names = lappend(def_names, selem);
@@ -3703,8 +3707,8 @@ checkPartition(Relation rel, Oid partRelOid, bool isMerge)
 				errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				errmsg("\"%s\" is not a table", RelationGetRelationName(partRel)),
 				isMerge
-				? errhint("ALTER TABLE ... MERGE PARTITIONS can only merge partitions don't have sub-partitions.")
-				: errhint("ALTER TABLE ... SPLIT PARTITION can only split partitions don't have sub-partitions."));
+				? errhint("ALTER TABLE ... MERGE PARTITIONS can only merge partitions that don't have sub-partitions.")
+				: errhint("ALTER TABLE ... SPLIT PARTITION can only split partitions that don't have sub-partitions."));
 
 	if (!partRel->rd_rel->relispartition)
 		ereport(ERROR,
@@ -3712,8 +3716,8 @@ checkPartition(Relation rel, Oid partRelOid, bool isMerge)
 				errmsg("\"%s\" is not a partition of partitioned table \"%s\"",
 					   RelationGetRelationName(partRel), RelationGetRelationName(rel)),
 				isMerge
-				? errhint("ALTER TABLE ... MERGE PARTITIONS can only merge partitions don't have sub-partitions.")
-				: errhint("ALTER TABLE ... SPLIT PARTITION can only split partitions don't have sub-partitions."));
+				? errhint("ALTER TABLE ... MERGE PARTITIONS can only merge partitions that don't have sub-partitions.")
+				: errhint("ALTER TABLE ... SPLIT PARTITION can only split partitions that don't have sub-partitions."));
 
 	if (get_partition_parent(partRelOid, false) != RelationGetRelid(rel))
 		ereport(ERROR,
@@ -3721,8 +3725,8 @@ checkPartition(Relation rel, Oid partRelOid, bool isMerge)
 				errmsg("relation \"%s\" is not a partition of relation \"%s\"",
 					   RelationGetRelationName(partRel), RelationGetRelationName(rel)),
 				isMerge
-				? errhint("ALTER TABLE ... MERGE PARTITIONS can only merge partitions don't have sub-partitions.")
-				: errhint("ALTER TABLE ... SPLIT PARTITION can only split partitions don't have sub-partitions."));
+				? errhint("ALTER TABLE ... MERGE PARTITIONS can only merge partitions that don't have sub-partitions.")
+				: errhint("ALTER TABLE ... SPLIT PARTITION can only split partitions that don't have sub-partitions."));
 
 	table_close(partRel, NoLock);
 }
@@ -3785,7 +3789,7 @@ transformPartitionCmdForSplit(CreateStmtContext *cxt, PartitionCmd *partcmd)
 						if (default_index != -1)
 							ereport(ERROR,
 									errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-									errmsg("DEFAULT partition should be one"),
+									errmsg("cannot specify more than one DEFAULT partition"),
 									parser_errposition(cxt->pstate, sps->name->location));
 
 						default_index = foreach_current_index(sps);
@@ -3812,10 +3816,9 @@ transformPartitionCmdForSplit(CreateStmtContext *cxt, PartitionCmd *partcmd)
 	if (isSplitPartDefault && default_index == -1)
 		ereport(ERROR,
 				errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-				errmsg("can not split DEFAULT partition \"%s\"",
+				errmsg("cannot split DEFAULT partition \"%s\"",
 					   get_rel_name(splitPartOid)),
-				errhint("To split DEFAULT partition one of the new partition must be DEFAULT."),
-				parser_errposition(cxt->pstate, ((SinglePartitionSpec *) linitial(splitlist))->name->location));
+				errhint("To split a DEFAULT partition, one of the new partitions must be DEFAULT."));
 
 	/*
 	 * If the partition being split is not the DEFAULT partition, but the
@@ -3829,10 +3832,10 @@ transformPartitionCmdForSplit(CreateStmtContext *cxt, PartitionCmd *partcmd)
 
 		ereport(ERROR,
 				errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-				errmsg("can not split non-DEFAULT partition \"%s\"",
+				errmsg("cannot split non-DEFAULT partition \"%s\"",
 					   get_rel_name(splitPartOid)),
-				errmsg("new partition cannot be DEFAULT because DEFAULT partition \"%s\" already exists",
-					   get_rel_name(defaultPartOid)),
+				errdetail("New partition cannot be DEFAULT because DEFAULT partition \"%s\" already exists.",
+						  get_rel_name(defaultPartOid)),
 				parser_errposition(cxt->pstate, spsDef->name->location));
 	}
 

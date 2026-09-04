@@ -330,7 +330,7 @@ pg_lock_status(PG_FUNCTION_ARGS)
 				values[1] = ObjectIdGetDatum(instance->locktag.locktag_field1);
 				values[8] = ObjectIdGetDatum(instance->locktag.locktag_field2);
 				values[6] = ObjectIdGetDatum(instance->locktag.locktag_field3);
-				values[9] = UInt16GetDatum(instance->locktag.locktag_field4);
+				values[9] = Int16GetDatum(instance->locktag.locktag_field4);
 				nulls[2] = true;
 				nulls[3] = true;
 				nulls[4] = true;
@@ -344,7 +344,7 @@ pg_lock_status(PG_FUNCTION_ARGS)
 				values[1] = ObjectIdGetDatum(instance->locktag.locktag_field1);
 				values[7] = ObjectIdGetDatum(instance->locktag.locktag_field2);
 				values[8] = ObjectIdGetDatum(instance->locktag.locktag_field3);
-				values[9] = UInt16GetDatum(instance->locktag.locktag_field4);
+				values[9] = Int16GetDatum(instance->locktag.locktag_field4);
 				nulls[2] = true;
 				nulls[3] = true;
 				nulls[4] = true;
@@ -768,7 +768,7 @@ pg_try_advisory_xact_lock_shared_int8(PG_FUNCTION_ARGS)
  * pg_advisory_unlock(int8) - release exclusive lock on an int8 key
  *
  * Returns true if successful, false if lock was not held
-*/
+ */
 Datum
 pg_advisory_unlock_int8(PG_FUNCTION_ARGS)
 {
@@ -958,7 +958,7 @@ pg_try_advisory_xact_lock_shared_int4(PG_FUNCTION_ARGS)
  * pg_advisory_unlock(int4, int4) - release exclusive lock on 2 int4 keys
  *
  * Returns true if successful, false if lock was not held
-*/
+ */
 Datum
 pg_advisory_unlock_int4(PG_FUNCTION_ARGS)
 {

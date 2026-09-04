@@ -92,7 +92,7 @@ static volatile pqsigfunc pqsignal_handlers[PG_NSIG];
  */
 #if defined(USE_SIGACTION) && defined(USE_SIGINFO)
 static void
-wrapper_handler(int postgres_signal_arg, siginfo_t * info, void *context)
+wrapper_handler(int postgres_signal_arg, siginfo_t *info, void *context)
 #else							/* no USE_SIGINFO */
 static void
 wrapper_handler(int postgres_signal_arg)
@@ -204,8 +204,8 @@ pqsignal(int signo, pqsigfunc func)
 #else							/* no USE_SIGACTION */
 
 	/*
-	 * Forward to Windows native signal system, we need to send this though
-	 * wrapper handler as it it needs to take single argument only.
+	 * Forward to the native Windows signal handler through a wrapper, since
+	 * it accepts only one argument.
 	 */
 	if (is_ign)
 		wrapper_func_ptr = SIG_IGN;

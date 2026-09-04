@@ -18,6 +18,7 @@ $node->init();
 # Set up our desired configuration.
 $node->append_conf('postgresql.conf', <<EOM);
 shared_preload_libraries='liboracle_parser, ivorysql_ora, test_plan_advice'
+wal_level=replica
 pg_plan_advice.always_explain_supplied_advice=false
 pg_plan_advice.feedback_warnings=true
 # Match the normal oracle-check server config: it runs without log_statement,
@@ -76,8 +77,10 @@ my $rc =
   system($ENV{PG_REGRESS} . " "
 	  . "--bindir= "
 	  . "--dlpath=\"$dlpath\" "
-	  . "--host=" . $node->host . " "
-	  . "--port=" . $node->port . " "
+	  . "--host="
+	  . $node->host . " "
+	  . "--port="
+	  . $node->port . " "
 	  . "--schedule=$schedule "
 	  . "--max-concurrent-tests=20 "
 	  . "--inputdir=\"$inputdir\" "

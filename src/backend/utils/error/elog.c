@@ -1091,7 +1091,7 @@ errcode_for_socket_access(void)
  * ereport will provide one for the output methods that need it.
  */
 int
-errmsg(const char *fmt,...)
+errmsg(const char *fmt, ...)
 {
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 	MemoryContext oldcontext;
@@ -1346,7 +1346,7 @@ backtrace_cleanup(int code, Datum arg)
  * error recursion.
  */
 int
-errmsg_internal(const char *fmt,...)
+errmsg_internal(const char *fmt, ...)
 {
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 	MemoryContext oldcontext;
@@ -1370,7 +1370,7 @@ errmsg_internal(const char *fmt,...)
  */
 int
 errmsg_plural(const char *fmt_singular, const char *fmt_plural,
-			  unsigned long n,...)
+			  unsigned long n, ...)
 {
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 	MemoryContext oldcontext;
@@ -1392,7 +1392,7 @@ errmsg_plural(const char *fmt_singular, const char *fmt_plural,
  * errdetail --- add a detail error message text to the current error
  */
 int
-errdetail(const char *fmt,...)
+errdetail(const char *fmt, ...)
 {
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 	MemoryContext oldcontext;
@@ -1419,7 +1419,7 @@ errdetail(const char *fmt,...)
  * (typically, that they don't seem to be useful to average users).
  */
 int
-errdetail_internal(const char *fmt,...)
+errdetail_internal(const char *fmt, ...)
 {
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 	MemoryContext oldcontext;
@@ -1440,7 +1440,7 @@ errdetail_internal(const char *fmt,...)
  * errdetail_log --- add a detail_log error message text to the current error
  */
 int
-errdetail_log(const char *fmt,...)
+errdetail_log(const char *fmt, ...)
 {
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 	MemoryContext oldcontext;
@@ -1462,7 +1462,7 @@ errdetail_log(const char *fmt,...)
  */
 int
 errdetail_log_plural(const char *fmt_singular, const char *fmt_plural,
-					 unsigned long n,...)
+					 unsigned long n, ...)
 {
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 	MemoryContext oldcontext;
@@ -1485,7 +1485,7 @@ errdetail_log_plural(const char *fmt_singular, const char *fmt_plural,
  */
 int
 errdetail_plural(const char *fmt_singular, const char *fmt_plural,
-				 unsigned long n,...)
+				 unsigned long n, ...)
 {
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 	MemoryContext oldcontext;
@@ -1506,7 +1506,7 @@ errdetail_plural(const char *fmt_singular, const char *fmt_plural,
  * errhint --- add a hint error message text to the current error
  */
 int
-errhint(const char *fmt,...)
+errhint(const char *fmt, ...)
 {
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 	MemoryContext oldcontext;
@@ -1528,7 +1528,7 @@ errhint(const char *fmt,...)
  * Non-translated version of errhint(), see also errmsg_internal().
  */
 int
-errhint_internal(const char *fmt,...)
+errhint_internal(const char *fmt, ...)
 {
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 	MemoryContext oldcontext;
@@ -1550,7 +1550,7 @@ errhint_internal(const char *fmt,...)
  */
 int
 errhint_plural(const char *fmt_singular, const char *fmt_plural,
-			   unsigned long n,...)
+			   unsigned long n, ...)
 {
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 	MemoryContext oldcontext;
@@ -1575,7 +1575,7 @@ errhint_plural(const char *fmt_singular, const char *fmt_plural,
  * states.
  */
 int
-errcontext_msg(const char *fmt,...)
+errcontext_msg(const char *fmt, ...)
 {
 	ErrorData  *edata = &errordata[errordata_stack_depth];
 	MemoryContext oldcontext;
@@ -1847,7 +1847,7 @@ pre_format_elog_string(int errnumber, const char *domain)
 }
 
 char *
-format_elog_string(const char *fmt,...)
+format_elog_string(const char *fmt, ...)
 {
 	ErrorData	errdata;
 	ErrorData  *edata;
@@ -2353,7 +2353,7 @@ DebugFileOpen(void)
  * GUC check_hook for log_min_messages
  *
  * This value is parsed as a comma-separated list of zero or more TYPE:LEVEL
- * elements.  For each element, TYPE corresponds to a bk_category value (see
+ * elements.  For each element, TYPE corresponds to a bkcategory value (see
  * postmaster/proctypelist.h); LEVEL is one of server_message_level_options.
  *
  * In addition, there must be a single LEVEL element (with no TYPE part)
@@ -3831,7 +3831,7 @@ send_message_to_server_log(ErrorData *edata)
 		 * pipe).  If this is not possible, fallback to an entry written to
 		 * stderr.
 		 */
-		if (redirection_done || MyBackendType == B_LOGGER)
+		if (redirection_done || syslogger_setup_done)
 			write_csvlog(edata);
 		else
 			fallback_to_stderr = true;
@@ -3845,7 +3845,7 @@ send_message_to_server_log(ErrorData *edata)
 		 * pipe).  If this is not possible, fallback to an entry written to
 		 * stderr.
 		 */
-		if (redirection_done || MyBackendType == B_LOGGER)
+		if (redirection_done || syslogger_setup_done)
 		{
 			write_jsonlog(edata);
 		}
@@ -3885,7 +3885,7 @@ send_message_to_server_log(ErrorData *edata)
 	}
 
 	/* If in the syslogger process, try to write messages direct to file */
-	if (MyBackendType == B_LOGGER)
+	if (syslogger_setup_done)
 		write_syslogger_file(buf.data, buf.len, LOG_DESTINATION_STDERR);
 
 	/* No more need of the message formatted for stderr */
@@ -4226,7 +4226,7 @@ append_with_tabs(StringInfo buf, const char *str)
  * safely (memory context, GUC load etc)
  */
 void
-write_stderr(const char *fmt,...)
+write_stderr(const char *fmt, ...)
 {
 	va_list		ap;
 

@@ -1573,11 +1573,11 @@ include_dir 'conf.d'
       </term>
       <listitem>
        <para>
-        Specifies the name of the curve to use in <acronym>ECDH</acronym> key
-        exchange.  It needs to be supported by all clients that connect.
-        Multiple curves can be specified by using a colon-separated list.
-        It does not need to be the same curve used by the server's Elliptic
-        Curve key.  This parameter can only be set in the
+        Specifies the named group to use for <acronym>TLS</acronym> key
+        exchange.  It needs to be supported by all clients that
+        connect.  Multiple groups can be specified by using a colon-separated
+        list.  It does not need to match the key type used by the server
+        certificate.  This parameter can only be set in the
         <filename>postgresql.conf</filename> file or on the server command line.
         The default is <literal>X25519:prime256v1</literal>.
        </para>
@@ -1592,7 +1592,7 @@ include_dir 'conf.d'
        </note>
 
        <para>
-        <productname>OpenSSL</productname> names for the most common curves
+        <productname>OpenSSL</productname> names for the most common groups
         are:
         <literal>prime256v1</literal> (NIST P-256),
         <literal>secp384r1</literal> (NIST P-384),
@@ -2999,7 +2999,7 @@ include_dir 'conf.d'
        </listitem>
       </varlistentry>
       <varlistentry id="guc-io-max-workers" xreflabel="io_max_workers">
-       <term><varname>io_max_workers</varname> (<type>int</type>)
+       <term><varname>io_max_workers</varname> (<type>integer</type>)
        <indexterm>
         <primary><varname>io_max_workers</varname> configuration parameter</primary>
        </indexterm>
@@ -3018,7 +3018,7 @@ include_dir 'conf.d'
        </listitem>
       </varlistentry>
       <varlistentry id="guc-io-worker-idle-timeout" xreflabel="io_worker_idle_timeout">
-       <term><varname>io_worker_idle_timeout</varname> (<type>int</type>)
+       <term><varname>io_worker_idle_timeout</varname> (<type>integer</type>)
        <indexterm>
         <primary><varname>io_worker_idle_timeout</varname> configuration parameter</primary>
        </indexterm>
@@ -3038,7 +3038,7 @@ include_dir 'conf.d'
        </listitem>
       </varlistentry>
       <varlistentry id="guc-io-worker-launch-interval" xreflabel="io_worker_launch_interval">
-       <term><varname>io_worker_launch_interval</varname> (<type>int</type>)
+       <term><varname>io_worker_launch_interval</varname> (<type>integer</type>)
        <indexterm>
         <primary><varname>io_worker_launch_interval</varname> configuration parameter</primary>
        </indexterm>
@@ -5842,7 +5842,7 @@ ANY <replaceable class="parameter">num_sync</replaceable> ( <replaceable class="
       </listitem>
      </varlistentry>
 
-     <varlistentry id="guc-enable-groupby-reordering" xreflabel="enable_group_by_reordering">
+     <varlistentry id="guc-enable-group-by-reordering" xreflabel="enable_group_by_reordering">
       <term><varname>enable_group_by_reordering</varname> (<type>boolean</type>)
       <indexterm>
        <primary><varname>enable_group_by_reordering</varname> configuration parameter</primary>
@@ -7781,7 +7781,7 @@ local0.*    /var/log/postgresql
       </listitem>
      </varlistentry>
 
-     <varlistentry id="guc-debug-print-parse">
+     <varlistentry id="guc-debug-print-raw-parse" xreflabel="debug_print_raw_parse">
       <term><varname>debug_print_raw_parse</varname> (<type>boolean</type>)
       <indexterm>
        <primary><varname>debug_print_raw_parse</varname> configuration parameter</primary>
@@ -11894,7 +11894,7 @@ dynamic_library_path = '/usr/local/lib/postgresql:$libdir'
       </listitem>
      </varlistentry>
 
-    <varlistentry id="guc-quote-all-identifiers" xreflabel="quote-all-identifiers">
+    <varlistentry id="guc-quote-all-identifiers" xreflabel="quote_all_identifiers">
       <term><varname>quote_all_identifiers</varname> (<type>boolean</type>)
       <indexterm>
        <primary><varname>quote_all_identifiers</varname> configuration parameter</primary>
@@ -13263,7 +13263,9 @@ LOG:  CleanUpLock: deleting: lock(0xb7acd844) id(24688,24696,0,0,0,1)
         If LLVM has the required functionality, register generated functions
         with <productname>GDB</productname>.  This makes debugging easier.
         The default setting is <literal>off</literal>.
-        This parameter can only be set at server start.
+        Only superusers and users with the appropriate <literal>SET</literal>
+        privilege can change this parameter at session start,
+        and it cannot be changed at all within a session.
        </para>
       </listitem>
      </varlistentry>
@@ -13314,7 +13316,9 @@ LOG:  CleanUpLock: deleting: lock(0xb7acd844) id(24688,24696,0,0,0,1)
         This writes out files to <filename>~/.debug/jit/</filename>; the
         user is responsible for performing cleanup when desired.
         The default setting is <literal>off</literal>.
-        This parameter can only be set at server start.
+        Only superusers and users with the appropriate <literal>SET</literal>
+        privilege can change this parameter at session start,
+        and it cannot be changed at all within a session.
        </para>
       </listitem>
      </varlistentry>

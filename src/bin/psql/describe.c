@@ -1936,7 +1936,7 @@ describeOneTableDetails(const char *schemaname,
 
 				if (nrows > 0)
 				{
-					printfPQExpBuffer(&tmpbuf, _("Publications:"));
+					printfPQExpBuffer(&tmpbuf, _("Included in publications:"));
 					for (i = 0; i < nrows; i++)
 						appendPQExpBuffer(&tmpbuf, "\n    \"%s\"", PQgetvalue(result, i, 0));
 
@@ -1979,7 +1979,7 @@ describeOneTableDetails(const char *schemaname,
 	 */
 	if (tableinfo.relkind == RELKIND_PROPGRAPH)
 	{
-		printQueryOpt myopt = pset.popt;
+		printQueryOpt popt = pset.popt;
 		char	   *footers[3] = {NULL, NULL, NULL};
 
 		printfPQExpBuffer(&buf, "/* %s */\n", _("Get property graph information"));
@@ -1991,11 +1991,11 @@ describeOneTableDetails(const char *schemaname,
 						  "\n                    when " CppAsString2(PGEKIND_EDGE) " then 'edge' end AS \"%s\","
 						  "\n     s.pgealias as \"%s\","
 						  "\n     d.pgealias as \"%s\""
-						  "\n FROM pg_propgraph_element e"
-						  "\n      INNER JOIN pg_class c ON c.oid = e.pgerelid"
-						  "\n      INNER JOIN pg_namespace n ON c.relnamespace = n.oid"
-						  "\n      LEFT JOIN pg_propgraph_element s ON e.pgesrcvertexid = s.oid"
-						  "\n      LEFT JOIN pg_propgraph_element d ON e.pgedestvertexid = d.oid"
+						  "\n FROM pg_catalog.pg_propgraph_element e"
+						  "\n      INNER JOIN pg_catalog.pg_class c ON c.oid = e.pgerelid"
+						  "\n      INNER JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid"
+						  "\n      LEFT JOIN pg_catalog.pg_propgraph_element s ON e.pgesrcvertexid = s.oid"
+						  "\n      LEFT JOIN pg_catalog.pg_propgraph_element d ON e.pgedestvertexid = d.oid"
 						  "\n WHERE e.pgepgid = '%s'"
 						  "\n ORDER BY e.pgealias",
 						  gettext_noop("Element Alias"),
@@ -2034,12 +2034,12 @@ describeOneTableDetails(const char *schemaname,
 			}
 		}
 
-		myopt.footers = footers;
-		myopt.topt.default_footer = false;
-		myopt.title = title.data;
-		myopt.translate_header = true;
+		popt.footers = footers;
+		popt.topt.default_footer = false;
+		popt.title = title.data;
+		popt.translate_header = true;
 
-		printQuery(res, &myopt, pset.queryFout, false, pset.logfile);
+		printQuery(res, &popt, pset.queryFout, false, pset.logfile);
 
 		free(footers[0]);
 		free(footers[1]);
@@ -2563,18 +2563,18 @@ describeOneTableDetails(const char *schemaname,
 				printfPQExpBuffer(&tmpbuf, _("primary key, "));
 			else if (strcmp(indisunique, "t") == 0)
 			{
-				printfPQExpBuffer(&tmpbuf, _("unique"));
 				if (strcmp(indnullsnotdistinct, "t") == 0)
-					appendPQExpBufferStr(&tmpbuf, _(" nulls not distinct"));
-				appendPQExpBufferStr(&tmpbuf, _(", "));
+					printfPQExpBuffer(&tmpbuf, _("unique nulls not distinct, "));
+				else
+					printfPQExpBuffer(&tmpbuf, _("unique, "));
 			}
 			else
 				resetPQExpBuffer(&tmpbuf);
-			appendPQExpBuffer(&tmpbuf, "%s, ", indamname);
 
 			/* we assume here that index and table are in same schema */
-			appendPQExpBuffer(&tmpbuf, _("for table \"%s.%s\""),
-							  schemaname, indtable);
+			/*- translator: the first %s is an index AM name (eg. btree) */
+			appendPQExpBuffer(&tmpbuf, _("%s, for table \"%s.%s\""),
+							  indamname, schemaname, indtable);
 
 			if (strlen(indpred))
 				appendPQExpBuffer(&tmpbuf, _(", predicate (%s)"), indpred);
@@ -3248,9 +3248,9 @@ describeOneTableDetails(const char *schemaname,
 								  "WHERE pc.oid ='%s' and pg_catalog.pg_relation_is_publishable('%s')\n"
 								  "UNION\n"
 								  "SELECT pubname\n"
-								  "     , pg_get_expr(pr.prqual, c.oid)\n"
+								  "     , pg_catalog.pg_get_expr(pr.prqual, c.oid)\n"
 								  "     , (CASE WHEN pr.prattrs IS NOT NULL THEN\n"
-								  "         (SELECT string_agg(attname, ', ')\n"
+								  "         (SELECT pg_catalog.string_agg(attname, ', ')\n"
 								  "           FROM pg_catalog.generate_series(0, pg_catalog.array_upper(pr.prattrs::pg_catalog.int2[], 1)) s,\n"
 								  "                pg_catalog.pg_attribute\n"
 								  "          WHERE attrelid = pr.prrelid AND attnum = prattrs[s])\n"
@@ -3322,7 +3322,7 @@ describeOneTableDetails(const char *schemaname,
 				tuples = PQntuples(result);
 
 			if (tuples > 0)
-				printTableAddFooter(&cont, _("Publications:"));
+				printTableAddFooter(&cont, _("Included in publications:"));
 
 			/* Might be an empty set - that's ok */
 			for (i = 0; i < tuples; i++)
@@ -3365,7 +3365,7 @@ describeOneTableDetails(const char *schemaname,
 				tuples = PQntuples(result);
 
 			if (tuples > 0)
-				printTableAddFooter(&cont, _("Except publications:"));
+				printTableAddFooter(&cont, _("Excluded from publications:"));
 
 			/* Might be an empty set - that's ok */
 			for (i = 0; i < tuples; i++)
@@ -5714,11 +5714,11 @@ listSchemas(const char *pattern, bool verbose, bool showSystem)
 		{
 			/*
 			 * Allocate memory for footers. Size of footers will be 1 (for
-			 * storing "Publications:" string) + publication schema mapping
-			 * count +  1 (for storing NULL).
+			 * storing "Included in publications:" string) + publication
+			 * schema mapping count + 1 (for storing NULL).
 			 */
 			footers = pg_malloc_array(char *, 1 + pub_schema_tuples + 1);
-			footers[0] = pg_strdup(_("Publications:"));
+			footers[0] = pg_strdup(_("Included in publications:"));
 
 			/* Might be an empty set - that's ok */
 			for (i = 0; i < pub_schema_tuples; i++)
@@ -7176,7 +7176,7 @@ describePublications(const char *pattern)
 			if (pset.sversion >= 150000)
 			{
 				appendPQExpBufferStr(&buf,
-									 ", pg_get_expr(pr.prqual, c.oid)");
+									 ", pg_catalog.pg_get_expr(pr.prqual, c.oid)");
 				appendPQExpBufferStr(&buf,
 									 ", (CASE WHEN pr.prattrs IS NOT NULL THEN\n"
 									 "     pg_catalog.array_to_string("
@@ -7346,7 +7346,7 @@ describeSubscriptions(const char *pattern, bool verbose)
 		if (pset.sversion >= 190000)
 		{
 			appendPQExpBuffer(&buf,
-							  ", (select srvname from pg_foreign_server where oid=subserver) AS \"%s\"\n",
+							  ", (select srvname from pg_catalog.pg_foreign_server where oid=subserver) AS \"%s\"\n",
 							  gettext_noop("Server"));
 
 			appendPQExpBuffer(&buf,

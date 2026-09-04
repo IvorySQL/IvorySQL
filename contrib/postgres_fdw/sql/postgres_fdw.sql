@@ -1578,14 +1578,38 @@ DELETE FROM ft2 WHERE c1 = 1200 RETURNING tableoid::regclass;
 
 -- Test UPDATE FOR PORTION OF
 UPDATE ft8 FOR PORTION OF c4 FROM '2005-01-01' TO '2006-01-01'
-SET c2 = c2 + 1
-WHERE c1 = '[1,2)';
+  SET c2 = c2 + 1
+  WHERE c1 = '[1,2)'; -- error
 SELECT * FROM ft8 WHERE c1 = '[1,2)' ORDER BY c1, c4;
 
 -- Test DELETE FOR PORTION OF
 DELETE FROM ft8 FOR PORTION OF c4 FROM '2005-01-01' TO '2006-01-01'
-WHERE c1 = '[2,3)';
+  WHERE c1 = '[2,3)'; -- error
 SELECT * FROM ft8 WHERE c1 = '[2,3)' ORDER BY c1, c4;
+
+-- FOR PORTION OF fails if a child partition is a foreign table, even if the
+-- root is not. But a child partition that is pruned doesn't cause an error.
+CREATE TABLE fpo_part_parent (
+  c1 int4range NOT NULL,
+  c2 int NOT NULL,
+  c3 text,
+  c4 daterange NOT NULL
+) PARTITION BY LIST (c2);
+CREATE TABLE fpo_part_local PARTITION OF fpo_part_parent FOR VALUES IN (1);
+INSERT INTO fpo_part_local VALUES ('[1,2)', 1, 'one', '[2024-01-01,2024-12-31)');
+CREATE FOREIGN TABLE fpo_part_foreign
+  PARTITION OF fpo_part_parent FOR VALUES IN (6)
+  SERVER loopback OPTIONS (schema_name 'S 1', table_name 'T 5');
+DELETE FROM fpo_part_parent
+  FOR PORTION OF c4 FROM '2001-01-01' TO '2001-02-01' WHERE c2 = 6; -- error
+UPDATE fpo_part_parent
+  FOR PORTION OF c4 FROM '2001-01-01' TO '2001-02-01' SET c3 = 'x' WHERE c2 = 6; -- error
+UPDATE fpo_part_parent
+  FOR PORTION OF c4 FROM '2024-06-01' TO '2024-07-01' SET c3 = 'edited' WHERE c2 = 1; -- okay
+DELETE FROM fpo_part_parent
+  FOR PORTION OF c4 FROM '2024-06-01' TO '2024-06-15' WHERE c2 = 1; -- okay
+SELECT c1, c2, c3, c4 FROM fpo_part_local ORDER BY c4;
+DROP TABLE fpo_part_parent;
 
 -- Test UPDATE/DELETE with RETURNING on a three-table join
 INSERT INTO ft2 (c1,c2,c3)
@@ -1777,6 +1801,40 @@ RESET enable_material;
 DROP FOREIGN TABLE remt2;
 DROP TABLE loct1;
 DROP TABLE loct2;
+
+-- Test that direct modify and foreign modify work with runtime pruning of
+-- result relations (bug #19484)
+create table fdw_part_update (a int not null, b int) partition by list (a);
+create table fdw_part_update_p1 partition of fdw_part_update for values in (1);
+create table fdw_part_update_remote (a int not null, b int);
+create foreign table fdw_part_update_p2 partition of fdw_part_update
+    for values in (2)
+    server loopback options (table_name 'fdw_part_update_remote');
+insert into fdw_part_update_p1 values (1, 10);
+insert into fdw_part_update_remote values (2, 20);
+set plan_cache_mode = force_generic_plan;
+
+-- Check DirectModify case
+prepare fdw_part_upd(int) as
+    update fdw_part_update set b = b + 1 where a = $1
+    returning tableoid::regclass, a, b;
+explain (verbose, costs off)
+    execute fdw_part_upd(2);
+execute fdw_part_upd(2);
+deallocate fdw_part_upd;
+
+-- Check ForeignModify case
+prepare fdw_part_upd2(int) as
+    update fdw_part_update set b = b + random()::int * 0 + 1 where a = $1
+    returning tableoid::regclass, a, b;
+explain (verbose, costs off)
+    execute fdw_part_upd2(2);
+execute fdw_part_upd2(2);
+deallocate fdw_part_upd2;
+
+reset plan_cache_mode;
+drop table fdw_part_update;
+drop table fdw_part_update_remote;
 
 -- ===================================================================
 -- test check constraints
@@ -4573,11 +4631,24 @@ ALTER FOREIGN TABLE simport_fview OPTIONS (ADD restore_stats 'true');
 
 ANALYZE simport_fview;                    -- should fail
 
+-- This tests build_remattrmap()'s deparsing of column names that include
+-- single quotes or backslashes
+CREATE TABLE dtest_table ("col'quote" int, "col\backslash" int);
+CREATE FOREIGN TABLE dtest_ftable ("col'quote" int, "col\backslash" int)
+       SERVER loopback OPTIONS (table_name 'dtest_table', restore_stats 'true');
+
+INSERT INTO dtest_table SELECT g, g FROM generate_series(1, 10) g;
+ANALYZE dtest_table;
+
+ANALYZE VERBOSE dtest_ftable;             -- should work
+
 -- cleanup
 DROP FOREIGN TABLE simport_ftable;
 DROP FOREIGN TABLE simport_fview;
 DROP VIEW simport_view;
 DROP TABLE simport_table;
+DROP FOREIGN TABLE dtest_ftable;
+DROP TABLE dtest_table;
 
 -- ===================================================================
 -- test for postgres_fdw_get_connections function with check_conn = true
@@ -4620,3 +4691,54 @@ SELECT server_name,
 -- Clean up
 \set VERBOSITY default
 RESET debug_discard_caches;
+
+-- ===================================================================
+-- test cleanup of failed connections on abort
+-- ===================================================================
+
+CREATE VIEW my_backend_pid (pid) AS SELECT pg_backend_pid();
+CREATE FOREIGN TABLE remote_backend_pid (pid int)
+  SERVER loopback OPTIONS (table_name 'my_backend_pid');
+CREATE FUNCTION wait_for_backend_termination(int) RETURNS void AS $$
+  BEGIN
+    WHILE (SELECT count(*) FROM pg_stat_activity WHERE pid = $1) > 0
+    LOOP
+      PERFORM pg_stat_clear_snapshot();
+    END LOOP;
+  END
+$$ LANGUAGE plpgsql;
+
+SET client_min_messages = 'ERROR';
+
+BEGIN;
+DECLARE c CURSOR FOR SELECT * FROM ft1 ORDER BY c1;
+SAVEPOINT s;
+SELECT pid AS remote_pid FROM remote_backend_pid \gset
+SELECT pg_terminate_backend(:remote_pid);
+SELECT wait_for_backend_termination(:remote_pid);
+ROLLBACK TO SAVEPOINT s;
+SELECT pid FROM remote_backend_pid;
+ROLLBACK TO SAVEPOINT s;
+RELEASE SAVEPOINT s;
+FETCH c;
+ABORT;
+
+BEGIN;
+DECLARE c CURSOR FOR SELECT * FROM ft1 ORDER BY c1;
+FETCH c;
+SAVEPOINT s;
+SELECT pid AS remote_pid FROM remote_backend_pid \gset
+SELECT pg_terminate_backend(:remote_pid);
+SELECT wait_for_backend_termination(:remote_pid);
+ROLLBACK TO SAVEPOINT s;
+SELECT pid FROM remote_backend_pid;
+ROLLBACK TO SAVEPOINT s;
+RELEASE SAVEPOINT s;
+CLOSE c;
+ABORT;
+
+RESET client_min_messages;
+
+DROP FUNCTION wait_for_backend_termination(int);
+DROP FOREIGN TABLE remote_backend_pid;
+DROP VIEW my_backend_pid;

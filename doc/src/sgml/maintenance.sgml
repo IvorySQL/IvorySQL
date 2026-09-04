@@ -702,20 +702,20 @@ HINT:  Execute a database-wide VACUUM in that database.
     <orderedlist>
      <listitem>
       <simpara>Resolve old prepared transactions. You can find these by checking
-       <link linkend="view-pg-prepared-xacts">pg_prepared_xacts</link> for rows where
+       <link linkend="view-pg-prepared-xacts"><structname>pg_prepared_xacts</structname></link> for rows where
        <literal>age(transactionid)</literal> is large. Such transactions should be
        committed or rolled back.</simpara>
      </listitem>
      <listitem>
       <simpara>End long-running open transactions. You can find these by checking
-       <link linkend="monitoring-pg-stat-activity-view">pg_stat_activity</link> for rows where
+       <link linkend="monitoring-pg-stat-activity-view"><structname>pg_stat_activity</structname></link> for rows where
        <literal>age(backend_xid)</literal> or <literal>age(backend_xmin)</literal> is
        large. Such transactions should be committed or rolled back, or the session
        can be terminated using <literal>pg_terminate_backend</literal>.</simpara>
      </listitem>
      <listitem>
       <simpara>Drop any old replication slots. Use
-       <link linkend="monitoring-pg-stat-replication-view">pg_stat_replication</link> to
+       <link linkend="view-pg-replication-slots"><structname>pg_replication_slots</structname></link> to
        find slots where <literal>age(xmin)</literal> or <literal>age(catalog_xmin)</literal>
        is large. In many cases, such slots were created for replication to servers that no
        longer exist, or that have been down for a long time. If you drop a slot for a server
@@ -830,14 +830,14 @@ HINT:  Execute a database-wide VACUUM in that database.
      The <function>pg_get_multixact_stats()</function> function described in
      <xref linkend="functions-pg-snapshot"/> provides a way to monitor
      multixact allocation and usage patterns in real time, for example:
-     <programlisting>
+<screen>
 =# SELECT *, pg_size_pretty(members_size) members_size_pretty
      FROM pg_catalog.pg_get_multixact_stats();
  num_mxids | num_members | members_size | oldest_multixact | members_size_pretty
 -----------+-------------+--------------+------------------+---------------------
  311740299 |  2785241176 |  13926205880 |                2 | 13 GB
 (1 row)
-     </programlisting>
+</screen>
      This output shows a system with significant multixact activity: about
      312 million multixact IDs and about 2.8 billion member entries consuming
      13 GB of storage space.
@@ -1112,8 +1112,10 @@ analyze threshold = analyze base threshold + analyze scale factor * number of tu
        field as compared to
        <xref linkend="guc-autovacuum-multixact-freeze-max-age"/>.  Furthermore,
        this component increases greatly once the age surpasses
-       <xref linkend="guc-vacuum-multixact-failsafe-age"/>.  The final value
-       for this component can be adjusted via
+       <xref linkend="guc-vacuum-multixact-failsafe-age"/> or when the number
+       of multixact member entries created exceeds approximately 2 billion
+       entries (see <xref linkend="vacuum-for-multixact-wraparound"/>).  The
+       final value for this component can be adjusted via
        <xref linkend="guc-autovacuum-multixact-freeze-score-weight"/>.  Note
        that increasing this parameter's value also lowers the age at which this
        component begins scaling aggressively, i.e., the scaling age is divided

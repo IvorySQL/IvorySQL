@@ -392,50 +392,59 @@ lookup_type_cache(Oid type_id, int flags)
 	bool		found;
 	int			in_progress_offset;
 
-	if (TypeCacheHash == NULL)
+	if (in_progress_list == NULL)
 	{
 		/* First time through: initialize the hash table */
 		HASHCTL		ctl;
 		int			allocsize;
 
-		ctl.keysize = sizeof(Oid);
-		ctl.entrysize = sizeof(TypeCacheEntry);
+		if (TypeCacheHash == NULL)
+		{
+			ctl.keysize = sizeof(Oid);
+			ctl.entrysize = sizeof(TypeCacheEntry);
 
-		/*
-		 * TypeCacheEntry takes hash value from the system cache. For
-		 * TypeCacheHash we use the same hash in order to speedup search by
-		 * hash value. This is used by hash_seq_init_with_hash_value().
-		 */
-		ctl.hash = type_cache_syshash;
+			/*
+			 * TypeCacheEntry takes hash value from the system cache. For
+			 * TypeCacheHash we use the same hash in order to speedup search
+			 * by hash value. This is used by hash_seq_init_with_hash_value().
+			 */
+			ctl.hash = type_cache_syshash;
 
-		TypeCacheHash = hash_create("Type information cache", 64,
-									&ctl, HASH_ELEM | HASH_FUNCTION);
+			TypeCacheHash = hash_create("Type information cache", 64,
+										&ctl, HASH_ELEM | HASH_FUNCTION);
+		}
 
-		Assert(RelIdToTypeIdCacheHash == NULL);
-
-		ctl.keysize = sizeof(Oid);
-		ctl.entrysize = sizeof(RelIdToTypeIdCacheEntry);
-		RelIdToTypeIdCacheHash = hash_create("Map from relid to OID of cached composite type", 64,
-											 &ctl, HASH_ELEM | HASH_BLOBS);
-
-		/* Also set up callbacks for SI invalidations */
-		CacheRegisterRelcacheCallback(TypeCacheRelCallback, (Datum) 0);
-		CacheRegisterSyscacheCallback(TYPEOID, TypeCacheTypCallback, (Datum) 0);
-		CacheRegisterSyscacheCallback(CLAOID, TypeCacheOpcCallback, (Datum) 0);
-		CacheRegisterSyscacheCallback(CONSTROID, TypeCacheConstrCallback, (Datum) 0);
+		if (RelIdToTypeIdCacheHash == NULL)
+		{
+			ctl.keysize = sizeof(Oid);
+			ctl.entrysize = sizeof(RelIdToTypeIdCacheEntry);
+			RelIdToTypeIdCacheHash = hash_create("Map from relid to OID of cached composite type", 64,
+												 &ctl, HASH_ELEM | HASH_BLOBS);
+		}
 
 		/* Also make sure CacheMemoryContext exists */
 		if (!CacheMemoryContext)
 			CreateCacheMemoryContext();
 
 		/*
-		 * reserve enough in_progress_list slots for many cases
+		 * Reserve enough in_progress_list slots for many cases.  This is the
+		 * last allocation on purpose, done after the two others.
 		 */
 		allocsize = 4;
 		in_progress_list =
 			MemoryContextAlloc(CacheMemoryContext,
 							   allocsize * sizeof(*in_progress_list));
 		in_progress_list_maxlen = allocsize;
+
+		/*
+		 * Set up callbacks for SI invalidations.  These steps are done last,
+		 * once all the other initializations are done, and can fail only with
+		 * a FATAL error.
+		 */
+		CacheRegisterRelcacheCallback(TypeCacheRelCallback, (Datum) 0);
+		CacheRegisterSyscacheCallback(TYPEOID, TypeCacheTypCallback, (Datum) 0);
+		CacheRegisterSyscacheCallback(CLAOID, TypeCacheOpcCallback, (Datum) 0);
+		CacheRegisterSyscacheCallback(CONSTROID, TypeCacheConstrCallback, (Datum) 0);
 	}
 
 	Assert(TypeCacheHash != NULL && RelIdToTypeIdCacheHash != NULL);
@@ -779,8 +788,9 @@ lookup_type_cache(Oid type_id, int flags)
 										  HASHSTANDARD_PROC);
 
 		/*
-		 * As above, make sure hash_array, hash_record, or hash_range will
-		 * succeed.
+		 * As above, make sure hash_array, hash_record, hash_range, or
+		 * hash_multirange will succeed.  Here we do need to check the range
+		 * cases.
 		 */
 		if (hash_proc == F_HASH_ARRAY &&
 			!array_element_has_hashing(typentry))
@@ -791,12 +801,8 @@ lookup_type_cache(Oid type_id, int flags)
 		else if (hash_proc == F_HASH_RANGE &&
 				 !range_element_has_hashing(typentry))
 			hash_proc = InvalidOid;
-
-		/*
-		 * Likewise for hash_multirange.
-		 */
-		if (hash_proc == F_HASH_MULTIRANGE &&
-			!multirange_element_has_hashing(typentry))
+		else if (hash_proc == F_HASH_MULTIRANGE &&
+				 !multirange_element_has_hashing(typentry))
 			hash_proc = InvalidOid;
 
 		/* Force update of hash_proc_finfo only if we're changing state */
@@ -828,8 +834,8 @@ lookup_type_cache(Oid type_id, int flags)
 												   HASHEXTENDED_PROC);
 
 		/*
-		 * As above, make sure hash_array_extended, hash_record_extended, or
-		 * hash_range_extended will succeed.
+		 * As above, make sure hash_array_extended, hash_record_extended,
+		 * hash_range_extended, or hash_multirange_extended will succeed.
 		 */
 		if (hash_extended_proc == F_HASH_ARRAY_EXTENDED &&
 			!array_element_has_extended_hashing(typentry))
@@ -840,12 +846,8 @@ lookup_type_cache(Oid type_id, int flags)
 		else if (hash_extended_proc == F_HASH_RANGE_EXTENDED &&
 				 !range_element_has_extended_hashing(typentry))
 			hash_extended_proc = InvalidOid;
-
-		/*
-		 * Likewise for hash_multirange_extended.
-		 */
-		if (hash_extended_proc == F_HASH_MULTIRANGE_EXTENDED &&
-			!multirange_element_has_extended_hashing(typentry))
+		else if (hash_extended_proc == F_HASH_MULTIRANGE_EXTENDED &&
+				 !multirange_element_has_extended_hashing(typentry))
 			hash_extended_proc = InvalidOid;
 
 		/* Force update of proc finfo only if we're changing state */

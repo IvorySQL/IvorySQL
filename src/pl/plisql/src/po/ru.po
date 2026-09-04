@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: plisql (PostgreSQL current)\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2021-11-08 05:22+0300\n"
+"POT-Creation-Date: 2026-02-21 05:19+0200\n"
 "PO-Revision-Date: 2021-09-04 12:39+0300\n"
 "Last-Translator: Alexander Lakhin <exclusion@gmail.com>\n"
 "Language-Team: Russian <pgsql-ru-general@postgresql.org>\n"
@@ -114,14 +114,6 @@ msgstr "тип %s не является составным"
 #, c-format
 msgid "unrecognized exception condition \"%s\""
 msgstr "нераспознанное условие исключения \"%s\""
-
-#: pl_comp.c:2526
-#, c-format
-msgid ""
-"could not determine actual argument type for polymorphic function \"%s\""
-msgstr ""
-"не удалось определить фактический тип аргумента для полиморфной функции \"%s"
-"\""
 
 #: pl_exec.c:500 pl_exec.c:934 pl_exec.c:1169
 msgid "during initialization of execution state"
@@ -962,3 +954,10 @@ msgstr "%s (примерное положение: \"%s\")"
 
 #~ msgid "relation \"%s.%s\" does not exist"
 #~ msgstr "отношение \"%s.%s\" не существует"
+
+#, c-format
+#~ msgid ""
+#~ "could not determine actual argument type for polymorphic function \"%s\""
+#~ msgstr ""
+#~ "не удалось определить фактический тип аргумента для полиморфной функции "
+#~ "\"%s\""

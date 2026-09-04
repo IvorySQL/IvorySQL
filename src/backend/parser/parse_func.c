@@ -544,6 +544,13 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 					 errmsg("OVER specified, but %s is not a window function nor an aggregate function",
 							NameListToString(funcname)),
 					 parser_errposition(pstate, location)));
+		if (ignore_nulls != NO_NULLTREATMENT)
+			ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+			/*- translator: first %s is a null treatment option, eg IGNORE NULLS */
+					 errmsg("%s specified, but %s is not a window function",
+							"RESPECT/IGNORE NULLS", NameListToString(funcname)),
+					 parser_errposition(pstate, location)));
 	}
 
 	/*
@@ -742,13 +749,13 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 								NameListToString(funcname)),
 						 parser_errposition(pstate, location)));
 
-			/* It also can't treat nulls as a window function */
-			if (ignore_nulls != NO_NULLTREATMENT)
-				ereport(ERROR,
-						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-						 errmsg("aggregate functions do not accept RESPECT/IGNORE NULLS"),
-						 parser_errposition(pstate, location)));
 		}
+
+		if (ignore_nulls != NO_NULLTREATMENT)
+			ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg("aggregate functions do not accept RESPECT/IGNORE NULLS"),
+					 parser_errposition(pstate, location)));
 	}
 	else if (fdresult == FUNCDETAIL_WINDOWFUNC)
 	{
@@ -1352,7 +1359,8 @@ func_lookup_failure_details(int fgc_flags, List *argnames, bool proc_call)
 }
 
 
-/* func_match_argtypes()
+/*
+ * func_match_argtypes()
  *
  * Given a list of candidate functions (having the right name and number
  * of arguments) and an array of input datatype OIDs, produce a shortlist of
@@ -1395,7 +1403,8 @@ func_match_argtypes(int nargs,
 }								/* func_match_argtypes() */
 
 
-/* func_select_candidate()
+/*
+ * func_select_candidate()
  *		Given the input argtype array and more than one candidate
  *		for the function, attempt to resolve the conflict.
  *
@@ -1861,7 +1870,8 @@ func_select_candidate(int nargs,
 }								/* func_select_candidate() */
 
 
-/* func_get_detail()
+/*
+ * func_get_detail()
  *
  * Find the named function in the system catalogs.
  *
@@ -2454,9 +2464,7 @@ ParseComplexProjection(ParseState *pstate, const char *funcname, Node *first_arg
 	{
 		ParseNamespaceItem *nsitem;
 
-		nsitem = GetNSItemByRangeTablePosn(pstate,
-										   ((Var *) first_arg)->varno,
-										   ((Var *) first_arg)->varlevelsup);
+		nsitem = GetNSItemByVar(pstate, (Var *) first_arg);
 		/* Return a Var if funcname matches a column, else NULL */
 		return scanNSItemForColumn(pstate, nsitem,
 								   ((Var *) first_arg)->varlevelsup,

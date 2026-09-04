@@ -549,6 +549,7 @@ is_extension_script_filename(const char *filename)
 static List *
 get_extension_control_directories(void)
 {
+#define EXTENSION_SYSTEM_MACRO  "$system"
 	char		sharepath[MAXPGPATH];
 	char	   *system_dir;
 	char	   *ecp;
@@ -562,7 +563,7 @@ get_extension_control_directories(void)
 	{
 		ExtensionLocation *location = palloc_object(ExtensionLocation);
 
-		location->macro = NULL;
+		location->macro = pstrdup(EXTENSION_SYSTEM_MACRO);
 		location->loc = system_dir;
 		paths = lappend(paths, location);
 	}
@@ -592,10 +593,10 @@ get_extension_control_directories(void)
 			 * Substitute the path macro if needed or append "extension"
 			 * suffix if it is a custom extension control path.
 			 */
-			if (strcmp(piece, "$system") == 0)
+			if (strcmp(piece, EXTENSION_SYSTEM_MACRO) == 0)
 			{
 				location->macro = pstrdup(piece);
-				mangled = substitute_path_macro(piece, "$system", system_dir);
+				mangled = substitute_path_macro(piece, EXTENSION_SYSTEM_MACRO, system_dir);
 			}
 			else
 			{
@@ -618,6 +619,7 @@ get_extension_control_directories(void)
 	}
 
 	return paths;
+#undef EXTENSION_SYSTEM_MACRO
 }
 
 /*

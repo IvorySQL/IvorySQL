@@ -12783,6 +12783,21 @@ get_json_constructor(JsonConstructorExpr *ctor, deparse_context *context,
 		get_json_agg_constructor(ctor, context, "JSON_ARRAYAGG", false);
 		return;
 	}
+	else if (ctor->type == JSCTOR_JSON_ARRAY_QUERY)
+	{
+		Query	   *query = castNode(Query, ctor->orig_query);
+
+		appendStringInfo(buf, "JSON_ARRAY(");
+
+		get_query_def(query, buf, context->namespaces, NULL, false,
+					  context->prettyFlags, context->wrapColumn,
+					  context->indentLevel);
+
+		get_json_constructor_options(ctor, buf);
+		appendStringInfoChar(buf, ')');
+
+		return;
+	}
 
 	switch (ctor->type)
 	{
@@ -13593,22 +13608,16 @@ get_from_clause_item(Node *jtnode, Query *query, deparse_context *context)
 				get_graph_pattern_def(rte->graph_pattern, context);
 				appendStringInfoString(buf, " COLUMNS (");
 				{
-					ListCell   *lc;
 					bool		first = true;
 
-					foreach(lc, rte->graph_table_columns)
+					foreach_node(TargetEntry, te, rte->graph_table_columns)
 					{
-						TargetEntry *te = lfirst_node(TargetEntry, lc);
-						deparse_context context = {0};
-
 						if (!first)
 							appendStringInfoString(buf, ", ");
 						else
 							first = false;
 
-						context.buf = buf;
-
-						get_rule_expr((Node *) te->expr, &context, false);
+						get_rule_expr((Node *) te->expr, context, false);
 						appendStringInfoString(buf, " AS ");
 						appendStringInfoString(buf, quote_identifier(te->resname));
 					}
@@ -13854,7 +13863,7 @@ get_for_portion_of(ForPortionOfExpr *forPortionOf, deparse_context *context)
 
 		/*
 		 * Try to write it as FROM ... TO ... if we received it that way,
-		 * otherwise (targetExpr).
+		 * otherwise (targetRange).
 		 */
 		if (forPortionOf->targetFrom && forPortionOf->targetTo)
 		{
@@ -14386,23 +14395,15 @@ generate_qualified_relation_name(Oid relid)
 {
 	HeapTuple	tp;
 	Form_pg_class reltup;
-	char	   *relname;
-	char	   *nspname;
 	char	   *result;
 
 	tp = SearchSysCache1(RELOID, ObjectIdGetDatum(relid));
 	if (!HeapTupleIsValid(tp))
 		elog(ERROR, "cache lookup failed for relation %u", relid);
 	reltup = (Form_pg_class) GETSTRUCT(tp);
-	relname = NameStr(reltup->relname);
 
-	nspname = get_namespace_name_or_temp(reltup->relnamespace);
-	if (!nspname)
-		elog(ERROR, "cache lookup failed for namespace %u",
-			 reltup->relnamespace);
-
-	result = quote_qualified_identifier(nspname, relname);
-
+	result = get_qualified_objname(reltup->relnamespace,
+								   NameStr(reltup->relname));
 	ReleaseSysCache(tp);
 
 	return result;

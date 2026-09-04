@@ -42,7 +42,8 @@
 	 (id) == PqMsg_FunctionCallResponse || \
 	 (id) == PqMsg_NoticeResponse || \
 	 (id) == PqMsg_NotificationResponse || \
-	 (id) == PqMsg_RowDescription)
+	 (id) == PqMsg_RowDescription || \
+	 (id) == PqMsg_ParameterDescription)
 
 
 static void handleFatalError(PGconn *conn);
@@ -1560,7 +1561,8 @@ pqGetNegotiateProtocolVersion3(PGconn *conn)
 	 */
 	if (expect_test_protocol_negotiation && !found_test_protocol_negotiation)
 	{
-		libpq_append_conn_error(conn, "server did not report the unsupported `_pq_.test_protocol_negotiation` parameter in its protocol negotiation message");
+		libpq_append_conn_error(conn, "server did not report the unsupported \"%s\" parameter in its protocol negotiation message",
+								"_pq_.test_protocol_negotiation");
 		goto failure;
 	}
 
@@ -1612,7 +1614,7 @@ getParameterStatus(PGconn *conn)
 
 /*
  * parseInput subroutine to read a BackendKeyData message.
- * Entry: 'v' message type and length have already been consumed.
+ * Entry: 'K' message type and length have already been consumed.
  * Exit: returns 0 if successfully consumed message.
  *		 returns EOF if not enough data.
  */
@@ -2204,7 +2206,7 @@ pqEndcopy3(PGconn *conn)
  */
 PGresult *
 pqFunctionCall3(PGconn *conn, Oid fnid,
-				int *result_buf, int *actual_result_len,
+				int *result_buf, int buf_size, int *actual_result_len,
 				int result_is_int,
 				const PQArgBlock *args, int nargs)
 {
@@ -2338,6 +2340,17 @@ pqFunctionCall3(PGconn *conn, Oid fnid,
 					}
 					else
 					{
+						/*
+						 * If the server returned too much data for the
+						 * buffer, something fishy is going on.  Abandon ship.
+						 */
+						if (buf_size != -1 && *actual_result_len > buf_size)
+						{
+							libpq_append_conn_error(conn, "server returned too much data");
+							handleFatalError(conn);
+							return pqPrepareAsyncResult(conn);
+						}
+
 						if (pqGetnchar(result_buf,
 									   *actual_result_len,
 									   conn))

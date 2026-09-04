@@ -5737,6 +5737,10 @@ savePsetInfo(const printQueryOpt *popt)
 		save->topt.tableAttr = pg_strdup(popt->topt.tableAttr);
 	if (popt->nullPrint)
 		save->nullPrint = pg_strdup(popt->nullPrint);
+	if (popt->truePrint)
+		save->truePrint = pg_strdup(popt->truePrint);
+	if (popt->falsePrint)
+		save->falsePrint = pg_strdup(popt->falsePrint);
 	if (popt->title)
 		save->title = pg_strdup(popt->title);
 
@@ -5764,6 +5768,8 @@ restorePsetInfo(printQueryOpt *popt, printQueryOpt *save)
 	free(popt->topt.recordSep.separator);
 	free(popt->topt.tableAttr);
 	free(popt->nullPrint);
+	free(popt->truePrint);
+	free(popt->falsePrint);
 	free(popt->title);
 
 	/*

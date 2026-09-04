@@ -65,6 +65,19 @@ ok( $primary->log_contains(
 # Wait for the checkpointer to disable logical decoding.
 wait_for_logical_decoding_disabled($primary);
 
+# Test that logical decoding is disabled after repack
+$primary->safe_psql('postgres', qq[create table foo(a int primary key)]);
+$primary->safe_psql('postgres', qq[repack (concurrently) foo;]);
+ok( $primary->log_contains(
+		"logical decoding is enabled upon creating a new logical replication slot"
+	),
+	"logical decoding enabled by repack");
+
+# Wait for the checkpointer to disable logical decoding.
+wait_for_logical_decoding_disabled($primary);
+test_wal_level($primary, "replica|replica",
+	"logical decoding disabled after repack");
+
 # Create a new logical slot and check that effective_wal_level must be increased
 # to 'logical'.
 $primary->safe_psql('postgres',
@@ -100,7 +113,8 @@ command_fails(
 		'--log' => $primary->logfile,
 		'start',
 	],
-	"cannot start server with wal_level='minimal' as there is in-use logical slot");
+	"cannot start server with wal_level='minimal' as there is in-use logical slot"
+);
 
 my $logfile = slurp_file($primary->logfile());
 like(
@@ -395,8 +409,49 @@ select pg_cancel_backend(pid) from pg_stat_activity where query ~ 'slot_canceled
 
 	# Verify that the backend aborted the activation process.
 	$primary->wait_for_log("aborting logical decoding activation process");
-	test_wal_level($primary, "replica|replica",
-		"the activation process aborted");
+	wait_for_logical_decoding_disabled($primary);
+	pass("the activation process aborted");
+
+	# Test concurrent activation processes run and one is interrupted.
+	$psql_create_slot = $primary->background_psql('postgres');
+
+	# Start a psql session and stops in the middle of the activation
+	# process.
+	$psql_create_slot->query_until(
+		qr/create_slot_canceled/,
+		q(\echo create_slot_canceled
+select injection_points_set_local();
+select injection_points_attach('logical-decoding-activation', 'wait');
+select pg_create_logical_replication_slot('slot_canceled2', 'pgoutput');
+\q
+));
+	$primary->wait_for_event('client backend', 'logical-decoding-activation');
+	note("injection_point 'logical-decoding-activation' is reached");
+
+	# Another backend concurrently enables logical decoding.
+	$primary->safe_psql('postgres',
+		qq[select pg_create_logical_replication_slot('test_slot2', 'pgoutput')]
+	);
+
+	# Concurrent slot creation should not be blocked. So wait until
+	# test_slot2 is created and logical decoding is enabled.
+	test_wal_level($primary, "replica|logical",
+		"the concurrent activation has done properly");
+
+	# Cancel the backend initiated by $psql_create_slot, aborting its activation
+	# process.
+	my $log_offset = -s $primary->logfile;
+	$primary->safe_psql(
+		'postgres',
+		qq[
+select pg_cancel_backend(pid) from pg_stat_activity where query ~ 'slot_canceled2' and pid <> pg_backend_pid()
+]);
+	# Canceling the backend should not affect the concurrent slot creation.
+	$primary->wait_for_log("canceling statement due to user request",
+		$log_offset);
+	test_wal_level($primary, "replica|logical",
+		"effective_wal_level remains 'logical' even after the concurrent activation is interrupted"
+	);
 }
 
 $primary->stop;
