@@ -17,6 +17,7 @@ BEGIN
      AND p.proname IN ('utl_inaddr_get_host_address',
                        'utl_inaddr_get_host_name')
      AND p.pronargs = 1
+     AND p.pronargdefaults = 1
      AND p.prorettype = 'pg_catalog.text'::pg_catalog.regtype
      AND p.provolatile = 'v'
      AND p.proparallel = 'r'
