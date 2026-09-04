@@ -780,7 +780,7 @@ static void determineLanguage(List *options);
 	CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE
 	CLUSTER COALESCE COLLATE COLLATION COLUMN COLUMNS COMMENT COMMENTS COMMIT
 	COMMITTED COMPRESSION CONCURRENTLY CONDITIONAL CONFIGURATION CONFLICT
-	CONNECTION CONSTRAINT CONSTRAINTS CONTENT_P CONTINUE_P CONVERSION_P COPY
+	CONNECTION CONSTRAINT CONSTRAINTS CONSTRUCTOR CONTENT_P CONTINUE_P CONVERSION_P COPY
 	COST CREATE CROSS CSV CUBE CURRENT_P
 	CURRENT_CATALOG CURRENT_DATE CURRENT_ROLE CURRENT_SCHEMA
 	CURRENT_TIME CURRENT_TIMESTAMP CURRENT_USER CURSOR CYCLE
@@ -794,7 +794,7 @@ static void determineLanguage(List *options);
 	EVENT EXCEPT EXCLUDE EXCLUDING EXCLUSIVE EXEC EXECUTE EXISTS EXPLAIN EXPRESSION EXTEND
 	EXTENSION EXTERNAL
 
-	FALSE_P FAMILY FETCH FILTER FINALIZE FIRST_P FLOAT_P FOLLOWING FOR
+	FALSE_P FAMILY FETCH FILTER FINAL_P FINALIZE FIRST_P FLOAT_P FOLLOWING FOR
 	FORCE FOREIGN FORMAT FORWARD FREEZE FROM FULL FUNCTION FUNCTIONS
 
 	GENERATED GLOBAL GRANT GRANTED GRAPH GRAPH_TABLE GREATEST GROUP_P GROUPING GROUPS
@@ -803,7 +803,7 @@ static void determineLanguage(List *options);
 
 	IDENTITY_P IF_P IGNORE_P ILIKE IMMEDIATE IMMUTABLE IMPLICIT_P IMPORT_P IN_P INCLUDE
 	INCLUDING INCREMENT INDENT INDEX INDEXES INHERIT INHERITS INITIALLY INLINE_P
-	INNER_P INOUT INPUT_P INSENSITIVE INSERT INSTEAD INT_P INTEGER
+	INNER_P INOUT INPUT_P INSENSITIVE INSERT INSTANTIABLE INSTEAD INT_P INTEGER
 	INTERSECT INTERVAL INTO INVISIBLE INVOKER IS ISNULL ISOLATION
 
 	JOIN JSON JSON_ARRAY JSON_ARRAYAGG JSON_EXISTS JSON_OBJECT JSON_OBJECTAGG
@@ -815,7 +815,7 @@ static void determineLanguage(List *options);
 	LEADING LEAKPROOF LEAST LEFT LEVEL LIKE LIMIT LISTEN LOAD LOCAL
 	LOCALTIME LOCALTIMESTAMP LOCATION LOCK_P LOCKED LOGGED
 
-	MAPPING MATCH MATCHED MATERIALIZED MAXVALUE MERGE MERGE_ACTION METHOD
+	MAP_P MAPPING MATCH MATCHED MATERIALIZED MAXVALUE MEMBER MERGE MERGE_ACTION METHOD
 	MINUTE_P MINVALUE MODE MODIFY MONTH_P MOVE
 
 	NAME_P NAMES NATIONAL NATURAL NCHAR NESTED NEW NEXT NFC NFD NFKC NFKD NO NODE NOCACHE NOCYCLE
@@ -837,14 +837,14 @@ static void determineLanguage(List *options);
 
 	RANGE READ REAL REASSIGN REBUILD RECHECK RECURSIVE REF_P REFERENCES REFERENCING
 	REFRESH REINDEX RELATIONSHIP RELATIVE_P RELEASE RENAME REPACK REPEATABLE REPLACE REPLICA
-	RESET RESPECT_P RESTART RESTRICT RETURN RETURNING RETURNS REVOKE RIGHT ROLE ROLLBACK ROLLUP
+	RESET RESPECT_P RESTART RESTRICT RESULT_P RETURN RETURNING RETURNS REVOKE RIGHT ROLE ROLLBACK ROLLUP
 	ROUTINE ROUTINES ROW ROWID ROWNUM ROWS  ROWTYPE RULE
 
-	SAVEPOINT SCALAR SCALE SCHEMA SCHEMAS SCROLL SEARCH SECOND_P SECURITY SELECT
+	SAVEPOINT SCALAR SCALE SCHEMA SCHEMAS SCROLL SEARCH SECOND_P SECURITY SELECT SELF_P
 	SEQUENCE SEQUENCES
 	SERIALIZABLE SERVER SESSION SESSION_USER SET SETS SETOF SHARD SHARE SHOW
 	SIMILAR SIMPLE SKIP SMALLINT SNAPSHOT SOME SOURCE SPECIFICATION SQL_P STABLE STANDALONE_P
-	START STATEMENT STATISTICS STDIN STDOUT STORAGE STORED STRICT_P STRING_P STRIP_P
+	START STATEMENT STATIC_P STATISTICS STDIN STDOUT STORAGE STORED STRICT_P STRING_P STRIP_P
 	SUBSCRIPTION SUBSTRING SUPPORT SYMMETRIC SYSDATE SYSID SYSTEM_P SYSTEM_USER SYSTIMESTAMP
 
 	TABLE TABLES TABLESAMPLE TABLESPACE TARGET TEMP TEMPLATE TEMPORARY TEXT_P THEN
@@ -903,12 +903,18 @@ static void determineLanguage(List *options);
 
 %token <keyword> LISTAGG
 
-%type <node> CreatePackageStmt CreatePackageBodyStmt AlterPackageStmt
+%type <node> CreatePackageStmt CreatePackageBodyStmt AlterPackageStmt CreateTypeBodyStmt
 %type <node> package_proper_item
 %type <list> package_proper package_proper_list package_names package_names_list
 %type <str> package_src
 %type <objtype> package_type
 %type <boolean> package_is_or_as package_body_is_or_as
+
+%type <node> ObjectTypeElement ObjectTypeMethod
+%type <list> OptObjectTypeElementList ObjectTypeElementList
+%type <boolean> opt_object_method_deterministic type_body_is_or_as
+%type <boolean> type_body_create
+%type <ival> object_type_modifiers
 
 
 %type <boolean> OptViewForce
@@ -926,7 +932,8 @@ static void determineLanguage(List *options);
  * FORMAT_LA, NULLS_LA, WITH_LA, and WITHOUT_LA are needed to make the grammar
  * LALR(1).
  */
-%token		FORMAT_LA NOT_LA NULLS_LA WITH_LA WITHOUT_LA PACKAGE_BODY
+%token		CONSTRUCTOR_LA FORMAT_LA MEMBER_LA NOT_LA NULLS_LA
+			STATIC_LA WITH_LA WITHOUT_LA PACKAGE_BODY TYPE_BODY
 
 /*
  * The grammar likewise thinks these tokens are keywords, but they are never
@@ -1286,6 +1293,7 @@ stmt:
 			| WaitStmt
 			| CreatePackageStmt
 			| CreatePackageBodyStmt
+			| CreateTypeBodyStmt
 			| AlterPackageStmt
 			| /*EMPTY*/
 				{ $$ = NULL; }
@@ -7018,6 +7026,73 @@ DefineStmt:
 					n->coldeflist = $6;
 					$$ = (Node *) n;
 				}
+			| CREATE TYPE_P any_name AS OBJECT_P
+			  '(' OptObjectTypeElementList ')' object_type_modifiers
+				{
+					CompositeTypeStmt *n = makeNode(CompositeTypeStmt);
+					ListCell   *lc;
+					const char *scanbuf = pg_yyget_extra(yyscanner)->core_yy_extra.scanbuf;
+
+					/* can't use qualified_name, sigh */
+					if ($7 != NIL && IsA(llast($7), ObjectTypeMethod))
+						llast_node(ObjectTypeMethod, $7)->end_location = @8;
+					n->typevar = makeRangeVarFromAnyName($3, @3, yyscanner);
+					n->coldeflist = NIL;
+					n->methods = NIL;
+					foreach(lc, $7)
+					{
+						Node *element = lfirst(lc);
+
+						if (IsA(element, ColumnDef))
+							n->coldeflist = lappend(n->coldeflist, element);
+						else
+						{
+							ObjectTypeMethod *method = castNode(ObjectTypeMethod, element);
+
+							method->source = pnstrdup(scanbuf + method->location,
+														method->end_location - method->location);
+							n->methods = lappend(n->methods, element);
+						}
+					}
+					n->is_object = true;
+					n->replace = false;
+					n->instantiable = ($9 & 1) != 0;
+					n->final = ($9 & 2) != 0;
+					$$ = (Node *) n;
+				}
+			| CREATE OR REPLACE TYPE_P any_name AS OBJECT_P
+			  '(' OptObjectTypeElementList ')' object_type_modifiers
+				{
+					CompositeTypeStmt *n = makeNode(CompositeTypeStmt);
+					ListCell   *lc;
+					const char *scanbuf = pg_yyget_extra(yyscanner)->core_yy_extra.scanbuf;
+
+					if ($9 != NIL && IsA(llast($9), ObjectTypeMethod))
+						llast_node(ObjectTypeMethod, $9)->end_location = @10;
+					n->typevar = makeRangeVarFromAnyName($5, @5, yyscanner);
+					n->coldeflist = NIL;
+					n->methods = NIL;
+					foreach(lc, $9)
+					{
+						Node *element = lfirst(lc);
+
+						if (IsA(element, ColumnDef))
+							n->coldeflist = lappend(n->coldeflist, element);
+						else
+						{
+							ObjectTypeMethod *method = castNode(ObjectTypeMethod, element);
+
+							method->source = pnstrdup(scanbuf + method->location,
+														method->end_location - method->location);
+							n->methods = lappend(n->methods, element);
+						}
+					}
+					n->is_object = true;
+					n->replace = true;
+					n->instantiable = ($11 & 1) != 0;
+					n->final = ($11 & 2) != 0;
+					$$ = (Node *) n;
+				}
 			| CREATE TYPE_P any_name AS ENUM_P '(' opt_enum_val_list ')'
 				{
 					CreateEnumStmt *n = makeNode(CreateEnumStmt);
@@ -10578,6 +10653,29 @@ package_body_is_or_as:
 				IS	{ set_oracle_plsql_body(yyscanner, OraBody_PACKAGEBODY); }
 				|AS	{ set_oracle_plsql_body(yyscanner, OraBody_PACKAGEBODY); }
 				;
+
+CreateTypeBodyStmt:
+			type_body_create any_name type_body_is_or_as package_src
+				{
+					CreateTypeBodyStmt *n = makeNode(CreateTypeBodyStmt);
+
+					n->replace = $1;
+					n->typeName = $2;
+					n->body = $4;
+					$$ = (Node *) n;
+				}
+			;
+
+type_body_create:
+			CREATE TYPE_BODY BODY				{ $$ = false; }
+			| CREATE OR REPLACE TYPE_BODY BODY	{ $$ = true; }
+			;
+
+type_body_is_or_as:
+				IS	{ set_oracle_plsql_body(yyscanner, OraBody_TYPEBODY); }
+				|AS	{ set_oracle_plsql_body(yyscanner, OraBody_TYPEBODY); }
+				;
+
 AlterPackageStmt:
 			ALTER PACKAGE package_names ora_editioned
 				{
@@ -16444,6 +16542,158 @@ TableFuncElement:	ColId Typename opt_collate_clause
 		;
 
 /*
+ * Oracle object type elements are either stored attributes or routine
+ * declarations.  Keep them as separate node kinds so type creation can build
+ * the composite relation first and then compile the method specification.
+ */
+OptObjectTypeElementList:
+			ObjectTypeElementList			{ $$ = $1; }
+			| /*EMPTY*/					{ $$ = NIL; }
+		;
+
+ObjectTypeElementList:
+			ObjectTypeElement				{ $$ = list_make1($1); }
+			| ObjectTypeElementList ',' ObjectTypeElement
+										{
+											if (IsA(llast($1), ObjectTypeMethod))
+												llast_node(ObjectTypeMethod, $1)->end_location = @2;
+											$$ = lappend($1, $3);
+										}
+		;
+
+ObjectTypeElement:
+			ColId Typename opt_collate_clause
+				{
+					ColumnDef *n = makeNode(ColumnDef);
+
+					n->colname = $1;
+					n->typeName = $2;
+					n->inhcount = 0;
+					n->is_local = true;
+					n->is_not_null = false;
+					n->is_from_type = false;
+					n->storage = 0;
+					n->raw_default = NULL;
+					n->cooked_default = NULL;
+					n->collClause = (CollateClause *) $3;
+					n->collOid = InvalidOid;
+					n->constraints = NIL;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| ObjectTypeMethod				{ $$ = $1; }
+		;
+
+ObjectTypeMethod:
+			MEMBER_LA FUNCTION ColId opt_ora_func_args_with_defaults
+			  RETURN Typename opt_object_method_deterministic
+				{
+					ObjectTypeMethod *n = makeNode(ObjectTypeMethod);
+
+					n->kind = OBJECT_METHOD_MEMBER_FUNCTION;
+					n->name = $3;
+					n->parameters = $4;
+					n->returnType = $6;
+					n->deterministic = $7;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| MEMBER_LA PROCEDURE ColId opt_ora_func_args_with_defaults
+				{
+					ObjectTypeMethod *n = makeNode(ObjectTypeMethod);
+
+					n->kind = OBJECT_METHOD_MEMBER_PROCEDURE;
+					n->name = $3;
+					n->parameters = $4;
+					n->returnType = NULL;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| STATIC_LA FUNCTION ColId opt_ora_func_args_with_defaults
+			  RETURN Typename opt_object_method_deterministic
+				{
+					ObjectTypeMethod *n = makeNode(ObjectTypeMethod);
+
+					n->kind = OBJECT_METHOD_STATIC_FUNCTION;
+					n->name = $3;
+					n->parameters = $4;
+					n->returnType = $6;
+					n->deterministic = $7;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| STATIC_LA PROCEDURE ColId opt_ora_func_args_with_defaults
+				{
+					ObjectTypeMethod *n = makeNode(ObjectTypeMethod);
+
+					n->kind = OBJECT_METHOD_STATIC_PROCEDURE;
+					n->name = $3;
+					n->parameters = $4;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| MAP_P MEMBER_LA FUNCTION ColId opt_ora_func_args_with_defaults
+			  RETURN Typename opt_object_method_deterministic
+				{
+					ObjectTypeMethod *n = makeNode(ObjectTypeMethod);
+
+					n->kind = OBJECT_METHOD_MAP;
+					n->name = $4;
+					n->parameters = $5;
+					n->returnType = $7;
+					n->deterministic = $8;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| ORDER MEMBER_LA FUNCTION ColId opt_ora_func_args_with_defaults
+			  RETURN Typename opt_object_method_deterministic
+				{
+					ObjectTypeMethod *n = makeNode(ObjectTypeMethod);
+
+					n->kind = OBJECT_METHOD_ORDER;
+					n->name = $4;
+					n->parameters = $5;
+					n->returnType = $7;
+					n->deterministic = $8;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| CONSTRUCTOR_LA FUNCTION ColId opt_ora_func_args_with_defaults
+			  RETURN SELF_P AS RESULT_P
+				{
+					ObjectTypeMethod *n = makeNode(ObjectTypeMethod);
+
+					n->kind = OBJECT_METHOD_CONSTRUCTOR;
+					n->name = $3;
+					n->parameters = $4;
+					n->returnType = NULL;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+		;
+
+opt_object_method_deterministic:
+			DETERMINISTIC					{ $$ = true; }
+			| /*EMPTY*/					{ $$ = false; }
+		;
+
+object_type_modifiers:
+			/*EMPTY*/						{ $$ = 3; }
+			| INSTANTIABLE					{ $$ = 3; }
+			| NOT INSTANTIABLE				{ $$ = 2; }
+			| FINAL_P						{ $$ = 3; }
+			| NOT FINAL_P					{ $$ = 1; }
+			| INSTANTIABLE FINAL_P			{ $$ = 3; }
+			| INSTANTIABLE NOT FINAL_P		{ $$ = 1; }
+			| NOT INSTANTIABLE FINAL_P		{ $$ = 2; }
+			| NOT INSTANTIABLE NOT FINAL_P	{ $$ = 0; }
+			| FINAL_P INSTANTIABLE			{ $$ = 3; }
+			| FINAL_P NOT INSTANTIABLE		{ $$ = 2; }
+			| NOT FINAL_P INSTANTIABLE		{ $$ = 1; }
+			| NOT FINAL_P NOT INSTANTIABLE	{ $$ = 0; }
+		;
+
+/*
  * XMLTABLE
  */
 xmltable:
@@ -21583,6 +21833,7 @@ unreserved_keyword:
 			| CONFLICT
 			| CONNECTION
 			| CONSTRAINTS
+			| CONSTRUCTOR
 			| CONTENT_P
 			| CONTINUE_P
 			| CONVERSION_P
@@ -21641,6 +21892,7 @@ unreserved_keyword:
 			| EXTERNAL
 			| FAMILY
 			| FILTER
+			| FINAL_P
 			| FINALIZE
 			| FIRST_P
 			| FOLLOWING
@@ -21678,6 +21930,7 @@ unreserved_keyword:
 			| INPUT_P
 			| INSENSITIVE
 			| INSERT
+			| INSTANTIABLE
 			| INSTEAD
 			| INVISIBLE
 			| INVOKER
@@ -21707,6 +21960,7 @@ unreserved_keyword:
 			| MATCHED
 			| MATERIALIZED
 			| MAXVALUE
+			| MEMBER
 			| MERGE
 			| METADATA
 			| METHOD
@@ -21816,6 +22070,7 @@ unreserved_keyword:
 			| RESPECT_P
 			| RESTART
 			| RESTRICT
+			| RESULT_P
 			| RESULT_CACHE
 			| RETURN
 			| RETURNS
@@ -21840,6 +22095,7 @@ unreserved_keyword:
 			| SEARCH
 			| SECOND_P
 			| SECURITY
+			| SELF_P
 			| SEQUENCE
 			| SEQUENCES
 			| SERIALIZABLE
@@ -21863,6 +22119,7 @@ unreserved_keyword:
 			| STANDALONE_P
 			| START
 			| STATEMENT
+			| STATIC_P
 			| STATISTICS
 			| STDIN
 			| STDOUT
@@ -22115,6 +22372,7 @@ reserved_keyword:
 			| LISTAGG
 			| LOCALTIME
 			| LOCALTIMESTAMP
+			| MAP_P
 			| NAN_P
 			| NOCOPY
 			| NOCYCLE

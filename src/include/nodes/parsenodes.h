@@ -2934,6 +2934,7 @@ typedef struct CreateStmt
 	char	   *accessMethod;	/* table access method */
 	bool		if_not_exists;	/* just do nothing if it already exists? */
 	bool		with_rowid_seq;
+	bool		is_object;		/* internal: Oracle object type relation */
 } CreateStmt;
 
 /* ----------
@@ -4006,7 +4007,47 @@ typedef struct CompositeTypeStmt
 	NodeTag		type;
 	RangeVar   *typevar;		/* the composite type to be created */
 	List	   *coldeflist;		/* list of ColumnDef nodes */
+	bool		is_object;		/* Oracle CREATE TYPE ... AS OBJECT */
+	bool		replace;		/* Oracle CREATE OR REPLACE TYPE */
+	bool		instantiable;	/* Oracle INSTANTIABLE property */
+	bool		final;			/* Oracle FINAL property */
+	List	   *methods;		/* list of ObjectTypeMethod nodes */
 } CompositeTypeStmt;
+
+typedef enum ObjectTypeMethodKind
+{
+	OBJECT_METHOD_NONE = -1,
+	OBJECT_METHOD_MEMBER_FUNCTION = 0,
+	OBJECT_METHOD_MEMBER_PROCEDURE,
+	OBJECT_METHOD_STATIC_FUNCTION,
+	OBJECT_METHOD_STATIC_PROCEDURE,
+	OBJECT_METHOD_CONSTRUCTOR,
+	OBJECT_METHOD_MAP,
+	OBJECT_METHOD_ORDER
+} ObjectTypeMethodKind;
+
+/* A routine declaration embedded in an Oracle object type specification. */
+typedef struct ObjectTypeMethod
+{
+	NodeTag		type;
+	ObjectTypeMethodKind kind;
+	char	   *name;
+	List	   *parameters;		/* list of FunctionParameter nodes */
+	TypeName   *returnType;		/* NULL for a procedure */
+	bool		deterministic;
+	ParseLoc	location;
+	ParseLoc	end_location;	/* first byte after the declaration */
+	char	   *source;			/* original declaration text */
+} ObjectTypeMethod;
+
+/* CREATE [OR REPLACE] TYPE name BODY AS ... END */
+typedef struct CreateTypeBodyStmt
+{
+	NodeTag		type;
+	bool		replace;
+	List	   *typeName;
+	char	   *body;
+} CreateTypeBodyStmt;
 
 /* ----------------------
  *		Create Type Statement, enum types

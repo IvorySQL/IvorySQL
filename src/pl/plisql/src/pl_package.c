@@ -134,10 +134,12 @@ plisql_package_parse(ParseState *parsestate, PackageCacheItem *item, List *names
 	PLiSQL_package *psource;
 	PLiSQL_nsitem *nse;
 	void *value = NULL;
+	bool		is_standard_package;
 
 	Assert(item != NULL && item->source != NULL);
 
 	psource = (PLiSQL_package *) item->source;
+	is_standard_package = strcmp(psource->source.fn_signature, "standard") == 0;
 
 	list_size = list_length(names);
 	Assert(name_start < list_size);
@@ -181,14 +183,28 @@ plisql_package_parse(ParseState *parsestate, PackageCacheItem *item, List *names
 		flags == PACKAGE_PARSE_PROC) &&
 		(nse->itemtype != PLISQL_NSTYPE_SUBPROC_FUNC &&
 		nse->itemtype != PLISQL_NSTYPE_SUBPROC_PROC))
+	{
+		/* An optional routine probe must ignore same-named non-routines. */
+		if (missing_ok && is_standard_package)
+			return NULL;
 		elog(ERROR, "\"%s\" is not a function or procedure", parse_first_name);
+	}
 
 	if ((nse->itemtype == PLISQL_NSTYPE_SUBPROC_FUNC ||
 		nse->itemtype == PLISQL_NSTYPE_SUBPROC_PROC) &&
 		(flags != PACKAGE_PARSE_FUNC &&
 		flags != PACKAGE_PARSE_PROC &&
 		flags != PACKAGE_PARSE_ENTRY))
+	{
+		/*
+		 * Some callers probe a package before falling back to ordinary type
+		 * lookup.  A same-named routine is not a package type in that context;
+		 * with missing_ok, report no match rather than aborting the fallback.
+		 */
+		if (missing_ok && is_standard_package)
+			return NULL;
 		elog(ERROR, "\"%s\" is a function or procedure", parse_first_name);
+	}
 
 	switch (nse->itemtype)
 	{
@@ -198,6 +214,14 @@ plisql_package_parse(ParseState *parsestate, PackageCacheItem *item, List *names
 
 				if (flags == PACKAGE_PARSE_TYPE)
 				{
+					/*
+					 * A package variable is only a datatype when explicitly
+					 * referenced as such (for example by legacy pkg.var type
+					 * handling).  During an optional package-type probe it is a
+					 * wrong-kind match and ordinary type lookup must continue.
+					 */
+					if (missing_ok && is_standard_package)
+						return NULL;
 					if (basetypeid != NULL)
 						*basetypeid = var->datatype->typoid;
 
@@ -232,6 +256,8 @@ plisql_package_parse(ParseState *parsestate, PackageCacheItem *item, List *names
 				}
 				else if (flags == PACKAGE_PARSE_TYPE)
 				{
+					if (missing_ok && is_standard_package)
+						return NULL;
 					if (rec->erh == NULL || rec->rectypeid != RECORDOID)
 					{
 						/* Report variable's declared type */
@@ -274,6 +300,9 @@ plisql_package_parse(ParseState *parsestate, PackageCacheItem *item, List *names
 														true_typeids, /* return value */
 														argdefaults); /* return value */
 
+					if (detail == FUNCDETAIL_NOTFOUND && missing_ok &&
+						is_standard_package)
+						return NULL;
 					if (detail != FUNCDETAIL_NORMAL &&
 						detail != FUNCDETAIL_PROCEDURE)
 						elog(ERROR, "wrong number or types of arguments in call to \"%s\"", parse_first_name);

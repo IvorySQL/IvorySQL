@@ -22,6 +22,7 @@
 #include "commands/event_trigger.h"
 #include "commands/trigger.h"
 #include "executor/spi.h"
+#include "nodes/parsenodes.h"
 #include "utils/expandedrecord.h"
 #include "utils/packagecache.h"
 #include "utils/typcache.h"
@@ -1028,6 +1029,7 @@ typedef struct PLiSQL_function
 	bool		fn_retset;
 	bool		fn_readonly;
 	char		fn_prokind;
+	ObjectTypeMethodKind object_method_kind;
 
 	int			fn_nargs;
 	int			fn_argvarnos[FUNC_MAX_ARGS];

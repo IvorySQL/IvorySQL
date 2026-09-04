@@ -49,6 +49,8 @@ $node->safe_psql(
 -- in the first segment).
 SELECT pg_switch_wal();
 CREATE TABLE test_table AS SELECT generate_series(1,100) a;
+-- Start a fresh segment so the full-page image is in the WAL file dumped below.
+SELECT pg_switch_wal();
 -- Force FPWs on the next writes.
 CHECKPOINT;
 UPDATE test_table SET a = a + 1;

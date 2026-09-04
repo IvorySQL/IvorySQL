@@ -6318,6 +6318,7 @@ getTypes(Archive *fout)
 	int			i_typrelkind;
 	int			i_typtype;
 	int			i_typisdefined;
+	int			i_typisobject;
 	int			i_isarray;
 	int			i_typarray;
 
@@ -6343,7 +6344,14 @@ getTypes(Archive *fout)
 						 "typelem, typrelid, typarray, "
 						 "CASE WHEN typrelid = 0 THEN ' '::\"char\" "
 						 "ELSE (SELECT relkind FROM pg_class WHERE oid = typrelid) END AS typrelkind, "
-						 "typtype, typisdefined, "
+						 "typtype, typisdefined, ");
+
+	if (fout->remoteVersion >= 190000)
+		appendPQExpBufferStr(query, "typisobject, ");
+	else
+		appendPQExpBufferStr(query, "false AS typisobject, ");
+
+	appendPQExpBufferStr(query,
 						 "typname[0] = '_' AND typelem != 0 AND "
 						 "(SELECT typarray FROM pg_type te WHERE oid = pg_type.typelem) = oid AS isarray "
 						 "FROM pg_type");
@@ -6366,6 +6374,7 @@ getTypes(Archive *fout)
 	i_typrelkind = PQfnumber(res, "typrelkind");
 	i_typtype = PQfnumber(res, "typtype");
 	i_typisdefined = PQfnumber(res, "typisdefined");
+	i_typisobject = PQfnumber(res, "typisobject");
 	i_isarray = PQfnumber(res, "isarray");
 	i_typarray = PQfnumber(res, "typarray");
 
@@ -6388,6 +6397,8 @@ getTypes(Archive *fout)
 		tyinfo[i].typrelid = atooid(PQgetvalue(res, i, i_typrelid));
 		tyinfo[i].typrelkind = *PQgetvalue(res, i, i_typrelkind);
 		tyinfo[i].typtype = *PQgetvalue(res, i, i_typtype);
+		tyinfo[i].isObject =
+			strcmp(PQgetvalue(res, i, i_typisobject), "t") == 0;
 		tyinfo[i].shellType = NULL;
 
 		if (strcmp(PQgetvalue(res, i, i_typisdefined), "t") == 0)
@@ -7258,6 +7269,8 @@ getPackages(Archive *fout, int *numPkgs)
 					"(SELECT oid FROM pg_namespace "
 					"WHERE nspname = 'pg_catalog')"
 					);
+	if (fout->remoteVersion >= 190000)
+		appendPQExpBufferStr(query, " AND p.pkgtypeoid = 0");
 	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
 	ntups = PQntuples(res);
 	*numPkgs = ntups;
@@ -13255,6 +13268,110 @@ dumpDomain(Archive *fout, const TypeInfo *tyinfo)
 	free(qualtypname);
 }
 
+/* Change method separators without touching SQL literals or comments. */
+static void
+convertObjectMethodsToTypeElements(char *source)
+{
+	char	   *p;
+
+	for (p = source; *p != '\0'; p++)
+	{
+		if (*p == '\'')
+		{
+			bool		backslash_escape = false;
+
+			/* Backslash quotes only have special meaning in E'...' strings. */
+			if (p > source && (p[-1] == 'e' || p[-1] == 'E') &&
+				(p - 1 == source ||
+				 (!isalnum((unsigned char) p[-2]) && p[-2] != '_' &&
+				  p[-2] != '$')))
+				backslash_escape = true;
+			for (p++; *p != '\0'; p++)
+			{
+				if (backslash_escape && *p == '\\' && p[1] != '\0')
+					p++;
+				else if (*p == '\'')
+				{
+					if (p[1] == '\'')
+						p++;
+					else
+						break;
+				}
+			}
+			if (*p == '\0')
+				break;
+		}
+		else if (*p == '"')
+		{
+			for (p++; *p != '\0'; p++)
+			{
+				if (*p == '"')
+				{
+					if (p[1] == '"')
+						p++;
+					else
+						break;
+				}
+			}
+			if (*p == '\0')
+				break;
+		}
+		else if (p[0] == '-' && p[1] == '-')
+		{
+			while (*p != '\0' && *p != '\n')
+				p++;
+			if (*p == '\0')
+				break;
+		}
+		else if (p[0] == '/' && p[1] == '*')
+		{
+			int			depth = 1;
+
+			p += 2;
+			while (*p != '\0' && depth > 0)
+			{
+				if (p[0] == '/' && p[1] == '*')
+				{
+					depth++;
+					p += 2;
+				}
+				else if (p[0] == '*' && p[1] == '/')
+				{
+					depth--;
+					p += 2;
+				}
+				else
+					p++;
+			}
+			if (*p == '\0')
+				break;
+			p--;
+		}
+		else if (*p == '$')
+		{
+			char	   *tagend = p + 1;
+
+			while (isalnum((unsigned char) *tagend) || *tagend == '_')
+				tagend++;
+			if (*tagend == '$')
+			{
+				size_t		taglen = tagend - p + 1;
+				char	   *close;
+
+				for (close = tagend + 1; *close != '\0'; close++)
+					if (*close == '$' && strncmp(close, p, taglen) == 0)
+						break;
+				if (*close != '\0')
+					p = close + taglen - 1;
+				else
+					break;
+			}
+		}
+		else if (*p == ';')
+			*p = ',';
+	}
+}
+
 /*
  * dumpCompositeType
  *	  writes out to fout the queries to recreate a user-defined stand-alone
@@ -13280,6 +13397,10 @@ dumpCompositeType(Archive *fout, const TypeInfo *tyinfo)
 	int			i_attcollation;
 	int			i;
 	int			actual_atts;
+	char	   *object_methods = NULL;
+	char	   *object_body = NULL;
+	bool		object_instantiable = true;
+	bool		object_final = true;
 
 	if (!fout->is_prepared[PREPQUERY_DUMPCOMPOSITETYPE])
 	{
@@ -13335,8 +13456,58 @@ dumpCompositeType(Archive *fout, const TypeInfo *tyinfo)
 	qtypname = pg_strdup(fmtId(tyinfo->dobj.name));
 	qualtypname = pg_strdup(fmtQualifiedDumpable(tyinfo));
 
-	appendPQExpBuffer(q, "CREATE TYPE %s AS (",
-					  qualtypname);
+	if (tyinfo->isObject && fout->remoteVersion >= 190000)
+	{
+		PGresult   *objectRes;
+
+		printfPQExpBuffer(query,
+						  "SELECT p.pkgsrc, p.pkginstantiable, p.pkgfinal, "
+						  "(SELECT b.bodysrc FROM pg_catalog.pg_package_body b "
+						  " WHERE b.pkgoid = p.oid) AS bodysrc "
+						  "FROM pg_catalog.pg_package p "
+						  "WHERE p.pkgtypeoid = '%u'::pg_catalog.oid",
+						  tyinfo->dobj.catId.oid);
+		objectRes = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
+		if (PQntuples(objectRes) == 1)
+		{
+			char	   *end;
+
+			object_methods = pg_strdup(PQgetvalue(objectRes, 0,
+											 PQfnumber(objectRes, "pkgsrc")));
+			object_instantiable = PQgetvalue(objectRes, 0,
+											   PQfnumber(objectRes, "pkginstantiable"))[0] == 't';
+			object_final = PQgetvalue(objectRes, 0,
+									  PQfnumber(objectRes, "pkgfinal"))[0] == 't';
+			if (!PQgetisnull(objectRes, 0, PQfnumber(objectRes, "bodysrc")))
+				object_body = pg_strdup(PQgetvalue(objectRes, 0,
+										 PQfnumber(objectRes, "bodysrc")));
+
+			/* Remove the package-shaped source's final END marker. */
+			end = object_methods + strlen(object_methods);
+			while (end > object_methods && isspace((unsigned char) end[-1]))
+				*--end = '\0';
+			if (end - object_methods >= 3 &&
+				pg_strcasecmp(end - 3, "end") == 0)
+			{
+				end -= 3;
+				while (end > object_methods && isspace((unsigned char) end[-1]))
+					end--;
+				*end = '\0';
+			}
+			/* Package declarations use semicolons; type elements use commas. */
+			convertObjectMethodsToTypeElements(object_methods);
+			end = object_methods + strlen(object_methods);
+			while (end > object_methods && isspace((unsigned char) end[-1]))
+				end--;
+			if (end > object_methods && end[-1] == ',')
+				end[-1] = '\0';
+		}
+		PQclear(objectRes);
+	}
+
+	appendPQExpBuffer(q, "CREATE TYPE %s AS%s (",
+					  qualtypname,
+					  tyinfo->isObject ? " OBJECT" : "");
 
 	actual_atts = 0;
 	for (i = 0; i < ntups; i++)
@@ -13406,7 +13577,29 @@ dumpCompositeType(Archive *fout, const TypeInfo *tyinfo)
 							  fmtId(attname));
 		}
 	}
-	appendPQExpBufferStr(q, "\n);\n");
+	if (object_methods != NULL && object_methods[0] != '\0')
+	{
+		if (actual_atts++ > 0)
+			appendPQExpBufferChar(q, ',');
+		appendPQExpBuffer(q, "\n\t%s", object_methods);
+	}
+	appendPQExpBufferStr(q, "\n)");
+	if (tyinfo->isObject)
+	{
+		if (!object_instantiable)
+			appendPQExpBufferStr(q, " NOT INSTANTIABLE");
+		if (!object_final)
+			appendPQExpBufferStr(q, " NOT FINAL");
+	}
+	appendPQExpBufferStr(q, ";\n");
+	if (object_body != NULL && object_body[0] != '\0')
+	{
+		appendPQExpBuffer(q, "CREATE TYPE BODY %s AS\n%s;\n",
+						  qualtypname, object_body);
+		if (((ArchiveHandle *) fout)->format == archNull &&
+			db_mode == DB_ORACLE)
+			appendPQExpBufferStr(q, "/\n");
+	}
 	appendPQExpBufferStr(q, dropped->data);
 
 	appendPQExpBuffer(delq, "DROP TYPE %s;\n", qualtypname);
@@ -13455,6 +13648,8 @@ dumpCompositeType(Archive *fout, const TypeInfo *tyinfo)
 	destroyPQExpBuffer(query);
 	free(qtypname);
 	free(qualtypname);
+	free(object_methods);
+	free(object_body);
 }
 
 /*

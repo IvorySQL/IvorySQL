@@ -831,6 +831,7 @@ other			.
 									/* EXPLAIN WITH: preserve [0]='e' and [1]='w' */
 									cur_state->identifiers[2] = 0;
 									cur_state->identifiers[3] = 0;
+									cur_state->identifiers[4] = 0;
 									cur_state->identifier_count = 2;
 								}
 								else
@@ -839,6 +840,7 @@ other			.
 									cur_state->identifiers[1] = 0;
 									cur_state->identifiers[2] = 0;
 									cur_state->identifiers[3] = 0;
+									cur_state->identifiers[4] = 0;
 									cur_state->identifier_count = 1;
 								}
 							}
@@ -1139,6 +1141,8 @@ other			.
 						pg_strcasecmp(yytext, "function") == 0 ||
 						pg_strcasecmp(yytext, "procedure") == 0 ||
 						pg_strcasecmp(yytext, "package") == 0 ||
+						pg_strcasecmp(yytext, "type") == 0 ||
+						pg_strcasecmp(yytext, "body") == 0 ||
 						pg_strcasecmp(yytext, "or") == 0 ||
 						pg_strcasecmp(yytext, "replace") == 0)
 					{
@@ -1172,7 +1176,7 @@ other			.
 						cur_state->ora_plsql_expect_end_symbol = END_SYMBOL_INVALID;
 					/*
 					 * Simply discard EDITIONABLE and NONEDITIONABLE that occur in
-					 * the first 4 identifiers at the beginning of the command.
+						 * the first few identifiers at the beginning of the command.
 					 * Also discard identifiers inside parentheses — this lets
 					 * EXPLAIN (COSTS OFF) WITH FUNCTION be recognized by the
 					 * scanner even though options appear between EXPLAIN and WITH.
@@ -1183,9 +1187,18 @@ other			.
 						cur_state->identifier_count++;
 
 					if (((cur_state->identifiers[0] == 'c' &&
-						  (cur_state->identifiers[1] == 'f' || cur_state->identifiers[1] == 'p' ||
-						   (cur_state->identifiers[1] == 'o' && cur_state->identifiers[2] == 'r' &&
-							(cur_state->identifiers[3] == 'f' || cur_state->identifiers[3] == 'p')))) ||
+							  (cur_state->identifiers[1] == 'f' ||
+							   cur_state->identifiers[1] == 'p' ||
+							   (cur_state->identifiers[1] == 'o' &&
+								cur_state->identifiers[2] == 'r' &&
+								(cur_state->identifiers[3] == 'f' ||
+								 cur_state->identifiers[3] == 'p')) ||
+							   (cur_state->identifiers[1] == 't' &&
+								cur_state->identifiers[2] == 'b') ||
+							   (cur_state->identifiers[1] == 'o' &&
+								cur_state->identifiers[2] == 'r' &&
+								cur_state->identifiers[3] == 't' &&
+								cur_state->identifiers[4] == 'b'))) ||
 						 (cur_state->identifiers[0] == 'w' &&
 						  (cur_state->identifiers[1] == 'f' || cur_state->identifiers[1] == 'p')) ||
 						 /* EXPLAIN WITH FUNCTION/PROCEDURE */

@@ -301,6 +301,7 @@ NOTICE:  checking pg_subscription_rel {srsubid} => pg_subscription {oid}
 NOTICE:  checking pg_subscription_rel {srrelid} => pg_class {oid}
 NOTICE:  checking pg_package {pkgnamespace} => pg_namespace {oid}
 NOTICE:  checking pg_package {pkgowner} => pg_authid {oid}
+NOTICE:  checking pg_package {pkgtypeoid} => pg_type {oid}
 NOTICE:  checking pg_package_body {pkgoid} => pg_package {oid}
 NOTICE:  checking pg_propgraph_element {pgepgid} => pg_class {oid}
 NOTICE:  checking pg_propgraph_element {pgerelid} => pg_class {oid}
