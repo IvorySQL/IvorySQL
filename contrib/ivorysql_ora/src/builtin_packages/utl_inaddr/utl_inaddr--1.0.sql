@@ -2,7 +2,7 @@
  *
  * UTL_INADDR Package
  *
- * Oracle 兼容的主机名与 IP 地址解析函数。
+ * Oracle-compatible host name and IP address resolution functions.
  *
  ***************************************************************/
 
@@ -17,12 +17,12 @@ AS 'MODULE_PATHNAME', 'ivorysql_utl_inaddr_get_host_name'
 LANGUAGE C VOLATILE PARALLEL RESTRICTED;
 
 COMMENT ON FUNCTION sys.utl_inaddr_get_host_address(text) IS
-  'UTL_INADDR.GET_HOST_ADDRESS 的内部实现';
+  'Internal implementation of UTL_INADDR.GET_HOST_ADDRESS';
 COMMENT ON FUNCTION sys.utl_inaddr_get_host_name(text) IS
-  'UTL_INADDR.GET_HOST_NAME 的内部实现';
+  'Internal implementation of UTL_INADDR.GET_HOST_NAME';
 
 CREATE OR REPLACE PACKAGE utl_inaddr AUTHID CURRENT_USER IS
-  -- 当前尚无 Oracle 网络 ACL 的等价实现，仅保留公开异常以兼容接口。
+  -- No Oracle network ACL equivalent exists yet; retain the public exception.
   NETWORK_ACCESS_DENIED EXCEPTION;
   PRAGMA EXCEPTION_INIT(NETWORK_ACCESS_DENIED, -24247);
 

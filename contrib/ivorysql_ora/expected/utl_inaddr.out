@@ -1,10 +1,11 @@
 --
--- UTL_INADDR 包回归测试
+-- UTL_INADDR package regression tests
 --
--- 测试只依赖回环地址和本机配置，避免访问外部 DNS 或网络。
--- 所有环境相关的主机名和地址都转换为固定 INFO 消息。
+-- These tests use only loopback addresses and local host configuration, with
+-- no external DNS or network access.  Environment-specific values are reduced
+-- to stable INFO messages.
 --
--- 内部函数需要保留默认参数、波动性和并行安全属性。
+-- The internal functions retain their defaults, volatility, and parallel mode.
 DECLARE
   v_count INTEGER;
 BEGIN
@@ -21,102 +22,102 @@ BEGIN
      AND p.proparallel = 'r'
      AND NOT p.proisstrict;
   IF v_count != 2 THEN
-    RAISE EXCEPTION 'UTL_INADDR 内部函数元数据不完整';
+    RAISE EXCEPTION 'UTL_INADDR internal function metadata is incomplete';
   END IF;
   RAISE INFO 'UTL_INADDR catalog contract: ok';
 END;
 /
 INFO:  UTL_INADDR catalog contract: ok
--- 数字形式的 IPv4 地址应原样完成正向解析。
+-- A numeric IPv4 address should survive forward resolution unchanged.
 DECLARE
   v_address VARCHAR2(4000);
 BEGIN
   v_address := utl_inaddr.get_host_address('127.0.0.1');
   IF v_address != '127.0.0.1' THEN
-    RAISE EXCEPTION '回环地址解析结果异常: %', v_address;
+    RAISE EXCEPTION 'unexpected loopback resolution result: %', v_address;
   END IF;
   RAISE INFO 'UTL_INADDR numeric IPv4 lookup: ok';
 END;
 /
 INFO:  UTL_INADDR numeric IPv4 lookup: ok
--- localhost 可能优先返回 IPv4 或 IPv6，因此只验证结果非空。
+-- localhost may prefer IPv4 or IPv6, so assert only that a value is returned.
 DECLARE
   v_address VARCHAR2(4000);
 BEGIN
   v_address := utl_inaddr.get_host_address('localhost');
   IF v_address IS NULL OR length(v_address) = 0 THEN
-    RAISE EXCEPTION 'localhost 未解析到地址';
+    RAISE EXCEPTION 'localhost did not resolve to an address';
   END IF;
   RAISE INFO 'UTL_INADDR localhost forward lookup: ok';
 END;
 /
 INFO:  UTL_INADDR localhost forward lookup: ok
--- 回环地址应能通过 hosts 数据完成反向解析。
+-- The loopback address should reverse-resolve through the hosts database.
 DECLARE
   v_hostname VARCHAR2(4000);
 BEGIN
   v_hostname := utl_inaddr.get_host_name('127.0.0.1');
   IF v_hostname IS NULL OR length(v_hostname) = 0 THEN
-    RAISE EXCEPTION '回环地址未解析到主机名';
+    RAISE EXCEPTION 'loopback did not resolve to a host name';
   END IF;
   RAISE INFO 'UTL_INADDR loopback reverse lookup: ok';
 END;
 /
 INFO:  UTL_INADDR loopback reverse lookup: ok
--- 省略参数时，GET_HOST_NAME 返回不含域名部分的本机短名称。
+-- With no argument, GET_HOST_NAME returns the local name without its domain.
 DECLARE
   v_hostname VARCHAR2(4000);
 BEGIN
   v_hostname := utl_inaddr.get_host_name();
   IF v_hostname IS NULL OR length(v_hostname) = 0 OR
      instr(v_hostname, '.') != 0 THEN
-    RAISE EXCEPTION '本机短名称异常: %', v_hostname;
+    RAISE EXCEPTION 'unexpected local short name: %', v_hostname;
   END IF;
   RAISE INFO 'UTL_INADDR default host name: ok';
 END;
 /
 INFO:  UTL_INADDR default host name: ok
--- 省略参数时，GET_HOST_ADDRESS 通过本机名称取得一个地址。
+-- With no argument, GET_HOST_ADDRESS resolves the local host name.
 DECLARE
   v_address VARCHAR2(4000);
 BEGIN
   v_address := utl_inaddr.get_host_address();
   IF v_address IS NULL OR length(v_address) = 0 THEN
-    RAISE EXCEPTION '本机名称未解析到地址';
+    RAISE EXCEPTION 'local host name did not resolve to an address';
   END IF;
   RAISE INFO 'UTL_INADDR default host address: ok';
 END;
 /
 INFO:  UTL_INADDR default host address: ok
--- 无效数字地址必须映射为 Oracle UNKNOWN_HOST（ORA-29257）。
+-- An invalid numeric address must map to Oracle UNKNOWN_HOST (ORA-29257).
 DECLARE
   unknown_host EXCEPTION;
   PRAGMA EXCEPTION_INIT(unknown_host, -29257);
   v_hostname VARCHAR2(4000);
 BEGIN
   v_hostname := utl_inaddr.get_host_name('not-an-ip-address');
-  RAISE EXCEPTION '无效地址未触发 UNKNOWN_HOST: %', v_hostname;
+  RAISE EXCEPTION 'invalid address did not raise UNKNOWN_HOST: %', v_hostname;
 EXCEPTION
   WHEN unknown_host THEN
     RAISE INFO 'UTL_INADDR invalid address mapping: ok';
 END;
 /
 INFO:  UTL_INADDR invalid address mapping: ok
--- 超长标签会被本地解析器拒绝，不需要访问 DNS。
+-- An overlong label is rejected locally without a DNS request.
 DECLARE
   unknown_host EXCEPTION;
   PRAGMA EXCEPTION_INIT(unknown_host, -29257);
   v_address VARCHAR2(4000);
 BEGIN
   v_address := utl_inaddr.get_host_address(repeat('a', 300));
-  RAISE EXCEPTION '无效主机名未触发 UNKNOWN_HOST: %', v_address;
+  RAISE EXCEPTION 'invalid host did not raise UNKNOWN_HOST: %', v_address;
 EXCEPTION
   WHEN unknown_host THEN
     RAISE INFO 'UTL_INADDR invalid host mapping: ok';
 END;
 /
 INFO:  UTL_INADDR invalid host mapping: ok
--- C 层以 NULL 报告失败，由公开包统一转换为 UNKNOWN_HOST。
+-- The C layer reports failure as NULL for the package to map to UNKNOWN_HOST.
 DECLARE
   v_name VARCHAR2(4000);
   v_address VARCHAR2(4000);
@@ -124,7 +125,7 @@ BEGIN
   v_name := sys.utl_inaddr_get_host_name('not-an-ip-address');
   v_address := sys.utl_inaddr_get_host_address(repeat('a', 300));
   IF v_name IS NOT NULL OR v_address IS NOT NULL THEN
-    RAISE EXCEPTION '内部解析失败契约异常';
+    RAISE EXCEPTION 'internal resolution failure contract is broken';
   END IF;
   RAISE INFO 'UTL_INADDR internal failure contract: ok';
 END;

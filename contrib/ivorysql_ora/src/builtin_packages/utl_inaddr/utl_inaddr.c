@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Oracle UTL_INADDR 包的主机名与地址解析实现。
+ * Oracle UTL_INADDR host name and address resolution.
  *
  * contrib/ivorysql_ora/src/builtin_packages/utl_inaddr/utl_inaddr.c
  *
@@ -38,8 +38,9 @@ static char *utl_inaddr_resolve_address(const char *host);
 static char *utl_inaddr_resolve_name(const char *address);
 
 /*
- * 读取本机主机名。GET_HOST_NAME 的 NULL 分支只返回短名称，因此该分支
- * 会去掉第一个点及其后的域名；地址解析仍使用完整名称。
+ * Read the local host name.  The NULL branch of GET_HOST_NAME returns only
+ * the short name, so strip the first dot and the domain that follows it.
+ * Address lookup continues to use the complete name.
  */
 static char *
 utl_inaddr_local_hostname(bool short_name)
@@ -61,8 +62,9 @@ utl_inaddr_local_hostname(bool short_name)
 }
 
 /*
- * 将主机名解析为数字形式的 IPv4 或 IPv6 地址。地址顺序遵循系统解析器，
- * 与 Oracle 对多网卡主机只返回一个地址的契约一致。
+ * Resolve a host name to a numeric IPv4 or IPv6 address.  Preserve the system
+ * resolver's address order, matching Oracle's contract of returning one
+ * address for a multihomed host.
  */
 static char *
 utl_inaddr_resolve_address(const char *host)
@@ -108,9 +110,10 @@ utl_inaddr_resolve_address(const char *host)
 }
 
 /*
- * 对数字形式的 IPv4 或 IPv6 地址执行反向解析。AI_NUMERICHOST 禁止把
- * 任意文本再次当作主机名解析，NI_NAMEREQD 则确保没有 PTR/hosts 名称时
- * 返回 UNKNOWN_HOST，而不是把原地址原样返回。
+ * Reverse-resolve a numeric IPv4 or IPv6 address.  AI_NUMERICHOST prevents
+ * arbitrary text from being resolved as a host name, while NI_NAMEREQD makes
+ * an address without a PTR or hosts entry return UNKNOWN_HOST instead of the
+ * original address.
  */
 static char *
 utl_inaddr_resolve_name(const char *address_text)
@@ -157,9 +160,9 @@ utl_inaddr_resolve_name(const char *address_text)
 }
 
 /*
- * UTL_INADDR.GET_HOST_ADDRESS：给定主机名时返回其一个数字地址；NULL
- * 表示先取得本机主机名再解析。解析失败返回 NULL，由 PL/iSQL 包转换为
- * UNKNOWN_HOST，以便保留公开异常契约。
+ * UTL_INADDR.GET_HOST_ADDRESS returns one numeric address for a host name.
+ * NULL means to resolve the local host name.  Resolution failures return NULL
+ * for the PL/iSQL package to convert to the public UNKNOWN_HOST exception.
  */
 Datum
 ivorysql_utl_inaddr_get_host_address(PG_FUNCTION_ARGS)
@@ -185,8 +188,9 @@ ivorysql_utl_inaddr_get_host_address(PG_FUNCTION_ARGS)
 }
 
 /*
- * UTL_INADDR.GET_HOST_NAME：给定数字地址时执行反向解析；NULL 直接返回
- * 不带域名的本机短名称。解析失败同样交由包包装层转换为 UNKNOWN_HOST。
+ * UTL_INADDR.GET_HOST_NAME reverse-resolves a numeric address.  NULL returns
+ * the local short name without its domain.  Resolution failures are likewise
+ * converted to UNKNOWN_HOST by the package wrapper.
  */
 Datum
 ivorysql_utl_inaddr_get_host_name(PG_FUNCTION_ARGS)
