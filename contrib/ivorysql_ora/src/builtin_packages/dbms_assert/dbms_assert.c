@@ -33,13 +33,21 @@
 
 #include "varatt.h"
 
+#include "access/htup_details.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_namespace_d.h"
+#include "catalog/pg_proc.h"
+#include "catalog/pg_proc_d.h"
+#include "catalog/pg_type.h"
+#include "catalog/pg_type_d.h"
+#include "commands/packagecmds.h"
 #include "fmgr.h"
 #include "miscadmin.h"
 #include "mb/pg_wchar.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
+#include "utils/catcache.h"
+#include "utils/lsyscache.h"
 #include "utils/regproc.h"
 #include "utils/syscache.h"
 
@@ -81,6 +89,7 @@ PG_FUNCTION_INFO_V1(ora_dbms_assert_object_name);
 
 static bool check_sql_name(char *cp, int len);
 static bool ParseIdentifierString(char *rawstring);
+static Oid object_name_namespace(const char *nspname);
 
 /*
  * Is character a valid identifier start?
@@ -508,15 +517,235 @@ ora_dbms_assert_simple_sql_name(PG_FUNCTION_ARGS)
  *
  * Purpose:
  *   Verifies that the input string is the (optionally qualified) name of
- *   an existing relation visible to the current user.
+ *   an existing SQL object visible to the current user.  Like Oracle's
+ *   ALL_OBJECTS view, an object is visible when the caller owns it or
+ *   holds any privilege on it (directly, through a role, or through
+ *   PUBLIC).  All object kinds are considered: relations (tables, views,
+ *   sequences, indexes, ...), routines, types and packages.  A qualified
+ *   name resolves by its longest visible prefix, so trailing components
+ *   that denote a package member or a table column are not validated.
  ****************************************************************/
+static bool
+relation_object_visible(List *names)
+{
+	char	   *schemaname;
+	char	   *relname;
+	Oid			relId;
+
+	/* 3-part names are schema.package.member here, not catalog.schema.table */
+	if (list_length(names) > 2)
+		return false;
+
+	DeconstructQualifiedName(names, &schemaname, &relname);
+
+	if (schemaname)
+	{
+		Oid			namespaceId = object_name_namespace(schemaname);
+
+		if (!OidIsValid(namespaceId))
+			return false;
+
+		relId = get_relname_relid(relname, namespaceId);
+	}
+	else
+		relId = RelnameGetRelid(relname);
+
+	if (!OidIsValid(relId))
+		return false;
+
+	/* NULL relacl means owner-only, like an ungranted Oracle object */
+	return pg_class_aclmask(relId, GetUserId(),
+							ACL_ALL_RIGHTS_RELATION,
+							ACLMASK_ANY) != ACL_NO_RIGHTS;
+}
+
+/*
+ * Namespace lookup by existence only: unlike LookupExplicitNamespace(),
+ * this does not require USAGE on the schema, because visibility is
+ * decided by the privilege on the object itself (Oracle ALL_OBJECTS
+ * semantics).
+ */
+static Oid
+object_name_namespace(const char *nspname)
+{
+	return GetSysCacheOid1(NAMESPACENAME, Anum_pg_namespace_oid,
+						   CStringGetDatum(nspname));
+}
+
+static bool
+routine_object_visible(List *names)
+{
+	char	   *schemaname;
+	char	   *funcname;
+	FuncCandidateList clist;
+	int			fgc_flags;
+
+	if (list_length(names) > 2)
+		return false;
+
+	DeconstructQualifiedName(names, &schemaname, &funcname);
+
+	if (schemaname)
+	{
+		Oid			namespaceId = object_name_namespace(schemaname);
+		CatCList   *catlist;
+		int			i;
+
+		if (!OidIsValid(namespaceId))
+			return false;
+
+		catlist = SearchSysCacheList1(PROCNAMEARGSNSP,
+									  CStringGetDatum(funcname));
+		for (i = 0; i < catlist->n_members; i++)
+		{
+			Form_pg_proc procform = (Form_pg_proc) GETSTRUCT(&catlist->members[i]->tuple);
+
+			if (procform->pronamespace != namespaceId)
+				continue;
+
+			if (object_aclcheck(ProcedureRelationId, procform->oid,
+								GetUserId(), ACL_EXECUTE) == ACLCHECK_OK)
+			{
+				ReleaseSysCacheList(catlist);
+				return true;
+			}
+		}
+		ReleaseSysCacheList(catlist);
+
+		return false;
+	}
+
+	clist = FuncnameGetCandidates(names, -1, NIL, false, false, false, true,
+								  &fgc_flags);
+
+	for (; clist; clist = clist->next)
+	{
+		/* ambiguous-overload marker entries carry no OID to check */
+		if (!OidIsValid(clist->oid))
+			continue;
+
+		if (object_aclcheck(ProcedureRelationId, clist->oid, GetUserId(),
+							ACL_EXECUTE) == ACLCHECK_OK)
+			return true;
+	}
+
+	return false;
+}
+
+static bool
+type_object_visible(List *names)
+{
+	char	   *schemaname;
+	char	   *typname;
+	Oid			typoid;
+	HeapTuple	tup;
+	Form_pg_type typform;
+	bool		visible;
+
+	if (list_length(names) > 2 || names == NIL)
+		return false;
+
+	DeconstructQualifiedName(names, &schemaname, &typname);
+
+	if (schemaname)
+	{
+		Oid			namespaceId = object_name_namespace(schemaname);
+
+		if (!OidIsValid(namespaceId))
+			return false;
+
+		typoid = GetSysCacheOid2(TYPENAMENSP, Anum_pg_type_oid,
+								 PointerGetDatum(typname),
+								 ObjectIdGetDatum(namespaceId));
+	}
+	else
+		typoid = TypenameGetTypidExtended(typname, true);
+
+	if (!OidIsValid(typoid))
+		return false;
+
+	tup = SearchSysCache1(TYPEOID, ObjectIdGetDatum(typoid));
+	if (!HeapTupleIsValid(tup))
+		return false;
+
+	/* shell types are placeholders, not usable objects */
+	typform = (Form_pg_type) GETSTRUCT(tup);
+	if (!typform->typisdefined)
+	{
+		ReleaseSysCache(tup);
+		return false;
+	}
+
+	/*
+	 * The composite row type of a relation is a facet of that relation,
+	 * not an independent object: follow the relation's own visibility so
+	 * that an ungranted table cannot be seen through its row type.
+	 */
+	if (typform->typtype == TYPTYPE_COMPOSITE &&
+		OidIsValid(typform->typrelid))
+	{
+		visible = pg_class_aclmask(typform->typrelid, GetUserId(),
+								   ACL_ALL_RIGHTS_RELATION,
+								   ACLMASK_ANY) != ACL_NO_RIGHTS;
+		ReleaseSysCache(tup);
+		return visible;
+	}
+
+	visible = object_aclcheck(TypeRelationId, typoid, GetUserId(),
+							  ACL_USAGE) == ACLCHECK_OK;
+
+	ReleaseSysCache(tup);
+
+	return visible;
+}
+
+static bool
+package_object_visible(List *names)
+{
+	char	   *schemaname;
+	char	   *pkgname;
+	Oid			pkgOid;
+
+	if (list_length(names) > 2)
+		return false;
+
+	DeconstructQualifiedName(names, &schemaname, &pkgname);
+
+	if (schemaname)
+	{
+		Oid			namespaceId = object_name_namespace(schemaname);
+
+		if (!OidIsValid(namespaceId))
+			return false;
+
+		pkgOid = get_package_pkgid(pkgname, namespaceId);
+	}
+	else
+		pkgOid = PkgnameGetPkgid(pkgname);
+
+	if (!OidIsValid(pkgOid))
+		return false;
+
+	return pg_package_aclcheck(pkgOid, GetUserId(),
+							   ACL_EXECUTE) == ACLCHECK_OK;
+}
+
+static bool
+sql_object_visible(List *names)
+{
+	return relation_object_visible(names) ||
+		routine_object_visible(names) ||
+		type_object_visible(names) ||
+		package_object_visible(names);
+}
+
 Datum
 ora_dbms_assert_object_name(PG_FUNCTION_ARGS)
 {
 	List	   *names;
 	text	   *str;
 	char	   *object_name;
-	Oid			classId;
+	int			nparts;
 
 	if (PG_ARGISNULL(0))
 		INVALID_OBJECT_NAME_EXCEPTION();
@@ -529,9 +758,26 @@ ora_dbms_assert_object_name(PG_FUNCTION_ARGS)
 
 	names = stringToQualifiedNameList(object_name, NULL);
 
-	classId = RangeVarGetRelid(makeRangeVarFromNameList(names), NoLock, true);
-	if (!OidIsValid(classId))
+	nparts = list_length(names);
+	if (nparts > 3)
 		INVALID_OBJECT_NAME_EXCEPTION();
 
-	PG_RETURN_TEXT_P(str);
+	if (sql_object_visible(names))
+		PG_RETURN_TEXT_P(str);
+
+	/*
+	 * Oracle resolves a qualified name by its longest visible prefix and
+	 * does not validate the trailing component: 'schema.package.member'
+	 * and 'table.column' are accepted when the prefix names a visible
+	 * object.
+	 */
+	if (nparts >= 2)
+	{
+		List	   *prefix = list_copy_head(names, nparts - 1);
+
+		if (sql_object_visible(prefix))
+			PG_RETURN_TEXT_P(str);
+	}
+
+	INVALID_OBJECT_NAME_EXCEPTION();
 }

@@ -232,7 +232,7 @@ select dbms_assert.schema_name('a.b') as dotted_schema;
 ERROR:  invalid schema name
 CONTEXT:  PL/iSQL function sys.dbms_assert.schema_name line 23 at RETURN
 --
--- SQL_OBJECT_NAME: must be an existing relation
+-- SQL_OBJECT_NAME: must be an existing SQL object (relation, function, or type)
 --
 create table assert_objects(id int);
 select dbms_assert.object_name('assert_objects') as existing_table;
@@ -247,7 +247,126 @@ select dbms_assert.sql_object_name('assert_objects') as existing_table_oracle_na
  assert_objects
 (1 row)
 
+select dbms_assert.sql_object_name('pg_catalog.abs') as existing_function;
+ existing_function 
+-------------------
+ pg_catalog.abs
+(1 row)
+
+select dbms_assert.sql_object_name('pg_catalog.int4') as existing_type;
+  existing_type  
+-----------------
+ pg_catalog.int4
+(1 row)
+
 select dbms_assert.object_name('no_such_table_777') as missing_table;
 ERROR:  invalid object name
 CONTEXT:  PL/iSQL function sys.dbms_assert.object_name line 33 at RETURN
+select dbms_assert.sql_object_name('no_such_function_777') as missing_function;
+ERROR:  invalid object name
+CONTEXT:  PL/iSQL function sys.dbms_assert.sql_object_name line 38 at RETURN
 drop table assert_objects;
+--
+-- SQL_OBJECT_NAME: all object kinds, like Oracle's ALL_OBJECTS
+--
+create table assert_kinds_tbl(id int);
+create index assert_kinds_idx on assert_kinds_tbl(id);
+create type assert_kinds_ty as (a int);
+create sequence assert_kinds_seq;
+create function assert_kinds_fn() returns int language sql as 'select 1';
+/
+create package assert_kinds_pkg is x integer; end;
+/
+select dbms_assert.sql_object_name('assert_kinds_tbl') as kind_table;
+    kind_table    
+------------------
+ assert_kinds_tbl
+(1 row)
+
+select dbms_assert.sql_object_name('assert_kinds_idx') as kind_index;
+    kind_index    
+------------------
+ assert_kinds_idx
+(1 row)
+
+select dbms_assert.sql_object_name('assert_kinds_ty') as kind_type;
+    kind_type    
+-----------------
+ assert_kinds_ty
+(1 row)
+
+select dbms_assert.sql_object_name('assert_kinds_seq') as kind_sequence;
+  kind_sequence   
+------------------
+ assert_kinds_seq
+(1 row)
+
+select dbms_assert.sql_object_name('assert_kinds_fn') as kind_function;
+  kind_function  
+-----------------
+ assert_kinds_fn
+(1 row)
+
+select dbms_assert.sql_object_name('assert_kinds_pkg') as kind_package;
+   kind_package   
+------------------
+ assert_kinds_pkg
+(1 row)
+
+select dbms_assert.sql_object_name('sys.dbms_assert') as sys_package;
+   sys_package   
+-----------------
+ sys.dbms_assert
+(1 row)
+
+-- a qualified name resolves by its longest visible prefix: trailing
+-- components (package members, table columns) are not validated
+select dbms_assert.sql_object_name('sys.dbms_assert.sql_object_name') as package_member;
+         package_member          
+---------------------------------
+ sys.dbms_assert.sql_object_name
+(1 row)
+
+select dbms_assert.sql_object_name('assert_kinds_tbl.id') as table_component;
+   table_component   
+---------------------
+ assert_kinds_tbl.id
+(1 row)
+
+select dbms_assert.sql_object_name('no_such_obj_777.component') as missing_prefix;
+ERROR:  invalid object name
+CONTEXT:  PL/iSQL function sys.dbms_assert.sql_object_name line 38 at RETURN
+drop package assert_kinds_pkg;
+drop function assert_kinds_fn();
+drop sequence assert_kinds_seq;
+drop type assert_kinds_ty;
+drop table assert_kinds_tbl;
+--
+-- SQL_OBJECT_NAME: visibility follows privileges (Oracle ALL_OBJECTS
+-- semantics: the owner, or any caller holding a privilege on the object)
+--
+create role assert_vis_owner nosuperuser;
+create role assert_vis_peer nosuperuser;
+create schema assert_vis_oth;
+grant usage, create on schema assert_vis_oth to assert_vis_owner;
+set role assert_vis_owner;
+create table assert_vis_oth.secure_tbl(id int);
+reset role;
+set role assert_vis_peer;
+select dbms_assert.sql_object_name('assert_vis_oth.secure_tbl') as no_privilege;
+ERROR:  invalid object name
+CONTEXT:  PL/iSQL function sys.dbms_assert.sql_object_name line 38 at RETURN
+reset role;
+grant select on assert_vis_oth.secure_tbl to assert_vis_peer;
+set role assert_vis_peer;
+select dbms_assert.sql_object_name('assert_vis_oth.secure_tbl') as with_privilege;
+      with_privilege       
+---------------------------
+ assert_vis_oth.secure_tbl
+(1 row)
+
+reset role;
+drop table assert_vis_oth.secure_tbl;
+drop schema assert_vis_oth;
+drop role assert_vis_peer;
+drop role assert_vis_owner;
