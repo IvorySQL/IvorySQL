@@ -3030,7 +3030,10 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist, ForPortionOfExpr 
 		{
 			if (origTarget->indirection)
 			{
-				colname_temp = strVal(lfirst(list_head(origTarget->indirection)));
+				Node	   *ind0 = linitial(origTarget->indirection);
+
+				if (IsA(ind0, String))
+					colname_temp = strVal(ind0);
 				alias_temp = lfirst(list_head(pstate->p_rtable));
 
 				if (alias_temp->alias)
@@ -3115,7 +3118,7 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist, ForPortionOfExpr 
 		{
 			updateTargetListEntry(pstate, tle, colname_temp,
 								  attrno,
-								  NULL,
+								  list_copy_tail(origTarget->indirection, 1),
 								  origTarget->location);
 		}
 		else
