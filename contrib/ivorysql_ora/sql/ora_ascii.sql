@@ -12,6 +12,9 @@ select ascii('abc') from dual;
 
 select ascii('xyz') from dual;
 
+-- UTF-8 multibyte characters return their Unicode code point, not the first byte.
+select ascii('日') from dual;
+
 select ascii(to_char('2026-01-01'::date,'DD-MON-YYYY HH24:MI:SS')) from dual;
 
 select ascii(to_char('2026-01-11 01:02:03.00'::timestamp,'DD-MON-YYYY HH24:MI:SS.FF6')) from dual;
