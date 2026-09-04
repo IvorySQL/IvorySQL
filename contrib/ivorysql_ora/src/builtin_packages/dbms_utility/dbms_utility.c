@@ -27,10 +27,15 @@
  */
 
 #include "postgres.h"
+
+#include <sys/resource.h>
+
 #include "fmgr.h"
+#include "portability/instr_time.h"
 #include "utils/builtins.h"
 #include "utils/errcodes.h"
 #include "utils/guc.h"
+#include "utils/numeric.h"
 #include "utils/ora_compatible.h"
 #include "parser/scansup.h"
 #include "port.h"
@@ -42,6 +47,17 @@
 PG_FUNCTION_INFO_V1(ora_format_error_backtrace);
 PG_FUNCTION_INFO_V1(ora_format_error_stack);
 PG_FUNCTION_INFO_V1(ora_format_call_stack);
+PG_FUNCTION_INFO_V1(ora_get_time);
+PG_FUNCTION_INFO_V1(ora_get_cpu_time);
+
+#define NANOSECONDS_PER_CENTISECOND INT64CONST(10000000)
+#define MICROSECONDS_PER_CENTISECOND INT64CONST(10000)
+#define ORACLE_TIMER_MODULUS UINT64CONST(0x100000000)
+
+/* GET_TIME uses a backend-local epoch; Oracle only guarantees usable deltas. */
+static instr_time get_time_epoch;
+static bool get_time_epoch_initialized = false;
+static TimingClockSourceType get_time_clock_source;
 
 /*
  * Function pointer types for plisql API functions.
@@ -61,6 +77,25 @@ static plisql_get_message_fn get_exception_message_fn = NULL;
 static plisql_get_sqlerrcode_fn get_exception_sqlerrcode_fn = NULL;
 static plisql_get_call_stack_fn get_call_stack_fn = NULL;
 static bool lookup_attempted = false;
+
+/*
+ * Convert a nonnegative centisecond count to Oracle's signed 32-bit timer
+ * range.  Compute the negative half explicitly instead of relying on an
+ * implementation-defined unsigned-to-signed conversion.
+ */
+static Numeric
+oracle_timer_number(uint64 centiseconds)
+{
+	uint32		wrapped = (uint32) (centiseconds % ORACLE_TIMER_MODULUS);
+	int64		result;
+
+	if (wrapped <= PG_INT32_MAX)
+		result = wrapped;
+	else
+		result = (int64) wrapped - (int64) ORACLE_TIMER_MODULUS;
+
+	return int64_to_numeric(result);
+}
 
 /*
  * Look up the plisql API functions dynamically.
@@ -512,4 +547,69 @@ ora_format_call_stack(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_TEXT_P(cstring_to_text(result.data));
+}
+
+/*
+ * ora_get_time - implementation of DBMS_UTILITY.GET_TIME
+ *
+ * Return centiseconds from an arbitrary backend-local epoch.  instr_time uses
+ * a monotonic clock on supported platforms, so system clock adjustments do
+ * not invalidate short elapsed-time measurements.
+ */
+Datum
+ora_get_time(PG_FUNCTION_ARGS)
+{
+	instr_time	now;
+	TimingClockSourceType current_clock_source;
+	int64		elapsed_ns;
+	uint64		centiseconds;
+
+	INSTR_TIME_SET_CURRENT(now);
+	current_clock_source = pg_current_timing_clock_source();
+
+	if (!get_time_epoch_initialized ||
+		get_time_clock_source != current_clock_source)
+	{
+		get_time_epoch = now;
+		get_time_clock_source = current_clock_source;
+		get_time_epoch_initialized = true;
+	}
+
+	INSTR_TIME_SUBTRACT(now, get_time_epoch);
+	elapsed_ns = INSTR_TIME_GET_NANOSEC(now);
+
+	/* Guard against a backward jump caused by an unexpected clock change. */
+	if (elapsed_ns < 0)
+		elapsed_ns = 0;
+
+	centiseconds = (uint64) elapsed_ns / NANOSECONDS_PER_CENTISECOND;
+	PG_RETURN_NUMERIC(oracle_timer_number(centiseconds));
+}
+
+/*
+ * ora_get_cpu_time - implementation of DBMS_UTILITY.GET_CPU_TIME
+ *
+ * Oracle CPU time includes user and system time consumed by the current
+ * process.  PostgreSQL provides a getrusage compatibility layer for Windows,
+ * so no platform-specific branch is required here.
+ */
+Datum
+ora_get_cpu_time(PG_FUNCTION_ARGS)
+{
+	struct rusage usage;
+	uint64		microseconds;
+	uint64		centiseconds;
+
+	if (getrusage(RUSAGE_SELF, &usage) != 0)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not read process CPU usage: %m")));
+
+	microseconds = ((uint64) usage.ru_utime.tv_sec +
+					(uint64) usage.ru_stime.tv_sec) * UINT64CONST(1000000);
+	microseconds += (uint64) usage.ru_utime.tv_usec +
+					(uint64) usage.ru_stime.tv_usec;
+	centiseconds = microseconds / MICROSECONDS_PER_CENTISECOND;
+
+	PG_RETURN_NUMERIC(oracle_timer_number(centiseconds));
 }

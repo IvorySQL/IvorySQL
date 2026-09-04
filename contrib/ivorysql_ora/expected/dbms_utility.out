@@ -474,5 +474,197 @@ DROP SCHEMA bug_schema CASCADE;
 NOTICE:  drop cascades to 2 other objects
 DETAIL:  drop cascades to function bug_schema.schema_error()
 drop cascades to function bug_schema.schema_caller()
+-- ============================================================
+-- GET_TIME and GET_CPU_TIME tests
+-- ============================================================
+-- Test 20: Internal timer functions must remain argument-free, return Oracle
+-- NUMBER, and retain the VOLATILE package contract.
+DO $$
+DECLARE
+  v_total INTEGER;
+  v_number_results INTEGER;
+  v_volatile INTEGER;
+BEGIN
+  SELECT count(*)
+    INTO v_total
+    FROM pg_catalog.pg_proc p
+    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'sys'
+     AND p.proname IN ('ora_get_time', 'ora_get_cpu_time')
+     AND p.pronargs = 0;
+  SELECT count(*)
+    INTO v_number_results
+    FROM pg_catalog.pg_proc p
+    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'sys'
+     AND p.proname IN ('ora_get_time', 'ora_get_cpu_time')
+     AND p.pronargs = 0
+     AND p.prorettype = 'sys.number'::pg_catalog.regtype;
+  SELECT count(*)
+    INTO v_volatile
+    FROM pg_catalog.pg_proc p
+    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'sys'
+     AND p.proname IN ('ora_get_time', 'ora_get_cpu_time')
+     AND p.pronargs = 0
+     AND p.provolatile = 'v';
+  IF v_total != 2 OR v_number_results != 2 OR v_volatile != 2 THEN
+    RAISE EXCEPTION 'timer helper catalog contract mismatch: %, %, %',
+      v_total, v_number_results, v_volatile;
+  END IF;
+  RAISE INFO 'Timer helper catalog contract: OK';
+END;
+$$;
+INFO:  Timer helper catalog contract: OK
+-- Test 21: Both public package functions return Oracle NUMBER values within
+-- the documented signed 32-bit timer range.
+DO $$
+DECLARE
+  v_wall NUMBER;
+  v_cpu NUMBER;
+  v_wall_type TEXT;
+  v_cpu_type TEXT;
+BEGIN
+  v_wall := DBMS_UTILITY.GET_TIME;
+  v_cpu := DBMS_UTILITY.GET_CPU_TIME;
+  SELECT pg_catalog.pg_typeof(sys.ora_get_time())::TEXT
+    INTO v_wall_type;
+  SELECT pg_catalog.pg_typeof(sys.ora_get_cpu_time())::TEXT
+    INTO v_cpu_type;
+  IF v_wall_type != 'sys.number' OR v_cpu_type != 'sys.number' THEN
+    RAISE EXCEPTION 'timer package result type mismatch: %, %',
+      v_wall_type, v_cpu_type;
+  END IF;
+  IF v_wall < -2147483648 OR v_wall > 2147483647 OR
+     v_cpu < -2147483648 OR v_cpu > 2147483647 THEN
+    RAISE EXCEPTION 'timer result outside Oracle signed range';
+  END IF;
+  RAISE INFO 'Timer package result type and range: OK';
+END;
+$$;
+INFO:  Timer package result type and range: OK
+-- Test 22: GET_TIME measures real elapsed time rather than transaction or
+-- statement time.  Use a loose lower bound to avoid depending on an exact
+-- scheduler wake-up time.
+DO $$
+DECLARE
+  v_start NUMBER;
+  v_finish NUMBER;
+  v_elapsed NUMBER;
+BEGIN
+  v_start := DBMS_UTILITY.GET_TIME;
+  PERFORM pg_catalog.pg_sleep(0.08);
+  v_finish := DBMS_UTILITY.GET_TIME;
+  IF v_finish >= v_start THEN
+    v_elapsed := v_finish - v_start;
+  ELSE
+    v_elapsed := (2147483647 - v_start) +
+                 (v_finish - (-2147483648)) + 1;
+  END IF;
+  IF v_elapsed < 5 THEN
+    RAISE EXCEPTION 'GET_TIME did not measure elapsed wall time: %', v_elapsed;
+  END IF;
+  RAISE INFO 'GET_TIME elapsed wall-time contract: OK';
+END;
+$$;
+INFO:  GET_TIME elapsed wall-time contract: OK
+-- Test 23: GET_CPU_TIME includes user and system CPU time without treating a
+-- sleeping interval as CPU work.
+DO $$
+DECLARE
+  v_wall_start NUMBER;
+  v_wall_finish NUMBER;
+  v_cpu_start NUMBER;
+  v_cpu_finish NUMBER;
+  v_wall_elapsed NUMBER;
+  v_cpu_elapsed NUMBER;
+BEGIN
+  v_wall_start := DBMS_UTILITY.GET_TIME;
+  v_cpu_start := DBMS_UTILITY.GET_CPU_TIME;
+  PERFORM pg_catalog.pg_sleep(0.08);
+  v_cpu_finish := DBMS_UTILITY.GET_CPU_TIME;
+  v_wall_finish := DBMS_UTILITY.GET_TIME;
+  IF v_wall_finish >= v_wall_start THEN
+    v_wall_elapsed := v_wall_finish - v_wall_start;
+  ELSE
+    v_wall_elapsed := (2147483647 - v_wall_start) +
+                     (v_wall_finish - (-2147483648)) + 1;
+  END IF;
+  IF v_cpu_finish >= v_cpu_start THEN
+    v_cpu_elapsed := v_cpu_finish - v_cpu_start;
+  ELSE
+    v_cpu_elapsed := (2147483647 - v_cpu_start) +
+                    (v_cpu_finish - (-2147483648)) + 1;
+  END IF;
+  IF v_wall_elapsed < 5 OR v_cpu_elapsed >= v_wall_elapsed THEN
+    RAISE EXCEPTION 'sleep timer separation failed: CPU %, wall %',
+      v_cpu_elapsed, v_wall_elapsed;
+  END IF;
+  RAISE INFO 'GET_CPU_TIME excludes sleeping wall time: OK';
+END;
+$$;
+INFO:  GET_CPU_TIME excludes sleeping wall time: OK
+-- Test 24: CPU-intensive work must eventually advance GET_CPU_TIME at
+-- centisecond precision.  The sample limit also guarantees termination if an
+-- implementation regresses to a constant value.
+DO $$
+DECLARE
+  v_start NUMBER;
+  v_finish NUMBER;
+  v_elapsed NUMBER;
+  v_checksum NUMBER := 0;
+  v_iterations INTEGER := 0;
+BEGIN
+  v_start := DBMS_UTILITY.GET_CPU_TIME;
+  v_finish := v_start;
+  FOR i IN 1..2000000 LOOP
+    v_checksum := MOD(v_checksum + i, 1000003);
+    v_iterations := i;
+    IF MOD(i, 1000) = 0 THEN
+      v_finish := DBMS_UTILITY.GET_CPU_TIME;
+      EXIT WHEN v_finish != v_start;
+    END IF;
+  END LOOP;
+  IF v_finish >= v_start THEN
+    v_elapsed := v_finish - v_start;
+  ELSE
+    v_elapsed := (2147483647 - v_start) +
+                 (v_finish - (-2147483648)) + 1;
+  END IF;
+  IF v_elapsed < 1 OR v_iterations <= 0 OR v_checksum < 0 THEN
+    RAISE EXCEPTION 'GET_CPU_TIME did not advance during CPU work';
+  END IF;
+  RAISE INFO 'GET_CPU_TIME CPU-work contract: OK';
+END;
+$$;
+INFO:  GET_CPU_TIME CPU-work contract: OK
+-- Test 25: Timer functions work inside stored functions, covering the common
+-- Oracle application pattern of measuring code with two samples.
+CREATE OR REPLACE FUNCTION test_dbms_utility_timers RETURN BOOLEAN AS
+  v_wall_start NUMBER;
+  v_wall_finish NUMBER;
+  v_cpu_start NUMBER;
+  v_cpu_finish NUMBER;
+BEGIN
+  v_wall_start := DBMS_UTILITY.GET_TIME;
+  v_cpu_start := DBMS_UTILITY.GET_CPU_TIME;
+  v_wall_finish := DBMS_UTILITY.GET_TIME;
+  v_cpu_finish := DBMS_UTILITY.GET_CPU_TIME;
+  RETURN v_wall_start IS NOT NULL AND
+         v_wall_finish IS NOT NULL AND
+         v_cpu_start IS NOT NULL AND
+         v_cpu_finish IS NOT NULL;
+END;
+/
+DO $$
+BEGIN
+  IF NOT test_dbms_utility_timers() THEN
+    RAISE EXCEPTION 'timer function returned NULL in stored function';
+  END IF;
+  RAISE INFO 'Timers in stored function: OK';
+END;
+$$;
+INFO:  Timers in stored function: OK
+DROP FUNCTION test_dbms_utility_timers;
 RESET ivorysql.identifier_case_switch;
 RESET ivorysql.enable_case_switch;
