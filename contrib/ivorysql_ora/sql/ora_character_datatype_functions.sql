@@ -832,6 +832,7 @@ DROP TABLE regexp_temp;
  */
 SELECT SUBSTRB('ABCDEFG',5,4.2) "Substring with bytes" FROM DUAL;
 SELECT SUBSTRB('ABCDEFG',5) "Substring with bytes" FROM DUAL;
+SELECT SUBSTRB('你好',1,6) = '你好' AS complete_boundary FROM DUAL;
 
 /*
  * instrb
