@@ -706,25 +706,22 @@ DROP FUNCTION after_insert_row_trigger();
 CREATE TABLE salespeople(salesperson_id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, salesperson_name VARCHAR(30)) PARTITION BY RANGE (salesperson_id);
 CREATE TABLE salespeople1_2 PARTITION OF salespeople FOR VALUES FROM (1) TO (2);
 -- Create new partition with identity column:
-CREATE TABLE salespeople2_5(salesperson_id INT NOT NULL, salesperson_name VARCHAR(30));
+CREATE TABLE salespeople2_5(salesperson_id BIGINT NOT NULL, salesperson_name VARCHAR(30));
 ALTER TABLE salespeople ATTACH PARTITION salespeople2_5 FOR VALUES FROM (2) TO (5);
-ERROR:  child table "salespeople2_5" has different type for column "salesperson_id"
 INSERT INTO salespeople (salesperson_name) VALUES ('Poirot'), ('Ivanov');
-ERROR:  no partition of relation "salespeople" found for row
-DETAIL:  Partition key of the failing row contains (salesperson_id) = (2).
 ALTER TABLE salespeople SPLIT PARTITION salespeople2_5 INTO
   (PARTITION salespeople2_3 FOR VALUES FROM (2) TO (3),
    PARTITION salespeople3_4 FOR VALUES FROM (3) TO (4),
    PARTITION salespeople4_5 FOR VALUES FROM (4) TO (5));
-ERROR:  "salespeople2_5" is not a partition of partitioned table "salespeople"
-HINT:  ALTER TABLE ... SPLIT PARTITION can only split partitions don't have sub-partitions.
 INSERT INTO salespeople (salesperson_name) VALUES ('May'), ('Ford');
-ERROR:  no partition of relation "salespeople" found for row
-DETAIL:  Partition key of the failing row contains (salesperson_id) = (3).
 SELECT tableoid::regclass, * FROM salespeople ORDER BY tableoid::regclass::text COLLATE "C", salesperson_id;
- tableoid | salesperson_id | salesperson_name 
-----------+----------------+------------------
-(0 rows)
+    tableoid    | salesperson_id | salesperson_name 
+----------------+----------------+------------------
+ salespeople1_2 |              1 | Poirot
+ salespeople2_3 |              2 | Ivanov
+ salespeople3_4 |              3 | May
+ salespeople4_5 |              4 | Ford
+(4 rows)
 
 -- check new partitions have identity or not after split partition
 SELECT attrelid::regclass, attname, attidentity, attgenerated FROM pg_attribute
@@ -733,9 +730,20 @@ AND attrelid::regclass IN (
   'salespeople2_3'::regclass, 'salespeople', 'salespeople2_3',
   'salespeople1_2', 'salespeople3_4', 'salespeople4_5')
 ORDER BY attrelid::regclass::text COLLATE "C", attnum;
-ERROR:  relation "salespeople2_3" does not exist
-LINE 4:   'salespeople2_3'::regclass, 'salespeople', 'salespeople2_3...
-          ^
+    attrelid    |     attname      | attidentity | attgenerated 
+----------------+------------------+-------------+--------------
+ salespeople    | salesperson_id   | i           | 
+ salespeople    | salesperson_name |             | 
+ salespeople1_2 | salesperson_id   | i           | 
+ salespeople1_2 | salesperson_name |             | 
+ salespeople2_3 | salesperson_id   | i           | 
+ salespeople2_3 | salesperson_name |             | 
+ salespeople3_4 | salesperson_id   | i           | 
+ salespeople3_4 | salesperson_name |             | 
+ salespeople4_5 | salesperson_id   | i           | 
+ salespeople4_5 | salesperson_name |             | 
+(10 rows)
+
 DROP TABLE salespeople CASCADE;
 --
 -- Test: split partition with deleted columns
@@ -1587,7 +1595,4 @@ DROP TABLE t;
 RESET search_path;
 --
 DROP SCHEMA partition_split_schema;
-ERROR:  cannot drop schema partition_split_schema because other objects depend on it
-DETAIL:  table partition_split_schema.salespeople2_5 depends on schema partition_split_schema
-HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 DROP SCHEMA partition_split_schema2;

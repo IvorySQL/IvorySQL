@@ -496,7 +496,7 @@ CREATE TABLE salespeople(salesperson_id INT GENERATED ALWAYS AS IDENTITY PRIMARY
 
 CREATE TABLE salespeople1_2 PARTITION OF salespeople FOR VALUES FROM (1) TO (2);
 -- Create new partition with identity column:
-CREATE TABLE salespeople2_5(salesperson_id INT NOT NULL, salesperson_name VARCHAR(30));
+CREATE TABLE salespeople2_5(salesperson_id BIGINT NOT NULL, salesperson_name VARCHAR(30));
 ALTER TABLE salespeople ATTACH PARTITION salespeople2_5 FOR VALUES FROM (2) TO (5);
 
 INSERT INTO salespeople (salesperson_name) VALUES ('Poirot'), ('Ivanov');
