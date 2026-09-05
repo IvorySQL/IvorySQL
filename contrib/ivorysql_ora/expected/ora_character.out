@@ -438,8 +438,17 @@ explain (costs off) SELECT * FROM TEST_ORAVARCHAR WHERE a='111';
                       QUERY PLAN                       
 -------------------------------------------------------
  Index Scan using test_oravarchar_b on test_oravarchar
-   Index Cond: (a = '111'::varchar2)
+ Index Cond: (a = '111'::varchar2)
 (2 rows)
+
+-- Pattern comparison functions are safe to execute in parallel workers.
+SELECT proparallel
+FROM pg_proc
+WHERE oid = 'sys.oravarchar_pattern_gt(sys.oravarcharchar,sys.oravarcharchar)'::regprocedure;
+ proparallel 
+-------------
+ s
+(1 row)
 
 -- drop table
 DROP TABLE TEST_ORACHAR;
