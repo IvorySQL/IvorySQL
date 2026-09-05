@@ -10602,13 +10602,18 @@ AS IMPLICIT;
 create or replace function sys.oid_cc_eq(oid_l pg_catalog.oid, cc_r sys.oracharchar)
 RETURNS BOOLEAN AS $$
 SELECT $1::sys.oracharchar =
-	coalesce(nullif(trim(leading '0' from $2), ''), '0')
+	CASE WHEN length(trim(leading '0' from $2)) = 0
+		 THEN '0'
+		 ELSE trim(leading '0' from $2)
+	END
 $$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
 
 create or replace function sys.cc_oid_eq(cc_l sys.oracharchar, oid_r pg_catalog.oid)
 RETURNS BOOLEAN AS $$
-SELECT coalesce(nullif(trim(leading '0' from $1), ''), '0') =
-	$2::sys.oracharchar
+SELECT CASE WHEN length(trim(leading '0' from $1)) = 0
+			THEN '0'
+			ELSE trim(leading '0' from $1)
+		END = $2::sys.oracharchar
 $$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
 
 create or replace function sys.oid_cc_ne(oid_l pg_catalog.oid, cc_r sys.oracharchar)

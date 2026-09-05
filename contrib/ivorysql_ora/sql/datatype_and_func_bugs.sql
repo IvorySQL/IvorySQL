@@ -78,6 +78,16 @@ select cast('000' as char(3 char)) = 0::oid;
 select not (0::oid <> cast('000' as char(3 char)));
 select not (cast('000' as char(3 char)) <> 0::oid);
 
+-- Blank-only CHAR values remain distinct from OID zero.
+select not (0::oid = cast('   ' as char(3 char)));
+select not (cast('   ' as char(3 char)) = 0::oid);
+select 0::oid <> cast('   ' as char(3 char));
+select cast('   ' as char(3 char)) <> 0::oid;
+
+-- Nonzero values still ignore only their leading zeroes.
+select 42::oid = cast('042' as char(3 char));
+select not (0::oid = cast('007' as char(3 char)));
+
 -- The comparison helpers are deterministic and safe for planner use.
 select count(*) = 4 as oid_char_comparisons_are_immutable
 from pg_catalog.pg_proc
