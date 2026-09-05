@@ -311,6 +311,7 @@ insert into datetest values (date '2018-7-16',new_time(date '2018-7-16','GMT','A
 insert into datetest values (date '1998-2-26',new_time(date '1998-2-26','ADT','YDT'));
 insert into datetest values (date '1998-2-26',new_time(date '1998-2-26','PST','CDT'));
 insert into datetest values (date '1998-2-26',new_time(date '1998-2-26','YST','BST'));
+select new_time(date '294276-12-31 23:00:00','PST','GMT') from dual;
 
 select * from datetest;
 drop table datetest;
@@ -328,6 +329,7 @@ drop table datetest;
 
 --from_tz
 SELECT FROM_TZ(TIMESTAMP '2000-03-28 08:00:00', '3:00') FROM DUAL;
+SELECT FROM_TZ(TIMESTAMP '294276-12-31 23:00:00', '-12:00') FROM DUAL;
   
 --sessiontimezone
 set timezone = 'Asia/Hong_Kong';
