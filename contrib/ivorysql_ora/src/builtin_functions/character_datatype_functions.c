@@ -1185,14 +1185,6 @@ ora_instrb(PG_FUNCTION_ARGS)
 	int32	position = DatumGetInt32(DirectFunctionCall1(numeric_int4, DirectFunctionCall2(numeric_trunc, PG_GETARG_DATUM(2),Int32GetDatum(0))));
 	int32	occurrence = DatumGetInt32(DirectFunctionCall1(numeric_int4, DirectFunctionCall2(numeric_trunc, PG_GETARG_DATUM(3),Int32GetDatum(0))));
 
-	if (position == 0)
-		PG_RETURN_INT32(0);
-	
-	if (occurrence <= 0)
-		ereport(ERROR,
-					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-					 errmsg("The parameter of occurrence must be positive")));
-
 	str = PG_GETARG_TEXT_PP(0);
 	search_str = PG_GETARG_TEXT_PP(1);
 
@@ -1691,12 +1683,37 @@ text_instring(text *str, text *search_str, int32 position, int32 occurrence, boo
 	int32	result;
 	TextPositionState	state;
 
+	/*
+	 * Oracle documents that if position is 0, the result is 0, regardless
+	 * of the other arguments.  Handle that here so that every entry point
+	 * (instr and instrb alike) agrees.
+	 */
+	if (position == 0)
+		return 0;
+
+	/* occurrence must be a positive integer (Oracle ORA-01428) */
+	if (occurrence <= 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("The parameter of occurrence must be positive")));
+
 	text_position_setup(str, search_str, &state, isByte);
 
 	src_text_len = state.len1;
 	sub_text_len = state.len2;
 
 	if (src_text_len <= 0 || sub_text_len <= 0)
+	{
+		text_position_cleanup(&state);
+		return 0;
+	}
+
+	/*
+	 * Bound-check position before it is negated in the maxTimes computation
+	 * below; -INT_MIN would overflow, and a position outside the string can
+	 * never match anyway.
+	 */
+	if (position > src_text_len || position < -src_text_len)
 	{
 		text_position_cleanup(&state);
 		return 0;
@@ -1721,17 +1738,17 @@ text_instring(text *str, text *search_str, int32 position, int32 occurrence, boo
 	else
 		maxTimes = src_text_len - Max(sub_text_len, -position) + 1;
 
-	if (abs(position) > src_text_len || src_text_len < sub_text_len || occurrence > maxTimes)
+	if (src_text_len < sub_text_len || occurrence > maxTimes)
 	{
 		text_position_cleanup(&state);
 		return 0;
 	}
-	
+
 	if (position > 0)
 	{
 		/*searching from begin with the specific times */
 		result = position - 1;
-		
+
 		for (i = 0; i < occurrence; i++)
 		{
 			result = text_position_next(result + 1, &state);
@@ -1743,7 +1760,7 @@ text_instring(text *str, text *search_str, int32 position, int32 occurrence, boo
 	{
 		/*searching from back with the specific times */
 		result = src_text_len + position + 2;
-		
+
 		for (i = 0; i < occurrence; i++)
 		{
 			result = text_position_prev(result - 1, &state);
