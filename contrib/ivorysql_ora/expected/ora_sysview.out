@@ -403,3 +403,31 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+--
+-- ORA_CASE_TRANS switches case even for values of NAMEDATALEN bytes or
+-- more, preserving the full value (no truncation warnings)
+--
+SELECT SYS.ORA_CASE_TRANS(RPAD('abc', 80, 'x')) = UPPER(RPAD('abc', 80, 'x')) AS long_lower_upcased;
+ long_lower_upcased 
+--------------------
+ t
+(1 row)
+
+SELECT SYS.ORA_CASE_TRANS(RPAD('ABC', 80, 'X')) = LOWER(RPAD('ABC', 80, 'X')) AS long_upper_downcased;
+ long_upper_downcased 
+----------------------
+ t
+(1 row)
+
+SELECT LENGTH(SYS.ORA_CASE_TRANS(RPAD('abc', 80, 'x'))) AS upcased_len;
+ upcased_len 
+-------------
+          80
+(1 row)
+
+SELECT SYS.ORA_CASE_TRANS('Long Identifier 123') AS mixed_case_kept;
+   mixed_case_kept   
+---------------------
+ Long Identifier 123
+(1 row)
+
