@@ -5,6 +5,12 @@ SHOW IVORYSQL.COMPATIBLE_MODE;
 SET IVORYSQL.IDENTIFIER_CASE_SWITCH = INTERCHANGE;
 SHOW IVORYSQL.IDENTIFIER_CASE_SWITCH;
 
+-- Catalog-reading helpers must not be folded as immutable constants.
+SELECT bool_and(provolatile = 's') AS helpers_are_stable
+FROM pg_catalog.pg_proc
+WHERE oid IN ('sys._ora_src_count(oid)'::regprocedure,
+              'sys._ora_args_count(oid)'::regprocedure);
+
 -- create a procedure
 CREATE TABLE TB_TODEL(ID INT);
 CREATE OR REPLACE PROCEDURE PROC_DEL_TB(I INT) IS
