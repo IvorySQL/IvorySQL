@@ -240,3 +240,21 @@ SELECT 3.4e38f * 10d;
 SELECT 10d * 3.4e38f;
 SELECT 1f + 1e-10d;
 
+
+-- Text conversion overloads perform only local computation and are parallel safe.
+DO $$
+DECLARE
+  safe_count integer;
+BEGIN
+  SELECT count(*) INTO safe_count
+  FROM pg_proc
+  WHERE pronamespace = 'sys'::regnamespace
+    AND proname IN ('to_binary_float', 'to_binary_double')
+    AND proargtypes IN ('25'::oidvector, '25 25'::oidvector)
+    AND proparallel = 's';
+
+  IF safe_count <> 4 THEN
+    RAISE EXCEPTION 'expected four parallel-safe text conversion overloads';
+  END IF;
+END
+$$;

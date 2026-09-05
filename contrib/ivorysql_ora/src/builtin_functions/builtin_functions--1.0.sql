@@ -1226,6 +1226,7 @@ RETURNS sys.binary_float
 AS 'MODULE_PATHNAME','ora_to_binary_float'
 LANGUAGE C
 STRICT
+PARALLEL SAFE
 IMMUTABLE;
 
 CREATE FUNCTION sys.to_binary_float(text)
@@ -1233,6 +1234,7 @@ RETURNS sys.binary_float
 AS 'MODULE_PATHNAME','ora_to_binary_float'
 LANGUAGE C
 STRICT
+PARALLEL SAFE
 IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION sys.to_binary_float(number)
@@ -1256,6 +1258,7 @@ RETURNS sys.binary_double
 AS 'MODULE_PATHNAME','ora_to_binary_double'
 LANGUAGE C
 STRICT
+PARALLEL SAFE
 IMMUTABLE;
 
 CREATE FUNCTION sys.to_binary_double(text)
@@ -1263,6 +1266,7 @@ RETURNS sys.binary_double
 AS 'MODULE_PATHNAME','ora_to_binary_double'
 LANGUAGE C
 STRICT
+PARALLEL SAFE
 IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION sys.to_binary_double(number)
