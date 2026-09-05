@@ -16,10 +16,24 @@ SELECT vsize('abc') = lengthb('abc') AS same_as_lengthb;
 SELECT vsize('你好'::text);
 
 -- numeric data
+-- integer/numeric values report Oracle's internal NUMBER format size,
+-- verified against Oracle Database 23ai
 SELECT vsize(0::number);
 SELECT vsize(1::number);
 SELECT vsize(123::number);
 SELECT vsize(1.23::number);
+SELECT vsize(100);
+SELECT vsize(42);
+SELECT vsize(-1);
+SELECT vsize(-1200);
+SELECT vsize(3.14);
+SELECT vsize(12345.67);
+SELECT vsize(1000000);
+SELECT vsize(0.001::number);
+SELECT vsize(1.50::number);
+SELECT vsize(1500);
+SELECT vsize(0.05::number);
+SELECT vsize(123::int2);
 SELECT vsize(123::int4);
 SELECT vsize(123::int8);
 SELECT vsize(1.23::float8);
