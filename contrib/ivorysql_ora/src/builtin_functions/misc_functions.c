@@ -31,6 +31,7 @@
 #include "fmgr.h"
 #include "miscadmin.h"
 #include "access/detoast.h"
+#include "catalog/pg_type_d.h"
 #include "utils/formatting.h"
 #include "utils/lsyscache.h"
 #include "utils/numeric.h"
@@ -44,16 +45,82 @@ PG_FUNCTION_INFO_V1(ora_vsize);
 
 
 /*
+ * ora_number_vsize
+ *
+ * Return the size of a numeric value in Oracle's internal NUMBER format:
+ * one exponent byte, one mantissa byte per two significant decimal digits
+ * (trailing all-zero mantissa bytes are dropped), plus one terminator
+ * byte for negative values.  Zero is a single byte.  Note that only
+ * whole all-zero digit pairs are dropped: VSIZE(100) is 2 while
+ * VSIZE(1.50) is 3, matching Oracle.
+ *
+ * The input is the plain decimal rendering of the value ("123.4500").
+ * Returns -1 if the string is not a plain decimal number, so that the
+ * caller can fall back to the storage-width result.
+ */
+static int32
+ora_number_vsize(const char *numstr)
+{
+	const char *cp;
+	const char *digits;
+	int			ndigits;
+	bool		negative = false;
+	bool		saw_nonzero = false;
+
+	cp = numstr;
+	if (*cp == '+' || *cp == '-')
+		negative = (*cp++ == '-');
+
+	digits = NULL;
+	ndigits = 0;
+	for (; *cp; cp++)
+	{
+		if (*cp >= '0' && *cp <= '9')
+		{
+			if (digits == NULL)
+				digits = cp;
+			ndigits++;
+
+			if (*cp != '0')
+				saw_nonzero = true;
+		}
+		else if (*cp != '.')
+			return -1;
+	}
+
+	if (digits == NULL || !saw_nonzero)
+		return 1;				/* zero */
+
+	/* drop leading zero digits */
+	while (*digits == '0')
+	{
+		digits++;
+		ndigits--;
+	}
+
+	/* drop trailing zero digits two at a time (whole mantissa bytes) */
+	while (ndigits >= 2 &&
+		   digits[ndigits - 1] == '0' && digits[ndigits - 2] == '0')
+		ndigits -= 2;
+
+	return 1 + (ndigits + 1) / 2 + (negative ? 1 : 0);
+}
+
+/*
  * ora_vsize
  *
  * Oracle-compatible VSIZE function.
  * Returns the number of bytes in the internal representation of the
  * argument.  NULL input yields NULL (the function is declared STRICT).
  *
- * For varlena types the logical (decompressed) data size is returned,
+ * For integer and numeric-family input the size in Oracle's internal
+ * NUMBER format is returned, so that VSIZE(100) is 2 and VSIZE(-1) is 3,
+ * matching Oracle regardless of the type carrying the value.  For other
+ * varlena types the logical (decompressed) data size is returned,
  * excluding the varlena header, so that VSIZE('abc') is 3, matching
  * Oracle's behavior for character data.  For fixed-width types the
- * type's storage width is returned.
+ * type's storage width is returned (which also matches Oracle for
+ * BINARY_FLOAT and BINARY_DOUBLE).
  */
 Datum
 ora_vsize(PG_FUNCTION_ARGS)
@@ -61,25 +128,68 @@ ora_vsize(PG_FUNCTION_ARGS)
 	Datum		value = PG_GETARG_DATUM(0);
 	int32		result;
 	int			typlen;
+	Oid			argbase;
 
-	/* On first call, get the input type's typlen, and save at *fn_extra */
+	/* On first call, get the input type's OID and typlen, saved at *fn_extra */
 	if (fcinfo->flinfo->fn_extra == NULL)
 	{
-		/* Lookup the datatype of the supplied argument */
 		Oid			argtypeid = get_fn_expr_argtype(fcinfo->flinfo, 0);
+		Oid		   *extra;
 
-		typlen = get_typlen(argtypeid);
+		argbase = getBaseType(argtypeid);
+		typlen = get_typlen(argbase);
 		if (typlen == 0)		/* should not happen */
 			elog(ERROR, "cache lookup failed for type %u", argtypeid);
 
-		fcinfo->flinfo->fn_extra = MemoryContextAlloc(fcinfo->flinfo->fn_mcxt,
-													  sizeof(int));
-		*((int *) fcinfo->flinfo->fn_extra) = typlen;
+		extra = (Oid *) MemoryContextAlloc(fcinfo->flinfo->fn_mcxt,
+										   sizeof(Oid) * 2);
+		extra[0] = argbase;
+		extra[1] = (Oid) typlen;
+		fcinfo->flinfo->fn_extra = extra;
 	}
 	else
-		typlen = *((int *) fcinfo->flinfo->fn_extra);
+	{
+		Oid		   *extra = (Oid *) fcinfo->flinfo->fn_extra;
 
-	if (typlen == -1)
+		argbase = extra[0];
+		typlen = (int) extra[1];
+	}
+
+	if (argbase == INT2OID || argbase == INT4OID ||
+		argbase == INT8OID || argbase == NUMERICOID ||
+		argbase == NUMBEROID)
+	{
+		const char *numstr;
+		int32		nvsize;
+
+		switch (argbase)
+		{
+			case INT2OID:
+				numstr = DatumGetCString(DirectFunctionCall1(int2out, value));
+				break;
+			case INT4OID:
+				numstr = DatumGetCString(DirectFunctionCall1(int4out, value));
+				break;
+			case INT8OID:
+				numstr = DatumGetCString(DirectFunctionCall1(int8out, value));
+				break;
+			default:
+				/* sys.number is binary-coercible with numeric */
+				numstr = DatumGetCString(DirectFunctionCall1(numeric_out, value));
+				break;
+		}
+
+		nvsize = ora_number_vsize(numstr);
+		if (nvsize > 0)
+			PG_RETURN_INT32(nvsize);
+
+		/*
+		 * Not a plain decimal number (e.g. NaN): report the storage size,
+		 * as there is no Oracle NUMBER equivalent for such values.
+		 */
+		result = (typlen == -1) ? toast_raw_datum_size(value) - VARHDRSZ : typlen;
+	}
+	else if (typlen == -1)
 	{
 		/*
 		 * varlena type.  toast_raw_datum_size() normalizes 1-byte/4-byte

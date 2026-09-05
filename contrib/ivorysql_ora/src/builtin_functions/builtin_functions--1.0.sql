@@ -1913,9 +1913,11 @@ IMMUTABLE;
 /*
  * VSIZE: Oracle-compatible function returning the number of bytes in the
  * internal representation of the argument.  Returns NULL for NULL input.
- * For varlena types the logical (decompressed) data size, excluding the
- * varlena header, is returned; for fixed-width types the storage width is
- * returned.
+ * For integer and numeric-family input the size in Oracle's internal
+ * NUMBER format is returned (VSIZE(100) is 2, VSIZE(-1) is 3); for other
+ * varlena types the logical (decompressed) data size, excluding the
+ * varlena header, is returned; for fixed-width types the storage width
+ * is returned (matching Oracle for BINARY_FLOAT and BINARY_DOUBLE).
  *
  * The anycompatible pseudo-type accepts a value of any data type, and an
  * untyped string literal is resolved to text, so VSIZE('abc') works just
