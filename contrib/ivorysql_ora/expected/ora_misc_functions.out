@@ -4521,3 +4521,66 @@ DETAIL:  "ivorysql" is a reserved prefix.
 reset ivorysql.dummy_config;
 ERROR:  invalid configuration parameter name "ivorysql.dummy_config"
 DETAIL:  "ivorysql" is a reserved prefix.
+--
+-- GREATEST/LEAST return NULL when any argument is NULL in oracle mode
+--
+SELECT greatest(NULL, 1);
+ greatest 
+----------
+         
+(1 row)
+
+SELECT greatest(1, NULL);
+ greatest 
+----------
+         
+(1 row)
+
+SELECT least(NULL, 1);
+ least 
+-------
+      
+(1 row)
+
+SELECT least(1, NULL);
+ least 
+-------
+      
+(1 row)
+
+SELECT greatest(NULL, 1, 2);
+ greatest 
+----------
+         
+(1 row)
+
+SELECT least(NULL, 1, 2);
+ least 
+-------
+      
+(1 row)
+
+SELECT greatest(1, 2, 3);
+ greatest 
+----------
+        3
+(1 row)
+
+SELECT least('abc', NULL);
+ least 
+-------
+ 
+(1 row)
+
+SELECT greatest(NULL, NULL) IS NULL AS all_null;
+ all_null 
+----------
+ t
+(1 row)
+
+SELECT greatest(1.5, NULL) IS NULL AS numeric_null;
+ numeric_null 
+--------------
+ t
+(1 row)
+
