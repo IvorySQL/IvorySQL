@@ -86,6 +86,7 @@ drop function s1.f_alter(arg1 number, arg2 number, arg3 number);
 DO $$
 DECLARE
   equal_result boolean;
+  not_equal_result boolean;
   hash_result boolean;
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_collation WHERE collprovider = 'i') THEN
@@ -94,12 +95,16 @@ BEGIN
     EXECUTE 'SELECT ''A''::sys.oravarcharchar COLLATE ora_varchar_nondet = '
             '''a''::sys.oravarcharchar COLLATE ora_varchar_nondet'
       INTO equal_result;
+    EXECUTE 'SELECT ''A''::sys.oravarcharchar COLLATE ora_varchar_nondet <> '
+            '''a''::sys.oravarcharchar COLLATE ora_varchar_nondet'
+      INTO not_equal_result;
     EXECUTE 'SELECT sys.hashoravarchar('
             '''A''::sys.oravarcharchar COLLATE ora_varchar_nondet) = '
             'sys.hashoravarchar('
             '''a''::sys.oravarcharchar COLLATE ora_varchar_nondet)'
       INTO hash_result;
-    IF NOT equal_result OR NOT hash_result THEN
+    IF equal_result IS NOT TRUE OR not_equal_result IS NOT FALSE OR
+       hash_result IS NOT TRUE THEN
       RAISE EXCEPTION 'VARCHAR2 nondeterministic collation mismatch';
     END IF;
     EXECUTE 'DROP COLLATION ora_varchar_nondet';
