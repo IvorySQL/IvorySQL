@@ -399,12 +399,12 @@ add_months(PG_FUNCTION_ARGS)
 				d = 0;
 	int			days;
 	Timestamp	result;
-	div_t		v;
+	lldiv_t		v;
 	bool		last_day;
 	int64		n;
 	Numeric		num = PG_GETARG_NUMERIC(1);
 
-	n = DatumGetInt32(DirectFunctionCall1(numeric_int8, NumericGetDatum(num)));
+	n = DatumGetInt64(DirectFunctionCall1(numeric_int8, NumericGetDatum(num)));
 
 	TMODULO(time, date, USECS_PER_DAY);
 	if (time < INT64CONST(0))
@@ -417,11 +417,21 @@ add_months(PG_FUNCTION_ARGS)
 	j2date((int) date, &y, &m, &d);
 	last_day = (d == days_of_month(y, m));
 
-	v = div(y * 12 + m - 1 + n, 12);
-	y = v.quot;
-	if (y < 0)
-		y += 1;
-	m = v.rem + 1;
+	/*
+	 * Split the total month count into year and month.  lldiv() truncates
+	 * toward zero, so for a negative total the remainder is non-positive;
+	 * borrow one year to bring the month back into 1..12.  This keeps
+	 * results that land in BC years (year <= 0) valid, instead of producing
+	 * month 0 or a negative month and a bogus date.
+	 */
+	v = lldiv((int64) y * 12 + m - 1 + n, 12);
+	y = (int) v.quot;
+	m = (int) v.rem + 1;
+	if (m <= 0)
+	{
+		y -= 1;
+		m += 12;
+	}
 
 	days = days_of_month(y, m);
 	if (last_day || d > days)
