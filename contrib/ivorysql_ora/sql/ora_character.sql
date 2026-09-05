@@ -183,11 +183,11 @@ VACUUM ANALYZE TEST_ORAVARCHAR;
 
 explain (costs off) SELECT * FROM TEST_ORAVARCHAR WHERE a='111';
 
--- drop table
-DROP TABLE TEST_ORACHAR;
-DROP TABLE TEST_ORAVARCHAR;
-
 -- Pattern comparison functions are safe to execute in parallel workers.
 SELECT proparallel
 FROM pg_proc
 WHERE oid = 'sys.oravarchar_pattern_gt(sys.oravarcharchar,sys.oravarcharchar)'::regprocedure;
+
+-- drop table
+DROP TABLE TEST_ORACHAR;
+DROP TABLE TEST_ORAVARCHAR;
