@@ -182,7 +182,7 @@ FROM
 ) objects
 ORDER BY objects.v;
 
--- Constructor arguments are coerced to their declared attribute types.
+-- The constructor coerces string-literal arguments to the declared attribute types.
 SELECT oracle_object_type('2', 'two') FROM dual;
 
 -- An unrelated standalone function is not an object member method.

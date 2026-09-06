@@ -218,7 +218,7 @@ FROM
 ) objects
 ORDER BY objects.v;
 ERROR:  object type oracle_object_type has no MAP or ORDER method
--- Constructor arguments are coerced to their declared attribute types.
+-- The constructor coerces string-literal arguments to the declared attribute types.
 SELECT oracle_object_type('2', 'two') FROM dual;
  oracle_object_type 
 --------------------
