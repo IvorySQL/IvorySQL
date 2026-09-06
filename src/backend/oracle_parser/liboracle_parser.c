@@ -542,7 +542,8 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 	}
 
 	else if ((yyextra->body_style == OraBody_PACKAGE ||
-		yyextra->body_style == OraBody_PACKAGEBODY) &&
+		yyextra->body_style == OraBody_PACKAGEBODY ||
+		yyextra->body_style == OraBody_TYPEBODY) &&
 			cur_token != SCONST)
 	{
 		int beginpos = yyextra->body_start;
@@ -555,7 +556,8 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 			if (beginpos < 0)
 				beginpos = *llocp;
 
-			if (yyextra->body_style == OraBody_PACKAGEBODY &&
+			if ((yyextra->body_style == OraBody_PACKAGEBODY ||
+				yyextra->body_style == OraBody_TYPEBODY) &&
 				(cur_token == FUNCTION || cur_token == PROCEDURE))
 			{
 				while(true)
@@ -607,7 +609,8 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 					/*
 					 * package body may have init block
 					 */
-					if (yyextra->body_style == OraBody_PACKAGEBODY &&
+					if ((yyextra->body_style == OraBody_PACKAGEBODY ||
+						yyextra->body_style == OraBody_TYPEBODY) &&
 						blocklevel == 0)
 					{
 						if (sub_proc_level > 0)
@@ -681,6 +684,18 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 			break;
 		case PACKAGE:
 			cur_token_length = 7;
+			break;
+		case TYPE_P:
+			cur_token_length = 4;
+			break;
+		case MEMBER:
+			cur_token_length = 6;
+			break;
+		case CONSTRUCTOR:
+			cur_token_length = 11;
+			break;
+		case STATIC_P:
+			cur_token_length = 6;
 			break;
 		default:
 			return cur_token;
@@ -758,6 +773,28 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 			/* Replace PACKAGE by PACKAGE_BODY if it's followed by BODY */
 			if (next_token == BODY)
 				cur_token = PACKAGE_BODY;
+			break;
+
+		case TYPE_P:
+			/* Replace TYPE by TYPE_BODY if it's followed by BODY. */
+			if (next_token == BODY)
+				cur_token = TYPE_BODY;
+			break;
+
+		case MEMBER:
+			/* Distinguish an object method prefix from an identifier. */
+			if (next_token == FUNCTION || next_token == PROCEDURE)
+				cur_token = MEMBER_LA;
+			break;
+
+		case CONSTRUCTOR:
+			if (next_token == FUNCTION)
+				cur_token = CONSTRUCTOR_LA;
+			break;
+
+		case STATIC_P:
+			if (next_token == FUNCTION || next_token == PROCEDURE)
+				cur_token = STATIC_LA;
 			break;
 
 		case WITH:

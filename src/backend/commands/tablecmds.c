@@ -1146,6 +1146,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 										  allowSystemTableMods,
 										  false,
 										  InvalidOid,
+										  stmt->is_object,
 										  typaddress);
 
 	/*
@@ -23601,6 +23602,7 @@ createPartitionTable(List **wqueue, RangeVar *newPartName,
 										allowSystemTableMods,
 										true,
 										InvalidOid,
+										false,
 										NULL);
 
 	/*

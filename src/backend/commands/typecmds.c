@@ -51,10 +51,14 @@
 #include "catalog/pg_enum.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_namespace.h"
+#include "catalog/pg_package.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_range.h"
 #include "catalog/pg_type.h"
+#include "commands/alter.h"
 #include "commands/defrem.h"
+#include "commands/event_trigger.h"
+#include "commands/packagecmds.h"
 #include "commands/tablecmds.h"
 #include "commands/typecmds.h"
 #include "executor/executor.h"
@@ -66,7 +70,9 @@
 #include "parser/parse_expr.h"
 #include "parser/parse_func.h"
 #include "parser/parse_type.h"
+#include "tcop/utility.h"
 #include "utils/builtins.h"
+#include "utils/catcache.h"
 #include "utils/fmgroids.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
@@ -84,6 +90,14 @@ typedef struct
 	int		   *atts;			/* attribute numbers */
 	/* atts[] is of allocated length RelationGetNumberOfAttributes(rel) */
 } RelToCheck;
+
+typedef struct ObjectTypeAttribute
+{
+	char	   *name;
+	Oid			typeOid;
+	int32		typmod;
+	Oid			collation;
+} ObjectTypeAttribute;
 
 /* parameter structure for AlterTypeRecurse() */
 typedef struct
@@ -604,7 +618,8 @@ DefineType(ParseState *pstate, List *names, List *parameters)
 				   -1,			/* typMod (Domains only) */
 				   0,			/* Array Dimensions of typbasetype */
 				   false,		/* Type NOT NULL */
-				   collation);	/* type's collation */
+				   collation,	/* type's collation */
+				   false);		/* not an object type */
 	Assert(typoid == address.objectId);
 
 	/*
@@ -646,7 +661,8 @@ DefineType(ParseState *pstate, List *names, List *parameters)
 			   -1,				/* typMod (Domains only) */
 			   0,				/* Array dimensions of typbasetype */
 			   false,			/* Type NOT NULL */
-			   collation);		/* type's collation */
+			   collation,		/* type's collation */
+			   false);			/* not an object type */
 
 	pfree(array_type);
 
@@ -1089,7 +1105,8 @@ DefineDomain(ParseState *pstate, CreateDomainStmt *stmt)
 				   basetypeMod, /* typeMod value */
 				   typNDims,	/* Array dimensions for base type */
 				   typNotNull,	/* Type NOT NULL */
-				   domaincoll); /* type's collation */
+				   domaincoll, /* type's collation */
+				   false);		/* not an object type */
 
 	/*
 	 * Create the array type that goes with it.
@@ -1130,7 +1147,8 @@ DefineDomain(ParseState *pstate, CreateDomainStmt *stmt)
 			   -1,				/* typMod (Domains only) */
 			   0,				/* Array dimensions of typbasetype */
 			   false,			/* Type NOT NULL */
-			   domaincoll);		/* type's collation */
+			   domaincoll,		/* type's collation */
+			   false);			/* not an object type */
 
 	pfree(domainArrayName);
 
@@ -1252,7 +1270,8 @@ DefineEnum(CreateEnumStmt *stmt)
 				   -1,			/* typMod (Domains only) */
 				   0,			/* Array dimensions of typbasetype */
 				   false,		/* Type NOT NULL */
-				   InvalidOid); /* type's collation */
+				   InvalidOid, /* type's collation */
+				   false);		/* not an object type */
 
 	/* Enter the enum's values into pg_enum */
 	EnumValuesCreate(enumTypeAddr.objectId, stmt->vals);
@@ -1293,7 +1312,8 @@ DefineEnum(CreateEnumStmt *stmt)
 			   -1,				/* typMod (Domains only) */
 			   0,				/* Array dimensions of typbasetype */
 			   false,			/* Type NOT NULL */
-			   InvalidOid);		/* type's collation */
+			   InvalidOid,		/* type's collation */
+			   false);			/* not an object type */
 
 	pfree(enumArrayName);
 
@@ -1599,7 +1619,8 @@ DefineRange(ParseState *pstate, CreateRangeStmt *stmt)
 				   -1,			/* typMod (Domains only) */
 				   0,			/* Array dimensions of typbasetype */
 				   false,		/* Type NOT NULL */
-				   InvalidOid); /* type's collation (ranges never have one) */
+				   InvalidOid, /* type's collation (ranges never have one) */
+				   false);		/* not an object type */
 	Assert(typoid == InvalidOid || typoid == address.objectId);
 	typoid = address.objectId;
 
@@ -1666,7 +1687,8 @@ DefineRange(ParseState *pstate, CreateRangeStmt *stmt)
 				   -1,			/* typMod (Domains only) */
 				   0,			/* Array dimensions of typbasetype */
 				   false,		/* Type NOT NULL */
-				   InvalidOid); /* type's collation (ranges never have one) */
+				   InvalidOid, /* type's collation (ranges never have one) */
+				   false);		/* not an object type */
 	Assert(multirangeOid == mltrngaddress.objectId);
 
 	/*
@@ -1705,7 +1727,8 @@ DefineRange(ParseState *pstate, CreateRangeStmt *stmt)
 			   -1,				/* typMod (Domains only) */
 			   0,				/* Array dimensions of typbasetype */
 			   false,			/* Type NOT NULL */
-			   InvalidOid);		/* typcollation */
+			   InvalidOid,		/* typcollation */
+			   false);			/* not an object type */
 
 	pfree(rangeArrayName);
 
@@ -1744,7 +1767,8 @@ DefineRange(ParseState *pstate, CreateRangeStmt *stmt)
 			   -1,				/* typMod (Domains only) */
 			   0,				/* Array dimensions of typbasetype */
 			   false,			/* Type NOT NULL */
-			   InvalidOid);		/* typcollation */
+			   InvalidOid,		/* typcollation */
+			   false);			/* not an object type */
 
 	/* Ensure these new types are visible to ProcedureCreate */
 	CommandCounterIncrement();
@@ -2589,13 +2613,288 @@ AssignTypeMultirangeArrayOid(void)
  * Return type is the new type's object address.
  *-------------------------------------------------------------------
  */
+static void
+check_object_type_namespace_conflicts(Oid namespaceId, const char *typeName)
+{
+	CatCList   *proclist;
+	bool		found = false;
+
+	if (SearchSysCacheExists2(PKGNAMEARGSNSP,
+							  CStringGetDatum(typeName),
+							  ObjectIdGetDatum(namespaceId)))
+		ereport(ERROR,
+				(errcode(ERRCODE_DUPLICATE_OBJECT),
+				 errmsg("name \"%s\" is already used by a package", typeName),
+				 errdetail("Object type method namespaces share the package "
+						   "namespace and cannot reuse an existing package's name.")));
+
+	proclist = SearchSysCacheList1(PROCNAMEARGSNSP,
+								 CStringGetDatum(typeName));
+	for (int i = 0; i < proclist->n_members; i++)
+	{
+		HeapTuple	procTuple = &proclist->members[i]->tuple;
+		Form_pg_proc procForm = (Form_pg_proc) GETSTRUCT(procTuple);
+
+		if (procForm->pronamespace == namespaceId)
+		{
+			found = true;
+			break;
+		}
+	}
+	ReleaseSysCacheList(proclist);
+
+	if (found)
+		ereport(ERROR,
+				(errcode(ERRCODE_DUPLICATE_OBJECT),
+				 errmsg("name \"%s\" is already used by a function or procedure",
+						typeName)));
+}
+
+/*
+ * Reconcile the stored composite attributes with a CREATE OR REPLACE TYPE
+ * specification.  Oracle permits attribute evolution when stored
+ * dependencies do not prevent it.  Use the ordinary ALTER TYPE machinery so
+ * dependency checks, function invalidation, and relcache invalidation remain
+ * centralized.
+ */
+static void
+replace_object_type_attributes(Oid typeOid, List *coldeflist)
+{
+	HeapTuple	typeTuple;
+	Form_pg_type typeForm;
+	Relation	relation;
+	TupleDesc	tupdesc;
+	Oid			relationOid;
+	Oid			typeNamespace;
+	char	   *relationName;
+	List	   *oldAttributes = NIL;
+	List	   *newAttributes = NIL;
+	List	   *temporaryNames = NIL;
+	List	   *alterCommands = NIL;
+	ListCell   *lc;
+	bool		renameAttributes = false;
+	int			oldCount;
+	int			newCount;
+	int			commonCount;
+	int			attno;
+
+	typeTuple = SearchSysCache1(TYPEOID, ObjectIdGetDatum(typeOid));
+	if (!HeapTupleIsValid(typeTuple))
+		elog(ERROR, "cache lookup failed for type %u", typeOid);
+	typeForm = (Form_pg_type) GETSTRUCT(typeTuple);
+
+	if (!typeForm->typisobject)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("type \"%s\" is not an object type",
+						NameStr(typeForm->typname))));
+	if (!object_ownercheck(TypeRelationId, typeOid, GetUserId()))
+		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_TYPE,
+					   NameStr(typeForm->typname));
+	relationOid = typeForm->typrelid;
+	typeNamespace = typeForm->typnamespace;
+	relationName = pstrdup(NameStr(typeForm->typname));
+
+	/* Keep the type relation locked across dependency checks and evolution. */
+	relation = relation_open(relationOid, AccessExclusiveLock);
+	tupdesc = RelationGetDescr(relation);
+	for (attno = 0; attno < tupdesc->natts; attno++)
+	{
+		Form_pg_attribute attribute = TupleDescAttr(tupdesc, attno);
+		ObjectTypeAttribute *oldAttribute;
+
+		if (attribute->attisdropped)
+			continue;
+		oldAttribute = palloc_object(ObjectTypeAttribute);
+		oldAttribute->name = pstrdup(NameStr(attribute->attname));
+		oldAttribute->typeOid = attribute->atttypid;
+		oldAttribute->typmod = attribute->atttypmod;
+		oldAttribute->collation = attribute->attcollation;
+		oldAttributes = lappend(oldAttributes, oldAttribute);
+	}
+
+	/* Oracle rejects CREATE OR REPLACE while a stored column uses the type. */
+	find_composite_type_dependencies(typeOid, relation, NULL);
+
+	foreach(lc, coldeflist)
+	{
+		ColumnDef  *column = lfirst_node(ColumnDef, lc);
+		ObjectTypeAttribute *newAttribute;
+		ListCell   *previous;
+
+		foreach(previous, newAttributes)
+		{
+			ObjectTypeAttribute *seen = lfirst(previous);
+
+			if (strcmp(seen->name, column->colname) == 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_DUPLICATE_COLUMN),
+						 errmsg("attribute \"%s\" specified more than once",
+								column->colname)));
+		}
+
+		newAttribute = palloc_object(ObjectTypeAttribute);
+		newAttribute->name = pstrdup(column->colname);
+		typenameTypeIdAndMod(NULL, column->typeName,
+							 &newAttribute->typeOid, &newAttribute->typmod);
+		newAttribute->collation =
+			GetColumnDefCollation(NULL, column, newAttribute->typeOid);
+		newAttributes = lappend(newAttributes, newAttribute);
+	}
+
+	relation_close(relation, NoLock);
+	ReleaseSysCache(typeTuple);
+
+	oldCount = list_length(oldAttributes);
+	newCount = list_length(newAttributes);
+	commonCount = Min(oldCount, newCount);
+	for (attno = 0; attno < commonCount; attno++)
+	{
+		ObjectTypeAttribute *oldAttribute = list_nth(oldAttributes, attno);
+		ObjectTypeAttribute *newAttribute = list_nth(newAttributes, attno);
+
+		if (strcmp(oldAttribute->name, newAttribute->name) != 0)
+		{
+			renameAttributes = true;
+			break;
+		}
+	}
+
+	/* Move all old names aside before applying position-preserving renames. */
+	if (renameAttributes)
+	{
+		for (attno = 0; attno < oldCount; attno++)
+		{
+			ObjectTypeAttribute *oldAttribute = list_nth(oldAttributes, attno);
+			RenameStmt *renameStmt = makeNode(RenameStmt);
+			char	   *temporaryName;
+			int			attempt = 0;
+
+			do
+			{
+				if (attempt > 0)
+					pfree(temporaryName);
+				temporaryName = psprintf("__ivorysql_replace_%u_%d_%d",
+										 relationOid, attno + 1, attempt++);
+			}
+			while (get_attnum(relationOid, temporaryName) != InvalidAttrNumber);
+			renameStmt->renameType = OBJECT_ATTRIBUTE;
+			renameStmt->relationType = OBJECT_TYPE;
+			renameStmt->relation = makeRangeVar(get_namespace_name(typeNamespace),
+												 relationName, -1);
+			renameStmt->subname = oldAttribute->name;
+			renameStmt->newname = temporaryName;
+			renameStmt->behavior = DROP_RESTRICT;
+			renameStmt->missing_ok = false;
+			(void) renameatt(renameStmt);
+			CommandCounterIncrement();
+			temporaryNames = lappend(temporaryNames,
+									 makeString(temporaryName));
+		}
+
+		for (attno = 0; attno < commonCount; attno++)
+		{
+			ObjectTypeAttribute *newAttribute = list_nth(newAttributes, attno);
+			RenameStmt *renameStmt = makeNode(RenameStmt);
+
+			renameStmt->renameType = OBJECT_ATTRIBUTE;
+			renameStmt->relationType = OBJECT_TYPE;
+			renameStmt->relation = makeRangeVar(get_namespace_name(typeNamespace),
+												 relationName, -1);
+			renameStmt->subname = strVal(list_nth(temporaryNames, attno));
+			renameStmt->newname = newAttribute->name;
+			renameStmt->behavior = DROP_RESTRICT;
+			renameStmt->missing_ok = false;
+			(void) renameatt(renameStmt);
+			CommandCounterIncrement();
+		}
+	}
+
+	for (attno = 0; attno < commonCount; attno++)
+	{
+		ObjectTypeAttribute *oldAttribute = list_nth(oldAttributes, attno);
+		ObjectTypeAttribute *newAttribute = list_nth(newAttributes, attno);
+		ColumnDef  *column = list_nth_node(ColumnDef, coldeflist, attno);
+
+		if (oldAttribute->typeOid != newAttribute->typeOid ||
+			oldAttribute->typmod != newAttribute->typmod ||
+			oldAttribute->collation != newAttribute->collation)
+		{
+			AlterTableCmd *command = makeNode(AlterTableCmd);
+			ColumnDef  *definition = makeNode(ColumnDef);
+
+			command->subtype = AT_AlterColumnType;
+			command->name = newAttribute->name;
+			command->def = (Node *) definition;
+			command->behavior = DROP_RESTRICT;
+			definition->typeName = copyObject(column->typeName);
+			definition->collClause = copyObject(column->collClause);
+			definition->raw_default = NULL;
+			definition->location = column->location;
+			alterCommands = lappend(alterCommands, command);
+		}
+	}
+
+	for (attno = commonCount; attno < oldCount; attno++)
+	{
+		AlterTableCmd *command = makeNode(AlterTableCmd);
+
+		command->subtype = AT_DropColumn;
+		command->name = renameAttributes ?
+			strVal(list_nth(temporaryNames, attno)) :
+			((ObjectTypeAttribute *) list_nth(oldAttributes, attno))->name;
+		command->behavior = DROP_RESTRICT;
+		command->missing_ok = false;
+		alterCommands = lappend(alterCommands, command);
+	}
+
+	for (attno = commonCount; attno < newCount; attno++)
+	{
+		AlterTableCmd *command = makeNode(AlterTableCmd);
+
+		command->subtype = AT_AddColumn;
+		command->def = (Node *) copyObject(list_nth_node(ColumnDef,
+													 coldeflist, attno));
+		command->behavior = DROP_RESTRICT;
+		alterCommands = lappend(alterCommands, command);
+	}
+
+	if (alterCommands != NIL)
+	{
+		AlterTableStmt *alterStmt = makeNode(AlterTableStmt);
+		AlterTableUtilityContext context = {0};
+		LOCKMODE	lockmode;
+
+		alterStmt->relation = makeRangeVar(get_namespace_name(typeNamespace),
+										 relationName, -1);
+		alterStmt->cmds = alterCommands;
+		alterStmt->objtype = OBJECT_TYPE;
+		lockmode = AlterTableGetLockLevel(alterCommands);
+		context.queryString = "CREATE OR REPLACE TYPE";
+		context.relid = AlterTableLookupRelation(alterStmt, lockmode);
+
+		EventTriggerAlterTableStart((Node *) alterStmt);
+		EventTriggerAlterTableRelid(context.relid);
+		AlterTable(alterStmt, lockmode, &context);
+		EventTriggerAlterTableEnd();
+	}
+
+	pfree(relationName);
+}
+
 ObjectAddress
-DefineCompositeType(RangeVar *typevar, List *coldeflist)
+DefineCompositeType(RangeVar *typevar, List *coldeflist, bool is_object,
+					bool replace, List *methods, bool instantiable, bool final)
 {
 	CreateStmt *createStmt = makeNode(CreateStmt);
 	Oid			old_type_oid;
 	Oid			typeNamespace;
 	ObjectAddress address;
+
+	if (is_object && coldeflist == NIL)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+				 errmsg("an object type must have at least one attribute")));
 
 	/*
 	 * now set the parameters for keys/inheritance etc. All of these are
@@ -2609,6 +2908,7 @@ DefineCompositeType(RangeVar *typevar, List *coldeflist)
 	createStmt->oncommit = ONCOMMIT_NOOP;
 	createStmt->tablespacename = NULL;
 	createStmt->if_not_exists = false;
+	createStmt->is_object = is_object;
 
 	/*
 	 * Check for collision with an existing type name. If there is one and
@@ -2625,17 +2925,36 @@ DefineCompositeType(RangeVar *typevar, List *coldeflist)
 						ObjectIdGetDatum(typeNamespace));
 	if (OidIsValid(old_type_oid))
 	{
+		if (is_object && replace)
+		{
+			replace_object_type_attributes(old_type_oid, coldeflist);
+			ObjectAddressSet(address, TypeRelationId, old_type_oid);
+			CommandCounterIncrement();
+			CreateObjectTypePackage(old_type_oid, methods, true,
+									instantiable, final);
+			return address;
+		}
 		if (!moveArrayTypeName(old_type_oid, createStmt->relation->relname, typeNamespace))
 			ereport(ERROR,
 					(errcode(ERRCODE_DUPLICATE_OBJECT),
 					 errmsg("type \"%s\" already exists", createStmt->relation->relname)));
 	}
+	else if (is_object)
+		check_object_type_namespace_conflicts(typeNamespace,
+									  createStmt->relation->relname);
 
 	/*
 	 * Finally create the relation.  This also creates the type.
 	 */
 	DefineRelation(createStmt, RELKIND_COMPOSITE_TYPE, InvalidOid, &address,
 				   NULL);
+
+	if (is_object)
+	{
+		CommandCounterIncrement();
+		CreateObjectTypePackage(address.objectId, methods, false,
+								instantiable, final);
+	}
 
 	return address;
 }
@@ -3854,6 +4173,17 @@ RenameType(RenameStmt *stmt)
 	/* we do allow separate renaming of multirange types, though */
 
 	/*
+	 * The method specification and constructor names are stored in the
+	 * package-shaped implementation namespace.  Renaming only pg_type would
+	 * leave that compiled contract inconsistent, so reject the PostgreSQL-only
+	 * operation instead of silently breaking method dispatch.
+	 */
+	if (typTup->typisobject)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("renaming an Oracle object type is not supported")));
+
+	/*
 	 * If type is composite we need to rename associated pg_class entry too.
 	 * RenameRelationInternal will call RenameTypeInternal automatically.
 	 */
@@ -4004,6 +4334,7 @@ AlterTypeOwner_oid(Oid typeOid, Oid newOwnerId, bool hasDependEntry)
 	Relation	rel;
 	HeapTuple	tup;
 	Form_pg_type typTup;
+	Oid			objectPackageOid = InvalidOid;
 
 	rel = table_open(TypeRelationId, RowExclusiveLock);
 
@@ -4011,6 +4342,8 @@ AlterTypeOwner_oid(Oid typeOid, Oid newOwnerId, bool hasDependEntry)
 	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "cache lookup failed for type %u", typeOid);
 	typTup = (Form_pg_type) GETSTRUCT(tup);
+	if (typTup->typisobject)
+		objectPackageOid = GetObjectTypePackageOid(typeOid, false);
 
 	/*
 	 * If it's a composite type, invoke ATExecChangeOwner so that we fix up
@@ -4027,6 +4360,11 @@ AlterTypeOwner_oid(Oid typeOid, Oid newOwnerId, bool hasDependEntry)
 		changeDependencyOnOwner(TypeRelationId, typeOid, newOwnerId);
 
 	InvokeObjectPostAlterHook(TypeRelationId, typeOid, 0);
+
+	/* Keep the internal method namespace under the same owner as its type. */
+	if (OidIsValid(objectPackageOid))
+		AlterObjectOwner_internal(PackageRelationId, objectPackageOid,
+								  newOwnerId);
 
 	ReleaseSysCache(tup);
 	table_close(rel, RowExclusiveLock);
@@ -4160,6 +4498,11 @@ AlterTypeNamespace_oid(Oid typeOid, Oid nspOid, bool ignoreDependent,
 					   ObjectAddresses *objsMoved)
 {
 	Oid			elemOid;
+
+	if (get_typisobject(typeOid))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("moving an Oracle object type to another schema is not supported")));
 
 	/* check permissions on type */
 	if (!object_ownercheck(TypeRelationId, typeOid, GetUserId()))

@@ -3034,7 +3034,6 @@ transformSortClause(ParseState *pstate,
 		else
 			tle = findTargetlistEntrySQL92(pstate, sortby->node,
 										   targetlist, exprKind);
-
 		sortlist = addTargetToSortList(pstate, tle,
 									   sortlist, *targetlist, sortby);
 	}
@@ -4245,4 +4244,3 @@ check_funcexpr_outparams(List *funcexprs)
 		}
 	}
 }
-

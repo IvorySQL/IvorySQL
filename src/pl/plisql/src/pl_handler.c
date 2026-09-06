@@ -526,6 +526,7 @@ buildWithFuncContainer(EState *estate)
 		subprocfunc->fno       = i;
 		subprocfunc->func_name = pstrdup(ifd->funcname);
 		subprocfunc->is_proc   = ifd->is_proc;
+		subprocfunc->object_method_kind = OBJECT_METHOD_NONE;
 		subprocfunc->function  = compiled;
 		subprocfunc->src       = pstrdup(ifd->src);
 

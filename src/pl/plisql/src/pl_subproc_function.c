@@ -127,12 +127,16 @@ static void plisql_subprocfunc_HashTableInsert(HTAB *hashp,
 static Node *plisql_get_subprocfunc_argdefaults(ParseState *pstate,
 												PLiSQL_subproc_function * subprocfunc, int argno);
 static void plisql_init_subprocfunc_compile(PLiSQL_subproc_function * subprocfunc);
+static bool plisql_object_method_has_self(ObjectTypeMethodKind method_kind);
 
 static void plsql_init_glovalvar_from_stack(PLiSQL_execstate * estate, int dno,
 											int *start_level);
 static void plsql_assign_out_glovalvar_from_stack(PLiSQL_execstate * estate,
 												  int dno, int *start_level);
 static bool is_subprocfunc_argnum(PLiSQL_function * pfunc, int dno);
+static bool is_object_constructor_subproc(PLiSQL_function *pfunc,
+										  PLiSQL_nsitem *nse,
+										  const char *funcname);
 
 /*
  * Initialize global state for subproc compilation (similar to plisql_start_datums).
@@ -368,6 +372,17 @@ plisql_build_variable_from_funcargs(PLiSQL_subproc_function * subprocfunc, bool 
 				((PLiSQL_rec *)argvariable)->info = argmode;
 			else
 				((PLiSQL_rec *)argvariable)->info = PROARGMODE_IN;
+
+			/*
+			 * A constructor's hidden SELF is an input in its callable
+			 * signature, but is a writable, initialized local copy inside the
+			 * body.  Keeping those two properties separate lets SQL callers
+			 * invoke constructors with expressions while preserving Oracle's
+			 * assignment semantics for SELF attributes.
+			 */
+			if (i == 0 && argmode == PROARGMODE_IN &&
+				subprocfunc->object_method_kind == OBJECT_METHOD_CONSTRUCTOR)
+				((PLiSQL_rec *) argvariable)->info = PROARGMODE_INOUT;
 		}
 		function->fn_argvarnos[i] = argvariable->dno;
 
@@ -384,6 +399,34 @@ plisql_build_variable_from_funcargs(PLiSQL_subproc_function * subprocfunc, bool 
 		if (argnames && argnames[i][0] != '\0')
 			add_parameter_name(argitemtype, argvariable->dno,
 							   argnames[i]);
+
+		/*
+		 * Oracle permits an object's attributes to be referenced without a
+		 * SELF. qualifier inside member routines.  Materialize record-field
+		 * datums and put aliases in the routine namespace.  Later formal
+		 * parameters and local declarations naturally shadow these entries.
+		 */
+		if (i == 0 && argvariable->dtype == PLISQL_DTYPE_REC &&
+			plisql_object_method_has_self(subprocfunc->object_method_kind))
+		{
+			PLiSQL_rec *self = (PLiSQL_rec *) argvariable;
+			TupleDesc	tupdesc;
+			int			fieldno;
+
+			tupdesc = lookup_rowtype_tupdesc(argdtype->typoid, -1);
+			for (fieldno = 0; fieldno < tupdesc->natts; fieldno++)
+			{
+				Form_pg_attribute attribute = TupleDescAttr(tupdesc, fieldno);
+				PLiSQL_recfield *field;
+
+				if (attribute->attisdropped)
+					continue;
+				field = plisql_build_recfield(self, NameStr(attribute->attname));
+				plisql_ns_additem(PLISQL_NSTYPE_VAR, field->dno,
+								  NameStr(attribute->attname));
+			}
+			ReleaseTupleDesc(tupdesc);
+		}
 
 		if (argitem->defexpr != NULL)
 		{
@@ -861,6 +904,68 @@ plisql_build_subproc_function(char *funcname, List *args,
 	}
 
 	return funcs;
+}
+
+PLiSQL_type *
+plisql_build_object_self_type(void)
+{
+	HeapTuple	packageTuple;
+	Form_pg_package packageForm;
+	Oid			typeOid;
+
+	packageTuple = SearchSysCache1(PKGOID,
+								ObjectIdGetDatum(plisql_curr_compile->fn_oid));
+	if (!HeapTupleIsValid(packageTuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("object routine declaration is only valid in an object type")));
+	packageForm = (Form_pg_package) GETSTRUCT(packageTuple);
+	typeOid = packageForm->pkgtypeoid;
+	ReleaseSysCache(packageTuple);
+
+	if (!OidIsValid(typeOid))
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("object routine declaration is only valid in an object type")));
+
+	return plisql_build_datatype(typeOid, -1, InvalidOid, NULL);
+}
+
+PLiSQL_function_argitem *
+plisql_build_object_self_arg(int argmode)
+{
+	PLiSQL_function_argitem *argument;
+
+	argument = palloc0_object(PLiSQL_function_argitem);
+	argument->argname = pstrdup("self");
+	argument->type = plisql_build_object_self_type();
+	argument->argmode = argmode;
+	argument->nocopy = (argmode == ARGMODE_INOUT);
+	return argument;
+}
+
+void
+plisql_set_object_method_kind(PLiSQL_subproc_function *subprocfunc,
+							  ObjectTypeMethodKind method_kind)
+{
+	if (subprocfunc->object_method_kind != OBJECT_METHOD_NONE &&
+		subprocfunc->object_method_kind != method_kind)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+				 errmsg("object method kind does not match its previous declaration")));
+
+	subprocfunc->object_method_kind = method_kind;
+	subprocfunc->function->object_method_kind = method_kind;
+}
+
+static bool
+plisql_object_method_has_self(ObjectTypeMethodKind method_kind)
+{
+	return method_kind == OBJECT_METHOD_MEMBER_FUNCTION ||
+		method_kind == OBJECT_METHOD_MEMBER_PROCEDURE ||
+		method_kind == OBJECT_METHOD_CONSTRUCTOR ||
+		method_kind == OBJECT_METHOD_MAP ||
+		method_kind == OBJECT_METHOD_ORDER;
 }
 
 /*
@@ -1731,6 +1836,8 @@ plisql_build_subproc_function_internal(char *funcname, List *args,
 	funcs = (PLiSQL_subproc_function *) palloc0(sizeof(PLiSQL_subproc_function));
 	funcs->function = (PLiSQL_function *) palloc0(sizeof(PLiSQL_function));
 	function = funcs->function;
+	funcs->object_method_kind = OBJECT_METHOD_NONE;
+	function->object_method_kind = OBJECT_METHOD_NONE;
 
 	funcs->func_name = pstrdup(funcname);
 	funcs->arg = args;
@@ -2964,6 +3071,7 @@ plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
 	function->fn_is_trigger = subprocfunc->function->fn_is_trigger;
 
 	function->fn_prokind = subprocfunc->function->fn_prokind;
+	function->object_method_kind = subprocfunc->object_method_kind;
 	function->nstatements = 0;
 	function->requires_procedure_resowner = false;
 	function->fn_nargs = subprocfunc->function->fn_nargs;
@@ -3138,6 +3246,35 @@ is_subprocfunc_argnum(PLiSQL_function * pfunc, int dno)
 
 
 /*
+ * Check whether a subprogram namespace entry contains an object constructor.
+ * Constructors have a compiler-generated SELF argument that is not written by
+ * the caller, so their stored subprogram signature cannot be matched directly.
+ */
+static bool
+is_object_constructor_subproc(PLiSQL_function *pfunc, PLiSQL_nsitem *nse,
+							  const char *funcname)
+{
+	ListCell   *lc;
+
+	foreach(lc, nse->subprocfunc)
+	{
+		int			fno = lfirst_int(lc);
+		PLiSQL_subproc_function *subprocfunc;
+
+		if (fno < 0 || fno >= pfunc->nsubprocfuncs)
+			elog(ERROR, "invalid fno :%d", fno);
+
+		subprocfunc = pfunc->subprocfuncs[fno];
+		if (subprocfunc->object_method_kind == OBJECT_METHOD_CONSTRUCTOR &&
+			pg_strcasecmp(subprocfunc->func_name, funcname) == 0)
+			return true;
+	}
+
+	return false;
+}
+
+
+/*
  * Similar to plisql_param_ref: resolve a subproc function reference.
  * Argument handling aligns with func_get_detail.
  */
@@ -3215,7 +3352,20 @@ plisql_subprocfunc_ref(ParseState *pstate, List *funcname,
 										   argdefaults);	/* return value */
 	if (detail != FUNCDETAIL_NORMAL &&
 		detail != FUNCDETAIL_PROCEDURE)
+	{
+		/*
+		 * An unqualified constructor call made inside an object method first
+		 * finds the constructor in the PL/iSQL subprogram namespace.  Its
+		 * hidden SELF argument makes the direct lookup fail.  Let parse_func.c
+		 * continue with object-constructor lookup, which creates SELF and then
+		 * resolves the routine in the hidden object package.
+		 */
+		if (detail == FUNCDETAIL_NOTFOUND && !proc_call && list_len == 1 &&
+			is_object_constructor_subproc(expr->func, nse, func_name))
+			return FUNCDETAIL_NOTFOUND;
+
 		elog(ERROR, "wrong number or types of arguments in call to \"%s\"", func_name);
+	}
 
 	*pfunc = (void *) expr->func;
 
