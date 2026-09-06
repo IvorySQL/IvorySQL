@@ -919,21 +919,18 @@ ora_regexp_count(PG_FUNCTION_ARGS)
 	}
 	else
 	{
-		char	*paramstr = NULL;
-
 		match_param = PG_GETARG_TEXT_PP(3);
-		paramstr = text_to_cstring(match_param);
-		if (paramstr && paramstr[0] != '\0')
+		if (VARSIZE_ANY_EXHDR(match_param) > 0)
 		{
-			if (paramstr[0] != 'x' && paramstr[0] != 'm' && paramstr[0] != 'i' && 
-				paramstr[0] != 'c' && paramstr[0] != 'n' && paramstr[0] != 'g')
-					ereport(ERROR,
+			char	   *paramstr = VARDATA_ANY(match_param);
+
+			if (paramstr[0] != 'x' && paramstr[0] != 'm' && paramstr[0] != 'i' && paramstr[0] != 'c' && paramstr[0] != 'n' && paramstr[0] != 'g')
+				ereport(ERROR,
 							 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 								 errmsg("the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.")));
 		}
+		ora_parse_re_flags(&flags, match_param);
 	}
-
-	ora_parse_re_flags(&flags, match_param);
 
 	if (PG_ARGISNULL(0) || 
 		PG_ARGISNULL(1))
