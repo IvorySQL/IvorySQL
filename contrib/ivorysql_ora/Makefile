@@ -38,7 +38,7 @@ OBJS = \
 EXTENSION = ivorysql_ora
 
 # SQL(s) which need to be generated only if which is specified here.
-DATA = ivorysql_ora--1.0.sql
+DATA = ivorysql_ora--1.0.sql ivorysql_ora--1.0--1.1.sql
 
 all: gensql
 
