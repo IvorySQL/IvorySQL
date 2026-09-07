@@ -621,3 +621,10 @@ SELECT 123.456 * interval'365 11:11:11' day(3) to second;
 -- The operator "<=" supports a comparison between the "number" type and the "varchar2" type.
 SET NLS_DATE_FORMAT = 'YYYY-MM-DD';
 select 25::number <= to_char('1990-01-01'::oradate, 'yyyy');
+
+
+-- Verify date-to-oradate cast helper is parallel safe.
+SELECT count(*) = 1 AS date_oradate_parallel_safe
+FROM pg_catalog.pg_proc
+WHERE oid = 'sys.date_oradate(pg_catalog.date)'::regprocedure
+  AND proparallel = 's';
