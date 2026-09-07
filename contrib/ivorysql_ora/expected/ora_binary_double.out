@@ -697,6 +697,18 @@ SELECT to_binary_double(42::sys.binary_float);
  42
 (1 row)
 
+-- Text conversion overloads must be parallel safe.
+SELECT p.oid::regprocedure AS function, p.proparallel
+FROM pg_proc AS p
+WHERE p.oid IN ('sys.to_binary_double(text)'::regprocedure,
+                'sys.to_binary_double(text,text)'::regprocedure)
+ORDER BY p.oid::regprocedure::text;
+          function           | proparallel 
+-----------------------------+-------------
+ to_binary_double(text)      | s
+ to_binary_double(text,text) | s
+(2 rows)
+
 --
 -- IEEE 754 exception semantics
 --
