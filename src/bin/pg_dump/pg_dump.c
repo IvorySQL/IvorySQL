@@ -1862,10 +1862,10 @@ expand_table_name_patterns(Archive *fout,
 						  "\n     LEFT JOIN pg_catalog.pg_namespace n"
 						  "\n     ON n.oid OPERATOR(pg_catalog.=) c.relnamespace"
 						  "\nWHERE c.relkind OPERATOR(pg_catalog.=) ANY"
-						  "\n    (array['%c', '%c', '%c', '%c', '%c', '%c', '%c'])\n",
+						  "\n    (array['%c', '%c', '%c', '%c', '%c', '%c'])\n",
 						  RELKIND_RELATION, RELKIND_SEQUENCE, RELKIND_VIEW,
 						  RELKIND_MATVIEW, RELKIND_FOREIGN_TABLE,
-						  RELKIND_PARTITIONED_TABLE, RELKIND_PROPGRAPH);
+						  RELKIND_PARTITIONED_TABLE);
 		initPQExpBuffer(&dbbuf);
 		processSQLNamePattern(GetConnection(fout), query, cell->val, true,
 							  false, "n.nspname", "c.relname", NULL,
@@ -3046,9 +3046,6 @@ makeTableDataInfo(DumpOptions *dopt, TableInfo *tbinfo)
 	if (tbinfo->dataObj != NULL)
 		return;
 
-	/* Skip property graphs (no data to dump) */
-	if (tbinfo->relkind == RELKIND_PROPGRAPH)
-		return;
 	/* Skip VIEWs (no data to dump) */
 	if (tbinfo->relkind == RELKIND_VIEW)
 		return;
@@ -7463,17 +7460,8 @@ getTables(Archive *fout, int *numTables)
 						 "c.relhastriggers, c.relpersistence, "
 						 "c.reloftype, "
 						 "c.relacl, "
-						 "acldefault(CASE"
-						 " WHEN c.relkind = " CppAsString2(RELKIND_PROPGRAPH));
-	/* 19beta1 didn't support acldefault('g'), so we'll fix that below */
-	appendPQExpBufferStr(query,
-						 fout->remoteVersion >= 200000 ?
-						 " THEN 'g'::\"char\"" :
-						 " THEN NULL");
-	appendPQExpBufferStr(query,
-						 " WHEN c.relkind = " CppAsString2(RELKIND_SEQUENCE)
-						 " THEN 's'::\"char\""
-						 " ELSE 'r'::\"char\" END, c.relowner) AS acldefault, "
+						 "acldefault(CASE WHEN c.relkind = " CppAsString2(RELKIND_SEQUENCE)
+						 " THEN 's'::\"char\" ELSE 'r'::\"char\" END, c.relowner) AS acldefault, "
 						 "CASE WHEN c.relkind = " CppAsString2(RELKIND_FOREIGN_TABLE) " THEN "
 						 "(SELECT ftserver FROM pg_catalog.pg_foreign_table WHERE ftrelid = c.oid) "
 						 "ELSE 0 END AS foreignserver, "
@@ -7632,8 +7620,7 @@ getTables(Archive *fout, int *numTables)
 						 CppAsString2(RELKIND_COMPOSITE_TYPE) ", "
 						 CppAsString2(RELKIND_MATVIEW) ", "
 						 CppAsString2(RELKIND_FOREIGN_TABLE) ", "
-						 CppAsString2(RELKIND_PARTITIONED_TABLE) ", "
-						 CppAsString2(RELKIND_PROPGRAPH) ")\n"
+						 CppAsString2(RELKIND_PARTITIONED_TABLE) ")\n"
 						 "ORDER BY c.oid");
 
 	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
@@ -7726,7 +7713,7 @@ getTables(Archive *fout, int *numTables)
 		tblinfo[i].dobj.namespace =
 			findNamespace(atooid(PQgetvalue(res, i, i_relnamespace)));
 		tblinfo[i].dacl.acl = pg_strdup(PQgetvalue(res, i, i_relacl));
-		/* acldefault computed below */
+		tblinfo[i].dacl.acldefault = pg_strdup(PQgetvalue(res, i, i_acldefault));
 		tblinfo[i].dacl.privtype = 0;
 		tblinfo[i].dacl.initprivs = NULL;
 		tblinfo[i].relkind = *(PQgetvalue(res, i, i_relkind));
@@ -7780,28 +7767,6 @@ getTables(Archive *fout, int *numTables)
 			tblinfo[i].amname = pg_strdup(PQgetvalue(res, i, i_amname));
 		tblinfo[i].is_identity_sequence = (strcmp(PQgetvalue(res, i, i_is_identity_sequence), "t") == 0);
 		tblinfo[i].ispartition = (strcmp(PQgetvalue(res, i, i_ispartition), "t") == 0);
-
-		if (tblinfo[i].relkind == RELKIND_PROPGRAPH &&
-			!(fout->remoteVersion >= 200000))
-		{
-			PQExpBuffer aclarray = createPQExpBuffer();
-			PQExpBuffer aclitem = createPQExpBuffer();
-
-			/* Standard ACL as of v19 is {owner=r/owner} */
-			appendPQExpBufferChar(aclarray, '{');
-			quoteAclUserName(aclitem, tblinfo[i].rolname);
-			appendPQExpBufferStr(aclitem, "=r/");
-			quoteAclUserName(aclitem, tblinfo[i].rolname);
-			appendPGArray(aclarray, aclitem->data);
-			appendPQExpBufferChar(aclarray, '}');
-
-			tblinfo[i].dacl.acldefault = pstrdup(aclarray->data);
-
-			destroyPQExpBuffer(aclarray);
-			destroyPQExpBuffer(aclitem);
-		}
-		else
-			tblinfo[i].dacl.acldefault = pg_strdup(PQgetvalue(res, i, i_acldefault));
 
 		/* other fields were zeroed above */
 
@@ -17380,20 +17345,8 @@ dumpTable(Archive *fout, const TableInfo *tbinfo)
 	namecopy = pg_strdup(fmtId(tbinfo->dobj.name));
 	if (tbinfo->dobj.dump & DUMP_COMPONENT_ACL)
 	{
-		const char *objtype;
-
-		switch (tbinfo->relkind)
-		{
-			case RELKIND_SEQUENCE:
-				objtype = "SEQUENCE";
-				break;
-			case RELKIND_PROPGRAPH:
-				objtype = "PROPERTY GRAPH";
-				break;
-			default:
-				objtype = "TABLE";
-				break;
-		}
+		const char *objtype =
+			(tbinfo->relkind == RELKIND_SEQUENCE) ? "SEQUENCE" : "TABLE";
 
 		tableAclDumpId =
 			dumpACL(fout, tbinfo->dobj.dumpId, InvalidDumpId,
@@ -17640,6 +17593,8 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 
 		reltypename = "VIEW";
 
+		appendPQExpBuffer(delq, "DROP VIEW %s;\n", qualrelname);
+
 		if (dopt->binary_upgrade)
 			binary_upgrade_set_pg_class_oids(fout, q,
 											 tbinfo->dobj.catId.oid);
@@ -17665,47 +17620,6 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 			appendPQExpBuffer(q, "\n  WITH %s CHECK OPTION", tbinfo->checkoption);
 		if (tbinfo->readOnly && !tbinfo->dummy_view)
 			appendPQExpBufferStr(q, "\n  WITH READ ONLY");
-		appendPQExpBufferStr(q, ";\n");
-	}
-	else if (tbinfo->relkind == RELKIND_PROPGRAPH)
-	{
-		PQExpBuffer query = createPQExpBuffer();
-		PGresult   *res;
-		int			len;
-
-		reltypename = "PROPERTY GRAPH";
-
-		if (dopt->binary_upgrade)
-			binary_upgrade_set_pg_class_oids(fout, q,
-											 tbinfo->dobj.catId.oid);
-
-		appendPQExpBuffer(query,
-						  "SELECT pg_catalog.pg_get_propgraphdef('%u'::pg_catalog.oid) AS pgdef",
-						  tbinfo->dobj.catId.oid);
-
-		res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
-
-		if (PQntuples(res) != 1)
-		{
-			if (PQntuples(res) < 1)
-				pg_fatal("query to obtain definition of property graph \"%s\" returned no data",
-						 tbinfo->dobj.name);
-			else
-				pg_fatal("query to obtain definition of property graph \"%s\" returned more than one definition",
-						 tbinfo->dobj.name);
-		}
-
-		len = PQgetlength(res, 0, 0);
-
-		if (len == 0)
-			pg_fatal("definition of property graph \"%s\" appears to be empty (length zero)",
-					 tbinfo->dobj.name);
-
-		appendPQExpBufferStr(q, PQgetvalue(res, 0, 0));
-
-		PQclear(res);
-		destroyPQExpBuffer(query);
-
 		appendPQExpBufferStr(q, ";\n");
 	}
 	else
@@ -17782,6 +17696,8 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 
 		numParents = tbinfo->numParents;
 		parents = tbinfo->parents;
+
+		appendPQExpBuffer(delq, "DROP %s %s;\n", reltypename, qualrelname);
 
 		if (dopt->binary_upgrade)
 			binary_upgrade_set_pg_class_oids(fout, q,
@@ -18540,8 +18456,6 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 	if (tbinfo->forcerowsec)
 		appendPQExpBuffer(q, "\nALTER TABLE ONLY %s FORCE ROW LEVEL SECURITY;\n",
 						  qualrelname);
-
-	appendPQExpBuffer(delq, "DROP %s %s;\n", reltypename, qualrelname);
 
 	if (dopt->binary_upgrade)
 		binary_upgrade_extension_member(q, &tbinfo->dobj,
@@ -20929,17 +20843,6 @@ getDependencies(Archive *fout)
 						 "WHERE deptype NOT IN ('p', 'e', 'i') AND "
 						 "classid = 'pg_amproc'::regclass AND objid = p.oid "
 						 "AND NOT (refclassid = 'pg_opfamily'::regclass AND amprocfamily = refobjid)\n");
-
-	/*
-	 * Translate dependencies of pg_propgraph_element entries into
-	 * dependencies of their parent pg_class entry.
-	 */
-	if (fout->remoteVersion >= 190000)
-		appendPQExpBufferStr(query, "UNION ALL\n"
-							 "SELECT 'pg_class'::regclass AS classid, pgepgid AS objid, refclassid, refobjid, deptype "
-							 "FROM pg_depend d, pg_propgraph_element pge "
-							 "WHERE deptype NOT IN ('p', 'e', 'i') AND "
-							 "classid = 'pg_propgraph_element'::regclass AND objid = pge.oid\n");
 
 	/* Sort the output for efficiency below */
 	appendPQExpBufferStr(query, "ORDER BY 1,2");
