@@ -165,3 +165,8 @@ select sys_context('USERENV', 'SERVER') as server_type,
 select sys_context('USERENV', 'INSTANCE_NAME') as instance_name,
        sys_context('USERENV', 'SERVICE_NAME') as service_name;
 select sys_context('USERENV', 'NETWORK_PROTOCOL') as network_protocol;
+
+-- same attribute over a TCP connection: client_addr is non-NULL then, so
+-- the protocol is tcp
+\connect "host=127.0.0.1 dbname=contrib_regression"
+select sys_context('USERENV', 'NETWORK_PROTOCOL') as network_protocol;
