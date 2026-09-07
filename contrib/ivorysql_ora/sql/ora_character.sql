@@ -61,6 +61,10 @@ SELECT * FROM TEST_ORAVARCHAR WHERE a < '5';
 
 SELECT * FROM TEST_ORAVARCHAR WHERE a <= '5';
 
+-- VARCHAR2 pattern comparison support functions must be parallel safe.
+SELECT proparallel FROM pg_proc
+WHERE oid = 'sys.oravarchar_pattern_gt(sys.oravarcharchar,sys.oravarcharchar)'::regprocedure;
+
 
 -- Arithmetic operator
 -- char/char
