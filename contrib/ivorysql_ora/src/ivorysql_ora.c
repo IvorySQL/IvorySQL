@@ -86,13 +86,6 @@ void _PG_fini(void);
 void
 _PG_init(void)
 {
-#if 0
-	/* Must be loaded with shared_preload_libaries */
-	if (!process_shared_preload_libraries_in_progress)
-		ereport(ERROR, (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				errmsg("ivorysql_ora must be loaded via shared_preload_libraries")));
-#endif
-
 	/* Define custom GUC variables */
 	IvorysqlOraDefineGucs();
 
