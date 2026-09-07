@@ -631,7 +631,10 @@ ora_new_time(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("timestamp out of range")));
 	tz1 = tz1 - tz2;
-	tm2timestamp(tm, fsec, &tz1, &result);
+	if (tm2timestamp(tm, fsec, &tz1, &result) != 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("timestamp out of range")));
 
 	PG_RETURN_TIMESTAMP(result);
 }
@@ -769,7 +772,10 @@ ora_from_tz(PG_FUNCTION_ARGS)
 				 errmsg("timestamp out of range")));
 
 	tz = DetermineTimeZoneOffset(tm, timezonedat);
-	tm2timestamp(tm, fsec, &tz, &result);
+	if (tm2timestamp(tm, fsec, &tz, &result) != 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("timestamp out of range")));
 
 	PG_RETURN_TIMESTAMPTZ(result);
 }
