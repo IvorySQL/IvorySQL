@@ -2037,6 +2037,7 @@ resolve_column_ref(ParseState *pstate, PLiSQL_expr * expr,
 		case PLISQL_NSTYPE_SUBPROC_FUNC:
 		case PLISQL_NSTYPE_SUBPROC_PROC:
 		case PLISQL_NSTYPE_ROWTYPE:
+		case PLISQL_NSTYPE_TBLTYPE:
 			break;
 		default:
 			elog(ERROR, "unrecognized plisql itemtype: %d", nse->itemtype);
@@ -2139,6 +2140,7 @@ plisql_parse_word(char *paramname, char *word1, const char *yytxt, bool lookup,
 				case PLISQL_NSTYPE_SUBPROC_FUNC:
 				case PLISQL_NSTYPE_SUBPROC_PROC:
 				case PLISQL_NSTYPE_ROWTYPE:
+				case PLISQL_NSTYPE_TBLTYPE:
 					break;
 
 				default:
@@ -2538,12 +2540,14 @@ plisql_parse_wordtype(char *ident)
 			case PLISQL_NSTYPE_REC:
 				return ((PLiSQL_rec *) (plisql_Datums[nse->itemno]))->datatype;
 			case PLISQL_NSTYPE_ROWTYPE:
+			case PLISQL_NSTYPE_TBLTYPE:
 
 				/*
-				 * A "TYPE ... IS RECORD" declaration isn't a variable, so
-				 * "rec_t%TYPE" (where rec_t names the declaration itself,
-				 * not a variable of that type) doesn't resolve here; fall
-				 * through to the "does not exist" error below.
+				 * A "TYPE ... IS RECORD" or "TYPE ... IS TABLE OF / VARRAY"
+				 * declaration isn't a variable, so "t%TYPE" (where t names
+				 * the declaration itself, not a variable of that type)
+				 * doesn't resolve here; fall through to the "does not
+				 * exist" error below.
 				 */
 				break;
 			default:

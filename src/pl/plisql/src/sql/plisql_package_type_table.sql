@@ -1,0 +1,286 @@
+--
+-- Tests for "TYPE ... IS TABLE OF" / "TYPE ... IS VARRAY(n) OF"
+-- collection type declarations (Phase 1).
+--
+-- Phase 1 represents such a type as an ordinary PostgreSQL array type
+-- (elem[]); a variable of the type is therefore just an array-typed
+-- scalar.  These tests cover declaration, bare and package-qualified
+-- reference (including from a different package), use as a local
+-- variable / return type / IN and OUT parameters, and the compile-time
+-- checks that reject the parts this first cut does not implement
+-- (INDEX BY, element NOT NULL, non-array element types, nested
+-- collections, bad VARRAY limits).
+--
+-- Oracle surface syntax -- coll(i) subscripting, the coll_t(...)
+-- constructor and the collection methods -- is a later phase, so these
+-- tests use PostgreSQL array syntax (coll[i], ARRAY[...]).
+--
+
+--
+-- Basic nested-table declaration in a package spec, used as a bare
+-- (unqualified) return type and as a local variable.  Element access
+-- uses array subscripting.
+--
+CREATE OR REPLACE PACKAGE test_pkgtab AS
+    TYPE num_tab IS TABLE OF NUMBER;
+
+    FUNCTION make_tab(a NUMBER, b NUMBER, c NUMBER) RETURN num_tab;
+    FUNCTION third(t num_tab) RETURN NUMBER;
+END test_pkgtab;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_pkgtab AS
+    FUNCTION make_tab(a NUMBER, b NUMBER, c NUMBER) RETURN num_tab IS
+        res num_tab;
+    BEGIN
+        res := ARRAY[a, b, c]::NUMBER[];
+        res[2] := res[2] + 100;
+        RETURN res;
+    END;
+
+    FUNCTION third(t num_tab) RETURN NUMBER IS
+    BEGIN
+        RETURN t[3];
+    END;
+END test_pkgtab;
+/
+
+SELECT test_pkgtab.make_tab(1, 2, 3);
+SELECT test_pkgtab.third(test_pkgtab.make_tab(10, 20, 30));
+-- the composite/array return type resolves without a column alias list
+SELECT * FROM test_pkgtab.make_tab(1, 2, 3);
+
+DROP PACKAGE test_pkgtab;
+
+--
+-- The declaration is also allowed directly in a package BODY (a type
+-- private to the package).
+--
+CREATE OR REPLACE PACKAGE test_bodyonly_tab AS
+    FUNCTION sum_first_two RETURN NUMBER;
+END test_bodyonly_tab;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_bodyonly_tab AS
+    TYPE int_tab IS TABLE OF INTEGER;
+
+    FUNCTION sum_first_two RETURN NUMBER IS
+        v int_tab;
+    BEGIN
+        v := ARRAY[7, 35]::int[];
+        RETURN v[1] + v[2];
+    END;
+END test_bodyonly_tab;
+/
+
+SELECT test_bodyonly_tab.sum_first_two();
+
+DROP PACKAGE test_bodyonly_tab;
+
+--
+-- Package-qualified and cross-package references: the collection type of
+-- one package used from another, as a local variable and as a parameter.
+--
+CREATE OR REPLACE PACKAGE test_tabtypes AS
+    TYPE str_tab IS TABLE OF VARCHAR2(20);
+END test_tabtypes;
+/
+
+CREATE OR REPLACE PACKAGE test_tabuser AS
+    FUNCTION join_two(a VARCHAR2, b VARCHAR2) RETURN VARCHAR2;
+    FUNCTION nelems(t test_tabtypes.str_tab) RETURN INT;
+END test_tabuser;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_tabuser AS
+    FUNCTION join_two(a VARCHAR2, b VARCHAR2) RETURN VARCHAR2 IS
+        v test_tabtypes.str_tab;
+    BEGIN
+        v := ARRAY[a, b]::varchar[];
+        RETURN v[1] || ',' || v[2];
+    END;
+
+    FUNCTION nelems(t test_tabtypes.str_tab) RETURN INT IS
+    BEGIN
+        RETURN cardinality(t);
+    END;
+END test_tabuser;
+/
+
+SELECT test_tabuser.join_two('foo', 'bar');
+SELECT test_tabuser.nelems(ARRAY['a', 'b', 'c']::varchar[]);
+
+DROP PACKAGE test_tabuser;
+DROP PACKAGE test_tabtypes;
+
+--
+-- IN and OUT parameters of a collection type.
+--
+CREATE OR REPLACE PACKAGE test_tab_params AS
+    TYPE num_tab IS TABLE OF NUMBER;
+
+    PROCEDURE reverse3(src IN num_tab, dst OUT num_tab);
+END test_tab_params;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_tab_params AS
+    PROCEDURE reverse3(src IN num_tab, dst OUT num_tab) IS
+    BEGIN
+        dst := ARRAY[src[3], src[2], src[1]]::NUMBER[];
+    END;
+END test_tab_params;
+/
+
+DECLARE
+    a test_tab_params.num_tab;
+    b test_tab_params.num_tab;
+BEGIN
+    a := ARRAY[1, 2, 3]::NUMBER[];
+    test_tab_params.reverse3(a, b);
+    RAISE NOTICE 'b = [%, %, %]', b[1], b[2], b[3];
+END;
+/
+
+DROP PACKAGE test_tab_params;
+
+--
+-- VARRAY declaration and basic use.  The declared size limit is stored
+-- but not yet enforced at runtime (that is a later phase).
+--
+CREATE OR REPLACE PACKAGE test_varray AS
+    TYPE num_arr IS VARRAY(5) OF NUMBER;
+
+    FUNCTION first_plus_last(v num_arr) RETURN NUMBER;
+END test_varray;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_varray AS
+    FUNCTION first_plus_last(v num_arr) RETURN NUMBER IS
+    BEGIN
+        RETURN v[1] + v[array_upper(v, 1)];
+    END;
+END test_varray;
+/
+
+SELECT test_varray.first_plus_last(ARRAY[10, 20, 30, 40]::NUMBER[]);
+
+DROP PACKAGE test_varray;
+
+--
+-- Nested table of a *named* composite type (which has a catalog array
+-- type) works.
+--
+CREATE TYPE test_point_t AS (x INT, y INT);
+
+CREATE OR REPLACE PACKAGE test_tab_of_composite AS
+    TYPE point_tab IS TABLE OF test_point_t;
+
+    FUNCTION second_x(t point_tab) RETURN INT;
+END test_tab_of_composite;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_tab_of_composite AS
+    FUNCTION second_x(t point_tab) RETURN INT IS
+    BEGIN
+        RETURN (t[2]).x;
+    END;
+END test_tab_of_composite;
+/
+
+SELECT test_tab_of_composite.second_x(
+    ARRAY[ROW(1, 2), ROW(3, 4)]::test_point_t[]);
+
+DROP PACKAGE test_tab_of_composite;
+DROP TYPE test_point_t;
+
+--
+-- Standalone (non-package) function with a collection type in its
+-- DECLARE section.
+--
+CREATE OR REPLACE FUNCTION test_local_tab() RETURN NUMBER IS
+    TYPE num_tab IS TABLE OF NUMBER;
+    v num_tab;
+BEGIN
+    v := ARRAY[3, 4]::NUMBER[];
+    RETURN v[1] * v[2];
+END;
+/
+
+SELECT test_local_tab();
+
+DROP FUNCTION test_local_tab();
+
+--
+-- Rejections (compile-time), each with a clean error and no crash.
+--
+
+-- INDEX BY (associative arrays) is not supported yet
+CREATE OR REPLACE PACKAGE test_reject_indexby AS
+    TYPE assoc_t IS TABLE OF NUMBER INDEX BY PLS_INTEGER;
+END test_reject_indexby;
+/
+
+-- element NOT NULL cannot be enforced yet
+CREATE OR REPLACE PACKAGE test_reject_notnull AS
+    TYPE nn_t IS TABLE OF NUMBER NOT NULL;
+END test_reject_notnull;
+/
+
+-- VARRAY size limit must be positive
+CREATE OR REPLACE PACKAGE test_reject_varray0 AS
+    TYPE bad_t IS VARRAY(0) OF NUMBER;
+END test_reject_varray0;
+/
+
+-- nested collection: element type is itself a collection/array type
+CREATE OR REPLACE PACKAGE test_reject_nested AS
+    TYPE inner_t IS TABLE OF NUMBER;
+    TYPE outer_t IS TABLE OF inner_t;
+END test_reject_nested;
+/
+
+-- element type has no array type: a package RECORD type is RECORDOID + typmod
+CREATE OR REPLACE PACKAGE test_reject_recordelem AS
+    TYPE rec_t IS RECORD(a NUMBER, b NUMBER);
+    TYPE rec_tab IS TABLE OF rec_t;
+END test_reject_recordelem;
+/
+
+--
+-- Type-vs-variable confusion: using the collection type name where a
+-- value/variable is expected must raise a normal error, not crash, and
+-- the session must stay usable afterwards.
+--
+CREATE OR REPLACE PACKAGE test_tab_confusion AS
+    TYPE num_tab IS TABLE OF NUMBER;
+    FUNCTION bad_ref RETURN NUMBER;
+END test_tab_confusion;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_tab_confusion AS
+    FUNCTION bad_ref RETURN NUMBER IS
+    BEGIN
+        RETURN num_tab[1];
+    END;
+END test_tab_confusion;
+/
+
+SELECT test_tab_confusion.bad_ref();
+
+-- "num_tab%TYPE" where num_tab names the declaration itself does not resolve
+CREATE OR REPLACE PACKAGE BODY test_tab_confusion AS
+    FUNCTION bad_ref RETURN NUMBER IS
+        v num_tab%TYPE;
+    BEGIN
+        v := ARRAY[1]::NUMBER[];
+        RETURN v[1];
+    END;
+END test_tab_confusion;
+/
+
+SELECT test_tab_confusion.bad_ref();
+
+-- session and package cache must stay usable after those errors
+SELECT 1 AS session_still_usable_after_tab_type_errors;
+
+DROP PACKAGE test_tab_confusion;
