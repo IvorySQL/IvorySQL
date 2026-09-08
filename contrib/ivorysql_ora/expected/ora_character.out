@@ -449,6 +449,8 @@ DO $$
 DECLARE
     result boolean;
     matches integer;
+    plan_line text;
+    plan_uses_hash_index boolean;
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_collation WHERE collprovider = 'i') THEN
         EXECUTE 'CREATE COLLATION ora_char_byte_ci '
@@ -492,6 +494,17 @@ BEGIN
         EXECUTE 'CREATE INDEX ora_char_byte_ci_hash_idx '
                 'ON ora_char_byte_ci_test USING hash (v)';
         PERFORM set_config('enable_seqscan', 'off', true);
+        plan_uses_hash_index := false;
+        FOR plan_line IN EXECUTE
+            'EXPLAIN (costs off) SELECT * FROM ora_char_byte_ci_test WHERE v = ''A'''
+        LOOP
+            IF plan_line LIKE '%Index Scan%ora_char_byte_ci_hash_idx%' THEN
+                plan_uses_hash_index := true;
+            END IF;
+        END LOOP;
+        IF NOT plan_uses_hash_index THEN
+            RAISE EXCEPTION 'hash index was not chosen for CHAR(n BYTE) lookup';
+        END IF;
         EXECUTE 'SELECT count(*) FROM ora_char_byte_ci_test WHERE v = ''A'''
            INTO matches;
         IF matches <> 1 THEN
