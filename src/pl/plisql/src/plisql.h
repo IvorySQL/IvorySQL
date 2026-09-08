@@ -46,6 +46,7 @@ typedef enum PLiSQL_nsitem_type
 	PLISQL_NSTYPE_VAR,			/* scalar variable */
 	PLISQL_NSTYPE_REC,			/* composite variable */
 	PLISQL_NSTYPE_ROWTYPE,		/* TYPE ... IS RECORD declaration */
+	PLISQL_NSTYPE_TBLTYPE,		/* TYPE ... IS TABLE OF / VARRAY declaration */
 	PLISQL_NSTYPE_SUBPROC_FUNC, /* subproc function */
 	PLISQL_NSTYPE_SUBPROC_PROC	/* subproc proc */
 }			PLiSQL_nsitem_type;
@@ -414,6 +415,49 @@ typedef struct PLiSQL_row
 	char	  **fieldnames;
 	int		   *varnos;
 }			PLiSQL_row;
+
+/*
+ * Kind of an Oracle collection type declaration.
+ */
+typedef enum PLiSQL_tbl_kind
+{
+	PLISQL_TBL_NESTED_TABLE = 'n', /* TYPE t IS TABLE OF elem (unbounded) */
+	PLISQL_TBL_VARRAY = 'v'		/* TYPE t IS VARRAY(n) OF elem (bounded) */
+}			PLiSQL_tbl_kind;
+
+/*
+ * Collection type declaration: "TYPE t IS TABLE OF elem" or
+ * "TYPE t IS VARRAY(n) OF elem", declared in a DECLARE section or a
+ * package spec/body.
+ *
+ * Phase 1 represents the collection as an ordinary PostgreSQL array type
+ * (elem[]).  A variable of the type is therefore just an array-typed
+ * scalar, so declaration, parameter passing, %TYPE, RETURN and
+ * package-qualified / cross-package resolution all work through the
+ * existing machinery with no executor changes.  Oracle surface syntax
+ * (coll(i), constructors, collection methods) and associative arrays
+ * ("INDEX BY") are later phases.
+ *
+ * Like a "TYPE ... IS RECORD" declaration, this is recorded as a datum so
+ * the namespace can point at it, but it is not a variable: the embedded
+ * PLiSQL_row (which must stay first) is left empty and tagged
+ * PLISQL_DTYPE_ROW so the runtime datum walkers that special-case
+ * PLISQL_DTYPE_ROW treat it as an inert, read-only row.  The real
+ * discriminator is the namespace item type PLISQL_NSTYPE_TBLTYPE, which
+ * lookup code checks before ever casting to this struct.
+ */
+typedef struct PLiSQL_tbl_type
+{
+	PLiSQL_row	row;			/* must be first; dtype == PLISQL_DTYPE_ROW */
+
+	char		tbl_kind;		/* a PLiSQL_tbl_kind value */
+	int32		varray_limit;	/* declared max size for VARRAY, else -1 */
+	Oid			elemtypoid;		/* element type OID */
+	int32		elemtypmod;		/* element typmod */
+	Oid			elemcollation;	/* element collation, if any */
+	Oid			arraytypoid;	/* resolved elem[] type OID */
+	int32		arraytypmod;	/* typmod carried by the array type */
+}			PLiSQL_tbl_type;
 
 /*
  * Record variable (any composite type, including RECORD)

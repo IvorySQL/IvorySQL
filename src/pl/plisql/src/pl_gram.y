@@ -25,6 +25,7 @@
 #include "oracle_parser/ora_scanner.h"
 #include "parser/scansup.h"
 #include "utils/builtins.h"
+#include "utils/lsyscache.h"
 
 #include "plisql.h"
 
@@ -93,6 +94,10 @@ static	PLiSQL_expr	*read_sql_expression2(int until, int until2,
 											  YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
 static	PLiSQL_expr	*read_sql_stmt(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
 static	PLiSQL_type	*read_datatype(int tok, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
+static	void			make_tbl_type(const char *typname, int lineno,
+									   char tbl_kind, int32 varray_limit,
+									   PLiSQL_type *elemtype, bool elem_notnull,
+									   int location, yyscan_t yyscanner);
 static	PLiSQL_stmt	*make_execsql_stmt(int firsttoken, int location,
 										   PLword *word, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
 static	PLiSQL_stmt_fetch *read_fetch_direction(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
@@ -365,6 +370,7 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location, YYSTYPE *yylv
 %token <keyword>	K_IF
 %token <keyword>	K_IMPORT
 %token <keyword>	K_IN
+%token <keyword>	K_INDEX
 %token <keyword>	K_INFO
 %token <keyword>	K_INSERT
 %token <keyword>	K_INTO
@@ -431,6 +437,7 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location, YYSTYPE *yylv
 %token <keyword>	K_USING
 %token <keyword>	K_USING_NLS_COMP
 %token <keyword>	K_VARIABLE_CONFLICT
+%token <keyword>	K_VARRAY
 %token <keyword>	K_WARNING
 %token <keyword>	K_WHEN
 %token <keyword>	K_WHILE
@@ -850,13 +857,44 @@ decl_statement	: K_TYPE decl_varname K_IS K_RECORD '('
 						plisql_adddatum((PLiSQL_datum *) new);
 						plisql_ns_additem(PLISQL_NSTYPE_ROWTYPE, new->dno, new->refname);
 					}
-				| K_TYPE decl_varname K_IS K_TABLE K_OF decl_datatype ';'
+				| K_TYPE decl_varname K_IS K_TABLE K_OF decl_datatype decl_notnull ';'
 					{
+						make_tbl_type($2.name,
+									   plisql_location_to_lineno(@1, yyscanner),
+									   PLISQL_TBL_NESTED_TABLE, -1,
+									   $6, $7, @1, yyscanner);
+					}
+				| K_TYPE decl_varname K_IS K_TABLE K_OF decl_datatype K_INDEX
+					{
+						/*
+						 * Associative arrays ("... INDEX BY ...") aren't
+						 * backed by a PostgreSQL array type (they can be
+						 * sparse and string-keyed), so this first cut
+						 * rejects them cleanly instead of implementing
+						 * them.  The rule deliberately ends at K_INDEX:
+						 * read_datatype() is taught to stop there, and
+						 * we never need to parse the key type to know we
+						 * can't support it yet.
+						 */
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								 errmsg("\"TYPE %s IS TABLE OF\" is not supported",
-										$2.name),
+								 errmsg("associative arrays are not supported"),
+								 errdetail("\"TYPE %s IS TABLE OF ... INDEX BY ...\" cannot be used yet; use a plain nested table or a VARRAY.",
+										   $2.name),
 								 parser_errposition(@1)));
+					}
+				| K_TYPE decl_varname K_IS K_VARRAY '(' ICONST ')' K_OF decl_datatype decl_notnull ';'
+					{
+						if ($6 <= 0)
+							ereport(ERROR,
+									(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+									 errmsg("VARRAY size limit must be greater than zero"),
+									 parser_errposition(@6)));
+
+						make_tbl_type($2.name,
+									   plisql_location_to_lineno(@1, yyscanner),
+									   PLISQL_TBL_VARRAY, $6,
+									   $9, $10, @1, yyscanner);
 					}
 				| decl_varname decl_const decl_datatype decl_collate decl_notnull decl_defval
 					{
@@ -3488,6 +3526,7 @@ unreserved_keyword	:
 				| K_GET
 				| K_HINT
 				| K_IMPORT
+				| K_INDEX
 				| K_INFO
 				| K_INSERT
 				| K_IS
@@ -3543,6 +3582,7 @@ unreserved_keyword	:
 				| K_USE_VARIABLE
 				| K_USING_NLS_COMP
 				| K_VARIABLE_CONFLICT
+				| K_VARRAY
 				| K_WARNING
 				;
 
@@ -3598,6 +3638,7 @@ unit_name_keyword:
 				| K_GET
 				| K_HINT
 				| K_IMPORT
+				| K_INDEX
 				| K_INFO
 				| K_INSERT
 				| K_IS
@@ -3646,6 +3687,7 @@ unit_name_keyword:
 				| K_USE_VARIABLE
 				| K_USING_NLS_COMP
 				| K_VARIABLE_CONFLICT
+				| K_VARRAY
 				| K_WARNING
 				;
 
@@ -3986,6 +4028,26 @@ read_datatype(int tok, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 					return result;
 				}
 			}
+			/* handle the collection type defined in PL block */
+			else if (rcns && rcns->itemtype == PLISQL_NSTYPE_TBLTYPE)
+			{
+				PLiSQL_tbl_type *tbltype =
+					(PLiSQL_tbl_type *) plisql_Datums[rcns->itemno];
+
+				/*
+				 * A "TYPE ... IS TABLE OF / VARRAY" declaration resolves
+				 * to its backing array type (elem[]); a variable of the
+				 * type is therefore an ordinary array-typed scalar.
+				 */
+				result = plisql_build_datatype(tbltype->arraytypoid,
+											   tbltype->arraytypmod,
+											   tbltype->elemcollation, NULL);
+				if (result)
+				{
+					plisql_push_back_token(tok, yylvalp, yyllocp, yyscanner);
+					return result;
+				}
+			}
 		}
 	}
 	else if (plisql_token_is_unreserved_keyword(tok))
@@ -4077,6 +4139,9 @@ read_datatype(int tok, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 		if (tok == K_COLLATE || tok == K_NOT ||
 			tok == '=' || tok == COLON_EQUALS || tok == K_DEFAULT)
 			break;
+		/* "INDEX" follows the element type of "TYPE t IS TABLE OF elem INDEX BY" */
+		if (tok == K_INDEX && parenlevel == 0)
+			break;
 		/* Possible followers for datatype in a cursor_arg list */
 		if ((tok == ',' || tok == ')') && parenlevel == 0)
 			break;
@@ -4107,6 +4172,98 @@ read_datatype(int tok, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 	plisql_push_back_token(tok, yylvalp, yyllocp, yyscanner);
 
 	return result;
+}
+
+/*
+ * Record a collection type declared as
+ *     TYPE <name> IS TABLE OF <elem> [NOT NULL]
+ *     TYPE <name> IS VARRAY(<limit>) OF <elem> [NOT NULL]
+ * inside a DECLARE section or a package spec/body.
+ *
+ * Phase 1: the collection is represented as an ordinary PostgreSQL array
+ * type (elem[]).  A variable of the type is therefore just an array-typed
+ * scalar, so variable declaration, parameter passing, %TYPE, RETURN and
+ * package-qualified / cross-package resolution all work through the
+ * existing machinery with no executor changes.  Oracle surface syntax
+ * (coll(i), constructors, collection methods) is a later phase.
+ *
+ * The declaration is stored as a PLiSQL_tbl_type datum whose embedded
+ * PLiSQL_row is left empty and tagged PLISQL_DTYPE_ROW (inert to the
+ * runtime datum walkers, exactly like a "TYPE ... IS RECORD"
+ * declaration), and is namespaced as PLISQL_NSTYPE_TBLTYPE so lookup
+ * code can never mistake the type for a variable.
+ */
+static void
+make_tbl_type(const char *typname, int lineno, char tbl_kind,
+			   int32 varray_limit, PLiSQL_type *elemtype, bool elem_notnull,
+			   int location, yyscan_t yyscanner)
+{
+	PLiSQL_tbl_type *tbl;
+	Oid			arraytypoid;
+	const char *kindstr = (tbl_kind == PLISQL_TBL_VARRAY) ? "VARRAY" : "TABLE";
+
+	/*
+	 * A NOT NULL element constraint can't be enforced without executor
+	 * support, and silently discarding it would be a correctness hazard,
+	 * so reject it for now (mirrors the "TYPE ... IS RECORD" field
+	 * clauses this first cut also rejects).
+	 */
+	if (elem_notnull)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("NOT NULL is not supported for collection element types"),
+				 parser_errposition(location)));
+
+	/* Nested collections (TABLE OF an array/collection) are not supported. */
+	if (elemtype->typisarray)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("collection element type cannot itself be an array or collection type"),
+				 errdetail("\"TYPE %s IS %s OF ...\" with an array element type is not supported.",
+						   typname, kindstr),
+				 parser_errposition(location)));
+
+	/*
+	 * An anonymous record element (a "TYPE ... IS RECORD" declaration, which
+	 * resolves to RECORDOID plus a blessed typmod) has no usable array type:
+	 * record[] cannot carry the per-element typmod that identifies the row
+	 * structure.  Require a named composite type instead.
+	 */
+	if (elemtype->typoid == RECORDOID)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("collection element type cannot be an anonymous record type"),
+				 errdetail("\"TYPE %s IS %s OF ...\" of a \"TYPE ... IS RECORD\" type is not supported.",
+						   typname, kindstr),
+				 errhint("Declare the element type with CREATE TYPE ... AS, or use table%%ROWTYPE."),
+				 parser_errposition(location)));
+
+	arraytypoid = get_array_type(elemtype->typoid);
+	if (!OidIsValid(arraytypoid))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot create collection type \"%s\": element type %s has no array type",
+						typname, format_type_be(elemtype->typoid)),
+				 errhint("Use a scalar type or a named composite type (CREATE TYPE ... AS) as the element type."),
+				 parser_errposition(location)));
+
+	tbl = palloc0(sizeof(PLiSQL_tbl_type));
+	tbl->row.dtype = PLISQL_DTYPE_ROW;
+	tbl->row.refname = pstrdup(typname);
+	tbl->row.lineno = lineno;
+	/* embedded PLiSQL_row stays empty: rowtupdesc NULL, nfields 0 (palloc0) */
+
+	tbl->tbl_kind = tbl_kind;
+	tbl->varray_limit = varray_limit;
+	tbl->elemtypoid = elemtype->typoid;
+	tbl->elemtypmod = elemtype->atttypmod;
+	tbl->elemcollation = elemtype->collation;
+	tbl->arraytypoid = arraytypoid;
+	/* the array type inherits the element's typmod (see plisql_build_datatype_arrayof) */
+	tbl->arraytypmod = elemtype->atttypmod;
+
+	plisql_adddatum((PLiSQL_datum *) tbl);
+	plisql_ns_additem(PLISQL_NSTYPE_TBLTYPE, tbl->row.dno, tbl->row.refname);
 }
 
 static PLiSQL_stmt *

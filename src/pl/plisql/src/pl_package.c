@@ -171,9 +171,10 @@ plisql_package_parse(ParseState *parsestate, PackageCacheItem *item, List *names
 
 		elog(ERROR, "\"%s\" is scalar variable", parse_first_name);
 	}
-	/* only row, rowtype or record, cursorvar, then name doesn't match */
+	/* only row, rowtype, colltype or record, cursorvar, then name doesn't match */
 	else if (nse->itemtype != PLISQL_NSTYPE_REC &&
 		nse->itemtype != PLISQL_NSTYPE_ROWTYPE &&
+		nse->itemtype != PLISQL_NSTYPE_TBLTYPE &&
 		list_size != name_start + 1)
 		elog(ERROR, "\"%s\" is not a row var", parse_first_name);
 
@@ -260,6 +261,39 @@ plisql_package_parse(ParseState *parsestate, PackageCacheItem *item, List *names
 				oldcxt = MemoryContextSwitchTo(psource->source.fn_cxt);
 				value = (void *) plisql_build_datatype(RECORDOID, rec_typmod,
 													   InvalidOid, NULL);
+				MemoryContextSwitchTo(oldcxt);
+			}
+			break;
+		case PLISQL_NSTYPE_TBLTYPE:
+			{
+				/* TYPE ... IS TABLE OF / VARRAY declaration */
+				PLiSQL_tbl_type *tbltype =
+					(PLiSQL_tbl_type *) psource->source.datums[nse->itemno];
+				MemoryContext oldcxt;
+
+				if (flags != PACKAGE_PARSE_TYPE)
+					elog(ERROR, "\"%s\" is a type, not a variable", parse_first_name);
+
+				/* A type name cannot be qualified further (see ROWTYPE above). */
+				if (list_size != name_start + 1)
+					elog(ERROR, "\"%s\" is a type and cannot be qualified further", parse_first_name);
+
+				/*
+				 * A collection type resolves to its backing array type
+				 * (elem[]); report that so a cross-package reference to
+				 * "pkg.tbl_t" behaves the same as an unqualified one
+				 * from inside the declaring package (see read_datatype()).
+				 */
+				if (basetypeid != NULL)
+					*basetypeid = tbltype->arraytypoid;
+				if (basetypmod != NULL)
+					*basetypmod = tbltype->arraytypmod;
+
+				/* Build in the package's persistent context (see ROWTYPE above). */
+				oldcxt = MemoryContextSwitchTo(psource->source.fn_cxt);
+				value = (void *) plisql_build_datatype(tbltype->arraytypoid,
+													   tbltype->arraytypmod,
+													   tbltype->elemcollation, NULL);
 				MemoryContextSwitchTo(oldcxt);
 			}
 			break;
