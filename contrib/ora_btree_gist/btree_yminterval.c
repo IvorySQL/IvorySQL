@@ -5,6 +5,7 @@
 
 #include "btree_gist.h"
 #include "btree_utils_num.h"
+#include "common/int128.h"
 #include "utils/builtins.h"
 #include "utils/timestamp.h"
 
@@ -37,18 +38,13 @@ PG_FUNCTION_INFO_V1(gbt_ymintv_same);
  * For INTERVAL YEAR TO MONTH type the field of "day" and "time" is invalid.
  * Only calculate the value of "interval->month".
  */
-static inline TimeOffset
+static inline INT128
 yminterval_cmp_value(const Interval *interval)
 {
-	TimeOffset	span;
+	INT128		span = int64_to_int128(0);
 
-	span = 0;
-
-#ifdef HAVE_INT64_TIMESTAMP
-	span += interval->month * INT64CONST(30) * USECS_PER_DAY;
-#else
-	span += interval->month * ((double) DAYS_PER_MONTH * SECS_PER_DAY);
-#endif
+	int128_add_int64_mul_int64(&span, interval->month,
+								  INT64CONST(30) * USECS_PER_DAY);
 
 	return span;
 }
@@ -56,10 +52,10 @@ yminterval_cmp_value(const Interval *interval)
 static int
 yminterval_cmp_internal(Interval *interval1, Interval *interval2)
 {
-	TimeOffset	span1 = yminterval_cmp_value(interval1);
-	TimeOffset	span2 = yminterval_cmp_value(interval2);
+	INT128		span1 = yminterval_cmp_value(interval1);
+	INT128		span2 = yminterval_cmp_value(interval2);
 
-	return ((span1 < span2) ? -1 : (span1 > span2) ? 1 : 0);
+	return int128_compare(span1, span2);
 }
 
 /*****************************************************************************

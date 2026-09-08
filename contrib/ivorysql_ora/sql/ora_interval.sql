@@ -168,6 +168,93 @@ CREATE INDEX test_dsinterval_hash on TEST_DSINTERVAL USING hash (a);
 CREATE INDEX test_dsinterval_brin on TEST_DSINTERVAL USING brin (a);
 
 
+-- Large values must retain their mathematical ordering after their linear
+-- microsecond representation exceeds int64.
+WITH intervals AS (
+    SELECT INTERVAL '106751992 00:00:00' DAY(9) TO SECOND AS ds_positive,
+           INTERVAL '-106751992 00:00:00' DAY(9) TO SECOND AS ds_negative,
+           INTERVAL '213503982 08:01:49.551616' DAY(9) TO SECOND(6) AS ds_wrap,
+           INTERVAL '0 00:00:00' DAY TO SECOND AS ds_zero,
+           INTERVAL '1000000-0' YEAR(9) TO MONTH AS ym_positive,
+           INTERVAL '0-0' YEAR TO MONTH AS ym_zero
+)
+SELECT ds_positive > ds_zero AS ds_positive_gt_zero,
+       ds_negative < ds_zero AS ds_negative_lt_zero,
+       ym_positive > ym_zero AS ym_positive_gt_zero,
+       ds_wrap = ds_zero AS ds_wraps_to_zero
+FROM intervals;
+
+WITH intervals AS (
+    SELECT INTERVAL '106751992 00:00:00' DAY(9) TO SECOND AS ds_positive,
+           INTERVAL '0 00:00:00' DAY TO SECOND AS ds_zero
+)
+SELECT ds_positive < ds_zero AS lt,
+       ds_positive <= ds_zero AS le,
+       ds_positive = ds_zero AS eq,
+       ds_positive >= ds_zero AS ge,
+       ds_positive > ds_zero AS gt,
+       ds_positive <> ds_zero AS ne
+FROM intervals;
+
+-- RANGE support must use the wide comparison value for offset sign and bounds.
+SELECT sys.dsin_range(INTERVAL '0 00:00:00' DAY TO SECOND,
+                       INTERVAL '0 00:00:00' DAY TO SECOND,
+                       INTERVAL '106751992 00:00:00' DAY(9) TO SECOND,
+                       true, true) AS sub_less,
+       sys.dsin_range(INTERVAL '0 00:00:00' DAY TO SECOND,
+                       INTERVAL '0 00:00:00' DAY TO SECOND,
+                       INTERVAL '106751992 00:00:00' DAY(9) TO SECOND,
+                       true, false) AS sub_greater,
+       sys.dsin_range(INTERVAL '0 00:00:00' DAY TO SECOND,
+                       INTERVAL '0 00:00:00' DAY TO SECOND,
+                       INTERVAL '106751992 00:00:00' DAY(9) TO SECOND,
+                       false, true) AS add_less,
+       sys.dsin_range(INTERVAL '0 00:00:00' DAY TO SECOND,
+                       INTERVAL '0 00:00:00' DAY TO SECOND,
+                       INTERVAL '106751992 00:00:00' DAY(9) TO SECOND,
+                       false, false) AS add_greater;
+
+SELECT sys.ymin_range(INTERVAL '0-0' YEAR TO MONTH,
+                      INTERVAL '0-0' YEAR TO MONTH,
+                      INTERVAL '1000000-0' YEAR(9) TO MONTH,
+                      false, true) AS ym_range_accepted;
+
+CREATE TEMP TABLE interval_overflow_ds_window(a interval day(9) to second(6));
+INSERT INTO interval_overflow_ds_window VALUES
+    (INTERVAL '0 00:00:00' DAY TO SECOND),
+    (INTERVAL '106751992 00:00:00' DAY(9) TO SECOND);
+SELECT count(*) OVER (ORDER BY a RANGE BETWEEN
+                      INTERVAL '106751992 00:00:00' DAY(9) TO SECOND PRECEDING
+                      AND CURRENT ROW) AS preceding_count,
+       count(*) OVER (ORDER BY a RANGE BETWEEN CURRENT ROW AND
+                      INTERVAL '106751992 00:00:00' DAY(9) TO SECOND FOLLOWING) AS following_count
+FROM interval_overflow_ds_window ORDER BY a;
+
+CREATE TEMP TABLE interval_overflow_ym_window(a interval year(9) to month);
+INSERT INTO interval_overflow_ym_window VALUES
+    (INTERVAL '178956970-06' YEAR(9) TO MONTH),
+    (INTERVAL '178956970-07' YEAR(9) TO MONTH);
+SELECT count(*) OVER (ORDER BY a RANGE BETWEEN CURRENT ROW AND
+                      INTERVAL '0-01' YEAR TO MONTH FOLLOWING) AS following_count
+FROM interval_overflow_ym_window ORDER BY a;
+
+-- Preserve low-64-bit hashes while equality distinguishes these values.
+SELECT sys.dsinterval_hash(INTERVAL '213503982 08:01:49.551616' DAY(9) TO SECOND(6)) =
+       sys.dsinterval_hash(INTERVAL '0 00:00:00' DAY TO SECOND) AS hash_low64_preserved,
+       sys.dsinterval_hash_extended(INTERVAL '213503982 08:01:49.551616' DAY(9) TO SECOND(6), 42) =
+       sys.dsinterval_hash_extended(INTERVAL '0 00:00:00' DAY TO SECOND, 42) AS extended_hash_low64_preserved;
+
+CREATE TEMP TABLE interval_overflow_ds_unique(
+    a interval day(9) to second(6) UNIQUE
+);
+INSERT INTO interval_overflow_ds_unique VALUES
+    (INTERVAL '0 00:00:00' DAY TO SECOND),
+    (INTERVAL '213503982 08:01:49.551616' DAY(9) TO SECOND(6));
+SELECT a FROM interval_overflow_ds_unique ORDER BY a;
+SELECT count(DISTINCT a) AS distinct_count, min(a), max(a)
+FROM interval_overflow_ds_unique;
+
+
 -- drop table
 DROP TABLE TEST_YMINTERVAL;
 

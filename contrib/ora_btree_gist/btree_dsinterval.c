@@ -5,6 +5,7 @@
 
 #include "btree_gist.h"
 #include "btree_utils_num.h"
+#include "common/int128.h"
 #include "utils/builtins.h"
 #include "utils/timestamp.h"
 
@@ -38,18 +39,12 @@ PG_FUNCTION_INFO_V1(gbt_dsintv_same);
  * For INTERVAL DAY TO SECOND type the field of "MONTH" is invalid.
  * Only calculate the value of "interval->day" and "interval->time".
  */
-static inline TimeOffset
+static inline INT128
 dsinterval_cmp_value(const Interval *interval)
 {
-	TimeOffset	span;
+	INT128		span = int64_to_int128(interval->time);
 
-	span = interval->time;
-
-#ifdef HAVE_INT64_TIMESTAMP
-	span += interval->day * INT64CONST(24) * USECS_PER_HOUR;
-#else
-	span += interval->day * ((double) HOURS_PER_DAY * SECS_PER_HOUR);
-#endif
+	int128_add_int64_mul_int64(&span, interval->day, USECS_PER_DAY);
 
 	return span;
 }
@@ -57,10 +52,10 @@ dsinterval_cmp_value(const Interval *interval)
 static int
 dsinterval_cmp_internal(Interval *interval1, Interval *interval2)
 {
-	TimeOffset	span1 = dsinterval_cmp_value(interval1);
-	TimeOffset	span2 = dsinterval_cmp_value(interval2);
+	INT128		span1 = dsinterval_cmp_value(interval1);
+	INT128		span2 = dsinterval_cmp_value(interval2);
 
-	return ((span1 < span2) ? -1 : (span1 > span2) ? 1 : 0);
+	return int128_compare(span1, span2);
 }
 
 /*****************************************************************************

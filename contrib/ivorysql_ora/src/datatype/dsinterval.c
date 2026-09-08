@@ -1411,20 +1411,14 @@ tm2dsinterval(struct tm *tm, fsec_t fsec, Interval *span)
  * For INTERVAL DAY TO SECOND type the field of "MONTH" is invalid.
  * Only calculate the value of "interval->day" and "interval->time".
  */
-static inline TimeOffset
+static inline INT128
 dsinterval_cmp_value(const Interval *interval)
 {
-	TimeOffset	span;
+	INT128		span;
 
-	span = interval->time;
-
-#ifdef HAVE_INT64_TIMESTAMP
-/* 	span += interval->month * INT64CONST(30) * USECS_PER_DAY; */
-	span += interval->day * INT64CONST(24) * USECS_PER_HOUR;
-#else
-/* 	span += interval->month * ((double) DAYS_PER_MONTH * SECS_PER_DAY); */
-	span += interval->day * ((double) HOURS_PER_DAY * SECS_PER_HOUR);
-#endif
+	/* Widen the time field before scaling days to microseconds. */
+	span = int64_to_int128(interval->time);
+	int128_add_int64_mul_int64(&span, interval->day, USECS_PER_DAY);
 
 	return span;
 }
@@ -1432,10 +1426,30 @@ dsinterval_cmp_value(const Interval *interval)
 static int
 dsinterval_cmp_internal(Interval *interval1, Interval *interval2)
 {
-	TimeOffset	span1 = dsinterval_cmp_value(interval1);
-	TimeOffset	span2 = dsinterval_cmp_value(interval2);
+	INT128		span1 = dsinterval_cmp_value(interval1);
+	INT128		span2 = dsinterval_cmp_value(interval2);
 
-	return ((span1 < span2) ? -1 : (span1 > span2) ? 1 : 0);
+	return int128_compare(span1, span2);
+}
+
+/*
+ * Adjust a linear DAY TO SECOND comparison value without constructing an
+ * Interval result.  The result of base +/- offset need not fit in Interval's
+ * day or time fields when it is only used as a RANGE frame boundary.
+ */
+static inline void
+dsinterval_adjust_cmp_value(INT128 *span, const Interval *offset, bool sub)
+{
+	if (sub)
+	{
+		int128_sub_int64(span, offset->time);
+		int128_sub_int64_mul_int64(span, offset->day, USECS_PER_DAY);
+	}
+	else
+	{
+		int128_add_int64(span, offset->time);
+		int128_add_int64_mul_int64(span, offset->day, USECS_PER_DAY);
+	}
 }
 
 /*****************************************************************************
@@ -2485,27 +2499,20 @@ in_range_dsinterval_dsinterval(PG_FUNCTION_ARGS)
 	Interval   *offset = PG_GETARG_INTERVAL_P(2);
 	bool		sub = PG_GETARG_BOOL(3);
 	bool		less = PG_GETARG_BOOL(4);
-	Interval   *sum;
+	INT128		bound;
 
-	if (int128_compare(int64_to_int128(dsinterval_cmp_value(offset)), int64_to_int128(0)) < 0)
+	if (int128_sign(dsinterval_cmp_value(offset)) < 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PRECEDING_OR_FOLLOWING_SIZE),
 				 errmsg("invalid preceding or following size in window function")));
 
-	/* We don't currently bother to avoid overflow hazards here */
-	if (sub)
-		sum = DatumGetIntervalP(DirectFunctionCall2(dsinterval_mi,
-													IntervalPGetDatum(base),
-													IntervalPGetDatum(offset)));
-	else
-		sum = DatumGetIntervalP(DirectFunctionCall2(dsinterval_pl,
-													IntervalPGetDatum(base),
-													IntervalPGetDatum(offset)));
+	bound = dsinterval_cmp_value(base);
+	dsinterval_adjust_cmp_value(&bound, offset, sub);
 
 	if (less)
-		PG_RETURN_BOOL(dsinterval_cmp_internal(val, sum) <= 0);
+		PG_RETURN_BOOL(int128_compare(dsinterval_cmp_value(val), bound) <= 0);
 	else
-		PG_RETURN_BOOL(dsinterval_cmp_internal(val, sum) >= 0);
+		PG_RETURN_BOOL(int128_compare(dsinterval_cmp_value(val), bound) >= 0);
 }
 
 /*****************************************************************************
@@ -2523,16 +2530,20 @@ Datum
 dsinterval_hash(PG_FUNCTION_ARGS)
 {
 	Interval   *interval = PG_GETARG_INTERVAL_P(0);
-	TimeOffset	span = dsinterval_cmp_value(interval);
+	INT128		span = dsinterval_cmp_value(interval);
+	int64		span64;
 
-	return DirectFunctionCall1(hashint8, Int64GetDatumFast(span));
+	/* Preserve hashes calculated before comparisons used INT128. */
+	span64 = int128_to_int64(span);
+
+	return DirectFunctionCall1(hashint8, Int64GetDatumFast(span64));
 }
 
 Datum
 dsinterval_hash_extended(PG_FUNCTION_ARGS)
 {
 	Interval   *interval = PG_GETARG_INTERVAL_P(0);
-	INT128		span = int64_to_int128(dsinterval_cmp_value(interval));
+	INT128		span = dsinterval_cmp_value(interval);
 	int64		span64;
 
 	/* Same approach as interval_hash */
