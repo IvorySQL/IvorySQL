@@ -1442,6 +1442,7 @@ plisql_package_qualified_signature(PLiSQL_function *func)
 	char	   *nspname;
 	char	   *pkgqual;
 	char	   *result;
+	bool		is_package_itself;
 
 	if (func->item == NULL)
 		return NULL;
@@ -1459,10 +1460,21 @@ plisql_package_qualified_signature(PLiSQL_function *func)
 	}
 
 	pkgqual = quote_qualified_identifier(nspname, NameStr(pkgStruct->pkgname));
+	is_package_itself = (strcmp(func->fn_signature,
+								NameStr(pkgStruct->pkgname)) == 0);
 	ReleaseSysCache(pkgTup);
 	pfree(nspname);
 
-	result = psprintf("%s.%s", pkgqual, func->fn_signature);
+	/*
+	 * The package's own spec/init block carries the bare package name as its
+	 * fn_signature (see package_doCompile); appending it again would yield
+	 * "schema.package.package". Member routines carry the routine name, so
+	 * they keep the "schema.package.routine" form.
+	 */
+	if (is_package_itself)
+		result = pstrdup(pkgqual);
+	else
+		result = psprintf("%s.%s", pkgqual, func->fn_signature);
 	pfree(pkgqual);
 
 	return result;
