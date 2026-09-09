@@ -57,6 +57,13 @@ ALTER PROPERTY GRAPH g3
 ALTER PROPERTY GRAPH g3 ALTER VERTEX TABLE t3 DROP LABEL t3l3x;  -- error
 ERROR:  property graph "g3" element "t3" has no label "t3l3x"
 ALTER PROPERTY GRAPH g3 ALTER VERTEX TABLE t3 DROP LABEL t3l3;
+-- Test that the last label on an element cannot be dropped
+ALTER PROPERTY GRAPH g3 ALTER VERTEX TABLE t3 DROP LABEL t3l2;
+ALTER PROPERTY GRAPH g3 ALTER VERTEX TABLE t3 DROP LABEL t3l1;  -- error: last label
+ERROR:  cannot drop the last label from element "t3"
+HINT:  Every element must have at least one label.
+-- Restore the dropped label for further tests
+ALTER PROPERTY GRAPH g3 ALTER VERTEX TABLE t3 ADD LABEL t3l2 PROPERTIES ALL COLUMNS;
 ALTER PROPERTY GRAPH g3 DROP VERTEX TABLES (t2);  -- fail
 ERROR:  cannot drop vertex t2 of property graph g3 because other objects depend on it
 DETAIL:  edge e1 of property graph g3 depends on vertex t2 of property graph g3
