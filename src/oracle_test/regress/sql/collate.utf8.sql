@@ -26,6 +26,9 @@ SELECT U&'\00C1\00E1' !~ '[[:alpha:]]' COLLATE regress_builtin_c;
 
 DROP COLLATION regress_builtin_c;
 
+-- a '_' matches a multibyte character
+SELECT 'café' ILIKE 'caf_' COLLATE "C";
+
 --
 -- Test PG_C_UTF8
 --
