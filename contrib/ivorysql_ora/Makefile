@@ -62,10 +62,22 @@ cleansql:
 
 # REGRESS_OPTS mainly used for installcheck or debug.
 #REGRESS_OPTS = --port=1521
-# The utl_url regression tests exercise multibyte input and charset
-# conversions, so pin the test database to UTF8 instead of relying on
-# whatever encoding initdb derives from the invoking environment's locale.
+# The tests in this suite exercise multibyte behaviour: character counts
+# under CHAR length semantics, chr() codepoints that only exist in Unicode,
+# UTF8-only normalization (COMPOSE/DECOMPOSE), and utl_url escape output for
+# whole character sets.  Their expected results are therefore only valid for
+# a UTF8 test database, so pin the encoding instead of relying on whatever
+# initdb derives from the invoking environment's locale, and refuse an
+# explicit non-UTF8 override up front rather than letting it surface as
+# seemingly unrelated failures scattered across the suite.
 ENCODING = UTF8
+
+CHECK_GOALS = oracle-check oracle-installcheck
+ifneq ($(filter $(CHECK_GOALS),$(MAKECMDGOALS)),)
+ifneq ($(ENCODING),UTF8)
+$(error ivorysql_ora regression tests require ENCODING=UTF8 (got '$(ENCODING)'); the expected outputs are only valid for a UTF8 test database)
+endif
+endif
 
 ORA_REGRESS = \
 	ora_character \
