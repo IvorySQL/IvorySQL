@@ -58,7 +58,12 @@ case $testhost in
 		;;
 esac
 
-POSTMASTER_OPTS="-F -c listen_addresses=$LISTEN_ADDRESSES -k \"$PGHOST\""
+# Note: oracle-mode servers also listen on ivorysql.listen_addresses /
+# ivorysql.port (default localhost/1521).  The test programs connect via
+# unix socket (PGHOST + hardcoded port=1521), so mirror $LISTEN_ADDRESSES
+# into ivorysql.listen_addresses to avoid fatal port conflicts with other
+# servers that may hold TCP port 1521.
+POSTMASTER_OPTS="-F -c listen_addresses=$LISTEN_ADDRESSES -c ivorysql.listen_addresses=$LISTEN_ADDRESSES -k \"$PGHOST\""
 export PGHOST
 
 # don't rely on $PWD here, as old shells don't set it
