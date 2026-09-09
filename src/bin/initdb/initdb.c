@@ -3732,6 +3732,14 @@ main(int argc, char *argv[])
 		free(lowerusername);
 	}
 
+	if (database_mode == DB_ORACLE)
+	{
+		printf(_("The database cluster will be initialized in Oracle compatibility mode.\n"));
+		printf(_("Use \"--dbmode=pg\" to initialize the cluster in PostgreSQL compatibility mode instead.\n\n"));
+	}
+	else
+		printf(_("The database cluster will be initialized in PostgreSQL compatibility mode.\n\n"));
+
 	printf(_("The files belonging to this database system will be owned "
 			 "by user \"%s\".\n"
 			 "This user must also own the server process.\n\n"),
