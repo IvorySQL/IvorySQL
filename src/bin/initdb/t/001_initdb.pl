@@ -70,10 +70,17 @@ mkdir $datadir;
 	}
 }
 
-command_like(
-	[ 'initdb', '--no-sync', '--dbmode' => 'pg', "$tempdir/data_pg" ],
-	qr/The database cluster will be initialized in PostgreSQL compatibility mode\./,
-	'PostgreSQL compatibility mode is reported');
+for my $test (
+	[ 'pg', 'data_pg', 'lowercase PostgreSQL mode' ],
+	[ 'PG', 'data_pg_upper', 'case-insensitive PostgreSQL mode' ],
+	[ '0', 'data_pg_numeric', 'numeric PostgreSQL mode alias' ])
+{
+	command_like(
+		[ 'initdb', '--no-sync', '--dbmode' => $test->[0],
+			"$tempdir/$test->[1]" ],
+		qr/The database cluster will be initialized in PostgreSQL compatibility mode\./,
+		"$test->[2] is reported");
+}
 
 # Control file should tell that data checksums are enabled by default.
 command_like(

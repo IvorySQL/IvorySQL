@@ -1723,7 +1723,8 @@ bootstrap_template1(void)
 	initPQExpBuffer(&cmd);
 
 	printfPQExpBuffer(&cmd, "\"%s\" --boot -C ivorysql.identifier_case_switch=%d %s %s %s", 
-			 backend_exec, caseswitchmode, boot_options, extra_options, pg_strcasecmp(dbmode, "pg") ? "-y oracle" : "-y pg");
+			 backend_exec, caseswitchmode, boot_options, extra_options,
+			 database_mode == DB_PG ? "-y pg" : "-y oracle");
 	appendPQExpBuffer(&cmd, " -X %d", wal_segment_size_mb * (1024 * 1024));
 	if (data_checksums)
 		appendPQExpBufferStr(&cmd, " -k");
@@ -3289,7 +3290,7 @@ initialize_data_directory(void)
 	fputs(_("performing post-bootstrap initialization ... "), stdout);
 	fflush(stdout);
 
-	if (strcmp(dbmode, "pg") == 0)
+	if (database_mode == DB_PG)
 	{
 		initPQExpBuffer(&cmd);
 		printfPQExpBuffer(&cmd, "\"%s\" %s %s template1 >%s",
