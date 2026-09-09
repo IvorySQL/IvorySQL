@@ -118,6 +118,50 @@ static Node *make_nulltest_from_distinct(ParseState *pstate,
 										 A_Expr *distincta, Node *arg);
 static Node *transformColumnRefOrFunCall(ParseState *pstate, ColumnRefOrFuncCall *cref_func);
 
+/*
+ * record_orajoin_operand
+ *		Bookkeeping for the Oracle outer-join operator (+), called from
+ *		transformColumnRefInternal() for every column reference.
+ *
+ *		While transformOraJoinClause() probes a WHERE predicate it sets
+ *		pstate->p_orajoin_state; in that case we stash the resolved Var (and
+ *		its ColumnRef) so extractOraJoins() can tell which relation each side
+ *		of the predicate belongs to.  Only a plain Var can act as a join
+ *		operand -- anything else (a whole-row reference, a function call)
+ *		leaves ojs->var NULL and extractOraJoins() then leaves the predicate
+ *		alone.  "node" can legitimately be NULL here (an unresolved column
+ *		about to raise "column does not exist"), so it must be checked before
+ *		IsA().
+ *
+ *		A ColumnRef that still carries the (+) marker at this point, with
+ *		p_orajoin_state unset, is in a place the operator is not allowed:
+ *		transformOraJoinClause() strips the marker from every predicate it
+ *		keeps (whether it became a JOIN ON clause or stayed in WHERE), so the
+ *		only way to get here still marked is a context that is never routed
+ *		through it -- a target list, GROUP BY/HAVING, ORDER BY, or the WHERE
+ *		clause of an UPDATE/DELETE.  Oracle rejects those too.
+ */
+static void
+record_orajoin_operand(ParseState *pstate, Node *node, ColumnRef *cref)
+{
+	if (cref->ora_join_op_exists && pstate->p_orajoin_state == NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				  errmsg("outer join operator (+) is not allowed here"),
+				  errdetail("*Cause: An attempt was made to reference (+) in either the select-list, "
+							"CONNECT BY clause, START WITH clause, or ORDER BY clause. "
+							"*Action: Do not use the operator in the select-list, CONNECT BY clause, "
+							"START WITH clause, or ORDER BY clause.")));
+
+	if (pstate->p_orajoin_state != NULL && node != NULL && IsA(node, Var))
+	{
+		OraJoinState *ojs = (OraJoinState *) pstate->p_orajoin_state;
+
+		ojs->var = (Var *) node;
+		ojs->cref = cref;
+	}
+}
+
 static inline void
 set_merge_on_attrno(ParseState *pstate, char *colname)
 {
@@ -739,6 +783,9 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 						node = transformWholeRowRef(pstate, nsitem, levels_up,
 													cref->location);
 				}
+
+				record_orajoin_operand(pstate, node, cref);
+
 				break;
 			}
 		case 2:
@@ -805,6 +852,9 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 											 false,
 											 cref->location);
 				}
+
+				record_orajoin_operand(pstate, node, cref);
+
 				break;
 			}
 		case 3:
@@ -873,6 +923,9 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 											 false,
 											 cref->location);
 				}
+
+				record_orajoin_operand(pstate, node, cref);
+
 				break;
 			}
 		case 4:
@@ -953,6 +1006,9 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 											 false,
 											 cref->location);
 				}
+
+				record_orajoin_operand(pstate, node, cref);
+
 				break;
 			}
 		default:
