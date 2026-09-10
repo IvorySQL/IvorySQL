@@ -1,0 +1,391 @@
+--
+-- Tests for DBMS_LOB package
+--
+-- Every expected value was verified against Oracle 23ai Free.  IvorySQL
+-- models clob/nclob/blob as value types (domains over text/bytea), so the
+-- locator-restricted error paths of Oracle (ORA-22275 for uninitialized
+-- locators) do not apply; documented deviations are exercised explicitly.
+--
+-- =============================================================================
+-- GETLENGTH
+-- =============================================================================
+SELECT dbms_lob.getlength('abcde'::clob) AS gl_text;
+ gl_text 
+---------
+ 5
+(1 row)
+
+SELECT dbms_lob.getlength('你好'::clob) AS gl_chars;
+ gl_chars 
+----------
+ 2
+(1 row)
+
+SELECT dbms_lob.getlength(NULL::clob) AS gl_null;
+ gl_null 
+---------
+ 
+(1 row)
+
+SELECT dbms_lob.getlength(hextoraw('aabbccddee')::blob) AS gl_blob;
+ gl_blob 
+---------
+ 5
+(1 row)
+
+SELECT dbms_lob.getlength(NULL::blob) AS gl_blob_null;
+ gl_blob_null 
+--------------
+ 
+(1 row)
+
+-- nclob values resolve to the text-family overload
+DECLARE
+    x nclob := 'abcd';
+BEGIN
+    RAISE NOTICE 'GL nclob: %', dbms_lob.getlength(x);
+END;
+/
+NOTICE:  GL nclob: 4
+-- =============================================================================
+-- SUBSTR (amount first, offset second; opposite order of SQL SUBSTR)
+-- =============================================================================
+SELECT dbms_lob.substr('abcde'::clob, 3, 2) AS s_basic;
+ s_basic 
+---------
+ bcd
+(1 row)
+
+SELECT dbms_lob.substr('abcde'::clob, 100, 4) AS s_clamped;
+ s_clamped 
+-----------
+ de
+(1 row)
+
+SELECT dbms_lob.substr('abcde'::clob, 3) AS s_default_offset;
+ s_default_offset 
+------------------
+ abc
+(1 row)
+
+SELECT dbms_lob.substr('abcde'::clob) AS s_defaults;
+ s_defaults 
+------------
+ abcde
+(1 row)
+
+SELECT dbms_lob.substr('abcde'::clob, 3, 0) AS s_offset_0;
+ s_offset_0 
+------------
+ 
+(1 row)
+
+SELECT dbms_lob.substr('abcde'::clob, 3, 10) AS s_offset_high;
+ s_offset_high 
+---------------
+ 
+(1 row)
+
+SELECT dbms_lob.substr('abcde'::clob, 0, 1) AS s_amount_0;
+ s_amount_0 
+------------
+ 
+(1 row)
+
+SELECT dbms_lob.substr('abcde'::clob, -1, 1) AS s_amount_neg;
+ s_amount_neg 
+--------------
+ 
+(1 row)
+
+SELECT dbms_lob.substr(NULL::clob, 1, 1) AS s_null;
+ s_null 
+--------
+ 
+(1 row)
+
+SELECT dbms_lob.substr(hextoraw('aabbccddee')::blob, 2, 2) AS s_blob;
+ s_blob 
+--------
+ \xbbcc
+(1 row)
+
+SELECT dbms_lob.substr(hextoraw('aabbccddee')::blob, 100, 4) AS s_blob_clamped;
+ s_blob_clamped 
+----------------
+ \xddee
+(1 row)
+
+SELECT dbms_lob.substr(hextoraw('aabbccddee')::blob, 2, 20) AS s_blob_offset_high;
+ s_blob_offset_high 
+--------------------
+ 
+(1 row)
+
+-- =============================================================================
+-- INSTR
+-- =============================================================================
+SELECT dbms_lob.instr('abcabc'::clob, 'bc') AS i_default;
+ i_default 
+-----------
+ 2
+(1 row)
+
+SELECT dbms_lob.instr('abcabc'::clob, 'bc', 3) AS i_offset;
+ i_offset 
+----------
+ 5
+(1 row)
+
+SELECT dbms_lob.instr('abcabc'::clob, 'bc', 1, 2) AS i_occurrence;
+ i_occurrence 
+--------------
+ 5
+(1 row)
+
+SELECT dbms_lob.instr('abcabc'::clob, 'bc', 100) AS i_offset_high;
+ i_offset_high 
+---------------
+ 0
+(1 row)
+
+SELECT dbms_lob.instr('abcabc'::clob, 'bc', 0) AS i_offset_0;
+ i_offset_0 
+------------
+ 
+(1 row)
+
+SELECT dbms_lob.instr('abcabc'::clob, 'bc', 1, 0) AS i_occurrence_0;
+ i_occurrence_0 
+----------------
+ 
+(1 row)
+
+SELECT dbms_lob.instr('abcabc'::clob, 'zz') AS i_no_match;
+ i_no_match 
+------------
+ 0
+(1 row)
+
+SELECT dbms_lob.instr(NULL::clob, 'bc') AS i_null;
+ i_null 
+--------
+ 
+(1 row)
+
+SELECT dbms_lob.instr(hextoraw('aabbccbbaa')::blob, hextoraw('bb')::raw) AS i_blob;
+ i_blob 
+--------
+ 2
+(1 row)
+
+SELECT dbms_lob.instr(hextoraw('aabbccbbaa')::blob, hextoraw('bb')::raw, 3, 2) AS i_blob_occ;
+ i_blob_occ 
+------------
+ 0
+(1 row)
+
+SELECT dbms_lob.instr(hextoraw('aabbccbbaa')::blob, hextoraw('cc')::raw, 4) AS i_blob_none;
+ i_blob_none 
+-------------
+ 0
+(1 row)
+
+-- =============================================================================
+-- COMPARE (0 = equal, NULL = invalid, nonzero = differ; nonzero value is
+-- unspecified in Oracle, so only the 0/NULL distinction is asserted)
+-- =============================================================================
+SELECT dbms_lob.compare('abcde'::clob, 'abcde'::clob) AS c_equal;
+ c_equal 
+---------
+ 0
+(1 row)
+
+SELECT dbms_lob.compare('abcde'::clob, 'abcXe'::clob, 5) AS c_differs_is_nonzero;
+ c_differs_is_nonzero 
+----------------------
+ 4
+(1 row)
+
+SELECT dbms_lob.compare('abcde'::clob, 'abcde'::clob, 3) AS c_amount_limited;
+ c_amount_limited 
+------------------
+ 0
+(1 row)
+
+SELECT dbms_lob.compare('abcde'::clob, 'abcde'::clob, 0) AS c_amount_0;
+ c_amount_0 
+------------
+ 
+(1 row)
+
+SELECT dbms_lob.compare('abcde'::clob, 'abcde'::clob, 1, 0, 1) AS c_offset_0;
+ c_offset_0 
+------------
+ 
+(1 row)
+
+SELECT dbms_lob.compare(NULL::clob, 'abcde'::clob) AS c_null;
+ c_null 
+--------
+ 
+(1 row)
+
+SELECT CASE WHEN dbms_lob.compare('abc'::clob, 'abcdef'::clob) = 0
+            THEN 'EQ' ELSE 'NE' END AS c_prefix;
+ c_prefix 
+----------
+ NE
+(1 row)
+
+SELECT dbms_lob.compare(hextoraw('aabb')::blob, hextoraw('aabb')::blob) AS c_blob_equal;
+ c_blob_equal 
+--------------
+ 0
+(1 row)
+
+SELECT CASE WHEN dbms_lob.compare(hextoraw('aabb')::blob, hextoraw('aacc')::blob, 2) = 0
+            THEN 'EQ' ELSE 'NE' END AS c_blob_differs;
+ c_blob_differs 
+----------------
+ NE
+(1 row)
+
+-- =============================================================================
+-- APPEND
+-- =============================================================================
+DECLARE
+    d clob;
+    b blob;
+BEGIN
+    d := 'abc';
+    dbms_lob.append(d, 'def');
+    dbms_lob.append(d, 'ghi');
+    RAISE NOTICE 'APPEND clob: %', d;
+    dbms_lob.append(d, NULL);
+    RAISE NOTICE 'APPEND clob null src (no-op): %', d;
+    d := NULL;
+    dbms_lob.append(d, 'q');
+    RAISE NOTICE 'APPEND clob null dest: %', d;
+    b := hextoraw('aabb');
+    dbms_lob.append(b, hextoraw('ccdd')::raw);
+    RAISE NOTICE 'APPEND blob: %', b;
+END;
+/
+NOTICE:  APPEND clob: abcdefghi
+NOTICE:  APPEND clob null src (no-op): abcdefghi
+NOTICE:  APPEND clob null dest: q
+NOTICE:  APPEND blob: \xaabbccdd
+-- =============================================================================
+-- COPY (overwrites from dest_offset, preserves the rest)
+-- =============================================================================
+DECLARE
+    d clob;
+    b blob;
+BEGIN
+    d := 'ABCDEF';
+    dbms_lob.copy(d, 'xy', 2, 3, 1);
+    RAISE NOTICE 'COPY overwrite: %', d;
+    d := 'ABCDEF';
+    dbms_lob.copy(d, 'xyz', 100, 2, 2);
+    RAISE NOTICE 'COPY clamped: %', d;
+    b := hextoraw('aabbcc');
+    dbms_lob.copy(b, hextoraw('dd')::raw, 1, 2, 1);
+    RAISE NOTICE 'COPY blob: %', b;
+END;
+/
+NOTICE:  COPY overwrite: ABxyEF
+NOTICE:  COPY clamped: AyzDEF
+NOTICE:  COPY blob: \xaaddcc
+-- =============================================================================
+-- TRIM
+-- =============================================================================
+DECLARE
+    d clob;
+    b blob;
+BEGIN
+    d := 'abcdef';
+    dbms_lob.trim(d, 3);
+    RAISE NOTICE 'TRIM clob: %', d;
+    b := hextoraw('aabbccdd');
+    dbms_lob.trim(b, 2);
+    RAISE NOTICE 'TRIM blob: %', b;
+    BEGIN
+        d := 'abc';
+        dbms_lob.trim(d, 10);
+        RAISE NOTICE 'TRIM over-length: no error';
+    EXCEPTION
+        WHEN OTHERS THEN
+            RAISE NOTICE 'TRIM over-length raised: %', sqlerrm;
+    END;
+END;
+/
+NOTICE:  TRIM clob: abc
+NOTICE:  TRIM blob: \xaabb
+NOTICE:  TRIM over-length raised: specified trim length is greater than current LOB value's length
+-- =============================================================================
+-- ERASE (spaces for CLOB/NCLOB, zero bytes for BLOB, IN OUT amount)
+-- =============================================================================
+DECLARE
+    d clob;
+    b blob;
+    amt number;
+BEGIN
+    d := 'abcdef';
+    amt := 2;
+    dbms_lob.erase(d, amt, 2);
+    RAISE NOTICE 'ERASE clob: [%] amt=%', d, amt;
+    b := hextoraw('aabbccddee');
+    amt := 2;
+    dbms_lob.erase(b, amt, 2);
+    RAISE NOTICE 'ERASE blob: % amt=%', b, amt;
+    d := 'abcdef';
+    amt := 10;
+    dbms_lob.erase(d, amt, 4);
+    RAISE NOTICE 'ERASE clamped: [%] amt=%', d, amt;
+    d := 'abcdef';
+    amt := 2;
+    dbms_lob.erase(d, amt, 100);
+    RAISE NOTICE 'ERASE offset high: [%] amt=%', d, amt;
+END;
+/
+NOTICE:  ERASE clob: [a  def] amt=2
+NOTICE:  ERASE blob: \xaa0000ddee amt=2
+NOTICE:  ERASE clamped: [abc   ] amt=3
+NOTICE:  ERASE offset high: [abcdef] amt=0
+-- =============================================================================
+-- LOBMAXSIZE constant (package constants are usable in PL/iSQL, as in Oracle)
+-- =============================================================================
+DECLARE
+BEGIN
+    RAISE NOTICE 'lobmaxsize: %', dbms_lob.lobmaxsize;
+END;
+/
+NOTICE:  lobmaxsize: 18446744073709551615
+-- =============================================================================
+-- Usage on a table column round-trip
+-- =============================================================================
+CREATE TABLE dbms_lob_test (id int, doc clob, payload blob);
+INSERT INTO dbms_lob_test VALUES (1, 'hello world', hextoraw('aabbcc'));
+DECLARE
+    d clob;
+BEGIN
+    SELECT doc INTO d FROM dbms_lob_test WHERE id = 1;
+    dbms_lob.append(d, ' from oracle');
+    UPDATE dbms_lob_test SET doc = d WHERE id = 1;
+END;
+/
+SELECT dbms_lob.getlength(doc) AS len, dbms_lob.substr(doc, 5, 13) AS tail
+FROM dbms_lob_test WHERE id = 1;
+ len | tail  
+-----+-------
+ 23  | from 
+(1 row)
+
+SELECT dbms_lob.instr(doc, 'oracle') AS pos FROM dbms_lob_test WHERE id = 1;
+ pos 
+-----
+ 18
+(1 row)
+
+DROP TABLE dbms_lob_test;
