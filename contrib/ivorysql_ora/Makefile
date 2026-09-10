@@ -107,6 +107,7 @@ ORA_REGRESS = \
 	dbms_scheduler
 
 TAP_TESTS = 1
+	ora_remainder
 
 # Include path for plisql.h (needed by dbms_utility)
 PG_CPPFLAGS += -I$(top_srcdir)/src/pl/plisql/src
