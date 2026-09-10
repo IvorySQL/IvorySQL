@@ -1179,6 +1179,43 @@ transformAExprOp(ParseState *pstate, A_Expr *a)
 		else
 			rexpr = transformExprRecurse(pstate, rexpr);
 
+		/*
+		 * In oracle mode, division follows Oracle NUMBER semantics and
+		 * never truncates.  Coerce integer operands (and untyped literals,
+		 * which Oracle would convert to NUMBER) to numeric so that
+		 * "10 / 4" yields 2.5 instead of the integer result 2.
+		 */
+		if (compatible_db == ORA_PARSER &&
+			list_length(a->name) == 1 &&
+			strcmp(strVal(linitial(a->name)), "/") == 0)
+		{
+			Oid			rtypId = exprType(rexpr);
+
+			if ((ltypeId == INT2OID || ltypeId == INT4OID ||
+				 ltypeId == INT8OID || ltypeId == UNKNOWNOID) &&
+				(rtypId == INT2OID || rtypId == INT4OID ||
+				 rtypId == INT8OID || rtypId == UNKNOWNOID))
+			{
+				Node	   *lcoerce,
+						   *rcoerce;
+
+				lcoerce = coerce_to_target_type(pstate, lexpr, ltypeId,
+												NUMERICOID, -1,
+												COERCION_IMPLICIT,
+												COERCE_IMPLICIT_CAST, -1);
+				rcoerce = coerce_to_target_type(pstate, rexpr, rtypId,
+												NUMERICOID, -1,
+												COERCION_IMPLICIT,
+												COERCE_IMPLICIT_CAST, -1);
+
+				if (lcoerce != NULL && rcoerce != NULL)
+				{
+					lexpr = lcoerce;
+					rexpr = rcoerce;
+				}
+			}
+		}
+
 		result = (Node *) make_op(pstate,
 								  a->name,
 								  lexpr,

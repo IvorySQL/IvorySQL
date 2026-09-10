@@ -943,3 +943,17 @@ SELECT BITAND('6','8') re FROM DUAL;
 SELECT BITAND(6,'8') re FROM DUAL;
 SELECT BITAND('6',8) re FROM DUAL;
 /* End - bug0000478 */
+
+--
+-- Integer division follows Oracle NUMBER semantics: it never truncates
+--
+SELECT 1 / 3;
+SELECT 10 / 4;
+SELECT -10 / 4;
+SELECT 1000000 / 3;
+SELECT 10 / 4.0;
+SELECT 7 / 2::numeric;
+SELECT '1' / 2;
+SELECT 6 / 2;
+SELECT 1.5 / 3;
+SELECT 0.1 / 3;
