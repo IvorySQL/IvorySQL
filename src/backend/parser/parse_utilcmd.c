@@ -640,8 +640,17 @@ generateSerialExtraStmts(CreateStmtContext *cxt, ColumnDef *column,
 	seqstmt->sequence->relpersistence = seqpersistence;
 	seqstmt->options = seqoptions;
 
-	if (compatible_db == ORA_PARSER)
+	if (compatible_db == ORA_PARSER && !for_identity)
+	{
+		/*
+		 * In Oracle-compatible mode, sequences created implicitly for
+		 * non-identity columns (SERIAL, etc.) default to NOCACHE.  Don't
+		 * synthesize NOCACHE for identity columns: doing so would mask an
+		 * explicit NOCACHE, and init_params() already picks the appropriate
+		 * default for an identity sequence that has no CACHE/NOCACHE option.
+		 */
 		seqstmt->options = lcons(makeDefElem("nocache", NULL, -1), seqstmt->options);
+	}
 
 	if (seq_type)
 		seqstmt->seq_type = seq_type;
