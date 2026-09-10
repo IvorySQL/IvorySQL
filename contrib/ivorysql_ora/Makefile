@@ -97,7 +97,8 @@ ORA_REGRESS = \
 	utl_url \
 	dbms_session \
 	dbms_transaction \
-	dbms_random
+	dbms_random \
+	ora_remainder
 
 # Include path for plisql.h (needed by dbms_utility)
 PG_CPPFLAGS += -I$(top_srcdir)/src/pl/plisql/src
