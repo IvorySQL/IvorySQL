@@ -6,9 +6,28 @@ on:
   pull_request:
     branches: [ master , IVORY_REL_4_STABLE , IVORYSQL_REL_1_STABLE]
 
+concurrency:
+  # Cancel superseded runs of the same pull request (grouped by PR number)
+  # and of non-protected branches (grouped by ref). Preserve every push run
+  # on protected branches (master/IVORY_REL_4_STABLE/IVORYSQL_REL_1_STABLE)
+  # by giving each run a unique group (run_id), so that every pushed commit
+  # is tested.
+  group: |
+    ${{github.workflow }}-${{
+    case(github.event_name == 'pull_request',
+         format('pr-{0}', github.event.pull_request.number),
+         case(github.ref == 'refs/heads/master' ||
+              github.ref == 'refs/heads/IVORY_REL_4_STABLE' ||
+              github.ref == 'refs/heads/IVORYSQL_REL_1_STABLE',
+              github.run_id,
+              github.ref))
+    }}
+  cancel-in-progress: true
+
 jobs:
   pg_regression:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
     strategy:
       matrix:
         os: [ubuntu-latest]
