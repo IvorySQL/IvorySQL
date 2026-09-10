@@ -166,13 +166,21 @@ typedef struct TupleDescData *TupleDesc;
 extern void populate_compact_attribute(TupleDesc tupdesc, int attnum);
 
 /*
+ * Calculate the offset to the FormData_pg_attribute array at the end of the
+ * TupleDescData struct.  Although the preceding CompactAttribute array might
+ * require less than MAXIMUM_ALIGNOF alignment, the following attribute array
+ * must start at a maximally aligned address.
+ */
+#define TupleDescAttrOffset(natts) \
+	(MAXALIGN(offsetof(struct TupleDescData, compact_attrs) + \
+			  (natts) * sizeof(CompactAttribute)))
+
+/*
  * Calculates the base address of the Form_pg_attribute at the end of the
  * TupleDescData struct.
  */
 #define TupleDescAttrAddress(desc) \
-	(Form_pg_attribute) ((char *) (desc) + \
-	 (offsetof(struct TupleDescData, compact_attrs) + \
-	 (desc)->natts * sizeof(CompactAttribute)))
+	(Form_pg_attribute) ((char *) (desc) + TupleDescAttrOffset((desc)->natts))
 
 /* Accessor for the i'th FormData_pg_attribute element of tupdesc. */
 static inline FormData_pg_attribute *
@@ -181,6 +189,7 @@ TupleDescAttr(TupleDesc tupdesc, int i)
 	FormData_pg_attribute *attrs = TupleDescAttrAddress(tupdesc);
 
 	Assert(i >= 0 && i < tupdesc->natts);
+	Assert(((uintptr_t) attrs % MAXIMUM_ALIGNOF) == 0);
 
 	return &attrs[i];
 }
@@ -231,8 +240,7 @@ extern TupleDesc CreateTupleDescTruncatedCopy(TupleDesc tupdesc, int natts);
 extern TupleDesc CreateTupleDescCopyConstr(TupleDesc tupdesc);
 
 #define TupleDescSize(src) \
-	(offsetof(struct TupleDescData, compact_attrs) + \
-	 (src)->natts * sizeof(CompactAttribute) + \
+	(TupleDescAttrOffset((src)->natts) + \
 	 (src)->natts * sizeof(FormData_pg_attribute))
 
 extern void TupleDescCopy(TupleDesc dst, TupleDesc src);
