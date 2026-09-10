@@ -1,0 +1,178 @@
+--
+-- NLS_UPPER / NLS_LOWER
+--
+-- Oracle-compatible NLS case conversion.  Without an NLS parameter the
+-- conversion is a simple per-character mapping that does not depend on the
+-- database locale ('ss'+'ß' is not expanded on uppercasing).
+--
+SELECT nls_upper('abc');
+ nls_upper 
+-----------
+ ABC
+(1 row)
+
+SELECT nls_lower('ABC');
+ nls_lower 
+-----------
+ abc
+(1 row)
+
+SELECT nls_upper('straße');
+ nls_upper 
+-----------
+ STRAßE
+(1 row)
+
+SELECT nls_lower('STRAßE');
+ nls_lower 
+-----------
+ straße
+(1 row)
+
+SELECT nls_upper('') IS NULL AS empty_string_is_null;
+ empty_string_is_null 
+----------------------
+ t
+(1 row)
+
+SELECT nls_upper(NULL) IS NULL AS null_is_null;
+ null_is_null 
+--------------
+ t
+(1 row)
+
+-- a NULL nlsparam makes the whole call return NULL, like Oracle
+SELECT nls_upper('abc', NULL) IS NULL AS null_nlsparam_is_null;
+ null_nlsparam_is_null 
+-----------------------
+ t
+(1 row)
+
+--
+-- NLS_SORT parameter
+--
+-- the X-prefixed German and West-European sorts expand ß to SS on
+-- uppercasing; the corresponding non-X sorts behave like BINARY
+--
+SELECT nls_upper('straße', 'NLS_SORT=BINARY');
+ nls_upper 
+-----------
+ STRAßE
+(1 row)
+
+SELECT nls_upper('straße', 'NLS_SORT=XGERMAN');
+ nls_upper 
+-----------
+ STRASSE
+(1 row)
+
+SELECT nls_upper('straße', 'NLS_SORT=XGERMAN_DIN');
+ nls_upper 
+-----------
+ STRASSE
+(1 row)
+
+SELECT nls_upper('straße', 'NLS_SORT=XWEST_EUROPEAN');
+ nls_upper 
+-----------
+ STRASSE
+(1 row)
+
+SELECT nls_upper('straße', 'NLS_SORT=GERMAN');
+ nls_upper 
+-----------
+ STRAßE
+(1 row)
+
+SELECT nls_upper('straße', 'NLS_SORT=GERMAN_DIN');
+ nls_upper 
+-----------
+ STRAßE
+(1 row)
+
+SELECT nls_upper('straße', 'NLS_SORT=WEST_EUROPEAN');
+ nls_upper 
+-----------
+ STRAßE
+(1 row)
+
+SELECT nls_upper('straße', 'NLS_SORT=XFRENCH');
+ nls_upper 
+-----------
+ STRAßE
+(1 row)
+
+SELECT nls_upper('straße', 'NLS_SORT=FRENCH');
+ nls_upper 
+-----------
+ STRAßE
+(1 row)
+
+SELECT nls_lower('STRAßE', 'NLS_SORT=XGERMAN');
+ nls_lower 
+-----------
+ straße
+(1 row)
+
+SELECT nls_lower('STRASSE', 'NLS_SORT=XGERMAN');
+ nls_lower 
+-----------
+ strasse
+(1 row)
+
+-- parsing: case-insensitive, spaces tolerated around name and value,
+-- case/accent-insensitive suffixes allowed
+SELECT nls_upper('straße', 'NLS_SORT = XGERMAN');
+ nls_upper 
+-----------
+ STRASSE
+(1 row)
+
+SELECT nls_upper('straße', 'nls_sort=xgerman');
+ nls_upper 
+-----------
+ STRASSE
+(1 row)
+
+SELECT nls_upper('straße', 'NLS_SORT=xGerman');
+ nls_upper 
+-----------
+ STRASSE
+(1 row)
+
+SELECT nls_upper('straße', 'NLS_SORT= XGERMAN ');
+ nls_upper 
+-----------
+ STRASSE
+(1 row)
+
+SELECT nls_upper('straße', 'NLS_SORT=XGERMAN_CI');
+ nls_upper 
+-----------
+ STRASSE
+(1 row)
+
+SELECT nls_upper('straße', 'NLS_SORT=XGERMAN_AI');
+ nls_upper 
+-----------
+ STRASSE
+(1 row)
+
+-- a clause for another NLS parameter is accepted and ignored, like Oracle
+SELECT nls_upper('abc', 'NLS_DATE_LANGUAGE=AMERICAN');
+ nls_upper 
+-----------
+ ABC
+(1 row)
+
+--
+-- errors: Oracle reports ORA-12702 for all of these
+--
+SELECT nls_upper('straße', 'NLS_SORT=BOGUS');
+ERROR:  invalid NLS parameter string used in SQL function
+SELECT nls_upper('abc', 'NLS_SORT=');
+ERROR:  invalid NLS parameter string used in SQL function
+SELECT nls_upper('abc', 'garbage');
+ERROR:  invalid NLS parameter string used in SQL function
+SELECT nls_upper('abc', 'NLS_DATE_LANGUAGE=AMERICAN,NLS_SORT=XGERMAN');
+ERROR:  invalid NLS parameter string used in SQL function
