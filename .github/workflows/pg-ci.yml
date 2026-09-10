@@ -292,6 +292,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: ${{ env.CLONE_DEPTH }}
+          persist-credentials: false
 
       # We restore both the ccache from the default branch (typically master),
       # and from the current branch. This will often allow feature branches to

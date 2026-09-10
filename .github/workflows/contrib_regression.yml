@@ -6,12 +6,17 @@ on:
   pull_request:
     branches: [ master , IVORY_REL_4_STABLE , IVORYSQL_REL_1_STABLE]
 
+permissions:
+  contents: read
+
 jobs:
   contrib_regression:
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v3
+      with:
+        persist-credentials: false
     - name: dependancy
       run: |
         sudo apt-get update
