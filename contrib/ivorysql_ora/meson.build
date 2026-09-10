@@ -34,6 +34,7 @@ ivorysql_ora_sources = files(
   'src/builtin_packages/utl_encode/utl_encode.c',
   'src/builtin_packages/utl_url/utl_url.c',
   'src/builtin_packages/dbms_session/dbms_session.c',
+  'src/builtin_packages/dbms_crypto/dbms_crypto.c',
   'src/builtin_packages/dbms_transaction/dbms_transaction.c'
 )
 
