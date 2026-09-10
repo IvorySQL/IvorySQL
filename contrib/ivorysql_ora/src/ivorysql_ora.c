@@ -42,6 +42,7 @@
 
 #include "include/guc.h"
 #include "include/ivorysql_ora.h"
+#include "builtin_packages/dbms_scheduler/dbms_scheduler.h"
 
 /* Only include it once in any C file */
 PG_MODULE_MAGIC_EXT(
@@ -86,15 +87,17 @@ void _PG_fini(void);
 void
 _PG_init(void)
 {
-#if 0
-	/* Must be loaded with shared_preload_libaries */
-	if (!process_shared_preload_libraries_in_progress)
-		ereport(ERROR, (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				errmsg("ivorysql_ora must be loaded via shared_preload_libraries")));
-#endif
+	/*
+	 * ivorysql_ora works without shared_preload_libraries, except that the
+	 * DBMS_SCHEDULER background launcher can only be registered while the
+	 * library is being preloaded (the oracle-mode initdb default).
+	 */
 
 	/* Define custom GUC variables */
 	IvorysqlOraDefineGucs();
+
+	/* Register the DBMS_SCHEDULER launcher when preloaded */
+	SchedulerLauncherRegister();
 
 	/* Install Hooks */
 	pre_oracle_datatype_precedence_hook = oracle_datatype_precedence_hook;
