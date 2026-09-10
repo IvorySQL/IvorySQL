@@ -78,6 +78,7 @@ ORA_REGRESS = \
 	ora_raw_long \
 	ora_character_datatype_functions \
 	ora_datetime_datatype_functions \
+	ora_tochar_fmt_matrix \
 	ora_misc_functions \
 	ora_vsize \
 	ora_merge \
