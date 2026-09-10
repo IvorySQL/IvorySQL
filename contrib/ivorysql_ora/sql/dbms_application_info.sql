@@ -1,0 +1,139 @@
+--
+-- DBMS_APPLICATION_INFO
+--
+-- Regression tests for Oracle-compatible DBMS_APPLICATION_INFO package:
+--   - SET_MODULE / READ_MODULE
+--   - SET_ACTION
+--   - SET_CLIENT_INFO / READ_CLIENT_INFO
+--   - Integration with SYS_CONTEXT('USERENV', ...)
+--
+
+-- Initial session values should be NULL
+DO $$
+DECLARE
+    m VARCHAR2(48);
+    a VARCHAR2(32);
+    c VARCHAR2(64);
+BEGIN
+    dbms_application_info.read_module(m, a);
+    dbms_application_info.read_client_info(c);
+    IF m IS NOT NULL OR a IS NOT NULL OR c IS NOT NULL THEN
+        RAISE EXCEPTION 'Initial values should be NULL';
+    END IF;
+    RAISE INFO 'Initial application info is NULL: ok';
+END;
+$$;
+
+-- SET_MODULE and READ_MODULE
+DO $$
+DECLARE
+    m VARCHAR2(48);
+    a VARCHAR2(32);
+BEGIN
+    dbms_application_info.set_module('OrderProcessing', 'ValidateOrder');
+    dbms_application_info.read_module(m, a);
+    IF m != 'OrderProcessing' OR a != 'ValidateOrder' THEN
+        RAISE EXCEPTION 'Unexpected module/action: m=%, a=%', m, a;
+    END IF;
+    RAISE INFO 'SET_MODULE/READ_MODULE: ok';
+END;
+$$;
+
+-- Verify SYS_CONTEXT reflect module and action
+SELECT sys_context('USERENV', 'MODULE');
+SELECT sys_context('USERENV', 'ACTION');
+
+-- SET_ACTION updates only action
+DO $$
+DECLARE
+    m VARCHAR2(48);
+    a VARCHAR2(32);
+BEGIN
+    dbms_application_info.set_action('ChargePayment');
+    dbms_application_info.read_module(m, a);
+    IF m != 'OrderProcessing' OR a != 'ChargePayment' THEN
+        RAISE EXCEPTION 'Unexpected module/action after set_action: m=%, a=%', m, a;
+    END IF;
+    RAISE INFO 'SET_ACTION: ok';
+END;
+$$;
+
+SELECT sys_context('USERENV', 'ACTION');
+
+-- SET_CLIENT_INFO and READ_CLIENT_INFO
+DO $$
+DECLARE
+    c VARCHAR2(64);
+BEGIN
+    dbms_application_info.set_client_info('Client IP 192.168.1.100 Region AP-EAST');
+    dbms_application_info.read_client_info(c);
+    IF c != 'Client IP 192.168.1.100 Region AP-EAST' THEN
+        RAISE EXCEPTION 'Unexpected client info: %', c;
+    END IF;
+    RAISE INFO 'SET_CLIENT_INFO/READ_CLIENT_INFO: ok';
+END;
+$$;
+
+-- Verify SYS_CONTEXT reflect CLIENT_INFO
+SELECT sys_context('USERENV', 'CLIENT_INFO');
+
+-- Length truncation according to Oracle specs (module: 48, action: 32, client_info: 64)
+DO $$
+DECLARE
+    m VARCHAR2(100);
+    a VARCHAR2(100);
+    c VARCHAR2(100);
+    long_mod VARCHAR2(100) := repeat('M', 60);
+    long_act VARCHAR2(100) := repeat('A', 50);
+    long_cli VARCHAR2(100) := repeat('C', 80);
+BEGIN
+    dbms_application_info.set_module(long_mod, long_act);
+    dbms_application_info.set_client_info(long_cli);
+    dbms_application_info.read_module(m, a);
+    dbms_application_info.read_client_info(c);
+
+    IF length(m) != 48 OR length(a) != 32 OR length(c) != 64 THEN
+        RAISE EXCEPTION 'Truncation mismatch: len(m)=%, len(a)=%, len(c)=%', length(m), length(a), length(c);
+    END IF;
+    RAISE INFO 'Oracle byte limit truncation: ok';
+END;
+$$;
+
+-- Reset application info with NULL
+DO $$
+DECLARE
+    m VARCHAR2(48);
+    a VARCHAR2(32);
+    c VARCHAR2(64);
+BEGIN
+    dbms_application_info.set_module(NULL, NULL);
+    dbms_application_info.set_client_info(NULL);
+    dbms_application_info.read_module(m, a);
+    dbms_application_info.read_client_info(c);
+
+    IF m IS NOT NULL OR a IS NOT NULL OR c IS NOT NULL THEN
+        RAISE EXCEPTION 'Reset failed: values not NULL';
+    END IF;
+    RAISE INFO 'Reset with NULL: ok';
+END;
+$$;
+
+SELECT sys_context('USERENV', 'MODULE') IS NULL;
+SELECT sys_context('USERENV', 'ACTION') IS NULL;
+SELECT sys_context('USERENV', 'CLIENT_INFO') IS NULL;
+
+-- Package constant
+SELECT dbms_application_info.set_session_longops_nohint;
+
+-- Verify internal functions execute privilege revoked from PUBLIC (CWE-862)
+SELECT p.proname, has_function_privilege('public', p.oid, 'EXECUTE') AS public_can_execute
+  FROM pg_catalog.pg_proc p
+  JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+ WHERE n.nspname = 'sys'
+   AND p.proname IN ('dbms_application_info_set_module',
+                     'dbms_application_info_set_action',
+                     'dbms_application_info_set_client_info',
+                     'dbms_application_info_get_module',
+                     'dbms_application_info_get_action',
+                     'dbms_application_info_get_client_info')
+ ORDER BY p.proname;

@@ -95,6 +95,7 @@ ORA_REGRESS = \
 	utl_encode \
 	utl_url \
 	dbms_session \
+	dbms_application_info \
 	dbms_transaction
 
 # Include path for plisql.h (needed by dbms_utility)
