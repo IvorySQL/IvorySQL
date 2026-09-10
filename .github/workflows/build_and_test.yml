@@ -3,6 +3,9 @@ name: "Build and Test"
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   regression:
     runs-on: ubuntu-18.04
@@ -12,6 +15,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+      with:
+        persist-credentials: false
     - name: Build ${{ matrix.container-os }} Docker
       if: ${{ matrix.container-os == 'centos-7' }}
       run: |
