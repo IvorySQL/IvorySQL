@@ -58,6 +58,40 @@ SELECT cast('abc' AS varchar2(4 byte)) = 'abc';
  t
 (1 row)
 
+-- Explicit CHAR(n BYTE) casts must not split multibyte characters.  CHAR
+-- values are padded back to the declared byte length after clipping.
+SELECT cast('中文' AS char(6 byte)) = '中文'
+       AND lengthb(cast('中文' AS char(6 byte))) = 6;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT cast('中文' AS char(5 byte)) = '中'
+       AND lengthb(cast('中文' AS char(5 byte))) = 5;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT lengthb(cast('中文' AS char(2 byte))) = 2;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT cast('abcdef' AS char(4 byte)) = 'abcd';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT cast('abc' AS char(4 byte)) = 'abc';
+ ?column? 
+----------
+ t
+(1 row)
+
 INSERT INTO TEST_ORACHAR SELECT generate_series(1,10), generate_series(1,10);
 INSERT INTO TEST_ORAVARCHAR SELECT generate_series(1,10), generate_series(1,10);
 -- Comparison operator
