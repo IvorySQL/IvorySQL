@@ -29,6 +29,37 @@ select add_months('2022-08-23',3) from dual;
  2022-11-23 00:00:00
 (1 row)
 
+-- add_months across BC years; SYYYY makes the era visible
+select to_char(add_months(to_date('0002-06-15 BC', 'yyyy-mm-dd ad'), 3), 'syyyy-mm-dd') as add_months_bc;
+ add_months_bc 
+---------------
+ -0002-09-15
+(1 row)
+
+select to_char(add_months(to_date('4712-01-01 BC', 'yyyy-mm-dd ad'), 12), 'syyyy-mm-dd') as add_months_bc_min;
+ add_months_bc_min 
+-------------------
+ -4711-01-01
+(1 row)
+
+select to_char(add_months(to_date('0005-01-31 BC', 'yyyy-mm-dd ad'), 1), 'syyyy-mm-dd') as add_months_bc_leap;
+ add_months_bc_leap 
+--------------------
+ -0005-02-29
+(1 row)
+
+select to_char(add_months('0001-01-01', -25), 'syyyy-mm-dd') as add_months_ad_to_bc;
+ add_months_ad_to_bc 
+---------------------
+ -0003-12-01
+(1 row)
+
+select to_char(add_months('9999-12-31', -120002), 'syyyy-mm-dd') as add_months_back_to_bc;
+ add_months_back_to_bc 
+-----------------------
+ -0002-10-31
+(1 row)
+
 alter session set NLS_LENGTH_SEMANTICS='BYTE';
 create table char_tb(char_clo char(3));
 insert into char_tb values('测试');
