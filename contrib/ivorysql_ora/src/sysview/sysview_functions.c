@@ -34,6 +34,38 @@
 #include "utils/builtins.h"
 
 PG_FUNCTION_INFO_V1(ora_case_trans);
+
+static char *
+case_transform_text(const char *ident, int len)
+{
+	char	   *upper_ident;
+	char	   *lower_ident;
+	char	   *result;
+
+	/* This operates on VARCHAR2 values, so identifier truncation is wrong. */
+	upper_ident = upcase_identifier(ident, len, false, false);
+	lower_ident = downcase_identifier(ident, len, false, false);
+
+	if (strcmp(upper_ident, ident) == 0)
+	{
+		result = lower_ident;
+		pfree(upper_ident);
+	}
+	else if (strcmp(lower_ident, ident) == 0)
+	{
+		result = upper_ident;
+		pfree(lower_ident);
+	}
+	else
+	{
+		result = pnstrdup(ident, len);
+		pfree(upper_ident);
+		pfree(lower_ident);
+	}
+
+	return result;
+}
+
 Datum
 ora_case_trans(PG_FUNCTION_ARGS)
 {
@@ -45,7 +77,7 @@ ora_case_trans(PG_FUNCTION_ARGS)
 
 	string = (char *) TextDatumGetCString(PG_GETARG_DATUM(0));
 
-	retval = identifier_case_transform(string, strlen(string));
+	retval = case_transform_text(string, strlen(string));
 
 	PG_RETURN_TEXT_P(cstring_to_text(retval));
 }
