@@ -12,6 +12,8 @@ pg_rewind_sources = files(
 )
 
 pg_rewind_sources += xlogreader_sources
+pg_rewind_sources += rmgr_desc_sources
+pg_rewind_sources += files('../pg_waldump/compat.c')
 
 if host_system == 'windows'
   pg_rewind_sources += rc_bin_gen.process(win32ver_rc, extra_args: [
