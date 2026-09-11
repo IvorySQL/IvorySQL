@@ -3027,6 +3027,7 @@ CREATE FUNCTION sys.oravarchar_pattern_gt(sys.oravarcharchar, sys.oravarcharchar
 RETURNS boolean
 AS 'MODULE_PATHNAME','oravarchar_pattern_gt'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE
 LEAKPROOF;
