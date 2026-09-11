@@ -7,7 +7,8 @@ EXTENSION = test_package_reset
 DATA = test_package_reset--1.0.sql
 
 REGRESS = test_package_reset
-ORA_REGRESS = $(REGRESS) test_reset_one_oid test_reset_all test_reset_defaults
+ORA_REGRESS = $(REGRESS) test_reset_one_oid test_reset_all test_reset_defaults \
+	test_discard_function_cache
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
