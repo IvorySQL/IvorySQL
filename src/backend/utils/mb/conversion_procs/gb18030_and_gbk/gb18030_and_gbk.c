@@ -3,9 +3,10 @@
  * File: gb18030_and_gbk.c
  *
  * Abstract:
- * 		This file was add for compatable windows use gb18030 as server_encoding,
- * 		cause the default codepage was 936(gbk) on windows,without this conversion it will not
- * 		work right on windows.
+ * 		Conversion routines between GB18030 and GBK. Windows clients often use
+ * 		code page 936 (GBK) as the local encoding, while IvorySQL may be
+ * 		configured with GB18030 as server_encoding. Without these conversions,
+ * 		character data exchanged with such clients can be misinterpreted.
  *
  * Authored by huawenbo@highgo.com, 20231101.
  *
