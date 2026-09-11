@@ -796,6 +796,17 @@ select * from t_regexp_like where regexp_like('', null);
 select * from t_regexp_like where regexp_like(null, null);
 select * from t_regexp_like where regexp_like(null, null, null);
 
+-- Oracle newline semantics: '.' does not match a newline unless 'n' is given
+select regexp_like(('ab'||chr(10)||'cd')::varchar2, 'b.cd'::varchar2) from dual;
+select regexp_like(('ab'||chr(10)||'cd')::varchar2, 'b.cd'::varchar2, 'n'::varchar2) from dual;
+-- 'm' is a valid Oracle match parameter: ^/$ also match at newlines
+select regexp_like(('ab'||chr(10)||'cd')::varchar2, '^cd'::varchar2, 'm'::varchar2) from dual;
+select regexp_like(('ab'||chr(10)||'cd')::varchar2, '^cd'::varchar2) from dual;
+select regexp_like(('ab'||chr(10)||'cd')::varchar2, 'ab$'::varchar2, 'm'::varchar2) from dual;
+-- PostgreSQL-only match parameters are still rejected
+select regexp_like('abc'::varchar2, 'abc'::varchar2, 'p'::varchar2) from dual;
+select regexp_like('abc'::varchar2, 'abc'::varchar2, 'q'::varchar2) from dual;
+
 DROP table t_regexp_like;
 
 /*
@@ -858,6 +869,11 @@ SELECT REGEXP_COUNT(12312312312, 231, 1, 'c') REGEXP_COUNT FROM DUAL;
 SELECT REGEXP_COUNT(1231.2312312312355, 1.23, 4.9, 'c') REGEXP_COUNT FROM DUAL;
 SELECT REGEXP_COUNT('12312312312312355', '123', 4.9, 'c') REGEXP_COUNT FROM DUAL;
 SELECT REGEXP_COUNT(123123123::int, 123::int, 4.9, 'c') REGEXP_COUNT FROM DUAL;
+
+-- every character of the match parameter is validated, not just the first
+SELECT REGEXP_COUNT('ABCabcabcABCABC', 'abc', 1, 'is') COUNT FROM DUAL;	-- error: 's' is not an Oracle parameter
+SELECT REGEXP_COUNT('ABCabcabcABCABC', 'abc', 1, 'ci') COUNT FROM DUAL;
+SELECT REGEXP_COUNT('ABCabcabcABCABC', 'abc', 1, 'in') COUNT FROM DUAL;
 
 SELECT REGEXP_COUNT('ABCabcabcABCABC'::text, 'abc'::text, 3::int, 'c') COUNT FROM DUAL;
 SELECT REGEXP_COUNT('ABCabcabcABCABC'::text, 'abc'::text, 3::int, 'i') COUNT FROM DUAL;
