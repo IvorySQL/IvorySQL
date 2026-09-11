@@ -1451,22 +1451,17 @@ CREATE OR REPLACE FUNCTION sys.length(sys.oradate)
 RETURNS integer
 AS 'select sys.length($1::sys.oravarcharchar)'
 LANGUAGE SQL
-IMMUTABLE PARALLEL SAFE STRICT;
-
-CREATE OR REPLACE FUNCTION sys.length(sys.oradate)
-RETURNS integer
-AS 'select sys.length($1::sys.oravarcharchar)'
-LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+STABLE PARALLEL SAFE STRICT;
 
 CREATE OR REPLACE FUNCTION sys.length(sys.oratimestamp)
 RETURNS integer
 AS 'select sys.length($1::sys.oravarcharchar)'
-LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
 CREATE OR REPLACE FUNCTION sys.length(sys.oratimestamptz)
 RETURNS integer
 AS 'select sys.length($1::sys.oravarcharchar)'
-LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
 
 --lengthb
@@ -1491,17 +1486,17 @@ IMMUTABLE PARALLEL SAFE STRICT;
 CREATE OR REPLACE FUNCTION sys.lengthb(sys.oradate)
 RETURNS integer
 AS 'select sys.lengthb($1::sys.oravarcharchar)'
-LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
 CREATE OR REPLACE FUNCTION sys.lengthb(sys.oratimestamp)
 RETURNS integer
 AS 'select sys.lengthb($1::sys.oravarcharchar)'
-LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
 CREATE OR REPLACE FUNCTION sys.lengthb(sys.oratimestamptz)
 RETURNS integer
 AS 'select sys.lengthb($1::sys.oravarcharchar)'
-LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
 CREATE FUNCTION sys.lengthb(text)
 RETURNS integer
