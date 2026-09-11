@@ -141,3 +141,36 @@ ALTER TYPE comptype ALTER ATTRIBUTE r TYPE bigint;
 NOTICE:  DDL test: type alter table, tag ALTER TYPE
 NOTICE:    subcommand: type ALTER COLUMN SET TYPE desc column r of composite type comptype
 NOTICE:    subcommand: type (re) ADD DOMAIN CONSTRAINT desc type dcomptype
+
+--
+-- IvorySQL-specific ALTER command labels
+--
+SET ivorysql.default_with_rowids = off;
+CREATE TABLE deparse_label_test (
+	a int,
+	b int
+);
+NOTICE:  DDL test: type simple, tag CREATE TABLE
+ALTER TABLE ONLY deparse_label_test SET WITH ROWID;
+NOTICE:  DDL test: type alter table, tag ALTER TABLE
+NOTICE:    subcommand: type SET WITH ROWID desc column rowid of table deparse_label_test
+CREATE TABLE deparse_no_rowid_test (
+	a int
+);
+NOTICE:  DDL test: type simple, tag CREATE TABLE
+ALTER TABLE ONLY deparse_no_rowid_test SET WITHOUT ROWID;
+NOTICE:  DDL test: type alter table, tag ALTER TABLE
+NOTICE:    subcommand: type SET WITHOUT ROWID desc <NULL>
+ALTER TABLE deparse_label_test ALTER COLUMN b SET INVISIBLE;
+NOTICE:  DDL test: type alter table, tag ALTER TABLE
+NOTICE:    subcommand: type ALTER COLUMN SET INVISIBLE desc column b of table deparse_label_test
+ALTER TABLE deparse_label_test ALTER COLUMN b DROP INVISIBLE;
+NOTICE:  DDL test: type alter table, tag ALTER TABLE
+NOTICE:    subcommand: type ALTER COLUMN DROP INVISIBLE desc column b of table deparse_label_test
+CREATE FORCE VIEW deparse_label_view AS
+	SELECT a FROM deparse_label_test;
+NOTICE:  DDL test: type simple, tag CREATE VIEW
+ALTER VIEW deparse_label_view COMPILE;
+NOTICE:  DDL test: type alter table, tag ALTER VIEW
+NOTICE:    subcommand: type COMPILE FORCE VIEW desc <NULL>
+RESET ivorysql.default_with_rowids;

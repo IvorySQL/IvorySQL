@@ -76,3 +76,31 @@ CREATE TYPE comptype AS (r float8);
 CREATE DOMAIN dcomptype AS comptype;
 ALTER DOMAIN dcomptype ADD CONSTRAINT c1 check ((value).r > 0);
 ALTER TYPE comptype ALTER ATTRIBUTE r TYPE bigint;
+
+--
+-- IvorySQL-specific ALTER command labels
+--
+SET ivorysql.default_with_rowids = off;
+
+CREATE TABLE deparse_label_test (
+	a int,
+	b int
+);
+
+ALTER TABLE ONLY deparse_label_test SET WITH ROWID;
+
+CREATE TABLE deparse_no_rowid_test (
+	a int
+);
+
+ALTER TABLE ONLY deparse_no_rowid_test SET WITHOUT ROWID;
+
+ALTER TABLE deparse_label_test ALTER COLUMN b SET INVISIBLE;
+ALTER TABLE deparse_label_test ALTER COLUMN b DROP INVISIBLE;
+
+CREATE FORCE VIEW deparse_label_view AS
+	SELECT a FROM deparse_label_test;
+
+ALTER VIEW deparse_label_view COMPILE;
+
+RESET ivorysql.default_with_rowids;
