@@ -828,7 +828,7 @@ static void determineLanguage(List *options);
 	ORDER ORDINALITY OTHERS OUT_P OUTER_P
 	OVER OVERLAPS OVERLAY OVERRIDING OWNED OWNER PACKAGES
 
-	PARALLEL PARAMETER PARSER PARTIAL PARTITION PASSING PASSWORD PATH
+	PARALLEL PARAMETER PARSER PARTIAL PARTITION PARTITIONS PASSING PASSWORD PATH
 	EXTRACT PGEXTRACT PLACING PLAN PLANS POLICY PORTION
 	POSITION PRECEDING PRECISION PRESERVE PREPARE PREPARED PRIMARY
 	PRIOR PRIVILEGES PROCEDURAL PROCEDURE PROCEDURES PROGRAM PROPERTIES PROPERTY PUBLICATION
@@ -2674,6 +2674,20 @@ partition_cmd:
 					n->subtype = AT_DetachPartitionFinalize;
 					cmd->name = $3;
 					cmd->bound = NULL;
+					cmd->concurrent = false;
+					n->def = (Node *) cmd;
+					$$ = (Node *) n;
+				}
+			/* ALTER TABLE <name> MERGE PARTITIONS () INTO <partition_name> */
+			| MERGE PARTITIONS '(' qualified_name_list ')' INTO qualified_name
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					PartitionCmd *cmd = makeNode(PartitionCmd);
+
+					n->subtype = AT_MergePartitions;
+					cmd->name = $7;
+					cmd->bound = NULL;
+					cmd->partlist = $4;
 					cmd->concurrent = false;
 					n->def = (Node *) cmd;
 					$$ = (Node *) n;
@@ -21768,6 +21782,7 @@ unreserved_keyword:
 			| PARSER
 			| PARTIAL
 			| PARTITION
+			| PARTITIONS
 			| PASSING
 			| PASSWORD
 			| PATH
@@ -22499,6 +22514,7 @@ bare_label_keyword:
 			| PARSER
 			| PARTIAL
 			| PARTITION
+			| PARTITIONS
 			| PASSING
 			| PASSWORD
 			| PATH
