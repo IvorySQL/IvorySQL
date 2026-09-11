@@ -165,3 +165,39 @@ getDbCompatibleMode(PGconn *conn)
 	if (res)
 		PQclear(res);
 }
+
+/*
+ * updateDbCompatibleModeIfReported
+ *
+ * Refresh the cached db_mode from the value the server last reported for
+ * ivorysql.compatible_mode via ParameterStatus, if it has done so.
+ *
+ * This is cheap (no round-trip) and is meant to be invoked from psql's main
+ * loop, so that in-session changes to ivorysql.compatible_mode -- whether from
+ * SET, from connecting through the Oracle listener port, or from a function
+ * that calls set_config -- take effect for the next statement without
+ * requiring a manual \parser.
+ *
+ * When connected to a server that does not report the GUC (e.g. an older
+ * server that does not mark it with GUC_REPORT), this is a no-op and db_mode
+ * is left untouched; callers that need an authoritative value regardless
+ * should use getDbCompatibleMode() instead.
+ */
+void
+updateDbCompatibleModeIfReported(PGconn *conn)
+{
+	const char *db_style;
+
+	if (conn == NULL)
+		return;
+
+	db_style = PQparameterStatus(conn, "ivorysql.compatible_mode");
+
+	if (db_style == NULL)
+		return;					/* server did not report it; keep current mode */
+
+	if (pg_strcasecmp(db_style, "oracle") == 0)
+		db_mode = DB_ORACLE;
+	else
+		db_mode = DB_PG;
+}
