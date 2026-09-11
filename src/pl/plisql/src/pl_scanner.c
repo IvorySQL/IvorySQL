@@ -112,6 +112,25 @@ static ora_core_yy_extra_type core_yy_extra;
 /* The original input string */
 static const char *scanorig;
 
+/*
+ * Pending rewrites of implicit SQL cursor attributes (SQL%ROWCOUNT and
+ * friends) to double-quoted references of their hidden backing variables.
+ * plisql_yylex() records one entry each time it recognizes the sequence
+ * IDENT(sql) '%' IDENT(attr); plisql_append_source_text() splices the
+ * replacement into the SQL text it captures, so the core parser never sees
+ * the '%' syntax.  Entries are kept in increasing source order and never
+ * overlap.  The list is reset when the scanner is initialized, and saved
+ * and restored across nested compilations like the other yylex globals.
+ */
+typedef struct PLiSQLSqlattrSub
+{
+	int			start;			/* offset of first byte to replace */
+	int			end;			/* offset of first byte after the sequence */
+	const char *repl;			/* replacement text */
+} PLiSQLSqlattrSub;
+
+static List *sqlattr_subs = NIL;
+
 /* Current token's length (corresponds to plisql_yylval and plisql_yylloc) */
 static int	plisql_yyleng;
 
@@ -169,12 +188,17 @@ typedef struct PLiSQL_yylex_global_proper
 	const char *cur_line_start;
 	const char *cur_line_end;
 	int			cur_line_num;
+
+	/* pending SQL%attribute text substitutions */
+	List	   *sqlattr_subs;
 }			PLiSQL_yylex_global_proper;
 
 /* Internal functions */
 static int	internal_yylex(TokenAuxData *auxdata, yyscan_t yyscanner);
 static void push_back_token(int token, TokenAuxData *auxdata, yyscan_t yyscanner);
 static void location_lineno_init(yyscan_t yyscanner);
+static bool recognize_sql_cursor_attr(int tok1, TokenAuxData *aux1, int tok3,
+									  TokenAuxData *aux3, yyscan_t yyscanner);
 
 /*
  * This is normally provided by the generated flex code, but we don't have
@@ -357,8 +381,33 @@ plisql_yylex(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 		}
 		else
 		{
-			/* not A.B, so just process A */
-			push_back_token(tok2, &aux2, yyscanner);
+			bool	recognized_sqlattr = false;
+
+			/*
+			 * Recognize Oracle's implicit SQL cursor attributes: the token
+			 * sequence SQL '%' ROWCOUNT|FOUND|NOTFOUND|ISOPEN.  Each match
+			 * is recorded as a text substitution, so that later captures of
+			 * the source text rewrite it to a reference of the attribute's
+			 * hidden backing variable; the core parser never sees the '%'.
+			 * Matching only this exact sequence leaves %TYPE, %ROWTYPE and
+			 * the '%' modulo operator untouched.
+			 */
+			if (tok1 == IDENT && tok2 == '%')
+			{
+				int			tok3;
+				TokenAuxData aux3;
+
+				tok3 = internal_yylex(&aux3, yyscanner);
+				recognized_sqlattr = recognize_sql_cursor_attr(tok1, &aux1,
+															   tok3, &aux3,
+															   yyscanner);
+				if (!recognized_sqlattr)
+					push_back_token(tok3, &aux3, yyscanner);
+			}
+
+			if (!recognized_sqlattr)
+				/* not A.B, so just process A */
+				push_back_token(tok2, &aux2, yyscanner);
 
 			/*
 			 * See if it matches a variable name, except in the context where
@@ -417,6 +466,67 @@ plisql_yylex(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 	yyextra->plisql_yyleng = aux1.leng;
 	yyextra->plisql_yytoken = tok1;
 	return tok1;
+}
+
+/*
+ * If the tokens just read are Oracle's implicit SQL cursor attribute —
+ * that is, IDENT(sql) '%' IDENT(attr) where attr is rowcount, found,
+ * notfound or isopen, case-insensitively and unquoted on both sides —
+ * record a substitution rewriting those bytes to a double-quoted reference
+ * of the attribute's hidden backing variable (see
+ * plisql_append_source_text), and return true.  Otherwise return false,
+ * leaving the tokens for normal processing.
+ *
+ * Restricting the first identifier to "sql" keeps '%' working as the
+ * modulo operator for any other operand, and the attribute names are
+ * returned by the core scanner as IDENT tokens, never as keywords, so
+ * %TYPE and %ROWTYPE sequences cannot match here.
+ */
+static bool
+recognize_sql_cursor_attr(int tok1, TokenAuxData *aux1, int tok3,
+						  TokenAuxData *aux3, yyscan_t yyscanner)
+{
+	static const struct
+	{
+		const char *attr;
+		const char *varname;
+	}			attr_tab[] =
+	{
+		{"rowcount", "sql%rowcount"},
+		{"found", "sql%found"},
+		{"notfound", "sql%notfound"},
+		{"isopen", "sql%isopen"}
+	};
+	const char *scanbuf = yyextra->core_yy_extra.scanbuf;
+	PLiSQLSqlattrSub *sub;
+	int			i;
+
+	if (tok1 != IDENT || tok3 != IDENT)
+		return false;
+	/* quoted identifiers never match */
+	if (scanbuf[aux1->lloc] == '"' || scanbuf[aux3->lloc] == '"')
+		return false;
+	/* the implicit cursor is named "sql", case-insensitively */
+	if (strcmp(aux1->lval.str, "sql") != 0)
+		return false;
+
+	for (i = 0; i < lengthof(attr_tab); i++)
+	{
+		if (strcmp(aux3->lval.str, attr_tab[i].attr) == 0)
+		{
+			sub = palloc_object(PLiSQLSqlattrSub);
+			sub->start = aux1->lloc;
+			sub->end = aux3->lloc + aux3->leng;
+			sub->repl = attr_tab[i].varname;
+			sqlattr_subs = lappend(sqlattr_subs, sub);
+
+			/* widen the token to cover the whole SQL%attr sequence */
+			aux1->leng = sub->end - sub->start;
+			return true;
+		}
+	}
+
+	return false;
 }
 
 /*
@@ -538,13 +648,37 @@ plisql_token_is_unreserved_keyword(int token)
 /*
  * Append the function text starting at startlocation and extending to
  * (not including) endlocation onto the existing contents of "buf".
+ *
+ * Implicit SQL cursor attribute sequences (SQL%ROWCOUNT etc.) recorded by
+ * recognize_sql_cursor_attr() are spliced out, replaced by a reference to
+ * the attribute's hidden backing variable.  Substitutions falling outside
+ * the requested range, e.g. inside a redacted INTO clause, are skipped.
  */
 void
 plisql_append_source_text(StringInfo buf,
 						  int startlocation, int endlocation,
 						  yyscan_t yyscanner)
 {
+	ListCell   *lc;
+
 	Assert(startlocation <= endlocation);
+
+	foreach(lc, sqlattr_subs)
+	{
+		PLiSQLSqlattrSub *sub = (PLiSQLSqlattrSub *) lfirst(lc);
+
+		if (sub->end <= startlocation)
+			continue;			/* substitution lies before the range */
+		if (sub->start >= endlocation)
+			break;				/* substitutions are sorted; nothing more */
+
+		if (sub->start > startlocation)
+			appendBinaryStringInfo(buf, yyextra->scanorig + startlocation,
+								   sub->start - startlocation);
+		appendStringInfoString(buf, sub->repl);
+		startlocation = sub->end;
+	}
+
 	appendBinaryStringInfo(buf, yyextra->scanorig + startlocation,
 						   endlocation - startlocation);
 }
@@ -748,6 +882,7 @@ plisql_scanner_init(const char *str)
 	yyext->plisql_yytoken = 0;
 
 	yyext->num_pushbacks = 0;
+	sqlattr_subs = NIL;
 	location_lineno_init(yyscanner);
 
 	return yyscanner;
@@ -790,6 +925,7 @@ plisql_get_yylex_global_proper(void)
 	yylex_data->scanorig = scanorig;
 	yylex_data->plisql_yylval = plisql_yylval;
 	yylex_data->plisql_yylloc = plisql_yylloc;
+	yylex_data->sqlattr_subs = sqlattr_subs;
 
 	return (void *) yylex_data;
 }
@@ -825,6 +961,7 @@ plisql_recover_yylex_global_proper(void *value)
 	/* plisql_scanner = yylex_data->yyscanner; */
 	plisql_yylval = yylex_data->plisql_yylval;
 	plisql_yylloc = yylex_data->plisql_yylloc;
+	sqlattr_subs = yylex_data->sqlattr_subs;
 
 	return;
 }

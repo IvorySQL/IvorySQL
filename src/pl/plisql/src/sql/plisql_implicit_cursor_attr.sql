@@ -1,0 +1,289 @@
+--
+-- Tests for PL/iSQL implicit SQL cursor attributes:
+-- SQL%ROWCOUNT, SQL%FOUND, SQL%NOTFOUND and SQL%ISOPEN
+--
+
+CREATE TABLE implicit_cursor_test (id INT, name TEXT);
+
+-- Before any implicit-cursor statement, %ROWCOUNT/%FOUND/%NOTFOUND are
+-- NULL (Oracle semantics), while %ISOPEN is always false
+DO $$
+DECLARE
+    v_rowcount BIGINT;
+    v_found    BOOLEAN;
+    v_notfound BOOLEAN;
+    v_isopen   BOOLEAN;
+    v_init     BIGINT := SQL%ROWCOUNT;  -- also NULL in DECLARE initializer
+BEGIN
+    RAISE NOTICE 'vars: % % % %', v_rowcount, v_found, v_notfound, v_isopen;
+    RAISE NOTICE 'direct: % % % %',
+        SQL%ROWCOUNT, SQL%FOUND, SQL%NOTFOUND, SQL%ISOPEN;
+    RAISE NOTICE 'isopen=%', SQL%ISOPEN;
+    RAISE NOTICE 'initializer=%', v_init;
+END;
+$$;
+
+-- Each invocation starts over with the NULL state
+CREATE FUNCTION implicit_cursor_attr_fresh() RETURNS void AS $$
+BEGIN
+    RAISE NOTICE 'fresh call: rowcount=%', SQL%ROWCOUNT;
+    INSERT INTO implicit_cursor_test VALUES (1, 'one');
+    RAISE NOTICE 'after insert: rowcount=% found=% notfound=%',
+        SQL%ROWCOUNT, SQL%FOUND, SQL%NOTFOUND;
+END;
+$$ LANGUAGE plisql;
+
+SELECT implicit_cursor_attr_fresh();
+SELECT implicit_cursor_attr_fresh();
+
+-- INSERT
+DO $$
+BEGIN
+    INSERT INTO implicit_cursor_test VALUES (2, 'two');
+    INSERT INTO implicit_cursor_test VALUES (3, 'three');
+    RAISE NOTICE 'rowcount=% found=% notfound=%',
+        SQL%ROWCOUNT, SQL%FOUND, SQL%NOTFOUND;
+END;
+$$;
+
+-- UPDATE affecting several rows; attribute in an IF condition
+DO $$
+BEGIN
+    UPDATE implicit_cursor_test SET name = name || '!' WHERE id <= 3;
+    RAISE NOTICE 'after update: rowcount=%', SQL%ROWCOUNT;
+    IF SQL%FOUND THEN
+        RAISE NOTICE 'found is true';
+    END IF;
+    IF SQL%NOTFOUND THEN
+        RAISE NOTICE 'notfound is true';
+    ELSE
+        RAISE NOTICE 'notfound is false';
+    END IF;
+END;
+$$;
+
+-- UPDATE affecting no rows
+DO $$
+BEGIN
+    UPDATE implicit_cursor_test SET name = 'x' WHERE id > 999;
+    RAISE NOTICE 'zero-row update: rowcount=% found=% notfound=%',
+        SQL%ROWCOUNT, SQL%FOUND, SQL%NOTFOUND;
+END;
+$$;
+
+-- DELETE affecting no rows
+DO $$
+BEGIN
+    DELETE FROM implicit_cursor_test WHERE id > 999;
+    RAISE NOTICE 'zero-row delete: rowcount=% found=% notfound=% isopen=%',
+        SQL%ROWCOUNT, SQL%FOUND, SQL%NOTFOUND, SQL%ISOPEN;
+END;
+$$;
+
+-- SELECT INTO hitting one row and no rows
+DO $$
+DECLARE
+    v TEXT;
+BEGIN
+    SELECT name INTO v FROM implicit_cursor_test WHERE id = 1;
+    RAISE NOTICE 'select into: v=% rowcount=% found=% notfound=%',
+        v, SQL%ROWCOUNT, SQL%FOUND, SQL%NOTFOUND;
+
+    SELECT name INTO v FROM implicit_cursor_test WHERE id > 999;
+    RAISE NOTICE 'empty select into: v=% rowcount=% notfound=%',
+        v, SQL%ROWCOUNT, SQL%NOTFOUND;
+END;
+$$;
+
+-- SELECT INTO STRICT with no rows: the attributes must reflect the
+-- failed statement inside the exception handler (NO_DATA_FOUND)
+DO $$
+DECLARE
+    v TEXT;
+BEGIN
+    DELETE FROM implicit_cursor_test WHERE id = 42;
+    RAISE NOTICE 'before strict: rowcount=% notfound=%',
+        SQL%ROWCOUNT, SQL%NOTFOUND;
+    BEGIN
+        SELECT name INTO STRICT v FROM implicit_cursor_test WHERE id > 999;
+        RAISE NOTICE 'unexpected: no exception';
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            RAISE NOTICE 'in handler: rowcount=% found=% notfound=%',
+                SQL%ROWCOUNT, SQL%FOUND, SQL%NOTFOUND;
+    END;
+    RAISE NOTICE 'after handler: rowcount=% notfound=%',
+        SQL%ROWCOUNT, SQL%NOTFOUND;
+END;
+$$;
+
+-- SELECT SQL%ROWCOUNT INTO a variable
+DO $$
+DECLARE
+    v BIGINT;
+BEGIN
+    DELETE FROM implicit_cursor_test;
+    SELECT SQL%ROWCOUNT INTO v;
+    RAISE NOTICE 'deleted % rows', v;
+END;
+$$;
+
+-- Attributes after INSERT ... RETURNING
+DO $$
+DECLARE
+    v INT;
+BEGIN
+    INSERT INTO implicit_cursor_test VALUES (10, 'ten') RETURNING id INTO v;
+    RAISE NOTICE 'returning: id=% rowcount=% found=%', v, SQL%ROWCOUNT, SQL%FOUND;
+END;
+$$;
+
+-- Attributes inside expressions: CASE, arithmetic, boolean operators
+DO $$
+DECLARE
+    v TEXT;
+BEGIN
+    INSERT INTO implicit_cursor_test VALUES (11, 'eleven');
+    v := CASE WHEN SQL%FOUND THEN 'rows inserted' ELSE 'nothing' END;
+    RAISE NOTICE '%', v;
+    RAISE NOTICE 'double: %', SQL%ROWCOUNT + SQL%ROWCOUNT;
+    RAISE NOTICE 'not found: %', NOT SQL%FOUND;
+END;
+$$;
+
+-- Attribute names are matched case-insensitively and tolerate whitespace
+DO $$
+BEGIN
+    UPDATE implicit_cursor_test SET name = name WHERE id = 10;
+    RAISE NOTICE 'mixed case: %', SQL%RowCouNt;
+    RAISE NOTICE 'spaced: %', SQL % ROWCOUNT;
+    RAISE NOTICE 'spaced found: %', sql % found;
+END;
+$$;
+
+-- EXIT WHEN with SQL%NOTFOUND
+DO $$
+DECLARE
+    r RECORD;
+    n INT := 0;
+BEGIN
+    FOR r IN SELECT id FROM implicit_cursor_test ORDER BY id LOOP
+        n := n + 1;
+        DELETE FROM implicit_cursor_test WHERE id = r.id;
+        EXIT WHEN SQL%NOTFOUND;
+    END LOOP;
+    RAISE NOTICE 'looped % times', n;
+    RAISE NOTICE 'final rowcount=%', SQL%ROWCOUNT;
+END;
+$$;
+
+-- MERGE updates the attributes
+DO $$
+BEGIN
+    MERGE INTO implicit_cursor_test t
+    USING (SELECT 10 AS id, 'ten again' AS name) s
+    ON (t.id = s.id)
+    WHEN MATCHED THEN UPDATE SET name = s.name
+    WHEN NOT MATCHED THEN INSERT VALUES (s.id, s.name);
+    RAISE NOTICE 'after merge: rowcount=% found=% notfound=%',
+        SQL%ROWCOUNT, SQL%FOUND, SQL%NOTFOUND;
+END;
+$$;
+
+-- Dynamic SQL updates the attributes as well
+DO $$
+DECLARE
+    v BIGINT;
+BEGIN
+    EXECUTE 'DELETE FROM implicit_cursor_test';
+    v := SQL%ROWCOUNT;
+    RAISE NOTICE 'dynamic delete: %', v;
+END;
+$$;
+
+-- A cursor FOR loop is an explicit cursor and leaves the attributes alone
+DO $$
+DECLARE
+    r RECORD;
+BEGIN
+    INSERT INTO implicit_cursor_test VALUES (1, 'one');
+    RAISE NOTICE 'after insert: rowcount=%', SQL%ROWCOUNT;
+    FOR r IN SELECT id FROM implicit_cursor_test ORDER BY id LOOP
+        NULL;
+    END LOOP;
+    RAISE NOTICE 'after for loop: rowcount=%', SQL%ROWCOUNT;
+    SELECT count(*) INTO r.id FROM implicit_cursor_test;
+    RAISE NOTICE 'after select into: rowcount=%', SQL%ROWCOUNT;
+END;
+$$;
+
+-- Attributes in stored functions and procedures
+CREATE FUNCTION implicit_cursor_attr_count() RETURNS BIGINT AS $$
+BEGIN
+    INSERT INTO implicit_cursor_test SELECT id + 100, name
+        FROM implicit_cursor_test;
+    RETURN SQL%ROWCOUNT;
+END;
+$$ LANGUAGE plisql;
+
+SELECT implicit_cursor_attr_count();
+
+-- Attributes seen from an outer block after DML in an inner block
+DO $$
+BEGIN
+    BEGIN
+        UPDATE implicit_cursor_test SET name = name;
+        RAISE NOTICE 'inner: rowcount=%', SQL%ROWCOUNT;
+    END;
+    RAISE NOTICE 'outer: rowcount=%', SQL%ROWCOUNT;
+END;
+$$;
+
+-- Regression: %TYPE and %ROWTYPE declarations keep working
+DO $$
+DECLARE
+    v_id implicit_cursor_test.id%TYPE;
+    v_row implicit_cursor_test%ROWTYPE;
+    v_id2 v_id%TYPE;
+BEGIN
+    v_id := 1;
+    RAISE NOTICE '%TYPE ok: %', v_id, v_id2 IS NULL;
+END;
+$$;
+
+-- Regression: '%' still works as the modulo operator, and variables may
+-- still be named like an attribute or like the implicit cursor
+DO $$
+DECLARE
+    total    INT := 10;
+    divisor  INT := 3;
+    rest     INT;
+    rowcount INT := 7;
+    sql      INT := 5;
+BEGIN
+    rest := total % divisor;
+    RAISE NOTICE '10 %% 3 = %', rest;
+    rest := rowcount % 2;
+    RAISE NOTICE 'rowcount %% 2 = %', rest;
+    rest := sql + 1;
+    RAISE NOTICE 'sql + 1 = %', rest;
+    rest := SQL % 3;
+    RAISE NOTICE 'sql %% 3 = %', rest;
+END;
+$$;
+
+-- SQL%ROWCOUNT is read-only
+DO $$
+BEGIN
+    SQL%ROWCOUNT := 5;
+END;
+$$;
+
+-- Unsupported attribute: SQL%BULK_ROWCOUNT is rejected cleanly
+DO $$
+DECLARE
+    v BIGINT;
+BEGIN
+    v := SQL%BULK_ROWCOUNT(1);
+END;
+$$;
