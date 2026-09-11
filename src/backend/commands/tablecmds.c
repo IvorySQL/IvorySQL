@@ -548,6 +548,8 @@ static List *find_typed_table_dependencies(Oid typeOid, const char *typeName,
 static void ATPrepAddColumn(List **wqueue, Relation rel, bool recurse, bool recursing,
 							bool is_view, AlterTableCmd *cmd, LOCKMODE lockmode,
 							AlterTableUtilityContext *context);
+static bool relation_needs_rowid_index(Relation rel);
+static IndexStmt *make_rowid_index_stmt(Relation rel);
 static ObjectAddress ATExecAddColumn(List **wqueue, AlteredTableInfo *tab,
 									 Relation rel, AlterTableCmd **cmd,
 									 bool recurse, bool recursing,
@@ -1434,30 +1436,10 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 		table_close(parent, NoLock);
 	}
 
-	/*
-	 * Build a default types index on rowid column, if it exist
-	 */
-	if (rel->rd_rel->relhasrowid && rel->rd_rel->relkind == RELKIND_RELATION && !rel->rd_rel->relispartition)
+	/* Build a default index on the ROWID system column, if it exists. */
+	if (rel->rd_rel->relhasrowid && relation_needs_rowid_index(rel))
 	{
-		IndexElem   *iparam;
-		const FormData_pg_attribute *from;
-		StringInfoData rowid_seq_name;
-
-		initStringInfo(&rowid_seq_name);
-		appendStringInfo(&rowid_seq_name, "%u", relationId);
-		appendStringInfoChar(&rowid_seq_name, '_');
-		appendStringInfo(&rowid_seq_name, "rowid");
-
-		iparam = makeNode(IndexElem);
-		from = SystemAttributeDefinition(RowIdAttributeNumber);
-		iparam->name = pstrdup(NameStr(from->attname));
-		iparam->expr = NULL;
-
-		rowid_index = makeNode(IndexStmt);
-		rowid_index->idxname = ChooseRelationName(relname, rowid_seq_name.data, "idx", namespaceId, false);
-		rowid_index->accessMethod = DEFAULT_INDEX_TYPE;
-
-		rowid_index->indexParams = lappend(rowid_index->indexParams, iparam);
+		rowid_index = make_rowid_index_stmt(rel);
 
 		DefineIndex(NULL, relationId,
 					rowid_index,
@@ -1466,7 +1448,6 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 					InvalidOid,
 					-1, 
 					true, true, false, false, false);
-		pfree(rowid_seq_name.data);
 	}
 
 	/*
@@ -1507,6 +1488,53 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	relation_close(rel, NoLock);
 
 	return address;
+}
+
+/*
+ * Return true when a relation needs the default ROWID index.  ROWID is
+ * supported by foreign and partitioned relations too, but the default index
+ * is only meaningful for a plain physical table.
+ */
+static bool
+relation_needs_rowid_index(Relation rel)
+{
+	return rel->rd_rel->relkind == RELKIND_RELATION &&
+		!rel->rd_rel->relispartition;
+}
+
+/*
+ * Build the default index definition for a relation's ROWID system column.
+ * Callers either pass it directly to DefineIndex(), or queue it as an
+ * after-statement when an ALTER TABLE rewrite must finish first.
+ */
+static IndexStmt *
+make_rowid_index_stmt(Relation rel)
+{
+	IndexElem   *iparam;
+	IndexStmt  *rowid_index;
+	const FormData_pg_attribute *rowid_attr;
+	StringInfoData rowid_index_name;
+
+	initStringInfo(&rowid_index_name);
+	appendStringInfo(&rowid_index_name, "%u_rowid", RelationGetRelid(rel));
+
+	iparam = makeNode(IndexElem);
+	rowid_attr = SystemAttributeDefinition(RowIdAttributeNumber);
+	iparam->name = pstrdup(NameStr(rowid_attr->attname));
+
+	rowid_index = makeNode(IndexStmt);
+	rowid_index->idxname =
+		ChooseRelationName(RelationGetRelationName(rel), rowid_index_name.data,
+						   "idx", RelationGetNamespace(rel), false);
+	rowid_index->relation =
+		makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
+					 pstrdup(RelationGetRelationName(rel)), -1);
+	rowid_index->accessMethod = DEFAULT_INDEX_TYPE;
+	rowid_index->indexParams = lappend(rowid_index->indexParams, iparam);
+
+	pfree(rowid_index_name.data);
+
+	return rowid_index;
 }
 
 /*
@@ -8008,6 +8036,14 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 
 		table_close(childrel, NoLock);
 	}
+
+	/*
+	 * The new ROWID requires a table rewrite.  Create its index afterwards so
+	 * it is built from the rewritten relation, just like other ALTER-created
+	 * indexes.  Recursive calls queue one index per affected plain table.
+	 */
+	if (is_rowid && relation_needs_rowid_index(rel))
+		tab->afterStmts = lappend(tab->afterStmts, make_rowid_index_stmt(rel));
 
 	ObjectAddressSubSet(address, RelationRelationId, myrelid, newattnum);
 	return address;
