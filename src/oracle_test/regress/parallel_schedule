@@ -93,7 +93,7 @@ test: create_table_like alter_generic alter_operator misc async dbsize misc_func
 # collate.*.utf8 tests cannot be run in parallel with each other
 # psql depends on create_am
 # amutils depends on geometry, create_index_spgist, hash_index, brin
-test: rules psql ora_psql psql_crosstab psql_pipeline amutils stats_ext collate.linux.utf8 collate.windows.win1252
+test: rules psql ora_psql oracle_join_operator psql_crosstab psql_pipeline amutils stats_ext collate.linux.utf8 collate.windows.win1252
 
 # ----------
 # Run these alone so they don't run out of parallel workers
