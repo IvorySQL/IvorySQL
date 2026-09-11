@@ -1928,3 +1928,49 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 /* End - VSIZE */
+
+/*
+ * DUMP
+ *
+ * Oracle-compatible DUMP function:
+ * DUMP(expr [, return_fmt [, start_position [, length ] ] ])
+ *
+ * Returns a VARCHAR2 string containing datatype code, length in bytes,
+ * optional character set information, and byte values of internal representation.
+ * Returns NULL if expr is NULL.
+ *
+ * Supported return_fmt:
+ *   8    - Octal
+ *   10   - Decimal (default)
+ *   16   - Hexadecimal
+ *   17   - Character (printable as ASCII char, control as ^X, other in hex)
+ *   1000 + format (e.g. 1008, 1010, 1016, 1017) adds CharacterSet=<name>
+ */
+CREATE FUNCTION sys.dump(anycompatible)
+RETURNS text
+AS 'MODULE_PATHNAME', 'ora_dump'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.dump(anycompatible, integer)
+RETURNS text
+AS 'MODULE_PATHNAME', 'ora_dump'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.dump(anycompatible, integer, integer)
+RETURNS text
+AS 'MODULE_PATHNAME', 'ora_dump'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.dump(anycompatible, integer, integer, integer)
+RETURNS text
+AS 'MODULE_PATHNAME', 'ora_dump'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+/* End - DUMP */
