@@ -84,6 +84,7 @@ ORA_REGRESS = \
 	ora_merge \
 	datatype_and_func_bugs \
 	ora_sysview \
+	ora_object_views \
 	ora_like_operator \
 	ora_xml_functions \
 	dbms_utility \
