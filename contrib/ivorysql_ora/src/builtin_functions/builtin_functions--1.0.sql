@@ -1928,3 +1928,29 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 /* End - VSIZE */
+
+/*
+ * EMPTY_CLOB()/EMPTY_BLOB()
+ *
+ * Oracle-compatible LOB constructors.  Oracle treats the empty string as
+ * NULL, so EMPTY_CLOB()/EMPTY_BLOB() are the only way to initialize a
+ * zero-length LOB that is not NULL.  IvorySQL implements clob/nclob/blob
+ * as domains over text/bytea, so the constructors return a zero-length
+ * base-type value which is not NULL.
+ */
+CREATE FUNCTION sys.empty_clob()
+RETURNS sys.clob
+AS 'MODULE_PATHNAME', 'ora_empty_clob'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.empty_blob()
+RETURNS sys.blob
+AS 'MODULE_PATHNAME', 'ora_empty_blob'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+/* End - EMPTY_CLOB/EMPTY_BLOB */
