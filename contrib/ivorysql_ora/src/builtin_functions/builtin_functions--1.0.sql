@@ -663,6 +663,38 @@ PARALLEL SAFE
 STABLE;
 
 /* SR */
+CREATE FUNCTION sys.substr(varchar, number)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substr_no_length'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substr(varchar, number, number)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substr'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substr(text, integer)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substr_no_length_int'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substr(text, integer, integer)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substr_int'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
 CREATE FUNCTION sys.substrb(varchar, number)
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrb_no_length'
