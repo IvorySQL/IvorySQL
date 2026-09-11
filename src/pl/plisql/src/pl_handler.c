@@ -754,7 +754,6 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 		set_ParseDynSql(true);
 		set_parseDynDoStmt(true);
 		set_haspgparam(false);
-		set_ParseDynSql(true);
 		set_doStmtCheckVar(check_var);
 
 		if (codeblock->params->paramnames != NULL)
