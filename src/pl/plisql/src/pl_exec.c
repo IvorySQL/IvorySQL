@@ -4894,11 +4894,15 @@ exec_stmt_execsql(PLiSQL_execstate * estate,
 
 	/*
 	 * Update the implicit SQL cursor attributes if this was one of the
-	 * statement kinds Oracle's implicit cursor tracks.  This happens before
-	 * any STRICT/no-rows error is raised, so exception handlers see the
-	 * state left by the failing SELECT INTO, matching Oracle.
+	 * statement kinds Oracle's implicit cursor tracks.  A static SELECT
+	 * INTO has its INTO clause redacted before execution, so it comes back
+	 * as SPI_OK_SELECT and is recognized through stmt->into instead.  This
+	 * happens before any STRICT/no-rows error is raised, so exception
+	 * handlers see the state left by the failing SELECT INTO, matching
+	 * Oracle.
 	 */
-	if (exec_rc_is_implicit_cursor_stmt(rc))
+	if (exec_rc_is_implicit_cursor_stmt(rc) ||
+		(rc == SPI_OK_SELECT && stmt->into))
 		exec_set_sql_cursor_attrs(estate);
 
 	/* Process INTO if present */
@@ -5100,9 +5104,12 @@ exec_stmt_dynexecute(PLiSQL_execstate * estate,
 
 	/*
 	 * Update the implicit SQL cursor attributes if this was one of the
-	 * statement kinds Oracle's implicit cursor tracks.
+	 * statement kinds Oracle's implicit cursor tracks.  A dynamic SELECT
+	 * ... INTO comes back as SPI_OK_SELECT and is recognized through
+	 * stmt->into instead.
 	 */
-	if (exec_rc_is_implicit_cursor_stmt(exec_res))
+	if (exec_rc_is_implicit_cursor_stmt(exec_res) ||
+		(exec_res == SPI_OK_SELECT && stmt->into))
 		exec_set_sql_cursor_attrs(estate);
 
 	/* Process INTO if present */

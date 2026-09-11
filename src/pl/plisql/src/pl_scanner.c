@@ -492,10 +492,10 @@ recognize_sql_cursor_attr(int tok1, TokenAuxData *aux1, int tok3,
 		const char *varname;
 	}			attr_tab[] =
 	{
-		{"rowcount", "sql%rowcount"},
-		{"found", "sql%found"},
-		{"notfound", "sql%notfound"},
-		{"isopen", "sql%isopen"}
+		{"rowcount", "\"sql%rowcount\""},
+		{"found", "\"sql%found\""},
+		{"notfound", "\"sql%notfound\""},
+		{"isopen", "\"sql%isopen\""}
 	};
 	const char *scanbuf = yyextra->core_yy_extra.scanbuf;
 	PLiSQLSqlattrSub *sub;
