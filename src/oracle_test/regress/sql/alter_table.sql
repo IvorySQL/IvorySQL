@@ -3153,3 +3153,35 @@ alter table alter1.t1 set schema alter2;
 drop publication pub1;
 drop schema alter1 cascade;
 drop schema alter2 cascade;
+
+--
+-- Oracle-compatible ALTER TABLE ... MODIFY
+--
+create table modify_test (a varchar2(10), b varchar2(10), c number);
+insert into modify_test values (null, 'x', 1);
+
+-- type change plus NOT NULL, parenthesized form
+alter table modify_test modify (a varchar2(20) not null); -- error, a contains nulls
+update modify_test set a = 'y';
+alter table modify_test modify (a varchar2(20) not null);
+
+-- same thing without the parentheses
+alter table modify_test modify b varchar2(30) not null;
+
+-- nullability only
+alter table modify_test modify (a null);
+alter table modify_test modify b null;
+
+-- several columns in one command
+alter table modify_test modify (a varchar2(40) not null, c number not null);
+\d modify_test
+
+-- existing data is preserved and the widened types are usable
+insert into modify_test values ('012345678901234567890123456789', '0123456789012345', 2);
+select a, b, c from modify_test order by c;
+
+-- a bare type change is not accepted: <type> is ambiguous with
+-- MODIFY <colname> INVISIBLE, since INVISIBLE is an unreserved keyword
+alter table modify_test modify (c number(10)); -- error
+
+drop table modify_test;

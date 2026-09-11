@@ -678,7 +678,8 @@ static void determineLanguage(List *options);
 %type <node> param_mode
 %type <boolean>	opt_do_from_where
 
-%type <list>	identity_clause identity_options drop_identity
+%type <list>	modify_clause modify_column_list modify_column_item
+%type <ival>	modify_column_null
 %type <boolean>	opt_with opt_by
 
 %type <node>	json_format_clause
@@ -2619,7 +2620,7 @@ AlterTableStmt:
 alter_table_cmds:
 			alter_table_cmd							{ $$ = list_make1($1); }
 			| alter_table_cmds ',' alter_table_cmd	{ $$ = lappend($1, $3); }
-			| MODIFY identity_clause				{ $$ = $2; }
+			| MODIFY modify_clause				{ $$ = $2; }
 		;
 
 ora_alter_view_cmds:
@@ -3620,19 +3621,63 @@ set_statistics_value:
 			| DEFAULT						{ $$ = NULL; }
 		;
 
-identity_clause:
-		'(' identity_options ')'		{ $$ = $2; }
-		| identity_options				{ $$ = $1; }
-		| '(' drop_identity ')' 		{ $$ = $2; }
-		| drop_identity 				{ $$ = $1; }
-	;
+/*
+ * Oracle-compatible ALTER TABLE ... MODIFY.
+ *
+ * Each item yields a List of AlterTableCmd, because a single Oracle MODIFY item
+ * can expand into more than one internal subcommand (for example a type change
+ * plus a NOT NULL constraint).
+ *
+ * Note that a bare "MODIFY <col> <type>" is not accepted here: VISIBLE and
+ * INVISIBLE are unreserved keywords and can be derived as a type name, so that
+ * form is ambiguous with "MODIFY <col> INVISIBLE" below.
+ */
+modify_clause:
+			'(' modify_column_list ')'		{ $$ = $2; }
+			| modify_column_item			{ $$ = $1; }
+		;
 
-identity_options:
-			ColId Typename GENERATED generated_when AS IDENTITY_P OptParenthesizedSeqOptList
+modify_column_list:
+			modify_column_item								{ $$ = $1; }
+			| modify_column_list ',' modify_column_item		{ $$ = list_concat($1, $3); }
+		;
+
+modify_column_item:
+			/* MODIFY <colname> <typename> {NOT NULL | NULL} */
+			ColId Typename modify_column_null
 				{
 					AlterTableCmd *m = makeNode(AlterTableCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
-					ColumnDef *def = makeNode(ColumnDef);
+					ColumnDef  *def = makeNode(ColumnDef);
+
+					m->subtype = AT_AlterColumnType;
+					m->name = $1;
+					m->def = (Node *) def;
+					/* We only use these fields of the ColumnDef node */
+					def->typeName = $2;
+					def->location = @1;
+
+					n->subtype = $3 ? AT_SetNotNull : AT_DropNotNull;
+					n->name = $1;
+
+					$$ = list_make2(m, n);
+				}
+			/* MODIFY <colname> {NOT NULL | NULL} */
+			| ColId modify_column_null
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+
+					n->subtype = $2 ? AT_SetNotNull : AT_DropNotNull;
+					n->name = $1;
+					$$ = list_make1(n);
+				}
+			/* MODIFY <colname> [<typename>] GENERATED ... AS IDENTITY [(...)] */
+			| ColId Typename GENERATED generated_when AS IDENTITY_P OptParenthesizedSeqOptList
+				{
+					AlterTableCmd *m = makeNode(AlterTableCmd);
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					ColumnDef  *def = makeNode(ColumnDef);
+
 					m->subtype = AT_AlterColumnType;
 					m->name = $1;
 					m->def = (Node *) def;
@@ -3642,37 +3687,42 @@ identity_options:
 						$4 = ATTRIBUTE_ORA_IDENTITY_ALWAYS;
 					else if ($4 == ATTRIBUTE_IDENTITY_BY_DEFAULT)
 						$4 = ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT;
-					n->def = (Node *)lcons(makeDefElem("generated", (Node *) makeInteger($4), @1), $7);
-
+					n->def = (Node *) lcons(makeDefElem("generated", (Node *) makeInteger($4), @1), $7);
 					n->subtype = AT_SetIdentity;
 					n->name = $1;
+
 					$$ = list_make2(m, n);
 				}
 			| ColId GENERATED generated_when AS IDENTITY_P OptParenthesizedSeqOptList
 				{
 					AlterTableCmd *n = makeNode(AlterTableCmd);
+
 					if ($3 == ATTRIBUTE_IDENTITY_ALWAYS)
 						$3 = ATTRIBUTE_ORA_IDENTITY_ALWAYS;
 					else if ($3 == ATTRIBUTE_IDENTITY_BY_DEFAULT)
 						$3 = ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT;
-					n->def = (Node *)lcons(makeDefElem("generated", (Node *) makeInteger($3), @1), $6);
+					n->def = (Node *) lcons(makeDefElem("generated", (Node *) makeInteger($3), @1), $6);
+					n->subtype = AT_SetIdentity;
+					n->name = $1;
 
-				n->subtype = AT_SetIdentity;
-				n->name = $1;
+					$$ = list_make1(n);
+				}
+			/* MODIFY <colname> DROP IDENTITY */
+			| ColId DROP IDENTITY_P
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
 
-				$$ = list_make1(n);
-			}
+					n->subtype = AT_DropIdentity;
+					n->name = $1;
+					n->missing_ok = false;
+					$$ = list_make1(n);
+				}
+		;
 
-drop_identity:
-		ColId DROP IDENTITY_P
-			{
-				AlterTableCmd *n = makeNode(AlterTableCmd);
-				n->subtype = AT_DropIdentity;
-				n->name = $1;
-				n->missing_ok = false;
-				$$ = list_make1(n);
-			}
-	;
+modify_column_null:
+			NOT NULL_P						{ $$ = true; }
+			| NULL_P						{ $$ = false; }
+		;
 
 set_access_method_name:
 			ColId							{ $$ = $1; }
