@@ -817,13 +817,18 @@ plisql_free_function_memory(PLiSQL_function * func,
 			 */
 			if (subprocfunc->function->action != NULL)
 			{
-				hash_seq_init(&status, subprocfunc->poly_tab);
+			List	   *functions = NIL;
+			ListCell   *lc;
 
-				while ((entry = (plisql_HashEnt *) hash_seq_search(&status)) != NULL)
-				{
-					hash_search(subprocfunc->poly_tab, (void *) (&(entry->key)), HASH_REMOVE, NULL);
-					plisql_free_function_memory(entry->function, subprocfunc->lastoutvardno, subprocfunc->lastoutsubprocfno);
-				}
+			hash_seq_init(&status, subprocfunc->poly_tab);
+			while ((entry = (plisql_HashEnt *) hash_seq_search(&status)) != NULL)
+				functions = lappend(functions, entry->function);
+
+			foreach(lc, functions)
+				plisql_free_function_memory((PLiSQL_function *) lfirst(lc),
+											subprocfunc->lastoutvardno,
+											subprocfunc->lastoutsubprocfno);
+			list_free(functions);
 			}
 			hash_destroy(subprocfunc->poly_tab);
 		}
