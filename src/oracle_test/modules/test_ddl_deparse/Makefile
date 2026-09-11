@@ -33,6 +33,10 @@ REGRESS = test_ddl_deparse \
 
 EXTRA_INSTALL = contrib/pg_stat_statements
 
+# Use an Oracle-compatible CREATE PROCEDURE body while retaining the full
+# CREATE SCHEMA and event-trigger coverage, including setup used by later tests.
+ORA_REGRESS = $(subst create_schema,create_schema_oracle,$(REGRESS))
+
 ifdef USE_PGXS
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)

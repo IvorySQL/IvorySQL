@@ -57,6 +57,18 @@ SUBDIRS = \
 		  worker_spi \
 		  xid_wraparound
 
+# Module Makefiles with REGRESS but without ORA_REGRESS are omitted
+# intentionally.  Oracle-mode verification currently shows output or catalog
+# differences for dummy_index_am, gin, spgist_name_ops, test_pg_dump, and
+# typcache, and behavioral or test-setup failures for nbtree,
+# test_dsm_registry, test_extensions, test_lwlock_tranches, and test_oat_hooks.
+# Enable them only after their tests have Oracle-compatible behavior and
+# expectations.
+
+# TAP modules replay the core Oracle regression schedule, whose alter_index
+# test requires amcheck to be present in the temporary installation.
+EXTRA_INSTALL += contrib/amcheck
+
 
 ifeq ($(enable_injection_points),yes)
 SUBDIRS += injection_points gin typcache
