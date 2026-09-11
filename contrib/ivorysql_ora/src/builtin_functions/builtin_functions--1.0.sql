@@ -320,8 +320,7 @@ CREATE FUNCTION sys.length(integer)
 RETURNS integer
 AS $$SELECT sys.length(cast($1 as sys.oravarcharchar));$$
 LANGUAGE SQL
-PARALLEL SAFE
-VOLATILE;
+IMMUTABLE PARALLEL SAFE STRICT;
 
 create function sys.lengthb(bytea) returns int as
 $$
