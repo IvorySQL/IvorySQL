@@ -2,9 +2,7 @@
 -- Tests for PL/iSQL implicit SQL cursor attributes:
 -- SQL%ROWCOUNT, SQL%FOUND, SQL%NOTFOUND and SQL%ISOPEN
 --
-
 CREATE TABLE implicit_cursor_test (id INT, name TEXT);
-
 -- Before any implicit-cursor statement, %ROWCOUNT/%FOUND/%NOTFOUND are
 -- NULL (Oracle semantics), while %ISOPEN is always false
 DO $$
@@ -22,7 +20,10 @@ BEGIN
     RAISE NOTICE 'initializer=%', v_init;
 END;
 $$;
-
+NOTICE:  vars: <NULL> <NULL> <NULL> <NULL>
+NOTICE:  direct: <NULL> <NULL> <NULL> f
+NOTICE:  isopen=f
+NOTICE:  initializer=<NULL>
 -- Each invocation starts over with the NULL state
 CREATE FUNCTION implicit_cursor_attr_fresh() RETURNS void AS $$
 BEGIN
@@ -32,10 +33,8 @@ BEGIN
         SQL%ROWCOUNT, SQL%FOUND, SQL%NOTFOUND;
 END;
 $$ LANGUAGE plisql;
-
 DO $$ BEGIN PERFORM implicit_cursor_attr_fresh(); END $$;
 DO $$ BEGIN PERFORM implicit_cursor_attr_fresh(); END $$;
-
 -- INSERT
 DO $$
 BEGIN
@@ -45,7 +44,6 @@ BEGIN
         SQL%ROWCOUNT, SQL%FOUND, SQL%NOTFOUND;
 END;
 $$;
-
 -- UPDATE affecting several rows; attribute in an IF condition
 DO $$
 BEGIN
@@ -61,7 +59,6 @@ BEGIN
     END IF;
 END;
 $$;
-
 -- UPDATE affecting no rows
 DO $$
 BEGIN
@@ -70,7 +67,6 @@ BEGIN
         SQL%ROWCOUNT, SQL%FOUND, SQL%NOTFOUND;
 END;
 $$;
-
 -- DELETE affecting no rows
 DO $$
 BEGIN
@@ -79,7 +75,6 @@ BEGIN
         SQL%ROWCOUNT, SQL%FOUND, SQL%NOTFOUND, SQL%ISOPEN;
 END;
 $$;
-
 -- SELECT INTO hitting one row and no rows
 DO $$
 DECLARE
@@ -94,7 +89,6 @@ BEGIN
         v, SQL%ROWCOUNT, SQL%NOTFOUND;
 END;
 $$;
-
 -- SELECT INTO STRICT with no rows: the attributes must reflect the
 -- failed statement inside the exception handler (NO_DATA_FOUND)
 DO $$
@@ -116,7 +110,6 @@ BEGIN
         SQL%ROWCOUNT, SQL%NOTFOUND;
 END;
 $$;
-
 -- SELECT SQL%ROWCOUNT INTO a variable
 DO $$
 DECLARE
@@ -127,7 +120,6 @@ BEGIN
     RAISE NOTICE 'deleted % rows', v;
 END;
 $$;
-
 -- Attributes after INSERT ... RETURNING
 DO $$
 DECLARE
@@ -137,7 +129,6 @@ BEGIN
     RAISE NOTICE 'returning: id=% rowcount=% found=%', v, SQL%ROWCOUNT, SQL%FOUND;
 END;
 $$;
-
 -- Attributes inside expressions: CASE, arithmetic, boolean operators
 DO $$
 DECLARE
@@ -150,7 +141,6 @@ BEGIN
     RAISE NOTICE 'not found: %', NOT SQL%FOUND;
 END;
 $$;
-
 -- Attribute names are matched case-insensitively and tolerate whitespace
 DO $$
 BEGIN
@@ -160,7 +150,6 @@ BEGIN
     RAISE NOTICE 'spaced found: %', sql % found;
 END;
 $$;
-
 -- EXIT WHEN with SQL%NOTFOUND
 DO $$
 DECLARE
@@ -176,7 +165,6 @@ BEGIN
     RAISE NOTICE 'final rowcount=%', SQL%ROWCOUNT;
 END;
 $$;
-
 -- MERGE updates the attributes
 DO $$
 BEGIN
@@ -189,7 +177,6 @@ BEGIN
         SQL%ROWCOUNT, SQL%FOUND, SQL%NOTFOUND;
 END;
 $$;
-
 -- Dynamic SQL updates the attributes as well
 DO $$
 DECLARE
@@ -200,7 +187,6 @@ BEGIN
     RAISE NOTICE 'dynamic delete: %', v;
 END;
 $$;
-
 -- A cursor FOR loop is an explicit cursor and leaves the attributes alone
 DO $$
 DECLARE
@@ -216,7 +202,6 @@ BEGIN
     RAISE NOTICE 'after select into: rowcount=%', SQL%ROWCOUNT;
 END;
 $$;
-
 -- Attributes in stored functions and procedures
 CREATE FUNCTION implicit_cursor_attr_count() RETURNS BIGINT AS $$
 BEGIN
@@ -225,7 +210,6 @@ BEGIN
     RETURN SQL%ROWCOUNT;
 END;
 $$ LANGUAGE plisql;
-
 DO $$
 DECLARE
     n BIGINT;
@@ -234,7 +218,6 @@ BEGIN
     RAISE NOTICE 'attr_count returned %', n;
 END;
 $$;
-
 -- Attributes seen from an outer block after DML in an inner block
 DO $$
 BEGIN
@@ -245,7 +228,6 @@ BEGIN
     RAISE NOTICE 'outer: rowcount=%', SQL%ROWCOUNT;
 END;
 $$;
-
 -- Regression: %TYPE and %ROWTYPE declarations keep working
 DO $$
 DECLARE
@@ -257,7 +239,6 @@ BEGIN
     RAISE NOTICE 'type ok: v_id=%, v_id2 is null: %', v_id, v_id2 IS NULL;
 END;
 $$;
-
 -- Regression: '%' still works as the modulo operator, and variables may
 -- still be named like an attribute or like the implicit cursor
 DO $$
@@ -278,14 +259,12 @@ BEGIN
     RAISE NOTICE 'sql %% 3 = %', rest;
 END;
 $$;
-
 -- SQL%ROWCOUNT is read-only
 DO $$
 BEGIN
     SQL%ROWCOUNT := 5;
 END;
 $$;
-
 -- Unsupported attribute: SQL%BULK_ROWCOUNT is rejected cleanly
 DO $$
 DECLARE
@@ -294,3 +273,44 @@ BEGIN
     v := SQL%BULK_ROWCOUNT(1);
 END;
 $$;
+NOTICE:  fresh call: rowcount=<NULL>
+NOTICE:  after insert: rowcount=1 found=t notfound=f
+NOTICE:  fresh call: rowcount=<NULL>
+NOTICE:  after insert: rowcount=1 found=t notfound=f
+NOTICE:  rowcount=1 found=t notfound=f
+NOTICE:  after update: rowcount=4
+NOTICE:  found is true
+NOTICE:  notfound is false
+NOTICE:  zero-row update: rowcount=0 found=f notfound=t
+NOTICE:  zero-row delete: rowcount=0 found=f notfound=t isopen=f
+NOTICE:  select into: v=one! rowcount=1 found=t notfound=f
+NOTICE:  empty select into: v=<NULL> rowcount=0 notfound=t
+NOTICE:  before strict: rowcount=0 notfound=t
+NOTICE:  in handler: rowcount=0 found=f notfound=t
+NOTICE:  after handler: rowcount=0 notfound=t
+NOTICE:  deleted 4 rows
+NOTICE:  returning: id=10 rowcount=1 found=t
+NOTICE:  rows inserted
+NOTICE:  double: 2
+NOTICE:  not found: f
+NOTICE:  mixed case: 1
+NOTICE:  spaced: 1
+NOTICE:  spaced found: t
+NOTICE:  looped 2 times
+NOTICE:  final rowcount=1
+NOTICE:  after merge: rowcount=1 found=t notfound=f
+NOTICE:  dynamic delete: 1
+NOTICE:  after insert: rowcount=1
+NOTICE:  after for loop: rowcount=1
+NOTICE:  after select into: rowcount=1
+NOTICE:  attr_count returned 1
+NOTICE:  inner: rowcount=2
+NOTICE:  outer: rowcount=2
+NOTICE:  type ok: v_id=1, v_id2 is null: t
+NOTICE:  10 % 3 = 1
+NOTICE:  rowcount % 2 = 1
+NOTICE:  sql + 1 = 6
+NOTICE:  sql % 3 = 2
+ERROR:  "sql" is not a known variable
+LINE 238:     SQL%ROWCOUNT := 5;
+              ^
