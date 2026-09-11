@@ -252,9 +252,6 @@ typedef struct PsqlScanStateData
 	bool		maybe_anonymous_begin_start;	/* T if the first token is BEGIN */
 	int			init_idents_count;	/* # identifiers since start of statement */
 	char		init_idents[8]; /* records the first few identifiers */
-	int			sub_idents_count;	/* # identifiers since start of a CREATE
-									 * SCHEMA element */
-	char		sub_idents[4];	/* records the first few of those identifiers */
 
 	/*
 	 * Callback functions provided by the program making use of the lexer,
@@ -298,9 +295,6 @@ typedef struct PsqlScanStateSave
 	int			copy_stdin_count;	/* number of COPY FROM STDIN commands */
 	int			init_idents_count;	/* # identifiers since start of statement */
 	char		init_idents[8]; /* records the first few identifiers */
-	int			sub_idents_count;	/* # identifiers since start of a CREATE
-									 * SCHEMA element */
-	char		sub_idents[4];	/* records the first few of those identifiers */
 } PsqlScanStateSave;
 
 
