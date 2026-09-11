@@ -751,13 +751,15 @@ ora_utl_file_get_line(PG_FUNCTION_ARGS)
 
 	result = get_line(fd, max_linesize, encoding, &iseof);
 
+	/*
+	 * Oracle raises NO_DATA_FOUND (ORA-01403) when no text was read
+	 * because of end of file, so PL/iSQL callers can catch it explicitly.
+	 */
 	if (iseof)
 	{
-		ereport(LOG,
-			(errcode(ERRCODE_NO_DATA_FOUND),
-					errmsg("no data found")));
-
-		PG_RETURN_NULL();
+		ereport(ERROR,
+				(errcode(ERRCODE_NO_DATA_FOUND),
+						errmsg("no data found")));
 	}
 
 	PG_RETURN_TEXT_P(result);

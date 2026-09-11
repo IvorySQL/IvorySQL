@@ -48,14 +48,24 @@ begin
     utl_file.get_line(f, line);
     while line is not null and i < 11 loop
         raise notice '[%] >>%<<', i, line;
-        utl_file.get_line(f, line);
+        begin
+            utl_file.get_line(f, line);
+        exception
+            when NO_DATA_FOUND then
+                line := null;
+        end;
         i:=i+1;
 
     end loop;
 
     while line is not null loop
         raise notice '[%] >>%<<', i, line;
-        utl_file.get_line(f, line, 3);
+        begin
+            utl_file.get_line(f, line, 3);
+        exception
+            when NO_DATA_FOUND then
+                line := null;
+        end;
         i:=i+1;
     end loop;
 
@@ -109,10 +119,20 @@ begin
 
     -- data reading before fflush
     raise notice 'data read before fflush';
-    utl_file.get_line(f1, line);
+    begin
+        utl_file.get_line(f1, line);
+    exception
+        when NO_DATA_FOUND then
+            line := null;
+    end;
     while line is not null loop
         raise notice '>>%<<', line;
-        utl_file.get_line(f1, line);
+            begin
+                utl_file.get_line(f1, line);
+            exception
+                when NO_DATA_FOUND then
+                    line := null;
+            end;
     end loop;
     raise notice '>>%<<', line;
 
@@ -125,7 +145,12 @@ begin
     line2_pos := utl_file.fgetpos(f1); -- after reading line 1, get position
     while line is not null loop
         raise notice '>>%<<', line;
-        utl_file.get_line(f1, line);
+            begin
+                utl_file.get_line(f1, line);
+            exception
+                when NO_DATA_FOUND then
+                    line := null;
+            end;
     end loop;
     raise notice '>>%<<', line;
     raise notice 'lets print line#2 again';
@@ -147,6 +172,49 @@ begin
             utl_file.fclose_all();
             raise notice 'is_open(f) = %', utl_file.is_open(f);
             raise notice 'is_open(f1) = %', utl_file.is_open(f1);
+end;
+/
+
+-- GET_LINE raises NO_DATA_FOUND when no text was read because of end of
+-- file, including the first read of an empty file; PL/iSQL callers can
+-- catch it explicitly (matching Oracle)
+declare
+    f sys.ora_utl_file_file_type;
+    line text;
+begin
+    f := utl_file.fopen('data_directory', 'regress_eof.txt', 'w');
+    utl_file.put_line(f, 'first');
+    utl_file.put_line(f, 'second');
+    utl_file.fclose(f);
+
+    f := utl_file.fopen('data_directory', 'regress_eof.txt', 'r');
+    utl_file.get_line(f, line);
+    raise notice 'eof-file line1=[%]', line;
+    utl_file.get_line(f, line);
+    raise notice 'eof-file line2=[%]', line;
+    utl_file.get_line(f, line);
+    raise notice 'eof-file line3=[%] (not reached)', line;
+exception
+    when NO_DATA_FOUND then
+        raise notice 'caught NO_DATA_FOUND at eof, sqlerrm=[%]', sqlerrm;
+    when others then
+        raise notice 'unexpected exception: %', sqlerrm;
+end;
+/
+
+declare
+    f sys.ora_utl_file_file_type;
+    line text;
+begin
+    f := utl_file.fopen('data_directory', 'regress_empty.txt', 'w');
+    utl_file.fclose(f);
+
+    f := utl_file.fopen('data_directory', 'regress_empty.txt', 'r');
+    utl_file.get_line(f, line);
+    raise notice 'empty-file line=[%] (not reached)', line;
+exception
+    when NO_DATA_FOUND then
+        raise notice 'caught NO_DATA_FOUND on empty file, sqlerrm=[%]', sqlerrm;
 end;
 /
 
