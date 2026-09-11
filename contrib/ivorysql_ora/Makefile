@@ -25,6 +25,7 @@ OBJS = \
 	src/builtin_functions/datetime_datatype_functions.o \
 	src/builtin_functions/numeric_datatype_functions.o \
 	src/builtin_functions/misc_functions.o \
+	src/builtin_functions/bitwise_agg.o \
 	src/builtin_packages/dbms_output/dbms_output.o \
 	src/builtin_packages/utl_file/utl_file.o \
 	src/merge/ora_merge.o \
@@ -97,7 +98,8 @@ ORA_REGRESS = \
 	utl_url \
 	dbms_session \
 	dbms_transaction \
-	dbms_random
+	dbms_random \
+	ora_bitwise_agg
 
 # Include path for plisql.h (needed by dbms_utility)
 PG_CPPFLAGS += -I$(top_srcdir)/src/pl/plisql/src

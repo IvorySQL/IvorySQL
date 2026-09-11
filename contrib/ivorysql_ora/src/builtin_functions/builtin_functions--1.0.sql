@@ -1928,3 +1928,110 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 /* End - VSIZE */
+
+/* BIT_AND_AGG / BIT_OR_AGG / BIT_XOR_AGG */
+/*
+ * Oracle-compatible bitwise aggregates over NUMBER.  Operands are
+ * truncated toward zero and combined on the two's-complement
+ * representation (a signed 128-bit accumulator covers Oracle's documented
+ * range), NULLs are skipped and an empty or all-NULL group yields 0.
+ * See src/builtin_functions/bitwise_agg.c for the details.
+ */
+
+CREATE FUNCTION sys.bit_and_agg_transfn(internal, numeric)
+RETURNS internal
+AS 'MODULE_PATHNAME', 'bit_and_agg_transfn'
+LANGUAGE C
+CALLED ON NULL INPUT
+PARALLEL SAFE;
+
+CREATE FUNCTION sys.bit_or_agg_transfn(internal, numeric)
+RETURNS internal
+AS 'MODULE_PATHNAME', 'bit_or_agg_transfn'
+LANGUAGE C
+CALLED ON NULL INPUT
+PARALLEL SAFE;
+
+CREATE FUNCTION sys.bit_xor_agg_transfn(internal, numeric)
+RETURNS internal
+AS 'MODULE_PATHNAME', 'bit_xor_agg_transfn'
+LANGUAGE C
+CALLED ON NULL INPUT
+PARALLEL SAFE;
+
+CREATE FUNCTION sys.bitwise_agg_finalfn(internal)
+RETURNS numeric
+AS 'MODULE_PATHNAME', 'bitwise_agg_finalfn'
+LANGUAGE C
+CALLED ON NULL INPUT
+PARALLEL SAFE;
+
+CREATE FUNCTION sys.bit_and_agg_combinefn(internal, internal)
+RETURNS internal
+AS 'MODULE_PATHNAME', 'bit_and_agg_combinefn'
+LANGUAGE C
+CALLED ON NULL INPUT
+PARALLEL SAFE;
+
+CREATE FUNCTION sys.bit_or_agg_combinefn(internal, internal)
+RETURNS internal
+AS 'MODULE_PATHNAME', 'bit_or_agg_combinefn'
+LANGUAGE C
+CALLED ON NULL INPUT
+PARALLEL SAFE;
+
+CREATE FUNCTION sys.bit_xor_agg_combinefn(internal, internal)
+RETURNS internal
+AS 'MODULE_PATHNAME', 'bit_xor_agg_combinefn'
+LANGUAGE C
+CALLED ON NULL INPUT
+PARALLEL SAFE;
+
+CREATE FUNCTION sys.bitwise_agg_serialize(internal)
+RETURNS bytea
+AS 'MODULE_PATHNAME', 'bitwise_agg_serialize'
+LANGUAGE C
+STRICT
+PARALLEL SAFE;
+
+CREATE FUNCTION sys.bitwise_agg_deserialize(bytea, internal)
+RETURNS internal
+AS 'MODULE_PATHNAME', 'bitwise_agg_deserialize'
+LANGUAGE C
+STRICT
+PARALLEL SAFE;
+
+CREATE AGGREGATE sys.bit_and_agg(numeric) (
+	SFUNC = sys.bit_and_agg_transfn,
+	STYPE = internal,
+	COMBINEFUNC = sys.bit_and_agg_combinefn,
+	SERIALFUNC = sys.bitwise_agg_serialize,
+	DESERIALFUNC = sys.bitwise_agg_deserialize,
+	FINALFUNC = sys.bitwise_agg_finalfn,
+	PARALLEL = SAFE
+);
+
+CREATE AGGREGATE sys.bit_or_agg(numeric) (
+	SFUNC = sys.bit_or_agg_transfn,
+	STYPE = internal,
+	COMBINEFUNC = sys.bit_or_agg_combinefn,
+	SERIALFUNC = sys.bitwise_agg_serialize,
+	DESERIALFUNC = sys.bitwise_agg_deserialize,
+	FINALFUNC = sys.bitwise_agg_finalfn,
+	PARALLEL = SAFE
+);
+
+CREATE AGGREGATE sys.bit_xor_agg(numeric) (
+	SFUNC = sys.bit_xor_agg_transfn,
+	STYPE = internal,
+	COMBINEFUNC = sys.bit_xor_agg_combinefn,
+	SERIALFUNC = sys.bitwise_agg_serialize,
+	DESERIALFUNC = sys.bitwise_agg_deserialize,
+	FINALFUNC = sys.bitwise_agg_finalfn,
+	PARALLEL = SAFE
+);
+
+COMMENT ON AGGREGATE sys.bit_and_agg(numeric) IS 'AND together the truncated two''s-complement representations of the input values (Oracle-compatible, 0 when no non-NULL input)';
+COMMENT ON AGGREGATE sys.bit_or_agg(numeric) IS 'OR together the truncated two''s-complement representations of the input values (Oracle-compatible, 0 when no non-NULL input)';
+COMMENT ON AGGREGATE sys.bit_xor_agg(numeric) IS 'XOR together the truncated two''s-complement representations of the input values (Oracle-compatible, 0 when no non-NULL input)';
+/* End - BIT_AND_AGG / BIT_OR_AGG / BIT_XOR_AGG */
