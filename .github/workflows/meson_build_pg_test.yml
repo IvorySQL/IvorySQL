@@ -23,7 +23,9 @@ jobs:
               tcl-dev libperl-dev gettext libxml2-dev libxslt-dev \
               libreadline-dev libedit-dev uuid-dev libossp-uuid-dev \
               libipc-run-perl libtime-hires-perl libtest-simple-perl \
-              libgssapi-krb5-2 libicu-dev
+              libgssapi-krb5-2 libicu-dev \
+              liblz4-dev libzstd-dev llvm-dev liburing-dev \
+              libcurl4-openssl-dev libsystemd-dev libselinux1-dev
         curl -L "https://github.com/mesonbuild/meson/releases/download/1.0.1/meson-1.0.1.tar.gz" -o meson-1.0.1.tar.gz
         curl -L "https://github.com/ninja-build/ninja/releases/download/v1.10.1/ninja-linux.zip" -o ninja-linux.zip
         unzip -o ninja-linux.zip
@@ -37,8 +39,10 @@ jobs:
       run: |
         meson setup build \
             -Dcassert=true \
-            -Dbuildtype=debug
-
+            -Dbuildtype=debug \
+            -Dlz4=enabled -Dzstd=enabled -Dllvm=enabled \
+            -Dliburing=enabled -Dlibcurl=enabled \
+            -Dsystemd=enabled -Dselinux=enabled
     - name: compile
       run: |
         cd build && ninja
