@@ -2992,6 +2992,15 @@ plisql_build_variable(const char *refname, int lineno, PLiSQL_type * dtype,
  * while the other attributes report NULL).  Since datums are copied per
  * execution from the blessed copies held by PLiSQL_function, the preset
  * value survives across calls.
+ *
+ * The four variables are deliberately not tagged with the package OID even
+ * when they are created while compiling a package: they carry per-call
+ * state, not package state.  Tagging them would send every reference down
+ * the package-datum path, which reads and writes the package's shared
+ * storage and would therefore let one package routine observe the values
+ * another one left behind.  Untagged, both the generated expression and
+ * exec_set_sql_cursor_attrs() resolve them through estate->datums, i.e. the
+ * per-execution copies.
  */
 void
 plisql_create_sql_cursor_attr_variables(PLiSQL_function *function)
@@ -3005,6 +3014,7 @@ plisql_create_sql_cursor_attr_variables(PLiSQL_function *function)
 																	 NULL),
 											   true);
 	var->isconst = true;
+	var->pkgoid = InvalidOid;
 	function->sql_rowcount_varno = var->dno;
 
 	var = (PLiSQL_var *) plisql_build_variable("sql%found", 0,
@@ -3014,6 +3024,7 @@ plisql_create_sql_cursor_attr_variables(PLiSQL_function *function)
 																	 NULL),
 											   true);
 	var->isconst = true;
+	var->pkgoid = InvalidOid;
 	function->sql_found_varno = var->dno;
 
 	var = (PLiSQL_var *) plisql_build_variable("sql%notfound", 0,
@@ -3023,6 +3034,7 @@ plisql_create_sql_cursor_attr_variables(PLiSQL_function *function)
 																	 NULL),
 											   true);
 	var->isconst = true;
+	var->pkgoid = InvalidOid;
 	function->sql_notfound_varno = var->dno;
 
 	var = (PLiSQL_var *) plisql_build_variable("sql%isopen", 0,
@@ -3032,6 +3044,7 @@ plisql_create_sql_cursor_attr_variables(PLiSQL_function *function)
 																	 NULL),
 											   true);
 	var->isconst = true;
+	var->pkgoid = InvalidOid;
 	var->value = BoolGetDatum(false);
 	var->isnull = false;
 	function->sql_isopen_varno = var->dno;

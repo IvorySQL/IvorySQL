@@ -474,7 +474,9 @@ static plisql_CastHashEntry * get_cast_hashentry(PLiSQL_execstate * estate,
 static void exec_init_tuple_store(PLiSQL_execstate * estate);
 static void exec_set_found(PLiSQL_execstate * estate, bool state);
 static bool exec_rc_is_implicit_cursor_stmt(int rc);
+static bool is_sql_cursor_attr_varno(PLiSQL_function * func, int dno);
 static void exec_set_sql_cursor_attrs(PLiSQL_execstate * estate);
+static void exec_reset_sql_cursor_attrs(PLiSQL_execstate * estate);
 static void plisql_create_econtext(PLiSQL_execstate * estate);
 static void plisql_destroy_econtext(PLiSQL_execstate * estate);
 static void assign_simple_var(PLiSQL_execstate * estate, PLiSQL_var * var,
@@ -572,7 +574,27 @@ plisql_exec_function(PLiSQL_function * func, FunctionCallInfo fcinfo,
 	if (func->item != NULL)
 	{
 		for (i = 0; i < estate.ndatums; i++)
+		{
+			/*
+			 * The implicit SQL cursor attributes describe only the statements
+			 * executed by this call, so they must not be aliased to the
+			 * package's shared datum array: otherwise a recursive or repeated
+			 * call could observe the attribute values left behind by an
+			 * earlier one before running any statement of its own.  Keep the
+			 * local copies made by copy_plisql_datums() instead.
+			 */
+			if (is_sql_cursor_attr_varno(func, i))
+				continue;
+
 			estate.datums[i] = func->datums[i];
+		}
+
+		/*
+		 * The local copies still hold whatever values the package datums had
+		 * when the routine was entered, so put them back into the state they
+		 * have before the first implicit-cursor statement.
+		 */
+		exec_reset_sql_cursor_attrs(&estate);
 	}
 
 	if (function_from == FUNC_FROM_SUBPROCFUNC &&
@@ -9742,6 +9764,19 @@ exec_rc_is_implicit_cursor_stmt(int rc)
 }
 
 /*
+ * Is the given datum number one of the four hidden implicit SQL cursor
+ * attribute variables of the given function?
+ */
+static bool
+is_sql_cursor_attr_varno(PLiSQL_function * func, int dno)
+{
+	return dno == func->sql_rowcount_varno ||
+		dno == func->sql_found_varno ||
+		dno == func->sql_notfound_varno ||
+		dno == func->sql_isopen_varno;
+}
+
+/*
  * Update the hidden implicit SQL cursor attribute variables (SQL%ROWCOUNT,
  * SQL%FOUND and SQL%NOTFOUND) from estate->eval_processed.  SQL%ISOPEN is
  * not touched here: the implicit cursor is never open, so the variable is
@@ -9761,6 +9796,41 @@ exec_set_sql_cursor_attrs(PLiSQL_execstate * estate)
 
 	var = (PLiSQL_var *) estate->datums[estate->func->sql_notfound_varno];
 	assign_simple_var(estate, var, BoolGetDatum(n == 0), false, false);
+}
+
+/*
+ * Put the implicit SQL cursor attribute variables back into the state they
+ * have before the first implicit-cursor statement of a call: SQL%ROWCOUNT,
+ * SQL%FOUND and SQL%NOTFOUND are NULL, SQL%ISOPEN is false.
+ *
+ * Only the local copies held by the execstate are touched; the blessed
+ * copies owned by the function are never modified, so a top-level function
+ * call gets the same "nothing executed yet" state for free.
+ *
+ * The values are dropped rather than released: a local copy made by
+ * copy_plisql_datums() may point into the package's datum context, which
+ * this execstate does not own.
+ */
+static void
+exec_reset_sql_cursor_attrs(PLiSQL_execstate * estate)
+{
+	PLiSQL_var *var;
+
+	var = (PLiSQL_var *) estate->datums[estate->func->sql_rowcount_varno];
+	var->freeval = false;
+	assign_simple_var(estate, var, (Datum) 0, true, false);
+
+	var = (PLiSQL_var *) estate->datums[estate->func->sql_found_varno];
+	var->freeval = false;
+	assign_simple_var(estate, var, (Datum) 0, true, false);
+
+	var = (PLiSQL_var *) estate->datums[estate->func->sql_notfound_varno];
+	var->freeval = false;
+	assign_simple_var(estate, var, (Datum) 0, true, false);
+
+	var = (PLiSQL_var *) estate->datums[estate->func->sql_isopen_varno];
+	var->freeval = false;
+	assign_simple_var(estate, var, BoolGetDatum(false), false, false);
 }
 
 /*
