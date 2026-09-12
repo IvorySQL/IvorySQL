@@ -404,6 +404,15 @@ add_months(PG_FUNCTION_ARGS)
 	int64		n;
 	Numeric		num = PG_GETARG_NUMERIC(1);
 
+	/*
+	 * Oracle truncates the fractional part of the months argument toward
+	 * zero (e.g. add_months(date, 1.5) advances one month), so round the
+	 * value down before the integral conversion, which would otherwise
+	 * round half away from zero.
+	 */
+	num = DatumGetNumeric(DirectFunctionCall2(numeric_trunc,
+											  NumericGetDatum(num),
+											  Int32GetDatum(0)));
 	n = DatumGetInt32(DirectFunctionCall1(numeric_int8, NumericGetDatum(num)));
 
 	TMODULO(time, date, USECS_PER_DAY);
