@@ -9788,6 +9788,13 @@ exec_set_sql_cursor_attrs(PLiSQL_execstate * estate)
 	PLiSQL_var *var;
 	uint64		n = estate->eval_processed;
 
+	/*
+	 * Every compilation path creates the four hidden variables right after
+	 * FOUND, so a zero datum number would mean the function was compiled by a
+	 * path that never propagated them.
+	 */
+	Assert(estate->func->sql_rowcount_varno > 0);
+
 	var = (PLiSQL_var *) estate->datums[estate->func->sql_rowcount_varno];
 	assign_simple_var(estate, var, UInt64GetDatum(n), false, false);
 
