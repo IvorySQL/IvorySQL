@@ -399,6 +399,13 @@ NOTICE:  nested entry(1): rowcount=<NULL>
 NOTICE:  inner after update: rowcount=4
 NOTICE:  outer after nested call: rowcount=1
 NOTICE:  nested_rowcount returned 1
+-- NOTE: IvorySQL scopes the implicit SQL cursor attributes per routine
+-- invocation.  This differs from Oracle, where SQL%ROWCOUNT refers to the most
+-- recently executed statement in any scope and persists across a call return
+-- (so in Oracle a caller would see a called subprogram's row count).  Here the
+-- attributes reset at each routine entry, so a parent whose only DML ran inside
+-- a subprocedure reads SQL%ROWCOUNT as NULL below -- it executed no statement
+-- of its own.
 --
 -- A subprocedure shares its parent's datum numbering, so the hidden
 -- attribute variables have to be inherited along with FOUND: a subproc that
