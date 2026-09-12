@@ -130,6 +130,14 @@ numeric_to_int128(Numeric num)
 	if (*p == '+' || *p == '-')
 		neg = (*p++ == '-');
 
+	/*
+	 * numeric_out emits no digits for NaN, 'Infinity' and '-Infinity';
+	 * reject them here instead of silently converting them to zero
+	 * (Oracle reports ORA-01426 numeric overflow for such inputs).
+	 */
+	if (*p < '0' || *p > '9')
+		goto invalid_input;
+
 	while (*p >= '0' && *p <= '9')
 	{
 		int			d = *p++ - '0';
@@ -156,6 +164,7 @@ numeric_to_int128(Numeric num)
 
 	return (int128) mag;
 
+invalid_input:
 out_of_range:
 	ereport(ERROR,
 			(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
@@ -188,8 +197,10 @@ int128_to_numeric(int128 val)
 	if (neg)
 		*--p = '-';
 
-	return DatumGetNumeric(DirectFunctionCall1(numeric_in,
-											   CStringGetDatum(p)));
+	return DatumGetNumeric(DirectFunctionCall3(numeric_in,
+											   CStringGetDatum(p),
+											   ObjectIdGetDatum(InvalidOid),
+											   Int32GetDatum(-1)));
 }
 
 /*
@@ -303,7 +314,10 @@ bitwise_agg_finalfn(PG_FUNCTION_ARGS)
 		oldcontext = MemoryContextSwitchTo(aggcontext);
 
 	if (state == NULL || !state->has_value)
-		result = DirectFunctionCall1(numeric_in, CStringGetDatum("0"));
+		result = DirectFunctionCall3(numeric_in,
+										  CStringGetDatum("0"),
+										  ObjectIdGetDatum(InvalidOid),
+										  Int32GetDatum(-1));
 	else
 		result = NumericGetDatum(int128_to_numeric(state->acc));
 
@@ -350,7 +364,7 @@ bitwise_agg_deserialize(PG_FUNCTION_ARGS)
 	if (!AggCheckCallContext(fcinfo, &aggcontext))
 		elog(ERROR, "bitwise aggregate deserialize function called in non-aggregate context");
 
-	sstate = PG_GETARG_BYTEA_PP(1);
+	sstate = PG_GETARG_BYTEA_PP(0);
 
 	buf.data = (char *) VARDATA_ANY(sstate);
 	buf.len = VARSIZE_ANY_EXHDR(sstate);

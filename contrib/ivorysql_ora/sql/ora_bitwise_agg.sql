@@ -96,9 +96,59 @@ DROP TABLE bit_agg_big;
 -- not error but its answers for such inputs are internal artifacts)
 SELECT bit_or_agg(x) FROM (VALUES (170141183460469231731687303715884105728::numeric)) v(x);
 
+-- -2^127 is the valid lower boundary
+SELECT bit_or_agg(x) AS or_r FROM (VALUES (-170141183460469231731687303715884105728::numeric)) v(x);
+
+-- -2^127-1 underflows the signed 128-bit range
+SELECT bit_or_agg(x) FROM (VALUES (-170141183460469231731687303715884105729::numeric)) v(x);
+
+-- non-finite numerics cannot be truncated to an integer (numeric_out
+-- emits no digits for them)
+SELECT bit_or_agg(x) FROM (VALUES ('NaN'::numeric)) v(x);
+SELECT bit_or_agg(x) FROM (VALUES ('Infinity'::numeric)) v(x);
+SELECT bit_or_agg(x) FROM (VALUES ('-Infinity'::numeric)) v(x);
+
 -- ============================================================
 -- Implicit casts: integer and bigint inputs reach the numeric aggregate
 -- ============================================================
 
 SELECT bit_or_agg(x) AS int_in FROM (VALUES (1), (2), (4)) v(x);
 SELECT bit_and_agg(x) AS bigint_in FROM (VALUES (12::bigint), (10::bigint)) v(x);
+
+-- ============================================================
+-- Window aggregation: OVER () uses the same transition state
+-- ============================================================
+
+CREATE TABLE bit_agg_win (n numeric);
+
+INSERT INTO bit_agg_win VALUES (6), (3), (NULL);
+
+SELECT n, bit_and_agg(n) OVER () AS and_r, bit_or_agg(n) OVER () AS or_r,
+       bit_xor_agg(n) OVER () AS xor_r
+FROM bit_agg_win ORDER BY n NULLS FIRST;
+
+DROP TABLE bit_agg_win;
+
+-- ============================================================
+-- Parallel aggregation exercises serialize/deserialize of the
+-- internal transition state
+-- ============================================================
+
+CREATE TABLE bit_agg_par (n numeric);
+
+INSERT INTO bit_agg_par SELECT g FROM generate_series(1, 1000) g;
+
+SET debug_parallel_query = on;
+SET parallel_setup_cost = 0;
+SET parallel_tuple_cost = 0;
+SET min_parallel_table_scan_size = 0;
+
+SELECT bit_and_agg(n) AS and_r, bit_or_agg(n) AS or_r, bit_xor_agg(n) AS xor_r
+FROM bit_agg_par;
+
+RESET debug_parallel_query;
+RESET parallel_setup_cost;
+RESET parallel_tuple_cost;
+RESET min_parallel_table_scan_size;
+
+DROP TABLE bit_agg_par;
