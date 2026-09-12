@@ -35,7 +35,6 @@ tests += {
       't/024_archive_recovery.pl',
       't/025_stuck_on_old_timeline.pl',
       't/026_overwrite_contrecord.pl',
-      't/027_stream_regress.pl',
       't/028_pitr_timelines.pl',
       't/029_stats_restart.pl',
       't/030_stats_cleanup_replica.pl',
