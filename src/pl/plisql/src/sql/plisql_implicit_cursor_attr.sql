@@ -32,6 +32,7 @@ BEGIN
         SQL%ROWCOUNT, SQL%FOUND, SQL%NOTFOUND;
 END;
 $$ LANGUAGE plisql;
+/
 
 DO $$ BEGIN PERFORM implicit_cursor_attr_fresh(); END $$;
 DO $$ BEGIN PERFORM implicit_cursor_attr_fresh(); END $$;
@@ -225,6 +226,7 @@ BEGIN
     RETURN SQL%ROWCOUNT;
 END;
 $$ LANGUAGE plisql;
+/
 
 DO $$
 DECLARE
@@ -278,6 +280,173 @@ BEGIN
     RAISE NOTICE 'sql %% 3 = %', rest;
 END;
 $$;
+
+-- SQL%<attribute> keeps its meaning even when local variables named "sql"
+-- and "rowcount" are in scope: it always denotes the implicit cursor
+-- attribute, never the modulo of the two variables.  This mirrors Oracle and
+-- matches how ROWNUM is handled here.  The declared values are chosen so
+-- that the two readings differ: modulo would give 5 % 3 = 2, while the
+-- attribute is the row count of the statement above, which is 1.
+DO $$
+DECLARE
+    sql      INT := 5;
+    rowcount INT := 3;
+    x        INT;
+BEGIN
+    INSERT INTO implicit_cursor_test VALUES (20, 'precedence');
+    x := sql % rowcount;
+    RAISE NOTICE 'precedence: x=% (attribute 1, modulo 2)', x;
+END;
+$$;
+
+--
+-- Package routines: the implicit SQL cursor attributes are per-call state.
+-- A package routine executes against the package's shared datum array, so
+-- without an explicit reset a repeated or recursive call would observe the
+-- values left behind by the previous one before running a statement of its
+-- own.
+--
+CREATE OR REPLACE PACKAGE pkg_sql_attr AS
+    PROCEDURE do_dml;
+    FUNCTION  nested_rowcount(n INT) RETURN BIGINT;
+    PROCEDURE other_dml;
+END pkg_sql_attr;
+/
+
+CREATE OR REPLACE PACKAGE BODY pkg_sql_attr AS
+    PROCEDURE do_dml IS
+        v BIGINT;
+    BEGIN
+        RAISE NOTICE 'p1 entry: rowcount=% found=% notfound=% isopen=%',
+            SQL%ROWCOUNT, SQL%FOUND, SQL%NOTFOUND, SQL%ISOPEN;
+        INSERT INTO implicit_cursor_test VALUES (30, 'p1');
+        v := SQL%ROWCOUNT;
+        RAISE NOTICE 'p1 after insert: %', v;
+    END;
+
+    FUNCTION nested_rowcount(n INT) RETURN BIGINT IS
+    BEGIN
+        RAISE NOTICE 'nested entry(%): rowcount=%', n, SQL%ROWCOUNT;
+        IF n = 0 THEN
+            INSERT INTO implicit_cursor_test VALUES (40, 'outer');
+            RAISE NOTICE 'outer after insert: rowcount=%', SQL%ROWCOUNT;
+            PERFORM pkg_sql_attr.nested_rowcount(1);
+            RAISE NOTICE 'outer after nested call: rowcount=%', SQL%ROWCOUNT;
+            RETURN SQL%ROWCOUNT;
+        ELSE
+            UPDATE implicit_cursor_test SET name = name || '*' WHERE id <= 4;
+            RAISE NOTICE 'inner after update: rowcount=%', SQL%ROWCOUNT;
+            RETURN 0;
+        END IF;
+    END;
+
+    PROCEDURE other_dml IS
+    BEGIN
+        RAISE NOTICE 'p2 entry: rowcount=% found=% notfound=%',
+            SQL%ROWCOUNT, SQL%FOUND, SQL%NOTFOUND;
+        DELETE FROM implicit_cursor_test WHERE id > 900;
+        RAISE NOTICE 'p2 after delete: rowcount=% notfound=%',
+            SQL%ROWCOUNT, SQL%NOTFOUND;
+    END;
+END pkg_sql_attr;
+/
+
+-- Start from a known state: ids 1..4 exist and are the only rows.
+DELETE FROM implicit_cursor_test;
+INSERT INTO implicit_cursor_test VALUES (1, 'a'), (2, 'b'), (3, 'c'), (4, 'd');
+
+-- A second call to the same routine starts over from the NULL state, and a
+-- different routine of the same package never sees the first one's values.
+DO $$
+BEGIN
+    pkg_sql_attr.do_dml();
+    pkg_sql_attr.do_dml();
+    pkg_sql_attr.other_dml();
+END;
+$$;
+
+-- Recursion: the nested call must not leak its own row count into the
+-- caller, which still holds the count of its own INSERT.
+DO $$
+DECLARE
+    n BIGINT;
+BEGIN
+    n := pkg_sql_attr.nested_rowcount(0);
+    RAISE NOTICE 'nested_rowcount returned %', n;
+END;
+$$;
+
+--
+-- A subprocedure shares its parent's datum numbering, so the hidden
+-- attribute variables have to be inherited along with FOUND: a subproc that
+-- runs a statement must not write them into the wrong slot of its parent's
+-- variables (which would corrupt FOUND, or the first argument).
+--
+CREATE FUNCTION subproc_attr_parent(p_text TEXT) RETURNS TEXT AS $$
+DECLARE
+    v_rowcount BIGINT;
+    PROCEDURE inner_insert IS
+    BEGIN
+        INSERT INTO implicit_cursor_test VALUES (50, 'inner');
+        RAISE NOTICE 'subproc inner: rowcount=%', SQL%ROWCOUNT;
+    END;
+BEGIN
+    RAISE NOTICE 'parent entry: p_text=%, rowcount=%', p_text, SQL%ROWCOUNT;
+    inner_insert();
+    v_rowcount := SQL%ROWCOUNT;
+    RAISE NOTICE 'parent after subproc: p_text=%, rowcount=%', p_text,
+        v_rowcount;
+    RETURN p_text;
+END;
+$$ LANGUAGE plisql;
+/
+
+DO $$
+DECLARE
+    r TEXT;
+BEGIN
+    r := subproc_attr_parent('intact');
+    RAISE NOTICE 'subproc_attr_parent returned %', r;
+END;
+$$;
+
+-- The same inside a package routine.
+CREATE OR REPLACE PACKAGE pkg_subproc_attr AS
+    FUNCTION do_it(p_text TEXT) RETURN TEXT;
+END pkg_subproc_attr;
+/
+
+CREATE OR REPLACE PACKAGE BODY pkg_subproc_attr AS
+    FUNCTION do_it(p_text TEXT) RETURN TEXT IS
+        v_rowcount BIGINT;
+        PROCEDURE inner_update IS
+        BEGIN
+            UPDATE implicit_cursor_test SET name = name WHERE id <= 4;
+            RAISE NOTICE 'pkg subproc inner: rowcount=%', SQL%ROWCOUNT;
+        END;
+    BEGIN
+        RAISE NOTICE 'pkg parent entry: rowcount=%', SQL%ROWCOUNT;
+        inner_update();
+        v_rowcount := SQL%ROWCOUNT;
+        RAISE NOTICE 'pkg parent after subproc: p_text=%, rowcount=%',
+            p_text, v_rowcount;
+        RETURN p_text;
+    END;
+END pkg_subproc_attr;
+/
+
+DO $$
+DECLARE
+    r TEXT;
+BEGIN
+    r := pkg_subproc_attr.do_it('pkg intact');
+    RAISE NOTICE 'pkg_subproc_attr.do_it returned %', r;
+END;
+$$;
+
+DROP PACKAGE pkg_subproc_attr;
+DROP PACKAGE pkg_sql_attr;
+DROP FUNCTION subproc_attr_parent(TEXT);
 
 -- SQL%ROWCOUNT is read-only
 DO $$
