@@ -23,6 +23,8 @@
 #include "commands/wait.h"
 #include "executor/executor.h"
 #include "parser/parse_node.h"
+#include "storage/lmgr.h"
+#include "storage/lock.h"
 #include "storage/proc.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
@@ -192,6 +194,59 @@ ExecWaitStmt(ParseState *pstate, WaitStmt *stmt, bool isTopLevel,
 					 errmsg("recovery is in progress"),
 					 errhint("Waiting for primary_flush can only be done on a primary server. "
 							 "Use standby_flush mode on a standby server.")));
+	}
+
+	/*
+	 * Conservatively reject an unsatisfied standby LSN wait while this
+	 * backend holds a granted heavyweight lock.  Recovery may need one of
+	 * those locks, directly or through another backend, before replay can
+	 * advance far enough to satisfy our wait.  This can create a cycle: we
+	 * wait for recovery, while recovery waits for us to release the lock.
+	 *
+	 * However, we do not register our dependency on WAL progress as a lock
+	 * wait, so the deadlock detector cannot see the complete cycle. With
+	 * unlimited recovery-conflict delays and no other timeout or
+	 * cancellation, the cycle can persist indefinitely.
+	 *
+	 * Write and flush waits can also depend on startup.  Without an active
+	 * receiver, their replay floor can be their only source of progress, so
+	 * holding a lock needed by replay can create the same cycle.
+	 *
+	 * Streaming can initially provide independent progress, but reception can
+	 * stop before the target is reached.  Restarting reception requires
+	 * startup, and stalled replay prevents further advancement of
+	 * restartpoints used to recycle old WAL, so continued reception can
+	 * exhaust available space.  An active receiver at the start of the wait
+	 * therefore does not guarantee that the wait can finish while replay
+	 * remains blocked.
+	 *
+	 * Apply the restriction to all standby modes, including some write and
+	 * flush waits that an active receiver could satisfy while locks remain
+	 * held.  Requests whose target is observed as already reached are exempt
+	 * from this restriction.
+	 */
+	if ((lsnType == WAIT_LSN_TYPE_STANDBY_REPLAY ||
+		 lsnType == WAIT_LSN_TYPE_STANDBY_WRITE ||
+		 lsnType == WAIT_LSN_TYPE_STANDBY_FLUSH) &&
+		RecoveryInProgress() &&
+		lsn > GetCurrentLSNForWaitType(lsnType))
+	{
+		LOCKTAG		locktag;
+
+		if (GetAnyGrantedHeavyweightLock(&locktag))
+		{
+			StringInfoData locktagbuf;
+
+			initStringInfo(&locktagbuf);
+			DescribeLockTag(&locktagbuf, &locktag);
+
+			ereport(ERROR,
+					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+					 errmsg("cannot wait for a standby LSN while holding locks"),
+					 errdetail("This session holds a lock on %s, which could make recovery wait for this session while this session waits for recovery.",
+							   locktagbuf.data),
+					 errhint("Release the locks, or execute WAIT FOR before acquiring them.")));
+		}
 	}
 
 	/* Now wait for the LSN */
