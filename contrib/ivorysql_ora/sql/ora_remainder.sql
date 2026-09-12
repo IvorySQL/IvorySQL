@@ -1,0 +1,61 @@
+--
+-- REMAINDER (Oracle-compatible)
+--
+-- This test file uses Oracle syntax as much as possible,
+-- so the same SQL can be run on an Oracle database for verification.
+--
+-- Oracle references:
+--   https://docs.oracle.com/en/database/oracle/oracle-database/23/sqlrf/REMAINDER.html
+--
+-- Ground truth below was captured on Oracle Database 23ai
+-- (REMAINDER uses round-half-to-EVEN on the quotient, unlike
+-- PostgreSQL's round(), which rounds halfway cases away from zero).
+--
+
+--
+-- basic integer cases
+--
+SELECT REMAINDER(11, 4) FROM DUAL;
+SELECT REMAINDER(-11, 4) FROM DUAL;
+SELECT REMAINDER(5, 3) FROM DUAL;
+SELECT REMAINDER(6, 3) FROM DUAL;
+SELECT REMAINDER(1, 3) FROM DUAL;
+SELECT REMAINDER(0, 5) FROM DUAL;
+
+--
+-- exact ties: quotient x.5 rounds to the EVEN integer (core behavior)
+--
+SELECT REMAINDER(0.5, 1) FROM DUAL;
+SELECT REMAINDER(-0.5, 1) FROM DUAL;
+SELECT REMAINDER(1.5, 1) FROM DUAL;
+SELECT REMAINDER(-1.5, 1) FROM DUAL;
+SELECT REMAINDER(2.5, 1) FROM DUAL;
+SELECT REMAINDER(-2.5, 1) FROM DUAL;
+SELECT REMAINDER(3.5, 1) FROM DUAL;
+SELECT REMAINDER(-3.5, 1) FROM DUAL;
+SELECT REMAINDER(25, 10) FROM DUAL;
+SELECT REMAINDER(35, 10) FROM DUAL;
+SELECT REMAINDER(-25, 10) FROM DUAL;
+SELECT REMAINDER(10000000000000000001, 2) FROM DUAL;
+
+--
+-- non-integer quotients (no tie: nearest integer)
+--
+SELECT REMAINDER(4.5, 2) FROM DUAL;
+SELECT REMAINDER(-4.5, 2) FROM DUAL;
+SELECT REMAINDER(5.5, 2) FROM DUAL;
+SELECT REMAINDER(15.3, 5) FROM DUAL;
+SELECT REMAINDER(-15.3, 5) FROM DUAL;
+SELECT REMAINDER(7, 4.2) FROM DUAL;
+SELECT REMAINDER(1.05, 0.3) FROM DUAL;
+
+--
+-- NULL propagation
+--
+SELECT REMAINDER(NULL, 1) FROM DUAL;
+SELECT REMAINDER(1, NULL) FROM DUAL;
+
+--
+-- zero divisor raises ORA-01476 (division_by_zero)
+--
+SELECT REMAINDER(7, 0) FROM DUAL;
