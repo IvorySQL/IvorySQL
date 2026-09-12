@@ -164,6 +164,45 @@ begin
 end;
 /
 
+-- test NCHAR variants (fopen_nchar/get_line_nchar/put_line_nchar) with multibyte content
+-- and FGETPOS position reporting
+declare
+    f sys.ora_utl_file_file_type;
+    line_n text;
+    pos_n integer;
+begin
+    f := utl_file.fopen_nchar('data_directory', 'regress_nchar.txt', 'W', 1024);
+    utl_file.put_line_nchar(f, 'hello 世界');
+    utl_file.put_line_nchar(f, 'héllo');
+    pos_n := utl_file.fgetpos(f);
+    raise notice 'fgetpos after two nchar lines = %', pos_n;
+    utl_file.fclose(f);
+
+    f := utl_file.fopen_nchar('data_directory', 'regress_nchar.txt', 'R', 1024);
+    utl_file.get_line_nchar(f, line_n);
+    raise notice 'first nchar line = %', line_n;
+    utl_file.get_line_nchar(f, line_n);
+    raise notice 'second nchar line = %', line_n;
+    utl_file.fclose(f);
+    utl_file.fremove('data_directory', 'regress_nchar.txt');
+end;
+/
+
+-- test PUT_RAW writes binary bytes verbatim (including embedded NUL)
+declare
+    f sys.ora_utl_file_file_type;
+    raw_len integer;
+begin
+    f := utl_file.fopen('data_directory', 'regress_raw.bin', 'W');
+    utl_file.put_raw(f, decode('41420043440a', 'hex'));
+    utl_file.fclose(f);
+    select length(pg_read_binary_file(current_setting('data_directory') || '/regress_raw.bin'))
+      into raw_len;
+    raise notice 'raw file length = % (expect 6)', raw_len;
+    utl_file.fremove('data_directory', 'regress_raw.bin');
+end;
+/
+
 -- clean up
 delete from sys.utl_file_directory where dirname = 'data_directory';
 /
