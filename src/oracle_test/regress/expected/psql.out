@@ -2875,6 +2875,8 @@ Owned by: public.psql_serial_tab.id
 \df exp
  pg_catalog | exp  | pg_catalog.float8  | pg_catalog.float8   | func
  pg_catalog | exp  | pg_catalog.numeric | pg_catalog.numeric  | func
+ sys        | exp  | pg_catalog.numeric | pg_catalog.int4     | func
+ sys        | exp  | pg_catalog.numeric | pg_catalog.int8     | func
 
 \dfx exp
 Schema              | pg_catalog
@@ -2887,6 +2889,18 @@ Schema              | pg_catalog
 Name                | exp
 Result data type    | pg_catalog.numeric
 Argument data types | pg_catalog.numeric
+Type                | func
+--------------------+-------------------
+Schema              | sys
+Name                | exp
+Result data type    | pg_catalog.numeric
+Argument data types | pg_catalog.int4
+Type                | func
+--------------------+-------------------
+Schema              | sys
+Name                | exp
+Result data type    | pg_catalog.numeric
+Argument data types | pg_catalog.int8
 Type                | func
 
 \pset tuples_only false
@@ -2917,6 +2931,18 @@ Name                | exp
 Result data type    | pg_catalog.numeric
 Argument data types | pg_catalog.numeric
 Type                | func
+--------------------+-------------------
+Schema              | sys
+Name                | exp
+Result data type    | pg_catalog.numeric
+Argument data types | pg_catalog.int4
+Type                | func
+--------------------+-------------------
+Schema              | sys
+Name                | exp
+Result data type    | pg_catalog.numeric
+Argument data types | pg_catalog.int8
+Type                | func
 
 \pset tuples_only false
 -- empty table is a special case for this format
@@ -2934,6 +2960,8 @@ Owned by: public.psql_serial_tab.id
 \df exp
 pg_catalog|exp|pg_catalog.float8|pg_catalog.float8|func
 pg_catalog|exp|pg_catalog.numeric|pg_catalog.numeric|func
+sys|exp|pg_catalog.numeric|pg_catalog.int4|func
+sys|exp|pg_catalog.numeric|pg_catalog.int8|func
 \pset tuples_only false
 \pset expanded on
 \d psql_serial_tab_id_seq
@@ -2961,6 +2989,18 @@ Name|exp
 Result data type|pg_catalog.numeric
 Argument data types|pg_catalog.numeric
 Type|func
+
+Schema|sys
+Name|exp
+Result data type|pg_catalog.numeric
+Argument data types|pg_catalog.int4
+Type|func
+
+Schema|sys
+Name|exp
+Result data type|pg_catalog.numeric
+Argument data types|pg_catalog.int8
+Type|func
 \pset tuples_only false
 \pset format wrapped
 \pset expanded off
@@ -2975,6 +3015,8 @@ Owned by: public.psql_serial_tab.id
 \df exp
  pg_catalog | exp  | pg_catalog.float8  | pg_catalog.float8   | func
  pg_catalog | exp  | pg_catalog.numeric | pg_catalog.numeric  | func
+ sys        | exp  | pg_catalog.numeric | pg_catalog.int4     | func
+ sys        | exp  | pg_catalog.numeric | pg_catalog.int8     | func
 
 \pset tuples_only false
 \pset expanded on
@@ -3003,6 +3045,18 @@ Schema              | pg_catalog
 Name                | exp
 Result data type    | pg_catalog.numeric
 Argument data types | pg_catalog.numeric
+Type                | func
+--------------------+-------------------
+Schema              | sys
+Name                | exp
+Result data type    | pg_catalog.numeric
+Argument data types | pg_catalog.int4
+Type                | func
+--------------------+-------------------
+Schema              | sys
+Name                | exp
+Result data type    | pg_catalog.numeric
+Argument data types | pg_catalog.int8
 Type                | func
 
 \pset tuples_only false
@@ -3186,6 +3240,8 @@ Owned by: public.psql_serial_tab.id
 |====
 |pg_catalog |exp |pg_catalog.float8 |pg_catalog.float8 |func
 |pg_catalog |exp |pg_catalog.numeric |pg_catalog.numeric |func
+|sys |exp |pg_catalog.numeric |pg_catalog.int4 |func
+|sys |exp |pg_catalog.numeric |pg_catalog.int8 |func
 |====
 \pset tuples_only false
 \pset expanded on
@@ -3223,6 +3279,18 @@ Owned by: public.psql_serial_tab.id
 <l|Name <l|exp
 <l|Result data type <l|pg_catalog.numeric
 <l|Argument data types <l|pg_catalog.numeric
+<l|Type <l|func
+2+|
+<l|Schema <l|sys
+<l|Name <l|exp
+<l|Result data type <l|pg_catalog.numeric
+<l|Argument data types <l|pg_catalog.int4
+<l|Type <l|func
+2+|
+<l|Schema <l|sys
+<l|Name <l|exp
+<l|Result data type <l|pg_catalog.numeric
+<l|Argument data types <l|pg_catalog.int8
 <l|Type <l|func
 |====
 \pset tuples_only false
@@ -3324,6 +3392,8 @@ pg_catalog.int4,1,1,2147483647,1,no,1
 \df exp
 pg_catalog,exp,pg_catalog.float8,pg_catalog.float8,func
 pg_catalog,exp,pg_catalog.numeric,pg_catalog.numeric,func
+sys,exp,pg_catalog.numeric,pg_catalog.int4,func
+sys,exp,pg_catalog.numeric,pg_catalog.int8,func
 \pset tuples_only false
 \pset expanded on
 \d psql_serial_tab_id_seq
@@ -3345,6 +3415,16 @@ Schema,pg_catalog
 Name,exp
 Result data type,pg_catalog.numeric
 Argument data types,pg_catalog.numeric
+Type,func
+Schema,sys
+Name,exp
+Result data type,pg_catalog.numeric
+Argument data types,pg_catalog.int4
+Type,func
+Schema,sys
+Name,exp
+Result data type,pg_catalog.numeric
+Argument data types,pg_catalog.int8
 Type,func
 \pset tuples_only false
 prepare q as
@@ -3446,6 +3526,20 @@ select '\' as d1, '' as d2;
     <td align="left">pg_catalog.numeric</td>
     <td align="left">func</td>
   </tr>
+  <tr valign="top">
+    <td align="left">sys</td>
+    <td align="left">exp</td>
+    <td align="left">pg_catalog.numeric</td>
+    <td align="left">pg_catalog.int4</td>
+    <td align="left">func</td>
+  </tr>
+  <tr valign="top">
+    <td align="left">sys</td>
+    <td align="left">exp</td>
+    <td align="left">pg_catalog.numeric</td>
+    <td align="left">pg_catalog.int8</td>
+    <td align="left">func</td>
+  </tr>
 </table>
 
 \pset tuples_only false
@@ -3528,6 +3622,50 @@ select '\' as d1, '' as d2;
   <tr valign="top">
     <th>Argument data types</th>
     <td align="left">pg_catalog.numeric</td>
+  </tr>
+  <tr valign="top">
+    <th>Type</th>
+    <td align="left">func</td>
+  </tr>
+
+  <tr><td colspan="2">&nbsp;</td></tr>
+  <tr valign="top">
+    <th>Schema</th>
+    <td align="left">sys</td>
+  </tr>
+  <tr valign="top">
+    <th>Name</th>
+    <td align="left">exp</td>
+  </tr>
+  <tr valign="top">
+    <th>Result data type</th>
+    <td align="left">pg_catalog.numeric</td>
+  </tr>
+  <tr valign="top">
+    <th>Argument data types</th>
+    <td align="left">pg_catalog.int4</td>
+  </tr>
+  <tr valign="top">
+    <th>Type</th>
+    <td align="left">func</td>
+  </tr>
+
+  <tr><td colspan="2">&nbsp;</td></tr>
+  <tr valign="top">
+    <th>Schema</th>
+    <td align="left">sys</td>
+  </tr>
+  <tr valign="top">
+    <th>Name</th>
+    <td align="left">exp</td>
+  </tr>
+  <tr valign="top">
+    <th>Result data type</th>
+    <td align="left">pg_catalog.numeric</td>
+  </tr>
+  <tr valign="top">
+    <th>Argument data types</th>
+    <td align="left">pg_catalog.int8</td>
   </tr>
   <tr valign="top">
     <th>Type</th>
@@ -3774,6 +3912,8 @@ pg\_catalog.int4 & 1 & 1 & 2147483647 & 1 & no & 1 \\
 \begin{tabular}{l | l | l | l | l}
 pg\_catalog & exp & pg\_catalog.float8 & pg\_catalog.float8 & func \\
 pg\_catalog & exp & pg\_catalog.numeric & pg\_catalog.numeric & func \\
+sys & exp & pg\_catalog.numeric & pg\_catalog.int4 & func \\
+sys & exp & pg\_catalog.numeric & pg\_catalog.int8 & func \\
 \end{tabular}
 
 \noindent 
@@ -3812,6 +3952,18 @@ Schema & pg\_catalog \\
 Name & exp \\
 Result data type & pg\_catalog.numeric \\
 Argument data types & pg\_catalog.numeric \\
+Type & func \\
+\hline
+Schema & sys \\
+Name & exp \\
+Result data type & pg\_catalog.numeric \\
+Argument data types & pg\_catalog.int4 \\
+Type & func \\
+\hline
+Schema & sys \\
+Name & exp \\
+Result data type & pg\_catalog.numeric \\
+Argument data types & pg\_catalog.int8 \\
 Type & func \\
 \end{tabular}
 
@@ -4000,6 +4152,24 @@ deallocate q;
 \raggedright{pg\_catalog.numeric}
 &
 \raggedright{func} \tabularnewline
+\raggedright{sys}
+&
+\raggedright{exp}
+&
+\raggedright{pg\_catalog.numeric}
+&
+\raggedright{pg\_catalog.int4}
+&
+\raggedright{func} \tabularnewline
+\raggedright{sys}
+&
+\raggedright{exp}
+&
+\raggedright{pg\_catalog.numeric}
+&
+\raggedright{pg\_catalog.int8}
+&
+\raggedright{func} \tabularnewline
 \end{longtable}
 \pset tuples_only false
 \pset expanded on
@@ -4036,6 +4206,18 @@ Schema & pg\_catalog \\
 Name & exp \\
 Result data type & pg\_catalog.numeric \\
 Argument data types & pg\_catalog.numeric \\
+Type & func \\
+\hline
+Schema & sys \\
+Name & exp \\
+Result data type & pg\_catalog.numeric \\
+Argument data types & pg\_catalog.int4 \\
+Type & func \\
+\hline
+Schema & sys \\
+Name & exp \\
+Result data type & pg\_catalog.numeric \\
+Argument data types & pg\_catalog.int8 \\
 Type & func \\
 \end{tabular}
 
@@ -4315,6 +4497,8 @@ center;
 l | l | l | l | l.
 pg_catalog	exp	pg_catalog.float8	pg_catalog.float8	func
 pg_catalog	exp	pg_catalog.numeric	pg_catalog.numeric	func
+sys	exp	pg_catalog.numeric	pg_catalog.int4	func
+sys	exp	pg_catalog.numeric	pg_catalog.int8	func
 .TE
 .DS L
 .DE
@@ -4361,6 +4545,18 @@ Schema	pg_catalog
 Name	exp
 Result data type	pg_catalog.numeric
 Argument data types	pg_catalog.numeric
+Type	func
+_
+Schema	sys
+Name	exp
+Result data type	pg_catalog.numeric
+Argument data types	pg_catalog.int4
+Type	func
+_
+Schema	sys
+Name	exp
+Result data type	pg_catalog.numeric
+Argument data types	pg_catalog.int8
 Type	func
 .TE
 .DS L
@@ -5398,7 +5594,9 @@ reset work_mem;
  pg_catalog | numeric_sqrt | pg_catalog.numeric | pg_catalog.numeric  | func
  pg_catalog | sqrt         | pg_catalog.float8  | pg_catalog.float8   | func
  pg_catalog | sqrt         | pg_catalog.numeric | pg_catalog.numeric  | func
-(4 rows)
+ sys        | sqrt         | pg_catalog.numeric | pg_catalog.int4     | func
+ sys        | sqrt         | pg_catalog.numeric | pg_catalog.int8     | func
+(6 rows)
 
 \df *sqrt num*
                               List of functions

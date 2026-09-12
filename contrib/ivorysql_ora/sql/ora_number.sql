@@ -1002,3 +1002,21 @@ SELECT to_number('1e0') AS exp_zero;
 SELECT to_number('1e+0') AS exp_plus_zero;
 SELECT to_number('1e-0') AS exp_minus_zero;
 /* End - to_number scientific notation */
+
+/* Oracle NUMBER math: integer arguments must route to numeric arithmetic,
+   not float8 (values cross-checked against Oracle 23ai) */
+SELECT sqrt(2) AS sqrt_int;
+SELECT pg_typeof(sqrt(2)) AS sqrt_type;
+SELECT power(3, 50) AS pow_exact;
+SELECT to_char(power(3, 50)) AS pow_tochar;
+SELECT power(2, 64) AS pow64;
+SELECT power(10, 30) AS pow_1e30;
+SELECT power(-2, 3) AS pow_neg;
+SELECT power(2, -2) AS pow_frac;
+SELECT ln(100) AS ln100;
+SELECT ln(2) AS ln2;
+SELECT exp(1) AS exp1;
+SELECT exp(20) AS exp20;
+SELECT sqrt(1000000) AS sqrt_mil;
+SELECT log(2, 3) AS log23;
+SELECT log(100) AS log100;
