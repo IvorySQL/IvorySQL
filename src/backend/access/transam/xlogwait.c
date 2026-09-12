@@ -60,6 +60,7 @@
 #include "storage/shmem.h"
 #include "storage/subsystems.h"
 #include "utils/fmgrprotos.h"
+#include "utils/injection_point.h"
 #include "utils/pg_lsn.h"
 #include "utils/snapmgr.h"
 #include "utils/wait_event.h"
@@ -239,6 +240,8 @@ addLSNWaiter(XLogRecPtr lsn, WaitLSNType lsnType)
 	updateMinWaitedLSN(lsnType);
 
 	LWLockRelease(WaitLSNLock);
+
+	INJECTION_POINT("wait-for-lsn-after-register", NULL);
 }
 
 /*

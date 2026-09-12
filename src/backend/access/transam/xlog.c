@@ -643,6 +643,12 @@ static int	UsableBytesInSegment;
 static XLogwrtResult LogwrtResult = {0, 0};
 
 /*
+ * True if this process has published primary-flush progress that has not yet
+ * been reported to primary-flush waiters.
+ */
+static bool primaryFlushWakeupPending = false;
+
+/*
  * Update local copy of shared XLogCtl->log{Write,Flush}Result
  *
  * It's critical that Flush always trails Write, so the order of the reads is
@@ -654,6 +660,23 @@ static XLogwrtResult LogwrtResult = {0, 0};
 		pg_read_barrier(); \
 		_target.Write = pg_atomic_read_u64(&XLogCtl->logWriteResult); \
 	} while (0)
+
+/*
+ * Process a primary-flush wakeup requested by XLogWrite().  The caller must
+ * not hold WALWriteLock or any WAL insertion lock.
+ */
+static void
+PrimaryFlushWakeupProcessRequests(void)
+{
+	if (unlikely(primaryFlushWakeupPending))
+	{
+		/* Clear the process-local request before satisfying it. */
+		primaryFlushWakeupPending = false;
+
+		/* XLogWrite() published this frontier before setting the request. */
+		WaitLSNWakeup(WAIT_LSN_TYPE_PRIMARY_FLUSH, LogwrtResult.Flush);
+	}
+}
 
 /*
  * openLogFile is -1 or a kernel FD for an open log file segment.
@@ -1049,6 +1072,9 @@ XLogInsertRecord(XLogRecData *rdata,
 			}
 		}
 	}
+
+	/* Process any flush progress published while making room for the record. */
+	PrimaryFlushWakeupProcessRequests();
 
 #ifdef WAL_DEBUG
 	if (XLOG_DEBUG)
@@ -2337,6 +2363,7 @@ XLogWrite(XLogwrtRqst WriteRqst, TimeLineID tli, bool flexible)
 	bool		ispartialpage;
 	bool		last_iteration;
 	bool		finishing_seg;
+	XLogRecPtr	oldFlush;
 	int			curridx;
 	int			npages;
 	int			startidx;
@@ -2349,6 +2376,7 @@ XLogWrite(XLogwrtRqst WriteRqst, TimeLineID tli, bool flexible)
 	 * Update local LogwrtResult (caller probably did this already, but...)
 	 */
 	RefreshXLogWriteResult(LogwrtResult);
+	oldFlush = LogwrtResult.Flush;
 
 	/*
 	 * Since successive pages in the xlog cache are consecutively allocated,
@@ -2609,6 +2637,10 @@ XLogWrite(XLogwrtRqst WriteRqst, TimeLineID tli, bool flexible)
 	pg_atomic_write_u64(&XLogCtl->logWriteResult, LogwrtResult.Write);
 	pg_write_barrier();
 	pg_atomic_write_u64(&XLogCtl->logFlushResult, LogwrtResult.Flush);
+
+	/* Defer notification until the caller has released its WAL locks. */
+	if (LogwrtResult.Flush > oldFlush)
+		primaryFlushWakeupPending = true;
 
 #ifdef USE_ASSERT_CHECKING
 	{
@@ -2947,6 +2979,7 @@ XLogFlush(XLogRecPtr record)
 	 * Wake up processes waiting for primary flush LSN to reach current flush
 	 * position.
 	 */
+	primaryFlushWakeupPending = false;
 	WaitLSNWakeup(WAIT_LSN_TYPE_PRIMARY_FLUSH, LogwrtResult.Flush);
 
 	/*
@@ -3135,6 +3168,7 @@ XLogBackgroundFlush(void)
 	 * Wake up processes waiting for primary flush LSN to reach current flush
 	 * position.
 	 */
+	primaryFlushWakeupPending = false;
 	WaitLSNWakeup(WAIT_LSN_TYPE_PRIMARY_FLUSH, LogwrtResult.Flush);
 
 	/*

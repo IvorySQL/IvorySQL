@@ -1257,4 +1257,150 @@ $tl_standby2->stop;
 $tl_standby1->stop;
 $tl_primary->stop;
 
+# This final test needs an injection-point-enabled build.  Earlier test nodes
+# have already been stopped, so check the extensions on its dedicated node.
+if ($ENV{enable_injection_points} ne 'yes')
+{
+	done_testing();
+	exit;
+}
+
+# 13. AdvanceXLInsertBuffer() asks XLogWrite() only to write WAL, but completing
+# a segment also advances the flush position.  Verify that this implicit flush
+# wakes primary_flush waiters.
+my $flush_wake_primary = PostgreSQL::Test::Cluster->new('flush_wake_primary');
+$flush_wake_primary->init(extra => ['--wal-segsize=1']);
+$flush_wake_primary->append_conf(
+	'postgresql.conf', qq[
+wal_buffers = 4
+autovacuum = off
+checkpoint_timeout = '1h'
+max_wal_size = '1GB'
+bgwriter_lru_maxpages = 0
+]);
+$flush_wake_primary->start;
+
+# The modules may be absent under installcheck.
+if (   !$flush_wake_primary->check_extension('injection_points')
+	|| !$flush_wake_primary->check_extension('test_wait_lsn'))
+{
+	$flush_wake_primary->stop;
+	done_testing();
+	exit;
+}
+
+is( $flush_wake_primary->safe_psql(
+		'postgres',
+		"SELECT setting::int FROM pg_settings WHERE name = 'wal_segment_size'"
+	),
+	1024 * 1024,
+	'dedicated node runs with 1MB WAL segments');
+
+# Keep the WAL writer out of XLogBackgroundFlush(), whose ordinary flush
+# wakeup would mask the path under test.
+$flush_wake_primary->safe_psql(
+	'postgres', q[
+	CREATE EXTENSION injection_points;
+	CREATE EXTENSION test_wait_lsn;
+	SELECT injection_points_attach('walwriter-before-background-flush', 'wait');
+]);
+$flush_wake_primary->wait_for_event('walwriter',
+	'walwriter-before-background-flush');
+
+my $writer = $flush_wake_primary->background_psql('postgres');
+$writer->set_query_timer_restart;
+
+# Begin in a fresh segment, then round the insert pointer up to its end.
+$writer->query_safe('SELECT pg_switch_wal()');
+my $target_lsn = $writer->query_safe(
+	q[
+	WITH p AS
+	(
+		SELECT pg_current_wal_insert_lsn() AS lsn,
+			   setting::numeric AS segsz
+		FROM pg_settings
+		WHERE name = 'wal_segment_size'
+	)
+	SELECT lsn + (segsz - (lsn - '0/0'::pg_lsn) % segsz)
+	FROM p
+]);
+
+is( $writer->query_safe(
+		"SELECT pg_current_wal_flush_lsn() < '$target_lsn'::pg_lsn"),
+	't',
+	'wakeup target is not flushed initially');
+
+my $waiter = $flush_wake_primary->background_psql('postgres');
+$waiter->set_query_timer_restart;
+my $waiter_pid = $waiter->query_safe('SELECT pg_backend_pid()');
+
+$flush_wake_primary->safe_psql(
+	'postgres', q[
+	SELECT injection_points_attach('wait-for-lsn-after-register', 'wait');
+]);
+
+$waiter->query_until(
+	qr/^wait_started\r?$/m, qq[
+	\\echo wait_started
+	WAIT FOR LSN '$target_lsn'
+		WITH (MODE 'primary_flush', no_throw);
+	\\echo wait_finished
+]);
+$flush_wake_primary->wait_for_event('client backend',
+	'wait-for-lsn-after-register');
+
+is( $flush_wake_primary->safe_psql(
+		'postgres', qq[
+		SELECT test_wait_lsn_waiter_is_registered(
+			$waiter_pid, 'primary_flush', '$target_lsn')
+	]),
+	't',
+	'primary_flush waiter is registered before the implicit flush');
+
+# A 2MB nontransactional, non-flushing logical message assigns no XID and
+# dirties no relation buffers.  With four WAL buffers, it must recycle through
+# the target.  Keep its transaction open so implicit transaction completion
+# cannot call XLogSetAsyncXactLSN(); the xid-less rollback writes no WAL.
+$writer->query_safe('BEGIN');
+$writer->query_safe(
+	q[
+	SELECT pg_logical_emit_message(
+		false, 'wfl', repeat('x', 2 * 1024 * 1024), false)
+]);
+
+is( $writer->query_safe(
+		"SELECT pg_current_wal_flush_lsn() >= '$target_lsn'::pg_lsn"),
+	't',
+	'finishing a segment advanced flush through the target');
+
+# The waiter is still parked, so only a progress waker can remove it.
+is( $flush_wake_primary->safe_psql(
+		'postgres', qq[
+		SELECT test_wait_lsn_waiter_is_registered(
+			$waiter_pid, 'primary_flush', '$target_lsn')
+	]),
+	'f',
+	'implicit segment flush removes the primary_flush waiter');
+
+$flush_wake_primary->safe_psql(
+	'postgres', q[
+	SELECT injection_points_detach('wait-for-lsn-after-register');
+	SELECT injection_points_wakeup('wait-for-lsn-after-register');
+]);
+
+like($waiter->query_until(qr/^wait_finished\r?$/m, ''),
+	qr/^success\r?$/m, 'primary_flush waiter returns success after release');
+
+# Detach first so that the WAL writer cannot immediately re-enter the point.
+$flush_wake_primary->safe_psql(
+	'postgres', q[
+	SELECT injection_points_detach('walwriter-before-background-flush');
+	SELECT injection_points_wakeup('walwriter-before-background-flush');
+]);
+
+$writer->query_safe('ROLLBACK');
+$writer->quit;
+$waiter->quit;
+$flush_wake_primary->stop;
+
 done_testing();
