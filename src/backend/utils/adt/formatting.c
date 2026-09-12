@@ -337,12 +337,14 @@ typedef struct
 #define NUM_F_PLUS_POST		(1 << 12)
 #define NUM_F_MINUS_POST	(1 << 13)
 #define NUM_F_EEEE			(1 << 14)
+#define NUM_F_DOLLAR		(1 << 15)
 
 /*
  * Tests
  */
 #define IS_DECIMAL(_f)	((_f)->flag & NUM_F_DECIMAL)
 #define IS_LDECIMAL(_f) ((_f)->flag & NUM_F_LDECIMAL)
+#define IS_DOLLAR(_f)	((_f)->flag & NUM_F_DOLLAR)
 #define IS_ZERO(_f) ((_f)->flag & NUM_F_ZERO)
 #define IS_BLANK(_f)	((_f)->flag & NUM_F_BLANK)
 #define IS_FILLMODE(_f) ((_f)->flag & NUM_F_FILLMODE)
@@ -759,6 +761,7 @@ typedef enum
 	NUM_FM,
 	NUM_G,
 	NUM_L,
+	NUM_DOLLAR,
 	NUM_MI,
 	NUM_PL,
 	NUM_PR,
@@ -943,6 +946,7 @@ static const KeyWord NUM_keywords[] = {
 	{"FM", 2, NUM_FM},			/* F */
 	{"G", 1, NUM_G},			/* G */
 	{"L", 1, NUM_L},			/* L */
+	{"$", 1, NUM_DOLLAR},		/* $ */
 	{"MI", 2, NUM_MI},			/* M */
 	{"PL", 2, NUM_PL},			/* P */
 	{"PR", 2, NUM_PR},
@@ -1006,7 +1010,7 @@ static const int NUM_index[KeyWord_INDEX_SIZE] = {
  */
 	/*---- first 0..31 chars are skipped ----*/
 
-	-1, -1, -1, -1, -1, -1, -1, -1,
+	-1, -1, -1, -1, NUM_DOLLAR, -1, -1, -1,
 	-1, -1, -1, -1, NUM_COMMA, -1, NUM_DEC, -1, NUM_0, -1,
 	-1, -1, -1, -1, -1, -1, -1, NUM_9, -1, -1,
 	-1, -1, -1, -1, -1, -1, NUM_B, NUM_C, NUM_D, NUM_E,
@@ -1030,6 +1034,7 @@ typedef struct NUMProc
 
 	int			sign,			/* '-' or '+'			*/
 				sign_wrote,		/* was sign write		*/
+				dollar_wrote,	/* was dollar sign write	*/
 				num_count,		/* number of write digits	*/
 				num_in,			/* is inside number		*/
 				num_curr,		/* current position in number	*/
@@ -1358,6 +1363,11 @@ NUMDesc_prepare(NUMDesc *num, FormatNode *n)
 
 		case NUM_L:
 		case NUM_G:
+			num->need_locale = true;
+			break;
+
+		case NUM_DOLLAR:
+			num->flag |= NUM_F_DOLLAR;
 			num->need_locale = true;
 			break;
 
@@ -6358,6 +6368,14 @@ NUM_prepare_locale(NUMProc *Np)
 		Np->L_thousands_sep = ",";
 		Np->L_currency_symbol = " ";
 	}
+
+	/*
+	 * The Oracle "$" format element is a currency symbol that floats next to
+	 * the first significant digit regardless of where it appears in the
+	 * format picture, so it always renders as a plain "$".
+	 */
+	if (IS_DOLLAR(Np->Num))
+		Np->L_currency_symbol = "$";
 }
 
 /*
@@ -6683,6 +6701,20 @@ NUM_numpart_to_char(NUMProc *Np, int id)
 		}
 	}
 
+	/*
+	 * Write the floating currency symbol of the "$" format right before the
+	 * first significant digit (just after the sign, which was written
+	 * above), like Oracle does, instead of at the position of the "$"
+	 * pattern itself.
+	 */
+	if (IS_DOLLAR(Np->Num) && Np->dollar_wrote == false &&
+		(Np->num_curr >= Np->out_pre_spaces || (IS_ZERO(Np->Num) && Np->Num->zero_start == Np->num_curr)) &&
+		(IS_PREDEC_SPACE(Np) == false || (Np->last_relevant && *Np->last_relevant == '.')))
+	{
+		*Np->inout_p = *Np->L_currency_symbol;
+		++Np->inout_p;
+		Np->dollar_wrote = true;
+	}
 
 	/*
 	 * digits / FM / Zero / Dec. point
@@ -7025,6 +7057,18 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								 errmsg("invalid number format model")));
 		}
+
+		/*
+		 * The floating currency sign of the "$" format occupies an input
+		 * position of its own without a matching digit node; when the
+		 * backward scan reaches it the remaining picture is satisfied by
+		 * the input seen so far, and the currency sign itself is matched
+		 * by the "$" node further down in the consumption loop.
+		 */
+		if (IS_DOLLAR(Np->Num) && input_tem >= Np->inout &&
+			*input_tem == *Np->L_currency_symbol)
+			break;
+
 		switch (ntem->key->id)
 		{
 			/**
@@ -7263,6 +7307,34 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 					else
 						Np->inout_p += strlen(Np->L_currency_symbol) - 1;
 					break;
+
+				case NUM_DOLLAR:
+					/*
+					 * Oracle's "$" is a floating currency sign: it may stand
+					 * for blanks, an optional sign and the "$" itself before
+					 * the digits, e.g. to_number('-$123', '$999').
+					 */
+					if (Np->is_to_char)
+						continue;
+
+					while (Np->inout_p < Np->inout + from_char_input_len &&
+						   *Np->inout_p == ' ')
+						Np->inout_p++;
+					if (Np->inout_p + 2 <= Np->inout + from_char_input_len &&
+						(*Np->inout_p == '-' || *Np->inout_p == '+') &&
+						*(Np->inout_p + 1) == *Np->L_currency_symbol)
+					{
+						*Np->number = *Np->inout_p;
+						Np->inout_p += 2;
+					}
+					else if (Np->inout_p < Np->inout + from_char_input_len &&
+							 *Np->inout_p == *Np->L_currency_symbol)
+						Np->inout_p++;
+					else
+						ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+									 errmsg("invalid number")));
+					continue;
 
 				case NUM_RN:
 					if (IS_FILLMODE(Np->Num))
@@ -7898,6 +7970,28 @@ NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 					{
 						/* Here we do not truncate the symbol ... */
 						NUM_eat_non_data_chars(Np, pg_mbstrlen(pattern), input_len);
+						continue;
+					}
+					break;
+
+				case NUM_DOLLAR:
+					if (Np->is_to_char)
+					{
+						/*
+						 * The floating currency sign is written by
+						 * NUM_numpart_to_char() right before the first
+						 * significant digit, so the "$" pattern slot
+						 * itself produces no output.
+						 */
+						continue;
+					}
+					else
+					{
+						/*
+						 * Skip blanks or the currency sign itself, like L
+						 * does for its locale-dependent symbol.
+						 */
+						NUM_eat_non_data_chars(Np, 1, input_len);
 						continue;
 					}
 					break;
