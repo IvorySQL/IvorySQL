@@ -551,7 +551,7 @@ static void add_cast_to(StringInfo buf, Oid typid);
 static char *generate_qualified_type_name(Oid typid);
 static text *string_to_text(char *str);
 static char *flatten_reloptions(Oid relid);
-void		get_reloptions(StringInfo buf, Datum reloptions);
+static void get_reloptions(StringInfo buf, Datum reloptions);
 static const char *standard_quote_identifier(const char *ident);
 Datum		pg_get_functiondef_internal(PG_FUNCTION_ARGS);
 static void get_json_path_spec(Node *path_spec, deparse_context *context,
@@ -14245,7 +14245,7 @@ string_to_text(char *str)
 /*
  * Generate a C string representing a relation options from text[] datum.
  */
-void
+static void
 get_reloptions(StringInfo buf, Datum reloptions)
 {
 	Datum	   *options;
