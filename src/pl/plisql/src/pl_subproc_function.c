@@ -241,7 +241,7 @@ plisql_pop_subproc_func(void)
  */
 void
 plisql_build_variable_from_funcargs(PLiSQL_subproc_function * subprocfunc, bool forValidator,
-									FunctionCallInfo fcinfo, int found_varno)
+									FunctionCallInfo fcinfo, PLiSQL_function *parentfunc)
 {
 	PLiSQL_function_argitem *argitem;
 	ListCell   *cell;
@@ -639,7 +639,20 @@ no_argument:
 
 	/* Record readonly flag (STABLE/IMMUTABLE semantics not used here) */
 	function->fn_readonly = false;
-	function->found_varno = found_varno;
+
+	/*
+	 * The subproc's datum array begins with a copy of its parent's, so the
+	 * parent's datum numbers for the hidden variables are the ones that are
+	 * valid here.  The implicit SQL cursor attributes must be inherited too:
+	 * they are written through estate->func->sql_*_varno, and a zero there
+	 * would make the subproc's statements overwrite the FOUND variable (or
+	 * the first argument) instead.
+	 */
+	function->found_varno = parentfunc->found_varno;
+	function->sql_rowcount_varno = parentfunc->sql_rowcount_varno;
+	function->sql_found_varno = parentfunc->sql_found_varno;
+	function->sql_notfound_varno = parentfunc->sql_notfound_varno;
+	function->sql_isopen_varno = parentfunc->sql_isopen_varno;
 
 	/* Insert function into hash table (for polymorphic arg specializations) */
 	if (subprocfunc->has_poly_argument)
@@ -2913,7 +2926,13 @@ plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
 	MemoryContext func_cxt;
 	PLiSQL_function *function;
 	int			parse_rc;
-	int			found_varno = subprocfunc->function->found_varno;
+
+	/*
+	 * Save the old template before it is replaced below: it is the function
+	 * whose datum numbering this subproc inherits, including the hidden
+	 * variables it gets from its parent.
+	 */
+	PLiSQL_function *parentfunc = subprocfunc->function;
 	Oid			define_useid = InvalidOid;
 	Oid			save_userid;
 	int			save_sec_context;
@@ -3015,7 +3034,7 @@ plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
 	plisql_ns_push(subprocfunc->func_name, PLISQL_LABEL_BLOCK);
 
 	plisql_build_variable_from_funcargs(subprocfunc, forValidator,
-										fcinfo, found_varno);
+										fcinfo, parentfunc);
 
 	/* Parse the function body */
 	parse_rc = plisql_yyparse(&plisql_parse_result, scanner);

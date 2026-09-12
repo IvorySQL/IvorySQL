@@ -473,6 +473,10 @@ static plisql_CastHashEntry * get_cast_hashentry(PLiSQL_execstate * estate,
 												 Oid dsttype, int32 dsttypmod);
 static void exec_init_tuple_store(PLiSQL_execstate * estate);
 static void exec_set_found(PLiSQL_execstate * estate, bool state);
+static bool exec_rc_is_implicit_cursor_stmt(int rc);
+static bool is_sql_cursor_attr_varno(PLiSQL_function * func, int dno);
+static void exec_set_sql_cursor_attrs(PLiSQL_execstate * estate);
+static void exec_reset_sql_cursor_attrs(PLiSQL_execstate * estate);
 static void plisql_create_econtext(PLiSQL_execstate * estate);
 static void plisql_destroy_econtext(PLiSQL_execstate * estate);
 static void assign_simple_var(PLiSQL_execstate * estate, PLiSQL_var * var,
@@ -570,7 +574,27 @@ plisql_exec_function(PLiSQL_function * func, FunctionCallInfo fcinfo,
 	if (func->item != NULL)
 	{
 		for (i = 0; i < estate.ndatums; i++)
+		{
+			/*
+			 * The implicit SQL cursor attributes describe only the statements
+			 * executed by this call, so they must not be aliased to the
+			 * package's shared datum array: otherwise a recursive or repeated
+			 * call could observe the attribute values left behind by an
+			 * earlier one before running any statement of its own.  Keep the
+			 * local copies made by copy_plisql_datums() instead.
+			 */
+			if (is_sql_cursor_attr_varno(func, i))
+				continue;
+
 			estate.datums[i] = func->datums[i];
+		}
+
+		/*
+		 * The local copies still hold whatever values the package datums had
+		 * when the routine was entered, so put them back into the state they
+		 * have before the first implicit-cursor statement.
+		 */
+		exec_reset_sql_cursor_attrs(&estate);
 	}
 
 	if (function_from == FUNC_FROM_SUBPROCFUNC &&
@@ -4788,6 +4812,7 @@ exec_stmt_execsql(PLiSQL_execstate * estate,
 				 */
 				exec_set_found(estate, true);
 				estate->eval_processed = 1;
+				exec_set_sql_cursor_attrs(estate);
 
 				return PLISQL_RC_OK;
 			}
@@ -4888,6 +4913,19 @@ exec_stmt_execsql(PLiSQL_execstate * estate,
 
 	/* All variants should save result info for GET DIAGNOSTICS */
 	estate->eval_processed = SPI_processed;
+
+	/*
+	 * Update the implicit SQL cursor attributes if this was one of the
+	 * statement kinds Oracle's implicit cursor tracks.  A static SELECT
+	 * INTO has its INTO clause redacted before execution, so it comes back
+	 * as SPI_OK_SELECT and is recognized through stmt->into instead.  This
+	 * happens before any STRICT/no-rows error is raised, so exception
+	 * handlers see the state left by the failing SELECT INTO, matching
+	 * Oracle.
+	 */
+	if (exec_rc_is_implicit_cursor_stmt(rc) ||
+		(rc == SPI_OK_SELECT && stmt->into))
+		exec_set_sql_cursor_attrs(estate);
 
 	/* Process INTO if present */
 	if (stmt->into)
@@ -5085,6 +5123,16 @@ exec_stmt_dynexecute(PLiSQL_execstate * estate,
 
 	/* Save result info for GET DIAGNOSTICS */
 	estate->eval_processed = SPI_processed;
+
+	/*
+	 * Update the implicit SQL cursor attributes if this was one of the
+	 * statement kinds Oracle's implicit cursor tracks.  A dynamic SELECT
+	 * ... INTO comes back as SPI_OK_SELECT and is recognized through
+	 * stmt->into instead.
+	 */
+	if (exec_rc_is_implicit_cursor_stmt(exec_res) ||
+		(exec_res == SPI_OK_SELECT && stmt->into))
+		exec_set_sql_cursor_attrs(estate);
 
 	/* Process INTO if present */
 	if (stmt->into)
@@ -9686,6 +9734,110 @@ exec_set_found(PLiSQL_execstate * estate, bool state)
 	pg_assume(var->datatype->typlen != -1);
 
 	assign_simple_var(estate, var, BoolGetDatum(state), false, false);
+}
+
+/*
+ * Does the given SPI result code correspond to a statement that Oracle's
+ * implicit SQL cursor tracks, i.e. INSERT, UPDATE, DELETE or MERGE (with
+ * or without RETURNING), or SELECT INTO?  Only such statements update the
+ * SQL%ROWCOUNT / SQL%FOUND / SQL%NOTFOUND attributes.
+ */
+static bool
+exec_rc_is_implicit_cursor_stmt(int rc)
+{
+	switch (rc)
+	{
+		case SPI_OK_INSERT:
+		case SPI_OK_UPDATE:
+		case SPI_OK_DELETE:
+		case SPI_OK_MERGE:
+		case SPI_OK_INSERT_RETURNING:
+		case SPI_OK_UPDATE_RETURNING:
+		case SPI_OK_DELETE_RETURNING:
+		case SPI_OK_MERGE_RETURNING:
+		case SPI_OK_SELINTO:
+			return true;
+
+		default:
+			return false;
+	}
+}
+
+/*
+ * Is the given datum number one of the four hidden implicit SQL cursor
+ * attribute variables of the given function?
+ */
+static bool
+is_sql_cursor_attr_varno(PLiSQL_function * func, int dno)
+{
+	return dno == func->sql_rowcount_varno ||
+		dno == func->sql_found_varno ||
+		dno == func->sql_notfound_varno ||
+		dno == func->sql_isopen_varno;
+}
+
+/*
+ * Update the hidden implicit SQL cursor attribute variables (SQL%ROWCOUNT,
+ * SQL%FOUND and SQL%NOTFOUND) from estate->eval_processed.  SQL%ISOPEN is
+ * not touched here: the implicit cursor is never open, so the variable is
+ * preset to false at compile time.
+ */
+static void
+exec_set_sql_cursor_attrs(PLiSQL_execstate * estate)
+{
+	PLiSQL_var *var;
+	uint64		n = estate->eval_processed;
+
+	/*
+	 * Every compilation path creates the four hidden variables right after
+	 * FOUND, so a zero datum number would mean the function was compiled by a
+	 * path that never propagated them.
+	 */
+	Assert(estate->func->sql_rowcount_varno > 0);
+
+	var = (PLiSQL_var *) estate->datums[estate->func->sql_rowcount_varno];
+	assign_simple_var(estate, var, UInt64GetDatum(n), false, false);
+
+	var = (PLiSQL_var *) estate->datums[estate->func->sql_found_varno];
+	assign_simple_var(estate, var, BoolGetDatum(n != 0), false, false);
+
+	var = (PLiSQL_var *) estate->datums[estate->func->sql_notfound_varno];
+	assign_simple_var(estate, var, BoolGetDatum(n == 0), false, false);
+}
+
+/*
+ * Put the implicit SQL cursor attribute variables back into the state they
+ * have before the first implicit-cursor statement of a call: SQL%ROWCOUNT,
+ * SQL%FOUND and SQL%NOTFOUND are NULL, SQL%ISOPEN is false.
+ *
+ * Only the local copies held by the execstate are touched; the blessed
+ * copies owned by the function are never modified, so a top-level function
+ * call gets the same "nothing executed yet" state for free.
+ *
+ * The values are dropped rather than released: a local copy made by
+ * copy_plisql_datums() may point into the package's datum context, which
+ * this execstate does not own.
+ */
+static void
+exec_reset_sql_cursor_attrs(PLiSQL_execstate * estate)
+{
+	PLiSQL_var *var;
+
+	var = (PLiSQL_var *) estate->datums[estate->func->sql_rowcount_varno];
+	var->freeval = false;
+	assign_simple_var(estate, var, (Datum) 0, true, false);
+
+	var = (PLiSQL_var *) estate->datums[estate->func->sql_found_varno];
+	var->freeval = false;
+	assign_simple_var(estate, var, (Datum) 0, true, false);
+
+	var = (PLiSQL_var *) estate->datums[estate->func->sql_notfound_varno];
+	var->freeval = false;
+	assign_simple_var(estate, var, (Datum) 0, true, false);
+
+	var = (PLiSQL_var *) estate->datums[estate->func->sql_isopen_varno];
+	var->freeval = false;
+	assign_simple_var(estate, var, BoolGetDatum(false), false, false);
 }
 
 /*

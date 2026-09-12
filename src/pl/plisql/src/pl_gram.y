@@ -964,7 +964,7 @@ decl_statement	: K_TYPE decl_varname K_IS K_RECORD '('
 					}
 				| function_heading function_properties ora_function_is_as
 					{
-						int found_varno = plisql_curr_compile->found_varno;
+						PLiSQL_function *parentfunc = plisql_curr_compile;
 
 						plisql_check_subprocfunc_properties($1,$2, false);
 						if ($2 != NIL)
@@ -977,7 +977,7 @@ decl_statement	: K_TYPE decl_varname K_IS K_RECORD '('
 						plisql_start_subproc_func();
 						plisql_curr_compile = $1->function;
 						$1->lastassignvardno = plisql_nDatums;
-						plisql_build_variable_from_funcargs($1, true, NULL, found_varno);
+						plisql_build_variable_from_funcargs($1, true, NULL, parentfunc);
 						plisql_add_initdatums(NULL);
 					}
 				ora_outermost_pl_block ';'
@@ -1008,7 +1008,7 @@ decl_statement	: K_TYPE decl_varname K_IS K_RECORD '('
 					}
 				| procedure_heading procedure_properties ora_function_is_as
 					{
-						int found_varno = plisql_curr_compile->found_varno;
+						PLiSQL_function *parentfunc = plisql_curr_compile;
 
 						plisql_check_subprocfunc_properties($1,$2, false);
 						if ($2 != NIL)
@@ -1021,7 +1021,7 @@ decl_statement	: K_TYPE decl_varname K_IS K_RECORD '('
 						plisql_start_subproc_func();
 						plisql_curr_compile = $1->function;
 						$1->lastassignvardno = plisql_nDatums;
-						plisql_build_variable_from_funcargs($1, true, NULL, found_varno);
+						plisql_build_variable_from_funcargs($1, true, NULL, parentfunc);
 						plisql_add_initdatums(NULL);
 					}
 				ora_outermost_pl_block ';'
