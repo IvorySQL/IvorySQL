@@ -58,17 +58,19 @@ FROM USER_INDEXES
 WHERE TABLE_NAME = 'IV_T'
 ORDER BY INDEX_NAME;
 
--- partitioned and persistence-related markers
+-- partitioned and persistence-related markers; the partitioned index
+-- (relkind 'I' on the partitioned parent) is PARTITIONED, the unlogged
+-- table's index is NOLOGGING
 SELECT INDEX_NAME, PARTITIONED, LOGGING
 FROM USER_INDEXES
 WHERE INDEX_NAME LIKE 'IV\_P%' ESCAPE '\' OR INDEX_NAME LIKE 'IV\_UL%' ESCAPE '\'
 ORDER BY INDEX_NAME;
 
--- unanalyzed indexes report NULL NUM_ROWS like Oracle
-SELECT INDEX_NAME, NUM_ROWS IS NULL AS num_rows_null, SAMPLE_SIZE IS NULL,
-	LAST_ANALYZED IS NULL
+-- NUM_ROWS follows the index reltuples: exact when CREATE INDEX built
+-- the index, 0 for the primary-key index created before the inserts
+SELECT INDEX_NAME, NUM_ROWS
 FROM USER_INDEXES
-WHERE TABLE_NAME = 'IV_T' AND CONSTRAINT_INDEX = 'NO'
+WHERE TABLE_NAME = 'IV_T' AND INDEX_NAME IN ('IV_IX', 'IV_T_PKEY')
 ORDER BY INDEX_NAME;
 
 -- storage columns without a PostgreSQL counterpart stay NULL
@@ -88,11 +90,13 @@ SELECT DEGREE, INSTANCES, COMPRESSION, TABLE_TYPE, JOIN_INDEX, DROPPED,
 FROM USER_INDEXES
 WHERE TABLE_NAME = 'IV_T' AND INDEX_NAME = 'IV_IX';
 
--- after ANALYZE the index entry count becomes visible
-ANALYZE IV_T;
-SELECT INDEX_NAME, NUM_ROWS
+-- statistics columns PostgreSQL does not track stay NULL
+SELECT INDEX_NAME, SAMPLE_SIZE IS NULL AS sample_size_null,
+	LAST_ANALYZED IS NULL AS last_analyzed_null,
+	BLEVEL IS NULL AND LEAF_BLOCKS IS NULL AS btree_stats_null
 FROM USER_INDEXES
-WHERE TABLE_NAME = 'IV_T' AND INDEX_NAME = 'IV_IX';
+WHERE TABLE_NAME = 'IV_T'
+ORDER BY INDEX_NAME;
 
 -- invalid indexes are UNUSABLE
 ALTER INDEX IV_IX UNUSABLE;
