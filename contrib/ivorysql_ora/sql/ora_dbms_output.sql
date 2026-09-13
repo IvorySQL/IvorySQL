@@ -756,3 +756,67 @@ $$;
 -- =============================================================================
 DROP PROCEDURE test_output_proc;
 DROP FUNCTION test_output_func;
+
+-- =============================================================================
+-- Section 14: Values containing embedded NUL bytes
+-- =============================================================================
+
+-- A text value can contain an embedded NUL byte (convert_from() over binary
+-- data produces one; no SQL literal can).  PUT_LINE/PUT measured the value with
+-- text_to_cstring()/strlen(), so everything after the first NUL was dropped
+-- from the buffer.  psql cannot print the raw value, so each check reports the
+-- octet length plus a hex dump of the stored line.
+DO $$
+DECLARE
+    v_len INTEGER;
+    v_hex TEXT;
+BEGIN
+    PERFORM sys.ora_dbms_output_disable();
+    PERFORM sys.ora_dbms_output_enable(20000);
+    PERFORM sys.ora_dbms_output_put_line(
+        convert_from(pg_catalog.decode('610062', 'hex'), 'UTF8'));
+    SELECT pg_catalog.octet_length(t.line),
+           pg_catalog.encode(pg_catalog.convert_to(t.line, 'UTF8'), 'hex')
+      INTO v_len, v_hex
+      FROM sys.ora_dbms_output_get_line() AS t;
+    RAISE NOTICE 'Test 14.1 - PUT_LINE embedded NUL: len=%, hex=%', v_len, v_hex;
+END;
+$$;
+
+-- Test 14.2: PUT accumulates the whole value until NEW_LINE flushes it
+DO $$
+DECLARE
+    v_len INTEGER;
+    v_hex TEXT;
+BEGIN
+    PERFORM sys.ora_dbms_output_disable();
+    PERFORM sys.ora_dbms_output_enable(20000);
+    PERFORM sys.ora_dbms_output_put(
+        convert_from(pg_catalog.decode('610062', 'hex'), 'UTF8'));
+    PERFORM sys.ora_dbms_output_new_line();
+    SELECT pg_catalog.octet_length(t.line),
+           pg_catalog.encode(pg_catalog.convert_to(t.line, 'UTF8'), 'hex')
+      INTO v_len, v_hex
+      FROM sys.ora_dbms_output_get_line() AS t;
+    RAISE NOTICE 'Test 14.2 - PUT + NEW_LINE embedded NUL: len=%, hex=%', v_len, v_hex;
+END;
+$$;
+
+-- Test 14.3: PUT_LINE appends its value to pending PUT text without truncating
+DO $$
+DECLARE
+    v_len INTEGER;
+    v_hex TEXT;
+BEGIN
+    PERFORM sys.ora_dbms_output_disable();
+    PERFORM sys.ora_dbms_output_enable(20000);
+    PERFORM sys.ora_dbms_output_put('ab');
+    PERFORM sys.ora_dbms_output_put_line(
+        convert_from(pg_catalog.decode('630064', 'hex'), 'UTF8'));
+    SELECT pg_catalog.octet_length(t.line),
+           pg_catalog.encode(pg_catalog.convert_to(t.line, 'UTF8'), 'hex')
+      INTO v_len, v_hex
+      FROM sys.ora_dbms_output_get_line() AS t;
+    RAISE NOTICE 'Test 14.3 - PUT_LINE after PUT embedded NUL: len=%, hex=%', v_len, v_hex;
+END;
+$$;
