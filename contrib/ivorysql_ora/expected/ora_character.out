@@ -7,13 +7,21 @@ ERROR:  invalid value for parameter "nls_length_semantics": "other"
 HINT:  Available values: byte, char.
 -- invalid range
 CREATE TABLE TEST_ORACHAR(a char(32768 byte));
-ERROR:  length for type char cannot exceed 32767
+ERROR:  specified length too long for its datatype
 LINE 1: CREATE TABLE TEST_ORACHAR(a char(32768 byte));
-                                    ^
+                                         ^
 CREATE TABLE TEST_ORACHAR(a char(32768 char));
-ERROR:  length for type char cannot exceed 32767
+ERROR:  specified length too long for its datatype
 LINE 1: CREATE TABLE TEST_ORACHAR(a char(32768 char));
-                                    ^
+                                         ^
+CREATE TABLE TEST_ORACHAR(a char(2001 byte));
+ERROR:  specified length too long for its datatype
+LINE 1: CREATE TABLE TEST_ORACHAR(a char(2001 byte));
+                                         ^
+CREATE TABLE TEST_ORACHAR(a char(2001 char));
+ERROR:  specified length too long for its datatype
+LINE 1: CREATE TABLE TEST_ORACHAR(a char(2001 char));
+                                         ^
 CREATE TABLE TEST_ORACHAR(a varchar2(32768 byte));
 ERROR:  length for type varchar2 cannot exceed 32767
 LINE 1: CREATE TABLE TEST_ORACHAR(a varchar2(32768 byte));

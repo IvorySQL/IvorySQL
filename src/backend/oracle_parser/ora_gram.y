@@ -17259,6 +17259,18 @@ opt_varying:
 
 OracleCharacter: character '(' Iconst CHAR_P ')'
 					{
+						/*
+						 * CHAR with an explicit length semantics is still CHAR, so it has
+						 * to obey the same 2000 limit as the unqualified CHAR(n) form
+						 * checked in CharacterWithLength.
+						 */
+						if (!strcmp($1, "bpchar") &&
+							$3 > CHAR_TYPE_LENGTH_MAX)
+							ereport(ERROR,
+								(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+								 errmsg("specified length too long for its datatype"),
+								 parser_errposition(@3)));
+
 						if (strcmp($1, "bpchar"))
 							$1 = "oravarcharchar";
 						else
@@ -17270,6 +17282,18 @@ OracleCharacter: character '(' Iconst CHAR_P ')'
 					}
 				| character '(' Iconst BYTE_P ')'
 					{
+						/*
+						 * CHAR with an explicit length semantics is still CHAR, so it has
+						 * to obey the same 2000 limit as the unqualified CHAR(n) form
+						 * checked in CharacterWithLength.
+						 */
+						if (!strcmp($1, "bpchar") &&
+							$3 > CHAR_TYPE_LENGTH_MAX)
+							ereport(ERROR,
+								(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+								 errmsg("specified length too long for its datatype"),
+								 parser_errposition(@3)));
+
 						if (strcmp($1, "bpchar"))
 							$1 = "oravarcharbyte";
 						else

@@ -10,6 +10,13 @@ CREATE TABLE TEST_ORACHAR(a char(32768 byte));
 
 CREATE TABLE TEST_ORACHAR(a char(32768 char));
 
+-- Explicit length semantics does not lift the CHAR limit: like the unqualified
+-- char(n) form above, char(n char) and char(n byte) are CHAR, and Oracle raises
+-- ORA-00910 above 2000 (see also the psql VARIABLE command, which enforces 2000).
+CREATE TABLE TEST_ORACHAR(a char(2001 byte));
+
+CREATE TABLE TEST_ORACHAR(a char(2001 char));
+
 CREATE TABLE TEST_ORACHAR(a varchar2(32768 byte));
 
 CREATE TABLE TEST_ORACHAR(a varchar2(32768 char));
