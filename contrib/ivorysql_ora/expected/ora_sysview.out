@@ -181,6 +181,22 @@ ORDER BY NAME;
  listen_addresses | 2    |                        | localhost     | FALSE     | FALSE            | FALSE            | Sets the host name or IP address(es) to listen to.
 (5 rows)
 
+\d SYS.V$VERSION
+                      View "sys.v$version"
+    Column     |     Type      | Collation | Nullable | Default 
+---------------+---------------+-----------+----------+---------
+ banner        | varchar2(129) |           |          | 
+ banner_full   | varchar2(258) |           |          | 
+ banner_legacy | varchar2(129) |           |          | 
+ con_id        | number        |           |          | 
+
+SELECT BANNER, BANNER_FULL, BANNER_LEGACY, CON_ID FROM SYS.V$VERSION;
+                banner                |             banner_full              |            banner_legacy             | con_id 
+--------------------------------------+--------------------------------------+--------------------------------------+--------
+ IvorySQL 5beta1 (PostgreSQL 19devel) | IvorySQL 5beta1 (PostgreSQL 19devel)+| IvorySQL 5beta1 (PostgreSQL 19devel) | 0
+                                      | Version 5beta1                       |                                      | 
+(1 row)
+
 CREATE TABLE t_pk_single (id NUMBER PRIMARY KEY, name VARCHAR2(50));
 CREATE TABLE t_pk_composite (id1 NUMBER, id2 NUMBER, CONSTRAINT pk_composite PRIMARY KEY (id1, id2));
 CREATE TABLE t_unique (col1 INT, col2 VARCHAR2(20), CONSTRAINT uk_col1 UNIQUE (col1));
