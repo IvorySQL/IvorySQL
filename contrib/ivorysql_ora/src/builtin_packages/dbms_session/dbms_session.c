@@ -73,7 +73,7 @@ static MemoryContext DbmsSessionContext = NULL;
 
 /* Internal helpers */
 static void dbms_session_init(void);
-static void make_key(CtxKey *key, const char *ns, const char *attr);
+static void make_key(CtxKey *key, text *ns_text, text *attr_text);
 static void clear_namespace(const char *ns);
 
 /* SQL-callable function declarations */
@@ -120,16 +120,20 @@ dbms_session_init(void)
  * matching Oracle.  Rejects names that do not fit the fixed-size key buffer.
  */
 static void
-make_key(CtxKey *key, const char *ns, const char *attr)
+make_key(CtxKey *key, text *ns_text, text *attr_text)
 {
 	int			i;
+	int			ns_len = VARSIZE_ANY_EXHDR(ns_text);
+	int			attr_len = VARSIZE_ANY_EXHDR(attr_text);
+	char	   *ns_data = VARDATA_ANY(ns_text);
+	char	   *attr_data = VARDATA_ANY(attr_text);
 
-	if (strlen(ns) >= DBMS_SESSION_NAME_LEN)
+	if (ns_len >= DBMS_SESSION_NAME_LEN)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("DBMS_SESSION namespace too long (max %d bytes)",
 						DBMS_SESSION_NAME_LEN - 1)));
-	if (strlen(attr) >= DBMS_SESSION_NAME_LEN)
+	if (attr_len >= DBMS_SESSION_NAME_LEN)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("DBMS_SESSION attribute too long (max %d bytes)",
@@ -137,10 +141,10 @@ make_key(CtxKey *key, const char *ns, const char *attr)
 
 	/* MemSet first: HASH_BLOBS compares the whole struct as bytes. */
 	MemSet(key, 0, sizeof(CtxKey));
-	for (i = 0; ns[i] != '\0'; i++)
-		key->namespace[i] = pg_toupper((unsigned char) ns[i]);
-	for (i = 0; attr[i] != '\0'; i++)
-		key->attribute[i] = pg_toupper((unsigned char) attr[i]);
+	for (i = 0; i < ns_len; i++)
+		key->namespace[i] = pg_toupper((unsigned char) ns_data[i]);
+	for (i = 0; i < attr_len; i++)
+		key->attribute[i] = pg_toupper((unsigned char) attr_data[i]);
 }
 
 /*
@@ -206,9 +210,9 @@ clear_namespace(const char *ns)
 Datum
 ora_dbms_session_set_context(PG_FUNCTION_ARGS)
 {
-	char	   *ns;
-	char	   *attr;
-	char	   *val = NULL;
+	text	   *ns_text;
+	text	   *attr_text;
+	text	   *val_text = NULL;
 	CtxKey		key;
 	CtxEntry   *entry;
 	bool		found;
@@ -218,13 +222,13 @@ ora_dbms_session_set_context(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
 				 errmsg("DBMS_SESSION.SET_CONTEXT namespace and attribute must not be NULL")));
 
-	ns = text_to_cstring(PG_GETARG_TEXT_PP(0));
-	attr = text_to_cstring(PG_GETARG_TEXT_PP(1));
+	ns_text = PG_GETARG_TEXT_PP(0);
+	attr_text = PG_GETARG_TEXT_PP(1);
 
 	if (!PG_ARGISNULL(2))
 	{
-		val = text_to_cstring(PG_GETARG_TEXT_PP(2));
-		if (strlen(val) > DBMS_SESSION_MAX_VALUE_LEN)
+		val_text = PG_GETARG_TEXT_PP(2);
+		if (VARSIZE_ANY_EXHDR(val_text) > DBMS_SESSION_MAX_VALUE_LEN)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("DBMS_SESSION.SET_CONTEXT value too long (max %d bytes)",
@@ -234,7 +238,7 @@ ora_dbms_session_set_context(PG_FUNCTION_ARGS)
 	if (DbmsSessionHash == NULL)
 		dbms_session_init();
 
-	make_key(&key, ns, attr);
+	make_key(&key, ns_text, attr_text);
 
 	entry = (CtxEntry *) hash_search(DbmsSessionHash, &key, HASH_ENTER, &found);
 
@@ -242,13 +246,16 @@ ora_dbms_session_set_context(PG_FUNCTION_ARGS)
 	if (found && entry->value != NULL)
 		pfree(entry->value);
 
-	if (val == NULL)
+	if (val_text == NULL)
 		entry->value = NULL;
 	else
 	{
 		MemoryContext oldcontext = MemoryContextSwitchTo(DbmsSessionContext);
+		int			val_len = VARSIZE_ANY_EXHDR(val_text);
 
-		entry->value = pstrdup(val);
+		entry->value = palloc(val_len + 1);
+		memcpy(entry->value, VARDATA_ANY(val_text), val_len);
+		entry->value[val_len] = '\0';
 		MemoryContextSwitchTo(oldcontext);
 	}
 
@@ -282,12 +289,11 @@ ora_dbms_session_clear_context(PG_FUNCTION_ARGS)
 	}
 	else
 	{
-		char	   *attr = text_to_cstring(PG_GETARG_TEXT_PP(1));
 		CtxKey		key;
 		CtxEntry   *entry;
 		bool		found;
 
-		make_key(&key, ns, attr);
+		make_key(&key, PG_GETARG_TEXT_PP(0), PG_GETARG_TEXT_PP(1));
 		entry = (CtxEntry *) hash_search(DbmsSessionHash, &key, HASH_FIND, &found);
 		if (found)
 		{
@@ -357,7 +363,7 @@ ora_dbms_session_get_context(PG_FUNCTION_ARGS)
 	if (strlen(ns) >= DBMS_SESSION_NAME_LEN || strlen(attr) >= DBMS_SESSION_NAME_LEN)
 		PG_RETURN_NULL();
 
-	make_key(&key, ns, attr);
+	make_key(&key, PG_GETARG_TEXT_PP(0), PG_GETARG_TEXT_PP(1));
 	entry = (CtxEntry *) hash_search(DbmsSessionHash, &key, HASH_FIND, &found);
 
 	if (!found || entry->value == NULL)
