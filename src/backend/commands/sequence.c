@@ -46,6 +46,7 @@
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
+#include "utils/inval.h"
 #include "utils/pg_lsn.h"
 #include "utils/resowner.h"
 #include "utils/syscache.h"
@@ -2516,6 +2517,7 @@ process_owned_by(Relation seqrel, List *owned_by, bool for_identity)
 		depobject.objectId = RelationGetRelid(seqrel);
 		depobject.objectSubId = 0;
 		recordDependencyOn(&depobject, &refobject, deptype);
+		CacheInvalidateRelcache(tablerel);
 	}
 
 	/* Done, but hold lock until commit */
