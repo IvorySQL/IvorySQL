@@ -181,12 +181,12 @@ dbms_lock_record_release(int64 key, int8 mode)
 static int64
 lockname_to_key(text *lockname)
 {
-    char *name = text_to_cstring(lockname);
-    uint32 hash1 = DatumGetUInt32(hash_any((unsigned char *) name, strlen(name)));
-    uint32 hash2 = DatumGetUInt32(hash_any_extended((unsigned char *) name,
-                                                    strlen(name), DBMS_LOCK_SEED));
+    int     name_len = VARSIZE_ANY_EXHDR(lockname);
+    char   *name_data = VARDATA_ANY(lockname);
+    uint32 hash1 = DatumGetUInt32(hash_any((unsigned char *) name_data, name_len));
+    uint32 hash2 = DatumGetUInt32(hash_any_extended((unsigned char *) name_data,
+                                                    name_len, DBMS_LOCK_SEED));
     int64 key = ((int64) hash1 << 32) | hash2;
-    pfree(name);
     return key;
 }
 

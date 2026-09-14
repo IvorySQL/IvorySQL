@@ -363,7 +363,7 @@ ora_dbms_output_put_line(PG_FUNCTION_ARGS)
 	{
 		text	   *line_text = PG_GETARG_TEXT_PP(0);
 		line_str = text_to_cstring(line_text);
-		line_len = strlen(line_str);
+		line_len = VARSIZE_ANY_EXHDR(line_text);
 	}
 
 	/* If there's pending PUT text, append it first (Oracle behavior) */
@@ -378,7 +378,7 @@ ora_dbms_output_put_line(PG_FUNCTION_ARGS)
 
 		/* Append non-NULL text to current line */
 		if (!is_null)
-			appendStringInfoString(output_buffer->current_line, line_str);
+			appendBinaryStringInfo(output_buffer->current_line, line_str, line_len);
 		add_line_to_buffer(output_buffer->current_line->data,
 						   output_buffer->current_line->len);
 		resetStringInfo(output_buffer->current_line);
@@ -422,7 +422,7 @@ ora_dbms_output_put(PG_FUNCTION_ARGS)
 		PG_RETURN_VOID();  /* NULL appends nothing */
 
 	str = text_to_cstring(PG_GETARG_TEXT_PP(0));
-	str_len = strlen(str);
+	str_len = VARSIZE_ANY_EXHDR(PG_GETARG_TEXT_PP(0));
 
 	/* Check line length limit BEFORE appending (Oracle behavior) */
 	if (output_buffer->current_line->len + str_len > DBMS_OUTPUT_MAX_LINE_LENGTH)
@@ -432,7 +432,7 @@ ora_dbms_output_put(PG_FUNCTION_ARGS)
 						DBMS_OUTPUT_MAX_LINE_LENGTH)));
 
 	/* Accumulate in current_line without creating a line yet */
-	appendStringInfoString(output_buffer->current_line, str);
+	appendBinaryStringInfo(output_buffer->current_line, str, str_len);
 
 	PG_RETURN_VOID();
 }
