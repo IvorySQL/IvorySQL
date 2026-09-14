@@ -943,3 +943,62 @@ SELECT BITAND('6','8') re FROM DUAL;
 SELECT BITAND(6,'8') re FROM DUAL;
 SELECT BITAND('6',8) re FROM DUAL;
 /* End - bug0000478 */
+
+
+/* Begin - to_number accepts scientific notation and blank padding */
+SELECT to_number('1e3') AS a;
+SELECT to_number('1E3') AS b;
+SELECT to_number('-1.5e-2') AS c;
+SELECT to_number('1.5e+3') AS d;
+SELECT to_number('1E-3') AS e;
+SELECT to_number(' 1e3 ') AS f;
+SELECT to_number('12 ') AS g;
+SELECT to_number(' 12') AS h;
+SELECT to_number('12.345') AS i;
+SELECT to_number('-1122.34') AS j;
+/* leading zeros in the exponent must be honored, not truncated */
+SELECT to_number('1e0000000010') AS r;
+SELECT to_number('1e-0000000010') AS s;
+/* positive exponents beyond numeric's range keep raising an error */
+SELECT to_number('1e2147483648') AS t;
+SELECT to_number('1e10000000000000000000') AS v;
+/* ... but an all-zero mantissa times any exponent is still zero */
+SELECT to_number('0e2147483648') AS zero_mantissa;
+SELECT to_number('0e10000000000000000000') AS zero_mantissa_long;
+SELECT to_number('1e1073741823') AS at_boundary;
+SELECT to_number('1e1073741824') AS one_over_boundary;
+SELECT to_number('1e2000') AS clamp_precision;
+/* precision-clamp path without an exponent */
+SELECT to_number(repeat('9', 1500)) AS long_int_no_exp;
+/* negative exponents that underflow numeric's range return zero, as in Oracle */
+SELECT to_number('1e-2147483648') AS u;
+SELECT to_number('1e-10000000000000000000') AS w;
+/* malformed input still raises an error */
+SELECT to_number('1e') AS k;
+SELECT to_number('1e+') AS l;
+SELECT to_number('e3') AS m;
+SELECT to_number('1.2e3.4') AS n;
+SELECT to_number('--1') AS o;
+SELECT to_number('1..2') AS p;
+SELECT to_number('12a') AS q;
+SELECT to_number('1 e3') AS space_before_e;
+SELECT to_number('1e 3') AS space_after_e;
+SELECT to_number('1e3e4') AS double_e;
+SELECT to_number('1e--3') AS double_sign;
+SELECT to_number('1e+-3') AS mixed_sign;
+SELECT to_number('   ') AS all_blank;
+SELECT to_number('-') AS bare_sign;
+SELECT to_number('.') AS bare_dot;
+SELECT to_number('NaN') AS nan_case;
+SELECT to_number('Infinity') AS inf_case;
+SELECT to_number('-Infinity') AS neg_inf_case;
+/* empty string is NULL under Oracle semantics, so STRICT returns NULL */
+SELECT to_number(''::varchar2) AS empty_str;
+/* one-sided decimal points */
+SELECT to_number('123.') AS trailing_dot;
+SELECT to_number('.5') AS leading_dot;
+/* zero exponent in three spellings */
+SELECT to_number('1e0') AS exp_zero;
+SELECT to_number('1e+0') AS exp_plus_zero;
+SELECT to_number('1e-0') AS exp_minus_zero;
+/* End - to_number scientific notation */
