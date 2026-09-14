@@ -93,6 +93,16 @@ SELECT utl_url.escape('a b', FALSE, 'NO_SUCH_CHARSET');
 -- A character with no representation in the target character set is rejected
 SELECT utl_url.escape('中文', FALSE, 'LATIN1');
 
+-- Embedded NUL bytes are preserved and escaped as %00, not silently
+-- truncated at the first NUL.  The default path uses the database
+-- encoding (no conversion), so the full byte sequence is honoured.
+SELECT utl_url.escape(convert_from(decode('610062', 'hex'), 'UTF8')) AS embedded_nul;
+
+-- When a different url_charset is requested, embedded NULs cannot be
+-- preserved through the encoding conversion and are rejected rather
+-- than silently truncated.
+SELECT utl_url.escape(convert_from(decode('610062', 'hex'), 'UTF8'), FALSE, 'LATIN1') AS embedded_nul_convert;
+
 -- ============================================================
 -- PL/iSQL package interface
 -- ============================================================

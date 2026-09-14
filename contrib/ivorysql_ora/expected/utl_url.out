@@ -210,6 +210,21 @@ CONTEXT:  PL/iSQL function sys.utl_url.escape line 5 at RETURN
 SELECT utl_url.escape('中文', FALSE, 'LATIN1');
 ERROR:  character with byte sequence 0xe4 0xb8 0xad in encoding "UTF8" has no equivalent in encoding "LATIN1"
 CONTEXT:  PL/iSQL function sys.utl_url.escape line 5 at RETURN
+-- Embedded NUL bytes are preserved and escaped as %00, not silently
+-- truncated at the first NUL.  The default path uses the database
+-- encoding (no conversion), so the full byte sequence is honoured.
+SELECT utl_url.escape(convert_from(decode('610062', 'hex'), 'UTF8')) AS embedded_nul;
+ embedded_nul 
+--------------
+ a%00b
+(1 row)
+
+-- When a different url_charset is requested, embedded NULs cannot be
+-- preserved through the encoding conversion and are rejected rather
+-- than silently truncated.
+SELECT utl_url.escape(convert_from(decode('610062', 'hex'), 'UTF8'), FALSE, 'LATIN1') AS embedded_nul_convert;
+ERROR:  UTL_URL.ESCAPE: input string contains embedded NUL bytes, which cannot be converted to a different URL character set
+CONTEXT:  PL/iSQL function sys.utl_url.escape line 5 at RETURN
 -- ============================================================
 -- PL/iSQL package interface
 -- ============================================================
