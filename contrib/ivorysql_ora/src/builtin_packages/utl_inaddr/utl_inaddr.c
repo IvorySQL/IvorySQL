@@ -179,6 +179,11 @@ ivorysql_utl_inaddr_get_host_address(PG_FUNCTION_ARGS)
 	if (host == NULL)
 		PG_RETURN_NULL();
 
+	/*
+	 * TODO (#2053): Integrate DBMS_NETWORK_ACL_ADMIN checks for the invoking
+	 * user's host ACL privileges before resolution; report denied access as
+	 * NETWORK_ACCESS_DENIED (ORA-24247).
+	 */
 	address = utl_inaddr_resolve_address(host);
 	pfree(host);
 
@@ -209,6 +214,11 @@ ivorysql_utl_inaddr_get_host_name(PG_FUNCTION_ARGS)
 	}
 
 	address = text_to_cstring(PG_GETARG_TEXT_PP(0));
+	/*
+	 * TODO (#2053): Integrate DBMS_NETWORK_ACL_ADMIN checks for the invoking
+	 * user's host ACL privileges before reverse resolution; report denied
+	 * access as NETWORK_ACCESS_DENIED (ORA-24247).
+	 */
 	hostname = utl_inaddr_resolve_name(address);
 	pfree(address);
 
