@@ -146,7 +146,7 @@ BEGIN
 END;
 /
 ERROR:  User-Defined Exception
-CONTEXT:  PL/iSQL function sys.utl_inaddr.get_host_name line 7 at RAISE
+CONTEXT:  PL/iSQL function sys.utl_inaddr.get_host_name line 18 at RAISE
 PL/iSQL function inline_code_block line 4 at assignment
 -- An invalid numeric address must map to Oracle UNKNOWN_HOST (ORA-29257).
 DECLARE
