@@ -93,7 +93,8 @@ static text *
 get_line(FILE *fd, size_t max_linesize, int encoding, bool *iseof);
 static char *get_safe_path(text *location, text *filename);
 static void close_all_files(void);
-static int copy_text_file(FILE *srcfile, FILE *dstfile,
+static bool same_copy_file(FILE *srcfile, FILE *dstfile);
+static void copy_text_file(FILE *srcfile, FILE *dstfile,
 						  int start_line, int end_line);
 static void put_lines(FILE *fd, int lines);
 static FILE *do_put(PG_FUNCTION_ARGS);
@@ -482,7 +483,6 @@ ora_utl_file_fcopy(PG_FUNCTION_ARGS)
 	char	   *dstpath;
 	int			start_line;
 	int			end_line;
-	int 		copy_result;
 	FILE	   *srcfile;
 	FILE	   *dstfile;
 
@@ -506,7 +506,8 @@ ora_utl_file_fcopy(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				errmsg("end_line must be positive (%d passed)", end_line)));
 
-	srcfile = fopen(srcpath, "rt");
+	/* FCOPY streams belong to this transaction, unlike FOPEN handles. */
+	srcfile = AllocateFile(srcpath, PG_BINARY_R);
 
 	if (srcfile == NULL)
 	{
@@ -514,25 +515,29 @@ ora_utl_file_fcopy(PG_FUNCTION_ARGS)
 		IO_EXCEPTION();
 	}
 
-	dstfile = fopen(dstpath, "wt");
+	/* Open without truncating: another name may refer to the source inode. */
+	dstfile = AllocateFile(dstpath, PG_BINARY_A);
 
 	if (dstfile == NULL)
 	{
 		/* failed to open dst file. */
-		fclose(srcfile);
 		IO_EXCEPTION();
 	}
 
-	copy_result = copy_text_file(srcfile, dstfile, start_line, end_line);
+	if (same_copy_file(srcfile, dstfile))
+		CUSTOM_EXCEPTION(INVALID_OPERATION,
+						 "Source and destination refer to the same file.");
 
-	fclose(srcfile);
-	fclose(dstfile);
-
-	if (copy_result)
-	{
-		errno = copy_result;
+	if (ftruncate(fileno(dstfile), 0) != 0)
 		IO_EXCEPTION();
-	}
+
+	copy_text_file(srcfile, dstfile, start_line, end_line);
+
+	/* Buffered writes can fail only when the destination is closed. */
+	if (FreeFile(dstfile) != 0)
+		STRERROR_EXCEPTION(WRITE_ERROR);
+	if (FreeFile(srcfile) != 0)
+		STRERROR_EXCEPTION(READ_ERROR);
 
 	PG_RETURN_VOID();
 }
@@ -1117,48 +1122,89 @@ close_all_files(void)
 }
 
 /*
- * Copy srcfile to dstfile. Return 0 if succeeded, or non-0 if error.
+ * Compare open files before truncating the destination.  Comparing path
+ * strings alone misses hard links and other aliases.  Windows stat inode
+ * numbers are not meaningful, so use the identity of the open handles there.
  */
-static int
+static bool
+same_copy_file(FILE *srcfile, FILE *dstfile)
+{
+#ifdef WIN32
+	BY_HANDLE_FILE_INFORMATION srcinfo;
+	BY_HANDLE_FILE_INFORMATION dstinfo;
+
+	if (!GetFileInformationByHandle((HANDLE) _get_osfhandle(fileno(srcfile)),
+								   &srcinfo) ||
+		!GetFileInformationByHandle((HANDLE) _get_osfhandle(fileno(dstfile)),
+								   &dstinfo))
+		CUSTOM_EXCEPTION(INVALID_OPERATION, "Could not identify files for copying.");
+
+	return srcinfo.dwVolumeSerialNumber == dstinfo.dwVolumeSerialNumber &&
+		srcinfo.nFileIndexHigh == dstinfo.nFileIndexHigh &&
+		srcinfo.nFileIndexLow == dstinfo.nFileIndexLow;
+#else
+	struct stat srcstat;
+	struct stat dststat;
+
+	if (fstat(fileno(srcfile), &srcstat) != 0 ||
+		fstat(fileno(dstfile), &dststat) != 0)
+		IO_EXCEPTION();
+
+	return srcstat.st_dev == dststat.st_dev && srcstat.st_ino == dststat.st_ino;
+#endif
+}
+
+/*
+ * Copy an inclusive range of lines without interpreting their contents as C
+ * strings.  Binary streams avoid Windows text-mode Ctrl+Z EOF handling, while
+ * line counting still follows newline bytes.  A line may contain NUL bytes or
+ * span many buffers.  Check for interrupts per buffer, including while skipping
+ * a long line.  AllocateFile closes both streams if an error or cancellation
+ * aborts the operation.
+ */
+static void
 copy_text_file(FILE *srcfile, FILE *dstfile, int start_line, int end_line)
 {
-	char	   *buffer;
-	size_t		len;
-	int			i;
+	char		buffer[8192];
+	int64		line = 1;
 
-	buffer = palloc(MAX_LINESIZE);
-
-	errno = 0;
-
-	/* skip first start_line. */
-	for (i = 1; i < start_line; i++)
+	while (line <= end_line)
 	{
+		size_t		len;
+		size_t		pos = 0;
+
 		CHECK_FOR_INTERRUPTS();
-		do
+		errno = 0;
+		len = fread(buffer, 1, sizeof(buffer), srcfile);
+		if (ferror(srcfile))
 		{
-			if (fgets(buffer, MAX_LINESIZE, srcfile) == NULL)
-				return errno;  /* EOF or error */
-			len = strlen(buffer);
-		}while(len > 0 && buffer[len - 1] != '\n');
-	}
+			if (errno == 0)
+				errno = EIO;
+			STRERROR_EXCEPTION(READ_ERROR);
+		}
+		if (len == 0)
+			return;
 
-	/* copy until end_line. */
-	for (; i <= end_line; i++)
-	{
-		CHECK_FOR_INTERRUPTS();
-		do
+		while (pos < len && line <= end_line)
 		{
-			if (fgets(buffer, MAX_LINESIZE, srcfile) == NULL)
-				return errno;  /* EOF or error */
-			len = strlen(buffer);
-			if (fwrite(buffer, 1, len, dstfile) != len)
-				return errno;
-		} while(len > 0 && buffer[len - 1] != '\n');
+			char	   *newline = memchr(buffer + pos, '\n', len - pos);
+			size_t		end = newline ? newline - buffer + 1 : len;
+
+			if (line >= start_line)
+			{
+				errno = 0;
+				if (fwrite(buffer + pos, 1, end - pos, dstfile) != end - pos)
+				{
+					if (errno == 0)
+						errno = EIO;
+					STRERROR_EXCEPTION(WRITE_ERROR);
+				}
+			}
+			if (newline != NULL)
+				line++;
+			pos = end;
+		}
 	}
-
-	pfree(buffer);
-
-	return 0;
 }
 
 /*
@@ -1458,4 +1504,3 @@ utl_file_umask_check_hook(char **newval, void **extra, GucSource source)
 
 	return true;
 }
-
