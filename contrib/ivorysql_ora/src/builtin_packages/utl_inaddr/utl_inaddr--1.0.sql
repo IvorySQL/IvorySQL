@@ -24,7 +24,7 @@ COMMENT ON FUNCTION sys.utl_inaddr_get_host_name(text) IS
 REVOKE EXECUTE ON FUNCTION sys.utl_inaddr_get_host_address(text) FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION sys.utl_inaddr_get_host_name(text) FROM PUBLIC;
 
-CREATE OR REPLACE PACKAGE utl_inaddr AUTHID DEFINER IS
+CREATE OR REPLACE PACKAGE utl_inaddr AUTHID CURRENT_USER IS
   -- No Oracle network ACL equivalent exists yet; retain the public exception.
   NETWORK_ACCESS_DENIED EXCEPTION;
   PRAGMA EXCEPTION_INIT(NETWORK_ACCESS_DENIED, -24247);

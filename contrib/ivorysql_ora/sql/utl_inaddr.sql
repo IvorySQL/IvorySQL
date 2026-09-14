@@ -54,7 +54,7 @@ BEGIN
       coalesce(p.pkgacl, pg_catalog.acldefault('P', p.pkgowner))) acl
    WHERE n.nspname = 'sys'
      AND p.pkgname = 'utl_inaddr'
-     AND p.define_invok
+     AND NOT p.define_invok
      AND acl.grantee = 0
      AND acl.privilege_type = 'EXECUTE';
 
