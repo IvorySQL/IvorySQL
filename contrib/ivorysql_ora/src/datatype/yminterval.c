@@ -1249,22 +1249,16 @@ interval2tm(Interval span, struct pg_tm *tm, fsec_t *fsec)
  * Compatible oracle
  * For INTERVAL YEAR TO MONTH type the field of "day" and "time" is invalid.
  * Only calculate the value of "interval->month".
+ * Keep the historical thirty-day scale for hash compatibility, but widen
+ * before multiplying so that large month counts retain their ordering.
  */
-static inline TimeOffset
+static inline INT128
 yminterval_cmp_value(const Interval *interval)
 {
-	TimeOffset	span;
+	INT128		span = int64_to_int128(0);
 
-/* 	span = interval->time; */
-	span = 0;
-
-#ifdef HAVE_INT64_TIMESTAMP
-	span += interval->month * INT64CONST(30) * USECS_PER_DAY;
-/* 	span += interval->day * INT64CONST(24) * USECS_PER_HOUR; */
-#else
-	span += interval->month * ((double) DAYS_PER_MONTH * SECS_PER_DAY);
-/* 	span += interval->day * ((double) HOURS_PER_DAY * SECS_PER_HOUR); */
-#endif
+	int128_add_int64_mul_int64(&span, interval->month,
+							   INT64CONST(30) * USECS_PER_DAY);
 
 	return span;
 }
@@ -1272,10 +1266,10 @@ yminterval_cmp_value(const Interval *interval)
 static int
 yminterval_cmp_internal(Interval *interval1, Interval *interval2)
 {
-	TimeOffset	span1 = yminterval_cmp_value(interval1);
-	TimeOffset	span2 = yminterval_cmp_value(interval2);
+	INT128		span1 = yminterval_cmp_value(interval1);
+	INT128		span2 = yminterval_cmp_value(interval2);
 
-	return ((span1 < span2) ? -1 : (span1 > span2) ? 1 : 0);
+	return int128_compare(span1, span2);
 }
 
 /* yminterval_in()
@@ -1970,27 +1964,28 @@ in_range_yminterval_yminterval(PG_FUNCTION_ARGS)
 	Interval   *offset = PG_GETARG_INTERVAL_P(2);
 	bool		sub = PG_GETARG_BOOL(3);
 	bool		less = PG_GETARG_BOOL(4);
-	Interval   *sum;
+	INT128		valspan = yminterval_cmp_value(val);
+	INT128		basespan = yminterval_cmp_value(base);
+	INT128		offsetspan = yminterval_cmp_value(offset);
+	int			cmp;
 
-	if (int128_compare(int64_to_int128(yminterval_cmp_value(offset)), int64_to_int128(0)) < 0)
+	if (int128_compare(offsetspan, int64_to_int128(0)) < 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PRECEDING_OR_FOLLOWING_SIZE),
 				 errmsg("invalid preceding or following size in window function")));
 
-	/* We don't currently bother to avoid overflow hazards here */
+	/* Frame boundaries may exceed the range of an Interval's month field. */
 	if (sub)
-		sum = DatumGetIntervalP(DirectFunctionCall2(yminterval_mi,
-													IntervalPGetDatum(base),
-													IntervalPGetDatum(offset)));
+		int128_sub_int64_mul_int64(&basespan, offset->month,
+								   INT64CONST(30) * USECS_PER_DAY);
 	else
-		sum = DatumGetIntervalP(DirectFunctionCall2(yminterval_pl,
-													IntervalPGetDatum(base),
-													IntervalPGetDatum(offset)));
+		int128_add_int128(&basespan, offsetspan);
 
+	cmp = int128_compare(valspan, basespan);
 	if (less)
-		PG_RETURN_BOOL(yminterval_cmp_internal(val, sum) <= 0);
+		PG_RETURN_BOOL(cmp <= 0);
 	else
-		PG_RETURN_BOOL(yminterval_cmp_internal(val, sum) >= 0);
+		PG_RETURN_BOOL(cmp >= 0);
 }
 
 /*****************************************************************************
@@ -2002,13 +1997,13 @@ in_range_yminterval_yminterval(PG_FUNCTION_ARGS)
  *
  * We must produce equal hashvals for values that yminterval_cmp_internal()
  * considers equal.  So, compute the net span the same way it does,
- * and then hash that, using either int64 or float8 hashing.
+ * then hash its low 64 bits to preserve existing hash values.
  */
 Datum
 yminterval_hash(PG_FUNCTION_ARGS)
 {
 	Interval   *interval = PG_GETARG_INTERVAL_P(0);
-	TimeOffset	span = yminterval_cmp_value(interval);
+	int64		span = int128_to_int64(yminterval_cmp_value(interval));
 
 	return DirectFunctionCall1(hashint8, Int64GetDatumFast(span));
 }
@@ -2017,7 +2012,7 @@ Datum
 yminterval_hash_extended(PG_FUNCTION_ARGS)
 {
 	Interval   *interval = PG_GETARG_INTERVAL_P(0);
-	INT128		span = int64_to_int128(yminterval_cmp_value(interval));
+	INT128		span = yminterval_cmp_value(interval);
 	int64		span64;
 
 	/* Same approach as interval_hash */

@@ -21,7 +21,7 @@ DATA = ora_btree_gist--1.0.sql
 PGFILEDESC = "ora_btree_gist - B-tree equivalent GiST operator classes"
 
 ORA_REGRESS = init number varchar2 binary_float binary_double date \
-	  timestamp timestamptz timestampltz yminterval dsinterval
+	  timestamp timestamptz timestampltz yminterval dsinterval interval_ordering
 EXTRA_INSTALL = contrib/ivorysql_ora
 
 SHLIB_LINK += $(filter -lm, $(LIBS))
