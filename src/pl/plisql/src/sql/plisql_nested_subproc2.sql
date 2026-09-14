@@ -2746,11 +2746,35 @@ BEGIN
 end;
 /
 
---oracle failed,but we succeed
+--oracle fails, we too
 DECLARE
 	type integer;
 begin
 	type := 1;
+end;
+/
+
+--oracle succeed, we too
+DECLARE
+	"type" integer;
+begin
+	"type" := 1;
+end;
+/
+
+--ok
+DECLARE
+	of integer;
+BEGIN
+	of := 1;
+end;
+/
+
+--ok
+DECLARE
+	record integer;
+BEGIN
+	record := 1;
 end;
 /
 
