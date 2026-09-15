@@ -3737,9 +3737,9 @@ SELECT INSTR('Information for the information age requires information.', 'infor
 (1 row)
 
  select asciistr('Hello\nWorld') from dual;
-     asciistr     
-------------------
- Hello\005CnWorld
+   asciistr   
+--------------
+ Hello\nWorld
 (1 row)
 
  select asciistr('') from dual;
