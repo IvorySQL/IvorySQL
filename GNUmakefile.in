@@ -63,6 +63,24 @@ distclean:
 	@rm -rf autom4te.cache/
 	rm -f config.cache config.log config.status GNUmakefile
 
+# Generated files added by IvorySQL are intentionally kept by distclean, but
+# must not remain after maintainer-clean because they conflict with an
+# out-of-tree Meson build.
+maintainer-clean: distclean
+	rm -f src/backend/oracle_parser/ora_scan.c \
+		src/backend/oracle_parser/ora_gram.c \
+		src/backend/oracle_parser/ora_gram.h \
+		src/backend/oracle_parser/ora_kwlist_d.h \
+		src/oracle_fe_utils/ora_psqlscan.c \
+		src/oracle_test/isolation/specparse.h \
+		src/oracle_test/isolation/specparse.c \
+		src/oracle_test/isolation/specscanner.c \
+		src/pl/plisql/src/pl_gram.c \
+		src/pl/plisql/src/pl_gram.h \
+		src/pl/plisql/src/plerrcodes.h \
+		src/pl/plisql/src/pl_reserved_kwlist_d.h \
+		src/pl/plisql/src/pl_unreserved_kwlist_d.h
+
 check-tests: | temp-install
 
 check check-tests installcheck installcheck-parallel installcheck-tests oracle-pg-check: CHECKPREP_TOP=src/test/regress
