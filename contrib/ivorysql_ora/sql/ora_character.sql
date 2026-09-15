@@ -196,6 +196,25 @@ DECLARE
     plan_uses_hash_index boolean;
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_collation WHERE collprovider = 'i') THEN
+        EXECUTE 'CREATE COLLATION ora_char_byte_deterministic '
+                '(provider = icu, locale = ''und-u-ks-level2'', deterministic = true)';
+
+        EXECUTE 'SELECT ''a''::char(1 byte) COLLATE ora_char_byte_deterministic = '
+                '''A''::char(1 byte) COLLATE ora_char_byte_deterministic'
+           INTO result;
+        IF result IS DISTINCT FROM false THEN
+            RAISE EXCEPTION 'deterministic CHAR(n BYTE) equality must distinguish different bytes';
+        END IF;
+
+        EXECUTE 'SELECT ''a''::char(1 byte) COLLATE ora_char_byte_deterministic <> '
+                '''A''::char(1 byte) COLLATE ora_char_byte_deterministic'
+           INTO result;
+        IF result IS DISTINCT FROM true THEN
+            RAISE EXCEPTION 'deterministic CHAR(n BYTE) inequality must distinguish different bytes';
+        END IF;
+
+        EXECUTE 'DROP COLLATION ora_char_byte_deterministic';
+
         EXECUTE 'CREATE COLLATION ora_char_byte_ci '
                 '(provider = icu, locale = ''und-u-ks-level2'', deterministic = false)';
 
