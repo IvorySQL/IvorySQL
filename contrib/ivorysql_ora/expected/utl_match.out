@@ -1,0 +1,723 @@
+--
+-- utl_match.sql
+--
+-- Tests for UTL_MATCH package
+--
+-- Golden values from Oracle PL/SQL Packages and Types Reference (UTL_MATCH),
+-- plus values verified empirically against a real Oracle Database 19c
+-- instance (AL32UTF8), which pins down behaviour the Oracle docs do not
+-- specify:
+--   * comparisons are BYTE-based, not character-based
+--   * NULL results differ per function (no STRICT NULL propagation):
+--       EDIT_DISTANCE -> -1, EDIT_DISTANCE_SIMILARITY -> 0 (100 if both
+--       NULL), JARO_WINKLER / _SIMILARITY -> 0
+--   * half-transpositions are truncated (integer t/2)
+--   * Winkler prefix boost is unconditional (no 0.7 threshold), capped at 4
+--   * Jaro match window is floor(max(len)/2) - 1
+--   * similarities are rounded half-up
+--
+SET ivorysql.compatible_mode = oracle;
+-- Use real empty strings (Oracle's '' is NULL, but we need empty-string
+-- algorithm cases from the official golden table, so disable that mapping).
+-- NOTE: the '' rows below exercise behaviour that is not observable in
+-- Oracle itself, where '' is NULL.
+SET ivorysql.enable_emptystring_to_NULL = off;
+-- ============================================================
+-- UTL_MATCH.EDIT_DISTANCE
+-- ============================================================
+-- Oracle example: shackleford vs shackelford
+SELECT UTL_MATCH.EDIT_DISTANCE('shackleford','shackelford');
+ edit_distance 
+---------------
+             2
+(1 row)
+
+-- classic Levenshtein examples
+SELECT UTL_MATCH.EDIT_DISTANCE('kitten','sitting');
+ edit_distance 
+---------------
+             3
+(1 row)
+
+SELECT UTL_MATCH.EDIT_DISTANCE('saturday','sunday');
+ edit_distance 
+---------------
+             3
+(1 row)
+
+SELECT UTL_MATCH.EDIT_DISTANCE('flaw','lawn');
+ edit_distance 
+---------------
+             2
+(1 row)
+
+-- identical / totally different
+SELECT UTL_MATCH.EDIT_DISTANCE('abc','abc');
+ edit_distance 
+---------------
+             0
+(1 row)
+
+SELECT UTL_MATCH.EDIT_DISTANCE('abc','xyz');
+ edit_distance 
+---------------
+             3
+(1 row)
+
+-- empty strings
+SELECT UTL_MATCH.EDIT_DISTANCE('','abc');
+ edit_distance 
+---------------
+             3
+(1 row)
+
+SELECT UTL_MATCH.EDIT_DISTANCE('abc','');
+ edit_distance 
+---------------
+             3
+(1 row)
+
+SELECT UTL_MATCH.EDIT_DISTANCE('','');
+ edit_distance 
+---------------
+             0
+(1 row)
+
+-- single character / length mismatch
+SELECT UTL_MATCH.EDIT_DISTANCE('a','b');
+ edit_distance 
+---------------
+             1
+(1 row)
+
+SELECT UTL_MATCH.EDIT_DISTANCE('a','aa');
+ edit_distance 
+---------------
+             1
+(1 row)
+
+SELECT UTL_MATCH.EDIT_DISTANCE('abc','abcd');
+ edit_distance 
+---------------
+             1
+(1 row)
+
+-- case sensitivity (Oracle comparison is case-sensitive)
+SELECT UTL_MATCH.EDIT_DISTANCE('abc','ABC');
+ edit_distance 
+---------------
+             3
+(1 row)
+
+-- whitespace is an ordinary character
+SELECT UTL_MATCH.EDIT_DISTANCE('a b c','a b c');
+ edit_distance 
+---------------
+             0
+(1 row)
+
+SELECT UTL_MATCH.EDIT_DISTANCE('a b','ab');
+ edit_distance 
+---------------
+             1
+(1 row)
+
+-- long common prefix: only the last character differs
+SELECT UTL_MATCH.EDIT_DISTANCE('aaaaab','aaaaac');
+ edit_distance 
+---------------
+             1
+(1 row)
+
+-- NULL input: Oracle returns -1, not NULL (verified on 19c)
+SELECT UTL_MATCH.EDIT_DISTANCE(NULL,'abc');
+ edit_distance 
+---------------
+            -1
+(1 row)
+
+SELECT UTL_MATCH.EDIT_DISTANCE('abc',NULL);
+ edit_distance 
+---------------
+            -1
+(1 row)
+
+SELECT UTL_MATCH.EDIT_DISTANCE(NULL,NULL);
+ edit_distance 
+---------------
+            -1
+(1 row)
+
+-- NULL takes precedence over the empty-string algorithm path (not
+-- observable in Oracle itself, where '' is NULL)
+SELECT UTL_MATCH.EDIT_DISTANCE(NULL,'');
+ edit_distance 
+---------------
+            -1
+(1 row)
+
+-- multi-byte: Oracle compares bytes, not characters (verified on 19c,
+-- AL32UTF8): '试' vs 'a' differs in 3 bytes -> 1 substitution + 2 deletions
+SELECT UTL_MATCH.EDIT_DISTANCE('中文测试','中文测试');
+ edit_distance 
+---------------
+             0
+(1 row)
+
+SELECT UTL_MATCH.EDIT_DISTANCE('中文测试','中文测a');
+ edit_distance 
+---------------
+             3
+(1 row)
+
+SELECT UTL_MATCH.EDIT_DISTANCE('你好','您好');
+ edit_distance 
+---------------
+             3
+(1 row)
+
+SELECT UTL_MATCH.EDIT_DISTANCE('中文测试','中文');
+ edit_distance 
+---------------
+             6
+(1 row)
+
+SELECT UTL_MATCH.EDIT_DISTANCE('abc中文','abc中文');
+ edit_distance 
+---------------
+             0
+(1 row)
+
+-- large input (length 3000, all chars differ)
+SELECT UTL_MATCH.EDIT_DISTANCE(repeat('a',3000), repeat('b',3000));
+ edit_distance 
+---------------
+          3000
+(1 row)
+
+-- ============================================================
+-- UTL_MATCH.EDIT_DISTANCE_SIMILARITY
+-- ============================================================
+SELECT UTL_MATCH.EDIT_DISTANCE_SIMILARITY('shackleford','shackelford');
+ edit_distance_similarity 
+--------------------------
+                       82
+(1 row)
+
+SELECT UTL_MATCH.EDIT_DISTANCE_SIMILARITY('kitten','sitting');
+ edit_distance_similarity 
+--------------------------
+                       57
+(1 row)
+
+-- rounding boundary: (1 - 3/8) * 100 = 62.5 -> 63 (half-up, as in Oracle)
+SELECT UTL_MATCH.EDIT_DISTANCE_SIMILARITY('saturday','sunday');
+ edit_distance_similarity 
+--------------------------
+                       63
+(1 row)
+
+SELECT UTL_MATCH.EDIT_DISTANCE_SIMILARITY('abc','abc');
+ edit_distance_similarity 
+--------------------------
+                      100
+(1 row)
+
+SELECT UTL_MATCH.EDIT_DISTANCE_SIMILARITY('abc','xyz');
+ edit_distance_similarity 
+--------------------------
+                        0
+(1 row)
+
+SELECT UTL_MATCH.EDIT_DISTANCE_SIMILARITY('','abc');
+ edit_distance_similarity 
+--------------------------
+                        0
+(1 row)
+
+SELECT UTL_MATCH.EDIT_DISTANCE_SIMILARITY('a','b');
+ edit_distance_similarity 
+--------------------------
+                        0
+(1 row)
+
+SELECT UTL_MATCH.EDIT_DISTANCE_SIMILARITY('a','aa');
+ edit_distance_similarity 
+--------------------------
+                       50
+(1 row)
+
+SELECT UTL_MATCH.EDIT_DISTANCE_SIMILARITY('abc','abcd');
+ edit_distance_similarity 
+--------------------------
+                       75
+(1 row)
+
+-- long common prefix
+SELECT UTL_MATCH.EDIT_DISTANCE_SIMILARITY('aaaaab','aaaaac');
+ edit_distance_similarity 
+--------------------------
+                       83
+(1 row)
+
+-- NULL inputs: Oracle returns 0 if one input is NULL and 100 if both are
+-- (verified on 19c)
+SELECT UTL_MATCH.EDIT_DISTANCE_SIMILARITY(NULL,'abc');
+ edit_distance_similarity 
+--------------------------
+                        0
+(1 row)
+
+SELECT UTL_MATCH.EDIT_DISTANCE_SIMILARITY('abc',NULL);
+ edit_distance_similarity 
+--------------------------
+                        0
+(1 row)
+
+SELECT UTL_MATCH.EDIT_DISTANCE_SIMILARITY(NULL,NULL);
+ edit_distance_similarity 
+--------------------------
+                      100
+(1 row)
+
+SELECT UTL_MATCH.EDIT_DISTANCE_SIMILARITY(NULL,'');
+ edit_distance_similarity 
+--------------------------
+                        0
+(1 row)
+
+-- empty strings are 100% similar
+SELECT UTL_MATCH.EDIT_DISTANCE_SIMILARITY('','');
+ edit_distance_similarity 
+--------------------------
+                      100
+(1 row)
+
+-- multi-byte: both the distance and the maximum length are in bytes
+-- (verified on 19c, AL32UTF8): (1 - 3/12) * 100 = 75
+SELECT UTL_MATCH.EDIT_DISTANCE_SIMILARITY('中文测试','中文测试');
+ edit_distance_similarity 
+--------------------------
+                      100
+(1 row)
+
+SELECT UTL_MATCH.EDIT_DISTANCE_SIMILARITY('中文测试','中文测a');
+ edit_distance_similarity 
+--------------------------
+                       75
+(1 row)
+
+-- ============================================================
+-- UTL_MATCH.JARO_WINKLER
+-- ============================================================
+-- Oracle example (rounded to 4 decimals to match the docs)
+SELECT ROUND(UTL_MATCH.JARO_WINKLER('shackleford','shackelford')::numeric, 4);
+ round  
+--------
+ 0.9818
+(1 row)
+
+-- classic Jaro-Winkler reference values
+SELECT ROUND(UTL_MATCH.JARO_WINKLER('MARTHA','MARHTA')::numeric, 4);
+ round  
+--------
+ 0.9611
+(1 row)
+
+SELECT ROUND(UTL_MATCH.JARO_WINKLER('DWAYNE','DUANE')::numeric, 4);
+ round  
+--------
+ 0.8400
+(1 row)
+
+SELECT ROUND(UTL_MATCH.JARO_WINKLER('DIXON','DICKSONX')::numeric, 4);
+ round  
+--------
+ 0.8133
+(1 row)
+
+SELECT ROUND(UTL_MATCH.JARO_WINKLER('JELLYFISH','SMELLYFISH')::numeric, 4);
+ round  
+--------
+ 0.8963
+(1 row)
+
+-- Oracle truncates half-transpositions (integer t/2): 0.9444, giving
+-- JARO_WINKLER_SIMILARITY = 94, not the textbook fractional 92
+-- (verified on 19c)
+SELECT ROUND(UTL_MATCH.JARO_WINKLER('ABCDEF','BCADEF')::numeric, 4);
+ round  
+--------
+ 0.9444
+(1 row)
+
+-- two swapped pairs (t=4, integer t/2 = 2): 0.8333
+SELECT ROUND(UTL_MATCH.JARO_WINKLER('abcd','badc')::numeric, 4);
+ round  
+--------
+ 0.8333
+(1 row)
+
+-- multi-byte transposition at byte level: two 3-byte characters swapped
+SELECT ROUND(UTL_MATCH.JARO_WINKLER('中文测试','中文试测')::numeric, 4);
+ round  
+--------
+ 0.9500
+(1 row)
+
+-- identical / totally different
+SELECT ROUND(UTL_MATCH.JARO_WINKLER('abc','abc')::numeric, 4);
+ round  
+--------
+ 1.0000
+(1 row)
+
+SELECT ROUND(UTL_MATCH.JARO_WINKLER('abc','xyz')::numeric, 4);
+ round  
+--------
+ 0.0000
+(1 row)
+
+-- empty strings
+SELECT ROUND(UTL_MATCH.JARO_WINKLER('','abc')::numeric, 4);
+ round  
+--------
+ 0.0000
+(1 row)
+
+SELECT ROUND(UTL_MATCH.JARO_WINKLER('abc','')::numeric, 4);
+ round  
+--------
+ 0.0000
+(1 row)
+
+SELECT ROUND(UTL_MATCH.JARO_WINKLER('','')::numeric, 4);
+ round  
+--------
+ 0.0000
+(1 row)
+
+-- single character against a longer string
+SELECT ROUND(UTL_MATCH.JARO_WINKLER('a','aa')::numeric, 4);
+ round  
+--------
+ 0.8500
+(1 row)
+
+-- Oracle applies the prefix boost unconditionally (no 0.7 threshold):
+-- jaro = 0.4444 -> boosted to 0.5556 (verified on 19c)
+SELECT ROUND(UTL_MATCH.JARO_WINKLER('ABCCCCCCCCCC','ABDDDDDDDDDD')::numeric, 4);
+ round  
+--------
+ 0.5556
+(1 row)
+
+-- ... and caps the boosted prefix at 4: 0.9429 (verified on 19c)
+SELECT ROUND(UTL_MATCH.JARO_WINKLER('AAAAAAB','AAAAAAC')::numeric, 4);
+ round  
+--------
+ 0.9429
+(1 row)
+
+-- Jaro match window is floor(max(len)/2) - 1: distinguishes 0.8083
+-- (window-1) from 0.9 (window) (verified on 19c)
+SELECT ROUND(UTL_MATCH.JARO_WINKLER('aaaa','aaabbba')::numeric, 4);
+ round  
+--------
+ 0.8083
+(1 row)
+
+SELECT ROUND(UTL_MATCH.JARO_WINKLER('aaab','baaa')::numeric, 4);
+ round  
+--------
+ 0.8333
+(1 row)
+
+-- case sensitivity
+SELECT ROUND(UTL_MATCH.JARO_WINKLER('abc','ABC')::numeric, 4);
+ round  
+--------
+ 0.0000
+(1 row)
+
+-- NULL input: Oracle returns 0, not NULL (verified on 19c)
+SELECT UTL_MATCH.JARO_WINKLER(NULL,'abc');
+ jaro_winkler 
+--------------
+ 0
+(1 row)
+
+SELECT UTL_MATCH.JARO_WINKLER('abc',NULL);
+ jaro_winkler 
+--------------
+ 0
+(1 row)
+
+SELECT UTL_MATCH.JARO_WINKLER(NULL,NULL);
+ jaro_winkler 
+--------------
+ 0
+(1 row)
+
+SELECT UTL_MATCH.JARO_WINKLER('',NULL);
+ jaro_winkler 
+--------------
+ 0
+(1 row)
+
+-- multi-byte: Jaro-Winkler is byte-based as well (verified on 19c,
+-- AL32UTF8): 0.93 byte-based, would be 0.8833 if character-based
+SELECT ROUND(UTL_MATCH.JARO_WINKLER('中文测试','中文测试')::numeric, 4);
+ round  
+--------
+ 1.0000
+(1 row)
+
+SELECT ROUND(UTL_MATCH.JARO_WINKLER('中文测试','中文测A')::numeric, 4);
+ round  
+--------
+ 0.9300
+(1 row)
+
+SELECT ROUND(UTL_MATCH.JARO_WINKLER('你好','您好')::numeric, 4);
+ round  
+--------
+ 0.6667
+(1 row)
+
+-- full precision (BINARY_DOUBLE return value, unrounded)
+SELECT UTL_MATCH.JARO_WINKLER('MARTHA','MARHTA');
+    jaro_winkler    
+--------------------
+ 0.9611111111111111
+(1 row)
+
+-- ============================================================
+-- UTL_MATCH.JARO_WINKLER_SIMILARITY
+-- ============================================================
+SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY('shackleford','shackelford');
+ jaro_winkler_similarity 
+-------------------------
+                      98
+(1 row)
+
+SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY('MARTHA','MARHTA');
+ jaro_winkler_similarity 
+-------------------------
+                      96
+(1 row)
+
+SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY('DWAYNE','DUANE');
+ jaro_winkler_similarity 
+-------------------------
+                      84
+(1 row)
+
+SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY('DIXON','DICKSONX');
+ jaro_winkler_similarity 
+-------------------------
+                      81
+(1 row)
+
+SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY('JELLYFISH','SMELLYFISH');
+ jaro_winkler_similarity 
+-------------------------
+                      90
+(1 row)
+
+SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY('abcd','badc');
+ jaro_winkler_similarity 
+-------------------------
+                      83
+(1 row)
+
+SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY('中文测试','中文试测');
+ jaro_winkler_similarity 
+-------------------------
+                      95
+(1 row)
+
+-- integer half-transpositions (Oracle): 94, not the textbook 92
+SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY('ABCDEF','BCADEF');
+ jaro_winkler_similarity 
+-------------------------
+                      94
+(1 row)
+
+SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY('abc','abc');
+ jaro_winkler_similarity 
+-------------------------
+                     100
+(1 row)
+
+SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY('abc','xyz');
+ jaro_winkler_similarity 
+-------------------------
+                       0
+(1 row)
+
+SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY('','abc');
+ jaro_winkler_similarity 
+-------------------------
+                       0
+(1 row)
+
+SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY('','');
+ jaro_winkler_similarity 
+-------------------------
+                       0
+(1 row)
+
+SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY('a','aa');
+ jaro_winkler_similarity 
+-------------------------
+                      85
+(1 row)
+
+SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY('aaaaab','aaaaac');
+ jaro_winkler_similarity 
+-------------------------
+                      93
+(1 row)
+
+-- NULL input: Oracle returns 0 (verified on 19c)
+SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY(NULL,'abc');
+ jaro_winkler_similarity 
+-------------------------
+                       0
+(1 row)
+
+SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY('abc',NULL);
+ jaro_winkler_similarity 
+-------------------------
+                       0
+(1 row)
+
+SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY(NULL,NULL);
+ jaro_winkler_similarity 
+-------------------------
+                       0
+(1 row)
+
+SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY('',NULL);
+ jaro_winkler_similarity 
+-------------------------
+                       0
+(1 row)
+
+SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY('中文测试','中文测试');
+ jaro_winkler_similarity 
+-------------------------
+                     100
+(1 row)
+
+SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY('中文测试','中文测A');
+ jaro_winkler_similarity 
+-------------------------
+                      93
+(1 row)
+
+SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY('你好','您好');
+ jaro_winkler_similarity 
+-------------------------
+                      67
+(1 row)
+
+-- ============================================================
+-- Direct C function calls (sys.ora_utl_match_*)
+-- ============================================================
+SELECT sys.ora_utl_match_edit_distance('kitten','sitting');
+ ora_utl_match_edit_distance 
+-----------------------------
+                           3
+(1 row)
+
+SELECT sys.ora_utl_match_edit_distance_similarity('kitten','sitting');
+ ora_utl_match_edit_distance_similarity 
+----------------------------------------
+                                     57
+(1 row)
+
+SELECT ROUND(sys.ora_utl_match_jaro_winkler('MARTHA','MARHTA')::numeric, 4);
+ round  
+--------
+ 0.9611
+(1 row)
+
+SELECT sys.ora_utl_match_jaro_winkler_similarity('MARTHA','MARHTA');
+ ora_utl_match_jaro_winkler_similarity 
+---------------------------------------
+                                    96
+(1 row)
+
+-- NULL in -> Oracle-verified sentinel values on the C level as well
+SELECT sys.ora_utl_match_edit_distance(NULL,'abc');
+ ora_utl_match_edit_distance 
+-----------------------------
+                          -1
+(1 row)
+
+SELECT sys.ora_utl_match_edit_distance_similarity(NULL,NULL);
+ ora_utl_match_edit_distance_similarity 
+----------------------------------------
+                                    100
+(1 row)
+
+SELECT sys.ora_utl_match_jaro_winkler(NULL,'abc');
+ ora_utl_match_jaro_winkler 
+----------------------------
+                          0
+(1 row)
+
+SELECT sys.ora_utl_match_jaro_winkler_similarity('abc',NULL);
+ ora_utl_match_jaro_winkler_similarity 
+---------------------------------------
+                                     0
+(1 row)
+
+-- both-empty at the C level
+SELECT sys.ora_utl_match_edit_distance('','');
+ ora_utl_match_edit_distance 
+-----------------------------
+                           0
+(1 row)
+
+SELECT sys.ora_utl_match_jaro_winkler('','');
+ ora_utl_match_jaro_winkler 
+----------------------------
+                          0
+(1 row)
+
+-- ============================================================
+-- PL/iSQL package interface tests
+-- ============================================================
+DO $$
+DECLARE
+    v_ed  INTEGER;
+    v_eds INTEGER;
+    v_jw  BINARY_DOUBLE;
+    v_jws INTEGER;
+    s1    VARCHAR2(100);
+    s2    VARCHAR2(100);
+BEGIN
+    s1 := 'shackleford';
+    s2 := 'shackelford';
+    v_ed  := UTL_MATCH.EDIT_DISTANCE(s1, s2);
+    v_eds := UTL_MATCH.EDIT_DISTANCE_SIMILARITY(s1, s2);
+    v_jw  := UTL_MATCH.JARO_WINKLER(s1, s2);
+    v_jws := UTL_MATCH.JARO_WINKLER_SIMILARITY(s1, s2);
+    RAISE NOTICE 'ed=%, eds=%, jw=%, jws=%', v_ed, v_eds, v_jw, v_jws;
+    RAISE NOTICE 'null: ed=%, eds=%', UTL_MATCH.EDIT_DISTANCE(NULL, 'abc'),
+                 UTL_MATCH.EDIT_DISTANCE_SIMILARITY(NULL, NULL);
+    RAISE NOTICE 'jw null=%, jws null=%', UTL_MATCH.JARO_WINKLER(NULL, 'abc'),
+                 UTL_MATCH.JARO_WINKLER_SIMILARITY('abc', NULL);
+    RAISE NOTICE 'kitten vs sitting: ed=%', UTL_MATCH.EDIT_DISTANCE('kitten', 'sitting');
+    RAISE NOTICE '中文 ed=% jws=%', UTL_MATCH.EDIT_DISTANCE('中文测试', '中文测a'),
+                 UTL_MATCH.JARO_WINKLER_SIMILARITY('中文测试', '中文测试');
+END;
+$$;
+NOTICE:  ed=2, eds=82, jw=0.9818181818181818, jws=98
+NOTICE:  null: ed=-1, eds=100
+NOTICE:  jw null=0, jws null=0
+NOTICE:  kitten vs sitting: ed=3
+NOTICE:  中文 ed=3 jws=100
