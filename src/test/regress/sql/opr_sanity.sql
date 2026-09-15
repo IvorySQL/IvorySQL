@@ -50,12 +50,11 @@ SELECT p1.oid, p1.proname
 FROM pg_proc AS p1
 WHERE proretset AND prokind != 'f';
 
--- currently, no built-in functions should be SECURITY DEFINER;
--- this might change in future, but there will probably never be many.
-SELECT p1.oid, p1.proname
-FROM pg_proc AS p1
+-- ACL 存储入口使用 SECURITY DEFINER；核对名称及固定的搜索路径。
+SELECT n.nspname, p1.proname, p1.proconfig
+FROM pg_proc AS p1 JOIN pg_namespace n ON n.oid = p1.pronamespace
 WHERE prosecdef
-ORDER BY 1;
+ORDER BY 1, 2;
 
 -- pronargdefaults should be 0 iff proargdefaults is null
 SELECT p1.oid, p1.proname

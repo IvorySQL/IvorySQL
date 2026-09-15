@@ -26,8 +26,11 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include "catalog/pg_type.h"
 #include "common/ip.h"
 #include "fmgr.h"
+#include "miscadmin.h"
+#include "parser/parse_func.h"
 #include "port.h"
 #include "utils/builtins.h"
 
@@ -37,6 +40,24 @@ PG_FUNCTION_INFO_V1(ivorysql_utl_inaddr_get_host_name);
 static char *utl_inaddr_local_hostname(bool short_name);
 static char *utl_inaddr_resolve_address(const char *host);
 static char *utl_inaddr_resolve_name(const char *address);
+
+/* 在任何名称解析前检查调用者；NULL 参数按 Oracle 约定检查 LOCALHOST。 */
+static void
+utl_inaddr_check_acl(const char *host)
+{
+	Oid			argtypes[2] = {TEXTOID, OIDOID};
+	Oid			checker;
+	Oid			invoker = GetUserId();
+
+	checker = LookupFuncName(list_make2(makeString("sys"),
+										makeString("network_acl_check")),
+							 2, argtypes, false);
+	if (!DatumGetBool(OidFunctionCall2(checker, CStringGetTextDatum(host),
+									   ObjectIdGetDatum(invoker))))
+		ereport(ERROR,
+				(errcode(-24247),
+				 errmsg("ORA-24247: network access denied by access control list (ACL)")));
+}
 
 /*
  * Read the local host name.  The NULL branch of GET_HOST_NAME returns only
@@ -95,10 +116,10 @@ utl_inaddr_resolve_address(const char *host)
 			continue;
 
 		ret = pg_getnameinfo_all((const struct sockaddr_storage *) address->ai_addr,
-							  address->ai_addrlen,
-							  numeric_host, sizeof(numeric_host),
-							  NULL, 0,
-							  NI_NUMERICHOST);
+								 address->ai_addrlen,
+								 numeric_host, sizeof(numeric_host),
+								 NULL, 0,
+								 NI_NUMERICHOST);
 		if (ret == 0)
 		{
 			result = pstrdup(numeric_host);
@@ -145,10 +166,10 @@ utl_inaddr_resolve_name(const char *address_text)
 			continue;
 
 		ret = pg_getnameinfo_all((const struct sockaddr_storage *) address->ai_addr,
-							  address->ai_addrlen,
-							  hostname, sizeof(hostname),
-							  NULL, 0,
-							  NI_NAMEREQD);
+								 address->ai_addrlen,
+								 hostname, sizeof(hostname),
+								 NULL, 0,
+								 NI_NAMEREQD);
 		if (ret == 0)
 		{
 			result = pstrdup(hostname);
@@ -172,18 +193,19 @@ ivorysql_utl_inaddr_get_host_address(PG_FUNCTION_ARGS)
 	char	   *address;
 
 	if (PG_ARGISNULL(0))
+	{
+		utl_inaddr_check_acl("localhost");
 		host = utl_inaddr_local_hostname(false);
+	}
 	else
+	{
 		host = text_to_cstring(PG_GETARG_TEXT_PP(0));
+		utl_inaddr_check_acl(host);
+	}
 
 	if (host == NULL)
 		PG_RETURN_NULL();
 
-	/*
-	 * TODO (#2053): Integrate DBMS_NETWORK_ACL_ADMIN checks for the invoking
-	 * user's host ACL privileges before resolution; report denied access as
-	 * NETWORK_ACCESS_DENIED (ORA-24247).
-	 */
 	address = utl_inaddr_resolve_address(host);
 	pfree(host);
 
@@ -206,6 +228,7 @@ ivorysql_utl_inaddr_get_host_name(PG_FUNCTION_ARGS)
 
 	if (PG_ARGISNULL(0))
 	{
+		utl_inaddr_check_acl("localhost");
 		hostname = utl_inaddr_local_hostname(true);
 		if (hostname == NULL)
 			PG_RETURN_NULL();
@@ -214,11 +237,7 @@ ivorysql_utl_inaddr_get_host_name(PG_FUNCTION_ARGS)
 	}
 
 	address = text_to_cstring(PG_GETARG_TEXT_PP(0));
-	/*
-	 * TODO (#2053): Integrate DBMS_NETWORK_ACL_ADMIN checks for the invoking
-	 * user's host ACL privileges before reverse resolution; report denied
-	 * access as NETWORK_ACCESS_DENIED (ORA-24247).
-	 */
+	utl_inaddr_check_acl(address);
 	hostname = utl_inaddr_resolve_name(address);
 	pfree(address);
 

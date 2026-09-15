@@ -20730,7 +20730,13 @@ processExtensionTables(Archive *fout, ExtensionInfo extinfo[],
 				TableInfo  *configtbl;
 				Oid			configtbloid = atooid(extconfigarray[j]);
 				bool		dumpobj =
-				curext->dobj.dump & DUMP_COMPONENT_DEFINITION;
+					(curext->dobj.dump & DUMP_COMPONENT_DEFINITION) ||
+					(curext->dobj.catId.oid <= g_last_builtin_oid &&
+					 (dopt->include_everything || extension_include_oids.head != NULL));
+
+				/*
+				 * 内置扩展不导出定义，但显式登记的用户配置数据仍须保留。
+				 */
 
 				configtbl = findTableByOid(configtbloid);
 				if (configtbl == NULL)

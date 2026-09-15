@@ -35,6 +35,7 @@ OBJS = \
 	src/builtin_packages/utl_encode/utl_encode.o \
 	src/builtin_packages/utl_url/utl_url.o \
 	src/builtin_packages/utl_inaddr/utl_inaddr.o \
+	src/builtin_packages/dbms_network_acl_admin/dbms_network_acl_admin.o \
 	src/builtin_packages/dbms_session/dbms_session.o \
 	src/builtin_packages/dbms_transaction/dbms_transaction.o \
 	src/builtin_packages/dbms_random/dbms_random.o
@@ -97,6 +98,7 @@ ORA_REGRESS = \
 	utl_encode \
 	utl_url \
 	utl_inaddr \
+	dbms_network_acl_admin \
 	dbms_session \
 	dbms_transaction \
 	dbms_random

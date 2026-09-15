@@ -6,8 +6,16 @@
 -- to stable INFO messages.
 --
 
--- The internal functions retain their defaults, volatility, parallel mode, and
--- private execution boundary, while the package API is public.
+-- 为已有解析用例配置显式 ACL；无 ACL 时默认拒绝。
+DECLARE
+  principal VARCHAR2(128) := current_user;
+BEGIN
+  dbms_network_acl_admin.create_acl('utl_inaddr_test.xml', '解析回归', principal, true, 'resolve');
+  dbms_network_acl_admin.assign_acl('utl_inaddr_test.xml', '*');
+END;
+/
+
+-- 保留默认参数及易变性；公开包和底层函数均强制检查调用者 ACL。
 DECLARE
   v_count INTEGER;
 BEGIN
@@ -42,8 +50,8 @@ BEGIN
      AND acl.grantee = 0
      AND acl.privilege_type = 'EXECUTE';
 
-  IF v_count != 0 THEN
-    RAISE EXCEPTION 'UTL_INADDR internal functions expose PUBLIC EXECUTE';
+  IF v_count != 2 THEN
+    RAISE EXCEPTION 'UTL_INADDR invoker functions require PUBLIC EXECUTE';
   END IF;
 
   SELECT count(*)
@@ -193,5 +201,10 @@ BEGIN
     RAISE EXCEPTION 'internal resolution failure contract is broken';
   END IF;
   RAISE INFO 'UTL_INADDR internal failure contract: ok';
+END;
+/
+
+BEGIN
+  dbms_network_acl_admin.drop_acl('utl_inaddr_test.xml');
 END;
 /

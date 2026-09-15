@@ -442,6 +442,8 @@ FROM pg_index
 WHERE (is_catalog_text_unique_index_oid(indexrelid) <>
        (indisunique AND
         indexrelid < 16384 AND
+        indrelid IN (SELECT oid FROM pg_class
+                     WHERE relnamespace = 'pg_catalog'::regnamespace) AND
         EXISTS (SELECT 1 FROM pg_attribute
                 WHERE attrelid = indexrelid AND atttypid = 'text'::regtype)));
 

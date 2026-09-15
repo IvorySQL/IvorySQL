@@ -21,11 +21,12 @@ COMMENT ON FUNCTION sys.utl_inaddr_get_host_address(text) IS
 COMMENT ON FUNCTION sys.utl_inaddr_get_host_name(text) IS
   'Internal implementation of UTL_INADDR.GET_HOST_NAME';
 
-REVOKE EXECUTE ON FUNCTION sys.utl_inaddr_get_host_address(text) FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION sys.utl_inaddr_get_host_name(text) FROM PUBLIC;
+-- AUTHID CURRENT_USER 包需要调用权限；直接调用也在 C 层强制检查同一 ACL。
+GRANT EXECUTE ON FUNCTION sys.utl_inaddr_get_host_address(text) TO PUBLIC;
+GRANT EXECUTE ON FUNCTION sys.utl_inaddr_get_host_name(text) TO PUBLIC;
 
 CREATE OR REPLACE PACKAGE utl_inaddr AUTHID CURRENT_USER IS
-  -- No Oracle network ACL equivalent exists yet; retain the public exception.
+  -- C 层在解析前检查调用者的 resolve 权限，拒绝时使用相同异常码。
   NETWORK_ACCESS_DENIED EXCEPTION;
   PRAGMA EXCEPTION_INIT(NETWORK_ACCESS_DENIED, -24247);
 
