@@ -1,12 +1,12 @@
 /*-------------------------------------------------------------------------
- * Copyright 2025 IvorySQL Global Development Team
- * 
+ * Copyright 2025-2026 IvorySQL Global Development Team
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -464,7 +464,7 @@ ora_regexp_replace(PG_FUNCTION_ARGS)
 		if(PG_ARGISNULL(1))
 			PG_RETURN_TEXT_P(PG_GETARG_TEXT_PP(0));
 		else
-			pattern_arg = PG_GETARG_TEXT_PP(1);	
+			pattern_arg = PG_GETARG_TEXT_PP(1);
 	}
 
 	if (PG_NARGS() >= 3 && !PG_ARGISNULL(2))
@@ -899,13 +899,13 @@ ora_regexp_count(PG_FUNCTION_ARGS)
 	size_t		data_len;
 	pg_re_flags flags;
 	bool		last_match_empty_at_end = false;
-	
+
 	if (PG_ARGISNULL(2))
 		PG_RETURN_NULL();
 
 	/* get the value of the parameters safely */
 	position = DatumGetInt32(DirectFunctionCall1(numeric_int4, DirectFunctionCall2(numeric_trunc, PG_GETARG_DATUM(2),Int32GetDatum(0))));
-	
+
 	/* position and occurrence must be positive integer */
 	if (position <= 0)
 		ereport(ERROR,
@@ -915,7 +915,7 @@ ora_regexp_count(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(3))
 	{
 		flags.cflags = REG_ADVANCED;
-		flags.glob = false;	
+		flags.glob = false;
 	}
 	else
 	{
@@ -925,7 +925,7 @@ ora_regexp_count(PG_FUNCTION_ARGS)
 		paramstr = text_to_cstring(match_param);
 		if (paramstr && paramstr[0] != '\0')
 		{
-			if (paramstr[0] != 'x' && paramstr[0] != 'm' && paramstr[0] != 'i' && 
+			if (paramstr[0] != 'x' && paramstr[0] != 'm' && paramstr[0] != 'i' &&
 				paramstr[0] != 'c' && paramstr[0] != 'n' && paramstr[0] != 'g')
 					ereport(ERROR,
 							 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -935,7 +935,7 @@ ora_regexp_count(PG_FUNCTION_ARGS)
 
 	ora_parse_re_flags(&flags, match_param);
 
-	if (PG_ARGISNULL(0) || 
+	if (PG_ARGISNULL(0) ||
 		PG_ARGISNULL(1))
 		PG_RETURN_NULL();
 
@@ -1029,13 +1029,13 @@ ora_substrb(PG_FUNCTION_ARGS)
 
 	res = text_substring_byte(PG_GETARG_DATUM(0), start, length, false);
 	len = VARSIZE_ANY_EXHDR(res);
-	
+
 	if (len == 0)
 	{
 		pfree(res);
 		PG_RETURN_NULL();
 	}
-	
+
 	PG_RETURN_TEXT_P(res);
 }
 
@@ -1075,7 +1075,7 @@ ora_substrb_no_length(PG_FUNCTION_ARGS)
  * 	1. Change the 'strict' property of the function from 'true' to
  *	   'false'.
  *	2. Returns 'src_text' if 'from_sub_text' == NULL or 'src_text' == NULL.
- *	3. If 'to_sub_text' is omitted or null, then all occurrences of 
+ *	3. If 'to_sub_text' is omitted or null, then all occurrences of
  *	   'from_sub_text' are removed.
  *
  ********************************************************************/
@@ -1103,7 +1103,7 @@ ora_replace(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 	else if (PG_ARGISNULL(1))
 		PG_RETURN_TEXT_P(PG_GETARG_TEXT_PP(0));
-	
+
 	src_text = PG_GETARG_TEXT_PP(0);
 	from_sub_text = PG_GETARG_TEXT_PP(1);
 	if (!PG_ARGISNULL(2))
@@ -1187,7 +1187,7 @@ ora_instrb(PG_FUNCTION_ARGS)
 
 	if (position == 0)
 		PG_RETURN_INT32(0);
-	
+
 	if (occurrence <= 0)
 		ereport(ERROR,
 					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
@@ -1219,11 +1219,11 @@ text_substring_byte(Datum str, int32 start, int32 length, bool length_not_specif
 	int32		L1;				/* adjusted substring length */
 
 	if (length_not_specified == false && length < 1)
-		return cstring_to_text("");	
+		return cstring_to_text("");
 
 	/* life is easy if the encoding max length is 1 */
 	if (eml == 1)
-	{	
+	{
 		if (S < 0)
 		{
 			int		blen;
@@ -1373,7 +1373,7 @@ text_substring_byte(Datum str, int32 start, int32 length, bool length_not_specif
 
 		ret = (text *) palloc(VARHDRSZ + (subStrEnd - subStrBegin + prefixSpaceCnt + suffixSpaceCnt));
 		SET_VARSIZE(ret, VARHDRSZ + (subStrEnd - subStrBegin + prefixSpaceCnt + suffixSpaceCnt));
-		
+
 		p = VARDATA(ret);
 
 		/* attach prefix spaces */
@@ -1678,7 +1678,7 @@ text_position_next(int start_pos, TextPositionState *state)
 }
 
 /*
- * text_instring - 
+ * text_instring -
  * Does the real work for ora_instr() and ora_instrb().
  */
 static int
@@ -1726,12 +1726,12 @@ text_instring(text *str, text *search_str, int32 position, int32 occurrence, boo
 		text_position_cleanup(&state);
 		return 0;
 	}
-	
+
 	if (position > 0)
 	{
 		/*searching from begin with the specific times */
 		result = position - 1;
-		
+
 		for (i = 0; i < occurrence; i++)
 		{
 			result = text_position_next(result + 1, &state);
@@ -1743,7 +1743,7 @@ text_instring(text *str, text *search_str, int32 position, int32 occurrence, boo
 	{
 		/*searching from back with the specific times */
 		result = src_text_len + position + 2;
-		
+
 		for (i = 0; i < occurrence; i++)
 		{
 			result = text_position_prev(result - 1, &state);
@@ -1770,7 +1770,7 @@ appendStringInfoText(StringInfo str, const text *t)
 }
 
 /*
- *	text_position_prev - 
+ *	text_position_prev -
  *	searches substring backward from specify position.
  *
  *	This function is used to implement oracle 'instr' function,
@@ -1943,19 +1943,19 @@ oracle_instr_4 (PG_FUNCTION_ARGS)
  * ora_asciistr
  *
  * Purpose:
- *	 It takes string as a argument, or an expression that resolves to 
- * 	 a string, in any character set and returns an ASCII 
- *   version of the string in the database character set. 
- *   Non-ASCII characters are converted to the form \xxxx, 
- *   where xxxx represents a UTF-16 code unit. 
+ *	 It takes string as a argument, or an expression that resolves to
+ * 	 a string, in any character set and returns an ASCII
+ *   version of the string in the database character set.
+ *   Non-ASCII characters are converted to the form \xxxx,
+ *   where xxxx represents a UTF-16 code unit.
  ********************************************************************/
-Datum 
+Datum
 ora_asciistr(PG_FUNCTION_ARGS) {
 	StringInfoData 	output;
 	text 			*str_arg = NULL;
 	char 			*str = NULL;
     char			*end = NULL;
-	
+
 	initStringInfo(&output);
 	str_arg = PG_GETARG_TEXT_PP(0);
 	str = VARDATA_ANY(str_arg);
@@ -1964,14 +1964,9 @@ ora_asciistr(PG_FUNCTION_ARGS) {
     while (str < end) {
         unsigned char c = *str;
         uint32_t codePoint;
-		
-		if (c == '\\') {
-			/* Handle backslash character */
-			appendUTF16Escape(&output, 0x005C);  // UTF-16 representation of backslash
-			str++;
-        } 
-        else if (c < 0x80) {
-            /* ASCII character */
+
+		if (c < 0x80) {
+            /* ASCII character, including the backslash (U+005C) */
             appendStringInfoChar(&output, c);
             str++;
         } else if ((c & 0xE0) == 0xC0) {
@@ -2002,7 +1997,7 @@ ora_asciistr(PG_FUNCTION_ARGS) {
             str++;
         }
     }
-	
+
     PG_RETURN_TEXT_P(cstring_to_text_with_len(output.data, output.len));
 }
 
@@ -2429,7 +2424,7 @@ ora_to_single_byte(PG_FUNCTION_ARGS)
 	__int64			dstlen;
 
 #else
-	
+
 	int			dstlen;
 
 #endif
@@ -2495,26 +2490,26 @@ ora_to_single_byte(PG_FUNCTION_ARGS)
 
 
 /*******************************************************************
- * ora_ascii 
+ * ora_ascii
  *
  * Purpose:
  *   Implementation of Oracle ASCII function.
  *
  *   It takes as input parameter:
- *   - a number, 
+ *   - a number,
  *   - a binary float,
  *   - a binary double,
- *   - a date, 
- *   - a timestamp 
+ *   - a date,
+ *   - a timestamp
  *   - a timestamp with time zone
  *   - a string
- * 
- *   and returns ASCII codepoint of the first character 
+ *
+ *   and returns ASCII codepoint of the first character
  *   of the corresponding string.
  *
  *******************************************************************/
 
- /* 
+ /*
   * cannot find include files
  */
 extern Datum binary_float_out(PG_FUNCTION_ARGS);
@@ -2529,7 +2524,7 @@ ora_ascii(PG_FUNCTION_ARGS)
     if (PG_ARGISNULL(0))
         PG_RETURN_NULL();
 
-	
+
     switch (argtype)
     {
       	/*
@@ -2552,7 +2547,7 @@ ora_ascii(PG_FUNCTION_ARGS)
 			str = DatumGetCString(DirectFunctionCall1(binary_double_out, Float8GetDatum(val)));
             break;
         }
-		case  ORACHARCHAROID: 
+		case  ORACHARCHAROID:
 		case  ORAVARCHARCHAROID : {
 			/* char, varchar, varchar2 */
 			text *txt = PG_GETARG_TEXT_PP(0);
@@ -2569,12 +2564,12 @@ ora_ascii(PG_FUNCTION_ARGS)
 
             str = text_to_cstring(date_str);
 			break;
-		}	
+		}
 		case ORATIMESTAMPOID: {
 			Timestamp 	val = PG_GETARG_TIMESTAMP(0);
 			text       *timestamp_str;
 
-			timestamp_str = DatumGetTextP(DirectFunctionCall2(timestamp_to_char, 
+			timestamp_str = DatumGetTextP(DirectFunctionCall2(timestamp_to_char,
 			  							  TimestampGetDatum(val),
 								          PointerGetDatum(cstring_to_text(nls_timestamp_format))));
 			str = text_to_cstring(timestamp_str);
@@ -2583,8 +2578,8 @@ ora_ascii(PG_FUNCTION_ARGS)
 		case ORATIMESTAMPTZOID: {
 			TimestampTz val = PG_GETARG_TIMESTAMPTZ(0);
 			text       *timestamptz_str;
-			
-			timestamptz_str = DatumGetTextP(DirectFunctionCall2(timestamptz_to_char, 
+
+			timestamptz_str = DatumGetTextP(DirectFunctionCall2(timestamptz_to_char,
 											 TimestampTzGetDatum(val),
 											 PointerGetDatum(cstring_to_text(nls_timestamp_tz_format))));
 			str = text_to_cstring(timestamptz_str);
@@ -2615,9 +2610,9 @@ ora_ascii(PG_FUNCTION_ARGS)
  * ora_listagg_check
  *
  * Purpose:
- *   Check that LISTAGG does not return string greater than 4000 bytes 
+ *   Check that LISTAGG does not return string greater than 4000 bytes
  *
- *   if yes, returns input parameter 
+ *   if yes, returns input parameter
  *   otherwise raise error
  *
  *******************************************************************/
