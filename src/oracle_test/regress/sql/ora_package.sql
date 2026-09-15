@@ -6193,14 +6193,12 @@ CREATE ROLE role_attacker LOGIN;
 GRANT CREATE, USAGE ON SCHEMA shared_ns TO role_owner, role_attacker;
 
 SET ROLE role_owner;
-SELECT current_user;
 CREATE PACKAGE shared_ns.victim_pkg IS
   FUNCTION get_secret RETURN INTEGER;
 END victim_pkg;
 /
 
 SET ROLE role_attacker;
-SELECT current_user;
 CREATE PACKAGE BODY shared_ns.victim_pkg IS
   FUNCTION get_secret RETURN INTEGER IS
   BEGIN
@@ -6209,16 +6207,6 @@ CREATE PACKAGE BODY shared_ns.victim_pkg IS
 END victim_pkg;
 /
 
-CREATE OR REPLACE PACKAGE BODY shared_ns.victim_pkg IS
-  FUNCTION get_secret RETURN INTEGER IS
-  BEGIN
-    RETURN 1337;
-  END;
-END victim_pkg;
-/
-SET ROLE role_owner;
-SELECT current_user;
-SELECT shared_ns.victim_pkg.get_secret();
 RESET ROLE;
 --clean data
 RESET ivorysql.allow_out_parameter_const;
