@@ -46,6 +46,7 @@
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
+#include "utils/inval.h"
 #include "utils/pg_lsn.h"
 #include "utils/resowner.h"
 #include "utils/syscache.h"
@@ -2405,6 +2406,8 @@ process_owned_by(Relation seqrel, List *owned_by, bool for_identity)
 	Relation	tablerel;
 	AttrNumber	attnum = InvalidAttrNumber;
 	char		*seqname;
+	Oid			oldTableId = InvalidOid;
+	int32		oldColId;
 
 	deptype = for_identity ? DEPENDENCY_INTERNAL : DEPENDENCY_AUTO;
 
@@ -2501,6 +2504,8 @@ process_owned_by(Relation seqrel, List *owned_by, bool for_identity)
 	 * OK, we are ready to update pg_depend.  First remove any existing
 	 * dependencies for the sequence, then optionally add a new one.
 	 */
+	(void) sequenceIsOwned(RelationGetRelid(seqrel), deptype,
+						   &oldTableId, &oldColId);
 	deleteDependencyRecordsForClass(RelationRelationId, RelationGetRelid(seqrel),
 									RelationRelationId, deptype);
 
@@ -2517,6 +2522,11 @@ process_owned_by(Relation seqrel, List *owned_by, bool for_identity)
 		depobject.objectSubId = 0;
 		recordDependencyOn(&depobject, &refobject, deptype);
 	}
+
+	if (OidIsValid(oldTableId))
+		CacheInvalidateRelcacheByRelid(oldTableId);
+	if (tablerel)
+		CacheInvalidateRelcache(tablerel);
 
 	/* Done, but hold lock until commit */
 	if (tablerel)
