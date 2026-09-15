@@ -1462,11 +1462,7 @@ plisql_package_qualified_signature(PLiSQL_function *func)
 	ReleaseSysCache(pkgTup);
 	pfree(nspname);
 
-	/*
-	 * The package initialization block is represented by the package's root
-	 * function, whose signature is already the package name.  Appending that
-	 * signature would produce schema.package.package in error backtraces.
-	 */
+	/* The package initialization block is represented by package->source. */
 	if (func == &((PLiSQL_package *) func->item->source)->source)
 		result = pstrdup(pkgqual);
 	else
