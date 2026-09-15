@@ -20735,7 +20735,7 @@ processExtensionTables(Archive *fout, ExtensionInfo extinfo[],
 					 (dopt->include_everything || extension_include_oids.head != NULL));
 
 				/*
-				 * 内置扩展不导出定义，但显式登记的用户配置数据仍须保留。
+				 * Preserve registered user configuration data even when built-in extension definitions are omitted.
 				 */
 
 				configtbl = findTableByOid(configtbloid);

@@ -8,7 +8,7 @@ use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
 
-# initdb 内置扩展不导出定义，但用户写入的 ACL 配置不能丢失。
+# Preserve user ACL configuration even though initdb extensions do not dump their definitions.
 my $node = PostgreSQL::Test::Cluster->new('network_acl');
 $node->init(extra => ['-m', 'oracle', '-C', 'normal']);
 $node->start;
@@ -31,7 +31,7 @@ $node->command_ok(
    '-Fc', '--file=' . "$tempdir/acl.dump"],
   'dump built-in extension configuration');
 
-# 改变角色 OID，确保备份里的 regrole 通过名称转换到新的标识。
+# Change the role OID to verify that regrole values restore by name.
 my $old_oid = $node->safe_psql('postgres', q{SELECT 'acl_dump_user'::regrole::oid});
 $node->safe_psql('postgres', 'DROP ROLE acl_dump_user; CREATE ROLE acl_dump_user');
 isnt($node->safe_psql('postgres', q{SELECT 'acl_dump_user'::regrole::oid}),
@@ -49,7 +49,7 @@ is($node->safe_psql('acl_target', $lookup), '127.0.0.1',
 is($node->safe_psql('acl_target', 'SELECT count(*) FROM sys.network_acl_host'),
    '1', 'host assignment restored');
 
-# 排除扩展或 sys 模式时，仍遵守备份过滤条件。
+# Honor dump filters that exclude the extension or the sys schema.
 for my $filter ('--exclude-extension=ivorysql_ora', '--exclude-schema=sys')
 {
   $node->command_ok(

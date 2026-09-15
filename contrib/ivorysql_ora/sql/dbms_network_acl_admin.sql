@@ -1,4 +1,4 @@
--- 网络 ACL 管理、调用者身份及主机匹配回归；不使用外部 DNS。
+-- Network ACL management, invoker identity, and host matching without external DNS.
 SELECT extconfig @> ARRAY['sys.network_acl'::regclass::oid,
   'sys.network_acl_ace'::regclass::oid, 'sys.network_acl_host'::regclass::oid] AS backup_registered
 FROM pg_extension WHERE extname = 'ivorysql_ora';
@@ -8,7 +8,7 @@ CREATE ROLE acl_group;
 GRANT acl_group TO acl_allowed;
 
 BEGIN
-  dbms_network_acl_admin.create_acl('test.xml', '解析权限', 'acl_allowed', true, 'resolve');
+  dbms_network_acl_admin.create_acl('test.xml', 'Resolution privileges', 'acl_allowed', true, 'resolve');
   dbms_network_acl_admin.assign_acl('test.xml', 'LOCALHOST.');
   dbms_network_acl_admin.assign_acl('test.xml', '127.0.0.1');
   dbms_network_acl_admin.assign_acl('test.xml', '0:0:0:0:0:0:0:1');
@@ -25,7 +25,7 @@ BEGIN
   address := utl_inaddr.get_host_name('127.0.0.1');
   address := utl_inaddr.get_host_address('::1');
   address := utl_inaddr.get_host_name();
-  RAISE INFO '授权调用者正向、反向及本机查询通过';
+  RAISE INFO 'Authorized invoker forward, reverse, and local lookups: ok';
 END;
 /
 RESET ROLE;
@@ -61,10 +61,10 @@ BEGIN
     RAISE EXCEPTION 'missing pre-DNS denial';
   EXCEPTION WHEN denied THEN NULL;
   END;
-  RAISE INFO '未授权调用者各入口均返回 ORA-24247';
+  RAISE INFO 'Unauthorized invoker receives ORA-24247 at every entry point';
 END;
 /
--- 普通用户不能修改 ACL，也不能通过私有函数或数据表绕过管理权限。
+-- Ordinary users cannot bypass administration privileges through private functions or tables.
 BEGIN
   dbms_network_acl_admin.drop_acl('test.xml');
 END;
@@ -76,11 +76,11 @@ SELECT sys.utl_inaddr_get_host_address('localhost');
 DELETE FROM sys.network_acl;
 RESET ROLE;
 
--- 显式委派包执行权即可管理 ACL，撤销后立即失效。
+-- Package EXECUTE grants delegate administration and revocation takes effect immediately.
 GRANT EXECUTE ON PACKAGE dbms_network_acl_admin TO acl_allowed;
 SET ROLE acl_allowed;
 BEGIN
-  dbms_network_acl_admin.create_acl('delegated.xml', '委派管理', 'acl_allowed', true, 'resolve');
+  dbms_network_acl_admin.create_acl('delegated.xml', 'Delegated administration', 'acl_allowed', true, 'resolve');
 END;
 /
 SELECT dbms_network_acl_admin.check_privilege('delegated.xml', NULL, 'resolve') AS invoking_user;
@@ -94,7 +94,7 @@ SET ROLE acl_allowed;
 SELECT sys.network_acl_admin('drop', 'test.xml');
 RESET ROLE;
 
--- 提权函数的有效身份也必须检查，不能错误地使用外层管理员会话身份。
+-- Check the effective identity of definer functions, not the outer administrator session.
 CREATE FUNCTION public.acl_definer_admin() RETURNS pg_catalog.int4
 LANGUAGE sql SECURITY DEFINER AS $$ SELECT sys.network_acl_admin('drop', 'test.xml') $$;
 /
@@ -102,9 +102,9 @@ ALTER FUNCTION public.acl_definer_admin() OWNER TO acl_denied;
 SELECT public.acl_definer_admin();
 DROP FUNCTION public.acl_definer_admin();
 
--- connect 不代替 resolve；端口 ACL 不参与解析权限判定。
+-- connect does not imply resolve; port-specific ACLs do not authorize resolution.
 BEGIN
-  dbms_network_acl_admin.create_acl('connect.xml', '连接权限', 'acl_denied', true, 'connect');
+  dbms_network_acl_admin.create_acl('connect.xml', 'Connection privileges', 'acl_denied', true, 'connect');
   dbms_network_acl_admin.assign_acl('connect.xml', '127.0.0.2');
   dbms_network_acl_admin.assign_acl('test.xml', '127.0.0.3', 80);
 END;
@@ -120,15 +120,15 @@ BEGIN
   address := utl_inaddr.get_host_address('127.0.0.2');
   RAISE EXCEPTION 'connect incorrectly permitted resolution';
 EXCEPTION WHEN denied THEN
-  RAISE INFO 'connect 不授予 DNS 解析权限';
+  RAISE INFO 'connect does not grant DNS resolution privileges';
 END;
 /
 RESET ROLE;
 
--- 更具体的主机优先，显式拒绝不能被通配授权覆盖。
+-- More specific hosts take precedence; wildcard grants cannot override explicit denials.
 BEGIN
-  dbms_network_acl_admin.create_acl('group.xml', '角色权限', 'acl_group', true, 'resolve');
-  dbms_network_acl_admin.create_acl('deny.xml', '显式拒绝', 'acl_allowed', false, 'resolve');
+  dbms_network_acl_admin.create_acl('group.xml', 'Role privileges', 'acl_group', true, 'resolve');
+  dbms_network_acl_admin.create_acl('deny.xml', 'Explicit denial', 'acl_allowed', false, 'resolve');
   dbms_network_acl_admin.assign_acl('group.xml', '*.example.com');
   dbms_network_acl_admin.assign_acl('deny.xml', '*.private.example.com');
   dbms_network_acl_admin.assign_acl('test.xml', 'ok.private.example.com');
@@ -142,7 +142,7 @@ FROM (VALUES ('x.example.com'), ('X.EXAMPLE.COM.'), ('example.com'),
   ('badexample.com'), ('x.private.example.com'), ('ok.private.example.com'),
   ('192.168.2.1'), ('192.168.1.1'), ('192.168.1.2'), ('192.1680.1.2')) AS hosts(host);
 
--- CIDR、IPv6 子网和 IPv4 映射 IPv6 统一比较，并选取最长前缀。
+-- Match CIDR, IPv6 subnets, and IPv4-mapped IPv6 using the longest prefix.
 BEGIN
   dbms_network_acl_admin.assign_acl('group.xml', '2001:db8::/32');
   dbms_network_acl_admin.assign_acl('deny.xml', '2001:db8:1::/48');
@@ -156,12 +156,12 @@ FROM (VALUES ('2001:db8:2::1'), ('2001:db8:1::2'), ('2001:db8:1::1'),
   ('2001:db9::1'), ('10.2.0.1'), ('10.1.0.1'),
   ('::ffff:192.168.1.2'), ('::ffff:c0a8:101')) AS hosts(host);
 
--- 角色成员关系撤销后立即失去解析权限。
+-- Revoking role membership immediately removes inherited resolution privileges.
 REVOKE acl_group FROM acl_allowed;
 SELECT sys.network_acl_check('x.example.com', 'acl_allowed'::regrole::oid) AS revoked_role;
 GRANT acl_group TO acl_allowed;
 
--- 更具体 ACL 无适用 ACE 时继续匹配父域，重新绑定替换原绑定。
+-- Fall back when a specific ACL has no applicable ACE; reassignment replaces the binding.
 BEGIN
   dbms_network_acl_admin.assign_acl('connect.xml', 'fallback.example.com');
   dbms_network_acl_admin.assign_acl('deny.xml', 'replace.example.com');
@@ -171,9 +171,9 @@ END;
 SELECT sys.network_acl_check('fallback.example.com', 'acl_allowed'::regrole::oid) AS fallback,
        sys.network_acl_check('replace.example.com', 'acl_allowed'::regrole::oid) AS replacement;
 
--- PUBLIC 通配授权仍受更具体拒绝限制。
+-- More specific denials override PUBLIC wildcard grants.
 BEGIN
-  dbms_network_acl_admin.create_acl('public.xml', '全局授权', 'PUBLIC', true, 'resolve');
+  dbms_network_acl_admin.create_acl('public.xml', 'Global grant', 'PUBLIC', true, 'resolve');
   dbms_network_acl_admin.assign_acl('public.xml', '*');
 END;
 /
@@ -185,10 +185,10 @@ BEGIN
 END;
 /
 
--- 删除并重建同名角色不继承旧 OID 的授权。
+-- Recreating a role with the same name does not inherit grants for the old OID.
 CREATE ROLE acl_recreated;
 BEGIN
-  dbms_network_acl_admin.create_acl('recreated.xml', '角色生命周期', 'acl_recreated', true, 'resolve');
+  dbms_network_acl_admin.create_acl('recreated.xml', 'Role lifecycle', 'acl_recreated', true, 'resolve');
   dbms_network_acl_admin.assign_acl('recreated.xml', 'recreated.invalid');
 END;
 /
@@ -212,7 +212,7 @@ BEGIN
 END;
 /
 
--- 首个匹配 ACE 生效，新增同一 ACE 的权限保持原位置及有效期。
+-- The first matching ACE applies; adding privileges preserves its position and validity.
 BEGIN
   dbms_network_acl_admin.add_privilege('test.xml', 'acl_allowed', false, 'resolve', 1);
 END;
@@ -227,11 +227,11 @@ SELECT dbms_network_acl_admin.check_privilege('/sys/acls/test.xml', 'acl_allowed
        dbms_network_acl_admin.check_privilege('test.xml', 'acl_allowed', 'connect') AS connect_granted,
        dbms_network_acl_admin.check_privilege('test.xml', 'acl_denied', 'resolve') AS unspecified;
 
--- 过期和未来 ACE 均不授权；有效期边界由数据库时间判断。
+-- Expired and future ACEs do not grant access; validity uses database time.
 BEGIN
-  dbms_network_acl_admin.create_acl('expired.xml', '过期', 'acl_allowed', true, 'resolve',
+  dbms_network_acl_admin.create_acl('expired.xml', 'Expired', 'acl_allowed', true, 'resolve',
     NULL, TIMESTAMP '2000-01-01 00:00:00');
-  dbms_network_acl_admin.create_acl('future.xml', '未来', 'acl_allowed', true, 'resolve',
+  dbms_network_acl_admin.create_acl('future.xml', 'Future', 'acl_allowed', true, 'resolve',
     TIMESTAMP '2999-01-01 00:00:00');
   dbms_network_acl_admin.assign_acl('expired.xml', 'expired.invalid');
   dbms_network_acl_admin.assign_acl('future.xml', 'future.invalid');
@@ -240,17 +240,17 @@ END;
 SELECT sys.network_acl_check('expired.invalid', 'acl_allowed'::regrole::oid) AS expired,
        sys.network_acl_check('future.invalid', 'acl_allowed'::regrole::oid) AS future;
 
--- 非法输入不留下部分写入。
+-- Invalid input must not leave partial writes.
 BEGIN
-  dbms_network_acl_admin.create_acl('invalid.xml', '错误权限', 'acl_allowed', true, 'CONNECT');
+  dbms_network_acl_admin.create_acl('invalid.xml', 'Invalid privilege', 'acl_allowed', true, 'CONNECT');
 END;
 /
 BEGIN
-  dbms_network_acl_admin.create_acl('invalid.xml', '不存在的用户', 'acl_missing', true, 'resolve');
+  dbms_network_acl_admin.create_acl('invalid.xml', 'Missing user', 'acl_missing', true, 'resolve');
 END;
 /
 BEGIN
-  dbms_network_acl_admin.create_acl('invalid.xml', '错误日期', 'acl_allowed', true, 'resolve',
+  dbms_network_acl_admin.create_acl('invalid.xml', 'Invalid dates', 'acl_allowed', true, 'resolve',
     TIMESTAMP '2030-01-01 00:00:00', TIMESTAMP '2020-01-01 00:00:00');
 END;
 /
@@ -268,7 +268,7 @@ END;
 /
 SELECT count(*) AS partial_writes FROM sys.network_acl WHERE acl = '/sys/acls/invalid.xml';
 
--- 事务回滚撤销权限变更。
+-- Transaction rollback undoes privilege changes.
 BEGIN;
 BEGIN
   dbms_network_acl_admin.delete_privilege('test.xml', 'acl_allowed');
@@ -277,7 +277,7 @@ END;
 ROLLBACK;
 SELECT sys.network_acl_check('localhost', 'acl_allowed'::regrole::oid) AS rollback_preserved;
 
--- 删除一项权限保留同一 ACE 的其它权限。
+-- Deleting one privilege preserves other privileges in the ACE.
 BEGIN
   dbms_network_acl_admin.delete_privilege('test.xml', 'acl_allowed', true, 'connect');
 END;
@@ -285,7 +285,7 @@ END;
 SELECT dbms_network_acl_admin.check_privilege('test.xml', 'acl_allowed', 'resolve') AS retained,
        dbms_network_acl_admin.check_privilege('test.xml', 'acl_allowed', 'connect') AS removed;
 
--- 解绑保留 ACL；删除 ACL 同时删除 ACE 和主机绑定。
+-- Unassignment preserves the ACL; dropping it removes its ACEs and host bindings.
 BEGIN
   dbms_network_acl_admin.unassign_acl('test.xml', '127.0.0.1');
 END;

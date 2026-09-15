@@ -21,12 +21,12 @@ COMMENT ON FUNCTION sys.utl_inaddr_get_host_address(text) IS
 COMMENT ON FUNCTION sys.utl_inaddr_get_host_name(text) IS
   'Internal implementation of UTL_INADDR.GET_HOST_NAME';
 
--- AUTHID CURRENT_USER 包需要调用权限；直接调用也在 C 层强制检查同一 ACL。
+-- The invoker-rights package needs EXECUTE; direct calls enforce the same ACL in C.
 GRANT EXECUTE ON FUNCTION sys.utl_inaddr_get_host_address(text) TO PUBLIC;
 GRANT EXECUTE ON FUNCTION sys.utl_inaddr_get_host_name(text) TO PUBLIC;
 
 CREATE OR REPLACE PACKAGE utl_inaddr AUTHID CURRENT_USER IS
-  -- C 层在解析前检查调用者的 resolve 权限，拒绝时使用相同异常码。
+  -- C checks the invoker's resolve privilege before resolution and raises this error on denial.
   NETWORK_ACCESS_DENIED EXCEPTION;
   PRAGMA EXCEPTION_INIT(NETWORK_ACCESS_DENIED, -24247);
 

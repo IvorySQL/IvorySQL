@@ -25,7 +25,7 @@
 
 PG_FUNCTION_INFO_V1(ivorysql_network_acl_admin);
 
-/* 先校验实际调用者，再进入私有 SECURITY DEFINER 存储函数。 */
+/* Authorize the effective invoker before calling the private SECURITY DEFINER function. */
 Datum
 ivorysql_network_acl_admin(PG_FUNCTION_ARGS)
 {

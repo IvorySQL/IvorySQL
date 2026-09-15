@@ -5,15 +5,15 @@
 -- no external DNS or network access.  Environment-specific values are reduced
 -- to stable INFO messages.
 --
--- 为已有解析用例配置显式 ACL；无 ACL 时默认拒绝。
+-- Configure an explicit ACL for the existing resolver tests; access defaults to denied.
 DECLARE
   principal VARCHAR2(128) := current_user;
 BEGIN
-  dbms_network_acl_admin.create_acl('utl_inaddr_test.xml', '解析回归', principal, true, 'resolve');
+  dbms_network_acl_admin.create_acl('utl_inaddr_test.xml', 'Resolver regression', principal, true, 'resolve');
   dbms_network_acl_admin.assign_acl('utl_inaddr_test.xml', '*');
 END;
 /
--- 保留默认参数及易变性；公开包和底层函数均强制检查调用者 ACL。
+-- Preserve defaults and volatility; both public entry points enforce invoker ACLs.
 DECLARE
   v_count INTEGER;
 BEGIN

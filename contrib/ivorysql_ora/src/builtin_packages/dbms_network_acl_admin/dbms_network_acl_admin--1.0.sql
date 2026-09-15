@@ -1,4 +1,4 @@
-/* 网络 ACL 的存储只允许通过管理包修改。Unicode 引号保留排序规则 C 的大小写。 */
+/* Modify ACL storage only through the admin package. Unicode quotes preserve collation C. */
 CREATE TABLE sys.network_acl (
   acl text COLLATE pg_catalog.U&"C" PRIMARY KEY,
   description text COLLATE pg_catalog.U&"C"
@@ -25,7 +25,7 @@ CREATE TABLE sys.network_acl_host (
          (lower_port BETWEEN 1 AND 65535 AND upper_port BETWEEN lower_port AND 65535))
 );
 REVOKE ALL ON sys.network_acl, sys.network_acl_ace, sys.network_acl_host FROM PUBLIC;
--- Oracle 将空串视为 NULL，必须传非空条件以执行这个 STRICT 登记函数。
+-- Oracle treats empty strings as NULL; use a nonempty filter for this STRICT function.
 SELECT pg_catalog.pg_extension_config_dump('sys.network_acl', 'WHERE true');
 SELECT pg_catalog.pg_extension_config_dump('sys.network_acl_ace', 'WHERE true');
 SELECT pg_catalog.pg_extension_config_dump('sys.network_acl_host', 'WHERE true');
@@ -41,7 +41,7 @@ BEGIN
 END
 $$;
 
-/* IP 地址使用 inet 规范化，域名不解析，避免权限检查触发 DNS。 */
+/* Normalize IP addresses with inet; do not resolve names while checking privileges. */
 CREATE FUNCTION sys.network_acl_host_name(value text) RETURNS text
 LANGUAGE plpgsql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
@@ -77,7 +77,7 @@ BEGIN
 END
 $$;
 
-/* 返回匹配精度；IPv4 与 IPv4 映射 IPv6 使用相同的地址空间比较。 */
+/* Return match specificity; compare IPv4 and IPv4-mapped IPv6 in the same address space. */
 CREATE FUNCTION sys.network_acl_host_match(target text, pattern text) RETURNS integer
 LANGUAGE plpgsql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
@@ -114,7 +114,7 @@ BEGIN
 END
 $$;
 
-/* 首个匹配且有效的 ACE 决定结果；角色使用调用者实际继承的权限。 */
+/* Use the first matching valid ACE and the privileges actually inherited by the invoker. */
 CREATE FUNCTION sys.network_acl_privilege(acl_name text, who oid, privilege_name text)
 RETURNS integer LANGUAGE sql STABLE SET search_path = pg_catalog, pg_temp AS $$
   SELECT CASE WHEN a.is_grant THEN 1 ELSE 0 END
@@ -129,7 +129,7 @@ RETURNS integer LANGUAGE sql STABLE SET search_path = pg_catalog, pg_temp AS $$
   ORDER BY a.ace_order LIMIT 1
 $$;
 
-/* 此函数由 C 层传入 GetUserId()，不能由调用者替换被检查的身份。 */
+/* The C caller supplies GetUserId(); users cannot substitute the identity being checked. */
 CREATE FUNCTION sys.network_acl_check(host_name text, who oid)
 RETURNS boolean LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $$
@@ -155,7 +155,7 @@ BEGIN
 END
 $$;
 
-/* 串行化管理写入，保证 ACE 顺序和端口不重叠约束在并发下仍成立。 */
+/* Serialize administrative writes to preserve ACE ordering and nonoverlapping port ranges. */
 CREATE FUNCTION sys.network_acl_admin_impl(action text, acl_name text,
   principal_name text DEFAULT NULL, grant_value boolean DEFAULT NULL,
   privilege_name text DEFAULT NULL, position_value integer DEFAULT NULL,
@@ -210,7 +210,7 @@ BEGIN
     IF action = 'create' THEN
       INSERT INTO sys.network_acl VALUES (name, description_value);
     END IF;
-    -- 同名角色被重建后，显式重新授权不会复活旧角色的其它权限。
+    -- Regranting to a recreated role must not revive other privileges of the old role.
     DELETE FROM sys.network_acl_ace a WHERE a.acl = name
       AND a.principal = principal_name AND a.principal_oid != who;
     SELECT a.ace_order INTO ace_position FROM sys.network_acl_ace a
@@ -285,7 +285,7 @@ REVOKE ALL ON FUNCTION sys.network_acl_name(text), sys.network_acl_host_name(tex
   sys.network_acl_admin_impl(text, text, text, boolean, text, integer,
     pg_catalog.timestamptz, pg_catalog.timestamptz, text, integer, integer, text) FROM PUBLIC;
 
--- 与包共享执行权限检查；C 层通过后才允许访问私有存储实现。
+-- Share the package permission check; C authorizes access to the private storage implementation.
 CREATE FUNCTION sys.network_acl_admin(action text, acl_name text,
   principal_name text DEFAULT NULL, grant_value boolean DEFAULT NULL,
   privilege_name text DEFAULT NULL, position_value integer DEFAULT NULL,
@@ -296,7 +296,7 @@ CREATE FUNCTION sys.network_acl_admin(action text, acl_name text,
 RETURNS integer AS 'MODULE_PATHNAME', 'ivorysql_network_acl_admin'
 LANGUAGE C VOLATILE PARALLEL UNSAFE;
 
-/* 仅管理员拥有执行权；可通过 GRANT EXECUTE ON PACKAGE 显式委派。 */
+/* Only administrators may execute this package unless EXECUTE is explicitly granted. */
 CREATE PACKAGE dbms_network_acl_admin AUTHID CURRENT_USER AS
   PROCEDURE create_acl(acl VARCHAR2, description VARCHAR2, principal VARCHAR2,
     is_grant BOOLEAN, privilege VARCHAR2,

@@ -41,7 +41,7 @@ static char *utl_inaddr_local_hostname(bool short_name);
 static char *utl_inaddr_resolve_address(const char *host);
 static char *utl_inaddr_resolve_name(const char *address);
 
-/* 在任何名称解析前检查调用者；NULL 参数按 Oracle 约定检查 LOCALHOST。 */
+/* Check the invoker before resolution; NULL arguments check LOCALHOST as Oracle specifies. */
 static void
 utl_inaddr_check_acl(const char *host)
 {

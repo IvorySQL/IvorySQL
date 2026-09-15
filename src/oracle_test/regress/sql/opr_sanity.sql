@@ -50,7 +50,7 @@ SELECT p1.oid, p1.proname
 FROM pg_proc AS p1
 WHERE proretset AND prokind != 'f';
 
--- ACL 存储入口使用 SECURITY DEFINER；核对名称及固定的搜索路径。
+-- ACL storage uses SECURITY DEFINER; check the names and fixed search paths.
 SELECT n.nspname, p1.proname, p1.proconfig
 FROM pg_proc AS p1 JOIN pg_namespace n ON n.oid = p1.pronamespace
 WHERE prosecdef
