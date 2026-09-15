@@ -36,6 +36,7 @@
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/ora_compatible.h"
+#include "utils/pg_locale.h"
 #include "utils/varlena.h"
 #include "mb/pg_wchar.h"
 #include "fmgr.h"
@@ -60,6 +61,16 @@ PG_FUNCTION_INFO_V1(oracharbyte_sortsupport);
 PG_FUNCTION_INFO_V1(oracharbyte_larger);
 PG_FUNCTION_INFO_V1(oracharbyte_smaller);
 PG_FUNCTION_INFO_V1(oracharbytehash);
+
+static void
+oracharbyte_check_collation_set(Oid collid)
+{
+	if (!OidIsValid(collid))
+		ereport(ERROR,
+				(errcode(ERRCODE_INDETERMINATE_COLLATION),
+				 errmsg("could not determine which collation to use for string comparison"),
+				 errhint("Use the COLLATE clause to set the collation explicitly.")));
+}
 
 /*******************************************************************
  * bpchar_input -- common guts of oracharbytein and oracharbyterecv
@@ -371,18 +382,26 @@ oracharbyteeq(PG_FUNCTION_ARGS)
 	int			len1,
 				len2;
 	bool		result;
+	Oid			collid = PG_GET_COLLATION();
+	pg_locale_t mylocale;
+
+	oracharbyte_check_collation_set(collid);
 
 	len1 = bcTruelen(arg1);
 	len2 = bcTruelen(arg2);
 
-	/*
-	 * Since we only care about equality or not-equality, we can avoid all the
-	 * expense of strcoll() here, and just do bitwise comparison.
-	 */
-	if (len1 != len2)
-		result = false;
+	mylocale = pg_newlocale_from_collation(collid);
+
+	if (mylocale->deterministic)
+	{
+		if (len1 != len2)
+			result = false;
+		else
+			result = (memcmp(VARDATA_ANY(arg1), VARDATA_ANY(arg2), len1) == 0);
+	}
 	else
-		result = (memcmp(VARDATA_ANY(arg1), VARDATA_ANY(arg2), len1) == 0);
+		result = (varstr_cmp(VARDATA_ANY(arg1), len1,
+						 VARDATA_ANY(arg2), len2, collid) == 0);
 
 	PG_FREE_IF_COPY(arg1, 0);
 	PG_FREE_IF_COPY(arg2, 1);
@@ -398,18 +417,26 @@ oracharbytene(PG_FUNCTION_ARGS)
 	int			len1,
 				len2;
 	bool		result;
+	Oid			collid = PG_GET_COLLATION();
+	pg_locale_t mylocale;
+
+	oracharbyte_check_collation_set(collid);
 
 	len1 = bcTruelen(arg1);
 	len2 = bcTruelen(arg2);
 
-	/*
-	 * Since we only care about equality or not-equality, we can avoid all the
-	 * expense of strcoll() here, and just do bitwise comparison.
-	 */
-	if (len1 != len2)
-		result = true;
+	mylocale = pg_newlocale_from_collation(collid);
+
+	if (mylocale->deterministic)
+	{
+		if (len1 != len2)
+			result = true;
+		else
+			result = (memcmp(VARDATA_ANY(arg1), VARDATA_ANY(arg2), len1) != 0);
+	}
 	else
-		result = (memcmp(VARDATA_ANY(arg1), VARDATA_ANY(arg2), len1) != 0);
+		result = (varstr_cmp(VARDATA_ANY(arg1), len1,
+						 VARDATA_ANY(arg2), len2, collid) != 0);
 
 	PG_FREE_IF_COPY(arg1, 0);
 	PG_FREE_IF_COPY(arg2, 1);
@@ -595,22 +622,43 @@ oracharbyte_sortsupport(PG_FUNCTION_ARGS)
  * orachar needs a specialized hash function because we want to ignore
  * trailing blanks in comparisons.
  *
- * Note: currently there is no need for locale-specific behavior here,
- * but if we ever change the semantics of orachar comparison to trust
- * strcoll() completely, we'd need to do something different in non-C locales.
+ * Nondeterministic collations hash the transformed sort key so values that
+ * compare equal also produce equal hash values.
  */
 Datum
 oracharbytehash(PG_FUNCTION_ARGS)
 {
 	BpChar	   *key = PG_GETARG_BPCHAR_PP(0);
+	Oid			collid = PG_GET_COLLATION();
 	char	   *keydata;
 	int			keylen;
+	pg_locale_t mylocale;
 	Datum		result;
+
+	oracharbyte_check_collation_set(collid);
 
 	keydata = VARDATA_ANY(key);
 	keylen = bcTruelen(key);
 
-	result = hash_any((unsigned char *) keydata, keylen);
+	mylocale = pg_newlocale_from_collation(collid);
+
+	if (mylocale->deterministic)
+		result = hash_any((unsigned char *) keydata, keylen);
+	else
+	{
+		Size		bsize;
+		Size		rsize;
+		char	   *buf;
+
+		bsize = pg_strnxfrm(NULL, 0, keydata, keylen, mylocale);
+		buf = palloc(bsize + 1);
+		rsize = pg_strnxfrm(buf, bsize + 1, keydata, keylen, mylocale);
+		if (rsize > bsize)
+			elog(ERROR, "pg_strnxfrm() returned unexpected result");
+
+		result = hash_any((unsigned char *) buf, bsize + 1);
+		pfree(buf);
+	}
 
 	/* Avoid leaking memory for toasted inputs */
 	PG_FREE_IF_COPY(key, 0);
