@@ -7590,7 +7590,7 @@ AS 'MODULE_PATHNAME','oratimestamptz_mi_interval'
 LANGUAGE C
 PARALLEL SAFE
 STRICT
-IMMUTABLE;
+STABLE;
 
 CREATE OPERATOR - (
 	procedure = sys.oratimestamptz_mi_yminterval,
@@ -7605,7 +7605,7 @@ AS 'MODULE_PATHNAME','oratimestamptz_mi_interval'
 LANGUAGE C
 PARALLEL SAFE
 STRICT
-IMMUTABLE;
+STABLE;
 
 CREATE OPERATOR - (
 	procedure = sys.oratimestamptz_mi_dsinterval,
@@ -7638,7 +7638,7 @@ AS 'MODULE_PATHNAME','oratimestamptz_pl_interval'
 LANGUAGE C
 PARALLEL SAFE
 STRICT
-IMMUTABLE;
+STABLE;
 
 CREATE OPERATOR + (
 	procedure = sys.oratimestamptz_pl_yminterval,
@@ -7654,7 +7654,7 @@ AS 'MODULE_PATHNAME','oratimestamptz_pl_interval'
 LANGUAGE C
 PARALLEL SAFE
 STRICT
-IMMUTABLE;
+STABLE;
 
 CREATE OPERATOR + (
 	procedure = sys.oratimestamptz_pl_dsinterval,
@@ -7749,7 +7749,7 @@ AS 'MODULE_PATHNAME','oratimestamptz_mi_interval'
 LANGUAGE C
 PARALLEL SAFE
 STRICT
-IMMUTABLE;
+STABLE;
 
 CREATE OPERATOR - (
 	procedure = sys.oratimestampltz_mi_yminterval,
@@ -7764,7 +7764,7 @@ AS 'MODULE_PATHNAME','oratimestamptz_mi_interval'
 LANGUAGE C
 PARALLEL SAFE
 STRICT
-IMMUTABLE;
+STABLE;
 
 CREATE OPERATOR - (
 	procedure = sys.oratimestampltz_mi_dsinterval,
@@ -7797,7 +7797,7 @@ AS 'MODULE_PATHNAME','oratimestamptz_pl_interval'
 PARALLEL SAFE
 LANGUAGE C
 STRICT
-IMMUTABLE;
+STABLE;
 
 CREATE OPERATOR + (
 	procedure = sys.oratimestampltz_pl_yminterval,
@@ -7813,7 +7813,7 @@ AS 'MODULE_PATHNAME','oratimestamptz_pl_interval'
 LANGUAGE C
 PARALLEL SAFE
 STRICT
-IMMUTABLE;
+STABLE;
 
 CREATE OPERATOR + (
 	procedure = sys.oratimestampltz_pl_dsinterval,
@@ -7912,7 +7912,7 @@ AS 'MODULE_PATHNAME','interval_pl_oratimestamptz'
 LANGUAGE C
 PARALLEL SAFE
 STRICT
-IMMUTABLE;
+STABLE;
 
 CREATE OPERATOR + (
 	procedure = sys.yminterval_pl_oratimestamptz,
@@ -7928,7 +7928,7 @@ AS 'MODULE_PATHNAME','interval_pl_oratimestamptz'
 LANGUAGE C
 PARALLEL SAFE
 STRICT
-IMMUTABLE;
+STABLE;
 
 CREATE OPERATOR + (
 	procedure = sys.dsinterval_pl_oratimestamptz,
@@ -7944,7 +7944,7 @@ AS 'MODULE_PATHNAME','interval_pl_oratimestamptz'
 LANGUAGE C
 PARALLEL SAFE
 STRICT
-IMMUTABLE;
+STABLE;
 
 CREATE OPERATOR + (
 	procedure = sys.yminterval_pl_oratimestampltz,
@@ -7960,7 +7960,7 @@ AS 'MODULE_PATHNAME','interval_pl_oratimestamptz'
 LANGUAGE C
 PARALLEL SAFE
 STRICT
-IMMUTABLE;
+STABLE;
 
 CREATE OPERATOR + (
 	procedure = sys.dsinterval_pl_oratimestampltz,
