@@ -382,7 +382,7 @@ transformMergeStmt(ParseState *pstate, MergeStmt *stmt)
 			case CMD_UPDATE:
 				action->targetList =
 					transformUpdateTargetList(pstate,
-											  mergeWhenClause->targetList, NULL);
+											  mergeWhenClause->targetList);
 				break;
 			case CMD_DELETE:
 				break;

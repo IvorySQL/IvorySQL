@@ -565,8 +565,6 @@ static void determineLanguage(List *options);
 %type <range>	relation_expr
 %type <range>	extended_relation_expr
 %type <range>	relation_expr_opt_alias
-%type <alias>	for_portion_of_opt_alias
-%type <node>	for_portion_of_clause
 %type <node>	tablesample_clause opt_repeatable_clause
 %type <target>	target_el set_target insert_column_item
 
@@ -798,7 +796,7 @@ static void determineLanguage(List *options);
 	OVER OVERLAPS OVERLAY OVERRIDING OWNED OWNER PACKAGES
 
 	PARALLEL PARAMETER PARSER PARTIAL PARTITION PASSING PASSWORD PATH
-	EXTRACT PGEXTRACT PLACING PLAN PLANS POLICY PORTION
+	EXTRACT PGEXTRACT PLACING PLAN PLANS POLICY
 	POSITION PRECEDING PRECISION PRESERVE PREPARE PREPARED PRIMARY
 	PRIOR PRIVILEGES PROCEDURAL PROCEDURE PROCEDURES PROGRAM PUBLICATION
 
@@ -970,15 +968,12 @@ static void determineLanguage(List *options);
  * json_predicate_type_constraint and json_key_uniqueness_constraint_opt
  * productions (see comments there).
  *
- * TO is assigned the same precedence as IDENT, to support the opt_interval
- * production (see comment there).
- *
  * Like the UNBOUNDED PRECEDING/FOLLOWING case, NESTED is assigned a lower
  * precedence than PATH to fix ambiguity in the json_table production.
  */
 %nonassoc	UNBOUNDED NESTED /* ideally would have same precedence as IDENT */
 %nonassoc	IDENT PARTITION RANGE ROWS GROUPS PRECEDING FOLLOWING CUBE ROLLUP
-			SET KEYS OBJECT_P SCALAR TO USING VALUE_P WITH WITHOUT PATH
+			SET KEYS OBJECT_P SCALAR VALUE_P WITH WITHOUT PATH
 %left		Op OPERATOR		/* multi-character ops and user-defined operators */
 %left		'+' '-'
 %left		'*' '/' '%'
@@ -14168,22 +14163,6 @@ DeleteStmt: opt_with_clause DELETE_P FROM relation_expr_opt_alias
 					n->withClause = $1;
 					$$ = (Node *) n;
 				}
-			| opt_with_clause DELETE_P FROM relation_expr
-			for_portion_of_clause for_portion_of_opt_alias
-			using_clause where_or_current_clause returning_clause
-				{
-					DeleteStmt *n = makeNode(DeleteStmt);
-
-					n->relation = $4;
-					n->forPortionOf = (ForPortionOfClause *) $5;
-					n->relation->alias = $6;
-					n->usingClause = $7;
-					n->whereClause = $8;
-					n->returningClause = $9;
-					n->withClause = $1;
-					$$ = (Node *) n;
-				}
-		;
 
 using_clause:
 				USING from_list						{ $$ = $2; }
@@ -14257,26 +14236,6 @@ UpdateStmt: opt_with_clause UPDATE relation_expr_opt_alias
 					n->withClause = $1;
 					$$ = (Node *) n;
 				}
-			| opt_with_clause UPDATE relation_expr
-			for_portion_of_clause for_portion_of_opt_alias
-			SET set_clause_list
-			from_clause
-			where_or_current_clause
-			returning_clause
-				{
-					UpdateStmt *n = makeNode(UpdateStmt);
-
-					n->relation = $3;
-					n->forPortionOf = (ForPortionOfClause *) $4;
-					n->relation->alias = $5;
-					n->targetList = $7;
-					n->fromClause = $8;
-					n->whereClause = $9;
-					n->returningClause = $10;
-					n->withClause = $1;
-					$$ = (Node *) n;
-				}
-		;
 
 set_clause_list:
 			set_clause							{ $$ = $1; }
@@ -15801,55 +15760,6 @@ relation_expr_opt_alias: relation_expr					%prec UMINUS
 		;
 
 /*
- * If an UPDATE/DELETE has FOR PORTION OF, then the relation_expr is separated
- * from its potential alias by the for_portion_of_clause. So this production
- * handles the potential alias in those cases. We need to solve the same
- * problems as relation_expr_opt_alias, in particular resolving a shift/reduce
- * conflict where "set set" could be an alias plus the SET keyword, or the SET
- * keyword then a column name. As above, we force the latter interpretation by
- * giving the non-alias choice a higher precedence.
- */
-for_portion_of_opt_alias:
-			AS ColId
-				{
-					Alias	   *alias = makeNode(Alias);
-
-					alias->aliasname = $2;
-					$$ = alias;
-				}
-			| BareColLabel
-				{
-					Alias	   *alias = makeNode(Alias);
-
-					alias->aliasname = $1;
-					$$ = alias;
-				}
-			| /* empty */ %prec UMINUS { $$ = NULL; }
-		;
-
-for_portion_of_clause:
-			FOR PORTION OF ColId '(' a_expr ')'
-				{
-					ForPortionOfClause *n = makeNode(ForPortionOfClause);
-					n->range_name = $4;
-					n->location = @4;
-					n->target = $6;
-					n->target_location = @6;
-					$$ = (Node *) n;
-				}
-			| FOR PORTION OF ColId FROM a_expr TO a_expr
-				{
-					ForPortionOfClause *n = makeNode(ForPortionOfClause);
-					n->range_name = $4;
-					n->location = @4;
-					n->target_start = $6;
-					n->target_end = $8;
-					n->target_location = @5;
-					$$ = (Node *) n;
-				}
-		;
-
-/*
  * TABLESAMPLE decoration in a FROM item
  */
 tablesample_clause:
@@ -16950,17 +16860,8 @@ opt_timezone:
 			| /*EMPTY*/								{ $$ = false; }
 		;
 
-/*
- * We need to handle this shift/reduce conflict:
- * FOR PORTION OF valid_at FROM t + INTERVAL '1' YEAR TO MONTH.
- * We don't see far enough ahead to know if there is another TO coming.
- * We prefer to interpret this as FROM (t + INTERVAL '1' YEAR TO MONTH),
- * i.e. to shift.
- * That gives the user the option of adding parentheses to get the other meaning.
- * If we reduced, intervals could never have a TO.
- */
 opt_interval:
-			YEAR_P															%prec IS
+			YEAR_P
 				{
 					if (ORA_PARSER == compatible_db)
 					{
@@ -16972,7 +16873,7 @@ opt_interval:
 						$$ = list_make1(makeIntConst(INTERVAL_MASK(YEAR), @1));
 					}
 				}
-			| YEAR_P '(' Iconst ')'														%prec IS
+			| YEAR_P '(' Iconst ')'
 				{
 					if (ORA_PARSER == compatible_db)
 					{
@@ -17012,7 +16913,7 @@ opt_interval:
 								 errmsg("This is used for compatible oracle and Postgresql not support.")));
 					}
 				}
-			| DAY_P															%prec IS
+			| DAY_P
 				{
 					if (ORA_PARSER == compatible_db)
 					{
@@ -17024,7 +16925,7 @@ opt_interval:
 						$$ = list_make1(makeIntConst(INTERVAL_MASK(DAY), @1));
 					}
 				}
-			| DAY_P '(' Iconst ')'														%prec IS
+			| DAY_P '(' Iconst ')'
 				{
 					if (ORA_PARSER == compatible_db)
 					{
@@ -17038,7 +16939,7 @@ opt_interval:
 								 errmsg("This is used for compatible oracle and Postgresql not support.")));
 					}
 				}
-			| HOUR_P															%prec IS
+			| HOUR_P
 				{
 					if (ORA_PARSER == compatible_db)
 					{
@@ -17050,7 +16951,7 @@ opt_interval:
 						$$ = list_make1(makeIntConst(INTERVAL_MASK(HOUR), @1));
 					}
 				}
-			| HOUR_P '(' Iconst ')'														%prec IS
+			| HOUR_P '(' Iconst ')'
 				{
 					if (ORA_PARSER == compatible_db)
 					{
@@ -17064,7 +16965,7 @@ opt_interval:
 								 errmsg("This is used for compatible oracle and Postgresql not support.")));
 					}
 				}
-			| MINUTE_P													%prec IS
+			| MINUTE_P
 				{
 					if (ORA_PARSER == compatible_db)
 					{
@@ -17076,7 +16977,7 @@ opt_interval:
 						$$ = list_make1(makeIntConst(INTERVAL_MASK(MINUTE), @1));
 					}
 				}
-			| MINUTE_P '(' Iconst ')'														%prec IS
+			| MINUTE_P '(' Iconst ')'
 				{
 					if (ORA_PARSER == compatible_db)
 					{
@@ -21095,7 +20996,6 @@ unreserved_keyword:
 			| PLANS
 			| POLICY
 			| POLYMORPHIC
-			| PORTION
 			| PRECEDING
 			| PREPARE
 			| PREPARED
@@ -21818,7 +21718,6 @@ bare_label_keyword:
 			| PLANS
 			| POLICY
 			| POLYMORPHIC
-			| PORTION
 			| POSITION
 			| PRECEDING
 			| PREPARE
