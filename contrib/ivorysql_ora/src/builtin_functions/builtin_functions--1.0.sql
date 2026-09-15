@@ -1928,3 +1928,29 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 /* End - VSIZE */
+
+/* ORA_HASH */
+/*
+ * ORA_HASH: Oracle-compatible hash function used for analysis and sampling
+ * -- splitting data into buckets -- NOT a security hash.  Returns a value
+ * in [0, max_bucket] (default [0, 4294967295]); the optional seed_value
+ * (default 0) varies the mapping for the same data.
+ *
+ * The hash is computed over the binary (send) representation of the
+ * argument, so it is independent of session formatting settings and works
+ * for any data type.  Exact numeric values are NOT guaranteed to match
+ * Oracle (whose algorithm is undocumented); only the contract (range,
+ * determinism, seed semantics) is reproduced.
+ *
+ * anycompatible accepts a value of any data type; an untyped string literal
+ * is resolved to text, so ORA_HASH('abc') works just like in Oracle.
+ * NULL input yields NULL (STRICT).
+ */
+CREATE FUNCTION sys.ora_hash(anycompatible, bigint DEFAULT 4294967295, bigint DEFAULT 0)
+RETURNS bigint
+AS 'MODULE_PATHNAME', 'ora_hash'
+LANGUAGE C
+STRICT
+IMMUTABLE
+PARALLEL SAFE;
+/* End - ORA_HASH */
