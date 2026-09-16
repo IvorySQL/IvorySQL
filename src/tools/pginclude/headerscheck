@@ -166,6 +166,7 @@ do
 	test "$f" = contrib/seg/segparse.h && continue
 	test "$f" = src/backend/bootstrap/bootparse.h && continue
 	test "$f" = src/backend/parser/gram.h && continue
+	test "$f" = src/backend/oracle_parser/ora_gram.h && continue
 	test "$f" = src/backend/replication/repl_gram.h && continue
 	test "$f" = src/backend/replication/syncrep_gram.h && continue
 	test "$f" = src/backend/utils/adt/jsonpath_gram.h && continue
@@ -259,6 +260,8 @@ do
 		EXTRAINCLUDES="-I $builddir/src/interfaces/ecpg/include -I $srcdir/src/interfaces/ecpg/include" ;;
 	    src/backend/parser/*)
 		EXTRAINCLUDES="-I $builddir/src/backend/parser/" ;;
+	    src/backend/oracle_parser/*)
+		EXTRAINCLUDES="-I $builddir/src/backend/oracle_parser/" ;;
 	    src/backend/utils/adt/*)
 		EXTRAINCLUDES="-I $builddir/src/backend/utils/adt/" ;;
 	    *)
