@@ -278,6 +278,11 @@ CREATE PROPERTY GRAPH gt
             DESTINATION KEY (k2) REFERENCES v2(m)
     );
 
+-- data types of constant property values
+CREATE PROPERTY GRAPH glc VERTEX TABLES (
+    v1 KEY (a) LABEL l1 PROPERTIES ('foo' AS p1, 123 AS p2, 3.14 AS p3, true AS p4)
+);
+
 -- information schema
 
 SELECT * FROM information_schema.property_graphs ORDER BY property_graph_name;
