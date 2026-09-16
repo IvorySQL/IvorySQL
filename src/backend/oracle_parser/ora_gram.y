@@ -347,6 +347,7 @@ static void determineLanguage(List *options);
 %type <list>	create_index_opt_list
 %type <defelt>	create_index_opt
 %type <list>	alter_table_cmds alter_type_cmds
+%type <list>	alter_table_cmd_group table_constraint_list
 %type <list>    alter_identity_column_option_list
 %type <defelt>  alter_identity_column_option
 %type <node>	set_statistics_value
@@ -2617,9 +2618,41 @@ AlterTableStmt:
 		;
 
 alter_table_cmds:
-			alter_table_cmd							{ $$ = list_make1($1); }
-			| alter_table_cmds ',' alter_table_cmd	{ $$ = lappend($1, $3); }
+			alter_table_cmd_group					{ $$ = $1; }
+			| alter_table_cmds ',' alter_table_cmd_group
+													{ $$ = list_concat($1, $3); }
 			| MODIFY identity_clause				{ $$ = $2; }
+		;
+
+/*
+ * A group is normally one command, but Oracle's ADD ( constraint [, ...] )
+ * expands into one AT_AddConstraint command per constraint so that
+ * AlterTableStmt.cmds stays a flat list of AlterTableCmd nodes.
+ */
+alter_table_cmd_group:
+			alter_table_cmd							{ $$ = list_make1($1); }
+			/* ALTER TABLE <name> ADD ( <constraint> [, ...] ) */
+			| ADD_P '(' table_constraint_list ')'
+				{
+					List	   *cmds = NIL;
+					ListCell   *lc;
+
+					foreach(lc, $3)
+					{
+						AlterTableCmd *n = makeNode(AlterTableCmd);
+
+						n->subtype = AT_AddConstraint;
+						n->def = (Node *) lfirst(lc);
+						cmds = lappend(cmds, n);
+					}
+					$$ = cmds;
+				}
+		;
+
+table_constraint_list:
+			TableConstraint							{ $$ = list_make1($1); }
+			| table_constraint_list ',' TableConstraint
+													{ $$ = lappend($1, $3); }
 		;
 
 ora_alter_view_cmds:
@@ -3111,15 +3144,6 @@ alter_table_cmd:
 
 					n->subtype = AT_AddConstraint;
 					n->def = $2;
-					$$ = (Node *) n;
-				}
-			/* ALTER TABLE <name> ADD (CONSTRAINT ...) */
-			| ADD_P '(' TableConstraint ')'
-				{
-					AlterTableCmd *n = makeNode(AlterTableCmd);
-
-					n->subtype = AT_AddConstraint;
-					n->def = $3;
 					$$ = (Node *) n;
 				}
 			/* ALTER TABLE <name> ALTER CONSTRAINT ... */
