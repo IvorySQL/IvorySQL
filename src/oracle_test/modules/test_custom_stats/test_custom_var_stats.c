@@ -25,6 +25,12 @@ PG_MODULE_MAGIC_EXT(
 					.version = PG_VERSION
 );
 
+/* Local helpers for stats file I/O */
+#define write_chunk(fpout, ptr, len) ((void) fwrite(ptr, len, 1, fpout))
+#define write_chunk_s(fpout, ptr) write_chunk(fpout, ptr, sizeof(*ptr))
+#define read_chunk(fpin, ptr, len) (fread(ptr, 1, len, fpin) == (len))
+#define read_chunk_s(fpin, ptr) read_chunk(fpin, ptr, sizeof(*ptr))
+
 #define TEST_CUSTOM_VAR_MAGIC_NUMBER (0xBEEFBEEF)
 
 /*--------------------------------------------------------------------------
@@ -202,7 +208,7 @@ test_custom_stats_var_to_serialized_data(const PgStat_HashKey *key,
 	 * First mark the main file with a magic number, keeping a trace that some
 	 * auxiliary data will exist in the secondary statistics file.
 	 */
-	pgstat_write_chunk_s(statfile, &magic_number);
+	write_chunk_s(statfile, &magic_number);
 
 	/* Open statistics file for writing. */
 	if (!fd_description)
@@ -222,14 +228,14 @@ test_custom_stats_var_to_serialized_data(const PgStat_HashKey *key,
 	}
 
 	/* Write offset to the main data file */
-	pgstat_write_chunk_s(statfile, &fd_description_offset);
+	write_chunk_s(statfile, &fd_description_offset);
 
 	/*
 	 * First write the entry key to the secondary statistics file.  This will
 	 * be cross-checked with the key read from main stats file at loading
 	 * time.
 	 */
-	pgstat_write_chunk_s(fd_description, (PgStat_HashKey *) key);
+	write_chunk_s(fd_description, (PgStat_HashKey *) key);
 	fd_description_offset += sizeof(PgStat_HashKey);
 
 	if (!custom_stats_description_dsa)
@@ -240,7 +246,7 @@ test_custom_stats_var_to_serialized_data(const PgStat_HashKey *key,
 	{
 		/* length to description file */
 		len = 0;
-		pgstat_write_chunk_s(fd_description, &len);
+		write_chunk_s(fd_description, &len);
 		fd_description_offset += sizeof(size_t);
 		return;
 	}
@@ -252,8 +258,8 @@ test_custom_stats_var_to_serialized_data(const PgStat_HashKey *key,
 	description = dsa_get_address(custom_stats_description_dsa,
 								  entry->description);
 	len = strlen(description) + 1;
-	pgstat_write_chunk_s(fd_description, &len);
-	pgstat_write_chunk(fd_description, description, len);
+	write_chunk_s(fd_description, &len);
+	write_chunk(fd_description, description, len);
 
 	/*
 	 * Update offset for next entry, counting for the length (size_t) of the
@@ -287,7 +293,7 @@ test_custom_stats_var_from_serialized_data(const PgStat_HashKey *key,
 	PgStat_HashKey file_key;
 
 	/* Check the magic number first, in the main file. */
-	if (!pgstat_read_chunk_s(statfile, &magic_number))
+	if (!read_chunk_s(statfile, &magic_number))
 	{
 		elog(WARNING, "failed to read magic number from statistics file");
 		return false;
@@ -304,7 +310,7 @@ test_custom_stats_var_from_serialized_data(const PgStat_HashKey *key,
 	 * Read the offset from the main stats file, to be able to read the
 	 * auxiliary data from the secondary statistics file.
 	 */
-	if (!pgstat_read_chunk_s(statfile, &offset))
+	if (!read_chunk_s(statfile, &offset))
 	{
 		elog(WARNING, "failed to read metadata offset from statistics file");
 		return false;
@@ -335,7 +341,7 @@ test_custom_stats_var_from_serialized_data(const PgStat_HashKey *key,
 	}
 
 	/* Read the hash key from the secondary statistics file */
-	if (!pgstat_read_chunk_s(fd_description, &file_key))
+	if (!read_chunk_s(fd_description, &file_key))
 	{
 		elog(WARNING, "failed to read hash key from file");
 		return false;
@@ -355,7 +361,7 @@ test_custom_stats_var_from_serialized_data(const PgStat_HashKey *key,
 	entry = (PgStatShared_CustomVarEntry *) header;
 
 	/* Read the description length and its data */
-	if (!pgstat_read_chunk_s(fd_description, &len))
+	if (!read_chunk_s(fd_description, &len))
 	{
 		elog(WARNING, "failed to read metadata length from statistics file");
 		return false;
@@ -379,7 +385,7 @@ test_custom_stats_var_from_serialized_data(const PgStat_HashKey *key,
 	}
 
 	buffer = palloc(len);
-	if (!pgstat_read_chunk(fd_description, buffer, len))
+	if (!read_chunk(fd_description, buffer, len))
 	{
 		pfree(buffer);
 		elog(WARNING, "failed to read description from file");
