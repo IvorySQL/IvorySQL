@@ -34,7 +34,8 @@ SELECT cast('中文' AS char(6 byte)) = '中文'
        AND lengthb(cast('中文' AS char(6 byte))) = 6;
 SELECT cast('中文' AS char(5 byte)) = '中'
        AND lengthb(cast('中文' AS char(5 byte))) = 5;
-SELECT lengthb(cast('中文' AS char(2 byte))) = 2;
+SELECT cast('中文' AS char(2 byte)) = '  '
+       AND lengthb(cast('中文' AS char(2 byte))) = 2;
 SELECT cast('abcdef' AS char(4 byte)) = 'abcd';
 SELECT cast('abc' AS char(4 byte)) = 'abc';
 

@@ -74,7 +74,8 @@ SELECT cast('中文' AS char(5 byte)) = '中'
  t
 (1 row)
 
-SELECT lengthb(cast('中文' AS char(2 byte))) = 2;
+SELECT cast('中文' AS char(2 byte)) = '  '
+       AND lengthb(cast('中文' AS char(2 byte))) = 2;
  ?column? 
 ----------
  t
