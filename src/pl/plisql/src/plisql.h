@@ -45,6 +45,7 @@ typedef enum PLiSQL_nsitem_type
 	PLISQL_NSTYPE_LABEL,		/* block label */
 	PLISQL_NSTYPE_VAR,			/* scalar variable */
 	PLISQL_NSTYPE_REC,			/* composite variable */
+	PLISQL_NSTYPE_ROWTYPE,		/* TYPE ... IS RECORD declaration */
 	PLISQL_NSTYPE_SUBPROC_FUNC, /* subproc function */
 	PLISQL_NSTYPE_SUBPROC_PROC	/* subproc proc */
 }			PLiSQL_nsitem_type;

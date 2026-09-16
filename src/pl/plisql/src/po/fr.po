@@ -11,7 +11,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PostgreSQL 15\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2022-04-12 05:16+0000\n"
+"POT-Creation-Date: 2026-03-22 16:09+0000\n"
 "PO-Revision-Date: 2022-04-12 17:29+0200\n"
 "Last-Translator: Guillaume Lelarge <guillaume@lelarge.info>\n"
 "Language-Team: French <guillaume@lelarge.info>\n"
@@ -77,6 +77,16 @@ msgstr "la référence à la colonne « %s » est ambigüe"
 msgid "It could refer to either a PL/iSQL variable or a table column."
 msgstr "Cela pourrait faire référence à une variable PL/iSQL ou à la colonne d'une table."
 
+#: pl_comp.c:1939
+#, c-format
+msgid "field name \"%s\" is a reserved key word"
+msgstr "le nom du champ « %s » est un mot clé réservé"
+
+#: pl_comp.c:1941
+#, c-format
+msgid "Use double quotes to quote it."
+msgstr "Utilisez les guillemets doubles."
+
 #: pl_comp.c:1324 pl_exec.c:5216 pl_exec.c:5389 pl_exec.c:5476 pl_exec.c:5567
 #: pl_exec.c:6588
 #, c-format
@@ -112,11 +122,6 @@ msgstr "le type %s n'est pas un type composite"
 #, c-format
 msgid "unrecognized exception condition \"%s\""
 msgstr "condition d'exception non reconnue « %s »"
-
-#: pl_comp.c:2526
-#, c-format
-msgid "could not determine actual argument type for polymorphic function \"%s\""
-msgstr "n'a pas pu déterminer le type d'argument pour la fonction polymorphique « %s »"
 
 #: pl_exec.c:500 pl_exec.c:939 pl_exec.c:1174
 msgid "during initialization of execution state"
@@ -197,6 +202,11 @@ msgstr "fonction PL/iSQL %s, ligne %d à %s"
 #, c-format
 msgid "PL/iSQL function %s"
 msgstr "fonction PL/iSQL %s"
+
+#: pl_exec.c:1516
+#, c-format
+msgid "SQL statement \"%s\""
+msgstr "instruction SQL « %s »"
 
 #: pl_exec.c:1647
 msgid "during statement block local variable initialization"
@@ -1003,3 +1013,7 @@ msgstr "%s sur ou près de « %s »"
 
 #~ msgid "variable \"%s\" does not exist in the current block"
 #~ msgstr "la variable « %s » n'existe pas dans le bloc actuel"
+
+#, c-format
+#~ msgid "could not determine actual argument type for polymorphic function \"%s\""
+#~ msgstr "n'a pas pu déterminer le type d'argument pour la fonction polymorphique « %s »"

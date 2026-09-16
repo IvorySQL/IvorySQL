@@ -1,3 +1,4 @@
+blank_issues_enabled: false
 contact_links:
   - name: Join IvorySQL Users mailing list
     url: https://lists.ivorysql.org/postorius/lists/general.ivorysql.org/

@@ -28,7 +28,7 @@
 #include "tcop/tcopprot.h"
 #include "utils/memutils.h"
 
-#define REPL_PLUGIN_NAME   "pgrepack"
+#define PGREPACK_PLUGIN   "pgrepack"
 
 static void RepackWorkerShutdown(int code, Datum arg);
 static LogicalDecodingContext *repack_setup_logical_decoding(Oid relid);
@@ -43,6 +43,9 @@ static bool am_repack_worker = false;
 
 /* The WAL segment being decoded. */
 static XLogSegNo repack_current_segment = 0;
+
+/* Our DSM segment, for shutting down */
+static dsm_segment *worker_dsm_segment = NULL;
 
 /*
  * Keep track of the table we're processing, to skip logical decoding of data
@@ -66,11 +69,6 @@ RepackWorkerMain(Datum main_arg)
 
 	am_repack_worker = true;
 
-	/*
-	 * Override the default bgworker_die() with die() so we can use
-	 * CHECK_FOR_INTERRUPTS().
-	 */
-	pqsignal(SIGTERM, die);
 	BackgroundWorkerUnblockSignals();
 
 	seg = dsm_attach(DatumGetUInt32(main_arg));
@@ -78,9 +76,9 @@ RepackWorkerMain(Datum main_arg)
 		ereport(ERROR,
 				errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				errmsg("could not map dynamic shared memory segment"));
+	worker_dsm_segment = seg;
 
 	shared = (DecodingWorkerShared *) dsm_segment_address(seg);
-	shared->dsm_seg = seg;
 
 	/* Arrange to signal the leader if we exit. */
 	before_shmem_exit(RepackWorkerShutdown, PointerGetDatum(shared));
@@ -103,8 +101,9 @@ RepackWorkerMain(Datum main_arg)
 	pq_set_parallel_leader(shared->backend_pid,
 						   shared->backend_proc_number);
 
-	/* Connect to the database. */
-	BackgroundWorkerInitializeConnectionByOid(shared->dbid, shared->roleid, 0);
+	/* Connect to the database. LOGIN is not required. */
+	BackgroundWorkerInitializeConnectionByOid(shared->dbid, shared->roleid,
+											  BGWORKER_BYPASS_ROLELOGINCHECK);
 
 	/*
 	 * Transaction is needed to open relation, and it also provides us with a
@@ -176,7 +175,7 @@ RepackWorkerShutdown(int code, Datum arg)
 				   PROCSIG_REPACK_MESSAGE,
 				   shared->backend_proc_number);
 
-	dsm_detach(shared->dsm_seg);
+	dsm_detach(worker_dsm_segment);
 }
 
 bool
@@ -198,7 +197,7 @@ repack_setup_logical_decoding(Oid relid)
 	Relation	rel;
 	Oid			toastrelid;
 	LogicalDecodingContext *ctx;
-	NameData	slotname;
+	char		slotname[NAMEDATALEN];
 	RepackDecodingState *dstate;
 	MemoryContext oldcxt;
 
@@ -208,44 +207,26 @@ repack_setup_logical_decoding(Oid relid)
 	 */
 	Assert(!TransactionIdIsValid(GetTopTransactionIdIfAny()));
 
-	/*
-	 * Make sure we can use logical decoding.
-	 */
-	CheckSlotPermissions();
+	/* Make sure we can use logical decoding */
 	CheckLogicalDecodingRequirements(true);
 
 	/*
-	 * A single backend should not execute multiple REPACK commands at a time,
-	 * so use PID to make the slot unique.
+	 * Create the replication slot we'll use, and enable logical decoding in
+	 * case it isn't already on.
 	 *
-	 * RS_TEMPORARY so that the slot gets cleaned up on ERROR.
+	 * Make the slot RS_TEMPORARY so that it's removed on ERROR.  A backend
+	 * cannot execute multiple REPACK commands at a time, so the PID is enough
+	 * to make the slot name unique.
 	 */
-	snprintf(NameStr(slotname), NAMEDATALEN, "repack_%d", MyProcPid);
-	ReplicationSlotCreate(NameStr(slotname), true, RS_TEMPORARY, false, true,
+	snprintf(slotname, NAMEDATALEN, "pg_repack_%d", MyProcPid);
+	ReplicationSlotCreate(slotname, true, RS_TEMPORARY, false, true,
 						  false, false);
-
 	EnsureLogicalDecodingEnabled();
 
 	/*
-	 * Neither prepare_write nor do_write callback nor update_progress is
-	 * useful for us.
+	 * Set up repacked_rel_locator and repacked_rel_toast_locator, which we
+	 * use to skip decoding of unrelated relations.
 	 */
-	ctx = CreateInitDecodingContext(REPL_PLUGIN_NAME,
-									NIL,
-									true,
-									true,
-									InvalidXLogRecPtr,
-									XL_ROUTINE(.page_read = read_local_xlog_page,
-											   .segment_open = wal_segment_open,
-											   .segment_close = wal_segment_close),
-									NULL, NULL, NULL);
-
-	/*
-	 * We don't have control on setting fast_forward, so at least check it.
-	 */
-	Assert(!ctx->fast_forward);
-
-	/* Avoid logical decoding of other relations. */
 	rel = table_open(relid, AccessShareLock);
 	repacked_rel_locator = rel->rd_locator;
 	toastrelid = rel->rd_rel->reltoastrelid;
@@ -260,15 +241,35 @@ repack_setup_logical_decoding(Oid relid)
 	}
 	table_close(rel, AccessShareLock);
 
+	/*
+	 * Set up our logical decoding context.  We initially use the blocking
+	 * read_local_xlog_page until we find the start point, and switch to the
+	 * non-blocking interface afterwards.
+	 */
+	ctx = CreateInitDecodingContext(PGREPACK_PLUGIN,
+									NIL,
+									true,
+									true,
+									InvalidXLogRecPtr,
+									XL_ROUTINE(.page_read = read_local_xlog_page,
+											   .segment_open = wal_segment_open,
+											   .segment_close = wal_segment_close),
+									NULL, NULL, NULL);
+
+	/* Complete setup of output_writer_private */
+	dstate = (RepackDecodingState *) ctx->output_writer_private;
+	dstate->relid = relid;
+	dstate->worker_cxt = CurrentMemoryContext;
+	dstate->worker_resowner = CurrentResourceOwner;
+
+	/* We don't have control on fast_forward, but verify it's sane */
+	Assert(!ctx->fast_forward);
+
+	/* Find our decoding starting point. */
 	DecodingContextFindStartpoint(ctx);
 
-	/*
-	 * decode_concurrent_changes() needs non-blocking callback.
-	 */
+	/* From this point on, we need non-blocking WAL reads */
 	ctx->reader->routine.page_read = read_local_xlog_page_no_wait;
-
-	/* Some WAL records should have been read. */
-	Assert(XLogRecPtrIsValid(ctx->reader->EndRecPtr));
 
 	/*
 	 * Initialize repack_current_segment so that we can notice WAL segment
@@ -277,35 +278,14 @@ repack_setup_logical_decoding(Oid relid)
 	XLByteToSeg(ctx->reader->EndRecPtr, repack_current_segment,
 				wal_segment_size);
 
-	/* Our private state belongs to the decoding context. */
+	/*
+	 * Set up our reader private state to let the page-read callback notify
+	 * when end-of-WAL has been reached.  This lives in the same context as
+	 * the logical decoding itself.
+	 */
 	oldcxt = MemoryContextSwitchTo(ctx->context);
-
-	/*
-	 * read_local_xlog_page_no_wait() needs to be able to indicate the end of
-	 * WAL.
-	 */
 	ctx->reader->private_data = palloc0_object(ReadLocalXLogPageNoWaitPrivate);
-	dstate = palloc0_object(RepackDecodingState);
 	MemoryContextSwitchTo(oldcxt);
-
-#ifdef	USE_ASSERT_CHECKING
-	dstate->relid = relid;
-#endif
-
-	dstate->change_cxt = AllocSetContextCreate(ctx->context,
-											   "REPACK - change",
-											   ALLOCSET_DEFAULT_SIZES);
-
-	/* The file will be set as soon as we have it opened. */
-	dstate->file = NULL;
-
-	/*
-	 * Memory context and resource owner for long-lived resources.
-	 */
-	dstate->worker_cxt = CurrentMemoryContext;
-	dstate->worker_resowner = CurrentResourceOwner;
-
-	ctx->output_writer_private = dstate;
 
 	return ctx;
 }
@@ -320,7 +300,7 @@ repack_cleanup_logical_decoding(LogicalDecodingContext *ctx)
 		ExecDropSingleTupleTableSlot(dstate->slot);
 
 	FreeDecodingContext(ctx);
-	ReplicationSlotDropAcquired();
+	ReplicationSlotDropAcquired(true);
 }
 
 /*
@@ -393,13 +373,29 @@ decode_concurrent_changes(LogicalDecodingContext *ctx,
 			LogicalDecodingProcessRecord(ctx, ctx->reader);
 
 			/*
-			 * If WAL segment boundary has been crossed, inform the decoding
-			 * system that the catalog_xmin can advance.
+			 * We want to allow WAL to be recycled while REPACK is running.
+			 *
+			 * In normal usage of a replication slot, we need to be very
+			 * careful not to advance the LSN until it's been confirmed as
+			 * received by the remote.  In REPACK's case, this is not needed:
+			 * REPACK will never try to replay the same WAL after a crash, and
+			 * if there _is_ a crash, the whole REPACK has to be started from
+			 * scratch anyway.
+			 *
+			 * So here we disregard the careful LSN tracking and just move the
+			 * LSN locations forward to what we've processed.  Note that it
+			 * would be bogus to move the xmin forward, though, so we don't
+			 * touch that.
+			 *
+			 * This can be done on whatever schedule is convenient, but in
+			 * order not to cause unnecessary load, we only do it as we cross
+			 * each WAL segment boundary.
 			 */
 			end_lsn = ctx->reader->EndRecPtr;
 			XLByteToSeg(end_lsn, segno_new, wal_segment_size);
 			if (segno_new != repack_current_segment)
 			{
+				LogicalIncreaseRestartDecodingForSlot(end_lsn, end_lsn);
 				LogicalConfirmReceivedLocation(end_lsn);
 				elog(DEBUG1, "REPACK: confirmed receive location %X/%X",
 					 (uint32) (end_lsn >> 32), (uint32) end_lsn);
@@ -412,7 +408,11 @@ decode_concurrent_changes(LogicalDecodingContext *ctx,
 
 			if (errm)
 				ereport(ERROR,
-						errmsg("%s", errm));
+						errcode_for_file_access(),
+						errmsg("could not read WAL from timeline %u at %X/%08X: %s",
+							   ctx->reader->currTLI,
+							   LSN_FORMAT_ARGS(ctx->reader->EndRecPtr),
+							   errm));
 
 			/*
 			 * In the decoding loop we do not want to get blocked when there
@@ -425,6 +425,7 @@ decode_concurrent_changes(LogicalDecodingContext *ctx,
 				priv->end_of_wal = false;
 			else
 				ereport(ERROR,
+						errcode(ERRCODE_DATA_CORRUPTED),
 						errmsg("could not read WAL record"));
 		}
 
@@ -472,6 +473,7 @@ decode_concurrent_changes(LogicalDecodingContext *ctx,
 			if (res != WAIT_LSN_RESULT_SUCCESS &&
 				res != WAIT_LSN_RESULT_TIMEOUT)
 				ereport(ERROR,
+						errcode(ERRCODE_INTERNAL_ERROR),
 						errmsg("waiting for WAL failed"));
 		}
 	}

@@ -53,8 +53,7 @@ append_to_file($srvfile_nested, "service=invalid_srv\n");
 my $srvfile_nested_2 = "$td/pg_service_nested_2.conf";
 copy($srvfile_valid, $srvfile_nested_2)
   or die "Could not copy $srvfile_valid to $srvfile_nested_2: $!";
-append_to_file($srvfile_nested_2,
-	'servicefile=' . $srvfile_default . "\n");
+append_to_file($srvfile_nested_2, 'servicefile=' . $srvfile_default . "\n");
 
 # Set the fallback directory lookup of the service file to the temporary
 # directory of this test.  PGSYSCONFDIR is used if the service file
@@ -143,6 +142,14 @@ local $ENV{PGSERVICEFILE} = "$srvfile_empty";
 		'connection with correct PGSERVICE and default pg_service.conf',
 		sql => "SELECT 'connect2_3'",
 		expected_stdout => qr/connect2_3/);
+
+	my $srvfile_empty_win_cared = $srvfile_empty;
+	$srvfile_empty_win_cared =~ s/\\/\\\\/g;
+	$dummy_node->connect_ok(
+		q{service=my_srv servicefile='} . $srvfile_empty_win_cared . q{'},
+		'SERVICEFILE updated when service is found in default pg_service.conf',
+		sql => '\echo :SERVICEFILE',
+		expected_stdout => qr/^\Q$srvfile_default\E$/);
 
 	local $ENV{PGSERVICE} = 'undefined-service';
 	$dummy_node->connect_fails(

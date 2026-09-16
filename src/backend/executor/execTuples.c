@@ -515,7 +515,7 @@ tts_minimal_init(TupleTableSlot *slot)
 
 	/*
 	 * Initialize the heap tuple pointer to access attributes of the minimal
-	 * tuple contained in the slot as if its a heap tuple.
+	 * tuple contained in the slot as if it's a heap tuple.
 	 */
 	mslot->tuple = &mslot->minhdr;
 }
@@ -1078,6 +1078,13 @@ slot_deform_heap_tuple(TupleTableSlot *slot, HeapTuple tuple, uint32 *offp,
 		{
 			/* Otherwise all required columns are guaranteed to exist */
 			firstNullAttr = natts;
+
+			/*
+			 * Check TupleDescFinalize() didn't get confused when setting
+			 * firstNonGuaranteedAttr.  There should never be a NULL in a
+			 * guaranteed column.
+			 */
+			Assert(first_null_attr(tup->t_bits, natts) >= firstNullAttr);
 		}
 	}
 	else
@@ -1411,7 +1418,7 @@ MakeTupleTableSlot(TupleDesc tupleDesc,
 		 * Precalculate the maximum guaranteed attribute that has to exist in
 		 * every tuple which gets deformed into this slot.  When the
 		 * TTS_FLAG_OBEYS_NOT_NULL_CONSTRAINTS flag is enabled, we simply take
-		 * the precalculated value from the tupleDesc, otherwise the
+		 * the pre-calculated value from the tupleDesc, otherwise the
 		 * optimization is disabled, and we set the value to 0.
 		 */
 		if ((flags & TTS_FLAG_OBEYS_NOT_NULL_CONSTRAINTS) != 0)

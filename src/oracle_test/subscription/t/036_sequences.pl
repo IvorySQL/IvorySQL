@@ -9,7 +9,11 @@ use Test::More;
 
 # Initialize publisher node
 my $node_publisher = PostgreSQL::Test::Cluster->new('publisher');
-$node_publisher->init(allows_streaming => 'logical');
+# Make sure pg_hba.conf is set up to allow connections from regress_seq_repl.
+# This is only needed on Windows machines that don't use UNIX sockets.
+$node_publisher->init(
+	allows_streaming => 'logical',
+	auth_extra => [ '--create-role' => 'regress_seq_repl' ]);
 $node_publisher->start;
 
 # Initialize subscriber node
@@ -218,6 +222,58 @@ $node_publisher->safe_psql('postgres', qq(DROP SEQUENCE regress_s4;));
 
 $node_subscriber->wait_for_log(
 	qr/WARNING: ( [A-Z0-9]+:)? missing sequence on publisher \("public.regress_s4"\)/,
+	$log_offset);
+
+# Recreate regress_s4 so later tests that reuse the subscription do not keep
+# reporting the intentionally-missing sequence from the previous test.
+$node_publisher->safe_psql(
+	'postgres', qq(
+	CREATE SEQUENCE regress_s4 START 10 INCREMENT 2;
+));
+
+##########
+# Ensure that insufficient privileges on the publisher for a sequence
+# are reported correctly as a permission issue, not as a missing sequence.
+# The subscriber should log a warning and continue retrying.
+##########
+
+$node_publisher->safe_psql(
+	'postgres', qq(
+	CREATE ROLE regress_seq_repl LOGIN REPLICATION;
+	GRANT USAGE ON SCHEMA public TO regress_seq_repl;
+	GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO regress_seq_repl;
+	REVOKE ALL ON SEQUENCE regress_s2 FROM regress_seq_repl;
+));
+
+my $publisher_limited_connstr =
+  $node_publisher->connstr . ' dbname=postgres user=regress_seq_repl';
+$log_offset = -s $node_subscriber->logfile;
+
+$node_subscriber->safe_psql('postgres',
+	"ALTER SUBSCRIPTION regress_seq_sub CONNECTION '$publisher_limited_connstr'"
+);
+
+$node_subscriber->safe_psql('postgres',
+	"ALTER SUBSCRIPTION regress_seq_sub REFRESH SEQUENCES");
+
+$node_subscriber->wait_for_log(
+	qr/WARNING: ( [A-Z0-9]+:)? insufficient privileges on publisher sequence \("public.regress_s2"\)/,
+	$log_offset);
+
+##########
+# Ensure that a sequence that is actually removed on the publisher is still
+# reported as missing.
+##########
+
+$node_publisher->safe_psql('postgres', qq(DROP SEQUENCE regress_s2;));
+
+$log_offset = -s $node_subscriber->logfile;
+
+$node_subscriber->safe_psql('postgres',
+	"ALTER SUBSCRIPTION regress_seq_sub REFRESH SEQUENCES");
+
+$node_subscriber->wait_for_log(
+	qr/WARNING: ( [A-Z0-9]+:)? missing sequence on publisher \("public.regress_s2"\)/,
 	$log_offset);
 
 done_testing();

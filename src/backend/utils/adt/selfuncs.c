@@ -2476,7 +2476,9 @@ eqjoinsel(PG_FUNCTION_ARGS)
 		 * hash functions for the join operator.
 		 */
 		if ((sslot1.nvalues + sslot2.nvalues) >= EQJOINSEL_MCV_HASH_THRESHOLD)
-			(void) get_op_hash_functions(operator, &hashLeft, &hashRight);
+			(void) get_op_hash_functions_ext(operator,
+											 exprType((Node *) linitial(args)),
+											 &hashLeft, &hashRight);
 	}
 	else
 		memset(&eqproc, 0, sizeof(eqproc)); /* silence uninit-var warnings */
@@ -5293,6 +5295,14 @@ convert_string_datum(Datum value, Oid typid, Oid collid, bool *failure)
 			return NULL;
 	}
 
+	/*
+	 * If we don't have a collation, act as though it's "C".  This would
+	 * normally happen only for the "char" type, but perhaps there are other
+	 * cases.
+	 */
+	if (!OidIsValid(collid))
+		return val;
+
 	mylocale = pg_newlocale_from_collation(collid);
 
 	if (!mylocale->collate_is_c)
@@ -5970,7 +5980,7 @@ examine_variable(PlannerInfo *root, Node *node, int varRelid,
 /*
  * strip_all_phvs_deep
  *		Deeply strip all PlaceHolderVars in an expression.
-
+ *
  * As a performance optimization, we first use a lightweight walker to check
  * for the presence of any PlaceHolderVars.  The expensive mutator is invoked
  * only if a PlaceHolderVar is found, avoiding unnecessary memory allocation

@@ -62,7 +62,7 @@ ConnectionTiming conn_timing = {.ready_for_use = TIMESTAMP_MINUS_INFINITY};
 
 static void BackendInitialize(ClientSocket *client_sock, CAC_state cac);
 static int	ProcessSSLStartup(Port *port);
-static int	ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done);
+static int	ProcessStartupPacket(Port *port);
 static void ProcessCancelRequestPacket(Port *port, void *pkt, int pktlen);
 static void SendNegotiateProtocolVersion(List *unrecognized_protocol_options);
 static void process_startup_packet_die(SIGNAL_ARGS);
@@ -344,7 +344,7 @@ BackendInitialize(ClientSocket *client_sock, CAC_state cac)
 	 * packet).
 	 */
 	if (status == STATUS_OK)
-		status = ProcessStartupPacket(port, false, false);
+		status = ProcessStartupPacket(port);
 
 	/*
 	 * If we're going to reject the connection due to database state, say so
@@ -533,21 +533,29 @@ reject:
  * send anything to the client, which would typically be appropriate
  * if we detect a communications failure.)
  *
- * Set ssl_done and/or gss_done when negotiation of an encrypted layer
- * (currently, TLS or GSSAPI) is completed. A successful negotiation of either
- * encryption layer sets both flags, but a rejected negotiation sets only the
- * flag for that layer, since the client may wish to try the other one. We
- * should make no assumption here about the order in which the client may make
- * requests.
  */
 static int
-ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
+ProcessStartupPacket(Port *port)
 {
 	int32		len;
 	char	   *buf = NULL;
 	ProtocolVersion proto;
 	MemoryContext oldcontext;
+	bool		gss_done;
+	bool		ssl_done;
 
+	/*
+	 * Set ssl_done and/or gss_done when negotiation of an encrypted layer
+	 * (currently, TLS or GSSAPI) is completed.  A successful negotiation of
+	 * either encryption layer sets both flags, but a rejected negotiation
+	 * sets only the flag for that layer, since the client may wish to try the
+	 * other one.  We should make no assumption here about the order in which
+	 * the client may make requests.
+	 */
+	gss_done = false;
+	ssl_done = false;
+
+retry:
 	pq_startmsgread();
 
 	/*
@@ -668,6 +676,7 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 #endif
 
 		pfree(buf);
+		buf = NULL;
 
 		/*
 		 * At this point we should have no data already buffered.  If we do,
@@ -686,7 +695,16 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 		 * another SSL negotiation request, and a GSS request should only
 		 * follow if SSL was rejected (client may negotiate in either order)
 		 */
-		return ProcessStartupPacket(port, true, SSLok == 'S');
+		ssl_done = true;
+		if (SSLok == 'S')
+		{
+			/*
+			 * We are done with SSL and negotiated correctly, so consider the
+			 * same for GSS.
+			 */
+			gss_done = true;
+		}
+		goto retry;
 	}
 	else if (proto == NEGOTIATE_GSS_CODE && !gss_done)
 	{
@@ -724,6 +742,7 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 #endif
 
 		pfree(buf);
+		buf = NULL;
 
 		/*
 		 * At this point we should have no data already buffered.  If we do,
@@ -742,7 +761,16 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 		 * another GSS negotiation request, and an SSL request should only
 		 * follow if GSS was rejected (client may negotiate in either order)
 		 */
-		return ProcessStartupPacket(port, GSSok == 'G', true);
+		gss_done = true;
+		if (GSSok == 'G')
+		{
+			/*
+			 * We are done with GSS and negotiated correctly, so consider the
+			 * same for SSL.
+			 */
+			ssl_done = true;
+		}
+		goto retry;
 	}
 
 	/* Could add additional special packet types here */

@@ -2099,6 +2099,9 @@ WINDOW w AS (ORDER BY name ROWS BETWEEN 2 PRECEDING AND 2 FOLLOWING EXCLUDE CURR
 ;
 
 -- valid and invalid functions
+SELECT abs(1) IGNORE NULLS; -- fails
+SELECT no_such_window_func() IGNORE NULLS; -- fails, but not because of null treatment
+SELECT sum(orbit) IGNORE NULLS FROM planets; -- fails
 SELECT sum(orbit) OVER () FROM planets; -- succeeds
 SELECT sum(orbit) RESPECT NULLS OVER () FROM planets; -- fails
 SELECT sum(orbit) IGNORE NULLS OVER () FROM planets; -- fails
@@ -2156,6 +2159,34 @@ SELECT x,
        nth_value(x,2) IGNORE NULLS OVER w
 FROM generate_series(1,5) g(x)
 WINDOW w AS (ORDER BY x ROWS BETWEEN 2 PRECEDING AND 2 FOLLOWING);
+
+-- volatile arguments cannot use the IGNORE NULLS nullness cache
+CREATE TEMPORARY SEQUENCE null_treatment_seq;
+CREATE FUNCTION pg_temp.volatile_null(i int) RETURNS int
+LANGUAGE sql VOLATILE AS
+$$
+  SELECT CASE WHEN nextval('null_treatment_seq') % 2 = 0 THEN i ELSE NULL END;
+$$;
+
+SELECT x,
+       first_value(pg_temp.volatile_null(x)) IGNORE NULLS
+         OVER (ORDER BY x ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+FROM generate_series(1,5) g(x);
+SELECT last_value FROM null_treatment_seq;
+
+ALTER SEQUENCE null_treatment_seq RESTART WITH 1;
+SELECT x,
+       lead(pg_temp.volatile_null(x), 1) IGNORE NULLS OVER (ORDER BY x)
+FROM generate_series(1,5) g(x);
+SELECT last_value FROM null_treatment_seq;
+
+ALTER SEQUENCE null_treatment_seq RESTART WITH 1;
+SELECT x,
+       first_value((SELECT CASE WHEN nextval('null_treatment_seq') % 2 = 0
+                                THEN x ELSE NULL END)) IGNORE NULLS
+         OVER (ORDER BY x ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+FROM generate_series(1,5) g(x);
+SELECT last_value FROM null_treatment_seq;
 
 --cleanup
 DROP TABLE planets CASCADE;
