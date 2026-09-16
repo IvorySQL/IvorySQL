@@ -1419,7 +1419,8 @@ varstr_cmp(const char *arg1, int len1, const char *arg2, int len2, Oid collid)
 	return result;
 }
 
-/* text_cmp()
+/*
+ * text_cmp()
  * Internal comparison function for text strings.
  * Returns -1, 0 or 1
  */
@@ -2700,7 +2701,8 @@ bttext_pattern_sortsupport(PG_FUNCTION_ARGS)
 }
 
 
-/* text_name()
+/*
+ * text_name()
  * Converts a text type to a Name type.
  */
 Datum
@@ -2723,7 +2725,8 @@ text_name(PG_FUNCTION_ARGS)
 	PG_RETURN_NAME(result);
 }
 
-/* name_text()
+/*
+ * name_text()
  * Converts a Name type to a text type.
  */
 Datum
@@ -5823,18 +5826,18 @@ unicode_normalize_func(PG_FUNCTION_ARGS)
 	text	   *input = PG_GETARG_TEXT_PP(0);
 	char	   *formstr = text_to_cstring(PG_GETARG_TEXT_PP(1));
 	UnicodeNormalizationForm form;
-	int			size;
+	size_t		size;
 	char32_t   *input_chars;
 	char32_t   *output_chars;
 	unsigned char *p;
 	text	   *result;
-	int			i;
+	size_t		i;
 
 	form = unicode_norm_form_from_string(formstr);
 
 	/* convert to char32_t */
 	size = pg_mbstrlen_with_len(VARDATA_ANY(input), VARSIZE_ANY_EXHDR(input));
-	input_chars = palloc((size + 1) * sizeof(char32_t));
+	input_chars = palloc_array(char32_t, size + 1);
 	p = (unsigned char *) VARDATA_ANY(input);
 	for (i = 0; i < size; i++)
 	{
@@ -5889,20 +5892,20 @@ unicode_is_normalized(PG_FUNCTION_ARGS)
 	text	   *input = PG_GETARG_TEXT_PP(0);
 	char	   *formstr = text_to_cstring(PG_GETARG_TEXT_PP(1));
 	UnicodeNormalizationForm form;
-	int			size;
+	size_t		size;
 	char32_t   *input_chars;
 	char32_t   *output_chars;
 	unsigned char *p;
-	int			i;
+	size_t		i;
 	UnicodeNormalizationQC quickcheck;
-	int			output_size;
+	size_t		output_size;
 	bool		result;
 
 	form = unicode_norm_form_from_string(formstr);
 
 	/* convert to char32_t */
 	size = pg_mbstrlen_with_len(VARDATA_ANY(input), VARSIZE_ANY_EXHDR(input));
-	input_chars = palloc((size + 1) * sizeof(char32_t));
+	input_chars = palloc_array(char32_t, size + 1);
 	p = (unsigned char *) VARDATA_ANY(input);
 	for (i = 0; i < size; i++)
 	{

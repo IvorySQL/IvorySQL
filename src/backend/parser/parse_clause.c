@@ -318,7 +318,8 @@ extractRemainingColumns(ParseState *pstate,
 	return colcount;
 }
 
-/* transformJoinUsingClause()
+/*
+ * transformJoinUsingClause()
  *	  Build a complete ON clause from a partially-transformed USING list.
  *	  We are given lists of nodes representing left and right match columns.
  *	  Result is a transformed qualification expression.
@@ -378,7 +379,8 @@ transformJoinUsingClause(ParseState *pstate,
 	return result;
 }
 
-/* transformJoinOnClause()
+/*
+ * transformJoinOnClause()
  *	  Transform the qual conditions for JOIN/ON.
  *	  Result is a transformed qualification expression.
  */
@@ -1021,6 +1023,12 @@ transformRangeGraphTable(ParseState *pstate, RangeGraphTable *rgt)
 		te = makeTargetEntry((Expr *) colexpr, ++resno, colname, false);
 		columns = lappend(columns, te);
 	}
+
+	/*
+	 * Assign collations to column expressions now since
+	 * assign_query_collations() does not process rangetable entries.
+	 */
+	assign_list_collations(pstate, columns);
 
 	table_close(rel, NoLock);
 

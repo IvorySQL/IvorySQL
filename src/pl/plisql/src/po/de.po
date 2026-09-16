@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PostgreSQL 15\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2022-04-08 12:09+0000\n"
+"POT-Creation-Date: 2026-04-09 18:39+0000\n"
 "PO-Revision-Date: 2022-04-08 14:40+0200\n"
 "Last-Translator: Peter Eisentraut <peter@eisentraut.org>\n"
 "Language-Team: German <pgsql-translators@postgresql.org>\n"
@@ -74,6 +74,16 @@ msgstr "Spaltenverweis »%s« ist nicht eindeutig"
 msgid "It could refer to either a PL/iSQL variable or a table column."
 msgstr "Er könnte sich entweder auf eine PL/iSQL-Variable oder eine Tabellenspalte beziehen."
 
+#: pl_comp.c:1939
+#, c-format
+msgid "field name \"%s\" is a reserved key word"
+msgstr "Feldname »%s« ist ein reserviertes Schlüsselwort"
+
+#: pl_comp.c:1941
+#, c-format
+msgid "Use double quotes to quote it."
+msgstr "Verwenden Sie doppelte Anführungszeichen für den Feldnamen."
+
 #: pl_comp.c:1324 pl_exec.c:5216 pl_exec.c:5389 pl_exec.c:5476 pl_exec.c:5567
 #: pl_exec.c:6588
 #, c-format
@@ -109,11 +119,6 @@ msgstr "Typ %s ist kein zusammengesetzter Typ"
 #, c-format
 msgid "unrecognized exception condition \"%s\""
 msgstr "unbekannte Ausnahmebedingung »%s«"
-
-#: pl_comp.c:2526
-#, c-format
-msgid "could not determine actual argument type for polymorphic function \"%s\""
-msgstr "konnte den tatsächlichen Argumenttyp der polymorphischen Funktion »%s« nicht ermitteln"
 
 #: pl_exec.c:500 pl_exec.c:939 pl_exec.c:1174
 msgid "during initialization of execution state"
@@ -194,6 +199,11 @@ msgstr "PL/iSQL-Funktion %s Zeile %d bei %s"
 #, c-format
 msgid "PL/iSQL function %s"
 msgstr "PL/iSQL-Funktion %s"
+
+#: pl_exec.c:1516
+#, c-format
+msgid "SQL statement \"%s\""
+msgstr "SQL-Anweisung »%s«"
 
 #: pl_exec.c:1647
 msgid "during statement block local variable initialization"

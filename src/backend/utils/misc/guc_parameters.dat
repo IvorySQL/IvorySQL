@@ -73,7 +73,6 @@
   boot_val => '""',
 },
 
-
 { name => 'archive_command', type => 'string', context => 'PGC_SIGHUP', group => 'WAL_ARCHIVING',
   short_desc => 'Sets the shell command that will be called to archive a WAL file.',
   long_desc => 'An empty string means use "archive_library".',
@@ -585,6 +584,7 @@
   variable => 'data_checksums',
   boot_val => 'PG_DATA_CHECKSUM_OFF',
   options => 'data_checksums_options',
+  show_hook => 'show_data_checksums',
 },
 
 # Can't be set by ALTER SYSTEM as it can lead to recursive definition
@@ -1252,7 +1252,7 @@
   variable => 'huge_page_size',
   boot_val => '0',
   min => '0',
-  max => 'INT_MAX',
+  max => 'MAX_KILOBYTES',
   check_hook => 'check_huge_page_size',
 },
 
@@ -2796,7 +2796,6 @@
   variable => 'send_abort_for_kill',
   boot_val => 'false',
 },
-
 
 { name => 'seq_page_cost', type => 'real', context => 'PGC_USERSET', group => 'QUERY_TUNING_COST',
   short_desc => 'Sets the planner\'s estimate of the cost of a sequentially fetched disk page.',

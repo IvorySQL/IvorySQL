@@ -285,9 +285,6 @@ StartupDecodingContext(List *output_plugin_options,
 	ctx->write = do_write;
 	ctx->update_progress = update_progress;
 
-	/* Assume shared catalog access. The startup callback can change it. */
-	ctx->options.need_shared_catalogs = true;
-
 	ctx->output_plugin_options = output_plugin_options;
 
 	ctx->fast_forward = fast_forward;
@@ -1913,8 +1910,14 @@ LogicalConfirmReceivedLocation(XLogRecPtr lsn)
 			SpinLockRelease(&MyReplicationSlot->mutex);
 
 			ReplicationSlotsComputeRequiredXmin(false);
-			ReplicationSlotsComputeRequiredLSN();
 		}
+
+		/*
+		 * Now that the new restart_lsn is safely on disk, recompute the
+		 * global WAL retention requirement.
+		 */
+		if (updated_restart)
+			ReplicationSlotsComputeRequiredLSN();
 	}
 	else
 	{

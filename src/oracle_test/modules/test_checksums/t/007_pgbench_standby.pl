@@ -49,8 +49,8 @@ my $node_standby_loglocation = 0;
 # of tests performed and the wall time taken is non-deterministic as the test
 # performs a lot of randomized actions, but 5 iterations will be a long test
 # run regardless.
-my $TEST_ITERATIONS = 5;
-$TEST_ITERATIONS = 1 if ($extended);
+my $TEST_ITERATIONS = 1;
+$TEST_ITERATIONS = 5 if ($extended);
 
 # Variables which record the current state of the cluster
 my $data_checksum_state = 'off';
@@ -83,6 +83,7 @@ sub background_pgbench
 	push(@cmd, '-C') if ($extended && cointoss());
 	# If we run on a standby it needs to be a read-only benchmark
 	push(@cmd, '-S') if ($standby);
+	push(@cmd, '-n') if ($standby);
 	# Finally add the database name to use
 	push(@cmd, 'postgres');
 
@@ -99,6 +100,8 @@ sub background_pgbench
 # before and after state.
 sub flip_data_checksums
 {
+	my $temptablewait = 0;
+
 	# First, make sure the cluster is in the state we expect it to be
 	test_checksum_state($node_primary, $data_checksum_state);
 	test_checksum_state($node_standby, $data_checksum_state);
@@ -106,8 +109,13 @@ sub flip_data_checksums
 	if ($data_checksum_state eq 'off')
 	{
 		# Coin-toss to see if we are injecting a retry due to a temptable
-		$node_primary->safe_psql('postgres', 'SELECT dcw_fake_temptable();')
-		  if cointoss();
+		if (cointoss())
+		{
+			$node_primary->safe_psql('postgres',
+				"SELECT injection_points_attach('datachecksumsworker-fake-temptable-wait', 'notice');"
+			);
+			$temptablewait = 1;
+		}
 
 		# log LSN right before we start changing checksums
 		my $result =
@@ -139,8 +147,10 @@ sub flip_data_checksums
 			  . "FROM pg_catalog.pg_settings "
 			  . "WHERE name = 'data_checksums';");
 
-		is(($result eq 'inprogress-on' || $result eq 'on'),
-			1, 'ensure checksums are on, or in progress, on standby_1');
+		is( ($result eq 'inprogress-on' || $result eq 'on'),
+			1,
+			'ensure checksums are on, or in progress, on standby_1, got: '
+			  . $result);
 
 		# Wait for checksums enabled on the primary and standby
 		wait_for_checksum_state($node_primary, 'on');
@@ -154,7 +164,8 @@ sub flip_data_checksums
 		wait_for_checksum_state($node_standby, 'on');
 
 		$node_primary->safe_psql('postgres',
-			'SELECT dcw_fake_temptable(false);');
+			"SELECT injection_points_detach('datachecksumsworker-fake-temptable-wait');"
+		) if ($temptablewait);
 		$data_checksum_state = 'on';
 	}
 	elsif ($data_checksum_state eq 'on')
@@ -170,6 +181,7 @@ sub flip_data_checksums
 		$node_primary->wait_for_catchup($node_standby, 'replay');
 
 		# Wait for checksums disabled on the primary and standby
+		random_sleep() if ($extended);
 		wait_for_checksum_state($node_primary, 'off');
 		wait_for_checksum_state($node_standby, 'off');
 
@@ -177,9 +189,6 @@ sub flip_data_checksums
 		$result =
 		  $node_primary->safe_psql('postgres', "SELECT pg_current_wal_lsn()");
 		note("LSN after disabling: " . $result . "\n");
-
-		random_sleep() if ($extended);
-		wait_for_checksum_state($node_standby, 'off');
 
 		$data_checksum_state = 'off';
 	}
@@ -204,9 +213,11 @@ $node_primary->append_conf(
 	qq[
 max_connections = 30
 log_statement = none
+hot_standby_feedback = on
 ]);
 $node_primary->start;
 $node_primary->safe_psql('postgres', 'CREATE EXTENSION test_checksums;');
+$node_primary->safe_psql('postgres', 'CREATE EXTENSION injection_points;');
 # Create some content to have un-checksummed data in the cluster
 $node_primary->safe_psql('postgres',
 	"CREATE TABLE t AS SELECT generate_series(1, 100000) AS a;");
@@ -259,7 +270,7 @@ for (my $i = 0; $i < $TEST_ITERATIONS; $i++)
 			$node_primary_loglocation);
 		unlike(
 			$log,
-			qr/page verification failed,.+\d$/,
+			qr/page verification failed,.+\d$/m,
 			"no checksum validation errors in primary log (during WAL recovery)"
 		);
 		$node_primary_loglocation = -s $node_primary->logfile;
@@ -288,7 +299,7 @@ for (my $i = 0; $i < $TEST_ITERATIONS; $i++)
 			$node_standby_loglocation);
 		unlike(
 			$log,
-			qr/page verification failed,.+\d$/,
+			qr/page verification failed,.+\d$/m,
 			"no checksum validation errors in standby_1 log (during WAL recovery)"
 		);
 		$node_standby_loglocation = -s $node_standby->logfile;
@@ -330,7 +341,7 @@ for (my $i = 0; $i < $TEST_ITERATIONS; $i++)
 			$node_primary_loglocation);
 		unlike(
 			$log,
-			qr/page verification failed,.+\d$/,
+			qr/page verification failed,.+\d$/m,
 			"no checksum validation errors in primary log (outside WAL recovery)"
 		);
 		$node_primary_loglocation = -s $node_primary->logfile;
@@ -352,7 +363,7 @@ for (my $i = 0; $i < $TEST_ITERATIONS; $i++)
 			$node_standby_loglocation);
 		unlike(
 			$log,
-			qr/page verification failed,.+\d$/,
+			qr/page verification failed,.+\d$/m,
 			"no checksum validation errors in standby_1 log (outside WAL recovery)"
 		);
 		$node_standby_loglocation = -s $node_standby->logfile;
@@ -383,14 +394,14 @@ my $log = PostgreSQL::Test::Utils::slurp_file($node_primary->logfile,
 	$node_primary_loglocation);
 unlike(
 	$log,
-	qr/page verification failed,.+\d$/,
+	qr/page verification failed,.+\d$/m,
 	"no checksum validation errors in primary log");
 $node_primary_loglocation = -s $node_primary->logfile;
 $log = PostgreSQL::Test::Utils::slurp_file($node_standby->logfile,
 	$node_standby_loglocation);
 unlike(
 	$log,
-	qr/page verification failed,.+\d$/,
+	qr/page verification failed,.+\d$/m,
 	"no checksum validation errors in standby_1 log");
 $node_standby_loglocation = -s $node_standby->logfile;
 

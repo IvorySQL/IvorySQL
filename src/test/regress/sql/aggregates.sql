@@ -141,22 +141,33 @@ SELECT covar_pop(1::float8,'inf'::float8), covar_samp(3::float8,'inf'::float8);
 SELECT covar_pop(1::float8,'nan'::float8), covar_samp(3::float8,'nan'::float8);
 
 -- check some cases that formerly had poor roundoff-error behavior
+-- note: regr_r2() differs from corr() for a horizontal line, per spec
 SELECT corr(0.09, g), regr_r2(0.09, g)
   FROM generate_series(1, 30) g;
 SELECT corr(g, 0.09), regr_r2(g, 0.09), regr_slope(g, 0.09), regr_intercept(g, 0.09)
   FROM generate_series(1, 30) g;
 SELECT corr(1.3 + g * 1e-16, 1.3 + g * 1e-16)
   FROM generate_series(1, 3) g;
-SELECT corr(1e-100 + g * 1e-105, 1e-100 + g * 1e-105)
+
+-- check some cases that formerly suffered from internal overflow/underflow
+SELECT corr(1e-100 + g * 1e-105, 1e-100 + g * 1e-105),
+       regr_r2(1e-100 + g * 1e-105, 1e-100 + g * 1e-105)
   FROM generate_series(1, 3) g;
-SELECT corr(1e-100 + g * 1e-105, 1e-100 + g * 1e-105)
+SELECT corr(1e-100 + g * 1e-105, 1e-100 + g * 1e-105),
+       regr_r2(1e-100 + g * 1e-105, 1e-100 + g * 1e-105)
   FROM generate_series(1, 30) g;
+SELECT corr(1e100 + g * 1e95, 1e100 + g * 1e95),
+       regr_r2(1e100 + g * 1e95, 1e100 + g * 1e95)
+  FROM generate_series(1, 2) g;
+SELECT regr_intercept(y, x) FROM (VALUES (-1e150, 0), (2e150, 3e150)) v(x, y);
+SELECT regr_intercept(y, x) FROM (VALUES (-1e-131, 0), (2e-131, 3e-131)) v(x, y);
 
 -- these examples pose definitional questions for NaN inputs,
 -- which we resolve by saying that an all-NaN input column is not all equal
-SELECT corr(g, 'NaN') FROM generate_series(1, 30) g;
-SELECT corr(0.1, 'NaN') FROM generate_series(1, 30) g;
-SELECT corr('NaN', 'NaN') FROM generate_series(1, 30) g;
+SELECT corr(g, 'NaN'), regr_r2(g, 'NaN') FROM generate_series(1, 30) g;
+SELECT corr(0.1, 'NaN'), regr_r2(0.1, 'NaN') FROM generate_series(1, 30) g;
+SELECT corr('NaN', 0.1), regr_r2('NaN', 0.1) FROM generate_series(1, 30) g;
+SELECT corr('NaN', 'NaN'), regr_r2('NaN', 'NaN') FROM generate_series(1, 30) g;
 
 -- test accum and combine functions directly
 CREATE TABLE regr_test (x float8, y float8);
@@ -576,6 +587,23 @@ drop index t2_z_uidx;
 alter table t2 alter column z drop not null;
 create unique index t2_z_uidx on t2(z) nulls not distinct;
 explain (costs off) select y,z from t2 group by y,z;
+
+-- A unique index proves uniqueness only under its own opfamily.  When the
+-- GROUP BY's eqop comes from a different opfamily with looser equality,
+-- rows the index regards as distinct can collapse into one GROUP BY group,
+-- so the index is not usable for removing redundant columns.
+create type t_rec as (x numeric);
+create temp table t_opf (a t_rec not null, b text);
+create unique index on t_opf (a record_image_ops);
+-- (1.0) and (1.00) are bytewise distinct but logically equal as records;
+-- the index admits both, but GROUP BY a (default record_ops) would merge
+-- them, so b must be retained as a grouping key.
+insert into t_opf values (row(1.0)::t_rec, 'X'), (row(1.00)::t_rec, 'Y');
+explain (costs off)
+select a, b from t_opf group by a, b order by b;
+select a, b from t_opf group by a, b order by b;
+drop table t_opf;
+drop type t_rec;
 
 drop table t1 cascade;
 drop table t2;

@@ -131,7 +131,7 @@ plsample_func_handler(PG_FUNCTION_ARGS)
 	if (isnull)
 		elog(ERROR, "could not find source text of function \"%s\"",
 			 proname);
-	source = DatumGetCString(DirectFunctionCall1(textout, ret));
+	source = TextDatumGetCString(ret);
 	ereport(NOTICE,
 			(errmsg("source text of function \"%s\": %s",
 					proname, source)));
@@ -248,7 +248,7 @@ plsample_trigger_handler(PG_FUNCTION_ARGS)
 	if (isnull)
 		elog(ERROR, "could not find source text of function \"%s\"",
 			 proname);
-	source = DatumGetCString(DirectFunctionCall1(textout, ret));
+	source = TextDatumGetCString(ret);
 	ereport(NOTICE,
 			(errmsg("source text of function \"%s\": %s",
 					proname, source)));
