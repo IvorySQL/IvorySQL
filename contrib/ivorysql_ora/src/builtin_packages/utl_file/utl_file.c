@@ -822,6 +822,8 @@ ora_utl_file_putf(PG_FUNCTION_ARGS)
 
 	for (fpt = format; format_length > 0; fpt++, format_length--)
 	{
+		int			char_len;
+
 		if (format_length == 1)
 		{
 			/* last char */
@@ -830,7 +832,29 @@ ora_utl_file_putf(PG_FUNCTION_ARGS)
 				CHECK_ERRNO_PUT();
 			continue;
 		}
-		/* ansi compatible string */
+		/*
+		 * The format is already in the file encoding, not necessarily the
+		 * database encoding.  A multibyte character can contain a backslash
+		 * as a trailing byte (for example in GB18030, BIG5 or SJIS).  Copy
+		 * the whole character before looking for ASCII format directives.
+		 */
+		char_len = pg_encoding_mblen(encoding, fpt);
+		if ((size_t) char_len > format_length)
+			ereport(ERROR,
+					(errcode(ERRCODE_CHARACTER_NOT_IN_REPERTOIRE),
+					 errmsg("invalid multibyte character in UTL_FILE.PUTF format")));
+		if (char_len > 1)
+		{
+			cur_len += char_len;
+			CHECK_LENGTH(cur_len);
+			if (fwrite(fpt, 1, char_len, fd) != (size_t) char_len)
+				CHECK_ERRNO_PUT();
+			fpt += char_len - 1;
+			format_length -= char_len - 1;
+			continue;
+		}
+
+		/* ASCII format directives */
 		if (fpt[0] == '\\' && fpt[1] == 'n')
 		{
 			CHECK_LENGTH(++cur_len);
@@ -839,7 +863,8 @@ ora_utl_file_putf(PG_FUNCTION_ARGS)
 			fpt++; format_length--;
 			continue;
 		}
-		if (fpt[0] == '%')
+		/* Never consume the first byte of a multibyte character after '%'. */
+		if (fpt[0] == '%' && !IS_HIGHBIT_SET(fpt[1]))
 		{
 			if (fpt[1] == '%')
 			{
