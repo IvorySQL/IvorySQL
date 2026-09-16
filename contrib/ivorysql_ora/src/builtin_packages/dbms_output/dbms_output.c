@@ -114,20 +114,24 @@ PG_FUNCTION_INFO_V1(ora_dbms_output_get_lines);
 /*
  * init_output_buffer
  *
- * Initialize or re-initialize the output buffer.
+ * Initialize the output buffer or update its size when already enabled.
  *
  * buffer_size: user-specified content limit in bytes, or -1 for unlimited.
  *
- * IvorySQL behavior: ENABLE always clears existing buffer.
- * Note: Oracle preserves buffer on re-ENABLE; this is an intentional
- * IvorySQL simplification.
+ * Re-enabling an active buffer preserves unread output and applies the latest
+ * size limit.  Enabling a disabled buffer starts with an empty buffer.
  */
 static void
 init_output_buffer(int64 buffer_size)
 {
 	MemoryContext oldcontext;
 
-	/* IvorySQL behavior: ENABLE clears existing buffer (differs from Oracle) */
+	if (output_buffer != NULL && output_buffer->enabled)
+	{
+		output_buffer->buffer_size = buffer_size;
+		return;
+	}
+
 	if (output_buffer != NULL)
 		cleanup_output_buffer();
 
@@ -163,7 +167,7 @@ init_output_buffer(int64 buffer_size)
  * cleanup_output_buffer
  *
  * Free all buffer resources and reset to NULL.
- * Called when ENABLE is called to re-initialize the buffer.
+ * Called when buffer state needs to be discarded.
  */
 static void
 cleanup_output_buffer(void)
@@ -314,7 +318,7 @@ ora_dbms_output_enable(PG_FUNCTION_ARGS)
 			buffer_size = DBMS_OUTPUT_MIN_BUFFER_SIZE;
 	}
 
-	/* Initialize buffer (clears existing if present) */
+	/* Initialize the buffer or update the active buffer's size limit */
 	init_output_buffer(buffer_size);
 
 	PG_RETURN_VOID();
