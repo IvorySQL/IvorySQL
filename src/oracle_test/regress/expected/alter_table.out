@@ -4906,10 +4906,15 @@ select a, b, c from modify_test order by c;
  012345678901234567890123456789 | 0123456789012345 | 2
 (2 rows)
 
--- a bare type change is not accepted: <type> is ambiguous with
--- MODIFY <colname> INVISIBLE, since INVISIBLE is an unreserved keyword
-alter table modify_test modify (c number(10)); -- error
-ERROR:  syntax error at or near ")"
-LINE 1: alter table modify_test modify (c number(10));
-                                                    ^
+-- bare type changes preserve the current nullability
+alter table modify_test modify (c number(10));
+alter table modify_test modify b varchar2(40);
+\d modify_test
+               Table "public.modify_test"
+ Column |     Type     | Collation | Nullable | Default 
+--------+--------------+-----------+----------+---------
+ a      | varchar2(40) |           | not null | 
+ b      | varchar2(40) |           |          | 
+ c      | number(10,0) |           | not null | 
+
 drop table modify_test;

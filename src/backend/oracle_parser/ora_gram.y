@@ -213,6 +213,9 @@ static void preprocess_pubobj_list(List *pubobjspec_list,
 								   ora_core_yyscan_t yyscanner);
 static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 static void determineLanguage(List *options);
+static AlterTableCmd *makeModifyColumnTypeOrVisibilityCmd(char *colname,
+												  TypeName *typeName,
+												  int location);
 
 %}
 
@@ -2621,6 +2624,8 @@ alter_table_cmds:
 			alter_table_cmd							{ $$ = list_make1($1); }
 			| alter_table_cmds ',' alter_table_cmd	{ $$ = lappend($1, $3); }
 			| MODIFY modify_clause				{ $$ = $2; }
+			| alter_table_cmds ',' MODIFY modify_clause
+											{ $$ = list_concat($1, $4); }
 		;
 
 ora_alter_view_cmds:
@@ -2874,20 +2879,6 @@ alter_table_cmd:
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_SetInvisible;
 					n->name = $3;
-					$$ = (Node *)n;
-				}
-			| MODIFY ColId INVISIBLE
-				{
-					AlterTableCmd *n = makeNode(AlterTableCmd);
-					n->subtype = AT_SetInvisible;
-					n->name = $2;
-					$$ = (Node *)n;
-				}
-			| MODIFY ColId VISIBLE
-				{
-					AlterTableCmd *n = makeNode(AlterTableCmd);
-					n->subtype = AT_DropInvisible;
-					n->name = $2;
 					$$ = (Node *)n;
 				}
 			/* ALTER TABLE <name> ALTER [COLUMN] <colname> DROP NOT NULL */
@@ -3628,9 +3619,10 @@ set_statistics_value:
  * can expand into more than one internal subcommand (for example a type change
  * plus a NOT NULL constraint).
  *
- * Note that a bare "MODIFY <col> <type>" is not accepted here: VISIBLE and
- * INVISIBLE are unreserved keywords and can be derived as a type name, so that
- * form is ambiguous with "MODIFY <col> INVISIBLE" below.
+ * VISIBLE and INVISIBLE are unreserved keywords and can therefore be parsed
+ * as type names.  makeModifyColumnTypeOrVisibilityCmd() resolves that case
+ * after parsing, preserving the existing visibility syntax while allowing a
+ * bare type change.
  */
 modify_clause:
 			'(' modify_column_list ')'		{ $$ = $2; }
@@ -3643,8 +3635,13 @@ modify_column_list:
 		;
 
 modify_column_item:
+			/* MODIFY <colname> <typename> */
+			ColId Typename
+				{
+					$$ = list_make1(makeModifyColumnTypeOrVisibilityCmd($1, $2, @1));
+				}
 			/* MODIFY <colname> <typename> {NOT NULL | NULL} */
-			ColId Typename modify_column_null
+			| ColId Typename modify_column_null
 				{
 					AlterTableCmd *m = makeNode(AlterTableCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
@@ -22843,6 +22840,49 @@ makeColumnRef(char *colname, List *indirection,
 	/* No subscripting, so all indirection gets added to field list */
 	c->fields = lcons(makeString(colname), indirection);
 	return (Node *) c;
+}
+
+/*
+ * Build the command for the type-or-visibility form of Oracle MODIFY.
+ *
+ * VISIBLE and INVISIBLE are unreserved keywords, so the grammar accepts them
+ * as unqualified type names.  Treat those two exact, unadorned names as the
+ * pre-existing visibility syntax.  A qualified, modified, or array type with
+ * the same final name remains a regular type name.
+ */
+static AlterTableCmd *
+makeModifyColumnTypeOrVisibilityCmd(char *colname, TypeName *typeName,
+									int location)
+{
+	AlterTableCmd *cmd = makeNode(AlterTableCmd);
+	ColumnDef  *def;
+
+	cmd->name = colname;
+	if (!typeName->setof && !typeName->pct_type && !typeName->row_type &&
+		list_length(typeName->names) == 1 && typeName->typmods == NIL &&
+		typeName->arrayBounds == NIL)
+	{
+		const char *typeNameStr = strVal(linitial(typeName->names));
+
+		if (strcmp(typeNameStr, "invisible") == 0)
+		{
+			cmd->subtype = AT_SetInvisible;
+			return cmd;
+		}
+		if (strcmp(typeNameStr, "visible") == 0)
+		{
+			cmd->subtype = AT_DropInvisible;
+			return cmd;
+		}
+	}
+
+	def = makeNode(ColumnDef);
+	def->typeName = typeName;
+	def->location = location;
+	cmd->subtype = AT_AlterColumnType;
+	cmd->def = (Node *) def;
+
+	return cmd;
 }
 
 static Node *

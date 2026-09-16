@@ -3180,8 +3180,9 @@ alter table modify_test modify (a varchar2(40) not null, c number not null);
 insert into modify_test values ('012345678901234567890123456789', '0123456789012345', 2);
 select a, b, c from modify_test order by c;
 
--- a bare type change is not accepted: <type> is ambiguous with
--- MODIFY <colname> INVISIBLE, since INVISIBLE is an unreserved keyword
-alter table modify_test modify (c number(10)); -- error
+-- bare type changes preserve the current nullability
+alter table modify_test modify (c number(10));
+alter table modify_test modify b varchar2(40);
+\d modify_test
 
 drop table modify_test;
