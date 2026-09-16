@@ -85,7 +85,7 @@ static void pgsa_write_to_disk(void);
 /*
  * Background worker entry point for pg_stash_advice persistence.
  *
- * On startup, if load_from_disk_pending is set, we load previously saved
+ * On startup, if stashes_ready is set, we load previously saved
  * stash data from disk.  Then we enter a loop, periodically checking whether
  * any changes have been made (via the change_count atomic counter) and
  * writing them to disk.  On shutdown, we perform a final write.
@@ -374,6 +374,13 @@ pgsa_read_from_disk(void)
 						 errmsg("syntax error in file \"%s\" line %u: expected end of line",
 								PGSA_DUMP_FILE, lineno)));
 
+			/* Reject overlong stash names. */
+			if (strlen(name) >= NAMEDATALEN)
+				ereport(ERROR,
+						(errcode(ERRCODE_DATA_CORRUPTED),
+						 errmsg("syntax error in file \"%s\" line %u: stash name too long",
+								PGSA_DUMP_FILE, lineno)));
+
 			/* Duplicate check. */
 			(void) pgsa_saved_stash_table_insert(saved_stashes, name, &found);
 			if (found)
@@ -432,7 +439,7 @@ pgsa_read_from_disk(void)
 
 			/* Parse the query ID. */
 			errno = 0;
-			queryId = strtoll(queryid_str, &endptr, 10);
+			queryId = strtoi64(queryid_str, &endptr, 10);
 			if (*endptr != '\0' || errno != 0 || queryid_str == endptr ||
 				queryId == 0)
 				ereport(ERROR,

@@ -909,14 +909,20 @@ parse_ooaffentry(char *str, char *type, char *flag, char *find,
  *
  * An .affix file entry has the following format:
  * <mask>  >  [-<find>,]<replace>
+ *
+ * Output buffers mask, find, repl must be of length BUFSIZ;
+ * we truncate the input to fit.
  */
 static bool
-parse_affentry(char *str, char *mask, char *find, char *repl)
+parse_affentry(const char *str, char *mask, char *find, char *repl)
 {
 	int			state = PAE_WAIT_MASK;
 	char	   *pmask = mask,
 			   *pfind = find,
 			   *prepl = repl;
+	char	   *emask = mask + BUFSIZ;
+	char	   *efind = find + BUFSIZ;
+	char	   *erepl = repl + BUFSIZ;
 
 	*mask = *find = *repl = '\0';
 
@@ -930,7 +936,8 @@ parse_affentry(char *str, char *mask, char *find, char *repl)
 				return false;
 			else if (!isspace((unsigned char) *str))
 			{
-				pmask += ts_copychar_with_len(pmask, str, clen);
+				if (pmask < emask - clen)
+					pmask += ts_copychar_with_len(pmask, str, clen);
 				state = PAE_INMASK;
 			}
 		}
@@ -943,7 +950,8 @@ parse_affentry(char *str, char *mask, char *find, char *repl)
 			}
 			else if (!isspace((unsigned char) *str))
 			{
-				pmask += ts_copychar_with_len(pmask, str, clen);
+				if (pmask < emask - clen)
+					pmask += ts_copychar_with_len(pmask, str, clen);
 			}
 		}
 		else if (state == PAE_WAIT_FIND)
@@ -954,7 +962,8 @@ parse_affentry(char *str, char *mask, char *find, char *repl)
 			}
 			else if (t_isalpha_cstr(str) || t_iseq(str, '\'') /* english 's */ )
 			{
-				prepl += ts_copychar_with_len(prepl, str, clen);
+				if (prepl < erepl - clen)
+					prepl += ts_copychar_with_len(prepl, str, clen);
 				state = PAE_INREPL;
 			}
 			else if (!isspace((unsigned char) *str))
@@ -971,7 +980,8 @@ parse_affentry(char *str, char *mask, char *find, char *repl)
 			}
 			else if (t_isalpha_cstr(str))
 			{
-				pfind += ts_copychar_with_len(pfind, str, clen);
+				if (pfind < efind - clen)
+					pfind += ts_copychar_with_len(pfind, str, clen);
 			}
 			else if (!isspace((unsigned char) *str))
 				ereport(ERROR,
@@ -986,7 +996,8 @@ parse_affentry(char *str, char *mask, char *find, char *repl)
 			}
 			else if (t_isalpha_cstr(str))
 			{
-				prepl += ts_copychar_with_len(prepl, str, clen);
+				if (prepl < erepl - clen)
+					prepl += ts_copychar_with_len(prepl, str, clen);
 				state = PAE_INREPL;
 			}
 			else if (!isspace((unsigned char) *str))
@@ -1003,7 +1014,8 @@ parse_affentry(char *str, char *mask, char *find, char *repl)
 			}
 			else if (t_isalpha_cstr(str))
 			{
-				prepl += ts_copychar_with_len(prepl, str, clen);
+				if (prepl < erepl - clen)
+					prepl += ts_copychar_with_len(prepl, str, clen);
 			}
 			else if (!isspace((unsigned char) *str))
 				ereport(ERROR,
@@ -1061,7 +1073,7 @@ setCompoundAffixFlagValue(IspellDict *Conf, CompoundAffixFlag *entry,
  * val: affix parameter.
  */
 static void
-addCompoundAffixFlagValue(IspellDict *Conf, char *s, uint32 val)
+addCompoundAffixFlagValue(IspellDict *Conf, const char *s, uint32 val)
 {
 	CompoundAffixFlag *newValue;
 	char		sbuf[BUFSIZ];
@@ -1079,9 +1091,11 @@ addCompoundAffixFlagValue(IspellDict *Conf, char *s, uint32 val)
 	sflag = sbuf;
 	while (*s && !isspace((unsigned char) *s) && *s != '\n')
 	{
-		int			clen = ts_copychar_cstr(sflag, s);
+		int			clen = pg_mblen_cstr(s);
 
-		sflag += clen;
+		/* Truncate the input to fit in BUFSIZ */
+		if (sflag < sbuf + BUFSIZ - clen)
+			sflag += ts_copychar_with_len(sflag, s, clen);
 		s += clen;
 	}
 	*sflag = '\0';
@@ -2065,9 +2079,32 @@ FindAffixes(AffixNode *node, const char *word, int wrdlen, int *level, int type)
 	return NULL;
 }
 
+/*
+ * Checks to see if affix applies to word, transforms word if so.
+ * The transformation consists of replacing Affix->replen leading or
+ * trailing bytes with the Affix->find string.
+ *
+ * word: input word
+ * len: length of input word
+ * Affix: affix to consider
+ * flagflags: context flags showing whether we are handling a compound word
+ * newword: output buffer (MUST be of length 2 * MAXNORMLEN)
+ * baselen: input/output argument
+ *
+ * If baselen isn't NULL, then *baselen is used to return the length of
+ * the non-changed part of the word when applying a suffix, and is used
+ * to detect whether the input contained only a prefix and suffix when
+ * later applying a prefix.
+ *
+ * Returns newword on success, or NULL if the affix can't be applied.
+ * On success, the modified word is stored into newword.
+ */
 static char *
 CheckAffix(const char *word, size_t len, AFFIX *Affix, int flagflags, char *newword, int *baselen)
 {
+	size_t		keeplen,
+				findlen;
+
 	/*
 	 * Check compound allow flags
 	 */
@@ -2101,14 +2138,26 @@ CheckAffix(const char *word, size_t len, AFFIX *Affix, int flagflags, char *neww
 	}
 
 	/*
+	 * Protect against output buffer overrun (len < Affix->replen would be
+	 * caller error, but check anyway)
+	 */
+	Assert(len == strlen(word));
+	if (len < Affix->replen)
+		return NULL;
+	keeplen = len - Affix->replen;	/* how much of word we will keep */
+	findlen = strlen(Affix->find);
+	if (keeplen + findlen >= 2 * MAXNORMLEN)
+		return NULL;
+
+	/*
 	 * make replace pattern of affix
 	 */
 	if (Affix->type == FF_SUFFIX)
 	{
-		strcpy(newword, word);
-		strcpy(newword + len - Affix->replen, Affix->find);
+		memcpy(newword, word, keeplen);
+		strcpy(newword + keeplen, Affix->find);
 		if (baselen)			/* store length of non-changed part of word */
-			*baselen = len - Affix->replen;
+			*baselen = keeplen;
 	}
 	else
 	{
@@ -2116,10 +2165,10 @@ CheckAffix(const char *word, size_t len, AFFIX *Affix, int flagflags, char *neww
 		 * if prefix is an all non-changed part's length then all word
 		 * contains only prefix and suffix, so out
 		 */
-		if (baselen && *baselen + strlen(Affix->find) <= Affix->replen)
+		if (baselen && *baselen + findlen <= Affix->replen)
 			return NULL;
-		strcpy(newword, Affix->find);
-		strcat(newword, word + Affix->replen);
+		memcpy(newword, Affix->find, findlen);
+		strcpy(newword + findlen, word + Affix->replen);
 	}
 
 	/*

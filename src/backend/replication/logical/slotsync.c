@@ -340,7 +340,7 @@ update_local_synced_slot(RemoteSlot *remote_slot, Oid remote_dbid)
 			bool		found_consistent_snapshot;
 			XLogRecPtr	old_confirmed_lsn = slot->data.confirmed_flush;
 			XLogRecPtr	old_restart_lsn = slot->data.restart_lsn;
-			XLogRecPtr	old_catalog_xmin = slot->data.catalog_xmin;
+			TransactionId old_catalog_xmin = slot->data.catalog_xmin;
 
 			LogicalSlotAdvanceAndCheckSnapState(remote_slot->confirmed_lsn,
 												&found_consistent_snapshot);
@@ -541,6 +541,7 @@ drop_local_obsolete_slots(List *remote_slot_list)
 		/* Drop the local slot if it is not required to be retained. */
 		if (!local_sync_slot_required(local_slot, remote_slot_list))
 		{
+			Oid			slot_database = local_slot->data.database;
 			bool		synced_slot;
 
 			/*
@@ -548,8 +549,8 @@ drop_local_obsolete_slots(List *remote_slot_list)
 			 * ReplicationSlotsDropDBSlots(), trying to drop the same slot
 			 * during a drop-database operation.
 			 */
-			LockSharedObject(DatabaseRelationId, local_slot->data.database,
-							 0, AccessShareLock);
+			LockSharedObject(DatabaseRelationId, slot_database, 0,
+							 AccessShareLock);
 
 			/*
 			 * In the small window between getting the slot to drop and
@@ -557,7 +558,7 @@ drop_local_obsolete_slots(List *remote_slot_list)
 			 * database drop by the startup process and the creation of a new
 			 * slot by the user. This new user-created slot may end up using
 			 * the same shared memory as that of 'local_slot'. Thus check if
-			 * local_slot is still the synced one before performing actual
+			 * local_slot is still the synced one before performing the actual
 			 * drop.
 			 */
 			SpinLockAcquire(&local_slot->mutex);
@@ -566,17 +567,25 @@ drop_local_obsolete_slots(List *remote_slot_list)
 
 			if (synced_slot)
 			{
-				ReplicationSlotAcquire(NameStr(local_slot->data.name), true, false);
-				ReplicationSlotDropAcquired();
+				NameData	slot_name = local_slot->data.name;
+
+				/*
+				 * Now acquire and drop the slot.  Note we purposely don't
+				 * request logical decoding to be disabled here: since this is
+				 * a standby, which derives its logical decoding state from
+				 * the primary, it would be wrong to do so.
+				 */
+				ReplicationSlotAcquire(NameStr(slot_name), true, false);
+				ReplicationSlotDropAcquired(false);
+
+				ereport(LOG,
+						errmsg("dropped replication slot \"%s\" of database with OID %u",
+							   NameStr(slot_name),
+							   slot_database));
 			}
 
-			UnlockSharedObject(DatabaseRelationId, local_slot->data.database,
-							   0, AccessShareLock);
-
-			ereport(LOG,
-					errmsg("dropped replication slot \"%s\" of database with OID %u",
-						   NameStr(local_slot->data.name),
-						   local_slot->data.database));
+			UnlockSharedObject(DatabaseRelationId, slot_database, 0,
+							   AccessShareLock);
 		}
 	}
 }
@@ -1016,6 +1025,7 @@ fetch_remote_slots(WalReceiverConn *wrconn, List *slot_names)
 		ExecClearTuple(tupslot);
 	}
 
+	ExecDropSingleTupleTableSlot(tupslot);
 	walrcv_clear_result(res);
 
 	return remote_slot_list;
@@ -1135,7 +1145,7 @@ validate_remote_info(WalReceiverConn *wrconn)
 				errmsg("replication slot \"%s\" specified by \"%s\" does not exist on primary server",
 					   PrimarySlotName, "primary_slot_name"));
 
-	ExecClearTuple(tupslot);
+	ExecDropSingleTupleTableSlot(tupslot);
 	walrcv_clear_result(res);
 
 	if (started_tx)
@@ -2006,16 +2016,27 @@ SyncReplicationSlots(WalReceiverConn *wrconn)
 	{
 		List	   *remote_slots = NIL;
 		List	   *slot_names = NIL;	/* List of slot names to track */
+		MemoryContext sync_retry_ctx;
 
 		check_and_set_sync_info(MyProcPid);
 
 		validate_remote_info(wrconn);
+
+		/*
+		 * Setup and use a per-sync-cycle memory context, which is reset every
+		 * time we loop below. This avoids having to retail freeing the memory
+		 * used in each sync cycle.
+		 */
+		sync_retry_ctx = AllocSetContextCreate(CurrentMemoryContext,
+											   "slot sync retry context",
+											   ALLOCSET_DEFAULT_SIZES);
 
 		/* Retry until all the slots are sync-ready */
 		for (;;)
 		{
 			bool		slot_persistence_pending = false;
 			bool		some_slot_updated = false;
+			MemoryContext oldctx;
 
 			/* Check for interrupts and config changes */
 			CHECK_FOR_INTERRUPTS();
@@ -2025,6 +2046,9 @@ SyncReplicationSlots(WalReceiverConn *wrconn)
 
 			/* We must be in a valid transaction state */
 			Assert(IsTransactionState());
+
+			MemoryContextReset(sync_retry_ctx);
+			oldctx = MemoryContextSwitchTo(sync_retry_ctx);
 
 			/*
 			 * Fetch remote slot info for the given slot_names. If slot_names
@@ -2043,14 +2067,17 @@ SyncReplicationSlots(WalReceiverConn *wrconn)
 												  &slot_persistence_pending);
 
 			/*
+			 * slot_names must survive later sync_retry_ctx resets, so copy it
+			 * in the outer context.
+			 */
+			MemoryContextSwitchTo(oldctx);
+
+			/*
 			 * If slot_persistence_pending is true, extract slot names for
 			 * future iterations (only needed if we haven't done it yet)
 			 */
 			if (slot_names == NIL && slot_persistence_pending)
 				slot_names = extract_slot_names(remote_slots);
-
-			/* Free the current remote_slots list */
-			list_free_deep(remote_slots);
 
 			/* Done if all slots are persisted i.e are sync-ready */
 			if (!slot_persistence_pending)
@@ -2059,6 +2086,8 @@ SyncReplicationSlots(WalReceiverConn *wrconn)
 			/* wait before retrying again */
 			wait_for_slot_activity(some_slot_updated);
 		}
+
+		MemoryContextDelete(sync_retry_ctx);
 
 		if (slot_names)
 			list_free_deep(slot_names);

@@ -82,6 +82,15 @@ this is just a line full of junk that would error out if parsed
 
 copy copytest3 to stdout csv header;
 
+-- testing explicit column order
+create temp table copytest_order (a int, b int, c int);
+copy copytest_order from stdin;
+1	2	3
+\.
+copy copytest_order (c, b, a) to stdout;
+copy copytest_order (c, b, a) to stdout (format csv);
+copy copytest_order (c, b, a) to stdout (format json);
+
 --- test copying in JSON mode with various styles
 copy (select 1 union all select 2) to stdout with (format json);
 copy (select 1 as foo union all select 2) to stdout with (format json);
@@ -537,3 +546,12 @@ CREATE TABLE pp_510 PARTITION OF pp_2 FOR VALUES FROM (5) TO (10);
 INSERT INTO pp SELECT g, 10 + g FROM generate_series(1,6) g;
 COPY pp TO stdout(header);
 DROP TABLE PP;
+
+-- Check if COPY TO handles dropped columns in partitions.
+CREATE TABLE pp_dropcol (id int, val int) PARTITION BY RANGE (id);
+CREATE TABLE pp_dropcol_1 (dropme int, id int, val int);
+ALTER TABLE pp_dropcol_1 DROP COLUMN dropme;
+ALTER TABLE pp_dropcol ATTACH PARTITION pp_dropcol_1 FOR VALUES FROM (1) TO (10);
+INSERT INTO pp_dropcol VALUES (1, 11), (2, 12);
+COPY pp_dropcol TO stdout(header);
+DROP TABLE pp_dropcol;

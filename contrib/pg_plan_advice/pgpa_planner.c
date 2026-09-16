@@ -549,6 +549,7 @@ pgpa_join_path_setup(PlannerInfo *root, RelOptInfo *joinrel,
 		{
 			pgpa_planner_info *proot;
 			MemoryContext oldcontext;
+			Bitmapset  *relids;
 
 			/*
 			 * Get or create a pgpa_planner_info object, and then add the
@@ -558,12 +559,20 @@ pgpa_join_path_setup(PlannerInfo *root, RelOptInfo *joinrel,
 			 * context, since we might have been called by GEQO. We want all
 			 * the data we store here (including the proot, if we create it)
 			 * to last for as long as the pgpa_planner_state.
+			 *
+			 * pgpa_filter_out_join_relids copies the input Bitmapset whether
+			 * or not it is changed, so 'relids' is part of the long-lived
+			 * context.
 			 */
 			oldcontext = MemoryContextSwitchTo(pps->mcxt);
 			proot = pgpa_planner_get_proot(pps, root);
-			if (!list_member(proot->sj_unique_rels, uniquerel->relids))
+			relids = pgpa_filter_out_join_relids(uniquerel->relids,
+												 root->parse->rtable);
+			if (!list_member(proot->sj_unique_rels, relids))
 				proot->sj_unique_rels = lappend(proot->sj_unique_rels,
-												bms_copy(uniquerel->relids));
+												relids);
+			else
+				bms_free(relids);
 			MemoryContextSwitchTo(oldcontext);
 		}
 	}
@@ -1648,13 +1657,14 @@ pgpa_planner_apply_scan_advice(RelOptInfo *rel,
 			/*
 			 * Currently, PGS_CONSIDER_INDEXONLY can suppress Bitmap Heap
 			 * Scans, so don't clear it when such a scan is requested. This
-			 * happens because build_index_scan() thinks that the possibility
-			 * of an index-only scan is a sufficient reason to consider using
-			 * an otherwise-useless index, and get_index_paths() thinks that
-			 * the same paths that are useful for index or index-only scans
-			 * should also be considered for bitmap scans. Perhaps that logic
-			 * should be tightened up, but until then we need to include
-			 * PGS_CONSIDER_INDEXONLY in my_scan_type here.
+			 * happens because build_index_scankeys() thinks that the
+			 * possibility of an index-only scan is a sufficient reason to
+			 * consider using an otherwise-useless index, and
+			 * get_index_paths() thinks that the same paths that are useful
+			 * for index or index-only scans should also be considered for
+			 * bitmap scans. Perhaps that logic should be tightened up, but
+			 * until then we need to include PGS_CONSIDER_INDEXONLY in
+			 * my_scan_type here.
 			 */
 			my_scan_type = PGS_BITMAPSCAN | PGS_CONSIDER_INDEXONLY;
 		}
@@ -2083,7 +2093,7 @@ pgpa_compute_rt_offsets(pgpa_planner_state *pps, PlannedStmt *pstmt)
 
 		/*
 		 * It's not guaranteed that every plan name we saw during planning has
-		 * a SubPlanInfo, but any that do not certainly don't appear in the
+		 * a SubPlanRTInfo, but any that do not certainly don't appear in the
 		 * final range table.
 		 */
 		foreach_node(SubPlanRTInfo, rtinfo, pstmt->subrtinfos)

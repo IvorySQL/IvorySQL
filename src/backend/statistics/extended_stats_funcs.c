@@ -520,7 +520,7 @@ extended_statistics_update(FunctionCallInfo fcinfo)
 		{
 			ereport(WARNING,
 					errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					errmsg("cannot specify parameters \"%s\", \"%s\" or \"%s\"",
+					errmsg("cannot specify parameters \"%s\", \"%s\", or \"%s\"",
 						   extarginfo[MOST_COMMON_VALS_ARG].argname,
 						   extarginfo[MOST_COMMON_FREQS_ARG].argname,
 						   extarginfo[MOST_COMMON_BASE_FREQS_ARG].argname),
@@ -544,7 +544,7 @@ extended_statistics_update(FunctionCallInfo fcinfo)
 		{
 			ereport(WARNING,
 					errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					errmsg("could not use \"%s\", \"%s\" and \"%s\": missing one or more parameters",
+					errmsg("could not use \"%s\", \"%s\", and \"%s\": missing one or more parameters",
 						   extarginfo[MOST_COMMON_VALS_ARG].argname,
 						   extarginfo[MOST_COMMON_FREQS_ARG].argname,
 						   extarginfo[MOST_COMMON_BASE_FREQS_ARG].argname));
@@ -571,7 +571,7 @@ extended_statistics_update(FunctionCallInfo fcinfo)
 
 	/*
 	 * Either of these statistic types requires that we supply a semi-filled
-	 * VacAttrStatP array.
+	 * VacAttrStatsP array.
 	 *
 	 * It is not possible to use the existing lookup_var_attr_stats() and
 	 * examine_attribute() because these functions will skip attributes where
@@ -586,8 +586,8 @@ extended_statistics_update(FunctionCallInfo fcinfo)
 
 		/*
 		 * The leading stxkeys are attribute numbers up through numattnums.
-		 * These keys must be in ascending AttNumber order, but we do not rely
-		 * on that.
+		 * These keys must be in ascending AttrNumber order, but we do not
+		 * rely on that.
 		 */
 		for (int i = 0; i < numattnums; i++)
 		{
@@ -724,7 +724,7 @@ extended_statistics_update(FunctionCallInfo fcinfo)
 		/*
 		 * Generate the expressions array.
 		 *
-		 * The attytypids, attytypmods, and atttypcolls arrays have all the
+		 * The atttypids, atttypmods, and atttypcolls arrays have all the
 		 * regular attributes listed first, so we can pass those arrays with a
 		 * start point after the last regular attribute.  There are numexprs
 		 * elements remaining.
@@ -851,6 +851,21 @@ import_mcv(const ArrayType *mcv_arr, const ArrayType *freqs_arr,
 	 * the reference array for determining their length.
 	 */
 	nitems = ARR_DIMS(mcv_arr)[0];
+
+	/*
+	 * Reject a MCV list larger than what statext_mcv_deserialize() is able to
+	 * accept.
+	 */
+	if (nitems > STATS_MCVLIST_MAX_ITEMS)
+	{
+		ereport(WARNING,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("could not parse array \"%s\": number of items (%d) exceeds maximum (%d)",
+					   extarginfo[MOST_COMMON_VALS_ARG].argname,
+					   nitems, STATS_MCVLIST_MAX_ITEMS));
+		goto mcv_error;
+	}
+
 	if (!check_mcvlist_array(freqs_arr, MOST_COMMON_FREQS_ARG, 1, nitems) ||
 		!check_mcvlist_array(base_freqs_arr, MOST_COMMON_BASE_FREQS_ARG, 1, nitems))
 	{
@@ -886,7 +901,8 @@ key_in_expr_argnames(JsonbValue *key)
 	Assert(key->type == jbvString);
 	for (int i = 0; i < NUM_ATTRIBUTE_STATS_ELEMS; i++)
 	{
-		if (strncmp(extexprargname[i], key->val.string.val, key->val.string.len) == 0)
+		if (strlen(extexprargname[i]) == key->val.string.len &&
+			strncmp(extexprargname[i], key->val.string.val, key->val.string.len) == 0)
 			return true;
 	}
 	return false;
@@ -1070,6 +1086,15 @@ array_in_safe(FmgrInfo *array_in, const char *s, Oid typid, int32 typmod,
 		return (Datum) 0;
 	}
 
+	if (ARR_NDIM(DatumGetArrayTypeP(result)) != 1)
+	{
+		ereport(WARNING,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("could not import element \"%s\" in expression %d: must be a one-dimensional array",
+						element_name, exprnum)));
+		return (Datum) 0;
+	}
+
 	if (array_contains_nulls(DatumGetArrayTypeP(result)))
 	{
 		ereport(WARNING,
@@ -1091,7 +1116,7 @@ array_in_safe(FmgrInfo *array_in, const char *s, Oid typid, int32 typmod,
  * still return a legit tuple datum.
  *
  * Set pg_statistic_ok to true if all of the values found in the container
- * were imported without issue.  pg_statistic_ok is swicthed to "true" once
+ * were imported without issue.  pg_statistic_ok is switched to "true" once
  * the full pg_statistic tuple has been built and validated.
  */
 static Datum
@@ -1150,7 +1175,7 @@ import_pg_statistic(Relation pgsd, JsonbContainer *cont,
 				ereport(WARNING,
 						errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						errmsg("could not parse \"%s\": invalid element in expression %d", argname, exprnum),
-						errhint("Value of element \"%s\" must be type a null or a string.", s));
+						errhint("Value of element \"%s\" must be a null or a string.", s));
 				goto pg_statistic_error;
 		}
 	}
@@ -1307,10 +1332,6 @@ import_pg_statistic(Relation pgsd, JsonbContainer *cont,
 	 * if they aren't then we need to reject that stakind completely.
 	 * Currently we go a step further and reject the expression array
 	 * completely.
-	 *
-	 * Once it is established that the pairs are in NULL/NOT-NULL alignment,
-	 * we can test either expr_nulls[] value to see if the stakind has
-	 * value(s) that we can set or not.
 	 */
 
 	if (found[MOST_COMMON_VALS_ELEM])
@@ -1336,10 +1357,27 @@ import_pg_statistic(Relation pgsd, JsonbContainer *cont,
 
 		/* Only set the slot if both datums have been built */
 		if (val_ok && num_ok)
+		{
+			ArrayType  *vals_arr = DatumGetArrayTypeP(stavalues);
+			ArrayType  *nums_arr = DatumGetArrayTypeP(stanumbers);
+			int			nvals = ARR_DIMS(vals_arr)[0];
+			int			nnums = ARR_DIMS(nums_arr)[0];
+
+			if (nvals != nnums)
+			{
+				ereport(WARNING,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("could not parse \"%s\": incorrect number of elements (same as \"%s\" required)",
+								"most_common_vals",
+								"most_common_freqs")));
+				goto pg_statistic_error;
+			}
+
 			statatt_set_slot(values, nulls, replaces,
 							 STATISTIC_KIND_MCV,
 							 typcache->eq_opr, typcoll,
 							 stanumbers, false, stavalues, false);
+		}
 		else
 			goto pg_statistic_error;
 	}
@@ -1570,7 +1608,7 @@ import_expressions(Relation pgsd, int numexprs,
 		ereport(WARNING,
 				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				errmsg("could not parse \"%s\": incorrect number of elements (%d required)",
-					   argname, num_root_elements));
+					   argname, numexprs));
 		goto exprs_error;
 	}
 
@@ -1794,6 +1832,7 @@ pg_clear_extended_stats(PG_FUNCTION_ARGS)
 	 */
 	if (stxform->stxrelid != relid)
 	{
+		heap_freetuple(tup);
 		table_close(pg_stext, RowExclusiveLock);
 		ereport(WARNING,
 				errcode(ERRCODE_INVALID_PARAMETER_VALUE),

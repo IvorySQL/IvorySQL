@@ -277,7 +277,7 @@ $node_A->safe_psql('postgres', "INSERT INTO tab VALUES (1, 1), (2, 2);");
 $node_A->wait_for_catchup($subname_BA);
 
 my $result = $node_B->safe_psql('postgres', "SELECT * FROM tab;");
-is($result, qq(1|1
+is( $result, qq(1|1
 2|2), 'check replicated insert on node B');
 
 # Disable the logical replication from node B to node A
@@ -293,9 +293,8 @@ my $log_location = -s $node_B->logfile;
 $node_B->safe_psql('postgres', "UPDATE tab SET b = 3 WHERE a = 1;");
 $node_A->safe_psql('postgres', "DELETE FROM tab WHERE a = 1;");
 
-($cmdret, $stdout, $stderr) = $node_A->psql(
-	'postgres', qq(VACUUM (verbose) public.tab;)
-);
+($cmdret, $stdout, $stderr) =
+  $node_A->psql('postgres', qq(VACUUM (verbose) public.tab;));
 
 ok( $stderr =~
 	  qr/1 are dead but not yet removable/,
@@ -313,8 +312,7 @@ ok( $logfile =~
 
 $log_location = -s $node_A->logfile;
 
-$node_A->safe_psql(
-	'postgres', "ALTER SUBSCRIPTION $subname_AB ENABLE;");
+$node_A->safe_psql('postgres', "ALTER SUBSCRIPTION $subname_AB ENABLE;");
 $node_B->wait_for_catchup($subname_AB);
 
 $logfile = slurp_file($node_A->logfile(), $log_location);
@@ -360,8 +358,7 @@ $node_A->safe_psql('postgres', "DELETE FROM tab WHERE a = 2;");
 
 $log_location = -s $node_A->logfile;
 
-$node_A->safe_psql(
-	'postgres', "ALTER SUBSCRIPTION $subname_AB ENABLE;");
+$node_A->safe_psql('postgres', "ALTER SUBSCRIPTION $subname_AB ENABLE;");
 $node_B->wait_for_catchup($subname_AB);
 
 $logfile = slurp_file($node_A->logfile(), $log_location);
@@ -398,7 +395,8 @@ ok( $node_A->poll_query_until(
 $node_B->safe_psql('postgres', "ALTER PUBLICATION tap_pub_B ADD TABLE tab");
 
 $node_A->safe_psql('postgres',
-	"ALTER SUBSCRIPTION $subname_AB REFRESH PUBLICATION WITH (copy_data = false)");
+	"ALTER SUBSCRIPTION $subname_AB REFRESH PUBLICATION WITH (copy_data = false)"
+);
 
 ###############################################################################
 # Test that publisher's transactions marked with DELAY_CHKPT_IN_COMMIT prevent
@@ -414,7 +412,8 @@ my $injection_points_supported = $node_B->check_extension('injection_points');
 # commit after marking DELAY_CHKPT_IN_COMMIT flag.
 if ($injection_points_supported != 0)
 {
-	$node_B->append_conf('postgresql.conf',
+	$node_B->append_conf(
+		'postgresql.conf',
 		"shared_preload_libraries = 'injection_points'
 		max_prepared_transactions = 1");
 	$node_B->restart;
@@ -461,11 +460,11 @@ if ($injection_points_supported != 0)
 	);
 
 	# Wait until the backend enters the injection point
-	$node_B->wait_for_event('client backend', 'commit-after-delay-checkpoint');
+	$node_B->wait_for_event('client backend',
+		'commit-after-delay-checkpoint');
 
 	# Confirm the update is suspended
-	$result =
-	  $node_B->safe_psql('postgres', 'SELECT * FROM tab WHERE a = 1');
+	$result = $node_B->safe_psql('postgres', 'SELECT * FROM tab WHERE a = 1');
 	is($result, qq(1|1), 'publisher sees the old row');
 
 	# Delete the row on the subscriber. The deleted row should be retained due to a
@@ -482,14 +481,12 @@ if ($injection_points_supported != 0)
 	# Confirm that the apply worker keeps requesting publisher status, while
 	# awaiting the prepared transaction to commit. Thus, the request log should
 	# appear more than once.
-	$node_A->wait_for_log(
-		qr/sending publisher status request message/,
+	$node_A->wait_for_log(qr/sending publisher status request message/,
 		$log_location);
 
 	$log_location = -s $node_A->logfile;
 
-	$node_A->wait_for_log(
-		qr/sending publisher status request message/,
+	$node_A->wait_for_log(qr/sending publisher status request message/,
 		$log_location);
 
 	# Confirm that the dead tuple cannot be removed
@@ -513,8 +510,7 @@ if ($injection_points_supported != 0)
 	ok($pub_session->quit, "close publisher session");
 
 	# Confirm that the transaction committed
-	$result =
-	  $node_B->safe_psql('postgres', 'SELECT * FROM tab WHERE a = 1');
+	$result = $node_B->safe_psql('postgres', 'SELECT * FROM tab WHERE a = 1');
 	is($result, qq(1|2), 'publisher sees the new row');
 
 	# Ensure the UPDATE is replayed on subscriber
@@ -528,8 +524,7 @@ if ($injection_points_supported != 0)
 		'update target row was deleted in tab');
 
 	# Remember the next transaction ID to be assigned
-	$next_xid =
-	  $node_A->safe_psql('postgres', "SELECT txid_current() + 1;");
+	$next_xid = $node_A->safe_psql('postgres', "SELECT txid_current() + 1;");
 
 	# Confirm that the xmin value is advanced to the latest nextXid after the
 	# prepared transaction on the publisher has been committed.
@@ -572,7 +567,8 @@ $node_B->reload;
 
 # Enable failover to activate the synchronized_standby_slots setting
 $node_A->safe_psql('postgres', "ALTER SUBSCRIPTION $subname_AB DISABLE;");
-$node_A->safe_psql('postgres', "ALTER SUBSCRIPTION $subname_AB SET (failover = true);");
+$node_A->safe_psql('postgres',
+	"ALTER SUBSCRIPTION $subname_AB SET (failover = true);");
 $node_A->safe_psql('postgres', "ALTER SUBSCRIPTION $subname_AB ENABLE;");
 
 # Insert a record
@@ -600,7 +596,8 @@ ok( $node_A->poll_query_until(
 	"the xmin value of slot 'pg_conflict_detection' is invalid on Node A");
 
 $result = $node_A->safe_psql('postgres',
-	"SELECT subretentionactive FROM pg_subscription WHERE subname='$subname_AB';");
+	"SELECT subretentionactive FROM pg_subscription WHERE subname='$subname_AB';"
+);
 is($result, qq(f), 'retention is inactive');
 
 ###############################################################################
@@ -637,7 +634,8 @@ ok( $node_A->poll_query_until(
 	"the xmin value of slot 'pg_conflict_detection' is valid on Node A");
 
 $result = $node_A->safe_psql('postgres',
-	"SELECT subretentionactive FROM pg_subscription WHERE subname='$subname_AB';");
+	"SELECT subretentionactive FROM pg_subscription WHERE subname='$subname_AB';"
+);
 is($result, qq(t), 'retention is active');
 
 ###############################################################################
@@ -645,8 +643,7 @@ is($result, qq(t), 'retention is active');
 # removing all the subscriptions.
 ###############################################################################
 
-$node_B->safe_psql(
-	'postgres', "DROP SUBSCRIPTION $subname_BA");
+$node_B->safe_psql('postgres', "DROP SUBSCRIPTION $subname_BA");
 
 ok( $node_B->poll_query_until(
 		'postgres',
@@ -654,8 +651,7 @@ ok( $node_B->poll_query_until(
 	),
 	"the slot 'pg_conflict_detection' has been dropped on Node B");
 
-$node_A->safe_psql(
-	'postgres', "DROP SUBSCRIPTION $subname_AB");
+$node_A->safe_psql('postgres', "DROP SUBSCRIPTION $subname_AB");
 
 ok( $node_A->poll_query_until(
 		'postgres',

@@ -67,15 +67,15 @@ sub flip_data_checksums
 		# log LSN right before we start changing checksums
 		$lsn_pre =
 		  $node_primary->safe_psql('postgres', "SELECT pg_current_wal_lsn()");
+		note("LSN before disabling: " . $lsn_pre . "\n");
 
-		disable_data_checksums($node_primary);
-
-		# Wait for checksums disabled on the primary
-		wait_for_checksum_state($node_primary, 'off');
+		# Disable checksums on the primary and wait for completion
+		disable_data_checksums($node_primary, wait => 1);
 
 		# log LSN right after the primary flips checksums to "off"
 		$lsn_post =
 		  $node_primary->safe_psql('postgres', "SELECT pg_current_wal_lsn()");
+		note("LSN after disabling: " . $lsn_post . "\n");
 
 		$data_checksum_state = 'off';
 	}
@@ -124,11 +124,14 @@ $node_primary->init(
 	has_archiving => 1,
 	allows_streaming => 1,
 	no_data_checksums => 1);
+my $timeout_unit = 's';
 $node_primary->append_conf(
 	'postgresql.conf',
 	qq[
 max_connections = 100
 log_statement = none
+wal_sender_timeout = $PostgreSQL::Test::Utils::timeout_default$timeout_unit
+wal_receiver_timeout = $PostgreSQL::Test::Utils::timeout_default$timeout_unit
 ]);
 $node_primary->start;
 
@@ -154,7 +157,7 @@ my ($pre_lsn, $post_lsn) = flip_data_checksums();
 $node_primary->safe_psql('postgres', "UPDATE t SET a = a + 1;");
 $node_primary->safe_psql('postgres', "SELECT pg_create_restore_point('a');");
 $node_primary->safe_psql('postgres', "UPDATE t SET a = a + 1;");
-$node_primary->stop('immediate');
+$node_primary->stop('fast');
 
 my $node_pitr = PostgreSQL::Test::Cluster->new('pitr_backup');
 $node_pitr->init_from_backup(
@@ -183,7 +186,7 @@ $node_pitr->stop;
 my $log = PostgreSQL::Test::Utils::slurp_file($node_pitr->logfile, 0);
 unlike(
 	$log,
-	qr/page verification failed,.+\d$/,
+	qr/page verification failed,.+\d$/m,
 	"no checksum validation errors in pitr log");
 
 done_testing();

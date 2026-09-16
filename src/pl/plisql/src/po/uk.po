@@ -2,7 +2,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: postgresql\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2021-08-17 08:39+0000\n"
+"POT-Creation-Date: 2025-12-31 02:09+0000\n"
 "PO-Revision-Date: 2021-08-17 10:54\n"
 "Last-Translator: \n"
 "Language-Team: Ukrainian\n"
@@ -107,11 +107,6 @@ msgstr "тип %s не є складеним"
 #, c-format
 msgid "unrecognized exception condition \"%s\""
 msgstr "нерозпізнана умова виключення \"%s\""
-
-#: pl_comp.c:2524
-#, c-format
-msgid "could not determine actual argument type for polymorphic function \"%s\""
-msgstr "не вдалося визначити фактичний тип аргумента поліморфної функції \"%s\""
 
 #: pl_exec.c:500 pl_exec.c:934 pl_exec.c:1169
 msgid "during initialization of execution state"

@@ -359,6 +359,25 @@ INSERT INTO gtest21b (a) VALUES (NULL);  -- error
 ALTER TABLE gtest21b ALTER COLUMN b DROP NOT NULL;
 INSERT INTO gtest21b (a) VALUES (0);  -- ok now
 
+-- virtual generated columns are not physically stored, even when not null
+--CREATE TABLE gtest21c (a int NOT NULL, b int GENERATED ALWAYS AS (a * 2) VIRTUAL NOT NULL, c int NOT NULL);
+--INSERT INTO gtest21c (a, c) VALUES (10, 42);
+--SELECT a, b, c FROM gtest21c;
+--DROP TABLE gtest21c;
+-- try adding a virtual generated column to an existing table with tuples,
+-- then try adding an atthasmissing column before adding a normal nullable
+-- column.
+--CREATE TABLE gtest21d (a int NOT NULL);
+--INSERT INTO gtest21d (a) VALUES(10);
+--ALTER TABLE gtest21d ADD COLUMN b INT GENERATED ALWAYS AS (a * 10) VIRTUAL NOT NULL;
+--SELECT * FROM gtest21d ORDER BY a;
+--INSERT INTO gtest21d (a) VALUES(20);
+--ALTER TABLE gtest21d ADD COLUMN c INT NOT NULL DEFAULT 1234;
+--SELECT * FROM gtest21d ORDER BY a;
+--ALTER TABLE gtest21d ADD COLUMN d INT;
+--INSERT INTO gtest21d (a, c, d) VALUES(30, 12345, 100);
+--SELECT * FROM gtest21d ORDER BY a;
+--DROP TABLE gtest21d;
 -- not-null constraint with partitioned table
 CREATE TABLE gtestnn_parent (
     f1 int,
@@ -782,6 +801,29 @@ CREATE TABLE gtest28b (LIKE gtest28a INCLUDING GENERATED);
 
 \d gtest28*
 
+-- rule actions referring to generated columns:
+-- NEW.b in a rule action should reflect the generated column's new value
+CREATE TABLE gtest_rule (a int, b int GENERATED ALWAYS AS (a * 2) STORED);
+CREATE TABLE gtest_rule_log (op text, old_b int, new_b int);
+CREATE RULE gtest_rule_upd AS ON UPDATE TO gtest_rule
+  DO ALSO INSERT INTO gtest_rule_log VALUES ('UPD', OLD.b, NEW.b);
+CREATE RULE gtest_rule_ins AS ON INSERT TO gtest_rule
+  DO ALSO INSERT INTO gtest_rule_log VALUES ('INS', NULL, NEW.b);
+INSERT INTO gtest_rule (a) VALUES (1);
+UPDATE gtest_rule SET a = 10;
+UPDATE gtest_rule SET a = (SELECT max(b) FROM gtest_rule);
+SELECT * FROM gtest_rule_log;
+DROP RULE gtest_rule_upd ON gtest_rule;
+DROP RULE gtest_rule_ins ON gtest_rule;
+DROP TABLE gtest_rule_log;
+
+-- rule quals referring to generated columns:
+-- NEW.b in the rule qual should reflect the generated column's new value
+CREATE RULE gtest_rule_qual AS ON UPDATE TO gtest_rule WHERE NEW.b > 100
+  DO INSTEAD NOTHING;
+UPDATE gtest_rule SET a = 100;
+SELECT * FROM gtest_rule;
+DROP TABLE gtest_rule;
 
 -- sanity check of system catalog
 SELECT attrelid, attname, attgenerated FROM pg_attribute WHERE attgenerated NOT IN ('', 's', 'v');

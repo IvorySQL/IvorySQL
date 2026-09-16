@@ -32,6 +32,7 @@
 #include "executor/executor.h"
 #include "executor/functions.h"
 #include "executor/spi.h"
+#include "foreign/foreign.h"
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
@@ -163,7 +164,8 @@ overpaid(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(salary > 699);
 }
 
-/* New type "widget"
+/*
+ * New type "widget"
  * This used to be "circle", but I added circle to builtins,
  *	so needed to make sure the names do not collide. - tgl 97/04/21
  */
@@ -736,6 +738,8 @@ PG_FUNCTION_INFO_V1(test_fdw_connection);
 Datum
 test_fdw_connection(PG_FUNCTION_ARGS)
 {
+	/* Ensure the test fails if no valid user mapping exists. */
+	GetUserMapping(PG_GETARG_OID(0), PG_GETARG_OID(1));
 	PG_RETURN_TEXT_P(cstring_to_text("dbname=regress_doesnotexist user=doesnotexist password=secret"));
 }
 
