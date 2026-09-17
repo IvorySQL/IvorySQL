@@ -36,7 +36,8 @@ OBJS = \
 	src/builtin_packages/utl_url/utl_url.o \
 	src/builtin_packages/dbms_session/dbms_session.o \
 	src/builtin_packages/dbms_transaction/dbms_transaction.o \
-	src/builtin_packages/dbms_random/dbms_random.o
+	src/builtin_packages/dbms_random/dbms_random.o \
+	src/builtin_packages/utl_match/utl_match.o
 
 EXTENSION = ivorysql_ora
 
@@ -97,7 +98,8 @@ ORA_REGRESS = \
 	utl_url \
 	dbms_session \
 	dbms_transaction \
-	dbms_random
+	dbms_random \
+	utl_match
 
 # Include path for plisql.h (needed by dbms_utility)
 PG_CPPFLAGS += -I$(top_srcdir)/src/pl/plisql/src
