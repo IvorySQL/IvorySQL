@@ -244,7 +244,7 @@ $node_publisher->safe_psql('postgres', qq(INSERT INTO tab1 VALUES(2)));
 $node_publisher->wait_for_catchup('tap_sub');
 
 $result =
-  $node_publisher->safe_psql('postgres', "SELECT * FROM tab1 ORDER BY a");
+  $node_subscriber->safe_psql('postgres', "SELECT * FROM tab1 ORDER BY a");
 is( $result, qq(1
 2),
 	"check replication of a table in the EXCEPT clause of one publication but included by another"
@@ -272,7 +272,7 @@ $node_publisher->safe_psql('postgres', qq(INSERT INTO tab1 VALUES(2)));
 $node_publisher->wait_for_catchup('tap_sub');
 
 $result =
-  $node_publisher->safe_psql('postgres', "SELECT * FROM tab1 ORDER BY a");
+  $node_subscriber->safe_psql('postgres', "SELECT * FROM tab1 ORDER BY a");
 is( $result, qq(1
 2),
 	"check replication of a table in the EXCEPT clause of one publication but included by another"
