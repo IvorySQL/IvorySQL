@@ -369,21 +369,31 @@ utl_tcp_wait(UtlTcpConnection *conn, int waitfor, TimestampTz deadline_us)
 	for (;;)
 	{
 		long		timeout_ms;
+		int			wakeevents;
 		int			rc;
 
 		if (deadline_us == 0)
-			timeout_ms = -1;	/* wait indefinitely (but interruptibly) */
+		{
+			/*
+			 * Wait indefinitely (but interruptibly): no WL_TIMEOUT, so the
+			 * timeout argument is ignored.
+			 */
+			timeout_ms = -1;
+			wakeevents = waitfor | WL_LATCH_SET | WL_EXIT_ON_PM_DEATH;
+		}
 		else
 		{
 			timeout_ms = TimestampDifferenceMilliseconds(GetCurrentTimestamp(),
 														 deadline_us);
 			if (timeout_ms <= 0)
 				return false;
+
+			wakeevents = waitfor | WL_LATCH_SET | WL_TIMEOUT |
+				WL_EXIT_ON_PM_DEATH;
 		}
 
 		rc = WaitLatchOrSocket(MyLatch,
-							   waitfor | WL_LATCH_SET | WL_TIMEOUT |
-							   WL_EXIT_ON_PM_DEATH,
+							   wakeevents,
 							   conn->sock,
 							   timeout_ms,
 							   utl_tcp_we());
