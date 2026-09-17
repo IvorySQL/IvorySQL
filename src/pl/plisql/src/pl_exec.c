@@ -125,6 +125,16 @@ static ResourceOwner shared_simple_eval_resowner = NULL;
 static PLiSQL_execstate *exception_handling_estate = NULL;
 
 /*
+ * Number of statement-level subtransactions currently open (see
+ * exec_stmt_with_stmt_subxact).  This is process-global because a
+ * COMMIT/ROLLBACK issued in a nested plisql call (e.g. in a called
+ * procedure) must also release statement-level subtransactions opened by
+ * enclosing plisql invocations.  It is reset at each transaction boundary in
+ * plisql_xact_cb().
+ */
+static int	active_stmt_subxact_depth = 0;
+
+/*
  * Memory management within a plisql function generally works with three
  * contexts:
  *
@@ -305,6 +315,10 @@ static int	exec_stmt_block(PLiSQL_execstate * estate,
 							PLiSQL_stmt_block * block);
 static int	exec_stmts(PLiSQL_execstate * estate,
 					   List *stmts);
+static int	exec_stmt(PLiSQL_execstate * estate, PLiSQL_stmt * stmt);
+static int	exec_stmt_with_stmt_subxact(PLiSQL_execstate * estate,
+										PLiSQL_stmt * stmt);
+static bool exec_stmt_uses_subxact(PLiSQL_stmt * stmt);
 static int	exec_stmt_assign(PLiSQL_execstate * estate,
 							 PLiSQL_stmt_assign * stmt);
 static int	exec_stmt_perform(PLiSQL_execstate * estate,
@@ -2076,11 +2090,18 @@ exec_stmt_block(PLiSQL_execstate * estate, PLiSQL_stmt_block * block)
 	if (block->exceptions)
 	{
 		/*
-		 * Execute the statements in the block's body inside a sub-transaction
+		 * Execute the body of an exception-enabled block using Oracle-style
+		 * statement-level rollback instead of wrapping the whole block in a
+		 * single subtransaction.  Each statement that can execute SQL is run
+		 * inside its own short-lived subtransaction (see exec_stmts and
+		 * exec_stmt_with_stmt_subxact), so an error only undoes the failed
+		 * statement and a matching exception handler can still run.  This
+		 * also allows COMMIT/ROLLBACK to be executed from within the block
+		 * or its exception handler, because no subtransaction is active at
+		 * statement boundaries.
 		 */
 		MemoryContext oldcontext = CurrentMemoryContext;
 		ResourceOwner oldowner = CurrentResourceOwner;
-		ExprContext *old_eval_econtext = estate->eval_econtext;
 		ErrorData  *save_cur_error = estate->cur_error;
 		PLiSQL_execstate *save_exception_handling_estate = exception_handling_estate;
 		MemoryContext stmt_mcontext;
@@ -2089,29 +2110,25 @@ exec_stmt_block(PLiSQL_execstate * estate, PLiSQL_stmt_block * block)
 
 		/*
 		 * We will need a stmt_mcontext to hold the error data if an error
-		 * occurs.  It seems best to force it to exist before entering the
-		 * subtransaction, so that we reduce the risk of out-of-memory during
-		 * error recovery, and because this greatly simplifies restoring the
-		 * stmt_mcontext stack to the correct state after an error.  We can
-		 * ameliorate the cost of this by allowing the called statements to
-		 * use this mcontext too; so we don't push it down here.
+		 * occurs.  It seems best to force it to exist before running the
+		 * block's statements, so that we reduce the risk of out-of-memory
+		 * during error recovery, and because this greatly simplifies
+		 * restoring the stmt_mcontext stack to the correct state after an
+		 * error.  We can ameliorate the cost of this by allowing the called
+		 * statements to use this mcontext too; so we don't push it down
+		 * here.
 		 */
 		stmt_mcontext = get_stmt_mcontext(estate);
 
-		BeginInternalSubTransaction(NULL);
-		/* Want to run statements inside function's memory context */
-		MemoryContextSwitchTo(oldcontext);
+		/*
+		 * Tell exec_stmts() to run statements that can execute SQL in their
+		 * own subtransactions while we are inside this block and inside its
+		 * exception handler.
+		 */
+		estate->stmt_subxact_level++;
 
 		PG_TRY();
 		{
-			/*
-			 * We need to run the block's statements with a new eval_econtext
-			 * that belongs to the current subtransaction; if we try to use
-			 * the outer econtext then ExprContext shutdown callbacks will be
-			 * called at the wrong times.
-			 */
-			plisql_create_econtext(estate);
-
 			estate->err_text = NULL;
 
 			/* Run the block's statements */
@@ -2120,9 +2137,10 @@ exec_stmt_block(PLiSQL_execstate * estate, PLiSQL_stmt_block * block)
 			estate->err_text = gettext_noop("during statement block exit");
 
 			/*
-			 * If the block ended with RETURN, we may need to copy the return
-			 * value out of the subtransaction eval_context.  We can avoid a
-			 * physical copy if the value happens to be a R/W expanded object.
+			 * If the block ended with RETURN, make sure the return value is
+			 * stored in a context that survives the rest of our execution.
+			 * We can avoid a physical copy if the value happens to be a R/W
+			 * expanded object.
 			 */
 			if (rc == PLISQL_RC_RETURN &&
 				!estate->retisset &&
@@ -2136,19 +2154,8 @@ exec_stmt_block(PLiSQL_execstate * estate, PLiSQL_stmt_block * block)
 											   resTypByVal, resTypLen);
 			}
 
-			/* Commit the inner transaction, return to outer xact context */
-			ReleaseCurrentSubTransaction();
-			MemoryContextSwitchTo(oldcontext);
-			CurrentResourceOwner = oldowner;
-
 			/* Assert that the stmt_mcontext stack is unchanged */
 			Assert(stmt_mcontext == estate->stmt_mcontext);
-
-			/*
-			 * Revert to outer eval_econtext.  (The inner one was
-			 * automatically cleaned up during subxact exit.)
-			 */
-			estate->eval_econtext = old_eval_econtext;
 		}
 		PG_CATCH();
 		{
@@ -2164,8 +2171,12 @@ exec_stmt_block(PLiSQL_execstate * estate, PLiSQL_stmt_block * block)
 			edata = CopyErrorData();
 			FlushErrorState();
 
-			/* Abort the inner transaction */
-			RollbackAndReleaseCurrentSubTransaction();
+			/*
+			 * There is no block-level subtransaction to abort: any failed
+			 * statement was already rolled back by exec_stmts().  Just make
+			 * sure we are back in the caller's memory context and resource
+			 * owner.
+			 */
 			MemoryContextSwitchTo(oldcontext);
 			CurrentResourceOwner = oldowner;
 
@@ -2189,14 +2200,11 @@ exec_stmt_block(PLiSQL_execstate * estate, PLiSQL_stmt_block * block)
 			 */
 			MemoryContextDeleteChildren(stmt_mcontext);
 
-			/* Revert to outer eval_econtext */
-			estate->eval_econtext = old_eval_econtext;
-
 			/*
-			 * Must clean up the econtext too.  However, any tuple table made
-			 * in the subxact will have been thrown away by SPI during subxact
-			 * abort, so we don't need to (and mustn't try to) free the
-			 * eval_tuptable.
+			 * Any tuple table left behind by the failed statement belongs to
+			 * a rolled-back subtransaction, so we don't need to (and mustn't
+			 * try to) free it.  Clean up any other short-lived expression
+			 * state.
 			 */
 			estate->eval_tuptable = NULL;
 			exec_eval_cleanup(estate);
@@ -2261,13 +2269,19 @@ exec_stmt_block(PLiSQL_execstate * estate, PLiSQL_stmt_block * block)
 
 			/* If no match found, re-throw the error */
 			if (e == NULL)
+			{
+				estate->stmt_subxact_level--;
 				ReThrowError(edata);
+			}
 
 			/* Restore stmt_mcontext stack and release the error data */
 			pop_stmt_mcontext(estate);
 			MemoryContextReset(stmt_mcontext);
 		}
 		PG_END_TRY();
+
+		/* No longer run statements in per-statement subtransactions */
+		estate->stmt_subxact_level--;
 
 		Assert(save_cur_error == estate->cur_error);
 	}
@@ -2348,122 +2362,11 @@ exec_stmts(PLiSQL_execstate * estate, List *stmts)
 
 		CHECK_FOR_INTERRUPTS();
 
-		switch (stmt->cmd_type)
-		{
-			case PLISQL_STMT_BLOCK:
-				rc = exec_stmt_block(estate, (PLiSQL_stmt_block *) stmt);
-				break;
-
-			case PLISQL_STMT_ASSIGN:
-				rc = exec_stmt_assign(estate, (PLiSQL_stmt_assign *) stmt);
-				break;
-
-			case PLISQL_STMT_PERFORM:
-				rc = exec_stmt_perform(estate, (PLiSQL_stmt_perform *) stmt);
-				break;
-
-			case PLISQL_STMT_CALL:
-				rc = exec_stmt_call(estate, (PLiSQL_stmt_call *) stmt);
-				break;
-
-			case PLISQL_STMT_GETDIAG:
-				rc = exec_stmt_getdiag(estate, (PLiSQL_stmt_getdiag *) stmt);
-				break;
-
-			case PLISQL_STMT_IF:
-				rc = exec_stmt_if(estate, (PLiSQL_stmt_if *) stmt);
-				break;
-
-			case PLISQL_STMT_CASE:
-				rc = exec_stmt_case(estate, (PLiSQL_stmt_case *) stmt);
-				break;
-
-			case PLISQL_STMT_LOOP:
-				rc = exec_stmt_loop(estate, (PLiSQL_stmt_loop *) stmt);
-				break;
-
-			case PLISQL_STMT_WHILE:
-				rc = exec_stmt_while(estate, (PLiSQL_stmt_while *) stmt);
-				break;
-
-			case PLISQL_STMT_FORI:
-				rc = exec_stmt_fori(estate, (PLiSQL_stmt_fori *) stmt);
-				break;
-
-			case PLISQL_STMT_FORS:
-				rc = exec_stmt_fors(estate, (PLiSQL_stmt_fors *) stmt);
-				break;
-
-			case PLISQL_STMT_FORC:
-				rc = exec_stmt_forc(estate, (PLiSQL_stmt_forc *) stmt);
-				break;
-
-			case PLISQL_STMT_FOREACH_A:
-				rc = exec_stmt_foreach_a(estate, (PLiSQL_stmt_foreach_a *) stmt);
-				break;
-
-			case PLISQL_STMT_EXIT:
-				rc = exec_stmt_exit(estate, (PLiSQL_stmt_exit *) stmt);
-				break;
-
-			case PLISQL_STMT_RETURN:
-				rc = exec_stmt_return(estate, (PLiSQL_stmt_return *) stmt);
-				break;
-
-			case PLISQL_STMT_RETURN_NEXT:
-				rc = exec_stmt_return_next(estate, (PLiSQL_stmt_return_next *) stmt);
-				break;
-
-			case PLISQL_STMT_RETURN_QUERY:
-				rc = exec_stmt_return_query(estate, (PLiSQL_stmt_return_query *) stmt);
-				break;
-
-			case PLISQL_STMT_RAISE:
-				rc = exec_stmt_raise(estate, (PLiSQL_stmt_raise *) stmt);
-				break;
-
-			case PLISQL_STMT_ASSERT:
-				rc = exec_stmt_assert(estate, (PLiSQL_stmt_assert *) stmt);
-				break;
-
-			case PLISQL_STMT_EXECSQL:
-				rc = exec_stmt_execsql(estate, (PLiSQL_stmt_execsql *) stmt);
-				break;
-
-			case PLISQL_STMT_DYNEXECUTE:
-				rc = exec_stmt_dynexecute(estate, (PLiSQL_stmt_dynexecute *) stmt);
-				break;
-
-			case PLISQL_STMT_DYNFORS:
-				rc = exec_stmt_dynfors(estate, (PLiSQL_stmt_dynfors *) stmt);
-				break;
-
-			case PLISQL_STMT_OPEN:
-				rc = exec_stmt_open(estate, (PLiSQL_stmt_open *) stmt);
-				break;
-
-			case PLISQL_STMT_FETCH:
-				rc = exec_stmt_fetch(estate, (PLiSQL_stmt_fetch *) stmt);
-				break;
-
-			case PLISQL_STMT_CLOSE:
-				rc = exec_stmt_close(estate, (PLiSQL_stmt_close *) stmt);
-				break;
-
-			case PLISQL_STMT_COMMIT:
-				rc = exec_stmt_commit(estate, (PLiSQL_stmt_commit *) stmt);
-				break;
-
-			case PLISQL_STMT_ROLLBACK:
-				rc = exec_stmt_rollback(estate, (PLiSQL_stmt_rollback *) stmt);
-				break;
-
-			default:
-				/* point err_stmt to parent, since this one seems corrupt */
-				estate->err_stmt = save_estmt;
-				elog(ERROR, "unrecognized cmd_type: %d", stmt->cmd_type);
-				rc = -1;		/* keep compiler quiet */
-		}
+		if (estate->stmt_subxact_level > 0 &&
+			exec_stmt_uses_subxact(stmt))
+			rc = exec_stmt_with_stmt_subxact(estate, stmt);
+		else
+			rc = exec_stmt(estate, stmt);
 
 		/* Let the plugin know that we have finished executing this statement */
 		if (*plisql_plugin_ptr && (*plisql_plugin_ptr)->stmt_end)
@@ -2480,6 +2383,251 @@ exec_stmts(PLiSQL_execstate * estate, List *stmts)
 	return PLISQL_RC_OK;
 }
 
+/* ----------
+ * exec_stmt			Execute a single statement
+ * ----------
+ */
+static int
+exec_stmt(PLiSQL_execstate * estate, PLiSQL_stmt * stmt)
+{
+	int			rc;
+
+	switch (stmt->cmd_type)
+	{
+		case PLISQL_STMT_BLOCK:
+			rc = exec_stmt_block(estate, (PLiSQL_stmt_block *) stmt);
+			break;
+
+		case PLISQL_STMT_ASSIGN:
+			rc = exec_stmt_assign(estate, (PLiSQL_stmt_assign *) stmt);
+			break;
+
+		case PLISQL_STMT_PERFORM:
+			rc = exec_stmt_perform(estate, (PLiSQL_stmt_perform *) stmt);
+			break;
+
+		case PLISQL_STMT_CALL:
+			rc = exec_stmt_call(estate, (PLiSQL_stmt_call *) stmt);
+			break;
+
+		case PLISQL_STMT_GETDIAG:
+			rc = exec_stmt_getdiag(estate, (PLiSQL_stmt_getdiag *) stmt);
+			break;
+
+		case PLISQL_STMT_IF:
+			rc = exec_stmt_if(estate, (PLiSQL_stmt_if *) stmt);
+			break;
+
+		case PLISQL_STMT_CASE:
+			rc = exec_stmt_case(estate, (PLiSQL_stmt_case *) stmt);
+			break;
+
+		case PLISQL_STMT_LOOP:
+			rc = exec_stmt_loop(estate, (PLiSQL_stmt_loop *) stmt);
+			break;
+
+		case PLISQL_STMT_WHILE:
+			rc = exec_stmt_while(estate, (PLiSQL_stmt_while *) stmt);
+			break;
+
+		case PLISQL_STMT_FORI:
+			rc = exec_stmt_fori(estate, (PLiSQL_stmt_fori *) stmt);
+			break;
+
+		case PLISQL_STMT_FORS:
+			rc = exec_stmt_fors(estate, (PLiSQL_stmt_fors *) stmt);
+			break;
+
+		case PLISQL_STMT_FORC:
+			rc = exec_stmt_forc(estate, (PLiSQL_stmt_forc *) stmt);
+			break;
+
+		case PLISQL_STMT_FOREACH_A:
+			rc = exec_stmt_foreach_a(estate, (PLiSQL_stmt_foreach_a *) stmt);
+			break;
+
+		case PLISQL_STMT_EXIT:
+			rc = exec_stmt_exit(estate, (PLiSQL_stmt_exit *) stmt);
+			break;
+
+		case PLISQL_STMT_RETURN:
+			rc = exec_stmt_return(estate, (PLiSQL_stmt_return *) stmt);
+			break;
+
+		case PLISQL_STMT_RETURN_NEXT:
+			rc = exec_stmt_return_next(estate, (PLiSQL_stmt_return_next *) stmt);
+			break;
+
+		case PLISQL_STMT_RETURN_QUERY:
+			rc = exec_stmt_return_query(estate, (PLiSQL_stmt_return_query *) stmt);
+			break;
+
+		case PLISQL_STMT_RAISE:
+			rc = exec_stmt_raise(estate, (PLiSQL_stmt_raise *) stmt);
+			break;
+
+		case PLISQL_STMT_ASSERT:
+			rc = exec_stmt_assert(estate, (PLiSQL_stmt_assert *) stmt);
+			break;
+
+		case PLISQL_STMT_EXECSQL:
+			rc = exec_stmt_execsql(estate, (PLiSQL_stmt_execsql *) stmt);
+			break;
+
+		case PLISQL_STMT_DYNEXECUTE:
+			rc = exec_stmt_dynexecute(estate, (PLiSQL_stmt_dynexecute *) stmt);
+			break;
+
+		case PLISQL_STMT_DYNFORS:
+			rc = exec_stmt_dynfors(estate, (PLiSQL_stmt_dynfors *) stmt);
+			break;
+
+		case PLISQL_STMT_OPEN:
+			rc = exec_stmt_open(estate, (PLiSQL_stmt_open *) stmt);
+			break;
+
+		case PLISQL_STMT_FETCH:
+			rc = exec_stmt_fetch(estate, (PLiSQL_stmt_fetch *) stmt);
+			break;
+
+		case PLISQL_STMT_CLOSE:
+			rc = exec_stmt_close(estate, (PLiSQL_stmt_close *) stmt);
+			break;
+
+		case PLISQL_STMT_COMMIT:
+			rc = exec_stmt_commit(estate, (PLiSQL_stmt_commit *) stmt);
+			break;
+
+		case PLISQL_STMT_ROLLBACK:
+			rc = exec_stmt_rollback(estate, (PLiSQL_stmt_rollback *) stmt);
+			break;
+
+		default:
+			/* point err_stmt to parent, since this one seems corrupt */
+			elog(ERROR, "unrecognized cmd_type: %d", stmt->cmd_type);
+			rc = -1;		/* keep compiler quiet */
+	}
+
+	return rc;
+}
+
+/*
+ * exec_stmt_uses_subxact
+ *
+ * Return true if the given statement should be run inside its own short-lived
+ * subtransaction when it is executed from within an exception-enabled block
+ * (Oracle-style statement-level rollback).  If it fails, only its own SQL
+ * effects are undone, and the block's exception handler can still run.
+ *
+ * We wrap everything except:
+ *  - exception-enabled nested blocks: these manage their own statement-level
+ *    mode and handlers (see exec_stmt_block);
+ *  - COMMIT/ROLLBACK: they must not run inside a subtransaction, so
+ *    exec_transaction() first releases any wrapper subtransactions that are
+ *    still open.
+ */
+static bool
+exec_stmt_uses_subxact(PLiSQL_stmt * stmt)
+{
+		switch (stmt->cmd_type)
+	{
+		case PLISQL_STMT_COMMIT:
+		case PLISQL_STMT_ROLLBACK:
+			return false;
+
+		case PLISQL_STMT_CALL:
+			/*
+			 * The called procedure manages its own transactions (e.g. it may
+			 * execute COMMIT inside an exception block); wrapping it would
+			 * tie its SPI connection to a subtransaction and make that
+			 * impossible.
+			 */
+			return false;
+
+		case PLISQL_STMT_BLOCK:
+			return ((PLiSQL_stmt_block *) stmt)->exceptions == NULL;
+
+		default:
+			return true;
+	}
+}
+
+/*
+ * exec_stmt_with_stmt_subxact
+ *
+ * Execute a single statement inside a new internal subtransaction, rolling
+ * the subtransaction back if the statement fails.  This is the engine of
+ * Oracle-style statement-level rollback for statements executed within
+ * EXCEPTION-enabled blocks (see exec_stmt_block).
+ *
+ * A COMMIT/ROLLBACK executed inside such a statement will first release all
+ * open statement-level subtransactions (see exec_transaction), in which case
+ * we must not try to release (or roll back) our own subtransaction again;
+ * the active_stmt_subxact_depth counter tells us whether it is still
+ * open.  Caller must be in the estate's usual memory context and resource
+ * owner.
+ */
+static int
+exec_stmt_with_stmt_subxact(PLiSQL_execstate * estate, PLiSQL_stmt * stmt)
+{
+	volatile int rc = -1;
+	MemoryContext oldcontext = CurrentMemoryContext;
+	ResourceOwner oldowner = CurrentResourceOwner;
+
+	BeginInternalSubTransaction(NULL);
+	MemoryContextSwitchTo(oldcontext);
+	active_stmt_subxact_depth++;
+
+	PG_TRY();
+	{
+		rc = exec_stmt(estate, stmt);
+
+		/*
+		 * Commit the inner transaction, return to outer xact context.  Skip
+		 * this if a COMMIT/ROLLBACK in the statement already released our
+		 * subtransaction.
+		 */
+		if (active_stmt_subxact_depth > 0)
+		{
+			ReleaseCurrentSubTransaction();
+			active_stmt_subxact_depth--;
+		}
+		MemoryContextSwitchTo(oldcontext);
+		CurrentResourceOwner = oldowner;
+	}
+	PG_CATCH();
+	{
+		ErrorData  *edata;
+
+		/*
+		 * Save error info in a context that will survive the abort, then
+		 * roll back only this statement's subtransaction (unless a
+		 * COMMIT/ROLLBACK already released it).
+		 */
+		MemoryContextSwitchTo(oldcontext);
+		edata = CopyErrorData();
+		FlushErrorState();
+
+		if (active_stmt_subxact_depth > 0)
+		{
+			RollbackAndReleaseCurrentSubTransaction();
+			active_stmt_subxact_depth--;
+		}
+		MemoryContextSwitchTo(oldcontext);
+		CurrentResourceOwner = oldowner;
+
+		/*
+		 * SPI will have thrown away any tuple table made in the failed
+		 * subtransaction, so drop our reference to it.
+		 */
+		estate->eval_tuptable = NULL;
+
+		ReThrowError(edata);
+	}
+	PG_END_TRY();
+
+	return rc;
+}
 
 /* ----------
  * exec_stmt_assign			Evaluate an expression and
@@ -4469,6 +4617,7 @@ plisql_estate_setup(PLiSQL_execstate * estate,
 
 	estate->readonly_func = func->fn_readonly;
 	estate->atomic = true;
+	estate->stmt_subxact_level = 0;
 
 	estate->exitlabel = NULL;
 	estate->cur_error = NULL;
@@ -5578,6 +5727,20 @@ exec_transaction(bool is_commit, bool chain)
 	Oid			save_userid;
 	int			save_sec_context;
 	bool		restore_user;
+
+	/*
+	 * If we are executing inside an exception-enabled block, statements are
+	 * run in short-lived subtransactions (see exec_stmt_with_stmt_subxact).
+	 * Those must be released before we can terminate the top-level
+	 * transaction; otherwise SPI would reject the COMMIT/ROLLBACK.  (Any
+	 * savepoints created by the user are left alone, and will still block
+	 * the transaction termination, as before.)
+	 */
+	while (active_stmt_subxact_depth > 0)
+	{
+		ReleaseCurrentSubTransaction();
+		active_stmt_subxact_depth--;
+	}
 
 	GetUserIdAndSecContext(&save_userid, &save_sec_context);
 	restore_user = (save_sec_context & SECURITY_LOCAL_USERID_CHANGE) != 0;
@@ -9804,6 +9967,7 @@ plisql_xact_cb(XactEvent event, void *arg)
 		event == XACT_EVENT_PREPARE)
 	{
 		simple_econtext_stack = NULL;
+		active_stmt_subxact_depth = 0;
 
 		if (shared_simple_eval_estate)
 			FreeExecutorState(shared_simple_eval_estate);
@@ -9816,6 +9980,7 @@ plisql_xact_cb(XactEvent event, void *arg)
 			 event == XACT_EVENT_PARALLEL_ABORT)
 	{
 		simple_econtext_stack = NULL;
+		active_stmt_subxact_depth = 0;
 		shared_simple_eval_estate = NULL;
 		shared_simple_eval_resowner = NULL;
 	}
