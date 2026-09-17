@@ -23,13 +23,13 @@ We are committed to abiding by the principles of [open-source ways](https://open
 </br>
 
 ## Installation
-We recommend following our [Quick Start](https://docs.ivorysql.org/en/ivorysql-doc/v5.4/3.1#quick-installation) for how to install and running IvorySQL.
+We recommend following our [Quick Start](https://docs.ivorysql.org/en/ivorysql-doc/v5.6/3.1#quick-installation) for how to install and running IvorySQL.
 
-Furthermore, for more detailed installation instructions, please refer to the [Installation Docs](https://docs.ivorysql.org/en/ivorysql-doc/v5.4/4.1#introduction). We provide four installation methods for IvorySQL, as outlined below:
-- [Yum installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.4/4.1#Yum-installation)
-- [Docker installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.4/4.1#Docker-installation)
-- [Rpm installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.4/4.1#Rpm-installation)
-- [Source code installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.4/4.1#Source-code-installation)
+Furthermore, for more detailed installation instructions, please refer to the [Installation Docs](https://docs.ivorysql.org/en/ivorysql-doc/v5.6/4.1#introduction). We provide four installation methods for IvorySQL, as outlined below:
+- [Yum installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.6/4.1#Yum-installation)
+- [Docker installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.6/4.1#Docker-installation)
+- [Rpm installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.6/4.1#Rpm-installation)
+- [Source code installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.6/4.1#Source-code-installation)
 
 ## Development with Docker
 
@@ -92,7 +92,7 @@ translations for the documentation. If you have design skills you can contribute
 Testing the IvorySQL and reporting issues or by issuing pull requests for bug fixes or new features or answering the questions
 on mailing lists are some ways to contribute to the IvorySQL project and all types of contributions are welcomed and appreciated
 by the IvorySQL community.
-For contribution guidelines, please refer to the [Community Contribution Guide](https://www.ivorysql.org/zh-cn/contribution-guidelines/) and [the Developer Contribution Guide](https://docs.ivorysql.org/cn/ivorysql-doc/v5.4/8.1).
+For contribution guidelines, please refer to the [Community Contribution Guide](https://www.ivorysql.org/zh-cn/contribution-guidelines/) and [the Developer Contribution Guide](https://docs.ivorysql.org/cn/ivorysql-doc/v5.6/8.1).
 
 **Important:** Before submitting any code contribution, all contributors are required to sign the Contributor License Agreement (CLA). The CLA protects both contributors and the project, and helps the community build a more standardized and sustainable open-source governance system.
 
