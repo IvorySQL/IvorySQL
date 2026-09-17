@@ -50,6 +50,7 @@ tests += {
       'repack_temporal_multirange',
       'repack_toast',
       'syscache-update-pruned',
+      'wait_cleanup',
       'heap_lock_update',
     ],
     'runningcheck': false, # see syscache-update-pruned

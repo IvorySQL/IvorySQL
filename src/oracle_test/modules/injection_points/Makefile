@@ -19,6 +19,7 @@ ISOLATION = basic \
 	    repack_temporal_multirange \
 	    repack_toast \
 	    syscache-update-pruned \
+	    wait_cleanup \
 	    heap_lock_update
 
 # some isolation tests require wal_level=replica
