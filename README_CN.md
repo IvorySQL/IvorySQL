@@ -27,19 +27,19 @@ IvorySQL 项目采用 Apache 2.0 许可协议发布，并鼓励各种形式的�
 </br>
 
 ## 安装
-建议参考[快速入门](https://docs.ivorysql.org/cn/ivorysql-doc/v5.4/3.1#quick-installation)了解如何安装和运行IvorySQL。
+建议参考[快速入门](https://docs.ivorysql.org/cn/ivorysql-doc/v5.6/3.1#quick-installation)了解如何安装和运行IvorySQL。
 
-此外，关于更详细的安装说明，请参阅[安装文档](https://docs.ivorysql.org/cn/ivorysql-doc/v5.4/4.1#introduction)。我们提供以下四种 IvorySQL 的安装方法：
-- [Yum 安装](https://docs.ivorysql.org/cn/ivorysql-doc/v5.4/4.1#yum源安装)
-- [Docker 安装](https://docs.ivorysql.org/cn/ivorysql-doc/v5.4/4.1#docker安装)
-- [RPM 安装](https://docs.ivorysql.org/cn/ivorysql-doc/v5.4/4.1#rpm安装)
-- [源代码安装](https://docs.ivorysql.org/cn/ivorysql-doc/v5.4/4.1#源码安装)
+此外，关于更详细的安装说明，请参阅[安装文档](https://docs.ivorysql.org/cn/ivorysql-doc/v5.6/4.1#introduction)。我们提供以下四种 IvorySQL 的安装方法：
+- [Yum 安装](https://docs.ivorysql.org/cn/ivorysql-doc/v5.6/4.1#yum源安装)
+- [Docker 安装](https://docs.ivorysql.org/cn/ivorysql-doc/v5.6/4.1#docker安装)
+- [RPM 安装](https://docs.ivorysql.org/cn/ivorysql-doc/v5.6/4.1#rpm安装)
+- [源代码安装](https://docs.ivorysql.org/cn/ivorysql-doc/v5.6/4.1#源码安装)
 
 ## 为IvorySQL做贡献
 有许多方式可以为 IvorySQL 做出贡献。您可以通过更新文档或提供文档翻译来贡献。如果您具备设计技能，还可以参与 IvorySQL 官网项目的建设。
 
 测试 IvorySQL 并报告问题、提交错误修复或新功能的 Pull Request，或者在邮件列表中回答问题，都是为 IvorySQL 贡献的方式。IvorySQL 社区欢迎并感谢所有类型的贡献。
-贡献方式请参考[社区贡献指南](https://www.ivorysql.org/zh-cn/contribution-guidelines/)和[开发者贡献指南](https://docs.ivorysql.org/cn/ivorysql-doc/v5.4/8.1)。
+贡献方式请参考[社区贡献指南](https://www.ivorysql.org/zh-cn/contribution-guidelines/)和[开发者贡献指南](https://docs.ivorysql.org/cn/ivorysql-doc/v5.6/8.1)。
 
 **提示**：在提交任何代码贡献之前，所有贡献者都必须签署贡献者许可协议（CLA）。CLA 既能保护贡献者自身权益，也能保护项目，有助于社区建立更加规范、可持续的开源治理体系。
 
