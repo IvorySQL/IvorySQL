@@ -100,6 +100,14 @@ ORA_REGRESS = \
 	dbms_transaction \
 	dbms_random
 
+# TAP tests run in both harnesses: prove_check (plain make check) and
+# oracle_prove_check (make oracle-check); the test itself forces an
+# Oracle-mode cluster via extra initdb options.  PROVE_TESTS pins the
+# suite to the one test file so the t/*.pl glob does not also pick up
+# the loopback server helper t/utl_tcp_server.pl.
+TAP_TESTS = 1
+PROVE_TESTS = t/001_utl_tcp.pl
+
 # Include path for plisql.h (needed by dbms_utility)
 PG_CPPFLAGS += -I$(top_srcdir)/src/pl/plisql/src
 
