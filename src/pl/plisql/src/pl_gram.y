@@ -5087,7 +5087,27 @@ parse_datatype(const char *string, int location, yyscan_t yyscanner)
 	sql_error_callback_arg cbarg;
 	ErrorContextCallback  syntax_errcontext;
 	PLiSQL_type *result = NULL;
-    MemoryContext oldCxt;
+	MemoryContext oldCxt;
+	const char *alias_start = string;
+	const char *alias_end = string + strlen(string);
+
+	/*
+	 * PLS_INTEGER and BINARY_INTEGER are identical PL/SQL-only signed
+	 * 32-bit integer types.  Keep them out of the SQL type namespace, but
+	 * map their declaration spellings to int4 while compiling PL/iSQL.
+	 * read_datatype() preserves whitespace before the following token, so
+	 * ignore surrounding whitespace while recognizing these spellings.
+	 */
+	while (alias_start < alias_end && scanner_isspace(*alias_start))
+		alias_start++;
+	while (alias_end > alias_start && scanner_isspace(alias_end[-1]))
+		alias_end--;
+
+	if (((alias_end - alias_start) == strlen("pls_integer") &&
+		 pg_strncasecmp(alias_start, "pls_integer", strlen("pls_integer")) == 0) ||
+		((alias_end - alias_start) == strlen("binary_integer") &&
+		 pg_strncasecmp(alias_start, "binary_integer", strlen("binary_integer")) == 0))
+		return plisql_build_datatype(INT4OID, -1, InvalidOid, NULL);
 
 	cbarg.location = location;
 	cbarg.yyscanner = yyscanner;

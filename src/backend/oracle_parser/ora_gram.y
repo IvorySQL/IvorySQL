@@ -9861,7 +9861,32 @@ func_return:
  * but that causes reduce/reduce conflicts.  type_function_name
  * is next best choice.
  */
-func_type:	Typename								{ $$ = $1; }
+func_type:	Typename
+				{
+					/*
+					 * PLS_INTEGER and BINARY_INTEGER are PL/SQL-only 32-bit
+					 * integer types.  Accept their unqualified spellings in
+					 * routine signatures without adding them to the SQL type
+					 * namespace used by table columns and casts.
+					 */
+					const char *type_start =
+						pg_yyget_extra(yyscanner)->core_yy_extra.scanbuf + @1;
+
+					if (type_start[0] != '"' &&
+						!((type_start[0] == 'U' || type_start[0] == 'u') &&
+						  type_start[1] == '&' && type_start[2] == '"') &&
+						list_length($1->names) == 1 &&
+						$1->typmods == NIL && $1->arrayBounds == NIL &&
+						(strcmp(strVal(linitial($1->names)), "pls_integer") == 0 ||
+						 strcmp(strVal(linitial($1->names)), "binary_integer") == 0))
+					{
+						$$ = SystemTypeName("int4");
+						$$->location = $1->location;
+						$$->setof = $1->setof;
+					}
+					else
+						$$ = $1;
+				}
 			| type_function_name attrs '%' TYPE_P
 				{
 					$$ = makeTypeNameFromNameList(lcons(makeString($1), $2));
