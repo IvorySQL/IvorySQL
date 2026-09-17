@@ -35,6 +35,8 @@
 #include "parser/parse_target.h"
 #include "parser/parse_expr.h"
 #include "nodes/nodeFuncs.h"
+#include "nodes/makefuncs.h"
+#include "nodes/value.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "utils/builtins.h"
@@ -113,7 +115,8 @@ static subprocFuncCandidateList plisql_func_select_candidate(int nargs,
 static List *plisql_expand_and_reorder_functionargs(ParseState *pstate,
 													PLiSQL_subproc_function * subprocfunc,
 													int funcnarg, List *fargs,
-													List *defaultnumber, List **argdefaults);
+													List *defaultnumber, List **argdefaults,
+													bool defer_defaults);
 static TypeFuncClass internal_get_subprocfunc_result_type(PLiSQL_subproc_function * subprocfunc,
 														  Node *call_expr,
 														  ReturnSetInfo *rsinfo,
@@ -393,6 +396,8 @@ plisql_build_variable_from_funcargs(PLiSQL_subproc_function * subprocfunc, bool 
 			memcpy(newexpr, argitem->defexpr, sizeof(PLiSQL_expr));
 			if (argitem->defexpr->query != NULL)
 				newexpr->query = pstrdup(argitem->defexpr->query);
+			if (function->item != NULL)
+				newexpr->func = function;
 			argvariable->default_val = newexpr;
 		}
 		else
@@ -1413,7 +1418,8 @@ plisql_get_subprocfunc_detail(ParseState *pstate,
 							  int *nvargs,	/* return value */
 							  Oid *vatype,	/* return value */
 							  Oid **true_typeids,	/* return value */
-							  List **argdefaults)	/* return value */
+							  List **argdefaults,	/* return value */
+							  bool defer_defaults)
 {
 	subprocFuncCandidateList raw_candidates;
 	subprocFuncCandidateList best_candidate = NULL;
@@ -1545,7 +1551,8 @@ plisql_get_subprocfunc_detail(ParseState *pstate,
 		if (fargnames != NIL || defaultnumber != NIL)
 		{
 			*fargs = plisql_expand_and_reorder_functionargs(pstate, subprocfunc, best_candidate->nargs,
-															*fargs, defaultnumber, argdefaults);
+															*fargs, defaultnumber, argdefaults,
+															defer_defaults);
 
 			/*
 			 * After reordering fargs to declared order, we must also rebuild
@@ -2466,7 +2473,8 @@ plisql_func_select_candidate(int nargs,
 static List *
 plisql_expand_and_reorder_functionargs(ParseState *pstate, PLiSQL_subproc_function * subprocfunc,
 									   int funcnarg, List *fargs,
-									   List *defaultnumber, List **argdefaults)
+									   List *defaultnumber, List **argdefaults,
+									   bool defer_defaults)
 {
 	Node	   *argarray[FUNC_MAX_ARGS];
 	int			i;
@@ -2504,10 +2512,26 @@ plisql_expand_and_reorder_functionargs(ParseState *pstate, PLiSQL_subproc_functi
 
 			Assert(argarray[argno] == NULL);
 
-			argdefault = plisql_get_subprocfunc_argdefaults(pstate, subprocfunc, argno);
-			argarray[argno] = (Node *) copyObject(argdefault);
-			if (argdefaults != NULL)
-				*argdefaults = lappend(*argdefaults, argdefault);
+			if (defer_defaults)
+			{
+				PLiSQL_function_argitem *argitem;
+
+				argitem = list_nth(subprocfunc->arg, argno);
+				argdefault = (Node *) makeNullConst(argitem->type->typoid,
+														 argitem->type->atttypmod,
+														 argitem->type->collation);
+				argarray[argno] = argdefault;
+
+				if (argdefaults != NULL)
+					*argdefaults = lappend(*argdefaults, makeInteger(argno));
+			}
+			else
+			{
+				argdefault = plisql_get_subprocfunc_argdefaults(pstate, subprocfunc, argno);
+				argarray[argno] = (Node *) copyObject(argdefault);
+				if (argdefaults != NULL)
+					*argdefaults = lappend(*argdefaults, argdefault);
+			}
 		}
 	}
 	/* Rebuild the argument list in call order */
@@ -3239,7 +3263,8 @@ plisql_subprocfunc_ref(ParseState *pstate, List *funcname,
 										   nvargs,	/* return value */
 										   vatype,	/* return value */
 										   true_typeids,	/* return value */
-										   argdefaults);	/* return value */
+										   argdefaults,	/* return value */
+										   false);
 	if (detail != FUNCDETAIL_NORMAL &&
 		detail != FUNCDETAIL_PROCEDURE)
 		elog(ERROR, "wrong number or types of arguments in call to \"%s\"", func_name);

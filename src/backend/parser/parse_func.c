@@ -23,6 +23,7 @@
 #include "lib/stringinfo.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
+#include "nodes/value.h"
 #include "parser/parse_agg.h"
 #include "parser/parse_clause.h"
 #include "parser/parse_coerce.h"
@@ -140,6 +141,7 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 	char		function_from = FUNC_FROM_PG_PROC;
 	void	   *pfunc = NULL;
 	Oid			pkgoid = InvalidOid;
+	Bitmapset  *default_argnos = NULL;
 
 
 	/*
@@ -427,6 +429,21 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 								   &funcid, &rettype, &retset,
 								   &nvargs, &vatype,
 								   &declared_arg_types, &argdefaults);
+
+	/*
+	 * Package defaults are evaluated by the callee after package
+	 * initialization.  Package lookup returns the omitted formal positions in
+	 * argdefaults; convert those positions to FuncExpr metadata and clear the
+	 * list so the generic pg_proc default-expression path does not process
+	 * them as expression nodes.
+	 */
+	if (function_from == FUNC_FROM_PACKAGE && argdefaults != NIL)
+	{
+		foreach(l, argdefaults)
+			default_argnos = bms_add_member(default_argnos, intVal(lfirst(l)));
+
+		argdefaults = NIL;
+	}
 
 	cancel_parser_errposition_callback(&pcbstate);
 
@@ -1037,6 +1054,7 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 		funcexpr->funcformat = funcformat;
 		/* funccollid and inputcollid will be set by parse_collate.c */
 		funcexpr->args = fargs;
+		funcexpr->default_argnos = default_argnos;
 		funcexpr->location = location;
 		funcexpr->parent_func = pfunc;
 		funcexpr->function_from = function_from;

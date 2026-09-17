@@ -607,6 +607,7 @@ makeFuncExpr(Oid funcid, Oid rettype, List *args,
 	funcexpr->funccollid = funccollid;
 	funcexpr->inputcollid = inputcollid;
 	funcexpr->args = args;
+	funcexpr->default_argnos = NULL;
 
 	/*
 	 * Initialize origin and parent linkage: - function_from defaults to
