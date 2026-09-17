@@ -157,7 +157,7 @@ static const struct
 	{"THU", 4}, {"FRI", 5}, {"SAT", 6}
 };
 
-static void
+pg_noreturn static void
 calendar_error(const char *calendar, const char *detail)
 {
 	ereport(ERROR,
