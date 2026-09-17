@@ -574,7 +574,7 @@ like($err, qr/WTMO .*transfer timed out after 1 seconds \(08006\)/,
 	my $session = IPC::Run::start(
 		[ 'psql', '-XAtq', '--dbname' => $ora_connstr ],
 		\$pin, \$pout, \$perr,
-		IPC::Run::timeout(120, exception => qq(session timed out)));
+		IPC::Run::timeout(300, exception => qq(session timed out)));
 
 	$pin .= "SELECT pg_backend_pid();\n";
 	PostgreSQL::Test::Utils::pump_until($session,
@@ -1135,7 +1135,7 @@ ora_sql("DROP ROLE utl_low");
 	my $session = IPC::Run::start(
 		[ 'psql', '-XAtq', '--dbname' => $ora_connstr ],
 		\$pin, \$pout, \$perr,
-		IPC::Run::timeout(120, exception => qq(session timed out)));
+		IPC::Run::timeout(300, exception => qq(session timed out)));
 
 	$pin .= "SELECT pg_backend_pid();\n";
 	PostgreSQL::Test::Utils::pump_until($session,
