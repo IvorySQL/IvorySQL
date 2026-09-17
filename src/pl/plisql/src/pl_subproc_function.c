@@ -106,7 +106,8 @@ static subprocFuncCandidateList plisql_getFuncCandidateListFromFunname(char *fun
 																	   bool proc_call);
 static int	plisql_func_match_argtypes(int nargs, Oid *input_typeids,
 									   subprocFuncCandidateList raw_candidates,
-									   subprocFuncCandidateList * candidates);
+									   subprocFuncCandidateList * candidates,
+									   CoercionContext ccontext);
 static subprocFuncCandidateList plisql_func_select_candidate(int nargs,
 															 Oid *input_typeids,
 															 subprocFuncCandidateList candidates);
@@ -1459,11 +1460,29 @@ plisql_get_subprocfunc_detail(ParseState *pstate,
 	{
 		subprocFuncCandidateList current_candidates;
 		int			ncandidates;
+		bool		assignment_fallback = false;
 
 		ncandidates = plisql_func_match_argtypes(nargs,
 												 argtypes,
 												 raw_candidates,
-												 &current_candidates);
+												 &current_candidates,
+												 COERCION_IMPLICIT);
+
+		/*
+		 * PL/iSQL actual parameters follow assignment-style conversion rules.
+		 * Preserve exact/implicit overload precedence, but if that finds no
+		 * candidate, retry using assignment coercions before reporting a type
+		 * mismatch.
+		 */
+		if (ncandidates == 0)
+		{
+			assignment_fallback = true;
+			ncandidates = plisql_func_match_argtypes(nargs,
+													 argtypes,
+													 raw_candidates,
+													 &current_candidates,
+													 COERCION_ASSIGNMENT);
+		}
 
 		/* Single match: use it */
 		if (ncandidates == 1)
@@ -1472,6 +1491,15 @@ plisql_get_subprocfunc_detail(ParseState *pstate,
 		/* Multiple candidates: select the best or error out */
 		else if (ncandidates > 1)
 		{
+			/*
+			 * Assignment coercion is only a fallback compatibility path.  Do
+			 * not reuse the implicit-cast preference heuristics to guess among
+			 * candidates admitted only by assignment casts.  Until PL/iSQL has
+			 * dedicated precedence rules for this case, keep the call ambiguous.
+			 */
+			if (assignment_fallback)
+				elog(ERROR, "more than one functions or procedures match this call");
+
 			best_candidate = plisql_func_select_candidate(nargs,
 														  argtypes,
 														  current_candidates);
@@ -2084,7 +2112,8 @@ static int
 plisql_func_match_argtypes(int nargs,
 						   Oid *input_typeids,
 						   subprocFuncCandidateList raw_candidates,
-						   subprocFuncCandidateList * candidates)	/* return value */
+						   subprocFuncCandidateList * candidates,
+						   CoercionContext ccontext)	/* return value */
 {
 	subprocFuncCandidateList current_candidate;
 	subprocFuncCandidateList next_candidate;
@@ -2096,9 +2125,59 @@ plisql_func_match_argtypes(int nargs,
 		 current_candidate != NULL;
 		 current_candidate = next_candidate)
 	{
+		bool		match = true;
+
 		next_candidate = current_candidate->next;
-		if (can_coerce_type(nargs, input_typeids, current_candidate->args,
-							COERCION_IMPLICIT))
+
+		if (ccontext == COERCION_ASSIGNMENT)
+		{
+			Oid		   *effective_types;
+			int			i;
+
+			/*
+			 * Check the complete signature in one pass so polymorphic argument
+			 * families are cross-checked by can_coerce_type().
+			 */
+			match = can_coerce_type(nargs, input_typeids,
+									current_candidate->args,
+									COERCION_ASSIGNMENT);
+			if (!match)
+				continue;
+
+			/*
+			 * Resolve polymorphic formals to their effective call types before
+			 * checking output-bearing arguments.  IN parameters may use
+			 * assignment casts, but OUT/INOUT arguments must remain implicitly
+			 * coercible so the caller's writable variable is not replaced by a
+			 * cast expression.
+			 */
+			effective_types = palloc_array(Oid, nargs);
+			memcpy(effective_types, current_candidate->args,
+				   nargs * sizeof(Oid));
+			(void) enforce_generic_type_consistency(input_typeids,
+										 effective_types,
+										 nargs,
+										 InvalidOid,
+										 false);
+
+			for (i = 0; i < nargs; i++)
+			{
+				if (current_candidate->argmodes[i] != FUNC_PARAM_IN &&
+					!can_coerce_type(1, &input_typeids[i],
+									 &effective_types[i],
+									 COERCION_IMPLICIT))
+				{
+					match = false;
+					break;
+				}
+			}
+			pfree(effective_types);
+		}
+		else
+			match = can_coerce_type(nargs, input_typeids,
+									current_candidate->args, ccontext);
+
+		if (match)
 		{
 			current_candidate->next = *candidates;
 			*candidates = current_candidate;
