@@ -217,6 +217,12 @@ $end_lsn = $node->emit_wal(0);
 $node->stop('immediate');
 $node->write_wal($TLI, $end_lsn, $WAL_SEGMENT_SIZE,
 	build_record_header(2 * 1024 * 1024 * 1024, 0, $prev_lsn));
+# The oracle-mode initdb creates many more catalog entries than the PostgreSQL
+# one, so the WAL segment used here is likely to be a recycled file that still
+# holds page headers from its previous incarnation.  Zero the page we are about
+# to read, so that this test does not depend on WAL segment recycling history.
+$node->write_wal($TLI, start_of_next_page($end_lsn),
+	$WAL_SEGMENT_SIZE, "\0" x $WAL_BLOCK_SIZE);
 $log_size = -s $node->logfile;
 $node->start;
 ok($node->log_contains("invalid magic number 0000 .* LSN .*", $log_size),
@@ -319,6 +325,9 @@ $end_lsn = $node->advance_wal_to_record_splitting_zone($WAL_BLOCK_SIZE);
 $node->stop('immediate');
 $node->write_wal($TLI, $end_lsn, $WAL_SEGMENT_SIZE,
 	build_record_header(2 * 1024 * 1024 * 1024, 0, 0xdeadbeef));
+# Same recycled-segment hazard as in the "xlp_magic zero" case above.
+$node->write_wal($TLI, start_of_next_page($end_lsn),
+	$WAL_SEGMENT_SIZE, "\0" x $WAL_BLOCK_SIZE);
 $log_size = -s $node->logfile;
 $node->start;
 ok($node->log_contains("invalid magic number 0000 .* LSN .*", $log_size),
