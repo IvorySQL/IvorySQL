@@ -54,6 +54,7 @@ select dbms_assert.enquote_name('MixedCase', false) as case_preserved;
 select dbms_assert.enquote_name('MixedCase', true) as case_upper;
 select dbms_assert.enquote_name('"Already"') as already_quoted;
 select dbms_assert.enquote_name('"a""b"') as paired_quote;
+select dbms_assert.enquote_name('a""b') as embedded_quote;
 select dbms_assert.enquote_name('a"b') as unpaired_quote;
 select dbms_assert.enquote_name('SCOTT."EMP"') as qualified_quoted;
 select dbms_assert.enquote_name('"SCOTT.EMP"') as quoted_period;

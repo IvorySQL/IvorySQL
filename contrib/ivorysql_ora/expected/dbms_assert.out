@@ -153,6 +153,12 @@ select dbms_assert.enquote_name('"a""b"') as paired_quote;
  "a""b"
 (1 row)
 
+select dbms_assert.enquote_name('a""b') as embedded_quote;
+ embedded_quote 
+----------------
+ "A""B"
+(1 row)
+
 select dbms_assert.enquote_name('a"b') as unpaired_quote;
 ERROR:  string is not simple SQL name
 CONTEXT:  PL/iSQL function sys.dbms_assert.enquote_name line 8 at RETURN
