@@ -47,6 +47,8 @@ PG_FUNCTION_INFO_V1(binary_float_nanvl);
 PG_FUNCTION_INFO_V1(binary_double_nanvl);
 PG_FUNCTION_INFO_V1(ora_to_binary_float);
 PG_FUNCTION_INFO_V1(ora_to_binary_double);
+PG_FUNCTION_INFO_V1(binary_float_remainder);
+PG_FUNCTION_INFO_V1(binary_double_remainder);
 
 
 Datum
@@ -160,6 +162,48 @@ binary_double_nanvl(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 
 	PG_RETURN_FLOAT8(PG_GETARG_FLOAT8(1));
+}
+
+/*
+ * binary_float_remainder
+ * Oracle REMAINDER for BINARY_FLOAT.
+ *
+ * Oracle documents the floating-point overloads as IEEE 754 behaviour:
+ * a zero divisor or an infinite dividend yields NaN instead of raising,
+ * and a zero result keeps the sign of the dividend.  libm's remainderf()
+ * implements exactly the IEEE 754 remainder operation (the quotient is
+ * rounded to the nearest integer, ties to even), so it provides all four
+ * properties directly:
+ *
+ *   remainderf(7.0f, 0.0f)     -> NaN   (zero divisor)
+ *   remainderf(INFINITY, 4.0f) -> NaN   (infinite dividend)
+ *   remainderf(-6.0f, 3.0f)    -> -0.0  (sign of dividend preserved)
+ *   remainderf(2.5f, 1.0f)     -> 0.5f  (tie rounds the quotient to even)
+ *
+ * This cannot be expressed as a SQL wrapper around float division because
+ * PostgreSQL raises division_by_zero before the remainder is computed.
+ */
+Datum
+binary_float_remainder(PG_FUNCTION_ARGS)
+{
+	float4		n2 = PG_GETARG_FLOAT4(0);	/* dividend (Oracle n2) */
+	float4		n1 = PG_GETARG_FLOAT4(1);	/* divisor  (Oracle n1) */
+
+	PG_RETURN_FLOAT4(remainderf(n2, n1));
+}
+
+/*
+ * binary_double_remainder
+ * Oracle REMAINDER for BINARY_DOUBLE; the double-precision counterpart of
+ * binary_float_remainder().  See that function for the IEEE 754 mapping.
+ */
+Datum
+binary_double_remainder(PG_FUNCTION_ARGS)
+{
+	float8		n2 = PG_GETARG_FLOAT8(0);	/* dividend (Oracle n2) */
+	float8		n1 = PG_GETARG_FLOAT8(1);	/* divisor  (Oracle n1) */
+
+	PG_RETURN_FLOAT8(remainder(n2, n1));
 }
 
 /*
