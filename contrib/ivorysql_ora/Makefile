@@ -27,6 +27,7 @@ OBJS = \
 	src/builtin_functions/misc_functions.o \
 	src/builtin_packages/dbms_output/dbms_output.o \
 	src/builtin_packages/utl_file/utl_file.o \
+	src/builtin_packages/utl_tcp/utl_tcp.o \
 	src/merge/ora_merge.o \
 	src/sysview/sysview_functions.o \
 	src/xml_functions/ora_xml_functions.o \
