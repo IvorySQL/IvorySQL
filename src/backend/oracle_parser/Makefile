@@ -85,4 +85,4 @@ clean distclean: clean-lib
 	rm -f lex.backup $(OBJS)
 
 maintainer-clean: clean
-	rm -f ora_scan.c ora_gram.c ora_kwlist_d.h
+	rm -f ora_scan.c ora_gram.c ora_gram.h ora_kwlist_d.h
