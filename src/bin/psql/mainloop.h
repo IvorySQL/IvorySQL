@@ -10,6 +10,7 @@
 #define MAINLOOP_H
 
 #include "fe_utils/psqlscan.h"
+#include "oracle_fe_utils/ora_psqlscan.h"
 
 extern const PsqlScanCallbacks psqlscan_callbacks;
 extern const Ora_psqlScanCallbacks Ora_psqlscan_callbacks;
