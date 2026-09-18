@@ -54,9 +54,18 @@
  * Hash key: (namespace, attribute).  The struct is compared as an opaque blob
  * (HASH_BLOBS), so it MUST be zero-filled before the names are copied in,
  * otherwise trailing garbage bytes would make equal keys compare unequal.
+ *
+ * ns_len / attr_len record the true byte length of each name.  They are part
+ * of the blob so a stored name containing an embedded NUL (e.g. 'AB'||chr(0))
+ * is never matched by a shorter name that happens to share the same prefix
+ * (strcmp would stop at the NUL and wrongly equate them).  Storing the length
+ * also lets readers return the full byte content instead of truncating at the
+ * first NUL.
  */
 typedef struct CtxKey
 {
+	int			ns_len;
+	int			attr_len;
 	char		namespace[DBMS_SESSION_NAME_LEN];
 	char		attribute[DBMS_SESSION_NAME_LEN];
 } CtxKey;
@@ -65,6 +74,7 @@ typedef struct CtxEntry
 {
 	CtxKey		key;			/* must be first field */
 	char	   *value;			/* palloc'd in DbmsSessionContext, NULL for NULL value */
+	int			value_len;		/* byte length of value; -1 when value is NULL */
 } CtxEntry;
 
 /* Per-backend session state */
@@ -74,7 +84,7 @@ static MemoryContext DbmsSessionContext = NULL;
 /* Internal helpers */
 static void dbms_session_init(void);
 static void make_key(CtxKey *key, text *ns_text, text *attr_text);
-static void clear_namespace(const char *ns);
+static void clear_namespace(text *ns_text);
 
 /* SQL-callable function declarations */
 PG_FUNCTION_INFO_V1(ora_dbms_session_set_context);
@@ -145,6 +155,8 @@ make_key(CtxKey *key, text *ns_text, text *attr_text)
 		key->namespace[i] = pg_toupper((unsigned char) ns_data[i]);
 	for (i = 0; i < attr_len; i++)
 		key->attribute[i] = pg_toupper((unsigned char) attr_data[i]);
+	key->ns_len = ns_len;
+	key->attr_len = attr_len;
 }
 
 /*
@@ -152,15 +164,22 @@ make_key(CtxKey *key, text *ns_text, text *attr_text)
  *
  * Matching keys are collected first and removed afterwards, because dynahash
  * forbids removing entries other than the current one during a seq scan.
+ *
+ * Length-aware: the namespace is taken from a text datum (so embedded NULs do
+ * not truncate it) and matched against stored keys by exact byte length plus
+ * memcmp.  Using strcmp here would stop at the first NUL and wrongly delete a
+ * stored 'AB'||chr(0)||'C' entry when asked to clear 'AB'.
  */
 static void
-clear_namespace(const char *ns)
+clear_namespace(text *ns_text)
 {
 	HASH_SEQ_STATUS seq;
 	CtxEntry   *entry;
 	CtxKey	   *victims;
 	long		nentries;
 	int			nvictims = 0;
+	int			ns_len = VARSIZE_ANY_EXHDR(ns_text);
+	char	   *ns_data = VARDATA_ANY(ns_text);
 	char		ns_up[DBMS_SESSION_NAME_LEN];
 	int			i;
 
@@ -176,18 +195,18 @@ clear_namespace(const char *ns)
 	 * here too before comparing.  An over-long namespace cannot match any
 	 * stored key (those are length-checked at insert time).
 	 */
-	if (strlen(ns) >= DBMS_SESSION_NAME_LEN)
+	if (ns_len >= DBMS_SESSION_NAME_LEN)
 		return;
-	for (i = 0; ns[i] != '\0'; i++)
-		ns_up[i] = pg_toupper((unsigned char) ns[i]);
-	ns_up[i] = '\0';
+	for (i = 0; i < ns_len; i++)
+		ns_up[i] = pg_toupper((unsigned char) ns_data[i]);
 
 	victims = (CtxKey *) palloc(sizeof(CtxKey) * nentries);
 
 	hash_seq_init(&seq, DbmsSessionHash);
 	while ((entry = (CtxEntry *) hash_seq_search(&seq)) != NULL)
 	{
-		if (strcmp(entry->key.namespace, ns_up) == 0)
+		if (entry->key.ns_len == ns_len &&
+			memcmp(entry->key.namespace, ns_up, ns_len) == 0)
 		{
 			if (entry->value != NULL)
 				pfree(entry->value);
@@ -247,7 +266,10 @@ ora_dbms_session_set_context(PG_FUNCTION_ARGS)
 		pfree(entry->value);
 
 	if (val_text == NULL)
+	{
 		entry->value = NULL;
+		entry->value_len = -1;
+	}
 	else
 	{
 		MemoryContext oldcontext = MemoryContextSwitchTo(DbmsSessionContext);
@@ -256,6 +278,7 @@ ora_dbms_session_set_context(PG_FUNCTION_ARGS)
 		entry->value = palloc(val_len + 1);
 		memcpy(entry->value, VARDATA_ANY(val_text), val_len);
 		entry->value[val_len] = '\0';
+		entry->value_len = val_len;
 		MemoryContextSwitchTo(oldcontext);
 	}
 
@@ -271,8 +294,6 @@ ora_dbms_session_set_context(PG_FUNCTION_ARGS)
 Datum
 ora_dbms_session_clear_context(PG_FUNCTION_ARGS)
 {
-	char	   *ns;
-
 	if (PG_ARGISNULL(0))
 		ereport(ERROR,
 				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
@@ -281,11 +302,9 @@ ora_dbms_session_clear_context(PG_FUNCTION_ARGS)
 	if (DbmsSessionHash == NULL)
 		PG_RETURN_VOID();
 
-	ns = text_to_cstring(PG_GETARG_TEXT_PP(0));
-
 	if (PG_ARGISNULL(1))
 	{
-		clear_namespace(ns);
+		clear_namespace(PG_GETARG_TEXT_PP(0));
 	}
 	else
 	{
@@ -314,8 +333,6 @@ ora_dbms_session_clear_context(PG_FUNCTION_ARGS)
 Datum
 ora_dbms_session_clear_all_context(PG_FUNCTION_ARGS)
 {
-	char	   *ns;
-
 	if (PG_ARGISNULL(0))
 		ereport(ERROR,
 				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
@@ -324,8 +341,7 @@ ora_dbms_session_clear_all_context(PG_FUNCTION_ARGS)
 	if (DbmsSessionHash == NULL)
 		PG_RETURN_VOID();
 
-	ns = text_to_cstring(PG_GETARG_TEXT_PP(0));
-	clear_namespace(ns);
+	clear_namespace(PG_GETARG_TEXT_PP(0));
 
 	PG_RETURN_VOID();
 }
@@ -339,8 +355,6 @@ ora_dbms_session_clear_all_context(PG_FUNCTION_ARGS)
 Datum
 ora_dbms_session_get_context(PG_FUNCTION_ARGS)
 {
-	char	   *ns;
-	char	   *attr;
 	CtxKey		key;
 	CtxEntry   *entry;
 	bool		found;
@@ -351,16 +365,16 @@ ora_dbms_session_get_context(PG_FUNCTION_ARGS)
 	if (DbmsSessionHash == NULL)
 		PG_RETURN_NULL();
 
-	ns = text_to_cstring(PG_GETARG_TEXT_PP(0));
-	attr = text_to_cstring(PG_GETARG_TEXT_PP(1));
-
 	/*
 	 * Read path: an over-long name can never match a stored key (set/clear
 	 * reject them at insert time), so return NULL rather than letting make_key
 	 * raise an error.  This keeps SYS_CONTEXT() usable in predicates without
-	 * aborting the query on an oversized argument.
+	 * aborting the query on an oversized argument.  Guard on the true byte
+	 * length (VARSIZE_ANY_EXHDR), not strlen(), so an argument containing an
+	 * embedded NUL is not mis-measured as short and then rejected by make_key.
 	 */
-	if (strlen(ns) >= DBMS_SESSION_NAME_LEN || strlen(attr) >= DBMS_SESSION_NAME_LEN)
+	if (VARSIZE_ANY_EXHDR(PG_GETARG_TEXT_PP(0)) >= DBMS_SESSION_NAME_LEN ||
+		VARSIZE_ANY_EXHDR(PG_GETARG_TEXT_PP(1)) >= DBMS_SESSION_NAME_LEN)
 		PG_RETURN_NULL();
 
 	make_key(&key, PG_GETARG_TEXT_PP(0), PG_GETARG_TEXT_PP(1));
@@ -369,7 +383,7 @@ ora_dbms_session_get_context(PG_FUNCTION_ARGS)
 	if (!found || entry->value == NULL)
 		PG_RETURN_NULL();
 
-	PG_RETURN_TEXT_P(cstring_to_text(entry->value));
+	PG_RETURN_TEXT_P(cstring_to_text_with_len(entry->value, entry->value_len));
 }
 
 /*
@@ -423,12 +437,15 @@ ora_dbms_session_list_context(PG_FUNCTION_ARGS)
 			Datum		values[3];
 			bool		nulls[3] = {false, false, false};
 
-			values[0] = CStringGetTextDatum(entry->key.namespace);
-			values[1] = CStringGetTextDatum(entry->key.attribute);
+			values[0] = PointerGetDatum(cstring_to_text_with_len(entry->key.namespace,
+																entry->key.ns_len));
+			values[1] = PointerGetDatum(cstring_to_text_with_len(entry->key.attribute,
+																entry->key.attr_len));
 			if (entry->value == NULL)
 				nulls[2] = true;
 			else
-				values[2] = CStringGetTextDatum(entry->value);
+				values[2] = PointerGetDatum(cstring_to_text_with_len(entry->value,
+																	entry->value_len));
 
 			tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 		}

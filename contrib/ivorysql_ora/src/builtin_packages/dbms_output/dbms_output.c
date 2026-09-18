@@ -362,7 +362,7 @@ ora_dbms_output_put_line(PG_FUNCTION_ARGS)
 	else
 	{
 		text	   *line_text = PG_GETARG_TEXT_PP(0);
-		line_str = text_to_cstring(line_text);
+		line_str = VARDATA_ANY(line_text);
 		line_len = VARSIZE_ANY_EXHDR(line_text);
 	}
 
@@ -421,8 +421,11 @@ ora_dbms_output_put(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(0))
 		PG_RETURN_VOID();  /* NULL appends nothing */
 
-	str = text_to_cstring(PG_GETARG_TEXT_PP(0));
-	str_len = VARSIZE_ANY_EXHDR(PG_GETARG_TEXT_PP(0));
+	{
+		text	   *str_text = PG_GETARG_TEXT_PP(0);
+		str = VARDATA_ANY(str_text);
+		str_len = VARSIZE_ANY_EXHDR(str_text);
+	}
 
 	/* Check line length limit BEFORE appending (Oracle behavior) */
 	if (output_buffer->current_line->len + str_len > DBMS_OUTPUT_MAX_LINE_LENGTH)

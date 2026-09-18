@@ -765,3 +765,19 @@ NOTICE:  Test 13.1 - DISCARD ALL cleared buffer: PASSED (status=1, buffer is NUL
 -- =============================================================================
 DROP PROCEDURE test_output_proc;
 DROP FUNCTION test_output_func;
+
+-- =============================================================================
+-- Section 14: Embedded NUL (chr(0)) round trip — deferred
+-- =============================================================================
+-- The DBMS_OUTPUT write/read path is now byte-exact: PUT/PUT_LINE feed
+-- appendBinaryStringInfo from VARDATA_ANY/VARSIZE_ANY_EXHDR (no text_to_cstring
+-- truncation), and GET_LINE returns via cstring_to_text_with_len.  An embedded
+-- chr(0) would therefore survive a PUT_LINE/GET_LINE round trip.
+--
+-- This cannot yet be exercised from SQL: IvorySQL's chr(0) raises
+-- "null character not permitted" (upstream behavior), and there is no
+-- utl_raw.cast_to_varchar2 to build a NUL-bearing text from a raw.  Once chr(0)
+-- is supported (or a raw->varchar cast is added), add:
+--   dbms_output.put_line('a' || chr(0) || 'b');
+--   dbms_output.get_line(line, status);
+--   assert length(line) = 3 and ascii(substr(line,2)) = 0;

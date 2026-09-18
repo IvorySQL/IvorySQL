@@ -215,18 +215,20 @@ PG_FUNCTION_INFO_V1(ivorysql_dbms_lock_allocate_unique);
 Datum
 ivorysql_dbms_lock_allocate_unique(PG_FUNCTION_ARGS)
 {
-    char *lockname_text = text_to_cstring(PG_GETARG_TEXT_PP(0));
+    text *lockname_text = PG_GETARG_TEXT_PP(0);
+    int   name_len = VARSIZE_ANY_EXHDR(lockname_text);
+    char *name_data = VARDATA_ANY(lockname_text);
     char handle[DBMS_LOCK_HANDLE_LENGTH + 1];
 
-    /* Use PostgreSQL 64-bit stable hash */
+    /* Use PostgreSQL 64-bit stable hash over the true byte length, so two
+     * lock names that differ only after an embedded chr(0) hash differently
+     * and produce distinct locks (strlen would stop at the NUL and collide). */
     uint64 hash =
         DatumGetUInt64(
             hash_any_extended(
-                (unsigned char *) lockname_text,
-                strlen(lockname_text),
+                (unsigned char *) name_data,
+                name_len,
                 0));
-    if (lockname_text != NULL)
-	    pfree((void *)lockname_text);
 
     snprintf(handle, sizeof(handle),
              "%llu",
