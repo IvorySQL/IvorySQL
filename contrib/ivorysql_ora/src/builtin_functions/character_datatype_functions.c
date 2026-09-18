@@ -778,6 +778,7 @@ ora_regexp_like(PG_FUNCTION_ARGS)
 	char		*in_flag_p = NULL;
 	int			in_flag_len, i, out_flag;
 	bool		match;
+	pg_re_flags	flags;
 	regmatch_t	pmatch[2];
 
 	if ((NULL == s) || (NULL == p))
@@ -788,32 +789,26 @@ ora_regexp_like(PG_FUNCTION_ARGS)
 	in_flag_p = VARDATA(in_flag);
 	in_flag_len = (VARSIZE(in_flag) - VARHDRSZ);
 
-	/* parse flag options */
-	out_flag = REG_ADVANCED;
-	for (i = 0; i <in_flag_len; i++)
+	/*
+	 * Oracle's match parameters are i, c, n, m and x.  Reject anything else
+	 * with regexp_like's own message first, because the shared flag parser
+	 * would silently accept PostgreSQL-only options such as 'p'.  Then parse
+	 * with the Oracle semantics: '.' does not match a newline by default,
+	 * 'n' lets it match, and 'm' makes ^/$ anchors match at newlines.
+	 */
+	for (i = 0; i < in_flag_len; i++)
 	{
-		switch (in_flag_p[i])
-		{
-			case 'i':
-				out_flag  |=  REG_ICASE;
-				break;
-			case 'n':
-				out_flag |= REG_NEWLINE;
-				break;
-			case 'c':
-				out_flag  &=  ~REG_ICASE;
-				break;
-			case 'x':
-				out_flag |= REG_EXPANDED;
-				break;
-			default:
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("invalid option of regexp_like: %c",
-						 in_flag_p[i])));
-				break;
-		}
+		if (in_flag_p[i] != 'i' && in_flag_p[i] != 'c' &&
+			in_flag_p[i] != 'n' && in_flag_p[i] != 'm' &&
+			in_flag_p[i] != 'x')
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("invalid option of regexp_like: %c",
+					 in_flag_p[i])));
 	}
+
+	ora_parse_re_flags(&flags, in_flag);
+	out_flag = flags.cflags;
 
 	/*
 	 * We pass two regmatch_t structs to get info about the overall match and
@@ -853,8 +848,11 @@ ora_regexp_like_no_flags(PG_FUNCTION_ARGS)
 	{
 		PG_RETURN_BOOL(false);
 	}
-	/* parse flag options */
-	out_flag = REG_ADVANCED;
+	/*
+	 * Oracle's default: '.' does not match a newline (REG_NLDOT), the same
+	 * semantics the shared flag parser applies to the 3-argument variant.
+	 */
+	out_flag = REG_ADVANCED | REG_NLDOT;
 
 	/*
 	 * We pass two regmatch_t structs to get info about the overall match and
@@ -925,11 +923,19 @@ ora_regexp_count(PG_FUNCTION_ARGS)
 		paramstr = text_to_cstring(match_param);
 		if (paramstr && paramstr[0] != '\0')
 		{
-			if (paramstr[0] != 'x' && paramstr[0] != 'm' && paramstr[0] != 'i' && 
-				paramstr[0] != 'c' && paramstr[0] != 'n' && paramstr[0] != 'g')
-					ereport(ERROR,
-							 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.")));
+			/*
+			 * Validate every character, not just the first one; otherwise
+			 * strings like 'is' or 'cs' silently apply PostgreSQL-only
+			 * flag semantics that Oracle rejects (ORA-01428).
+			 */
+			for (int j = 0; paramstr[j] != '\0'; j++)
+			{
+				if (paramstr[j] != 'x' && paramstr[j] != 'm' && paramstr[j] != 'i' &&
+					paramstr[j] != 'c' && paramstr[j] != 'n' && paramstr[j] != 'g')
+						ereport(ERROR,
+								 (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+									 errmsg("the 4th argument is illegal parameter for function. the parameter can be one of x, m, i, c, n.")));
+			}
 		}
 	}
 
