@@ -69,7 +69,7 @@ static FuncDetailCode parse_package_func(ParseState *pstate, PackageCacheKey *pk
 
 
 /*
- * reslove to find name in a package
+ * resolve to find name in a package
  * first:	we search for package.xxx
  * second: we search for schema.package.xxx
  * third: we search for database.schemaname.package.xx
