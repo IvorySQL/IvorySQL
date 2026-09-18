@@ -4521,3 +4521,23 @@ DETAIL:  "ivorysql" is a reserved prefix.
 reset ivorysql.dummy_config;
 ERROR:  invalid configuration parameter name "ivorysql.dummy_config"
 DETAIL:  "ivorysql" is a reserved prefix.
+-- Verify sys.round(number, integer) is parallel safe.
+SELECT count(*) = 1 AS round_number_parallel_safe
+FROM pg_catalog.pg_proc
+WHERE oid = 'sys.round(sys.number,integer)'::regprocedure
+  AND proparallel = 's';
+ round_number_parallel_safe 
+----------------------------
+ t
+(1 row)
+
+-- Verify sys.to_char(text) is parallel safe.
+SELECT count(*) = 1 AS to_char_text_parallel_safe
+FROM pg_catalog.pg_proc
+WHERE oid = 'sys.to_char(text)'::regprocedure
+  AND proparallel = 's';
+ to_char_text_parallel_safe 
+----------------------------
+ t
+(1 row)
+

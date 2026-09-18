@@ -1002,3 +1002,11 @@ SELECT to_number('1e0') AS exp_zero;
 SELECT to_number('1e+0') AS exp_plus_zero;
 SELECT to_number('1e-0') AS exp_minus_zero;
 /* End - to_number scientific notation */
+
+
+-- Verify number generate_series overloads are parallel safe.
+SELECT count(*) = 2 AS number_generate_series_parallel_safe
+FROM pg_catalog.pg_proc
+WHERE oid IN ('sys.generate_series(sys.number,sys.number)'::regprocedure,
+              'sys.generate_series(sys.number,sys.number,sys.number)'::regprocedure)
+  AND proparallel = 's';

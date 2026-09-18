@@ -1944,3 +1944,14 @@ SELECT to_number('1e-0') AS exp_minus_zero;
 (1 row)
 
 /* End - to_number scientific notation */
+-- Verify number generate_series overloads are parallel safe.
+SELECT count(*) = 2 AS number_generate_series_parallel_safe
+FROM pg_catalog.pg_proc
+WHERE oid IN ('sys.generate_series(sys.number,sys.number)'::regprocedure,
+              'sys.generate_series(sys.number,sys.number,sys.number)'::regprocedure)
+  AND proparallel = 's';
+ number_generate_series_parallel_safe 
+--------------------------------------
+ t
+(1 row)
+
