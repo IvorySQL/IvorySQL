@@ -70,6 +70,8 @@ typedef int YYSTYPE;
 
 #define ECHO ora_psqlscan_emit(cur_state, yytext, yyleng)
 
+static bool ora_psqlscan_is_copy_from_stdin(PsqlScanState state);
+
 /*
  * Work around a bug in flex 2.5.35: it emits a couple of functions that
  * it forgets to emit declarations for.  Since we use -Wmissing-prototypes,
@@ -776,6 +778,9 @@ other			.
 							cur_state->paren_depth == 0 && cur_state->begin_depth == 0) || 
 								is_oracle_slash(cur_state, cur_state->scanline))
 					{
+						/* Remember if this subcommand was COPY FROM STDIN */
+						if (ora_psqlscan_is_copy_from_stdin(cur_state))
+							cur_state->copy_stdin_count++;
 						/* Terminate lexing temporarily */
 						cur_state->cancel_semicolon_terminator = false;
 						cur_state->maybe_anonymous_declare_start = false;
@@ -859,6 +864,9 @@ other			.
 							cur_state->begin_depth == 0 &&
 							!cur_state->cancel_semicolon_terminator)
 					{
+						/* Remember if this subcommand was COPY FROM STDIN */
+						if (ora_psqlscan_is_copy_from_stdin(cur_state))
+							cur_state->copy_stdin_count++;
 						/* Terminate lexing temporarily */
 						/* Paranoid */
 						cur_state->maybe_anonymous_declare_start = false;
@@ -884,8 +892,17 @@ other			.
 "\\"[;:]		{
 					/* Force a semi-colon or colon into the query buffer */
 					ora_psqlscan_emit(cur_state, yytext + 1, 1);
-					if (yytext[1] == ';')
+					/* Reset BEGIN/END/COPY tracking if semi at outer level */
+					if (yytext[1] == ';' &&
+						cur_state->paren_depth == 0 &&
+						cur_state->begin_depth == 0 &&
+						!cur_state->cancel_semicolon_terminator)
+					{
+						/* Remember if this subcommand was COPY FROM STDIN */
+						if (ora_psqlscan_is_copy_from_stdin(cur_state))
+							cur_state->copy_stdin_count++;
 						cur_state->init_idents_count = 0;
+					}
 				}
 
 "\\"			{
@@ -1144,6 +1161,23 @@ other			.
 					{
 						if (cur_state->init_idents_count < sizeof(cur_state->init_idents))
 							cur_state->init_idents[cur_state->init_idents_count] = pg_tolower((unsigned char) yytext[0]);
+					}
+					else if (cur_state->paren_depth == 0 &&
+							 (pg_strcasecmp(yytext, "copy") == 0 ||
+							  pg_strcasecmp(yytext, "from") == 0 ||
+							  pg_strcasecmp(yytext, "stdin") == 0 ||
+							  pg_strcasecmp(yytext, "stdout") == 0))
+					{
+						/*
+						 * We also need to recognize COPY ... FROM STDIN, so
+						 * that we can count COPY FROM STDIN commands.  (Note:
+						 * the backend grammar doesn't distinguish STDIN from
+						 * STDOUT, so we should not do so here either.)  We
+						 * record these keywords in upper case, to avoid
+						 * conflicting with the first set.
+						 */
+						if (cur_state->init_idents_count < sizeof(cur_state->init_idents))
+							cur_state->init_idents[cur_state->init_idents_count] = pg_toupper((unsigned char) yytext[0]);
 					}
 					
 					/*
@@ -1539,6 +1573,7 @@ ora_psql_scan_reset(PsqlScanState state)
 	state->dolqstart = NULL;
 	state->init_idents_count = 0;
 	state->begin_depth = 0;
+	state->copy_stdin_count = 0;
 	state->maybe_anonymous_declare_start = false;
 	state->maybe_anonymous_begin_start = false;
 	state->cancel_semicolon_terminator = false;
@@ -1574,6 +1609,55 @@ void
 ora_psql_scan_reselect_sql_lexer(PsqlScanState state)
 {
 	state->start_state = INITIAL;
+}
+
+/*
+ * Does the current input match COPY ... FROM STDIN?
+ */
+static bool
+ora_psqlscan_is_copy_from_stdin(PsqlScanState state)
+{
+	const char *idents = state->init_idents;
+
+	/*
+	 * The first word must be COPY, but after that there could be up to four
+	 * identifiers (BINARY database.schema.table) before FROM.  Since some of
+	 * the words we track are not reserved words, don't assume the intervening
+	 * array entries are '\0'.  Life is simplified here by the fact that the
+	 * identifier tracking ignores everything within parens: we won't see
+	 * column lists nor the query in COPY (query).
+	 */
+	if (idents[0] != 'C')
+		return false;
+	for (int i = 1; i < lengthof(state->init_idents) - 1; i++)
+	{
+		/* Scan to find FROM; if not seen within range, it's not valid COPY */
+		if (idents[i] != 'F')
+			continue;
+		/* It's COPY FROM STDIN only if the next word is STDIN */
+		return (idents[i + 1] == 'S');
+	}
+	return false;
+}
+
+/*
+ * Return the number of COPY ... FROM STDIN commands in the input string.
+ *
+ * This should be called only after we've finished parsing a complete
+ * string and are ready to send it to the backend.
+ */
+int
+ora_psql_scan_count_copy_from_stdin(PsqlScanState state)
+{
+	if (state->init_idents_count > 0)
+	{
+		/* Count any COPY FROM STDIN following the last semicolon */
+		if (ora_psqlscan_is_copy_from_stdin(state))
+			state->copy_stdin_count++;
+		/* ... but do so only once */
+		state->init_idents_count = 0;
+	}
+	return state->copy_stdin_count;
 }
 
 /*
