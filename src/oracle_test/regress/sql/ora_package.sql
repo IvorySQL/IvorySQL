@@ -852,7 +852,8 @@ begin
   fetch pkg.c1 into r;
   raise info '%',r.name;
   call pkg.test_close();
-  --raise syntax error
+  -- typo aside, c2 is body-private to pkg and must be rejected before
+  -- this is even parseable as a FETCH
   fetchs pkg.c2 INTO r;
 end;
 /
@@ -4605,6 +4606,53 @@ end;
 /
 
 drop package pkg1;
+
+-- body-only declarations (no top-level BEGIN block in the body) must stay
+-- private to the package even after the body has been compiled/cached by
+-- an earlier call (github issue #1725)
+CREATE OR REPLACE PACKAGE pkg_priv_novisibility AS
+    FUNCTION pub_fn RETURN integer;
+END pkg_priv_novisibility;
+/
+
+CREATE OR REPLACE PACKAGE BODY pkg_priv_novisibility AS
+    priv_var integer := 1;
+
+    FUNCTION priv_fn RETURN integer IS
+    BEGIN
+        RETURN priv_var;
+    END;
+
+    FUNCTION pub_fn RETURN integer IS
+    BEGIN
+        RETURN priv_fn();
+    END;
+END pkg_priv_novisibility;
+/
+
+-- before the body is compiled: correctly rejected
+SELECT pkg_priv_novisibility.priv_fn();
+
+-- force body compile
+SELECT pkg_priv_novisibility.pub_fn();
+
+-- after body compile: must still be rejected
+SELECT pkg_priv_novisibility.priv_fn();
+begin
+  raise info '%', pkg_priv_novisibility.priv_var;
+end;
+/
+
+-- %TYPE against a body-private var (PACKAGE_PARSE_TYPE, not just
+-- PACKAGE_PARSE_VAR/ENTRY above) must also stay rejected
+declare
+  v pkg_priv_novisibility.priv_var%TYPE;
+begin
+  raise info '%', v;
+end;
+/
+
+drop package pkg_priv_novisibility;
 
 --test pg array and object  type
 create type complex1 as (r float8, i float8);
