@@ -788,7 +788,10 @@ CREATE TABLE tab_core_types AS SELECT
   '{(2020-01-02 03:04:05, 2021-02-03 06:07:08)}'::tsmultirange,
   '(2020-01-02 03:04:05, 2021-02-03 06:07:08)'::tstzrange,
   '{(2020-01-02 03:04:05, 2021-02-03 06:07:08)}'::tstzmultirange;
-ERROR:  missing or invalid datetime field.
+ERROR:  invalid value "toda" for "YYYY"
+LINE 10:   'today'::date,
+           ^
+DETAIL:  Value must be an integer.
 -- Sanity check on the previous table, checking that all core types are
 -- included in this table.
 SELECT oid, typname, typtype, typelem, typarray
