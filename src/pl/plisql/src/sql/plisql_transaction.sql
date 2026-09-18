@@ -324,6 +324,8 @@ SELECT * FROM pg_cursors;
 
 
 -- commit inside block with exception handler
+-- IvorySQL uses Oracle-style statement-level rollback for exception-enabled
+-- blocks, so COMMIT works here: only the failed statement is rolled back.
 TRUNCATE test1;
 
 DO LANGUAGE plisql $$
@@ -382,6 +384,165 @@ END;
 $$;
 
 SELECT * FROM test1;
+
+
+-- COMMIT/ROLLBACK inside EXCEPTION-enabled blocks (issue #1128):
+-- the failing statement is rolled back, but earlier statements in the block
+-- are kept, and COMMIT/ROLLBACK work both in the main block and in the
+-- exception handler.
+
+-- COMMIT in the main block, statement error afterwards is caught
+TRUNCATE test1;
+
+DO LANGUAGE plisql $$
+BEGIN
+    BEGIN
+        INSERT INTO test1 (a) VALUES (90);
+        COMMIT;
+        INSERT INTO test1 (a) VALUES (1/0);
+        COMMIT;
+    EXCEPTION
+        WHEN division_by_zero THEN
+            RAISE NOTICE 'caught division_by_zero after commit';
+    END;
+END;
+$$;
+
+SELECT * FROM test1;
+
+
+-- naked COMMIT in an exception-enabled DO block
+TRUNCATE test1;
+
+DO LANGUAGE plisql $$
+BEGIN
+    BEGIN
+        INSERT INTO test1 (a) VALUES (91);
+        COMMIT;
+    EXCEPTION
+        WHEN OTHERS THEN
+            RAISE NOTICE 'unexpected exception';
+    END;
+END;
+$$;
+
+SELECT * FROM test1;
+
+
+-- COMMIT inside the exception handler itself, after error in main block
+TRUNCATE test1;
+
+DO LANGUAGE plisql $$
+BEGIN
+    BEGIN
+        INSERT INTO test1 (a) VALUES (92);
+        INSERT INTO test1 (a) VALUES (1/0);
+        COMMIT;
+    EXCEPTION
+        WHEN division_by_zero THEN
+            INSERT INTO test1 (a) VALUES (93);
+            COMMIT;
+    END;
+END;
+$$;
+
+SELECT * FROM test1;
+
+
+-- ROLLBACK inside the exception handler
+TRUNCATE test1;
+
+DO LANGUAGE plisql $$
+BEGIN
+    BEGIN
+        INSERT INTO test1 (a) VALUES (94);
+        INSERT INTO test1 (a) VALUES (1/0);
+        COMMIT;
+    EXCEPTION
+        WHEN division_by_zero THEN
+            INSERT INTO test1 (a) VALUES (95);
+            ROLLBACK;
+    END;
+END;
+$$;
+
+SELECT * FROM test1;
+
+
+-- nested exception blocks with COMMIT in the inner block and both handlers
+TRUNCATE test1;
+
+DO LANGUAGE plisql $$
+BEGIN
+    BEGIN
+        BEGIN
+            INSERT INTO test1 (a) VALUES (96);
+            COMMIT;
+            INSERT INTO test1 (a) VALUES (1/0);
+        EXCEPTION
+            WHEN division_by_zero THEN
+                INSERT INTO test1 (a) VALUES (97);
+                COMMIT;
+        END;
+        INSERT INTO test1 (a) VALUES (98);
+        COMMIT;
+    EXCEPTION
+        WHEN OTHERS THEN
+            INSERT INTO test1 (a) VALUES (99);
+            COMMIT;
+    END;
+END;
+$$;
+
+SELECT * FROM test1 ORDER BY a;
+
+
+-- error in the exception handler propagates to the outer handler
+TRUNCATE test1;
+
+DO LANGUAGE plisql $$
+BEGIN
+    BEGIN
+        INSERT INTO test1 (a) VALUES (100);
+        INSERT INTO test1 (a) VALUES (1/0);
+    EXCEPTION
+        WHEN division_by_zero THEN
+            INSERT INTO test1 (a) VALUES (1/0);
+    END;
+    INSERT INTO test1 (a) VALUES (101);
+EXCEPTION
+    WHEN division_by_zero THEN
+        INSERT INTO test1 (a) VALUES (102);
+        COMMIT;
+END;
+$$;
+
+SELECT * FROM test1 ORDER BY a;
+
+
+-- procedure with EXCEPTION handler and COMMIT (issue #1128)
+CREATE PROCEDURE proc_exc_commit()
+LANGUAGE plisql
+AS $$
+BEGIN
+    INSERT INTO test1 (a) VALUES (110);
+    COMMIT;
+    INSERT INTO test1 (a) VALUES (1/0);
+    COMMIT;
+EXCEPTION
+    WHEN division_by_zero THEN
+        INSERT INTO test1 (a) VALUES (111);
+        ROLLBACK;
+END;
+$$;
+/
+
+TRUNCATE test1;
+CALL proc_exc_commit();
+
+SELECT * FROM test1;
+
+DROP PROCEDURE proc_exc_commit;
 
 
 -- detoast result of simple expression after commit

@@ -109,6 +109,9 @@ NOTICE:  caught numeric_value_out_of_range or cardinality_violation
 
 create temp table foo (f1 int);
 create function subxact_rollback_semantics() returns int as $$
+-- IvorySQL uses Oracle-style statement-level rollback for EXCEPTION-enabled
+-- blocks: only the failed statement is rolled back, so the inner INSERT of
+-- 2 is kept.  (PL/iSQL variables are never transactionally restored.)
 declare x int;
 begin
   x := 1;
@@ -135,8 +138,9 @@ select * from foo;
  f1 
 ----
   1
+  2
  20
-(2 rows)
+(3 rows)
 
 drop table foo;
 create function trap_timeout() returns void as $$
