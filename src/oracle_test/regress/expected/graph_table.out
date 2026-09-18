@@ -451,6 +451,13 @@ SELECT * FROM GRAPH_TABLE (myshop MATCH (c IS customers WHERE c.* IS NOT NULL)-[
 ERROR:  "*" not allowed here
 LINE 1: ...M GRAPH_TABLE (myshop MATCH (c IS customers WHERE c.* IS NOT...
                                                              ^
+-- aggregate, window, and set-returning functions are not supported in COLUMNS
+SELECT * FROM GRAPH_TABLE (myshop MATCH (c IS customers) COLUMNS (count(*) AS num));
+ERROR:  aggregate functions in GRAPH_TABLE COLUMNS are not supported
+SELECT * FROM GRAPH_TABLE (myshop MATCH (c IS customers) COLUMNS (row_number() OVER () AS rn));
+ERROR:  window functions in GRAPH_TABLE COLUMNS are not supported
+SELECT * FROM GRAPH_TABLE (myshop MATCH (c IS customers) COLUMNS (generate_series(1, 2) AS gs));
+ERROR:  set-returning functions in GRAPH_TABLE COLUMNS are not supported
 -- select all the properties across all the labels associated with a given type
 -- of graph element
 SELECT * FROM GRAPH_TABLE (g1 MATCH (src)-[conn]->(dest) COLUMNS (src.vname AS svname, conn.ename AS cename, dest.vname AS dvname, src.vprop1 AS svp1, src.vprop2 AS svp2, src.lprop1 AS slp1, dest.vprop1 AS dvp1, dest.vprop2 AS dvp2, dest.lprop1 AS dlp1, conn.eprop1 AS cep1, conn.lprop2 AS clp2));
