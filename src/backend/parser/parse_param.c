@@ -82,7 +82,7 @@ static OraParamNumbers *CurrentOraParamNode = NULL;
  * DoStmtCheckVar: wether should check bound var matching.
  * Should not check var bound match for grammer:
  *     'select xxx; begin xxx end;begin xxx end;'
- * IsBindByName: the paramter is bound by name.
+ * IsBindByName: the parameter is bound by name.
  * When compile DoStmt, DoStmt always gets compiled after other stmt.
  */
 static bool			IsParseDynSql = false;
