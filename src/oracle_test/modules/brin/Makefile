@@ -6,6 +6,8 @@ EXTRA_INSTALL = contrib/pageinspect contrib/pg_walinspect
 ISOLATION = summarization-and-inprogress-insertion
 TAP_TESTS = 1
 
+ORA_ISOLATION = $(ISOLATION)
+
 ifdef USE_PGXS
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)

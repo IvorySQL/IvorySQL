@@ -12,6 +12,8 @@ DATA = test_rbtree--1.0.sql
 
 REGRESS = test_rbtree
 
+ORA_REGRESS = $(REGRESS)
+
 ifdef USE_PGXS
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
