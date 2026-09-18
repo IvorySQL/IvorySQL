@@ -922,6 +922,54 @@ SetCurrentStatementStartTimestamp(void)
 }
 
 /*
+ * Oracle statement start timestamp.
+ *
+ * SYSDATE/CURRENT_DATE are fixed for the whole of a single statement but
+ * advance between statements.  For top-level statements the ordinary
+ * stmtStartTimestamp carries that meaning, but statements executed inside
+ * PL/iSQL do not refresh it (and must not: statement_timestamp() inside
+ * PL/iSQL keeps the enclosing statement's value).  PL/iSQL therefore
+ * maintains this separate per-statement timestamp, which the SYSDATE/
+ * CURRENT_DATE built-ins consult; a value of 0 means "not inside PL/iSQL",
+ * in which case they fall back to stmtStartTimestamp.
+ */
+static TimestampTz oraStmtStartTimestamp = 0;
+
+/*
+ *	GetOracleStatementStartTimestamp
+ */
+TimestampTz
+GetOracleStatementStartTimestamp(void)
+{
+	if (oraStmtStartTimestamp != 0)
+		return oraStmtStartTimestamp;
+	return stmtStartTimestamp;
+}
+
+/*
+ *	SetOracleStatementStartTimestamp
+ *
+ * Record a fresh per-statement timestamp, called by PL/iSQL before it
+ * executes each of its statements.
+ */
+void
+SetOracleStatementStartTimestamp(void)
+{
+	oraStmtStartTimestamp = GetCurrentTimestamp();
+}
+
+/*
+ *	SetOracleStatementStartTimestampTo
+ *
+ * Restore a previously saved Oracle statement start timestamp.
+ */
+void
+SetOracleStatementStartTimestampTo(TimestampTz ts)
+{
+	oraStmtStartTimestamp = ts;
+}
+
+/*
  *	GetCurrentTransactionNestLevel
  *
  * Note: this will return zero when not inside any transaction, one when
