@@ -2464,3 +2464,13 @@ reset default_text_search_config;
 -- should throw errors, because dummy_config is not a valid configuration name
 set ivorysql.dummy_config to dummy;
 reset ivorysql.dummy_config;
+
+-- Tests for sys.uid()
+-- sys.uid() returns the current user's OID; compare rather than print it so
+-- the result is stable across environments.
+SELECT sys.uid() = current_user::regrole::oid AS uid_matches;
+-- Oracle mode: the UID pseudo-column binds to sys.uid()
+SET ivorysql.compatible_mode = oracle;
+SELECT UID = current_user::regrole::oid AS oracle_uid_matches FROM dual;
+SELECT sys.uid() = UID AS uid_consistent;
+RESET ivorysql.compatible_mode;
