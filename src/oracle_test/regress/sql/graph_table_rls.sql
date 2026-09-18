@@ -88,7 +88,7 @@ CREATE PROPERTY GRAPH cabinet
     EDGE TABLES (accessed KEY (aid)
                  SOURCE KEY (uid) REFERENCES users (uid)
                  DESTINATION KEY (did) REFERENCES document (did));
-GRANT SELECT ON cabinet TO public;
+GRANT SELECT ON PROPERTY GRAPH cabinet TO public;
 
 --
 -- Basic RLS tests
@@ -192,7 +192,7 @@ CREATE PROPERTY GRAPH cabinet
     EDGE TABLES (accessed KEY (aid)
                  SOURCE KEY (uid) REFERENCES users (uid)
                  DESTINATION KEY (did) REFERENCES document (did));
-GRANT SELECT ON cabinet TO public;
+GRANT SELECT ON PROPERTY GRAPH cabinet TO public;
 
 SET row_security TO ON;
 
@@ -261,7 +261,7 @@ CREATE PROPERTY GRAPH cabinet
     EDGE TABLES (accessed KEY (aid)
                  SOURCE KEY (uid) REFERENCES users (uid)
                  DESTINATION KEY (did) REFERENCES document (did));
-GRANT SELECT ON cabinet TO public;
+GRANT SELECT ON PROPERTY GRAPH cabinet TO public;
 SET row_security TO ON;
 
 -- viewpoint from regress_graph_rls_bob
