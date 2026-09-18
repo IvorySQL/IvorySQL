@@ -591,6 +591,116 @@ END;
 like($err, qr/NLLEN .*22023/, 'overlong newline is rejected with 22023')
   or diag($err);
 
+# ---------------------------------------------------------------------
+# GET_TEXT at the 32767-byte value limit must not lose buffered data
+# ---------------------------------------------------------------------
+
+# 8192 four-byte characters (32768 wire bytes): the first call returns
+# the largest complete prefix, 8191 characters, and the second call
+# returns the last character untouched
+(undef, undef, $err) = ora_sql(qq{
+DECLARE
+  c utl_tcp.connection;
+  four VARCHAR2(4);
+  s VARCHAR2(32767);
+  expected VARCHAR2(32767);
+  n INTEGER;
+BEGIN
+  four := convert_from(HEXTORAW('F0908D88'), 'UTF8');
+  c := utl_tcp.open_connection('127.0.0.1', $echo_port, tx_timeout => 5);
+  n := utl_tcp.write_text(c, repeat(four, 4096));
+  n := utl_tcp.write_text(c, repeat(four, 4096));
+  s := utl_tcp.get_text(c, 8192);
+  expected := repeat(four, 8191);
+  IF s = expected THEN
+    RAISE NOTICE 'GT1 OK bytes=%', octet_length(s);
+  ELSE
+    RAISE NOTICE 'GT1 BAD bytes=% chars=%', octet_length(s), length(s);
+  END IF;
+  s := utl_tcp.get_text(c, 1);
+  IF s = four THEN
+    RAISE NOTICE 'GT2 OK';
+  ELSE
+    RAISE NOTICE 'GT2 BAD bytes=%', octet_length(s);
+  END IF;
+  utl_tcp.close_connection(c);
+END;
+});
+like($err, qr/GT1 OK bytes=32764/,
+	'GET_TEXT(8192) returns 8191 four-byte characters at the limit')
+  or diag($err);
+like($err, qr/GT2 OK/, 'the 8192nd four-byte character is returned next')
+  or diag($err);
+
+# LATIN1 wire bytes expand when converted to UTF8: 20000 E9 bytes would
+# become 40000 bytes, so the first read returns the 16383 characters
+# that fit (32766 bytes) and the rest is returned by the next read
+(undef, undef, $err) = ora_sql(qq{
+DECLARE
+  c utl_tcp.connection;
+  s VARCHAR2(32767);
+  n INTEGER;
+BEGIN
+  c := utl_tcp.open_connection('127.0.0.1', $echo_port,
+                               charset => 'LATIN1', tx_timeout => 5);
+  n := utl_tcp.write_text(c, repeat(CHR(233), 10000));
+  n := utl_tcp.write_text(c, repeat(CHR(233), 10000));
+  s := utl_tcp.get_text(c, 20000);
+  IF s = repeat(CHR(233), 16383) THEN
+    RAISE NOTICE 'EXP1 OK bytes=%', octet_length(s);
+  ELSE
+    RAISE NOTICE 'EXP1 BAD bytes=% chars=%', octet_length(s), length(s);
+  END IF;
+  s := utl_tcp.get_text(c, 20000);
+  IF s = repeat(CHR(233), 3617) THEN
+    RAISE NOTICE 'EXP2 OK bytes=%', octet_length(s);
+  ELSE
+    RAISE NOTICE 'EXP2 BAD bytes=% chars=%', octet_length(s), length(s);
+  END IF;
+  utl_tcp.close_connection(c);
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'EXPERR % (%)', SQLERRM, SQLSTATE;
+END;
+});
+like($err, qr/EXP1 OK bytes=32766/,
+	'GET_TEXT returns the fitting prefix when conversion expands')
+  or diag($err);
+like($err, qr/EXP2 OK bytes=7234/,
+	'the expansion remainder is returned by the next read')
+  or diag($err);
+
+# an invalid byte sequence raises without consuming, so the same bytes
+# can be retrieved as RAW afterwards
+(undef, undef, $err) = ora_sql(qq{
+DECLARE
+  c utl_tcp.connection;
+  s VARCHAR2(100);
+  r RAW(64);
+  n INTEGER;
+BEGIN
+  c := utl_tcp.open_connection('127.0.0.1', $echo_port, tx_timeout => 5);
+  n := utl_tcp.write_raw(c, HEXTORAW('41FF42'));
+  s := utl_tcp.get_text(c, 1);
+  RAISE NOTICE 'CVA s=%', s;
+  BEGIN
+    s := utl_tcp.get_text(c, 1);
+    RAISE NOTICE 'CVBAD GOT (BAD)';
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'CVERR % (%)', SQLERRM, SQLSTATE;
+  END;
+  r := utl_tcp.get_raw(c, 2);
+  RAISE NOTICE 'CVRAW=%', r;
+  utl_tcp.close_connection(c);
+END;
+});
+like($err, qr/CVA s=A/, 'GET_TEXT returns the valid character before the bad byte')
+  or diag($err);
+like($err, qr/CVERR .*22021/, 'GET_TEXT raises 22021 on an invalid byte sequence')
+  or diag($err);
+like($err, qr/CVRAW=\\xff42/i,
+	'the bytes behind a conversion error are retrievable as RAW')
+  or diag($err);
+
 # unknown charset is rejected at open time
 (undef, undef, $err) = ora_sql(qq{
 DECLARE

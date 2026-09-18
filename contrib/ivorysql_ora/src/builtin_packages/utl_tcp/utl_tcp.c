@@ -513,27 +513,28 @@ utl_tcp_fill(UtlTcpConnection *conn, TimestampTz deadline_us)
 }
 
 /*
- * Return the length in bytes of the character at the start of the receive
- * buffer, or 0 when more input is required first (*incomplete) or the
- * buffered bytes do not form a valid character (*invalid).
+ * Return the length in bytes of the character at the given offset in the
+ * receive buffer, or 0 when more input is required first (*incomplete) or
+ * the buffered bytes do not form a valid character (*invalid).
  */
 static int
-utl_tcp_char_len(UtlTcpConnection *conn, bool *incomplete, bool *invalid)
+utl_tcp_char_len(UtlTcpConnection *conn, int offset,
+				 bool *incomplete, bool *invalid)
 {
-	int			remaining = conn->rxbuf.len;
+	int			remaining = conn->rxbuf.len - offset;
 	int			expected;
 
 	*incomplete = false;
 	*invalid = false;
 
-	if (remaining == 0)
+	if (remaining <= 0)
 	{
 		*incomplete = true;
 		return 0;
 	}
 
 	expected = pg_encoding_mblen_or_incomplete(conn->encoding,
-											   conn->rxbuf.data,
+											   conn->rxbuf.data + offset,
 											   (size_t) remaining);
 
 	if (expected == INT_MAX || expected > remaining)
@@ -542,7 +543,7 @@ utl_tcp_char_len(UtlTcpConnection *conn, bool *incomplete, bool *invalid)
 		return 0;
 	}
 
-	if (pg_encoding_verifymbchar(conn->encoding, conn->rxbuf.data,
+	if (pg_encoding_verifymbchar(conn->encoding, conn->rxbuf.data + offset,
 								 remaining) <= 0)
 	{
 		*invalid = true;
@@ -550,6 +551,29 @@ utl_tcp_char_len(UtlTcpConnection *conn, bool *incomplete, bool *invalid)
 	}
 
 	return expected;
+}
+
+/*
+ * Return the buffer offset of the character with the given 0-based index
+ * among the first limit bytes.  The caller guarantees that those bytes
+ * form complete characters.
+ */
+static int
+utl_tcp_char_offset(UtlTcpConnection *conn, int limit, int char_idx)
+{
+	int			off = 0;
+
+	while (char_idx-- > 0)
+	{
+		int			clen = pg_encoding_mblen_or_incomplete(conn->encoding,
+														   conn->rxbuf.data + off,
+														   (size_t) (limit - off));
+
+		Assert(clen != INT_MAX && clen > 0 && clen <= limit - off);
+		off += clen;
+	}
+
+	return off;
 }
 
 /* Drop n consumed bytes from the front of the receive buffer. */
@@ -1237,19 +1261,29 @@ ora_utl_tcp_write_raw(PG_FUNCTION_ARGS)
 
 /*
  * sys.ora_utl_tcp_get_text(sd, len, peek) returns up to len characters.
+ *
+ * Complete characters are staged in the receive buffer and converted to
+ * the database encoding as a whole; the wire bytes are consumed only
+ * after the return value has been built, so neither the 32767-byte SQL
+ * value limit nor a conversion error can lose received data.  When the
+ * converted value would exceed the limit, the longest prefix of whole
+ * characters that fits is returned and the rest stays buffered for the
+ * next call.
  */
 Datum
 ora_utl_tcp_get_text(PG_FUNCTION_ARGS)
 {
 	UtlTcpConnection *conn;
 	int32		want;
-	StringInfoData out;
-	int			got_chars = 0;
+	int			staged_bytes = 0;
+	int			staged_chars = 0;
+	int			take_bytes;
 	bool		timed_out = false;
 	TimestampTz deadline;
 	unsigned char *converted;
 	char	   *result;
 	int			result_len;
+	text	   *retval;
 
 	if (PG_ARGISNULL(0))
 		UTL_TCP_HANDLE_ERROR();
@@ -1267,15 +1301,19 @@ ora_utl_tcp_get_text(PG_FUNCTION_ARGS)
 		UTL_TCP_BAD_ARGUMENT("UTL_TCP: len must be between 1 and 32767");
 
 	deadline = utl_tcp_deadline(conn);
-	initStringInfo(&out);
 
-	while (got_chars < want)
+	/*
+	 * Stage complete characters at staged_bytes without consuming them.
+	 * Staging stops at the SQL value limit on the wire side; a limit hit
+	 * through wire-to-database expansion is handled after conversion.
+	 */
+	while (staged_chars < want)
 	{
 		int			clen;
 		bool		incomplete;
 		bool		invalid;
 
-		clen = utl_tcp_char_len(conn, &incomplete, &invalid);
+		clen = utl_tcp_char_len(conn, staged_bytes, &incomplete, &invalid);
 
 		if (invalid)
 			ereport(ERROR,
@@ -1288,9 +1326,9 @@ ora_utl_tcp_get_text(PG_FUNCTION_ARGS)
 			if (conn->eof)
 			{
 				/* an incomplete final character never leaves the buffer */
-				if (got_chars == 0 && conn->rxbuf.len == 0)
+				if (staged_chars == 0 && conn->rxbuf.len == 0)
 					UTL_TCP_END_OF_INPUT();
-				if (got_chars == 0 && conn->rxbuf.len > 0)
+				if (staged_chars == 0 && conn->rxbuf.len > 0)
 					UTL_TCP_PARTIAL_MULTIBYTE();
 
 				break;			/* return the complete characters read */
@@ -1308,15 +1346,14 @@ ora_utl_tcp_get_text(PG_FUNCTION_ARGS)
 			continue;
 		}
 
-		if (out.len + clen > UTL_TCP_MAX_VALUE_BYTES)
-			UTL_TCP_PROGRAM_LIMIT("UTL_TCP: result exceeds the maximum value size of 32767 bytes");
+		if (staged_bytes + clen > UTL_TCP_MAX_VALUE_BYTES)
+			break;				/* wire staging cap; keep the rest */
 
-		appendBinaryStringInfo(&out, conn->rxbuf.data, clen);
-		utl_tcp_consume(conn, clen);
-		got_chars++;
+		staged_bytes += clen;
+		staged_chars++;
 	}
 
-	if (got_chars == 0)
+	if (staged_chars == 0)
 	{
 		if (timed_out)
 			ereport(ERROR,
@@ -1327,19 +1364,20 @@ ora_utl_tcp_get_text(PG_FUNCTION_ARGS)
 		/* clean EOF with no complete character at all */
 		if (conn->rxbuf.len == 0)
 			UTL_TCP_END_OF_INPUT();
-		else
-			UTL_TCP_PARTIAL_MULTIBYTE();
+
+		UTL_TCP_PARTIAL_MULTIBYTE();
 	}
 
-	converted = pg_do_encoding_conversion((unsigned char *) out.data,
-										  out.len,
+	/* convert the staged characters as a whole */
+	converted = pg_do_encoding_conversion((unsigned char *) conn->rxbuf.data,
+										  staged_bytes,
 										  conn->encoding,
 										  GetDatabaseEncoding());
 
-	if (converted == (unsigned char *) out.data)
+	if (converted == (unsigned char *) conn->rxbuf.data)
 	{
-		result = out.data;
-		result_len = out.len;
+		result = conn->rxbuf.data;
+		result_len = staged_bytes;
 	}
 	else
 	{
@@ -1347,10 +1385,68 @@ ora_utl_tcp_get_text(PG_FUNCTION_ARGS)
 		result_len = strlen(result);
 	}
 
-	if (result_len > UTL_TCP_MAX_VALUE_BYTES)
-		UTL_TCP_PROGRAM_LIMIT("UTL_TCP: result exceeds the maximum value size of 32767 bytes");
+	take_bytes = staged_bytes;
 
-	PG_RETURN_TEXT_P(cstring_to_text_with_len(result, result_len));
+	if (result_len > UTL_TCP_MAX_VALUE_BYTES)
+	{
+		/*
+		 * The conversion expanded the text past the SQL value limit.
+		 * Binary-search the largest whole-character prefix that fits; a
+		 * single character always fits, so at least one is returned and
+		 * the remainder stays buffered.
+		 */
+		int			lo = 1;
+		int			hi = staged_chars;
+
+		while (lo < hi)
+		{
+			int			mid = lo + (hi - lo + 1) / 2;
+			int			off = utl_tcp_char_offset(conn, staged_bytes, mid);
+			unsigned char *mid_converted;
+			int			mid_len;
+
+			mid_converted = pg_do_encoding_conversion(
+				(unsigned char *) conn->rxbuf.data,
+				off,
+				conn->encoding,
+				GetDatabaseEncoding());
+
+			if (mid_converted == (unsigned char *) conn->rxbuf.data)
+				mid_len = off;
+			else
+				mid_len = strlen((char *) mid_converted);
+
+			if (mid_len <= UTL_TCP_MAX_VALUE_BYTES)
+				lo = mid;
+			else
+				hi = mid - 1;
+		}
+
+		staged_chars = lo;
+		take_bytes = utl_tcp_char_offset(conn, staged_bytes, lo);
+
+		converted = pg_do_encoding_conversion((unsigned char *) conn->rxbuf.data,
+											  take_bytes,
+											  conn->encoding,
+											  GetDatabaseEncoding());
+
+		if (converted == (unsigned char *) conn->rxbuf.data)
+		{
+			result = conn->rxbuf.data;
+			result_len = take_bytes;
+		}
+		else
+		{
+			result = (char *) converted;
+			result_len = strlen(result);
+		}
+	}
+
+	/* build the return value first; only then consume what it holds */
+	retval = cstring_to_text_with_len(result, result_len);
+	utl_tcp_consume(conn, take_bytes);
+
+	PG_RETURN_TEXT_P(retval);
 }
 
 /*
