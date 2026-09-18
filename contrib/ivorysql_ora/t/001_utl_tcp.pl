@@ -103,6 +103,28 @@ PostgreSQL::Test::Utils::append_to_file($prefix_reply, "done\n");
 my $prefix_port = start_server('prefix', 8, $prefix_reply,
 	File::Spec->catfile($tmpdir, 'prefix.info'));
 
+# Push peers: every connection receives the file's bytes immediately on
+# accept; afterwards the peer echoes everything received, except for the
+# pushclose variant, which closes right after the push (clean EOF).
+my $push_abclf_file = File::Spec->catfile($tmpdir, 'push_abclf.bin');
+my $push_cr_file    = File::Spec->catfile($tmpdir, 'push_cr.bin');
+my $push_abc_file   = File::Spec->catfile($tmpdir, 'push_abc.bin');
+my $push_mb_file    = File::Spec->catfile($tmpdir, 'push_mb.bin');
+my $push_mb2_file   = File::Spec->catfile($tmpdir, 'push_mb2.bin');
+my $push_amb_file   = File::Spec->catfile($tmpdir, 'push_amb.bin');
+PostgreSQL::Test::Utils::append_to_file($push_abclf_file, "ABC\r\n");
+PostgreSQL::Test::Utils::append_to_file($push_cr_file,    "abc\r");
+PostgreSQL::Test::Utils::append_to_file($push_abc_file,   "abc");
+PostgreSQL::Test::Utils::append_to_file($push_mb_file,    "\xe4");
+PostgreSQL::Test::Utils::append_to_file($push_mb2_file,   "\xe4\xbd\xa0\xe5");
+PostgreSQL::Test::Utils::append_to_file($push_amb_file,   "A\xe4");
+my $push_abclf_port    = start_server('push', $push_abclf_file);
+my $push_cr_port       = start_server('push', $push_cr_file);
+my $push_abc_port      = start_server('push', $push_abc_file);
+my $push_mb_port       = start_server('push', $push_mb_file);
+my $push_mb2_port      = start_server('push', $push_mb2_file);
+my $pushclose_amb_port = start_server('push', $push_amb_file, 'close');
+
 my $capture_bin = File::Spec->catfile($tmpdir, 'capture.bin');
 my $capture_log = File::Spec->catfile($tmpdir, 'capture.log');
 
@@ -651,7 +673,7 @@ BEGIN
   ELSE
     RAISE NOTICE 'EXP1 BAD bytes=% chars=%', octet_length(s), length(s);
   END IF;
-  s := utl_tcp.get_text(c, 20000);
+  s := utl_tcp.get_text(c, 3617);
   IF s = repeat(CHR(233), 3617) THEN
     RAISE NOTICE 'EXP2 OK bytes=%', octet_length(s);
   ELSE
@@ -736,6 +758,226 @@ like($err, qr/FRAG1=abcd/,
 	'GET_LINE assembles fragments and a CRLF split across writes')
   or diag($err);
 like($err, qr/FRAG2=ef/, 'second line after the fragmented CRLF is intact')
+  or diag($err);
+
+# ---------------------------------------------------------------------
+# Ready data at tx_timeout = 0 and line rules at timeouts
+# ---------------------------------------------------------------------
+
+# bytes that have already arrived are readable without waiting.  The
+# push peer sends on accept, so give that write a moment to land in the
+# kernel buffer before reading with tx_timeout => 0.
+(undef, undef, $err) = ora_sql(qq{
+DECLARE
+  c utl_tcp.connection;
+  s VARCHAR2(100);
+  r RAW(64);
+BEGIN
+  c := utl_tcp.open_connection('127.0.0.1', $push_abclf_port,
+                               tx_timeout => 0);
+  PERFORM pg_sleep(0.2);
+  s := utl_tcp.get_text(c, 1);
+  RAISE NOTICE 'ZT_T s=%', s;
+  s := utl_tcp.get_line(c);
+  RAISE NOTICE 'ZT_L len=%', length(s);
+  utl_tcp.close_connection(c);
+  c := utl_tcp.open_connection('127.0.0.1', $push_abclf_port,
+                               tx_timeout => 0);
+  PERFORM pg_sleep(0.2);
+  r := utl_tcp.get_raw(c, 1);
+  RAISE NOTICE 'ZT_R r=%', r;
+  utl_tcp.close_connection(c);
+END;
+});
+like($err, qr/ZT_T s=A/,
+	'GET_TEXT reads pre-delivered data with tx_timeout 0')
+  or diag($err);
+like($err, qr/ZT_L len=4/,
+	'GET_LINE reads a pre-delivered line with tx_timeout 0')
+  or diag($err);
+like($err, qr/ZT_R r=\\x41/i,
+	'GET_RAW reads pre-delivered data with tx_timeout 0')
+  or diag($err);
+
+# with no data at all the three read entry points raise immediately
+(undef, undef, $err) = ora_sql(qq{
+DECLARE
+  c utl_tcp.connection;
+  s VARCHAR2(100);
+  r RAW(64);
+BEGIN
+  c := utl_tcp.open_connection('127.0.0.1', $hold_port, tx_timeout => 0);
+  BEGIN
+    s := utl_tcp.get_text(c, 1);
+    RAISE NOTICE 'ZTE GOT (BAD)';
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'ZTE % (%)', SQLERRM, SQLSTATE;
+  END;
+  BEGIN
+    r := utl_tcp.get_raw(c, 1);
+    RAISE NOTICE 'ZRE GOT (BAD)';
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'ZRE % (%)', SQLERRM, SQLSTATE;
+  END;
+  BEGIN
+    s := utl_tcp.get_line(c);
+    RAISE NOTICE 'ZLE GOT (BAD)';
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'ZLE % (%)', SQLERRM, SQLSTATE;
+  END;
+  utl_tcp.close_connection(c);
+END;
+});
+like($err, qr/ZTE .*timed out.*\(08006\)/,
+	'GET_TEXT with no data and tx_timeout 0 raises 08006')
+  or diag($err);
+like($err, qr/ZRE .*timed out.*\(08006\)/,
+	'GET_RAW with no data and tx_timeout 0 raises 08006')
+  or diag($err);
+like($err, qr/ZLE .*timed out.*\(08006\)/,
+	'GET_LINE with no data and tx_timeout 0 raises 08006')
+  or diag($err);
+
+# a lone CR terminates a line immediately; an LF arriving afterwards is
+# swallowed as part of the same terminator and produces no empty line
+(undef, undef, $err) = ora_sql(qq{
+DECLARE
+  c utl_tcp.connection;
+  s VARCHAR2(100);
+  n INTEGER;
+BEGIN
+  c := utl_tcp.open_connection('127.0.0.1', $push_cr_port, tx_timeout => 5);
+  s := utl_tcp.get_line(c, remove_crlf => FALSE);
+  RAISE NOTICE 'CRL1 len=% last=%',
+    length(s), ascii(substr(s, length(s), 1));
+  n := utl_tcp.write_raw(c, HEXTORAW('0A65660A'));
+  s := utl_tcp.get_line(c, remove_crlf => TRUE);
+  RAISE NOTICE 'CRL2 s=% len=%', s, length(s);
+  utl_tcp.close_connection(c);
+END;
+});
+like($err, qr/CRL1 len=4 last=13/,
+	'a lone CR completes a line without waiting for more bytes')
+  or diag($err);
+like($err, qr/CRL2 s=ef len=2/,
+	'the LF after a lone CR line produces no empty line')
+  or diag($err);
+
+# a line without a terminator is returned in full when the transfer
+# times out, and the next line continues cleanly afterwards
+(undef, undef, $err) = ora_sql(qq{
+DECLARE
+  c utl_tcp.connection;
+  s VARCHAR2(100);
+  n INTEGER;
+BEGIN
+  c := utl_tcp.open_connection('127.0.0.1', $push_abc_port, tx_timeout => 1);
+  s := utl_tcp.get_line(c, remove_crlf => TRUE);
+  RAISE NOTICE 'PART1 s=% len=%', s, length(s);
+  n := utl_tcp.write_raw(c, HEXTORAW('6465660A'));
+  s := utl_tcp.get_line(c, remove_crlf => TRUE);
+  RAISE NOTICE 'PART2 s=% len=%', s, length(s);
+  utl_tcp.close_connection(c);
+END;
+});
+like($err, qr/PART1 s=abc len=3/,
+	'an unterminated line is returned when the transfer times out')
+  or diag($err);
+like($err, qr/PART2 s=def len=3/,
+	'the line after a timeout partial return is intact')
+  or diag($err);
+
+# a timeout with no complete character raises and keeps the buffer; the
+# completed character is read in order afterwards
+(undef, undef, $err) = ora_sql(qq{
+DECLARE
+  c utl_tcp.connection;
+  s VARCHAR2(100);
+  n INTEGER;
+BEGIN
+  c := utl_tcp.open_connection('127.0.0.1', $push_mb_port, tx_timeout => 1);
+  BEGIN
+    s := utl_tcp.get_line(c, remove_crlf => TRUE);
+    RAISE NOTICE 'MBL GOT (BAD)';
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'MBL % (%)', SQLERRM, SQLSTATE;
+  END;
+  n := utl_tcp.write_raw(c, HEXTORAW('BDA0E5A5BD0A'));
+  s := utl_tcp.get_line(c, remove_crlf => TRUE);
+  RAISE NOTICE 'MBL2 s=% len=%', s, length(s);
+  utl_tcp.close_connection(c);
+END;
+});
+like($err, qr/MBL .*timed out.*\(08006\)/,
+	'a timeout on an incomplete character raises without losing it')
+  or diag($err);
+like($err, qr/MBL2 s=$nihao len=2/,
+	'the completed character is read in order after the retry')
+  or diag($err);
+
+# a timeout while a multibyte character is incomplete raises
+# TRANSFER_TIMEOUT and keeps the characters read so far; after the
+# remaining bytes arrive they are read in the original order
+(undef, undef, $err) = ora_sql(qq{
+DECLARE
+  c utl_tcp.connection;
+  s VARCHAR2(100);
+  n INTEGER;
+BEGIN
+  c := utl_tcp.open_connection('127.0.0.1', $push_mb2_port, tx_timeout => 1);
+  BEGIN
+    s := utl_tcp.get_text(c, 10);
+    RAISE NOTICE 'PT1 len=%', length(s);
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'PT1 % (%)', SQLERRM, SQLSTATE;
+  END;
+  n := utl_tcp.write_raw(c, HEXTORAW('A5BD'));
+  s := utl_tcp.get_text(c, 2);
+  IF s = '$nihao' THEN
+    RAISE NOTICE 'PT2 OK';
+  ELSE
+    RAISE NOTICE 'PT2 BAD bytes=%', octet_length(s);
+  END IF;
+  utl_tcp.close_connection(c);
+END;
+});
+like($err, qr/PT1 .*timed out.*\(08006\)/,
+	'GET_TEXT raises TRANSFER_TIMEOUT with an incomplete trailing character')
+  or diag($err);
+like($err, qr/PT2 OK/,
+	'the buffered characters and the completed one come back in order')
+  or diag($err);
+
+# at a clean EOF the complete characters are returned and the partial
+# trailing character is left for RAW
+(undef, undef, $err) = ora_sql(qq{
+DECLARE
+  c utl_tcp.connection;
+  s VARCHAR2(100);
+  r RAW(64);
+BEGIN
+  c := utl_tcp.open_connection('127.0.0.1', $pushclose_amb_port,
+                               tx_timeout => 2);
+  s := utl_tcp.get_text(c, 10);
+  RAISE NOTICE 'CEOF1 len=%', length(s);
+  r := utl_tcp.get_raw(c, 1);
+  RAISE NOTICE 'CEOF2 r=%', r;
+  BEGIN
+    r := utl_tcp.get_raw(c, 1);
+    RAISE NOTICE 'CEOF3 GOT (BAD)';
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'CEOF3 % (%)', SQLERRM, SQLSTATE;
+  END;
+END;
+});
+like($err, qr/CEOF1 len=1/,
+	'clean EOF returns the complete characters read')
+  or diag($err);
+like($err, qr/CEOF2 r=\\xe4/i,
+	'the partial trailing character is left for GET_RAW')
+  or diag($err);
+like($err, qr/CEOF3 .*\(P0002\)/,
+	'input is at an end after the partial byte')
   or diag($err);
 
 # ---------------------------------------------------------------------

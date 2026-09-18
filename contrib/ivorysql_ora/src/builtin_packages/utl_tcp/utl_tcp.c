@@ -44,13 +44,16 @@
  * a directly GRANTed C function is still useless to a non-superuser.
  *
  * I/O.  Sockets are nonblocking.  A connect has a fixed 30 second
- * deadline; completion is verified with SO_ERROR after the writable wait.
+ * deadline that starts after address resolution; completion is verified
+ * with SO_ERROR after the writable wait.  (The DNS phase uses the system
+ * resolver and is not bounded by, or cancellable through, this deadline.)
  * The transfer timeout given at open time bounds each read or write
  * operation as a whole: -1 (NULL) waits indefinitely but interruptibly, 0
- * never waits, a positive value bounds the operation.  All waits go
- * through WaitLatchOrSocket so that backend cancellation and postmaster
- * death are handled.  Partial send/recv, EINTR and would-block are
- * handled explicitly.
+ * never waits (a single nonblocking receive is still attempted for bytes
+ * that have already arrived), a positive value bounds the operation.
+ * All waits go through WaitLatchOrSocket so that backend cancellation
+ * and postmaster death are handled.  Partial send/recv, EINTR and
+ * would-block are handled explicitly.
  *
  * Text conversion.  A NULL charset means the database encoding; an
  * explicit charset is resolved with pg_char_to_encoding and rejected if no
@@ -58,9 +61,11 @@
  * characters and raw lengths count bytes; multibyte characters are never
  * split.  Incomplete trailing bytes stay buffered until they form a
  * complete character; an incomplete final character at end of input
- * follows Oracle's PARTIAL_MULTIBYTE_CHAR rule.  GET_TEXT returns the
- * complete characters read when a transfer times out mid-character, and
- * raises only when nothing complete was received.
+ * follows Oracle's PARTIAL_MULTIBYTE_CHAR rule.  At a transfer timeout,
+ * GET_TEXT and GET_LINE follow Oracle's READ_TEXT/READ_LINE rules: while
+ * a character is only partly received, TRANSFER_TIMEOUT is raised and
+ * everything stays buffered for a retry; otherwise the text read so far
+ * is returned.
  *
  * Error mapping (Oracle exception -> SQLSTATE):
  *   BAD_ARGUMENT           -> 22023 invalid_parameter_value
@@ -149,6 +154,8 @@ typedef struct UtlTcpConnection
 	int			newline_len;	/* 1 or 2 bytes */
 	int			timeout_ms;		/* per operation: <0 infinite, 0 none, >0 bound */
 	bool		eof;			/* peer closed; no further input will arrive */
+	bool		pending_lf;		/* GET_LINE returned a lone CR; swallow a
+								 * following LF as the same terminator */
 	StringInfoData rxbuf;		/* ordered, not yet consumed input */
 } UtlTcpConnection;
 
@@ -588,6 +595,39 @@ utl_tcp_consume(UtlTcpConnection *conn, int n)
 		conn->rxbuf.len -= n;
 		conn->rxbuf.data[conn->rxbuf.len] = '\0';
 	}
+}
+
+/*
+ * True when the receive buffer holds at least one complete character and
+ * ends on a character boundary, i.e. GET_LINE may return it as a partial
+ * line when the transfer times out.
+ */
+static bool
+utl_tcp_complete_chars_only(UtlTcpConnection *conn)
+{
+	int			off = 0;
+
+	if (conn->rxbuf.len == 0)
+		return false;
+
+	while (off < conn->rxbuf.len)
+	{
+		bool		incomplete;
+		bool		invalid;
+		int			clen;
+
+		clen = utl_tcp_char_len(conn, off, &incomplete, &invalid);
+
+		if (incomplete)
+			return false;	/* a trailing character is only partly here */
+
+		if (invalid)
+			return true;	/* invalid bytes are reported on conversion */
+
+		off += clen;
+	}
+
+	return true;
 }
 
 /* ---------------------------------------------------------------------
@@ -1278,7 +1318,6 @@ ora_utl_tcp_get_text(PG_FUNCTION_ARGS)
 	int			staged_bytes = 0;
 	int			staged_chars = 0;
 	int			take_bytes;
-	bool		timed_out = false;
 	TimestampTz deadline;
 	unsigned char *converted;
 	char	   *result;
@@ -1338,8 +1377,29 @@ ora_utl_tcp_get_text(PG_FUNCTION_ARGS)
 				TimestampDifferenceMilliseconds(GetCurrentTimestamp(),
 												deadline) <= 0)
 			{
-				timed_out = true;
-				break;
+				int			fillrc;
+
+				/*
+				 * The deadline has passed, but bytes may already sit in
+				 * the kernel buffer: make one nonblocking receive (a
+				 * fill with an expired deadline never waits) before
+				 * giving up.
+				 */
+				fillrc = utl_tcp_fill(conn, deadline);
+				if (fillrc == UTL_TCP_FILL_DATA)
+					continue;
+				if (fillrc == UTL_TCP_FILL_EOF)
+					continue;	/* loop rechecks; conn->eof is set */
+
+				/*
+				 * Oracle's READ_TEXT rule: a timeout while a character
+				 * is only partly received raises TRANSFER_TIMEOUT and
+				 * keeps everything buffered for a retry.
+				 */
+				ereport(ERROR,
+						(errcode(ERRCODE_CONNECTION_FAILURE),
+						 errmsg("UTL_TCP: transfer timed out after %d seconds",
+								conn->timeout_ms / 1000)));
 			}
 
 			(void) utl_tcp_fill(conn, deadline);
@@ -1355,12 +1415,6 @@ ora_utl_tcp_get_text(PG_FUNCTION_ARGS)
 
 	if (staged_chars == 0)
 	{
-		if (timed_out)
-			ereport(ERROR,
-					(errcode(ERRCODE_CONNECTION_FAILURE),
-					 errmsg("UTL_TCP: transfer timed out after %d seconds",
-							conn->timeout_ms / 1000)));
-
 		/* clean EOF with no complete character at all */
 		if (conn->rxbuf.len == 0)
 			UTL_TCP_END_OF_INPUT();
@@ -1480,13 +1534,27 @@ ora_utl_tcp_get_raw(PG_FUNCTION_ARGS)
 
 	while (conn->rxbuf.len < want)
 	{
+		int			fillrc;
+
 		if (conn->eof)
 			break;
 
 		if (deadline != 0 &&
 			TimestampDifferenceMilliseconds(GetCurrentTimestamp(),
 											deadline) <= 0)
-			break;
+		{
+			/*
+			 * The deadline has passed, but bytes may already sit in the
+			 * kernel buffer: make one nonblocking receive before
+			 * reporting the timeout.
+			 */
+			fillrc = utl_tcp_fill(conn, deadline);
+			if (fillrc == UTL_TCP_FILL_TIMEOUT)
+				break;
+
+			continue;			/* DATA appends to the buffer; EOF sets
+								 * conn->eof and the loop rechecks */
+		}
 
 		(void) utl_tcp_fill(conn, deadline);
 	}
@@ -1515,8 +1583,12 @@ ora_utl_tcp_get_raw(PG_FUNCTION_ARGS)
 /*
  * sys.ora_utl_tcp_get_line(sd, remove_crlf, peek) returns one line,
  * terminated by LF, CR or CRLF (including a CRLF split across receives).
- * When no complete line arrives within the transfer timeout, the buffered
- * bytes are kept and TRANSFER_TIMEOUT is raised.
+ * Per Oracle's READ_LINE rules, a lone CR terminates a line immediately;
+ * if an LF arrives afterwards it is swallowed as part of the same
+ * terminator instead of producing an empty line.  When no terminator has
+ * arrived and the transfer times out, the buffered bytes are returned as
+ * a partial line if they form whole characters, and TRANSFER_TIMEOUT is
+ * raised (keeping everything buffered) when a character is incomplete.
  */
 Datum
 ora_utl_tcp_get_line(PG_FUNCTION_ARGS)
@@ -1547,13 +1619,26 @@ ora_utl_tcp_get_line(PG_FUNCTION_ARGS)
 	deadline = utl_tcp_deadline(conn);
 
 	/*
-	 * Scan for a terminator, waiting for more input as needed.  A CR at
-	 * the very end of the buffer is ambiguous (it might begin a CRLF), so
-	 * it needs one more byte of input before it can be reported.
+	 * Scan for a terminator, waiting for more input as needed.
 	 */
 	while (line_len < 0)
 	{
 		bool		found = false;
+
+		/*
+		 * An earlier call returned a lone CR as a complete line; an LF
+		 * arriving afterwards belongs to that same CRLF terminator, so
+		 * swallow it instead of reporting an empty line.  A deciding
+		 * byte is required either way.
+		 */
+		if (conn->pending_lf && conn->rxbuf.len > 0)
+		{
+			if (conn->rxbuf.data[0] == '\n')
+				utl_tcp_consume(conn, 1);
+
+			conn->pending_lf = false;
+			continue;
+		}
 
 		for (int i = 0; i < conn->rxbuf.len; i++)
 		{
@@ -1581,15 +1666,18 @@ ora_utl_tcp_get_line(PG_FUNCTION_ARGS)
 					}
 					found = true;
 				}
-				else if (conn->eof)
+				else
 				{
-					/* nothing more will arrive: CR ends the line */
+					/*
+					 * Nothing more is buffered: a lone CR is a complete
+					 * line by itself.  Remember to swallow a matching
+					 * LF should one arrive afterwards.
+					 */
 					line_len = i + 1;
 					term_len = 1;
 					found = true;
+					conn->pending_lf = !conn->eof;
 				}
-
-				/* otherwise a lone trailing CR needs one more byte */
 			}
 
 			if (found)
@@ -1617,10 +1705,36 @@ ora_utl_tcp_get_line(PG_FUNCTION_ARGS)
 		if (deadline != 0 &&
 			TimestampDifferenceMilliseconds(GetCurrentTimestamp(),
 											deadline) <= 0)
-			ereport(ERROR,
-					(errcode(ERRCODE_CONNECTION_FAILURE),
-					 errmsg("UTL_TCP: transfer timed out after %d seconds",
-							conn->timeout_ms / 1000)));
+		{
+			int			fillrc;
+
+			/*
+			 * The deadline has passed, but bytes may already sit in the
+			 * kernel buffer: make one nonblocking receive before
+			 * deciding between a partial line and a timeout.
+			 */
+			fillrc = utl_tcp_fill(conn, deadline);
+			if (fillrc == UTL_TCP_FILL_DATA)
+				continue;	/* rescan for a terminator */
+			if (fillrc == UTL_TCP_FILL_EOF)
+				continue;	/* loop rechecks; conn->eof is set */
+
+			/*
+			 * The transfer timed out.  Oracle returns the text read so
+			 * far when it forms whole characters, and raises
+			 * TRANSFER_TIMEOUT (keeping everything buffered) when a
+			 * character is incomplete or nothing arrived at all.
+			 */
+			if (conn->pending_lf || !utl_tcp_complete_chars_only(conn))
+				ereport(ERROR,
+						(errcode(ERRCODE_CONNECTION_FAILURE),
+						 errmsg("UTL_TCP: transfer timed out after %d seconds",
+								conn->timeout_ms / 1000)));
+
+			line_len = conn->rxbuf.len;
+			term_len = 0;
+			break;
+		}
 
 		(void) utl_tcp_fill(conn, deadline);
 	}

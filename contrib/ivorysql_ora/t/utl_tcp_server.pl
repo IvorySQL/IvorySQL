@@ -37,6 +37,10 @@
 #   prefix LEN REPLYFILE
 #                   read exactly LEN bytes, send the contents of
 #                   REPLYFILE and close ("close-after-prefix")
+#   push FILE [close]
+#                   send the contents of FILE immediately on accept,
+#                   then echo everything received (or close right away
+#                   with the "close" argument; "push with clean EOF")
 #
 # The server installs an alarm watchdog and a TERM handler so the TAP
 # harness always owns and reaps the child.
@@ -91,6 +95,17 @@ if ($mode eq 'prefix')
 	open my $rf, '<', $replyfile or die "could not read $replyfile: $!";
 	binmode $rf;
 	$prefix->{reply} = do { local $/; <$rf> };
+}
+
+my $push_reply;
+my $push_close = 0;
+if ($mode eq 'push')
+{
+	my $replyfile = shift @ARGV or die "push mode needs a data file";
+	open my $rf, '<', $replyfile or die "could not read $replyfile: $!";
+	binmode $rf;
+	$push_reply = do { local $/; <$rf> };
+	$push_close = 1 if (@ARGV && $ARGV[0] eq 'close');
 }
 
 my $sel      = IO::Select->new($srv);
@@ -176,6 +191,18 @@ while (1)
 			{
 				start_fragments($st);
 			}
+			elsif ($mode eq 'push')
+			{
+				# deliver the pushed bytes right away; echo or close,
+				# depending on the variant
+				syswrite($st->{sock}, $push_reply)
+					if length($push_reply) > 0;
+				if ($push_close)
+				{
+					close_conn($st);
+					next;
+				}
+			}
 			next;
 		}
 
@@ -216,7 +243,7 @@ while (1)
 
 		$st->{received} += $n;
 
-		if ($mode eq 'echo' or $mode eq 'bin')
+		if ($mode eq 'echo' or $mode eq 'bin' or $mode eq 'push')
 		{
 			my $out = $mode eq 'bin' ? "RX$data" : $data;
 			syswrite($st->{sock}, $out);
