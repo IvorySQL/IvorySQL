@@ -33,6 +33,7 @@ OBJS = \
 	src/builtin_packages/dbms_utility/dbms_utility.o \
 	src/builtin_packages/dbms_lock/dbms_lock.o \
 	src/builtin_packages/utl_encode/utl_encode.o \
+	src/builtin_packages/utl_compress/utl_compress.o \
 	src/builtin_packages/dbms_session/dbms_session.o \
 	src/builtin_packages/dbms_transaction/dbms_transaction.o
 
@@ -86,6 +87,7 @@ ORA_REGRESS = \
 	utl_file \
 	utl_raw \
 	utl_encode \
+	utl_compress \
 	dbms_session \
 	dbms_transaction
 
@@ -105,6 +107,10 @@ endif
 
 ifeq ($(with_libxml),yes)
 SHLIB_LINK += -lxml2
+endif
+
+ifeq ($(with_zlib),yes)
+SHLIB_LINK += -lz
 endif
 
 

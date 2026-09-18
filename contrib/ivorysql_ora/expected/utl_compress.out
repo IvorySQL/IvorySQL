@@ -1,0 +1,218 @@
+-- Test UTL_COMPRESS package
+-- Empty input: LZ_COMPRESS(zero-length) produces a valid (non-empty) stream
+-- that roundtrips back to zero length.  (Note: '' is NULL in Oracle mode,
+-- so the regression uses the true zero-length bytea literal '\x'.)
+SELECT length(UTL_COMPRESS.LZ_COMPRESS('\x'::bytea));
+ length 
+--------
+      8
+(1 row)
+
+SELECT UTL_COMPRESS.LZ_UNCOMPRESS(UTL_COMPRESS.LZ_COMPRESS('\x'::bytea)) = '\x'::bytea;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Zero-length input to LZ_UNCOMPRESS raises LZ_UNCOMPRESS_EMPTY_FILE.
+SELECT UTL_COMPRESS.LZ_UNCOMPRESS('\x'::bytea);
+ERROR:  LZ_UNCOMPRESS_EMPTY_FILE
+DETAIL:  tried to uncompress an empty source
+CONTEXT:  PL/iSQL function sys.utl_compress.lz_uncompress line 15 at RETURN
+-- NULL input returns NULL (STRICT wrappers)
+SELECT UTL_COMPRESS.LZ_COMPRESS(NULL) IS NULL;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT UTL_COMPRESS.LZ_UNCOMPRESS(NULL) IS NULL;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT UTL_COMPRESS.LZ_COMPRESS(NULL, 9) IS NULL;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Single-byte roundtrip
+SELECT UTL_COMPRESS.LZ_UNCOMPRESS(UTL_COMPRESS.LZ_COMPRESS('A'::bytea)) = 'A'::bytea;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Text roundtrip
+SELECT UTL_COMPRESS.LZ_UNCOMPRESS(UTL_COMPRESS.LZ_COMPRESS(convert_to('hello world', 'UTF8'))) = convert_to('hello world', 'UTF8');
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Multi-byte (Chinese) roundtrip
+SELECT UTL_COMPRESS.LZ_UNCOMPRESS(UTL_COMPRESS.LZ_COMPRESS(convert_to('你好,IvorySQL 压缩测试', 'UTF8'))) = convert_to('你好,IvorySQL 压缩测试', 'UTF8');
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Repetitive data actually compresses (output strictly shorter than input)
+SELECT length(UTL_COMPRESS.LZ_COMPRESS(repeat('abcdefgh', 1000)::bytea)) < length(repeat('abcdefgh', 1000)::bytea);
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT length(UTL_COMPRESS.LZ_COMPRESS(repeat('x', 10000)::bytea));
+ length 
+--------
+     33
+(1 row)
+
+-- Roundtrip of repetitive data with default quality 6
+SELECT UTL_COMPRESS.LZ_UNCOMPRESS(UTL_COMPRESS.LZ_COMPRESS(repeat('abcdefgh', 1000)::bytea)) = repeat('abcdefgh', 1000)::bytea;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- quality 1 vs 9 roundtrip (both restore the original)
+SELECT UTL_COMPRESS.LZ_UNCOMPRESS(UTL_COMPRESS.LZ_COMPRESS(repeat('abc', 1000)::bytea, 1)) = repeat('abc', 1000)::bytea;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT UTL_COMPRESS.LZ_UNCOMPRESS(UTL_COMPRESS.LZ_COMPRESS(repeat('abc', 1000)::bytea, 9)) = repeat('abc', 1000)::bytea;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- quality outside 1..9 raises LZ_INVALID_PARAMETER
+SELECT UTL_COMPRESS.LZ_COMPRESS('hello'::bytea, 0);
+ERROR:  LZ_INVALID_PARAMETER
+DETAIL:  quality must be between 1 and 9, got 0
+CONTEXT:  PL/iSQL function sys.utl_compress.lz_compress line 7 at RETURN
+SELECT UTL_COMPRESS.LZ_COMPRESS('hello'::bytea, 10);
+ERROR:  LZ_INVALID_PARAMETER
+DETAIL:  quality must be between 1 and 9, got 10
+CONTEXT:  PL/iSQL function sys.utl_compress.lz_compress line 7 at RETURN
+-- Compressing already-compressed data: no crash, double roundtrip restores
+SELECT UTL_COMPRESS.LZ_UNCOMPRESS(
+         UTL_COMPRESS.LZ_UNCOMPRESS(
+           UTL_COMPRESS.LZ_COMPRESS(
+             UTL_COMPRESS.LZ_COMPRESS('IvorySQL'::bytea)))) = 'IvorySQL'::bytea;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Corrupted / truncated input raises LZ_UNCOMPRESS_EXCEPTION, no crash
+SELECT UTL_COMPRESS.LZ_UNCOMPRESS('\x12203040'::bytea);
+ERROR:  LZ_UNCOMPRESS_EXCEPTION
+DETAIL:  input is not a valid compressed stream
+CONTEXT:  PL/iSQL function sys.utl_compress.lz_uncompress line 15 at RETURN
+SELECT UTL_COMPRESS.LZ_UNCOMPRESS('\x78da0102feff0001ffff02'::bytea);
+ERROR:  LZ_UNCOMPRESS_EXCEPTION
+DETAIL:  input is not a valid compressed stream
+CONTEXT:  PL/iSQL function sys.utl_compress.lz_uncompress line 15 at RETURN
+-- Stream format is standard zlib: the zero-length stream is byte-for-byte
+-- the well-known empty DEFLATE stream, and a stream produced by an
+-- independent zlib implementation (Python's zlib module) decompresses
+-- back to the original text, so roundtrips are not self-referential.
+SELECT UTL_COMPRESS.LZ_COMPRESS('\x'::bytea) = '\x789c030000000001'::bytea;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT UTL_COMPRESS.LZ_UNCOMPRESS('\x789ccb48cdc9c95728cf2fca4901001a0b045d'::bytea) = convert_to('hello world', 'UTF8');
+ ?column? 
+----------
+ t
+(1 row)
+
+-- The C wrapper and the package must agree on the same input
+SELECT sys.ora_utl_compress_lz_compress('\x00112233445566778899aabbccddeeff'::bytea, 6) = UTL_COMPRESS.LZ_COMPRESS('\x00112233445566778899aabbccddeeff'::bytea);
+ ?column? 
+----------
+ t
+(1 row)
+
+-- RAW type roundtrip through the package (RAW in, RAW out)
+SELECT UTL_COMPRESS.LZ_UNCOMPRESS(UTL_COMPRESS.LZ_COMPRESS('\x48656c6c6f20524157'::sys.raw)) = '\x48656c6c6f20524157'::sys.raw;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Highly compressible 100KB input: the compressed stream (a few hundred
+-- bytes) is far smaller than the initial 8x decompression-buffer guess, so
+-- this exercises the buffer-growth (doubling) path in lz_uncompress.
+SELECT length(UTL_COMPRESS.LZ_COMPRESS(decode(repeat('00', 100000), 'hex'))) < 1024;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT UTL_COMPRESS.LZ_UNCOMPRESS(UTL_COMPRESS.LZ_COMPRESS(decode(repeat('00', 100000), 'hex'))) = decode(repeat('00', 100000), 'hex');
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Truncating a *valid* compressed stream raises LZ_UNCOMPRESS_EXCEPTION
+-- instead of hanging, crashing, or returning partial data.
+SELECT UTL_COMPRESS.LZ_UNCOMPRESS(substring(UTL_COMPRESS.LZ_COMPRESS(decode(repeat('00', 100000), 'hex')), 1, 112));
+ERROR:  LZ_UNCOMPRESS_EXCEPTION
+DETAIL:  input is not a valid compressed stream
+CONTEXT:  PL/iSQL function sys.utl_compress.lz_uncompress line 15 at RETURN
+SELECT UTL_COMPRESS.LZ_UNCOMPRESS(substring(UTL_COMPRESS.LZ_COMPRESS(decode(repeat('00', 100000), 'hex')), 1, 100));
+ERROR:  LZ_UNCOMPRESS_EXCEPTION
+DETAIL:  input is not a valid compressed stream
+CONTEXT:  PL/iSQL function sys.utl_compress.lz_uncompress line 15 at RETURN
+-- Intermediate quality levels also roundtrip (1 and 9 covered above)
+SELECT UTL_COMPRESS.LZ_UNCOMPRESS(UTL_COMPRESS.LZ_COMPRESS(decode(repeat('6162', 1000), 'hex'), 2)) = decode(repeat('6162', 1000), 'hex');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT UTL_COMPRESS.LZ_UNCOMPRESS(UTL_COMPRESS.LZ_COMPRESS(decode(repeat('6162', 1000), 'hex'), 5)) = decode(repeat('6162', 1000), 'hex');
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT UTL_COMPRESS.LZ_UNCOMPRESS(UTL_COMPRESS.LZ_COMPRESS(decode(repeat('6162', 1000), 'hex'), 8)) = decode(repeat('6162', 1000), 'hex');
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Pseudo-random binary data roundtrip (deterministic via md5)
+SELECT UTL_COMPRESS.LZ_UNCOMPRESS(UTL_COMPRESS.LZ_COMPRESS(
+    (SELECT decode(string_agg(md5(i::text), ''), 'hex')
+       FROM generate_series(1, 128) i))) =
+    (SELECT decode(string_agg(md5(i::text), ''), 'hex')
+       FROM generate_series(1, 128) i);
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Large-ish binary blob (64KB) roundtrip
+SELECT UTL_COMPRESS.LZ_UNCOMPRESS(UTL_COMPRESS.LZ_COMPRESS(
+    (SELECT decode(string_agg(md5(i::text), ''), 'hex')
+       FROM generate_series(1, 4096) i))) =
+    (SELECT decode(string_agg(md5(i::text), ''), 'hex')
+       FROM generate_series(1, 4096) i);
+ ?column? 
+----------
+ t
+(1 row)
+
