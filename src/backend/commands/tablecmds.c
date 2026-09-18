@@ -15935,7 +15935,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 	}
 
 	/*
-	 * Now find out the dependent funciton which parameters datatype
+	 * Now find out the dependent function which parameters datatype
 	 * or return datatype reference %TYPE or %ROWTYPE.
 	 */
 	for (int i = 0; i < numDependentFuncPkgOids; i++)
@@ -25132,7 +25132,7 @@ check_function_dependency_internal(Relation depRel, SysScanDesc scan)
 	}
 
 	/*
-	 * Now find out the dependent funciton which parameters datatype
+	 * Now find out the dependent function which parameters datatype
 	 * or return datatype reference %TYPE or %ROWTYPE.
 	 */
 	for (int i = 0; i < numDependentFuncPkgOids; i++)
