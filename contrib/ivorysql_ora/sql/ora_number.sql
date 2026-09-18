@@ -1002,3 +1002,21 @@ SELECT to_number('1e0') AS exp_zero;
 SELECT to_number('1e+0') AS exp_plus_zero;
 SELECT to_number('1e-0') AS exp_minus_zero;
 /* End - to_number scientific notation */
+
+/* dollar currency format model: to_number accepts it, Oracle-style */
+SELECT to_number('$123', '$999') AS dol_to_num;
+SELECT to_number('-$123', '$999') AS dol_sign_to_num;
+SELECT to_number('$1,234.50', '$999,999.99') AS dol_comma_to_num;
+SELECT to_number(' $123', '$999') AS dol_blank_to_num;
+SELECT to_number('$123', 'L999') AS dol_l_to_num;
+SELECT to_number('123', '$999') AS dol_missing_in_input;
+/* dollar currency format model: to_char floats it next to the first digit */
+SELECT to_char(123.45, '$999.99') AS dol_float;
+SELECT to_char(-123, '$999') AS dol_neg;
+SELECT to_char(123, '$999') AS dol_int;
+SELECT to_char(123, '999$') AS dol_trailing;
+SELECT to_char(0, '$999') AS dol_zero;
+SELECT to_char(1, '$999') AS dol_one;
+SELECT to_char(123, 'FM$999') AS dol_fm;
+SELECT to_char(123, '9,999$') AS dol_comma;
+SELECT to_char(0.5, '$999.99') = '    $.50' AS dol_frac_eq;
