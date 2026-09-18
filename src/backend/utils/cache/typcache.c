@@ -1604,6 +1604,9 @@ cache_array_element_properties(TypeCacheEntry *typentry)
 static bool
 record_fields_have_equality(TypeCacheEntry *typentry)
 {
+	/* Oracle object methods provide equality independently of attributes. */
+	if (get_typisobject(typentry->type_id))
+		return true;
 	if (!(typentry->flags & TCFLAGS_CHECKED_FIELD_PROPERTIES))
 		cache_record_field_properties(typentry);
 	return (typentry->flags & TCFLAGS_HAVE_FIELD_EQUALITY) != 0;
@@ -1612,6 +1615,9 @@ record_fields_have_equality(TypeCacheEntry *typentry)
 static bool
 record_fields_have_compare(TypeCacheEntry *typentry)
 {
+	/* MAP and ORDER methods are evaluated by the generic record comparator. */
+	if (get_typisobject(typentry->type_id))
+		return true;
 	if (!(typentry->flags & TCFLAGS_CHECKED_FIELD_PROPERTIES))
 		cache_record_field_properties(typentry);
 	return (typentry->flags & TCFLAGS_HAVE_FIELD_COMPARE) != 0;
@@ -1620,6 +1626,9 @@ record_fields_have_compare(TypeCacheEntry *typentry)
 static bool
 record_fields_have_hashing(TypeCacheEntry *typentry)
 {
+	/* ORDER comparison has no stable scalar hash key; prefer sorted plans. */
+	if (get_typisobject(typentry->type_id))
+		return false;
 	if (!(typentry->flags & TCFLAGS_CHECKED_FIELD_PROPERTIES))
 		cache_record_field_properties(typentry);
 	return (typentry->flags & TCFLAGS_HAVE_FIELD_HASHING) != 0;
@@ -1628,6 +1637,8 @@ record_fields_have_hashing(TypeCacheEntry *typentry)
 static bool
 record_fields_have_extended_hashing(TypeCacheEntry *typentry)
 {
+	if (get_typisobject(typentry->type_id))
+		return false;
 	if (!(typentry->flags & TCFLAGS_CHECKED_FIELD_PROPERTIES))
 		cache_record_field_properties(typentry);
 	return (typentry->flags & TCFLAGS_HAVE_FIELD_EXTENDED_HASHING) != 0;

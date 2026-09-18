@@ -25,10 +25,13 @@
 #include "oracle_parser/ora_scanner.h"
 #include "parser/scansup.h"
 #include "utils/builtins.h"
+#include "utils/lsyscache.h"
 
 #include "plisql.h"
 
 #include "pl_subproc_function.h"
+
+static List *plisql_object_method_args(List *args, int argmode);
 
 #include "pl_package.h"
 #include "pl_exception_type.h"
@@ -330,6 +333,7 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location, YYSTYPE *yylv
 %token <keyword>	K_CONSTANT
 %token <keyword>	K_CONSTRAINT
 %token <keyword>	K_CONSTRAINT_NAME
+%token <keyword>	K_CONSTRUCTOR
 %token <keyword>	K_CONTINUE
 %token <keyword>	K_CURRENT
 %token <keyword>	K_CURRENT_USER
@@ -372,6 +376,8 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location, YYSTYPE *yylv
 %token <keyword>	K_LAST
 %token <keyword>	K_LOG
 %token <keyword>	K_LOOP
+%token <keyword>	K_MAP
+%token <keyword>	K_MEMBER
 %token <keyword>	K_MERGE
 %token <keyword>	K_MESSAGE
 %token <keyword>	K_MESSAGE_TEXT
@@ -386,6 +392,7 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location, YYSTYPE *yylv
 %token <keyword>	K_OPEN
 %token <keyword>	K_OPTION
 %token <keyword>	K_OR
+%token <keyword>	K_ORDER
 %token <keyword>	K_OUT
 %token <keyword>	K_PACKAGE
 %token <keyword>	K_PARALLEL_ENABLE
@@ -406,6 +413,7 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location, YYSTYPE *yylv
 %token <keyword>	K_RECORD
 %token <keyword>	K_RELATIVE
 %token <keyword>	K_RELIES_ON
+%token <keyword>	K_RESULT
 %token <keyword>	K_RESULT_CACHE
 %token <keyword>	K_RETURN
 %token <keyword>	K_RETURNED_SQLSTATE
@@ -416,9 +424,11 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location, YYSTYPE *yylv
 %token <keyword>	K_SCHEMA
 %token <keyword>	K_SCHEMA_NAME
 %token <keyword>	K_SCROLL
+%token <keyword>	K_SELF
 %token <keyword>	K_SLICE
 %token <keyword>	K_SQLSTATE
 %token <keyword>	K_STACKED
+%token <keyword>	K_STATIC
 %token <keyword>	K_STRICT
 %token <keyword>	K_TABLE
 %token <keyword>	K_TABLE_NAME
@@ -1341,6 +1351,45 @@ function_heading	: K_FUNCTION ora_function_name func_args K_RETURN decl_datatype
 
 							$$ = subprocfunc;
 						}
+					| K_MEMBER K_FUNCTION ora_function_name func_args K_RETURN decl_datatype
+						{
+							$$ = plisql_build_subproc_function($3,
+								plisql_object_method_args($4, ARGMODE_IN),
+								$6, @3);
+							plisql_set_object_method_kind($$,
+								OBJECT_METHOD_MEMBER_FUNCTION);
+						}
+					| K_MAP K_MEMBER K_FUNCTION ora_function_name func_args K_RETURN decl_datatype
+						{
+							$$ = plisql_build_subproc_function($4,
+								plisql_object_method_args($5, ARGMODE_IN),
+								$7, @4);
+							plisql_set_object_method_kind($$,
+								OBJECT_METHOD_MAP);
+						}
+					| K_ORDER K_MEMBER K_FUNCTION ora_function_name func_args K_RETURN decl_datatype
+						{
+							$$ = plisql_build_subproc_function($4,
+								plisql_object_method_args($5, ARGMODE_IN),
+								$7, @4);
+							plisql_set_object_method_kind($$,
+								OBJECT_METHOD_ORDER);
+						}
+					| K_STATIC K_FUNCTION ora_function_name func_args K_RETURN decl_datatype
+						{
+							$$ = plisql_build_subproc_function($3, $4, $6, @3);
+							plisql_set_object_method_kind($$,
+								OBJECT_METHOD_STATIC_FUNCTION);
+						}
+					| K_CONSTRUCTOR K_FUNCTION ora_function_name func_args
+					  K_RETURN K_SELF K_AS K_RESULT
+						{
+							$$ = plisql_build_subproc_function($3,
+								plisql_object_method_args($4, ARGMODE_IN),
+								plisql_build_object_self_type(), @3);
+							plisql_set_object_method_kind($$,
+								OBJECT_METHOD_CONSTRUCTOR);
+						}
 						;
 function_properties :	function_properite_list { $$ = $1; }
 					|	{ $$ = NIL; }
@@ -1421,6 +1470,20 @@ procedure_heading : K_PROCEDURE ora_function_name func_args
 							subprocfunc = plisql_build_subproc_function($2, $3, NULL, @2); 
 
 							$$ = subprocfunc;
+						}
+					| K_MEMBER K_PROCEDURE ora_function_name func_args
+						{
+							$$ = plisql_build_subproc_function($3,
+								plisql_object_method_args($4, ARGMODE_INOUT),
+								NULL, @3);
+							plisql_set_object_method_kind($$,
+								OBJECT_METHOD_MEMBER_PROCEDURE);
+						}
+					| K_STATIC K_PROCEDURE ora_function_name func_args
+						{
+							$$ = plisql_build_subproc_function($3, $4, NULL, @3);
+							plisql_set_object_method_kind($$,
+								OBJECT_METHOD_STATIC_PROCEDURE);
 						}
 						;
 
@@ -1806,42 +1869,67 @@ stmt_call		: K_DO
 
 stmt_assign		: T_DATUM
 					{
-						PLiSQL_stmt_assign *new;
+						int			tok;
 						RawParseMode pmode;
+						YYSTYPE		datum_yylval = yylval;
+						YYLTYPE		datum_yylloc = yylloc;
 
-						/* see how many names identify the datum */
-						switch ($1.ident ? 1 : list_length($1.idents))
+						tok = yylex(&yylval, &yylloc, yyscanner);
+						plisql_push_back_token(tok, &yylval, &yylloc, yyscanner);
+						if (tok == '(' &&
+							$1.datum->dtype == PLISQL_DTYPE_RECFIELD)
 						{
-							case 1:
-								pmode = RAW_PARSE_PLISQL_ASSIGN1;
-								break;
-							case 2:
-								pmode = RAW_PARSE_PLISQL_ASSIGN2;
-								break;
-							case 3:
-								pmode = RAW_PARSE_PLISQL_ASSIGN3;
-								break;
-							default:
-								elog(ERROR, "unexpected number of names");
-								pmode = 0; /* keep compiler quiet */
-						}
+							PLiSQL_stmt_call *new;
 
-						check_assignable($1.datum, @1, yyscanner);
-						new = palloc0_object(PLiSQL_stmt_assign);
-						new->cmd_type = PLISQL_STMT_ASSIGN;
-						new->lineno   = plisql_location_to_lineno(@1, yyscanner);
-						new->stmtid = ++plisql_curr_compile->nstatements;
-						new->varno = $1.datum->dno;
-						/* Push back the head name to include it in the stmt */
-						plisql_push_back_token(T_DATUM, &yylval, &yylloc, yyscanner);
-						new->expr = read_sql_construct(';', 0, 0, ";",
+							new = palloc0_object(PLiSQL_stmt_call);
+							new->cmd_type = PLISQL_STMT_CALL;
+							new->lineno = plisql_location_to_lineno(@1, yyscanner);
+							new->stmtid = ++plisql_curr_compile->nstatements;
+							new->expr = build_call_expr(T_DATUM, @1,
+														&yylval, &yylloc, yyscanner);
+							new->is_call = true;
+							plisql_curr_compile->requires_procedure_resowner = true;
+							$$ = (PLiSQL_stmt *) new;
+						}
+						else
+						{
+							PLiSQL_stmt_assign *new;
+
+							/* see how many names identify the datum */
+							switch ($1.ident ? 1 : list_length($1.idents))
+							{
+								case 1:
+									pmode = RAW_PARSE_PLISQL_ASSIGN1;
+									break;
+								case 2:
+									pmode = RAW_PARSE_PLISQL_ASSIGN2;
+									break;
+								case 3:
+									pmode = RAW_PARSE_PLISQL_ASSIGN3;
+									break;
+								default:
+									elog(ERROR, "unexpected number of names");
+									pmode = 0; /* keep compiler quiet */
+							}
+
+							check_assignable($1.datum, @1, yyscanner);
+							new = palloc0_object(PLiSQL_stmt_assign);
+							new->cmd_type = PLISQL_STMT_ASSIGN;
+							new->lineno   = plisql_location_to_lineno(@1, yyscanner);
+							new->stmtid = ++plisql_curr_compile->nstatements;
+							new->varno = $1.datum->dno;
+							/* Push back the head name to include it in the stmt */
+							plisql_push_back_token(T_DATUM, &datum_yylval,
+														&datum_yylloc, yyscanner);
+							new->expr = read_sql_construct(';', 0, 0, ";",
 													   pmode,
 													   false, true,
 													   NULL, NULL,
 													   &yylval, &yylloc, yyscanner);
-						mark_expr_as_assignment_source(new->expr, $1.datum);
+							mark_expr_as_assignment_source(new->expr, $1.datum);
 
-						$$ = (PLiSQL_stmt *)new;
+							$$ = (PLiSQL_stmt *)new;
+						}
 					}
 				;
 
@@ -3450,6 +3538,7 @@ unreserved_keyword	:
 				| K_CONSTANT
 				| K_CONSTRAINT
 				| K_CONSTRAINT_NAME
+				| K_CONSTRUCTOR
 				| K_CONTINUE
 				| K_CURRENT
 				| K_CURRENT_USER
@@ -3480,6 +3569,8 @@ unreserved_keyword	:
 				| K_IS
 				| K_LAST
 				| K_LOG
+				| K_MAP
+				| K_MEMBER
 				| K_MERGE
 				| K_MESSAGE
 				| K_MESSAGE_TEXT
@@ -3491,6 +3582,7 @@ unreserved_keyword	:
 				| K_OF
 				| K_OPEN
 				| K_OPTION
+				| K_ORDER
 				| K_OUT
 				| K_PACKAGE
 				| K_PARALLEL_ENABLE
@@ -3510,6 +3602,7 @@ unreserved_keyword	:
 				| K_RECORD
 				| K_RELATIVE
 				| K_RELIES_ON
+				| K_RESULT
 				| K_RESULT_CACHE
 				| K_RETURN
 				| K_RETURNED_SQLSTATE
@@ -3520,9 +3613,11 @@ unreserved_keyword	:
 				| K_SCHEMA
 				| K_SCHEMA_NAME
 				| K_SCROLL
+				| K_SELF
 				| K_SLICE
 				| K_SQLSTATE
 				| K_STACKED
+				| K_STATIC
 				| K_TABLE
 				| K_TABLE_NAME
 				| K_TRIGGER
@@ -3762,6 +3857,30 @@ read_sql_expression(int until, const char *expected, YYSTYPE *yylvalp, YYLTYPE *
 							  RAW_PARSE_PLISQL_EXPR,
 							  true, true, NULL, NULL,
                               yylvalp, yyllocp, yyscanner);
+}
+
+/*
+ * Build the argument list of an object method.  Object methods receive an
+ * implicit SELF argument; Oracle also allows the method specification to
+ * declare SELF explicitly (typically "self IN OUT NOCOPY <type>").  In that
+ * case the declared parameter is the SELF argument, so adding the implicit one
+ * as well would make the compiler report "duplicate declaration in function
+ * args".
+ */
+static List *
+plisql_object_method_args(List *args, int argmode)
+{
+	PLiSQL_function_argitem *first;
+
+	if (args != NIL)
+	{
+		first = (PLiSQL_function_argitem *) linitial(args);
+		if (first != NULL && first->argname != NULL &&
+			pg_strcasecmp(first->argname, "self") == 0)
+			return args;
+	}
+
+	return lcons(plisql_build_object_self_arg(argmode), args);
 }
 
 /* Convenience routine to read an expression with two possible terminators */
@@ -4293,7 +4412,8 @@ build_call_expr(int firsttoken, int location, YYSTYPE *yylvalp, YYLTYPE *yyllocp
 		ds.data[--ds.len] = '\0';
 
 	/* build call expr */
-	if ((firsttoken == T_WORD || firsttoken ==T_CWORD) && tok == ';')
+	if ((firsttoken == T_WORD || firsttoken == T_CWORD ||
+		 firsttoken == T_DATUM) && tok == ';')
 		ds.data = psprintf("CALL %s", ds.data);
 
 	expr = palloc0_object(PLiSQL_expr);
@@ -4474,6 +4594,7 @@ static PLiSQL_stmt *
 make_return_stmt(int location, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 {
 	PLiSQL_stmt_return *new;
+	int			constructor_self_varno = -1;
 
 	new = palloc0_object(PLiSQL_stmt_return);
 	new->cmd_type = PLISQL_STMT_RETURN;
@@ -4482,7 +4603,29 @@ make_return_stmt(int location, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yysc
 	new->expr	  = NULL;
 	new->retvarno = -1;
 
-	if (plisql_curr_compile->fn_retset)
+	/* A bare RETURN in an object constructor returns initialized SELF. */
+	if (plisql_curr_compile->object_method_kind == OBJECT_METHOD_CONSTRUCTOR)
+	{
+		int			self_varno;
+
+		Assert(plisql_curr_compile->fn_nargs > 0);
+		self_varno = plisql_curr_compile->fn_argvarnos[0];
+
+		if (self_varno >= 0 && self_varno < plisql_nDatums &&
+			plisql_Datums[self_varno]->dtype == PLISQL_DTYPE_REC)
+			constructor_self_varno = self_varno;
+	}
+
+	if (constructor_self_varno >= 0)
+	{
+		if (yylex(yylvalp, yyllocp, yyscanner) != ';')
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("RETURN statement in an object constructor cannot have an expression"),
+					 parser_errposition(*yyllocp)));
+		new->retvarno = constructor_self_varno;
+	}
+	else if (plisql_curr_compile->fn_retset)
 	{
 		if (yylex(yylvalp, yyllocp, yyscanner) != ';')
 			ereport(ERROR,
