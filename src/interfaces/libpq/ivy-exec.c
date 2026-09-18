@@ -3126,35 +3126,51 @@ IvyremoveStmtHandleRelation(IvyPreparedStatement *stmtHandle)
 	for (tmp = stmtHandle->IvyconnList; tmp != NULL; tmp = tmp->next)
 	{
 		Ivyconn *tconn = (Ivyconn *) tmp->value;
-		Ivyresult *tresult = NULL;
-		char	buf[256];
-		int	len;
+		PGresult   *presult = NULL;
+		char   *close_error = NULL;
 
-		memset(buf, 0x00, 256);
-		len = snprintf(buf, 256, "DEALLOCATE %s", stmtHandle->stmtName);
-
-		if (len >= 255)
-			fprintf(stderr, "length of stmt name is  more than 245 bytes\n");
-
-		/* deallocate stmt */
-		tresult = Ivyexec(tconn, (const char *) buf);
-		if (IvyresultStatus(tresult) != PGRES_COMMAND_OK)
-		{
-			if (tconn->conn == NULL)
-				fprintf(stderr, "deallocate stmt %s failed because connection is gone\n", buf);
-			else
-				fprintf(stderr, "deallocate stmt %s failed\n", buf);
-		}
-
-		Ivyclear(tresult);
-
-		/* conn may be null due to other threads call Ivyclean() */
+		/*
+		 * Ivyfinish() clears and frees the PGconn while holding self_lock, so
+		 * keep it locked for the complete synchronous Close operation.  A
+		 * protocol Close uses the statement name verbatim and avoids treating
+		 * it as a possibly truncated SQL identifier.
+		 */
+		PGSemaphoreLock(&tconn->self_lock);
 		if (tconn->conn != NULL)
 		{
-			PGSemaphoreLock(&tconn->lock);
-			tconn->IvystmtHandleList = IvyremoveValueFromList(tconn->IvystmtHandleList, (void *) stmtHandle);
-			PGSemaphoreUnlock(&tconn->lock);
+			presult = PQclosePrepared(tconn->conn, stmtHandle->stmtName);
+			if (presult == NULL)
+				close_error = strdup(PQerrorMessage(tconn->conn));
+			else if (PQresultStatus(presult) != PGRES_COMMAND_OK)
+			{
+				const char *message = PQresultErrorMessage(presult);
+
+				if (message == NULL || message[0] == '\0')
+					message = PQerrorMessage(tconn->conn);
+				close_error = strdup(message);
+			}
 		}
+		else
+			close_error = strdup("connection is gone");
+
+		/*
+		 * The local relation describes ownership of stmtHandle, not whether the
+		 * server accepted Close.  Remove it on every path before stmtHandle is
+		 * freed so the connection never retains a dangling handle pointer.
+		 */
+		PGSemaphoreLock(&tconn->lock);
+		tconn->IvystmtHandleList = IvyremoveValueFromList(tconn->IvystmtHandleList,
+													 (void *) stmtHandle);
+		PGSemaphoreUnlock(&tconn->lock);
+		PGSemaphoreUnlock(&tconn->self_lock);
+
+		if (close_error != NULL)
+		{
+			fprintf(stderr, "could not close prepared statement \"%s\": %s\n",
+					stmtHandle->stmtName, close_error);
+			free(close_error);
+		}
+		PQclear(presult);
 	}
 
 	return;
