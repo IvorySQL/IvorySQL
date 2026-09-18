@@ -25,13 +25,15 @@
  * backend-local array (at most UTL_TCP_MAX_CONNECTIONS live sockets).  A
  * slot stores the pgsocket, a monotonic handle value that is never reused
  * within the backend's lifetime, the Oid of the role that opened the
- * connection, the on-the-wire encoding, the newline sequence registered at
- * open time, the transfer timeout and a bounded ordered receive buffer for
- * text and raw reads.  Connections deliberately outlive transactions; a
- * before_shmem_exit hook closes whatever is still open when the backend
- * ends.  Statements that fail after a socket was created leave no leaked
- * descriptor: OPEN closes a not-yet-registered socket on any error path,
- * and sockets that are already registered survive statement errors.
+ * connection, the on-the-wire encoding, the newline sequence registered
+ * at open time (converted to the wire encoding and validated before any
+ * resource is allocated), the transfer timeout and a bounded ordered
+ * receive buffer for text and raw reads.  Connections deliberately
+ * outlive transactions; a before_shmem_exit hook closes whatever is
+ * still open when the backend ends.  Statements that fail after a socket
+ * was created leave no leaked descriptor: OPEN closes a not-yet-
+ * registered socket on any error path, and sockets that are already
+ * registered survive statement errors.
  *
  * Authorization.  OPEN_CONNECTION requires a superuser, checked before any
  * name resolution or socket activity; this is a temporary release
@@ -612,6 +614,54 @@ utl_tcp_resolve_charset(text *charset)
 	return encoding;
 }
 
+/*
+ * Convert the newline sequence from the database encoding to the wire
+ * encoding and validate the result: 1..2 bytes forming whole characters.
+ * An unconvertible character raises an error here, before the caller has
+ * allocated any socket or registry slot, and WRITE_LINE later sends the
+ * bytes the peer expects instead of database-encoded bytes.
+ */
+static const char *
+utl_tcp_convert_newline(const char *nl, int len, int wire_encoding,
+						int *wire_len)
+{
+	const char *converted;
+	const char *p;
+	int			rem;
+
+	if (len < 1)
+		UTL_TCP_BAD_ARGUMENT("UTL_TCP: newline must be 1 or 2 bytes long");
+
+	converted = (const char *) pg_do_encoding_conversion((unsigned char *) nl,
+														 len,
+														 GetDatabaseEncoding(),
+														 wire_encoding);
+
+	if (converted == nl)
+		*wire_len = len;
+	else
+		*wire_len = strlen(converted);
+
+	if (*wire_len < 1 || *wire_len > 2)
+		UTL_TCP_BAD_ARGUMENT("UTL_TCP: newline must be 1 or 2 bytes long");
+
+	/* the converted bytes must form whole characters */
+	p = converted;
+	rem = *wire_len;
+	while (rem > 0)
+	{
+		int			clen = pg_encoding_mblen(wire_encoding, p);
+
+		if (clen > rem)
+			UTL_TCP_BAD_ARGUMENT_DETAIL("UTL_TCP: newline must not split a character",
+										"the newline ends mid-character in the wire encoding");
+		p += clen;
+		rem -= clen;
+	}
+
+	return converted;
+}
+
 /* ---------------------------------------------------------------------
  * C entry points
  * ---------------------------------------------------------------------
@@ -668,14 +718,31 @@ ora_utl_tcp_open_connection(PG_FUNCTION_ARGS)
 	/* local bind options: supported only as NULL (reject non-defaults) */
 	if (!PG_ARGISNULL(2))
 		UTL_TCP_FEATURE("UTL_TCP: binding to a local host is not supported");
-	if (!PG_ARGISNULL(3) && PG_GETARG_INT32(3) != 0)
+	if (!PG_ARGISNULL(3))
 		UTL_TCP_FEATURE("UTL_TCP: binding to a local port is not supported");
 
-	/* buffer sizes: NULL or 0 select the only mode available, unbuffered */
-	if (!PG_ARGISNULL(4) && PG_GETARG_INT32(4) > 0)
-		UTL_TCP_FEATURE("UTL_TCP: a positive in_buffer_size is not supported; I/O is unbuffered");
-	if (!PG_ARGISNULL(5) && PG_GETARG_INT32(5) > 0)
-		UTL_TCP_FEATURE("UTL_TCP: a positive out_buffer_size is not supported; I/O is unbuffered");
+	/*
+	 * Buffer sizes: NULL or 0 select the only mode available, unbuffered;
+	 * negative sizes are invalid arguments.
+	 */
+	if (!PG_ARGISNULL(4))
+	{
+		int32		in_buffer_size = PG_GETARG_INT32(4);
+
+		if (in_buffer_size < 0)
+			UTL_TCP_BAD_ARGUMENT("UTL_TCP: in_buffer_size must not be negative");
+		if (in_buffer_size > 0)
+			UTL_TCP_FEATURE("UTL_TCP: a positive in_buffer_size is not supported; I/O is unbuffered");
+	}
+	if (!PG_ARGISNULL(5))
+	{
+		int32		out_buffer_size = PG_GETARG_INT32(5);
+
+		if (out_buffer_size < 0)
+			UTL_TCP_BAD_ARGUMENT("UTL_TCP: out_buffer_size must not be negative");
+		if (out_buffer_size > 0)
+			UTL_TCP_FEATURE("UTL_TCP: a positive out_buffer_size is not supported; I/O is unbuffered");
+	}
 
 	/* charset: NULL means the database encoding */
 	if (!PG_ARGISNULL(6))
@@ -683,22 +750,26 @@ ora_utl_tcp_open_connection(PG_FUNCTION_ARGS)
 	else
 		encoding = GetDatabaseEncoding();
 
-	/* newline: NULL behaves like the SQL default; 1..2 bytes required */
+	/*
+	 * newline: NULL behaves like the SQL default.  Convert the sequence to
+	 * the wire encoding now, so that an unconvertible or overlong value is
+	 * rejected before any connection resource is allocated, and so that
+	 * WRITE_LINE sends the bytes the peer expects.
+	 */
 	if (!PG_ARGISNULL(7))
 	{
 		text	   *nl = PG_GETARG_TEXT_PP(7);
 
-		newline = VARDATA_ANY(nl);
-		newline_len = VARSIZE_ANY_EXHDR(nl);
+		newline = utl_tcp_convert_newline(VARDATA_ANY(nl),
+										  VARSIZE_ANY_EXHDR(nl),
+										  encoding,
+										  &newline_len);
 	}
 	else
 	{
 		newline = UTL_TCP_DEFAULT_NEWLINE;
 		newline_len = strlen(UTL_TCP_DEFAULT_NEWLINE);
 	}
-
-	if (newline_len < 1 || newline_len > 2)
-		UTL_TCP_BAD_ARGUMENT("UTL_TCP: newline must be 1 or 2 bytes long");
 
 	/* tx_timeout: NULL waits indefinitely, 0 never waits, else seconds */
 	if (PG_ARGISNULL(8))

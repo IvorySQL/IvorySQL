@@ -520,6 +520,77 @@ is(unpack('H*', wait_capture_bytes($capture_bin, 2, 'LATIN1 capture')),
 	'e941', 'capture shows LATIN1-converted byte and the len-clipped text');
 unlink $capture_bin;
 
+# the newline is converted to the wire encoding at open time: CHR(233)
+# in a UTF8 database must reach a LATIN1 connection as the single byte
+# E9, not as the UTF8 bytes C3 A9
+(undef, undef, $err) = ora_sql(qq{
+DECLARE
+  c utl_tcp.connection;
+  n INTEGER;
+BEGIN
+  c := utl_tcp.open_connection('127.0.0.1', $capture_port,
+                               charset => 'LATIN1',
+                               newline => CHR(233), tx_timeout => 5);
+  n := utl_tcp.write_line(c, 'A');
+  RAISE NOTICE 'NLWIRE n=%', n;
+  utl_tcp.close_connection(c);
+END;
+});
+like($err, qr/NLWIRE n=2/,
+	'WRITE_LINE counts the converted newline as one wire character')
+  or diag($err);
+is(unpack('H*', wait_capture_bytes($capture_bin, 2, 'LATIN1 newline capture')),
+	'41e9', 'newline CHR(233) is sent as LATIN1 E9, not UTF8 C3 A9');
+unlink $capture_bin;
+
+# a newline character that does not exist in the wire encoding is
+# rejected before the connection is opened, leaving no slot behind
+(undef, undef, $err) = ora_sql(qq{
+DECLARE
+  c utl_tcp.connection;
+  ok INTEGER := 0;
+BEGIN
+  BEGIN
+    c := utl_tcp.open_connection('127.0.0.1', $echo_port,
+                                 charset => 'LATIN1',
+                                 newline => CHR(338));
+    RAISE NOTICE 'NLCONV GOT (BAD)';
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'NLCONV % (%)', SQLERRM, SQLSTATE;
+  END;
+  FOR i IN 1 .. 50 LOOP
+    c := utl_tcp.open_connection('127.0.0.1', $hold_port);
+    ok := ok + 1;
+  END LOOP;
+  RAISE NOTICE 'NLSLOTS ok=%', ok;
+  utl_tcp.close_all_connections();
+END;
+});
+like($err, qr/NLCONV .*22P05/,
+	'untranslatable newline character is rejected with 22P05')
+  or diag($err);
+like($err, qr/NLSLOTS ok=50/,
+	'a rejected newline consumes no connection slots')
+  or diag($err);
+
+# called directly, a newline that is too long is rejected by the C
+# function with 22023
+(undef, undef, $err) = ora_sql(qq{
+DECLARE
+  c utl_tcp.connection;
+BEGIN
+  BEGIN
+    c.private_sd := sys.ora_utl_tcp_open_connection('127.0.0.1',
+      $echo_port, NULL, NULL, NULL, NULL, 'UTF8', 'abc', NULL, NULL, NULL);
+    RAISE NOTICE 'NLLEN GOT (BAD)';
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'NLLEN % (%)', SQLERRM, SQLSTATE;
+  END;
+END;
+});
+like($err, qr/NLLEN .*22023/, 'overlong newline is rejected with 22023')
+  or diag($err);
+
 # unknown charset is rejected at open time
 (undef, undef, $err) = ora_sql(qq{
 DECLARE
@@ -974,6 +1045,55 @@ BEGIN
 END;
 });
 like($err, qr/ZBUF=zb/, 'zero buffer sizes are accepted (unbuffered)')
+  or diag($err);
+
+# negative buffer sizes are bad arguments (22023), and local_port 0 is
+# as unsupported as any other non-NULL local port
+(undef, undef, $err) = ora_sql(qq{
+DECLARE
+  c utl_tcp.connection;
+  ok INTEGER := 0;
+BEGIN
+  BEGIN
+    c := utl_tcp.open_connection('127.0.0.1', $echo_port,
+                                 in_buffer_size => -1);
+    RAISE NOTICE 'IBNEG GOT (BAD)';
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'IBNEG % (%)', SQLERRM, SQLSTATE;
+  END;
+  BEGIN
+    c := utl_tcp.open_connection('127.0.0.1', $echo_port,
+                                 out_buffer_size => -5);
+    RAISE NOTICE 'OBNEG GOT (BAD)';
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'OBNEG % (%)', SQLERRM, SQLSTATE;
+  END;
+  BEGIN
+    c := utl_tcp.open_connection('127.0.0.1', $echo_port,
+                                 local_port => 0);
+    RAISE NOTICE 'LP0 GOT (BAD)';
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'LP0 % (%)', SQLERRM, SQLSTATE;
+  END;
+  FOR i IN 1 .. 50 LOOP
+    c := utl_tcp.open_connection('127.0.0.1', $hold_port);
+    ok := ok + 1;
+  END LOOP;
+  RAISE NOTICE 'AFTERBAD ok=%', ok;
+  utl_tcp.close_all_connections();
+END;
+});
+like($err, qr/IBNEG .*22023/,
+	'negative in_buffer_size is rejected with 22023')
+  or diag($err);
+like($err, qr/OBNEG .*22023/,
+	'negative out_buffer_size is rejected with 22023')
+  or diag($err);
+like($err, qr/LP0 .*not supported \(0A000\)/,
+	'local_port 0 is rejected with 0A000')
+  or diag($err);
+like($err, qr/AFTERBAD ok=50/,
+	'rejected open options consume no connection slots')
   or diag($err);
 
 # invalid ports, newline and timeout
