@@ -16926,40 +16926,48 @@ SimpleTypename:
 						List *typmods = $2;
 						A_Const *n;
 
-						if (typmods == NULL)
-							ereport(ERROR,
-									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-									 errmsg("missing or invalid datetime field.")));
-
-						//n = lfirst(typmods->elements[0]);
-						n = linitial(typmods);
-
 						/*
-						 * Compatible oracle
-						 * Only 'interval year to month' and 'interval day to second'  belong interval type and
-						 * can be used. For example used in 'CREATE TABLE' statement.  All other interval form
-						 * like 'interval hour to second' can not be used in 'CREATE TABLE' statement.
+						 * A bare INTERVAL type name (without a field qualifier like
+						 * YEAR TO MONTH or DAY TO SECOND) is not part of Oracle's
+						 * interval syntax, but it is standard PostgreSQL syntax
+						 * (e.g. '2 days'::interval).  Fall back to the built-in
+						 * interval type so that PostgreSQL-compatible statements
+						 * keep working in Oracle parser mode.
 						 */
-						if (n->val.ival.ival == (INTERVAL_MASK(YEAR) | INTERVAL_MASK(MONTH)))
-						{
-							$$ = OracleSystemTypeName("yminterval");
-							$$->typmods = $2;
-							$$->location = @1;
-						}
-						else if (n->val.ival.ival == (INTERVAL_MASK(DAY) |
-													 INTERVAL_MASK(HOUR) |
-													 INTERVAL_MASK(MINUTE) |
-													 INTERVAL_MASK(SECOND)))
-						{
-							$$ = OracleSystemTypeName("dsinterval");
-							$$->typmods = $2;
-							$$->location = @1;
-						}
+						if (typmods == NULL)
+							$$ = $1;
 						else
 						{
-							ereport(ERROR,
-									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-									 errmsg("unsupported interval type.")));
+							//n = lfirst(typmods->elements[0]);
+							n = linitial(typmods);
+
+							/*
+							 * Compatible oracle
+							 * Only 'interval year to month' and 'interval day to second'  belong interval type and
+							 * can be used. For example used in 'CREATE TABLE' statement.  All other interval form
+							 * like 'interval hour to second' can not be used in 'CREATE TABLE' statement.
+							 */
+							if (n->val.ival.ival == (INTERVAL_MASK(YEAR) | INTERVAL_MASK(MONTH)))
+							{
+								$$ = OracleSystemTypeName("yminterval");
+								$$->typmods = $2;
+								$$->location = @1;
+							}
+							else if (n->val.ival.ival == (INTERVAL_MASK(DAY) |
+														 INTERVAL_MASK(HOUR) |
+													 INTERVAL_MASK(MINUTE) |
+													 INTERVAL_MASK(SECOND)))
+							{
+								$$ = OracleSystemTypeName("dsinterval");
+								$$->typmods = $2;
+								$$->location = @1;
+							}
+							else
+							{
+								ereport(ERROR,
+										(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+										 errmsg("unsupported interval type.")));
+							}
 						}
 					}
 					else
@@ -18002,6 +18010,8 @@ opt_interval:
 								 errmsg("This is used for compatible oracle and Postgresql not support.")));
 					}
 				}
+			| /* empty */
+				{ $$ = NIL; }
 		;
 
 opt_interval_type:
@@ -21306,30 +21316,40 @@ AexprConst: Iconst
 						List *typmods = $3;
 						A_Const *n;
 
+						/*
+						 * A bare INTERVAL literal without a field qualifier
+						 * (e.g. INTERVAL '2 days') is standard PostgreSQL syntax
+						 * but not part of Oracle's interval syntax.  Fall back to
+						 * the built-in interval type so that PostgreSQL-compatible
+						 * literals keep working in Oracle parser mode.
+						 */
 						if (typmods == NULL)
-							ereport(ERROR,
-									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-									 errmsg("missing or invalid datetime field.")));
-
-						//n = lfirst(typmods->head);
-						n = linitial(typmods);
-						if (n->val.ival.ival == INTERVAL_MASK(YEAR) ||
-							n->val.ival.ival == INTERVAL_MASK(MONTH) ||
-							n->val.ival.ival == (INTERVAL_MASK(YEAR) | INTERVAL_MASK(MONTH)))
 						{
-							t = OracleSystemTypeName("yminterval");
-							t->typmods = $3;
-							t->location = @1;
-
+							t = $1;
 							$$ = makeStringConstCast($2, @2, t);
 						}
 						else
 						{
-							t = OracleSystemTypeName("dsinterval");
-							t->typmods = $3;
-							t->location = @1;
+							//n = lfirst(typmods->head);
+							n = linitial(typmods);
+							if (n->val.ival.ival == INTERVAL_MASK(YEAR) ||
+								n->val.ival.ival == INTERVAL_MASK(MONTH) ||
+								n->val.ival.ival == (INTERVAL_MASK(YEAR) | INTERVAL_MASK(MONTH)))
+							{
+								t = OracleSystemTypeName("yminterval");
+								t->typmods = $3;
+								t->location = @1;
 
-							$$ = makeStringConstCast($2, @2, t);
+								$$ = makeStringConstCast($2, @2, t);
+							}
+							else
+							{
+								t = OracleSystemTypeName("dsinterval");
+								t->typmods = $3;
+								t->location = @1;
+
+								$$ = makeStringConstCast($2, @2, t);
+							}
 						}
 					}
 					else
@@ -21342,20 +21362,11 @@ AexprConst: Iconst
 				}
 			| ConstInterval '(' Iconst ')' Sconst
 				{
-					if (ORA_PARSER == compatible_db)
-					{
-						ereport(ERROR,
-								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								 errmsg("missing or invalid datetime field.")));
-					}
-					else
-					{
-						TypeName   *t = $1;
+					TypeName   *t = $1;
 
-						t->typmods = list_make2(makeIntConst(INTERVAL_FULL_RANGE, -1),
-												makeIntConst($3, @3));
-						$$ = makeStringConstCast($5, @5, t);
-					}
+					t->typmods = list_make2(makeIntConst(INTERVAL_FULL_RANGE, -1),
+											makeIntConst($3, @3));
+					$$ = makeStringConstCast($5, @5, t);
 				}
 			| TRUE_P
 				{

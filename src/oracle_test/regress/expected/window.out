@@ -1354,9 +1354,14 @@ DROP VIEW v_window;
 CREATE TEMP VIEW v_window AS
 	SELECT i, min(i) over (order by i range between '1 day' preceding and '10 days' following) as min_i
   FROM generate_series(now(), now()+'100 days'::interval, '1 hour') i;
-ERROR:  missing or invalid datetime field.
 SELECT pg_get_viewdef('v_window');
-ERROR:  relation "v_window" does not exist
+                                                    pg_get_viewdef                                                     
+-----------------------------------------------------------------------------------------------------------------------
+  SELECT i,                                                                                                           +
+     min(i) OVER (ORDER BY i RANGE BETWEEN '@ 1 day'::interval PRECEDING AND '@ 10 days'::interval FOLLOWING) AS min_i+
+    FROM generate_series(now(), (now() + '@ 100 days'::interval), '@ 1 hour'::interval) i(i);
+(1 row)
+
 -- test overflow frame specifications
 SELECT sum(unique1) over (rows between current row and 9223372036854775807 following exclude current row),
 	unique1, four
@@ -1621,22 +1626,34 @@ FROM tenk1 WHERE unique1 < 10;
 
 select sum(salary) over (order by enroll_date range between '1 year'::interval preceding and '1 year'::interval following),
 	salary, enroll_date from empsalary;
-ERROR:  missing or invalid datetime field.
+ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type date
+LINE 1: ...(salary) over (order by enroll_date range between '1 year'::...
+                                                             ^
 select sum(salary) over (order by enroll_date desc range between '1 year'::interval preceding and '1 year'::interval following),
 	salary, enroll_date from empsalary;
-ERROR:  missing or invalid datetime field.
+ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type date
+LINE 1: ...ry) over (order by enroll_date desc range between '1 year'::...
+                                                             ^
 select sum(salary) over (order by enroll_date desc range between '1 year'::interval following and '1 year'::interval following),
 	salary, enroll_date from empsalary;
-ERROR:  missing or invalid datetime field.
+ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type date
+LINE 1: ...ry) over (order by enroll_date desc range between '1 year'::...
+                                                             ^
 select sum(salary) over (order by enroll_date range between '1 year'::interval preceding and '1 year'::interval following
 	exclude current row), salary, enroll_date from empsalary;
-ERROR:  missing or invalid datetime field.
+ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type date
+LINE 1: ...(salary) over (order by enroll_date range between '1 year'::...
+                                                             ^
 select sum(salary) over (order by enroll_date range between '1 year'::interval preceding and '1 year'::interval following
 	exclude group), salary, enroll_date from empsalary;
-ERROR:  missing or invalid datetime field.
+ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type date
+LINE 1: ...(salary) over (order by enroll_date range between '1 year'::...
+                                                             ^
 select sum(salary) over (order by enroll_date range between '1 year'::interval preceding and '1 year'::interval following
 	exclude ties), salary, enroll_date from empsalary;
-ERROR:  missing or invalid datetime field.
+ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type date
+LINE 1: ...(salary) over (order by enroll_date range between '1 year'::...
+                                                             ^
 select first_value(salary) over(order by salary range between 1000 preceding and 1000 following),
 	lead(salary) over(order by salary range between 1000 preceding and 1000 following),
 	nth_value(salary, 1) over(order by salary range between 1000 preceding and 1000 following),
@@ -1714,25 +1731,33 @@ select first_value(salary) over(order by enroll_date range between unbounded pre
 	exclude ties),
 	last_value(salary) over(order by enroll_date range between unbounded preceding and '1 year'::interval following),
 	salary, enroll_date from empsalary;
-ERROR:  missing or invalid datetime field.
+ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type date
+LINE 1: ...enroll_date range between unbounded preceding and '1 year'::...
+                                                             ^
 select first_value(salary) over(order by enroll_date range between unbounded preceding and '1 year'::interval following
 	exclude ties),
 	last_value(salary) over(order by enroll_date range between unbounded preceding and '1 year'::interval following
 	exclude ties),
 	salary, enroll_date from empsalary;
-ERROR:  missing or invalid datetime field.
+ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type date
+LINE 1: ...enroll_date range between unbounded preceding and '1 year'::...
+                                                             ^
 select first_value(salary) over(order by enroll_date range between unbounded preceding and '1 year'::interval following
 	exclude group),
 	last_value(salary) over(order by enroll_date range between unbounded preceding and '1 year'::interval following
 	exclude group),
 	salary, enroll_date from empsalary;
-ERROR:  missing or invalid datetime field.
+ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type date
+LINE 1: ...enroll_date range between unbounded preceding and '1 year'::...
+                                                             ^
 select first_value(salary) over(order by enroll_date range between unbounded preceding and '1 year'::interval following
 	exclude current row),
 	last_value(salary) over(order by enroll_date range between unbounded preceding and '1 year'::interval following
 	exclude current row),
 	salary, enroll_date from empsalary;
-ERROR:  missing or invalid datetime field.
+ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type date
+LINE 1: ...enroll_date range between unbounded preceding and '1 year'::...
+                                                             ^
 -- RANGE offset PRECEDING/FOLLOWING with null values
 select x, y,
        first_value(y) over w,
@@ -2334,7 +2359,6 @@ create temp table datetimes(
     f_timestamptz timestamptz,
     f_timestamp timestamp
 );
-ERROR:  missing or invalid datetime field.
 insert into datetimes values
 (0, '10:00', '10:00 BST', '-infinity', '-infinity', '-infinity'),
 (1, '11:00', '11:00 BST', '1 year', '2000-10-19 10:23:54+01', '2000-10-19 10:23:54'),
@@ -2348,219 +2372,297 @@ insert into datetimes values
 (9, '19:00', '19:00 BST', '9 years', '2007-10-19 10:23:54+01', '2007-10-19 10:23:54'),
 (10, '20:00', '20:00 BST', '10 years', '2008-10-19 10:23:54+01', '2008-10-19 10:23:54'),
 (11, '21:00', '21:00 BST', 'infinity', 'infinity', 'infinity');
-ERROR:  relation "datetimes" does not exist
-LINE 1: insert into datetimes values
-                    ^
+ERROR:  invalid value "-inf" for "YYYY"
+LINE 2: (0, '10:00', '10:00 BST', '-infinity', '-infinity', '-infini...
+                                               ^
+DETAIL:  Value must be an integer.
 select id, f_time, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_time range between
              '70 min'::interval preceding and '2 hours'::interval following);
-ERROR:  missing or invalid datetime field.
+ id | f_time | first_value | last_value 
+----+--------+-------------+------------
+(0 rows)
+
 select id, f_time, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_time desc range between
              '70 min' preceding and '2 hours' following);
-ERROR:  relation "datetimes" does not exist
-LINE 2: from datetimes
-             ^
+ id | f_time | first_value | last_value 
+----+--------+-------------+------------
+(0 rows)
+
 select id, f_time, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_time desc range between
              '-70 min' preceding and '2 hours' following);  -- error, negative offset disallowed
-ERROR:  relation "datetimes" does not exist
-LINE 2: from datetimes
-             ^
+ id | f_time | first_value | last_value 
+----+--------+-------------+------------
+(0 rows)
+
 select id, f_time, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_time range between
              'infinity'::interval preceding and 'infinity'::interval following);
-ERROR:  missing or invalid datetime field.
+ id | f_time | first_value | last_value 
+----+--------+-------------+------------
+(0 rows)
+
 select id, f_time, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_time range between
              'infinity'::interval preceding and 'infinity'::interval preceding);
-ERROR:  missing or invalid datetime field.
+ id | f_time | first_value | last_value 
+----+--------+-------------+------------
+(0 rows)
+
 select id, f_time, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_time range between
              'infinity'::interval following and 'infinity'::interval following);
-ERROR:  missing or invalid datetime field.
+ id | f_time | first_value | last_value 
+----+--------+-------------+------------
+(0 rows)
+
 select id, f_time, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_time range between
              '-infinity'::interval following and
              'infinity'::interval following);  -- error, negative offset disallowed
-ERROR:  missing or invalid datetime field.
+ id | f_time | first_value | last_value 
+----+--------+-------------+------------
+(0 rows)
+
 select id, f_timetz, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_timetz range between
              '70 min'::interval preceding and '2 hours'::interval following);
-ERROR:  missing or invalid datetime field.
+ id | f_timetz | first_value | last_value 
+----+----------+-------------+------------
+(0 rows)
+
 select id, f_timetz, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_timetz desc range between
              '70 min' preceding and '2 hours' following);
-ERROR:  relation "datetimes" does not exist
-LINE 2: from datetimes
-             ^
+ id | f_timetz | first_value | last_value 
+----+----------+-------------+------------
+(0 rows)
+
 select id, f_timetz, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_timetz desc range between
              '70 min' preceding and '-2 hours' following);  -- error, negative offset disallowed
-ERROR:  relation "datetimes" does not exist
-LINE 2: from datetimes
-             ^
+ id | f_timetz | first_value | last_value 
+----+----------+-------------+------------
+(0 rows)
+
 select id, f_timetz, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_timetz range between
              'infinity'::interval preceding and 'infinity'::interval following);
-ERROR:  missing or invalid datetime field.
+ id | f_timetz | first_value | last_value 
+----+----------+-------------+------------
+(0 rows)
+
 select id, f_timetz, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_timetz range between
              'infinity'::interval preceding and 'infinity'::interval preceding);
-ERROR:  missing or invalid datetime field.
+ id | f_timetz | first_value | last_value 
+----+----------+-------------+------------
+(0 rows)
+
 select id, f_timetz, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_timetz range between
              'infinity'::interval following and 'infinity'::interval following);
-ERROR:  missing or invalid datetime field.
+ id | f_timetz | first_value | last_value 
+----+----------+-------------+------------
+(0 rows)
+
 select id, f_timetz, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_timetz range between
              'infinity'::interval following and
              '-infinity'::interval following);  -- error, negative offset disallowed
-ERROR:  missing or invalid datetime field.
+ id | f_timetz | first_value | last_value 
+----+----------+-------------+------------
+(0 rows)
+
 select id, f_interval, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_interval range between
              '1 year'::interval preceding and '1 year'::interval following);
-ERROR:  missing or invalid datetime field.
+ id | f_interval | first_value | last_value 
+----+------------+-------------+------------
+(0 rows)
+
 select id, f_interval, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_interval desc range between
              '1 year' preceding and '1 year' following);
-ERROR:  relation "datetimes" does not exist
-LINE 2: from datetimes
-             ^
+ id | f_interval | first_value | last_value 
+----+------------+-------------+------------
+(0 rows)
+
 select id, f_interval, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_interval desc range between
              '-1 year' preceding and '1 year' following);  -- error, negative offset disallowed
-ERROR:  relation "datetimes" does not exist
-LINE 2: from datetimes
-             ^
+ id | f_interval | first_value | last_value 
+----+------------+-------------+------------
+(0 rows)
+
 select id, f_interval, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_interval range between
              'infinity'::interval preceding and 'infinity'::interval following);
-ERROR:  missing or invalid datetime field.
+ id | f_interval | first_value | last_value 
+----+------------+-------------+------------
+(0 rows)
+
 select id, f_interval, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_interval range between
              'infinity'::interval preceding and 'infinity'::interval preceding);
-ERROR:  missing or invalid datetime field.
+ id | f_interval | first_value | last_value 
+----+------------+-------------+------------
+(0 rows)
+
 select id, f_interval, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_interval range between
              'infinity'::interval following and 'infinity'::interval following);
-ERROR:  missing or invalid datetime field.
+ id | f_interval | first_value | last_value 
+----+------------+-------------+------------
+(0 rows)
+
 select id, f_interval, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_interval range between
              '-infinity'::interval following and
              'infinity'::interval following);  -- error, negative offset disallowed
-ERROR:  missing or invalid datetime field.
+ id | f_interval | first_value | last_value 
+----+------------+-------------+------------
+(0 rows)
+
 select id, f_timestamptz, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_timestamptz range between
              '1 year'::interval preceding and '1 year'::interval following);
-ERROR:  missing or invalid datetime field.
+ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type timestamp with time zone
+LINE 4:              '1 year'::interval preceding and '1 year'::inte...
+                     ^
 select id, f_timestamptz, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_timestamptz desc range between
              '1 year' preceding and '1 year' following);
-ERROR:  relation "datetimes" does not exist
-LINE 2: from datetimes
-             ^
+ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type timestamp with time zone
+LINE 4:              '1 year' preceding and '1 year' following);
+                     ^
 select id, f_timestamptz, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_timestamptz desc range between
              '1 year' preceding and '-1 year' following);  -- error, negative offset disallowed
-ERROR:  relation "datetimes" does not exist
-LINE 2: from datetimes
-             ^
+ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type timestamp with time zone
+LINE 4:              '1 year' preceding and '-1 year' following);
+                     ^
 select id, f_timestamptz, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_timestamptz range between
              'infinity'::interval preceding and 'infinity'::interval following);
-ERROR:  missing or invalid datetime field.
+ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type timestamp with time zone
+LINE 4:              'infinity'::interval preceding and 'infinity'::...
+                     ^
 select id, f_timestamptz, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_timestamptz range between
              'infinity'::interval preceding and 'infinity'::interval preceding);
-ERROR:  missing or invalid datetime field.
+ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type timestamp with time zone
+LINE 4:              'infinity'::interval preceding and 'infinity'::...
+                     ^
 select id, f_timestamptz, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_timestamptz range between
              'infinity'::interval following and 'infinity'::interval following);
-ERROR:  missing or invalid datetime field.
+ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type timestamp with time zone
+LINE 4:              'infinity'::interval following and 'infinity'::...
+                     ^
 select id, f_timestamptz, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_timestamptz range between
              '-infinity'::interval following and
              'infinity'::interval following);  -- error, negative offset disallowed
-ERROR:  missing or invalid datetime field.
+ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type timestamp with time zone
+LINE 4:              '-infinity'::interval following and
+                     ^
 select id, f_timestamp, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_timestamp range between
              '1 year'::interval preceding and '1 year'::interval following);
-ERROR:  missing or invalid datetime field.
+ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type timestamp
+LINE 4:              '1 year'::interval preceding and '1 year'::inte...
+                     ^
 select id, f_timestamp, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_timestamp desc range between
              '1 year' preceding and '1 year' following);
-ERROR:  relation "datetimes" does not exist
-LINE 2: from datetimes
-             ^
+ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type timestamp
+LINE 4:              '1 year' preceding and '1 year' following);
+                     ^
 select id, f_timestamp, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_timestamp desc range between
              '-1 year' preceding and '1 year' following);  -- error, negative offset disallowed
-ERROR:  relation "datetimes" does not exist
-LINE 2: from datetimes
-             ^
+ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type timestamp
+LINE 4:              '-1 year' preceding and '1 year' following);
+                     ^
 select id, f_timestamp, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_timestamp range between
              'infinity'::interval preceding and 'infinity'::interval following);
-ERROR:  missing or invalid datetime field.
+ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type timestamp
+LINE 4:              'infinity'::interval preceding and 'infinity'::...
+                     ^
 select id, f_timestamp, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_timestamp range between
              'infinity'::interval preceding and 'infinity'::interval preceding);
-ERROR:  missing or invalid datetime field.
+ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type timestamp
+LINE 4:              'infinity'::interval preceding and 'infinity'::...
+                     ^
 select id, f_timestamp, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_timestamp range between
              'infinity'::interval following and 'infinity'::interval following);
-ERROR:  missing or invalid datetime field.
+ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type timestamp
+LINE 4:              'infinity'::interval following and 'infinity'::...
+                     ^
 select id, f_timestamp, first_value(id) over w, last_value(id) over w
 from datetimes
 window w as (order by f_timestamp range between
              '-infinity'::interval following and
              'infinity'::interval following);  -- error, negative offset disallowed
-ERROR:  missing or invalid datetime field.
+ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type timestamp
+LINE 4:              '-infinity'::interval following and
+                     ^
 -- RANGE offset PRECEDING/FOLLOWING error cases
 select sum(salary) over (order by enroll_date, salary range between '1 year'::interval preceding and '2 years'::interval following
 	exclude ties), salary, enroll_date from empsalary;
-ERROR:  missing or invalid datetime field.
+ERROR:  RANGE with offset PRECEDING/FOLLOWING requires exactly one ORDER BY column
+LINE 1: select sum(salary) over (order by enroll_date, salary range ...
+                                ^
 select sum(salary) over (range between '1 year'::interval preceding and '2 years'::interval following
 	exclude ties), salary, enroll_date from empsalary;
-ERROR:  missing or invalid datetime field.
+ERROR:  RANGE with offset PRECEDING/FOLLOWING requires exactly one ORDER BY column
+LINE 1: select sum(salary) over (range between '1 year'::interval pr...
+                                ^
 select sum(salary) over (order by depname range between '1 year'::interval preceding and '2 years'::interval following
 	exclude ties), salary, enroll_date from empsalary;
-ERROR:  missing or invalid datetime field.
+ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type varchar2
+LINE 1: ... sum(salary) over (order by depname range between '1 year'::...
+                                                             ^
 select max(enroll_date) over (order by enroll_date range between 1 preceding and 2 following
 	exclude ties), salary, enroll_date from empsalary;
 ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type date
@@ -2574,10 +2676,15 @@ select max(enroll_date) over (order by salary range between 1 preceding and -2 f
 ERROR:  invalid preceding or following size in window function
 select max(enroll_date) over (order by salary range between '1 year'::interval preceding and '2 years'::interval following
 	exclude ties), salary, enroll_date from empsalary;
-ERROR:  missing or invalid datetime field.
+ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type pg_catalog.int4 and offset type interval
+LINE 1: ...(enroll_date) over (order by salary range between '1 year'::...
+                                                             ^
+HINT:  Cast the offset value to an appropriate type.
 select max(enroll_date) over (order by enroll_date range between '1 year'::interval preceding and '-2 years'::interval following
 	exclude ties), salary, enroll_date from empsalary;
-ERROR:  missing or invalid datetime field.
+ERROR:  RANGE with offset PRECEDING/FOLLOWING is not supported for column type date
+LINE 1: ...ll_date) over (order by enroll_date range between '1 year'::...
+                                                             ^
 -- GROUPS tests
 SELECT sum(unique1) over (order by four groups between unbounded preceding and current row),
 	unique1, four
@@ -4468,7 +4575,14 @@ SELECT i,AVG(v::numeric) OVER (ORDER BY i ROWS BETWEEN CURRENT ROW AND UNBOUNDED
 
 SELECT i,AVG(v::interval) OVER (ORDER BY i ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)
   FROM (VALUES(1,'1 sec'),(2,'2 sec'),(3,NULL),(4,NULL)) t(i,v);
-ERROR:  missing or invalid datetime field.
+ i |    avg     
+---+------------
+ 1 | @ 1.5 secs
+ 2 | @ 2 secs
+ 3 | 
+ 4 | 
+(4 rows)
+
 -- moving aggregates over infinite intervals
 SELECT  x
         ,avg(x) OVER(ROWS BETWEEN CURRENT ROW AND 1 FOLLOWING ) as curr_next_avg
@@ -4485,7 +4599,20 @@ FROM (VALUES (NULL::interval),
                ('7 days'::interval),
                (NULL::interval),
                ('-infinity'::interval)) v(x);
-ERROR:  missing or invalid datetime field.
+                                      x                                       |   curr_next_avg   |   prev_curr_avg   | curr_next_sum | prev_curr_sum 
+------------------------------------------------------------------------------+-------------------+-------------------+---------------+---------------
+                                                                              | infinity          |                   | infinity      | 
+ infinity                                                                     | infinity          | infinity          | infinity      | infinity
+ @ 178956970 years 8 mons 2147483648 days 2562047788 hours 54.775807 secs ago | -infinity         | infinity          | -infinity     | infinity
+ -infinity                                                                    | -infinity         | -infinity         | -infinity     | -infinity
+ @ 178956970 years 7 mons 2147483647 days 2562047788 hours 54.775806 secs     | infinity          | -infinity         | infinity      | -infinity
+ infinity                                                                     | infinity          | infinity          | infinity      | infinity
+ @ 6 days                                                                     | @ 6 days 12 hours | infinity          | @ 13 days     | infinity
+ @ 7 days                                                                     | @ 7 days          | @ 6 days 12 hours | @ 7 days      | @ 13 days
+                                                                              | -infinity         | @ 7 days          | -infinity     | @ 7 days
+ -infinity                                                                    | -infinity         | -infinity         | -infinity     | -infinity
+(10 rows)
+
 --should fail.
 SELECT x, avg(x) OVER(ROWS BETWEEN CURRENT ROW AND 2 FOLLOWING)
 FROM (VALUES (NULL::interval),
@@ -4493,7 +4620,10 @@ FROM (VALUES (NULL::interval),
                ('infinity'::timestamptz - now()),
                ('6 days'::interval),
                ('-infinity'::interval)) v(x);
-ERROR:  missing or invalid datetime field.
+ERROR:  invalid value "infi" for "YYYY"
+LINE 4:                ('infinity'::timestamptz - now()),
+                        ^
+DETAIL:  Value must be an integer.
 --should fail.
 SELECT x, sum(x) OVER(ROWS BETWEEN CURRENT ROW AND 2 FOLLOWING)
 FROM (VALUES (NULL::interval),
@@ -4501,7 +4631,10 @@ FROM (VALUES (NULL::interval),
                ('infinity'::timestamptz - now()),
                ('6 days'::interval),
                ('-infinity'::interval)) v(x);
-ERROR:  missing or invalid datetime field.
+ERROR:  invalid value "infi" for "YYYY"
+LINE 4:                ('infinity'::timestamptz - now()),
+                        ^
+DETAIL:  Value must be an integer.
 SELECT i,SUM(v::smallint) OVER (ORDER BY i ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)
   FROM (VALUES(1,1),(2,2),(3,NULL),(4,NULL)) t(i,v);
  i | sum 
@@ -4544,7 +4677,14 @@ SELECT i,SUM(v::money) OVER (ORDER BY i ROWS BETWEEN CURRENT ROW AND UNBOUNDED F
 
 SELECT i,SUM(v::interval) OVER (ORDER BY i ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)
   FROM (VALUES(1,'1 sec'),(2,'2 sec'),(3,NULL),(4,NULL)) t(i,v);
-ERROR:  missing or invalid datetime field.
+ i |   sum    
+---+----------
+ 1 | @ 3 secs
+ 2 | @ 2 secs
+ 3 | 
+ 4 | 
+(4 rows)
+
 SELECT i,SUM(v::numeric) OVER (ORDER BY i ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)
   FROM (VALUES(1,1.1),(2,2.2),(3,NULL),(4,NULL)) t(i,v);
  i | sum 
