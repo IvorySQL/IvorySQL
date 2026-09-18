@@ -41,6 +41,7 @@
 #include "access/xact.h"
 #include "catalog/binary_upgrade.h"
 #include "catalog/catalog.h"
+#include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
 #include "catalog/partition.h"
@@ -921,49 +922,9 @@ RelationBuildRuleLock(Relation relation)
 static void
 RelationGetRowIdSeqId(Relation relation)
 {
-	ScanKeyData key[3];
-	int 	keycount;
-	HeapTuple		tuple;
-	TableScanDesc scan;
-	Relation  class_rel;
-	StringInfoData rowid_seq;
-	Oid 		seqoid = InvalidOid;
-
-	initStringInfo(&rowid_seq);
-	appendStringInfo(&rowid_seq, "%s", RelationGetRelationName(relation));
-	appendStringInfoChar(&rowid_seq, '_');
-	appendStringInfo(&rowid_seq, "rowid");
-	appendStringInfoChar(&rowid_seq, '_');
-	appendStringInfo(&rowid_seq, "seq");
-
-	keycount = 0;
-	ScanKeyInit(&key[keycount++],
-			Anum_pg_class_relname,
-			BTEqualStrategyNumber, F_NAMEEQ,
-			CStringGetDatum(rowid_seq.data));
-
-	ScanKeyInit(&key[keycount++],
-			Anum_pg_class_relnamespace,
-			BTEqualStrategyNumber, F_OIDEQ,
-			ObjectIdGetDatum(relation->rd_rel->relnamespace));
-
-	ScanKeyInit(&key[keycount++],
-			Anum_pg_class_relowner,
-			BTEqualStrategyNumber, F_OIDEQ,
-			ObjectIdGetDatum(relation->rd_rel->relowner));
-
-	class_rel = table_open(RelationRelationId, AccessShareLock);
-	scan = table_beginscan_catalog(class_rel, keycount, key);
-	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
-	{
-		seqoid = ((Form_pg_class) GETSTRUCT(tuple))->oid;
-	}
-
-	relation->rd_rowdSeqid = seqoid;
-
-	pfree(rowid_seq.data);
-	table_endscan(scan);
-	table_close(class_rel, AccessShareLock);
+	relation->rd_rowdSeqid =
+		getOwnedSequence(RelationGetRelid(relation), RowIdAttributeNumber,
+						 DEPENDENCY_AUTO);
 }
 
 /*
