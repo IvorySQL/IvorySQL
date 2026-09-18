@@ -14,7 +14,8 @@
 EXTRA_INSTALL=contrib/pg_prewarm \
 	contrib/pg_stat_statements \
 	contrib/test_decoding \
-	src/oracle_test/modules/injection_points
+	src/oracle_test/modules/injection_points \
+	src/oracle_test/modules/test_wait_lsn
 
 subdir = src/oracle_test/recovery
 top_builddir = ../../..
