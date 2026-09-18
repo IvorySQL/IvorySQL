@@ -1,0 +1,33 @@
+/*
+ * REPLACE under nondeterministic collations.
+ *
+ * sys.replace keeps Oracle's NULL rules but hands the search to core
+ * replace_text with the call's collation, so a case- or accent-insensitive
+ * collation matches the way Oracle does under NLS_COMP=LINGUISTIC.
+ */
+
+/* skip test if not UTF8 server encoding or no ICU collations installed */
+SELECT getdatabaseencoding() <> 'UTF8' OR
+       (SELECT count(*) FROM pg_collation WHERE collprovider = 'i' AND collname <> 'unicode') = 0
+       AS skip_test \gset
+\if :skip_test
+\quit
+\endif
+
+CREATE COLLATION ora_case_insensitive (provider = icu, locale = 'und-u-ks-level2', deterministic = false);
+CREATE COLLATION ora_ignore_accents (provider = icu, locale = 'und-u-kc-ks-level1', deterministic = false);
+
+-- case-insensitive: 'x' finds 'X'
+SELECT REPLACE('testX' COLLATE ora_case_insensitive, 'x', 'er');
+-- accent-insensitive: 'ab' finds U+00E4 'b'
+SELECT REPLACE(U&'zy\00E4bc' COLLATE ora_ignore_accents, 'ab', 'X');
+-- NULL replacement still removes under a nondeterministic collation
+SELECT REPLACE('testX' COLLATE ora_case_insensitive, 'x');
+-- deterministic collation: byte comparison, unchanged
+SELECT REPLACE('testX', 'x', 'er');
+-- NULL rules unchanged
+SELECT REPLACE('abc' COLLATE ora_case_insensitive, 'b', '');
+SELECT REPLACE('abc' COLLATE ora_case_insensitive, '', 'X');
+
+DROP COLLATION ora_case_insensitive;
+DROP COLLATION ora_ignore_accents;
