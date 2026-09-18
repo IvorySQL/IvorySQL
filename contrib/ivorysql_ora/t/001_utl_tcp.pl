@@ -117,6 +117,37 @@ sub read_bytes
 	return $data;
 }
 
+# Wait (bounded) until the capture peer's file holds at least $len bytes
+# and return the contents.  The capture server writes asynchronously from
+# its select loop, so the TAP side must poll instead of reading right
+# after the SQL statement returns.  On timeout this dies with the bytes
+# seen so far and the capture log, which makes the harness failure a
+# visible TAP failure instead of a flaky byte comparison.
+sub wait_capture_bytes
+{
+	my ($file, $len, $label) = @_;
+	my $deadline = time() + 10;
+	my $data;
+
+	while (1)
+	{
+		$data = read_bytes($file);
+		last if defined $data && length($data) >= $len;
+
+		if (time() >= $deadline)
+		{
+			die "$label: capture file never reached $len bytes within 10s\n"
+			  . 'bytes now: ' . unpack('H*', $data // '') . "\n"
+			  . 'capture log: ' . (read_bytes($capture_log) // '<missing>')
+			  . "\n";
+		}
+
+		sleep 0.05;
+	}
+
+	return $data;
+}
+
 # Run SQL through the Oracle-mode listener; returns (exit, stdout, stderr).
 sub ora_sql
 {
@@ -238,8 +269,8 @@ END;
 like($err, qr/RECLINE n=2/,
 	'WRITE_LINE uses the registered newline, not an edited record field')
   or diag($err);
-is(read_bytes($capture_bin), "x\n",
-	'capture shows data plus the registered LF newline');
+is(wait_capture_bytes($capture_bin, 2, 'registered LF newline capture'),
+	"x\n", 'capture shows data plus the registered LF newline');
 unlink $capture_bin;
 
 # ---------------------------------------------------------------------
@@ -485,8 +516,8 @@ like($err, qr/CAP n=1/, 'capture write returns 1 character')
   or diag($err);
 like($err, qr/CAPPART n=1/, 'partial capture write returns 1 character')
   or diag($err);
-is(unpack('H*', read_bytes($capture_bin) // ''), 'e941',
-	'capture shows LATIN1-converted byte and the len-clipped text');
+is(unpack('H*', wait_capture_bytes($capture_bin, 2, 'LATIN1 capture')),
+	'e941', 'capture shows LATIN1-converted byte and the len-clipped text');
 unlink $capture_bin;
 
 # unknown charset is rejected at open time
@@ -569,40 +600,42 @@ like($err, qr/WTMO .*transfer timed out after 1 seconds \(08006\)/,
   or diag($err);
 
 # An unbounded wait must still be cancellable.
+#
+# The persistent sessions use background_psql, whose IPC::Run timer is
+# part of the harness: a pump that never sees its expected output dies
+# after the bound instead of blocking until a process-level timer and
+# then being swallowed.  Every wait below is therefore either observed or
+# a visible failure.
 {
-	my ($pin, $pout, $perr) = ('', '', '');
-	my $session = IPC::Run::start(
-		[ 'psql', '-XAtq', '--dbname' => $ora_connstr ],
-		\$pin, \$pout, \$perr,
-		IPC::Run::timeout(300, exception => qq(session timed out)));
+	my $session = $node->background_psql(
+		'postgres',
+		connstr => $ora_connstr,
+		on_error_stop => 0,
+		timeout => 60);
+	$session->set_query_timer_restart;
 
-	$pin .= "SELECT pg_backend_pid();\n";
-	PostgreSQL::Test::Utils::pump_until($session,
-		IPC::Run::timeout(30), \$pout, qr/\d+/);
-	my ($be_pid) = $pout =~ /(\d+)/g;
-	$pout = '';
-	ok($be_pid > 0, 'persistent session established');
+	my $be_pid = $session->query('SELECT pg_backend_pid();');
+	$be_pid =~ s/\s+//g;
+	like($be_pid, qr/^\d+$/, 'persistent session established');
 
-	$pin .=
-	  "SELECT sys.ora_utl_tcp_open_connection('127.0.0.1', $hold_port, " .
-	  "NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);\n";
-	PostgreSQL::Test::Utils::pump_until($session,
-		IPC::Run::timeout(30), \$pout, qr/\d+/);
-	$pout =~ /(\d+)\s*$/;
-	my $handle = $1;
-	ok($handle > 0, 'persistent session opened a connection');
+	my $handle = $session->query(
+		"SELECT sys.ora_utl_tcp_open_connection('127.0.0.1', $hold_port, "
+		  . "NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);");
+	$handle =~ s/\s+//g;
+	like($handle, qr/^\d+$/, 'persistent session opened a connection');
 
-	$pin .= "SELECT sys.ora_utl_tcp_get_text($handle, 1, NULL);\n";
+	# Queue the unbounded read without waiting for it to return.
+	$session->{stdin} .= "SELECT sys.ora_utl_tcp_get_text($handle, 1, NULL);\n";
 
 	# wait until the read is parked in the socket wait
 	my $waiting = 0;
 	for (my $i = 0; $i < 100; $i++)
 	{
 		sleep 0.1;
-		$session->pump_nb;    # actually transmit the queued statement
+		$session->{run}->pump_nb;    # actually transmit the queued statement
 		(undef, my $qout) = ora_sql(
-			"SELECT count(*) FROM pg_stat_activity " .
-			"WHERE pid = $be_pid AND wait_event = 'UtlTcpIo'");
+			"SELECT count(*) FROM pg_stat_activity "
+			  . "WHERE pid = $be_pid AND wait_event = 'UtlTcpIo'");
 		if (defined $qout && $qout eq '1')
 		{
 			$waiting = 1;
@@ -612,32 +645,33 @@ like($err, qr/WTMO .*transfer timed out after 1 seconds \(08006\)/,
 	ok($waiting, 'GET_TEXT with NULL timeout waits in the socket wait');
 
 	ora_sql("SELECT pg_cancel_backend($be_pid)");
-	PostgreSQL::Test::Utils::pump_until($session,
-		IPC::Run::timeout(30), \$perr, qr/canceling statement/);
-	like($perr, qr/canceling statement due to user request/,
-		'unbounded GET_TEXT is cancellable')
-	  or diag($perr);
+
+	# psql reports the cancellation on stderr; wait for it, bounded
+	$session->{timeout}->start(30);
+	$session->{run}->pump()
+	  until $session->{stderr} =~ /canceling statement/
+	  || $session->{timeout}->is_expired;
+	die "cancellation of the unbounded GET_TEXT was not reported within 30s\n"
+	  . "stderr: $session->{stderr}\n"
+	  if $session->{timeout}->is_expired;
+	like($session->{stderr}, qr/canceling statement due to user request/,
+		'unbounded GET_TEXT is cancellable');
 
 	# the connection survives the statement error and stays usable
-	$pout = '';
-	$pin .= "SELECT sys.ora_utl_tcp_flush($handle) IS NULL;\n";
-	PostgreSQL::Test::Utils::pump_until($session,
-		IPC::Run::timeout(30), \$pout, qr/^t$/m);
-	like($pout, qr/^t$/m, 'connection survives statement errors')
-	  or diag($pout);
+	like($session->query("SELECT sys.ora_utl_tcp_write_text($handle, 'y', NULL);"),
+		qr/^1$/m, 'connection survives statement errors');
 
-	$pout = '';
-	$pin .= "SELECT sys.ora_utl_tcp_close_connection($handle) IS NULL;\n";
-	PostgreSQL::Test::Utils::pump_until($session,
-		IPC::Run::timeout(30), \$pout, qr/^t$/m);
-	$pin .= "\\q\n";
-	my $quit_deadline = time() + 15;
-	while (time() < $quit_deadline && $session->pumpable)
-	{
-		$session->pump_nb;
-		sleep 0.05;
-	}
-	eval { $session->finish(15) };
+	# close the connection; a void function returns nothing observable, so
+	# verify the close through the stale handle afterwards
+	$session->query("SELECT sys.ora_utl_tcp_close_connection($handle);");
+	$session->query("SELECT sys.ora_utl_tcp_write_text($handle, 'x', NULL);");
+	like($session->{stderr}, qr/invalid UTL_TCP connection handle/,
+		'persistent session closes its connection');
+
+	# quit sends \q, closes stdin and reaps psql; a session that does not
+	# exit within the bound dies here instead of passing silently
+	$session->{timeout}->start(30);
+	is($session->quit, 1, 'persistent session exits cleanly');
 }
 
 # ---------------------------------------------------------------------
@@ -746,13 +780,13 @@ END;
 });
 like($err, qr/OPEN50 max=\d+/, '50 connections open successfully')
   or diag($err);
-like($err, qr/OPEN51 too many open connections \(54000\)/,
+like($err, qr/OPEN51 .*too many open connections \(54000\)/,
 	'the 51st connection is rejected with 54000')
   or diag($err);
-like($err, qr/REOPEN sd=\d+ fresh=t/,
+like($err, qr/REOPEN sd=\d+ fresh=t\b/,
 	'after a close the slot is reusable and handles are never reused')
   or diag($err);
-like($err, qr/AFTERALL sd_ok=t/, 'close_all_connections frees every slot')
+like($err, qr/AFTERALL sd_ok=t\b/, 'close_all_connections frees every slot')
   or diag($err);
 
 # failed opens must not consume slots
@@ -909,7 +943,7 @@ EXCEPTION WHEN OTHERS THEN
   RAISE NOTICE '$label % (%)', SQLERRM, SQLSTATE;
 END;
 });
-	like($e, qr/$label .*not supported \(0A000\)/,
+	like($e, qr/$label .*not supported.*\(0A000\)/,
 		"$extra is rejected with 0A000")
 	  or diag($e);
 	return;
@@ -966,12 +1000,6 @@ BEGIN
     RAISE NOTICE 'PBIG % (%)', SQLERRM, SQLSTATE;
   END;
   BEGIN
-    c := utl_tcp.open_connection('127.0.0.1', $echo_port, newline => 'abc');
-    RAISE NOTICE 'NL GOT (BAD)';
-  EXCEPTION WHEN OTHERS THEN
-    RAISE NOTICE 'NL % (%)', SQLERRM, SQLSTATE;
-  END;
-  BEGIN
     c := utl_tcp.open_connection('127.0.0.1', $echo_port, tx_timeout => -5);
     RAISE NOTICE 'TONEG GOT (BAD)';
   EXCEPTION WHEN OTHERS THEN
@@ -985,9 +1013,36 @@ like($err, qr/PNEG .*22023/, 'negative port is rejected with 22023')
   or diag($err);
 like($err, qr/PBIG .*22023/, 'port 65536 is rejected with 22023')
   or diag($err);
-like($err, qr/NL .*22023/, '3-byte newline is rejected with 22023')
-  or diag($err);
 like($err, qr/TONEG .*22023/, 'negative tx_timeout is rejected with 22023')
+  or diag($err);
+
+# a 3-byte newline never reaches the C function through the package (the
+# connection record's VARCHAR2(2) newline field rejects it at bind time
+# with 22001); called directly, the C function rejects it with 22023
+(undef, undef, $err) = ora_sql(qq{
+DECLARE
+  c utl_tcp.connection;
+BEGIN
+  BEGIN
+    c := utl_tcp.open_connection('127.0.0.1', $echo_port, newline => 'abc');
+    RAISE NOTICE 'NLREC GOT (BAD)';
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'NLREC % (%)', SQLERRM, SQLSTATE;
+  END;
+  BEGIN
+    c.private_sd := sys.ora_utl_tcp_open_connection('127.0.0.1',
+      $echo_port, NULL, NULL, NULL, NULL, NULL, 'abc', NULL, NULL, NULL);
+    RAISE NOTICE 'NLC GOT (BAD)';
+  EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'NLC % (%)', SQLERRM, SQLSTATE;
+  END;
+END;
+});
+like($err, qr/NLREC .*22001/,
+	'3-byte newline fails the record bind with 22001')
+  or diag($err);
+like($err, qr/NLC .*22023/,
+	'3-byte newline is rejected with 22023 by the C open function')
   or diag($err);
 
 # connection failures
@@ -1108,7 +1163,7 @@ BEGIN
   RAISE NOTICE 'OWNER close OK';
 END;
 });
-like($err, qr/OWNER open=t/, 'the owner opens normally')
+like($err, qr/OWNER open=t\b/, 'the owner opens normally')
   or diag($err);
 like($err, qr/ROLEWR invalid UTL_TCP connection handle \(08003\)/,
 	'SET ROLE cannot write through a foreign handle')
@@ -1131,46 +1186,62 @@ ora_sql("DROP ROLE utl_low");
 # ---------------------------------------------------------------------
 
 {
-	my ($pin, $pout, $perr) = ('', '', '');
-	my $session = IPC::Run::start(
-		[ 'psql', '-XAtq', '--dbname' => $ora_connstr ],
-		\$pin, \$pout, \$perr,
-		IPC::Run::timeout(300, exception => qq(session timed out)));
+	my $session = $node->background_psql(
+		'postgres',
+		connstr => $ora_connstr,
+		on_error_stop => 0,
+		timeout => 60);
+	$session->set_query_timer_restart;
 
-	$pin .= "SELECT pg_backend_pid();\n";
-	PostgreSQL::Test::Utils::pump_until($session,
-		IPC::Run::timeout(30), \$pout, qr/\d+/);
-	my ($be_pid) = $pout =~ /(\d+)/g;
-	$pout = '';
+	my $be_pid = $session->query('SELECT pg_backend_pid();');
+	$be_pid =~ s/\s+//g;
+	like($be_pid, qr/^\d+$/, 'backend-exit session established');
 
-	$pin .=
-	  "SELECT sys.ora_utl_tcp_open_connection('127.0.0.1', $capture_port, " .
-	  "NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);\n";
-	PostgreSQL::Test::Utils::pump_until($session,
-		IPC::Run::timeout(30), \$pout, qr/\d+/);
-	$pout =~ /(\d+)\s*$/;
-	my $handle = $1;
+	my $handle = $session->query(
+		"SELECT sys.ora_utl_tcp_open_connection('127.0.0.1', $capture_port, "
+		  . "NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);");
+	$handle =~ s/\s+//g;
+	like($handle, qr/^\d+$/, 'backend-exit session opened a connection');
 
-	$pout = '';
-	$pin .= "SELECT sys.ora_utl_tcp_write_text($handle, 'x', NULL);\n";
-	PostgreSQL::Test::Utils::pump_until($session,
-		IPC::Run::timeout(30), \$pout, qr/^1$/m);
+	like(
+		$session->query(
+			"SELECT sys.ora_utl_tcp_write_text($handle, 'x', NULL);"),
+		qr/^1$/m,
+		'backend-exit session wrote one character');
 
+	# the capture peer writes asynchronously; wait for the byte to land
+	wait_capture_bytes($capture_bin, 1, 'backend-exit capture');
 	ok(-s $capture_bin, 'capture peer received the bytes');
+
+	# snapshot the capture log before terminating: the server appends the
+	# EOF line as soon as the backend dies, which may beat the next read
+	my $log_offset = -s $capture_log;
+	$log_offset = 0 unless defined $log_offset;
 
 	ora_sql("SELECT pg_terminate_backend($be_pid)");
 
-	# the capture server must see the connection end when the backend dies
-	my $log_offset = -s $capture_log;
-	$log_offset = 0 unless defined $log_offset;
-	eval {
-		PostgreSQL::Test::Utils::wait_for_file($capture_log, qr/EOF 1/,
-			$log_offset);
-	};
-	ok(!$@, 'capture peer observed EOF when the backend was terminated')
-	  or diag($@);
+	# the capture server must see the connection end when the backend
+	# dies; poll its log for a new EOF line, bounded
+	my $eof_seen = 0;
+	my $eof_deadline = time() + 10;
+	while (time() < $eof_deadline)
+	{
+		my $log = read_bytes($capture_log) // '';
+		if (length($log) > $log_offset
+			&& substr($log, $log_offset) =~ /EOF 1/)
+		{
+			$eof_seen = 1;
+			last;
+		}
+		sleep 0.05;
+	}
+	ok($eof_seen, 'capture peer observed EOF when the backend was terminated')
+	  or diag('capture log: ' . (read_bytes($capture_log) // '<missing>'));
 
-	eval { $session->finish(15) };
+	# psql has not noticed the dead backend yet (it is waiting on stdin);
+	# \q plus a closed stdin must still end the process within the bound
+	$session->{timeout}->start(30);
+	is($session->quit, 1, 'backend-exit session exits cleanly');
 }
 
 $node->stop('fast');
