@@ -1,0 +1,123 @@
+--
+-- ora_ora_hash.sql
+--
+-- Regression tests for ORA_HASH.
+--
+-- ORA_HASH implements only the documented contract: a deterministic hash
+-- with the result in [0, max_bucket], an optional seed that varies the
+-- mapping, and NULL-strictness.  Exact numeric values are not part of the
+-- contract (Oracle's algorithm is undocumented), so all assertions below
+-- are property checks rather than fixed hash values.
+--
+-- deterministic: identical input + seed gives the identical result
+SELECT ora_hash('abc', 99) = ora_hash('abc', 99) AS ok;
+ ok 
+----
+ t
+(1 row)
+
+-- defaults: a 1-arg call equals the explicit default max_bucket/seed
+SELECT ora_hash('abc') = ora_hash('abc', 4294967295, 0) AS ok;
+ ok 
+----
+ t
+(1 row)
+
+-- default max_bucket covers the full documented range
+SELECT ora_hash('abc') BETWEEN 0 AND 4294967295 AS ok;
+ ok 
+----
+ t
+(1 row)
+
+-- max_bucket bounds the result
+SELECT bool_and(ora_hash(i, 99) BETWEEN 0 AND 99) AS ok
+FROM generate_series(1, 1000) i;
+ ok 
+----
+ t
+(1 row)
+
+-- max_bucket = 0 forces every row into the single bucket 0
+SELECT count(DISTINCT ora_hash(i, 0)) AS count
+FROM generate_series(1, 100) i;
+ count 
+-------
+     1
+(1 row)
+
+-- the seed_value varies the mapping (over a batch of 1000 rows)
+SELECT count(DISTINCT (ora_hash(i, 999999, 0), ora_hash(i, 999999, 1))) > 900 AS ok
+FROM generate_series(1, 1000) i;
+ ok 
+----
+ t
+(1 row)
+
+-- buckets stay reasonably balanced (sanity check on the modulo)
+SELECT bool_and(cnt BETWEEN 40 AND 260) AS ok
+FROM (SELECT ora_hash(i, 9) AS b, count(*) AS cnt
+      FROM generate_series(1, 1000) i GROUP BY 1) s;
+ ok 
+----
+ t
+(1 row)
+
+-- NULL input yields NULL, whatever the arity
+SELECT ora_hash(NULL::text) IS NULL AS ok,
+       ora_hash(NULL::bigint, 99) IS NULL AS ok,
+       ora_hash(NULL::text, 99, 7) IS NULL AS ok;
+ ok | ok | ok 
+----+----+----
+ t  | t  | t
+(1 row)
+
+-- every supported data type produces an in-range value
+SELECT count(*) AS count
+FROM (
+    SELECT ora_hash('abc'::text, 99) AS h
+    UNION ALL SELECT ora_hash(42::bigint, 99)
+    UNION ALL SELECT ora_hash('3.14'::numeric, 99)
+    UNION ALL SELECT ora_hash(2.5::double precision, 99)
+    UNION ALL SELECT ora_hash(true::boolean, 99)
+    UNION ALL SELECT ora_hash('2024-03-31'::date, 99)
+    UNION ALL SELECT ora_hash('2024-03-31 12:00:00'::timestamp, 99)
+    UNION ALL SELECT ora_hash('2024-03-31 12:00:00+00'::timestamptz, 99)
+    UNION ALL SELECT ora_hash('\xdeadbeef'::bytea, 99)
+    UNION ALL SELECT ora_hash('{"a":1}'::jsonb, 99)
+    UNION ALL SELECT ora_hash('550e8400-e29b-41d4-a716-446655440000'::uuid, 99)
+    UNION ALL SELECT ora_hash('1 day'::interval, 99)
+    UNION ALL SELECT ora_hash('def'::sys.clob, 99)
+    UNION ALL SELECT ora_hash('def'::sys.oravarcharchar, 99)
+    UNION ALL SELECT ora_hash('ff'::sys.raw, 99)
+) s(h)
+WHERE h BETWEEN 0 AND 99;
+ count 
+-------
+    15
+(1 row)
+
+-- out-of-range max_bucket / seed_value are rejected
+DO $$
+BEGIN
+  BEGIN
+    PERFORM sys.ora_hash('x', -1);
+  EXCEPTION WHEN others THEN
+    RAISE NOTICE 'max_bucket=-1 rejected: %', SQLERRM;
+  END;
+  BEGIN
+    PERFORM sys.ora_hash('x', 4294967296);
+  EXCEPTION WHEN others THEN
+    RAISE NOTICE 'max_bucket=2^32 rejected: %', SQLERRM;
+  END;
+  BEGIN
+    PERFORM sys.ora_hash('x', 99, -1);
+  EXCEPTION WHEN others THEN
+    RAISE NOTICE 'seed=-1 rejected: %', SQLERRM;
+  END;
+END $$;
+NOTICE:  max_bucket=-1 rejected: ORA_HASH max_bucket must be between 0 and 4294967295
+NOTICE:  max_bucket=2^32 rejected: ORA_HASH max_bucket must be between 0 and 4294967295
+NOTICE:  seed=-1 rejected: ORA_HASH seed_value must be between 0 and 4294967295
+DO
+
