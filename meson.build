@@ -4082,6 +4082,15 @@ foreach test_dir : tests
 
       test_command = [
         perl.full_path(),
+      ]
+
+      # A suite can provide its own Perl library directory, which must take
+      # precedence over the default src/test/perl modules.
+      foreach inc : t.get('perl_incs', [])
+        test_command += ['-I', inc]
+      endforeach
+
+      test_command += [
         '-I', meson.project_source_root() / 'src/test/perl',
         '-I', test_dir['sd'],
       ]

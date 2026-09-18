@@ -77,5 +77,11 @@ tests += {
     'tests': [
       't/001_utl_tcp.pl',
     ],
+    # The Oracle-mode test modules in src/oracle_test/perl must win over
+    # the default ones, so the harness initdb's the cluster with
+    # "-m oracle" instead of the hardcoded "-m pg".
+    'perl_incs': [
+      meson.project_source_root() / 'src/oracle_test/perl',
+    ],
   },
 }
