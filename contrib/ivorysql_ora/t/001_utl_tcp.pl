@@ -58,38 +58,56 @@ my $ora_connstr = "host=127.0.0.1 port=$oraport dbname=postgres";
 
 my (%SRV, %SRV_PORT);
 
+# Start one utl_tcp_server.pl instance.  $key identifies the instance in
+# %SRV / %SRV_PORT and names the info file; $mode is the server's mode
+# argument.  They are separate because several instances can share one
+# mode (the six push peers), while every instance must keep its own
+# IPC::Run handle so that END can stop and reap all of them; overwriting
+# a key would strand the earlier handle until the server's own watchdog
+# fires, so fail loudly instead.
 sub start_server
 {
-	my ($name, @args) = @_;
-	my $info = File::Spec->catfile($tmpdir, "$name.info");
+	my ($key, $mode, @args) = @_;
+	die "start_server: instance '$key' already started" if $SRV{$key};
+	my $info = File::Spec->catfile($tmpdir, "$key.info");
 	unlink $info;
-	$SRV{$name} = IPC::Run::start(
-		[ $^X, $server_pl, $name, @args, $info ],
+	$SRV{$key} = IPC::Run::start(
+		[ $^X, $server_pl, $mode, @args, $info ],
 		\my $in, \my $out, \my $err);
 	PostgreSQL::Test::Utils::wait_for_file($info, qr/^\d+$/m);
 	open my $fh, '<', $info or die "could not read $info: $!";
-	$SRV_PORT{$name} = <$fh>;
-	chomp $SRV_PORT{$name};
+	$SRV_PORT{$key} = <$fh>;
+	chomp $SRV_PORT{$key};
 	close $fh;
-	return $SRV_PORT{$name};
+	return $SRV_PORT{$key};
 }
 
+# Stop and reap every server this test started.  kill_kill sends TERM
+# (KILL on Windows), escalates to KILL after its grace period and reaps
+# the child, croaking if it cannot, so a surviving server is an error
+# reported here rather than something left to the server's watchdog.
 END
 {
-	foreach my $h (values %SRV)
+	my @cleanup_failures;
+	foreach my $key (sort keys %SRV)
 	{
-		eval { $h->kill_kill; };
+		my $h = $SRV{$key} or next;
+		eval { $h->kill_kill; 1 }
+			or push @cleanup_failures, "$key: $@";
 	}
+	die "END failed to stop and reap test servers:\n  ",
+		join("\n  ", @cleanup_failures), "\n"
+		if @cleanup_failures;
 }
 
-my $echo_port    = start_server('echo');
-my $bin_port     = start_server('bin');
-my $hold_port    = start_server('hold');
-my $eof_port     = start_server('eof');
-my $capture_port = start_server('capture',
+my $echo_port    = start_server('echo', 'echo');
+my $bin_port     = start_server('bin', 'bin');
+my $hold_port    = start_server('hold', 'hold');
+my $eof_port     = start_server('eof', 'eof');
+my $capture_port = start_server('capture', 'capture',
 	File::Spec->catfile($tmpdir, 'capture.bin'),
 	File::Spec->catfile($tmpdir, 'capture.log'));
-my $frag_port    = start_server('frag', 0.3);
+my $frag_port    = start_server('frag', 'frag', 0.3);
 
 # A port that refuses connections immediately: bind and close a listener.
 my $refused_sock = IO::Socket::INET->new(
@@ -100,7 +118,7 @@ close $refused_sock;
 
 my $prefix_reply = File::Spec->catfile($tmpdir, 'prefix.reply');
 PostgreSQL::Test::Utils::append_to_file($prefix_reply, "done\n");
-my $prefix_port = start_server('prefix', 8, $prefix_reply,
+my $prefix_port = start_server('prefix', 'prefix', 8, $prefix_reply,
 	File::Spec->catfile($tmpdir, 'prefix.info'));
 
 # Push peers: every connection receives the file's bytes immediately on
@@ -118,12 +136,13 @@ PostgreSQL::Test::Utils::append_to_file($push_abc_file,   "abc");
 PostgreSQL::Test::Utils::append_to_file($push_mb_file,    "\xe4");
 PostgreSQL::Test::Utils::append_to_file($push_mb2_file,   "\xe4\xbd\xa0\xe5");
 PostgreSQL::Test::Utils::append_to_file($push_amb_file,   "A\xe4");
-my $push_abclf_port    = start_server('push', $push_abclf_file);
-my $push_cr_port       = start_server('push', $push_cr_file);
-my $push_abc_port      = start_server('push', $push_abc_file);
-my $push_mb_port       = start_server('push', $push_mb_file);
-my $push_mb2_port      = start_server('push', $push_mb2_file);
-my $pushclose_amb_port = start_server('push', $push_amb_file, 'close');
+my $push_abclf_port    = start_server('push_abclf', 'push', $push_abclf_file);
+my $push_cr_port       = start_server('push_cr', 'push', $push_cr_file);
+my $push_abc_port      = start_server('push_abc', 'push', $push_abc_file);
+my $push_mb_port       = start_server('push_mb', 'push', $push_mb_file);
+my $push_mb2_port      = start_server('push_mb2', 'push', $push_mb2_file);
+my $pushclose_amb_port = start_server('pushclose_amb', 'push', $push_amb_file,
+	'close');
 
 my $capture_bin = File::Spec->catfile($tmpdir, 'capture.bin');
 my $capture_log = File::Spec->catfile($tmpdir, 'capture.log');
