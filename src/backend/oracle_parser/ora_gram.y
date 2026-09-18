@@ -1367,14 +1367,14 @@ utility_option_arg:
  *
  *****************************************************************************/
 
-CallStmt:	CALL func_application
+CallStmt:	CALL exec_func_application
 				{
 					CallStmt   *n = makeNode(CallStmt);
 
 					n->funccall = castNode(FuncCall, $2);
 					$$ = (Node *) n;
 				}
-			| CALL func_application INTO ORAPARAM
+			| CALL exec_func_application INTO ORAPARAM
 				{
 					CallStmt *n = makeNode(CallStmt);
 					OraParamRef *hostvar = makeNode(OraParamRef);

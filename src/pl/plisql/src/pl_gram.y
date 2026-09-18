@@ -4268,6 +4268,7 @@ build_call_expr(int firsttoken, int location, YYSTYPE *yylvalp, YYLTYPE *yyllocp
 	IdentifierLookup	save_IdentifierLookup;
 	PLiSQL_expr			*expr;
 	int					tok;
+	bool				has_parentheses = false;
 
 	initStringInfo(&ds);
 
@@ -4279,6 +4280,10 @@ build_call_expr(int firsttoken, int location, YYSTYPE *yylvalp, YYLTYPE *yyllocp
 	for (;;)
 	{
 		tok = yylex(yylvalp, yyllocp, yyscanner);
+
+		if (tok == '(')
+			has_parentheses = true;
+
 		if (tok == ';')
 			break;
 		if (tok == 0)
@@ -4294,7 +4299,12 @@ build_call_expr(int firsttoken, int location, YYSTYPE *yylvalp, YYLTYPE *yyllocp
 
 	/* build call expr */
 	if ((firsttoken == T_WORD || firsttoken ==T_CWORD) && tok == ';')
-		ds.data = psprintf("CALL %s", ds.data);
+	{
+		if(has_parentheses)
+			ds.data = psprintf("CALL %s", ds.data);
+		else
+			ds.data = psprintf("CALL %s()", ds.data);
+	}
 
 	expr = palloc0_object(PLiSQL_expr);
 	expr->query			= pstrdup(ds.data);
