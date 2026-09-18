@@ -6187,6 +6187,83 @@ $$;
 
 DROP PACKAGE pkg_const_repeat_test;
 
+-- Package subprogram defaults are resolved in the package that declares them,
+-- not in the caller's SQL namespace.  In particular, omitting an argument
+-- whose default references a package constant must not raise "invalid
+-- identifier", and an explicit NULL must remain distinct from omission.
+CREATE OR REPLACE PACKAGE pkg_default_scope_test IS
+  c_default CONSTANT INTEGER := 42;
+  g_counter INTEGER := 0;
+  FUNCTION get_value(p_value IN INTEGER DEFAULT c_default) RETURN INTEGER;
+  FUNCTION add_value(p_left IN INTEGER,
+                     p_right IN INTEGER DEFAULT c_default) RETURN INTEGER;
+  FUNCTION sum_defaults(p_left IN INTEGER DEFAULT c_default,
+                        p_right IN INTEGER DEFAULT c_default) RETURN INTEGER;
+  FUNCTION next_default RETURN INTEGER;
+  FUNCTION dynamic_value(p_value IN INTEGER DEFAULT next_default()) RETURN INTEGER;
+  FUNCTION counter_value RETURN INTEGER;
+END pkg_default_scope_test;
+/
+
+CREATE OR REPLACE PACKAGE BODY pkg_default_scope_test IS
+  FUNCTION get_value(p_value IN INTEGER DEFAULT c_default) RETURN INTEGER IS
+  BEGIN
+    RETURN p_value;
+  END;
+
+  FUNCTION add_value(p_left IN INTEGER,
+                     p_right IN INTEGER DEFAULT c_default) RETURN INTEGER IS
+  BEGIN
+    RETURN p_left + p_right;
+  END;
+
+  FUNCTION sum_defaults(p_left IN INTEGER DEFAULT c_default,
+                        p_right IN INTEGER DEFAULT c_default) RETURN INTEGER IS
+  BEGIN
+    RETURN p_left + p_right;
+  END;
+
+  FUNCTION next_default RETURN INTEGER IS
+  BEGIN
+    g_counter := g_counter + 1;
+    RETURN g_counter;
+  END;
+
+  FUNCTION dynamic_value(p_value IN INTEGER DEFAULT next_default()) RETURN INTEGER IS
+  BEGIN
+    RETURN p_value;
+  END;
+
+  FUNCTION counter_value RETURN INTEGER IS
+  BEGIN
+    RETURN g_counter;
+  END;
+END pkg_default_scope_test;
+/
+
+SELECT pkg_default_scope_test.get_value();
+SELECT pkg_default_scope_test.get_value(7);
+SELECT pkg_default_scope_test.get_value(NULL) IS NULL AS explicit_null;
+SELECT pkg_default_scope_test.add_value(1);
+SELECT pkg_default_scope_test.add_value(p_left => 2);
+SELECT pkg_default_scope_test.add_value(p_right => 3, p_left => 2);
+SELECT pkg_default_scope_test.sum_defaults();
+SELECT pkg_default_scope_test.sum_defaults(p_right => 8);
+
+CREATE VIEW pkg_default_scope_view AS
+SELECT pkg_default_scope_test.get_value() AS value;
+SELECT * FROM pkg_default_scope_view;
+DROP VIEW pkg_default_scope_view;
+
+SELECT pkg_default_scope_test.dynamic_value();
+SELECT pkg_default_scope_test.counter_value();
+SELECT pkg_default_scope_test.dynamic_value(9);
+SELECT pkg_default_scope_test.counter_value();
+SELECT pkg_default_scope_test.dynamic_value();
+SELECT pkg_default_scope_test.counter_value();
+
+DROP PACKAGE pkg_default_scope_test;
+
 CREATE SCHEMA shared_ns;
 CREATE ROLE role_owner LOGIN;
 CREATE ROLE role_attacker LOGIN;
