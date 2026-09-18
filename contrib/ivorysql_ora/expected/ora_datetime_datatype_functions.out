@@ -233,6 +233,36 @@ SELECT to_char(
 (1 row)
 
 DROP TABLE to_char_tbl;
+-- TO_CHAR volatility must reflect its session NLS and timezone dependencies.
+SELECT count(*) AS stable_to_char_overloads
+FROM pg_proc
+WHERE oid = ANY (ARRAY[
+    'sys.to_char(sys.oradate)'::regprocedure,
+    'sys.to_char(sys.oradate,text)'::regprocedure,
+    'sys.to_char(sys.oradate,text,text)'::regprocedure,
+    'sys.to_char(sys.oratimestamp)'::regprocedure,
+    'sys.to_char(sys.oratimestamp,text)'::regprocedure,
+    'sys.to_char(sys.oratimestamp,text,text)'::regprocedure,
+    'sys.to_char(sys.oratimestamptz)'::regprocedure,
+    'sys.to_char(sys.oratimestamptz,text)'::regprocedure,
+    'sys.to_char(sys.oratimestamptz,text,text)'::regprocedure,
+    'sys.to_char(sys.oratimestampltz)'::regprocedure,
+    'sys.to_char(sys.oratimestampltz,text)'::regprocedure,
+    'sys.to_char(sys.oratimestampltz,text,text)'::regprocedure
+])
+AND provolatile = 's';
+ stable_to_char_overloads 
+--------------------------
+                       12
+(1 row)
+
+CREATE TABLE to_char_volatility_tbl(d sys.oradate);
+CREATE INDEX to_char_volatility_idx
+    ON to_char_volatility_tbl (sys.to_char(d));
+ERROR:  functions in index expression must be marked IMMUTABLE
+LINE 2:     ON to_char_volatility_tbl (sys.to_char(d));
+                                       ^
+DROP TABLE to_char_volatility_tbl;
 -- oracle sys date func
 --bug#0000857
 SET nls_timestamp_format = 'DD-MON-YY HH24:MI:SS.US';
