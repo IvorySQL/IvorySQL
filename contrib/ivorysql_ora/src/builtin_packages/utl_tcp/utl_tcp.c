@@ -127,7 +127,11 @@ PG_FUNCTION_INFO_V1(ora_utl_tcp_flush);
 /* handle 0 marks a free slot; valid handles are positive */
 #define UTL_TCP_HANDLE_FREE		0
 
-/* documented deadline for the whole connect sequence */
+/*
+ * Documented deadline for the TCP connect phase.  It starts after
+ * address resolution; DNS itself runs through the system resolver and
+ * is not bounded by, or cancellable through, this deadline.
+ */
 #define UTL_TCP_CONNECT_TIMEOUT_MS	(30 * 1000)
 
 /* Oracle's VARCHAR2/RAW SQL value limit */
@@ -436,7 +440,20 @@ utl_tcp_send_all(UtlTcpConnection *conn, const char *buf, size_t len,
 
 		CHECK_FOR_INTERRUPTS();
 
+		/*
+		 * Like utl_tcp_fill, force nonblocking behaviour on Windows:
+		 * otherwise pgwin32_send waits indefinitely for writability on
+		 * WSAEWOULDBLOCK, and the transfer timeout and backend
+		 * cancellation below would never run.  The flag is global, so
+		 * it is restored immediately after the call.
+		 */
+#ifdef WIN32
+		pgwin32_noblock = true;
+#endif
 		n = send(conn->sock, buf, len, 0);
+#ifdef WIN32
+		pgwin32_noblock = false;
+#endif
 
 		if (n > 0)
 		{
@@ -875,7 +892,10 @@ ora_utl_tcp_open_connection(PG_FUNCTION_ARGS)
 							gai_strerror(rc))));
 		addrs = resolved;
 
-		/* ---- connect, bounded by a fixed overall deadline ---- */
+		/*
+		 * ---- connect, bounded by a fixed overall deadline that starts
+		 * here, after address resolution ----
+		 */
 		deadline = TimestampTzPlusMilliseconds(GetCurrentTimestamp(),
 											   UTL_TCP_CONNECT_TIMEOUT_MS);
 
