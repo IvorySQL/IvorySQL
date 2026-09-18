@@ -112,3 +112,8 @@ begin
 end
 $$;
 commit;
+-- Long sleeps must remain interruptible even on platforms with 32-bit long.
+SET statement_timeout = '100ms';
+SELECT sys.dbms_lock_sleep(2200);
+RESET statement_timeout;
+SELECT sys.dbms_lock_sleep('NaN'::float8);
