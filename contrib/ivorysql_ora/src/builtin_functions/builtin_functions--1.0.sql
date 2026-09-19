@@ -1560,6 +1560,18 @@ RETURNS sys.oravarcharchar
 AS 'select sys.to_char($1::text)'
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
 
+--to_char(number, format)
+CREATE OR REPLACE FUNCTION sys.to_char(number, text)
+RETURNS sys.oravarcharchar
+AS $$select pg_catalog.to_char($1::numeric, $2)$$
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+--to_char(number, format, nlsparam)
+CREATE OR REPLACE FUNCTION sys.to_char(number, text, text)
+RETURNS sys.oravarcharchar
+AS $$select pg_catalog.to_char($1::numeric, $2)$$
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
 --to_number
 CREATE OR REPLACE FUNCTION sys.to_number(number)
 RETURNS sys.number
