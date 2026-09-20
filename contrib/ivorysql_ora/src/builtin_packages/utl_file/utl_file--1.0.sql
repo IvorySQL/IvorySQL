@@ -100,6 +100,20 @@ RETURNS TEXT
 AS 'MODULE_PATHNAME','ora_utl_file_get_line'
 LANGUAGE C VOLATILE;
 
+CREATE FUNCTION sys.ora_utl_file_get_raw(file integer, len integer DEFAULT NULL)
+RETURNS bytea
+AS 'MODULE_PATHNAME','ora_utl_file_get_raw'
+LANGUAGE C VOLATILE;
+
+-- Composite result type for ora_utl_file_fgets: (partial, buffer)
+CREATE TYPE sys.ora_utl_file_fgets_result AS (partial bool, buffer text);
+
+CREATE FUNCTION sys.ora_utl_file_fgets(file integer, len integer DEFAULT NULL)
+RETURNS sys.ora_utl_file_fgets_result
+AS 'MODULE_PATHNAME','ora_utl_file_fgets'
+LANGUAGE C VOLATILE;
+
+
 CREATE FUNCTION sys.ora_utl_file_new_line(file integer)
 RETURNS bool
 AS 'MODULE_PATHNAME','ora_utl_file_new_line'
@@ -234,7 +248,8 @@ CREATE OR REPLACE PACKAGE UTL_FILE IS
         location IN VARCHAR2,
         filename IN VARCHAR2,
         open_mode IN VARCHAR2,
-        max_linesize IN INTEGER DEFAULT 1024
+        max_linesize IN INTEGER DEFAULT 1024,
+        encoding IN VARCHAR2 DEFAULT NULL
     )
     RETURN ORA_UTL_FILE_FILE_TYPE;
 
@@ -276,6 +291,26 @@ CREATE OR REPLACE PACKAGE UTL_FILE IS
         buffer OUT TEXT,
         len IN INTEGER DEFAULT NULL
     );
+
+    PROCEDURE GET_RAW(
+        file IN ORA_UTL_FILE_FILE_TYPE,
+        buffer OUT BYTEA, -- use BYTEA as RAW is not supported yet
+        len IN INTEGER DEFAULT NULL
+    );
+
+    FUNCTION FGETS(
+        file IN ORA_UTL_FILE_FILE_TYPE,
+        buffer IN OUT VARCHAR2,
+        len IN INTEGER DEFAULT NULL
+    )
+    RETURN BOOLEAN;
+
+    FUNCTION FGETS_NCHAR(
+        file IN ORA_UTL_FILE_FILE_TYPE,
+        buffer IN OUT VARCHAR2,
+        len IN INTEGER DEFAULT NULL
+    )
+    RETURN BOOLEAN;
 
     FUNCTION FGETPOS(
         file IN ORA_UTL_FILE_FILE_TYPE
@@ -377,12 +412,13 @@ CREATE OR REPLACE PACKAGE BODY UTL_FILE IS
         location IN VARCHAR2,
         filename IN VARCHAR2,
         open_mode IN VARCHAR2,
-        max_linesize IN INTEGER DEFAULT 1024
+        max_linesize IN INTEGER DEFAULT 1024,
+        encoding IN VARCHAR2 DEFAULT NULL
     )
     RETURN ORA_UTL_FILE_FILE_TYPE IS
     file ORA_UTL_FILE_FILE_TYPE;
     BEGIN
-        file.id := sys.ora_utl_file_fopen(location, filename, open_mode, max_linesize);
+        file.id := sys.ora_utl_file_fopen(location, filename, open_mode, max_linesize, encoding::name);
         RETURN file;
     END;
 
@@ -447,6 +483,52 @@ CREATE OR REPLACE PACKAGE BODY UTL_FILE IS
     BEGIN
         SELECT * INTO line FROM sys.ora_utl_file_get_line(file.id, len);
         buffer := line;
+    END;
+
+    PROCEDURE GET_RAW(
+        file IN ORA_UTL_FILE_FILE_TYPE,
+        buffer OUT BYTEA,
+        len IN INTEGER DEFAULT NULL
+    ) IS
+    BEGIN
+        SELECT * INTO buffer FROM sys.ora_utl_file_get_raw(file.id, len);
+    END;
+
+    FUNCTION FGETS(
+        file IN ORA_UTL_FILE_FILE_TYPE,
+        buffer IN OUT VARCHAR2,
+        len IN INTEGER DEFAULT NULL
+    )
+    RETURN BOOLEAN IS
+    r sys.ora_utl_file_fgets_result;
+    BEGIN
+        SELECT * INTO r FROM sys.ora_utl_file_fgets(file.id, len);
+        -- At end of file nothing was read: keep the caller's buffer
+        -- unchanged, matching Oracle FGETS (which never raises
+        -- NO_DATA_FOUND and returns FALSE instead).
+        IF r.buffer IS NOT NULL THEN
+            buffer := r.buffer;
+        END IF;
+        -- TRUE means only part of the line was stored (the line is longer
+        -- than len / max_linesize); FALSE means a complete line or EOF.
+        RETURN r.partial;
+    END;
+
+    FUNCTION FGETS_NCHAR(
+        file IN ORA_UTL_FILE_FILE_TYPE,
+        buffer IN OUT VARCHAR2,
+        len IN INTEGER DEFAULT NULL
+    )
+    RETURN BOOLEAN IS
+    r sys.ora_utl_file_fgets_result;
+    BEGIN
+        SELECT * INTO r FROM sys.ora_utl_file_fgets(file.id, len);
+        -- Same rules as FGETS; the buffer is only overwritten when data
+        -- was actually read into it.
+        IF r.buffer IS NOT NULL THEN
+            buffer := r.buffer;
+        END IF;
+        RETURN r.partial;
     END;
 
     FUNCTION FGETPOS(

@@ -75,6 +75,8 @@ PG_FUNCTION_INFO_V1(ora_utl_file_frename);
 PG_FUNCTION_INFO_V1(ora_utl_file_fseek);
 PG_FUNCTION_INFO_V1(ora_utl_file_ftell);
 PG_FUNCTION_INFO_V1(ora_utl_file_get_line);
+PG_FUNCTION_INFO_V1(ora_utl_file_fgets);
+PG_FUNCTION_INFO_V1(ora_utl_file_get_raw);
 PG_FUNCTION_INFO_V1(ora_utl_file_new_line);
 PG_FUNCTION_INFO_V1(ora_utl_file_put);
 PG_FUNCTION_INFO_V1(ora_utl_file_putf);
@@ -787,6 +789,273 @@ ora_utl_file_get_line(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_TEXT_P(result);
+}
+
+/*
+ * FUNCTION UTL_FILE.FGETS(file UTL_FILE.FILE_TYPE,
+ *			 len integer DEFAULT NULL)
+ *          RETURNS (partial boolean, buffer text)
+ *
+ * Reads a line from the file into a buffer, like GET_LINE, but with
+ * Oracle FGETS semantics:
+ *
+ *   - It never raises NO_DATA_FOUND when the end of the file is reached.
+ *     When no more data is available a row (false, NULL) is returned and
+ *     the caller's buffer is left unchanged.
+ *   - The boolean result is TRUE when only a partial line was stored in
+ *     the buffer (that is, the line is longer than len / max_linesize and
+ *     reading continues at the rest of that line on the next call).
+ *   - The boolean result is FALSE both when a complete line was read and
+ *     when the end of the file was reached.
+ *
+ * Both CR/LF and LF/CRLF-terminated lines, as well as a trailing line
+ * without a terminator, are handled the same way GET_LINE does.
+ *
+ * Exceptions:
+ *  INVALID_FILEHANDLE, INVALID_OPERATION, READ_ERROR
+ */
+Datum
+ora_utl_file_fgets(PG_FUNCTION_ARGS)
+{
+	FILE   *fd;
+	size_t	max_linesize = 0;
+	int		encoding = 0;
+	size_t	limit;
+	char   *buffer;
+	char   *bpt;
+	size_t	csize = 0;
+	int		c;
+	bool	eof = false;
+	bool	partial = false;
+	TupleDesc tupdesc;
+	HeapTuple	tuple;
+	Datum	values[2];
+	bool	nulls[2] = { 0 };
+
+	CHECK_FILE_HANDLE();
+	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), &max_linesize, &encoding);
+
+	/*
+	 * 'len' overwrites max_linesize, but must be smaller than
+	 * max_linesize (same rule as GET_LINE).
+	 */
+	limit = max_linesize;
+	if (PG_NARGS() > 1 && !PG_ARGISNULL(1))
+	{
+		size_t	len = (size_t) PG_GETARG_INT32(1);
+
+		CHECK_LINESIZE(len);
+		if (limit > len)
+			limit = len;
+	}
+
+	/* Set up to return a composite row (partial, buffer) */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		elog(ERROR, "return type must be a row type");
+
+	buffer = palloc(limit + 2);
+	bpt = buffer;
+
+	errno = 0;
+
+	/*
+	 * Read up to 'limit' characters.  Stop on the line terminator
+	 * ('\n' or '\r\n'), which is consumed the same way GET_LINE consumes
+	 * it, or on end of file.
+	 */
+	while (csize < limit && (c = fgetc(fd)) != EOF)
+	{
+		if (c == '\r')
+		{
+			/* look ahead for '\n' after '\r' */
+			c = fgetc(fd);
+			if (c == EOF)
+			{
+				/*
+				 * '\r' was the last byte in the file: the current
+				 * (possibly empty) line ends here, like GET_LINE.
+				 */
+				break;
+			}
+			if (c != '\n')
+				ungetc(c, fd);
+			break;
+		}
+		else if (c == '\n')
+			break;
+
+		++csize;
+		*bpt++ = c;
+	}
+
+	/*
+	 * We reached end of file only if no byte at all was read.  A line
+	 * that ends exactly at end of file (with or without a trailing\r)
+	 * is a complete line, not an end-of-file condition.
+	 */
+	if (csize == 0 && feof(fd))
+		eof = true;
+	else if (ferror(fd))
+	{
+		switch (errno)
+		{
+			case EBADF:
+				CUSTOM_EXCEPTION(INVALID_OPERATION, "File could not be opened or operated on as requested.");
+				break;
+
+			default:
+				STRERROR_EXCEPTION(READ_ERROR);
+				break;
+		}
+	}
+
+	if (eof)
+	{
+		/*
+		 * End of file: nothing was read.  Return (false, NULL) so the
+		 * package body can leave the caller's buffer unchanged, matching
+		 * Oracle behavior.
+		 */
+		values[0] = BoolGetDatum(false);
+		nulls[1] = true;
+
+		pfree(buffer);
+		tuple = heap_form_tuple(tupdesc, values, nulls);
+		PG_RETURN_DATUM(HeapTupleGetDatum(tuple));
+	}
+
+	if (csize == limit)
+	{
+		/*
+		 * The buffer filled up before a line terminator was seen.  Peek
+		 * at the next byte to decide whether the line really continues
+		 * (partial read) or ends exactly at the buffer boundary (complete
+		 * read).
+		 */
+		c = fgetc(fd);
+		if (c == EOF)
+		{
+			/* line ends exactly at the end of the file: complete read */
+		}
+		else if (c == '\n')
+		{
+			/* complete line followed by a terminator */
+		}
+		else if (c == '\r')
+		{
+			int		c2 = fgetc(fd);
+
+			if (c2 != EOF && c2 != '\n')
+				ungetc(c2, fd);
+		}
+		else
+		{
+			/* the line continues beyond the buffer -> partial read */
+			ungetc(c, fd);
+			partial = true;
+		}
+	}
+
+	/*
+	 * Convert the fragment read in the file encoding to the database
+	 * encoding before exposing it to the caller (same as GET_LINE).
+	 */
+	{
+		char   *decoded;
+		size_t	len;
+		text   *result;
+
+		pg_verify_mbstr(encoding, buffer, size2int(csize), false);
+		decoded = (char *) pg_do_encoding_conversion((unsigned char *) buffer,
+										size2int(csize), encoding, GetDatabaseEncoding());
+		len = (decoded == buffer ? csize : strlen(decoded));
+		result = palloc(len + VARHDRSZ);
+		memcpy(VARDATA(result), decoded, len);
+		SET_VARSIZE(result, len + VARHDRSZ);
+		if (decoded != buffer)
+			pfree(decoded);
+		pfree(buffer);
+
+		values[0] = BoolGetDatum(partial);
+		values[1] = PointerGetDatum(result);
+	}
+
+	tuple = heap_form_tuple(tupdesc, values, nulls);
+	PG_RETURN_DATUM(HeapTupleGetDatum(tuple));
+}
+
+/*
+ * FUNCTION UTL_FILE.GET_RAW(file UTL_FILE.FILE_TYPE,
+ *			 len integer DEFAULT NULL)
+ *          RETURNS bytea;
+ *
+ * Reads a RAW value (binary data) from the file into a bytea buffer.
+ * Up to 'len' bytes are read; when 'len' is NULL or omitted the maximum
+ * line size specified in FOPEN() is used.  If fewer than 'len' bytes
+ * remain in the file the bytes actually available are returned.
+ *
+ * As with GET_LINE, reaching the end of the file with nothing left to
+ * read is reported as NO_DATA_FOUND (the function returns NULL).
+ *
+ * Exceptions:
+ *  INVALID_FILEHANDLE, INVALID_OPERATION, READ_ERROR, NO_DATA_FOUND
+ */
+Datum
+ora_utl_file_get_raw(PG_FUNCTION_ARGS)
+{
+	FILE   *fd;
+	size_t	max_linesize = 0;
+	int		encoding = 0;
+	int		len;
+	bytea  *result;
+	size_t	nread;
+
+	CHECK_FILE_HANDLE();
+	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), &max_linesize, &encoding);
+
+	len = PG_GETARG_IF_EXISTS(1, INT32, -1);
+	if (len < 0)
+		len = (int) max_linesize;
+
+	/*
+	 * Negative or zero lengths are rejected just like an out-of-range
+	 * max_linesize would be.
+	 */
+	CHECK_LINESIZE(len);
+
+	result = (bytea *) palloc(VARHDRSZ + len);
+	SET_VARSIZE(result, VARHDRSZ + len);
+
+	errno = 0;
+	nread = fread(VARDATA(result), 1, len, fd);
+
+	if (ferror(fd))
+	{
+		switch (errno)
+		{
+			case EBADF:
+				CUSTOM_EXCEPTION(INVALID_OPERATION, "File could not be opened or operated on as requested.");
+				break;
+
+			default:
+				STRERROR_EXCEPTION(READ_ERROR);
+				break;
+		}
+	}
+
+	if (nread == 0)
+	{
+		/* End of file: no bytes available -> NO_DATA_FOUND */
+		ereport(LOG,
+			(errcode(ERRCODE_NO_DATA_FOUND),
+					errmsg("no data found")));
+
+		PG_RETURN_NULL();
+	}
+
+	/* Return only the bytes that were actually read. */
+	SET_VARSIZE(result, VARHDRSZ + nread);
+	PG_RETURN_BYTEA_P(result);
 }
 
 Datum

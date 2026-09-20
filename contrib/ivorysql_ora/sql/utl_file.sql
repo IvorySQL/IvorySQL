@@ -240,6 +240,125 @@ begin
 end;
 /
 
+-- test FGETS: complete, empty and partial lines, and end-of-file behavior
+-- FGETS never raises NO_DATA_FOUND: at EOF it returns FALSE and the
+-- caller's buffer is left unchanged.  It returns TRUE only when the line
+-- was longer than len / max_linesize so only part of it was stored.
+declare
+    f sys.ora_utl_file_file_type;
+    ok boolean;
+    buf varchar2(100);
+begin
+    f := utl_file.fopen('data_directory', 'regress_fgets.txt', 'w');
+    utl_file.put_line(f, 'abc');
+    utl_file.put_line(f, '12345678901234567890'); -- 20 chars, longer than any len used below
+    utl_file.new_line(f);                         -- empty line
+    utl_file.fclose(f);
+
+    f := utl_file.fopen('data_directory', 'regress_fgets.txt', 'r');
+
+    ok := utl_file.fgets(f, buf, 100);
+    raise notice 'fgets 1: partial=%, buf=[%]', ok, buf;
+
+    -- partial reads of the 20-character line: 5 bytes at a time
+    ok := utl_file.fgets(f, buf, 5);
+    raise notice 'fgets 2: partial=%, buf=[%]', ok, buf;
+    ok := utl_file.fgets(f, buf, 5);
+    raise notice 'fgets 3: partial=%, buf=[%]', ok, buf;
+    ok := utl_file.fgets(f, buf, 5);
+    raise notice 'fgets 4: partial=%, buf=[%]', ok, buf;
+    ok := utl_file.fgets(f, buf, 5);
+    raise notice 'fgets 5: partial=%, buf=[%]', ok, buf;
+
+    -- empty line
+    ok := utl_file.fgets(f, buf, 5);
+    raise notice 'fgets 6: partial=%, buf=[%]', ok, buf;
+
+    -- end of file: FALSE returned and buffer keeps its previous value
+    ok := utl_file.fgets(f, buf, 5);
+    raise notice 'fgets 7: partial=%, buf=[%]', ok, buf;
+    ok := utl_file.fgets(f, buf, 5);
+    raise notice 'fgets 8: partial=%, buf=[%]', ok, buf;
+
+    utl_file.fclose(f);
+end;
+/
+
+-- test FGETS through a NCHAR handle
+-- Chinese text is stored and read back through FOPEN_NCHAR / FOPEN_NCHAR
+-- handles, whose encoding is UTF8 regardless of the database encoding.
+declare
+    f sys.ora_utl_file_file_type;
+    ok boolean;
+    buf varchar2(100);
+begin
+    f := utl_file.fopen_nchar('data_directory', 'regress_fgets_nchar.txt', 'w');
+    utl_file.put_line_nchar(f, '中文测试');
+    utl_file.fclose(f);
+
+    f := utl_file.fopen_nchar('data_directory', 'regress_fgets_nchar.txt', 'r');
+    ok := utl_file.fgets_nchar(f, buf, 100);
+    raise notice 'fgets_nchar 1: partial=%, buf=[%]', ok, buf;
+
+    -- end of file
+    ok := utl_file.fgets_nchar(f, buf, 100);
+    raise notice 'fgets_nchar 2: partial=%, buf=[%]', ok, buf;
+    utl_file.fclose(f);
+end;
+/
+
+-- test GET_RAW: reads raw bytes, honors len, and reports end of file
+-- (returns NULL / NO_DATA_FOUND) without raising
+-- A PUT_RAW / GET_RAW round-trip must preserve the bytes exactly.
+declare
+    f sys.ora_utl_file_file_type;
+    buf bytea;
+begin
+    f := utl_file.fopen('data_directory', 'regress_raw.dat', 'w');
+    utl_file.put_raw(f, 'ABCDEFGH'::bytea, true);
+    utl_file.fclose(f);
+
+    f := utl_file.fopen('data_directory', 'regress_raw.dat', 'r');
+
+    -- read exactly the requested number of bytes
+    utl_file.get_raw(f, buf, 3);
+    raise notice 'get_raw 1: hex=[%] len=%', rawtohex(buf), length(buf);
+
+    -- read the rest (5 bytes remain, len is larger)
+    utl_file.get_raw(f, buf, 100);
+    raise notice 'get_raw 2: hex=[%] len=%', rawtohex(buf), length(buf);
+
+    -- end of file: buffer becomes NULL (no more bytes)
+    utl_file.get_raw(f, buf, 3);
+    raise notice 'get_raw 3: at EOF, buf is null = %', buf is null;
+
+    utl_file.fclose(f);
+end;
+/
+
+-- test FOPEN with an explicit encoding (5-argument overload)
+-- The encoding name is forwarded to the C implementation; an invalid
+-- name is rejected just like an invalid open mode.
+declare
+    f sys.ora_utl_file_file_type;
+begin
+    f := utl_file.fopen('data_directory', 'regress_enc.txt', 'w', 1024, 'UTF8');
+    utl_file.put_line(f, 'hello-enc');
+    utl_file.fclose(f);
+
+    f := utl_file.fopen('data_directory', 'regress_enc.txt', 'r', 1024, 'UTF8');
+    raise notice 'fopen encoding: fgetpos=%', utl_file.fgetpos(f);
+    utl_file.fclose(f);
+
+    -- invalid encoding name must fail loudly
+    begin
+        f := utl_file.fopen('data_directory', 'regress_enc.txt', 'r', 1024, 'NO_SUCH_ENC');
+    exception when others then
+        raise notice 'fopen encoding: invalid name caught: %', sqlerrm;
+    end;
+end;
+/
+
 -- clean up
 delete from sys.utl_file_directory where dirname = 'data_directory';
 /
