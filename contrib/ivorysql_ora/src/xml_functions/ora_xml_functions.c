@@ -1452,8 +1452,6 @@ ivy_appendchildxml(PG_FUNCTION_ARGS)
 
 	ivy_xml_addchildnode(res, (xmlNodePtr)new_node);
 	ret = (xmltype *)ivy_xml_xmlnode2xmltype((xmlNodePtr)ws.doc);
-	xmlUnlinkNode((xmlNodePtr)ws.xpathctx->node->children);
-	xmlFreeNode((xmlNodePtr)ws.xpathctx->node->children);
 
 	ret = (xmltype *)rv_newline((text *)ret);
 
@@ -1527,8 +1525,6 @@ ivy_appendchildxml2(PG_FUNCTION_ARGS)
 
 	ivy_xml_addchildnode(res, (xmlNodePtr)new_node);
 	ret = (xmltype *)ivy_xml_xmlnode2xmltype((xmlNodePtr)ws.doc);
-	xmlUnlinkNode((xmlNodePtr)ws.xpathctx->node->children);
-	xmlFreeNode((xmlNodePtr)ws.xpathctx->node->children);
 
 	ret = (xmltype *)rv_newline((text *)ret);
 
