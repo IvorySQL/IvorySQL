@@ -363,6 +363,7 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location, YYSTYPE *yylv
 %token <keyword>	K_GET
 %token <keyword>	K_HINT
 %token <keyword>	K_IF
+%token <keyword>	K_IMMEDIATE
 %token <keyword>	K_IMPORT
 %token <keyword>	K_IN
 %token <keyword>	K_INFO
@@ -2935,6 +2936,21 @@ stmt_dynexecute : K_EXECUTE
 						PLiSQL_stmt_dynexecute *new;
 						PLiSQL_expr *expr;
 						int endtoken;
+						int tok;
+
+						/*
+						 * Oracle spells the dynamic-SQL statement
+						 * "EXECUTE IMMEDIATE"; accept and skip IMMEDIATE if
+						 * present, pushing back anything else for the
+						 * expression reader.  A variable named "immediate"
+						 * resolves to the keyword in this position (the
+						 * scanner prefers keywords right after a
+						 * statement-introducing keyword), consistent with
+						 * other unreserved keywords.
+						 */
+						tok = yylex(&yylval, &yylloc, yyscanner);
+						if (tok != K_IMMEDIATE)
+							plisql_push_back_token(tok, &yylval, &yylloc, yyscanner);
 
 						expr = read_sql_construct(K_INTO, K_USING, ';',
 												  "INTO or USING or ;",
@@ -3474,6 +3490,7 @@ unreserved_keyword	:
 				| K_FORWARD
 				| K_GET
 				| K_HINT
+				| K_IMMEDIATE
 				| K_IMPORT
 				| K_INFO
 				| K_INSERT
