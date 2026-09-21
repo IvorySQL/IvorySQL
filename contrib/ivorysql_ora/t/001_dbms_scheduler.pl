@@ -670,4 +670,49 @@ $node->wait_for_log(qr/scheduler for database "sched_broken" stopped; not restar
   or die "launcher did not give up on the broken database";
 ok(1, 'the launcher gives up on the database whose scheduler could not continue');
 
+# ---------------------------------------------------------------------
+# the metadata statements run as the extension owner, so they must not
+# resolve unqualified names against the caller's search_path
+#
+# sched_escalate() raises the user id to the owner of sys.scheduler_jobs
+# (a superuser) so that plain users need no privileges on the metadata
+# tables.  The statements it then runs name pg_backend_pid(),
+# pg_stat_activity and so on without a schema, so a caller who puts a
+# schema of their own first on search_path used to have those names
+# resolve to their own objects -- and run as the owner.
+# ---------------------------------------------------------------------
+$node->safe_psql($db, q{
+	CREATE ROLE sched_hijack LOGIN;
+	CREATE SCHEMA hijack;
+	CREATE FUNCTION hijack.pg_backend_pid() RETURNS integer
+	LANGUAGE plpgsql AS $fn$
+	BEGIN
+		EXECUTE 'ALTER ROLE sched_hijack SUPERUSER';
+		RETURN 4242;
+	END
+	$fn$;
+	GRANT USAGE ON SCHEMA hijack TO sched_hijack;
+	GRANT EXECUTE ON FUNCTION hijack.pg_backend_pid() TO sched_hijack;
+});
+
+# Calling the package is all it takes: RUN_JOB goes through sched_log_start(),
+# which inserts a row naming pg_backend_pid() and pg_stat_activity.
+$node->safe_psql(
+	$db, q{
+	SET ivorysql.compatible_mode = oracle;
+	SET search_path = hijack, pg_catalog;
+	CALL sys.dbms_scheduler.create_job('hijack_job', 'PLSQL_BLOCK',
+									   'BEGIN NULL; END;', 0);
+	CALL sys.dbms_scheduler.run_job('hijack_job');
+}, extra_params => ['-U', 'sched_hijack']);
+
+is( $node->safe_psql($db,
+		"SELECT rolsuper FROM pg_authid WHERE rolname = 'sched_hijack'"),
+	'f',
+	'a shadowing name on search_path is not run as the metadata owner');
+
+# leave no job behind for the launcher to pick up
+$node->safe_psql($db,
+	"DELETE FROM sys.scheduler_jobs WHERE job_owner = 'sched_hijack'");
+
 done_testing();
