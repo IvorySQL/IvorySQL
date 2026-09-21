@@ -112,6 +112,29 @@ select sys_context('app', 'usr') as before_discard;
 discard all;
 select sys_context('app', 'usr') is null as after_discard;
 
+--
+-- The context is only as trustworthy as its write path, so the mutating
+-- entry points are gated by the dbms_session package ACL.  A role holding no
+-- EXECUTE ON PACKAGE is refused through the package *and* through the C
+-- functions underneath it, which as ordinary SQL functions would otherwise
+-- inherit EXECUTE to PUBLIC and make the package ACL decorative.
+--
+set role dbms_sess_rls;
+call dbms_session.set_context('app', 'usr', 'mallory');
+select sys.ora_dbms_session_set_context('app', 'usr', 'mallory');
+select sys.ora_dbms_session_clear_context('app');
+reset role;
+
+--
+-- A custom namespace reads the DBMS_SESSION store and nothing else.  A
+-- placeholder GUC of the same name must not be a second source: it is
+-- settable by any session without any privilege, so reading it would let a
+-- session choose the value an RLS predicate sees.
+--
+set forged_ns.attr = 'from-a-guc';
+select sys_context('forged_ns', 'attr') is null as guc_is_not_a_context_source;
+reset forged_ns.attr;
+
 drop table docs;
 drop role dbms_sess_rls;
 

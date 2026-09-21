@@ -1765,12 +1765,16 @@ BEGIN
 				RAISE EXCEPTION 'invalid SYS_SESSION_ROLES parameter: %', b;
 		END CASE;
 	ELSE
-	  /* Custom namespace: read DBMS_SESSION application context first,
-	   * then fall back to a GUC named <namespace>.<attribute>. */
+	  /*
+	   * Custom namespace: the DBMS_SESSION application context is the only
+	   * source.  A GUC cannot be a second one: <namespace>.<attribute> is a
+	   * placeholder GUC, so any session may SET its own value with no
+	   * privilege whatsoever, and SYS_CONTEXT would then report whatever
+	   * that session chose.  DBMS_SESSION.SET_CONTEXT is ACL-checked, so
+	   * keeping the store as the sole source is what makes a custom
+	   * namespace writable only by a caller permitted to write it.
+	   */
 	  SELECT sys.ora_dbms_session_get_context(a, b) INTO res;
-	  IF res IS NULL THEN
-	    SELECT current_setting(a||'.'||b, true) INTO res;
-	  END IF;
 	END IF;
 	RETURN res;
 END;

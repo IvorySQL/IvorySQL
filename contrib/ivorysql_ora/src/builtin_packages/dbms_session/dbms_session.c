@@ -33,6 +33,11 @@
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "access/hash.h"
+#include "catalog/pg_package.h"
+#include "commands/packagecmds.h"
+#include "nodes/makefuncs.h"
+#include "nodes/pg_list.h"
+#include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
 #include "utils/packagecache.h"
@@ -75,6 +80,7 @@ static MemoryContext DbmsSessionContext = NULL;
 static void dbms_session_init(void);
 static void make_key(CtxKey *key, const char *ns, const char *attr);
 static void clear_namespace(const char *ns);
+static void check_session_context_privilege(void);
 
 /* SQL-callable function declarations */
 PG_FUNCTION_INFO_V1(ora_dbms_session_set_context);
@@ -83,6 +89,47 @@ PG_FUNCTION_INFO_V1(ora_dbms_session_clear_all_context);
 PG_FUNCTION_INFO_V1(ora_dbms_session_get_context);
 PG_FUNCTION_INFO_V1(ora_dbms_session_list_context);
 PG_FUNCTION_INFO_V1(ora_dbms_session_reset_package);
+
+/*
+ * check_session_context_privilege
+ *
+ * The mutating entry points below are reachable two ways: through the
+ * sys.dbms_session package, whose ACL is what administrators grant, and
+ * directly, because as C functions they carry PostgreSQL's default of EXECUTE
+ * to PUBLIC.  The direct route made the package ACL decorative -- any user
+ * could write the session context that SYS_CONTEXT reads, and so forge the
+ * values an application builds row-level security predicates on.
+ *
+ * Check the *package* ACL rather than our own, so each function is exactly as
+ * reachable as the package that fronts it: superusers and holders of EXECUTE
+ * ON PACKAGE dbms_session keep working, everyone else is refused.
+ *
+ * Only the mutating functions call this.  ora_dbms_session_get_context() must
+ * stay open, because SYS_CONTEXT() calls it on every read.
+ */
+static void
+check_session_context_privilege(void)
+{
+	Oid			pkgoid;
+	AclResult	aclresult;
+	List	   *pkgname;
+
+	if (superuser())
+		return;
+
+	pkgname = list_make2(makeString("sys"), makeString("dbms_session"));
+	pkgoid = LookupPackageByNames(pkgname, true);
+	list_free_deep(pkgname);
+
+	if (!OidIsValid(pkgoid))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("package \"dbms_session\" does not exist")));
+
+	aclresult = pg_package_aclcheck(pkgoid, GetUserId(), ACL_EXECUTE);
+	if (aclresult != ACLCHECK_OK)
+		aclcheck_error(aclresult, OBJECT_PACKAGE, "dbms_session");
+}
 
 /*
  * dbms_session_init
@@ -213,6 +260,8 @@ ora_dbms_session_set_context(PG_FUNCTION_ARGS)
 	CtxEntry   *entry;
 	bool		found;
 
+	check_session_context_privilege();
+
 	if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
 		ereport(ERROR,
 				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
@@ -266,6 +315,8 @@ ora_dbms_session_clear_context(PG_FUNCTION_ARGS)
 {
 	char	   *ns;
 
+	check_session_context_privilege();
+
 	if (PG_ARGISNULL(0))
 		ereport(ERROR,
 				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
@@ -309,6 +360,8 @@ Datum
 ora_dbms_session_clear_all_context(PG_FUNCTION_ARGS)
 {
 	char	   *ns;
+
+	check_session_context_privilege();
 
 	if (PG_ARGISNULL(0))
 		ereport(ERROR,
@@ -442,6 +495,8 @@ ora_dbms_session_list_context(PG_FUNCTION_ARGS)
 Datum
 ora_dbms_session_reset_package(PG_FUNCTION_ARGS)
 {
+	check_session_context_privilege();
+
 	ResetAllPackagesContext();
 	PG_RETURN_VOID();
 }
