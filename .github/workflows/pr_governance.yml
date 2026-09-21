@@ -37,6 +37,8 @@ jobs:
 
             const issueRefRegex =
               /(?:^|[\s(])(?:(?<repo>[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+))?#(?<number>\d+)\b/g;
+            const issueUrlRegex =
+              /(?:^|[\s(<])https:\/\/github\.com\/(?<repo>[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\/issues\/(?<number>\d+)\b/g;
 
             function uniqueById(items) {
               const map = new Map();
@@ -49,7 +51,10 @@ jobs:
             function extractIssueReferencesFromBody(text) {
               const refs = [];
             
-              for (const match of text.matchAll(issueRefRegex)) {
+              for (const match of [
+                ...text.matchAll(issueRefRegex),
+                ...text.matchAll(issueUrlRegex),
+              ]) {
                 const repoName = match.groups?.repo || `${owner}/${repo}`;
                 const number = Number(match.groups?.number);
             
