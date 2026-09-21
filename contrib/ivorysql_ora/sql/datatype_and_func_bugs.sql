@@ -81,3 +81,19 @@ drop function s1.f_alter(arg1 number, arg2 number);
 drop function s1.f_alter(arg1 OUT int);
 drop function s1.f_alter(arg1 text);
 drop function s1.f_alter(arg1 number, arg2 number, arg3 number);
+
+-- A month outside 1..12 must not be used to index day_tab.  The DCH_MM bounds
+-- check is gated on the Oracle parser, so only a PG-parser session reaches
+-- final_datetime_check() with an unvalidated month -- that is where day_tab
+-- was read out of bounds, and where out->mm - 1 overflowed for INT_MIN.
+set ivorysql.compatible_mode = pg;
+select '2000--2147483648-01'::sys.oradate;
+select '2000-999999-01'::sys.oradate;
+select '2000--2147483648-01 00:00:00.000000'::sys.oratimestamp;
+select '2000--2147483648-01 00:00:00.000000 +00:00'::sys.oratimestamptz;
+select '2000--2147483648-01 00:00:00.000000'::sys.oratimestampltz;
+-- an out-of-range month is still rejected, with the PG parser's own message
+select '2000-99-01'::sys.oradate;
+-- the day check for a valid month must keep working
+select '2001-02-29'::sys.oradate;
+select '2000-02-29'::sys.oradate;

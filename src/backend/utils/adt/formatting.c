@@ -5464,7 +5464,15 @@ final_datetime_check(TmFromChar *out)
 	 * the value of 'YYYY', so we don`t know that the
 	 * year is there a leap year ? so check again
 	 */
-	if (out->year != 0 && out->mm != 0)
+	/*
+	 * Guard the month before indexing day_tab.  The DCH_MM bounds check is
+	 * skipped when the parser is not the Oracle one, so in a PG-parser session
+	 * out->mm can be any int here -- indexing day_tab with it (and computing
+	 * out->mm - 1 for INT_MIN) is undefined behaviour.  An out-of-range month
+	 * is rejected by the caller's own validation, which reports the message
+	 * appropriate to the active parser, so skip the day check for it.
+	 */
+	if (out->year != 0 && out->mm >= 1 && out->mm <= 12)
 	{
 		if (out->dd > day_tab[isleap(out->year)][out->mm - 1])
 			ereport(ERROR,
