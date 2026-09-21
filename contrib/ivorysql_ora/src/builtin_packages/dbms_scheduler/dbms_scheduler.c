@@ -125,18 +125,31 @@ sched_metadata_owner(void)
 }
 
 static void
-sched_escalate(Oid *save_userid, int *save_sec_context)
+sched_escalate(Oid *save_userid, int *save_sec_context, int *save_nestlevel)
 {
 	GetUserIdAndSecContext(save_userid, save_sec_context);
 	SetUserIdAndSecContext(sched_metadata_owner(),
 						   *save_sec_context |
 						   SECURITY_LOCAL_USERID_CHANGE |
 						   SECURITY_RESTRICTED_OPERATION);
+
+	/*
+	 * The metadata statements are not schema-qualified throughout; they
+	 * reference pg_backend_pid(), pg_stat_activity and so on.  Running them
+	 * under the owner's identity while the caller's search_path is still in
+	 * effect would let any user who has a relation or function of the same
+	 * name earlier on their path have it resolved, and executed, as the
+	 * owner.  Pin the path for the duration, the way the core code that
+	 * raises the user id this way does.
+	 */
+	*save_nestlevel = NewGUCNestLevel();
+	RestrictSearchPath();
 }
 
 static void
-sched_restore(Oid save_userid, int save_sec_context)
+sched_restore(Oid save_userid, int save_sec_context, int save_nestlevel)
 {
+	AtEOXact_GUC(false, save_nestlevel);
 	SetUserIdAndSecContext(save_userid, save_sec_context);
 }
 
@@ -150,10 +163,11 @@ sched_meta_dml(const char *sql, int nargs, Oid *argtypes, Datum *values,
 {
 	Oid			save_userid;
 	int			save_sec_context;
+	int			save_nestlevel;
 	int			rc;
 	uint64		processed;
 
-	sched_escalate(&save_userid, &save_sec_context);
+	sched_escalate(&save_userid, &save_sec_context, &save_nestlevel);
 
 	rc = SPI_execute_with_args(sql, nargs, argtypes, values, nulls,
 							   false, 0);
@@ -161,7 +175,7 @@ sched_meta_dml(const char *sql, int nargs, Oid *argtypes, Datum *values,
 		elog(ERROR, "SPI_execute_with_args failed: %s", SPI_result_code_string(rc));
 	processed = SPI_processed;
 
-	sched_restore(save_userid, save_sec_context);
+	sched_restore(save_userid, save_sec_context, save_nestlevel);
 
 	return processed;
 }
@@ -179,16 +193,17 @@ sched_meta_select(const char *sql, int nargs, Oid *argtypes, Datum *values,
 {
 	Oid			save_userid;
 	int			save_sec_context;
+	int			save_nestlevel;
 	int			rc;
 
-	sched_escalate(&save_userid, &save_sec_context);
+	sched_escalate(&save_userid, &save_sec_context, &save_nestlevel);
 
 	rc = SPI_execute_with_args(sql, nargs, argtypes, values, nulls,
 							   false, 0);
 	if (rc < 0)
 		elog(ERROR, "SPI_execute_with_args failed: %s", SPI_result_code_string(rc));
 
-	sched_restore(save_userid, save_sec_context);
+	sched_restore(save_userid, save_sec_context, save_nestlevel);
 
 	return SPI_processed;
 }
