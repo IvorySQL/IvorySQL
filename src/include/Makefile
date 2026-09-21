@@ -86,7 +86,7 @@ install: all installdirs
 	  $(INSTALL_DATA) $(srcdir)/$$dir/*.h '$(DESTDIR)$(includedir_server)'/$$dir || exit; \
 	done
 ifeq ($(vpath_build),yes)
-	for file in storage/lwlocknames.h utils/probes.h utils/wait_event_types.h oracle_parser/ora_gram.h parser/gram.h; do \
+	for file in storage/lwlocknames.h utils/probes.h utils/wait_event_types.h; do \
 	  $(INSTALL_DATA) $$file '$(DESTDIR)$(includedir_server)'/$$file || exit; \
 	done
 endif
