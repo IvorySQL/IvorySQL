@@ -45,18 +45,25 @@ OBJS = \
 
 EXTENSION = ivorysql_ora
 
-# SQL(s) which need to be generated only if which is specified here.
-DATA = ivorysql_ora--1.0.sql
+# SQL(s) which are generated into the build directory.  They have to be declared
+# as DATA_built and not DATA, because pgxs installs DATA from $(srcdir), which
+# does not contain the generated file in a VPATH (out-of-tree) build.
+DATA_built = ivorysql_ora--1.0.sql
 
-all: gensql
+all: $(DATA_built)
 
 install: install-data
 
 clean: cleansql
 
-# SQL(s) merge using perl
-gensql: gensql.pl
-	$(PERL) $< gcc_build $(patsubst ivorysql_ora--%.sql, %, $(DATA))
+.PHONY: gensql
+gensql: $(DATA_built)
+
+# SQL(s) merge using perl.
+# $< resolves through VPATH to the source-tree script, which locates its inputs
+# relative to itself; the merged file is still written to the build directory.
+$(DATA_built): gensql.pl
+	$(PERL) $< gcc_build $(patsubst ivorysql_ora--%.sql, %, $@)
 
 # Preload the compatible oracle misc sql script
 install-data:
@@ -64,7 +71,7 @@ install-data:
 
 # Clean the generated SQL(s).
 cleansql:
-	rm -f $(DATA)
+	rm -f $(DATA_built)
 
 # REGRESS_OPTS mainly used for installcheck or debug.
 #REGRESS_OPTS = --port=1521
