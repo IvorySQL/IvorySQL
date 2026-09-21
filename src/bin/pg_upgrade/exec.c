@@ -450,6 +450,9 @@ check_exec(const char *dir, const char *program, bool check_version)
 		pg_strip_crlf(line);
 
 		snprintf(versionstr, sizeof(versionstr), "%s (PostgreSQL) " PG_VERSION, program);
+		if (strcmp(program, "postgres") == 0 || strcmp(program, "pg_ctl") == 0)
+			strlcat(versionstr, " (IvorySQL " PACKAGE_IVORYSQL_VERSION ")",
+					sizeof(versionstr));
 
 		if (strcmp(line, versionstr) != 0)
 			pg_fatal("check for \"%s\" failed: incorrect version: found \"%s\", expected \"%s\"",
