@@ -3045,8 +3045,15 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist, ForPortionOfExpr 
 			{
 				Node	   *ind0 = linitial(origTarget->indirection);
 
-				if (IsA(ind0, String))
-					colname_temp = strVal(ind0);
+				if (!IsA(ind0, String))
+					ereport(ERROR,
+							(errcode(ERRCODE_UNDEFINED_COLUMN),
+							 errmsg("column \"%s\" of relation \"%s\" does not exist",
+									origTarget->name,
+									RelationGetRelationName(pstate->p_target_relation)),
+							 parser_errposition(pstate, origTarget->location)));
+
+				colname_temp = strVal(ind0);
 				alias_temp = lfirst(list_head(pstate->p_rtable));
 
 				if (alias_temp->alias)
