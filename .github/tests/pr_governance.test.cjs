@@ -103,6 +103,12 @@ for (const body of [
   'https://github.com.example.com/IvorySQL/IvorySQL/issues/123',
   'https://github.com/IvorySQL/IvorySQL/pull/123',
   'https://github.com/IvorySQL/IvorySQL/issues/not-a-number',
+  'https://github.com/IvorySQL/IvorySQL/issues/0',
+  'https://github.com/IvorySQL/IvorySQL/issues/9007199254740993',
+  '#0',
+  '#9007199254740993',
+  'IvorySQL/IvorySQL#0',
+  'IvorySQL/IvorySQL#9007199254740993',
 ]) {
   test(`rejects body without an issue reference: ${JSON.stringify(body)}`, async () => {
     const result = await runPolicy(body);

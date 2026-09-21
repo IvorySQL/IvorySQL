@@ -57,6 +57,9 @@ jobs:
               ]) {
                 const repoName = match.groups?.repo || `${owner}/${repo}`;
                 const number = Number(match.groups?.number);
+                if (!Number.isSafeInteger(number) || number <= 0) {
+                  continue;
+                }
             
                 refs.push({
                   repository: { nameWithOwner: repoName },
