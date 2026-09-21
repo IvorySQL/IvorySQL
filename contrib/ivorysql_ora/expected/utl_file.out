@@ -259,6 +259,36 @@ end;
 NOTICE:  is_open = t
 NOTICE:  is_open = t
 NOTICE:  is_open = f
+-- FCOPY opens the destination file for writing before it reads the source, so
+-- copying a file onto itself destroys the source.  Refuse the operation.
+declare
+    f sys.ora_utl_file_file_type;
+    fexists boolean;
+    file_length number;
+    block_size integer;
+begin
+    f := utl_file.fopen('data_directory', 'regressfcopy.txt', 'w');
+    utl_file.put_line(f, 'preserve this source');
+    utl_file.fclose(f);
+    utl_file.fgetattr('data_directory', 'regressfcopy.txt',
+                      fexists, file_length, block_size);
+    raise notice 'source length before self copy = %', file_length;
+    begin
+        utl_file.fcopy('data_directory', 'regressfcopy.txt',
+                       'data_directory', 'regressfcopy.txt');
+        raise notice 'self copy: no exception raised';
+    exception
+        when others then
+            raise notice 'self copy: %', sqlerrm;
+    end;
+    utl_file.fgetattr('data_directory', 'regressfcopy.txt',
+                      fexists, file_length, block_size);
+    raise notice 'source length after self copy = %', file_length;
+end;
+/
+NOTICE:  source length before self copy = 21
+NOTICE:  self copy: INVALID_OPERATION
+NOTICE:  source length after self copy = 21
 -- clean up
 delete from sys.utl_file_directory where dirname = 'data_directory';
 /
