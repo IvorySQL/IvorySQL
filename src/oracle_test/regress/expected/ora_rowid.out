@@ -459,3 +459,112 @@ select * from v1;
 
 drop view v1;
 drop table t2;
+--
+--11, Test ROWID is preserved across table rewrites
+--
+create table t2(a int, b text) with rowid;
+insert into t2 values(1, 'a');
+insert into t2 values(2, 'b');
+insert into t2 values(3, 'c');
+insert into t2 values(4, 'd');
+insert into t2 values(5, 'e');
+select (rowid).rowno, a from t2 order by a;
+ rowno | a 
+-------+---
+     1 | 1
+     2 | 2
+     3 | 3
+     4 | 4
+     5 | 5
+(5 rows)
+
+-- cache the ROWIDs of two rows, the way an application would
+create temp table cached_rowids as select (rowid).rowno as rid from t2 where a in (1, 3);
+-- VACUUM FULL must not change the ROWID sequence values
+vacuum full t2;
+select (rowid).rowno, a from t2 order by a;
+ rowno | a 
+-------+---
+     1 | 1
+     2 | 2
+     3 | 3
+     4 | 4
+     5 | 5
+(5 rows)
+
+select count(*) from t2 where (rowid).rowno = 0;
+ count 
+-------
+     0
+(1 row)
+
+select count(*) from t2 where (rowid).rowno in (select rid from cached_rowids);
+ count 
+-------
+     2
+(1 row)
+
+-- CLUSTER must not change them either
+create index t2_a_idx on t2(a);
+cluster t2 using t2_a_idx;
+select (rowid).rowno, a from t2 order by a;
+ rowno | a 
+-------+---
+     1 | 1
+     2 | 2
+     3 | 3
+     4 | 4
+     5 | 5
+(5 rows)
+
+select count(*) from t2 where (rowid).rowno in (select rid from cached_rowids);
+ count 
+-------
+     2
+(1 row)
+
+-- A rewrite caused by ALTER TABLE must preserve them as well
+alter table t2 alter column a type bigint;
+select (rowid).rowno, a from t2 order by a;
+ rowno | a 
+-------+---
+     1 | 1
+     2 | 2
+     3 | 3
+     4 | 4
+     5 | 5
+(5 rows)
+
+select count(*) from t2 where (rowid).rowno in (select rid from cached_rowids);
+ count 
+-------
+     2
+(1 row)
+
+-- Reforming tuples (e.g. after a DROP COLUMN) must not collapse them to (oid,0)
+alter table t2 drop column b;
+vacuum full t2;
+select (rowid).rowno, a from t2 order by a;
+ rowno | a 
+-------+---
+     1 | 1
+     2 | 2
+     3 | 3
+     4 | 4
+     5 | 5
+(5 rows)
+
+select count(*) from t2 where (rowid).rowno = 0;
+ count 
+-------
+     0
+(1 row)
+
+select count(*) from t2 where (rowid).rowno in (select rid from cached_rowids);
+ count 
+-------
+     2
+(1 row)
+
+drop table t2;
+drop table cached_rowids;
