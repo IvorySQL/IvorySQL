@@ -95,6 +95,9 @@ static char *get_safe_path(text *location, text *filename);
 static void close_all_files(void);
 static int copy_text_file(FILE *srcfile, FILE *dstfile,
 						  int start_line, int end_line);
+static size_t next_line(FILE *fd, char **bufp, size_t *bufsizep,
+						size_t *usedp, char **linep, bool *eofp,
+						bool *errp);
 static void put_lines(FILE *fd, int lines);
 static FILE *do_put(PG_FUNCTION_ARGS);
 static size_t
@@ -1143,46 +1146,147 @@ close_all_files(void)
 }
 
 /*
- * Copy srcfile to dstfile. Return 0 if succeeded, or non-0 if error.
+ * Read the next line from fd.
+ *
+ * The pending bytes of the stream are kept in *bufp, which holds *usedp valid
+ * bytes and has room for *bufsizep; the buffer grows as needed.  *linep is set
+ * to a palloc'd copy of the line, including its terminating '\n' when there is
+ * one, and the length of that copy is returned.  A return value of 0 means the
+ * end of the file, and *errp is set when the file cannot be read.
+ *
+ * The bytes are returned as they are, so a '\0' in the input is ordinary data:
+ * it neither ends the line nor hides the bytes that follow it.
+ */
+static size_t
+next_line(FILE *fd, char **bufp, size_t *bufsizep, size_t *usedp,
+		  char **linep, bool *eofp, bool *errp)
+{
+	*linep = NULL;
+
+	for (;;)
+	{
+		char	   *nl;
+
+		if (*usedp > 0)
+		{
+			nl = memchr(*bufp, '\n', *usedp);
+			if (nl != NULL)
+			{
+				size_t		linelen = (nl - *bufp) + 1;
+				char	   *line = palloc(linelen);
+
+				memcpy(line, *bufp, linelen);
+
+				/* keep the bytes after the line for the next call */
+				*usedp -= linelen;
+				memmove(*bufp, *bufp + linelen, *usedp);
+				*linep = line;
+
+				return linelen;
+			}
+		}
+
+		if (*eofp)
+		{
+			size_t		linelen = *usedp;
+
+			if (linelen > 0)
+			{
+				char	   *line = palloc(linelen);
+
+				memcpy(line, *bufp, linelen);
+				*linep = line;
+			}
+			*usedp = 0;
+
+			return linelen;		/* 0 at a true end of file */
+		}
+
+		/* make room for more input */
+		if (*usedp == *bufsizep)
+		{
+			*bufsizep = (*bufsizep == 0) ? 8192 : *bufsizep * 2;
+			*bufp = (*bufp == NULL) ? palloc(*bufsizep)
+				: repalloc(*bufp, *bufsizep);
+		}
+
+		{
+			size_t		nread;
+
+			nread = fread(*bufp + *usedp, 1, *bufsizep - *usedp, fd);
+			if (nread == 0)
+			{
+				if (ferror(fd))
+				{
+					*errp = true;
+
+					return 0;
+				}
+
+				*eofp = true;
+			}
+
+			*usedp += nread;
+		}
+	}
+}
+
+/*
+ * Copy lines start_line .. end_line (both inclusive, one based) of srcfile to
+ * dstfile, unchanged.  A line ends with '\n' or with the end of the file.
+ * Return 0 if succeeded, or non-0 if error.
  */
 static int
 copy_text_file(FILE *srcfile, FILE *dstfile, int start_line, int end_line)
 {
-	char	   *buffer;
-	size_t		len;
-	int			i;
-
-	buffer = palloc(MAX_LINESIZE);
+	char	   *buffer = NULL;
+	size_t		bufsize = 0;
+	size_t		used = 0;
+	bool		eof = false;
+	int			lineno;
 
 	errno = 0;
 
-	/* skip first start_line. */
-	for (i = 1; i < start_line; i++)
+	for (lineno = 1; lineno <= end_line; lineno++)
 	{
+		char	   *line = NULL;
+		size_t		linelen;
+		bool		read_error = false;
+
 		CHECK_FOR_INTERRUPTS();
-		do
+
+		linelen = next_line(srcfile, &buffer, &bufsize, &used, &line,
+							&eof, &read_error);
+		if (read_error)
 		{
-			if (fgets(buffer, MAX_LINESIZE, srcfile) == NULL)
-				return errno;  /* EOF or error */
-			len = strlen(buffer);
-		}while(len > 0 && buffer[len - 1] != '\n');
+			if (line)
+				pfree(line);
+			if (buffer)
+				pfree(buffer);
+
+			return errno != 0 ? errno : EIO;
+		}
+
+		if (linelen == 0)
+			break;				/* no more input */
+
+		if (lineno >= start_line &&
+			fwrite(line, 1, linelen, dstfile) != linelen)
+		{
+			int			save_errno = errno;
+
+			pfree(line);
+			if (buffer)
+				pfree(buffer);
+
+			return save_errno != 0 ? save_errno : EIO;
+		}
+
+		pfree(line);
 	}
 
-	/* copy until end_line. */
-	for (; i <= end_line; i++)
-	{
-		CHECK_FOR_INTERRUPTS();
-		do
-		{
-			if (fgets(buffer, MAX_LINESIZE, srcfile) == NULL)
-				return errno;  /* EOF or error */
-			len = strlen(buffer);
-			if (fwrite(buffer, 1, len, dstfile) != len)
-				return errno;
-		} while(len > 0 && buffer[len - 1] != '\n');
-	}
-
-	pfree(buffer);
+	if (buffer)
+		pfree(buffer);
 
 	return 0;
 }

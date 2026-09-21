@@ -240,6 +240,32 @@ begin
 end;
 /
 
+-- An embedded NUL byte is ordinary file data.  FCOPY copies the source
+-- unchanged, so the copy must be identical to the source and no byte of the
+-- line that holds the NUL may be dropped.
+declare
+    f sys.ora_utl_file_file_type;
+begin
+    f := utl_file.fopen('data_directory', 'regressfcopy-nul.bin', 'w');
+    utl_file.put_raw(f, decode('616c706861006f6d6567610a7365636f6e640a', 'hex'));
+    utl_file.fclose(f);
+end;
+/
+
+-- line 1 is "alpha\0omega", line 2 is "second", 19 bytes in total
+declare
+    f sys.ora_utl_file_file_type;
+begin
+    utl_file.fcopy('data_directory', 'regressfcopy-nul.bin',
+                   'data_directory', 'regressfcopy-nul-copy.bin');
+end;
+/
+
+select octet_length(pg_read_binary_file('regressfcopy-nul.bin')) as src_bytes,
+       octet_length(pg_read_binary_file('regressfcopy-nul-copy.bin')) as copy_bytes;
+
+select pg_read_binary_file('regressfcopy-nul.bin') = pg_read_binary_file('regressfcopy-nul-copy.bin') as fcopy_bytes_equal;
+
 -- clean up
 delete from sys.utl_file_directory where dirname = 'data_directory';
 /
