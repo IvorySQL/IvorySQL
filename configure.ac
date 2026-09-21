@@ -1124,6 +1124,11 @@ fi
 # UUID library.  More than one of these might be present on a given platform,
 # so we make the user say which one she wants.
 #
+# IvorySQL always builds contrib/uuid-ossp, because it provides the built-in
+# sys_guid function.  Selecting a library is therefore mandatory here, and the
+# upstream default of "no" is rejected below rather than carried forward to a
+# compile failure inside uuid-ossp.c.
+#
 PGAC_ARG_REQ(with, uuid, [LIB], [build contrib/uuid-ossp using LIB (bsd,e2fs,ossp)])
 if test x"$with_uuid" = x"" ; then
   with_uuid=no
@@ -1143,6 +1148,11 @@ if test "$with_uuid" != no ; then
   else
     AC_MSG_ERROR([--with-uuid must specify one of bsd, e2fs, or ossp])
   fi
+else
+  AC_MSG_ERROR([
+IvorySQL requires a UUID library.  contrib/uuid-ossp is always built because it
+provides the built-in sys_guid function, so a library must be selected with
+--with-uuid=bsd, --with-uuid=e2fs or --with-uuid=ossp.])
 fi
 AC_SUBST(with_uuid)
 

@@ -9017,6 +9017,11 @@ fi
 # UUID library.  More than one of these might be present on a given platform,
 # so we make the user say which one she wants.
 #
+# IvorySQL always builds contrib/uuid-ossp, because it provides the built-in
+# sys_guid function.  Selecting a library is therefore mandatory here, and the
+# upstream default of "no" is rejected below rather than carried forward to a
+# compile failure inside uuid-ossp.c.
+#
 
 
 
@@ -9085,6 +9090,11 @@ $as_echo "#define HAVE_UUID_OSSP 1" >>confdefs.h
   else
     as_fn_error $? "--with-uuid must specify one of bsd, e2fs, or ossp" "$LINENO" 5
   fi
+else
+  as_fn_error $? "
+IvorySQL requires a UUID library.  contrib/uuid-ossp is always built because it
+provides the built-in sys_guid function, so a library must be selected with
+--with-uuid=bsd, --with-uuid=e2fs or --with-uuid=ossp." "$LINENO" 5
 fi
 
 
