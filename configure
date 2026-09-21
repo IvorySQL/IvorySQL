@@ -11,8 +11,9 @@
 # This configure script is free software; the Free Software Foundation
 # gives unlimited permission to copy, distribute and modify it.
 #
-# Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
 # Copyright (c) 1996-2026, PostgreSQL Global Development Group
+#
+# Portions Copyright (c), 2023-2026, IvorySQL Global Development Team
 ## -------------------- ##
 ## M4sh Initialization. ##
 ## -------------------- ##
@@ -1574,7 +1575,7 @@ Optional Packages:
   --with-libraries=DIRS   look for additional libraries in DIRS
   --with-libs=DIRS        alternative spelling of --with-libraries
   --with-pgport=PORTNUM   set default port number [5432]
-  --with-oraport=PORTNUM   set default port number oracle [1521] # IvorySQL
+  --with-oraport=PORTNUM  set default port number for oracle [1521]
   --with-blocksize=BLOCKSIZE
                           set table block size in kB [8]
   --with-segsize=SEGSIZE  set table segment size in GB [1]
@@ -1741,6 +1742,8 @@ This configure script is free software; the Free Software Foundation
 gives unlimited permission to copy, distribute and modify it.
 
 Copyright (c) 1996-2026, PostgreSQL Global Development Group
+
+Portions Copyright (c), 2023-2026, IvorySQL Global Development Team
 _ACEOF
   exit
 fi
@@ -2838,6 +2841,7 @@ ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
 
 
+
 ac_aux_dir=
 for ac_dir in config "$srcdir"/config; do
   if test -f "$ac_dir/install-sh"; then
@@ -2874,6 +2878,9 @@ cat >>confdefs.h <<_ACEOF
 _ACEOF
 
 
+# IvorySQL version
+PACKAGE_IVORYSQL_VERSION='5beta1'
+
 PG_MAJORVERSION=`expr "$PACKAGE_VERSION" : '\([0-9][0-9]*\)'`
 PG_MINORVERSION=`expr "$PACKAGE_VERSION" : '.*\.\([0-9][0-9]*\)'`
 test -n "$PG_MINORVERSION" || PG_MINORVERSION=0
@@ -2891,6 +2898,11 @@ _ACEOF
 
 cat >>confdefs.h <<_ACEOF
 #define PG_MINORVERSION_NUM $PG_MINORVERSION
+_ACEOF
+
+
+cat >>confdefs.h <<_ACEOF
+#define PACKAGE_IVORYSQL_VERSION "$PACKAGE_IVORYSQL_VERSION"
 _ACEOF
 
 
@@ -3227,12 +3239,16 @@ $as_echo "$enable_nls" >&6; }
 #
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether CURSOR_UNNAME is wanted" >&5
 $as_echo_n "checking whether CURSOR_UNNAME is wanted... " >&6; }
+
+
 # Check whether --enable-cursor-unname was given.
 if test "${enable_cursor_unname+set}" = set; then :
   enableval=$enable_cursor_unname;
   case $enableval in
     yes)
+
 $as_echo "#define ENABLE_CURSOR_UNNAME 1" >>confdefs.h
+
       ;;
     no)
       :
@@ -3241,8 +3257,10 @@ $as_echo "#define ENABLE_CURSOR_UNNAME 1" >>confdefs.h
       as_fn_error $? "no argument expected for --enable-cursor-unname option" "$LINENO" 5
       ;;
   esac
+
 else
   enable_cursor_unname=no
+
 fi
 
 
@@ -3307,6 +3325,9 @@ fi
 #
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for default port number in oracle compatible mode" >&5
 $as_echo_n "checking for default port number in oracle compatible mode... " >&6; }
+
+
+
 # Check whether --with-oraport was given.
 if test "${with_oraport+set}" = set; then :
   withval=$with_oraport;
@@ -3321,6 +3342,7 @@ if test "${with_oraport+set}" = set; then :
       default_ora_port=$withval
       ;;
   esac
+
 else
   default_ora_port=1521
 fi
@@ -3333,6 +3355,8 @@ $as_echo "$default_ora_port" >&6; }
 cat >>confdefs.h <<_ACEOF
 #define DEF_ORAPORT ${default_ora_port}
 _ACEOF
+
+
 cat >>confdefs.h <<_ACEOF
 #define DEF_ORAPORT_STR "${default_ora_port}"
 _ACEOF
@@ -3948,11 +3972,14 @@ cat >>confdefs.h <<_ACEOF
 #define XLOG_BLCKSZ ${XLOG_BLCKSZ}
 _ACEOF
 
+
 #
 # Max function arguments
 #
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for maximum number of arguments to a function" >&5
 $as_echo_n "checking for maximum number of arguments to a function... " >&6; }
+
+
 
 # Check whether --with-max-funarg was given.
 if test "${with_max_funarg+set}" = set; then :
@@ -3971,6 +3998,13 @@ if test "${with_max_funarg+set}" = set; then :
 
 else
   max_funarg=100
+fi
+
+
+# The maximum value of function arguments is affected by blocksize
+# Minimum check
+if test $max_funarg -lt 8; then
+	as_fn_error $? "minimum number of function arguments is 8." "$LINENO" 5
 fi
 
 # Maximum check
@@ -4006,11 +4040,6 @@ cat >>confdefs.h <<_ACEOF
 #define MAXIMUM_FUNARG $max_funarg
 _ACEOF
 
-# The maximum value of function arguments is affected by blocksize
-# Minimum check
-if test $max_funarg -lt 8; then
-	as_fn_error $? "minimum number of function arguments is 8." "$LINENO" 5
-fi
 
 #
 # C compiler
@@ -8988,6 +9017,11 @@ fi
 # UUID library.  More than one of these might be present on a given platform,
 # so we make the user say which one she wants.
 #
+# IvorySQL always builds contrib/uuid-ossp, because it provides the built-in
+# sys_guid function.  Selecting a library is therefore mandatory here, and the
+# upstream default of "no" is rejected below rather than carried forward to a
+# compile failure inside uuid-ossp.c.
+#
 
 
 
@@ -9056,6 +9090,11 @@ $as_echo "#define HAVE_UUID_OSSP 1" >>confdefs.h
   else
     as_fn_error $? "--with-uuid must specify one of bsd, e2fs, or ossp" "$LINENO" 5
   fi
+else
+  as_fn_error $? "
+IvorySQL requires a UUID library.  contrib/uuid-ossp is always built because it
+provides the built-in sys_guid function, so a library must be selected with
+--with-uuid=bsd, --with-uuid=e2fs or --with-uuid=ossp." "$LINENO" 5
 fi
 
 
@@ -19903,12 +19942,6 @@ else
   cc_string=$CC
 fi
 
-# IvorySQL version
-PACKAGE_IVORYSQL_VERSION='5beta1'
-
-cat >>confdefs.h <<_ACEOF
-#define PACKAGE_IVORYSQL_VERSION "$PACKAGE_IVORYSQL_VERSION"
-_ACEOF
 
 cat >>confdefs.h <<_ACEOF
 #define PG_VERSION_STR "PostgreSQL $PG_VERSION (IvorySQL $PACKAGE_IVORYSQL_VERSION) on $host, compiled by $cc_string, `expr $ac_cv_sizeof_void_p \* 8`-bit"
@@ -19935,6 +19968,7 @@ if test x"$PG_SYSROOT" != x; then
   CPPFLAGS=`echo "$CPPFLAGS" | sed -e "s| $PG_SYSROOT | \\\$(PG_SYSROOT) |"`
   LDFLAGS=`echo "$LDFLAGS" | sed -e "s| $PG_SYSROOT | \\\$(PG_SYSROOT) |"`
 fi
+
 
 
 # Begin output steps
