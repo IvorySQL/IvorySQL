@@ -579,13 +579,15 @@ alter table toasttest alter column f1 set storage external;
 insert into toasttest values(repeat('1234567890',10000));
 insert into toasttest values(repeat('1234567890',10000));
 
--- If the starting position is zero or less, then return from the start of the string
--- adjusting the length to be consistent with the "negative start" per SQL.
+-- If the starting position is negative, then counts backward from the end of char.
 SELECT substr(f1, -1, 5) from toasttest;
-
--- If the length is less than zero, an ERROR is thrown.
+SELECT substr(f1, -2, 5) from toasttest;
+-- If the length is less than zero, return NULL.
 SELECT substr(f1, 5, -1) from toasttest;
-
+-- test with a large length
+SELECT length(SUBSTR(f1, 1, 35000000)) from toasttest;
+SELECT SUBSTR(f1, -1000, 10) from toasttest;
+SELECT length(SUBSTR(f1, -1000, 35000000)) from toasttest;
 -- If no third argument (length) is provided, the length to the end of the
 -- string is assumed.
 SELECT substr(f1, 99995) from toasttest;
@@ -1051,4 +1053,67 @@ SELECT unistr('wrong: \udb99\u0061');
 SELECT unistr('wrong: \U0000db99\U00000061');
 SELECT unistr('wrong: \U002FFFFF');
 SELECT unistr('wrong: \xyz');
+
+-- oracle substr
+-- -1 < start < 1 is treated as 1
+select SUBSTR('Hello', 0, 1) AS result FROM DUAL;
+select SUBSTR('Hello', 0, 5) AS result FROM DUAL;
+select SUBSTR('Hello', 0) AS result FROM DUAL;
+select SUBSTR('Hello', 0.9) AS result FROM DUAL;
+select SUBSTR('Hello', -0.9) AS result FROM DUAL;
+-- If position is positive, then Oracle Database counts from the beginning of char to find the first character.
+SELECT SUBSTR('Hello', 1, 2) AS result FROM DUAL;
+SELECT SUBSTR('Hello', 1.1, 2) AS result FROM DUAL;
+SELECT SUBSTR('Hello', 1.9, 2) AS result FROM DUAL;
+SELECT SUBSTR('Hello', 1, 2.1) AS result FROM DUAL;
+SELECT SUBSTR('Hello', 1, 2.9) AS result FROM DUAL;
+SELECT SUBSTR('Hello', 1) AS result FROM DUAL;
+SELECT SUBSTR('Hello', 5, 2) AS result FROM DUAL;
+select SUBSTR('Hello', 5, 1) AS result FROM DUAL;
+select SUBSTR('Hello', 5) AS result FROM DUAL;
+select SUBSTR('Hello', 1, 0) AS result FROM DUAL;
+select NVL(SUBSTR('Hello', 6, 1), '<NULL>') FROM DUAL;
+SELECT NVL(SUBSTR('Hello', 6), '<NULL>') FROM dual;
+
+-- If position is negative, then Oracle counts backward from the end of char.
+SELECT SUBSTR('Hello', -3, 2) AS result FROM DUAL;
+SELECT SUBSTR('Hello', -3.9, 2) AS result FROM DUAL;
+SELECT SUBSTR('Hello', -3.1, 2) AS result FROM DUAL;
+SELECT SUBSTR('Hello', -3.9, 2.9) AS result FROM DUAL;
+SELECT SUBSTR('Hello', -3.9, 2.1) AS result FROM DUAL;
+SELECT SUBSTR('Hello', -3) AS result FROM DUAL;
+SELECT SUBSTR('Hello', -5, 2) AS result FROM DUAL;
+SELECT SUBSTR('Hello', -5) AS result FROM DUAL;
+SELECT NVL(SUBSTR('Hello', -6, 2), '<NULL>') AS result FROM DUAL;
+SELECT NVL(SUBSTR('Hello', -6), '<NULL>') AS result FROM DUAL;
+-- If substring_length is omitted, then Oracle returns all characters to the end of char. 
+SELECT SUBSTR('Hello', 1, 10) AS result FROM DUAL;
+SELECT SUBSTR('Hello', -1, 10) AS result FROM DUAL;
+-- If substring_length is less than 1, then Oracle returns null.
+SELECT NVL(SUBSTR('Hello', 1, 0), '<NULL>') AS result FROM DUAL;
+SELECT NVL(SUBSTR('Hello', 1, 0.9), '<NULL>') AS result FROM DUAL;
+SELECT NVL(SUBSTR('Hello', 1, 0.5), '<NULL>') AS result FROM DUAL;
+SELECT NVL(SUBSTR('Hello', 1, -1), '<NULL>') AS result FROM DUAL;
+SELECT NVL(SUBSTR('Hello', 1, -0.1), '<NULL>') AS result FROM DUAL;
+SELECT NVL(SUBSTR('Hello', -1, -0.9), '<NULL>') AS result FROM DUAL;
+SELECT NVL(SUBSTR('Hello', -1, -1), '<NULL>') AS result FROM DUAL;
+-- Positions and lengths beyond the int4 range follow Oracle: a position
+-- outside the range is past the string in either direction, and a length
+-- outside it means "to the end of the string".
+SELECT NVL(SUBSTR('Hello', 1e10), '<NULL>') AS result FROM DUAL;
+SELECT NVL(SUBSTR('Hello', -1e10), '<NULL>') AS result FROM DUAL;
+SELECT NVL(SUBSTR('Hello', 2147483648), '<NULL>') AS result FROM DUAL;
+SELECT SUBSTR('Hello', 1, 1e10) AS result FROM DUAL;
+
+-- Positions count characters rather than bytes.
+SELECT SUBSTR('你好吗', -2, 1) AS multibyte_negative;
+SELECT SUBSTR('你好吗', 0, 2) AS multibyte_zero;
+
+-- speical numeric case
+SELECT NVL(SUBSTR('hello', 1, '+infinity'::number), '<NULL>') FROM dual;
+SELECT NVL(SUBSTR('hello', 1, '-infinity'::number), '<NULL>') FROM dual;
+SELECT NVL(SUBSTR('hello', 1, 'nan'::number), '<NULL>') FROM dual;
+SELECT NVL(SUBSTR('hello', '+infinity'::number, 1), '<NULL>') FROM dual;
+SELECT NVL(SUBSTR('hello', '-infinity'::number, 1), '<NULL>') FROM dual;
+SELECT NVL(SUBSTR('hello', 'nan'::number, 1), '<NULL>') FROM dual;
 reset ivorysql.enable_emptystring_to_null;

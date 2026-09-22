@@ -1928,3 +1928,37 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 /* End - VSIZE */
+
+/* Begin - substr */
+CREATE FUNCTION sys.substr(varchar, number)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_text_substr_no_len'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substr(varchar, number, number)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_text_substr'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substr(text, integer)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_text_substr_no_len_int'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substr(text, integer, integer)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_text_substr_int'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+/* End - substr */
