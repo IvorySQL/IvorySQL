@@ -5,7 +5,7 @@
 CREATE ROLE regress_create_schema_role SUPERUSER;
 -- Cases where schema creation fails as objects are qualified with a schema
 -- that does not match with what's expected.
--- This checks most object types that include schema qualifications.
+-- This checks all the object types that include schema qualifications.
 CREATE SCHEMA AUTHORIZATION regress_create_schema_role
   CREATE SEQUENCE schema_not_existing.seq;
 ERROR:  CREATE specifies a schema (schema_not_existing) different from the one being created (regress_create_schema_role)
@@ -32,10 +32,6 @@ CREATE SCHEMA AUTHORIZATION regress_create_schema_role
 ERROR:  CREATE specifies a schema (schema_not_existing) different from the one being created (regress_create_schema_role)
 LINE 2:   CREATE TRIGGER schema_trig BEFORE INSERT ON schema_not_exi...
                                                       ^
-CREATE SCHEMA AUTHORIZATION regress_create_schema_role
-  CREATE FUNCTION schema_not_existing.func(int) RETURNS int
-  AS 'SELECT $1' LANGUAGE sql;
-ERROR:  CREATE specifies a schema (schema_not_existing) different from the one being created (regress_create_schema_role)
 -- Again, with a role specification and no schema names.
 SET ROLE regress_create_schema_role;
 CREATE SCHEMA AUTHORIZATION CURRENT_ROLE
@@ -181,116 +177,5 @@ drop cascades to table regress_schema_fk.t3
 drop cascades to table regress_schema_fk.t4
 drop cascades to table regress_schema_fk.t5
 drop cascades to table regress_schema_fk.t6
--- Test miscellaneous object types within CREATE SCHEMA.
-CREATE SCHEMA regress_schema_misc
-  CREATE AGGREGATE cs_sum(int4)
-    (
-        SFUNC = int4_sum(int8, int4),
-        STYPE = int8,
-        INITCOND = '0'
-    )
-  CREATE COLLATION cs_builtin_c ( PROVIDER = builtin, LOCALE = "C" )
-  CREATE DOMAIN cs_positive AS integer CHECK (VALUE > 0)
-  CREATE FUNCTION cs_add(int4, int4) returns int4 language sql
-    as 'select $1 + $2'
-  CREATE OPERATOR + (function = cs_add, leftarg = int4, rightarg = int4)
-  CREATE PROCEDURE cs_proc(int4, int4)
-    BEGIN ATOMIC
-      SELECT cs_add($1,$2);
-ERROR:  syntax error at end of input
-LINE 15:       SELECT cs_add($1,$2);
-                                    ^
-    END
-  -- this checks that psql is not fooled by an irrelevant BEGIN
-  CREATE VIEW begin AS SELECT 1 AS one
-  CREATE TEXT SEARCH CONFIGURATION cs_ts_conf (copy=english)
-  CREATE TEXT SEARCH DICTIONARY cs_ts_dict (template=simple)
-  CREATE TEXT SEARCH PARSER cs_ts_prs
-    (start = prsd_start, gettoken = prsd_nexttoken, end = prsd_end,
-     lextypes = prsd_lextype)
-  CREATE TEXT SEARCH TEMPLATE cs_ts_temp (lexize=dsimple_lexize)
-  CREATE TYPE regress_schema_misc.cs_enum AS ENUM ('red', 'orange')
-  CREATE TYPE cs_composite AS (a int, b float8)
-  CREATE TYPE cs_range AS RANGE (subtype = float8, subtype_diff = float8mi)
-  -- demonstrate creation of a base type with its I/O functions
-  CREATE TYPE cs_type
-  CREATE FUNCTION cs_type_in(cstring)
-    RETURNS cs_type LANGUAGE internal IMMUTABLE PARALLEL SAFE STRICT
-    AS 'int4in'
-  CREATE FUNCTION cs_type_out(cs_type)
-    RETURNS cstring LANGUAGE internal IMMUTABLE PARALLEL SAFE STRICT
-    AS 'int4out'
-  CREATE TYPE cs_type (
-    INPUT = cs_type_in,
-    OUTPUT = cs_type_out,
-    LIKE = int4
-  )
-  GRANT USAGE ON TYPE cs_type TO public
-;
-ERROR:  syntax error at or near "CREATE"
-LINE 3:   CREATE VIEW begin AS SELECT 1 AS one
-          ^
-\df regress_schema_misc.cs_add
-                       List of functions
- Schema | Name | Result data type | Argument data types | Type 
---------+------+------------------+---------------------+------
-(0 rows)
-
-\df regress_schema_misc.cs_proc
-                       List of functions
- Schema | Name | Result data type | Argument data types | Type 
---------+------+------------------+---------------------+------
-(0 rows)
-
-\da regress_schema_misc.cs_sum
-                     List of aggregate functions
- Schema | Name | Result data type | Argument data types | Description 
---------+------+------------------+---------------------+-------------
-(0 rows)
-
-\do regress_schema_misc.+
-                             List of operators
- Schema | Name | Left arg type | Right arg type | Result type | Description 
---------+------+---------------+----------------+-------------+-------------
-(0 rows)
-
-\dO regress_schema_misc.*
-                                List of collations
- Schema | Name | Provider | Collate | Ctype | Locale | ICU Rules | Deterministic? 
---------+------+----------+---------+-------+--------+-----------+----------------
-(0 rows)
-
-\dT regress_schema_misc.*
-     List of data types
- Schema | Name | Description 
---------+------+-------------
-(0 rows)
-
-\dF regress_schema_misc.*
-List of text search configurations
- Schema | Name | Description 
---------+------+-------------
-(0 rows)
-
-\dFd regress_schema_misc.*
-List of text search dictionaries
- Schema | Name | Description 
---------+------+-------------
-(0 rows)
-
-\dFp regress_schema_misc.*
- List of text search parsers
- Schema | Name | Description 
---------+------+-------------
-(0 rows)
-
-\dFt regress_schema_misc.*
-List of text search templates
- Schema | Name | Description 
---------+------+-------------
-(0 rows)
-
-DROP SCHEMA regress_schema_misc CASCADE;
-ERROR:  schema "regress_schema_misc" does not exist
 -- Clean up
 DROP ROLE regress_create_schema_role;

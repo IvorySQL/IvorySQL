@@ -1812,11 +1812,8 @@ OptSchemaEltList:
 schema_stmt:
 			CreateStmt
 			| IndexStmt
-			| CreateDomainStmt
-			| CreateFunctionStmt
 			| CreateSeqStmt
 			| CreateTrigStmt
-			| DefineStmt
 			| GrantStmt
 			| ViewStmt
 		;
