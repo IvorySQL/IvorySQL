@@ -35,6 +35,7 @@ OBJS = \
 	src/builtin_packages/utl_encode/utl_encode.o \
 	src/builtin_packages/utl_url/utl_url.o \
 	src/builtin_packages/dbms_session/dbms_session.o \
+	src/builtin_packages/dbms_crypto/dbms_crypto.o \
 	src/builtin_packages/dbms_transaction/dbms_transaction.o
 
 EXTENSION = ivorysql_ora
