@@ -694,7 +694,7 @@ TrimTrailingZeros(char *str, int trimnum)
  *
  */
 static void
-AppendSeconds(char *cp, int sec, fsec_t fsec, int precision, bool fillzeros)
+AppendSeconds(char *cp, Size bufsize, int sec, fsec_t fsec, int precision, bool fillzeros)
 {
 	/* Compatible oracle, do 'fsec' as a nanosecond */
 	fsec *= 1000;
@@ -708,27 +708,27 @@ AppendSeconds(char *cp, int sec, fsec_t fsec, int precision, bool fillzeros)
 			 * zero ,dont show
 			 */
 			if (precision == 0)
-				sprintf(cp, "%02d", abs(sec));
+				snprintf(cp, bufsize, "%02d", abs(sec));
 			else
-				sprintf(cp, "%02d.%0*d", abs(sec), precision, 0);
+				snprintf(cp, bufsize, "%02d.%0*d", abs(sec), precision, 0);
 		}
 		else
 		{
-			sprintf(cp, "%d", abs(sec));
+			snprintf(cp, bufsize, "%d", abs(sec));
 		}
 	}
 	else
 	{
 #ifdef HAVE_INT64_TIMESTAMP
 		if (fillzeros)
-			sprintf(cp, "%02d.%0*d", abs(sec), ORACLE_MAX_INTERVAL_PRECISION, (int) Abs(fsec));
+			snprintf(cp, bufsize, "%02d.%0*d", abs(sec), ORACLE_MAX_INTERVAL_PRECISION, (int) Abs(fsec));
 		else
-			sprintf(cp, "%d.%0*d", abs(sec), ORACLE_MAX_INTERVAL_PRECISION, (int) Abs(fsec));
+			snprintf(cp, bufsize, "%d.%0*d", abs(sec), ORACLE_MAX_INTERVAL_PRECISION, (int) Abs(fsec));
 #else
 		if (fillzeros)
-			sprintf(cp, "%0*.*f", ORACLE_MAX_INTERVAL_PRECISION + 3, ORACLE_MAX_INTERVAL_PRECISION, fabs(sec + fsec));
+			snprintf(cp, bufsize, "%0*.*f", ORACLE_MAX_INTERVAL_PRECISION + 3, ORACLE_MAX_INTERVAL_PRECISION, fabs(sec + fsec));
 		else
-			sprintf(cp, "%.*f", ORACLE_MAX_INTERVAL_PRECISION, fabs(sec + fsec));
+			snprintf(cp, bufsize, "%.*f", ORACLE_MAX_INTERVAL_PRECISION, fabs(sec + fsec));
 #endif
 		TrimTrailingZeros(cp, ORACLE_MAX_INTERVAL_PRECISION - precision);
 	}
@@ -739,7 +739,7 @@ AppendSeconds(char *cp, int sec, fsec_t fsec, int precision, bool fillzeros)
  * Interpret time structure as a delta time and convert to string.
  */
 static void
-EncodeDsinterval(struct pg_tm *tm, fsec_t fsec, int style, char *str, int day_precision, int second_precision)
+EncodeDsinterval(struct pg_tm *tm, fsec_t fsec, int style, char *str, Size bufsize, int day_precision, int second_precision)
 {
 	char	   *cp = str;
 	int			year = tm->tm_year;
@@ -793,9 +793,9 @@ EncodeDsinterval(struct pg_tm *tm, fsec_t fsec, int style, char *str, int day_pr
 				 */
 				if (!has_negative && !has_positive)
 				{
-					sprintf(cp, "%0*d %02d:%02d:", day_precision, mday, hour, min);
+					snprintf(cp, bufsize - (cp - str), "%0*d %02d:%02d:", day_precision, mday, hour, min);
 					cp += strlen(cp);
-					AppendSeconds(cp, sec, fsec, second_precision, true);
+					AppendSeconds(cp, bufsize - (cp - str), sec, fsec, second_precision, true);
 				}
 				else if (!sql_standard_value)
 				{
@@ -809,28 +809,28 @@ EncodeDsinterval(struct pg_tm *tm, fsec_t fsec, int style, char *str, int day_pr
 					char		sec_sign = (hour < 0 || min < 0 ||
 											sec < 0 || fsec < 0) ? '-' : '+';
 
-					sprintf(cp, "%c%d-%d %c%d %c%d:%02d:",
+					snprintf(cp, bufsize - (cp - str), "%c%d-%d %c%d %c%d:%02d:",
 							year_sign, abs(year), abs(mon),
 							day_sign, abs(mday),
 							sec_sign, abs(hour), abs(min));
 					cp += strlen(cp);
-					AppendSeconds(cp, sec, fsec, second_precision, true);
+					AppendSeconds(cp, bufsize - (cp - str), sec, fsec, second_precision, true);
 				}
 				else if (has_year_month)
 				{
-					sprintf(cp, "%d-%d", year, mon);
+					snprintf(cp, bufsize - (cp - str), "%d-%d", year, mon);
 				}
 				else if (has_day)
 				{
-					sprintf(cp, "%0*d %02d:%02d:", day_precision, mday, hour, min);
+					snprintf(cp, bufsize - (cp - str), "%0*d %02d:%02d:", day_precision, mday, hour, min);
 					cp += strlen(cp);
-					AppendSeconds(cp, sec, fsec, second_precision, true);
+					AppendSeconds(cp, bufsize - (cp - str), sec, fsec, second_precision, true);
 				}
 				else
 				{
-					sprintf(cp, "%0*d %02d:%02d:", day_precision, 0, hour, min);
+					snprintf(cp, bufsize - (cp - str), "%0*d %02d:%02d:", day_precision, 0, hour, min);
 					cp += strlen(cp);
-					AppendSeconds(cp, sec, fsec, second_precision, true);
+					AppendSeconds(cp, bufsize - (cp - str), sec, fsec, second_precision, true);
 				}
 			}
 			break;
@@ -1857,7 +1857,7 @@ dsinterval_out(PG_FUNCTION_ARGS)
 		second_precision = ORACLE_MAX_INTERVAL_PRECISION;
 	}
 
-	EncodeDsinterval(tm, fsec, INTSTYLE_SQL_STANDARD, buf, day_precision, second_precision);
+	EncodeDsinterval(tm, fsec, INTSTYLE_SQL_STANDARD, buf, sizeof(buf), day_precision, second_precision);
 
 	result = pstrdup(buf);
 	PG_RETURN_CSTRING(result);
