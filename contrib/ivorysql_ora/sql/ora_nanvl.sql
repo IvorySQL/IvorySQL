@@ -75,9 +75,12 @@ SELECT NANVL(CAST('NAN' AS NUMBER), CAST(NULL AS NUMBER)) FROM DUAL;
 -- precedence, implicitly converts the remaining arguments to that data
 -- type, and returns that data type."
 --
--- In IvorySQL, bare integer/numeric literals resolve to BINARY_DOUBLE
--- (IvorySQL-specific behavior; Oracle would also use numeric precedence)
+-- Bare integer/numeric literals are NUMBER values under the Oracle-mode
+-- precedence hook, so they reach the NUMBER overload.  'NAN' is unknown at
+-- parse time and joins as NUMBER, too; numeric 'NAN' input is a NUMBER
+-- NaN, which NANVL replaces by 100.
 --
+SELECT pg_typeof(NANVL(1, 2)) FROM DUAL;
 SELECT NANVL(1, 2) FROM DUAL;
 SELECT NANVL(1.5, 2.5) FROM DUAL;
 SELECT NANVL('NAN', 100) FROM DUAL;
@@ -87,6 +90,12 @@ SELECT NANVL('NAN', 100) FROM DUAL;
 -- Mixing BINARY_FLOAT and BINARY_DOUBLE yields BINARY_DOUBLE
 --
 SELECT NANVL(CAST(1.5 AS BINARY_FLOAT), CAST(2.5 AS BINARY_DOUBLE)) FROM DUAL;
+
+-- BINARY_FLOAT outranks NUMBER: a mixed NUMBER/BINARY_FLOAT call converts
+-- both arguments to BINARY_FLOAT (before the precedence hook this failed
+-- with "function nanvl(number, binary_float) is not unique")
+SELECT pg_typeof(NANVL(CAST(1.5 AS NUMBER), CAST(2.5 AS BINARY_FLOAT))) FROM DUAL;
+SELECT NANVL(CAST(1.5 AS NUMBER), CAST(2.5 AS BINARY_FLOAT)) FROM DUAL;
 
 --
 -- negative zero: -0.0 is NOT NaN, must be returned unchanged
@@ -123,3 +132,4 @@ DROP TABLE float_point_demo;
 SELECT NANVL(CAST(1.5 AS BINARY_FLOAT));
 SELECT NANVL(CAST(1.5 AS BINARY_FLOAT), CAST(2.5 AS BINARY_FLOAT), CAST(3.5 AS BINARY_FLOAT));
 SELECT NANVL();
+

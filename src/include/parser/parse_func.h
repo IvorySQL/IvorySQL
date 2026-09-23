@@ -30,6 +30,27 @@ typedef enum
 	FUNCDETAIL_COERCION,		/* it's a type coercion request */
 } FuncDetailCode;
 
+/*
+ * Oracle-mode function argument precedence hook (set by
+ * contrib/ivorysql_ora).  If set, ParseFuncOrColumn calls it before the
+ * regular func_get_detail() lookup for functions whose name is listed in
+ * the Oracle function-argument precedence list (parse_func.c), so that the
+ * overload family is selected the way Oracle numeric precedence dictates:
+ * integral and numeric literals are treated as sys.number and a common
+ * target type is chosen with BINARY_DOUBLE > BINARY_FLOAT > NUMBER.
+ *
+ * proname_p is the function's name, nargs the argument count,
+ * actual_arg_types the real argument types, and rewritten_arg_types
+ * receives the types to be used for the lookup only (the caller keeps the
+ * real types so that make_fn_arguments() still coerces the arguments).
+ * Returns true if rewritten_arg_types was filled with the lookup types.
+ */
+typedef bool (*oracle_funcarg_precedence_hook_type) (const char *proname_p,
+													 int nargs,
+													 const Oid *actual_arg_types,
+													 Oid *rewritten_arg_types);
+extern PGDLLIMPORT oracle_funcarg_precedence_hook_type oracle_funcarg_precedence_hook;
+
 
 extern Node *ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 							   Node *last_srf, FuncCall *fn, bool proc_call,
@@ -73,3 +94,4 @@ extern void check_srf_call_placement(ParseState *pstate, Node *last_srf,
 									 int location);
 
 #endif							/* PARSE_FUNC_H */
+

@@ -350,3 +350,99 @@ pg_compatible_oracle_precedence(Oid arg1, Oid arg2, char *opname_p, Oid *result_
 	PG_RETURN_BOOL(true);
 }
 
+/*
+ * pg_compatible_oracle_funcarg_precedence
+ *
+ * Function-side counterpart of pg_compatible_oracle_precedence(), plugged
+ * into ParseFuncOrColumn through oracle_funcarg_precedence_hook.  It
+ * selects the Oracle overload of the whitelisted built-in functions before
+ * the regular PostgreSQL overload resolution runs, implementing Oracle's
+ * numeric precedence for the arguments:
+ *
+ *   1. Integral and numeric literals/values (int2/int4/int8/numeric, and
+ *      unknown literals in the numeric context of these functions) are
+ *      treated as sys.number; float4 maps to sys.binary_float and float8
+ *      to sys.binary_double.
+ *   2. A common target type is chosen with the priority
+ *      BINARY_DOUBLE > BINARY_FLOAT > NUMBER, and every argument is
+ *      retargeted to it.
+ *
+ * On success rewritten_arg_types[0..nargs-1] holds the types to look the
+ * function up with; the caller keeps the real argument types so that
+ * make_fn_arguments() coerces them to the declared types of the overload
+ * that the lookup selects.  Returns false (no rewrite) when any argument
+ * is not one of the numeric types above, leaving the call to the regular
+ * PostgreSQL resolution.
+ *
+ * It is the caller's responsibility to ensure that proname_p is not NULL
+ * and that rewritten_arg_types has room for nargs Oids.
+ */
+bool
+pg_compatible_oracle_funcarg_precedence(const char *proname_p, int nargs,
+										const Oid *actual_arg_types,
+										Oid *rewritten_arg_types)
+{
+	int			i;
+	int			target_precedence = 0;
+	Oid			target_type = InvalidOid;
+
+	(void) proname_p;			/* the name gate lives in the caller */
+
+	/*
+	 * Step 1: map each argument onto its Oracle numeric type.  Any other
+	 * type makes us bail out: only wholly numeric calls take part in the
+	 * precedence rewrite.
+	 */
+	for (i = 0; i < nargs; i++)
+	{
+		Oid			argtype = getBaseType(actual_arg_types[i]);
+
+		switch (argtype)
+		{
+			case UNKNOWNOID:
+			case NUMERICOID:
+			case NUMBEROID:
+			case INT2OID:
+			case INT4OID:
+			case INT8OID:
+				argtype = NUMBEROID;
+				break;
+
+			case FLOAT4OID:
+			case BINARY_FLOATOID:
+				argtype = BINARY_FLOATOID;
+				break;
+
+			case FLOAT8OID:
+			case BINARY_DOUBLEOID:
+				argtype = BINARY_DOUBLEOID;
+				break;
+
+			default:
+				return false;
+		}
+
+		rewritten_arg_types[i] = argtype;
+	}
+
+	/*
+	 * Step 2: choose the common target type with the Oracle numeric
+	 * precedence BINARY_DOUBLE (5) > BINARY_FLOAT (4) > NUMBER (3).
+	 */
+	for (i = 0; i < nargs; i++)
+	{
+		int			prec = get_precedence(rewritten_arg_types[i]);
+
+		if (prec > target_precedence)
+		{
+			target_precedence = prec;
+			target_type = rewritten_arg_types[i];
+		}
+	}
+
+	for (i = 0; i < nargs; i++)
+		rewritten_arg_types[i] = target_type;
+
+	return true;
+}
+
