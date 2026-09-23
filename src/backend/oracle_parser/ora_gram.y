@@ -14163,6 +14163,7 @@ DeleteStmt: opt_with_clause DELETE_P FROM relation_expr_opt_alias
 					n->withClause = $1;
 					$$ = (Node *) n;
 				}
+		;
 
 using_clause:
 				USING from_list						{ $$ = $2; }
@@ -14236,6 +14237,7 @@ UpdateStmt: opt_with_clause UPDATE relation_expr_opt_alias
 					n->withClause = $1;
 					$$ = (Node *) n;
 				}
+		;
 
 set_clause_list:
 			set_clause							{ $$ = $1; }
