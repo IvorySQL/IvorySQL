@@ -42,6 +42,39 @@
 #include "parser/parse_param.h"
 #include "commands/proclang.h"
 
+/*
+ * Oracle-mode function argument precedence hook (see parse_func.h).  Left
+ * NULL, the lookup argument types are never rewritten.
+ */
+oracle_funcarg_precedence_hook_type oracle_funcarg_precedence_hook = NULL;
+
+/*
+ * Oracle built-in function names that take part in the Oracle-mode
+ * function argument precedence rewrite.  Only names whose pg_proc
+ * overloads form a homogeneous family across the Oracle numeric types
+ * (sys.number / sys.binary_float / sys.binary_double) belong here: the
+ * rewrite maps literals onto those types and assumes that, for the
+ * highest-precedence target, an exact overload exists.
+ *
+ * Temporary: expected to grow along with the STANDARD package effort.
+ */
+static const char *const oracle_funcarg_precedence_names[] = {
+	"remainder",
+	"nanvl",
+	NULL						/* sentinel */
+};
+
+static bool
+is_oracle_funcarg_precedence_name(const char *fname)
+{
+	for (int i = 0; oracle_funcarg_precedence_names[i] != NULL; i++)
+	{
+		if (strcmp(oracle_funcarg_precedence_names[i], fname) == 0)
+			return true;
+	}
+	return false;
+}
+
 
 /* Possible error codes from LookupFuncNameInternal */
 typedef enum
@@ -420,13 +453,70 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 	}
 
 	if (fdresult == FUNCDETAIL_NOTFOUND)
+	{
+		Oid			lookup_arg_types[FUNC_MAX_ARGS];
+		Oid		   *lookup_types = actual_arg_types;
+		bool		rewritten = false;
+
+		/*
+		 * Oracle-mode function argument precedence hook: before the regular
+		 * lookup, let the compatible-mode module rewrite the argument types
+		 * used to select the overload (literals are treated as sys.number,
+		 * and a common target type is chosen with
+		 * BINARY_DOUBLE > BINARY_FLOAT > NUMBER).
+		 *
+		 * The rewrite applies to a lookup-only copy: actual_arg_types must
+		 * keep the real argument types so that make_fn_arguments() below
+		 * sees actual != declared and coerces the arguments to the declared
+		 * types of the selected overload.
+		 *
+		 * The rewrite is a preference, not a mandate.  It only applies to
+		 * unqualified names or names qualified with "sys", so that a
+		 * schema-qualified call to a user-defined function of the same name
+		 * keeps its normal resolution.  If the rewritten lookup still finds
+		 * no unique overload, retry with the caller's actual argument types
+		 * so pre-existing user-defined definitions of these names keep
+		 * resolving as they did before the hook existed.
+		 */
+		if (oracle_funcarg_precedence_hook != NULL &&
+			ORA_PARSER == compatible_db &&
+			nargs > 0 && nargs <= FUNC_MAX_ARGS &&
+			is_oracle_funcarg_precedence_name(strVal(llast(funcname))) &&
+			(list_length(funcname) == 1 ||
+			 (list_length(funcname) == 2 &&
+			  strcmp(strVal(linitial(funcname)), "sys") == 0)))
+		{
+			memcpy(lookup_arg_types, actual_arg_types, nargs * sizeof(Oid));
+
+			if ((*oracle_funcarg_precedence_hook) (strVal(llast(funcname)),
+												   nargs,
+												   actual_arg_types,
+												   lookup_arg_types))
+			{
+				lookup_types = lookup_arg_types;
+				rewritten = true;
+			}
+		}
+
 		fdresult = func_get_detail(funcname, fargs, argnames, nargs,
-								   actual_arg_types,
+								   lookup_types,
 								   !func_variadic, true, proc_call,
-                                   &fgc_flags,
+								   &fgc_flags,
 								   &funcid, &rettype, &retset,
 								   &nvargs, &vatype,
 								   &declared_arg_types, &argdefaults);
+
+		if (rewritten &&
+			(fdresult == FUNCDETAIL_NOTFOUND ||
+			 fdresult == FUNCDETAIL_MULTIPLE))
+			fdresult = func_get_detail(funcname, fargs, argnames, nargs,
+									   actual_arg_types,
+									   !func_variadic, true, proc_call,
+									   &fgc_flags,
+									   &funcid, &rettype, &retset,
+									   &nvargs, &vatype,
+									   &declared_arg_types, &argdefaults);
+	}
 
 	cancel_parser_errposition_callback(&pcbstate);
 
@@ -3254,3 +3344,4 @@ check_srf_call_placement(ParseState *pstate, Node *last_srf, int location)
 						ParseExprKindName(pstate->p_expr_kind)),
 				 parser_errposition(pstate, location)));
 }
+

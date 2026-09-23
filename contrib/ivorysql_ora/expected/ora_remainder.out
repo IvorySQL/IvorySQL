@@ -20,22 +20,22 @@
 --
 -- IvorySQL exposes the same three overloads as the already-merged
 -- sys.nanvl: (number, number), (binary_float, binary_float) and
--- (binary_double, binary_double).  A NUMBER/BINARY_FLOAT/BINARY_DOUBLE
--- column or explicit cast selects the matching family and absorbs a bare
--- literal on the other side.  A call whose operands are all bare
--- literals (int4 / numeric) has no exact match and resolves to
--- BINARY_DOUBLE, the preferred type of the numeric category -- the same
--- behaviour as sys.nanvl.  This is a real limitation, not just a type
--- choice: the all-literal form never reaches the NUMBER body, so
+-- (binary_double, binary_double).  In Oracle mode the function argument
+-- precedence hook (oracle_funcarg_precedence_hook) resolves the call the
+-- way Oracle numeric precedence dictates:
 --
---   * REMAINDER(7, 0) returns NaN instead of raising ORA-01476, and
---   * REMAINDER(10000000000000000001, 2) returns 0 (the literal is wider
---     than a double can hold) instead of the NUMBER result 1.
+--   * ordinary numeric literals (integer, decimal, or an unknown string
+--     literal in this numeric context) behave as NUMBER values, so the
+--     all-literal form reaches the NUMBER body;
+--   * a common target type is chosen with the Oracle numeric precedence
+--     BINARY_DOUBLE > BINARY_FLOAT > NUMBER, which resolves the mixed
+--     NUMBER/BINARY_FLOAT spellings to BINARY_FLOAT;
+--   * a typed argument keeps its own family when the other operand is a
+--     bare literal of lower precedence.
 --
--- Both cases are asserted explicitly in the "all-literal calls" section
--- below, together with the CAST forms that give the Oracle result.  Every
--- other assertion pins the intended family with an explicit cast or a
--- typed column; the type-sensitive cases are asserted with pg_typeof().
+-- The assertions below pin those rules with pg_typeof() and assert the
+-- Oracle results for the all-literal calls (ORA-01476 on a zero divisor,
+-- full precision on a 20-digit literal, exact decimals).
 --
 set ivorysql.compatible_mode to oracle;
 --
@@ -273,14 +273,23 @@ SELECT pg_typeof(REMAINDER(CAST(1 AS BINARY_DOUBLE), CAST(2 AS BINARY_FLOAT))) F
  binary_double
 (1 row)
 
--- mixing NUMBER with BINARY_FLOAT has no unique best candidate (the same
--- limitation as sys.nanvl); an explicit cast resolves it
+-- Oracle numeric precedence: BINARY_FLOAT outranks NUMBER; both arguments
+-- of a mixed NUMBER/BINARY_FLOAT call are converted to BINARY_FLOAT and
+-- binary_float is returned (before the precedence hook these failed with
+-- "function remainder(number, binary_float) is not unique")
 SELECT pg_typeof(REMAINDER(CAST(1 AS NUMBER), CAST(2 AS BINARY_FLOAT))) FROM DUAL;
-ERROR:  function remainder(number, binary_float) is not unique
-LINE 1: SELECT pg_typeof(REMAINDER(CAST(1 AS NUMBER), CAST(2 AS BINA...
-                         ^
-DETAIL:  Could not choose a best candidate function.
-HINT:  You might need to add explicit type casts.
+  pg_typeof   
+--------------
+ binary_float
+(1 row)
+
+SELECT pg_typeof(REMAINDER(CAST(1 AS BINARY_FLOAT), CAST(2 AS NUMBER))) FROM DUAL;
+  pg_typeof   
+--------------
+ binary_float
+(1 row)
+
+-- an explicit cast keeps working and lands on the same family
 SELECT pg_typeof(REMAINDER(CAST(1 AS NUMBER), CAST(2 AS BINARY_FLOAT)::NUMBER)) FROM DUAL;
  pg_typeof 
 -----------
@@ -312,29 +321,30 @@ SELECT pg_typeof(REMAINDER(CAST(1 AS BINARY_DOUBLE), 2)) FROM DUAL;
  binary_double
 (1 row)
 
--- all-literal calls resolve to BINARY_DOUBLE (nanvl convention)
+-- all-literal calls follow Oracle numeric precedence: literals are NUMBER
+-- values; the float4/float8 spellings map to BINARY_FLOAT/BINARY_DOUBLE
 SELECT pg_typeof(REMAINDER(11, 4)) FROM DUAL;
-   pg_typeof   
----------------
- binary_double
+ pg_typeof 
+-----------
+ number
 (1 row)
 
 SELECT pg_typeof(REMAINDER(1.05, 0.3)) FROM DUAL;
-   pg_typeof   
----------------
- binary_double
+ pg_typeof 
+-----------
+ number
 (1 row)
 
 SELECT pg_typeof(REMAINDER(11::smallint, 4)) FROM DUAL;
-   pg_typeof   
----------------
- binary_double
+ pg_typeof 
+-----------
+ number
 (1 row)
 
 SELECT pg_typeof(REMAINDER(1.5::float4, 2.5::float4)) FROM DUAL;
-   pg_typeof   
----------------
- binary_double
+  pg_typeof   
+--------------
+ binary_float
 (1 row)
 
 SELECT pg_typeof(REMAINDER(1.5::float8, 2.5::float8)) FROM DUAL;
@@ -344,78 +354,74 @@ SELECT pg_typeof(REMAINDER(1.5::float8, 2.5::float8)) FROM DUAL;
 (1 row)
 
 SELECT pg_typeof(REMAINDER(1.5::numeric, 2.5::numeric)) FROM DUAL;
-   pg_typeof   
----------------
- binary_double
+ pg_typeof 
+-----------
+ number
 (1 row)
 
---
--- all-literal calls: KNOWN LIMITATION (asserted, not hidden)
---
--- With no exact candidate the all-literal call resolves to BINARY_DOUBLE
--- (the nanvl convention), so it does NOT reach the NUMBER body.  The two
--- observable consequences are asserted here in their true form.  The
--- CAST forms that give the Oracle answer follow each one, so the
--- difference between the two spellings is pinned by the regression test
--- rather than left to documentation.
---
--- A zero divisor is NaN for an all-literal call, not ORA-01476.
-SELECT REMAINDER(7, 0) FROM DUAL;
+-- a quoted numeric literal is unknown at parse time and joins as NUMBER
+SELECT pg_typeof(REMAINDER('7', 2)) FROM DUAL;
+ pg_typeof 
+-----------
+ number
+(1 row)
+
+SELECT REMAINDER('7', 2) FROM DUAL;
  remainder 
 -----------
- Nan
+ -1
 (1 row)
 
-SELECT pg_typeof(REMAINDER(7, 0)) FROM DUAL;
-   pg_typeof   
----------------
- binary_double
-(1 row)
-
--- ... whereas the NUMBER path raises ORA-01476 (division by zero).
-SELECT REMAINDER(CAST(7 AS NUMBER), 0) FROM DUAL;
+--
+-- all-literal calls behave like Oracle (the literals are NUMBER values,
+-- so the call reaches the NUMBER body through the precedence hook)
+--
+-- A zero divisor raises ORA-01476 (division by zero), not NaN.
+SELECT REMAINDER(7, 0) FROM DUAL;
 ERROR:  division by zero
 CONTEXT:  SQL function "remainder" statement 1
--- A literal wider than a double loses its low digits: 0, not 1.
+-- A literal wider than a double keeps all 20 digits and returns 1.
 SELECT REMAINDER(10000000000000000001, 2) FROM DUAL;
  remainder 
 -----------
- 0
+ 1
 (1 row)
 
 SELECT pg_typeof(REMAINDER(10000000000000000001, 2)) FROM DUAL;
-   pg_typeof   
----------------
- binary_double
+ pg_typeof 
+-----------
+ number
 (1 row)
 
--- ... whereas the NUMBER path keeps all 20 digits and returns 1.
+-- The NUMBER path is exact (no binary-double rounding noise).
+SELECT REMAINDER(15.3, 5) FROM DUAL;
+ remainder 
+-----------
+ 0.3
+(1 row)
+
+SELECT REMAINDER(7, 4.2) FROM DUAL;
+ remainder 
+-----------
+ -1.4
+(1 row)
+
+SELECT REMAINDER(1.05, 0.3) FROM DUAL;
+ remainder 
+-----------
+ -0.15
+(1 row)
+
+-- The typed spellings agree with the bare-literal spellings.
+SELECT REMAINDER(CAST(7 AS NUMBER), 0) FROM DUAL;
+ERROR:  division by zero
+CONTEXT:  SQL function "remainder" statement 1
 SELECT REMAINDER(CAST(10000000000000000001 AS NUMBER), 2) FROM DUAL;
  remainder 
 -----------
  1
 (1 row)
 
--- The same loss of precision shows up as binary-double noise.
-SELECT REMAINDER(15.3, 5) FROM DUAL;
-     remainder      
---------------------
- 0.3000000000000007
-(1 row)
-
-SELECT REMAINDER(7, 4.2) FROM DUAL;
-      remainder      
----------------------
- -1.4000000000000004
-(1 row)
-
-SELECT REMAINDER(1.05, 0.3) FROM DUAL;
-      remainder      
----------------------
- -0.1499999999999999
-(1 row)
-
--- ... whereas the NUMBER path is exact.
 SELECT REMAINDER(CAST(15.3 AS NUMBER), 5) FROM DUAL;
  remainder 
 -----------
@@ -434,6 +440,19 @@ SELECT REMAINDER(CAST(1.05 AS NUMBER), CAST(0.3 AS NUMBER)) FROM DUAL;
  -0.15
 (1 row)
 
+--
+-- parameterized calls take the same precedence path: untyped bind
+-- parameters arrive as unknown and join as NUMBER
+--
+SELECT REMAINDER($1, $2) FROM DUAL \bind 11 4 \g
+ remainder 
+-----------
+ -1
+(1 row)
+
+SELECT REMAINDER($1, $2) FROM DUAL \bind 7 0 \g
+ERROR:  division by zero
+CONTEXT:  SQL function "remainder" statement 1
 --
 -- BINARY_FLOAT path
 --
@@ -506,8 +525,9 @@ SELECT REMAINDER(CAST(-2.5 AS BINARY_DOUBLE), CAST(1 AS BINARY_DOUBLE)) FROM DUA
 -- Oracle doc: "If n1 = 0 ... Oracle returns An error if the arguments
 -- are of type NUMBER / NaN if the arguments are BINARY_FLOAT or
 -- BINARY_DOUBLE."
--- The all-literal spelling REMAINDER(7, 0) does NOT raise -- it resolves
--- to BINARY_DOUBLE and returns NaN; see the "all-literal calls" section.
+-- The all-literal spelling REMAINDER(7, 0) raises the same error: bare
+-- literals are NUMBER values under the precedence hook; see the
+-- "all-literal calls" section.
 --
 SELECT REMAINDER(CAST(7 AS NUMBER), CAST(0 AS NUMBER)) FROM DUAL;
 ERROR:  division by zero
@@ -771,3 +791,15 @@ ERROR:  function remainder(pg_catalog.int4, pg_catalog.int4, pg_catalog.int4) do
 LINE 1: SELECT REMAINDER(1, 2, 3);
                ^
 DETAIL:  No function of that name accepts the given number of arguments.
+
+CREATE SCHEMA
+CREATE FUNCTION
+ remainder 
+-----------
+ 70
+(1 row)
+
+ERROR:  division by zero
+CONTEXT:  SQL function "remainder" statement 1
+DROP FUNCTION
+DROP SCHEMA
