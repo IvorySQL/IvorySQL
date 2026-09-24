@@ -78,6 +78,16 @@ SELECT pg_input_is_valid('abcde', 'char(4)');
 SELECT * FROM pg_input_error_info('abcde', 'char(4)');
 
 --
+-- Length overflow on INSERT/UPDATE should name the column
+--
+CREATE TEMP TABLE chartbl_colname(f1 char(4), f2 char(4));
+INSERT INTO chartbl_colname (f1) VALUES ('abcde');
+INSERT INTO chartbl_colname (f2) VALUES ('abcde');
+UPDATE chartbl_colname SET f1 = 'abcde';
+INSERT INTO chartbl_colname (f1) VALUES ('abcd  '); -- trailing spaces ok
+DROP TABLE chartbl_colname;
+
+--
 -- Also test "char", which is an ad-hoc one-byte type.  It can only
 -- really store ASCII characters, but we allow high-bit-set characters
 -- to be accessed via bytea-like escapes.
