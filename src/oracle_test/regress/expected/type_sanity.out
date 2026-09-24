@@ -62,7 +62,9 @@ WHERE (t1.typtype = 'c' AND t1.typrelid = 0) OR
 
 -- Look for types that should have an array type but don't.
 -- Generally anything that's not a pseudotype should have an array type.
--- However, we do have a small number of exceptions.
+-- However, we do have a small number of exceptions.  plisql_collection is
+-- one: it is an internal implementation type for PL/iSQL collections, never
+-- named in user-visible signatures, so an array of it would be meaningless.
 SELECT t1.oid, t1.typname
 FROM pg_type as t1
 WHERE t1.typtype not in ('p') AND t1.typname NOT LIKE E'\\_%'
@@ -79,7 +81,8 @@ ORDER BY t1.oid;
  4600 | pg_brin_bloom_summary
  4601 | pg_brin_minmax_multi_summary
  5017 | pg_mcv_list
-(6 rows)
+ 9134 | plisql_collection
+(7 rows)
 
 -- Make sure typarray points to a "true" array type of our own base
 SELECT t1.oid, t1.typname as basetype, t2.typname as arraytype,
@@ -801,12 +804,13 @@ SELECT oid, typname, typtype, typelem, typarray
                      'regoperator', 'regconfig', 'regdictionary',
                      'regnamespace', 'regcollation']::regtype[]) AND
     -- Discard types that do not accept input values as these cannot be
-    -- tested easily.
+    -- tested easily.  plisql_collection is PL/iSQL-internal, like pg_node_tree.
     -- Note: XML might be disabled at compile-time.
     oid != ALL(ARRAY['gtsvector', 'pg_node_tree',
                      'pg_ndistinct', 'pg_dependencies', 'pg_mcv_list',
                      'pg_brin_bloom_summary',
-                     'pg_brin_minmax_multi_summary', 'xml']::regtype[]) AND
+                     'pg_brin_minmax_multi_summary', 'xml',
+                     'plisql_collection']::regtype[]) AND
     -- Discard arrays.
     NOT EXISTS (SELECT 1 FROM pg_type u WHERE u.typarray = t.oid)
     -- Exclude everything from the table created above.  This checks
@@ -817,5 +821,5 @@ SELECT oid, typname, typtype, typelem, typarray
                           a.attnum > 0 AND
                           a.attrelid='tab_core_types'::regclass);
 ERROR:  relation "tab_core_types" does not exist
-LINE 25:                           a.attrelid='tab_core_types'::regcl...
+LINE 26:                           a.attrelid='tab_core_types'::regcl...
                                               ^

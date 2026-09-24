@@ -42,6 +42,7 @@ SUBDIRS = \
 		  test_parser \
 		  test_pg_dump \
 		  test_plan_advice \
+		  test_plisql_collection \
 		  test_predtest \
 		  test_radixtree \
 		  test_rbtree \

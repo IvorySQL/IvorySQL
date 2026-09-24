@@ -135,6 +135,13 @@ static	PLiSQL_expr	*read_cursor_args(PLiSQL_var *cursor, int until,
 static	List			*read_raise_options(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
 static	void			check_raise_parameters(PLiSQL_stmt_raise *stmt);
 static	PLiSQL_expr		*build_call_expr(int firsttoken, int location, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
+static	char			*capture_paren_args_text(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
+static	PLiSQL_stmt	*try_build_collection_indexed_assign(PLwdatum *wdatum, int location,
+															 YYSTYPE *yylvalp, YYLTYPE *yyllocp,
+															 yyscan_t yyscanner);
+static	PLiSQL_stmt	*try_build_collection_method_stmt(PLcword *cword, int location,
+														  YYSTYPE *yylvalp, YYLTYPE *yyllocp,
+														  yyscan_t yyscanner);
 %}
 
 %parse-param {PLiSQL_stmt_block **plisql_parse_result_p}
@@ -1859,7 +1866,24 @@ stmt_assign		: T_DATUM
 					{
 						PLiSQL_stmt_assign *new;
 						RawParseMode pmode;
+						PLiSQL_stmt *collstmt;
 
+						/*
+						 * "coll(i) := value" on a declared collection
+						 * compiles to its own statement that writes through
+						 * the collection runtime.  Returns NULL, having
+						 * restored the token stream, for everything else --
+						 * including a collection target that is not this
+						 * exact shape, such as "coll(i).field := value".
+						 */
+						collstmt = try_build_collection_indexed_assign(&$1, @1,
+																	   &yylval,
+																	   &yylloc,
+																	   yyscanner);
+						if (collstmt != NULL)
+							$$ = collstmt;
+						else
+						{
 						/* see how many names identify the datum */
 						switch ($1.ident ? 1 : list_length($1.idents))
 						{
@@ -1893,6 +1917,7 @@ stmt_assign		: T_DATUM
 						mark_expr_as_assignment_source(new->expr, $1.datum);
 
 						$$ = (PLiSQL_stmt *)new;
+						}
 					}
 				;
 
@@ -2952,13 +2977,21 @@ stmt_execsql	: K_IMPORT
 				| T_CWORD
 					{
 						int			tok;
+						PLiSQL_stmt *collstmt;
 
 						tok = yylex(&yylval, &yylloc, yyscanner);
 						plisql_push_back_token(tok, &yylval, &yylloc, yyscanner);
 						if (tok == '=' || tok == COLON_EQUALS ||
 							tok == '[' || tok == '.')
 							cword_is_not_variable(&($1), @1, yyscanner);
-						if (tok == '(' || tok == ';')
+
+						collstmt = try_build_collection_method_stmt(&($1), @1,
+																	&yylval, &yylloc, yyscanner);
+						if (collstmt != NULL)
+						{
+							$$ = collstmt;
+						}
+						else if (tok == '(' || tok == ';')
 						{
 							PLiSQL_stmt_call *new;
 
@@ -4039,14 +4072,9 @@ read_datatype(int tok, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 				 * to its backing array type (elem[]); a variable of the
 				 * type is therefore an ordinary array-typed scalar.
 				 */
-				result = plisql_build_datatype(tbltype->arraytypoid,
-											   tbltype->arraytypmod,
-											   tbltype->elemcollation, NULL);
-				if (result)
-				{
-					plisql_push_back_token(tok, yylvalp, yyllocp, yyscanner);
-					return result;
-				}
+				result = plisql_build_tbl_datatype(tbltype);
+				plisql_push_back_token(tok, yylvalp, yyllocp, yyscanner);
+				return result;
 			}
 		}
 	}
@@ -4224,28 +4252,34 @@ make_tbl_type(const char *typname, int lineno, char tbl_kind,
 				 parser_errposition(location)));
 
 	/*
-	 * An anonymous record element (a "TYPE ... IS RECORD" declaration, which
-	 * resolves to RECORDOID plus a blessed typmod) has no usable array type:
-	 * record[] cannot carry the per-element typmod that identifies the row
-	 * structure.  Require a named composite type instead.
+	 * An anonymous record element (a "TYPE ... IS RECORD" declaration,
+	 * RECORDOID plus a blessed typmod) is stored in the generic record[]:
+	 * each element tuple carries that typmod in its own header, so the array
+	 * needs no per-element type information.  A typmod of -1 would leave
+	 * the element's fields unknown.
 	 */
 	if (elemtype->typoid == RECORDOID)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("collection element type cannot be an anonymous record type"),
-				 errdetail("\"TYPE %s IS %s OF ...\" of a \"TYPE ... IS RECORD\" type is not supported.",
-						   typname, kindstr),
-				 errhint("Declare the element type with CREATE TYPE ... AS, or use table%%ROWTYPE."),
-				 parser_errposition(location)));
-
-	arraytypoid = get_array_type(elemtype->typoid);
-	if (!OidIsValid(arraytypoid))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("cannot create collection type \"%s\": element type %s has no array type",
-						typname, format_type_be(elemtype->typoid)),
-				 errhint("Use a scalar type or a named composite type (CREATE TYPE ... AS) as the element type."),
-				 parser_errposition(location)));
+	{
+		if (elemtype->atttypmod < 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("collection element record type must have a known structure"),
+					 errdetail("\"TYPE %s IS %s OF ...\" needs its element's fields to be declared, e.g. with \"TYPE ... IS RECORD (...)\".",
+							   typname, kindstr),
+					 parser_errposition(location)));
+		arraytypoid = RECORDARRAYOID;
+	}
+	else
+	{
+		arraytypoid = get_array_type(elemtype->typoid);
+		if (!OidIsValid(arraytypoid))
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("cannot create collection type \"%s\": element type %s has no array type",
+							typname, format_type_be(elemtype->typoid)),
+					 errhint("Use a scalar type or a named composite type (CREATE TYPE ... AS) as the element type."),
+					 parser_errposition(location)));
+	}
 
 	tbl = palloc0(sizeof(PLiSQL_tbl_type));
 	tbl->row.dtype = PLISQL_DTYPE_ROW;
@@ -4429,6 +4463,470 @@ make_execsql_stmt(int firsttoken, int location, PLword *word, YYSTYPE *yylvalp, 
 	execsql->target	 = target;
 
 	return (PLiSQL_stmt *) execsql;
+}
+
+/*
+ * Capture the source text strictly between a already-consumed opening '('
+ * and its matching ')' (also consumed), tolerating an empty result (a
+ * bare "()"). Unlike read_sql_construct(), which treats empty captured
+ * text as a hard error, this is used for Oracle collection-method calls
+ * where "()" (no argument) is a legitimate, meaningful spelling.
+ */
+static char *
+capture_paren_args_text(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
+{
+	StringInfoData ds;
+	int			tok;
+	int			parenlevel = 0;
+	int			startlocation = -1;
+	int			endlocation = -1;
+
+	initStringInfo(&ds);
+
+	for (;;)
+	{
+		tok = yylex(yylvalp, yyllocp, yyscanner);
+		if (startlocation < 0)
+			startlocation = *yyllocp;
+		if (tok == ')' && parenlevel == 0)
+			break;
+		if (tok == '(')
+			parenlevel++;
+		else if (tok == ')')
+			parenlevel--;
+		if (tok == 0 || tok == ';')
+			yyerror(yyllocp, NULL, yyscanner, "mismatched parentheses");
+		endlocation = *yyllocp + plisql_token_length(yyscanner);
+	}
+
+	if (endlocation >= startlocation && startlocation >= 0)
+		plisql_append_source_text(&ds, startlocation, endlocation, yyscanner);
+
+	return ds.data;				/* possibly the empty string */
+}
+
+/*
+ * Consume the rest of a statement, stopping at the ';' that ends it, and
+ * return its source text starting at startlocation.  Used to rebuild a
+ * statement verbatim after lookahead has already eaten part of it: the
+ * scanner can push back only a few tokens, but the source text is always
+ * recoverable from locations.  firsttok is a token already read by the
+ * caller (or 0 if none), so it is accounted for without being re-read.
+ */
+static char *
+capture_stmt_text_from(int startlocation, int firsttok,
+					   YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
+{
+	StringInfoData ds;
+	int			tok = firsttok;
+	int			parenlevel = 0;
+	int			endlocation = -1;
+
+	initStringInfo(&ds);
+
+	for (;;)
+	{
+		if (tok == 0)
+			tok = yylex(yylvalp, yyllocp, yyscanner);
+		if (tok == ';' && parenlevel == 0)
+		{
+			/*
+			 * Nothing was consumed before the terminator (firsttok was
+			 * itself ';', e.g. "coll := ;"): endlocation is still unset,
+			 * which would make the check below skip appending anything and
+			 * silently drop the "coll := " prefix instead of handing
+			 * make_plisql_expr() a source range it can report a clear
+			 * "missing expression" error against.  Use the terminator's own
+			 * (start) location instead.
+			 */
+			if (endlocation < 0)
+				endlocation = *yyllocp;
+			break;
+		}
+		if (tok == '(' || tok == '[')
+			parenlevel++;
+		else if (tok == ')' || tok == ']')
+			parenlevel--;
+		if (tok == 0)
+			yyerror(yyllocp, NULL, yyscanner, "unexpected end of function definition");
+		endlocation = *yyllocp + plisql_token_length(yyscanner);
+		tok = 0;
+	}
+
+	if (endlocation >= startlocation)
+		plisql_append_source_text(&ds, startlocation, endlocation, yyscanner);
+
+	return ds.data;
+}
+
+/*
+ * True when both datums are collection variables whose declared types are
+ * interchangeable -- the same test the runtime applies before adopting one
+ * collection's object in place of another's.  Two separate "TYPE ... IS
+ * TABLE OF NUMBER" declarations qualify; a nested table and a VARRAY, or
+ * VARRAYs with different limits, do not.
+ */
+static bool
+coll_types_match(PLiSQL_datum *a, PLiSQL_datum *b)
+{
+	PLiSQL_var *va;
+	PLiSQL_var *vb;
+	PLiSQL_tbl_type *ta;
+	PLiSQL_tbl_type *tb;
+
+	if (a == NULL || b == NULL ||
+		a->dtype != PLISQL_DTYPE_VAR || b->dtype != PLISQL_DTYPE_VAR)
+		return false;
+
+	va = (PLiSQL_var *) a;
+	vb = (PLiSQL_var *) b;
+	if (va->datatype == NULL || vb->datatype == NULL)
+		return false;
+
+	ta = va->datatype->tbltype;
+	tb = vb->datatype->tbltype;
+	if (ta == NULL || tb == NULL)
+		return false;
+
+	return (ta->elemtypoid == tb->elemtypoid &&
+			ta->elemtypmod == tb->elemtypmod &&
+			ta->elemcollation == tb->elemcollation &&
+			ta->tbl_kind == tb->tbl_kind &&
+			ta->varray_limit == tb->varray_limit);
+}
+
+/*
+ * Rebuild an assignment statement verbatim from its source text and compile
+ * it the ordinary way.  Used when lookahead has read past the point the
+ * scanner could rewind and the statement turns out not to be one of the
+ * collection forms after all.  firsttok is the token already read.
+ */
+static PLiSQL_stmt *
+rebuild_plain_assignment(PLwdatum *wdatum, int location, int firsttok,
+						 YYSTYPE *yylvalp, YYLTYPE *yyllocp,
+						 yyscan_t yyscanner)
+{
+	PLiSQL_stmt_assign *astmt;
+	char	   *text;
+
+	text = capture_stmt_text_from(location, firsttok, yylvalp, yyllocp,
+								  yyscanner);
+
+	check_assignable(wdatum->datum, location, yyscanner);
+	astmt = palloc0_object(PLiSQL_stmt_assign);
+	astmt->cmd_type = PLISQL_STMT_ASSIGN;
+	astmt->lineno = plisql_location_to_lineno(location, yyscanner);
+	astmt->stmtid = ++plisql_curr_compile->nstatements;
+	astmt->varno = wdatum->datum->dno;
+	astmt->expr = make_plisql_expr(text, RAW_PARSE_PLISQL_ASSIGN1);
+	check_sql_expr(astmt->expr->query, astmt->expr->parseMode,
+				   location, yyscanner);
+	mark_expr_as_assignment_source(astmt->expr, wdatum->datum);
+
+	return (PLiSQL_stmt *) astmt;
+}
+
+/*
+ * Compile "coll(subscript) := value" into a PLISQL_STMT_COLL_ASSIGN, which
+ * writes straight through plisql_collection_set() instead of evaluating a
+ * whole new elem[] and storing that.  The general assignment path is
+ * correct for this, but it rebuilds and re-imports the entire array for
+ * every element written, which is quadratic over a fill loop -- and it
+ * cannot preserve holes, because the value it produces is a dense array.
+ *
+ * Only that exact shape is claimed.  The return is:
+ *
+ *	 NULL			 nothing was consumed; the caller compiles as usual.
+ *					 (Target is not a declared collection, or is not
+ *					 followed by a subscript at all -- "coll := ...".)
+ *	 COLL_ASSIGN	 the shape matched.
+ *	 ASSIGN			 a subscript was consumed but what followed was not
+ *					 ":=" -- "coll(i).field := ..." for instance.  The
+ *					 statement is rebuilt from its source text and compiled
+ *					 the ordinary way, because by then the token stream is
+ *					 past the point the scanner could rewind.
+ */
+static PLiSQL_stmt *
+try_build_collection_indexed_assign(PLwdatum *wdatum, int location,
+									YYSTYPE *yylvalp, YYLTYPE *yyllocp,
+									yyscan_t yyscanner)
+{
+	PLiSQL_var *var;
+	int			tok;
+	char	   *idxtext;
+	char	   *valtext;
+	char	   *fieldname = NULL;
+	PLiSQL_stmt_coll_assign *new;
+	YYSTYPE		headlval;
+	YYLTYPE		headlloc;
+
+	if (wdatum->datum == NULL ||
+		wdatum->datum->dtype != PLISQL_DTYPE_VAR)
+		return NULL;
+
+	var = (PLiSQL_var *) wdatum->datum;
+	if (var->datatype == NULL || var->datatype->tbltype == NULL)
+		return NULL;			/* not a declared collection variable */
+
+	/*
+	 * Looking ahead overwrites yylval/yylloc, which still describe the head
+	 * T_DATUM -- and the caller's fall-through path pushes that token back
+	 * using them, so the statement's captured source text would otherwise
+	 * start at the lookahead token instead of at the variable name.
+	 */
+	headlval = *yylvalp;
+	headlloc = *yyllocp;
+
+	tok = yylex(yylvalp, yyllocp, yyscanner);
+	if (tok == '=' || tok == COLON_EQUALS)
+	{
+		/*
+		 * Whole-variable assignment.  If the source is nothing but another
+		 * collection variable of the same type, this is a plisql-to-plisql
+		 * transfer and must copy the collection itself -- compiled as an
+		 * ordinary assignment the source would be evaluated as a SQL value,
+		 * which densifies it and renumbers every subscript after a hole.
+		 * Anything else really is a SQL value and keeps the ordinary path.
+		 */
+		int			srctok;
+		PLwdatum	srcdatum;
+
+		srctok = yylex(yylvalp, yyllocp, yyscanner);
+		if (srctok == T_DATUM)
+		{
+			srcdatum = yylvalp->wdatum;
+			tok = yylex(yylvalp, yyllocp, yyscanner);
+			if (tok == ';' && coll_types_match(wdatum->datum, srcdatum.datum))
+			{
+				PLiSQL_stmt_coll_copy *cp;
+
+				check_assignable(wdatum->datum, location, yyscanner);
+
+				cp = palloc0_object(PLiSQL_stmt_coll_copy);
+				cp->cmd_type = PLISQL_STMT_COLL_COPY;
+				cp->lineno = plisql_location_to_lineno(location, yyscanner);
+				cp->stmtid = ++plisql_curr_compile->nstatements;
+				cp->varno = wdatum->datum->dno;
+				cp->srcvarno = srcdatum.datum->dno;
+				return (PLiSQL_stmt *) cp;
+			}
+			/* not the simple form; tok is already read */
+		}
+		else
+			tok = srctok;
+
+		return rebuild_plain_assignment(wdatum, location, tok,
+										yylvalp, yyllocp, yyscanner);
+	}
+
+	if (tok != '(')
+	{
+		/* not an assignment we recognize: nothing consumed */
+		plisql_push_back_token(tok, yylvalp, yyllocp, yyscanner);
+		*yylvalp = headlval;
+		*yyllocp = headlloc;
+		return NULL;
+	}
+
+	idxtext = capture_paren_args_text(yylvalp, yyllocp, yyscanner);
+
+	tok = yylex(yylvalp, yyllocp, yyscanner);
+
+	/*
+	 * "coll(i).field := value": one field of a composite element.  This has
+	 * to be claimed here rather than left to the general path, which would
+	 * hand "coll(i).field" to the core parser as an array-element
+	 * FieldStore: that cannot work for an anonymous record element at all
+	 * (FieldStore carries no typmod, so the blessed row shape is lost), and
+	 * for a named composite it would densify the collection on every write.
+	 * A longer field path is left to the general path.
+	 */
+	if (tok == '.')
+	{
+		tok = yylex(yylvalp, yyllocp, yyscanner);
+		if (tok == T_WORD)
+			fieldname = yylvalp->word.ident;
+		else if (plisql_token_is_unreserved_keyword(tok))
+			fieldname = pstrdup(yylvalp->keyword);
+		if (fieldname != NULL)
+			tok = yylex(yylvalp, yyllocp, yyscanner);
+		if (fieldname == NULL || (tok != '=' && tok != COLON_EQUALS))
+			return rebuild_plain_assignment(wdatum, location, tok,
+											yylvalp, yyllocp, yyscanner);
+	}
+
+	if (tok != '=' && tok != COLON_EQUALS)
+		/*
+		 * Not an indexed assignment after all.  Hand the whole statement
+		 * back to the general path by source text; too much has been read
+		 * to rewind.
+		 */
+		return rebuild_plain_assignment(wdatum, location, tok,
+										yylvalp, yyllocp, yyscanner);
+
+	if (idxtext[0] == '\0')
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("collection subscript must not be empty"),
+				 parser_errposition(location)));
+
+	valtext = capture_stmt_text_from(*yyllocp + plisql_token_length(yyscanner),
+									 0, yylvalp, yyllocp, yyscanner);
+	if (valtext[0] == '\0')
+		yyerror(yyllocp, NULL, yyscanner, "missing expression");
+
+	check_assignable(wdatum->datum, location, yyscanner);
+
+	new = palloc0_object(PLiSQL_stmt_coll_assign);
+	new->cmd_type = PLISQL_STMT_COLL_ASSIGN;
+	new->lineno = plisql_location_to_lineno(location, yyscanner);
+	new->stmtid = ++plisql_curr_compile->nstatements;
+	new->varno = var->dno;
+	new->fieldname = fieldname;
+
+	/*
+	 * Two ordinary scalar expressions.  Neither mentions the collection, so
+	 * neither can drag it through a Param -- which is what keeps this path
+	 * independent of how collection Params are handed out.
+	 */
+	new->idx = make_plisql_expr(idxtext, RAW_PARSE_PLISQL_EXPR);
+	check_sql_expr(new->idx->query, new->idx->parseMode, location, yyscanner);
+	new->val = make_plisql_expr(valtext, RAW_PARSE_PLISQL_EXPR);
+	check_sql_expr(new->val->query, new->val->parseMode, location, yyscanner);
+
+	return (PLiSQL_stmt *) new;
+}
+
+/*
+ * If cword names an Oracle collection pseudo-procedure call --
+ * coll.EXTEND()/coll.EXTEND(n)/coll.TRIM()/coll.TRIM(n)/coll.DELETE()/
+ * coll.DELETE(i) on a variable declared via "TYPE ... IS TABLE OF /
+ * VARRAY" -- compile it into the statement that performs it.  Returns NULL
+ * (having consumed no tokens) for every other two-part T_CWORD, so the
+ * caller falls through to its ordinary call/execsql handling unchanged.
+ *
+ * EXTEND, TRIM and DELETE() become a PLISQL_STMT_COLL_METHOD that calls the
+ * runtime directly.  They used to be compiled into a plain assignment,
+ * "coll := pg_catalog.plisql_coll_<op>_internal(coll, n)", to reuse the
+ * already well-tested assignment path instead of adding executor machinery.
+ * That was the right trade while the collection could only be reached as a
+ * SQL value, but it cost a full densify-and-reimport per call and could not
+ * carry holes across the round trip, so both the cost and the limitation
+ * were artifacts of the route rather than of the operations.
+ *
+ * DELETE(i) is a distinct operation from DELETE(): it removes one element
+ * and leaves a hole, where the argument-less form clears the collection.
+ */
+static PLiSQL_stmt *
+try_build_collection_method_stmt(PLcword *cword, int location,
+								 YYSTYPE *yylvalp, YYLTYPE *yyllocp,
+								 yyscan_t yyscanner)
+{
+	char	   *name1;
+	char	   *name2;
+	PLiSQL_nsitem *nse;
+	PLiSQL_var *var;
+	/*
+	 * DELETE's method value depends on whether an argument follows, which
+	 * isn't known until argtext is captured below -- see "DELETE with a
+	 * subscript is a different operation" further down -- so it is decided
+	 * there, once, rather than assigned a default here and reclassified.
+	 * The initializer is a placeholder for that branch, always overwritten
+	 * before use; it is here only so the compiler can see method is never
+	 * read uninitialized.
+	 */
+	PLiSQL_coll_method method = PLISQL_COLL_METHOD_DELETE_ALL;
+	bool		is_delete = false;
+	int			tok;
+	char	   *argtext;
+	PLiSQL_stmt_coll_method *new;
+
+	if (list_length(cword->idents) != 2)
+		return NULL;
+
+	name1 = strVal(linitial(cword->idents));
+	name2 = strVal(lsecond(cword->idents));
+
+	if (pg_strcasecmp(name2, "EXTEND") == 0)
+		method = PLISQL_COLL_METHOD_EXTEND;
+	else if (pg_strcasecmp(name2, "TRIM") == 0)
+		method = PLISQL_COLL_METHOD_TRIM;
+	else if (pg_strcasecmp(name2, "DELETE") == 0)
+		is_delete = true;
+	else
+		return NULL;
+
+	nse = plisql_ns_lookup(plisql_ns_top(), false, name1, NULL, NULL, NULL);
+	if (nse == NULL || nse->itemtype != PLISQL_NSTYPE_VAR)
+		return NULL;
+
+	var = (PLiSQL_var *) plisql_Datums[nse->itemno];
+	if (var->datatype == NULL || var->datatype->tbltype == NULL)
+		return NULL;			/* not a declared collection variable */
+
+	tok = yylex(yylvalp, yyllocp, yyscanner);
+	if (tok == '(')
+	{
+		argtext = capture_paren_args_text(yylvalp, yyllocp, yyscanner);
+
+		tok = yylex(yylvalp, yyllocp, yyscanner);
+		if (tok != ';')
+			yyerror(yyllocp, NULL, yyscanner, "expected \";\"");
+	}
+	else if (tok == ';')
+	{
+		/*
+		 * Oracle allows the argument-less pseudo-procedure form without
+		 * parentheses -- "v.EXTEND;" means "v.EXTEND();" -- the same way
+		 * ".COUNT" needs none.  An argument always requires parentheses to
+		 * hold it, so this bare form is only ever the zero-argument case.
+		 */
+		argtext = "";
+	}
+	else
+	{
+		plisql_push_back_token(tok, yylvalp, yyllocp, yyscanner);
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("collection method \"%s\" requires parentheses",
+						name2),
+				 errhint("Write \"%s.%s()\", with explicit parentheses, to pass an argument, or \"%s.%s;\" with none.",
+						 name1, name2, name1, name2),
+				 parser_errposition(location)));
+	}
+
+	check_assignable((PLiSQL_datum *) var, location, yyscanner);
+
+	/*
+	 * DELETE with a subscript is a different operation from DELETE with
+	 * none: it removes one element and LEAVES A HOLE, where the
+	 * argument-less form clears the collection entirely.
+	 */
+	if (is_delete)
+		method = (argtext[0] != '\0') ?
+			PLISQL_COLL_METHOD_DELETE_AT : PLISQL_COLL_METHOD_DELETE_ALL;
+
+	new = palloc0_object(PLiSQL_stmt_coll_method);
+	new->cmd_type = PLISQL_STMT_COLL_METHOD;
+	new->lineno = plisql_location_to_lineno(location, yyscanner);
+	new->stmtid = ++plisql_curr_compile->nstatements;
+	new->varno = var->dno;
+	new->method = method;
+
+	/*
+	 * An omitted count means 1 for EXTEND and TRIM; DELETE() takes none and
+	 * DELETE(i) requires one.  The argument is an ordinary scalar
+	 * expression, so it never mentions the collection and cannot drag it
+	 * through a Param.
+	 */
+	if (argtext[0] != '\0')
+	{
+		new->arg = make_plisql_expr(argtext, RAW_PARSE_PLISQL_EXPR);
+		check_sql_expr(new->arg->query, new->arg->parseMode, location,
+					   yyscanner);
+	}
+
+	return (PLiSQL_stmt *) new;
 }
 
 static PLiSQL_expr *
