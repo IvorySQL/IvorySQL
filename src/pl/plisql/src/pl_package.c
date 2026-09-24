@@ -252,7 +252,8 @@ plisql_package_parse(ParseState *parsestate, PackageCacheItem *item, List *names
 				int32		rec_typmod;
 				MemoryContext oldcxt;
 
-				if (flags != PACKAGE_PARSE_TYPE)
+				/* an entry lookup may find a type (see TBLTYPE below) */
+				if (flags != PACKAGE_PARSE_TYPE && flags != PACKAGE_PARSE_ENTRY)
 					elog(ERROR, "\"%s\" is a type, not a variable", parse_first_name);
 
 				/*
@@ -290,6 +291,9 @@ plisql_package_parse(ParseState *parsestate, PackageCacheItem *item, List *names
 				value = (void *) plisql_build_datatype(RECORDOID, rec_typmod,
 													   InvalidOid, NULL);
 				MemoryContextSwitchTo(oldcxt);
+
+				if (flags == PACKAGE_PARSE_ENTRY)
+					*entry_type = PKG_TYPE;
 			}
 			break;
 		case PLISQL_NSTYPE_TBLTYPE:
@@ -299,7 +303,12 @@ plisql_package_parse(ParseState *parsestate, PackageCacheItem *item, List *names
 					(PLiSQL_tbl_type *) psource->source.datums[nse->itemno];
 				MemoryContext oldcxt;
 
-				if (flags != PACKAGE_PARSE_TYPE)
+				/*
+				 * An entry lookup asks whether a name is a variable or a
+				 * type -- e.g. for "pkg.tbl_t(...)", a constructor call --
+				 * so a type is a valid answer there.
+				 */
+				if (flags != PACKAGE_PARSE_TYPE && flags != PACKAGE_PARSE_ENTRY)
 					elog(ERROR, "\"%s\" is a type, not a variable", parse_first_name);
 
 				/* A type name cannot be qualified further (see ROWTYPE above). */
@@ -319,10 +328,11 @@ plisql_package_parse(ParseState *parsestate, PackageCacheItem *item, List *names
 
 				/* Build in the package's persistent context (see ROWTYPE above). */
 				oldcxt = MemoryContextSwitchTo(psource->source.fn_cxt);
-				value = (void *) plisql_build_datatype(tbltype->arraytypoid,
-													   tbltype->arraytypmod,
-													   tbltype->elemcollation, NULL);
+				value = (void *) plisql_build_tbl_datatype(tbltype);
 				MemoryContextSwitchTo(oldcxt);
+
+				if (flags == PACKAGE_PARSE_ENTRY)
+					*entry_type = PKG_TYPE;
 			}
 			break;
 		case PLISQL_NSTYPE_REC:
@@ -3924,6 +3934,16 @@ plisql_package_reset_context(Oid pkg_oid)
 					else
 						pfree(DatumGetPointer(var->value));
 				}
+
+				/*
+				 * A collection variable's authoritative value is the
+				 * expanded collection beside var->value, and it was
+				 * allocated under the package context -- which this function
+				 * deliberately does not reset (see above).  So it has to be
+				 * released by hand here too, or it would survive the reset
+				 * that is supposed to have discarded it.
+				 */
+				plisql_var_collection_clear(var);
 
 				var->value = (Datum) 0;
 				var->isnull = true;

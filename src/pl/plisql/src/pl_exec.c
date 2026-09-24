@@ -307,6 +307,12 @@ static int	exec_stmts(PLiSQL_execstate * estate,
 					   List *stmts);
 static int	exec_stmt_assign(PLiSQL_execstate * estate,
 							 PLiSQL_stmt_assign * stmt);
+static int	exec_stmt_coll_assign(PLiSQL_execstate * estate,
+								  PLiSQL_stmt_coll_assign * stmt);
+static int	exec_stmt_coll_method(PLiSQL_execstate * estate,
+								  PLiSQL_stmt_coll_method * stmt);
+static int	exec_stmt_coll_copy(PLiSQL_execstate * estate,
+								PLiSQL_stmt_coll_copy * stmt);
 static int	exec_stmt_perform(PLiSQL_execstate * estate,
 							  PLiSQL_stmt_perform * stmt);
 static int	exec_stmt_call(PLiSQL_execstate * estate,
@@ -426,6 +432,10 @@ static void plisql_param_eval_var_transfer(ExprState *state, ExprEvalStep *op,
 										   ExprContext *econtext);
 static void plisql_param_eval_var(ExprState *state, ExprEvalStep *op,
 								  ExprContext *econtext);
+static void plisql_param_eval_collection(ExprState *state, ExprEvalStep *op,
+										 ExprContext *econtext);
+static void plisql_param_eval_collection_flat(ExprState *state, ExprEvalStep *op,
+											  ExprContext *econtext);
 static void plisql_param_eval_var_ro(ExprState *state, ExprEvalStep *op,
 									 ExprContext *econtext);
 static void plisql_param_eval_recfield(ExprState *state, ExprEvalStep *op,
@@ -477,6 +487,15 @@ static void plisql_create_econtext(PLiSQL_execstate * estate);
 static void plisql_destroy_econtext(PLiSQL_execstate * estate);
 static void assign_simple_var(PLiSQL_execstate * estate, PLiSQL_var * var,
 							  Datum newvalue, bool isnull, bool freeable);
+static void plisql_var_collection_flatten_sql(PLiSQL_execstate * estate,
+											  PLiSQL_var * var);
+static void plisql_var_collection_assign(PLiSQL_execstate * estate,
+										 PLiSQL_var * var,
+										 PLiSQL_expanded_collection * coll);
+static PLiSQL_expanded_collection *plisql_var_collection_import(PLiSQL_execstate * estate,
+																PLiSQL_var * var,
+																Datum value,
+																bool isnull);
 static void assign_text_var(PLiSQL_execstate * estate, PLiSQL_var * var,
 							const char *str);
 static void assign_record_var(PLiSQL_execstate * estate, PLiSQL_rec * rec,
@@ -593,6 +612,33 @@ plisql_exec_function(PLiSQL_function * func, FunctionCallInfo fcinfo,
 
 					if (var->info != PROARGMODE_OUT)
 					{
+						/*
+						 * SITE 1 OF THE STORAGE MIGRATION.  A collection
+						 * argument becomes this variable's own expanded
+						 * collection immediately, rather than being left as
+						 * a bare elem[] for some later read to import.  It
+						 * has to happen before the expanded-object
+						 * heuristics below, which would otherwise force the
+						 * value into an expanded ARRAY -- a representation
+						 * the collection path must never be handed.
+						 *
+						 * The value is copied rather than commandeered even
+						 * when it arrives as a R/W expanded object: the
+						 * argument may be the caller's own variable, and a
+						 * collection argument is passed by value.
+						 */
+						if (var->datatype->tbltype != NULL)
+						{
+							PLiSQL_expanded_collection *coll;
+
+							coll = plisql_var_collection_import(&estate, var,
+																fcinfo->args[i].value,
+																fcinfo->args[i].isnull);
+							plisql_var_collection_assign(&estate, var, coll);
+							break;	/* out of the switch: nothing below
+									 * applies to a collection */
+						}
+
 						assign_simple_var(&estate, var,
 										  fcinfo->args[i].value,
 										  fcinfo->args[i].isnull,
@@ -1628,6 +1674,21 @@ copy_plisql_datums(PLiSQL_execstate * estate,
 			case PLISQL_DTYPE_PROMISE:
 				outdatum = (PLiSQL_datum *) ws_next;
 				memcpy(outdatum, indatum, sizeof(PLiSQL_var));
+
+				/*
+				 * The copy must not inherit a collection pointer: memcpy
+				 * would leave two PLiSQL_var structs pointing at one
+				 * expanded collection, and whichever was assigned to first
+				 * would free an object the other still holds.  A local
+				 * collection variable starts each execution with no
+				 * representation and builds one on first assignment.
+				 * Package variables are shared by reference rather than
+				 * copied (see the func->item path in plisql_exec_function),
+				 * so their objects stay owned by the package context and do
+				 * not come through here.
+				 */
+				((PLiSQL_var *) outdatum)->collection = NULL;
+				((PLiSQL_var *) outdatum)->collection_flat_valid = false;
 				ws_next += MAXALIGN(sizeof(PLiSQL_var));
 				break;
 
@@ -2363,6 +2424,18 @@ exec_stmts(PLiSQL_execstate * estate, List *stmts)
 				rc = exec_stmt_assign(estate, (PLiSQL_stmt_assign *) stmt);
 				break;
 
+			case PLISQL_STMT_COLL_ASSIGN:
+				rc = exec_stmt_coll_assign(estate, (PLiSQL_stmt_coll_assign *) stmt);
+				break;
+
+			case PLISQL_STMT_COLL_METHOD:
+				rc = exec_stmt_coll_method(estate, (PLiSQL_stmt_coll_method *) stmt);
+				break;
+
+			case PLISQL_STMT_COLL_COPY:
+				rc = exec_stmt_coll_copy(estate, (PLiSQL_stmt_coll_copy *) stmt);
+				break;
+
 			case PLISQL_STMT_PERFORM:
 				rc = exec_stmt_perform(estate, (PLiSQL_stmt_perform *) stmt);
 				break;
@@ -2497,6 +2570,426 @@ exec_stmt_assign(PLiSQL_execstate * estate, PLiSQL_stmt_assign * stmt)
 	Assert(stmt->varno >= 0);
 
 	exec_assign_expr(estate, estate->datums[stmt->varno], stmt->expr);
+
+	return PLISQL_RC_OK;
+}
+
+/*
+ * Convert a composite value to the row shape of a collection whose element
+ * type is an anonymous record ("TYPE ... IS RECORD"), identified by RECORDOID
+ * plus a blessed typmod.  exec_cast_value() cannot do this: a record
+ * variable reports RECORD with whatever typmod its own value carries (often
+ * -1), and with the typmods differing it would fall back to I/O conversion,
+ * which anonymous records don't support.  Instead match the fields by
+ * position and cast each one to the element's field type -- a record
+ * variable takes on the column types of whatever row was last assigned to
+ * it (SELECT ... INTO, say), so those need not match exactly.  The result
+ * is formed with the element's own tupdesc, which stamps the element's
+ * (type, typmod) into its header: readers find the row shape through that.
+ *
+ * The result is allocated in the eval memory context.
+ */
+static Datum
+coerce_to_coll_record_elem(PLiSQL_execstate * estate, Datum value,
+						   int32 elemtypmod)
+{
+	MemoryContext oldcxt = MemoryContextSwitchTo(get_eval_mcontext(estate));
+	TupleDesc	srcdesc;
+	TupleDesc	elemdesc;
+	HeapTupleData tmptup;
+	HeapTuple	srctup;
+	Datum	   *srcvalues;
+	bool	   *srcnulls;
+	Datum	   *values;
+	bool	   *nulls;
+	int			nsrcfields = 0;
+	int			srcatt = 0;
+	bool		release_src = false;
+
+	if (VARATT_IS_EXTERNAL_EXPANDED(DatumGetPointer(value)))
+	{
+		ExpandedRecordHeader *erh = (ExpandedRecordHeader *) DatumGetEOHP(value);
+
+		srcdesc = expanded_record_get_tupdesc(erh);
+		srctup = expanded_record_get_tuple(erh);
+	}
+	else
+	{
+		srcdesc = deconstruct_composite_datum(value, &tmptup);
+		release_src = true;
+		srctup = &tmptup;
+	}
+
+	elemdesc = lookup_rowtype_tupdesc(RECORDOID, elemtypmod);
+
+	/*
+	 * The source may be a table row with dropped columns; the element, an
+	 * anonymous record, never has any.
+	 */
+	for (int i = 0; i < srcdesc->natts; i++)
+		if (!TupleDescAttr(srcdesc, i)->attisdropped)
+			nsrcfields++;
+	if (nsrcfields != elemdesc->natts)
+		ereport(ERROR,
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+				 errmsg("record value does not match the collection element type"),
+				 errdetail("The record has %d fields, but the element type has %d.",
+						   nsrcfields, elemdesc->natts)));
+
+	srcvalues = palloc_array(Datum, srcdesc->natts);
+	srcnulls = palloc_array(bool, srcdesc->natts);
+	heap_deform_tuple(srctup, srcdesc, srcvalues, srcnulls);
+
+	values = palloc_array(Datum, elemdesc->natts);
+	nulls = palloc_array(bool, elemdesc->natts);
+
+	for (int i = 0; i < elemdesc->natts; i++)
+	{
+		Form_pg_attribute attr = TupleDescAttr(elemdesc, i);
+		Form_pg_attribute srcattr;
+
+		Assert(!attr->attisdropped);
+		while (TupleDescAttr(srcdesc, srcatt)->attisdropped)
+			srcatt++;
+		srcattr = TupleDescAttr(srcdesc, srcatt);
+
+		nulls[i] = srcnulls[srcatt];
+		values[i] = exec_cast_value(estate, srcvalues[srcatt], &nulls[i],
+									srcattr->atttypid, srcattr->atttypmod,
+									attr->atttypid, attr->atttypmod);
+		srcatt++;
+	}
+
+	value = HeapTupleGetDatum(heap_form_tuple(elemdesc, values, nulls));
+
+	ReleaseTupleDesc(elemdesc);
+	if (release_src)
+		ReleaseTupleDesc(srcdesc);
+	MemoryContextSwitchTo(oldcxt);
+
+	return value;
+}
+
+/* ----------
+ * exec_stmt_coll_assign		"coll(i) := value"
+ *
+ * Writes one element through the collection runtime instead of building a
+ * whole new elem[] and storing it.  That is what makes a fill loop linear
+ * rather than quadratic, and it is also the only form that can leave holes
+ * intact, since a dense array cannot represent them.
+ * ----------
+ */
+static int
+exec_stmt_coll_assign(PLiSQL_execstate * estate, PLiSQL_stmt_coll_assign * stmt)
+{
+	PLiSQL_var *var = (PLiSQL_var *) estate->datums[stmt->varno];
+	PLiSQL_coll_meta meta;
+	int32		idx;
+	Datum		value;
+	bool		isnull;
+	Oid			valtype;
+	int32		valtypmod;
+	TupleDesc	elemdesc = NULL;
+	int			fieldidx = -1;
+
+	Assert(var->dtype == PLISQL_DTYPE_VAR || var->dtype == PLISQL_DTYPE_PROMISE);
+	Assert(var->datatype->tbltype != NULL);
+
+	idx = exec_eval_integer(estate, stmt->idx, &isnull);
+	if (isnull)
+		ereport(ERROR,
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				 errmsg("collection subscript must not be null")));
+
+	value = exec_eval_expr(estate, stmt->val, &isnull, &valtype, &valtypmod);
+
+	plisql_coll_meta_from_tbltype(var->datatype->tbltype, &meta);
+
+	/*
+	 * Oracle's error order: uninitialized first, then an out-of-range or
+	 * over-limit subscript, and only then "beyond count".  These two checks
+	 * must run before the value is coerced below: neither depends on the
+	 * coerced value, and running them first is what makes "v(1) := bogus"
+	 * on an uninitialized or out-of-range v report the uninitialized/
+	 * subscript error rather than a coercion failure.
+	 */
+	plisql_collection_check_initialized(var->collection, "coll(i) := ...");
+	plisql_collection_check_subscript(&meta, idx);
+
+	/*
+	 * Coerce to the declared element type before the collection is touched.
+	 * A failed coercion must leave the collection exactly as it was, which
+	 * is why this happens here and not inside the runtime.
+	 */
+	if (stmt->fieldname == NULL)
+	{
+		if (meta.elemtypoid == RECORDOID && !isnull &&
+			type_is_rowtype(valtype) && valtypmod != meta.elemtypmod)
+			value = coerce_to_coll_record_elem(estate, value, meta.elemtypmod);
+		else
+			value = exec_cast_value(estate, value, &isnull,
+									valtype, valtypmod,
+									meta.elemtypoid, meta.elemtypmod);
+	}
+	else
+	{
+		/*
+		 * "coll(i).field := value".  The row shape comes from the declared
+		 * element type, which for a "TYPE ... IS RECORD" element is RECORDOID
+		 * plus the blessed typmod recorded at compile time; every stored
+		 * element tuple carries that same (type, typmod) in its header.
+		 */
+		Form_pg_attribute attr;
+
+		elemdesc = lookup_rowtype_tupdesc_noerror(meta.elemtypoid,
+												  meta.elemtypmod, true);
+		if (elemdesc == NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_DATATYPE_MISMATCH),
+					 errmsg("cannot assign to field \"%s\" of an element of collection \"%s\" because its element type %s is not a composite type",
+							stmt->fieldname, var->refname,
+							format_type_be(meta.elemtypoid))));
+
+		for (int i = 0; i < elemdesc->natts; i++)
+		{
+			attr = TupleDescAttr(elemdesc, i);
+			if (!attr->attisdropped &&
+				strcmp(NameStr(attr->attname), stmt->fieldname) == 0)
+			{
+				fieldidx = i;
+				break;
+			}
+		}
+		if (fieldidx < 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_COLUMN),
+					 errmsg("element of collection \"%s\" has no field \"%s\"",
+							var->refname, stmt->fieldname)));
+
+		attr = TupleDescAttr(elemdesc, fieldidx);
+		value = exec_cast_value(estate, value, &isnull,
+								valtype, valtypmod,
+								attr->atttypid, attr->atttypmod);
+	}
+
+	/*
+	 * A nested table or VARRAY cannot be grown by assigning to a subscript it
+	 * does not have -- Oracle raises ORA-06533 and requires EXTEND first.
+	 *
+	 * This tightens the previous behavior, which let "t(5) := 500" on a
+	 * three-element collection silently pad the array out with NULLs.  That
+	 * was an artifact of the dense array representation rather than a
+	 * decision, and keeping it now would be worse than it was then: over
+	 * sparse storage it creates a genuine hole at 4, which the still
+	 * array-backed EXTEND/TRIM adapters would later densify away, silently
+	 * renumbering every subscript after it.  Refusing is both what Oracle
+	 * does and the only answer here that cannot quietly corrupt subscripts.
+	 *
+	 * The runtime's set() keeps its ability to create an entry at any valid
+	 * subscript -- that is the general facility, and associative arrays will
+	 * need it.  The restriction belongs to this collection kind, so it lives
+	 * here.
+	 */
+	if (!plisql_collection_exists(var->collection, idx))
+	{
+		/*
+		 * A deleted slot and a never-allocated one are both absent, but they
+		 * call for different advice.  EXTEND appends after the collection's
+		 * allocated range -- deleted elements included -- so it can never
+		 * make a deleted subscript assignable again; suggesting it there
+		 * would send the reader after something that cannot work.
+		 */
+		if (plisql_collection_was_deleted(var->collection, idx))
+			ereport(ERROR,
+					(errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR),
+					 errmsg("cannot assign to deleted element %d of collection \"%s\"",
+							idx, var->refname),
+					 errdetail("The element at that subscript was removed by DELETE and its subscript cannot be reused.")));
+
+		ereport(ERROR,
+				(errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR),
+				 errmsg("subscript %d is beyond the count of collection \"%s\"",
+						idx, var->refname),
+				 errdetail("The collection has %d element(s).",
+						   plisql_collection_count(var->collection)),
+				 errhint("Use EXTEND to add elements before assigning to them.")));
+	}
+
+	if (elemdesc != NULL)
+	{
+		/*
+		 * Rebuild the element with just this field replaced.  An element
+		 * that is NULL as a whole (fresh from EXTEND, say) starts from all
+		 * fields NULL, as an Oracle record element does.
+		 */
+		MemoryContext oldcxt = MemoryContextSwitchTo(get_eval_mcontext(estate));
+		Datum	   *values = palloc_array(Datum, elemdesc->natts);
+		bool	   *nulls = palloc_array(bool, elemdesc->natts);
+		bool		elemnull;
+		Datum		elem;
+		HeapTuple	tup;
+
+		elem = plisql_collection_get(var->collection, idx, &elemnull);
+		if (elemnull)
+			memset(nulls, true, elemdesc->natts * sizeof(bool));
+		else
+		{
+			HeapTupleHeader td = DatumGetHeapTupleHeader(elem);
+			HeapTupleData tmptup;
+
+			tmptup.t_len = HeapTupleHeaderGetDatumLength(td);
+			ItemPointerSetInvalid(&(tmptup.t_self));
+			tmptup.t_tableOid = InvalidOid;
+			tmptup.t_data = td;
+			heap_deform_tuple(&tmptup, elemdesc, values, nulls);
+		}
+
+		values[fieldidx] = value;
+		nulls[fieldidx] = isnull;
+		tup = heap_form_tuple(elemdesc, values, nulls);
+		value = HeapTupleGetDatum(tup);
+		isnull = false;
+
+		MemoryContextSwitchTo(oldcxt);
+		ReleaseTupleDesc(elemdesc);
+	}
+
+	plisql_collection_set(var->collection, idx, value, isnull);
+
+	/*
+	 * The elem[] cache in var->value no longer reflects the collection.
+	 * Leaving it to exec_eval_datum() to rebuild on demand is the whole
+	 * point: refreshing it here would restore the per-element densification
+	 * this statement exists to avoid.
+	 */
+	var->collection_flat_valid = false;
+
+	exec_eval_cleanup(estate);
+
+	return PLISQL_RC_OK;
+}
+
+/* ----------
+ * exec_stmt_coll_method		EXTEND, TRIM and DELETE() as statements
+ *
+ * Calls the runtime directly on the variable's own collection.  That is what
+ * makes EXTEND amortized O(1) instead of O(n) -- the previous route mutated
+ * a copy and densified it back into elem[] on every call -- and it is what
+ * lets holes survive a mutation at all.
+ *
+ * Failure atomicity comes from the runtime rather than from copying: each of
+ * these operations validates everything it can before it touches the
+ * collection, and the mutation that follows cannot fail except by running
+ * out of memory while growing the entry vector, which happens before the
+ * size changes.  So there is no window in which a raised error leaves the
+ * collection half-updated.
+ * ----------
+ */
+static int
+exec_stmt_coll_method(PLiSQL_execstate * estate, PLiSQL_stmt_coll_method * stmt)
+{
+	PLiSQL_var *var = (PLiSQL_var *) estate->datums[stmt->varno];
+	int32		n = 1;
+	bool		isnull;
+
+	Assert(var->dtype == PLISQL_DTYPE_VAR || var->dtype == PLISQL_DTYPE_PROMISE);
+	Assert(var->datatype->tbltype != NULL);
+
+	if (stmt->arg != NULL)
+	{
+		n = exec_eval_integer(estate, stmt->arg, &isnull);
+		if (isnull)
+		{
+			/*
+			 * Oracle spells these differently -- a count for EXTEND/TRIM, a
+			 * subscript for DELETE -- and the message says which, because
+			 * "count must not be null" against a DELETE(i) would send the
+			 * reader looking for the wrong thing.
+			 */
+			if (stmt->method == PLISQL_COLL_METHOD_DELETE_AT)
+				ereport(ERROR,
+						(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+						 errmsg("DELETE index must not be null")));
+			ereport(ERROR,
+					(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+					 errmsg("%s count must not be null",
+							stmt->method == PLISQL_COLL_METHOD_EXTEND ?
+							"EXTEND" : "TRIM")));
+		}
+	}
+
+	switch (stmt->method)
+	{
+		case PLISQL_COLL_METHOD_EXTEND:
+			plisql_collection_extend(var->collection, n);
+			break;
+		case PLISQL_COLL_METHOD_TRIM:
+			plisql_collection_trim(var->collection, n);
+			break;
+		case PLISQL_COLL_METHOD_DELETE_ALL:
+			plisql_collection_delete_all(var->collection);
+			break;
+		case PLISQL_COLL_METHOD_DELETE_AT:
+			plisql_collection_delete(var->collection, n);
+			break;
+	}
+
+	/* See exec_stmt_coll_assign(): the elem[] cache is refreshed on demand. */
+	var->collection_flat_valid = false;
+
+	exec_eval_cleanup(estate);
+
+	return PLISQL_RC_OK;
+}
+
+/* ----------
+ * exec_stmt_coll_copy		"target := source" between collection variables
+ *
+ * Copies the collection itself rather than routing the value through its
+ * SQL form, so holes survive.  See PLiSQL_stmt_coll_copy.
+ * ----------
+ */
+static int
+exec_stmt_coll_copy(PLiSQL_execstate * estate, PLiSQL_stmt_coll_copy * stmt)
+{
+	PLiSQL_var *target = (PLiSQL_var *) estate->datums[stmt->varno];
+	PLiSQL_var *src = (PLiSQL_var *) estate->datums[stmt->srcvarno];
+	PLiSQL_expanded_collection *coll;
+
+	Assert(target->datatype->tbltype != NULL);
+	Assert(src->datatype->tbltype != NULL);
+
+	if (src->isnull)
+	{
+		if (target->notnull)
+			ereport(ERROR,
+					(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+					 errmsg("null value cannot be assigned to variable \"%s\" declared NOT NULL",
+							target->refname)));
+		plisql_var_collection_assign(estate, target, NULL);
+		return PLISQL_RC_OK;
+	}
+
+	/*
+	 * Copy before installing.  plisql_var_collection_assign() frees the
+	 * target's old collection last, but the copy has to be taken while the
+	 * source is still intact -- and for "t := t" the source IS the old
+	 * target.
+	 */
+	/*
+	 * src->isnull was already handled above, so per the contract on
+	 * PLiSQL_var.collection this must be non-NULL.  An Assert alone would
+	 * compile out in a release build and leave plisql_collection_copy() to
+	 * dereference a NULL collection's meta field, so check explicitly.
+	 */
+	if (src->collection == NULL)
+		elog(ERROR, "collection variable \"%s\" has no collection representation",
+			 src->refname);
+	coll = plisql_collection_copy(src->collection,
+								  plisql_get_relevantContext(target->pkgoid,
+															 estate->datum_context));
+
+	plisql_var_collection_assign(estate, target, coll);
 
 	return PLISQL_RC_OK;
 }
@@ -3650,6 +4143,25 @@ exec_stmt_return(PLiSQL_execstate * estate, PLiSQL_stmt_return * stmt)
 				{
 					PLiSQL_var *var = (PLiSQL_var *) retvar;
 
+					/*
+					 * A collection variable's storage holds an expanded
+					 * COLLECTION, but the declared result type is elem[], so
+					 * the value must be flattened before it leaves as a
+					 * SQL-visible result.  Handing the expanded object out
+					 * raw makes array code read it as an ExpandedArrayHeader.
+					 *
+					 * This is the RETURN half of the same two-path contract
+					 * the Param sites implement; it is here rather than
+					 * deferred because migrating storage (site 2) is what
+					 * makes it reachable.
+					 */
+					/*
+					 * The declared result type is elem[], so a collection
+					 * variable returns its densified cache.  Make it current
+					 * first: indexed assignment leaves it stale deliberately.
+					 */
+					plisql_var_collection_flatten_sql(estate, var);
+
 					estate->retval = var->value;
 					estate->retisnull = var->isnull;
 					estate->rettype = var->datatype->typoid;
@@ -3807,9 +4319,19 @@ exec_stmt_return_next(PLiSQL_execstate * estate,
 			case PLISQL_DTYPE_VAR:
 				{
 					PLiSQL_var *var = (PLiSQL_var *) retvar;
-					Datum		retval = var->value;
-					bool		isNull = var->isnull;
+					Datum		retval;
+					bool		isNull;
 					Form_pg_attribute attr;
+
+					/*
+					 * Reads var->value directly, so a collection variable's
+					 * elem[] cache has to be current first -- indexed
+					 * assignment leaves it stale on purpose.
+					 */
+					plisql_var_collection_flatten_sql(estate, var);
+
+					retval = var->value;
+					isNull = var->isnull;
 
 					if (natts != 1)
 						ereport(ERROR,
@@ -5697,6 +6219,7 @@ exec_assign_value(PLiSQL_execstate * estate,
 				 */
 				PLiSQL_var *var = (PLiSQL_var *) target;
 				Datum		newvalue;
+				PLiSQL_expanded_collection *coll;
 
 				newvalue = exec_cast_value(estate,
 										   value,
@@ -5727,7 +6250,50 @@ exec_assign_value(PLiSQL_execstate * estate,
 				 * cases where it'd be useful to force non-array values into
 				 * expanded form?
 				 */
+				if (var->datatype->tbltype != NULL)
+				{
+					/*
+					 * SITE 2 OF THE STORAGE MIGRATION.  The authoritative
+					 * value of a collection variable is its expanded
+					 * collection, so import here instead of falling through
+					 * to the array/datumTransfer logic below, which would
+					 * install the incoming elem[] as the value itself.
+					 *
+					 * The earlier attempt at this site stored the expanded
+					 * collection in var->value and broke the OUT-parameter
+					 * path, which packs var->value into a tuple and got the
+					 * internal flat form ("subscript -1 is outside the valid
+					 * range"), not an ea_magic assertion.  What is different
+					 * now is that var->value keeps holding a valid elem[] --
+					 * the collection's densified form -- so that path, and
+					 * every other direct reader, is untouched.  See the
+					 * contract on PLiSQL_var.collection.
+					 *
+					 * Import before assigning: newvalue may be derived from
+					 * this same variable, and from_datum() copies rather
+					 * than adopts, so the source has to still be alive.
+					 *
+					 * COST.  Every assignment now imports the incoming
+					 * elem[] and densifies the result, which measured at
+					 * roughly 2x on a loop of "t.extend(); t(i) := i"
+					 * (8000 iterations: 3.0s before, 6.2s after).  The
+					 * quadratic shape of that loop is unchanged and
+					 * pre-existing -- both numbers scale 4x per doubling --
+					 * because indexed assignment still rebuilds the whole
+					 * array each time.  Both costs go away together when
+					 * indexed assignment mutates the collection in place
+					 * instead of round-tripping through elem[]; until then
+					 * this is a constant factor on a path that is already
+					 * the wrong complexity.
+					 */
+					coll = plisql_var_collection_import(estate, var,
+														newvalue, isNull);
+					plisql_var_collection_assign(estate, var, coll);
+					break;
+				}
+
 				if (!var->datatype->typbyval && !isNull)
+
 				{
 					if (var->datatype->typisarray &&
 						!VARATT_IS_EXTERNAL_EXPANDED_RW(DatumGetPointer(newvalue)))
@@ -5963,6 +6529,38 @@ exec_eval_datum(PLiSQL_execstate * estate,
 		case PLISQL_DTYPE_VAR:
 			{
 				PLiSQL_var *var = (PLiSQL_var *) datum;
+
+				/*
+				 * This is the widest of the value-flow boundaries: cursors,
+				 * RAISE arguments, dynamic SQL, CALL and OUT-parameter
+				 * copy-back all reach a variable's value through here, and
+				 * every one of them expects the declared type.  So a
+				 * collection variable's elem[] cache has to be current
+				 * before it goes out.  The consumer set is open-ended, which
+				 * is exactly why the collection is kept beside var->value
+				 * rather than in it.
+				 */
+				plisql_var_collection_flatten_sql(estate, var);
+
+				/*
+				 * With argument binding migrated, every path that gives a
+				 * collection variable a non-NULL value installs a collection
+				 * for it, so the "plain array pending import" state should
+				 * no longer be reachable.  This is what catches a new
+				 * arrival path added without going through collection
+				 * storage -- and it is an assertion rather than a lazy
+				 * import because such a path would also have bypassed the
+				 * declaration metadata that says what kind of collection
+				 * this is.  An Assert alone would compile out in a release
+				 * build and silently hand out var->value as an unimported
+				 * plain array instead of the collection's current elem[]
+				 * cache, so check explicitly rather than only in cassert
+				 * builds.
+				 */
+				if (var->datatype->tbltype != NULL && !var->isnull &&
+					var->collection == NULL)
+					elog(ERROR, "collection variable \"%s\" has no collection representation",
+						 var->refname);
 
 				*typeid = var->datatype->typoid;
 				*typetypmod = var->datatype->atttypmod;
@@ -7318,7 +7916,38 @@ plisql_param_compile(ParamListInfo params, Param *param,
 	 * MakeExpandedObjectReadOnly() will be required.  Currently, only
 	 * VAR/PROMISE and REC datums could contain read/write expanded objects.
 	 */
-	if (datum->dtype == PLISQL_DTYPE_VAR)
+	if (datum->dtype == PLISQL_DTYPE_VAR &&
+		param->paramtype == PLISQL_COLLECTIONOID)
+	{
+		/*
+		 * A collection-context Param (PLISQL_PARAM_COLLECTION_VALUE),
+		 * delivering the variable's own collection to a collection-aware
+		 * expression.
+		 *
+		 * THIS TEST MUST COME BEFORE THE DTYPE_VAR BRANCH BELOW, AND THAT
+		 * ORDERING IS MANDATORY, NOT STYLISTIC.  The branch below selects
+		 * plisql_param_eval_var_check/_ro/_transfer, all of which hand over
+		 * the STORED value -- the variable's elem[] cache.  Delivering
+		 * that to an expression whose Param is typed plisql_collection would
+		 * let an adapter read an ExpandedArrayHeader as a collection: the
+		 * same class of mis-cast that stopped the first cutover attempt,
+		 * only in the opposite direction.  The ordering stops being
+		 * load-bearing once storage holds expanded collections.
+		 */
+		scratch.d.cparam.paramfunc = plisql_param_eval_collection;
+	}
+	else if (datum->dtype == PLISQL_DTYPE_VAR &&
+			 ((PLiSQL_var *) datum)->datatype->tbltype != NULL)
+	{
+		/*
+		 * An ordinary elem[]-typed reference to a collection variable.  Its
+		 * storage may hold an expanded collection, which array machinery
+		 * must never receive, so it is flattened on the way into the
+		 * expression.
+		 */
+		scratch.d.cparam.paramfunc = plisql_param_eval_collection_flat;
+	}
+	else if (datum->dtype == PLISQL_DTYPE_VAR)
 	{
 		bool		isvarlena = (((PLiSQL_var *) datum)->datatype->typlen == -1);
 
@@ -7369,6 +7998,22 @@ plisql_param_compile(ParamListInfo params, Param *param,
 	scratch.d.cparam.pkgoid = datum->pkgoid;
 	scratch.d.cparam.paramid = dno + 1;
 	ExprEvalPushStep(state, &scratch);
+}
+
+/*
+ * Safety checks shared by every "ordinary" (non-collection) DTYPE_VAR Param
+ * evaluation variant below.  The second is the invariant the Param-type
+ * check alone cannot express: an ordinary evaluation variant must never be
+ * looking at collection-backed storage, because it passes the stored value
+ * straight through to array machinery.  Both sides of the type check are
+ * elem[] in that case, so only this catches it.
+ */
+static inline void
+assert_ordinary_param_datum(PLiSQL_var * var, ExprEvalStep *op)
+{
+	Assert(var->datatype->typoid == op->d.cparam.paramtype);
+	Assert(var->isnull || var->datatype->typlen != -1 ||
+		   !DatumIsExpandedCollection(var->value));
 }
 
 /*
@@ -7467,8 +8112,7 @@ plisql_param_eval_var_check(ExprState *state, ExprEvalStep *op,
 	*op->resvalue = var->value;
 	*op->resnull = var->isnull;
 
-	/* safety check -- an assertion should be sufficient */
-	Assert(var->datatype->typoid == op->d.cparam.paramtype);
+	assert_ordinary_param_datum(var, op);
 }
 
 /*
@@ -7481,6 +8125,114 @@ plisql_param_eval_var_check(ExprState *state, ExprEvalStep *op,
  * variable might not contain a read/write expanded value during this
  * execution.
  */
+/*
+ * plisql_param_eval_collection_flat
+ *
+ * An ORDINARY (elem[]-typed) Param referencing a collection variable whose
+ * storage now holds an expanded collection.  The stored object must never be
+ * handed to array machinery, so it is flattened to a dense elem[] here.  This
+ * is the "explicit flatten conversion" half of the two-path contract; without
+ * it, migrating storage would make v[1], RAISE '%' and SQL function arguments
+ * read an expanded collection as an ExpandedArrayHeader.
+ *
+ * Read-only by construction: nothing here mutates the collection.  It does
+ * populate the object's cached flat value, which lives in the collection's
+ * own context and is invalidated by any mutation -- that cache is the point,
+ * so repeated ordinary reads do not re-densify.
+ */
+static void
+plisql_param_eval_collection_flat(ExprState *state, ExprEvalStep *op,
+								  ExprContext *econtext)
+{
+	ParamListInfo params;
+	PLiSQL_execstate *estate;
+	int			dno = op->d.cparam.paramid - 1;
+	PLiSQL_var *var;
+
+	params = econtext->ecxt_param_list_info;
+	estate = (PLiSQL_execstate *) params->paramFetchArg;
+	Assert(dno >= 0 && dno < estate->ndatums);
+
+	var = (PLiSQL_var *) estate->datums[dno];
+	Assert(var->dtype == PLISQL_DTYPE_VAR);
+
+	if (var->isnull)
+	{
+		*op->resvalue = (Datum) 0;
+		*op->resnull = true;
+		return;
+	}
+
+	/*
+	 * An ordinary elem[] reference to a collection variable reads the
+	 * densified cache, so make it current first -- indexed assignment leaves
+	 * it stale deliberately, to keep a fill loop from re-densifying on every
+	 * element.
+	 */
+	plisql_var_collection_flatten_sql(estate, var);
+
+	*op->resvalue = MakeExpandedObjectReadOnly(var->value, var->isnull,
+											   var->datatype->typlen);
+	*op->resnull = var->isnull;
+
+	Assert(var->datatype->typoid == op->d.cparam.paramtype);
+}
+
+static void
+plisql_param_eval_collection(ExprState *state, ExprEvalStep *op,
+							 ExprContext *econtext)
+{
+	ParamListInfo params;
+	PLiSQL_execstate *estate;
+	int			dno = op->d.cparam.paramid - 1;
+	PLiSQL_var *var;
+
+	params = econtext->ecxt_param_list_info;
+	estate = (PLiSQL_execstate *) params->paramFetchArg;
+	Assert(dno >= 0 && dno < estate->ndatums);
+
+	var = (PLiSQL_var *) estate->datums[dno];
+	Assert(var->dtype == PLISQL_DTYPE_VAR);
+	Assert(var->datatype->tbltype != NULL);
+
+	/*
+	 * An atomically NULL collection stays NULL: it is a different value from
+	 * an initialized empty one, and manufacturing an object here would erase
+	 * the distinction every collection method depends on.
+	 */
+	if (var->isnull)
+	{
+		*op->resvalue = (Datum) 0;
+		*op->resnull = true;
+		return;
+	}
+
+	/*
+	 * Hand out the authoritative collection itself, read-only.
+	 *
+	 * Not the elem[] cache in var->value: that is densified, so a collection
+	 * holding a hole would report the wrong subscripts through it -- after a
+	 * DELETE(2) on three elements, LAST is 3, but the cache would say 2.
+	 *
+	 * And not a copy of it either, which is what this did while mutation
+	 * still reached the collection through a Param.  Copying made every
+	 * "t(i)" O(n) and so every loop over a collection quadratic.  Mutation
+	 * is now a statement that calls the runtime directly
+	 * (exec_stmt_coll_method, exec_stmt_coll_assign), so the only things
+	 * left reading a collection Param are COUNT, EXISTS, FIRST, LAST and
+	 * coll(i) -- all read-only.  Nothing can mutate through this pointer,
+	 * which is also why the read/write gate that used to be here is gone:
+	 * the authoritative collection is never handed out writable at all, so
+	 * there is no way for a failed expression to leave it half-updated.
+	 *
+	 * The borrowed pointer outlives the expression -- the object belongs to
+	 * the variable, not to the eval context -- so no lifetime question
+	 * arises from not copying.
+	 */
+	*op->resvalue = plisql_collection_get_expanded_ro(var->collection,
+													 op->resnull);
+}
+
 static void
 plisql_param_eval_var_transfer(ExprState *state, ExprEvalStep *op,
 							   ExprContext *econtext)
@@ -7516,6 +8268,15 @@ plisql_param_eval_var_transfer(ExprState *state, ExprEvalStep *op,
 		var->value = (Datum) 0;
 		var->isnull = true;
 		var->freeval = false;
+
+		/*
+		 * The storage has been handed away wholesale, so no representation
+		 * of it may survive here.  Unreachable for a migrated collection
+		 * variable -- its value is a flat elem[], not an expanded R/W object
+		 * -- but the invariant should hold by construction, not by argument.
+		 */
+		if (var->collection != NULL)
+			plisql_var_collection_clear(var);
 	}
 	else
 	{
@@ -7527,8 +8288,7 @@ plisql_param_eval_var_transfer(ExprState *state, ExprEvalStep *op,
 		*op->resnull = var->isnull;
 	}
 
-	/* safety check -- an assertion should be sufficient */
-	Assert(var->datatype->typoid == op->d.cparam.paramtype);
+	assert_ordinary_param_datum(var, op);
 }
 
 /*
@@ -7567,8 +8327,7 @@ plisql_param_eval_var(ExprState *state, ExprEvalStep *op,
 	*op->resvalue = var->value;
 	*op->resnull = var->isnull;
 
-	/* safety check -- an assertion should be sufficient */
-	Assert(var->datatype->typoid == op->d.cparam.paramtype);
+	assert_ordinary_param_datum(var, op);
 }
 
 /*
@@ -7641,8 +8400,7 @@ plisql_param_eval_var_ro(ExprState *state, ExprEvalStep *op,
 	}
 	*op->resnull = var->isnull;
 
-	/* safety check -- an assertion should be sufficient */
-	Assert(var->datatype->typoid == op->d.cparam.paramtype);
+	assert_ordinary_param_datum(var, op);
 }
 
 /*
@@ -9854,6 +10612,33 @@ plisql_subxact_cb(SubXactEvent event, SubTransactionId mySubid,
 }
 
 /*
+ * Free var->value if it is owned (var->freeval), per its actual
+ * representation: a read-write expanded object is deleted through the
+ * expanded-object protocol, anything else is pfree()'d directly.
+ *
+ * Shared by assign_simple_var() and plisql_var_collection_flatten_sql():
+ * the latter replaces var->value's cache in place rather than going through
+ * assign_simple_var() (which would drop the very collection the cache
+ * describes), but still has to release whatever assign_simple_var() would
+ * have -- the outgoing value can be an expanded array if it was installed by
+ * an arrival path that has not been migrated to the collection
+ * representation yet.
+ */
+static void
+free_var_old_value(PLiSQL_var * var)
+{
+	if (var->freeval)
+	{
+		if (DatumIsReadWriteExpandedObject(var->value,
+										   var->isnull,
+										   var->datatype->typlen))
+			DeleteExpandedObject(var->value);
+		else
+			pfree(DatumGetPointer(var->value));
+	}
+}
+
+/*
  * assign_simple_var --- assign a new value to any VAR datum.
  *
  * This should be the only mechanism for assignment to simple variables,
@@ -9906,15 +10691,22 @@ assign_simple_var(PLiSQL_execstate * estate, PLiSQL_var * var,
 	}
 
 	/* Free the old value if needed */
-	if (var->freeval)
-	{
-		if (DatumIsReadWriteExpandedObject(var->value,
-										   var->isnull,
-										   var->datatype->typlen))
-			DeleteExpandedObject(var->value);
-		else
-			pfree(DatumGetPointer(var->value));
-	}
+	free_var_old_value(var);
+
+	/*
+	 * An assignment that reaches here with a collection still attached is one
+	 * that bypassed the collection representation -- block re-entry, a
+	 * FOR-loop store, an argument bind -- and is storing an ordinary datum.
+	 * Drop the collection rather than let it survive as a second, now stale,
+	 * value.  This is the choke point that makes "collection != NULL implies
+	 * collection is authoritative" true by construction rather than by
+	 * inspection of every caller.  The collection-aware path detaches the
+	 * field before calling here and reinstalls it afterwards, so it never
+	 * loses an object this way.
+	 */
+	if (var->collection != NULL)
+		plisql_var_collection_clear(var);
+
 	/* Assign new value to datum */
 	var->value = newvalue;
 	var->isnull = isnull;
@@ -9926,6 +10718,162 @@ assign_simple_var(PLiSQL_execstate * estate, PLiSQL_var * var,
 	 * way, cancel the promise.
 	 */
 	var->promise = PLISQL_PROMISE_NONE;
+}
+
+/*
+ * Collection-variable storage helpers.
+ *
+ * These are the only code that may touch PLiSQL_var.collection; see the
+ * field's contract in plisql.h for what the two representations mean and
+ * which of them is authoritative.
+ */
+
+/*
+ * Drop a variable's collection representation.
+ *
+ * var->value is left alone on purpose.  It borrows the collection's flat
+ * value, so after this it points into freed memory -- but every caller
+ * either overwrites it immediately (assign_simple_var) or has already
+ * handed the storage away (the transfer path).  Nothing may read var->value
+ * between this call and the overwrite.
+ */
+void
+plisql_var_collection_clear(PLiSQL_var * var)
+{
+	plisql_collection_free(var->collection);
+	var->collection = NULL;
+	var->collection_flat_valid = false;
+}
+
+/*
+ * Make the SQL-visible elem[] cache in var->value current.
+ *
+ * Call this before handing var->value to any consumer that expects the
+ * declared array type.  It is a no-op for an ordinary variable and for a
+ * cache that is already current, so callers need no guard of their own --
+ * and every reader calling it unconditionally is what keeps a newly added
+ * reader from silently picking up a stale array.
+ */
+static void
+plisql_var_collection_flatten_sql(PLiSQL_execstate * estate, PLiSQL_var * var)
+{
+	Datum		flat;
+	bool		isnull;
+
+	if (var->collection == NULL || var->collection_flat_valid)
+		return;
+
+	flat = plisql_collection_flatten_sql(var->collection, &isnull);
+	Assert(!isnull);
+
+	/*
+	 * Replace the cache in place rather than going through
+	 * assign_simple_var(), which would drop the very collection this cache
+	 * describes.  free_var_old_value() is the same free-the-old-value logic
+	 * assign_simple_var() uses: the outgoing value can be an expanded array
+	 * if it was installed by an arrival path that has not been migrated yet.
+	 */
+	free_var_old_value(var);
+	var->freeval = false;
+
+	/* The flat value belongs to the collection, so the variable borrows it. */
+	var->value = flat;
+	var->isnull = false;
+	var->collection_flat_valid = true;
+}
+
+/*
+ * Make coll the variable's value.  A NULL coll means an atomically NULL
+ * collection, which is a different value from an initialized empty one.
+ *
+ * Takes ownership of coll: it must already live under the right parent
+ * context (estate->datum_context, or the package context when pkgoid is
+ * valid), and the caller must not free it afterwards.
+ */
+static void
+plisql_var_collection_assign(PLiSQL_execstate * estate, PLiSQL_var * var,
+							 PLiSQL_expanded_collection * coll)
+{
+	PLiSQL_expanded_collection *old = var->collection;
+
+	/*
+	 * Detach before storing anything.  assign_simple_var() drops an attached
+	 * collection, which here would destroy the object we are installing.
+	 * Detaching also keeps the old object alive across the store, which is
+	 * what makes "t := t" and "t := u" safe: coll was imported from the old
+	 * object while it was still intact, and the old one dies only at the
+	 * bottom of this function.
+	 */
+	var->collection = NULL;
+	var->collection_flat_valid = false;
+
+	if (coll == NULL)
+	{
+		assign_simple_var(estate, var, (Datum) 0, true, false);
+	}
+	else
+	{
+		Datum		flat;
+		bool		isnull;
+
+		/*
+		 * Materialize the cache eagerly.  Lazily would be cheaper, but
+		 * var->value is still read directly by paths this migration has not
+		 * reached -- RETURN NEXT, OUT-parameter tuple construction, the
+		 * ordinary Param variants -- and every one of them requires a valid
+		 * elem[].  Flattening is itself cached inside the collection, so the
+		 * cost is paid once per mutation generation either way; making it
+		 * lazy is a one-line change once those readers route through
+		 * plisql_var_collection_flatten_sql().
+		 */
+		flat = plisql_collection_flatten_sql(coll, &isnull);
+		Assert(!isnull);
+
+		/* freeable = false: the cache is borrowed from coll, not owned. */
+		assign_simple_var(estate, var, flat, false, false);
+
+		var->collection = coll;
+		var->collection_flat_valid = true;
+	}
+
+	if (old != NULL && old != coll)
+		plisql_collection_free(old);
+}
+
+/*
+ * Import a plain elem[] Datum into a fresh collection owned by var's
+ * storage context.  Returns NULL for a NULL input, meaning an atomically
+ * NULL collection.
+ *
+ * Metadata comes from the compiled DECLARATION, never from the value: a
+ * bare array cannot say whether it is a nested table or a VARRAY, nor what
+ * limit was declared.  Importing through plisql_collection_from_datum()
+ * also applies the one-dimensional check, which is the only thing standing
+ * between a multidimensional array and the runtime.
+ */
+static PLiSQL_expanded_collection *
+plisql_var_collection_import(PLiSQL_execstate * estate, PLiSQL_var * var,
+							 Datum value, bool isnull)
+{
+	PLiSQL_coll_meta meta;
+	PLiSQL_expanded_collection *coll;
+	MemoryContext parent;
+	MemoryContext oldcxt;
+
+	Assert(var->datatype->tbltype != NULL);
+
+	if (isnull)
+		return NULL;
+
+	plisql_coll_meta_from_tbltype(var->datatype->tbltype, &meta);
+
+	parent = plisql_get_relevantContext(var->pkgoid, estate->datum_context);
+
+	oldcxt = MemoryContextSwitchTo(parent);
+	coll = plisql_collection_from_datum(value, false, &meta, parent);
+	MemoryContextSwitchTo(oldcxt);
+
+	return coll;
 }
 
 /*
