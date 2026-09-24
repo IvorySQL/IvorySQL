@@ -1481,6 +1481,43 @@ SELECT INSTR('Information for the information age requires information.', 'infor
 /*
  * asciistr
  */
+ -- A byte-length CHAR cast can leave a text value that ends in the middle of
+ -- a UTF-8 character: CHAR(n BYTE) keeps exactly the n bytes it is allowed,
+ -- cutting a character in two when the byte count falls inside it.  The
+ -- truncated value is a legal text datum, and asciistr() always decodes its
+ -- input as UTF-8, so an incomplete sequence has to be reported instead of
+ -- being read past the end of the datum.
+ select asciistr(convert_from('\xC3A9'::bytea, 'UTF8')::sys.oracharbyte(1)) from dual;
+ select asciistr(convert_from('\xE4BDA0'::bytea, 'UTF8')::sys.oracharbyte(1)) from dual;
+ select asciistr(convert_from('\xE4BDA0'::bytea, 'UTF8')::sys.oracharbyte(2)) from dual;
+ select asciistr(convert_from('\xF09F9880'::bytea, 'UTF8')::sys.oracharbyte(1)) from dual;
+ select asciistr(convert_from('\xF09F9880'::bytea, 'UTF8')::sys.oracharbyte(2)) from dual;
+ select asciistr(convert_from('\xF09F9880'::bytea, 'UTF8')::sys.oracharbyte(3)) from dual;
+ select asciistr(convert_from('\x41C3A9'::bytea, 'UTF8')::sys.oracharbyte(2)) from dual;
+ select asciistr(convert_from('\xE4BDA0E5A5BD'::bytea, 'UTF8')::sys.oracharbyte(1)) from dual;
+ select asciistr(convert_from('\xE4BDA0E5A5BD'::bytea, 'UTF8')::sys.oracharbyte(4)) from dual;
+ select asciistr(convert_from('\xE4BDA0E5A5BD'::bytea, 'UTF8')::sys.oracharbyte(5)) from dual;
+ select asciistr(convert_from('\xE282AC'::bytea, 'UTF8')::sys.oracharbyte(1)) from dual;
+ select asciistr(convert_from('\xE282AC'::bytea, 'UTF8')::sys.oracharbyte(2)) from dual;
+ select asciistr(convert_from('\x41F09F9880'::bytea, 'UTF8')::sys.oracharbyte(3)) from dual;
+ select asciistr(convert_from('\x41F09F9880'::bytea, 'UTF8')::sys.oracharbyte(4)) from dual;
+ select asciistr(convert_from('\xF09F9880C3A9'::bytea, 'UTF8')::sys.oracharbyte(5)) from dual;
+ select asciistr(convert_from('\xC3A9F09F9880'::bytea, 'UTF8')::sys.oracharbyte(3)) from dual;
+ select asciistr(convert_from('\xC3B1'::bytea, 'UTF8')::sys.oracharbyte(1)) from dual;
+ select asciistr(convert_from('\xE4BDA0'::bytea, 'UTF8')::sys.oracharbyte(1)::text || '') from dual;
+ select asciistr(convert_from('\xF09F9880'::bytea, 'UTF8')::sys.oracharbyte(3)) from dual;
+ 
+ -- A CHAR cast that stops on a character boundary leaves a complete UTF-8
+ -- sequence, which is still converted to UTF-16 escapes as before.  CHAR
+ -- blank padding is not part of the value, and NULL stays NULL.
+ select asciistr(convert_from('\xC3A9'::bytea, 'UTF8')::sys.oracharbyte(2)) from dual;
+ select asciistr(convert_from('\xE4BDA0'::bytea, 'UTF8')::sys.oracharbyte(3)) from dual;
+ select asciistr(convert_from('\xE282AC'::bytea, 'UTF8')::sys.oracharbyte(3)) from dual;
+ select asciistr(convert_from('\xF09F9880'::bytea, 'UTF8')::sys.oracharbyte(4)) from dual;
+ select asciistr(convert_from('\xE4BDA0E5A5BD'::bytea, 'UTF8')::sys.oracharbyte(6)) from dual;
+ select asciistr(convert_from('\xE4BDA0'::bytea, 'UTF8')::sys.oracharbyte(6)) from dual;
+ select asciistr(convert_from(''::bytea, 'UTF8')) from dual;
+ select asciistr(NULL::text) from dual;
   
  -- string with only ascii chars
  select asciistr('Hello, World!') from dual;

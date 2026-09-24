@@ -1943,67 +1943,111 @@ oracle_instr_4 (PG_FUNCTION_ARGS)
  * ora_asciistr
  *
  * Purpose:
- *	 It takes string as a argument, or an expression that resolves to 
- * 	 a string, in any character set and returns an ASCII 
- *   version of the string in the database character set. 
- *   Non-ASCII characters are converted to the form \xxxx, 
- *   where xxxx represents a UTF-16 code unit. 
+ *	 It takes string as an argument, or an expression that resolves to
+ *	 a string, in any character set and returns an ASCII
+ *	 version of the string in the database character set.
+ *	 Non-ASCII characters are converted to the form \xxxx,
+ *	 where xxxx represents a UTF-16 code unit.
+ *
+ * The escapes produced here hold UTF-16 code units, so the input is always
+ * decoded as UTF-8, whatever the database encoding happens to be.  Every
+ * multibyte character is checked with pg_encoding_verifymbchar() before the
+ * bytes that follow it are read: the two-, three- and four-byte cases below
+ * index str[1] .. str[3], and a text datum built at the byte level can end
+ * after a partial sequence, because the CHAR(n BYTE) cast cuts a value in
+ * the middle of a character.  Without that check the function read past the
+ * end of the datum and copied neighbouring memory into the result as \xxxx
+ * escapes, which disclosed unrelated data and could crash the backend.
  ********************************************************************/
-Datum 
-ora_asciistr(PG_FUNCTION_ARGS) {
-	StringInfoData 	output;
-	text 			*str_arg = NULL;
-	char 			*str = NULL;
-    char			*end = NULL;
-	
+Datum
+ora_asciistr(PG_FUNCTION_ARGS)
+{
+	StringInfoData output;
+	text	   *str_arg;
+	char	   *str;
+	int			len;
+
 	initStringInfo(&output);
 	str_arg = PG_GETARG_TEXT_PP(0);
 	str = VARDATA_ANY(str_arg);
-	end = str + VARSIZE_ANY_EXHDR(str_arg);
+	len = VARSIZE_ANY_EXHDR(str_arg);
 
-    while (str < end) {
-        unsigned char c = *str;
-        uint32_t codePoint;
-		
-		if (c == '\\') {
-			/* Handle backslash character */
-			appendUTF16Escape(&output, 0x005C);  // UTF-16 representation of backslash
+	while (len > 0)
+	{
+		unsigned char c = (unsigned char) *str;
+		int			mblen;
+		uint32_t	codePoint;
+
+		if (c == '\\')
+		{
+			/* Escape the backslash itself so the result stays unambiguous */
+			appendUTF16Escape(&output, 0x005C);
 			str++;
-        } 
-        else if (c < 0x80) {
-            /* ASCII character */
-            appendStringInfoChar(&output, c);
-            str++;
-        } else if ((c & 0xE0) == 0xC0) {
-            /* Two-byte UTF-8 sequence */
-            codePoint = ((c & 0x1F) << 6) | (str[1] & 0x3F);
-            appendUTF16Escape(&output, (uint16_t) codePoint);
-            str += 2;
-        } else if ((c & 0xF0) == 0xE0) {
-            /* Three-byte UTF-8 sequence */
-            codePoint = ((c & 0x0F) << 12) | ((str[1] & 0x3F) << 6) | (str[2] & 0x3F);
-            appendUTF16Escape(&output, (uint16_t) codePoint);
-            str += 3;
-        } else if ((c & 0xF8) == 0xF0) {
-            /* Four-byte UTF-8 sequence */
-			uint16_t highSurrogate, lowSurrogate;
+			len--;
+		}
+		else if (c < 0x80)
+		{
+			/* ASCII character */
+			appendStringInfoChar(&output, c);
+			str++;
+			len--;
+		}
+		else
+		{
+			/*
+			 * Multibyte character.  verifymbchar() returns the length of the
+			 * character, or -1 if the sequence is cut short by the end of the
+			 * datum, has an illegal continuation byte, or is an overlong
+			 * encoding or an encoded surrogate, which UTF-8 does not allow.
+			 */
+			mblen = pg_encoding_verifymbchar(PG_UTF8, str, len);
+			if (mblen < 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("Invalid bytes")));
 
-            codePoint = ((c & 0x07) << 18) | ((str[1] & 0x3F) << 12) | ((str[2] & 0x3F) << 6) | (str[3] & 0x3F);
-            codePoint -= 0x10000;
-            highSurrogate = 0xD800 | (codePoint >> 10);
-            lowSurrogate = 0xDC00 | (codePoint & 0x3FF);
-            appendUTF16Escape(&output, highSurrogate);
-            appendUTF16Escape(&output, lowSurrogate);
-            str += 4;
-        } else {
-            /* Invalid UTF-8 byte */
-			ereport(ERROR,
-			(errcode(ERRCODE_INVALID_PARAMETER_VALUE), errmsg("Invalid bytes")));
-            str++;
-        }
-    }
-	
-    PG_RETURN_TEXT_P(cstring_to_text_with_len(output.data, output.len));
+			if (mblen == 2)
+			{
+				/* Two-byte UTF-8 sequence */
+				codePoint = ((c & 0x1F) << 6) | (str[1] & 0x3F);
+				appendUTF16Escape(&output, (uint16_t) codePoint);
+			}
+			else if (mblen == 3)
+			{
+				/* Three-byte UTF-8 sequence */
+				codePoint = ((c & 0x0F) << 12) |
+					((str[1] & 0x3F) << 6) | (str[2] & 0x3F);
+				appendUTF16Escape(&output, (uint16_t) codePoint);
+			}
+			else if (mblen == 4)
+			{
+				/* Four-byte UTF-8 sequence, emitted as a surrogate pair */
+				uint16_t	highSurrogate,
+							lowSurrogate;
+
+				codePoint = ((c & 0x07) << 18) | ((str[1] & 0x3F) << 12) |
+					((str[2] & 0x3F) << 6) | (str[3] & 0x3F);
+				codePoint -= 0x10000;
+				highSurrogate = 0xD800 | (codePoint >> 10);
+				lowSurrogate = 0xDC00 | (codePoint & 0x3FF);
+				appendUTF16Escape(&output, highSurrogate);
+				appendUTF16Escape(&output, lowSurrogate);
+			}
+			else
+			{
+				/*
+				 * Only the ASCII case handled above is one byte long, so
+				 * verifymbchar() has no other answer left to give.
+				 */
+				elog(ERROR, "unexpected character length: %d", mblen);
+			}
+
+			str += mblen;
+			len -= mblen;
+		}
+	}
+
+	PG_RETURN_TEXT_P(cstring_to_text_with_len(output.data, output.len));
 }
 
 
