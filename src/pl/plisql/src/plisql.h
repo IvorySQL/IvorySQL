@@ -26,6 +26,8 @@
 #include "utils/packagecache.h"
 #include "utils/typcache.h"
 
+#include "pl_collection.h"
+
 /**********************************************************************
  * Definitions
  **********************************************************************/
@@ -135,7 +137,10 @@ typedef enum PLiSQL_stmt_type
 	PLISQL_STMT_PERFORM,
 	PLISQL_STMT_CALL,
 	PLISQL_STMT_COMMIT,
-	PLISQL_STMT_ROLLBACK
+	PLISQL_STMT_ROLLBACK,
+	PLISQL_STMT_COLL_ASSIGN,
+	PLISQL_STMT_COLL_METHOD,
+	PLISQL_STMT_COLL_COPY
 }			PLiSQL_stmt_type;
 
 /*
@@ -204,6 +209,9 @@ typedef enum PLiSQL_rwopt
  * Node and structure definitions
  **********************************************************************/
 
+/* forward reference; full definition follows further down this file */
+struct PLiSQL_tbl_type;
+
 /*
  * Postgres data type
  */
@@ -225,6 +233,16 @@ typedef struct PLiSQL_type
 	TypeName   *origtypname;	/* type name as written by user */
 	TypeCacheEntry *tcache;		/* typcache entry for composite type */
 	uint64		tupdesc_id;		/* last-seen tupdesc identifier */
+
+	/*
+	 * Set only when this type was resolved from a "TYPE ... IS TABLE OF /
+	 * VARRAY" declaration (PLISQL_NSTYPE_TBLTYPE); NULL for every other
+	 * type, including a plain array type declared directly (e.g. "int[]").
+	 * Lets later compile-time hooks (dot-method resolution, coll(i)
+	 * indexing, the type-name constructor) recognize a genuine declared
+	 * collection and recover its kind/bound/element type.
+	 */
+	struct PLiSQL_tbl_type *tbltype;
 }			PLiSQL_type;
 
 /*
@@ -367,6 +385,70 @@ typedef struct PLiSQL_var
 	bool		freeval;
 
 	/*
+	 * Collection variables (datatype->tbltype != NULL) keep their
+	 * authoritative value HERE, not in "value".
+	 *
+	 *		isnull == true
+	 *			=>	collection == NULL, value == 0
+	 *		collection != NULL
+	 *			=>	it is authoritative, and value is its flat cache
+	 *		collection == NULL && !isnull
+	 *			=>	value is a plain elem[] that has not been imported yet
+	 *
+	 * The third state should now be unreachable: assignment and argument
+	 * binding both install a collection, and every other arrival path --
+	 * INTO, FOR-loop and FOREACH stores, cursor fetches, subprogram
+	 * global-variable propagation -- routes through one of them.  It is
+	 * still described here because it is what a newly added arrival path
+	 * would produce, and exec_eval_datum() asserts against it rather than
+	 * importing on demand: such a path would have bypassed the declaration
+	 * metadata that says what kind of collection this is.
+	 *
+	 * What must never happen is a STALE collection, and that holds by
+	 * construction: assign_simple_var() -- the single mechanism for
+	 * assignment to a simple variable -- drops an attached collection, so
+	 * any assignment that bypasses the collection path also destroys the
+	 * representation it bypassed.  The one place that tears variable
+	 * storage down without going through it, plisql_package_reset_context(),
+	 * calls plisql_var_collection_clear() for the same reason.
+	 *
+	 * "value" holds the densified, SQL-visible elem[] form of the same
+	 * collection: a CACHE, never an independent value.  It is borrowed from
+	 * the collection object (see plisql_collection_flatten_sql(), which
+	 * allocates in the object's own context), so freeval is false for it and
+	 * it lives exactly as long as the collection does.
+	 *
+	 * collection_flat_valid says whether "value" still reflects
+	 * "collection".  Anything that mutates the collection in place must
+	 * clear it; anything that hands "value" to a consumer must refresh it
+	 * first.  Only ONE of the two is authoritative -- do not let them drift
+	 * into two independent values.
+	 *
+	 * WHY A CACHE AND NOT A REPLACEMENT.  var->value is read by an open set
+	 * of generic consumers that all expect the DECLARED elem[] type:
+	 * exec_eval_datum() alone feeds cursors, RAISE, dynamic SQL and CALL,
+	 * and OUT parameters are copied back by packing var->value into a tuple.
+	 * Storing an expanded collection in "value" hands those consumers an
+	 * expanded datum whose declared type is an array, which array code casts
+	 * on declared type alone; when it does not trip ea_magic it silently
+	 * reads the internal flat form as an array header.  Keeping "value"
+	 * permanently valid as elem[] is what lets those paths stay untouched.
+	 *
+	 * OWNERSHIP.  The object is created under estate->datum_context, or
+	 * under the package context when pkgoid is valid, and is owned by this
+	 * PLiSQL_var.  PLiSQL_var is shallow-copied with memcpy for each
+	 * execution (copy_plisql_datums), so the copy must NOT inherit the
+	 * pointer: two structs pointing at one object would have the first
+	 * assignment free what the other still holds.  Local collection
+	 * variables therefore start each execution with no representation and
+	 * build one on first assignment.  Package variables are shared by
+	 * reference rather than copied, so their objects stay owned by the
+	 * package context.
+	 */
+	PLiSQL_expanded_collection *collection;
+	bool		collection_flat_valid;
+
+	/*
 	 * The promise field records which "promised" value to assign if the
 	 * promise must be honored.  If it's a normal variable, or the promise has
 	 * been fulfilled, this is PLISQL_PROMISE_NONE.
@@ -417,13 +499,10 @@ typedef struct PLiSQL_row
 }			PLiSQL_row;
 
 /*
- * Kind of an Oracle collection type declaration.
+ * PLiSQL_tbl_kind is defined in pl_collection.h, which this file includes:
+ * the collection runtime needs it and must not depend on the compiler's own
+ * structures, so it lives on the runtime-facing side of that boundary.
  */
-typedef enum PLiSQL_tbl_kind
-{
-	PLISQL_TBL_NESTED_TABLE = 'n', /* TYPE t IS TABLE OF elem (unbounded) */
-	PLISQL_TBL_VARRAY = 'v'		/* TYPE t IS VARRAY(n) OF elem (bounded) */
-}			PLiSQL_tbl_kind;
 
 /*
  * Collection type declaration: "TYPE t IS TABLE OF elem" or
@@ -607,6 +686,82 @@ typedef struct PLiSQL_stmt_assign
 	int			varno;
 	PLiSQL_expr *expr;
 }			PLiSQL_stmt_assign;
+
+/*
+ * Indexed assignment to a collection variable: "coll(i) := value".
+ *
+ * This is its own statement rather than an ordinary assignment because the
+ * ordinary form evaluates a whole new elem[] and stores it, which for a
+ * collection means rebuilding and re-importing the entire array for every
+ * element written -- quadratic over a fill loop, and it cannot preserve
+ * holes either.  Here the subscript and the value are two ordinary scalar
+ * expressions and the write goes straight to plisql_collection_set().
+ *
+ * Only the unambiguous "name(subscript) := value" shape compiles to this;
+ * anything else about the target (a field of a composite element, say)
+ * still takes the general assignment path.
+ */
+typedef struct PLiSQL_stmt_coll_assign
+{
+	PLiSQL_stmt_type cmd_type;
+	int			lineno;
+	unsigned int stmtid;
+	int			varno;			/* the collection variable */
+	PLiSQL_expr *idx;			/* subscript */
+	PLiSQL_expr *val;			/* value to store */
+}			PLiSQL_stmt_coll_assign;
+
+/*
+ * A collection mutation method used as a statement: EXTEND, TRIM, DELETE().
+ *
+ * These call the runtime directly, for the same reason indexed assignment
+ * does.  They used to compile to "coll := pg_catalog.plisql_coll_*_internal
+ * (coll, n)", which handed the collection out as a Param, mutated a copy,
+ * densified the result back to elem[] and re-imported it -- O(n) per call,
+ * and holes could not survive the densification.  Nothing about the
+ * operations needed that; it was the only way to reach the runtime before
+ * there was a statement to do it from.
+ */
+typedef enum PLiSQL_coll_method
+{
+	PLISQL_COLL_METHOD_EXTEND,
+	PLISQL_COLL_METHOD_TRIM,
+	PLISQL_COLL_METHOD_DELETE_ALL,
+	PLISQL_COLL_METHOD_DELETE_AT
+}			PLiSQL_coll_method;
+
+typedef struct PLiSQL_stmt_coll_method
+{
+	PLiSQL_stmt_type cmd_type;
+	int			lineno;
+	unsigned int stmtid;
+	int			varno;			/* the collection variable */
+	PLiSQL_coll_method method;
+	PLiSQL_expr *arg;			/* EXTEND/TRIM count or DELETE subscript;
+								 * NULL when omitted */
+}			PLiSQL_stmt_coll_method;
+
+/*
+ * Whole-variable collection assignment, "target := source".
+ *
+ * This is boundary 1 of pl_collection.h: a plisql-to-plisql transfer, which
+ * MUST preserve holes.  Compiled as an ordinary assignment it does not --
+ * the source is evaluated as a SQL value, which densifies it, and the
+ * subscripts after a hole come back renumbered.  That was invisible while
+ * nothing could create a hole; DELETE(i) makes it reachable.
+ *
+ * Only variable-to-variable assignment is this statement.  A constructor,
+ * a function result or any other expression really is a SQL value, and
+ * densifying it at that boundary is the documented behavior.
+ */
+typedef struct PLiSQL_stmt_coll_copy
+{
+	PLiSQL_stmt_type cmd_type;
+	int			lineno;
+	unsigned int stmtid;
+	int			varno;			/* target collection variable */
+	int			srcvarno;		/* source collection variable */
+}			PLiSQL_stmt_coll_copy;
 
 /*
  * PERFORM statement
@@ -1381,6 +1536,60 @@ extern bool plisql_parse_dblword(char *paramname, char *word1, char *word2,
 extern bool plisql_parse_tripword(char *paramname, char *word1, char *word2,
 								  char *word3, PLwdatum *wdatum,
 								  PLcword *cword);
+/*
+ * Which semantic representation a Param for a plisql datum should carry.
+ *
+ * A collection variable has two representations, and which one a reference
+ * gets depends on the CONTEXT of the reference, not on the variable.  That is
+ * why this is a parameter of Param construction rather than a property read
+ * out of plisql_exec_get_datum_type_info(), whose unconditional declared type
+ * stays correct for ordinary datum metadata.
+ *
+ *	PLISQL_PARAM_SQL_VALUE
+ *		Param type is the declared type -- for a collection, its elem[] --
+ *		and a collection variable gets an explicit flatten conversion.  This
+ *		is what ordinary SQL expressions, SQL function arguments, operators
+ *		and column assignments receive.
+ *
+ *	PLISQL_PARAM_COLLECTION_VALUE
+ *		Param type is the internal collection type, dispatched straight to
+ *		the collection runtime.  No array operator or array coercion may be
+ *		applied to it -- see "THE IN-MEMORY COLLECTION IS NOT AN ARRAY TYPE"
+ *		in pl_collection.h for what happens if one is.
+ *
+ * This enum governs expression references.  The paths that do not go through
+ * Param construction at all -- package variables, RETURN into a SQL-visible
+ * result, OUT-parameter copy-back -- reach the collection through
+ * PLiSQL_var.collection and its accessors instead; see the contract on that
+ * field for which representation each of them sees.
+ */
+typedef enum PLiSQL_param_context
+{
+	PLISQL_PARAM_SQL_VALUE,
+	PLISQL_PARAM_COLLECTION_VALUE
+}			PLiSQL_param_context;
+
+extern Node *make_datum_param(PLiSQL_expr * expr, int dno, int location,
+							  PLiSQL_param_context context);
+
+/*
+ * Functions in pl_collection.c bridging the compiler to the collection
+ * runtime (pl_collection.h / pl_collection_runtime.c)
+ */
+extern void plisql_coll_meta_from_tbltype(const PLiSQL_tbl_type *tbltype,
+										  PLiSQL_coll_meta *meta);
+extern Datum plisql_coll_expand_datum(Datum value, bool isnull,
+									  const PLiSQL_tbl_type *tbltype,
+									  MemoryContext mc, bool *resnull);
+
+/*
+ * Release a variable's collection representation (pl_exec.c).  Exported for
+ * the one place outside pl_exec.c that tears down variable storage by hand
+ * rather than through assign_simple_var(): plisql_package_reset_context().
+ * Leaves var->value alone -- the caller must overwrite it or have already
+ * handed the storage away.
+ */
+extern void plisql_var_collection_clear(PLiSQL_var *var);
 extern PLiSQL_type * plisql_parse_wordtype(char *ident);
 extern PLiSQL_type * plisql_parse_cwordtype(List *idents);
 extern PLiSQL_type * plisql_parse_wordrowtype(char *ident);

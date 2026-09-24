@@ -294,6 +294,8 @@ plisql_package_parse(ParseState *parsestate, PackageCacheItem *item, List *names
 				value = (void *) plisql_build_datatype(tbltype->arraytypoid,
 													   tbltype->arraytypmod,
 													   tbltype->elemcollation, NULL);
+				if (value != NULL)
+					((PLiSQL_type *) value)->tbltype = tbltype;
 				MemoryContextSwitchTo(oldcxt);
 			}
 			break;
@@ -3887,6 +3889,16 @@ plisql_package_reset_context(Oid pkg_oid)
 					else
 						pfree(DatumGetPointer(var->value));
 				}
+
+				/*
+				 * A collection variable's authoritative value is the
+				 * expanded collection beside var->value, and it was
+				 * allocated under the package context -- which this function
+				 * deliberately does not reset (see above).  So it has to be
+				 * released by hand here too, or it would survive the reset
+				 * that is supposed to have discarded it.
+				 */
+				plisql_var_collection_clear(var);
 
 				var->value = (Datum) 0;
 				var->isnull = true;
