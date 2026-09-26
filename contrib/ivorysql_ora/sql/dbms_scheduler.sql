@@ -113,6 +113,14 @@ SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
   'FREQ=WEEKLY;BYDAY=7;BYHOUR=6;BYMINUTE=0;BYSECOND=0',
   '2026-01-05 00:00:00+00', '2026-07-01 00:00:00+00') AS byday_numeric_sunday;
 
+-- Weekly date filters must intersect with BYDAY rather than being ignored
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=WEEKLY;BYDAY=MON;BYDATE=20300114;BYHOUR=9;BYMINUTE=0;BYSECOND=0',
+  '2030-01-07 09:00:00+00', '2030-01-06 00:00:00+00') AS weekly_bydate;
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=WEEKLY;BYDAY=MON;BYMONTHDAY=14;BYHOUR=9;BYMINUTE=0;BYSECOND=0',
+  '2030-01-07 09:00:00+00', '2030-01-06 00:00:00+00') AS weekly_bymonthday;
+
 -- calendar errors
 SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
   'BYHOUR=9', '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00');
