@@ -1576,6 +1576,15 @@ select soundex('Tymczak') from dual;
 select soundex('Honeyman') from dual;
 select soundex('Boothdavis') from dual;
 
+-- Only h and w may intervene between same-code letters: digits,
+-- punctuation and whitespace break the adjacency, so the P of B-P
+-- is coded (B100) while the P of BWP is suppressed (B000).
+select soundex('BP') from dual;
+select soundex('B-P') from dual;
+select soundex('B P') from dual;
+select soundex('BWP') from dual;
+select soundex('Ash-craft') from dual;
+
 -- Zero padding
 select soundex('Lee') from dual;
 select soundex('Washington') from dual;

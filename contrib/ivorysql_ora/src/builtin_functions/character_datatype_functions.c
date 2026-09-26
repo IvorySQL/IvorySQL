@@ -2662,10 +2662,13 @@ ora_listagg_check (PG_FUNCTION_ARGS)
  *      the original string (before step 1), or adjacent except for
  *      any intervening h and w, retain the first letter and omit the
  *      rest.  Note that h and w are transparent for this adjacency
- *      check while the vowels are not; this differs from the
- *      implementation in contrib/fuzzystrmatch, which compares each
- *      letter against its immediate predecessor and therefore codes
- *      "Ashcraft" as A226 instead of the documented A261.
+ *      check while the vowels are not; any other character (digit,
+ *      punctuation, whitespace) breaks the adjacency, so
+ *      soundex('B-P') is B100 while soundex('BWP') is B000.  This
+ *      differs from the implementation in contrib/fuzzystrmatch,
+ *      which compares each letter against its immediate predecessor
+ *      and therefore codes "Ashcraft" as A226 instead of the
+ *      documented A261.
  *   4. Return the first four bytes padded with 0.
  *
  * Behavior for strings that contain no ASCII letters is not covered
@@ -2734,7 +2737,15 @@ ora_soundex(PG_FUNCTION_ARGS)
 		char		code;
 
 		if (!soundex_is_alpha(c))
+		{
+			/*
+			 * Digits, punctuation and whitespace break the adjacency
+			 * of step 3: only h and w may intervene between same-code
+			 * letters, so e.g. soundex('B-P') is B100, not B000.
+			 */
+			last_code = '\0';
 			continue;
+		}
 
 		u = pg_ascii_toupper(c);
 
