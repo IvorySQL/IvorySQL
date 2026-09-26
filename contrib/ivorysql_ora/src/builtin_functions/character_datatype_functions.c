@@ -2645,3 +2645,126 @@ ora_listagg_check (PG_FUNCTION_ARGS)
 
 }
 
+
+/*
+ * SOUNDEX
+ *
+ * Oracle-compatible phonetic string function.  Implements the
+ * algorithm documented in the Oracle SQL Language Reference (SOUNDEX),
+ * as defined in Knuth, The Art of Computer Programming, Volume 3:
+ *
+ *   1. Retain the first letter of the string and remove all other
+ *      occurrences of a, e, h, i, o, u, w, y.
+ *   2. Assign digits to the remaining letters (after the first):
+ *      b f p v = 1, c g j k q s x z = 2, d t = 3, l = 4, m n = 5,
+ *      r = 6.
+ *   3. If two or more letters with the same number were adjacent in
+ *      the original string (before step 1), or adjacent except for
+ *      any intervening h and w, retain the first letter and omit the
+ *      rest.  Note that h and w are transparent for this adjacency
+ *      check while the vowels are not; this differs from the
+ *      implementation in contrib/fuzzystrmatch, which compares each
+ *      letter against its immediate predecessor and therefore codes
+ *      "Ashcraft" as A226 instead of the documented A261.
+ *   4. Return the first four bytes padded with 0.
+ *
+ * Behavior for strings that contain no ASCII letters is not covered
+ * by the Oracle documentation; such strings produce an empty result,
+ * the same convention as contrib/fuzzystrmatch.
+ */
+#define ORA_SOUNDEX_LEN 4
+
+static bool
+soundex_is_alpha(unsigned char c)
+{
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
+static char
+soundex_code_of(unsigned char c)
+{
+	static const char *const soundex_codes = "01230120022455012623010202";
+
+	c = pg_ascii_toupper(c);
+
+	if (soundex_is_alpha(c))
+		return soundex_codes[c - 'A'];
+
+	/* only called for ASCII letters; sentinel for anything else */
+	return '\0';
+}
+
+PG_FUNCTION_INFO_V1(ora_soundex);
+
+Datum
+ora_soundex(PG_FUNCTION_ARGS)
+{
+	text	   *arg = PG_GETARG_TEXT_PP(0);
+	const char *str = VARDATA_ANY(arg);
+	int			len = VARSIZE_ANY_EXHDR(arg);
+	int			i = 0;
+	int			count = 1;
+	char		last_code;
+	char		out[ORA_SOUNDEX_LEN + 1];
+	char	   *o = out;
+
+	/* Skip leading non-alphabetic characters */
+	while (i < len && !soundex_is_alpha((unsigned char) str[i]))
+		++i;
+
+	/*
+	 * No ASCII letters at all: undocumented region, return an empty
+	 * string (same convention as contrib/fuzzystrmatch).
+	 */
+	if (i == len)
+	{
+		out[0] = '\0';
+		PG_RETURN_TEXT_P(cstring_to_text(out));
+	}
+
+	/* Step 1: retain the first letter; its digit participates in step 3 */
+	*o++ = pg_ascii_toupper((unsigned char) str[i]);
+	last_code = soundex_code_of((unsigned char) str[i]);
+	++i;
+
+	for (; i < len && count < ORA_SOUNDEX_LEN; ++i)
+	{
+		unsigned char c = (unsigned char) str[i];
+		unsigned char u;
+		char		code;
+
+		if (!soundex_is_alpha(c))
+			continue;
+
+		u = pg_ascii_toupper(c);
+
+		if (u == 'H' || u == 'W')
+			continue;			/* transparent for the adjacency check */
+
+		if (u == 'A' || u == 'E' || u == 'I' ||
+			u == 'O' || u == 'U' || u == 'Y')
+		{
+			last_code = '\0';	/* vowels break the adjacency */
+			continue;
+		}
+
+		/* Steps 2 and 3: omit a letter repeating an adjacent digit */
+		code = soundex_code_of(c);
+		if (code == last_code)
+			continue;
+
+		*o++ = code;
+		last_code = code;
+		++count;
+	}
+
+	/* Step 4: pad with 0 */
+	while (count < ORA_SOUNDEX_LEN)
+	{
+		*o++ = '0';
+		++count;
+	}
+	*o = '\0';
+
+	PG_RETURN_TEXT_P(cstring_to_text(out));
+}

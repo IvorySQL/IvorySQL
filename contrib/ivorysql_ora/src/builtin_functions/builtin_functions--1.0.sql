@@ -56,6 +56,24 @@ PARALLEL SAFE
 IMMUTABLE; 
 COMMENT ON FUNCTION sys.to_single_byte(text) IS 'Convert characters to their corresponding single-byte characters if possible';
 
+/*
+ * SOUNDEX: Oracle-compatible phonetic string function.
+ *
+ * Follows the algorithm documented in the Oracle SQL Language
+ * Reference (SOUNDEX): retain the first letter, assign digits to the
+ * remaining letters, code same-digit letters once when they are
+ * adjacent in the original string or separated only by h or w, and
+ * return the first four bytes padded with 0.
+ */
+CREATE FUNCTION sys.soundex(str text)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_soundex'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+COMMENT ON FUNCTION sys.soundex(text) IS 'Return the phonetic representation of the given string, following the algorithm documented in the Oracle SQL Language Reference';
+
 /* length/lengthb for CHAR(n char/byte) */
 CREATE FUNCTION sys.length(text)
 RETURNS integer

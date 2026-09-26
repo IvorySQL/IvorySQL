@@ -4074,3 +4074,116 @@ select to_single_byte(NULL);
  
 (1 row)
 
+--
+-- Tests for soundex
+--
+-- Examples from the Oracle SQL Language Reference (SOUNDEX):
+select soundex('SMITH') from dual;
+ soundex 
+---------
+ S530
+(1 row)
+
+select soundex('SMYTHE') from dual;
+ soundex 
+---------
+ S530
+(1 row)
+
+select soundex('smith') from dual;
+ soundex 
+---------
+ S530
+(1 row)
+
+-- Same-digit letters adjacent in the original string, or separated
+-- only by h or w, are coded once; vowels break the adjacency.
+-- Ashcraft is A261 per the documented algorithm, not A-226.
+select soundex('Ashcraft') from dual;
+ soundex 
+---------
+ A261
+(1 row)
+
+select soundex('Pfister') from dual;
+ soundex 
+---------
+ P236
+(1 row)
+
+select soundex('Tymczak') from dual;
+ soundex 
+---------
+ T522
+(1 row)
+
+select soundex('Honeyman') from dual;
+ soundex 
+---------
+ H555
+(1 row)
+
+select soundex('Boothdavis') from dual;
+ soundex 
+---------
+ B312
+(1 row)
+
+-- Zero padding
+select soundex('Lee') from dual;
+ soundex 
+---------
+ L000
+(1 row)
+
+select soundex('Washington') from dual;
+ soundex 
+---------
+ W252
+(1 row)
+
+select soundex('GUTIERREZ') from dual;
+ soundex 
+---------
+ G362
+(1 row)
+
+select soundex('VANDEUSEN') from dual;
+ soundex 
+---------
+ V532
+(1 row)
+
+select soundex('hello world!') from dual;
+ soundex 
+---------
+ H464
+(1 row)
+
+-- NULL input propagates
+select soundex(NULL) from dual;
+ soundex 
+---------
+ 
+(1 row)
+
+-- Strings without ASCII letters produce an empty result
+-- (undocumented region; convention matches contrib/fuzzystrmatch)
+select soundex('12345') from dual;
+ soundex 
+---------
+ 
+(1 row)
+
+select soundex('') from dual;
+ soundex 
+---------
+ 
+(1 row)
+
+select soundex('中文') from dual;
+ soundex 
+---------
+ 
+(1 row)
+
