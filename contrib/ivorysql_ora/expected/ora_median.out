@@ -17,9 +17,9 @@ select median(salary) from median_t;
 -- Even count: linear interpolation between the two middle values
 delete from median_t where id = 5;
 select median(salary) from median_t;
-        median        
-----------------------
- 250.0000000000000000
+ median 
+--------
+ 250
 (1 row)
 
 -- NULLs are ignored in the calculation
@@ -53,9 +53,9 @@ insert into median_dup values (7);
 insert into median_dup values (7);
 insert into median_dup values (7);
 select median(x) from median_dup;
-       median       
---------------------
- 7.0000000000000000
+ median 
+--------
+ 7
 (1 row)
 
 drop table median_dup;
@@ -82,6 +82,19 @@ select median(x) from median_big;
 (1 row)
 
 drop table median_big;
+-- Large integer midpoints keep their fractional part: the interpolation
+-- multiplies by 0.5 instead of dividing by 2, so the exact .5 midpoint of
+-- two consecutive 21-digit integers is not rounded away
+create table median_bigint (x number);
+insert into median_bigint values (100000000000000000001);
+insert into median_bigint values (100000000000000000002);
+select median(x) from median_bigint;
+         median          
+-------------------------
+ 100000000000000000001.5
+(1 row)
+
+drop table median_bigint;
 -- Median per group (Oracle SQL Reference example: median salary per department)
 create table median_emp (dept_id int, salary number);
 insert into median_emp values (10, 4400);
@@ -93,25 +106,25 @@ insert into median_emp values (20, 10500);
 insert into median_emp values (20, 11000);
 insert into median_emp values (30, null);
 select dept_id, median(salary) from median_emp group by dept_id order by dept_id;
- dept_id |         median         
----------+------------------------
-      10 | 4600.0000000000000000
-      20 | 10250.0000000000000000
+ dept_id | median 
+---------+--------
+      10 | 4600
+      20 | 10250
       30 | 
 (3 rows)
 
 -- Analytic form: the partition-wide median for every row
 select dept_id, salary, median(salary) over (partition by dept_id) as median_sal
   from median_emp order by dept_id, salary;
- dept_id | salary |       median_sal       
----------+--------+------------------------
-      10 | 4400   | 4600.0000000000000000
-      10 | 4800   | 4600.0000000000000000
-      10 |        | 4600.0000000000000000
-      20 | 9500   | 10250.0000000000000000
-      20 | 10000  | 10250.0000000000000000
-      20 | 10500  | 10250.0000000000000000
-      20 | 11000  | 10250.0000000000000000
+ dept_id | salary | median_sal 
+---------+--------+------------
+      10 | 4400   | 4600
+      10 | 4800   | 4600
+      10 |        | 4600
+      20 | 9500   | 10250
+      20 | 10000  | 10250
+      20 | 10500  | 10250
+      20 | 11000  | 10250
       30 |        | 
 (8 rows)
 
@@ -160,9 +173,9 @@ select pg_typeof(median(a)), pg_typeof(median(b)) from median_f;
 (1 row)
 
 select median(a), median(b) from median_f;
-       median       |       median       
---------------------+--------------------
- 2.0000000000000000 | 3.0000000000000000
+ median | median 
+--------+--------
+ 2      | 3
 (1 row)
 
 drop table median_f;

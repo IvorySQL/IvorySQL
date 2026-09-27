@@ -1946,7 +1946,16 @@ IMMUTABLE;
  * int2/int4/int8/numeric and sys.binary_float/binary_double) reach it
  * through the existing implicit casts.  Interpolation is done in decimal
  * arithmetic, so results stay exact where a float8 percentile
- * implementation would lose precision.
+ * implementation would lose precision.  The midpoint is computed by
+ * multiplying the sum of the two middle values by 0.5 rather than
+ * dividing by 2: division keeps only NUMERIC_MIN_SIG_DIGITS significant
+ * digits, which rounds away an attainable fractional midpoint for large
+ * integers (the median of 100000000000000000001 and 100000000000000000002
+ * is 100000000000000000001.5), while multiplication preserves the exact
+ * sum scale; trim_scale then drops insignificant trailing zeros.  The
+ * operators are qualified with OPERATOR(sys.*), so the interpolation keeps
+ * its decimal semantics no matter which search_path is in effect when the
+ * extension script runs.
  *
  * Known deviation (documented in the regression tests): Oracle returns
  * the same data type as its argument, so median() over a BINARY_FLOAT or
@@ -1973,7 +1982,9 @@ PARALLEL SAFE
 AS $$
     SELECT CASE WHEN n = 0 THEN NULL
                 WHEN n % 2 = 1 THEN v[(n + 1) / 2]
-                ELSE (v[n / 2] + v[n / 2 + 1]) / 2 END
+                ELSE pg_catalog.trim_scale(
+                       ((v[n / 2] OPERATOR(sys.+) v[n / 2 + 1]) OPERATOR(sys.*) 0.5::sys.number)
+                       ::pg_catalog.numeric)::sys.number END
     FROM (SELECT array_agg(x ORDER BY x) AS v, count(*)::int AS n
           FROM unnest($1) AS t(x) WHERE x IS NOT NULL) s
 $$;

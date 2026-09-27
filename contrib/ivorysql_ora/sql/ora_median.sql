@@ -52,6 +52,15 @@ insert into median_big values (0.123456789012345678901234567892);
 select median(x) from median_big;
 drop table median_big;
 
+-- Large integer midpoints keep their fractional part: the interpolation
+-- multiplies by 0.5 instead of dividing by 2, so the exact .5 midpoint of
+-- two consecutive 21-digit integers is not rounded away
+create table median_bigint (x number);
+insert into median_bigint values (100000000000000000001);
+insert into median_bigint values (100000000000000000002);
+select median(x) from median_bigint;
+drop table median_bigint;
+
 -- Median per group (Oracle SQL Reference example: median salary per department)
 create table median_emp (dept_id int, salary number);
 insert into median_emp values (10, 4400);
