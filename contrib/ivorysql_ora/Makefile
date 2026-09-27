@@ -104,7 +104,8 @@ ORA_REGRESS = \
 	dbms_transaction \
 	dbms_random \
 	utl_match \
-	dbms_scheduler
+	dbms_scheduler \
+	ora_median
 
 TAP_TESTS = 1
 
