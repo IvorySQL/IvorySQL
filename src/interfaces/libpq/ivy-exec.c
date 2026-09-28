@@ -874,6 +874,7 @@ IvyFreePreparedStatement(IvyPreparedStatement *stmtHandle)
 		while (tmp != NULL)
 		{
 			next = tmp->next;
+			free(tmp->name);
 			free(tmp);
 			tmp = next;
 		}
@@ -2080,7 +2081,7 @@ IvyBindByName(IvyPreparedStatement *stmtHandle,
 		return 0;
 	}
 
-	if (name == NULL || name_len <= 0)
+	if (name == NULL || name_len == 0 || name_len > INT_MAX)
 	{
 		snprintf(errhp->error_msg, errhp->err_buf_size, "%s", "bind name is NULL");
 		return 0;
@@ -2096,7 +2097,15 @@ IvyBindByName(IvyPreparedStatement *stmtHandle,
 	bindname->indp = indp;
 	bindname->bindinfo = bindinfo;
 	bindname->name_len = name_len;
-	bindname->name = (char *) name;
+	bindname->name = malloc(name_len + 1);
+	if (bindname->name == NULL)
+	{
+		free(bindname);
+		snprintf(errhp->error_msg, errhp->err_buf_size, "%s", "failed to allocate memory");
+		return 0;
+	}
+	memcpy(bindname->name, name, name_len);
+	bindname->name[name_len] = '\0';
 	bindname->next = NULL;
 	bindname->var = var;
 	bindname->val_size = val_size;
@@ -2125,13 +2134,14 @@ IvyBindByName(IvyPreparedStatement *stmtHandle,
 			serbind != NULL; 
 			prebind = serbind, serbind = serbind->next)
 		{
-			if (strcmp(serbind->name, name) == 0)
+			if (strcmp(serbind->name, bindname->name) == 0)
 			{
 				/* replace its bind info */
 				serbind->var = var;
 				serbind->indp = indp;
 				serbind->val_size = val_size;
-				serbind->name = (char *) name;
+				free(serbind->name);
+				serbind->name = bindname->name;
 				serbind->name_len = name_len;
 				serbind->bindinfo = bindinfo;
 				serbind->replace = 0;
@@ -2786,7 +2796,7 @@ IvybindOutParameterByName(IvyPreparedStatement *stmthandle,
 		return 0;
 	}
 
-	if (NULL == name || name_len <= 0)
+	if (NULL == name || name_len == 0 || name_len > INT_MAX)
 	{
 		snprintf(errormsg, size_error_buf, "%s", 
 			"bind name is wrong");
@@ -2803,7 +2813,15 @@ IvybindOutParameterByName(IvyPreparedStatement *stmthandle,
 
 	bindname->indp = indp;
 	bindname->bindinfo = bindinfo;
-	bindname->name = (char *) name;
+	bindname->name = malloc(name_len + 1);
+	if (bindname->name == NULL)
+	{
+		free(bindname);
+		snprintf(errormsg, size_error_buf, "%s", "failed to allocate memory");
+		return 0;
+	}
+	memcpy(bindname->name, name, name_len);
+	bindname->name[name_len] = '\0';
 	bindname->name_len = name_len;
 	bindname->replace = 0;
 	bindname->var = var;
@@ -2827,7 +2845,7 @@ IvybindOutParameterByName(IvyPreparedStatement *stmthandle,
 			serbind != NULL; 
 			prebind = serbind, serbind = serbind->next)
 		{
-			if (strcmp(serbind->name, name) == 0)
+			if (strcmp(serbind->name, bindname->name) == 0)
 			{
 				if (replace_ok == 1)
 				{
@@ -2835,7 +2853,8 @@ IvybindOutParameterByName(IvyPreparedStatement *stmthandle,
 					serbind->var = var;
 					serbind->indp = indp;
 					serbind->val_size = val_size;
-					serbind->name = (char *) name;
+					free(serbind->name);
+					serbind->name = bindname->name;
 					serbind->replace = 0;
 					serbind->name_len = name_len;
 					serbind->bindinfo = bindinfo;
@@ -2850,6 +2869,7 @@ IvybindOutParameterByName(IvyPreparedStatement *stmthandle,
 					snprintf(errormsg, size_error_buf, "%s", "repeat bind variable");
 					PGSemaphoreUnlock(&stmthandle->lock);
 
+					free(bindname->name);
 					free(bindname);
 					*bindinfo = NULL;
 
