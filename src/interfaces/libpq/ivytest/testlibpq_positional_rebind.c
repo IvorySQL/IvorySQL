@@ -54,7 +54,13 @@ main(void)
 	}
 	if (!IvybindOutParameterByPos(stmt, &bind[0], 1, &values[0], sizeof(int),
 								  &indicators[0], 1, errmsg, sizeof(errmsg)) ||
-		bind[0]->next != bind[1] || bind[1]->next != bind[2])
+		stmt->outbind != bind[0] || bind[0]->next != bind[1] ||
+		bind[1]->next != bind[2] || bind[2]->next != NULL)
+		return EXIT_FAILURE;
+	if (!IvybindOutParameterByPos(stmt, &bind[1], 2, &values[1], sizeof(int),
+								  &indicators[1], 1, errmsg, sizeof(errmsg)) ||
+		stmt->outbind != bind[0] || bind[0]->next != bind[1] ||
+		bind[1]->next != bind[2] || bind[2]->next != NULL)
 		return EXIT_FAILURE;
 	IvyFreeHandle(stmt, IVY_HANDLE_STMT);
 	IvyFreeHandle(err, IVY_HANDLE_ERROR);

@@ -23,7 +23,7 @@ PROGS += testlibpq_positional_rebind
 all: $(PROGS)
 
 check: testlibpq_positional_rebind
-	./testlibpq_positional_rebind
+	$(call add_to_path,$(strip $(ld_library_path_var)),$(abspath $(libpq_builddir))) ./testlibpq_positional_rebind
 
 clean distclean maintainer-clean:
 	rm -f *.o
