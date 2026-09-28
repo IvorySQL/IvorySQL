@@ -288,6 +288,9 @@ get_altertable_subcmdinfo(PG_FUNCTION_ARGS)
 			case AT_GenericOptions:
 				strtype = "SET OPTIONS";
 				break;
+			case AT_ForceViewCompile:
+				strtype = "COMPILE FORCE VIEW";
+				break;
 			case AT_DetachPartition:
 				strtype = "DETACH PARTITION";
 				break;
@@ -314,6 +317,19 @@ get_altertable_subcmdinfo(PG_FUNCTION_ARGS)
 				break;
 			case AT_ReAddStatistics:
 				strtype = "(re) ADD STATS";
+				break;
+			case AT_DropInvisible:
+				strtype = "ALTER COLUMN DROP INVISIBLE";
+				break;
+			case AT_SetInvisible:
+				strtype = "ALTER COLUMN SET INVISIBLE";
+				break;
+			case AT_AddRowids:
+			case AT_AddRowidsRecurse:
+				strtype = "SET WITH ROWID";
+				break;
+			case AT_DropRowids:
+				strtype = "SET WITHOUT ROWID";
 				break;
 		}
 
