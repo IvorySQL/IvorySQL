@@ -8,16 +8,29 @@
 #include "postgres_fe.h"
 #include <assert.h>
 #include <limits.h>
+#include <locale.h>
 #include "libpq-fe.h"
 #include "libpq-ivy.h"
 
 int
 main(void)
 {
-	Ivyconn    *conn = Ivyconnectdb(getenv("IVY_TEST_CONNINFO") ? getenv("IVY_TEST_CONNINFO") :
-									"user=system dbname=postgres port=1521");
+	const char *numeric_locale = getenv("IVY_TEST_NUMERIC_LOCALE");
+	char	   *decimal_point;
+	Ivyconn    *conn;
 	IvyError   *err = NULL;
 	int			mode;
+
+	if (numeric_locale && !setlocale(LC_NUMERIC, numeric_locale))
+	{
+		fprintf(stderr, "numeric locale unavailable: %s\n", numeric_locale);
+		return EXIT_FAILURE;
+	}
+	decimal_point = strdup(localeconv()->decimal_point);
+	if (!decimal_point)
+		return EXIT_FAILURE;
+	conn = Ivyconnectdb(getenv("IVY_TEST_CONNINFO") ? getenv("IVY_TEST_CONNINFO") :
+						"user=system dbname=postgres port=1521");
 
 	if (!conn || Ivystatus(conn) != CONNECTION_OK ||
 		!IvyHandleAlloc(NULL, (void **) &err, IVY_HANDLE_ERROR, 0, NULL))
@@ -27,7 +40,7 @@ main(void)
 		IvyPreparedStatement *stmt = NULL;
 		IvyBindInfo *bind = NULL;
 		Ivyresult  *res;
-		double		value = mode == 2 ? 0.0 : 1.23456789012345;
+		double		value = 1.23456789012345;
 		int			indicator = 0;
 		const char *query = mode == 2 ? "begin :x := 1.25; end;" : "select :x";
 
@@ -46,7 +59,7 @@ main(void)
 			return EXIT_FAILURE;
 		res = IvyStmtExecute(conn, stmt, err);
 		if (!res || (mode < 2 && (IvyresultStatus(res) != PGRES_TUPLES_OK ||
-								  strtod(Ivygetvalue(res, 0, 0), NULL) != value)) ||
+								  strcmp(Ivygetvalue(res, 0, 0), "1.23456789012345") != 0)) ||
 			(mode == 2 && (value != 1.25 || indicator != 0)))
 		{
 			fprintf(stderr, "double binding mode %d failed: %s\n", mode, err->error_msg);
@@ -57,6 +70,9 @@ main(void)
 	}
 	IvyFreeHandle(err, IVY_HANDLE_ERROR);
 	Ivyfinish(conn);
+	if (strcmp(localeconv()->decimal_point, decimal_point) != 0)
+		return EXIT_FAILURE;
+	free(decimal_point);
 	puts("double precision bindings passed");
 	return EXIT_SUCCESS;
 }

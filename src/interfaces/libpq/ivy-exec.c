@@ -18,6 +18,10 @@
 #include <ctype.h>
 #include <fcntl.h>
 #include <float.h>
+#include <locale.h>
+#ifdef HAVE_XLOCALE_H
+#include <xlocale.h>
+#endif
 #include <limits.h>
 #include "libpq-fe.h"
 #include "libpq-int.h"
@@ -3452,6 +3456,74 @@ get_paramvalue_type(int type)
 }
 
 /*
+ * Serialize FLOAT8 input using the C numeric locale and round-trip precision.
+ */
+static int
+ivy_format_double(double value, char *buf, size_t size)
+{
+	int			len;
+
+#ifdef WIN32
+	_locale_t	c_locale = _create_locale(LC_NUMERIC, "C");
+
+	if (c_locale == NULL)
+		return -1;
+	len = _snprintf_l(buf, size, "%.*g", c_locale, DBL_DIG + 2, value);
+	_free_locale(c_locale);
+#else
+	locale_t	c_locale = newlocale(LC_NUMERIC_MASK, "C", (locale_t) 0);
+	locale_t	saved_locale;
+
+	if (c_locale == (locale_t) 0)
+		return -1;
+	saved_locale = uselocale(c_locale);
+	if (saved_locale == (locale_t) 0)
+	{
+		freelocale(c_locale);
+		return -1;
+	}
+	len = snprintf(buf, size, "%.*g", DBL_DIG + 2, value);
+	uselocale(saved_locale);
+	freelocale(c_locale);
+#endif
+	return len >= 0 && (size_t) len < size ? len : -1;
+}
+
+/*
+ * Parse server FLOAT8 text without changing the caller's numeric locale.
+ * POSIX locale selection is thread-local; Windows provides an explicit
+ * locale argument for strtod.
+ */
+static bool
+ivy_parse_double(const char *text, double *value)
+{
+#ifdef WIN32
+	_locale_t	c_locale = _create_locale(LC_NUMERIC, "C");
+
+	if (c_locale == NULL)
+		return false;
+	*value = _strtod_l(text, NULL, c_locale);
+	_free_locale(c_locale);
+#else
+	locale_t	c_locale = newlocale(LC_NUMERIC_MASK, "C", (locale_t) 0);
+	locale_t	saved_locale;
+
+	if (c_locale == (locale_t) 0)
+		return false;
+	saved_locale = uselocale(c_locale);
+	if (saved_locale == (locale_t) 0)
+	{
+		freelocale(c_locale);
+		return false;
+	}
+	*value = strtod(text, NULL);
+	uselocale(saved_locale);
+	freelocale(c_locale);
+#endif
+	return true;
+}
+
+/*
  * assign OUT parameter according to column value
  */
 static void
@@ -3541,8 +3613,15 @@ assign_value_internel(PGresult *res, char *column,
 			break;
 			case IVY_VALUE_DOUBLE:
 			{
-				double double_value = strtod(attrvalue->value, NULL);
+				double double_value;
 				size_t copy_size = Min(sizeof(double), bindvar_size);
+
+				if (!ivy_parse_double(attrvalue->value, &double_value))
+				{
+					if (indp != NULL)
+						*indp = -2;
+					break;
+				}
 
 				if (indp != NULL)
 					*indp = sizeof(double) - copy_size;
@@ -3651,7 +3730,9 @@ IvyhandleParamsValues(IvyPreparedStatement *stmtHandle,
 					break;
 
 				case IVY_VALUE_DOUBLE:
-					len = snprintf(buf, 256, "%.*g", DBL_DIG + 2, *((double *)tmp->var));
+					len = ivy_format_double(*((double *)tmp->var), buf, sizeof(buf));
+					if (len < 0)
+						return 0;
 					(*paramValuesp)[i] = (char *) malloc(len + 1);
 
 					if ((*paramValuesp)[i] == NULL)
@@ -3736,7 +3817,9 @@ IvyhandleParamsValues(IvyPreparedStatement *stmtHandle,
 					break;
 
 				case IVY_VALUE_DOUBLE:
-					len = snprintf(buf, 256, "%.*g", DBL_DIG + 2, *((double *)tmp1->var));
+					len = ivy_format_double(*((double *)tmp1->var), buf, sizeof(buf));
+					if (len < 0)
+						return 0;
 					(*paramValuesp)[i] = (char *) malloc(len + 1);
 
 					if ((*paramValuesp)[i] == NULL)
