@@ -29,5 +29,5 @@ clean distclean maintainer-clean:
 	rm -rf log
 oracle-check: oracle-subcheck
 oracle-subcheck: oracle_test.sh all
-	MAKE=$(MAKE) bindir=$(bindir) libdir=$(libdir) EXTRA_REGRESS_OPTS="$(EXTRA_REGRESS_OPTS)" $(SHELL) $< --install
+	MAKE=$(MAKE) srcdir="$(srcdir)" bindir=$(bindir) libdir=$(libdir) EXTRA_REGRESS_OPTS="$(EXTRA_REGRESS_OPTS)" $(SHELL) $< --install
 
