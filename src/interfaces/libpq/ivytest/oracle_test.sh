@@ -13,6 +13,24 @@ set -e
 unset MAKEFLAGS
 unset MAKELEVEL
 
+server_started=no
+temp_socket_dir=
+
+cleanup() {
+	status=$?
+	trap - 0 1 2 13 15
+	if [ "$server_started" = yes ]; then
+		pg_ctl -D "$PGDATA" -m immediate stop >/dev/null 2>&1 || true
+	fi
+	if [ -n "$temp_socket_dir" ]; then
+		rm -rf "$temp_socket_dir"
+	fi
+	exit "$status"
+}
+
+trap cleanup 0
+trap 'exit 3' 1 2 13 15
+
 # Run a given "initdb" binary and overlay the regression testing
 # authentication configuration.
 standard_initdb() {
@@ -52,8 +70,7 @@ case $testhost in
 			}
 
 			PGHOST=$dir
-			trap 'rm -rf "$PGHOST"' 0
-			trap 'exit 3' 1 2 13 15
+			temp_socket_dir=$PGHOST
 		fi
 		;;
 esac
@@ -143,6 +160,7 @@ PGDATA=$BASE_PGDATA
 export PGDATA
 
 standard_initdb
+server_started=yes
 pg_ctl start -l "$logdir/postmaster1.log" -o "$POSTMASTER_OPTS" -w
 
 #test regression
@@ -154,6 +172,7 @@ do
  ./$line >results/$line.out
 done
 pg_ctl -m fast stop
+server_started=no
 
 #get result
 cat regression.txt|while read line
