@@ -22,13 +22,13 @@ main(void)
 	if (!conn || Ivystatus(conn) != CONNECTION_OK ||
 		!IvyHandleAlloc(NULL, (void **) &err, IVY_HANDLE_ERROR, 0, NULL))
 		return EXIT_FAILURE;
-	for (named = 0; named < 2; named++)
+	for (named = 0; named < 3; named++)
 	{
 		IvyPreparedStatement *stmt = NULL;
 		IvyBindInfo *bind = NULL;
 		Ivyresult  *res;
 		int			value = 42;
-		const char *query = "select :x";
+		const char *query = named == 2 ? "begin :x := :x + 1; end;" : "select :x";
 
 		if (!IvyHandleAlloc(NULL, (void **) &stmt, IVY_HANDLE_STMT, 0, NULL) ||
 			!IvyStmtPrepare(stmt, err, query, strlen(query), 0, 0))
@@ -36,7 +36,8 @@ main(void)
 		if (named)
 		{
 			if (!IvyBindByName(stmt, &bind, err, ":x", 2, &value, sizeof(value),
-							   23, NULL, NULL, NULL, 0, NULL, 0))
+							   23 | (named == 2 ? 0x60000000 : 0),
+							   NULL, NULL, NULL, 0, NULL, 0))
 				return EXIT_FAILURE;
 		}
 		else if (!IvyBindByPos(stmt, &bind, err, 1, &value, sizeof(value),
@@ -44,7 +45,8 @@ main(void)
 			return EXIT_FAILURE;
 		res = IvyStmtExecute(conn, stmt, err);
 		if (!res || IvyresultStatus(res) != PGRES_TUPLES_OK ||
-			strcmp(Ivygetvalue(res, 0, 0), "42") != 0)
+			(named < 2 && strcmp(Ivygetvalue(res, 0, 0), "42") != 0) ||
+			(named == 2 && value != 43))
 		{
 			fprintf(stderr, "%s\n", err->error_msg);
 			return EXIT_FAILURE;
