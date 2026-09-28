@@ -17,6 +17,7 @@
 
 #include <ctype.h>
 #include <fcntl.h>
+#include <float.h>
 #include <limits.h>
 #include "libpq-fe.h"
 #include "libpq-int.h"
@@ -55,6 +56,7 @@ static void Ivyfreelist(Ivylist *list);
 typedef enum IVY_VALUE_TYPE
 {
 	IVY_VALUE_FLOAT,
+	IVY_VALUE_DOUBLE,
 	IVY_VALUE_INTEGER,
 	IVY_VALUE_BIGINTEGER,
 	IVY_VALUE_BYTE
@@ -3347,7 +3349,7 @@ get_paramvalue_type(int type)
 			ret = IVY_VALUE_BYTE;
 			break;
 		case 701:	//FLOAT8
-			ret = IVY_VALUE_FLOAT;
+			ret = IVY_VALUE_DOUBLE;
 			break;
 		case 1022:	//FLOAT8_ARRAY
 			ret = IVY_VALUE_BYTE;
@@ -3537,6 +3539,16 @@ assign_value_internel(PGresult *res, char *column,
 				*((float *) bindvar) = float_value;
 			}
 			break;
+			case IVY_VALUE_DOUBLE:
+			{
+				double double_value = strtod(attrvalue->value, NULL);
+				size_t copy_size = Min(sizeof(double), bindvar_size);
+
+				if (indp != NULL)
+					*indp = sizeof(double) - copy_size;
+				memcpy(bindvar, &double_value, copy_size);
+			}
+			break;
 			default:
 			if (indp != NULL)
 				*indp = -2;
@@ -3638,6 +3650,17 @@ IvyhandleParamsValues(IvyPreparedStatement *stmtHandle,
 					memcpy((*paramValuesp)[i], buf, len);
 					break;
 
+				case IVY_VALUE_DOUBLE:
+					len = snprintf(buf, 256, "%.*g", DBL_DIG + 2, *((double *)tmp->var));
+					(*paramValuesp)[i] = (char *) malloc(len + 1);
+
+					if ((*paramValuesp)[i] == NULL)
+						goto ERROR_HANDLE;
+
+					memset((*paramValuesp)[i], 0x00, len + 1);
+					memcpy((*paramValuesp)[i], buf, len);
+					break;
+
 				case IVY_VALUE_BYTE:
 					len = tmp->val_size;
 					(*paramValuesp)[i] = (char *) malloc(len + 1);
@@ -3703,6 +3726,17 @@ IvyhandleParamsValues(IvyPreparedStatement *stmtHandle,
 
 				case IVY_VALUE_FLOAT:
 					len = snprintf(buf, 256, "%f", *((float *)tmp1->var));
+					(*paramValuesp)[i] = (char *) malloc(len + 1);
+
+					if ((*paramValuesp)[i] == NULL)
+						goto ERROR_HANDLE;
+
+					memset((*paramValuesp)[i], 0x00, len + 1);
+					memcpy((*paramValuesp)[i], buf, len);
+					break;
+
+				case IVY_VALUE_DOUBLE:
+					len = snprintf(buf, 256, "%.*g", DBL_DIG + 2, *((double *)tmp1->var));
 					(*paramValuesp)[i] = (char *) malloc(len + 1);
 
 					if ((*paramValuesp)[i] == NULL)
