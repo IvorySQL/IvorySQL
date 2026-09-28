@@ -1052,7 +1052,8 @@ Ivynfields(const Ivyresult *res)
 char *
 Ivyfname(const Ivyresult *res, int field_num)
 {
-	if (!res || !check_field_number(res->result, field_num + res->off))
+	if (!res || field_num < 0 || field_num >= Ivynfields(res) ||
+		!check_field_number(res->result, field_num + res->off))
 		return NULL;
 
 	if (res->result->attDescs)
@@ -1079,7 +1080,8 @@ Ivyntuples(const Ivyresult *res)
 char *
 Ivygetvalue(const Ivyresult *res, int tup_num, int field_num)
 {
-	if (!res || !check_tuple_field_number(res->result, tup_num, field_num + res->off))
+	if (!res || field_num < 0 || field_num >= Ivynfields(res) ||
+		!check_tuple_field_number(res->result, tup_num, field_num + res->off))
 		return NULL;
 
 	return res->result->tuples[tup_num][field_num + res->off].value;
