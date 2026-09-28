@@ -62,6 +62,12 @@ gensql: gensql.pl
 install-data:
 	$(INSTALL_DATA) $(srcdir)/preload_ora_misc.sql '$(DESTDIR)$(datadir)/preload_ora_misc.sql'
 
+# Remove the preload script installed outside the extension directory.
+uninstall: uninstall-preload
+
+uninstall-preload:
+	rm -f '$(DESTDIR)$(datadir)/preload_ora_misc.sql'
+
 # Clean the generated SQL(s).
 cleansql:
 	rm -f $(DATA)
