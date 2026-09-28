@@ -1323,7 +1323,8 @@ IvybindOutParameterByPosInternel(IvyPreparedStatement *stmthandle,
 		free_bind = true;
 	}
 
-	(*bindinfo)->next = NULL;
+	if (free_bind)
+		(*bindinfo)->next = NULL;
 	(*bindinfo)->indp = indp;
 	(*bindinfo)->val_size = val_size;
 	(*bindinfo)->position = position;
@@ -1469,7 +1470,8 @@ IvyBindByPosInternel(IvyPreparedStatement *stmtHandle,
 		free_bind = true;
 	}
 
-	(*bindinfo)->next = NULL;
+	if (free_bind)
+		(*bindinfo)->next = NULL;
 	(*bindinfo)->indp = indp;
 	(*bindinfo)->val_size = value_sz;
 	(*bindinfo)->position = position;
