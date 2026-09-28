@@ -23,7 +23,7 @@ PROGS += testlibpq_result_bounds
 all: $(PROGS)
 
 check: testlibpq_result_bounds
-	./testlibpq_result_bounds
+	$(call add_to_path,$(strip $(ld_library_path_var)),$(abspath $(libpq_builddir))) ./testlibpq_result_bounds
 
 clean distclean maintainer-clean:
 	rm -f *.o
