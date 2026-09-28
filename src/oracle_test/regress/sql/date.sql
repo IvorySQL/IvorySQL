@@ -473,3 +473,50 @@ SELECT (min(a) < min(c)) AS sysdate_advanced_after_nested
 FROM sysdate_leak_test;
 DROP TABLE sysdate_leak_test;
 DROP FUNCTION sysdate_nested_fn();
+
+-- #1697 (two-level nesting): a PL/iSQL call inside another PL/iSQL call.
+-- Neither level may leak its refreshed timestamp: after the inner call
+-- finishes, the outer function's own statement, and the enclosing SQL
+-- statement, must still see their own timestamps.  This is the structure
+-- reported against the fix: previously inner reads leaked into the outer
+-- reads (nested_time_after and outer_after both showed the inner time).
+CREATE FUNCTION sysdate_inner_fn() RETURNS text
+LANGUAGE plisql AS $$
+DECLARE d text;
+BEGIN
+  PERFORM pg_sleep(1);
+  d := to_char(sysdate, 'YYYYMMDDHH24MISS');
+  RETURN d;
+END $$;
+
+CREATE OR REPLACE FUNCTION sysdate_nested2_fn() RETURNS text
+LANGUAGE plisql AS $$
+DECLARE
+  d_self  text;
+  d_after text;
+  d_inner text;
+BEGIN
+  PERFORM pg_sleep(1);
+  WITH before_cte (a) AS MATERIALIZED
+         (SELECT to_char(sysdate, 'YYYYMMDDHH24MISS')),
+       nested_cte (b) AS MATERIALIZED
+         (SELECT sysdate_inner_fn() AS b FROM before_cte),
+       after_cte (c) AS MATERIALIZED
+         (SELECT to_char(sysdate, 'YYYYMMDDHH24MISS') FROM nested_cte)
+  SELECT a, b, c INTO d_self, d_inner, d_after
+    FROM before_cte, nested_cte, after_cte;
+  RETURN d_self || '|' || d_inner || '|' || d_after;
+END $$;
+
+WITH before_cte (a) AS MATERIALIZED
+       (SELECT to_char(sysdate, 'YYYYMMDDHH24MISS')),
+     nested_cte (b) AS MATERIALIZED
+       (SELECT sysdate_nested2_fn() AS b FROM before_cte),
+     after_cte (c) AS MATERIALIZED
+       (SELECT to_char(sysdate, 'YYYYMMDDHH24MISS') FROM nested_cte)
+SELECT (a = c) AS outer_stable_2,
+       (substr(b, 1, 14) = substr(b, 31, 14)) AS nested_stable_2,
+       (a < substr(b, 1, 14) AND substr(b, 1, 14) < substr(b, 16, 14)) AS advances_2
+FROM before_cte, nested_cte, after_cte;
+DROP FUNCTION sysdate_nested2_fn();
+DROP FUNCTION sysdate_inner_fn();
