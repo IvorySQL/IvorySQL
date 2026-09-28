@@ -2081,7 +2081,8 @@ IvyBindByName(IvyPreparedStatement *stmtHandle,
 		return 0;
 	}
 
-	if (name == NULL || name_len == 0 || name_len > INT_MAX)
+	if (name == NULL || name_len == 0 || name_len > INT_MAX ||
+		memchr(name, '\0', name_len) != NULL)
 	{
 		snprintf(errhp->error_msg, errhp->err_buf_size, "%s", "bind name is NULL");
 		return 0;
@@ -2796,7 +2797,8 @@ IvybindOutParameterByName(IvyPreparedStatement *stmthandle,
 		return 0;
 	}
 
-	if (NULL == name || name_len == 0 || name_len > INT_MAX)
+	if (NULL == name || name_len == 0 || name_len > INT_MAX ||
+		memchr(name, '\0', name_len) != NULL)
 	{
 		snprintf(errormsg, size_error_buf, "%s", 
 			"bind name is wrong");

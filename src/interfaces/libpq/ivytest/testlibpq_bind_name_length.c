@@ -19,6 +19,8 @@ main(void)
 	IvyBindInfo *bind = NULL;
 	char	   *name = malloc(2);
 	int			value = 7;
+	int			rejected_value = 99;
+	const char	invalid_name[] = {':', 'x', '\0', 'y'};
 	int			indicator = 0;
 	char		errmsg[256];
 	int			legacy;
@@ -55,6 +57,24 @@ main(void)
 								sizeof(value), 23, &indicator, NULL, NULL, 0, NULL, 0))
 			return EXIT_FAILURE;
 		if (stmt->namebind->next != NULL || strcmp(stmt->namebind->name, ":x") != 0)
+			return EXIT_FAILURE;
+		/* An explicit name span must not alias a shorter C string. */
+		if (legacy)
+		{
+			if (IvybindOutParameterByName(stmt, &bind, invalid_name,
+										  sizeof(invalid_name), &rejected_value,
+										  sizeof(rejected_value), &indicator, 1,
+										  errmsg, sizeof(errmsg)))
+				return EXIT_FAILURE;
+		}
+		else if (IvyBindByName(stmt, &bind, err, invalid_name,
+							   sizeof(invalid_name), &rejected_value,
+							   sizeof(rejected_value), 23, &indicator,
+							   NULL, NULL, 0, NULL, 0))
+			return EXIT_FAILURE;
+		if (stmt->namebind->next != NULL ||
+			strcmp(stmt->namebind->name, ":x") != 0 ||
+			stmt->namebind->var != &value)
 			return EXIT_FAILURE;
 		IvyFreeHandle(stmt, IVY_HANDLE_STMT);
 	}

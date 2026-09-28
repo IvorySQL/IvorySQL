@@ -23,7 +23,7 @@ PROGS += testlibpq_bind_name_length
 all: $(PROGS)
 
 check: testlibpq_bind_name_length
-	./testlibpq_bind_name_length
+	$(call add_to_path,$(strip $(ld_library_path_var)),$(abspath $(libpq_builddir))) ./testlibpq_bind_name_length
 
 clean distclean maintainer-clean:
 	rm -f *.o
