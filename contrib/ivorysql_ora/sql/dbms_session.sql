@@ -156,3 +156,22 @@ call dbms_session.reset_package();
 select sys_context('rp_ns', 'key') as ctx_after_reset;
 
 DROP PACKAGE rp_pkg;
+
+--
+-- Length-aware namespace matching (review item 1).
+--
+-- clear_namespace() compares stored keys by exact byte length plus memcmp, so
+-- CLEAR_CONTEXT('pfx') must not remove an attribute stored under a longer
+-- namespace that only shares a prefix.
+--
+-- Note: the chr(0) variant from the review ('AB'||chr(0)||'C' vs 'AB') cannot
+-- be expressed in SQL today because IvorySQL's chr(0) raises
+-- "null character not permitted" (upstream behavior).  This prefix case
+-- exercises the same length-based guard.
+--
+call dbms_session.set_context('pfx', 'a', '1');
+call dbms_session.set_context('pfx_long', 'a', '2');
+call dbms_session.clear_context('pfx');
+select sys_context('pfx', 'a') is null as pfx_cleared;
+select sys_context('pfx_long', 'a') as pfx_long_kept;
+call dbms_session.clear_context('pfx_long');
