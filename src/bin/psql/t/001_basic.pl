@@ -562,4 +562,33 @@ psql_fails_like(
 		'Oracle \\sf strips a trailing semicolon');
 }
 
+# \r must reset the Oracle lexer state as well, not just the state
+# shared with the PG lexer.  After discarding a half-entered anonymous
+# block, the next statement has to be executed at its semicolon instead of
+# being swallowed by the aborted block and deferred to end of input.
+{
+	local $ENV{PG_TEST_INITDB_EXTRA_OPTS} = '-m oracle';
+	my $oracle_node = PostgreSQL::Test::Cluster->new('oracle_reset');
+
+	$oracle_node->init;
+	$oracle_node->start;
+
+	my $script = "SET ivorysql.compatible_mode = oracle;\n"
+	  . "\\parser\n"
+	  . "DECLARE\n"
+	  . "\\r\n"
+	  . "SELECT 1;\n"
+	  . "\\echo MARKER-AFTER-RESET\n";
+	my ($ret, $stdout, $stderr) = $oracle_node->psql('postgres', $script);
+	is($ret, 0, 'Oracle \r: exit code 0');
+	is($stderr, '', 'Oracle \r: no stderr');
+	# --tuples-only output: the result line for SELECT 1 is just '1'
+	my $result_pos = index($stdout, "\n1\n");
+	my $marker_pos = index($stdout, 'MARKER-AFTER-RESET');
+	cmp_ok($result_pos, '>=', 0, 'Oracle \r: statement executed');
+	cmp_ok($marker_pos, '>=', 0, 'Oracle \r: marker seen');
+	cmp_ok($result_pos, '<', $marker_pos,
+		'Oracle \r clears the anonymous-block scanner state');
+}
+
 done_testing();
