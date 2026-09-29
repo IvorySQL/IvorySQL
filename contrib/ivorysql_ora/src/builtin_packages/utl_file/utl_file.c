@@ -839,6 +839,7 @@ ora_utl_file_putf(PG_FUNCTION_ARGS)
 	char   *fpt;
 	int		cur_par = 0;
 	size_t	cur_len = 0;
+	int		chlen;
 
 	CHECK_FILE_HANDLE();
 	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), &max_linesize, &encoding);
@@ -880,9 +881,23 @@ ora_utl_file_putf(PG_FUNCTION_ARGS)
 			fpt++; format_length--;
 			continue;
 		}
-		CHECK_LENGTH(++cur_len);
-		if (fputc(fpt[0], fd) == EOF)
+		/*
+		 * Copy the whole character.  The format string is already in the
+		 * target encoding, and in encodings such as GB18030 the trailing byte
+		 * of a multibyte character can be 0x5c, the backslash, so the escapes
+		 * above must not be looked for in the middle of one.  The length is
+		 * bounded by what is left of the format string, which is not NUL
+		 * terminated when no conversion was needed.
+		 */
+		chlen = pg_encoding_mblen_or_incomplete(encoding, fpt, format_length);
+		if (chlen > (int) format_length)
+			chlen = (int) format_length;
+		cur_len += chlen;
+		CHECK_LENGTH(cur_len);
+		if (fwrite(fpt, 1, chlen, fd) != chlen)
 			CHECK_ERRNO_PUT();
+		fpt += chlen - 1;
+		format_length -= chlen - 1;
 	}
 
 	PG_RETURN_BOOL(true);
