@@ -60,6 +60,110 @@ print_tuple(Ivyresult *res)
 	return;
 }
 
+/* Keep each bind-info pointer alive until its statement handle is freed. */
+static int
+prepare_bound_stmt(IvyPreparedStatement **stmt, IvyError *errhp,
+				   const char *query, IvyBindInfo **bindinfo,
+				   int *value, int *indicator)
+{
+	return IvyHandleAlloc(NULL, (void **) stmt, IVY_HANDLE_STMT, 0, NULL) &&
+		IvyStmtPrepare(*stmt, errhp, query, strlen(query), 0, 0) &&
+		IvyBindByName(*stmt, bindinfo, errhp, ":v", 2, value, sizeof(*value),
+					  23 | 0x20000000, indicator, NULL, NULL, 0, NULL, 0);
+}
+
+static int
+check_stmt_result(Ivyconn *conn, IvyPreparedStatement *stmt, IvyError *errhp,
+				  const char *expected, const char *label)
+{
+	Ivyresult  *res = IvyStmtExecute(conn, stmt, errhp);
+	int			ok = res != NULL && IvyresultStatus(res) == PGRES_TUPLES_OK &&
+		Ivyntuples(res) == 1 && Ivynfields(res) == 1 &&
+		strcmp(Ivygetvalue(res, 0, 0), expected) == 0;
+
+	if (ok)
+		printf("%s: %s\n", label, Ivygetvalue(res, 0, 0));
+	else
+		fprintf(stderr, "%s failed: %s\n", label, errhp->error_msg);
+	Ivyclear(res);
+	return ok;
+}
+
+static int
+exec_multiple_handles(Ivyconn *conn, const char *conninfo)
+{
+	Ivyconn    *other = NULL;
+	IvyPreparedStatement *stmt[3] = {NULL, NULL, NULL};
+	IvyBindInfo *bindinfo[3] = {NULL, NULL, NULL};
+	IvyError   *errhp = NULL;
+	int			values[3] = {11, 21, 31};
+	int			indicators[3] = {0, 0, 0};
+	int			ok = 0;
+	int			i;
+
+	if (!IvyHandleAlloc(NULL, (void **) &errhp, IVY_HANDLE_ERROR, 0, NULL))
+		goto done;
+	other = Ivyconnectdb(conninfo);
+	if (other == NULL || Ivystatus(other) != CONNECTION_OK)
+		goto done;
+	if (!prepare_bound_stmt(&stmt[0], errhp, "SELECT :v", &bindinfo[0],
+							&values[0], &indicators[0]) ||
+		!prepare_bound_stmt(&stmt[1], errhp, "SELECT :v + 1", &bindinfo[1],
+							&values[1], &indicators[1]))
+		goto done;
+
+	if (!check_stmt_result(conn, stmt[0], errhp, "11", "first handle") ||
+		!check_stmt_result(conn, stmt[1], errhp, "22", "second handle"))
+		goto done;
+	values[0] = 12;
+	if (!check_stmt_result(conn, stmt[0], errhp, "12", "first handle again") ||
+		!check_stmt_result(other, stmt[0], errhp, "12", "first on other connection") ||
+		!check_stmt_result(other, stmt[1], errhp, "22", "second on other connection"))
+		goto done;
+
+	/* Freeing one handle must not deallocate the other's server statement. */
+	IvyFreeHandle(stmt[0], IVY_HANDLE_STMT);
+	stmt[0] = NULL;
+	if (!check_stmt_result(conn, stmt[1], errhp, "22", "second after first freed") ||
+		!check_stmt_result(other, stmt[1], errhp, "22", "other after first freed"))
+		goto done;
+
+	/* A newly allocated handle can coexist with the surviving one. */
+	if (!prepare_bound_stmt(&stmt[2], errhp, "SELECT :v + 2", &bindinfo[2],
+							&values[2], &indicators[2]) ||
+		!check_stmt_result(conn, stmt[2], errhp, "33", "new handle") ||
+		!check_stmt_result(other, stmt[2], errhp, "33", "new on other connection") ||
+		!check_stmt_result(conn, stmt[1], errhp, "22", "second after new handle"))
+		goto done;
+	IvyFreeHandle(stmt[1], IVY_HANDLE_STMT);
+	IvyFreeHandle(stmt[2], IVY_HANDLE_STMT);
+	stmt[1] = stmt[2] = NULL;
+
+	/* Every connection associated with a released handle is cleaned up. */
+	for (i = 0; i < 2; i++)
+	{
+		Ivyresult  *res = Ivyexec(i == 0 ? conn : other,
+								  "SELECT count(*) FROM pg_prepared_statements");
+
+		ok = res != NULL && IvyresultStatus(res) == PGRES_TUPLES_OK &&
+			strcmp(Ivygetvalue(res, 0, 0), "0") == 0;
+		Ivyclear(res);
+		if (!ok)
+			goto done;
+	}
+	printf("released handles leave no prepared statements\n");
+
+done:
+	for (i = 0; i < 3; i++)
+		if (stmt[i] != NULL)
+			IvyFreeHandle(stmt[i], IVY_HANDLE_STMT);
+	if (errhp != NULL)
+		IvyFreeHandle(errhp, IVY_HANDLE_ERROR);
+	if (other != NULL)
+		Ivyfinish(other);
+	return ok;
+}
+
 static void
 exec_prepare(Ivyconn *conn, int byname, int update)
 {
@@ -296,6 +400,13 @@ main()
 	/* end the transaction */
 	res = Ivyexec(conn, "END");
 	Ivyclear(res);
+
+	if (!exec_multiple_handles(conn, conninfo))
+	{
+		fprintf(stderr, "multiple statement handles failed\n");
+		Ivyfinish(conn);
+		return EXIT_FAILURE;
+	}
 
 	Ivyfinish(conn);
 	return 0;
