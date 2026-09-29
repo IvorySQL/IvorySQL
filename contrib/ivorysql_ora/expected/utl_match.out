@@ -721,3 +721,18 @@ NOTICE:  null: ed=-1, eds=100
 NOTICE:  jw null=0, jws null=0
 NOTICE:  kitten vs sitting: ed=3
 NOTICE:  中文 ed=3 jws=100
+-- Large equal values exercise the exact-match path without changing the
+-- bytewise semantics of any of the four public calculations.
+CREATE TEMP TABLE utl_match_equal_input AS
+SELECT repeat('ab', 4000) AS left_value, repeat('ab', 4000) AS right_value;
+SELECT sys.ora_utl_match_edit_distance(left_value, right_value) = 0 AS ed,
+       sys.ora_utl_match_edit_distance_similarity(left_value, right_value) = 100 AS eds,
+       sys.ora_utl_match_jaro_winkler(left_value, right_value) = 1.0 AS jw,
+       sys.ora_utl_match_jaro_winkler_similarity(left_value, right_value) = 100 AS jws
+FROM utl_match_equal_input;
+ ed | eds | jw | jws 
+----+-----+----+-----
+ t  | t   | t  | t
+(1 row)
+
+DROP TABLE utl_match_equal_input;
