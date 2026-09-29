@@ -4521,3 +4521,27 @@ DETAIL:  "ivorysql" is a reserved prefix.
 reset ivorysql.dummy_config;
 ERROR:  invalid configuration parameter name "ivorysql.dummy_config"
 DETAIL:  "ivorysql" is a reserved prefix.
+-- Tests for sys.uid()
+-- sys.uid() returns the current user's OID; compare rather than print it so
+-- the result is stable across environments.
+SELECT sys.uid() = current_user::regrole::oid AS uid_matches;
+ uid_matches 
+-------------
+ t
+(1 row)
+
+-- Oracle mode: the UID pseudo-column binds to sys.uid()
+SET ivorysql.compatible_mode = oracle;
+SELECT UID = current_user::regrole::oid AS oracle_uid_matches FROM dual;
+ oracle_uid_matches 
+--------------------
+ t
+(1 row)
+
+SELECT sys.uid() = UID AS uid_consistent;
+ uid_consistent 
+----------------
+ t
+(1 row)
+
+RESET ivorysql.compatible_mode;

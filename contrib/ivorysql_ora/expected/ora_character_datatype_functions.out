@@ -4074,3 +4074,38 @@ select to_single_byte(NULL);
  
 (1 row)
 
+-- Tests for to_clob() and to_blob() (text -> clob/blob domain conversion)
+SELECT length(to_clob('abc')) AS clob_len;
+ clob_len 
+----------
+        3
+(1 row)
+
+SELECT length(to_blob('abc')) AS blob_len;
+ blob_len 
+----------
+        3
+(1 row)
+
+-- multibyte input: length is in characters
+SELECT length(to_clob('中文')) AS clob_mb_len;
+ clob_mb_len 
+-------------
+           2
+(1 row)
+
+-- oracle mode: empty string is NULL, functions are STRICT
+SET ivorysql.compatible_mode = oracle;
+SELECT to_clob('') IS NULL AS clob_empty_null;
+ clob_empty_null 
+-----------------
+ t
+(1 row)
+
+SELECT to_blob('') IS NULL AS blob_empty_null;
+ blob_empty_null 
+-----------------
+ t
+(1 row)
+
+RESET ivorysql.compatible_mode;

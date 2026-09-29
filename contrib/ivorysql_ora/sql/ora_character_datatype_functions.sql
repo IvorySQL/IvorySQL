@@ -1558,3 +1558,14 @@ select to_single_byte('１．２');
 select to_single_byte(１．２);
 select to_single_byte(3.4);
 select to_single_byte(NULL);
+
+-- Tests for to_clob() and to_blob() (text -> clob/blob domain conversion)
+SELECT length(to_clob('abc')) AS clob_len;
+SELECT length(to_blob('abc')) AS blob_len;
+-- multibyte input: length is in characters
+SELECT length(to_clob('中文')) AS clob_mb_len;
+-- oracle mode: empty string is NULL, functions are STRICT
+SET ivorysql.compatible_mode = oracle;
+SELECT to_clob('') IS NULL AS clob_empty_null;
+SELECT to_blob('') IS NULL AS blob_empty_null;
+RESET ivorysql.compatible_mode;
