@@ -20,6 +20,7 @@
 #include "access/gist.h"
 #include "access/heapam.h"
 #include "access/heapam_xlog.h"
+#include "access/htup_details.h"
 #include "access/multixact.h"
 #include "access/reloptions.h"
 #include "access/relscan.h"
@@ -6853,8 +6854,33 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 
 			/* Write the tuple out to the new relation */
 			if (newrel)
+			{
+				/*
+				 * If the relation has ROWIDs, carry the old value over to the
+				 * rebuilt tuple: the rewrite must not stamp fresh sequence
+				 * numbers (or degenerate zeros) over rows that already have
+				 * stable ROWIDs that applications may have cached.
+				 */
+				if (oldrel->rd_rel->relhasrowid)
+				{
+					HeapTuple	oldhtup;
+					HeapTuple	newhtup;
+					int64		rowid;
+
+					oldhtup = ExecFetchSlotHeapTuple(oldslot, false, NULL);
+					rowid = HeapTupleGetRowId(oldhtup);
+					if (rowid > 0)
+					{
+						ExecMaterializeSlot(insertslot);
+						newhtup = ExecFetchSlotHeapTuple(insertslot, false, NULL);
+						Assert(newhtup->t_data->t_infomask & HEAP_HASROWID);
+						HeapTupleSetRowId(newhtup, rowid);
+					}
+				}
+
 				table_tuple_insert(newrel, insertslot, mycid,
 								   ti_options, bistate);
+			}
 
 			ResetExprContext(econtext);
 

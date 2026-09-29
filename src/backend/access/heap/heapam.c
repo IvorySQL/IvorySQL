@@ -2147,10 +2147,23 @@ heap_prepare_insert(Relation relation, HeapTuple tup, TransactionId xid,
 		/* this is redundant with an Assert in HeapTupleSetRowId */
 		Assert(tup->t_data->t_infomask & HEAP_HASROWID);
 #endif
-		/* Get the sequence next value */
-		seqnum = nextval_internal(relation->rd_rowdSeqid, true);
-		/* Set the HeapTupleHeader */
-		HeapTupleSetRowId(tup, seqnum);
+
+		/*
+		 * Assign a fresh sequence value unless the tuple already carries a
+		 * valid ROWID.  Tuples copied from another table by a rewrite (e.g.
+		 * ALTER TABLE ... TYPE or REPACK CONCURRENTLY) must keep their
+		 * existing ROWID, so that values applications may have cached keep
+		 * locating the rows; freshly formed tuples carry rowid 0 and should
+		 * receive the next value.
+		 */
+		if (!((tup->t_data->t_infomask & HEAP_HASROWID) &&
+			  HeapTupleHeaderGetRowId(tup->t_data) > 0))
+		{
+			/* Get the sequence next value */
+			seqnum = nextval_internal(relation->rd_rowdSeqid, true);
+			/* Set the HeapTupleHeader */
+			HeapTupleSetRowId(tup, seqnum);
+		}
 	}
 
 	tup->t_data->t_infomask &= ~(HEAP_XACT_MASK);
