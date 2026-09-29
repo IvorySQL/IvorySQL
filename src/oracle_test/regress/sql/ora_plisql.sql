@@ -955,9 +955,9 @@ raise notice 'protest';
 end;
 / 
 
-CALL protest;  -- should failed 
+CALL protest;
 CALL protest();
-exec protest;      
+exec protest;
 exec protest();
 drop  procedure protest ;
 
@@ -981,9 +981,9 @@ BEGIN
 END;
 /
 
-CALL test_proc1;  -- should failed 
+CALL test_proc1;
 CALL test_proc1();
-EXEC test_proc1;   
+EXEC test_proc1;
 EXEC test_proc1();
 DROP PROCEDURE test_proc1;
 

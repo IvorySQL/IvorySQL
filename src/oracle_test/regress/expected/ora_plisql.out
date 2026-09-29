@@ -1006,17 +1006,12 @@ begin
 raise notice 'protest';
 end;
 / 
-CALL protest;  -- should failed 
-ERROR:  syntax error at or near ";"
-LINE 1: CALL protest;
-                    ^
+CALL protest;
+NOTICE:  protest
 CALL protest();
 NOTICE:  protest
-exec protest;      
-ERROR:  syntax error at end of input
-LINE 1: BEGIN protest;      ; END
-                          ^
-QUERY:  BEGIN protest;      ; END
+exec protest;
+NOTICE:  protest
 exec protest();
 NOTICE:  protest
 drop  procedure protest ;
@@ -1038,16 +1033,9 @@ BEGIN
     NULL;
 END;
 /
-CALL test_proc1;  -- should failed 
-ERROR:  syntax error at or near ";"
-LINE 1: CALL test_proc1;
-                       ^
+CALL test_proc1;
 CALL test_proc1();
-EXEC test_proc1;   
-ERROR:  syntax error at end of input
-LINE 1: BEGIN test_proc1;   ; END
-                             ^
-QUERY:  BEGIN test_proc1;   ; END
+EXEC test_proc1;
 EXEC test_proc1();
 DROP PROCEDURE test_proc1;
 CREATE TABLE test1 (a int);
@@ -1284,9 +1272,7 @@ end;
 /
 -- fail
 call p_noarg;
-ERROR:  syntax error at or near ";"
-LINE 1: call p_noarg;
-                    ^
+NOTICE:  this procedure without args
 --ok
 call p_noarg();
 NOTICE:  this procedure without args
@@ -1301,9 +1287,7 @@ end;
 variable x number;
 -- fail
 call f_noarg into :x;
-ERROR:  syntax error at or near "into"
-LINE 1: select * from get_parameter_description('call f_noarg into :...
-                     ^
+NOTICE:  this function without args
 --ok
 call f_noarg() into :x;
 NOTICE:  this function without args
@@ -1321,9 +1305,7 @@ end;
 /
 -- fail
 call p_defs;
-ERROR:  syntax error at or near ";"
-LINE 1: call p_defs;
-                   ^
+NOTICE:  i am a default string
 -- ok
 call p_defs();
 NOTICE:  i am a default string
@@ -1341,9 +1323,7 @@ end;
 variable x number
 --fail
 call f_defs into :x;
-ERROR:  syntax error at or near "into"
-LINE 1: select * from get_parameter_description('call f_defs into :x...
-                    ^
+NOTICE:  1314
 --ok
 call f_defs() into :x;
 NOTICE:  1314
