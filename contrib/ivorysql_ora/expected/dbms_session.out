@@ -265,3 +265,34 @@ select sys_context('rp_ns', 'key') as ctx_after_reset;
 (1 row)
 
 DROP PACKAGE rp_pkg;
+-- USERENV attributes that used to raise or return NULL: each connection is
+-- served by a dedicated backend process, and there is a single instance
+select sys_context('USERENV', 'SERVER') as server_type,
+       sys_context('USERENV', 'INSTANCE') as instance_num;
+ server_type | instance_num 
+-------------+--------------
+ DEDICATED   | 1
+(1 row)
+
+select sys_context('USERENV', 'INSTANCE_NAME') as instance_name,
+       sys_context('USERENV', 'SERVICE_NAME') as service_name;
+   instance_name    |    service_name    
+--------------------+--------------------
+ contrib_regression | contrib_regression
+(1 row)
+
+select sys_context('USERENV', 'NETWORK_PROTOCOL') as network_protocol;
+ network_protocol 
+------------------
+ bequeath
+(1 row)
+
+-- same attribute over a TCP connection: client_addr is non-NULL then, so
+-- the protocol is tcp
+\connect "host=127.0.0.1 dbname=contrib_regression"
+select sys_context('USERENV', 'NETWORK_PROTOCOL') as network_protocol;
+ network_protocol 
+------------------
+ tcp
+(1 row)
+
