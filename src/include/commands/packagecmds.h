@@ -51,7 +51,7 @@ extern void get_package_nameinfo_bybodyid(Oid bodyid, char **pkgname,
 extern Oid get_package_namespace(Oid pkgid);
 extern Oid get_package_bodyid(Oid pkgoid, bool miss_ok);
 extern void check_package_name(Oid nspname, char *newpkgname, char *oldpkgname);
-extern void IsTherePackageInNamespace(char *new_name, Oid namespace);
+extern void IsTherePackageInNamespace(char *new_name, Oid namespaceId);
 extern HeapTuple get_functup_bytypenames(Oid namespaceid,
 						const char *func_name, Datum typenames,
 						oidvector *parametertypes,
