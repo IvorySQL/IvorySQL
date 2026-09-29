@@ -182,6 +182,112 @@ exec_prepare(Ivyconn *conn, int byname, int update)
 	return;
 }
 
+/*
+ * Prepare a statement from a non-NUL-terminated buffer.
+ *
+ * OCI semantics: the caller passes the exact statement length in query_len
+ * and the statement text is not required to be NUL-terminated.  This used to
+ * break IvyStmtPrepare(), which depended on strdup()/strlen() and over-read
+ * past the caller's buffer.  The buffer below is poisoned with bytes after
+ * the text (and contains no NUL within its bounds), so the old code either
+ * crashed or prepared a garbage statement while the fixed code must prepare
+ * and execute the statement correctly.
+ */
+static void
+exec_prepare_nonul(Ivyconn *conn)
+{
+	Ivyresult   *res;
+	IvyPreparedStatement *stmthandle = NULL;
+	IvyError *errhp = NULL;
+	char	*buf = NULL;
+	size_t	buf_size = 4096;
+	size_t	query_len;
+	int		x = 40;
+	char	y[256] = "nonul";
+	IvyBindInfo *bindinfo[2] = {NULL, NULL};
+	int index[2] = {0,0};
+
+	/* build query text in a heap buffer WITHOUT a NUL terminator */
+	buf = (char *) malloc(buf_size);
+	if (buf == NULL)
+	{
+		fprintf(stderr, "malloc failed\n");
+		exit_nicely(conn);
+	}
+	memset(buf, 'X', buf_size);	/* no NUL anywhere in the buffer */
+	query_len = strlen("insert into t_insert values(:x,:y)");
+	memcpy(buf, "insert into t_insert values(:x,:y)", query_len);
+
+	if (!IvyHandleAlloc(NULL, (void **) &stmthandle, IVY_HANDLE_STMT, 4, NULL))
+	{
+		free(buf);
+		fprintf(stderr, "IvyHandleAlloc prepared stmt failed\n");
+		exit_nicely(conn);
+	}
+
+	if (!IvyHandleAlloc(NULL, (void **) &errhp, IVY_HANDLE_ERROR, 4, NULL))
+	{
+		IvyFreeHandle(stmthandle, IVY_HANDLE_STMT);
+		free(buf);
+		fprintf(stderr, "IvyHandleAlloc Error handle failed\n");
+		exit_nicely(conn);
+	}
+
+	if (!IvyStmtPrepare(stmthandle, errhp, buf, query_len, 0, 0))
+	{
+		fprintf(stderr, "%s\n", errhp->error_msg);
+		IvyFreeHandle(stmthandle, IVY_HANDLE_STMT);
+		IvyFreeHandle(errhp, IVY_HANDLE_ERROR);
+		free(buf);
+		exit_nicely(conn);
+	}
+	free(buf);
+
+	IvyBindByPos(stmthandle,
+			&bindinfo[0],
+			errhp,
+			1,
+			&x,
+			sizeof(int),
+			23 | 0x20000000  /* in */,
+			&index[0],
+			NULL,
+			NULL,
+			256,
+			NULL,
+			0);
+	IvyBindByPos(stmthandle,
+			&bindinfo[1],
+			errhp,
+			2,
+			y,
+			256,
+			25 | 0x20000000  /* in */,
+			&index[1],
+			NULL,
+			NULL,
+			256,
+			NULL,
+			0);
+
+	res = IvyStmtExecute(conn, stmthandle, errhp);
+	if (IvyresultStatus(res) != PGRES_TUPLES_OK && IvyresultStatus(res) != PGRES_COMMAND_OK &&
+		IvyresultStatus(res) != PGRES_EMPTY_QUERY)
+	{
+		IvyFreeHandle(stmthandle, IVY_HANDLE_STMT);
+		IvyFreeHandle(errhp, IVY_HANDLE_ERROR);
+		fprintf(stderr, "PQexecPrepared statement not return tuples properly\n");
+		Ivyclear(res);
+		exit_nicely(conn);
+	}
+	Ivyclear(res);
+
+	IvyFreeHandle(stmthandle, IVY_HANDLE_STMT);
+	IvyFreeHandle(errhp, IVY_HANDLE_ERROR);
+
+	return;
+}
+
 int
 main()
 {
@@ -253,6 +359,7 @@ main()
 
 	exec_prepare(conn, 1, 0);
 	exec_prepare(conn, 0, 1);
+	exec_prepare_nonul(conn);
 
 	res = Ivyexec(conn, "select * from t_insert order by id");
 	if (IvyresultStatus(res) != PGRES_TUPLES_OK)
