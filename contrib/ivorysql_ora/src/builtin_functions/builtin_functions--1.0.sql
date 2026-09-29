@@ -679,7 +679,7 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE FUNCTION sys.replace(varchar, varchar, varchar default NULL)
+CREATE FUNCTION sys.replace(text, text, text DEFAULT NULL)
 RETURNS text
 AS 'MODULE_PATHNAME','ora_replace'
 LANGUAGE C

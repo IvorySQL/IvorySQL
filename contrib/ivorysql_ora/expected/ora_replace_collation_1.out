@@ -1,0 +1,13 @@
+/*
+ * REPLACE under nondeterministic collations.
+ *
+ * sys.replace keeps Oracle's NULL rules but hands the search to core
+ * replace_text with the call's collation, so a case- or accent-insensitive
+ * collation matches the way Oracle does under NLS_COMP=LINGUISTIC.
+ */
+/* skip test if not UTF8 server encoding or no ICU collations installed */
+SELECT getdatabaseencoding() <> 'UTF8' OR
+       (SELECT count(*) FROM pg_collation WHERE collprovider = 'i' AND collname <> 'unicode') = 0
+       AS skip_test \gset
+\if :skip_test
+\quit
