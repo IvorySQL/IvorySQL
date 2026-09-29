@@ -20,7 +20,13 @@ EXTENSION = ora_btree_gist
 DATA = ora_btree_gist--1.0.sql
 PGFILEDESC = "ora_btree_gist - B-tree equivalent GiST operator classes"
 
-ORA_REGRESS = init number varchar2 binary_float binary_double date \
+# The varchar2_utf8 test exercises the multibyte prefix logic in
+# gbt_var_node_cp_len(), so pin the regression database to UTF8 instead of
+# relying on whatever encoding initdb derives from the invoking environment's
+# locale.
+ENCODING = UTF8
+
+ORA_REGRESS = init number varchar2 varchar2_utf8 binary_float binary_double date \
 	  timestamp timestamptz timestampltz yminterval dsinterval
 EXTRA_INSTALL = contrib/ivorysql_ora
 
