@@ -249,6 +249,12 @@ plisql_stmt_typename(PLiSQL_stmt * stmt)
 			return _("statement block");
 		case PLISQL_STMT_ASSIGN:
 			return _("assignment");
+		case PLISQL_STMT_COLL_ASSIGN:
+			return _("collection element assignment");
+		case PLISQL_STMT_COLL_METHOD:
+			return _("collection method");
+		case PLISQL_STMT_COLL_COPY:
+			return _("collection assignment");
 		case PLISQL_STMT_IF:
 			return "IF";
 		case PLISQL_STMT_CASE:
@@ -407,6 +413,25 @@ plisql_statement_tree_walker_impl(PLiSQL_stmt * stmt,
 				E_WALK(astmt->expr);
 				break;
 			}
+		case PLISQL_STMT_COLL_ASSIGN:
+			{
+				PLiSQL_stmt_coll_assign *castmt = (PLiSQL_stmt_coll_assign *) stmt;
+
+				E_WALK(castmt->idx);
+				E_WALK(castmt->val);
+				break;
+			}
+		case PLISQL_STMT_COLL_METHOD:
+			{
+				PLiSQL_stmt_coll_method *cmstmt = (PLiSQL_stmt_coll_method *) stmt;
+
+				if (cmstmt->arg)
+					E_WALK(cmstmt->arg);
+				break;
+			}
+		case PLISQL_STMT_COLL_COPY:
+			/* no expressions: both sides are datums */
+			break;
 		case PLISQL_STMT_IF:
 			{
 				PLiSQL_stmt_if *ifstmt = (PLiSQL_stmt_if *) stmt;
@@ -854,6 +879,8 @@ static void dump_ind(void);
 static void dump_stmt(PLiSQL_stmt * stmt);
 static void dump_block(PLiSQL_stmt_block * block);
 static void dump_assign(PLiSQL_stmt_assign * stmt);
+static void dump_coll_assign(PLiSQL_stmt_coll_assign * stmt);
+static void dump_coll_method(PLiSQL_stmt_coll_method * stmt);
 static void dump_if(PLiSQL_stmt_if * stmt);
 static void dump_case(PLiSQL_stmt_case * stmt);
 static void dump_loop(PLiSQL_stmt_loop * stmt);
@@ -903,6 +930,18 @@ dump_stmt(PLiSQL_stmt * stmt)
 			break;
 		case PLISQL_STMT_ASSIGN:
 			dump_assign((PLiSQL_stmt_assign *) stmt);
+			break;
+		case PLISQL_STMT_COLL_ASSIGN:
+			dump_coll_assign((PLiSQL_stmt_coll_assign *) stmt);
+			break;
+		case PLISQL_STMT_COLL_METHOD:
+			dump_coll_method((PLiSQL_stmt_coll_method *) stmt);
+			break;
+		case PLISQL_STMT_COLL_COPY:
+			dump_ind();
+			printf("COLL_COPY var %d := var %d\n",
+				   ((PLiSQL_stmt_coll_copy *) stmt)->varno,
+				   ((PLiSQL_stmt_coll_copy *) stmt)->srcvarno);
 			break;
 		case PLISQL_STMT_IF:
 			dump_if((PLiSQL_stmt_if *) stmt);
@@ -1043,6 +1082,33 @@ dump_assign(PLiSQL_stmt_assign * stmt)
 	dump_ind();
 	printf("ASSIGN var %d := ", stmt->varno);
 	dump_expr(stmt->expr);
+	printf("\n");
+}
+
+static void
+dump_coll_assign(PLiSQL_stmt_coll_assign * stmt)
+{
+	dump_ind();
+	printf("COLL_ASSIGN var %d(", stmt->varno);
+	dump_expr(stmt->idx);
+	printf(") := ");
+	dump_expr(stmt->val);
+	printf("\n");
+}
+
+static void
+dump_coll_method(PLiSQL_stmt_coll_method * stmt)
+{
+	static const char *const names[] = {"EXTEND", "TRIM", "DELETE",
+	"DELETE_AT"};
+
+	dump_ind();
+	printf("COLL_METHOD var %d %s", stmt->varno, names[stmt->method]);
+	if (stmt->arg)
+	{
+		printf(" ");
+		dump_expr(stmt->arg);
+	}
 	printf("\n");
 }
 

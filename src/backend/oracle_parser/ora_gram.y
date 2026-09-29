@@ -456,6 +456,7 @@ static AlterTableCmd *makeModifyColumnTypeOrVisibilityCmd(char *colname,
 				merge_values_clause
 				set_clause_list set_clause
 				def_list operator_def_list indirection opt_indirection
+				plassign_opt_indirection
 				reloption_list TriggerFuncArgs opclass_item_list opclass_drop_list
 				opclass_purpose opt_opfamily transaction_mode_list_or_empty
 				OptTableFuncElementList TableFuncElementList opt_type_modifiers
@@ -547,6 +548,7 @@ static AlterTableCmd *makeModifyColumnTypeOrVisibilityCmd(char *colname,
 %type <defelt>	def_elem reloption_elem old_aggr_elem operator_def_elem
 %type <node>	def_arg columnElem where_clause where_or_current_clause
 				a_expr b_expr c_expr AexprConst indirection_el opt_slice_bound
+				plassign_indirection_el
 				columnref having_clause func_table xmltable array_expr
 				OptWhereClause operator_def_arg
 %type <list>	rowsfrom_item rowsfrom_list opt_col_def_list
@@ -21555,7 +21557,7 @@ PLpgSQL_Expr: opt_distinct_clause opt_target_list
  * PL/pgSQL Assignment statement: name opt_indirection := PLpgSQL_Expr
  */
 
-PLAssignStmt: plassign_target opt_indirection plassign_equals PLpgSQL_Expr
+PLAssignStmt: plassign_target plassign_opt_indirection plassign_equals PLpgSQL_Expr
 				{
 					PLAssignStmt *n = makeNode(PLAssignStmt);
 
@@ -21566,6 +21568,59 @@ PLAssignStmt: plassign_target opt_indirection plassign_equals PLpgSQL_Expr
 					n->location = @1;
 					$$ = (Node *) n;
 				}
+		;
+
+/*
+ * Indirection for an assignment target, identical to indirection_el/
+ * opt_indirection above except for one addition: "(a_expr)" is accepted
+ * as an alternate, Oracle-native spelling of "[a_expr]" -- "coll(i) := x"
+ * as sugar for "coll[i] := x". This production is reachable only via
+ * PLAssignStmt (itself reached only through the RAW_PARSE_PLISQL_ASSIGN
+ * and RAW_PARSE_PLPGSQL_ASSIGN raw-parse modes), so, unlike indirection_el,
+ * adding a paren-based alternative here cannot introduce any ambiguity
+ * with ordinary function-call syntax elsewhere in the grammar.
+ */
+plassign_indirection_el:
+			'.' attr_name
+				{
+					$$ = (Node *) makeString($2);
+				}
+			| '.' '*'
+				{
+					$$ = (Node *) makeNode(A_Star);
+				}
+			| '[' a_expr ']'
+				{
+					A_Indices *ai = makeNode(A_Indices);
+
+					ai->is_slice = false;
+					ai->lidx = NULL;
+					ai->uidx = $2;
+					$$ = (Node *) ai;
+				}
+			| '[' opt_slice_bound DOT_DOT opt_slice_bound ']'
+				{
+					A_Indices *ai = makeNode(A_Indices);
+
+					ai->is_slice = true;
+					ai->lidx = $2;
+					ai->uidx = $4;
+					$$ = (Node *) ai;
+				}
+			| '(' a_expr ')'
+				{
+					A_Indices *ai = makeNode(A_Indices);
+
+					ai->is_slice = false;
+					ai->lidx = NULL;
+					ai->uidx = $2;
+					$$ = (Node *) ai;
+				}
+		;
+
+plassign_opt_indirection:
+			/*EMPTY*/									{ $$ = NIL; }
+			| plassign_opt_indirection plassign_indirection_el	{ $$ = lappend($1, $2); }
 		;
 
 plassign_target: ColId				{ $$ = $1; }
