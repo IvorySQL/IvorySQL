@@ -621,3 +621,18 @@ SELECT 123.456 * interval'365 11:11:11' day(3) to second;
 -- The operator "<=" supports a comparison between the "number" type and the "varchar2" type.
 SET NLS_DATE_FORMAT = 'YYYY-MM-DD';
 select 25::number <= to_char('1990-01-01'::oradate, 'yyyy');
+
+--
+-- TZ_OFFSET / FROM_TZ: a numerically specified offset keeps its sign even when
+-- the hour field is zero.  TZ_OFFSET('-0:30') is UTC-00:30, and FROM_TZ must
+-- read the same offset as half an hour west of GMT, not east of it.
+--
+select tz_offset('-0:30') from dual;
+select tz_offset('+0:30') from dual;
+select tz_offset('-0:30') = '+00:30' from dual;
+select tz_offset('-0:30') = '-00:30' from dual;
+select tz_offset('-1:30') = '-01:30' from dual;
+select tz_offset('-1:30') = '+01:30' from dual;
+select tz_offset('-12:59') from dual;
+select from_tz(timestamp '2000-03-28 08:00:00', '-0:30') = from_tz(timestamp '2000-03-28 08:00:00', '+0:30') from dual;
+select from_tz(timestamp '2000-03-28 08:00:00', '-0:30') > from_tz(timestamp '2000-03-28 08:00:00', '0:00') from dual;

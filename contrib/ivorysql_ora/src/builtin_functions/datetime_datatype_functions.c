@@ -1546,13 +1546,24 @@ ora_make_timezone(char **newval)
 {
 	pg_tz	   *new_tz;
 	long		gmtoffset;
+	char	   *str = *newval;
+	bool		negative;
 	int			hours = 0;
 	int			minu = 0;
 	int			res = 0;
 
 	/*
 	 * Try it as a numeric number of hours (possibly fractional).
+	 *
+	 * The sign of the offset is read from the string, not from "hours":
+	 * sscanf()'s %d cannot see the sign of a zero hour field, so it parses
+	 * "-0:30" as hours = 0 and the mirrored offset "+00:30" would be used.
+	 * Skip leading whitespace here exactly as sscanf() does.
 	 */
+	while (*str != '\0' && isspace((unsigned char) *str))
+		str++;
+	negative = (*str == '-');
+
 	res = sscanf(*newval, "%d:%d", &hours, &minu);
 	if (res == 2)
 	{
@@ -1564,9 +1575,17 @@ ora_make_timezone(char **newval)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 					 errmsg("timezone minute between 0 and 59")));
-		if (hours < 0)
-			minu *= -1;
-		gmtoffset = -(hours * SECS_PER_HOUR + minu * SECS_PER_MINUTE);
+
+		/*
+		 * pg_tzset_offset() wants the offset as a number of seconds west of
+		 * GMT, so an offset west of GMT is positive here.  Using the sign of
+		 * the parsed hour field for that pushed "-0:30" (hours == 0) to the
+		 * east: TZ_OFFSET('-0:30') reported '+00:30' and FROM_TZ() moved the
+		 * timestamp half an hour the wrong way.
+		 */
+		gmtoffset = abs(hours) * SECS_PER_HOUR + minu * SECS_PER_MINUTE;
+		if (!negative)
+			gmtoffset = -gmtoffset;
 		new_tz = pg_tzset_offset(gmtoffset);
 	}
 	else
