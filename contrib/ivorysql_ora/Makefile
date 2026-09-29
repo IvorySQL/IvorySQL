@@ -46,7 +46,7 @@ OBJS = \
 EXTENSION = ivorysql_ora
 
 # SQL(s) which need to be generated only if which is specified here.
-DATA = ivorysql_ora--1.0.sql
+DATA = ivorysql_ora--1.0.sql ivorysql_ora--1.0--1.1.sql
 
 all: gensql
 
@@ -84,6 +84,7 @@ ORA_REGRESS = \
 	ora_raw_long \
 	ora_character_datatype_functions \
 	ora_datetime_datatype_functions \
+	ora_tochar_fmt_matrix \
 	ora_misc_functions \
 	ora_vsize \
 	ora_merge \

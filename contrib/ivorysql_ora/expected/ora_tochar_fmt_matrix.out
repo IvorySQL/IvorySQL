@@ -1,0 +1,338 @@
+--
+-- Test to_char format element matrix
+-- Covers Oracle-compatible date and number format elements
+-- Compared against Oracle 23ai ground truth
+--
+SET NLS_DATE_FORMAT = 'YYYY-MM-DD HH24:MI:SS';
+-- Date/time format elements
+SELECT '1_YYYY=' || TO_CHAR(DATE '2026-01-15','YYYY');
+  ?column?   
+-------------
+ 1_YYYY=2026
+(1 row)
+
+SELECT '2_YY=' || TO_CHAR(DATE '2026-01-15','YY');
+ ?column? 
+----------
+ 2_YY=26
+(1 row)
+
+SELECT '3_Y=' || TO_CHAR(DATE '2026-01-15','Y');
+ ?column? 
+----------
+ 3_Y=6
+(1 row)
+
+SELECT '4_MM=' || TO_CHAR(DATE '2026-01-15','MM');
+ ?column? 
+----------
+ 4_MM=01
+(1 row)
+
+SELECT '5_MON=' || TO_CHAR(DATE '2026-01-15','MON');
+ ?column?  
+-----------
+ 5_MON=JAN
+(1 row)
+
+SELECT '6_MONTH=' || TO_CHAR(DATE '2026-01-15','MONTH');
+     ?column?      
+-------------------
+ 6_MONTH=JANUARY  
+(1 row)
+
+SELECT '7_DD=' || TO_CHAR(DATE '2026-01-15','DD');
+ ?column? 
+----------
+ 7_DD=15
+(1 row)
+
+SELECT '8_DY=' || TO_CHAR(DATE '2026-01-15','DY');
+ ?column? 
+----------
+ 8_DY=THU
+(1 row)
+
+SELECT '9_DAY=' || TO_CHAR(DATE '2026-01-15','DAY');
+    ?column?     
+-----------------
+ 9_DAY=THURSDAY 
+(1 row)
+
+SELECT '10_HH=' || TO_CHAR(TO_DATE('2026-01-15 14:30:45','YYYY-MM-DD HH24:MI:SS'),'HH');
+ ?column? 
+----------
+ 10_HH=02
+(1 row)
+
+SELECT '11_HH12=' || TO_CHAR(TO_DATE('2026-01-15 14:30:45','YYYY-MM-DD HH24:MI:SS'),'HH12');
+  ?column?  
+------------
+ 11_HH12=02
+(1 row)
+
+SELECT '12_HH24=' || TO_CHAR(TO_DATE('2026-01-15 14:30:45','YYYY-MM-DD HH24:MI:SS'),'HH24');
+  ?column?  
+------------
+ 12_HH24=14
+(1 row)
+
+SELECT '13_MI=' || TO_CHAR(TO_DATE('2026-01-15 14:30:45','YYYY-MM-DD HH24:MI:SS'),'MI');
+ ?column? 
+----------
+ 13_MI=30
+(1 row)
+
+SELECT '14_SS=' || TO_CHAR(TO_DATE('2026-01-15 14:30:45','YYYY-MM-DD HH24:MI:SS'),'SS');
+ ?column? 
+----------
+ 14_SS=45
+(1 row)
+
+SELECT '15_AM=' || TO_CHAR(TO_DATE('2026-01-15 14:30:45','YYYY-MM-DD HH24:MI:SS'),'AM');
+ ?column? 
+----------
+ 15_AM=PM
+(1 row)
+
+SELECT '16_PM=' || TO_CHAR(TO_DATE('2026-01-15 14:30:45','YYYY-MM-DD HH24:MI:SS'),'PM');
+ ?column? 
+----------
+ 16_PM=PM
+(1 row)
+
+SELECT '17_BC=' || TO_CHAR(DATE '2026-01-15','BC');
+ ?column? 
+----------
+ 17_BC=AD
+(1 row)
+
+SELECT '18_AD=' || TO_CHAR(DATE '2026-01-15','AD');
+ ?column? 
+----------
+ 18_AD=AD
+(1 row)
+
+SELECT '19_Q=' || TO_CHAR(DATE '2026-01-15','Q');
+ ?column? 
+----------
+ 19_Q=1
+(1 row)
+
+SELECT '20_WW=' || TO_CHAR(DATE '2026-01-15','WW');
+ ?column? 
+----------
+ 20_WW=03
+(1 row)
+
+SELECT '21_IW=' || TO_CHAR(DATE '2026-01-15','IW');
+ ?column? 
+----------
+ 21_IW=03
+(1 row)
+
+SELECT '22_W=' || TO_CHAR(DATE '2026-01-15','W');
+ ?column? 
+----------
+ 22_W=3
+(1 row)
+
+SELECT '23_CC=' || TO_CHAR(DATE '2026-01-15','CC');
+ ?column? 
+----------
+ 23_CC=21
+(1 row)
+
+SELECT '24_J=' || TO_CHAR(DATE '2026-01-15','J');
+   ?column?   
+--------------
+ 24_J=2461056
+(1 row)
+
+SELECT '25_RR=' || TO_CHAR(DATE '2026-01-15','RR');
+ ?column? 
+----------
+ 25_RR=26
+(1 row)
+
+SELECT '26_SYYYY=' || '[' || TO_CHAR(DATE '2026-01-15','SYYYY') || ']';
+    ?column?     
+-----------------
+ 26_SYYYY=[2026]
+(1 row)
+
+SELECT '27_FM=' || '[' || TO_CHAR(DATE '2026-01-05','FMMonth DD, YYYY') || ']';
+         ?column?         
+--------------------------
+ 27_FM=[January 05, 2026]
+(1 row)
+
+SELECT '28_TH=' || TO_CHAR(DATE '2026-01-01','DDTH');
+  ?column?  
+------------
+ 28_TH=01ST
+(1 row)
+
+SELECT '29_th=' || TO_CHAR(DATE '2026-01-01','ddth');
+  ?column?  
+------------
+ 29_th=01st
+(1 row)
+
+SELECT '30_dash=' || TO_CHAR(DATE '2026-01-15','YYYY-MM-DD');
+      ?column?      
+--------------------
+ 30_dash=2026-01-15
+(1 row)
+
+SELECT '31_slash=' || TO_CHAR(DATE '2026-01-15','YYYY/MM/DD');
+      ?column?       
+---------------------
+ 31_slash=2026/01/15
+(1 row)
+
+SELECT '32_dot=' || TO_CHAR(DATE '2026-01-15','YYYY.MM.DD');
+     ?column?      
+-------------------
+ 32_dot=2026.01.15
+(1 row)
+
+SELECT '33_space=' || TO_CHAR(DATE '2026-01-15','YYYY MM DD');
+      ?column?       
+---------------------
+ 33_space=2026 01 15
+(1 row)
+
+SELECT '34_FF3=' || TO_CHAR(TIMESTAMP '2026-01-15 14:30:45.123456','YYYY-MM-DD HH24:MI:SS.FF3');
+            ?column?            
+--------------------------------
+ 34_FF3=2026-01-15 14:30:45.123
+(1 row)
+
+SELECT '35_FF6=' || TO_CHAR(TIMESTAMP '2026-01-15 14:30:45.123456','YYYY-MM-DD HH24:MI:SS.FF6');
+             ?column?              
+-----------------------------------
+ 35_FF6=2026-01-15 14:30:45.123456
+(1 row)
+
+SELECT '36_FF=' || TO_CHAR(TIMESTAMP '2026-01-15 14:30:45.123456','FF');
+   ?column?   
+--------------
+ 36_FF=123456
+(1 row)
+
+SELECT '37_9=' || TO_CHAR(1234, '99999');
+  ?column?   
+-------------
+ 37_9=  1234
+(1 row)
+
+SELECT '38_0=' || TO_CHAR(1234, '09999');
+  ?column?   
+-------------
+ 38_0= 01234
+(1 row)
+
+SELECT '39_D=' || TO_CHAR(1234.56, '99999D99');
+    ?column?    
+----------------
+ 39_D=  1234.56
+(1 row)
+
+SELECT '40_G=' || TO_CHAR(1234567, '9G999G999');
+    ?column?     
+-----------------
+ 40_G= 1,234,567
+(1 row)
+
+SELECT '41_PR=' || TO_CHAR(-1234, '99999PR');
+   ?column?    
+---------------
+ 41_PR= <1234>
+(1 row)
+
+SELECT '42_posPR=' || TO_CHAR(1234, '99999PR');
+     ?column?     
+------------------
+ 42_posPR=  1234 
+(1 row)
+
+SELECT '43_MI=' || TO_CHAR(-1234, '99999MI');
+   ?column?   
+--------------
+ 43_MI= 1234-
+(1 row)
+
+SELECT '44_posMI=' || TO_CHAR(1234, '99999MI');
+    ?column?     
+-----------------
+ 44_posMI= 1234 
+(1 row)
+
+SELECT '45_S=' || TO_CHAR(-1234, 'S99999');
+  ?column?   
+-------------
+ 45_S= -1234
+(1 row)
+
+SELECT '46_posS=' || TO_CHAR(1234, 'S99999');
+    ?column?    
+----------------
+ 46_posS= +1234
+(1 row)
+
+SELECT '48_RN=' || TO_CHAR(2026, 'RN');
+       ?column?        
+-----------------------
+ 48_RN=         MMXXVI
+(1 row)
+
+SELECT '49_FM=' || '[' || TO_CHAR(1234, 'FM99999') || ']';
+   ?column?   
+--------------
+ 49_FM=[1234]
+(1 row)
+
+SELECT '50_FM0=' || '[' || TO_CHAR(0, 'FM9999') || ']';
+  ?column?  
+------------
+ 50_FM0=[0]
+(1 row)
+
+SELECT '51_V=' || TO_CHAR(1234, '9999V99');
+   ?column?   
+--------------
+ 51_V= 123400
+(1 row)
+
+SELECT '52_EEEE=' || '[' || TO_CHAR(1.23, '9.9EEEE') || ']';
+      ?column?      
+--------------------
+ 52_EEEE=[ 1.2e+00]
+(1 row)
+
+SELECT '53_N3=' || sys.to_char(1234.56::sys.number, '9999D99', 'NLS_NUMERIC_CHARACTERS='',.''');
+    ?column?    
+----------------
+ 53_N3= 1234.56
+(1 row)
+
+SELECT '54_N3b=' || sys.to_char(1234.56, '9999.99', 'NLS_NUMERIC_CHARACTERS='',.''');
+    ?column?     
+-----------------
+ 54_N3b= 1234.56
+(1 row)
+
+SELECT '55_NLSAMER=' || TO_CHAR(DATE '2026-01-15','DD-MON-YYYY','NLS_DATE_LANGUAGE = AMERICAN');
+        ?column?        
+------------------------
+ 55_NLSAMER=15-JAN-2026
+(1 row)
+
+SELECT '56_NLSFR=' || TO_CHAR(DATE '2026-01-15','DD-MON-YYYY','NLS_DATE_LANGUAGE = FRENCH');
+       ?column?       
+----------------------
+ 56_NLSFR=15-JAN-2026
+(1 row)
+
+RESET NLS_DATE_FORMAT;
