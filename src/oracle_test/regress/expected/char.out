@@ -24,7 +24,7 @@ INSERT INTO CHAR_TBL (f1) VALUES ('3');
 INSERT INTO CHAR_TBL (f1) VALUES ('');
 -- try char's of greater than 1 length
 INSERT INTO CHAR_TBL (f1) VALUES ('cd');
-ERROR:  value too long for type character(1)
+ERROR:  value too long for column "f1" (type character(1))
 INSERT INTO CHAR_TBL (f1) VALUES ('c     ');
 SELECT * FROM CHAR_TBL;
  f1 
@@ -109,7 +109,7 @@ DROP TABLE CHAR_TBL;
 -- Here we just try to insert bad values.
 --
 INSERT INTO CHAR_TBL (f1) VALUES ('abcde');
-ERROR:  value too long for type character(4)
+ERROR:  value too long for column "f1" (type character(4))
 SELECT * FROM CHAR_TBL;
   f1  
 ------
