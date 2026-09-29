@@ -279,6 +279,8 @@ create table datetest (aa interval year(3) to month);
 
 insert into datetest values (NUMTOYMINTERVAL(123,'year'));
 insert into datetest values (NUMTOYMINTERVAL(234,'month'));
+insert into datetest values (NUMTOYMINTERVAL(-0.7,'month'));
+insert into datetest values (NUMTOYMINTERVAL(0.7,'month'));
 
 select * from datetest;
 drop table datetest;

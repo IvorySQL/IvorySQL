@@ -1434,7 +1434,7 @@ numtoyminterval(PG_FUNCTION_ARGS)
 			interval_val = 0;
 
 		if (interval_val <= -0.5 && interval_val > -1)
-			interval_val = 1;
+			interval_val = -1;
 	}
 
 	/* round to first place after the decimal point */

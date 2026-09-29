@@ -497,12 +497,16 @@ drop table datetest;
 create table datetest (aa interval year(3) to month);
 insert into datetest values (NUMTOYMINTERVAL(123,'year'));
 insert into datetest values (NUMTOYMINTERVAL(234,'month'));
+insert into datetest values (NUMTOYMINTERVAL(-0.7,'month'));
+insert into datetest values (NUMTOYMINTERVAL(0.7,'month'));
 select * from datetest;
    aa    
 ---------
  +123-00
  +019-06
-(2 rows)
+ -000-01
+ +000-01
+(4 rows)
 
 drop table datetest;
 --TO_DSINTERVAL
