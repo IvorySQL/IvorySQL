@@ -1,0 +1,131 @@
+-- Fixed-width integer conversions, independent byte vectors before round trips.
+\pset format unaligned
+\pset tuples_only on
+SELECT 'zero_1=' || encode(sys.ora_utl_raw_cast_from_binary_integer((0)::pg_catalog.int4, (1)::pg_catalog.int4), 'hex');
+zero_1=00000000
+SELECT 'decode_zero_1=' || CASE WHEN sys.ora_utl_raw_cast_to_binary_integer(decode('00000000', 'hex'), (1)::pg_catalog.int4) = (0)::pg_catalog.int4 THEN 'ok' ELSE 'FAIL' END;
+decode_zero_1=ok
+SELECT 'zero_2=' || encode(sys.ora_utl_raw_cast_from_binary_integer((0)::pg_catalog.int4, (2)::pg_catalog.int4), 'hex');
+zero_2=00000000
+SELECT 'decode_zero_2=' || CASE WHEN sys.ora_utl_raw_cast_to_binary_integer(decode('00000000', 'hex'), (2)::pg_catalog.int4) = (0)::pg_catalog.int4 THEN 'ok' ELSE 'FAIL' END;
+decode_zero_2=ok
+SELECT 'one_1=' || encode(sys.ora_utl_raw_cast_from_binary_integer((1)::pg_catalog.int4, (1)::pg_catalog.int4), 'hex');
+one_1=00000001
+SELECT 'decode_one_1=' || CASE WHEN sys.ora_utl_raw_cast_to_binary_integer(decode('00000001', 'hex'), (1)::pg_catalog.int4) = (1)::pg_catalog.int4 THEN 'ok' ELSE 'FAIL' END;
+decode_one_1=ok
+SELECT 'one_2=' || encode(sys.ora_utl_raw_cast_from_binary_integer((1)::pg_catalog.int4, (2)::pg_catalog.int4), 'hex');
+one_2=01000000
+SELECT 'decode_one_2=' || CASE WHEN sys.ora_utl_raw_cast_to_binary_integer(decode('01000000', 'hex'), (2)::pg_catalog.int4) = (1)::pg_catalog.int4 THEN 'ok' ELSE 'FAIL' END;
+decode_one_2=ok
+SELECT 'order_1=' || encode(sys.ora_utl_raw_cast_from_binary_integer((16909060)::pg_catalog.int4, (1)::pg_catalog.int4), 'hex');
+order_1=01020304
+SELECT 'decode_order_1=' || CASE WHEN sys.ora_utl_raw_cast_to_binary_integer(decode('01020304', 'hex'), (1)::pg_catalog.int4) = (16909060)::pg_catalog.int4 THEN 'ok' ELSE 'FAIL' END;
+decode_order_1=ok
+SELECT 'order_2=' || encode(sys.ora_utl_raw_cast_from_binary_integer((16909060)::pg_catalog.int4, (2)::pg_catalog.int4), 'hex');
+order_2=04030201
+SELECT 'decode_order_2=' || CASE WHEN sys.ora_utl_raw_cast_to_binary_integer(decode('04030201', 'hex'), (2)::pg_catalog.int4) = (16909060)::pg_catalog.int4 THEN 'ok' ELSE 'FAIL' END;
+decode_order_2=ok
+SELECT 'minus_one_1=' || encode(sys.ora_utl_raw_cast_from_binary_integer((-1)::pg_catalog.int4, (1)::pg_catalog.int4), 'hex');
+minus_one_1=ffffffff
+SELECT 'decode_minus_one_1=' || CASE WHEN sys.ora_utl_raw_cast_to_binary_integer(decode('ffffffff', 'hex'), (1)::pg_catalog.int4) = (-1)::pg_catalog.int4 THEN 'ok' ELSE 'FAIL' END;
+decode_minus_one_1=ok
+SELECT 'minus_one_2=' || encode(sys.ora_utl_raw_cast_from_binary_integer((-1)::pg_catalog.int4, (2)::pg_catalog.int4), 'hex');
+minus_one_2=ffffffff
+SELECT 'decode_minus_one_2=' || CASE WHEN sys.ora_utl_raw_cast_to_binary_integer(decode('ffffffff', 'hex'), (2)::pg_catalog.int4) = (-1)::pg_catalog.int4 THEN 'ok' ELSE 'FAIL' END;
+decode_minus_one_2=ok
+SELECT 'minimum_1=' || encode(sys.ora_utl_raw_cast_from_binary_integer((-2147483648)::pg_catalog.int4, (1)::pg_catalog.int4), 'hex');
+minimum_1=80000000
+SELECT 'decode_minimum_1=' || CASE WHEN sys.ora_utl_raw_cast_to_binary_integer(decode('80000000', 'hex'), (1)::pg_catalog.int4) = (-2147483648)::pg_catalog.int4 THEN 'ok' ELSE 'FAIL' END;
+decode_minimum_1=ok
+SELECT 'minimum_2=' || encode(sys.ora_utl_raw_cast_from_binary_integer((-2147483648)::pg_catalog.int4, (2)::pg_catalog.int4), 'hex');
+minimum_2=00000080
+SELECT 'decode_minimum_2=' || CASE WHEN sys.ora_utl_raw_cast_to_binary_integer(decode('00000080', 'hex'), (2)::pg_catalog.int4) = (-2147483648)::pg_catalog.int4 THEN 'ok' ELSE 'FAIL' END;
+decode_minimum_2=ok
+SELECT 'maximum_1=' || encode(sys.ora_utl_raw_cast_from_binary_integer((2147483647)::pg_catalog.int4, (1)::pg_catalog.int4), 'hex');
+maximum_1=7fffffff
+SELECT 'decode_maximum_1=' || CASE WHEN sys.ora_utl_raw_cast_to_binary_integer(decode('7fffffff', 'hex'), (1)::pg_catalog.int4) = (2147483647)::pg_catalog.int4 THEN 'ok' ELSE 'FAIL' END;
+decode_maximum_1=ok
+SELECT 'maximum_2=' || encode(sys.ora_utl_raw_cast_from_binary_integer((2147483647)::pg_catalog.int4, (2)::pg_catalog.int4), 'hex');
+maximum_2=ffffff7f
+SELECT 'decode_maximum_2=' || CASE WHEN sys.ora_utl_raw_cast_to_binary_integer(decode('ffffff7f', 'hex'), (2)::pg_catalog.int4) = (2147483647)::pg_catalog.int4 THEN 'ok' ELSE 'FAIL' END;
+decode_maximum_2=ok
+SELECT 'native_order=' || CASE WHEN sys.ora_utl_raw_cast_from_binary_integer((16909060)::pg_catalog.int4, (3)::pg_catalog.int4) IN (decode('01020304', 'hex'), decode('04030201', 'hex')) THEN 'ok' ELSE 'FAIL' END;
+native_order=ok
+SELECT 'native_round_trip=' || CASE WHEN sys.ora_utl_raw_cast_to_binary_integer(sys.ora_utl_raw_cast_from_binary_integer((-2147483648)::pg_catalog.int4, (3)::pg_catalog.int4), (3)::pg_catalog.int4) = (-2147483648)::pg_catalog.int4 THEN 'ok' ELSE 'FAIL' END;
+native_round_trip=ok
+SELECT 'from_null=' || CASE WHEN sys.ora_utl_raw_cast_from_binary_integer(NULL::pg_catalog.int4, (1)::pg_catalog.int4) IS NULL THEN 'ok' ELSE 'FAIL' END;
+from_null=ok
+SELECT 'to_null=' || CASE WHEN sys.ora_utl_raw_cast_to_binary_integer(NULL::pg_catalog.bytea, (1)::pg_catalog.int4) IS NULL THEN 'ok' ELSE 'FAIL' END;
+to_null=ok
+SELECT 'null_data_before_order=' || CASE WHEN sys.ora_utl_raw_cast_from_binary_integer(NULL::pg_catalog.int4, (4)::pg_catalog.int4) IS NULL AND sys.ora_utl_raw_cast_to_binary_integer(NULL::pg_catalog.bytea, NULL::pg_catalog.int4) IS NULL THEN 'ok' ELSE 'FAIL' END;
+null_data_before_order=ok
+-- Public package calls exercise PL/iSQL argument and return conversions.
+SELECT 'package_default=' || encode(utl_raw.cast_from_binary_integer(16909060)::pg_catalog.bytea, 'hex');
+package_default=01020304
+SELECT 'package_little=' || encode(utl_raw.cast_from_binary_integer(16909060, 2)::pg_catalog.bytea, 'hex');
+package_little=04030201
+SELECT 'package_decode=' || CASE WHEN utl_raw.cast_to_binary_integer(hextoraw('80000000')) = -2147483648 THEN 'ok' ELSE 'FAIL' END;
+package_decode=ok
+SELECT 'package_negative=' || CASE WHEN utl_raw.cast_to_binary_integer(utl_raw.cast_from_binary_integer(-123456, 2), 2) = -123456 THEN 'ok' ELSE 'FAIL' END;
+package_negative=ok
+SELECT 'package_null=' || CASE WHEN utl_raw.cast_from_binary_integer(NULL) IS NULL AND utl_raw.cast_to_binary_integer(NULL) IS NULL THEN 'ok' ELSE 'FAIL' END;
+package_null=ok
+SELECT 'package_short=' || CASE WHEN utl_raw.cast_to_binary_integer(hextoraw('010203'), 2) = 197121 THEN 'ok' ELSE 'FAIL' END;
+package_short=ok
+SELECT 'package_null_endian=' || CASE WHEN utl_raw.cast_from_binary_integer(1, NULL) IS NULL AND utl_raw.cast_to_binary_integer(hextoraw('01020304'), NULL) IS NULL THEN 'ok' ELSE 'FAIL' END;
+package_null_endian=ok
+SELECT 'package_fraction=' || encode(utl_raw.cast_from_binary_integer(1.5)::pg_catalog.bytea, 'hex');
+package_fraction=00000002
+SELECT 'package_negative_fraction=' || encode(utl_raw.cast_from_binary_integer(-1.5)::pg_catalog.bytea, 'hex');
+package_negative_fraction=fffffffe
+SELECT 'package_minimum=' || encode(utl_raw.cast_from_binary_integer(-2147483648)::pg_catalog.bytea, 'hex');
+package_minimum=80000000
+SELECT 'package_maximum=' || encode(utl_raw.cast_from_binary_integer(2147483647)::pg_catalog.bytea, 'hex');
+package_maximum=7fffffff
+SELECT 'catalog=' || CASE WHEN count(*) = 2
+  AND bool_and(provolatile = 'i' AND proparallel = 's' AND NOT proisstrict)
+  THEN 'ok' ELSE 'FAIL' END
+FROM pg_catalog.pg_proc
+WHERE pronamespace = 'sys'::regnamespace
+  AND proname IN ('ora_utl_raw_cast_from_binary_integer',
+                  'ora_utl_raw_cast_to_binary_integer');
+catalog=ok
+-- Oracle reference probes: short RAWs and NULL selectors.
+SELECT 'short_01_1=' || CASE WHEN sys.ora_utl_raw_cast_to_binary_integer(decode('01', 'hex'), (1)::pg_catalog.int4) = (1)::pg_catalog.int4 THEN 'ok' ELSE 'FAIL' END;
+short_01_1=ok
+SELECT 'short_01_2=' || CASE WHEN sys.ora_utl_raw_cast_to_binary_integer(decode('01', 'hex'), (2)::pg_catalog.int4) = (1)::pg_catalog.int4 THEN 'ok' ELSE 'FAIL' END;
+short_01_2=ok
+SELECT 'short_0102_1=' || CASE WHEN sys.ora_utl_raw_cast_to_binary_integer(decode('0102', 'hex'), (1)::pg_catalog.int4) = (258)::pg_catalog.int4 THEN 'ok' ELSE 'FAIL' END;
+short_0102_1=ok
+SELECT 'short_0102_2=' || CASE WHEN sys.ora_utl_raw_cast_to_binary_integer(decode('0102', 'hex'), (2)::pg_catalog.int4) = (513)::pg_catalog.int4 THEN 'ok' ELSE 'FAIL' END;
+short_0102_2=ok
+SELECT 'short_010203_1=' || CASE WHEN sys.ora_utl_raw_cast_to_binary_integer(decode('010203', 'hex'), (1)::pg_catalog.int4) = (66051)::pg_catalog.int4 THEN 'ok' ELSE 'FAIL' END;
+short_010203_1=ok
+SELECT 'short_010203_2=' || CASE WHEN sys.ora_utl_raw_cast_to_binary_integer(decode('010203', 'hex'), (2)::pg_catalog.int4) = (197121)::pg_catalog.int4 THEN 'ok' ELSE 'FAIL' END;
+short_010203_2=ok
+SELECT 'null_endian_encode=' || CASE WHEN sys.ora_utl_raw_cast_from_binary_integer((1)::pg_catalog.int4, NULL::pg_catalog.int4) IS NULL THEN 'ok' ELSE 'FAIL' END;
+null_endian_encode=ok
+SELECT 'null_endian_decode=' || CASE WHEN sys.ora_utl_raw_cast_to_binary_integer(decode('01020304', 'hex'), NULL::pg_catalog.int4) IS NULL THEN 'ok' ELSE 'FAIL' END;
+null_endian_decode=ok
+SELECT 'empty_raw=' || CASE WHEN sys.ora_utl_raw_cast_to_binary_integer(decode('', 'hex'), (1)::pg_catalog.int4) IS NULL THEN 'ok' ELSE 'FAIL' END;
+empty_raw=ok
+-- Invalid selectors and values still raise errors; error codes are PostgreSQL-native.
+SELECT sys.ora_utl_raw_cast_from_binary_integer((1)::pg_catalog.int4, (0)::pg_catalog.int4);
+ERROR:  invalid UTL_RAW endianess: 0
+HINT:  Use big_endian (1), little_endian (2), or machine_endian (3).
+SELECT sys.ora_utl_raw_cast_from_binary_integer((1)::pg_catalog.int4, (4)::pg_catalog.int4);
+ERROR:  invalid UTL_RAW endianess: 4
+HINT:  Use big_endian (1), little_endian (2), or machine_endian (3).
+SELECT sys.ora_utl_raw_cast_from_binary_integer((1)::pg_catalog.int4, (-1)::pg_catalog.int4);
+ERROR:  invalid UTL_RAW endianess: -1
+HINT:  Use big_endian (1), little_endian (2), or machine_endian (3).
+SELECT sys.ora_utl_raw_cast_to_binary_integer(decode('0102030405', 'hex'), (1)::pg_catalog.int4);
+ERROR:  UTL_RAW.CAST_TO_BINARY_INTEGER accepts at most 4 bytes
+SELECT sys.ora_utl_raw_cast_to_binary_integer(decode('010203040506', 'hex'), (1)::pg_catalog.int4);
+ERROR:  UTL_RAW.CAST_TO_BINARY_INTEGER accepts at most 4 bytes
+SELECT sys.ora_utl_raw_cast_from_binary_integer((2147483648)::pg_catalog.int4, (1)::pg_catalog.int4);
+ERROR:  integer out of range
+SELECT sys.ora_utl_raw_cast_from_binary_integer((-2147483649)::pg_catalog.int4, (1)::pg_catalog.int4);
+ERROR:  integer out of range
+\pset tuples_only off
+\pset format aligned
