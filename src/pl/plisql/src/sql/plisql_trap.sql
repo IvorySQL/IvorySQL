@@ -65,6 +65,9 @@ select trap_matching_test(1);
 create temp table foo (f1 int);
 
 create function subxact_rollback_semantics() returns int as $$
+-- IvorySQL uses Oracle-style statement-level rollback for EXCEPTION-enabled
+-- blocks: only the failed statement is rolled back, so the inner INSERT of
+-- 2 is kept.  (PL/iSQL variables are never transactionally restored.)
 declare x int;
 begin
   x := 1;
