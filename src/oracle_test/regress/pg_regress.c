@@ -2417,7 +2417,7 @@ regression_main(int argc, char *argv[],
 			note("initializing database system by running initdb");
 
 			appendStringInfo(&cmd,
-							 "\"%s%sinitdb\" -D \"%s/data\" -m oracle --no-clean --no-sync",
+							 "\"%s%sinitdb\" -D \"%s/data\" -m oracle -C normal --no-clean --no-sync",
 							 bindir ? bindir : "",
 							 bindir ? "/" : "",
 							 temp_instance);
