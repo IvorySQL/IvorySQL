@@ -735,7 +735,7 @@ create or replace package pkg is
 end;
 /
 
---test sucess
+--test success
 create or replace package pkg is
  function test(id integer) return integer;
 end;
@@ -754,7 +754,7 @@ create or replace package body pkg is
 end;
 /
 
---test sucess
+--test success
 create or replace package body pkg is
   var2 integer;
   function test(id integer) return integer is
