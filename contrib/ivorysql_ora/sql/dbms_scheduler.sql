@@ -556,6 +556,42 @@ END;
 -- RUN_JOB records the running process on the log row (Oracle's SLAVE_PID)
 SELECT job_name, slave_pid = pg_backend_pid() AS pid_is_this_session
   FROM user_scheduler_job_run_details WHERE job_name = 'REG_JOB_CTX';
+-- A job can replace itself with a new job of the same name.  Its completion
+-- must remain in the old job's history, not update the replacement's stats.
+CREATE OR REPLACE PROCEDURE sched_reg_replace IS
+BEGIN
+  dbms_scheduler.drop_job('reg_job_reused');
+  dbms_scheduler.create_job(job_name => 'reg_job_reused', job_type => 'PLSQL_BLOCK',
+      job_action => 'BEGIN NULL; END;', auto_drop => FALSE);
+END;
+/
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_job_reused', job_type => 'STORED_PROCEDURE',
+      job_action => 'sched_reg_replace', auto_drop => FALSE);
+  dbms_scheduler.run_job('reg_job_reused');
+END;
+/
+SELECT run_count, failure_count, state,
+       last_start_date IS NULL AS never_started
+  FROM user_scheduler_jobs WHERE job_name = 'REG_JOB_REUSED';
+SELECT j.job_id <> r.job_id AS new_identity, r.status
+  FROM sys.scheduler_jobs j JOIN sys.scheduler_job_run_details r
+    USING (job_owner, job_name)
+  WHERE j.job_name = 'REG_JOB_REUSED';
+-- The new job still accumulates statistics for its own runs normally.
+BEGIN
+  dbms_scheduler.run_job('reg_job_reused');
+  dbms_scheduler.run_job('reg_job_reused');
+END;
+/
+SELECT run_count, failure_count, state,
+       last_start_date IS NOT NULL AS has_started
+  FROM user_scheduler_jobs WHERE job_name = 'REG_JOB_REUSED';
+BEGIN
+  dbms_scheduler.drop_job('reg_job_reused');
+END;
+/
+DROP PROCEDURE sched_reg_replace;
 --
 -- STOP_JOB (background execution is covered by the TAP test)
 --

@@ -2071,16 +2071,19 @@ void
 sched_update_job_stats(const SchedJobDef *def, bool success,
 					   TimestampTz actual_start, bool background)
 {
-	Oid			argtypes[5] = {TEXTOID, TEXTOID, TIMESTAMPTZOID, TEXTOID, INT4OID};
+	Oid			argtypes[5] = {TEXTOID, INT8OID, TIMESTAMPTZOID, TEXTOID, INT4OID};
 	Datum		values[5];
 
 	values[0] = CStringGetTextDatum(def->job_owner);
-	values[1] = CStringGetTextDatum(def->job_name);
+	values[1] = Int64GetDatum(def->job_id);
 	values[2] = TimestampTzGetDatum(actual_start);
 	values[3] = CStringGetTextDatum(success ? "SUCCEEDED" : "FAILED");
 	values[4] = Int32GetDatum(scheduler_max_failures);
 
 	/*
+	 * Match the loaded job's ID, not its name: the job may have been dropped
+	 * and a new job created with the same name while this run was executing.
+	 *
 	 * Background runs return an enabled job to SCHEDULED (its next run date
 	 * was already advanced when it was dispatched).  Manual runs leave the
 	 * state of enabled jobs alone.  Jobs that ended up disabled (one-shot,
@@ -2105,7 +2108,7 @@ sched_update_job_stats(const SchedJobDef *def, bool success,
 		 */
 		if (!success && scheduler_max_failures > 0)
 		{
-			Oid			at3[3] = {TEXTOID, TEXTOID, INT4OID};
+			Oid			at3[3] = {TEXTOID, INT8OID, INT4OID};
 			Datum		v3[3];
 			bool		isnull;
 
@@ -2114,7 +2117,7 @@ sched_update_job_stats(const SchedJobDef *def, bool success,
 			v3[2] = values[4];
 			if (sched_meta_select("SELECT enabled AND failure_count + 1 >= $3"
 								  " FROM sys.scheduler_jobs"
-								  " WHERE job_owner = $1 AND job_name = $2",
+								  " WHERE job_owner = $1 AND job_id = $2",
 								  3, at3, v3, NULL) == 1)
 			{
 				Datum		d = sched_getdatum(0, 1, &isnull);
@@ -2135,7 +2138,7 @@ sched_update_job_stats(const SchedJobDef *def, bool success,
 				  " state = CASE WHEN enabled AND NOT ($4 = 'FAILED' AND $5 > 0"
 				  "                                   AND failure_count + 1 >= $5)"
 				  "              THEN 'SCHEDULED' ELSE $4 END"
-				  " WHERE job_owner = $1 AND job_name = $2",
+				  " WHERE job_owner = $1 AND job_id = $2",
 				  5, argtypes, values, NULL);
 
 		if (hit_limit)
@@ -2150,7 +2153,7 @@ sched_update_job_stats(const SchedJobDef *def, bool success,
 				  " failure_count = failure_count + CASE WHEN $4 = 'FAILED' THEN 1 ELSE 0 END,"
 				  " last_start_date = $3, last_end_date = clock_timestamp(),"
 				  " state = CASE WHEN enabled THEN state ELSE $4 END"
-				  " WHERE job_owner = $1 AND job_name = $2",
+				  " WHERE job_owner = $1 AND job_id = $2",
 				  4, argtypes, values, NULL);
 }
 
