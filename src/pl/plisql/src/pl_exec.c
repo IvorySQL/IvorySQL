@@ -537,12 +537,19 @@ plisql_exec_function(PLiSQL_function * func, FunctionCallInfo fcinfo,
 	int			rc;
 
 	char		function_from;
+	Bitmapset  *default_argnos = NULL;
 	bool		anonymous_have_outparam = false;
 
 	/* fcinfo must be non-NULL for executable calls */
 	Assert(fcinfo != NULL);
 
 	function_from = plisql_function_from(fcinfo);
+
+	if (function_from == FUNC_FROM_PACKAGE &&
+		fcinfo->flinfo != NULL &&
+		fcinfo->flinfo->fn_expr != NULL &&
+		IsA(fcinfo->flinfo->fn_expr, FuncExpr))
+		default_argnos = ((FuncExpr *) fcinfo->flinfo->fn_expr)->default_argnos;
 
 	/*
 	 * Setup the execution state
@@ -590,6 +597,17 @@ plisql_exec_function(PLiSQL_function * func, FunctionCallInfo fcinfo,
 			case PLISQL_DTYPE_VAR:
 				{
 					PLiSQL_var *var = (PLiSQL_var *) estate.datums[n];
+
+					if (var->info != PROARGMODE_OUT &&
+						bms_is_member(i, default_argnos))
+					{
+						if (var->default_val == NULL)
+							elog(ERROR, "missing default expression for package argument %d", i + 1);
+
+						exec_assign_expr(&estate, (PLiSQL_datum *) var,
+										 var->default_val);
+						break;
+					}
 
 					if (var->info != PROARGMODE_OUT)
 					{
@@ -653,6 +671,18 @@ plisql_exec_function(PLiSQL_function * func, FunctionCallInfo fcinfo,
 			case PLISQL_DTYPE_REC:
 				{
 					PLiSQL_rec *rec = (PLiSQL_rec *) estate.datums[n];
+
+					if (rec->info != PROARGMODE_OUT &&
+						bms_is_member(i, default_argnos))
+					{
+						if (rec->default_val == NULL)
+							elog(ERROR, "missing default expression for package argument %d", i + 1);
+
+						exec_assign_expr(&estate, (PLiSQL_datum *) rec,
+										 rec->default_val);
+						exec_eval_cleanup(&estate);
+						break;
+					}
 
 					if (rec->info != PROARGMODE_OUT)
 					{

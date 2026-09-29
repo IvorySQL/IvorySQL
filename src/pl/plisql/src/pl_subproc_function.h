@@ -254,7 +254,8 @@ extern FuncDetailCode plisql_get_subprocfunc_detail(ParseState *pstate,
 							int *nvargs,	/* return value */
 							Oid *vatype,	/* return value */
 							Oid **true_typeids, /* return value */
-							List **argdefaults);
+							List **argdefaults,
+							bool defer_defaults);
 extern int get_subprocfunc_arg_info_from_arguments(List *args, Oid **p_argtypes,
 								char ***p_argnames, char **p_argmodes);
 extern PLiSQL_function *plisql_subprocfunc_HashTableLookup(HTAB *hashp,

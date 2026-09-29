@@ -321,7 +321,8 @@ plisql_package_parse(ParseState *parsestate, PackageCacheItem *item, List *names
 														nvargs,	/* return value */
 														vatype,	/* return value */
 														true_typeids, /* return value */
-														argdefaults); /* return value */
+														argdefaults, /* return value */
+														true);
 
 					if (detail != FUNCDETAIL_NORMAL &&
 						detail != FUNCDETAIL_PROCEDURE)
