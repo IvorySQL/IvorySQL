@@ -121,4 +121,141 @@ BEGIN
     RAISE NOTICE '%', line;
 END;
 /
-NOTICE:  round_trip_match=t
+NOTICE:  round_trip_match=t-- ============================================================
+-- Tests for UTL_ENCODE.TEXT_ENCODE / TEXT_DECODE
+-- ============================================================
+
+-- NULL input returns NULL
+SELECT utl_encode.text_encode(NULL::text) IS NULL;
+ ?column? 
+-----------
+ t
+(1 row)
+
+-- ASCII passes through unchanged (NULL charset = database encoding)
+SELECT rawtohex(utl_encode.text_encode('abc')) = '616263';
+ ?column? 
+-----------
+ t
+(1 row)
+
+SELECT rawtohex(utl_encode.text_encode('abc', NULL)) = '616263';
+ ?column? 
+-----------
+ t
+(1 row)
+
+-- convert UTF-8 'café' to LATIN1: 63 61 66 E9
+SELECT rawtohex(utl_encode.text_encode('café', 'LATIN1')) = '636166E9';
+ ?column? 
+-----------
+ t
+(1 row)
+
+-- TEXT_DECODE converts LATIN1 bytes back to the database encoding
+SELECT utl_encode.text_decode(hextoraw('636166E9'), 'LATIN1') = 'café';
+ ?column? 
+-----------
+ t
+(1 row)
+
+SELECT utl_encode.text_decode(utl_encode.text_encode('café', 'LATIN1'), 'LATIN1') = 'café';
+ ?column? 
+-----------
+ t
+(1 row)
+
+-- invalid charset / invalid bytes raise errors (caught and reported)
+DO $$
+BEGIN
+  BEGIN
+    PERFORM utl_encode.text_encode('text', 'no-such-charset');
+  EXCEPTION WHEN others THEN
+    RAISE NOTICE 'bad charset caught: %', SQLERRM;
+  END;
+  BEGIN
+    PERFORM utl_encode.text_decode(hextoraw('93'));
+  EXCEPTION WHEN others THEN
+    RAISE NOTICE 'bad bytes caught: %', SQLERRM;
+  END;
+END $$;
+NOTICE:  bad charset caught: UTL_ENCODE.TEXT_ENCODE: unrecognized character set "no-such-charset"
+NOTICE:  bad bytes caught: invalid byte sequence for encoding "UTF8": 0x93
+DO
+
+-- ============================================================
+-- Tests for UTL_ENCODE.UUENCODE / UUDECODE
+-- ============================================================
+
+SELECT rawtohex(utl_encode.uuencode('abc'::bytea)) = '23383629430A';
+ ?column? 
+-----------
+ t
+(1 row)
+
+SELECT rawtohex(utl_encode.uuencode('Hello'::bytea)) = '253226354C3B265C200A';
+ ?column? 
+-----------
+ t
+(1 row)
+
+SELECT utl_encode.uudecode(utl_encode.uuencode('Hello'::bytea)) = 'Hello'::bytea;
+ ?column? 
+-----------
+ t
+(1 row)
+
+SELECT utl_encode.uudecode(utl_encode.uuencode(hextoraw(rpad('0', 96, '0')))) = hextoraw(rpad('0', 96, '0'));
+ ?column? 
+-----------
+ t
+(1 row)
+
+SELECT utl_encode.uuencode(''::bytea) = ''::bytea;
+ ?column? 
+-----------
+ t
+(1 row)
+
+-- ============================================================
+-- Tests for QUOTED_PRINTABLE_ENCODE / QUOTED_PRINTABLE_DECODE
+-- ============================================================
+
+SELECT rawtohex(utl_encode.quoted_printable_encode('A=B'::bytea)) = '413D334442';
+ ?column? 
+-----------
+ t
+(1 row)
+
+SELECT rawtohex(utl_encode.quoted_printable_encode('Hello world'::bytea)) = '48656C6C6F20776F726C64';
+ ?column? 
+-----------
+ t
+(1 row)
+
+-- UTF-8 'café' -> 'caf=C3=A9'
+SELECT rawtohex(utl_encode.quoted_printable_encode('café'::bytea)) = '6361663D43333D4139';
+ ?column? 
+-----------
+ t
+(1 row)
+
+SELECT utl_encode.quoted_printable_decode('A=3DB'::bytea) = 'A=B'::bytea;
+ ?column? 
+-----------
+ t
+(1 row)
+
+-- '=\n' soft line break is dropped
+SELECT utl_encode.quoted_printable_decode('AB=0AC'::bytea) = 'AB' || chr(10) || 'C';
+ ?column? 
+-----------
+ t
+(1 row)
+
+-- NUL / LF become =00 / =0A
+SELECT rawtohex(utl_encode.quoted_printable_encode('\x000A'::bytea)) = '3D003D0A';
+ ?column? 
+-----------
+ t
+(1 row)
