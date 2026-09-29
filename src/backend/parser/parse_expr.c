@@ -18,6 +18,7 @@
 
 #include "access/htup_details.h"
 #include "catalog/pg_aggregate.h"
+#include "catalog/pg_class.h"
 #include "catalog/pg_type.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
@@ -43,6 +44,7 @@
 #include "utils/lsyscache.h"
 #include "utils/timestamp.h"
 #include "utils/ora_compatible.h"
+#include "utils/syscache.h"
 #include "utils/typcache.h"
 #include "utils/xml.h"
 
@@ -1033,6 +1035,26 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 	return transformColumnRefInternal(pstate, cref, false);
 }
 
+/*
+ * Resolve the object expression preceding a member-method name.  Unlike an
+ * ordinary ColumnRef, a miss is not immediately an error because the same
+ * dotted name may still be diagnosed as a function or package reference by
+ * ParseFuncOrColumn.
+ */
+Node *
+transformColumnRefForObjectMethod(ParseState *pstate, ColumnRef *cref)
+{
+	Node	   *result;
+	ParseExprKind saved_kind = pstate->p_expr_kind;
+
+	/* Package bodies can analyze CALL expressions without an outer kind. */
+	if (pstate->p_expr_kind == EXPR_KIND_NONE)
+		pstate->p_expr_kind = EXPR_KIND_OTHER;
+	result = transformColumnRefInternal(pstate, cref, true);
+	pstate->p_expr_kind = saved_kind;
+	return result;
+}
+
 static Node *
 transformParamRef(ParseState *pstate, ParamRef *pref)
 {
@@ -1643,12 +1665,106 @@ transformFuncCall(ParseState *pstate, FuncCall *fn)
 	List	   *targs;
 	ListCell   *args;
 
+	if (compatible_db == ORA_PARSER &&
+		list_length(fn->funcname) == 1 &&
+		strcmp(strVal(linitial(fn->funcname)), "ref") == 0)
+	{
+		ColumnRef  *arg;
+		Node	   *rawArg;
+		ParseNamespaceItem *nsitem;
+		HeapTuple	reltup;
+		Form_pg_class relform;
+		ColumnRef  *rowid;
+		Node	   *rowidExpr;
+		Node	   *baseRef;
+		Node	   *typedRef;
+		Oid			objectType;
+		Oid			refDomain;
+		int			levels_up;
+		char	   *alias;
+
+		rawArg = list_length(fn->args) == 1 ? linitial(fn->args) : NULL;
+		if (rawArg && IsA(rawArg, ColumnRefOrFuncCall))
+			rawArg = (Node *) ((ColumnRefOrFuncCall *) rawArg)->cref;
+		if (rawArg == NULL || !IsA(rawArg, ColumnRef) ||
+			list_length(((ColumnRef *) rawArg)->fields) != 1)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("REF requires an object-table alias"),
+					 parser_errposition(pstate, fn->location)));
+		arg = castNode(ColumnRef, rawArg);
+		alias = strVal(linitial(arg->fields));
+		nsitem = refnameNamespaceItem(pstate, NULL, alias,
+									fn->location, &levels_up);
+		if (nsitem == NULL || nsitem->p_rte->rtekind != RTE_RELATION)
+			ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg("REF requires an object table"),
+					 parser_errposition(pstate, fn->location)));
+		reltup = SearchSysCache1(RELOID, ObjectIdGetDatum(nsitem->p_rte->relid));
+		if (!HeapTupleIsValid(reltup))
+			elog(ERROR, "cache lookup failed for relation %u", nsitem->p_rte->relid);
+		relform = (Form_pg_class) GETSTRUCT(reltup);
+		objectType = relform->reloftype;
+		if (!OidIsValid(objectType) || !get_typisobject(objectType) ||
+			!relform->relhasrowid)
+			ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg("REF requires an object table with ROWID"),
+					 parser_errposition(pstate, fn->location)));
+		ReleaseSysCache(reltup);
+		refDomain = get_object_ref_domain_oid(objectType, false);
+
+		rowid = makeNode(ColumnRef);
+		rowid->fields = list_make2(makeString(alias), makeString("rowid"));
+		rowid->location = fn->location;
+		rowidExpr = transformExprRecurse(pstate, (Node *) rowid);
+		baseRef = ParseFuncOrColumn(pstate,
+									list_make2(makeString("sys"),
+												makeString("make_object_ref")),
+									list_make1(rowidExpr), last_srf,
+									fn, false, fn->location);
+		typedRef = coerce_to_target_type(pstate, baseRef,
+										exprType(baseRef), refDomain, -1,
+										COERCION_EXPLICIT, COERCE_EXPLICIT_CAST,
+										fn->location);
+		if (typedRef == NULL)
+			elog(ERROR, "could not coerce object reference to its REF type");
+		return typedRef;
+	}
+
 	/* Transform the list of arguments ... */
 	targs = NIL;
 	foreach(args, fn->args)
 	{
 		targs = lappend(targs, transformExprRecurse(pstate,
 													(Node *) lfirst(args)));
+	}
+
+	if (compatible_db == ORA_PARSER &&
+		list_length(fn->funcname) == 1 &&
+		strcmp(strVal(linitial(fn->funcname)), "deref") == 0)
+	{
+		Oid			objectType;
+		Node	   *ref;
+
+		if (list_length(targs) != 1)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("DEREF requires one REF argument")));
+		ref = linitial(targs);
+		objectType = get_typrefbase(exprType(ref));
+		if (!OidIsValid(objectType))
+			ereport(ERROR,
+					(errcode(ERRCODE_DATATYPE_MISMATCH),
+					 errmsg("DEREF requires a typed REF value"),
+					 parser_errposition(pstate, fn->location)));
+		return ParseFuncOrColumn(pstate,
+									list_make2(makeString("sys"),
+												makeString("ora_deref_internal")),
+									list_make2(ref, makeNullConst(objectType, -1,
+															 InvalidOid)),
+									last_srf, fn, false, fn->location);
 	}
 
 	/*

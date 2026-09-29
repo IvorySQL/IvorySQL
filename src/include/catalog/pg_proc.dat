@@ -12761,4 +12761,16 @@
   proname => 'hashoid8extended', prorettype => 'int8',
   proargtypes => 'oid8 int8', prosrc => 'hashoid8extended' },
 
+# Oracle object-table REF dereference.  The second argument is a typed NULL
+# supplied by parse analysis to select the target composite return type.
+{ oid => '9700', descr => 'dereference an Oracle object-table REF',
+  proname => 'ora_deref_internal', pronamespace => 'sys',
+  proisstrict => 'f', provolatile => 's', proparallel => 'u', prorettype => 'anycompatible',
+  proargtypes => 'anyelement anycompatible', prosrc => 'ora_deref_internal' },
+
+{ oid => '9701', descr => 'set the ROWID of the next restored object-table row',
+  proname => 'ora_set_next_rowid', pronamespace => 'sys',
+  proisstrict => 't', provolatile => 'v', proparallel => 'u', prorettype => 'void',
+  proargtypes => 'regclass int8', prosrc => 'ora_set_next_rowid' },
+
 ]

@@ -1420,6 +1420,32 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 		aclcheck_error(aclresult, OBJECT_SCHEMA,
 					   get_namespace_name(namespaceId));
 
+	/*
+	 * Oracle keeps standalone routines and object types in the same schema
+	 * namespace.  In particular, a function cannot shadow the system-defined
+	 * constructor of an existing object type.
+	 */
+	if (ORA_PARSER == compatible_db)
+	{
+		HeapTuple	typeTuple;
+
+		typeTuple = SearchSysCache2(TYPENAMENSP,
+								 CStringGetDatum(funcname),
+								 ObjectIdGetDatum(namespaceId));
+		if (HeapTupleIsValid(typeTuple))
+		{
+			Form_pg_type typeForm = (Form_pg_type) GETSTRUCT(typeTuple);
+			bool		isObjectType = typeForm->typisobject;
+
+			ReleaseSysCache(typeTuple);
+			if (isObjectType)
+				ereport(ERROR,
+						(errcode(ERRCODE_DUPLICATE_OBJECT),
+						 errmsg("name \"%s\" is already used by an object type",
+								funcname)));
+		}
+	}
+
 	/* Set default attributes */
 	as_clause = NIL;
 	language = NULL;

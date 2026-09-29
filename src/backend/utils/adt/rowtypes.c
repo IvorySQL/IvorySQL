@@ -19,7 +19,9 @@
 
 #include "access/detoast.h"
 #include "access/htup_details.h"
+#include "access/relation.h"
 #include "catalog/pg_type.h"
+#include "catalog/namespace.h"
 #include "funcapi.h"
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
@@ -27,7 +29,9 @@
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/guc.h"
+#include "utils/hsearch.h"
 #include "utils/lsyscache.h"
+#include "utils/memutils.h"
 #include "utils/ora_compatible.h"
 #include "utils/typcache.h"
 #include "parser/parser.h"
@@ -36,6 +40,118 @@
 #include "commands/proclang.h"
 #include "utils/syscache.h"
 #include "commands/extension.h"
+#include "commands/packagecmds.h"
+#include "executor/spi.h"
+
+Datum ora_deref_internal(PG_FUNCTION_ARGS);
+
+/*
+ * DEREF returns the current value of the referenced object-table row, or
+ * NULL when the row/table no longer exists.  The value is a typed composite,
+ * not a copy cached in the REF datum.
+ */
+Datum
+ora_deref_internal(PG_FUNCTION_ARGS)
+{
+	HeapTupleHeader ref;
+	HeapTupleData tuple;
+	TupleDesc	desc;
+	Datum		tableDatum;
+	Datum		rowDatum;
+	Oid		targetType;
+	Oid		tableId;
+	int64		rowNo;
+	bool		isnull;
+	Relation	relation;
+	StringInfoData sql;
+	Oid		argtypes[1] = {INT8OID};
+	Datum		values[1];
+	int			spiResult;
+	Datum		result;
+	HeapTupleHeader output;
+	Size		outputSize;
+
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+	targetType = get_fn_expr_argtype(fcinfo->flinfo, 1);
+	if (!OidIsValid(targetType) || !get_typisobject(targetType))
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("DEREF requires an Oracle object type")));
+
+	ref = PG_GETARG_HEAPTUPLEHEADER(0);
+	desc = lookup_rowtype_tupdesc(HeapTupleHeaderGetTypeId(ref),
+									 HeapTupleHeaderGetTypMod(ref));
+	if (desc->natts != 2 ||
+		TupleDescAttr(desc, 0)->atttypid != REGCLASSOID ||
+		TupleDescAttr(desc, 1)->atttypid != INT8OID)
+		ereport(ERROR,
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+				 errmsg("invalid object reference representation")));
+	tuple.t_len = HeapTupleHeaderGetDatumLength(ref);
+	tuple.t_data = ref;
+	tuple.t_tableOid = InvalidOid;
+	tableDatum = heap_getattr(&tuple, 1, desc, &isnull);
+	if (isnull)
+	{
+		ReleaseTupleDesc(desc);
+		PG_RETURN_NULL();
+	}
+	tableId = DatumGetObjectId(tableDatum);
+	rowDatum = heap_getattr(&tuple, 2, desc, &isnull);
+	if (isnull)
+	{
+		ReleaseTupleDesc(desc);
+		PG_RETURN_NULL();
+	}
+	rowNo = DatumGetInt64(rowDatum);
+	ReleaseTupleDesc(desc);
+
+	relation = try_relation_open(tableId, AccessShareLock);
+	if (relation == NULL)
+		PG_RETURN_NULL();
+	if (relation->rd_rel->reloftype != targetType ||
+		!relation->rd_rel->relhasrowid)
+	{
+		relation_close(relation, AccessShareLock);
+		PG_RETURN_NULL();
+	}
+	initStringInfo(&sql);
+	appendStringInfo(&sql,
+					 "SELECT ROW(t.*)::%s FROM %s AS t "
+					 "WHERE (t.rowid).rowno = $1",
+					 format_type_be_qualified(targetType),
+					 quote_qualified_identifier(
+						 get_namespace_name(RelationGetNamespace(relation)),
+						 RelationGetRelationName(relation)));
+	values[0] = Int64GetDatum(rowNo);
+	if (SPI_connect() != SPI_OK_CONNECT)
+		elog(ERROR, "SPI_connect failed while dereferencing object");
+	spiResult = SPI_execute_with_args(sql.data, 1, argtypes, values,
+									 NULL, true, 1);
+	if (spiResult != SPI_OK_SELECT)
+		elog(ERROR, "could not query object table while dereferencing");
+	if (SPI_processed == 0)
+	{
+		SPI_finish();
+		relation_close(relation, AccessShareLock);
+		PG_RETURN_NULL();
+	}
+	result = SPI_getbinval(SPI_tuptable->vals[0],
+						   SPI_tuptable->tupdesc, 1, &isnull);
+	if (isnull)
+	{
+		SPI_finish();
+		relation_close(relation, AccessShareLock);
+		PG_RETURN_NULL();
+	}
+	outputSize = VARSIZE_ANY(DatumGetPointer(result));
+	output = SPI_palloc(outputSize);
+	memcpy(output, DatumGetPointer(result), outputSize);
+	SPI_finish();
+	relation_close(relation, AccessShareLock);
+	PG_RETURN_HEAPTUPLEHEADER(output);
+}
 
 
 /*
@@ -82,6 +198,149 @@ typedef struct OraParamLink
 	int	total_params;
 	char	**paramnames;
 } OraParamLink;
+
+typedef struct ObjectComparePlanKey
+{
+	Oid			typeOid;
+	bool		isOrder;
+	NameData	method;
+} ObjectComparePlanKey;
+
+typedef struct ObjectComparePlanEntry
+{
+	ObjectComparePlanKey key;
+	SPIPlanPtr	plan;
+} ObjectComparePlanEntry;
+
+static HTAB *objectComparePlanCache = NULL;
+
+/*
+ * Invoke an Oracle object's MAP or ORDER method and normalize its result to
+ * the comparison convention used by record_cmp().  Running the method through
+ * SPI keeps package compilation, invalidation, privileges, and PL/iSQL
+ * execution on their normal paths.  The generic record operators are strict,
+ * so this is never entered for a SQL NULL object.
+ */
+static bool
+compare_oracle_object_records(Oid typeOid, HeapTupleHeader record1,
+							  HeapTupleHeader record2, int32 *result)
+{
+	HeapTuple	typeTuple;
+	Form_pg_type typeForm;
+	bool		isOrder;
+	char	   *method;
+	char	   *schemaName;
+	StringInfoData sql;
+	Oid			argtypes[2];
+	Datum		values[2];
+	int			spiResult;
+	bool		isnull;
+	Datum		value;
+	ObjectComparePlanKey planKey;
+	ObjectComparePlanEntry *planEntry;
+	bool		found;
+	int			save_nestlevel = -1;
+
+	if (!get_typisobject(typeOid))
+		return false;
+
+	method = GetObjectTypeComparisonMethod(typeOid, &isOrder);
+	if (method == NULL)
+		return false;
+
+	/*
+	 * Object comparison semantics are fixed by the type's MAP or ORDER
+	 * declaration, not by the caller's compatibility mode.  Package method
+	 * calls use Oracle syntax, so parse and execute this internal call with
+	 * Oracle semantics and restore the caller's mode afterwards.
+	 */
+	if (compatible_db != ORA_PARSER)
+	{
+		save_nestlevel = NewGUCNestLevel();
+		(void) set_config_option("ivorysql.compatible_mode", "oracle",
+								 PGC_USERSET, PGC_S_SESSION,
+								 GUC_ACTION_SAVE, true, 0, false);
+	}
+
+	typeTuple = SearchSysCache1(TYPEOID, ObjectIdGetDatum(typeOid));
+	if (!HeapTupleIsValid(typeTuple))
+		elog(ERROR, "cache lookup failed for type %u", typeOid);
+	typeForm = (Form_pg_type) GETSTRUCT(typeTuple);
+	schemaName = get_namespace_name(typeForm->typnamespace);
+
+	initStringInfo(&sql);
+	if (isOrder)
+		appendStringInfo(&sql,
+			"SELECT CASE WHEN comparison < 0 THEN -1 "
+			"WHEN comparison > 0 THEN 1 ELSE 0 END "
+			"FROM (SELECT %s.%s.%s($1, $2) AS comparison OFFSET 0) s",
+			quote_identifier(schemaName),
+			quote_identifier(NameStr(typeForm->typname)),
+			quote_identifier(method));
+	else
+		appendStringInfo(&sql,
+			"WITH keys AS MATERIALIZED "
+			"(SELECT %s.%s.%s($1) AS left_key, "
+			"%s.%s.%s($2) AS right_key) "
+			"SELECT CASE WHEN left_key < right_key THEN -1 "
+			"WHEN left_key > right_key THEN 1 ELSE 0 END FROM keys",
+			quote_identifier(schemaName),
+			quote_identifier(NameStr(typeForm->typname)),
+			quote_identifier(method),
+			quote_identifier(schemaName),
+			quote_identifier(NameStr(typeForm->typname)),
+			quote_identifier(method));
+
+	ReleaseSysCache(typeTuple);
+	argtypes[0] = typeOid;
+	argtypes[1] = typeOid;
+	values[0] = HeapTupleHeaderGetDatum(record1);
+	values[1] = HeapTupleHeaderGetDatum(record2);
+
+	MemSet(&planKey, 0, sizeof(planKey));
+	planKey.typeOid = typeOid;
+	planKey.isOrder = isOrder;
+	namestrcpy(&planKey.method, method);
+	if (objectComparePlanCache == NULL)
+	{
+		HASHCTL		ctl;
+
+		MemSet(&ctl, 0, sizeof(ctl));
+		ctl.keysize = sizeof(ObjectComparePlanKey);
+		ctl.entrysize = sizeof(ObjectComparePlanEntry);
+		ctl.hcxt = CacheMemoryContext;
+		objectComparePlanCache = hash_create("Oracle object comparison plans",
+										  16, &ctl,
+										  HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+	}
+	planEntry = hash_search(objectComparePlanCache, &planKey, HASH_ENTER,
+						&found);
+
+	if (SPI_connect() != SPI_OK_CONNECT)
+		elog(ERROR, "SPI_connect failed while comparing object type %u", typeOid);
+	if (!found || planEntry->plan == NULL)
+	{
+		planEntry->plan = SPI_prepare(sql.data, 2, argtypes);
+		if (planEntry->plan == NULL || SPI_keepplan(planEntry->plan) != 0)
+			elog(ERROR, "could not prepare comparison method for object type %u",
+				 typeOid);
+	}
+	spiResult = SPI_execute_plan(planEntry->plan, values, NULL, true, 1);
+	if (spiResult != SPI_OK_SELECT || SPI_processed != 1)
+		elog(ERROR, "could not execute comparison method for object type %u",
+			 typeOid);
+	value = SPI_getbinval(SPI_tuptable->vals[0], SPI_tuptable->tupdesc,
+						  1, &isnull);
+	*result = isnull ? 0 : DatumGetInt32(value);
+	SPI_finish();
+
+	pfree(sql.data);
+	pfree(method);
+	pfree(schemaName);
+	if (save_nestlevel >= 0)
+		AtEOXact_GUC(false, save_nestlevel);
+	return true;
+}
 
 /*
  * record_in		- input routine for any composite type.
@@ -878,10 +1137,23 @@ record_cmp(FunctionCallInfo fcinfo)
 	/* Extract type info from the tuples */
 	tupType1 = HeapTupleHeaderGetTypeId(record1);
 	tupTypmod1 = HeapTupleHeaderGetTypMod(record1);
-	tupdesc1 = lookup_rowtype_tupdesc(tupType1, tupTypmod1);
-	ncolumns1 = tupdesc1->natts;
 	tupType2 = HeapTupleHeaderGetTypeId(record2);
 	tupTypmod2 = HeapTupleHeaderGetTypMod(record2);
+	if (tupType1 == tupType2 && get_typisobject(tupType1))
+	{
+		if (compare_oracle_object_records(tupType1, record1, record2, &result))
+		{
+			PG_FREE_IF_COPY(record1, 0);
+			PG_FREE_IF_COPY(record2, 1);
+			return result;
+		}
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("object type %s has no MAP or ORDER method",
+						format_type_be(tupType1))));
+	}
+	tupdesc1 = lookup_rowtype_tupdesc(tupType1, tupTypmod1);
+	ncolumns1 = tupdesc1->natts;
 	tupdesc2 = lookup_rowtype_tupdesc(tupType2, tupTypmod2);
 	ncolumns2 = tupdesc2->natts;
 
@@ -1097,6 +1369,7 @@ record_eq(PG_FUNCTION_ARGS)
 	HeapTupleHeader record1 = PG_GETARG_HEAPTUPLEHEADER(0);
 	HeapTupleHeader record2 = PG_GETARG_HEAPTUPLEHEADER(1);
 	bool		result = true;
+	int32		objectResult;
 	Oid			tupType1;
 	Oid			tupType2;
 	int32		tupTypmod1;
@@ -1122,10 +1395,18 @@ record_eq(PG_FUNCTION_ARGS)
 	/* Extract type info from the tuples */
 	tupType1 = HeapTupleHeaderGetTypeId(record1);
 	tupTypmod1 = HeapTupleHeaderGetTypMod(record1);
-	tupdesc1 = lookup_rowtype_tupdesc(tupType1, tupTypmod1);
-	ncolumns1 = tupdesc1->natts;
 	tupType2 = HeapTupleHeaderGetTypeId(record2);
 	tupTypmod2 = HeapTupleHeaderGetTypMod(record2);
+	if (tupType1 == tupType2 &&
+		compare_oracle_object_records(tupType1, record1, record2,
+									  &objectResult))
+	{
+		PG_FREE_IF_COPY(record1, 0);
+		PG_FREE_IF_COPY(record2, 1);
+		PG_RETURN_BOOL(objectResult == 0);
+	}
+	tupdesc1 = lookup_rowtype_tupdesc(tupType1, tupTypmod1);
+	ncolumns1 = tupdesc1->natts;
 	tupdesc2 = lookup_rowtype_tupdesc(tupType2, tupTypmod2);
 	ncolumns2 = tupdesc2->natts;
 
@@ -2306,4 +2587,3 @@ get_parameter_description(PG_FUNCTION_ARGS)
 
 	SRF_RETURN_DONE(funcctx);
 }
-

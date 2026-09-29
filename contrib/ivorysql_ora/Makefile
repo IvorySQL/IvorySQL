@@ -46,17 +46,15 @@ OBJS = \
 EXTENSION = ivorysql_ora
 
 # SQL(s) which need to be generated only if which is specified here.
-DATA = ivorysql_ora--1.0.sql
-
-all: gensql
+DATA_built = ivorysql_ora--1.0.sql
 
 install: install-data
 
 clean: cleansql
 
 # SQL(s) merge using perl
-gensql: gensql.pl
-	$(PERL) $< gcc_build $(patsubst ivorysql_ora--%.sql, %, $(DATA))
+$(DATA_built): gensql.pl
+	$(PERL) $< gcc_build $(patsubst ivorysql_ora--%.sql, %,$@)
 
 # Preload the compatible oracle misc sql script
 install-data:
@@ -64,7 +62,7 @@ install-data:
 
 # Clean the generated SQL(s).
 cleansql:
-	rm -f $(DATA)
+	rm -f $(DATA_built)
 
 # REGRESS_OPTS mainly used for installcheck or debug.
 #REGRESS_OPTS = --port=1521
@@ -125,6 +123,4 @@ endif
 ifeq ($(with_libxml),yes)
 SHLIB_LINK += -lxml2
 endif
-
-
 

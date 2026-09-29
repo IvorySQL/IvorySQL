@@ -59,6 +59,27 @@
 #include "commands/sequence.h"
 #include "utils/syscache.h"
 
+/* One-shot ROWID override used by pg_dump's object-table restore stream. */
+static Oid	ora_restore_relid = InvalidOid;
+static int32 ora_restore_rowno = 0;
+
+Datum ora_set_next_rowid(PG_FUNCTION_ARGS);
+
+Datum
+ora_set_next_rowid(PG_FUNCTION_ARGS)
+{
+	Oid		relid = PG_GETARG_OID(0);
+	int64	rowno = PG_GETARG_INT64(1);
+
+	if (rowno <= 0 || rowno > PG_INT32_MAX)
+		ereport(ERROR,
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+				 errmsg("ROWID value is out of range")));
+	ora_restore_relid = relid;
+	ora_restore_rowno = (int32) rowno;
+	PG_RETURN_VOID();
+}
+
 
 static HeapTuple heap_prepare_insert(Relation relation, HeapTuple tup,
 									 TransactionId xid, CommandId cid, uint32 options);
@@ -2149,6 +2170,12 @@ heap_prepare_insert(Relation relation, HeapTuple tup, TransactionId xid,
 #endif
 		/* Get the sequence next value */
 		seqnum = nextval_internal(relation->rd_rowdSeqid, true);
+		if (ora_restore_relid == RelationGetRelid(relation))
+		{
+			seqnum = ora_restore_rowno;
+			ora_restore_relid = InvalidOid;
+			ora_restore_rowno = 0;
+		}
 		/* Set the HeapTupleHeader */
 		HeapTupleSetRowId(tup, seqnum);
 	}
