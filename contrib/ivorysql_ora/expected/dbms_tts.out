@@ -1,0 +1,121 @@
+--
+-- DBMS_TTS
+--
+-- Regression tests for Oracle-compatible DBMS_TTS package:
+--   - Package constants
+--   - TRANSPORT_SET_CHECK with valid tablespace (pg_default)
+--   - TRANSPORT_SET_CHECK with non-existent tablespaces (violations recorded)
+--   - IS_PLATFORM_SUPPORTED
+--   - GET_ENDIANNESS
+--   - CHECK_VERSION
+--   - DOWNGRADE procedure
+--   - Error handling (NULL parameter checks)
+--   - Internal function execute privilege revoked from PUBLIC (CWE-862)
+--
+-- Package constants
+SELECT dbms_tts.big_endian;
+ big_endian
+------------
+          1
+(1 row)
+
+SELECT dbms_tts.little_endian;
+ little_endian
+---------------
+             2
+(1 row)
+
+-- TRANSPORT_SET_CHECK with valid tablespace
+CALL dbms_tts.transport_set_check('pg_default');
+SELECT COUNT(*) FROM sys.transport_set_violations;
+ count
+-------
+     0
+(1 row)
+
+-- TRANSPORT_SET_CHECK with non-existent tablespaces
+CALL dbms_tts.transport_set_check('non_existent_ts1, non_existent_ts2');
+SELECT violation FROM sys.transport_set_violations ORDER BY violation;
+                   violation
+-----------------------------------------------
+ Tablespace "non_existent_ts1" does not exist
+ Tablespace "non_existent_ts2" does not exist
+(2 rows)
+
+-- Platform verification functions
+SELECT dbms_tts.is_platform_supported('Linux x86 64-bit');
+ is_platform_supported
+-----------------------
+ t
+(1 row)
+
+SELECT dbms_tts.is_platform_supported('Microsoft Windows 64-bit');
+ is_platform_supported
+-----------------------
+ t
+(1 row)
+
+SELECT dbms_tts.is_platform_supported('Unknown OS 128-bit');
+ is_platform_supported
+-----------------------
+ f
+(1 row)
+
+SELECT dbms_tts.get_endianness('Linux x86 64-bit');
+ get_endianness
+----------------
+              2
+(1 row)
+
+SELECT dbms_tts.get_endianness('AIX-Based Systems (64-bit)');
+ get_endianness
+----------------
+              1
+(1 row)
+
+SELECT dbms_tts.check_version('19.0.0.0.0');
+ check_version
+---------------
+ t
+(1 row)
+
+SELECT dbms_tts.check_version('8.1.7.0.0');
+ check_version
+---------------
+ f
+(1 row)
+
+-- DOWNGRADE procedure
+CALL dbms_tts.downgrade();
+-- Error handling: NULL parameter
+SELECT sys.dbms_tts_transport_set_check_internal(NULL, false, false);
+ERROR:  DBMS_TTS.TRANSPORT_SET_CHECK: ts_list must not be NULL
+SELECT sys.dbms_tts_is_platform_supported_internal(NULL);
+ERROR:  DBMS_TTS.IS_PLATFORM_SUPPORTED: platform_name must not be NULL
+SELECT sys.dbms_tts_get_endianness_internal(NULL);
+ERROR:  DBMS_TTS.GET_ENDIANNESS: platform_name must not be NULL
+SELECT sys.dbms_tts_check_version_internal(NULL);
+ERROR:  DBMS_TTS.CHECK_VERSION: version must not be NULL
+-- Verify internal functions execute privilege revoked from PUBLIC (CWE-862)
+SELECT p.proname, has_function_privilege('public', p.oid, 'EXECUTE') AS public_can_execute
+  FROM pg_catalog.pg_proc p
+  JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+ WHERE n.nspname = 'sys'
+   AND p.proname IN ('dbms_tts_transport_set_check_internal',
+                     'dbms_tts_downgrade_internal',
+                     'dbms_tts_is_platform_supported_internal',
+                     'dbms_tts_get_endianness_internal',
+                     'dbms_tts_check_version_internal')
+ ORDER BY p.proname;
+                 proname                 | public_can_execute
+-----------------------------------------+--------------------
+ dbms_tts_check_version_internal         | f
+ dbms_tts_downgrade_internal             | f
+ dbms_tts_get_endianness_internal        | f
+ dbms_tts_is_platform_supported_internal | f
+ dbms_tts_transport_set_check_internal   | f
+(5 rows)
+
+-- Clean up
+DELETE FROM sys.transport_set_violations;
+DELETE 2
