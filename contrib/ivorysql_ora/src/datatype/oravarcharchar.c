@@ -36,6 +36,7 @@
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/ora_compatible.h"
+#include "utils/pg_locale.h"
 #include "mb/pg_wchar.h"
 #include "utils/varlena.h"
 #include "fmgr.h"
@@ -351,11 +352,19 @@ oravarcharchar_cmp(VarChar *arg1, VarChar *arg2, Oid collid)
 Datum
 oravarchareq(PG_FUNCTION_ARGS)
 {
+	Oid			collid = PG_GET_COLLATION();
+	pg_locale_t mylocale;
 	Datum		arg1 = PG_GETARG_DATUM(0);
 	Datum		arg2 = PG_GETARG_DATUM(1);
 	bool		result;
 	Size		len1,
 				len2;
+
+	check_collation_set(collid);
+	mylocale = pg_newlocale_from_collation(collid);
+
+	if (!mylocale->deterministic)
+		return DirectFunctionCall2Coll(texteq, collid, arg1, arg2);
 
 	len1 = toast_raw_datum_size(arg1);
 	len2 = toast_raw_datum_size(arg2);
@@ -379,11 +388,19 @@ oravarchareq(PG_FUNCTION_ARGS)
 Datum
 oravarcharne(PG_FUNCTION_ARGS)
 {
+	Oid			collid = PG_GET_COLLATION();
+	pg_locale_t mylocale;
 	Datum		arg1 = PG_GETARG_DATUM(0);
 	Datum		arg2 = PG_GETARG_DATUM(1);
 	bool		result;
 	Size		len1,
 				len2;
+
+	check_collation_set(collid);
+	mylocale = pg_newlocale_from_collation(collid);
+
+	if (!mylocale->deterministic)
+		return DirectFunctionCall2Coll(textne, collid, arg1, arg2);
 
 	len1 = toast_raw_datum_size(arg1);
 	len2 = toast_raw_datum_size(arg2);
@@ -576,15 +593,19 @@ Datum
 hashoravarchar(PG_FUNCTION_ARGS)
 {
 	VarChar	   *key = PG_GETARG_VARCHAR_PP(0);
+	Oid			collid = PG_GET_COLLATION();
+	pg_locale_t mylocale;
 	Datum		result;
 
-	/*
-	 * Note: this is currently identical in behavior to hashvarlena, but keep
-	 * it as a separate function in case we someday want to do something
-	 * different in non-C locales.  (See also hashbpchar, if so.)
-	 */
-	result = hash_any((unsigned char *) VARDATA_ANY(key),
-					  VARSIZE_ANY_EXHDR(key));
+	check_collation_set(collid);
+	mylocale = pg_newlocale_from_collation(collid);
+
+	if (mylocale->deterministic)
+		result = hash_any((unsigned char *) VARDATA_ANY(key),
+						  VARSIZE_ANY_EXHDR(key));
+	else
+		result = DirectFunctionCall1Coll(hashtext, collid,
+									   PointerGetDatum(key));
 
 	/* Avoid leaking memory for toasted inputs */
 	PG_FREE_IF_COPY(key, 0);
