@@ -184,8 +184,7 @@ CreateTemplateTupleDesc(int natts)
 	 * although with the current definition of pg_attribute there probably
 	 * isn't any padding.
 	 */
-	desc = (TupleDesc) palloc(offsetof(struct TupleDescData, compact_attrs) +
-							  natts * sizeof(CompactAttribute) +
+	desc = (TupleDesc) palloc(TupleDescAttrOffset(natts) +
 							  natts * sizeof(FormData_pg_attribute));
 
 	/*
