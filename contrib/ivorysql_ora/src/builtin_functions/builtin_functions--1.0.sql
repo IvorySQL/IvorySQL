@@ -330,7 +330,9 @@ begin
 end;
 $$
 language plpgsql
-PARALLEL SAFE;
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
 
 
 /* trim/ltrim/rtrim functions */
