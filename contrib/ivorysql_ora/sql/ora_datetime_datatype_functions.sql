@@ -805,3 +805,18 @@ drop table ds_tb;
 reset NLS_TIMESTAMP_FORMAT;
 reset NLS_TIMESTAMP_TZ_FORMAT;
 reset NLS_DATE_FORMAT;
+
+/*
+ * MONTHS_BETWEEN must include the time of day of both dates in the
+ * fractional-month computation, also when they fall on the same calendar
+ * day (Oracle: (day1+time1 - day2-time2)/31).  The fixtures compare the
+ * result against the identical arithmetic, so the expected output does
+ * not depend on floating-point display formatting.
+ */
+select months_between(timestamp '2018-08-09 08:30', timestamp '2018-08-09 09:00') = -1800000000.0 / 31.0 / 86400000000.0 as ok from dual;
+select months_between(timestamp '2018-08-09 09:00', timestamp '2018-08-09 08:30') = 1800000000.0 / 31.0 / 86400000000.0 as ok from dual;
+select months_between(timestamp '2018-08-09 08:30', timestamp '2018-08-09 08:30') = 0 as ok from dual;
+select months_between(timestamp '2018-08-09 08:30', timestamp '2018-08-09 09:00') < 0 as ok from dual;
+select months_between(timestamp '2018-08-09 09:00', timestamp '2018-08-09 08:30') > 0 as ok from dual;
+select months_between(timestamp '2018-08-09 08:30', timestamp '2018-08-10 09:00') = months_between(timestamp '2018-09-09 08:30', timestamp '2018-09-10 09:00') as ok from dual;
+select months_between(timestamp '2018-08-09 08:30', timestamp '2018-07-09 08:30') = 1 as ok from dual;
