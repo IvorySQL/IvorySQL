@@ -8,6 +8,7 @@
 set -e
 
 : ${MAKE=make}
+: ${srcdir=.}
 
 # Guard against parallel make issues (see comments in pg_regress.c)
 unset MAKEFLAGS
@@ -16,7 +17,7 @@ unset MAKELEVEL
 # Run a given "initdb" binary and overlay the regression testing
 # authentication configuration.
 standard_initdb() {
-	initdb -D $PGDATA -USYSTEM -moracle
+	initdb -D "$PGDATA" -USYSTEM -moracle
 	if [ -n "$TEMP_CONFIG" -a -r "$TEMP_CONFIG" ]
 	then
 		cat "$TEMP_CONFIG" >> "$PGDATA/postgresql.conf"
@@ -149,20 +150,20 @@ pg_ctl start -l "$logdir/postmaster1.log" -o "$POSTMASTER_OPTS" -w
 if [ ! -d results ] ; then
 	mkdir results
 fi
-cat regression.txt|while read line
+while IFS= read -r line
 do
- ./$line >results/$line.out
-done
+ "./$line" >"results/$line.out"
+done <"$srcdir/regression.txt"
 pg_ctl -m fast stop
 
 #get result
-cat regression.txt|while read line
+while IFS= read -r line
 do
-if diff expected/$line.out results/$line.out >$line.diffs; then
+if diff "$srcdir/expected/$line.out" "results/$line.out" >"$line.diffs"; then
 	echo "$line passed"
 else
 	echo "$line failed see details about $line.diffs"
 	exit 1
 fi
-done
+done <"$srcdir/regression.txt"
 exit 0
