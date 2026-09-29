@@ -26,6 +26,14 @@ PGFILEDESC = "ora_btree_gist - B-tree equivalent GiST operator classes"
 # locale.
 ENCODING = UTF8
 
+# ENCODING alone is not enough: without --no-locale, pg_regress still creates
+# the test database with the locale of the invoking environment, and a locale
+# whose encoding is not UTF8 (for example zh_CN.gbk) makes the CREATE DATABASE
+# ... ENCODING='UTF8' emitted by pg_regress fail before a single test runs.
+# --no-locale pins the database to the C locale, which is compatible with
+# UTF8, so the module can be checked from any environment.
+ORACLE_REGRESS_OPTS += --no-locale
+
 ORA_REGRESS = init number varchar2 varchar2_utf8 binary_float binary_double date \
 	  timestamp timestamptz timestampltz yminterval dsinterval
 EXTRA_INSTALL = contrib/ivorysql_ora
