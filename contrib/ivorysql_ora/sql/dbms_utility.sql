@@ -507,3 +507,42 @@ DROP SCHEMA bug_schema CASCADE;
 
 RESET ivorysql.identifier_case_switch;
 RESET ivorysql.enable_case_switch;
+-- ============================================================
+-- New tests: GET_TIME / DB_VERSION / GET_HASH_VALUE /
+--            COMMA_TO_TABLE / TABLE_TO_COMMA
+-- ============================================================
+
+-- GET_TIME returns positive elapsed centiseconds
+SELECT dbms_utility.get_time() > 0 AS ok;
+
+-- DB_VERSION: version/compat come from the build; mask to MAJOR.MINOR
+DO $$
+DECLARE
+    v VARCHAR2(4000);
+    c VARCHAR2(4000);
+BEGIN
+    dbms_utility.db_version(v, c);
+    RAISE NOTICE 'version=%, compat=%',
+        regexp_replace(v, '^[0-9]+\.[0-9]+.*', 'MAJOR.MINOR'),
+        regexp_replace(c, '^[0-9]+\.[0-9]+.*', 'MAJOR.MINOR');
+END;
+$$;
+
+-- GET_HASH_VALUE: pinned deterministic value and range
+SELECT dbms_utility.get_hash_value('abc', 10, 100) = 105 AS ok;
+SELECT dbms_utility.get_hash_value('abc', 10, 100) BETWEEN 10 AND 109 AS ok;
+SELECT dbms_utility.get_hash_value('abc', 10, 100) = dbms_utility.get_hash_value('abc', 10, 100) AS ok;
+
+-- COMMA_TO_TABLE / TABLE_TO_COMMA round trip
+DO $$
+DECLARE
+    arr TEXT[];
+    lst VARCHAR2(4000);
+BEGIN
+    dbms_utility.comma_to_table('a, b ,ccc', arr);
+    RAISE NOTICE 'tab=[%]', array_to_string(arr, '|');
+    SELECT ARRAY['x','y','z'] INTO arr;
+    dbms_utility.table_to_comma(arr, lst);
+    RAISE NOTICE 'list=[%]', lst;
+END;
+$$;
