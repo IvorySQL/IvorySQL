@@ -100,6 +100,7 @@ ORA_REGRESS = \
 	utl_raw \
 	utl_encode \
 	utl_url \
+	utl_i18n \
 	dbms_session \
 	dbms_transaction \
 	dbms_random \
