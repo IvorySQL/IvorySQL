@@ -113,6 +113,42 @@ SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
   'FREQ=WEEKLY;BYDAY=7;BYHOUR=6;BYMINUTE=0;BYSECOND=0',
   '2026-01-05 00:00:00+00', '2026-07-01 00:00:00+00') AS byday_numeric_sunday;
 
+-- Weekly date filters must intersect with BYDAY rather than being ignored
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=WEEKLY;BYDAY=MON;BYDATE=20300114;BYHOUR=9;BYMINUTE=0;BYSECOND=0',
+  '2030-01-07 09:00:00+00', '2030-01-06 00:00:00+00') AS weekly_bydate;
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=WEEKLY;BYDAY=MON;BYMONTHDAY=14;BYHOUR=9;BYMINUTE=0;BYSECOND=0',
+  '2030-01-07 09:00:00+00', '2030-01-06 00:00:00+00') AS weekly_bymonthday;
+
+-- CREATE_JOB must persist the same filtered first run date
+SET client_min_messages TO error;
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_job_weekly_bydate',
+      job_type => 'PLSQL_BLOCK', job_action => 'BEGIN NULL; END;',
+      start_date => TIMESTAMP '2030-01-07 09:00:00+00',
+      repeat_interval =>
+        'FREQ=WEEKLY;BYDAY=MON;BYDATE=20300114;BYHOUR=9;BYMINUTE=0;BYSECOND=0',
+      enabled => TRUE);
+  dbms_scheduler.create_job(job_name => 'reg_job_weekly_bymonthday',
+      job_type => 'PLSQL_BLOCK', job_action => 'BEGIN NULL; END;',
+      start_date => TIMESTAMP '2030-01-07 09:00:00+00',
+      repeat_interval =>
+        'FREQ=WEEKLY;BYDAY=MON;BYMONTHDAY=14;BYHOUR=9;BYMINUTE=0;BYSECOND=0',
+      enabled => TRUE);
+END;
+/
+RESET client_min_messages;
+SELECT job_name, next_run_date
+  FROM user_scheduler_jobs
+ WHERE job_name IN ('REG_JOB_WEEKLY_BYDATE', 'REG_JOB_WEEKLY_BYMONTHDAY')
+ ORDER BY job_name;
+BEGIN
+  dbms_scheduler.drop_job('reg_job_weekly_bydate');
+  dbms_scheduler.drop_job('reg_job_weekly_bymonthday');
+END;
+/
+
 -- calendar errors
 SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
   'BYHOUR=9', '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00');
