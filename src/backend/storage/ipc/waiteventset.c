@@ -10,7 +10,7 @@
  * You can wait for:
  * - a latch being set from another process or from signal handler in the same
  *   process (WL_LATCH_SET)
- * - data to become readable or writeable on a socket (WL_SOCKET_*)
+ * - data to become readable or writable on a socket (WL_SOCKET_*)
  * - postmaster death (WL_POSTMASTER_DEATH or WL_EXIT_ON_PM_DEATH)
  * - timeout (WL_TIMEOUT)
  *
@@ -540,7 +540,7 @@ FreeWaitEventSetAfterFork(WaitEventSet *set)
  * - WL_POSTMASTER_DEATH: Wait for postmaster to die
  * - WL_SOCKET_READABLE: Wait for socket to become readable,
  *	 can be combined in one event with other WL_SOCKET_* events
- * - WL_SOCKET_WRITEABLE: Wait for socket to become writeable,
+ * - WL_SOCKET_WRITEABLE: Wait for socket to become writable,
  *	 can be combined with other WL_SOCKET_* events
  * - WL_SOCKET_CONNECTED: Wait for socket connection to be established,
  *	 can be combined with other WL_SOCKET_* events (on non-Windows
@@ -1570,7 +1570,7 @@ WaitEventSetWaitBlock(WaitEventSet *set, int cur_timeout,
 			if ((cur_event->events & WL_SOCKET_WRITEABLE) &&
 				(cur_pollfd->revents & (POLLOUT | errflags)))
 			{
-				/* writeable, or EOF */
+				/* writable, or EOF */
 				occurred_events->events |= WL_SOCKET_WRITEABLE;
 			}
 
@@ -1800,7 +1800,7 @@ WaitEventSetWaitBlock(WaitEventSet *set, int cur_timeout,
 			if ((cur_event->events & WL_SOCKET_WRITEABLE) &&
 				(resEvents.lNetworkEvents & FD_WRITE))
 			{
-				/* writeable */
+				/* writable */
 				occurred_events->events |= WL_SOCKET_WRITEABLE;
 			}
 			if ((cur_event->events & WL_SOCKET_CONNECTED) &&
