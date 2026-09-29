@@ -419,3 +419,33 @@ select insertxmlafter(XMLtype('<a>A<b>B</b></a>'), '/', XMLType('<c>C</c>'));
 select insertchildxml(XMLtype('<a>A<b>B</b></a>'), '/', 'c', XMLType('<c>C</c>'));
 
 
+--
+-- multiple XPath/value pairs in updatexml
+--
+-- each pair's XPath evaluation state must be released before the next
+-- pair is evaluated; only the parsed document is kept until the end
+--
+SELECT updatexml(XMLType('<a><b>1</b><c>2</c></a>'),
+  '/a/b/text()', '111', '/a/c/text()', '222') FROM dual;
+
+SELECT updatexml(XMLType('<a><b>1</b><c>2</c><d>3</d></a>'),
+  '/a/b/text()', '111', '/a/c/text()', '222', '/a/d/text()', '333') FROM dual;
+
+-- second pair replaces a whole node instead of a text() value
+SELECT updatexml(XMLType('<a><b>1</b><c>2</c></a>'),
+  '/a/b/text()', '111', '/a/c', XMLType('<c>222</c>')) FROM dual;
+
+-- second pair's XPath matches nothing: the other updates are still applied
+SELECT updatexml(XMLType('<a><b>1</b><c>2</c></a>'),
+  '/a/b/text()', '111', '/a/missing/text()', '222') FROM dual;
+
+-- multiple pairs with a namespace argument
+SELECT updatexml(xmltype('<e:root xmlns:e="http://www.example.com/e"><e:a>1</e:a><e:b>2</e:b></e:root>'),
+  'e:root/e:a/text()', '111', 'e:root/e:b/text()', '222',
+  'xmlns:e="http://www.example.com/e"') FROM dual;
+
+-- an invalid XPath in a later pair must error out cleanly, after the
+-- earlier pairs have been evaluated
+SELECT updatexml(XMLType('<a><b>1</b><c>2</c></a>'),
+  '/a/b/text()', '111', '///', '222') FROM dual;
+
