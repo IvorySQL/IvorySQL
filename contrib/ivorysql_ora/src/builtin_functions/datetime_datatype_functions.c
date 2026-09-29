@@ -30,6 +30,7 @@
 #include <time.h>
 
 #include "postgres.h"
+#include "common/int.h"
 #include "datatype/timestamp.h"
 #include "mb/pg_wchar.h"
 #include "pgtime.h"
@@ -399,12 +400,18 @@ add_months(PG_FUNCTION_ARGS)
 				d = 0;
 	int			days;
 	Timestamp	result;
-	div_t		v;
+	int64		months;
+	int64		year;
 	bool		last_day;
 	int64		n;
 	Numeric		num = PG_GETARG_NUMERIC(1);
 
-	n = DatumGetInt32(DirectFunctionCall1(numeric_int8, NumericGetDatum(num)));
+	/*
+	 * Read the month count as the 64-bit quantity it is: narrowing it to 32
+	 * bits turned ADD_MONTHS(d, 4294967296) into ADD_MONTHS(d, 0) and returned
+	 * the input date unchanged.
+	 */
+	n = DatumGetInt64(DirectFunctionCall1(numeric_int8, NumericGetDatum(num)));
 
 	TMODULO(time, date, USECS_PER_DAY);
 	if (time < INT64CONST(0))
@@ -417,11 +424,30 @@ add_months(PG_FUNCTION_ARGS)
 	j2date((int) date, &y, &m, &d);
 	last_day = (d == days_of_month(y, m));
 
-	v = div(y * 12 + m - 1 + n, 12);
-	y = v.quot;
-	if (y < 0)
-		y += 1;
-	m = v.rem + 1;
+	/*
+	 * Add the months in 64 bits.  "y * 12 + m - 1 + n" does not fit in the
+	 * int that div() takes (n is 64-bit), so a large count used to wrap and the
+	 * function answered with an unrelated date.
+	 */
+	months = (int64) y * 12 + (m - 1) + n;
+	year = months / 12;
+	if (year < 0)
+		year += 1;
+	m = (int) (months % 12) + 1;
+
+	/*
+	 * The result is a DATE, so a target year that cannot be represented has to
+	 * be reported rather than wrapped.  IS_VALID_JULIAN() also keeps date2j()
+	 * from overflowing; the Julian range is wider than the timestamp range, so
+	 * the microsecond computation below is range-checked as well.
+	 */
+	if (year < JULIAN_MINYEAR || year > JULIAN_MAXYEAR ||
+		!IS_VALID_JULIAN((int) year, m, d))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("date out of range")));
+
+	y = (int) year;
 
 	days = days_of_month(y, m);
 	if (last_day || d > days)
@@ -429,7 +455,11 @@ add_months(PG_FUNCTION_ARGS)
 
 	result = date2j(y, m, d) - POSTGRES_EPOCH_JDATE;
 
-	result = result * USECS_PER_DAY + time;
+	if (pg_mul_s64_overflow(result, USECS_PER_DAY, &result) ||
+		pg_add_s64_overflow(result, time, &result))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("date out of range")));
 
 	PG_RETURN_TIMESTAMP(result);
 }

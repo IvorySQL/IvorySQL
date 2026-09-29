@@ -81,3 +81,18 @@ drop function s1.f_alter(arg1 number, arg2 number);
 drop function s1.f_alter(arg1 OUT int);
 drop function s1.f_alter(arg1 text);
 drop function s1.f_alter(arg1 number, arg2 number, arg3 number);
+
+--
+-- ADD_MONTHS: a month count that does not fit in the date range must be
+-- reported instead of being wrapped into an unrelated date.
+--
+alter session set NLS_DATE_FORMAT='yyyy-mm-dd hh24:mi:ss';
+-- control: a large month count that is still representable (250000 years)
+select add_months(date '2020-01-01', 3000000) from dual;
+-- 2^32 months is truncated to 0 when the count is read
+select add_months(date '2020-01-01', 4294967296) from dual;
+select add_months(date '2020-01-01', -4294967296) from dual;
+-- 2^31 months wraps to a negative count when the count is read
+select add_months(date '2020-01-01', 2147483648) from dual;
+-- 2^31-1 months wraps inside the month arithmetic itself
+select add_months(date '2020-01-01', 2147483647) from dual;
