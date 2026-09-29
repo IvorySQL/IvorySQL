@@ -737,7 +737,7 @@ isObjectPinned(const ObjectAddress *object)
  *
  * Lock the object that we are about to record a dependency on.  After it's
  * locked, verify that it hasn't been dropped while we weren't looking.  If it
- * has been dropped, throw an an error.
+ * has been dropped, throw an error.
  *
  * If the caller already holds a lock that conflicts with DROP
  * (AccessShareLock or stronger), this does nothing.  Callers should acquire
