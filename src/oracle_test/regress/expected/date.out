@@ -461,8 +461,11 @@ SELECT date '5874898-01-01';  -- out of range
 ERROR:  unmatched format separator "-"
 -- Test non-error-throwing API
 SELECT pg_input_is_valid('now', 'date');
-ERROR:  invalid value "now" for "YYYY"
-DETAIL:  Value must be an integer.
+ pg_input_is_valid 
+-------------------
+ t
+(1 row)
+
 SELECT pg_input_is_valid('garbage', 'date');
 ERROR:  invalid value "garb" for "YYYY"
 DETAIL:  Value must be an integer.
@@ -499,26 +502,61 @@ SELECT f1 - date '2000-01-01' AS "Days From 2K" FROM DATE_TBL;
 (15 rows)
 
 SELECT f1 - date 'epoch' AS "Days From Epoch" FROM DATE_TBL;
-ERROR:  invalid value "epoc" for "YYYY"
-DETAIL:  Value must be an integer.
+ Days From Epoch 
+-----------------
+ -4650
+ -4585
+ 9554
+ 9555
+ 9556
+ 9557
+ 9920
+ 9921
+ 9922
+ 11048
+ 11049
+ 11050
+ 24934
+ 25300
+ 25667
+(15 rows)
+
 SELECT date 'yesterday' - date 'today' AS "One day";
-ERROR:  invalid value "yest" for "YYYY"
-DETAIL:  Value must be an integer.
+ One day 
+---------
+ -1
+(1 row)
+
 SELECT date 'today' - date 'tomorrow' AS "One day";
-ERROR:  invalid value "toda" for "YYYY"
-DETAIL:  Value must be an integer.
+ One day 
+---------
+ -1
+(1 row)
+
 SELECT date 'yesterday' - date 'tomorrow' AS "Two days";
-ERROR:  invalid value "yest" for "YYYY"
-DETAIL:  Value must be an integer.
+ Two days 
+----------
+ -2
+(1 row)
+
 SELECT date 'tomorrow' - date 'today' AS "One day";
-ERROR:  invalid value "tomo" for "YYYY"
-DETAIL:  Value must be an integer.
+ One day 
+---------
+ 1
+(1 row)
+
 SELECT date 'today' - date 'yesterday' AS "One day";
-ERROR:  invalid value "toda" for "YYYY"
-DETAIL:  Value must be an integer.
+ One day 
+---------
+ 1
+(1 row)
+
 SELECT date 'tomorrow' - date 'yesterday' AS "Two days";
-ERROR:  invalid value "tomo" for "YYYY"
-DETAIL:  Value must be an integer.
+ Two days 
+----------
+ 2
+(1 row)
+
 --
 -- test extract!
 --
@@ -858,98 +896,156 @@ ERROR:  trailing characters remain in input string after datetime format
 -- test infinity
 --
 select 'infinity'::date, '-infinity'::date;
-ERROR:  invalid value "infi" for "YYYY"
-LINE 1: select 'infinity'::date, '-infinity'::date;
-               ^
-DETAIL:  Value must be an integer.
+ oradate  |  oradate  
+----------+-----------
+ infinity | -infinity
+(1 row)
+
 select 'infinity'::date > 'today'::date as t;
-ERROR:  invalid value "infi" for "YYYY"
-LINE 1: select 'infinity'::date > 'today'::date as t;
-               ^
-DETAIL:  Value must be an integer.
+ t 
+---
+ t
+(1 row)
+
 select '-infinity'::date < 'today'::date as t;
-ERROR:  invalid value "-inf" for "YYYY"
-LINE 1: select '-infinity'::date < 'today'::date as t;
-               ^
-DETAIL:  Value must be an integer.
+ t 
+---
+ t
+(1 row)
+
 select isfinite('infinity'::date), isfinite('-infinity'::date), isfinite('today'::date);
-ERROR:  invalid value "infi" for "YYYY"
-LINE 1: select isfinite('infinity'::date), isfinite('-infinity'::dat...
-                        ^
-DETAIL:  Value must be an integer.
+ isfinite | isfinite | isfinite 
+----------+----------+----------
+ f        | f        | t
+(1 row)
+
 select 'infinity'::date = '+infinity'::date as t;
-ERROR:  invalid value "infi" for "YYYY"
-LINE 1: select 'infinity'::date = '+infinity'::date as t;
-               ^
-DETAIL:  Value must be an integer.
+ t 
+---
+ t
+(1 row)
+
 --
 -- oscillating fields from non-finite date:
 --
 SELECT PGEXTRACT(DAY FROM DATE 'infinity');      -- NULL
-ERROR:  invalid value "infi" for "YYYY"
-DETAIL:  Value must be an integer.
+ extract 
+---------
+        
+(1 row)
+
 SELECT PGEXTRACT(DAY FROM DATE '-infinity');     -- NULL
-ERROR:  invalid value "-inf" for "YYYY"
-DETAIL:  Value must be an integer.
+ extract 
+---------
+        
+(1 row)
+
 -- all supported fields
 SELECT PGEXTRACT(DAY           FROM DATE 'infinity');    -- NULL
-ERROR:  invalid value "infi" for "YYYY"
-DETAIL:  Value must be an integer.
+ extract 
+---------
+        
+(1 row)
+
 SELECT PGEXTRACT(MONTH         FROM DATE 'infinity');    -- NULL
-ERROR:  invalid value "infi" for "YYYY"
-DETAIL:  Value must be an integer.
+ extract 
+---------
+        
+(1 row)
+
 SELECT PGEXTRACT(QUARTER       FROM DATE 'infinity');    -- NULL
-ERROR:  invalid value "infi" for "YYYY"
-DETAIL:  Value must be an integer.
+ extract 
+---------
+        
+(1 row)
+
 SELECT PGEXTRACT(WEEK          FROM DATE 'infinity');    -- NULL
-ERROR:  invalid value "infi" for "YYYY"
-DETAIL:  Value must be an integer.
+ extract 
+---------
+        
+(1 row)
+
 SELECT PGEXTRACT(DOW           FROM DATE 'infinity');    -- NULL
-ERROR:  invalid value "infi" for "YYYY"
-DETAIL:  Value must be an integer.
+ extract 
+---------
+        
+(1 row)
+
 SELECT PGEXTRACT(ISODOW        FROM DATE 'infinity');    -- NULL
-ERROR:  invalid value "infi" for "YYYY"
-DETAIL:  Value must be an integer.
+ extract 
+---------
+        
+(1 row)
+
 SELECT PGEXTRACT(DOY           FROM DATE 'infinity');    -- NULL
-ERROR:  invalid value "infi" for "YYYY"
-DETAIL:  Value must be an integer.
+ extract 
+---------
+        
+(1 row)
+
 --
 -- monotonic fields from non-finite date:
 --
 SELECT PGEXTRACT(EPOCH FROM DATE 'infinity');         --  Infinity
-ERROR:  invalid value "infi" for "YYYY"
-DETAIL:  Value must be an integer.
+ extract  
+----------
+ Infinity
+(1 row)
+
 SELECT PGEXTRACT(EPOCH FROM DATE '-infinity');        -- -Infinity
-ERROR:  invalid value "-inf" for "YYYY"
-DETAIL:  Value must be an integer.
+  extract  
+-----------
+ -Infinity
+(1 row)
+
 -- all supported fields
 SELECT PGEXTRACT(YEAR       FROM DATE 'infinity');    --  Infinity
-ERROR:  invalid value "infi" for "YYYY"
-DETAIL:  Value must be an integer.
+ extract  
+----------
+ Infinity
+(1 row)
+
 SELECT PGEXTRACT(DECADE     FROM DATE 'infinity');    --  Infinity
-ERROR:  invalid value "infi" for "YYYY"
-DETAIL:  Value must be an integer.
+ extract  
+----------
+ Infinity
+(1 row)
+
 SELECT PGEXTRACT(CENTURY    FROM DATE 'infinity');    --  Infinity
-ERROR:  invalid value "infi" for "YYYY"
-DETAIL:  Value must be an integer.
+ extract  
+----------
+ Infinity
+(1 row)
+
 SELECT PGEXTRACT(MILLENNIUM FROM DATE 'infinity');    --  Infinity
-ERROR:  invalid value "infi" for "YYYY"
-DETAIL:  Value must be an integer.
+ extract  
+----------
+ Infinity
+(1 row)
+
 SELECT PGEXTRACT(JULIAN     FROM DATE 'infinity');    --  Infinity
-ERROR:  invalid value "infi" for "YYYY"
-DETAIL:  Value must be an integer.
+ extract  
+----------
+ Infinity
+(1 row)
+
 SELECT PGEXTRACT(ISOYEAR    FROM DATE 'infinity');    --  Infinity
-ERROR:  invalid value "infi" for "YYYY"
-DETAIL:  Value must be an integer.
+ extract  
+----------
+ Infinity
+(1 row)
+
 SELECT PGEXTRACT(EPOCH      FROM DATE 'infinity');    --  Infinity
-ERROR:  invalid value "infi" for "YYYY"
-DETAIL:  Value must be an integer.
+ extract  
+----------
+ Infinity
+(1 row)
+
 --
 -- wrong fields from non-finite date:
 --
 SELECT PGEXTRACT(MICROSEC  FROM DATE 'infinity');     -- error
-ERROR:  invalid value "infi" for "YYYY"
-DETAIL:  Value must be an integer.
+ERROR:  unit "microsec" not recognized for type pg_catalog.date
 -- test constructors
 select make_date(2013, 7, 15);
  make_date  

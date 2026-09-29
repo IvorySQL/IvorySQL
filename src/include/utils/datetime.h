@@ -345,6 +345,7 @@ extern int	DecodeTimezoneAbbrev(int field, const char *lowtoken,
 								 int *ftype, int *offset, pg_tz **tz,
 								 DateTimeErrorExtra *extra);
 extern int	DecodeSpecial(int field, const char *lowtoken, int *val);
+extern bool is_pg_special_datetime_string(const char *str);
 extern int	DecodeUnits(int field, const char *lowtoken, int *val);
 
 extern int	DecodeTimezoneName(const char *tzname, int *offset, pg_tz **tz);
