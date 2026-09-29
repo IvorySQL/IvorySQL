@@ -805,3 +805,29 @@ drop table ds_tb;
 reset NLS_TIMESTAMP_FORMAT;
 reset NLS_TIMESTAMP_TZ_FORMAT;
 reset NLS_DATE_FORMAT;
+
+-- Tests for sysdate / systimestamp / current_timestamp / localtimestamp
+SET ivorysql.compatible_mode = oracle;
+SELECT sysdate IS NOT NULL AS sysdate_not_null FROM dual;
+SELECT systimestamp IS NOT NULL AS systimestamp_not_null FROM dual;
+SELECT pg_typeof(current_timestamp) = 'timestamp with time zone'::regtype AS cts_type,
+       pg_typeof(current_timestamp(3)) = 'timestamp with time zone'::regtype AS cts3_type,
+       pg_typeof(localtimestamp) = 'timestamp without time zone'::regtype AS lts_type,
+       pg_typeof(systimestamp) = 'timestamp with time zone'::regtype AS sts_type
+  FROM dual;
+
+-- sessiontimezone reflects the session setting
+SET TIME ZONE 'America/New_York';
+SELECT sessiontimezone() AS sess_tz FROM dual;
+RESET TIME ZONE;
+
+-- from_tz under a fixed (UTC) session timezone for stable output
+SET TIME ZONE 'UTC';
+SELECT FROM_TZ(TIMESTAMP '2000-03-28 08:00:00', '+14:00') AS fmax FROM dual;
+SELECT FROM_TZ(TIMESTAMP '2000-03-28 08:00:00', '-12:00') AS fmin FROM dual;
+SELECT FROM_TZ(TIMESTAMP '2000-03-28 08:00:00', '99:99') AS fbad FROM dual;
+RESET TIME ZONE;
+
+-- sys_extract_utc: NULL propagation and offset conversion
+SELECT sys_extract_utc(NULL) IS NULL AS seu_null FROM dual;
+SELECT sys_extract_utc(TIMESTAMP '2018-03-02 12:01:02 +14:00') AS seu FROM dual;
