@@ -9,6 +9,8 @@ PGFILEDESC = "dummy_index_am - index access method template"
 
 REGRESS = reloptions
 
+ORA_REGRESS = $(REGRESS)
+
 ifdef USE_PGXS
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)

@@ -29,7 +29,7 @@ NOTICE:  new option value for string parameter val
 -- Silence again validation checks for strings until the end of the test.
 SET client_min_messages TO 'warning';
 SELECT unnest(reloptions) FROM pg_class WHERE relname = 'dummy_test_idx';
-         unnest
+         unnest         
 ------------------------
  option_bool=false
  option_ternary_1=true
@@ -52,7 +52,7 @@ ALTER INDEX dummy_test_idx SET (option_enum = 'three');
 ERROR:  invalid value for enum option "option_enum": three
 DETAIL:  Valid values are "one" and "two".
 SELECT unnest(reloptions) FROM pg_class WHERE relname = 'dummy_test_idx';
-         unnest
+         unnest          
 -------------------------
  option_int=10
  option_bool=true
@@ -114,7 +114,7 @@ ERROR:  invalid value for boolean option "option_ternary_1": 3.4
 ALTER INDEX dummy_test_idx SET (option_ternary_1 = 'val4'); -- error
 ERROR:  invalid value for boolean option "option_ternary_1": val4
 SELECT unnest(reloptions) FROM pg_class WHERE relname = 'dummy_test_idx';
-       unnest
+       unnest       
 --------------------
  option_ternary_1=1
 (1 row)

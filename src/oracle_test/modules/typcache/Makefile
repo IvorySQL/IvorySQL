@@ -4,6 +4,8 @@ EXTRA_INSTALL = src/oracle_test/modules/injection_points
 
 REGRESS = typcache_rel_type_cache
 
+ORA_REGRESS = $(REGRESS)
+
 ifdef USE_PGXS
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
