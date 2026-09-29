@@ -695,13 +695,17 @@ window w as (order by f_numeric range between
 
 -- Test in_range for other datetime datatypes
 
+-- Use the explicitly schema-qualified PostgreSQL types for the timestamp
+-- columns: in Oracle parser mode the bare "timestamp"/"timestamptz" names
+-- map to the Oracle date-time types, whose input rejects 'infinity' and
+-- which do not support RANGE with offset PRECEDING/FOLLOWING windows.
 create temp table datetimes(
     id int,
     f_time time,
     f_timetz timetz,
     f_interval interval,
-    f_timestamptz timestamptz,
-    f_timestamp timestamp
+    f_timestamptz pg_catalog.timestamptz,
+    f_timestamp pg_catalog.timestamp
 );
 
 insert into datetimes values
@@ -1821,7 +1825,7 @@ FROM (VALUES (NULL::interval),
 SELECT x, avg(x) OVER(ROWS BETWEEN CURRENT ROW AND 2 FOLLOWING)
 FROM (VALUES (NULL::interval),
                ('3 days'::interval),
-               ('infinity'::timestamptz - now()),
+               ('infinity'::pg_catalog.timestamptz - now()),
                ('6 days'::interval),
                ('-infinity'::interval)) v(x);
 
@@ -1829,7 +1833,7 @@ FROM (VALUES (NULL::interval),
 SELECT x, sum(x) OVER(ROWS BETWEEN CURRENT ROW AND 2 FOLLOWING)
 FROM (VALUES (NULL::interval),
                ('3 days'::interval),
-               ('infinity'::timestamptz - now()),
+               ('infinity'::pg_catalog.timestamptz - now()),
                ('6 days'::interval),
                ('-infinity'::interval)) v(x);
 

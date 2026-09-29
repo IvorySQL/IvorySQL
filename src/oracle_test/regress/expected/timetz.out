@@ -264,7 +264,5 @@ SELECT f1 AS dat,
        f1 AT TIME ZONE INTERVAL '-10:00' AS dat_at_int
   FROM TIMETZ_TBL
   ORDER BY f1;
-ERROR:  syntax error at or near "AS"
-LINE 3:        f1 AT TIME ZONE INTERVAL '-10:00' AS dat_at_int
-                                                 ^
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
 ROLLBACK;

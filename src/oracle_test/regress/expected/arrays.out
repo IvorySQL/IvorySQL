@@ -1677,7 +1677,11 @@ select '{ ab\c , "ab\"c" }'::text[];
 (1 row)
 
 select '{0 second  ,0 second}'::interval[];
-ERROR:  missing or invalid datetime field.
+   interval    
+---------------
+ {"@ 0","@ 0"}
+(1 row)
+
 select '{ { "," } , { 3 } }'::text[];
     text     
 -------------
@@ -1694,7 +1698,11 @@ select '{
            0 second,
            @ 1 hour @ 42 minutes @ 20 seconds
          }'::interval[];
-ERROR:  missing or invalid datetime field.
+              interval              
+------------------------------------
+ {"@ 0","@ 1 hour 42 mins 20 secs"}
+(1 row)
+
 select array[]::text[];
  array 
 -------
