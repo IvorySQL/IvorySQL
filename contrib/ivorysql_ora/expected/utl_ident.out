@@ -1,0 +1,171 @@
+--
+-- UTL_IDENT
+--
+-- Regression tests for Oracle-compatible UTL_IDENT package:
+--   - IS_ORACLE_SERVER, IS_ORACLE_CLIENT, IS_TIMESTEN, IS_ORACLE_FORMS, IS_SATELLITE
+--   - ORACLE_RELEASE, ORACLE_VERSION
+--   - GET_ENVIRONMENT, CHECK_SERVER, GET_RELEASE, GET_VERSION, GET_VERSION_STRING, MATCHES_ENVIRONMENT
+--   - Conditional compilation and branching simulation
+--
+-- Package constants
+SELECT utl_ident.is_oracle_server;
+ is_oracle_server
+------------------
+ t
+(1 row)
+
+SELECT utl_ident.is_oracle_client;
+ is_oracle_client
+------------------
+ f
+(1 row)
+
+SELECT utl_ident.is_timesten;
+ is_timesten
+-------------
+ f
+(1 row)
+
+SELECT utl_ident.is_oracle_forms;
+ is_oracle_forms
+-----------------
+ f
+(1 row)
+
+SELECT utl_ident.is_satellite;
+ is_satellite
+--------------
+ f
+(1 row)
+
+SELECT utl_ident.oracle_release;
+ oracle_release
+----------------
+             23
+(1 row)
+
+SELECT utl_ident.oracle_version;
+ oracle_version
+----------------
+              0
+(1 row)
+
+-- Environment inspection subprograms
+SELECT utl_ident.get_environment();
+ get_environment
+-----------------
+ ORACLE_SERVER
+(1 row)
+
+SELECT utl_ident.check_server();
+ check_server
+--------------
+ t
+(1 row)
+
+SELECT utl_ident.get_release();
+ get_release
+-------------
+          23
+(1 row)
+
+SELECT utl_ident.get_version();
+ get_version
+-------------
+           0
+(1 row)
+
+SELECT utl_ident.get_version_string();
+           get_version_string
+-----------------------------------------
+ IvorySQL Oracle Compatible Server 23c
+(1 row)
+
+-- Environment matching checks
+SELECT utl_ident.matches_environment('ORACLE_SERVER');
+ matches_environment
+---------------------
+ t
+(1 row)
+
+SELECT utl_ident.matches_environment('oracle_server');
+ matches_environment
+---------------------
+ t
+(1 row)
+
+SELECT utl_ident.matches_environment('server');
+ matches_environment
+---------------------
+ t
+(1 row)
+
+SELECT utl_ident.matches_environment('TIMESTEN');
+ matches_environment
+---------------------
+ f
+(1 row)
+
+SELECT utl_ident.matches_environment(NULL);
+ matches_environment
+---------------------
+ f
+(1 row)
+
+-- Conditional branching using UTL_IDENT constants
+DO $$
+BEGIN
+    IF utl_ident.is_oracle_server THEN
+        RAISE INFO 'Running in Oracle Server compatible mode';
+    ELSIF utl_ident.is_timesten THEN
+        RAISE EXCEPTION 'Unexpected TimesTen environment';
+    ELSE
+        RAISE EXCEPTION 'Unexpected client environment';
+    END IF;
+END;
+$$;
+INFO:  Running in Oracle Server compatible mode
+-- Version check assertions
+DO $$
+DECLARE
+    rel INTEGER;
+    ver INTEGER;
+BEGIN
+    rel := utl_ident.get_release();
+    ver := utl_ident.get_version();
+    IF rel != utl_ident.oracle_release OR ver != utl_ident.oracle_version THEN
+        RAISE EXCEPTION 'Version constant mismatch: rel=%, ver=%', rel, ver;
+    END IF;
+    RAISE INFO 'Version assertions: ok';
+END;
+$$;
+INFO:  Version assertions: ok
+-- Verify internal functions execute privilege revoked from PUBLIC (CWE-862)
+SELECT p.proname, has_function_privilege('public', p.oid, 'EXECUTE') AS public_can_execute
+  FROM pg_catalog.pg_proc p
+  JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+ WHERE n.nspname = 'sys'
+   AND p.proname IN ('utl_ident_is_oracle_server',
+                     'utl_ident_is_oracle_client',
+                     'utl_ident_is_timesten',
+                     'utl_ident_is_oracle_forms',
+                     'utl_ident_is_satellite',
+                     'utl_ident_environment',
+                     'utl_ident_get_release_major',
+                     'utl_ident_get_release_minor',
+                     'utl_ident_get_version_string',
+                     'utl_ident_matches_environment')
+ ORDER BY p.proname;
+            proname             | public_can_execute
+--------------------------------+--------------------
+ utl_ident_environment          | f
+ utl_ident_get_release_major    | f
+ utl_ident_get_release_minor    | f
+ utl_ident_get_version_string   | f
+ utl_ident_is_oracle_client     | f
+ utl_ident_is_oracle_forms      | f
+ utl_ident_is_oracle_server     | f
+ utl_ident_is_satellite         | f
+ utl_ident_is_timesten          | f
+ utl_ident_matches_environment  | f
+(10 rows)
