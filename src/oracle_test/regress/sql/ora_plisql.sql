@@ -1496,3 +1496,37 @@ END;
 -- Cleanup (may fail if function wasn't created)
 DROP FUNCTION IF EXISTS test_rownum_param;
 
+
+--
+-- A PL/iSQL routine that names a standalone composite type (CREATE TYPE ...
+-- AS) in its signature must keep the ordinary dependency on that type.  The
+-- Oracle-compatible invalidation machinery covers a table's rowtype
+-- (%ROWTYPE): there the function is invalidated, rather than the DROP being
+-- refused.  A standalone composite type has no such machinery, and Oracle
+-- itself refuses to drop a type that a stored program depends on, so DROP TYPE
+-- must be refused here too.  Without this, DROP TYPE succeeds and leaves the
+-- pg_proc row pointing at a type that is no longer in pg_type, whereupon the
+-- function can be neither described nor dropped.
+--
+CREATE TYPE ora_ct_dep AS (a int, b int);
+CREATE OR REPLACE FUNCTION ora_ct_dep_f(p IN ora_ct_dep) RETURN int IS
+BEGIN
+    RETURN p.a;
+END;
+/
+SELECT ora_ct_dep_f(ROW(1, 2)::ora_ct_dep) AS call_before;
+
+-- must fail: the function signature depends on the type
+DROP TYPE ora_ct_dep;
+
+-- the catalog must not be left with a reference to a dropped type
+SELECT count(*) AS missing_type_refs
+  FROM pg_proc p
+  CROSS JOIN LATERAL unnest(string_to_array(p.proargtypes::text, ' ')::oid[]) AS t(oid)
+ WHERE p.proname = 'ora_ct_dep_f'
+   AND NOT EXISTS (SELECT 1 FROM pg_type ty WHERE ty.oid = t.oid);
+SELECT pg_get_function_arguments(oid) AS args FROM pg_proc WHERE proname = 'ora_ct_dep_f';
+
+-- cleanup: CASCADE drops the dependent function along with the type
+DROP TYPE ora_ct_dep CASCADE;
+SELECT count(*) AS function_rows FROM pg_proc WHERE proname = 'ora_ct_dep_f';
