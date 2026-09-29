@@ -29,6 +29,48 @@ select add_months('2022-08-23',3) from dual;
  2022-11-23 00:00:00
 (1 row)
 
+select add_months(date '2020-01-31', 1.5) from dual;
+     add_months      
+---------------------
+ 2020-02-29 00:00:00
+(1 row)
+
+select add_months(date '2020-01-31', 1.9) from dual;
+     add_months      
+---------------------
+ 2020-02-29 00:00:00
+(1 row)
+
+select add_months(date '2020-03-31', -1.5) from dual;
+     add_months      
+---------------------
+ 2020-02-29 00:00:00
+(1 row)
+
+select add_months(date '2020-03-31', -0.5) from dual;
+     add_months      
+---------------------
+ 2020-03-31 00:00:00
+(1 row)
+
+select add_months(date '2020-03-31', 0.5) from dual;
+     add_months      
+---------------------
+ 2020-03-31 00:00:00
+(1 row)
+
+select add_months(date '2020-03-31', -12.5) from dual;
+     add_months      
+---------------------
+ 2019-03-31 00:00:00
+(1 row)
+
+select add_months(date '2020-03-31', 2.0) from dual;
+     add_months      
+---------------------
+ 2020-05-31 00:00:00
+(1 row)
+
 alter session set NLS_LENGTH_SEMANTICS='BYTE';
 create table char_tb(char_clo char(3));
 insert into char_tb values('测试');
