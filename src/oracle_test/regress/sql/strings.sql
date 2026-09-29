@@ -1000,11 +1000,23 @@ SELECT lpad('hi', -5, 'xy');
 SELECT lpad('hello', 2);
 SELECT lpad('hi', 5, '');
 
+-- Oracle semantics: a non-positive length yields NULL
+SELECT lpad('hi', -5, 'xy') IS NULL AS lpad_negative_len_is_null;
+SELECT lpad('hi', 0, 'xy') IS NULL AS lpad_zero_len_is_null;
+SELECT lpad('hi', -5) IS NULL AS lpad_negative_len_2arg_is_null;
+SELECT lpad('hi', 0) IS NULL AS lpad_zero_len_2arg_is_null;
+
 SELECT rpad('hi', 5, 'xy');
 SELECT rpad('hi', 5);
 SELECT rpad('hi', -5, 'xy');
 SELECT rpad('hello', 2);
 SELECT rpad('hi', 5, '');
+
+-- Oracle semantics: a non-positive length yields NULL
+SELECT rpad('hi', -5, 'xy') IS NULL AS rpad_negative_len_is_null;
+SELECT rpad('hi', 0, 'xy') IS NULL AS rpad_zero_len_is_null;
+SELECT rpad('hi', -5) IS NULL AS rpad_negative_len_2arg_is_null;
+SELECT rpad('hi', 0) IS NULL AS rpad_zero_len_2arg_is_null;
 
 SELECT ltrim('zzzytrim', 'xyz');
 
