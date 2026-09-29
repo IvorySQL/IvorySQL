@@ -111,6 +111,7 @@ static void transformTableConstraint(CreateStmtContext *cxt,
 									 Constraint *constraint);
 static void transformTableLikeClause(CreateStmtContext *cxt,
 									 TableLikeClause *table_like_clause);
+static bool is_default_rowid_index(Relation index_rel);
 static void transformOfType(CreateStmtContext *cxt,
 							TypeName *ofTypename);
 static CreateStatsStmt *generateClonedExtStatsStmt(RangeVar *heapRel,
@@ -1495,6 +1496,51 @@ transformTableLikeClause(CreateStmtContext *cxt, TableLikeClause *table_like_cla
 }
 
 /*
+ * is_default_rowid_index
+ *
+ * The default ROWID index is built internally for every plain ROWID table.
+ * LIKE INCLUDING INDEXES must not copy it, since DefineRelation() has
+ * already made the corresponding index for the target.  Keep any explicit
+ * ROWID index whose properties differ from that default definition.
+ */
+static bool
+is_default_rowid_index(Relation index_rel)
+{
+	Form_pg_index index_form = index_rel->rd_index;
+	const FormData_pg_attribute *rowid_attr;
+	Datum		indclass_datum;
+	Datum		attoptions;
+	oidvector  *indclass;
+	Oid			default_opclass;
+
+	if (index_rel->rd_rel->relam != get_index_am_oid(DEFAULT_INDEX_TYPE, false) ||
+		index_form->indnkeyatts != 1 ||
+		index_form->indnatts != 1 ||
+		index_form->indkey.values[0] != RowIdAttributeNumber ||
+		index_form->indisunique ||
+		index_form->indisprimary ||
+		index_form->indisexclusion ||
+		index_rel->rd_options != NULL ||
+		RelationGetIndexExpressions(index_rel) != NIL ||
+		RelationGetIndexPredicate(index_rel) != NIL)
+		return false;
+
+	indclass_datum = SysCacheGetAttrNotNull(INDEXRELID,
+										index_rel->rd_indextuple,
+										Anum_pg_index_indclass);
+	indclass = (oidvector *) DatumGetPointer(indclass_datum);
+	rowid_attr = SystemAttributeDefinition(RowIdAttributeNumber);
+	default_opclass = GetDefaultOpClass(rowid_attr->atttypid,
+										 index_rel->rd_rel->relam);
+	attoptions = get_attoptions(RelationGetRelid(index_rel), 1);
+
+	return indclass->values[0] == default_opclass &&
+		index_rel->rd_indcollation[0] == rowid_attr->attcollation &&
+		index_rel->rd_indoption[0] == 0 &&
+		attoptions == (Datum) 0;
+}
+
+/*
  * expandTableLikeClause
  *
  * Process LIKE options that require knowing the final column numbers
@@ -1721,6 +1767,17 @@ expandTableLikeClause(RangeVar *heapRel, TableLikeClause *table_like_clause)
 			IndexStmt  *index_stmt;
 
 			parent_index = index_open(parent_index_oid, AccessShareLock);
+
+			/*
+			 * The target already has its own default ROWID index.  Do not
+			 * clone the source's copy, but retain explicitly customized ROWID
+			 * indexes as normal LIKE INCLUDING INDEXES behavior requires.
+			 */
+			if (is_default_rowid_index(parent_index))
+			{
+				index_close(parent_index, AccessShareLock);
+				continue;
+			}
 
 			/* Build CREATE INDEX statement to recreate the parent_index */
 			index_stmt = generateClonedIndexStmt(heapRel,

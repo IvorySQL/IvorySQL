@@ -217,6 +217,76 @@ drop table t2_like;
 drop table t2;
 
 --
+--7.1, ROWID default index lifecycle
+--
+create table rowid_created_path (id int) with rowid;
+alter table rowid_created_path set with rowid;
+
+create table rowid_altered_path (id int);
+alter table rowid_altered_path set with rowid;
+
+create table rowid_toggle_path (id int);
+alter table rowid_toggle_path set with rowid;
+alter table rowid_toggle_path set without rowid;
+
+select c.relname, c.relhasrowid,
+       count(i.indexrelid) filter (where i.indnkeyatts = 1
+                                    and i.indnatts = 1
+                                    and i.indkey[0] = -7) as rowid_indexes
+  from pg_class c
+  left join pg_index i on i.indrelid = c.oid
+ where c.relname in ('rowid_altered_path', 'rowid_created_path',
+                     'rowid_toggle_path')
+ group by c.relname, c.relhasrowid
+ order by c.relname;
+
+alter table rowid_toggle_path set with rowid;
+create table rowid_like_path (like rowid_created_path including all);
+
+create table rowid_inherit_parent (id int);
+create table rowid_inherit_child (payload int) inherits (rowid_inherit_parent);
+alter table rowid_inherit_parent set with rowid;
+
+select c.relname, c.relhasrowid,
+       count(i.indexrelid) filter (where i.indnkeyatts = 1
+                                    and i.indnatts = 1
+                                    and i.indkey[0] = -7) as rowid_indexes
+  from pg_class c
+  left join pg_index i on i.indrelid = c.oid
+ where c.relname in ('rowid_altered_path', 'rowid_created_path',
+                     'rowid_inherit_child', 'rowid_inherit_parent',
+                     'rowid_like_path', 'rowid_toggle_path')
+ group by c.relname, c.relhasrowid
+ order by c.relname;
+
+create table rowid_custom_source (id int) with rowid;
+create index rowid_custom_source_desc_idx on rowid_custom_source (rowid desc);
+create table rowid_custom_like (like rowid_custom_source including all);
+
+select c.relname,
+       count(i.indexrelid) filter (where i.indnkeyatts = 1
+                                    and i.indnatts = 1
+                                    and i.indkey[0] = -7) as rowid_indexes,
+       count(i.indexrelid) filter (where i.indnkeyatts = 1
+                                    and i.indnatts = 1
+                                    and i.indkey[0] = -7
+                                    and (i.indoption[0] & 1) <> 0) as descending_rowid_indexes
+  from pg_class c
+  left join pg_index i on i.indrelid = c.oid
+ where c.relname in ('rowid_custom_like', 'rowid_custom_source')
+ group by c.relname
+ order by c.relname;
+
+drop table rowid_custom_like;
+drop table rowid_custom_source;
+drop table rowid_like_path;
+drop table rowid_toggle_path;
+drop table rowid_inherit_child;
+drop table rowid_inherit_parent;
+drop table rowid_altered_path;
+drop table rowid_created_path;
+
+--
 --8, Test temp table with rowid
 --
 create temp table t3(
