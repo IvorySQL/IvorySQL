@@ -419,3 +419,8 @@ select insertxmlafter(XMLtype('<a>A<b>B</b></a>'), '/', XMLType('<c>C</c>'));
 select insertchildxml(XMLtype('<a>A<b>B</b></a>'), '/', 'c', XMLType('<c>C</c>'));
 
 
+-- Selecting an ancestor and its descendant must not free the descendant twice.
+SELECT deletexml(XMLType('<r><a><b/></a><keep/></r>'), '//a | //b');
+SELECT deletexml(XMLType('<r><a><b/></a><a><b/></a><keep/></r>'), '//a | //b');
+SELECT deletexml(XMLType('<r xmlns:p="urn:test"><p:a><p:b/></p:a><keep/></r>'),
+                 '//p:a | //p:b', 'xmlns:p="urn:test"');
