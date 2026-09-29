@@ -98,6 +98,7 @@ static DbmsOutputBuffer *output_buffer = NULL;
 /* Internal function declarations */
 static void init_output_buffer(int64 buffer_size);
 static void cleanup_output_buffer(void);
+static void check_buffer_limit(int line_len);
 static void add_line_to_buffer(const char *line, int line_len);
 static DbmsOutputLine *pop_line_from_buffer(void);
 
@@ -180,24 +181,11 @@ cleanup_output_buffer(void)
 }
 
 /*
- * add_line_to_buffer
- *
- * Add a completed line to the linked list buffer.
- *
- * line: pointer to line data, or NULL for a NULL line
- * line_len: length of line data (ignored if line is NULL)
- *
- * Overflow check (Oracle behavior):
- * - Only content bytes count toward user limit (not node overhead)
- * - Raises ORU-10027 if limit exceeded
+ * Check capacity before changing either the completed or pending line buffer.
  */
 static void
-add_line_to_buffer(const char *line, int line_len)
+check_buffer_limit(int line_len)
 {
-	MemoryContext oldcontext;
-	DbmsOutputLine *node;
-	Size		node_size;
-
 	/*
 	 * Check user-perceived buffer limit BEFORE adding (Oracle behavior).
 	 * Only content bytes count toward limit, not node overhead.
@@ -212,6 +200,17 @@ add_line_to_buffer(const char *line, int line_len)
 					 errmsg("ORU-10027: buffer overflow, limit of %lld bytes",
 							(long long) output_buffer->buffer_size)));
 	}
+}
+
+/* Add a completed line, or a NULL line, to the linked list buffer. */
+static void
+add_line_to_buffer(const char *line, int line_len)
+{
+	MemoryContext oldcontext;
+	DbmsOutputLine *node;
+	Size		node_size;
+
+	check_buffer_limit(line_len);
 
 	/* Allocate node with embedded data in buffer memory context */
 	oldcontext = MemoryContextSwitchTo(output_buffer->buffer_mcxt);
@@ -376,6 +375,8 @@ ora_dbms_output_put_line(PG_FUNCTION_ARGS)
 					 errmsg("ORU-10028: line length overflow, limit of %d bytes per line",
 							DBMS_OUTPUT_MAX_LINE_LENGTH)));
 
+		/* Validate capacity before changing the pending PUT text. */
+		check_buffer_limit(output_buffer->current_line->len + line_len);
 		/* Append non-NULL text to current line */
 		if (!is_null)
 			appendStringInfoString(output_buffer->current_line, line_str);
