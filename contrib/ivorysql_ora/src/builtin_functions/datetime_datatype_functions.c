@@ -1434,23 +1434,49 @@ numtoyminterval(PG_FUNCTION_ARGS)
 			interval_val = 0;
 
 		if (interval_val <= -0.5 && interval_val > -1)
-			interval_val = 1;
+			interval_val = -1;
 	}
 
-	/* round to first place after the decimal point */
+	/*
+	 * The rounded value is stored in the int32 "month" field.  Reject values
+	 * that do not fit instead of silently wrapping them: narrowing an
+	 * out-of-range float8 to int is undefined behaviour.
+	 */
+	if (!FLOAT8_FITS_IN_INT32(interval_val))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("interval year to month out of range")));
+
+	/*
+	 * Round to the first place after the decimal point.  Do the arithmetic in
+	 * int64: "interval_val * 10" can exceed INT_MAX (300000000 months gives
+	 * 3e9) even though the rounded result itself still fits, and narrowing
+	 * that intermediate value to int turned large positive arguments into
+	 * negative intervals.
+	 */
 	if (interval_val > 0)
-		interval_val = ((int) (interval_val * 10) + 5) / 10;
+		interval_val = (double) ((int64) (interval_val * 10 + 5) / 10);
 
 	if (interval_val < 0)
 	{
 		interval_val = interval_val * (-1);
-		interval_val = ((int) (interval_val * 10) + 5) / 10;
+		interval_val = (double) ((int64) (interval_val * 10 + 5) / 10);
 		interval_val = interval_val * (-1);
 	}
 
+	/*
+	 * Rounding can push a value that just fits one step past INT_MAX
+	 * (2147483647.9 months gives 2147483648), so check again before the value
+	 * is narrowed into the month field.
+	 */
+	if (!FLOAT8_FITS_IN_INT32(interval_val))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("interval year to month out of range")));
+
 	result = (Interval *) palloc(sizeof(Interval));
 
-	result->month = interval_val;
+	result->month = (int) interval_val;
 	result->day = 0;
 	result->time = 0;
 
