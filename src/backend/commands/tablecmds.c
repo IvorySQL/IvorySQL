@@ -10021,37 +10021,9 @@ ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
 	 */
 	if (attnum == RowIdAttributeNumber)
 	{
-		ScanKeyData key[3];
-		int			keycount;
-		TableScanDesc scan;
 		Relation	class_rel;
 		Form_pg_class tuple_class;
 		AlteredTableInfo *tab;
-
-		StringInfoData rowid_seq;
-
-		initStringInfo(&rowid_seq);
-		appendStringInfo(&rowid_seq, "%s", RelationGetRelationName(rel));
-		appendStringInfoChar(&rowid_seq, '_');
-		appendStringInfo(&rowid_seq, "rowid");
-		appendStringInfoChar(&rowid_seq, '_');
-		appendStringInfo(&rowid_seq, "seq");
-
-		keycount = 0;
-		ScanKeyInit(&key[keycount++],
-					Anum_pg_class_relname,
-					BTEqualStrategyNumber, F_NAMEEQ,
-					CStringGetDatum(rowid_seq.data));
-
-		ScanKeyInit(&key[keycount++],
-					Anum_pg_class_relnamespace,
-					BTEqualStrategyNumber, F_OIDEQ,
-					ObjectIdGetDatum(rel->rd_rel->relnamespace));
-
-		ScanKeyInit(&key[keycount++],
-					Anum_pg_class_relowner,
-					BTEqualStrategyNumber, F_OIDEQ,
-					ObjectIdGetDatum(rel->rd_rel->relowner));
 
 		class_rel = table_open(RelationRelationId, RowExclusiveLock);
 		tuple = SearchSysCacheCopy1(RELOID,
@@ -10064,18 +10036,21 @@ ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
 		tuple_class->relhasrowid = false;
 		CatalogTupleUpdate(class_rel, &tuple->t_self, tuple);
 
-		/* Drop the seq with SET ROWID options */
-		scan = table_beginscan_catalog(class_rel, keycount, key);
-		while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+		/* Drop only the sequence owned by this ROWID system attribute. */
+		if (OidIsValid(rel->rd_rowdSeqid))
 		{
-			Oid			seqoid = ((Form_pg_class) GETSTRUCT(tuple))->oid;
+			tuple = SearchSysCacheCopy1(RELOID,
+								 ObjectIdGetDatum(rel->rd_rowdSeqid));
+			if (HeapTupleIsValid(tuple))
+			{
+				Oid			seqoid = rel->rd_rowdSeqid;
 
-			deleteDependencyRecordsFor(RelationRelationId, seqoid, true);
-			deleteSharedDependencyRecordsFor(RelationRelationId, seqoid, 0);
-			simple_heap_delete(class_rel, &tuple->t_self);
+				deleteDependencyRecordsFor(RelationRelationId, seqoid, true);
+				deleteSharedDependencyRecordsFor(RelationRelationId, seqoid, 0);
+				simple_heap_delete(class_rel, &tuple->t_self);
+				heap_freetuple(tuple);
+			}
 		}
-
-		table_endscan(scan);
 		table_close(class_rel, RowExclusiveLock);
 
 		/* Find or create work queue entry for this table */
