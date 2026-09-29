@@ -1652,7 +1652,7 @@ plisql_exec_package_init(FunctionCallInfo fcinfo, PLiSQL_function *func)
 	/* End - SRS-PLSQL-SUBPROC */
 
 	/*
-	 * check wether invoke define, we should
+	 * check whether invoke define, we should
 	 * switch current user for package init
 	 */
 	pkgTup = SearchSysCache1(PKGOID, ObjectIdGetDatum(func->item->pkey));
@@ -1814,7 +1814,7 @@ plisql_check_package_status(PLiSQL_execstate *estate,
 
 
 /*
- * internel function to check subproc wether has define
+ * internel function to check subproc whether has define
  */
 static void
 plisql_check_subproc_define_recurse(PLiSQL_function *function, List **already_checks, yyscan_t yyscanner)
@@ -3077,7 +3077,7 @@ plisql_get_relevantContext(Oid pkgoid, MemoryContext orig)
 }
 
 /*
- * given a var, return wether
+ * given a var, return whether
  * it is a global var in package
  */
 bool
@@ -3112,7 +3112,7 @@ is_package_global_var(PLiSQL_var *var)
 
 
 /*
- * decide wether datum is a const
+ * decide whether datum is a const
  */
 bool
 is_const_datum(PLiSQL_execstate *estate, PLiSQL_datum *datum)
@@ -3207,7 +3207,7 @@ plisql_expand_rec_field(PLiSQL_rec *rec)
 }
 
 /*
- * check wether subproc has a action
+ * check whether subproc has a action
  */
 void
 plisql_check_subproc_define(PLiSQL_function *function, yyscan_t yyscanner)
