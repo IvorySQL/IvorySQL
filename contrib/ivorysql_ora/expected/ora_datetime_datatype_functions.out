@@ -2076,3 +2076,17 @@ drop table ds_tb;
 reset NLS_TIMESTAMP_FORMAT;
 reset NLS_TIMESTAMP_TZ_FORMAT;
 reset NLS_DATE_FORMAT;
+
+-- Verify bigint TO_DATE wrappers inherit STABLE volatility from the text
+-- overloads they call (date parsing depends on session NLS settings).
+SELECT count(*) = 2 AS to_date_bigint_stable_ok
+FROM pg_catalog.pg_proc
+WHERE oid IN ('sys.to_date(bigint)'::regprocedure,
+              'sys.to_date(bigint, text)'::regprocedure)
+  AND provolatile = 's'
+  AND proisstrict = true
+  AND proparallel = 's';
+ to_date_bigint_stable_ok 
+--------------------------
+ t
+(1 row)
