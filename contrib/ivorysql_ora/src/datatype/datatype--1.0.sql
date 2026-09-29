@@ -40,6 +40,7 @@ CREATE FUNCTION sys.oracharchartypmodin(cstring[])
 RETURNS integer
 AS 'MODULE_PATHNAME','oracharchartypmodin'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -506,6 +507,7 @@ CREATE FUNCTION sys.oracharbytetypmodin(cstring[])
 RETURNS integer
 AS 'MODULE_PATHNAME','oracharbytetypmodin'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
@@ -3889,6 +3891,7 @@ CREATE FUNCTION sys.oradate_le_oratimestamptz(sys.oradate, sys.oratimestamptz)
 RETURNS boolean
 AS 'MODULE_PATHNAME','oradate_le_oratimestamptz'
 LANGUAGE C
+PARALLEL SAFE
 STRICT
 STABLE;
  
