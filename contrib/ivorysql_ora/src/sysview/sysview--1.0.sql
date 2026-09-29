@@ -1273,6 +1273,34 @@ SELECT
     SHORT_DESC::VARCHAR2(255) AS DESCRIPTION
 FROM PG_SETTINGS;
 
+-- V$VERSION: version banner view.  Column layout follows Oracle
+-- (BANNER VARCHAR2(129), BANNER_FULL VARCHAR2(258), BANNER_LEGACY VARCHAR2(129),
+-- CON_ID NUMBER).  The version strings are derived from version() so the view
+-- follows the building IvorySQL release instead of hardcoding them.
+-- BANNER_FULL is the banner followed by a "Version <ivorysql>" line, like Oracle.
+-- BANNER deliberately reports IvorySQL branding: it does not start with 'Oracle',
+-- so tools probing V$VERSION with LIKE 'Oracle%' will not match, by design.
+-- BANNER_LEGACY is the same as BANNER because there is no legacy IvorySQL
+-- branding to report separately.
+-- CON_ID is 0 because IvorySQL has no multitenant container layout.
+-- Unlike V$SESSION/V$PROCESS/V$PARAMETER this view exposes no session data, and
+-- in Oracle every user can read V$VERSION, so SELECT is granted to PUBLIC.
+CREATE OR REPLACE VIEW SYS.V$VERSION AS
+SELECT
+    BANNER::VARCHAR2(129) AS BANNER,
+    (BANNER || CHR(10) || 'Version ' || IV_VER)::VARCHAR2(258) AS BANNER_FULL,
+    BANNER::VARCHAR2(129) AS BANNER_LEGACY,
+    0::NUMBER AS CON_ID
+FROM
+(
+    SELECT
+        'IvorySQL ' || substring(version() FROM '\(IvorySQL ([^)]+)\)')
+            || ' (PostgreSQL ' || current_setting('server_version') || ')' AS BANNER,
+        substring(version() FROM '\(IvorySQL ([^)]+)\)') AS IV_VER
+) v;
+
+GRANT SELECT ON SYS.V$VERSION TO PUBLIC;
+
 CREATE OR REPLACE VIEW SYS.all_cons_columns AS
 SELECT
     SYS.ORA_CASE_TRANS(pg_authid.rolname::VARCHAR2(128))    AS owner,

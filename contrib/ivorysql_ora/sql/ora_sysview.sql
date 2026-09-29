@@ -91,6 +91,9 @@ FROM SYS.V$PARAMETER
 WHERE NAME IN ('listen_addresses','application_name','archive_command','archive_mode','block_size')
 ORDER BY NAME;
 
+\d SYS.V$VERSION
+SELECT BANNER, BANNER_FULL, BANNER_LEGACY, CON_ID FROM SYS.V$VERSION;
+
 CREATE TABLE t_pk_single (id NUMBER PRIMARY KEY, name VARCHAR2(50));
 CREATE TABLE t_pk_composite (id1 NUMBER, id2 NUMBER, CONSTRAINT pk_composite PRIMARY KEY (id1, id2));
 
