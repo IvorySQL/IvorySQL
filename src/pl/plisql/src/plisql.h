@@ -1037,6 +1037,17 @@ typedef struct PLiSQL_function
 	int			new_varno;
 	int			old_varno;
 
+	/*
+	 * Implicit SQL cursor attribute variables (SQL%ROWCOUNT, SQL%FOUND,
+	 * SQL%NOTFOUND and SQL%ISOPEN).  Their names contain '%' so that they
+	 * can only be referenced through the SQL%attribute syntax, never as a
+	 * plain identifier.
+	 */
+	int			sql_rowcount_varno;
+	int			sql_found_varno;
+	int			sql_notfound_varno;
+	int			sql_isopen_varno;
+
 	PLiSQL_resolve_option resolve_option;
 
 	bool		print_strict_params;
@@ -1348,6 +1359,7 @@ extern PLiSQL_type * plisql_build_datatype_arrayof(PLiSQL_type * dtype);
 extern PLiSQL_variable * plisql_build_variable(const char *refname, int lineno,
 											   PLiSQL_type * dtype,
 											   bool add2namespace);
+extern void plisql_create_sql_cursor_attr_variables(PLiSQL_function *function);
 extern PLiSQL_rec * plisql_build_record(const char *refname, int lineno,
 										PLiSQL_type * dtype, Oid rectypeid,
 										bool add2namespace);

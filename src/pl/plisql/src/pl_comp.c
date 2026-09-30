@@ -1024,6 +1024,11 @@ do_compile(FunctionCallInfo fcinfo,
 					 true);
 	function->found_varno = var->dno;
 
+	/*
+	 * Create the hidden implicit SQL cursor attribute variables.
+	 */
+	plisql_create_sql_cursor_attr_variables(function);
+
 	PG_TRY();
 	{
 		/*
@@ -1456,6 +1461,11 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams, bool fromcall,
 					NULL),
 					 true);
 	function->found_varno = var->dno;
+
+	/*
+	 * Create the hidden implicit SQL cursor attribute variables.
+	 */
+	plisql_create_sql_cursor_attr_variables(function);
 
 	/*
 	 * Now parse the function's text
@@ -2961,6 +2971,83 @@ plisql_build_variable(const char *refname, int lineno, PLiSQL_type * dtype,
 	}
 
 	return result;
+}
+
+/*
+ * Create the hidden variables backing Oracle's implicit SQL cursor
+ * attributes:
+ *
+ *	"sql%rowcount"	int8	 rows affected/fetched by the most recent
+ *							implicit-cursor statement, or NULL before one
+ *	"sql%found"		bool	 true if the last implicit-cursor statement
+ *							affected at least one row, NULL before one
+ *	"sql%notfound"	bool	 negation of sql%found, NULL before one
+ *	"sql%isopen"	bool	 always false for the implicit cursor
+ *
+ * The names contain '%' so they cannot collide with, or be referenced as,
+ * plain identifiers; the scanner rewrites SQL%attribute to a double-quoted
+ * reference to the matching variable.  The variables are marked CONSTANT so
+ * that user assignments cannot reach them, and sql%isopen is preset to
+ * false (Oracle reports false even before any implicit-cursor statement,
+ * while the other attributes report NULL).  Since datums are copied per
+ * execution from the blessed copies held by PLiSQL_function, the preset
+ * value survives across calls.
+ *
+ * The four variables are deliberately not tagged with the package OID even
+ * when they are created while compiling a package: they carry per-call
+ * state, not package state.  Tagging them would send every reference down
+ * the package-datum path, which reads and writes the package's shared
+ * storage and would therefore let one package routine observe the values
+ * another one left behind.  Untagged, both the generated expression and
+ * exec_set_sql_cursor_attrs() resolve them through estate->datums, i.e. the
+ * per-execution copies.
+ */
+void
+plisql_create_sql_cursor_attr_variables(PLiSQL_function *function)
+{
+	PLiSQL_var *var;
+
+	var = (PLiSQL_var *) plisql_build_variable("sql%rowcount", 0,
+											   plisql_build_datatype(INT8OID,
+																	 -1,
+																	 InvalidOid,
+																	 NULL),
+											   true);
+	var->isconst = true;
+	var->pkgoid = InvalidOid;
+	function->sql_rowcount_varno = var->dno;
+
+	var = (PLiSQL_var *) plisql_build_variable("sql%found", 0,
+											   plisql_build_datatype(BOOLOID,
+																	 -1,
+																	 InvalidOid,
+																	 NULL),
+											   true);
+	var->isconst = true;
+	var->pkgoid = InvalidOid;
+	function->sql_found_varno = var->dno;
+
+	var = (PLiSQL_var *) plisql_build_variable("sql%notfound", 0,
+											   plisql_build_datatype(BOOLOID,
+																	 -1,
+																	 InvalidOid,
+																	 NULL),
+											   true);
+	var->isconst = true;
+	var->pkgoid = InvalidOid;
+	function->sql_notfound_varno = var->dno;
+
+	var = (PLiSQL_var *) plisql_build_variable("sql%isopen", 0,
+											   plisql_build_datatype(BOOLOID,
+																	 -1,
+																	 InvalidOid,
+																	 NULL),
+											   true);
+	var->isconst = true;
+	var->pkgoid = InvalidOid;
+	var->value = BoolGetDatum(false);
+	var->isnull = false;
+	function->sql_isopen_varno = var->dno;
 }
 
 /*

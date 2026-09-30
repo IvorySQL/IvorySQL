@@ -1266,6 +1266,11 @@ package_doCompile(HeapTuple pkgTup, bool forValidator)
 								 true);
 	function->found_varno = var->dno;
 
+	/*
+	 * Create the hidden implicit SQL cursor attribute variables.
+	 */
+	plisql_create_sql_cursor_attr_variables(function);
+
 	PG_TRY();
 	{
 		/*
