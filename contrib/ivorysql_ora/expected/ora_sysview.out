@@ -198,7 +198,7 @@ ORDER BY NAME;
    Column   |     Type     | Collation | Nullable | Default 
 ------------+--------------+-----------+----------+---------
  statistic# | number       |           |          | 
- name       | varchar2(64) | C         |          | 
+ name       | varchar2(64) |           |          | 
  class      | number       |           |          | 
  stat_id    | number       |           |          | 
  con_id     | number       |           |          | 
@@ -283,7 +283,6 @@ BEGIN
 	END IF;
 END;
 /
-
 CREATE TABLE t_pk_single (id NUMBER PRIMARY KEY, name VARCHAR2(50));
 CREATE TABLE t_pk_composite (id1 NUMBER, id2 NUMBER, CONSTRAINT pk_composite PRIMARY KEY (id1, id2));
 CREATE TABLE t_unique (col1 INT, col2 VARCHAR2(20), CONSTRAINT uk_col1 UNIQUE (col1));
