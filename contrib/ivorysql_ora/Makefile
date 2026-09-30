@@ -41,7 +41,8 @@ OBJS = \
 	src/builtin_packages/dbms_scheduler/dbms_scheduler.o \
 	src/builtin_packages/dbms_scheduler/scheduler_calendar.o \
 	src/builtin_packages/dbms_scheduler/scheduler_launcher.o \
-	src/builtin_packages/dbms_scheduler/scheduler_worker.o
+	src/builtin_packages/dbms_scheduler/scheduler_worker.o \
+	src/builtin_packages/dbms_rls/dbms_rls.o
 
 EXTENSION = ivorysql_ora
 
@@ -104,7 +105,8 @@ ORA_REGRESS = \
 	dbms_transaction \
 	dbms_random \
 	utl_match \
-	dbms_scheduler
+	dbms_scheduler \
+	dbms_rls
 
 TAP_TESTS = 1
 
