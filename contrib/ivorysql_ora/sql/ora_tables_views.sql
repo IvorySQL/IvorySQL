@@ -1,0 +1,133 @@
+-- DBA_TABLES / ALL_TABLES / USER_TABLES
+SET IVORYSQL.COMPATIBLE_MODE TO ORACLE;
+SET IVORYSQL.IDENTIFIER_CASE_SWITCH = INTERCHANGE;
+
+--
+-- Oracle-compatible table metadata views: column parity with Oracle,
+-- mapping of PG-native concepts (logging, partitioning, identity,
+-- analysis stats) and the DBA/ALL/USER visibility ladder.
+--
+
+CREATE TABLE TV_T (ID INT PRIMARY KEY, NAME VARCHAR2(30) NOT NULL);
+INSERT INTO TV_T VALUES (1, 'a'), (2, 'b');
+
+-- partitioned parent with two partitions
+CREATE TABLE TV_PT (ID INT, PAYLOAD INT) PARTITION BY RANGE (ID);
+CREATE TABLE TV_PT_P1 PARTITION OF TV_PT FOR VALUES FROM (MINVALUE) TO (10);
+CREATE TABLE TV_PT_P2 PARTITION OF TV_PT FOR VALUES FROM (10) TO (MAXVALUE);
+
+-- unlogged table maps to NOLOGGING
+CREATE UNLOGGED TABLE TV_UL (X INT);
+
+-- identity column is detected
+CREATE TABLE TV_IDT (ID INT GENERATED ALWAYS AS IDENTITY, X INT);
+
+-- view on the table must not appear
+CREATE VIEW TV_V AS SELECT * FROM TV_T;
+
+-- the three views have Oracle's column counts (91/91/90)
+SELECT count(*) AS dba_cols
+FROM pg_attribute
+WHERE attrelid = 'sys.dba_tables'::regclass AND attnum > 0 AND NOT attisdropped;
+SELECT count(*) AS all_cols
+FROM pg_attribute
+WHERE attrelid = 'sys.all_tables'::regclass AND attnum > 0 AND NOT attisdropped;
+SELECT count(*) AS user_cols
+FROM pg_attribute
+WHERE attrelid = 'sys.user_tables'::regclass AND attnum > 0 AND NOT attisdropped;
+
+-- USER_TABLES column order matches Oracle (first six and last six shown)
+SELECT attname
+FROM pg_attribute
+WHERE attrelid = 'sys.user_tables'::regclass AND attnum > 0 AND NOT attisdropped
+ORDER BY attnum
+LIMIT 6;
+SELECT attname
+FROM pg_attribute
+WHERE attrelid = 'sys.user_tables'::regclass AND attnum > 0 AND NOT attisdropped
+ORDER BY attnum DESC
+LIMIT 6;
+
+-- relation kinds are filtered: only tables/partitioned parents are
+-- listed (the view TV_V is absent, partition children are not separate
+-- rows, only the parent appears)
+SELECT TABLE_NAME, PARTITIONED, EXTERNAL, HAS_IDENTITY, LOGGING
+FROM USER_TABLES
+WHERE TABLE_NAME LIKE 'TV\_%' ESCAPE '\'
+ORDER BY TABLE_NAME;
+
+-- unanalyzed tables report NULL statistics like Oracle
+SELECT TABLE_NAME, NUM_ROWS IS NULL AS num_rows_null,
+	BLOCKS IS NULL AS blocks_null, LAST_ANALYZED IS NULL AS not_analyzed,
+	SAMPLE_SIZE IS NULL AS sample_null
+FROM USER_TABLES
+WHERE TABLE_NAME = 'TV_T';
+
+-- storage columns without a PostgreSQL counterpart stay NULL
+SELECT PCT_FREE IS NULL AND PCT_USED IS NULL AND INI_TRANS IS NULL
+	AND MAX_TRANS IS NULL AND INITIAL_EXTENT IS NULL AND NEXT_EXTENT IS NULL
+	AND MIN_EXTENTS IS NULL AND MAX_EXTENTS IS NULL AND PCT_INCREASE IS NULL
+	AND FREELISTS IS NULL AND FREELIST_GROUPS IS NULL AND EMPTY_BLOCKS IS NULL
+	AS storage_cols_null,
+	CLUSTER_NAME IS NULL AND IOT_NAME IS NULL AND IOT_TYPE IS NULL
+	AND CLUSTER_OWNER IS NULL AND DEFAULT_COLLATION IS NULL
+	AND ACTIVITY_TRACKING IS NULL AND DML_TIMESTAMP IS NULL
+	AND COMPRESS_FOR IS NULL AND CELLMEMORY IS NULL
+	AS unmapped_cols_null
+FROM USER_TABLES
+WHERE TABLE_NAME = 'TV_T';
+
+-- constant markers match the Oracle defaults for an ordinary table
+SELECT STATUS, DEGREE, INSTANCES, CACHE, TABLE_LOCK, GLOBAL_STATS,
+	USER_STATS, SKIP_CORRUPT, MONITORING, DEPENDENCIES, COMPRESSION,
+	DROPPED, READ_ONLY, SEGMENT_CREATED, RESULT_CACHE, CLUSTERING,
+	CONTAINER_DATA, TEMPORARY, DURATION, NESTED, ROW_MOVEMENT,
+	BUFFER_POOL, FLASH_CACHE, CELL_FLASH_CACHE, MEMOPTIMIZE_READ,
+	MEMOPTIMIZE_WRITE, BACKED_UP, SECONDARY
+FROM USER_TABLES
+WHERE TABLE_NAME = 'TV_T';
+
+-- after ANALYZE the statistics become visible
+ANALYZE TV_T;
+SELECT NUM_ROWS, BLOCKS IS NOT NULL AS blocks_ok,
+	LAST_ANALYZED IS NOT NULL AS analyzed
+FROM USER_TABLES
+WHERE TABLE_NAME = 'TV_T';
+
+-- unlogged tables are NOLOGGING
+SELECT LOGGING FROM USER_TABLES WHERE TABLE_NAME = 'TV_UL';
+
+-- DBA_TABLES sees the objects without any grants; ALL_/USER_ ladder below
+SELECT TABLE_NAME FROM DBA_TABLES
+WHERE TABLE_NAME LIKE 'TV\_%' ESCAPE '\'
+ORDER BY TABLE_NAME;
+
+CREATE ROLE TV_VIEWER NOLOGIN;
+SET ROLE TV_VIEWER;
+
+-- without grants no tables are visible through ALL_/USER_
+SELECT count(*) AS all_count FROM ALL_TABLES
+WHERE TABLE_NAME LIKE 'TV\_%' ESCAPE '\';
+SELECT count(*) AS user_count FROM USER_TABLES
+WHERE TABLE_NAME LIKE 'TV\_%' ESCAPE '\';
+
+RESET ROLE;
+GRANT SELECT ON TV_T TO TV_VIEWER;
+SET ROLE TV_VIEWER;
+
+-- with SELECT the granted table becomes visible through ALL_ but not USER_
+SELECT TABLE_NAME FROM ALL_TABLES
+WHERE TABLE_NAME LIKE 'TV\_%' ESCAPE '\'
+ORDER BY TABLE_NAME;
+SELECT count(*) AS user_count FROM USER_TABLES
+WHERE TABLE_NAME LIKE 'TV\_%' ESCAPE '\';
+
+RESET ROLE;
+REVOKE SELECT ON TV_T FROM TV_VIEWER;
+DROP ROLE TV_VIEWER;
+
+DROP VIEW TV_V;
+DROP TABLE TV_IDT;
+DROP TABLE TV_UL;
+DROP TABLE TV_PT;
+DROP TABLE TV_T;
