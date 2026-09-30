@@ -1574,6 +1574,40 @@ select * from t_regexp_like where regexp_like(null, null, null);
 ----+-------
 (0 rows)
 
+-- REGEXP_LIKE match_parameter n/m/default (issue #2295)
+select regexp_like('X'||chr(10), 'X.');
+ regexp_like 
+-------------
+ f
+(1 row)
+
+select regexp_like('X'||chr(10), 'X.', 'n');
+ regexp_like 
+-------------
+ t
+(1 row)
+
+select regexp_like('X'||chr(10), 'X.', 'c');
+ regexp_like 
+-------------
+ f
+(1 row)
+
+select regexp_like('x'||chr(10)||'b'||chr(10)||'y', '^b$', 'm');
+ regexp_like 
+-------------
+ t
+(1 row)
+
+select regexp_substr('X'||chr(10), 'X.', 1, 1, 'n');
+ regexp_substr 
+---------------
+ X
+
+(1 row)
+
+select regexp_like('X'||chr(10), 'X.', 'z');
+ERROR:  invalid regular expression option: "z"
 DROP table t_regexp_like;
 /*
  * regexp_count
