@@ -172,3 +172,58 @@ CREATE INDEX test_dsinterval_brin on TEST_DSINTERVAL USING brin (a);
 DROP TABLE TEST_YMINTERVAL;
 
 DROP TABLE TEST_DSINTERVAL;
+--
+-- Comparisons must preserve the mathematical ordering across the whole
+-- supported range.  Intervals are compared by converting them to a signed
+-- 128-bit microsecond count; computing that count in int64 lets large but
+-- perfectly valid intervals wrap around and change sign.
+--
+SELECT INTERVAL '106751992 00:00:00' DAY(9) TO SECOND > INTERVAL '0 00:00:00' DAY TO SECOND AS day_ovf_gt;
+
+SELECT INTERVAL '106751992 00:00:00' DAY(9) TO SECOND > INTERVAL '1 00:00:00' DAY TO SECOND AS day_ovf_gt_small;
+
+SELECT INTERVAL '-106751992 00:00:00' DAY(9) TO SECOND < INTERVAL '0 00:00:00' DAY TO SECOND AS day_ovf_lt;
+
+SELECT INTERVAL '-106751992 00:00:00' DAY(9) TO SECOND < INTERVAL '-1 00:00:00' DAY TO SECOND AS day_ovf_lt_small;
+
+-- 213503982 days plus 08:01:49.551616 is exactly 2^64 microseconds, which the
+-- old int64 arithmetic reduced to zero.
+SELECT INTERVAL '213503982 08:01:49.551616' DAY(9) TO SECOND(6) = INTERVAL '0 00:00:00' DAY TO SECOND AS day_2p64_eq_zero;
+
+SELECT INTERVAL '1000000-0' YEAR(9) TO MONTH > INTERVAL '0-0' YEAR TO MONTH AS mon_ovf_gt;
+
+SELECT INTERVAL '1000000-0' YEAR(9) TO MONTH > INTERVAL '1-0' YEAR TO MONTH AS mon_ovf_gt_small;
+
+SELECT INTERVAL '-1000000-0' YEAR(9) TO MONTH < INTERVAL '0-0' YEAR TO MONTH AS mon_ovf_lt;
+
+SELECT INTERVAL '-1000000-0' YEAR(9) TO MONTH < INTERVAL '-1-0' YEAR TO MONTH AS mon_ovf_lt_small;
+
+-- MIN()/MAX() and ordered index scans must agree with the comparisons above.
+CREATE TABLE test_interval_ovf(y interval year(9) to month, d interval day(9) to second(6));
+
+INSERT INTO test_interval_ovf (y, d) VALUES
+	('0-0', '0 00:00:00'),
+	('1000000-0', '106751992 00:00:00'),
+	('-1000000-0', '-106751992 00:00:00');
+
+CREATE INDEX test_interval_ovf_y_btree ON test_interval_ovf(y);
+
+CREATE INDEX test_interval_ovf_d_btree ON test_interval_ovf(d);
+
+SELECT max(y) = INTERVAL '1000000-0' YEAR(9) TO MONTH AS mon_ovf_max FROM test_interval_ovf;
+
+SELECT min(y) = INTERVAL '-1000000-0' YEAR(9) TO MONTH AS mon_ovf_min FROM test_interval_ovf;
+
+SELECT max(d) = INTERVAL '106751992 00:00:00' DAY(9) TO SECOND AS day_ovf_max FROM test_interval_ovf;
+
+SELECT min(d) = INTERVAL '-106751992 00:00:00' DAY(9) TO SECOND AS day_ovf_min FROM test_interval_ovf;
+
+SET enable_seqscan = off;
+
+SELECT count(*) = 2 AS mon_ovf_index_count FROM test_interval_ovf WHERE y >= INTERVAL '0-0' YEAR TO MONTH;
+
+SELECT count(*) = 2 AS day_ovf_index_count FROM test_interval_ovf WHERE d >= INTERVAL '0 00:00:00' DAY TO SECOND;
+
+RESET enable_seqscan;
+
+DROP TABLE test_interval_ovf;
