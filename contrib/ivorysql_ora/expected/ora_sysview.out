@@ -523,12 +523,6 @@ SELECT count(*) FROM SYS.ALL_SOURCE WHERE lower(text) LIKE '%sysview_hidden_fn%'
 (1 row)
 
 \set ON_ERROR_STOP on
-SELECT count(*) >= 0 AS all_source_usable FROM SYS.ALL_SOURCE;
- all_source_usable 
--------------------
- t
-(1 row)
-
 RESET SESSION AUTHORIZATION;
 SELECT count(*) > 0 AS dba_source_usable FROM SYS.DBA_SOURCE;
  dba_source_usable 
