@@ -2408,7 +2408,7 @@ getindex(const char **map, char *mbchar, int mblen)
 
 	for (i = 0; i < 95; i++)
 	{
-		if (!memcmp(map[i], mbchar, mblen))
+		if (strlen(map[i]) == mblen && !memcmp(map[i], mbchar, mblen))
 			return i;
 	}
 
@@ -2525,6 +2525,7 @@ ora_ascii(PG_FUNCTION_ARGS)
 {
     Oid argtype = get_fn_expr_argtype(fcinfo->flinfo, 0);
     char *str = NULL;
+    int32 result;
 
     if (PG_ARGISNULL(0))
         PG_RETURN_NULL();
@@ -2552,9 +2553,14 @@ ora_ascii(PG_FUNCTION_ARGS)
 			str = DatumGetCString(DirectFunctionCall1(binary_double_out, Float8GetDatum(val)));
             break;
         }
-		case  ORACHARCHAROID: 
-		case  ORAVARCHARCHAROID : {
-			/* char, varchar, varchar2 */
+		case TEXTOID:
+		case VARCHAROID:
+		case BPCHAROID:
+		case ORACHARCHAROID:
+		case ORACHARBYTEOID:
+		case ORAVARCHARCHAROID:
+		case ORAVARCHARBYTEOID: {
+			/* char, varchar, varchar2, text, bpchar */
 			text *txt = PG_GETARG_TEXT_PP(0);
             str = text_to_cstring(txt);
             break;
@@ -2590,6 +2596,16 @@ ora_ascii(PG_FUNCTION_ARGS)
 			str = text_to_cstring(timestamptz_str);
             break;
 		}
+		case ORATIMESTAMPLTZOID: {
+			TimestampTz val = PG_GETARG_TIMESTAMPTZ(0);
+			text       *timestampltz_str;
+
+			timestampltz_str = DatumGetTextP(DirectFunctionCall2(timestamptz_to_char,
+												TimestampTzGetDatum(val),
+												PointerGetDatum(cstring_to_text(nls_timestamp_format))));
+			str = text_to_cstring(timestampltz_str);
+			break;
+		}
 
 		default: {
 	    	ereport(ERROR,
@@ -2600,14 +2616,15 @@ ora_ascii(PG_FUNCTION_ARGS)
     }
 
     if (str == NULL || str[0] == '\0') {
-		/* 1. Set the null flag */
-		fcinfo->isnull = true;
-
-		/* 2. Return a placeholder value */
-		PG_RETURN_VOID();
+		if (str != NULL)
+			pfree(str);
+		PG_RETURN_NULL();
 	}
 
-    PG_RETURN_INT32((unsigned char) str[0]);
+	result = (unsigned char) str[0];
+	pfree(str);
+
+    PG_RETURN_INT32(result);
 }
 
 

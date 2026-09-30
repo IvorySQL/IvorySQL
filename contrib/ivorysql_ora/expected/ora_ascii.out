@@ -56,3 +56,63 @@ select ascii('') is null from dual;
  t
 (1 row)
 
+select ascii('A'::text) from dual;
+ ascii 
+-------
+    65
+(1 row)
+
+select ascii('B'::sys.oravarcharbyte) from dual;
+ ascii 
+-------
+    66
+(1 row)
+
+select ascii('C'::sys.oracharchar) from dual;
+ ascii 
+-------
+    67
+(1 row)
+
+select ascii('D'::sys.oracharbyte) from dual;
+ ascii 
+-------
+    68
+(1 row)
+
+select ascii(''::text) is null from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+select ascii(''::sys.oravarcharbyte) is null from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+select ascii(''::sys.oracharchar) is null from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+select ascii(''::sys.oracharbyte) is null from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+select ascii(NULL::text) is null from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+select ascii(NULL::sys.oravarcharbyte) is null from dual;
+ ?column? 
+----------
+ t
+(1 row)
+

@@ -1558,3 +1558,5 @@ select to_single_byte('１．２');
 select to_single_byte(１．２);
 select to_single_byte(3.4);
 select to_single_byte(NULL);
+select to_single_byte('Hello １２３ World ａｂｃ');
+select to_single_byte('中文测试123');
