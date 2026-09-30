@@ -270,3 +270,25 @@ SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'TEST_ALL_TAB_
 \set ON_ERROR_STOP on
 
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+
+-- The SYS.DBA_* views expose code of other users, so they must not be readable
+-- by unprivileged roles; the SYS.ALL_*/USER_* views stay usable by them and
+-- keep filtering rows by the privileges of the querying user.
+CREATE ROLE sysview_unprivileged;
+CREATE FUNCTION sysview_hidden_fn() RETURNS INT AS 'SELECT 1' LANGUAGE SQL;
+REVOKE ALL ON FUNCTION sysview_hidden_fn() FROM PUBLIC;
+SELECT count(*) > 0 AS privileged_sees_source FROM SYS.ALL_SOURCE
+WHERE lower(text) LIKE '%sysview_hidden_fn%';
+SET SESSION AUTHORIZATION sysview_unprivileged;
+\set ON_ERROR_STOP off
+SELECT count(*) FROM SYS.DBA_SOURCE;
+SELECT count(*) FROM SYS.DBA_PROCEDURES;
+SELECT count(*) FROM SYS.DBA_ARGUMENTS;
+SELECT count(*) FROM SYS.DBA_VIEWS;
+SELECT count(*) FROM SYS.ALL_SOURCE WHERE lower(text) LIKE '%sysview_hidden_fn%';
+\set ON_ERROR_STOP on
+SELECT count(*) >= 0 AS all_source_usable FROM SYS.ALL_SOURCE;
+RESET SESSION AUTHORIZATION;
+SELECT count(*) > 0 AS dba_source_usable FROM SYS.DBA_SOURCE;
+DROP FUNCTION sysview_hidden_fn();
+DROP ROLE sysview_unprivileged;
