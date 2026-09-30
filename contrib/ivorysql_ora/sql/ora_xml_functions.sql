@@ -419,3 +419,33 @@ select insertxmlafter(XMLtype('<a>A<b>B</b></a>'), '/', XMLType('<c>C</c>'));
 select insertchildxml(XMLtype('<a>A<b>B</b></a>'), '/', 'c', XMLType('<c>C</c>'));
 
 
+
+--
+-- extractvalue for attribute and text() nodes
+--
+SELECT extractvalue(XMLType('<a id="1"><b>100</b></a>'), '/a/@id') from dual;
+
+SELECT extractvalue(XMLType('<a id="hello world"><b>100</b></a>'), '/a/@id') from dual;
+
+SELECT extractvalue(XMLType('<a id="a&amp;b"/>'), '/a/@id') from dual;
+
+-- absent attribute returns NULL
+SELECT extractvalue(XMLType('<a><b>100</b></a>'), '/a/@id') from dual;
+
+SELECT extractvalue(XMLType('<a>text content</a>'), '/a/text()') from dual;
+
+SELECT extractvalue(XMLType('<a><b>100</b></a>'), '/a/b/text()') from dual;
+
+SELECT extractvalue(XMLType('<a><![CDATA[<cdata content>]]></a>'), '/a/text()') from dual;
+
+-- absent text() node returns NULL
+SELECT extractvalue(XMLType('<a><b>100</b></a>'), '/a/text()') from dual;
+
+-- more than one node still raises an error
+SELECT extractvalue(XMLType('<a>x<b>100</b>y</a>'), '/a/text()') from dual;
+
+-- attribute with namespace overload
+SELECT extractvalue(XMLType('<web:a id="7" xmlns:web="http://www.abc.com">text</web:a>'), 'web:a/@id', 'xmlns:web="http://www.abc.com"') from dual;
+
+-- element leaf regression (unchanged)
+SELECT extractvalue(XMLType('<a><b>100</b></a>'), '/a/b') from dual;

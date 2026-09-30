@@ -603,7 +603,18 @@ ivy_xmlnode_getcontent(xmlNodePtr cur)
 {
 	char    	*result = NULL;
 
-	if (cur->type == XML_ELEMENT_NODE)
+	if (cur->type == XML_ATTRIBUTE_NODE ||
+		cur->type == XML_TEXT_NODE ||
+		cur->type == XML_CDATA_SECTION_NODE)
+	{
+		/*
+		 * EXTRACTVALUE also applies to attribute and text() nodes; for those
+		 * the content of the node itself is the value, and xmlNodeGetContent()
+		 * knows how to extract it for each of these node kinds.
+		 */
+		result = (char *)xmlNodeGetContent(cur);
+	}
+	else if (cur->type == XML_ELEMENT_NODE)
 	{
 		if (cur->children && cur->children->type == XML_TEXT_NODE)
 			result = (char *)xmlNodeGetContent(cur->children);
@@ -632,7 +643,10 @@ ivy_xml_xpathobjtostring(xmlXPathObjectPtr xpathobj)
 			{
 				res = ivy_xmlnode_getcontent(xpathobj->nodesetval->nodeTab[i]);
 				if (res)
+				{
 					appendStringInfoString(&buf, res);
+					xmlFree(res);
+				}
 				else
 					appendStringInfoString(&buf, "");
 			}
