@@ -308,4 +308,3 @@ ERROR:  function nanvl() does not exist
 LINE 1: SELECT NANVL();
                ^
 DETAIL:  No function of that name accepts the given number of arguments.
-

@@ -791,15 +791,31 @@ ERROR:  function remainder(pg_catalog.int4, pg_catalog.int4, pg_catalog.int4) do
 LINE 1: SELECT REMAINDER(1, 2, 3);
                ^
 DETAIL:  No function of that name accepts the given number of arguments.
-
-CREATE SCHEMA
-CREATE FUNCTION
+--
+-- The precedence rewrite is a preference, not a mandate.  It applies only
+-- to unqualified calls or to calls qualified with "sys": a user-defined
+-- remainder in another schema keeps resolving with its own signature even
+-- when the call passes numeric-looking literals, and a rewritten lookup
+-- that finds no unique overload falls back to the actual argument types.
+--
+CREATE SCHEMA remainder_shadow;
+CREATE FUNCTION remainder_shadow.remainder(a varchar2, b varchar2)
+RETURN varchar2
+IS
+BEGIN
+  RETURN a || b;
+END;
+/
+-- the non-"sys" qualified call must reach the user-defined function
+SELECT remainder_shadow.remainder('7', '0') FROM DUAL;
  remainder 
 -----------
  70
 (1 row)
 
+-- the sys-qualified builtin still follows Oracle numeric precedence
+SELECT SYS.REMAINDER(7, 0) FROM DUAL;
 ERROR:  division by zero
 CONTEXT:  SQL function "remainder" statement 1
-DROP FUNCTION
-DROP SCHEMA
+DROP FUNCTION remainder_shadow.remainder(a varchar2, b varchar2);
+DROP SCHEMA remainder_shadow;
