@@ -796,6 +796,14 @@ select * from t_regexp_like where regexp_like('', null);
 select * from t_regexp_like where regexp_like(null, null);
 select * from t_regexp_like where regexp_like(null, null, null);
 
+-- REGEXP_LIKE match_parameter n/m/default (issue #2295)
+select regexp_like('X'||chr(10), 'X.');
+select regexp_like('X'||chr(10), 'X.', 'n');
+select regexp_like('X'||chr(10), 'X.', 'c');
+select regexp_like('x'||chr(10)||'b'||chr(10)||'y', '^b$', 'm');
+select regexp_substr('X'||chr(10), 'X.', 1, 1, 'n');
+select regexp_like('X'||chr(10), 'X.', 'z');
+
 DROP table t_regexp_like;
 
 /*

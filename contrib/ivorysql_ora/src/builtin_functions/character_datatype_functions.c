@@ -774,9 +774,9 @@ ora_regexp_like(PG_FUNCTION_ARGS)
 {
 	text		*s = PG_ARGISNULL(0) ? NULL :PG_GETARG_TEXT_P(0);
 	text		*p = PG_ARGISNULL(1) ? NULL :PG_GETARG_TEXT_P(1);
-	text		*in_flag = PG_ARGISNULL(2) ? PG_STR_GET_TEXT("") : PG_GETARG_TEXT_P(2);
-	char		*in_flag_p = NULL;
-	int			in_flag_len, i, out_flag;
+	text		*in_flag = PG_ARGISNULL(2) ? NULL : PG_GETARG_TEXT_P(2);
+	char	   *match_pa_to_str = NULL;
+	pg_re_flags flags;
 	bool		match;
 	regmatch_t	pmatch[2];
 
@@ -785,35 +785,20 @@ ora_regexp_like(PG_FUNCTION_ARGS)
 		PG_RETURN_BOOL(false);
 	}
 
-	in_flag_p = VARDATA(in_flag);
-	in_flag_len = (VARSIZE(in_flag) - VARHDRSZ);
-
-	/* parse flag options */
-	out_flag = REG_ADVANCED;
-	for (i = 0; i <in_flag_len; i++)
+	if (in_flag != NULL)
 	{
-		switch (in_flag_p[i])
+		match_pa_to_str = text_to_cstring(in_flag);
+		for (; *match_pa_to_str != '\0'; match_pa_to_str++)
 		{
-			case 'i':
-				out_flag  |=  REG_ICASE;
-				break;
-			case 'n':
-				out_flag |= REG_NEWLINE;
-				break;
-			case 'c':
-				out_flag  &=  ~REG_ICASE;
-				break;
-			case 'x':
-				out_flag |= REG_EXPANDED;
-				break;
-			default:
+			if (!MATCHPARAM(*match_pa_to_str))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("invalid option of regexp_like: %c",
-						 in_flag_p[i])));
-				break;
+								*match_pa_to_str)));
 		}
 	}
+
+	ora_parse_re_flags(&flags, in_flag);
 
 	/*
 	 * We pass two regmatch_t structs to get info about the overall match and
@@ -824,7 +809,7 @@ ora_regexp_like(PG_FUNCTION_ARGS)
 	match = RE_compile_and_execute(p,
 								VARDATA(s),
 								VARSIZE(s) - VARHDRSZ,
-								out_flag,
+								flags.cflags,
 								PG_GET_COLLATION(),
 								2, pmatch);
 
@@ -845,7 +830,7 @@ ora_regexp_like_no_flags(PG_FUNCTION_ARGS)
 {
 	text		*s = PG_ARGISNULL(0) ? NULL :PG_GETARG_TEXT_P(0);
 	text		*p = PG_ARGISNULL(1) ? NULL :PG_GETARG_TEXT_P(1);
-	int			out_flag;
+	pg_re_flags flags;
 	bool		match;
 	regmatch_t	pmatch[2];
 
@@ -853,8 +838,8 @@ ora_regexp_like_no_flags(PG_FUNCTION_ARGS)
 	{
 		PG_RETURN_BOOL(false);
 	}
-	/* parse flag options */
-	out_flag = REG_ADVANCED;
+
+	ora_parse_re_flags(&flags, NULL);
 
 	/*
 	 * We pass two regmatch_t structs to get info about the overall match and
@@ -865,7 +850,7 @@ ora_regexp_like_no_flags(PG_FUNCTION_ARGS)
 	match = RE_compile_and_execute(p,
 								VARDATA(s),
 								VARSIZE(s) - VARHDRSZ,
-								out_flag,
+								flags.cflags,
 								PG_GET_COLLATION(),
 								2, pmatch);
 
