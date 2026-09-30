@@ -80,6 +80,24 @@ sub sql_merge
 	shift @ARGV;
 	foreach my $v (@ARGV)
 	{
+		# A full-install version ("x.x") must contain every fragment
+		# listed in ivorysql_ora_merge_sqls.  Validate them all before
+		# the old output file is deleted below: a missing fragment
+		# means an incomplete source tree (renamed module, bad
+		# checkout, ...) and must fail the build instead of silently
+		# producing an incomplete script.  An upgrade version
+		# ("x.x--x.x") may legitimately omit modules that did not
+		# change in this version, so its fragments stay optional.
+		if ($v =~ /^\d+\.\d+$/)
+		{
+			foreach my $set (@sql_set)
+			{
+				croak "Could not find mandatory fragment " .
+					File::Spec->rel2abs("$set--$v.sql") . "\n"
+					unless -e "$set--$v.sql";
+			}
+		}
+
 		# For Make mode, delete the old file first.
 		if ($first_arg ne 'meson') {
 			unlink(File::Spec->rel2abs("ivorysql_ora--$v.sql"))
@@ -124,7 +142,8 @@ sub sql_merge
 				print $fh "\n";
 
 				# Open a sql file.
-				open(INFILE, "<", File::Spec->rel2abs("$set--$v.sql"));
+				open(INFILE, "<", File::Spec->rel2abs("$set--$v.sql"))
+					|| croak "Could not open file $set--$v.sql : $!";
 				while (my $line = <INFILE>)
 				{
 					# Delete the last tailing "\n" of this line.
@@ -137,6 +156,9 @@ sub sql_merge
 		}
 
 		# Close OUTFILE for Make mode (meson mode doesn't open it)
-		close OUTFILE if ($first_arg ne 'meson');
+		if ($first_arg ne 'meson') {
+			close(OUTFILE)
+				|| croak "Could not close ivorysql_ora--$v.sql : $!";
+		}
 	}
 }
