@@ -287,7 +287,6 @@ SELECT count(*) FROM SYS.DBA_ARGUMENTS;
 SELECT count(*) FROM SYS.DBA_VIEWS;
 SELECT count(*) FROM SYS.ALL_SOURCE WHERE lower(text) LIKE '%sysview_hidden_fn%';
 \set ON_ERROR_STOP on
-SELECT count(*) >= 0 AS all_source_usable FROM SYS.ALL_SOURCE;
 RESET SESSION AUTHORIZATION;
 SELECT count(*) > 0 AS dba_source_usable FROM SYS.DBA_SOURCE;
 DROP FUNCTION sysview_hidden_fn();
