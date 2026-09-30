@@ -16,12 +16,51 @@ SELECT vsize('abc') = lengthb('abc') AS same_as_lengthb;
 SELECT vsize('你好'::text);
 
 -- numeric data
+-- integer/numeric values report Oracle's internal NUMBER format size,
+-- verified against Oracle Database 23ai
 SELECT vsize(0::number);
 SELECT vsize(1::number);
 SELECT vsize(123::number);
 SELECT vsize(1.23::number);
+SELECT vsize(100);
+SELECT vsize(42);
+SELECT vsize(-1);
+SELECT vsize(-1200);
+SELECT vsize(3.14);
+SELECT vsize(12345.67);
+SELECT vsize(1000000);
+SELECT vsize(0.001::number);
+SELECT vsize(1.50::number);
+SELECT vsize(1500);
+SELECT vsize(0.05::number);
+-- base-100 mantissa byte boundaries sit at the decimal point: 1.5 is the
+-- mantissa byte pair 1,50, so an odd significant digit count on either side
+-- of the point adds a mantissa byte (values verified on Oracle 23ai)
+SELECT vsize(1.5);
+SELECT vsize(1.500);
+SELECT vsize(1.5::number);
+SELECT vsize(1.500::number);
+SELECT vsize(-1.5);
+SELECT vsize(-1.500::number);
+SELECT vsize(12.5);
+SELECT vsize(123.5);
+SELECT vsize(-123.5);
+SELECT vsize(1.005::number);
+SELECT vsize(123::int2);
 SELECT vsize(123::int4);
 SELECT vsize(123::int8);
+-- a domain over number/numeric resolves to its base type
+CREATE DOMAIN vsize_number_dom AS number;
+SELECT vsize(1.5::vsize_number_dom);
+SELECT vsize(100::vsize_number_dom);
+CREATE DOMAIN vsize_numeric_dom AS numeric;
+SELECT vsize(-1.5::vsize_numeric_dom);
+SELECT vsize(3.14::vsize_numeric_dom);
+DROP DOMAIN vsize_number_dom;
+DROP DOMAIN vsize_numeric_dom;
+-- non-finite numeric has no Oracle NUMBER equivalent, so the storage size
+-- of the value is reported
+SELECT vsize('NaN'::number);
 SELECT vsize(1.23::float8);
 SELECT vsize('NaN'::float8);
 
