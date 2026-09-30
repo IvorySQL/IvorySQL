@@ -493,3 +493,42 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- The SYS.DBA_* views expose code of other users, so they must not be readable
+-- by unprivileged roles; the SYS.ALL_*/USER_* views stay usable by them and
+-- keep filtering rows by the privileges of the querying user.
+CREATE ROLE sysview_unprivileged;
+CREATE FUNCTION sysview_hidden_fn() RETURNS INT AS 'SELECT 1' LANGUAGE SQL;
+REVOKE ALL ON FUNCTION sysview_hidden_fn() FROM PUBLIC;
+SELECT count(*) > 0 AS privileged_sees_source FROM SYS.ALL_SOURCE
+WHERE lower(text) LIKE '%sysview_hidden_fn%';
+ privileged_sees_source 
+------------------------
+ t
+(1 row)
+
+SET SESSION AUTHORIZATION sysview_unprivileged;
+\set ON_ERROR_STOP off
+SELECT count(*) FROM SYS.DBA_SOURCE;
+ERROR:  permission denied for view dba_source
+SELECT count(*) FROM SYS.DBA_PROCEDURES;
+ERROR:  permission denied for view dba_procedures
+SELECT count(*) FROM SYS.DBA_ARGUMENTS;
+ERROR:  permission denied for view dba_arguments
+SELECT count(*) FROM SYS.DBA_VIEWS;
+ERROR:  permission denied for view dba_views
+SELECT count(*) FROM SYS.ALL_SOURCE WHERE lower(text) LIKE '%sysview_hidden_fn%';
+ count 
+-------
+     0
+(1 row)
+
+\set ON_ERROR_STOP on
+RESET SESSION AUTHORIZATION;
+SELECT count(*) > 0 AS dba_source_usable FROM SYS.DBA_SOURCE;
+ dba_source_usable 
+-------------------
+ t
+(1 row)
+
+DROP FUNCTION sysview_hidden_fn();
+DROP ROLE sysview_unprivileged;
