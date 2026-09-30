@@ -65,7 +65,7 @@ jobs:
     - name: collect files
       if: failure()
       run: |
-          find . \( -name "*.diffs" -or -name "oracle_pg_regression.out" -or -path \*/tmp_check/log -or -path \*src/test/regress/log \) -print0 |
+          find . \( -name "*.diffs" -or -name "regression.out" -or -path \*/log \) -print0 |
                 xargs -0 tar -czf oracle_pg_regression.tar.gz
     - name: upload oracle_pg_regression files
       if: failure()
