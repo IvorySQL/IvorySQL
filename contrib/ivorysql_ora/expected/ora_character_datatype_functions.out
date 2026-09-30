@@ -4074,3 +4074,15 @@ select to_single_byte(NULL);
  
 (1 row)
 
+select to_single_byte('Hello １２３ World ａｂｃ');
+   to_single_byte    
+---------------------
+ Hello 123 World abc
+(1 row)
+
+select to_single_byte('中文测试123');
+ to_single_byte 
+----------------
+ 中文测试123
+(1 row)
+
