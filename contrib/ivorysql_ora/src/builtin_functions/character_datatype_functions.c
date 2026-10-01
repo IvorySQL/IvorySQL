@@ -76,6 +76,7 @@ PG_FUNCTION_INFO_V1(oracle_instr_2);
 PG_FUNCTION_INFO_V1(oracle_instr_3);
 PG_FUNCTION_INFO_V1(oracle_instr_4);
 PG_FUNCTION_INFO_V1(ora_asciistr);
+PG_FUNCTION_INFO_V1(ora_nchr);
 PG_FUNCTION_INFO_V1(ora_to_multi_byte);
 PG_FUNCTION_INFO_V1(ora_to_single_byte);
 PG_FUNCTION_INFO_V1(ora_ascii);
@@ -2645,3 +2646,120 @@ ora_listagg_check (PG_FUNCTION_ARGS)
 
 }
 
+
+/********************************************************************
+ *
+ * ora_nchr
+ *
+ * Oracle NCHR(number):
+ *	 Returns the character having the binary equivalent to the
+ *	 argument, taken from the database character set.
+ *
+ * For UTF8 we treat the argument as a Unicode code point.
+ * For other multi-byte encodings we raise an error for arguments
+ * outside the strict ASCII range (1..127).
+ *
+ * This mirrors the semantics of PostgreSQL's chr() so that we never
+ * return a value that is not valid in the database encoding.
+ *
+ *******************************************************************/
+Datum
+ora_nchr(PG_FUNCTION_ARGS)
+{
+	int32		arg = PG_GETARG_INT32(0);
+	uint32		cvalue;
+	text	   *result;
+	int			encoding = GetDatabaseEncoding();
+
+	/*
+	 * Error out on arguments that make no sense or that we can't validly
+	 * represent in the encoding.
+	 */
+	if (arg < 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("character number must be positive")));
+	else if (arg == 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("null character not permitted")));
+
+	cvalue = arg;
+
+	if (encoding == PG_UTF8 && cvalue > 127)
+	{
+		/* for Unicode we treat the argument as a code point */
+		int			bytes;
+		unsigned char *wch;
+
+		/*
+		 * We only allow valid Unicode code points; per RFC3629 that stops at
+		 * U+10FFFF, even though 4-byte UTF8 sequences can hold values up to
+		 * U+1FFFFF.
+		 */
+		if (cvalue > 0x0010ffff)
+			ereport(ERROR,
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg("requested character too large for encoding: %u",
+							cvalue)));
+
+		if (cvalue > 0xffff)
+			bytes = 4;
+		else if (cvalue > 0x07ff)
+			bytes = 3;
+		else
+			bytes = 2;
+
+		result = (text *) palloc(VARHDRSZ + bytes);
+		SET_VARSIZE(result, VARHDRSZ + bytes);
+		wch = (unsigned char *) VARDATA(result);
+
+		if (bytes == 2)
+		{
+			wch[0] = 0xC0 | ((cvalue >> 6) & 0x1F);
+			wch[1] = 0x80 | (cvalue & 0x3F);
+		}
+		else if (bytes == 3)
+		{
+			wch[0] = 0xE0 | ((cvalue >> 12) & 0x0F);
+			wch[1] = 0x80 | ((cvalue >> 6) & 0x3F);
+			wch[2] = 0x80 | (cvalue & 0x3F);
+		}
+		else
+		{
+			wch[0] = 0xF0 | ((cvalue >> 18) & 0x07);
+			wch[1] = 0x80 | ((cvalue >> 12) & 0x3F);
+			wch[2] = 0x80 | ((cvalue >> 6) & 0x3F);
+			wch[3] = 0x80 | (cvalue & 0x3F);
+		}
+
+		/*
+		 * The preceding range check isn't sufficient, because UTF8 excludes
+		 * Unicode "surrogate pair" codes.  Make sure what we created is valid
+		 * UTF8.
+		 */
+		if (!pg_utf8_islegal(wch, bytes))
+			ereport(ERROR,
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg("requested character not valid for encoding: %u",
+							cvalue)));
+	}
+	else
+	{
+		bool		is_mb;
+
+		is_mb = pg_encoding_max_length(encoding) > 1;
+
+		if ((is_mb && (cvalue > 127)) || (!is_mb && (cvalue > 255)))
+			ereport(ERROR,
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg("requested character too large for encoding: %u",
+							cvalue)));
+
+		result = (text *) palloc(VARHDRSZ + 1);
+		SET_VARSIZE(result, VARHDRSZ + 1);
+		*VARDATA(result) = (char) cvalue;
+	}
+
+	PG_RETURN_TEXT_P(result);
+}
