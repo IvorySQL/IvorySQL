@@ -30,7 +30,7 @@ END
 	$sb->quit() if defined $sb;
 }
 
-my $connstr = $node->connstr('ivorysql');
+my $connstr = $node->connstr('ivorysql', 1);
 $sa = $node->background_psql('ivorysql', connstr => $connstr, timeout => 30);
 $sb = $node->background_psql('ivorysql', connstr => $connstr, timeout => 30);
 $sa->set_query_timer_restart();
