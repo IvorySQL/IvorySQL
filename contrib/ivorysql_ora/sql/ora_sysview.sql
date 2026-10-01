@@ -91,6 +91,63 @@ FROM SYS.V$PARAMETER
 WHERE NAME IN ('listen_addresses','application_name','archive_command','archive_mode','block_size')
 ORDER BY NAME;
 
+-- V$MYSTAT / V$STATNAME: current-session statistics contract (#1003).
+-- Per-session values are never printed here; only view shapes, the fixed
+-- catalog rows and boolean/aggregate assertions are compared.
+\d SYS.V$MYSTAT
+\d SYS.V$STATNAME
+
+-- The fixed local catalog: exactly four statistics with IvorySQL-local IDs.
+SELECT STATISTIC#, NAME, CLASS, STAT_ID, CON_ID
+FROM SYS.V$STATNAME
+ORDER BY STATISTIC#;
+
+-- Exactly four rows with unique identifiers and names.
+SELECT COUNT(*) = 4 AS four_statistics,
+       COUNT(*) = COUNT(DISTINCT STATISTIC#) AS statistic_unique,
+       COUNT(*) = COUNT(DISTINCT NAME) AS names_unique,
+       COUNT(*) = COUNT(DISTINCT STAT_ID) AS stat_ids_unique
+FROM SYS.V$STATNAME;
+
+-- Every catalog row joins to exactly one live session row: values are
+-- non-NULL, non-negative and belong to this backend with CON_ID = 0.
+SELECT b.NAME,
+       (a.VALUE IS NOT NULL) AS value_present,
+       (a.VALUE >= 0) AS value_nonnegative,
+       (a.SID = pg_catalog.pg_backend_pid()::NUMBER) AS sid_is_own_pid,
+       (a.CON_ID = 0) AS con_id_zero
+FROM SYS.V$MYSTAT a JOIN SYS.V$STATNAME b ON a.STATISTIC# = b.STATISTIC#
+ORDER BY b.STATISTIC#;
+
+-- SID matches the SID column of the existing V$SESSION view.
+SELECT COUNT(*) = 1 AS session_row_for_own_pid
+FROM SYS.V$SESSION
+WHERE SID = pg_catalog.pg_backend_pid()::NUMBER;
+
+-- Readable by PUBLIC so migration queries work for ordinary users.
+SELECT COUNT(*) = 1 AS mystat_public_select
+FROM information_schema.role_table_grants
+WHERE table_schema = 'sys' AND table_name = 'v$mystat'
+  AND grantee = 'PUBLIC' AND privilege_type = 'SELECT';
+
+SELECT COUNT(*) = 1 AS statname_public_select
+FROM information_schema.role_table_grants
+WHERE table_schema = 'sys' AND table_name = 'v$statname'
+  AND grantee = 'PUBLIC' AND privilege_type = 'SELECT';
+
+-- The issue's PL/SQL pattern: unquoted STATISTIC# join with SELECT INTO.
+DECLARE
+	V_VAL NUMBER;
+BEGIN
+	SELECT a.VALUE INTO V_VAL
+	FROM SYS.V$MYSTAT a, SYS.V$STATNAME b
+	WHERE a.STATISTIC# = b.STATISTIC# AND b.NAME = 'redo size';
+	IF V_VAL IS NULL OR V_VAL < 0 THEN
+		RAISE EXCEPTION 'redo size must be non-NULL and non-negative';
+	END IF;
+END;
+/
+
 CREATE TABLE t_pk_single (id NUMBER PRIMARY KEY, name VARCHAR2(50));
 CREATE TABLE t_pk_composite (id1 NUMBER, id2 NUMBER, CONSTRAINT pk_composite PRIMARY KEY (id1, id2));
 

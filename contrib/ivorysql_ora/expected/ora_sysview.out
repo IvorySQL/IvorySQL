@@ -181,6 +181,108 @@ ORDER BY NAME;
  listen_addresses | 2    |                        | localhost     | FALSE     | FALSE            | FALSE            | Sets the host name or IP address(es) to listen to.
 (5 rows)
 
+-- V$MYSTAT / V$STATNAME: current-session statistics contract (#1003).
+-- Per-session values are never printed here; only view shapes, the fixed
+-- catalog rows and boolean/aggregate assertions are compared.
+\d SYS.V$MYSTAT
+                 View "sys.v$mystat"
+   Column   |  Type  | Collation | Nullable | Default 
+------------+--------+-----------+----------+---------
+ sid        | number |           |          | 
+ statistic# | number |           |          | 
+ value      | number |           |          | 
+ con_id     | number |           |          | 
+
+\d SYS.V$STATNAME
+                   View "sys.v$statname"
+   Column   |     Type     | Collation | Nullable | Default 
+------------+--------------+-----------+----------+---------
+ statistic# | number       |           |          | 
+ name       | varchar2(64) |           |          | 
+ class      | number       |           |          | 
+ stat_id    | number       |           |          | 
+ con_id     | number       |           |          | 
+
+-- The fixed local catalog: exactly four statistics with IvorySQL-local IDs.
+SELECT STATISTIC#, NAME, CLASS, STAT_ID, CON_ID
+FROM SYS.V$STATNAME
+ORDER BY STATISTIC#;
+ statistic# |           name           | class | stat_id | con_id 
+------------+--------------------------+-------+---------+--------
+ 0          | redo size                | 2     | 1001    | 0
+ 1          | CPU used by this session | 1     | 1002    | 0
+ 2          | session logical reads    | 1     | 1003    | 0
+ 3          | physical reads           | 8     | 1004    | 0
+(4 rows)
+
+-- Exactly four rows with unique identifiers and names.
+SELECT COUNT(*) = 4 AS four_statistics,
+       COUNT(*) = COUNT(DISTINCT STATISTIC#) AS statistic_unique,
+       COUNT(*) = COUNT(DISTINCT NAME) AS names_unique,
+       COUNT(*) = COUNT(DISTINCT STAT_ID) AS stat_ids_unique
+FROM SYS.V$STATNAME;
+ four_statistics | statistic_unique | names_unique | stat_ids_unique 
+-----------------+------------------+--------------+-----------------
+ t               | t                | t            | t
+(1 row)
+
+-- Every catalog row joins to exactly one live session row: values are
+-- non-NULL, non-negative and belong to this backend with CON_ID = 0.
+SELECT b.NAME,
+       (a.VALUE IS NOT NULL) AS value_present,
+       (a.VALUE >= 0) AS value_nonnegative,
+       (a.SID = pg_catalog.pg_backend_pid()::NUMBER) AS sid_is_own_pid,
+       (a.CON_ID = 0) AS con_id_zero
+FROM SYS.V$MYSTAT a JOIN SYS.V$STATNAME b ON a.STATISTIC# = b.STATISTIC#
+ORDER BY b.STATISTIC#;
+           name           | value_present | value_nonnegative | sid_is_own_pid | con_id_zero 
+--------------------------+---------------+-------------------+----------------+-------------
+ redo size                | t             | t                 | t              | t
+ CPU used by this session | t             | t                 | t              | t
+ session logical reads    | t             | t                 | t              | t
+ physical reads           | t             | t                 | t              | t
+(4 rows)
+
+-- SID matches the SID column of the existing V$SESSION view.
+SELECT COUNT(*) = 1 AS session_row_for_own_pid
+FROM SYS.V$SESSION
+WHERE SID = pg_catalog.pg_backend_pid()::NUMBER;
+ session_row_for_own_pid 
+-------------------------
+ t
+(1 row)
+
+-- Readable by PUBLIC so migration queries work for ordinary users.
+SELECT COUNT(*) = 1 AS mystat_public_select
+FROM information_schema.role_table_grants
+WHERE table_schema = 'sys' AND table_name = 'v$mystat'
+  AND grantee = 'PUBLIC' AND privilege_type = 'SELECT';
+ mystat_public_select 
+----------------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 1 AS statname_public_select
+FROM information_schema.role_table_grants
+WHERE table_schema = 'sys' AND table_name = 'v$statname'
+  AND grantee = 'PUBLIC' AND privilege_type = 'SELECT';
+ statname_public_select 
+------------------------
+ t
+(1 row)
+
+-- The issue's PL/SQL pattern: unquoted STATISTIC# join with SELECT INTO.
+DECLARE
+	V_VAL NUMBER;
+BEGIN
+	SELECT a.VALUE INTO V_VAL
+	FROM SYS.V$MYSTAT a, SYS.V$STATNAME b
+	WHERE a.STATISTIC# = b.STATISTIC# AND b.NAME = 'redo size';
+	IF V_VAL IS NULL OR V_VAL < 0 THEN
+		RAISE EXCEPTION 'redo size must be non-NULL and non-negative';
+	END IF;
+END;
+/
 CREATE TABLE t_pk_single (id NUMBER PRIMARY KEY, name VARCHAR2(50));
 CREATE TABLE t_pk_composite (id1 NUMBER, id2 NUMBER, CONSTRAINT pk_composite PRIMARY KEY (id1, id2));
 CREATE TABLE t_unique (col1 INT, col2 VARCHAR2(20), CONSTRAINT uk_col1 UNIQUE (col1));

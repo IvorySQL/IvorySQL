@@ -1233,6 +1233,54 @@ SELECT
 FROM PG_STAT_ACTIVITY;
 
 
+-- V$MYSTAT / V$STATNAME: current-session statistics (issue #1003).
+--
+-- SYS.ORA_MYSTAT_VALUES() takes a one-shot snapshot of this backend's own
+-- WAL/buffer counters and CPU usage and emits (statistic_no, value) rows;
+-- SYS.V$STATNAME maps the IvorySQL-local statistic numbers to names.  The
+-- numbers are local to IvorySQL and intentionally NOT the Oracle ones
+-- (Oracle itself does not guarantee STATISTIC# stability across its
+-- versions, so callers should always join by NAME).  Only the current
+-- backend can be observed: the C function takes no arguments and reads
+-- process-local counters, so no other session's activity can leak in.
+-- The four statistics approximate Oracle's semantics: 'redo size' counts
+-- WAL record bytes rather than physical WAL overhead, 'CPU used by this
+-- session' is floored to 10ms units, 'session logical reads' cannot
+-- distinguish Oracle's db block gets from consistent gets, and 'physical
+-- reads' reflects buffer-manager reads rather than device I/O.
+CREATE OR REPLACE FUNCTION SYS.ORA_MYSTAT_VALUES()
+RETURNS TABLE(statistic_no integer, value numeric)
+AS 'MODULE_PATHNAME','ora_mystat_values'
+LANGUAGE C VOLATILE PARALLEL UNSAFE SECURITY INVOKER;
+
+GRANT EXECUTE ON FUNCTION SYS.ORA_MYSTAT_VALUES() TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.V$STATNAME AS
+SELECT
+    X.STATISTIC#::NUMBER AS STATISTIC#,
+    X.NAME::VARCHAR2(64) AS NAME,
+    X.CLASS::NUMBER AS CLASS,
+    X.STAT_ID::NUMBER AS STAT_ID,
+    X.CON_ID::NUMBER AS CON_ID
+FROM (VALUES
+    (0, 'redo size', 2, 1001, 0),
+    (1, 'CPU used by this session', 1, 1002, 0),
+    (2, 'session logical reads', 1, 1003, 0),
+    (3, 'physical reads', 8, 1004, 0)
+) AS X(STATISTIC#, NAME, CLASS, STAT_ID, CON_ID);
+
+CREATE OR REPLACE VIEW SYS.V$MYSTAT AS
+SELECT
+    pg_catalog.pg_backend_pid()::NUMBER AS SID,
+    M.STATISTIC_NO::NUMBER AS STATISTIC#,
+    M.VALUE::NUMBER AS VALUE,
+    0::NUMBER AS CON_ID
+FROM SYS.ORA_MYSTAT_VALUES() M;
+
+GRANT SELECT ON SYS.V$MYSTAT TO PUBLIC;
+GRANT SELECT ON SYS.V$STATNAME TO PUBLIC;
+
+
 -- V$PROCESS: USERNAME maps to the database username (pg_stat_activity.usename),
 -- not the OS username as in Oracle V$PROCESS.
 CREATE OR REPLACE VIEW SYS.V$PROCESS AS
