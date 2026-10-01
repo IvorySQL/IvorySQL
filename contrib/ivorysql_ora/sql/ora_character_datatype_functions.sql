@@ -1558,3 +1558,11 @@ select to_single_byte('１．２');
 select to_single_byte(１．２);
 select to_single_byte(3.4);
 select to_single_byte(NULL);
+
+-- Tests for nchr
+select nchr(65);
+select nchr(97);
+select nchr(233);
+select nchr(0x4E2D);
+select nchr(65) || 'BC';
+select nchr(NULL);

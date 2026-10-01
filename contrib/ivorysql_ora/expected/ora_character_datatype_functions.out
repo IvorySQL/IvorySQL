@@ -4074,3 +4074,40 @@ select to_single_byte(NULL);
  
 (1 row)
 
+-- Tests for nchr
+select nchr(65);
+ nchr 
+------
+ A
+(1 row)
+
+select nchr(97);
+ nchr 
+------
+ a
+(1 row)
+
+select nchr(233);
+ nchr 
+------
+ é
+(1 row)
+
+select nchr(0x4E2D);
+ nchr 
+------
+ 中
+(1 row)
+
+select nchr(65) || 'BC';
+ ?column? 
+----------
+ ABC
+(1 row)
+
+select nchr(NULL);
+ nchr 
+------
+ 
+(1 row)
+
