@@ -68,6 +68,10 @@ PG_FUNCTION_INFO_V1(ora_regexp_instr);
 PG_FUNCTION_INFO_V1(ora_regexp_like);
 PG_FUNCTION_INFO_V1(ora_regexp_like_no_flags);
 PG_FUNCTION_INFO_V1(ora_regexp_count);
+PG_FUNCTION_INFO_V1(ora_substr_no_length);
+PG_FUNCTION_INFO_V1(ora_substr);
+PG_FUNCTION_INFO_V1(ora_substr_no_length_int);
+PG_FUNCTION_INFO_V1(ora_substr_int);
 PG_FUNCTION_INFO_V1(ora_substrb_no_length);
 PG_FUNCTION_INFO_V1(ora_substrb);
 PG_FUNCTION_INFO_V1(ora_replace);
@@ -1009,6 +1013,112 @@ ora_regexp_count(PG_FUNCTION_ARGS)
 	pfree(data);
 
 	PG_RETURN_INT32(occurrence_cnt);
+}
+
+/***********************************************************************
+ * ora_substr
+ *
+ * Oracle character-semantic SUBSTR implementation.  PostgreSQL's
+ * text_substring() intentionally rejects negative lengths and treats a
+ * negative start differently, so keep this behavior local to Oracle mode.
+ ***********************************************************************/
+static text *
+ora_text_substring(Datum str, int32 start, int32 length, bool length_not_specified)
+{
+	text	   *source = DatumGetTextPP(str);
+	char	   *data = VARDATA_ANY(source);
+	int32		data_len = VARSIZE_ANY_EXHDR(source);
+	int32		chars = pg_mbstrlen_with_len(data, data_len);
+	int32		first = (start < 0) ? chars + start + 1 : Max(start, 1);
+	int32		count;
+	int32		begin_byte;
+	int32		end_byte;
+	int32		i;
+	char	   *ptr;
+
+	if (first < 1)
+		first = 1;
+	if (!length_not_specified && length < 1)
+		return cstring_to_text("");
+	if (first > chars)
+		return cstring_to_text("");
+
+	count = length_not_specified ? chars - first + 1 :
+		Min(length, chars - first + 1);
+	ptr = data;
+	for (i = 1; i < first; i++)
+		ptr += pg_mblen(ptr);
+	begin_byte = ptr - data;
+	for (i = 0; i < count; i++)
+		ptr += pg_mblen(ptr);
+	end_byte = ptr - data;
+
+	return cstring_to_text_with_len(data + begin_byte,
+									 end_byte - begin_byte);
+}
+
+Datum
+ora_substr(PG_FUNCTION_ARGS)
+{
+	int32		start = DatumGetInt32(DirectFunctionCall1(numeric_int4,
+													 PG_GETARG_DATUM(1)));
+	int32		length = DatumGetInt32(DirectFunctionCall1(numeric_int4,
+													  PG_GETARG_DATUM(2)));
+	text	   *result;
+
+	result = ora_text_substring(PG_GETARG_DATUM(0), start, length, false);
+	if (VARSIZE_ANY_EXHDR(result) == 0)
+	{
+		pfree(result);
+		PG_RETURN_NULL();
+	}
+	PG_RETURN_TEXT_P(result);
+}
+
+Datum
+ora_substr_no_length(PG_FUNCTION_ARGS)
+{
+	int32		start = DatumGetInt32(DirectFunctionCall1(numeric_int4,
+													 PG_GETARG_DATUM(1)));
+	text	   *result;
+
+	result = ora_text_substring(PG_GETARG_DATUM(0), start, -1, true);
+	if (VARSIZE_ANY_EXHDR(result) == 0)
+	{
+		pfree(result);
+		PG_RETURN_NULL();
+	}
+	PG_RETURN_TEXT_P(result);
+}
+
+Datum
+ora_substr_int(PG_FUNCTION_ARGS)
+{
+	text	   *result;
+
+	result = ora_text_substring(PG_GETARG_DATUM(0), PG_GETARG_INT32(1),
+								PG_GETARG_INT32(2), false);
+	if (VARSIZE_ANY_EXHDR(result) == 0)
+	{
+		pfree(result);
+		PG_RETURN_NULL();
+	}
+	PG_RETURN_TEXT_P(result);
+}
+
+Datum
+ora_substr_no_length_int(PG_FUNCTION_ARGS)
+{
+	text	   *result;
+
+	result = ora_text_substring(PG_GETARG_DATUM(0), PG_GETARG_INT32(1),
+								-1, true);
+	if (VARSIZE_ANY_EXHDR(result) == 0)
+	{
+		pfree(result);
+		PG_RETURN_NULL();
+	}
+	PG_RETURN_TEXT_P(result);
 }
 
 /***********************************************************************
@@ -2644,4 +2754,3 @@ ora_listagg_check (PG_FUNCTION_ARGS)
          }
 
 }
-
