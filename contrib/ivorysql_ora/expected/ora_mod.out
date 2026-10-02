@@ -1,0 +1,186 @@
+--
+-- MOD (Oracle-compatible)
+--
+-- This test file uses Oracle syntax as much as possible,
+-- so the same SQL can be run on an Oracle database for verification.
+--
+-- Oracle references:
+--   https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/MOD.html
+--
+-- Oracle: "MOD returns the remainder of n2 divided by n1. Returns n2 if n1 is 0."
+-- PostgreSQL's mod(n2, 0) raises division-by-zero; sys.mod returns n2.
+--
+-- official example (SQLRF MOD): MOD(11,4) = 3
+--
+SELECT MOD(11,4) FROM DUAL;
+ mod 
+-----
+ 3
+(1 row)
+
+SELECT PG_TYPEOF(MOD(11,4)) FROM DUAL;
+ pg_typeof 
+-----------
+ number
+(1 row)
+
+--
+-- official sign-convention table (SQLRF MOD):
+--   n2=11,  n1=4  ->  3
+--   n2=11,  n1=-4 ->  3
+--   n2=-11, n1=4  -> -3
+--   n2=-11, n1=-4 -> -3
+--
+SELECT MOD(11,4), MOD(11,-4), MOD(-11,4), MOD(-11,-4) FROM DUAL;
+ mod | mod | mod | mod 
+-----+-----+-----+-----
+ 3   | 3   | -3  | -3
+(1 row)
+
+--
+-- zero divisor: Oracle returns n2 (PostgreSQL raises division-by-zero)
+--
+SELECT MOD(7,0) FROM DUAL;
+ mod 
+-----
+ 7
+(1 row)
+
+SELECT MOD(-7,0) FROM DUAL;
+ mod 
+-----
+ -7
+(1 row)
+
+SELECT MOD(0,0) FROM DUAL;
+ mod 
+-----
+ 0
+(1 row)
+
+SELECT MOD(CAST(9223372036854775807 AS BIGINT), 0) FROM DUAL;
+         mod         
+---------------------
+ 9223372036854775807
+(1 row)
+
+SELECT MOD(CAST(7 AS SMALLINT), 0) FROM DUAL;
+ mod 
+-----
+ 7
+(1 row)
+
+SELECT MOD(CAST(7 AS NUMBER), 0) FROM DUAL;
+ mod 
+-----
+ 7
+(1 row)
+
+SELECT MOD(CAST(7 AS NUMERIC), 0) FROM DUAL;
+ mod 
+-----
+ 7
+(1 row)
+
+SELECT MOD(-11.5, 0) FROM DUAL;
+  mod  
+-------
+ -11.5
+(1 row)
+
+--
+-- zero divisor keeps the type of the remainder: NUMBER
+--
+SELECT PG_TYPEOF(MOD(7,0)) FROM DUAL;
+ pg_typeof 
+-----------
+ number
+(1 row)
+
+--
+-- remainder sign follows n2 for column values too
+--
+CREATE TABLE mod_t (n2_val NUMBER, n1_val NUMBER);
+INSERT INTO mod_t VALUES (-11, 4);
+INSERT INTO mod_t VALUES (11, -4);
+INSERT INTO mod_t VALUES (7, 0);
+SELECT MOD(n2_val, n1_val) FROM mod_t;
+ mod 
+-----
+ -3
+ 3
+ 7
+(3 rows)
+
+--
+-- NULL propagation (STRICT)
+--
+SELECT MOD(NULL, 4) IS NULL FROM DUAL;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT MOD(11, NULL) IS NULL FROM DUAL;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT MOD(NULL, NULL) IS NULL FROM DUAL;
+ERROR:  function mod(unknown, unknown) is not unique
+LINE 1: SELECT MOD(NULL, NULL) IS NULL FROM DUAL;
+               ^
+DETAIL:  Could not choose a best candidate function.
+HINT:  You might need to add explicit type casts.
+--
+-- mixed literal types
+--
+SELECT MOD(7, 2.5) FROM DUAL;
+ mod 
+-----
+ 2.0
+(1 row)
+
+SELECT MOD(2.5, 7) FROM DUAL;
+ mod 
+-----
+ 2.5
+(1 row)
+
+SELECT PG_TYPEOF(MOD(7, 2.5)) FROM DUAL;
+ pg_typeof 
+-----------
+ number
+(1 row)
+
+--
+-- large mixed-type operands keep working (no ambiguity regression):
+-- n2 NUMBER, n1 NUMERIC
+--
+SELECT MOD(999999999999999999999::number, 1000000000000000000000) FROM DUAL;
+          mod          
+-----------------------
+ 999999999999999999999
+(1 row)
+
+--
+-- qualified and unqualified calls agree
+--
+SELECT MOD(11,4) = SYS.MOD(11,4) FROM DUAL;
+ ?column? 
+----------
+ t
+(1 row)
+
+--
+-- unchanged PostgreSQL behavior for pg_catalog-qualified calls
+--
+SELECT PG_CATALOG.MOD(11,4) FROM DUAL;
+ mod 
+-----
+   3
+(1 row)
+
+SELECT PG_CATALOG.MOD(7,0) FROM DUAL;
+ERROR:  division by zero

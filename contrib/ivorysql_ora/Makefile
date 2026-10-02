@@ -74,6 +74,7 @@ cleansql:
 ENCODING = UTF8
 
 ORA_REGRESS = \
+	ora_mod \
 	ora_character \
 	ora_datetime \
 	ora_interval \

@@ -462,6 +462,83 @@ LANGUAGE C
 PARALLEL SAFE
 STABLE;
 
+--
+-- MOD (Oracle-compatible, integer inputs)
+--
+-- Oracle SQL Language Reference, MOD:
+--   "MOD returns the remainder of n2 divided by n1. Returns n2 if n1 is 0."
+-- PostgreSQL's mod(n2, 0) raises a division-by-zero error, while Oracle
+-- returns n2.  These overloads cover the integer inputs; arithmetic itself
+-- (the sign convention of the remainder) is delegated to
+-- pg_catalog.mod(numeric, numeric), which already follows the Oracle rule;
+-- only the zero-divisor case is handled here.
+-- The zero-divisor test uses a pg_catalog-qualified literal so that the
+-- operator resolution does not depend on the search_path in effect when
+-- this script runs.
+--
+CREATE FUNCTION sys.mod_impl(n2 pg_catalog.numeric, n1 pg_catalog.numeric)
+RETURNS pg_catalog.numeric
+LANGUAGE plisql
+IMMUTABLE
+STRICT
+PARALLEL SAFE
+AS $mod_impl$
+BEGIN
+	IF n1 = 0::pg_catalog.numeric THEN
+		RETURN n2;
+	END IF;
+	RETURN pg_catalog.mod(n2, n1);
+END;
+$mod_impl$;
+
+CREATE FUNCTION sys.mod(n2 pg_catalog.numeric, n1 pg_catalog.numeric)
+RETURNS sys.number
+LANGUAGE plisql
+IMMUTABLE
+STRICT
+PARALLEL SAFE
+AS $mod_numeric$
+BEGIN
+	RETURN sys.mod_impl(n2, n1);
+END;
+$mod_numeric$;
+
+CREATE FUNCTION sys.mod(n2 pg_catalog.int2, n1 pg_catalog.int2)
+RETURNS sys.number
+LANGUAGE plisql
+IMMUTABLE
+STRICT
+PARALLEL SAFE
+AS $mod_int2$
+BEGIN
+	RETURN sys.mod_impl(n2, n1);
+END;
+$mod_int2$;
+
+CREATE FUNCTION sys.mod(n2 pg_catalog.int4, n1 pg_catalog.int4)
+RETURNS sys.number
+LANGUAGE plisql
+IMMUTABLE
+STRICT
+PARALLEL SAFE
+AS $mod_int4$
+BEGIN
+	RETURN sys.mod_impl(n2, n1);
+END;
+$mod_int4$;
+
+CREATE FUNCTION sys.mod(n2 pg_catalog.int8, n1 pg_catalog.int8)
+RETURNS sys.number
+LANGUAGE plisql
+IMMUTABLE
+STRICT
+PARALLEL SAFE
+AS $mod_int8$
+BEGIN
+	RETURN sys.mod_impl(n2, n1);
+END;
+$mod_int8$;
+
 /*regexp_substr*/
 CREATE FUNCTION sys.regexp_substr(varchar2, varchar2, integer, integer, varchar2, integer)
 RETURNS varchar2
