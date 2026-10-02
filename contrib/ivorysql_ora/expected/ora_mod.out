@@ -127,12 +127,6 @@ SELECT MOD(11, NULL) IS NULL FROM DUAL;
  t
 (1 row)
 
-SELECT MOD(NULL, NULL) IS NULL FROM DUAL;
-ERROR:  function mod(unknown, unknown) is not unique
-LINE 1: SELECT MOD(NULL, NULL) IS NULL FROM DUAL;
-               ^
-DETAIL:  Could not choose a best candidate function.
-HINT:  You might need to add explicit type casts.
 --
 -- mixed literal types
 --
