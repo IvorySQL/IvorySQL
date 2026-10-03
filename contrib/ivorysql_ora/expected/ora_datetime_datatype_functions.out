@@ -2076,3 +2076,18 @@ drop table ds_tb;
 reset NLS_TIMESTAMP_FORMAT;
 reset NLS_TIMESTAMP_TZ_FORMAT;
 reset NLS_DATE_FORMAT;
+-- bigint TO_DATE wrappers inherit the session dependence of their text overloads.
+--
+-- Resolve the overloads by OID instead of by pg_get_function_identity_arguments():
+-- that function prints type names relative to search_path, so it reports
+-- 'pg_catalog.int8' rather than 'bigint' under pg_regress' search path.
+SELECT count(*) = 2 AS bigint_to_date_is_stable
+FROM pg_proc
+WHERE oid IN ('sys.to_date(bigint)'::regprocedure,
+              'sys.to_date(bigint, text)'::regprocedure)
+  AND provolatile = 's';
+ bigint_to_date_is_stable 
+--------------------------
+ t
+(1 row)
+
