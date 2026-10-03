@@ -2639,7 +2639,9 @@ ora_listagg_check (PG_FUNCTION_ARGS)
                  }
                  else
                  {
-                     elog(ERROR, "result of aggregation exceeds 4000 bytes");
+			ereport(ERROR,
+				(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+			 errmsg("result of aggregation exceeds 4000 bytes")));
                  }
          }
 
