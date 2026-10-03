@@ -44,15 +44,23 @@ select dbms_random.value() >= 0 and dbms_random.value() < 1 as value_in_unit_ran
  t
 (1 row)
 
+-- VALUE keeps 38 decimal places rather than passing through float8
+call dbms_random.seed(cast(7 as number));
+select scale(dbms_random.value()) = 38 as value_has_38_places;
+ value_has_38_places 
+---------------------
+ t
+(1 row)
+
 -- VALUE can be used without parentheses as an ORDER BY expression
 call dbms_random.seed(cast(42 as number));
 select n from generate_series(1, 5) as t(n) order by dbms_random.value;
  n 
 ---
+ 3
  5
  4
  2
- 3
  1
 (5 rows)
 
@@ -95,6 +103,14 @@ from (select dbms_random.value(10000000000000001, 10000000000000002) as v
       from generate_series(1, 200) t) s;
  large_range_ok 
 ----------------
+ t
+(1 row)
+
+call dbms_random.seed(cast(99 as number));
+select scale(dbms_random.value(10000000000000001, 10000000000000002)) = 38
+       as large_range_has_38_places;
+ large_range_has_38_places 
+---------------------------
  t
 (1 row)
 
