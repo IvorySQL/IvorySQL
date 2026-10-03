@@ -414,7 +414,7 @@ rv_newline(text *tv)
 
 	tmp = text_to_cstring(tv);
 	len = strlen(tmp);
-	if (tmp[len-1] == '\n')
+	if (len > 0 && tmp[len-1] == '\n')
 		tmp[len-1] = '\0';
 	ret = cstring_to_text(tmp);
 
