@@ -2214,26 +2214,67 @@ json_lex_string(JsonLexContext *lex)
 			/*
 			 * Skip to the first byte that requires special handling, so we
 			 * can batch calls to jsonapi_appendBinaryStringInfo.
+			 *
+			 * A GB18030 trailing byte can fall in the 7-bit ASCII range.  A
+			 * byte that continues a multibyte character must not be mistaken
+			 * for a backslash, quote, or control character, so advance by
+			 * whole characters for that encoding.
 			 */
-			while (p < end - sizeof(Vector8) &&
-				   !pg_lfind8('\\', (const uint8 *) p, sizeof(Vector8)) &&
-				   !pg_lfind8('"', (const uint8 *) p, sizeof(Vector8)) &&
-				   !pg_lfind8_le(31, (const uint8 *) p, sizeof(Vector8)))
-				p += sizeof(Vector8);
-
-			for (; p < end; p++)
+			if (lex->input_encoding == PG_GB18030)
 			{
-				if (*p == '\\' || *p == '"')
-					break;
-				else if ((unsigned char) *p <= 31)
+				while (p < end)
 				{
-					/* Per RFC4627, these characters MUST be escaped. */
-					/*
-					 * Since *p isn't printable, exclude it from the context
-					 * string
-					 */
-					lex->token_terminator = p;
-					return JSON_ESCAPING_REQUIRED;
+					if (*p == '\\' || *p == '"')
+						break;
+					else if ((unsigned char) *p <= 31)
+					{
+						/* Per RFC4627, these characters MUST be escaped. */
+						/*
+						 * Since *p isn't printable, exclude it from the
+						 * context string
+						 */
+						lex->token_terminator = p;
+						return JSON_ESCAPING_REQUIRED;
+					}
+					else if (IS_HIGHBIT_SET((unsigned char) *p))
+					{
+						ptrdiff_t	remaining = end - p;
+						int			mblen;
+
+						mblen = pg_encoding_mblen_or_incomplete(lex->input_encoding,
+																p, remaining);
+						if (mblen > remaining)
+						{
+							s = p;
+							FAIL_OR_INCOMPLETE_AT_CHAR_START(JSON_INVALID_TOKEN);
+						}
+						p += mblen - 1;
+					}
+					p++;
+				}
+			}
+			else
+			{
+				while (p < end - sizeof(Vector8) &&
+					   !pg_lfind8('\\', (const uint8 *) p, sizeof(Vector8)) &&
+					   !pg_lfind8('"', (const uint8 *) p, sizeof(Vector8)) &&
+					   !pg_lfind8_le(31, (const uint8 *) p, sizeof(Vector8)))
+					p += sizeof(Vector8);
+
+				for (; p < end; p++)
+				{
+					if (*p == '\\' || *p == '"')
+						break;
+					else if ((unsigned char) *p <= 31)
+					{
+						/* Per RFC4627, these characters MUST be escaped. */
+						/*
+						 * Since *p isn't printable, exclude it from the
+						 * context string
+						 */
+						lex->token_terminator = p;
+						return JSON_ESCAPING_REQUIRED;
+					}
 				}
 			}
 
