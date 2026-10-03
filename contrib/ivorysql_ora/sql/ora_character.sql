@@ -186,3 +186,95 @@ explain (costs off) SELECT * FROM TEST_ORAVARCHAR WHERE a='111';
 -- drop table
 DROP TABLE TEST_ORACHAR;
 DROP TABLE TEST_ORAVARCHAR;
+
+-- Nondeterministic collations keep CHAR(n BYTE) equality and hashing aligned
+DO $$
+DECLARE
+    result boolean;
+    matches integer;
+    plan_line text;
+    plan_uses_hash_index boolean;
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_collation WHERE collprovider = 'i') THEN
+        EXECUTE 'CREATE COLLATION ora_char_byte_deterministic '
+                '(provider = icu, locale = ''und-u-ks-level2'', deterministic = true)';
+
+        EXECUTE 'SELECT ''a''::char(1 byte) COLLATE ora_char_byte_deterministic = '
+                '''A''::char(1 byte) COLLATE ora_char_byte_deterministic'
+           INTO result;
+        IF result IS DISTINCT FROM false THEN
+            RAISE EXCEPTION 'deterministic CHAR(n BYTE) equality must distinguish different bytes';
+        END IF;
+
+        EXECUTE 'SELECT ''a''::char(1 byte) COLLATE ora_char_byte_deterministic <> '
+                '''A''::char(1 byte) COLLATE ora_char_byte_deterministic'
+           INTO result;
+        IF result IS DISTINCT FROM true THEN
+            RAISE EXCEPTION 'deterministic CHAR(n BYTE) inequality must distinguish different bytes';
+        END IF;
+
+        EXECUTE 'DROP COLLATION ora_char_byte_deterministic';
+
+        EXECUTE 'CREATE COLLATION ora_char_byte_ci '
+                '(provider = icu, locale = ''und-u-ks-level2'', deterministic = false)';
+
+        EXECUTE 'SELECT ''a''::char(1 byte) COLLATE ora_char_byte_ci = '
+                '''A''::char(1 byte) COLLATE ora_char_byte_ci'
+           INTO result;
+        IF NOT result THEN
+            RAISE EXCEPTION 'CHAR(n BYTE) equality ignored its nondeterministic collation';
+        END IF;
+
+        EXECUTE 'SELECT NOT (''a''::char(1 byte) COLLATE ora_char_byte_ci <> '
+                '''A''::char(1 byte) COLLATE ora_char_byte_ci)'
+           INTO result;
+        IF NOT result THEN
+            RAISE EXCEPTION 'CHAR(n BYTE) inequality ignored its nondeterministic collation';
+        END IF;
+
+        EXECUTE 'SELECT sys.oracharbytehash('
+                '''a''::char(1 byte) COLLATE ora_char_byte_ci) = '
+                'sys.oracharbytehash('
+                '''A''::char(1 byte) COLLATE ora_char_byte_ci)'
+           INTO result;
+        IF NOT result THEN
+            RAISE EXCEPTION 'equal CHAR(n BYTE) values produced different hashes';
+        END IF;
+
+        EXECUTE 'CREATE TEMP TABLE ora_char_byte_ci_test '
+                '(v char(1 byte) COLLATE ora_char_byte_ci)';
+        EXECUTE 'INSERT INTO ora_char_byte_ci_test VALUES (''a''), (''A'')';
+        PERFORM set_config('enable_sort', 'off', true);
+        EXECUTE 'SELECT count(DISTINCT v) FROM ora_char_byte_ci_test'
+           INTO matches;
+        IF matches <> 1 THEN
+            RAISE EXCEPTION 'DISTINCT did not combine equal CHAR(n BYTE) values';
+        END IF;
+
+        EXECUTE 'TRUNCATE ora_char_byte_ci_test';
+        EXECUTE 'INSERT INTO ora_char_byte_ci_test VALUES (''a'')';
+        EXECUTE 'CREATE INDEX ora_char_byte_ci_hash_idx '
+                'ON ora_char_byte_ci_test USING hash (v)';
+        PERFORM set_config('enable_seqscan', 'off', true);
+        plan_uses_hash_index := false;
+        FOR plan_line IN EXECUTE
+            'EXPLAIN (costs off) SELECT * FROM ora_char_byte_ci_test WHERE v = ''A'''
+        LOOP
+            IF plan_line LIKE '%Index Scan%ora_char_byte_ci_hash_idx%' THEN
+                plan_uses_hash_index := true;
+            END IF;
+        END LOOP;
+        IF NOT plan_uses_hash_index THEN
+            RAISE EXCEPTION 'hash index was not chosen for CHAR(n BYTE) lookup';
+        END IF;
+        EXECUTE 'SELECT count(*) FROM ora_char_byte_ci_test WHERE v = ''A'''
+           INTO matches;
+        IF matches <> 1 THEN
+            RAISE EXCEPTION 'hash index lookup missed an equal CHAR(n BYTE) value';
+        END IF;
+
+        EXECUTE 'DROP TABLE ora_char_byte_ci_test';
+        EXECUTE 'DROP COLLATION ora_char_byte_ci';
+    END IF;
+END
+$$;
