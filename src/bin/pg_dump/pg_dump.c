@@ -7388,7 +7388,7 @@ getPackages(Archive *fout, int *numPkgs)
 		pkginfo[i].dobj.name = pg_strdup(PQgetvalue(res, i, i_pkgname));
 		pkginfo[i].dobj.namespace =
 			findNamespace(atooid(PQgetvalue(res, i, i_pkgnamespace)));
-		pkginfo[i].rolname = pg_strdup(PQgetvalue(res, i, i_rolname));
+		pkginfo[i].rolname = getRoleName(PQgetvalue(res, i, i_rolname));
 		pkginfo[i].pkgacl = pg_strdup(PQgetvalue(res, i, i_pkgacl));
 		pkginfo[i].dacl.acldefault = pg_strdup(PQgetvalue(res, i, i_acldefault));
 		pkginfo[i].dacl.privtype = 0;
