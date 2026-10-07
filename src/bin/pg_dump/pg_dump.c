@@ -20325,7 +20325,11 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
         appendPQExpBufferStr(query, "    NO MAXVALUE\n");
 
 
-	if ( seq->cache && db_mode == DB_ORACLE)
+	/*
+	 * In Oracle mode NOCACHE stores a cache of 1, and CACHE 1 is refused
+	 * by CREATE SEQUENCE, so a cache of 1 can only be written as NOCACHE.
+	 */
+	if (seq->cache == 1 && db_mode == DB_ORACLE)
 		appendPQExpBuffer(query,
 						"    NOCACHE %s",
 						(seq->cycled ? "\n    CYCLE" : ""));
