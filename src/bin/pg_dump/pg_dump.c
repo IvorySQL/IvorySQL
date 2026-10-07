@@ -20063,7 +20063,8 @@ static void
 collectSequences(Archive *fout)
 {
 	PGresult   *res;
-	const char *query;
+	PQExpBuffer query;
+	const char *flags_col;
 
 	/*
 	 * Before Postgres 10, sequence metadata is in the sequence itself.  With
@@ -20075,26 +20076,45 @@ collectSequences(Archive *fout)
 	 */
 	if (fout->remoteVersion < 100000)
 		return;
-	else if (fout->remoteVersion < 180000 ||
-			 (!fout->dopt->dumpData && !fout->dopt->sequence_data))
-		query = "SELECT seqrelid, format_type(seqtypid, NULL), "
-			"seqstart, seqincrement, "
-			"seqmax, seqmin, "
-			"seqcache, seqcycle, "
-			"NULL, 'f' "
-			"FROM pg_catalog.pg_sequence "
-			"ORDER BY seqrelid";
-	else
-		query = "SELECT seqrelid, format_type(seqtypid, NULL), "
-			"seqstart, seqincrement, "
-			"seqmax, seqmin, "
-			"seqcache, seqcycle, "
-			"last_value, is_called "
-			"FROM pg_catalog.pg_sequence, "
-			"pg_get_sequence_data(seqrelid) "
-			"ORDER BY seqrelid;";
 
-	res = ExecuteSqlQuery(fout, query, PGRES_TUPLES_OK);
+	/*
+	 * pg_sequence.flags carries the Oracle sequence options (SCALE, EXTEND,
+	 * SESSION). PostgreSQL has no such column, and a pg_upgrade from a
+	 * PostgreSQL source of the same version reaches here too, so look
+	 * before selecting it.
+	 */
+	res = ExecuteSqlQuery(fout,
+						  "SELECT 1 FROM pg_catalog.pg_attribute "
+						  "WHERE attrelid = 'pg_catalog.pg_sequence'::regclass "
+						  "AND attname = 'flags' AND attnum > 0 LIMIT 1",
+						  PGRES_TUPLES_OK);
+	flags_col = (PQntuples(res) > 0) ? "flags" : "0 AS flags";
+	PQclear(res);
+
+	query = createPQExpBuffer();
+	if (fout->remoteVersion < 180000 ||
+		(!fout->dopt->dumpData && !fout->dopt->sequence_data))
+		appendPQExpBuffer(query,
+					  "SELECT seqrelid, format_type(seqtypid, NULL), "
+					  "seqstart, seqincrement, "
+					  "seqmax, seqmin, "
+					  "seqcache, seqcycle, "
+					  "NULL, 'f', %s "
+					  "FROM pg_catalog.pg_sequence "
+					  "ORDER BY seqrelid", flags_col);
+	else
+		appendPQExpBuffer(query,
+					  "SELECT seqrelid, format_type(seqtypid, NULL), "
+					  "seqstart, seqincrement, "
+					  "seqmax, seqmin, "
+					  "seqcache, seqcycle, "
+					  "last_value, is_called, %s "
+					  "FROM pg_catalog.pg_sequence, "
+					  "pg_get_sequence_data(seqrelid) "
+					  "ORDER BY seqrelid", flags_col);
+
+	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
+	destroyPQExpBuffer(query);
 
 	nsequences = PQntuples(res);
 	sequences = pg_malloc_array(SequenceItem, nsequences);
@@ -20109,7 +20129,7 @@ collectSequences(Archive *fout)
 		sequences[i].minv = strtoi64(PQgetvalue(res, i, 5), NULL, 10);
 		sequences[i].cache = strtoi64(PQgetvalue(res, i, 6), NULL, 10);
 		sequences[i].cycled = (strcmp(PQgetvalue(res, i, 7), "t") == 0);
-		sequences[i].flags = atoi(PQgetvalue(res, 0, 7));
+		sequences[i].flags = atoi(PQgetvalue(res, i, 10));
 		sequences[i].last_value = strtoi64(PQgetvalue(res, i, 8), NULL, 10);
 		sequences[i].is_called = (strcmp(PQgetvalue(res, i, 9), "t") == 0);
 		sequences[i].null_seqtuple = (PQgetisnull(res, i, 8) || PQgetisnull(res, i, 9));
