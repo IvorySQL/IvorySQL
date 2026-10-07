@@ -133,10 +133,43 @@ static const char *const SeqTypeNames[] =
 StaticAssertDecl(lengthof(SeqTypeNames) == (SEQTYPE_BIGINT + 1),
 				 "array length mismatch");
 
+/*
+ * The types a sequence can have in an Oracle-mode database, as format_type()
+ * names them. Through an Oracle-mode connection the built-in integer types
+ * print with their internal, schema-qualified names and NUMBER prints bare;
+ * through a PostgreSQL-mode connection the same sequences print with the
+ * standard names and NUMBER as sys.number. A sequence declared AS one of the
+ * numeric types takes bigint limits but keeps its declared type, which is
+ * written back schema-qualified so the restore does not depend on the
+ * search path.
+ */
+typedef struct
+{
+	const char *name;		/* as format_type() prints it */
+	SeqType		type;		/* the limits it takes */
+	const char *as;			/* AS clause to write back, NULL for the standard one */
+} OraSeqTypeName;
+
+static const OraSeqTypeName OraSeqTypeNames[] =
+{
+	{"pg_catalog.int2", SEQTYPE_SMALLINT, NULL},
+	{"pg_catalog.int4", SEQTYPE_INTEGER, NULL},
+	{"pg_catalog.int8", SEQTYPE_BIGINT, NULL},
+	{"number", SEQTYPE_BIGINT, "sys.number"},
+	{"sys.number", SEQTYPE_BIGINT, "sys.number"},
+	{"pg_catalog.numeric", SEQTYPE_BIGINT, "pg_catalog.numeric"},
+	{"numeric", SEQTYPE_BIGINT, "pg_catalog.numeric"},
+	{"pg_catalog.float4", SEQTYPE_BIGINT, "pg_catalog.float4"},
+	{"real", SEQTYPE_BIGINT, "pg_catalog.float4"},
+	{"pg_catalog.float8", SEQTYPE_BIGINT, "pg_catalog.float8"},
+	{"double precision", SEQTYPE_BIGINT, "pg_catalog.float8"},
+};
+
 typedef struct
 {
 	Oid			oid;			/* sequence OID */
 	SeqType		seqtype;		/* data type of sequence */
+	const char *ora_as;		/* Oracle-mode AS clause to write back, or NULL */
 	bool		cycled;			/* whether sequence cycles */
 	int64		minv;			/* minimum value */
 	int64		maxv;			/* maximum value */
@@ -19978,12 +20011,30 @@ dumpTableConstraintComment(Archive *fout, const ConstraintInfo *coninfo)
 }
 
 static inline SeqType
-parse_sequence_type(const char *name)
+parse_sequence_type(const char *name, const char **ora_as)
 {
+	if (ora_as)
+		*ora_as = NULL;
+
 	for (int i = 0; i < lengthof(SeqTypeNames); i++)
 	{
 		if (strcmp(SeqTypeNames[i], name) == 0)
 			return (SeqType) i;
+	}
+
+	/*
+	 * A sequence created in an Oracle-mode database reports its type as
+	 * format_type() names it; map it onto the standard type whose limits it
+	 * takes, and remember the AS clause to write back.
+	 */
+	for (int i = 0; i < lengthof(OraSeqTypeNames); i++)
+	{
+		if (strcmp(OraSeqTypeNames[i].name, name) == 0)
+		{
+			if (ora_as)
+				*ora_as = OraSeqTypeNames[i].as;
+			return OraSeqTypeNames[i].type;
+		}
 	}
 
 	pg_fatal("unrecognized sequence type: %s", name);
@@ -20051,7 +20102,7 @@ collectSequences(Archive *fout)
 	for (int i = 0; i < nsequences; i++)
 	{
 		sequences[i].oid = atooid(PQgetvalue(res, i, 0));
-		sequences[i].seqtype = parse_sequence_type(PQgetvalue(res, i, 1));
+		sequences[i].seqtype = parse_sequence_type(PQgetvalue(res, i, 1), &sequences[i].ora_as);
 		sequences[i].startv = strtoi64(PQgetvalue(res, i, 2), NULL, 10);
 		sequences[i].incby = strtoi64(PQgetvalue(res, i, 3), NULL, 10);
 		sequences[i].maxv = strtoi64(PQgetvalue(res, i, 4), NULL, 10);
@@ -20134,7 +20185,7 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 					 tbinfo->dobj.name, PQntuples(res));
 
 		seq = pg_malloc0_object(SequenceItem);
-		seq->seqtype = parse_sequence_type(PQgetvalue(res, 0, 0));
+		seq->seqtype = parse_sequence_type(PQgetvalue(res, 0, 0), &seq->ora_as);
 		seq->startv = strtoi64(PQgetvalue(res, 0, 1), NULL, 10);
 		seq->incby = strtoi64(PQgetvalue(res, 0, 2), NULL, 10);
 		seq->maxv = strtoi64(PQgetvalue(res, 0, 3), NULL, 10);
@@ -20249,7 +20300,9 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 						  "UNLOGGED " : "",
 						  fmtQualifiedDumpable(tbinfo));
 
-		if (seq->seqtype != SEQTYPE_BIGINT)
+		if (seq->ora_as != NULL)
+			appendPQExpBuffer(query, "    AS %s\n", seq->ora_as);
+		else if (seq->seqtype != SEQTYPE_BIGINT)
 			appendPQExpBuffer(query, "    AS %s\n", SeqTypeNames[seq->seqtype]);
 	}
 
