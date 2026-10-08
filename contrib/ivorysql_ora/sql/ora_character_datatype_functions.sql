@@ -1566,3 +1566,21 @@ select nchr(233);
 select nchr(0x4E2D);
 select nchr(65) || 'BC';
 select nchr(NULL);
+
+-- Tests for nchr: invalid inputs
+select nchr(-1);
+select nchr(0);
+select nchr(55296);
+select nchr(57343);
+select nchr(1114112);
+
+-- Tests for nchr: encoding boundaries, check octet length and UTF8 bytes
+select nchr(127), pg_catalog.octet_length(nchr(127)), pg_catalog.encode(pg_catalog.convert_to(nchr(127), 'UTF8'), 'hex');
+select nchr(128), pg_catalog.octet_length(nchr(128)), pg_catalog.encode(pg_catalog.convert_to(nchr(128), 'UTF8'), 'hex');
+select nchr(2047), pg_catalog.octet_length(nchr(2047)), pg_catalog.encode(pg_catalog.convert_to(nchr(2047), 'UTF8'), 'hex');
+select nchr(2048), pg_catalog.octet_length(nchr(2048)), pg_catalog.encode(pg_catalog.convert_to(nchr(2048), 'UTF8'), 'hex');
+select nchr(55295), pg_catalog.octet_length(nchr(55295)), pg_catalog.encode(pg_catalog.convert_to(nchr(55295), 'UTF8'), 'hex');
+select nchr(57344), pg_catalog.octet_length(nchr(57344)), pg_catalog.encode(pg_catalog.convert_to(nchr(57344), 'UTF8'), 'hex');
+select nchr(65535), pg_catalog.octet_length(nchr(65535)), pg_catalog.encode(pg_catalog.convert_to(nchr(65535), 'UTF8'), 'hex');
+select nchr(65536), pg_catalog.octet_length(nchr(65536)), pg_catalog.encode(pg_catalog.convert_to(nchr(65536), 'UTF8'), 'hex');
+select nchr(1114111), pg_catalog.octet_length(nchr(1114111)), pg_catalog.encode(pg_catalog.convert_to(nchr(1114111), 'UTF8'), 'hex');

@@ -4111,3 +4111,69 @@ select nchr(NULL);
  
 (1 row)
 
+-- Tests for nchr: invalid inputs
+select nchr(-1);
+ERROR:  character number must be positive
+select nchr(0);
+ERROR:  null character not permitted
+select nchr(55296);
+ERROR:  requested character not valid for encoding: 55296
+select nchr(57343);
+ERROR:  requested character not valid for encoding: 57343
+select nchr(1114112);
+ERROR:  requested character too large for encoding: 1114112
+-- Tests for nchr: encoding boundaries, check octet length and UTF8 bytes
+select nchr(127), pg_catalog.octet_length(nchr(127)), pg_catalog.encode(pg_catalog.convert_to(nchr(127), 'UTF8'), 'hex');
+ nchr | octet_length | encode 
+------+--------------+--------
+ \x7F |            1 | 7f
+(1 row)
+
+select nchr(128), pg_catalog.octet_length(nchr(128)), pg_catalog.encode(pg_catalog.convert_to(nchr(128), 'UTF8'), 'hex');
+  nchr  | octet_length | encode 
+--------+--------------+--------
+ \u0080 |            2 | c280
+(1 row)
+
+select nchr(2047), pg_catalog.octet_length(nchr(2047)), pg_catalog.encode(pg_catalog.convert_to(nchr(2047), 'UTF8'), 'hex');
+ nchr | octet_length | encode 
+------+--------------+--------
+ ߿    |            2 | dfbf
+(1 row)
+
+select nchr(2048), pg_catalog.octet_length(nchr(2048)), pg_catalog.encode(pg_catalog.convert_to(nchr(2048), 'UTF8'), 'hex');
+ nchr | octet_length | encode 
+------+--------------+--------
+ ࠀ    |            3 | e0a080
+(1 row)
+
+select nchr(55295), pg_catalog.octet_length(nchr(55295)), pg_catalog.encode(pg_catalog.convert_to(nchr(55295), 'UTF8'), 'hex');
+ nchr | octet_length | encode 
+------+--------------+--------
+ ퟿    |            3 | ed9fbf
+(1 row)
+
+select nchr(57344), pg_catalog.octet_length(nchr(57344)), pg_catalog.encode(pg_catalog.convert_to(nchr(57344), 'UTF8'), 'hex');
+ nchr | octet_length | encode 
+------+--------------+--------
+     |            3 | ee8080
+(1 row)
+
+select nchr(65535), pg_catalog.octet_length(nchr(65535)), pg_catalog.encode(pg_catalog.convert_to(nchr(65535), 'UTF8'), 'hex');
+ nchr | octet_length | encode 
+------+--------------+--------
+ ￿    |            3 | efbfbf
+(1 row)
+
+select nchr(65536), pg_catalog.octet_length(nchr(65536)), pg_catalog.encode(pg_catalog.convert_to(nchr(65536), 'UTF8'), 'hex');
+ nchr | octet_length |  encode  
+------+--------------+----------
+ 𐀀    |            4 | f0908080
+(1 row)
+
+select nchr(1114111), pg_catalog.octet_length(nchr(1114111)), pg_catalog.encode(pg_catalog.convert_to(nchr(1114111), 'UTF8'), 'hex');
+ nchr | octet_length |  encode  
+------+--------------+----------
+      |            4 | f48fbfbf
+(1 row)
+
