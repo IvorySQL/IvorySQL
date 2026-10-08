@@ -32,6 +32,7 @@
 #include "access/tableam.h"
 #include "access/xact.h"
 #include "catalog/index.h"
+#include "catalog/namespace.h"
 #include "catalog/objectaccess.h"
 #include "catalog/pg_am_d.h"
 #include "catalog/pg_collation.h"
@@ -47,6 +48,7 @@
 #include "parser/parse_coerce.h"
 #include "parser/parse_relation.h"
 #include "parser/scansup.h"
+#include "tcop/utility.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
@@ -2807,6 +2809,14 @@ ri_FastPathCheck(RI_ConstraintInfo *riinfo,
 	INJECTION_POINT("ri-before-pk-lock", NULL);
 
 	pk_rel = table_open(riinfo->pk_relid, RowShareLock);
+
+	/*
+	 * The row lock taken below is refused in a read-only transaction unless
+	 * the referenced table is temporary, as ExecCheckXactReadOnly() refuses
+	 * the SPI path's SELECT ... FOR KEY SHARE.
+	 */
+	if (XactReadOnly && !isTempNamespace(RelationGetNamespace(pk_rel)))
+		PreventCommandIfReadOnly("SELECT FOR KEY SHARE");
 
 	/*
 	 * Advance the command counter so the check sees the effects of prior
