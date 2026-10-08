@@ -4055,8 +4055,13 @@ postgres_install_suites = []
 testwrap = files('src/tools/testwrap')
 
 foreach test_dir : tests
-  is_oracle_test = test_dir['sd'].startswith(
-    meson.project_source_root() / 'src/oracle_test/')
+  # An Oracle-mode suite says so with 'oracle': true; the ones under
+  # src/oracle_test are taken as such anyway.  The flag is what lets a
+  # suite elsewhere (the PL/iSQL and ivorysql_ora suites) run with the
+  # Oracle-mode driver and template, and it does not depend on how the
+  # source root is spelled on the platform.
+  is_oracle_test = (test_dir.get('oracle', false) or
+    test_dir['sd'].startswith(meson.project_source_root() / 'src/oracle_test/'))
   test_group = test_dir['name']
   if is_oracle_test
     test_group = 'oracle_' + test_group
@@ -4084,7 +4089,7 @@ foreach test_dir : tests
   ]
 
   foreach kind, v : test_dir
-    if kind in ['sd', 'bd', 'name']
+    if kind in ['sd', 'bd', 'name', 'oracle']
       continue
     endif
 
