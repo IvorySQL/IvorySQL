@@ -20351,7 +20351,7 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 	 */
 	if (seq->cache == 1 && db_mode == DB_ORACLE)
 		appendPQExpBuffer(query,
-						"    NOCACHE %s",
+						"    NOCACHE%s",
 						(seq->cycled ? "\n    CYCLE" : ""));
 	else
 		appendPQExpBuffer(query,

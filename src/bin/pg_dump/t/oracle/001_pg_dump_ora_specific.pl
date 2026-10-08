@@ -260,7 +260,7 @@ my %tests = (
 	},
 
 	'CREATE SEQUENCE seq_nocache NOCACHE (Oracle-mode dump)' => {
-		regexp       => qr/^CREATE SEQUENCE public\.seq_nocache\n(?:\s+\S.*\n){4}\s+NOCACHE ;/m,
+		regexp       => qr/^CREATE SEQUENCE public\.seq_nocache\n(?:\s+\S.*\n){4}\s+NOCACHE;/m,
 		like => { oracle_port => 1, },
 	},
 
