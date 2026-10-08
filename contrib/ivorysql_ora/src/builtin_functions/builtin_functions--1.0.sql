@@ -491,17 +491,10 @@ BEGIN
 END;
 $mod_impl$;
 
-CREATE FUNCTION sys.mod(n2 pg_catalog.numeric, n1 pg_catalog.numeric)
-RETURNS sys.number
-LANGUAGE plisql
-IMMUTABLE
-STRICT
-PARALLEL SAFE
-AS $mod_numeric$
-BEGIN
-	RETURN sys.mod_impl(n2, n1);
-END;
-$mod_numeric$;
+-- No sys.mod(numeric, numeric) overload on purpose: numeric/NUMBER inputs
+-- keep resolving to pg_catalog.mod(numeric, numeric) so their existing
+-- behavior (including raising on a zero divisor) is unchanged.  See
+-- review discussion on PR #2304 and issue #2303.
 
 CREATE FUNCTION sys.mod(n2 pg_catalog.int2, n1 pg_catalog.int2)
 RETURNS sys.number

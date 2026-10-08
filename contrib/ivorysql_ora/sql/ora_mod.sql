@@ -8,7 +8,10 @@
 --   https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/MOD.html
 --
 -- Oracle: "MOD returns the remainder of n2 divided by n1. Returns n2 if n1 is 0."
--- PostgreSQL's mod(n2, 0) raises division-by-zero; sys.mod returns n2.
+-- PostgreSQL's mod(n2, 0) raises division-by-zero; sys.mod returns n2
+-- for integer inputs only.  Numeric/NUMBER inputs are deliberately not
+-- covered: they keep resolving to pg_catalog.mod with unchanged behavior
+-- (division by zero raises).
 
 --
 -- official example (SQLRF MOD): MOD(11,4) = 3
@@ -33,8 +36,13 @@ SELECT MOD(-7,0) FROM DUAL;
 SELECT MOD(0,0) FROM DUAL;
 SELECT MOD(CAST(9223372036854775807 AS BIGINT), 0) FROM DUAL;
 SELECT MOD(CAST(7 AS SMALLINT), 0) FROM DUAL;
+
+--
+-- scope boundary: numeric/NUMBER inputs are intentionally not covered,
+-- they keep the original pg_catalog.mod path, so a zero divisor still
+-- raises PostgreSQL's division-by-zero error
+--
 SELECT MOD(CAST(7 AS NUMBER), 0) FROM DUAL;
-SELECT MOD(CAST(7 AS NUMERIC), 0) FROM DUAL;
 SELECT MOD(-11.5, 0) FROM DUAL;
 
 --
@@ -43,22 +51,14 @@ SELECT MOD(-11.5, 0) FROM DUAL;
 SELECT PG_TYPEOF(MOD(7,0)) FROM DUAL;
 
 --
--- remainder sign follows n2 for column values too
---
-CREATE TABLE mod_t (n2_val NUMBER, n1_val NUMBER);
-INSERT INTO mod_t VALUES (-11, 4);
-INSERT INTO mod_t VALUES (11, -4);
-INSERT INTO mod_t VALUES (7, 0);
-SELECT MOD(n2_val, n1_val) FROM mod_t;
-
---
 -- NULL propagation (STRICT)
 --
 SELECT MOD(NULL, 4) IS NULL FROM DUAL;
 SELECT MOD(11, NULL) IS NULL FROM DUAL;
 
 --
--- mixed literal types
+-- numeric literals keep following the original pg_catalog.mod path
+-- (Oracle-compatible sign convention; pg_typeof reports numeric)
 --
 SELECT MOD(7, 2.5) FROM DUAL;
 SELECT MOD(2.5, 7) FROM DUAL;
@@ -66,7 +66,7 @@ SELECT PG_TYPEOF(MOD(7, 2.5)) FROM DUAL;
 
 --
 -- large mixed-type operands keep working (no ambiguity regression):
--- n2 NUMBER, n1 NUMERIC
+-- n2 NUMBER, n1 NUMERIC, resolved by pg_catalog.mod(numeric, numeric)
 --
 SELECT MOD(999999999999999999999::number, 1000000000000000000000) FROM DUAL;
 
