@@ -80,10 +80,8 @@ SELECT MOD(CAST(7 AS SMALLINT), 0) FROM DUAL;
 --
 SELECT MOD(CAST(7 AS NUMBER), 0) FROM DUAL;
 ERROR:  division by zero
-
 SELECT MOD(-11.5, 0) FROM DUAL;
 ERROR:  division by zero
-
 --
 -- zero divisor keeps the type of the remainder: NUMBER
 --
@@ -125,9 +123,9 @@ SELECT MOD(2.5, 7) FROM DUAL;
 (1 row)
 
 SELECT PG_TYPEOF(MOD(7, 2.5)) FROM DUAL;
- pg_typeof 
------------
- numeric
+     pg_typeof      
+--------------------
+ pg_catalog.numeric
 (1 row)
 
 --
