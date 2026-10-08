@@ -549,6 +549,7 @@ MainLoop(FILE *source)
 						{
 							psqlplus_cmd_execute *exec = (psqlplus_cmd_execute *) pstate->psqlpluscmd;
 							char *tmpline = exec->plisqlstmts;
+							size_t		stmtlen;
 							PQExpBuffer newline_buf;
 
 							if (pset.execute_run_prepare)
@@ -569,9 +570,22 @@ MainLoop(FILE *source)
 								exit(EXIT_FAILURE);
 							}
 
+							/*
+							 * SQL*Plus runs "exec proc;" and "exec proc" alike: the
+							 * statement's own terminator and the whitespace after it are
+							 * not part of the block, so drop the whitespace before deciding
+							 * whether a terminator is still needed.  ASCII whitespace only:
+							 * no client encoding uses these bytes inside a multibyte
+							 * character, and isspace() depends on the locale.
+							 */
+							stmtlen = strlen(tmpline);
+							while (stmtlen > 0 &&
+								   strchr(" \t\n\r\f", tmpline[stmtlen - 1]) != NULL)
+								tmpline[--stmtlen] = '\0';
+
 							appendPQExpBufferStr(newline_buf, "BEGIN ");
-							appendPQExpBuffer(newline_buf, "%s", tmpline);
-							if (newline_buf->data[newline_buf->len - 1] != ';')
+							appendPQExpBufferStr(newline_buf, tmpline);
+							if (stmtlen == 0 || tmpline[stmtlen - 1] != ';')
 								appendPQExpBufferChar(newline_buf, ';');
 							appendPQExpBufferStr(newline_buf, " END;");
 
