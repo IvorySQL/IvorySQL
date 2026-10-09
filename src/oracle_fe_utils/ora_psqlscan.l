@@ -1129,6 +1129,7 @@ other			.
 					 * the statement matches CREATE [OR REPLACE]
 					 * {FUNCTION|PROCEDURE}
 					 */
+					bool prev_was_end = false;
 
 					if (cur_state->init_idents_count == 0)
 						memset(cur_state->init_idents, 0, sizeof(cur_state->init_idents));
@@ -1162,6 +1163,7 @@ other			.
 					 */
 					if (cur_state->ora_plsql_expect_end_symbol == END_SYMBOL_SEMICOLON)
 					{
+						prev_was_end = true;
 						if (pg_strcasecmp(yytext, "if") == 0 ||
 							pg_strcasecmp(yytext, "loop") == 0 ||
 							pg_strcasecmp(yytext, "case") == 0)
@@ -1191,7 +1193,9 @@ other			.
 						 /* EXPLAIN WITH FUNCTION/PROCEDURE */
 						 (cur_state->init_idents[0] == 'e' &&
 						  cur_state->init_idents[1] == 'w' &&
-						  (cur_state->init_idents[2] == 'f' || cur_state->init_idents[2] == 'p'))) &&
+						  (cur_state->init_idents[2] == 'f' || cur_state->init_idents[2] == 'p')) ||
+						 /* anonymous block start */
+						 (cur_state->maybe_anonymous_declare_start || cur_state->maybe_anonymous_begin_start)) &&
 						cur_state->paren_depth == 0)
 					{
 						/*
@@ -1209,9 +1213,9 @@ other			.
 						{
 							/*
 							 * CASE also ends with END.  We only need to track
-							 * this if we are already inside a BEGIN.
+							 * this if we are already inside a BEGIN and not END CASE.
 							 */
-							if (cur_state->begin_depth >= 1)
+							if (!prev_was_end && cur_state->begin_depth >= 1)
 								cur_state->begin_depth++;
 						}
 						else if (pg_strcasecmp(yytext, "end") == 0)
@@ -1815,6 +1819,7 @@ ora_psqlscan_emit(PsqlScanState state, const char *txt, int len)
 			 pg_strcasecmp(txt, "without") == 0 ||
 			 pg_strcasecmp(txt, "for") == 0))
 		{
+			state->maybe_anonymous_declare_start = false;
 			state->cancel_semicolon_terminator = false;
 		}
 
@@ -1825,6 +1830,7 @@ ora_psqlscan_emit(PsqlScanState state, const char *txt, int len)
 		{
 			state->maybe_anonymous_begin_start = true;
 			state->cancel_semicolon_terminator = true;
+			state->begin_depth++;
 		}
 
 		if (state->token_count == 1 &&
@@ -1836,8 +1842,12 @@ ora_psqlscan_emit(PsqlScanState state, const char *txt, int len)
 			 pg_strcasecmp(txt, "read") == 0 ||
 			 pg_strcasecmp(txt, "deferrable") == 0 ||
 			 pg_strcasecmp(txt, "not") == 0 ||
-			 pg_strcasecmp(txt, ";") == 0))
-			 state->cancel_semicolon_terminator = false;
+			 pg_strcasecmp(txt, ";") == 0)) {
+			state->maybe_anonymous_begin_start = false;
+			state->cancel_semicolon_terminator = false;
+			if (state->begin_depth > 0)
+				state->begin_depth--;
+		}
 
 		state->token_count++;
 	}
