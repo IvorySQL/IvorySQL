@@ -1666,8 +1666,6 @@ BEGIN
 			SELECT current_setting('nls_date_format') INTO res;
 		  WHEN 'NLS_DATE_LANGUAGE' THEN
 			SELECT null INTO res;
-		  WHEN 'NLS_ISO_CURRENCY' THEN
-			SELECT current_setting('nls_iso_currency') INTO res;
 		  WHEN 'NLS_SORT' THEN
 			SELECT null INTO res;
 		  WHEN 'NLS_TERRITORY' THEN
