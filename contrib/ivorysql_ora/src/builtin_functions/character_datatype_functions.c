@@ -1950,60 +1950,68 @@ oracle_instr_4 (PG_FUNCTION_ARGS)
  *   where xxxx represents a UTF-16 code unit. 
  ********************************************************************/
 Datum 
-ora_asciistr(PG_FUNCTION_ARGS) {
-	StringInfoData 	output;
-	text 			*str_arg = NULL;
-	char 			*str = NULL;
-    char			*end = NULL;
-	
+ora_asciistr(PG_FUNCTION_ARGS)
+{
+	StringInfoData output;
+	text	   *str_arg = PG_GETARG_TEXT_PP(0);
+	unsigned char *database_str;
+	unsigned char *utf8_str;
+	unsigned char *current;
+	unsigned char *end;
+	int			database_len = VARSIZE_ANY_EXHDR(str_arg);
+	int			utf8_len;
+	text	   *result;
+
+	database_str = (unsigned char *) VARDATA_ANY(str_arg);
+	utf8_str = pg_do_encoding_conversion(database_str, database_len,
+										  GetDatabaseEncoding(), PG_UTF8);
+	utf8_len = (utf8_str == database_str) ? database_len :
+		strlen((char *) utf8_str);
+
 	initStringInfo(&output);
-	str_arg = PG_GETARG_TEXT_PP(0);
-	str = VARDATA_ANY(str_arg);
-	end = str + VARSIZE_ANY_EXHDR(str_arg);
+	current = utf8_str;
+	end = utf8_str + utf8_len;
+	while (current < end)
+	{
+		char32_t	codepoint;
+		int			char_len;
 
-    while (str < end) {
-        unsigned char c = *str;
-        uint32_t codePoint;
-		
-		if (c == '\\') {
-			/* Handle backslash character */
-			appendUTF16Escape(&output, 0x005C);  // UTF-16 representation of backslash
-			str++;
-        } 
-        else if (c < 0x80) {
-            /* ASCII character */
-            appendStringInfoChar(&output, c);
-            str++;
-        } else if ((c & 0xE0) == 0xC0) {
-            /* Two-byte UTF-8 sequence */
-            codePoint = ((c & 0x1F) << 6) | (str[1] & 0x3F);
-            appendUTF16Escape(&output, (uint16_t) codePoint);
-            str += 2;
-        } else if ((c & 0xF0) == 0xE0) {
-            /* Three-byte UTF-8 sequence */
-            codePoint = ((c & 0x0F) << 12) | ((str[1] & 0x3F) << 6) | (str[2] & 0x3F);
-            appendUTF16Escape(&output, (uint16_t) codePoint);
-            str += 3;
-        } else if ((c & 0xF8) == 0xF0) {
-            /* Four-byte UTF-8 sequence */
-			uint16_t highSurrogate, lowSurrogate;
+		if (*current < 0x80)
+		{
+			if (*current == '\\')
+				appendUTF16Escape(&output, 0x005C);
+			else
+				appendStringInfoChar(&output, *current);
+			current++;
+			continue;
+		}
 
-            codePoint = ((c & 0x07) << 18) | ((str[1] & 0x3F) << 12) | ((str[2] & 0x3F) << 6) | (str[3] & 0x3F);
-            codePoint -= 0x10000;
-            highSurrogate = 0xD800 | (codePoint >> 10);
-            lowSurrogate = 0xDC00 | (codePoint & 0x3FF);
-            appendUTF16Escape(&output, highSurrogate);
-            appendUTF16Escape(&output, lowSurrogate);
-            str += 4;
-        } else {
-            /* Invalid UTF-8 byte */
+		/* The server conversion above returns validated UTF-8. */
+		char_len = pg_utf_mblen(current);
+		if (char_len > end - current)
 			ereport(ERROR,
-			(errcode(ERRCODE_INVALID_PARAMETER_VALUE), errmsg("Invalid bytes")));
-            str++;
-        }
-    }
-	
-    PG_RETURN_TEXT_P(cstring_to_text_with_len(output.data, output.len));
+					(errcode(ERRCODE_CHARACTER_NOT_IN_REPERTOIRE),
+					 errmsg("invalid UTF-8 sequence after encoding conversion")));
+		codepoint = utf8_to_unicode(current);
+		if (codepoint <= 0xFFFF)
+			appendUTF16Escape(&output, (uint16_t) codepoint);
+		else
+		{
+			uint32		surrogate = codepoint - 0x10000;
+
+			appendUTF16Escape(&output,
+								(uint16_t) (0xD800 | (surrogate >> 10)));
+			appendUTF16Escape(&output,
+								(uint16_t) (0xDC00 | (surrogate & 0x3FF)));
+		}
+		current += char_len;
+	}
+
+	result = cstring_to_text_with_len(output.data, output.len);
+	pfree(output.data);
+	if (utf8_str != database_str)
+		pfree(utf8_str);
+	PG_RETURN_TEXT_P(result);
 }
 
 
