@@ -1496,3 +1496,28 @@ END;
 -- Cleanup (may fail if function wasn't created)
 DROP FUNCTION IF EXISTS test_rownum_param;
 
+--
+-- Statement splitting of PL/SQL blocks: a block recalled from the history
+-- (up-arrow key) arrives as a single input line, so its terminating slash does
+-- not stand alone on a line and the scanner has to rely on its PL/SQL token
+-- tracking.  The traditional multi-line form must keep working as well.
+--
+begin raise notice 'single line'; end; /
+begin null; end;
+/
+declare v integer; begin v := 1; raise notice 'inline declare: %', v; end; /
+declare v integer; begin v := 1; v := v + 1; raise notice 'inline multi: %', v; end; /
+declare v integer; begin if v is null then v := 1; end if; raise notice 'inline if: %', v; end; /
+begin case when 1 = 1 then null; else null; end case; raise notice 'inline end case'; end; /
+-- declare , case when, end case, end  in one line
+declare v_case integer; begin case when 1 = 1 then v_case := 1; else v_case := 0; end case; raise notice 'inline end case: %', v_case; end; /
+
+-- Nested begin end blocks
+declare v integer; begin begin v := 1; raise notice 'nested begin: %', v; end; raise notice 'outer begin: %', v; end; /
+declare v integer; begin begin begin v := 2; raise notice 'deep begin: %', v; end; end; end; /
+declare v integer; begin if v is null then begin v := 3; end; end if; raise notice 'nested if: %', v; end; /
+declare v integer := 0; begin loop v := v + 1; exit when v > 2; end loop; raise notice 'nested loop: %', v; end; /
+declare v integer; begin begin case when 1 = 1 then v := 4; else v := 0; end case; raise notice 'nested case: %', v; end; end; /
+declare v integer; begin begin v := case when 1 = 1 then 5 else 0 end; raise notice 'nested expr: %', v; end; end; /
+-- A CASE expression (single END) must not let the block terminate early:
+declare v_case_expr integer; begin v_case_expr := case when 1 = 1 then 1 else 0 end; raise notice 'inline case expr: %', v_case_expr; end; /
