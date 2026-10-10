@@ -1019,19 +1019,20 @@ exec protest();
 NOTICE:  protest
 exec protest();	
 NOTICE:  protest
-exec protest
+-- without the terminator, one is added
+exec protest()
 NOTICE:  protest
 -- a comment after the statement swallows the END, in SQL*Plus too
-exec protest; -- note
+exec protest(); -- note
 ERROR:  syntax error at end of input
-LINE 1: BEGIN protest; -- note; END;
-                                    ^
-QUERY:  BEGIN protest; -- note; END;
-exec protest -- note
+LINE 1: BEGIN protest(); -- note; END;
+                                      ^
+QUERY:  BEGIN protest(); -- note; END;
+exec protest() -- note
 ERROR:  unexpected end of function definition at end of input
-LINE 1: BEGIN protest -- note; END;
-                                   ^
-QUERY:  BEGIN protest -- note; END;
+LINE 1: BEGIN protest() -- note; END;
+                                     ^
+QUERY:  BEGIN protest() -- note; END;
 drop  procedure protest ;
 create or replace procedure procedure_addtest (a int, b int)
 as 

@@ -962,10 +962,11 @@ exec protest();
 -- the terminator followed by spaces, or by a tab, runs as without them
 exec protest();   
 exec protest();	
-exec protest
+-- without the terminator, one is added
+exec protest()
 -- a comment after the statement swallows the END, in SQL*Plus too
-exec protest; -- note
-exec protest -- note
+exec protest(); -- note
+exec protest() -- note
 drop  procedure protest ;
 
 create or replace procedure procedure_addtest (a int, b int)
