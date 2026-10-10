@@ -571,12 +571,15 @@ MainLoop(FILE *source)
 							}
 
 							/*
-							 * SQL*Plus runs "exec proc;" and "exec proc" alike: the
-							 * statement's own terminator and the whitespace after it are
-							 * not part of the block, so drop the whitespace before deciding
-							 * whether a terminator is still needed.  ASCII whitespace only:
-							 * no client encoding uses these bytes inside a multibyte
-							 * character, and isspace() depends on the locale.
+							 * SQL*Plus runs "exec proc;" as it runs
+							 * "exec proc", also with white space after the
+							 * terminator: drop that white space before
+							 * deciding whether the call still needs a
+							 * terminator inside the block.  The bytes are
+							 * those the Oracle lexer takes as white space
+							 * (ora_scan.l), ASCII only: no client encoding
+							 * uses them inside a multibyte character, and
+							 * isspace() depends on the locale.
 							 */
 							stmtlen = strlen(tmpline);
 							while (stmtlen > 0 &&
@@ -585,7 +588,7 @@ MainLoop(FILE *source)
 
 							appendPQExpBufferStr(newline_buf, "BEGIN ");
 							appendPQExpBufferStr(newline_buf, tmpline);
-							if (stmtlen == 0 || tmpline[stmtlen - 1] != ';')
+							if (newline_buf->data[newline_buf->len - 1] != ';')
 								appendPQExpBufferChar(newline_buf, ';');
 							appendPQExpBufferStr(newline_buf, " END;");
 
