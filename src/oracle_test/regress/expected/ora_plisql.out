@@ -1014,6 +1014,11 @@ exec protest;
 NOTICE:  protest
 exec protest();
 NOTICE:  protest
+-- the terminator followed by spaces, or by a tab, runs as without them
+exec protest();   
+NOTICE:  protest
+exec protest();	
+NOTICE:  protest
 exec protest
 NOTICE:  protest
 -- a comment after the statement swallows the END, in SQL*Plus too

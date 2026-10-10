@@ -959,6 +959,9 @@ CALL protest;
 CALL protest();
 exec protest;
 exec protest();
+-- the terminator followed by spaces, or by a tab, runs as without them
+exec protest();   
+exec protest();	
 exec protest
 -- a comment after the statement swallows the END, in SQL*Plus too
 exec protest; -- note
