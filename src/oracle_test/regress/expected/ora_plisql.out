@@ -1014,11 +1014,30 @@ CALL protest();
 NOTICE:  protest
 exec protest;      
 ERROR:  syntax error at end of input
-LINE 1: BEGIN protest;      ; END
+LINE 1: BEGIN protest; END
                           ^
-QUERY:  BEGIN protest;      ; END
+QUERY:  BEGIN protest; END
 exec protest();
 NOTICE:  protest
+-- the terminator followed by spaces, or by a tab, runs as without them
+exec protest();   
+NOTICE:  protest
+exec protest();	
+NOTICE:  protest
+-- without the terminator, one is added
+exec protest()
+NOTICE:  protest
+-- a comment after the statement swallows the END, in SQL*Plus too
+exec protest(); -- note
+ERROR:  syntax error at end of input
+LINE 1: BEGIN protest(); -- note; END;
+                                      ^
+QUERY:  BEGIN protest(); -- note; END;
+exec protest() -- note
+ERROR:  unexpected end of function definition at end of input
+LINE 1: BEGIN protest() -- note; END;
+                                     ^
+QUERY:  BEGIN protest() -- note; END;
 drop  procedure protest ;
 create or replace procedure procedure_addtest (a int, b int)
 as 
@@ -1045,9 +1064,9 @@ LINE 1: CALL test_proc1;
 CALL test_proc1();
 EXEC test_proc1;   
 ERROR:  syntax error at end of input
-LINE 1: BEGIN test_proc1;   ; END
+LINE 1: BEGIN test_proc1; END
                              ^
-QUERY:  BEGIN test_proc1;   ; END
+QUERY:  BEGIN test_proc1; END
 EXEC test_proc1();
 DROP PROCEDURE test_proc1;
 CREATE TABLE test1 (a int);
