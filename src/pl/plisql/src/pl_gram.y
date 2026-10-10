@@ -106,7 +106,15 @@ static  PLiSQL_stmt	*make_case(int location, PLiSQL_expr *t_expr,
 static	char			*NameOfDatum(PLwdatum *wdatum);
 static void check_packagedatum_assignable(PLiSQL_pkg_datum *datum,
                                            int location, yyscan_t yyscanner);
+static	bool			 for_variable_is_outer_datum(PLiSQL_datum *datum);
 static	void			 check_assignable(PLiSQL_datum *datum, int location, yyscan_t yyscanner);
+
+/*
+ * True while parsing the target of a FOREACH loop (stmt_foreach_a), which
+ * shares for_variable with the FOR loops but must keep binding the declared
+ * datum instead of an implicit loop-local record.
+ */
+static	bool			plisql_foreach_target = false;
 static	void			 read_into_target(PLiSQL_variable **target, bool *strict,
 										  YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
 static	PLiSQL_row		*read_into_scalar_list(char *initial_name,
@@ -493,45 +501,61 @@ opt_semi		:
 				| ';'
 				;
 
-ora_outermost_pl_block		: ora_decl_sect K_BEGIN proc_sect exception_sect K_END opt_label
-		{
-			PLiSQL_stmt_block *new;
-
-			/* package specification doesn't allow to include begin */
-			if (plisql_compile_packageitem != NULL &&
-				!plisql_compile_packageitem->finish_compile_special)
-				yyerror(&yylloc, NULL, yyscanner,  "syntax error for package specificaion have a body");
-
-			/* Only consider package body level here */
-			if (plisql_compile_packageitem != NULL &&
-				cur_compile_func_level == 0)
+ora_outermost_pl_block		: ora_decl_sect K_BEGIN
 			{
-				plisql_check_package_refcursor_var(-1);
-				plisql_compile_packageitem->last_globaldno =
-							plisql_get_package_last_globaldno($4 == NULL ? -1 : $4->sqlstate_varno,
-											$4 == NULL ? -1 : $4->sqlerrm_varno);
+				/*
+				 * Package-body init block: everything declared so far is
+				 * package state; anything declared from here on (locals of
+				 * blocks nested inside the init block) is frame-local.
+				 * for_variable_is_outer_datum() consults this boundary.
+				 * plisql_compile_subproc_func() sets the boundary itself
+				 * before parsing a package member on its own, so only set
+				 * it here when nobody has yet.
+				 */
+				if (plisql_compile_packageitem != NULL &&
+					cur_compile_func_level == 0 &&
+					plisql_level0_datum_boundary < 0)
+					plisql_level0_datum_boundary = plisql_nDatums;
 			}
+			proc_sect exception_sect K_END opt_label
+			{
+				PLiSQL_stmt_block *new;
 
-			new = palloc0_object(PLiSQL_stmt_block);
+				/* package specification doesn't allow to include begin */
+				if (plisql_compile_packageitem != NULL &&
+					!plisql_compile_packageitem->finish_compile_special)
+					yyerror(&yylloc, NULL, yyscanner,  "syntax error for package specificaion have a body");
 
-			new->cmd_type = PLISQL_STMT_BLOCK;
-			new->lineno 	= plisql_location_to_lineno(@2, yyscanner);
-			new->stmtid 	= ++plisql_curr_compile->nstatements;
-			new->label		= $1.label;
-			new->n_initvars = $1.n_initvars;
-			new->initvarnos = $1.initvarnos;
-			new->body 	= $3;
-			new->exceptions = $4;
+				/* Only consider package body level here */
+				if (plisql_compile_packageitem != NULL &&
+					cur_compile_func_level == 0)
+				{
+					plisql_check_package_refcursor_var(-1);
+					plisql_compile_packageitem->last_globaldno =
+								plisql_get_package_last_globaldno($5 == NULL ? -1 : $5->sqlstate_varno,
+												$5 == NULL ? -1 : $5->sqlerrm_varno);
+				}
 
-			check_labels($1.label, $6, @6, yyscanner);
-			/*
-			 * No DECLARE keyword, so do not add a label block namespace
-			 */
-			if ($1.popname)
-				plisql_ns_pop();
+				new = palloc0_object(PLiSQL_stmt_block);
 
-			$$ = (PLiSQL_stmt *)new;
-		}
+				new->cmd_type = PLISQL_STMT_BLOCK;
+				new->lineno 	= plisql_location_to_lineno(@2, yyscanner);
+				new->stmtid 	= ++plisql_curr_compile->nstatements;
+				new->label		= $1.label;
+				new->n_initvars = $1.n_initvars;
+				new->initvarnos = $1.initvarnos;
+				new->body 	= $4;
+				new->exceptions = $5;
+
+				check_labels($1.label, $7, @7, yyscanner);
+				/*
+				 * No DECLARE keyword, so do not add a label block namespace
+				 */
+				if ($1.popname)
+					plisql_ns_pop();
+
+				$$ = (PLiSQL_stmt *)new;
+			}
 	;
 
 /*
@@ -2176,39 +2200,44 @@ stmt_while		: opt_loop_label K_WHILE expr_until_loop loop_body
 					}
 				;
 
-stmt_for		: opt_loop_label K_FOR for_control loop_body
-					{
-						/* This runs after we've scanned the loop body */
-						if ($3->cmd_type == PLISQL_STMT_FORI)
+stmt_for		: opt_loop_label K_FOR
 						{
-							PLiSQL_stmt_fori		*new;
-
-							new = (PLiSQL_stmt_fori *) $3;
-							new->lineno   = plisql_location_to_lineno(@2, yyscanner);
-							new->label	  = $1;
-							new->body	  = $4.stmts;
-							$$ = (PLiSQL_stmt *) new;
+							/* for_control's targets may be shadowed */
+							plisql_foreach_target = false;
 						}
-						else
+						for_control loop_body
 						{
-							PLiSQL_stmt_forq		*new;
+							/* This runs after we've scanned the loop body */
+							if ($4->cmd_type == PLISQL_STMT_FORI)
+							{
+								PLiSQL_stmt_fori		*new;
 
-							Assert($3->cmd_type == PLISQL_STMT_FORS ||
-								   $3->cmd_type == PLISQL_STMT_FORC ||
-								   $3->cmd_type == PLISQL_STMT_DYNFORS);
-							/* forq is the common supertype of all three */
-							new = (PLiSQL_stmt_forq *) $3;
-							new->lineno   = plisql_location_to_lineno(@2, yyscanner);
-							new->label	  = $1;
-							new->body	  = $4.stmts;
-							$$ = (PLiSQL_stmt *) new;
+								new = (PLiSQL_stmt_fori *) $4;
+								new->lineno   = plisql_location_to_lineno(@2, yyscanner);
+								new->label	  = $1;
+								new->body	  = $5.stmts;
+								$$ = (PLiSQL_stmt *) new;
+							}
+							else
+							{
+								PLiSQL_stmt_forq		*new;
+
+								Assert($4->cmd_type == PLISQL_STMT_FORS ||
+									   $4->cmd_type == PLISQL_STMT_FORC ||
+									   $4->cmd_type == PLISQL_STMT_DYNFORS);
+								/* forq is the common supertype of all three */
+								new = (PLiSQL_stmt_forq *) $4;
+								new->lineno   = plisql_location_to_lineno(@2, yyscanner);
+								new->label	  = $1;
+								new->body	  = $5.stmts;
+								$$ = (PLiSQL_stmt *) new;
+							}
+
+							 check_labels($1, $5.end_label, $5.end_label_location, yyscanner);
+							/* close namespace started in opt_loop_label */
+							plisql_ns_pop();
 						}
-
-						 check_labels($1, $4.end_label, $4.end_label_location, yyscanner);
-						/* close namespace started in opt_loop_label */
-						plisql_ns_pop();
-					}
-				;
+					;
 
 for_control		: for_variable K_IN
 					{
@@ -2473,7 +2502,52 @@ for_variable	: T_DATUM
 					{
 						$$.name = NameOfDatum(&($1));
 						$$.lineno = plisql_location_to_lineno(@1, yyscanner);
-						if (is_row_record_datum($1.datum)) 
+						/*
+						 * Oracle compatibility: the loop variable of a query,
+						 * cursor or dynamic FOR loop is implicitly declared
+						 * local to the loop.  If the name resolves to a datum
+						 * that is not local to the frame being parsed (e.g. a
+						 * package variable referenced from a package member,
+						 * the package init block, or a nested subprogram),
+						 * binding that datum as the loop target would make
+						 * every iteration silently overwrite shared state --
+						 * scalars get overwritten with column data, records
+						 * get restructured to the shape of the loop's row.
+						 * Build an implicit record instead, exactly like the
+						 * T_WORD case below.  The implicit record is added to
+						 * the namespace level that opt_loop_label pushed and
+						 * stmt_for pops, so it shadows the outer datum only
+						 * inside the loop and disappears afterwards.
+						 *
+						 * FOREACH (stmt_foreach_a) shares this nonterminal but
+						 * must keep binding the declared datum, because its
+						 * target is how the loop body reads each element.
+						 */
+						if (!plisql_foreach_target &&
+							for_variable_is_outer_datum($1.datum))
+						{
+							int			tok;
+
+							/* comma-separated lists need scalar targets */
+							tok = yylex(&yylval, &yylloc, yyscanner);
+							plisql_push_back_token(tok, &yylval, &yylloc, yyscanner);
+							if (tok == ',')
+								ereport(ERROR,
+										(errcode(ERRCODE_DATATYPE_MISMATCH),
+										 errmsg("loop variable \"%s\" cannot be a variable of another scope",
+												$$.name),
+										 errdetail("The loop variable of a FOR loop is implicitly local to the loop; use a locally declared variable or a different name."),
+										 parser_errposition(@1)));
+
+							$$.scalar = NULL;
+							$$.row = (PLiSQL_datum *)
+								plisql_build_record($$.name,
+													$$.lineno,
+													NULL,
+													RECORDOID,
+													true);
+						}
+						else if (is_row_record_datum($1.datum))
 						{
 							$$.scalar = NULL;
 							$$.row = $1.datum;
@@ -2527,7 +2601,16 @@ for_variable	: T_DATUM
 					}
 				;
 
-stmt_foreach_a	: opt_loop_label K_FOREACH for_variable foreach_slice K_IN K_ARRAY expr_until_loop loop_body
+stmt_foreach_a	: opt_loop_label K_FOREACH
+					{
+						/*
+						 * FOREACH's target is how the body reads each
+						 * element: keep binding the declared datum, never
+						 * replace it with an implicit record.
+						 */
+						plisql_foreach_target = true;
+					}
+					for_variable foreach_slice K_IN K_ARRAY expr_until_loop loop_body
 					{
 						PLiSQL_stmt_foreach_a *new;
 
@@ -2536,29 +2619,29 @@ stmt_foreach_a	: opt_loop_label K_FOREACH for_variable foreach_slice K_IN K_ARRA
 						new->lineno = plisql_location_to_lineno(@2, yyscanner);
 						new->stmtid = ++plisql_curr_compile->nstatements;
 						new->label = $1;
-						new->slice = $4;
-						new->expr = $7;
-						new->body = $8.stmts;
+						new->slice = $5;
+						new->expr = $8;
+						new->body = $9.stmts;
 
-						if ($3.row)
+						if ($4.row)
 						{
-							new->varno = $3.row->dno;
-							check_assignable($3.row, @3, yyscanner);
+							new->varno = $4.row->dno;
+							check_assignable($4.row, @4, yyscanner);
 						}
-						else if ($3.scalar)
+						else if ($4.scalar)
 						{
-							new->varno = $3.scalar->dno;
-							check_assignable($3.scalar, @3, yyscanner);
+							new->varno = $4.scalar->dno;
+							check_assignable($4.scalar, @4, yyscanner);
 						}
 						else
 						{
 							ereport(ERROR,
 									(errcode(ERRCODE_SYNTAX_ERROR),
 									 errmsg("loop variable of FOREACH must be a known variable or list of variables"),
-											 parser_errposition(@3)));
+											 parser_errposition(@4)));
 						}
 
-						check_labels($1, $8.end_label, $8.end_label_location, yyscanner);
+						check_labels($1, $9.end_label, $9.end_label_location, yyscanner);
 						plisql_ns_pop();
 
 						$$ = (PLiSQL_stmt *) new;
@@ -4707,6 +4790,57 @@ NameOfDatum(PLwdatum *wdatum)
 		return wdatum->ident;
 	Assert(wdatum->idents != NIL);
 	return NameListToString(wdatum->idents);
+}
+
+/*
+ * for_variable_is_outer_datum
+ *
+ * Does datum belong to a scope other than the frame currently being parsed?
+ * True for a package variable referenced from a package member, from the
+ * package init block, or from a nested subprogram (the datum was seeded from
+ * the package, so its dno precedes the current frame's first local datum),
+ * and for any PLiSQL_pkg_datum wrapper.  Binding such a datum as the target
+ * of a query/cursor/dynamic FOR loop would overwrite shared state on every
+ * iteration, so the caller builds an implicit loop-local record instead
+ * (Oracle semantics: the loop variable is local to the loop).
+ */
+static bool
+for_variable_is_outer_datum(PLiSQL_datum *datum)
+{
+	if (datum->dtype == PLISQL_DTYPE_PACKAGE_DATUM)
+		return true;
+
+	if (plisql_compile_packageitem != NULL)
+	{
+		/*
+		 * Code compiled at compile level 0 inside a package: the package
+		 * init block (whose datum boundary is captured when its BEGIN is
+		 * parsed), or a package member compiled on its own (whose boundary
+		 * plisql_compile_subproc_func() records before parsing).  Datums
+		 * below the boundary are package state; anything at or above it is
+		 * local to this frame.
+		 */
+		if (cur_compile_func_level == 0)
+			return plisql_level0_datum_boundary < 0 ||
+				datum->dno < plisql_level0_datum_boundary;
+
+		/*
+		 * Member / nested-subprogram code: plisql_push_subproc_func()
+		 * recorded plisql_nDatums when this frame was entered, so any
+		 * datum below that boundary belongs to the package or to an
+		 * enclosing frame (including the locals the enclosing member
+		 * declared before this subprogram).  plisql_saved_datums_last is
+		 * deliberately NOT used here: it mirrors datums_last, which tracks
+		 * the initialization scans of plisql_add_initdatums() and can lag
+		 * behind the datum array between block-BEGIN scans — a local of
+		 * the enclosing frame declared after the last scan would then be
+		 * misclassified as belonging to this frame.
+		 */
+		if (datum->dno < plisql_frame_datum_boundary[cur_compile_func_level - 1])
+			return true;
+	}
+
+	return false;
 }
 
 static void

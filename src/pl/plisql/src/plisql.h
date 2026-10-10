@@ -1299,6 +1299,16 @@ extern PLiSQL_datum * *plisql_Datums;
 
 extern int	datums_last;
 
+/*
+ * Boundary between datums shared with an outer scope and datums local to
+ * the frame currently being parsed, for code compiled at compile level 0
+ * inside a package (the package init block, or a package member compiled
+ * on its own).  Datums with a dno below it belong to the package (or an
+ * outer frame); datums at or above it are local to this frame.  -1 when
+ * not compiling such code.  See for_variable_is_outer_datum().
+ */
+extern int	plisql_level0_datum_boundary;
+
 extern int	datums_alloc;
 
 extern char *plisql_error_funcname;
