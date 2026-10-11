@@ -70,7 +70,8 @@ CREATE OR REPLACE PACKAGE UTL_RAW IS
     FUNCTION CAST_FROM_BINARY_INTEGER(bin IN INTEGER,
                                       endian IN INTEGER DEFAULT NULL) RETURN RAW;
 
-    -- CAST_TO_BINARY_INTEGER: the 32-bit integer stored in the RAW r
+    -- CAST_TO_BINARY_INTEGER: the 32-bit integer stored in the RAW r; as in
+    -- Oracle, r may be 1 to 4 bytes, and a shorter RAW is zero-extended.
     FUNCTION CAST_TO_BINARY_INTEGER(r IN RAW,
                                     endian IN INTEGER DEFAULT NULL) RETURN INTEGER;
 END;

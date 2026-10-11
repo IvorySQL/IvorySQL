@@ -25,9 +25,10 @@
  *   XRANGE(start_byte, end_byte)
  *       The RAW holding every 1-byte value from start_byte to end_byte,
  *       inclusive, so XRANGE(hextoraw('20'), hextoraw('2F')) is the 16-byte
- *       value 20 21 ... 2F.  Both bounds must be exactly one byte, and an
- *       inverted range raises an error (Oracle rejects it as well, instead
- *       of returning an empty value).
+ *       value 20 21 ... 2F.  Both bounds must be exactly one byte.  A NULL
+ *       bound selects the Oracle default, X'00' for start_byte and X'FF' for
+ *       end_byte, and an inverted range wraps around the 8-bit space instead
+ *       of failing, so XRANGE(hextoraw('FE'), hextoraw('01')) is FE FF 00 01.
  *
  *   CAST_TO_VARCHAR2(r)
  *       Reinterprets the bytes of r as text in the database character set,
@@ -44,9 +45,11 @@
  *       FFFFFFFF pattern.
  *
  *   CAST_TO_BINARY_INTEGER(r, endian)
- *       The inverse: the 32-bit integer encoded by the 4 bytes of r.  As in
- *       Oracle, r must be exactly 4 bytes long; any other length is reported
- *       as an error (ORA-06502).
+ *       The inverse: the 32-bit integer encoded by the bytes of r.  As in
+ *       Oracle, r may be 1 to 4 bytes long; a shorter RAW is read in
+ *       significance order and its bytes become the low-order ones, so the
+ *       missing high-order bytes stay zero.  An empty RAW or one longer than
+ *       four bytes is reported as an error (ORA-06502).
  *
  * The endian argument selects the byte order and uses the package constants
  * big_endian = 1, little_endian = 2 and machine_endian = 3 declared in
