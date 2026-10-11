@@ -8,7 +8,7 @@ select 'data_directory', current_setting('data_directory');
 
 -- test case for fopen with invalid directory object name
 declare
-    f sys.ora_utl_file_file_type;
+    f UTL_FILE.FILE_TYPE;
 begin
     -- an invalid directory object name
     f := utl_file.fopen('wrong_directory','regress.txt','a',1024);
@@ -17,11 +17,12 @@ end;
 
 -- test fopen, put, putf, put_line, new_line, get_line, is_open, fclose, fclose_all
 declare
-    f sys.ora_utl_file_file_type;
+    f UTL_FILE.FILE_TYPE;
     line text;
     i integer;
 begin
     f := utl_file.fopen('data_directory', 'regress.txt', 'w');
+    raise notice 'f.datatype = %', f.datatype;
 
     -- data writing
     utl_file.put_line(f, 'abc');
@@ -93,8 +94,8 @@ end;
 
 -- test fflush, fseek
 declare
-    f sys.ora_utl_file_file_type;
-    f1 sys.ora_utl_file_file_type;
+    f UTL_FILE.FILE_TYPE;
+    f1 UTL_FILE.FILE_TYPE;
     line text;
     i integer;
     line2_pos integer;
@@ -152,7 +153,7 @@ end;
 
 -- invalid FSEEK offsets must not move the file position
 declare
-    f sys.ora_utl_file_file_type;
+    f UTL_FILE.FILE_TYPE;
     fexists boolean;
     file_length number;
     seek_offset integer;
@@ -214,7 +215,7 @@ end;
 
 -- FSEEK on a write handle must see data that is still buffered
 declare
-    f sys.ora_utl_file_file_type;
+    f UTL_FILE.FILE_TYPE;
 begin
     f := utl_file.fopen('data_directory', 'regressseek.txt', 'w');
     utl_file.put_line(f, 'abc');   -- 4 bytes, still in the stdio buffer
@@ -228,7 +229,7 @@ end;
 
 -- test cases for automatic file closing on session terminated/rollback etc
 declare
-    f sys.ora_utl_file_file_type;
+    f UTL_FILE.FILE_TYPE;
 begin
     f := utl_file.fopen('data_directory','regress.txt','a',1024);
 
@@ -240,11 +241,12 @@ begin
 end;
 /
 
+
 -- An embedded NUL byte is ordinary file data.  FCOPY copies the source
 -- unchanged, so the copy must be identical to the source and no byte of the
 -- line that holds the NUL may be dropped.
 declare
-    f sys.ora_utl_file_file_type;
+    f UTL_FILE.FILE_TYPE;
 begin
     f := utl_file.fopen('data_directory', 'regressfcopy-nul.bin', 'w');
     utl_file.put_raw(f, decode('616c706861006f6d6567610a7365636f6e640a', 'hex'));
@@ -254,7 +256,7 @@ end;
 
 -- line 1 is "alpha\0omega", line 2 is "second", 19 bytes in total
 declare
-    f sys.ora_utl_file_file_type;
+    f UTL_FILE.FILE_TYPE;
 begin
     utl_file.fcopy('data_directory', 'regressfcopy-nul.bin',
                    'data_directory', 'regressfcopy-nul-copy.bin');
@@ -265,6 +267,35 @@ select octet_length(pg_read_binary_file('regressfcopy-nul.bin')) as src_bytes,
        octet_length(pg_read_binary_file('regressfcopy-nul-copy.bin')) as copy_bytes;
 
 select pg_read_binary_file('regressfcopy-nul.bin') = pg_read_binary_file('regressfcopy-nul-copy.bin') as fcopy_bytes_equal;
+
+-- test fopen_nchar, put_line_nchar, get_line_nchar, fclose
+declare
+    f UTL_FILE.FILE_TYPE;
+    line text;
+    i integer;
+begin
+    f := utl_file.fopen_nchar('data_directory', 'regress-utf.txt', 'w');
+    raise notice 'f.datatype = %', f.datatype;
+    -- data writing
+    utl_file.put_line_nchar(f, '🚀 Rocket and 💡 Idea');
+    utl_file.put_line_nchar(f, ' € / ¥ / ₿');    
+    utl_file.put_line_nchar(f, '۱۲۳۴۵۶۷۸۹۰ — Multilingual: مرحبا, 你好, Привет');    
+    utl_file.fclose(f);
+
+    f := utl_file.fopen_nchar('data_directory', 'regress-utf.txt', 'r');
+    raise notice 'f.datatype = %', f.datatype;
+
+    -- data reading
+    utl_file.get_line_nchar(f, line);
+    while line is not null loop
+        raise notice '>>%<<', line;
+        utl_file.get_line_nchar(f, line);
+
+    end loop;
+
+    utl_file.fclose(f);
+end;
+/
 
 -- clean up
 delete from sys.utl_file_directory where dirname = 'data_directory';
