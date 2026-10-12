@@ -256,7 +256,7 @@ end;
 -- file, including the first read of an empty file; PL/iSQL callers can
 -- catch it explicitly (matching Oracle)
 declare
-    f sys.ora_utl_file_file_type;
+    f UTL_FILE.FILE_TYPE;
     line text;
 begin
     f := utl_file.fopen('data_directory', 'regress_eof.txt', 'w');
@@ -280,7 +280,7 @@ end;
 /
 
 declare
-    f sys.ora_utl_file_file_type;
+    f UTL_FILE.FILE_TYPE;
     line text;
 begin
     f := utl_file.fopen('data_directory', 'regress_empty.txt', 'w');
@@ -327,13 +327,17 @@ begin
     f := utl_file.fopen_nchar('data_directory', 'regress-utf.txt', 'r');
     raise notice 'f.datatype = %', f.datatype;
 
-    -- data reading
-    utl_file.get_line_nchar(f, line);
-    while line is not null loop
-        raise notice '>>%<<', line;
-        utl_file.get_line_nchar(f, line);
-
-    end loop;
+    -- data reading; GET_LINE_NCHAR raises NO_DATA_FOUND at end of file
+    -- (Oracle behavior), so the loop terminates on the exception
+    begin
+        loop
+            utl_file.get_line_nchar(f, line);
+            raise notice '>>%<<', line;
+        end loop;
+    exception
+        when NO_DATA_FOUND then
+            null;
+    end;
 
     utl_file.fclose(f);
 end;
