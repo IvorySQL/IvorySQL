@@ -27,6 +27,7 @@ OBJS = \
 	parse_jsontable.o \
 	parse_merge.o \
 	parse_node.o \
+	ora_collect.o \
 	parse_oper.o \
 	parse_param.o \
 	parse_relation.o \
