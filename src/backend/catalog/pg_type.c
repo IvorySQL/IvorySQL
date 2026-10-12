@@ -376,6 +376,10 @@ TypeCreate(Oid newTypeOid,
 	values[Anum_pg_type_typtypmod - 1] = Int32GetDatum(typeMod);
 	values[Anum_pg_type_typndims - 1] = Int32GetDatum(typNDims);
 	values[Anum_pg_type_typcollation - 1] = ObjectIdGetDatum(typeCollation);
+	/* IvorySQL: only the Oracle nested-table creation path sets this to
+	 * true (afterwards, in typecmds.c); TypeCreate itself never marks a
+	 * freshly-built type as an Oracle collection. */
+	values[Anum_pg_type_typoranestedtable - 1] = BoolGetDatum(false);
 
 	/*
 	 * initialize the default binary value for this type.  Check for nulls of

@@ -132,6 +132,82 @@ ProcedureCreate(const char *procedureName,
 				Datum parametertypeNames,
 				char *rettypeName)
 {
+	return ProcedureCreateEx(procedureName,
+							 procNamespace,
+							 replace,
+							 returnsSet,
+							 returnType,
+							 proowner,
+							 languageObjectId,
+							 languageValidator,
+							 prosrc,
+							 probin,
+							 prosqlbody,
+							 prokind,
+							 security_definer,
+							 isLeakProof,
+							 isStrict,
+							 volatility,
+							 parallel,
+							 parameterTypes,
+							 allParameterTypes,
+							 parameterModes,
+							 parameterNames,
+							 parameterDefaults,
+							 trftypes,
+							 trfoids,
+							 proconfig,
+							 prosupport,
+							 procost,
+							 prorows,
+							 parametertypeNames,
+							 rettypeName,
+							 false,
+							 InvalidOid);
+}
+
+/*
+ * ProcedureCreateEx: same as ProcedureCreate, plus the IvorySQL Oracle
+ * collection-function metadata: propipelined marks an Oracle PIPELINED
+ * table function (returnsSet is true and returnType is the element type
+ * then), and procollectiontype records the declared nested-table type
+ * (InvalidOid if the routine does not declare one).  A NORMAL dependency
+ * on the collection type is recorded when it is valid.
+ */
+ObjectAddress
+ProcedureCreateEx(const char *procedureName,
+				  Oid procNamespace,
+				  bool replace,
+				  bool returnsSet,
+				  Oid returnType,
+				  Oid proowner,
+				  Oid languageObjectId,
+				  Oid languageValidator,
+				  const char *prosrc,
+				  const char *probin,
+				  Node *prosqlbody,
+				  char prokind,
+				  bool security_definer,
+				  bool isLeakProof,
+				  bool isStrict,
+				  char volatility,
+				  char parallel,
+				  oidvector *parameterTypes,
+				  Datum allParameterTypes,
+				  Datum parameterModes,
+				  Datum parameterNames,
+				  List *parameterDefaults,
+				  Datum trftypes,
+				  List *trfoids,
+				  Datum proconfig,
+				  Oid prosupport,
+				  float4 procost,
+				  float4 prorows,
+				  Datum parametertypeNames,
+				  char *rettypeName,
+				  bool propipelined,
+				  Oid procollectiontype)
+{
 	Oid			retval;
 	int			parameterCount;
 	int			allParamCount;
@@ -366,6 +442,10 @@ ProcedureCreate(const char *procedureName,
 	values[Anum_pg_proc_pronargdefaults - 1] = UInt16GetDatum(list_length(parameterDefaults));
 	values[Anum_pg_proc_prorettype - 1] = ObjectIdGetDatum(returnType);
 	values[Anum_pg_proc_proargtypes - 1] = PointerGetDatum(parameterTypes);
+	/* IvorySQL: Oracle collection-function metadata, always written so that
+	 * CREATE OR REPLACE can also clear it. */
+	values[Anum_pg_proc_propipelined - 1] = BoolGetDatum(propipelined);
+	values[Anum_pg_proc_procollectiontype - 1] = ObjectIdGetDatum(procollectiontype);
 	if (allParameterTypes != PointerGetDatum(NULL))
 		values[Anum_pg_proc_proallargtypes - 1] = allParameterTypes;
 	else
@@ -744,6 +824,13 @@ ProcedureCreate(const char *procedureName,
 	if (OidIsValid(prosupport))
 	{
 		ObjectAddressSet(referenced, ProcedureRelationId, prosupport);
+		add_exact_object_address(&referenced, addrs);
+	}
+
+	/* IvorySQL: dependency on the declared collection type, if any */
+	if (OidIsValid(procollectiontype))
+	{
+		ObjectAddressSet(referenced, TypeRelationId, procollectiontype);
 		add_exact_object_address(&referenced, addrs);
 	}
 

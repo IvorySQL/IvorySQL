@@ -229,6 +229,16 @@ CATALOG(pg_type,1247,TypeRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(71,TypeRelati
 	 */
 	Oid			typcollation BKI_DEFAULT(0) BKI_LOOKUP_OPT(pg_collation);
 
+	/*
+	 * IvorySQL: true only for the domains created by Oracle-style
+	 * "CREATE TYPE name AS TABLE OF element" statements.  Such a domain is
+	 * an Oracle collection (nested table) type: its base type is the element
+	 * type's array type, and Oracle-style collection constructors and
+	 * TABLE() expansion apply.  Ordinary domains over arrays never get this
+	 * flag.
+	 */
+	bool		typoranestedtable BKI_DEFAULT(f);
+
 #ifdef CATALOG_VARLEN			/* variable-length fields start here */
 
 	/*
