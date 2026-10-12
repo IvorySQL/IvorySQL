@@ -122,6 +122,7 @@ typedef enum PLiSQL_stmt_type
 	PLISQL_STMT_RETURN,
 	PLISQL_STMT_RETURN_NEXT,
 	PLISQL_STMT_RETURN_QUERY,
+	PLISQL_STMT_PIPE_ROW,
 	PLISQL_STMT_RAISE,
 	PLISQL_STMT_ASSERT,
 	PLISQL_STMT_EXECSQL,
@@ -881,6 +882,19 @@ typedef struct PLiSQL_stmt_return_next
 }			PLiSQL_stmt_return_next;
 
 /*
+ * PIPE ROW statement (Oracle pipelined table functions).  Evaluates expr
+ * once, converts it to the function's element type, and suspends the
+ * resumable interpreter so the executor receives one row per call.
+ */
+typedef struct PLiSQL_stmt_pipe_row
+{
+	PLiSQL_stmt_type cmd_type;
+	int			lineno;
+	unsigned int stmtid;
+	PLiSQL_expr *expr;
+}			PLiSQL_stmt_pipe_row;
+
+/*
  * RETURN QUERY statement
  */
 typedef struct PLiSQL_stmt_return_query
@@ -1029,6 +1043,11 @@ typedef struct PLiSQL_function
 	bool		fn_retset;
 	bool		fn_readonly;
 	char		fn_prokind;
+
+	/* IvorySQL: true for Oracle PIPELINED table functions; fn_rettype is
+	 * then the element type of the declared collection. */
+	bool		fn_pipelined;
+	Oid			fn_collectiontype;	/* declared collection type, or 0 */
 
 	int			fn_nargs;
 	int			fn_argvarnos[FUNC_MAX_ARGS];

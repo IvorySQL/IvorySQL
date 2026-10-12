@@ -101,6 +101,7 @@ static	void			 complete_direction(PLiSQL_stmt_fetch *fetch,
 static	PLiSQL_stmt	*make_return_stmt(int location, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
 static	PLiSQL_stmt	*make_return_next_stmt(int location, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
 static	PLiSQL_stmt	*make_return_query_stmt(int location, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
+static	PLiSQL_stmt	*make_pipe_row_stmt(int location, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
 static  PLiSQL_stmt	*make_case(int location, PLiSQL_expr *t_expr,
 								   List *case_when_list, List *else_stmts, yyscan_t yyscanner);
 static	char			*NameOfDatum(PLwdatum *wdatum);
@@ -226,6 +227,7 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location, YYSTYPE *yylv
 %type <stmt>	proc_stmt pl_block
 %type <stmt>	stmt_assign stmt_if stmt_loop stmt_while stmt_exit
 %type <stmt>	stmt_return stmt_raise stmt_assert stmt_execsql
+%type <stmt>	stmt_pipe_row
 %type <stmt>	stmt_dynexecute stmt_for stmt_perform stmt_call stmt_getdiag
 %type <stmt>	stmt_open stmt_fetch stmt_move stmt_close stmt_null
 %type <stmt>	stmt_commit stmt_rollback
@@ -395,6 +397,7 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location, YYSTYPE *yylv
 %token <keyword>	K_PG_EXCEPTION_CONTEXT
 %token <keyword>	K_PG_EXCEPTION_DETAIL
 %token <keyword>	K_PG_EXCEPTION_HINT
+%token <keyword>	K_PIPE
 %token <keyword>	K_PIPELINED
 %token <keyword>	K_PG_ROUTINE_OID
 %token <keyword>	K_PRAGMA
@@ -411,6 +414,7 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location, YYSTYPE *yylv
 %token <keyword>	K_RETURNED_SQLSTATE
 %token <keyword>	K_REVERSE
 %token <keyword>	K_ROLLBACK
+%token <keyword>	K_ROW
 %token <keyword>	K_ROW_COUNT
 %token <keyword>	K_ROWTYPE
 %token <keyword>	K_SCHEMA
@@ -1712,6 +1716,8 @@ proc_stmt		: pl_block ';'
 						{ $$ = $1; }
 				| stmt_return
 						{ $$ = $1; }
+				| stmt_pipe_row
+						{ $$ = $1; }
 				| stmt_raise
 						{ $$ = $1; }
 				| stmt_assert
@@ -2665,6 +2671,12 @@ stmt_return		: K_RETURN
 					}
 				;
 
+stmt_pipe_row	: K_PIPE K_ROW
+					{
+						$$ = make_pipe_row_stmt(@1, &yylval, &yylloc, yyscanner);
+					}
+				;
+
 stmt_raise		: K_RAISE
 					{
 						PLiSQL_stmt_raise		*new;
@@ -3292,6 +3304,20 @@ exception_sect	:
 						PLiSQL_exception_block *new = $<exception_block>2;
 						new->exc_list = $3;
 
+						/*
+						 * IvorySQL: a pipelined function must not carry
+						 * EXCEPTION handlers -- a handler active across a
+						 * yield would leave a suspended subtransaction
+						 * inside the resumable interpreter.  Checked here
+						 * so every block form (top-level pl_function,
+						 * nested pl_block) is covered.
+						 */
+						if (plisql_curr_compile->fn_pipelined)
+							ereport(ERROR,
+									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+									 errmsg("pipelined functions cannot contain an EXCEPTION handler"),
+									 parser_errposition(@1)));
+
 						$$ = new;
 					}
 				;
@@ -3513,6 +3539,7 @@ unreserved_keyword	:
 				| K_PG_EXCEPTION_CONTEXT
 				| K_PG_EXCEPTION_DETAIL
 				| K_PG_EXCEPTION_HINT
+				| K_PIPE
 				| K_PIPELINED
 				| K_PRAGMA
 				| K_PG_ROUTINE_OID
@@ -3528,6 +3555,7 @@ unreserved_keyword	:
 				| K_RETURNED_SQLSTATE
 				| K_REVERSE
 				| K_ROLLBACK
+				| K_ROW
 				| K_ROW_COUNT
 				| K_ROWTYPE
 				| K_SCHEMA
@@ -3620,6 +3648,7 @@ unit_name_keyword:
 				| K_PG_EXCEPTION_CONTEXT
 				| K_PG_EXCEPTION_DETAIL
 				| K_PG_EXCEPTION_HINT
+				| K_PIPE
 				| K_PIPELINED
 				| K_PRINT_STRICT_PARAMS
 				| K_PRIOR
@@ -3632,6 +3661,7 @@ unit_name_keyword:
 				| K_RETURNED_SQLSTATE
 				| K_REVERSE
 				| K_ROLLBACK
+				| K_ROW
 				| K_ROW_COUNT
 				| K_ROWTYPE
 				| K_SCHEMA
@@ -4497,12 +4527,22 @@ make_return_stmt(int location, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yysc
 
 	if (plisql_curr_compile->fn_retset)
 	{
-		if (yylex(yylvalp, yyllocp, yyscanner) != ';')
+		int			tok = yylex(yylvalp, yyllocp, yyscanner);
+
+		if (tok != ';')
+		{
+			if (plisql_curr_compile->fn_pipelined)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("RETURN expression is not allowed in a pipelined function"),
+						 errhint("Use PIPE ROW to produce rows and a bare RETURN to finish."),
+						 parser_errposition(*yyllocp)));
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
 					 errmsg("RETURN cannot have a parameter in function returning set"),
 					 errhint("Use RETURN NEXT or RETURN QUERY."),
 					 parser_errposition(*yyllocp)));
+		}
 	}
 	else if (plisql_curr_compile->fn_rettype == VOIDOID)
 	{
@@ -4599,6 +4639,13 @@ make_return_next_stmt(int location, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t
 				 errmsg("cannot use RETURN NEXT in a non-SETOF function"),
 				 parser_errposition(location)));
 
+	if (plisql_curr_compile->fn_pipelined)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("RETURN NEXT is not allowed in a pipelined function"),
+				 errhint("Use PIPE ROW to produce rows."),
+				 parser_errposition(location)));
+
 	new = palloc0_object(PLiSQL_stmt_return_next);
 	new->cmd_type	= PLISQL_STMT_RETURN_NEXT;
 	new->lineno		= plisql_location_to_lineno(location, yyscanner);
@@ -4652,6 +4699,49 @@ make_return_next_stmt(int location, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t
 }
 
 
+/*
+ * PIPE ROW '(' expr ')' ';' -- only valid inside an Oracle pipelined
+ * table function (metadata-flagged, set-returning, standalone).
+ */
+static PLiSQL_stmt *
+make_pipe_row_stmt(int location, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
+{
+	PLiSQL_stmt_pipe_row *new;
+	int			tok;
+
+	if (!plisql_curr_compile->fn_retset || !plisql_curr_compile->fn_pipelined)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("PIPE ROW is not allowed in a non-pipelined function"),
+				 parser_errposition(location)));
+
+	new = palloc0_object(PLiSQL_stmt_pipe_row);
+	new->cmd_type	= PLISQL_STMT_PIPE_ROW;
+	new->lineno		= plisql_location_to_lineno(location, yyscanner);
+	new->stmtid		= ++plisql_curr_compile->nstatements;
+	new->expr		= NULL;
+
+	/* Fixed syntax: PIPE ROW '(' expr ')' ';' */
+	tok = yylex(yylvalp, yyllocp, yyscanner);
+	if (tok != '(')
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("expected \"(\" after PIPE ROW"),
+				 parser_errposition(*yyllocp)));
+
+	new->expr = read_sql_expression(')', ")", yylvalp, yyllocp, yyscanner);
+
+	tok = yylex(yylvalp, yyllocp, yyscanner);
+	if (tok != ';')
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("expected \";\" at end of PIPE ROW statement"),
+				 parser_errposition(*yyllocp)));
+
+	return (PLiSQL_stmt *) new;
+}
+
+
 static PLiSQL_stmt *
 make_return_query_stmt(int location, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 {
@@ -4662,6 +4752,13 @@ make_return_query_stmt(int location, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_
 		ereport(ERROR,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
 				 errmsg("cannot use RETURN QUERY in a non-SETOF function"),
+				 parser_errposition(location)));
+
+	if (plisql_curr_compile->fn_pipelined)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("RETURN QUERY is not allowed in a pipelined function"),
+				 errhint("Use PIPE ROW to produce rows."),
 				 parser_errposition(location)));
 
 	new = palloc0_object(PLiSQL_stmt_return_query);
