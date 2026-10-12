@@ -33,6 +33,7 @@
 #include "oracle_parser/ora_with_function.h"
 #include "parser/parse_type.h"
 #include "parser/parse_package.h"
+#include "parser/ora_collect.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
@@ -836,6 +837,26 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 											strVal(linitial(funcname)),
 											first_arg,
 											location);
+			if (retval)
+				return retval;
+		}
+
+		/*
+		 * IvorySQL: Oracle collection constructor "coll(a, b, ...)" /
+		 * "coll()".  Fires only in Oracle mode, only when the call name
+		 * resolves to a nested-table type flagged in pg_type, and only
+		 * after function lookup has failed -- real functions and
+		 * PostgreSQL array functions are never shadowed.
+		 */
+		if (!proc_call &&
+			agg_order == NIL && over == NULL && !agg_within_group &&
+			!agg_star && !agg_distinct && !func_variadic &&
+			agg_filter == NULL && ignore_nulls == NO_NULLTREATMENT)
+		{
+			retval = transform_oracle_collection_constructor(pstate,
+															 funcname,
+															 fargs,
+															 location);
 			if (retval)
 				return retval;
 		}

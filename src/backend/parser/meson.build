@@ -15,6 +15,7 @@ backend_sources += files(
   'parse_jsontable.c',
   'parse_merge.c',
   'parse_node.c',
+  'ora_collect.c',
   'parse_oper.c',
   'parse_param.c',
   'parse_relation.c',
