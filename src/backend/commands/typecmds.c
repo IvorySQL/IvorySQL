@@ -208,6 +208,53 @@ DefineType(ParseState *pstate, List *names, List *parameters)
 	ObjectAddress address;
 
 	/*
+	 * IvorySQL: the Oracle grammar delivers "CREATE TYPE name AS/IS TABLE OF
+	 * element" as an OBJECT_TYPE DefineStmt carrying an "oracle_nested_table"
+	 * DefElem whose argument is the element TypeName, and the VARRAY form as
+	 * an "oracle_varray" DefElem.  Turn the former into a domain over the
+	 * element's array type (flagged typoranestedtable) and reject the latter
+	 * with a clean error.  The plain CREATE TYPE path below is untouched.
+	 */
+	{
+		DefElem    *nestedEl = NULL;
+		DefElem    *varrayEl = NULL;
+
+		foreach(pl, parameters)
+		{
+			DefElem    *defel = (DefElem *) lfirst(pl);
+
+			if (strcmp(defel->defname, "oracle_nested_table") == 0)
+			{
+				if (nestedEl)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("conflicting or redundant options"),
+							 parser_errposition(pstate, defel->location)));
+				nestedEl = defel;
+			}
+			else if (strcmp(defel->defname, "oracle_varray") == 0)
+			{
+				if (varrayEl)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("conflicting or redundant options"),
+							 parser_errposition(pstate, defel->location)));
+				varrayEl = defel;
+			}
+		}
+		if (varrayEl != NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("VARRAY types are not supported"),
+					 errhint("Use a nested-table type (AS TABLE OF) instead."),
+					 parser_errposition(pstate, varrayEl->location)));
+		if (nestedEl != NULL)
+			return DefineOracleNestedTable(names,
+										   (TypeName *) nestedEl->arg,
+										   nestedEl->location);
+	}
+
+	/*
 	 * As of Postgres 8.4, we require superuser privilege to create a base
 	 * type.  This is simple paranoia: there are too many ways to mess up the
 	 * system with an incorrect type definition (for instance, representation
@@ -689,6 +736,132 @@ RemoveTypeById(Oid typeOid)
 	ReleaseSysCache(tup);
 
 	table_close(relation, RowExclusiveLock);
+}
+
+
+/*
+ * DefineOracleNestedTable
+ *
+ * Implements IvorySQL's Oracle-style "CREATE TYPE name AS/IS TABLE OF
+ * element": the collection is stored as a domain over the element type's
+ * array type, so element typmod, collation and dependencies are handled by
+ * the existing domain machinery.  After the domain is created the type is
+ * flagged in pg_type.typoranestedtable; only this path ever sets that flag.
+ */
+ObjectAddress
+DefineOracleNestedTable(List *names, TypeName *elementType, int location)
+{
+	CreateDomainStmt *dstmt;
+	TypeName   *arrayType;
+	ObjectAddress address;
+
+	/*
+	 * Build "element[]" as the domain's base type; DefineDomain resolves the
+	 * element typmod/collation and creates the array-backed domain.
+	 */
+	arrayType = copyObject(elementType);
+	arrayType->arrayBounds = list_make1(makeInteger(-1));
+	if (arrayType->location == -1)
+		arrayType->location = location;
+
+	dstmt = makeNode(CreateDomainStmt);
+	dstmt->domainname = names;
+	dstmt->typeName = arrayType;
+	dstmt->collClause = NULL;
+	dstmt->constraints = NIL;
+
+	address = DefineDomain(NULL, dstmt);
+
+	/* Make the new domain visible to syscache before updating its flag. */
+	CommandCounterIncrement();
+
+	/* Flag the freshly created domain as an Oracle collection. */
+	{
+		Relation	rel;
+		HeapTuple	tup;
+		Form_pg_type typform;
+
+		rel = table_open(TypeRelationId, RowExclusiveLock);
+		tup = SearchSysCacheCopy1(TYPEOID, ObjectIdGetDatum(address.objectId));
+		if (!HeapTupleIsValid(tup))
+			elog(ERROR, "cache lookup failed for type %u", address.objectId);
+		typform = (Form_pg_type) GETSTRUCT(tup);
+		Assert(typform->typtype == TYPTYPE_DOMAIN);
+		typform->typoranestedtable = true;
+		CatalogTupleUpdate(rel, &tup->t_self, tup);
+
+		InvokeObjectPostAlterHook(TypeRelationId, address.objectId, 0);
+
+		heap_freetuple(tup);
+		table_close(rel, RowExclusiveLock);
+	}
+
+	return address;
+}
+
+/*
+ * type_is_oracle_nested_table
+ *
+ * True for the domains created by DefineOracleNestedTable (and false for
+ * everything else, notably ordinary domains over arrays).
+ */
+bool
+type_is_oracle_nested_table(Oid typeOid)
+{
+	HeapTuple	typeTup;
+	Form_pg_type typform;
+	bool		result;
+
+	if (!OidIsValid(typeOid))
+		return false;
+
+	typeTup = SearchSysCache1(TYPEOID, ObjectIdGetDatum(typeOid));
+	if (!HeapTupleIsValid(typeTup))
+		return false;
+	typform = (Form_pg_type) GETSTRUCT(typeTup);
+
+	result = (typform->typtype == TYPTYPE_DOMAIN &&
+			  typform->typoranestedtable);
+
+	ReleaseSysCache(typeTup);
+	return result;
+}
+
+/*
+ * get_oracle_collection_element
+ *
+ * Validate that typeOid is an Oracle nested-table type and report its
+ * element type OID, element typmod (as recorded by the domain), and the
+ * collection's collation.  Returns false (without touching the outputs)
+ * when typeOid is not a collection type, so callers can raise their own
+ * type error.
+ */
+bool
+get_oracle_collection_element(Oid typeOid, Oid *elemOid, int32 *elemTypmod,
+							  Oid *collation)
+{
+	HeapTuple	typeTup;
+	Form_pg_type typform;
+
+	typeTup = SearchSysCache1(TYPEOID, ObjectIdGetDatum(typeOid));
+	if (!HeapTupleIsValid(typeTup))
+		elog(ERROR, "cache lookup failed for type %u", typeOid);
+	typform = (Form_pg_type) GETSTRUCT(typeTup);
+
+	if (typform->typoranestedtable &&
+		typform->typtype == TYPTYPE_DOMAIN &&
+		OidIsValid(typform->typbasetype) &&
+		type_is_array(typform->typbasetype))
+	{
+		*elemOid = get_element_type(typform->typbasetype);
+		*elemTypmod = typform->typtypmod;
+		*collation = typform->typcollation;
+		ReleaseSysCache(typeTup);
+		return true;
+	}
+
+	ReleaseSysCache(typeTup);
+	return false;
 }
 
 
