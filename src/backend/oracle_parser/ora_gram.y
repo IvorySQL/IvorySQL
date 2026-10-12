@@ -863,7 +863,7 @@ static AlterTableCmd *makeModifyColumnTypeOrVisibilityCmd(char *colname,
 	UESCAPE UNBOUNDED UNCONDITIONAL UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN
 	UNLISTEN UNLOGGED UNTIL UNUSABLE UPDATE UPDATEXML USER USERENV USING
 
-	VACUUM VALID VALIDATE VALIDATOR VALUE_P VALUES VARCHAR VARCHAR2 VARIADIC VARYING
+	VACUUM VALID VALIDATE VALIDATOR VALUE_P VALUES VARCHAR VARCHAR2 VARIADIC VARYING VARRAY_P
 	VERBOSE VERSION_P VERTEX VIEW VIEWS VIRTUAL VISIBLE VOLATILE
 
 	WAIT WHEN WHERE WHITESPACE_P WINDOW WITH WITHIN WITHOUT WORK WRAPPER WRITE
@@ -7114,6 +7114,55 @@ DefineStmt:
 					n->defnames = $3;
 					n->args = NIL;
 					n->definition = $4;
+					$$ = (Node *) n;
+				}
+			| CREATE TYPE_P any_name AS TABLE OF Typename
+				{
+					/*
+					 * IvorySQL: Oracle nested-table collection type,
+					 * "CREATE TYPE name AS TABLE OF element".  The element
+					 * type is carried to DefineType as an Oracle-specific
+					 * DefElem; typecmds turns it into a domain over the
+					 * element's array type.
+					 */
+					DefineStmt *n = makeNode(DefineStmt);
+
+					n->kind = OBJECT_TYPE;
+					n->oldstyle = false;
+					n->defnames = $3;
+					n->args = NIL;
+					n->definition = list_make1(makeDefElem("oracle_nested_table",
+														   (Node *) $7, @4));
+					$$ = (Node *) n;
+				}
+			| CREATE TYPE_P any_name IS TABLE OF Typename
+				{
+					/* IvorySQL: same, with the Oracle "IS TABLE OF" spelling */
+					DefineStmt *n = makeNode(DefineStmt);
+
+					n->kind = OBJECT_TYPE;
+					n->oldstyle = false;
+					n->defnames = $3;
+					n->args = NIL;
+					n->definition = list_make1(makeDefElem("oracle_nested_table",
+														   (Node *) $7, @4));
+					$$ = (Node *) n;
+				}
+			| CREATE TYPE_P any_name AS VARRAY_P '(' SignedIconst ')' OF Typename
+				{
+					/*
+					 * IvorySQL: VARRAY is parsed only so it can be rejected
+					 * with a clean error by typecmds; it is out of scope
+					 * for #1329.
+					 */
+					DefineStmt *n = makeNode(DefineStmt);
+
+					n->kind = OBJECT_TYPE;
+					n->oldstyle = false;
+					n->defnames = $3;
+					n->args = NIL;
+					n->definition = list_make1(makeDefElem("oracle_varray",
+														   (Node *) $10, @4));
 					$$ = (Node *) n;
 				}
 			| CREATE TYPE_P any_name
@@ -22028,6 +22077,7 @@ unreserved_keyword:
 			| VALIDATE
 			| VALIDATOR
 			| VALUE_P
+			| VARRAY_P
 			| VARYING
 			| VERSION_P
 			| VERTEX
@@ -22796,6 +22846,7 @@ bare_label_keyword:
 			| VARCHAR
 			| VARCHAR2
 			| VARIADIC
+			| VARRAY_P
 			| VERBOSE
 			| VERSION_P
 			| VERTEX

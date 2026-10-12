@@ -42,6 +42,18 @@ extern ObjectAddress AlterDomainDropConstraint(List *names, const char *constrNa
 
 extern void checkDomainOwner(HeapTuple tup);
 
+/*
+ * IvorySQL: Oracle nested-table (schema-level collection) type support.
+ * A collection type is stored as a domain over the element type's array
+ * type, flagged in pg_type.typoranestedtable so that ordinary domains
+ * over arrays never impersonate one.
+ */
+extern ObjectAddress DefineOracleNestedTable(List *names, TypeName *elementType,
+											 int location);
+extern bool type_is_oracle_nested_table(Oid typeOid);
+extern bool get_oracle_collection_element(Oid typeOid, Oid *elemOid,
+										  int32 *elemTypmod, Oid *collation);
+
 extern ObjectAddress RenameType(RenameStmt *stmt);
 
 extern ObjectAddress AlterTypeOwner(List *names, Oid newOwnerId, ObjectType objecttype);
