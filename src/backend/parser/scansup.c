@@ -110,8 +110,16 @@ identifier_case_transform(const char *ident, int len)
 {
 	char *upper_ident = NULL, *lower_ident = NULL, *result = NULL;
 
-	upper_ident = upcase_identifier(ident, len, true, true);
-	lower_ident = downcase_identifier(ident, len, true, true);
+	/*
+	 * Fold with truncation disabled: this function returns the full value
+	 * with its case switched, so truncating the folded probes to
+	 * NAMEDATALEN would emit spurious truncation warnings for long values
+	 * and make the comparisons below fail, silently skipping the case
+	 * switch for values of NAMEDATALEN bytes or more.  Callers that need a
+	 * name of at most NAMEDATALEN - 1 bytes truncate the result themselves.
+	 */
+	upper_ident = upcase_identifier(ident, len, false, false);
+	lower_ident = downcase_identifier(ident, len, false, false);
 
 	if (strcmp(upper_ident, ident) == 0)
 	{
