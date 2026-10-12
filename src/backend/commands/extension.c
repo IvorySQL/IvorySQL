@@ -99,6 +99,7 @@ bool		extension_script_pg_dialect = false;
  * themselves need no IvorySQL-specific control-file changes.
  */
 static const char *const PgDialectExtensions[] = {
+	"oracle_fdw",
 	"pg_profile",
 	"pg_repack",
 	"pg_track_settings",
