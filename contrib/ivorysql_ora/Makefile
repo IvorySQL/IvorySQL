@@ -97,6 +97,7 @@ ORA_REGRESS = \
 	ora_stragg \
 	dbms_lock \
 	utl_file \
+	utl_file_raw_limit \
 	utl_raw \
 	utl_encode \
 	utl_url \

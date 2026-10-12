@@ -910,15 +910,18 @@ Datum ora_utl_file_put_raw(PG_FUNCTION_ARGS)
 {
 	FILE   *fd;
 	bool    autoflush;
+	size_t  max_linesize;
 
 	CHECK_FILE_HANDLE();
-	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL);
+	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), &max_linesize, NULL);
 
 	NOT_NULL_ARG(1);
 	{
 		bytea  *data = PG_GETARG_BYTEA_PP(1);
 		char   *buf = VARDATA_ANY(data);
 		size_t  len = VARSIZE_ANY_EXHDR(data);
+
+		CHECK_LENGTH(len);
 
 		if (fwrite(buf, 1, len, fd) != len)
 			CHECK_ERRNO_PUT();
