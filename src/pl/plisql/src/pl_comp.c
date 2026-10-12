@@ -783,6 +783,20 @@ do_compile(FunctionCallInfo fcinfo,
 			function->fn_retset = procStruct->proretset;
 
 			/*
+			 * IvorySQL: Oracle pipelined table function metadata.  For a
+			 * pipelined function prorettype is the collection's element
+			 * type (set by functioncmds), and procollectiontype records
+			 * the declared collection domain.
+			 */
+			function->fn_pipelined = procStruct->propipelined;
+			function->fn_collectiontype = procStruct->procollectiontype;
+			if (function->fn_pipelined && !function->fn_retset)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+						 errmsg("pipelined function \"%s\" is not marked set-returning",
+								plisql_error_funcname)));
+
+			/*
 			 * Lookup the function's return type
 			 */
 			typeTup = SearchSysCache1(TYPEOID, ObjectIdGetDatum(rettypeid));
