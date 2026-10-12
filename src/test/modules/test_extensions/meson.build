@@ -73,6 +73,7 @@ tests += {
   'tap': {
     'tests': [
       't/001_extension_control_path.pl',
+      't/002_oracle_fdw.pl',
     ],
   },
 }
