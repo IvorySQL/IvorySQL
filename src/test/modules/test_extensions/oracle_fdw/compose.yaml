@@ -1,0 +1,45 @@
+# Oracle Free 23 fixture for IvorySQL's opt-in oracle_fdw TAP test
+# (src/test/modules/test_extensions/t/002_oracle_fdw.pl, IvorySQL #1307).
+#
+# Start (passwords are taken from the environment, never stored here):
+#
+#   export IV1307_ORACLE_PASSWORD=...        # ADMIN/SYS password
+#   export IV1307_ORACLE_APP_PASSWORD=...    # dedicated test user password
+#   docker compose -f src/test/modules/test_extensions/oracle_fdw/compose.yaml up -d
+#
+# The image is pinned by digest; the database service is only published to
+# localhost on an isolated port and keeps its data in a dedicated volume.
+# Point the TAP test at the fixture with:
+#
+#   PG_TEST_ORACLE_FDW_DSN=//127.0.0.1:11521/FREEPDB1
+#   PG_TEST_ORACLE_FDW_USER=iv1307
+#   PG_TEST_ORACLE_FDW_PASSWORD=$IV1307_ORACLE_APP_PASSWORD
+#
+# (Containers on the same Docker network can instead reach the service by
+# name, e.g. //oracle-fixture:1521/FREEPDB1.)
+#
+# setup.sql is executed automatically on first initialization of the data
+# volume and creates the IV1307_TYPES / IV1307_LOOKUP fixture tables.
+
+services:
+  oracle-fixture:
+    image: gvenzl/oracle-free@sha256:7ed34d0ade89c91a553c9cbe9d42457c758fa29a762aaaa3137541ff30a2d1cb
+    environment:
+      ORACLE_PASSWORD: ${IV1307_ORACLE_PASSWORD:?set IV1307_ORACLE_PASSWORD}
+      APP_USER: iv1307
+      APP_USER_PASSWORD: ${IV1307_ORACLE_APP_PASSWORD:?set IV1307_ORACLE_APP_PASSWORD}
+      NLS_LANG: .AL32UTF8
+    ports:
+      - '127.0.0.1:11521:1521'
+    volumes:
+      - iv1307_oradata:/opt/oracle/oradata
+      - ./setup.sql:/container-entrypoint-initdb.d/10-iv1307-setup.sql:ro
+    healthcheck:
+      test: ['CMD', 'healthcheck.sh']
+      interval: 30s
+      timeout: 10s
+      retries: 30
+      start_period: 5m
+
+volumes:
+  iv1307_oradata:

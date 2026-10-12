@@ -126,4 +126,108 @@
    from the core project.
   </para>
  </sect1>
+
+ <sect1 id="external-fdw">
+  <title>Foreign Data Wrappers</title>
+
+  <indexterm>
+   <primary>foreign data wrappers</primary>
+   <secondary>externally maintained</secondary>
+  </indexterm>
+
+  <para>
+   <productname>PostgreSQL</productname> ships
+   <link linkend="postgres-fdw">postgres_fdw</link> and other foreign data
+   wrappers as part of <xref linkend="contrib"/>, while many wrappers for
+   other remote systems are developed and maintained as external projects.
+  </para>
+
+  <sect2 id="external-fdw-oracle-fdw">
+   <title>oracle_fdw</title>
+
+   <para>
+    <application><ulink
+    url="https://github.com/laurenz/oracle_fdw">oracle_fdw</ulink></application>
+    is a foreign data wrapper that provides read and write access from
+    <productname>IvorySQL</productname> to a remote
+    <productname>Oracle</productname> database, including predicate,
+    projection and join pushdown and transactional
+    <command>INSERT</command>, <command>UPDATE</command> and
+    <command>DELETE</command>.  It is an external project: it is not part of
+    the IvorySQL distribution, is built against the IvorySQL server headers
+    with <application>PGXS</application>, and is not covered by the IvorySQL
+    test suite by default.
+   </para>
+
+   <para>
+    oracle_fdw is listed in the IvorySQL core compatibility allow list
+    (<literal>PgDialectExtensions</literal>), which means that in a cluster
+    initialized in Oracle mode, <command>CREATE EXTENSION oracle_fdw</command>
+    executes the extension's install script under the forced
+    <productname>PostgreSQL</productname> dialect and pins the functions the
+    script creates to that dialect.  The calling session's
+    <varname>ivorysql.compatible_mode</varname> and
+    <varname>search_path</varname> are restored after the installation.
+    Both entry points of an oracle-mode cluster &mdash; the regular
+    <varname>port</varname> and the Oracle listener port
+    (<varname>ivorysql.port</varname>) &mdash; can be used to create and use
+    oracle_fdw foreign tables.
+   </para>
+
+   <para>
+    Building oracle_fdw requires Oracle Call Interface (OCI) headers and
+    libraries, for example from a regular Oracle Database installation.
+    Neither the OCI files nor the oracle_fdw binaries are shipped with
+    IvorySQL; they must be provided by the environment.  A typical build and
+    installation looks like:
+<programlisting>
+make PG_CONFIG=<replaceable>/path/to/ivorysql/bin/pg_config</replaceable> \
+     ORACLE_HOME=<replaceable>/path/to/oci-home</replaceable> install
+</programlisting>
+    The Oracle client libraries must also be findable by the server at
+    runtime (for example via <envar>LD_LIBRARY_PATH</envar> or the
+    equivalent system configuration).
+   </para>
+
+   <para>
+    A foreign table maps to a remote table with
+    <link linkend="sql-createtable"><command>CREATE FOREIGN TABLE</command></link>
+    <literal>OPTIONS (schema '<replaceable>SCHEMA</replaceable>', table
+    '<replaceable>TABLE</replaceable>')</literal>, and the column list must
+    use data type mappings that oracle_fdw supports.  Use the standard
+    <productname>PostgreSQL</productname> types for foreign table columns;
+    when defining foreign tables from a session connected through the Oracle
+    port, spell type names that Oracle mode resolves to
+    <productname>IvorySQL</productname>'s Oracle-compatible types (for
+    example <type>timestamp</type>) in their qualified standard form
+    (<type>pg_catalog.timestamp</type>), because unmodified oracle_fdw only
+    converts the standard <productname>PostgreSQL</productname> types.
+    Mark the primary key column(s) with
+    <literal>OPTIONS (key 'true')</literal> so that <command>UPDATE</command>,
+    <command>DELETE</command> and write conflicts are handled correctly.
+   </para>
+
+   <para>
+    Each database user that accesses the remote database needs its own
+    <link linkend="sql-createusermapping">user mapping</link> with the remote
+    credentials, and needs <literal>USAGE</literal> on the foreign server
+    plus the appropriate table privileges; do not grant these rights to
+    <literal>PUBLIC</literal>.  The remote Oracle user should be a dedicated
+    account with only the privileges it needs.  Because Oracle treats empty
+    strings as <literal>NULL</literal>, empty strings written through
+    oracle_fdw arrive as <literal>NULL</literal> on the Oracle side, and
+    <command>EXPLAIN VERBOSE</command> on oracle_fdw plans additionally
+    requires <literal>SELECT</literal> privileges on
+    <literal>V$SQL</literal> and <literal>V$SQL_PLAN</literal> in the remote
+    database.
+   </para>
+
+   <para>
+    To upgrade oracle_fdw, build and install the new version over the old
+    one and run <command>ALTER EXTENSION ... UPDATE</command> in every
+    database that uses it, following the instructions of the oracle_fdw
+    project.
+   </para>
+  </sect2>
+ </sect1>
 </appendix>
