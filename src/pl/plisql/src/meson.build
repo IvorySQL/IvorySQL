@@ -6,6 +6,7 @@ plisql_sources = files(
   'pl_exec.c',
   'pl_funcs.c',
   'pl_handler.c',
+  'pl_pipeline.c',
   'pl_scanner.c',
   'pl_subproc_function.c',
   'pl_package.c',

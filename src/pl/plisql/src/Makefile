@@ -45,6 +45,7 @@ OBJS = \
 	pl_funcs.o \
 	pl_gram.o \
 	pl_handler.o \
+	pl_pipeline.o \
 	pl_scanner.o \
 	pl_subproc_function.o \
 	pl_package.o \
