@@ -691,10 +691,14 @@ typedef struct RangeFunction
 	bool		lateral;		/* does it have LATERAL prefix? */
 	bool		ordinality;		/* does it have WITH ORDINALITY suffix? */
 	bool		is_rowsfrom;	/* is result of ROWS FROM() syntax? */
+	bool		oracle_table;	/* IvorySQL: Oracle-style TABLE(expr) source;
+								 * parse analysis rewrites it into a subquery
+								 * whose target list carries the SRF, so the
+								 * plan is a lazy ProjectSet */
 	List	   *functions;		/* per-function information, see above */
 	Alias	   *alias;			/* table alias & optional column aliases */
 	List	   *coldeflist;		/* list of ColumnDef nodes to describe result
-								 * of function returning RECORD */
+									 * of function returning RECORD */
 } RangeFunction;
 
 /*

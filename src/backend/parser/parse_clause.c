@@ -27,6 +27,7 @@
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
+#include "commands/typecmds.h"
 #include "commands/view.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
@@ -73,6 +74,8 @@ static ParseNamespaceItem *transformRangeSubselect(ParseState *pstate,
 												   RangeSubselect *r);
 static ParseNamespaceItem *transformRangeFunction(ParseState *pstate,
 												  RangeFunction *r);
+static ParseNamespaceItem *transformOracleTableFunction(ParseState *pstate,
+														RangeFunction *r);
 static ParseNamespaceItem *transformRangeTableFunc(ParseState *pstate,
 												   RangeTableFunc *rtf);
 static ParseNamespaceItem *transformRangeGraphTable(ParseState *pstate,
@@ -422,6 +425,181 @@ transformTableEntry(ParseState *pstate, RangeVar *r)
 }
 
 /*
+ * transformOracleTableFunction --- rewrite Oracle TABLE(collection_expr)
+ *
+ * A plain FROM-clause function call plans as a FunctionScan, which drains
+ * the function to completion even under LIMIT.  Oracle TABLE() requires
+ * on-demand semantics, so we instead build
+ *
+ *     SELECT ... FROM (SELECT <funcexpr> [unnest-colled] AS column_value) ...
+ *
+ * putting the call in a subquery's target list, which plans as a ProjectSet
+ * driven one row at a time.  A non-set collection expression is expanded
+ * with unnest (evaluated once per outer row).  When the element type is
+ * composite, a second level expands the fields:
+ *
+ *     SELECT (column_value).* FROM (SELECT f() AS column_value) ...
+ *
+ * so a volatile function is called exactly once per output row.
+ */
+static ParseNamespaceItem *
+transformOracleTableFunction(ParseState *pstate, RangeFunction *r)
+{
+	Node	   *funcexpr;
+	Node	   *peek;
+	SelectStmt *innerq;
+	ResTarget  *rt;
+	RangeSubselect *inner;
+	Oid			colltype;
+	Oid			elemOid = InvalidOid;
+	int32		elemTypmod = -1;
+	Oid			collation = InvalidOid;
+	bool		is_set;
+	bool		composite;
+
+	Assert(r->oracle_table);
+	Assert(list_length(r->functions) == 1);
+
+	if (r->ordinality)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("WITH ORDINALITY is not supported for TABLE()"),
+				 errhint("Rewrite the query using a LATERAL subquery.")));
+
+	if (r->coldeflist != NIL ||
+		(r->alias != NULL && r->alias->aliasname == NULL))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("column definition list is not supported for TABLE()")));
+
+	funcexpr = linitial(linitial(r->functions));
+
+	/*
+	 * Peek at the expression's type with a throwaway copy so we can choose
+	 * between the set-returning and unnest shapes (and decide whether a
+	 * composite expansion level is needed) while the raw tree is still at
+	 * hand.  This runs in the enclosing pstate; the discarded transform
+	 * leaves nothing behind in the final query.  Lateral-only names are made
+	 * visible for the peek, as transformRangeFunction does for its own
+	 * expressions; the flag is restored before handing control to
+	 * transformRangeSubselect, which asserts it is clear on entry.
+	 */
+	{
+		bool		save_lateral_active = pstate->p_lateral_active;
+
+		pstate->p_lateral_active = true;
+		peek = transformExpr(pstate, copyObject(funcexpr),
+							 EXPR_KIND_FROM_FUNCTION);
+		pstate->p_lateral_active = save_lateral_active;
+	}
+	colltype = exprType(peek);
+	is_set = expression_returns_set(peek);
+
+	if (is_set)
+	{
+		/*
+		 * Set-returning function (a pipelined function, whose prorettype
+		 * is the element type): call it directly in the target list.
+		 */
+		elemOid = colltype;
+		elemTypmod = exprTypmod(peek);
+		composite = type_is_rowtype(elemOid);
+	}
+	else
+	{
+		/*
+		 * Non-set expression: it must denote a collection, expanded by
+		 * unnest with a single evaluation per outer row.
+		 */
+		if (get_oracle_collection_element(colltype, &elemOid,
+										  &elemTypmod, &collation))
+			 /* collection domain */ ;
+		else if (type_is_rowtype(colltype))
+		{
+			/* collection of composites stored as a plain composite[] */
+			elemOid = get_element_type(colltype);
+			if (!OidIsValid(elemOid))
+				ereport(ERROR,
+						(errcode(ERRCODE_DATATYPE_MISMATCH),
+						 errmsg("TABLE() expression must be a collection type")));
+			elemTypmod = -1;
+		}
+		else if (OidIsValid(get_element_type(colltype)))
+		{
+			elemOid = get_element_type(colltype);
+			elemTypmod = -1;
+		}
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_DATATYPE_MISMATCH),
+					 errmsg("TABLE() expression must be a collection type"),
+					 errdetail("Expression type: %s.",
+							   format_type_be(colltype))));
+		composite = type_is_rowtype(elemOid);
+	}
+
+	/*
+	 * Inner: SELECT <call> AS column_value.  When the expression is not
+	 * itself set-returning, wrap it in unnest() to expand the collection.
+	 */
+	innerq = makeNode(SelectStmt);
+	rt = makeNode(ResTarget);
+	rt->name = pstrdup("column_value");
+	if (is_set)
+		rt->val = funcexpr;
+	else
+	{
+		FuncCall   *unn = makeNode(FuncCall);
+
+		unn->funcname = SystemFuncName("unnest");
+		unn->args = list_make1(funcexpr);
+		unn->funcformat = COERCE_EXPLICIT_CALL;
+		rt->val = (Node *) unn;
+	}
+	innerq->targetList = list_make1(rt);
+
+	inner = makeNode(RangeSubselect);
+	inner->lateral = true;		/* allow correlation with earlier FROM items */
+	inner->subquery = (Node *) innerq;
+
+	if (!composite)
+	{
+		/* Scalar element: the inner query is the whole thing. */
+		inner->alias = r->alias;
+		return transformRangeSubselect(pstate, inner);
+	}
+
+	/*
+	 * Composite element: wrap in SELECT (column_value).* so each row's
+	 * fields become columns; the function itself is not re-evaluated.
+	 */
+	{
+		SelectStmt *outerq = makeNode(SelectStmt);
+		ResTarget  *ort = makeNode(ResTarget);
+		A_Indirection *ind = makeNode(A_Indirection);
+		ColumnRef  *cref = makeNode(ColumnRef);
+		RangeSubselect *innerFrom = makeNode(RangeSubselect);
+		RangeSubselect *outer = makeNode(RangeSubselect);
+
+		cref->fields = list_make1(makeString(pstrdup("column_value")));
+		cref->location = -1;
+		ind->arg = (Node *) cref;
+		ind->indirection = list_make1(makeNode(A_Star));
+		ort->val = (Node *) ind;
+		outerq->targetList = list_make1(ort);
+
+		innerFrom->lateral = false;
+		innerFrom->subquery = (Node *) innerq;
+		outerq->fromClause = list_make1(innerFrom);
+
+		outer->lateral = false;
+		outer->subquery = (Node *) outerq;
+		outer->alias = r->alias;
+		return transformRangeSubselect(pstate, outer);
+	}
+}
+
+/*
  * transformRangeSubselect --- transform a sub-SELECT appearing in FROM
  */
 static ParseNamespaceItem *
@@ -490,6 +668,14 @@ transformRangeFunction(ParseState *pstate, RangeFunction *r)
 	List	   *coldeflists = NIL;
 	bool		is_lateral;
 	ListCell   *lc;
+
+	/*
+	 * IvorySQL: Oracle-style TABLE(collection_expr) is rewritten into a
+	 * subquery whose target list carries the function call, planning as a
+	 * lazy ProjectSet.
+	 */
+	if (r->oracle_table)
+		return transformOracleTableFunction(pstate, r);
 
 	/*
 	 * We make lateral_only names of this level visible, whether or not the

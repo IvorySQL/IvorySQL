@@ -16522,6 +16522,25 @@ func_table: func_expr_windowless opt_ordinality
 					/* alias and coldeflist are set by table_ref production */
 					$$ = (Node *) n;
 				}
+			| TABLE '(' func_expr_windowless ')' opt_ordinality
+				{
+					/*
+					 * IvorySQL: Oracle-style TABLE(collection_expr) table
+					 * source.  The oracle_table flag makes parse analysis
+					 * rewrite this into a subquery carrying the function
+					 * call in its target list, which plans as a lazy
+					 * ProjectSet instead of a materializing FunctionScan.
+					 */
+					RangeFunction *n = makeNode(RangeFunction);
+
+					n->lateral = false;
+					n->ordinality = $5;
+					n->is_rowsfrom = false;
+					n->oracle_table = true;
+					n->functions = list_make1(list_make2($3, NIL));
+					/* alias and coldeflist are set by table_ref production */
+					$$ = (Node *) n;
+				}
 			| ROWS FROM '(' rowsfrom_list ')' opt_ordinality
 				{
 					RangeFunction *n = makeNode(RangeFunction);
