@@ -790,6 +790,21 @@ SELECT '' AS to_number_14, to_number('12.34');
 SELECT '' AS to_number_15, to_number('-1122.34');
 SELECT '' AS to_number_16, to_number('12.34','9G999D99');
 SELECT '' AS to_number_17, to_number('1122.34','9G999D99');
+
+SHOW nls_numeric_characters;
+SET nls_numeric_characters = '.';
+SET nls_numeric_characters = '..';
+SET nls_numeric_characters = '1,';
+SET nls_numeric_characters = ',.';
+SELECT to_char(1234.56::number, '9G999D99') AS localized_to_char;
+SELECT to_number('1.234,56', '9G999D99') AS localized_formatted_to_number;
+SELECT to_number('12,34') AS localized_to_number;
+SELECT to_number('1.234,56') AS localized_grouped_to_number;
+SELECT to_number(12.34::number) AS number_to_number;
+SELECT to_char(12.34::number, '99.99') AS literal_decimal_to_char;
+SELECT to_char(1234.56::number, '9,999.99') AS literal_punctuation_to_char;
+RESET nls_numeric_characters;
+
 -- Without a format model, trailing spaces are accepted in the integer part.
 SELECT '' AS to_number_18, to_number('123 ');
 -- Whitespace between digits remains invalid.
