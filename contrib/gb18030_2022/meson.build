@@ -12,7 +12,7 @@ endif
 
 custom_target('gb18030_2022.bc',
   output: 'utf8_and_gb18030_2022.bc',
-  command: [perl, '../contrib/ivorysql_ora/gensql.pl', 'meson', '1.0'],
+  command: [perl, files('../ivorysql_ora/gensql.pl'), 'meson', '1.0'],
   capture: true,
   install: true,
   install_dir: contrib_data_args['install_dir'],

@@ -34,8 +34,15 @@ use warnings FATAL => 'all';
 use Carp;
 
 use File::Spec;
+use FindBin;
 
 my @sql_set;
+
+# Directory holding this script and ivorysql_ora_merge_sqls.  In Make mode
+# make chdirs to this directory, but Meson runs the script from the build
+# directory, so resolve everything against the script location instead of
+# the current working directory.
+my $script_dir = $FindBin::RealBin;
 
 my $first_arg = $ARGV[0];
 
@@ -55,7 +62,7 @@ sub sql_merge
 	# Read information from ivorysql_ora_merge_sqls.
 	#     There are SQLs specified which need to be merged.
 	if ($first_arg eq 'meson') {
-		open(INFO, "<", File::Spec->rel2abs("../contrib/ivorysql_ora/ivorysql_ora_merge_sqls"))
+		open(INFO, "<", File::Spec->catfile($script_dir, "ivorysql_ora_merge_sqls"))
 		|| croak "Could not open file ivorysql_ora_merge_sqls: $!";
 	}
 	else {
@@ -68,7 +75,7 @@ sub sql_merge
 		# Delete the last tailing "\n" of this line.
 		chomp($_);
 		if ($first_arg eq 'meson') {
-			push @sql_set, "../contrib/ivorysql_ora/$_";
+			push @sql_set, File::Spec->catfile($script_dir, $_);
 		}
 		else
 		{
