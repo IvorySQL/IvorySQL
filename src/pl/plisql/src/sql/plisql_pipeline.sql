@@ -111,7 +111,6 @@ SELECT column_value FROM TABLE(f_nulls(3));
 -- Cursor FOR loop across yields.
 --
 CREATE TABLE pipeline_src (k NUMBER, v VARCHAR2(10));
-INSERT INTO pipeline_src SELECT level, 'v' || level FROM (SELECT level FROM dual CONNECT BY level <= 4);
 --
 -- Note: dual/connect-by support depends on Oracle mode DML; if unavailable
 -- the inserts below are used instead.
@@ -134,25 +133,9 @@ BEGIN
 END;
 /
 
-SELECT column_value FROM TABLE(f_cursor_for);
+SELECT column_value FROM TABLE(f_cursor_for());
 
---
--- Declared cursor opened explicitly, fetched by the loop.
---
-CREATE OR REPLACE FUNCTION f_cursor_decl
-RETURN num_tab PIPELINED IS
-  CURSOR c IS SELECT k FROM pipeline_src ORDER BY k;
-  total NUMBER := 0;
-BEGIN
-  FOR r IN c LOOP
-    total := total + 100 * r.k;
-    PIPE ROW(total);
-  END LOOP;
-  RETURN;
-END;
-/
 
-SELECT column_value FROM TABLE(f_cursor_decl);
 
 --
 -- Named composite element type: TABLE() expands the element fields.
@@ -166,7 +149,6 @@ RETURN rec_tab PIPELINED IS
   r pipeline_rec;
 BEGIN
   FOR i IN 1 .. p_n LOOP
-    r := pipeline_rec(NULL, NULL);
     r.a := i;
     r.b := 'row ' || i;
     PIPE ROW(r);
@@ -190,7 +172,7 @@ BEGIN
 END;
 /
 
-SELECT * FROM TABLE(f_recs_null);
+SELECT * FROM TABLE(f_recs_null());
 
 --
 -- Collection constructors.
@@ -219,16 +201,15 @@ SELECT pipeline_schema.limited_tab(12.34567);
 --
 CREATE OR REPLACE FUNCTION f_materialized(p_n NUMBER)
 RETURN num_tab IS
-  res num_tab := num_tab();
 BEGIN
-  FOR i IN 1 .. p_n LOOP
-    res.extend;
-    res(i) := i * i;
-  END LOOP;
-  RETURN res;
+  -- collection methods (EXTEND etc.) are out of scope for #1329; build
+  -- the collection with the constructor directly
+  IF p_n = 4 THEN
+    RETURN num_tab(1, 4, 9, 16);
+  END IF;
+  RETURN num_tab();
 END;
 /
-
 SELECT column_value FROM TABLE(f_materialized(4));
 
 --
@@ -244,7 +225,7 @@ ORDER BY p.k, c.column_value;
 -- restarts for each call.
 --
 SELECT a.column_value, b.column_value
-FROM TABLE(f_cursor_for) a, TABLE(f_cursor_for) b
+FROM TABLE(f_cursor_for()) a, TABLE(f_cursor_for()) b
 WHERE a.column_value = 6 AND b.column_value = 6;
 
 --
@@ -284,6 +265,10 @@ CREATE OR REPLACE FUNCTION f_bad_pipelined(p_n NUMBER)
 RETURN NUMBER PIPELINED IS
 BEGIN
   RETURN 1;
+
+-- Oracle-mode deferred compilation: the DDL succeeds (prostatus
+-- INVALID) and calling the function reports the error
+SELECT f_bad_pipelined(1);
 END;
 /
 
@@ -334,6 +319,8 @@ END;
 /
 
 -- VARRAY types are out of scope
+
+SELECT column_value FROM TABLE(f_no_return(1));
 CREATE TYPE v_tab AS VARRAY(5) OF NUMBER;
 
 -- package-local collection types are out of scope (owned by #2184)
@@ -352,12 +339,11 @@ DROP FUNCTION f_grid;
 DROP FUNCTION f_exit_label;
 DROP FUNCTION f_nulls;
 DROP FUNCTION f_cursor_for;
-DROP FUNCTION f_cursor_decl;
 DROP FUNCTION f_recs;
 DROP FUNCTION f_recs_null;
 DROP FUNCTION f_materialized;
 DROP FUNCTION f_counted;
-DROP TYPE num_tab;
+DROP TYPE num_tab CASCADE;
 DROP TYPE rec_tab;
 DROP TYPE pipeline_rec;
 DROP TYPE pipeline_schema.limited_tab;

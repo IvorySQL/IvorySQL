@@ -119,7 +119,12 @@ typedef struct PipeInvocation
 	bool		retisnull;
 	bool		retbyval;
 	int16		rettyplen;
-	HeapTuple	rettuple;		/* our own copy for a composite element */
+
+	/*
+	 * Per-yield allocation context: reset at the start of each call, after
+	 * the executor has consumed the previous row.
+	 */
+	MemoryContext yieldcxt;
 
 	/* open query-FOR portal held across yields, or NULL */
 	Portal		portal;
@@ -221,8 +226,10 @@ pipe_handle_exit(PipeInvocation *inv, int rc)
 				frame->pc = list_length(frame->body);
 				return;
 			}
-			/* CONTINUE without a matching loop cannot be compiled */
-			elog(ERROR, "CONTINUE cannot be used outside a loop");
+			/*
+			 * CONTINUE inside a nested non-loop block (IF/CASE): pop the
+			 * block and keep unwinding to the loop.
+			 */
 		}
 		else
 		{
@@ -307,6 +314,7 @@ pipe_frame_iteration(PipeInvocation *inv, PipeFrame *frame)
 		case PIPE_FRAME_FORC:
 			{
 				PLiSQL_stmt_forq *stmt = (PLiSQL_stmt_forq *) frame->stmt;
+				PLiSQL_variable *lvar;
 
 				/* Fetch exactly one row per resumption (lazy). */
 				SPI_cursor_fetch(frame->portal, true, 1);
@@ -320,7 +328,10 @@ pipe_frame_iteration(PipeInvocation *inv, PipeFrame *frame)
 					return false;
 				}
 
-				exec_move_row(estate, stmt->var,
+				/* assign the invocation's copy of the loop variable */
+				lvar = (PLiSQL_variable *)
+					plisql_get_datum(estate, estate->datums[stmt->var->dno]);
+				exec_move_row(estate, lvar,
 							  SPI_tuptable->vals[0],
 							  SPI_tuptable->tupdesc);
 				SPI_freetuptable(SPI_tuptable);
@@ -359,6 +370,17 @@ pipe_setup_fors(PipeInvocation *inv, PLiSQL_stmt_fors *stmt)
 		elog(ERROR, "could not open implicit cursor: %s",
 			 SPI_result_code_string(SPI_result));
 	inv->portal = frame->portal;
+
+	/*
+	 * Fetch the first row now: like exec_stmt_fors, the loop body must not
+	 * run until a row has been assigned to the loop variable.  If the query
+	 * produced no rows, drop the frame immediately.
+	 */
+	if (!pipe_frame_iteration(inv, frame))
+	{
+		inv->frames = list_delete_ptr(inv->frames, frame);
+		inv->portal = NULL;
+	}
 }
 
 static void
@@ -450,6 +472,20 @@ pipe_setup_forc(PipeInvocation *inv, PLiSQL_stmt_forc *stmt)
 	exec_eval_cleanup(estate);
 	if (stmt_mcontext)
 		MemoryContextReset(stmt_mcontext);
+
+	/* Fetch the first row before the body runs (see pipe_setup_fors). */
+	if (!pipe_frame_iteration(inv, frame))
+	{
+		inv->frames = list_delete_ptr(inv->frames, frame);
+		inv->portal = NULL;
+		if (frame->curvar_was_null)
+		{
+			PLiSQL_var *curvar2 = (PLiSQL_var *)
+				plisql_get_datum(estate, estate->datums[frame->curvarno]);
+
+			assign_simple_var(estate, curvar2, (Datum) 0, true, false);
+		}
+	}
 }
 
 /* --------------------------------------------------------------------------
@@ -460,6 +496,14 @@ pipe_setup_forc(PipeInvocation *inv, PLiSQL_stmt_forc *stmt)
 /*
  * Evaluate a PIPE ROW expression once, convert it to the element type and
  * park the result in the invocation so it outlives this call.
+/*
+ * Evaluate a PIPE ROW expression once, convert it to the element type and
+ * park the result in the invocation so it outlives this call.
+ *
+ * All per-yield allocations go into inv->yieldcxt, which the driver resets
+ * at the start of each call: the previous row has already been consumed by
+ * then (the executor consumes each row synchronously before issuing the
+ * next call), so no per-row pfree bookkeeping is needed.
  */
 static void
 pipe_do_yield(PipeInvocation *inv, PLiSQL_stmt_pipe_row *stmt)
@@ -473,18 +517,7 @@ pipe_do_yield(PipeInvocation *inv, PLiSQL_stmt_pipe_row *stmt)
 
 	value = exec_eval_expr(estate, stmt->expr, &isnull, &valtype, &valtypmod);
 
-	/* free the previous yield's copies */
-	if (!inv->retbyval && !inv->retisnull)
-		pfree(DatumGetPointer(inv->retval));
-	if (inv->rettuple != NULL)
-	{
-		heap_freetuple(inv->rettuple);
-		inv->rettuple = NULL;
-	}
-	inv->retisnull = true;
-	inv->retval = (Datum) 0;
-
-	oldcontext = MemoryContextSwitchTo(inv->mcxt);
+	oldcontext = MemoryContextSwitchTo(inv->yieldcxt);
 
 	if (!estate->retistuple)
 	{
@@ -495,8 +528,8 @@ pipe_do_yield(PipeInvocation *inv, PLiSQL_stmt_pipe_row *stmt)
 									estate->fn_rettype, inv->elemtypmod);
 		inv->retbyval = estate->func->fn_retbyval;
 		inv->rettyplen = estate->func->fn_rettyplen;
-		if (!isnull)
-			value = datumCopy(value, inv->retbyval, inv->rettyplen);
+		if (!isnull && !inv->retbyval)
+			value = datumCopy(value, false, inv->rettyplen);
 		inv->retval = value;
 		inv->retisnull = isnull;
 	}
@@ -507,8 +540,10 @@ pipe_do_yield(PipeInvocation *inv, PLiSQL_stmt_pipe_row *stmt)
 		{
 			HeapTupleData tmptup;
 			TupleDesc	valuedesc;
-			TupleConversionMap *tupmap;
 			HeapTuple	tuple;
+			int			natts = inv->rettupdesc->natts;
+			Datum	   *values;
+			bool	   *nulls;
 
 			if (!type_is_rowtype(valtype))
 				ereport(ERROR,
@@ -516,22 +551,30 @@ pipe_do_yield(PipeInvocation *inv, PLiSQL_stmt_pipe_row *stmt)
 						 errmsg("cannot return non-composite value from pipelined function returning composite type")));
 
 			valuedesc = deconstruct_composite_datum(value, &tmptup);
-			tupmap = convert_tuples_by_position(valuedesc, inv->rettupdesc,
-												gettext_noop("returned record type does not match expected record type"));
-			tuple = &tmptup;
-			if (tupmap)
-				tuple = execute_attr_map_tuple(tuple, tupmap);
-			else
-				tuple = heap_copytuple(tuple);
+
+			/*
+			 * Rebuild the tuple from its fields against the expected row
+			 * type.  heap_form_tuple produces a fully initialized header
+			 * (type OID / typmod from inv->rettupdesc) and clean payload,
+			 * independent of the source datum's header state.
+			 */
+			values = (Datum *) palloc(natts * sizeof(Datum));
+			nulls = (bool *) palloc(natts * sizeof(bool));
+			heap_deform_tuple(&tmptup, valuedesc, values, nulls);
+
+			tuple = heap_form_tuple(inv->rettupdesc, values, nulls);
+			HeapTupleHeaderSetDatumLength(tuple->t_data, tuple->t_len);
+			HeapTupleHeaderSetTypeId(tuple->t_data, estate->fn_rettype);
+			HeapTupleHeaderSetTypMod(tuple->t_data, inv->rettupdesc->tdtypmod);
+			pfree(values);
+			pfree(nulls);
 			ReleaseTupleDesc(valuedesc);
 
-			inv->rettuple = tuple;
-			inv->retval = PointerGetDatum(tuple);
+			inv->retval = PointerGetDatum(tuple->t_data);
 			inv->retisnull = false;
 		}
 		else
 		{
-			inv->rettuple = NULL;
 			inv->retval = (Datum) 0;
 			inv->retisnull = true;
 		}
@@ -542,7 +585,6 @@ pipe_do_yield(PipeInvocation *inv, PLiSQL_stmt_pipe_row *stmt)
 	MemoryContextSwitchTo(oldcontext);
 	exec_eval_cleanup(estate);
 }
-
 /* --------------------------------------------------------------------------
  * CASE selection (evaluated once when the CASE frame is pushed)
  * --------------------------------------------------------------------------
@@ -663,7 +705,7 @@ pipe_expr_cache_reset(PLiSQL_expr *expr, void *context)
 
 typedef enum
 {
-	PIPE_STEP_YIELD,			/* a row is ready in inv->{retval,rettuple} */
+	PIPE_STEP_YIELD,			/* a row is ready in inv->retval */
 	PIPE_STEP_DONE,				/* stream finished */
 } PipeStep;
 
@@ -725,31 +767,48 @@ pipe_resume(PipeInvocation *inv)
 					{
 						PLiSQL_stmt_if *if_stmt = (PLiSQL_stmt_if *) stmt;
 						ListCell   *lc;
-						List	   *branch = if_stmt->else_body;
-						bool		matched = false;
+						List	   *branch = NIL;
 
-						foreach(lc, if_stmt->elsif_list)
+						/* THEN branch */
 						{
-							PLiSQL_if_elsif *elsif =
-								(PLiSQL_if_elsif *) lfirst(lc);
 							bool		value;
 							bool		isnull;
 
-							value = exec_eval_boolean(estate, elsif->cond,
+							value = exec_eval_boolean(estate, if_stmt->cond,
 													  &isnull);
 							exec_eval_cleanup(estate);
 							if (!isnull && value)
+								branch = if_stmt->then_body;
+						}
+
+						/* ELSIF branches */
+						if (branch == NIL)
+						{
+							foreach(lc, if_stmt->elsif_list)
 							{
-								branch = elsif->stmts;
-								matched = true;
-								break;
+								PLiSQL_if_elsif *elsif =
+									(PLiSQL_if_elsif *) lfirst(lc);
+								bool		value;
+								bool		isnull;
+
+								value = exec_eval_boolean(estate, elsif->cond,
+														  &isnull);
+								exec_eval_cleanup(estate);
+								if (!isnull && value)
+								{
+									branch = elsif->stmts;
+									break;
+								}
 							}
 						}
+
+						/* ELSE branch */
+						if (branch == NIL)
+							branch = if_stmt->else_body;
 
 						if (branch != NIL)
 							pipe_push_frame(inv, PIPE_FRAME_IF, stmt,
 											NULL, branch);
-						(void) matched;
 					}
 					rewound = true;
 					break;
@@ -1140,6 +1199,9 @@ plisql_exec_pipelined_function(PLiSQL_function * func, FunctionCallInfo fcinfo)
 		/* no prior yield exists yet; palloc0 would leave retisnull false
 		 * and the first yield would try to free a NULL "previous value" */
 		inv->retisnull = true;
+		inv->yieldcxt = AllocSetContextCreate(inv->mcxt,
+											  "PLiSQL pipelined yield",
+											  ALLOCSET_DEFAULT_SIZES);
 
 		/* hold the compiled function for the whole invocation */
 		func->use_count++;
@@ -1214,6 +1276,13 @@ plisql_exec_pipelined_function(PLiSQL_function * func, FunctionCallInfo fcinfo)
 		rsi->isDone = ExprEndResult;
 		return (Datum) 0;
 	}
+
+	/*
+	 * The previous row was consumed by the executor before this call, so
+	 * recycle the per-yield allocation context now (before the machine may
+	 * produce the next row into it).
+	 */
+	MemoryContextReset(inv->yieldcxt);
 
 	/* make the invocation the current estate for error reporting */
 	{
