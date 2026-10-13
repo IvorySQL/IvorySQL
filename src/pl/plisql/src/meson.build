@@ -63,6 +63,20 @@ plisql = shared_module('plisql',
 )
 pl_targets += plisql
 
+# IvorySQL: pipelined-table-function lifecycle TAP test.  Uses its own
+# oracle-mode test suite dictionary so the root meson build runs it via
+# prove without un-commenting the plain PG regress block below.
+tests += {
+  'name': 'plisql',
+  'sd': meson.current_source_dir(),
+  'bd': meson.current_build_dir(),
+  'tap': {
+    'tests': [
+      't/003_pipeline.pl',
+    ],
+  },
+}
+
 install_data(
   'plisql.control',
   'plisql--1.0.sql',

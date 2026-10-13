@@ -132,9 +132,11 @@ pl_unreserved_kwlist_d.h: pl_unreserved_kwlist.h $(GEN_KEYWORDLIST_DEPS)
 
 oracle-check: submake
 	$(oracle_regress_check) $(ORACLE_REGRESS_OPTS) $(REGRESS)
+	$(oracle_prove_check)
 
 oracle-installcheck: submake
 	$(oracle_regress_installcheck) $(ORACLE_REGRESS_OPTS) $(REGRESS)
+	$(oracle_prove_installcheck)
 
 .PHONY: submake
 submake:
