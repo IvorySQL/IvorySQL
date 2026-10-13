@@ -1227,7 +1227,7 @@ AS 'MODULE_PATHNAME','ora_to_number'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
-IMMUTABLE;
+STABLE;
 
 CREATE FUNCTION sys.to_number(text)
 RETURNS sys.number
@@ -1235,7 +1235,7 @@ AS 'MODULE_PATHNAME','ora_to_number'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
-IMMUTABLE;
+STABLE;
 
 -- to_binary_float
 CREATE FUNCTION sys.to_binary_float(text,text)
@@ -1243,14 +1243,14 @@ RETURNS sys.binary_float
 AS 'MODULE_PATHNAME','ora_to_binary_float'
 LANGUAGE C
 STRICT
-IMMUTABLE;
+STABLE;
 
 CREATE FUNCTION sys.to_binary_float(text)
 RETURNS sys.binary_float
 AS 'MODULE_PATHNAME','ora_to_binary_float'
 LANGUAGE C
 STRICT
-IMMUTABLE;
+STABLE;
 
 CREATE OR REPLACE FUNCTION sys.to_binary_float(number)
 RETURNS sys.binary_float
@@ -1273,14 +1273,14 @@ RETURNS sys.binary_double
 AS 'MODULE_PATHNAME','ora_to_binary_double'
 LANGUAGE C
 STRICT
-IMMUTABLE;
+STABLE;
 
 CREATE FUNCTION sys.to_binary_double(text)
 RETURNS sys.binary_double
 AS 'MODULE_PATHNAME','ora_to_binary_double'
 LANGUAGE C
 STRICT
-IMMUTABLE;
+STABLE;
 
 CREATE OR REPLACE FUNCTION sys.to_binary_double(number)
 RETURNS sys.binary_double
@@ -1580,7 +1580,7 @@ LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
 --to_number
 CREATE OR REPLACE FUNCTION sys.to_number(number)
 RETURNS sys.number
-AS 'select sys.to_number($1::text)'
+AS 'select $1'
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
 
 CREATE OR REPLACE FUNCTION sys.to_number(number, number)

@@ -1261,6 +1261,62 @@ SELECT '' AS to_number_16, to_number('12.34','9G999D99');
 
 SELECT '' AS to_number_17, to_number('1122.34','9G999D99');
 ERROR:  invalid number format model
+SHOW nls_numeric_characters;
+ nls_numeric_characters 
+------------------------
+ .,
+(1 row)
+
+SET nls_numeric_characters = '.';
+ERROR:  NLS_NUMERIC_CHARACTERS must contain two distinct single-byte characters that are not numeric syntax characters
+SET nls_numeric_characters = '..';
+ERROR:  NLS_NUMERIC_CHARACTERS must contain two distinct single-byte characters that are not numeric syntax characters
+SET nls_numeric_characters = '1,';
+ERROR:  NLS_NUMERIC_CHARACTERS must contain two distinct single-byte characters that are not numeric syntax characters
+SET nls_numeric_characters = ',.';
+SELECT to_char(1234.56::number, '9G999D99') AS localized_to_char;
+ localized_to_char 
+-------------------
+  1.234,56
+(1 row)
+
+SELECT to_number('1.234,56', '9G999D99') AS localized_formatted_to_number;
+ localized_formatted_to_number 
+-------------------------------
+ 1234.56
+(1 row)
+
+SELECT to_number('12,34') AS localized_to_number;
+ localized_to_number 
+---------------------
+ 12.34
+(1 row)
+
+SELECT to_number('1.234,56') AS localized_grouped_to_number;
+ localized_grouped_to_number 
+-----------------------------
+ 1234.56
+(1 row)
+
+SELECT to_number(12.34::number) AS number_to_number;
+ number_to_number 
+------------------
+ 12.34
+(1 row)
+
+SELECT to_char(12.34::number, '99.99') AS literal_decimal_to_char;
+ literal_decimal_to_char 
+-------------------------
+  12.34
+(1 row)
+
+SELECT to_char(1234.56::number, '9,999.99') AS literal_punctuation_to_char;
+ literal_punctuation_to_char 
+-----------------------------
+  1,234.56
+(1 row)
+
+RESET nls_numeric_characters;
 -- Without a format model, trailing spaces are accepted in the integer part.
 SELECT '' AS to_number_18, to_number('123 ');
  to_number_18 | to_number 

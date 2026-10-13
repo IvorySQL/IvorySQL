@@ -230,7 +230,8 @@ typedef enum
 #define GUC_RUNTIME_COMPUTED   0x004000 /* delay processing in 'postgres -C' */
 #define GUC_ALLOW_IN_PARALLEL  0x008000 /* allow setting in parallel mode */
 
-#define GUC_DISALLOW_IN_DB_ROLE_SETTING  0x800000 /* IvorySQL: can't set via ALTER USER/DATABASE SET */
+#define GUC_DISALLOW_IN_DB_ROLE_SETTING  0x800000	/* IvorySQL: can't set via
+													 * ALTER USER/DATABASE SET */
 
 #define GUC_UNIT_KB			 0x01000000 /* value is in kilobytes */
 #define GUC_UNIT_BLOCKS		 0x02000000 /* value is in blocks */
@@ -291,7 +292,7 @@ extern PGDLLIMPORT bool log_btree_build_stats;
 extern PGDLLIMPORT char *event_source;
 
 extern PGDLLIMPORT bool check_function_bodies;
-extern PGDLLIMPORT bool	enable_emptystring_to_NULL;
+extern PGDLLIMPORT bool enable_emptystring_to_NULL;
 extern PGDLLIMPORT bool current_role_is_superuser;
 
 extern PGDLLIMPORT bool AllowAlterSystem;
@@ -334,30 +335,31 @@ extern PGDLLIMPORT int identifier_case_switch;
 extern PGDLLIMPORT bool identifier_case_from_pg_dump;
 extern PGDLLIMPORT bool enable_case_switch;
 
-extern int     database_mode;
-extern PGDLLIMPORT int	compatible_db;
+extern int	database_mode;
+extern PGDLLIMPORT int compatible_db;
 
-extern PGDLLIMPORT bool	enable_emptystring_to_NULL;
+extern PGDLLIMPORT bool enable_emptystring_to_NULL;
 
 extern PGDLLIMPORT int nls_length_semantics;
 extern PGDLLIMPORT char *nls_date_format;
 extern PGDLLIMPORT char *nls_timestamp_format;
 extern PGDLLIMPORT char *nls_timestamp_tz_format;
-extern PGDLLIMPORT int	datetime_ignore_nls_mask;
+extern PGDLLIMPORT char *nls_numeric_characters;
+extern PGDLLIMPORT int datetime_ignore_nls_mask;
 
-extern PGDLLIMPORT bool	seq_scale_fixed;
-extern PGDLLIMPORT bool internal_warning; 
+extern PGDLLIMPORT bool seq_scale_fixed;
+extern PGDLLIMPORT bool internal_warning;
 
 extern PGDLLIMPORT bool default_with_rowids;
 extern PGDLLIMPORT int rowid_seq_cache;
 
-extern PGDLLIMPORT bool	allow_out_parameter_const;
+extern PGDLLIMPORT bool allow_out_parameter_const;
 
 #define ORADATE_MASK			0x01
 #define ORATIMESTAMP_MASK		0x02
 #define ORATIMESTAMPTZ_MASK		0x04
 #define ORATIMESTAMPLTZ_MASK	0x08
-#define DATETIME_IGNORE_NLS(i, m) (((i) & (m)) != 0) 
+#define DATETIME_IGNORE_NLS(i, m) (((i) & (m)) != 0)
 #ifdef DEBUG_BOUNDED_SORT
 extern PGDLLIMPORT bool optimize_bounded_sort;
 #endif
