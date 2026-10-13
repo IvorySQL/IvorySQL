@@ -1581,19 +1581,33 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 
 			if (!get_oracle_collection_element(prorettype, &elemOid,
 											   &elemTypmod, &collation))
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-						 errmsg("PIPELINED function must return a collection type"),
-						 errhint("Declare the return type with CREATE TYPE ... AS TABLE OF."),
-						 parser_errposition(pstate, stmt->returnType->location)));
-			if (IsPolymorphicType(elemOid) || elemOid == RECORDOID)
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("polymorphic PIPELINED functions are not supported"),
-						 parser_errposition(pstate, stmt->returnType->location)));
-			procollectiontype = prorettype;
-			prorettype = elemOid;
-			returnsSet = true;
+			{
+				/*
+				 * Not a collection.  Outside the Oracle parser this is a
+				 * hard error; in Oracle mode keep the deferred-compilation
+				 * contract (the routine is created with prostatus INVALID
+				 * or the validator failure is downgraded to a WARNING) and
+				 * leave the declared type untouched.
+				 */
+				if (compatible_db != ORA_PARSER)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+							 errmsg("PIPELINED function must return a collection type"),
+							 errhint("Declare the return type with CREATE TYPE ... AS TABLE OF."),
+							 parser_errposition(pstate, stmt->returnType->location)));
+				procollectiontype = InvalidOid;
+			}
+			else
+			{
+				if (IsPolymorphicType(elemOid) || elemOid == RECORDOID)
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("polymorphic PIPELINED functions are not supported"),
+							 parser_errposition(pstate, stmt->returnType->location)));
+				procollectiontype = prorettype;
+				prorettype = elemOid;
+				returnsSet = true;
+			}
 		}
 
 		if (OidIsValid(requiredResultType) && prorettype != requiredResultType &&
