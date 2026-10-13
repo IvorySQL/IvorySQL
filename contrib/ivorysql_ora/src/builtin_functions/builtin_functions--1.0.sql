@@ -679,6 +679,36 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
+/*
+ * substrc --- Oracle's SUBSTRC: SUBSTR with position and substring_length
+ * measured in Unicode complete characters, the same counting unit as
+ * sys.lengthc(): the code points of the NFC-normalized string.  A base
+ * character followed by combining marks and a supplementary character
+ * outside the BMP each count as one.
+ *
+ * Oracle's SUBSTR position semantics are honored: position 0 is treated as
+ * 1, a negative position counts backward from the end of the string, and a
+ * length less than 1 -- as well as a start past the end -- answers null
+ * (Oracle: the empty string is null, the same convention substrb uses).
+ */
+CREATE FUNCTION sys.substrc(varchar, number)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc_no_length'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(varchar, number, number)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+COMMENT ON FUNCTION sys.substrc(varchar, number, number) IS 'Return part of a string, position and length counted in Unicode complete characters';
+
 CREATE FUNCTION sys.replace(varchar, varchar, varchar default NULL)
 RETURNS text
 AS 'MODULE_PATHNAME','ora_replace'
@@ -1617,6 +1647,68 @@ CREATE FUNCTION sys.instr(str varchar2, patt varchar2)
 RETURNS int
 AS $$
   select sys.instr(str::text, patt::text);
+$$ LANGUAGE SQL
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+/*
+ * instrc --- Oracle's INSTRC: INSTR with the search position and the
+ * returned position counted in Unicode complete characters, the same
+ * counting unit as sys.lengthc(): the code points of the NFC-normalized
+ * string.  The overload shape mirrors sys.instr() above: the text/int
+ * overloads bind the C symbols and the varchar2/number ones are thin
+ * wrappers, so unknown literals and Oracle-side NUMBER arguments keep
+ * resolving the way they do for INSTR.
+ */
+CREATE FUNCTION sys.instrc(str text, patt text, sta int, nth int)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_4'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(str text, patt text, sta int)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_3'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(str text, patt text)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_2'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+COMMENT ON FUNCTION sys.instrc(str text, patt text) IS 'Return the position of a substring, positions counted in Unicode complete characters';
+
+CREATE FUNCTION sys.instrc(str varchar2, patt varchar2, sta number, nth number)
+RETURNS int
+AS $$
+  select sys.instrc(str::text, patt::text, sta::integer, nth::integer);
+$$ LANGUAGE SQL
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(str varchar2, patt varchar2, sta number)
+RETURNS int
+AS $$
+  select sys.instrc(str::text, patt::text, sta::integer);
+$$ LANGUAGE SQL
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(str varchar2, patt varchar2)
+RETURNS int
+AS $$
+  select sys.instrc(str::text, patt::text);
 $$ LANGUAGE SQL
 STRICT
 PARALLEL SAFE
