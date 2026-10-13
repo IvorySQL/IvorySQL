@@ -368,6 +368,9 @@ BEGIN
     RETURN 1;
 END;
 /
+ERROR:  PIPELINED USING implementation is not supported
+LINE 9: PIPELINED USING pg_catalog.int4
+        ^
 CREATE or replace FUNCTION ora_func RETURN integer
 SHARING = NONE AUTHID DEFINER
 ACCESSIBLE BY ( FUNCTION A.B, PROCEDURE C.D )
@@ -396,6 +399,9 @@ BEGIN
     RETURN 1;
 END;
 /
+ERROR:  PIPELINED USING implementation is not supported
+LINE 9: PIPELINED ROW POLYMORPHIC USING pg_catalog.int4
+        ^
 CREATE or replace FUNCTION ora_func RETURN integer
 SHARING = NONE AUTHID DEFINER
 ACCESSIBLE BY ( FUNCTION A.B, PROCEDURE C.D )
@@ -410,6 +416,9 @@ BEGIN
     RETURN 1;
 END;
 /
+ERROR:  PIPELINED USING implementation is not supported
+LINE 9: PIPELINED TABLE POLYMORPHIC USING pg_catalog.int4
+        ^
 -- sql_macro_clause
 CREATE or replace FUNCTION ora_func RETURN integer
 SHARING = NONE AUTHID DEFINER
@@ -426,6 +435,9 @@ BEGIN
     RETURN 1;
 END;
 /
+ERROR:  PIPELINED USING implementation is not supported
+LINE 9: PIPELINED TABLE POLYMORPHIC USING pg_catalog.int4
+        ^
 CREATE or replace FUNCTION ora_func RETURN integer
 SHARING = NONE AUTHID DEFINER
 ACCESSIBLE BY ( FUNCTION A.B, PROCEDURE C.D )
@@ -441,6 +453,9 @@ BEGIN
     RETURN 1;
 END;
 /
+ERROR:  PIPELINED USING implementation is not supported
+LINE 9: PIPELINED TABLE POLYMORPHIC USING pg_catalog.int4
+        ^
 CREATE or replace FUNCTION ora_func RETURN integer
 SHARING = NONE AUTHID DEFINER
 ACCESSIBLE BY ( FUNCTION A.B, PROCEDURE C.D )
@@ -456,6 +471,9 @@ BEGIN
     RETURN 1;
 END;
 /
+ERROR:  PIPELINED USING implementation is not supported
+LINE 9: PIPELINED TABLE POLYMORPHIC USING pg_catalog.int4
+        ^
 CREATE or replace FUNCTION ora_func RETURN integer
 SHARING = NONE AUTHID DEFINER
 ACCESSIBLE BY ( FUNCTION A.B, PROCEDURE C.D )
@@ -471,6 +489,9 @@ BEGIN
     RETURN 1;
 END;
 /
+ERROR:  PIPELINED USING implementation is not supported
+LINE 9: PIPELINED TABLE POLYMORPHIC USING pg_catalog.int4
+        ^
 CREATE or replace FUNCTION ora_func RETURN integer
 SHARING = NONE AUTHID DEFINER
 ACCESSIBLE BY ( FUNCTION A.B, PROCEDURE C.D )
@@ -486,6 +507,9 @@ BEGIN
     RETURN 1;
 END;
 /
+ERROR:  PIPELINED USING implementation is not supported
+LINE 9: PIPELINED TABLE POLYMORPHIC USING pg_catalog.int4
+        ^
 --
 -- procedure
 --

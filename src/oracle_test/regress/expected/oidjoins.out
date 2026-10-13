@@ -53,6 +53,7 @@ NOTICE:  checking pg_proc {prolang} => pg_language {oid}
 NOTICE:  checking pg_proc {provariadic} => pg_type {oid}
 NOTICE:  checking pg_proc {prosupport} => pg_proc {oid}
 NOTICE:  checking pg_proc {prorettype} => pg_type {oid}
+NOTICE:  checking pg_proc {procollectiontype} => pg_type {oid}
 NOTICE:  checking pg_proc {proargtypes} => pg_type {oid}
 NOTICE:  checking pg_proc {proallargtypes} => pg_type {oid}
 NOTICE:  checking pg_proc {protrftypes} => pg_type {oid}
