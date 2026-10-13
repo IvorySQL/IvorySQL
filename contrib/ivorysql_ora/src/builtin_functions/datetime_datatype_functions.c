@@ -429,7 +429,10 @@ add_months(PG_FUNCTION_ARGS)
 	 * int that div() takes (n is 64-bit), so a large count used to wrap and the
 	 * function answered with an unrelated date.
 	 */
-	months = (int64) y * 12 + (m - 1) + n;
+	if (pg_add_s64_overflow((int64) y * 12 + (m - 1), n, &months))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("date out of range")));
 	year = months / 12;
 	if (year < 0)
 		year += 1;
@@ -456,7 +459,8 @@ add_months(PG_FUNCTION_ARGS)
 	result = date2j(y, m, d) - POSTGRES_EPOCH_JDATE;
 
 	if (pg_mul_s64_overflow(result, USECS_PER_DAY, &result) ||
-		pg_add_s64_overflow(result, time, &result))
+		pg_add_s64_overflow(result, time, &result) ||
+		!IS_VALID_TIMESTAMP(result))
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("date out of range")));

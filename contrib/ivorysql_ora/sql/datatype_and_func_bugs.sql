@@ -96,3 +96,7 @@ select add_months(date '2020-01-01', -4294967296) from dual;
 select add_months(date '2020-01-01', 2147483648) from dual;
 -- 2^31-1 months wraps inside the month arithmetic itself
 select add_months(date '2020-01-01', 2147483647) from dual;
+-- adding the largest int64 month count must not overflow the month index
+select add_months(date '2020-01-01', 9223372036854775807) from dual;
+-- END_TIMESTAMP is excluded even though its microsecond value fits in int64
+select add_months(date '2020-01-01', 3507084) from dual;
