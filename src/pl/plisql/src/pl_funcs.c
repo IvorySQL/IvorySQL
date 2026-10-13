@@ -374,6 +374,42 @@ typedef void (*plisql_expr_walker_callback) (PLiSQL_expr * expr,
 	plisql_statement_tree_walker_impl(s, (plisql_stmt_walker_callback) (sw), \
 									   (plisql_expr_walker_callback) (ew), c)
 
+/* Internal helpers for plisql_walk_stmt_exprs(). */
+static void plisql_statement_tree_walker_impl(PLiSQL_stmt * stmt,
+											  plisql_stmt_walker_callback stmt_callback,
+											  plisql_expr_walker_callback expr_callback,
+											  void *context);
+static void walk_exprs_stmt_cb(PLiSQL_stmt * stmt, void *context);
+static void walk_exprs_expr_cb(PLiSQL_expr * expr, void *context);
+
+/*
+ * plisql_walk_stmt_exprs
+ *
+ * Invoke the caller's expression callback on every PLiSQL_expr reachable
+ * from the statement tree rooted at stmt.  Used by the resumable pipelined
+ * interpreter to clear per-invocation caches carried on compiled
+ * expressions.
+ */
+void
+plisql_walk_stmt_exprs(PLiSQL_stmt * stmt, plisql_expr_walker_callback cb)
+{
+	plisql_statement_tree_walker(stmt, walk_exprs_stmt_cb, walk_exprs_expr_cb,
+								 (void *) cb);
+}
+
+static void
+walk_exprs_stmt_cb(PLiSQL_stmt * stmt, void *context)
+{
+	plisql_statement_tree_walker(stmt, walk_exprs_stmt_cb,
+								 walk_exprs_expr_cb, context);
+}
+
+static void
+walk_exprs_expr_cb(PLiSQL_expr * expr, void *context)
+{
+	((plisql_expr_walker_callback) context) (expr, NULL);
+}
+
 static void
 plisql_statement_tree_walker_impl(PLiSQL_stmt * stmt,
 								  plisql_stmt_walker_callback stmt_callback,

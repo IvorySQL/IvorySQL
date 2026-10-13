@@ -1398,6 +1398,10 @@ extern void delete_function(PLiSQL_function * func);
 
 extern void plisql_free_function(Oid funcOid);
 
+extern void plisql_walk_stmt_exprs(PLiSQL_stmt * stmt,
+								   void (*cb) (PLiSQL_expr * expr,
+											   void *context));
+
 /*
  * Functions in pl_exec.c
  */
@@ -1418,6 +1422,8 @@ extern void plisql_estate_setup(PLiSQL_execstate * estate,
 								ReturnSetInfo *rsi,
 								EState *simple_eval_estate,
 								ResourceOwner simple_eval_resowner);
+extern void copy_plisql_datums(PLiSQL_execstate * estate,
+							   PLiSQL_function * func);
 extern void plisql_bind_call_args(PLiSQL_execstate * estate,
 								  PLiSQL_function * func,
 								  FunctionCallInfo fcinfo);
@@ -1496,6 +1502,10 @@ extern void assign_simple_var(PLiSQL_execstate * estate, PLiSQL_var * var,
 extern void assign_text_var(PLiSQL_execstate * estate, PLiSQL_var * var,
 							const char *str);
 extern void exec_eval_cleanup(PLiSQL_execstate * estate);
+extern MemoryContext get_stmt_mcontext(PLiSQL_execstate * estate);
+extern void plisql_destroy_econtext(PLiSQL_execstate * estate);
+extern TupleDesc deconstruct_composite_datum(Datum value,
+											 HeapTupleData *tmptup);
 extern Datum plisql_exec_pipelined_function(PLiSQL_function * func,
 											FunctionCallInfo fcinfo);
 
