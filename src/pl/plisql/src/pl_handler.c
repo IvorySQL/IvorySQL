@@ -675,10 +675,21 @@ plisql_call_handler(PG_FUNCTION_ARGS)
 			/* there's no return value in this case */
 		}
 		else
-			retval = plisql_exec_function(func, fcinfo,
-										  NULL, NULL,
-										  procedure_resowner,
-										  !nonatomic);
+		{
+			/*
+			 * IvorySQL: Oracle pipelined table functions run through the
+			 * resumable value-per-call interpreter in pl_pipeline.c; the
+			 * usual materialized path would defeat their on-demand
+			 * semantics.
+			 */
+			if (func->fn_pipelined)
+				retval = plisql_exec_pipelined_function(func, fcinfo);
+			else
+				retval = plisql_exec_function(func, fcinfo,
+											  NULL, NULL,
+											  procedure_resowner,
+											  !nonatomic);
+		}
 	}
 	PG_FINALLY();
 	{

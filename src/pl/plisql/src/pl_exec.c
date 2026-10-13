@@ -291,11 +291,11 @@ static void coerce_function_result_tuple(PLiSQL_execstate * estate,
 										 TupleDesc tupdesc);
 static void plisql_exec_error_callback(void *arg);
 static void plisql_execsql_error_callback(void *arg);
-static void copy_plisql_datums(PLiSQL_execstate * estate,
+void copy_plisql_datums(PLiSQL_execstate * estate,
 							   PLiSQL_function * func);
 static void plisql_fulfill_promise(PLiSQL_execstate * estate,
 								   PLiSQL_var * var);
-static MemoryContext get_stmt_mcontext(PLiSQL_execstate * estate);
+MemoryContext get_stmt_mcontext(PLiSQL_execstate * estate);
 static void push_stmt_mcontext(PLiSQL_execstate * estate);
 static void pop_stmt_mcontext(PLiSQL_execstate * estate);
 
@@ -451,7 +451,7 @@ static bool compatible_tupdescs(TupleDesc src_tupdesc, TupleDesc dst_tupdesc);
 static HeapTuple make_tuple_from_row(PLiSQL_execstate * estate,
 									 PLiSQL_row * row,
 									 TupleDesc tupdesc);
-static TupleDesc deconstruct_composite_datum(Datum value,
+TupleDesc deconstruct_composite_datum(Datum value,
 											 HeapTupleData *tmptup);
 void exec_move_row_from_datum(PLiSQL_execstate * estate,
 									 PLiSQL_variable * target,
@@ -474,7 +474,7 @@ static plisql_CastHashEntry * get_cast_hashentry(PLiSQL_execstate * estate,
 static void exec_init_tuple_store(PLiSQL_execstate * estate);
 void exec_set_found(PLiSQL_execstate * estate, bool state);
 static void plisql_create_econtext(PLiSQL_execstate * estate);
-static void plisql_destroy_econtext(PLiSQL_execstate * estate);
+void plisql_destroy_econtext(PLiSQL_execstate * estate);
 void assign_simple_var(PLiSQL_execstate * estate, PLiSQL_var * var,
 							  Datum newvalue, bool isnull, bool freeable);
 void assign_text_var(PLiSQL_execstate * estate, PLiSQL_var * var,
@@ -1609,7 +1609,7 @@ plisql_execsql_error_callback(void *arg)
  * Support function for initializing local execution variables
  * ----------
  */
-static void
+void
 copy_plisql_datums(PLiSQL_execstate * estate,
 				   PLiSQL_function * func)
 {
@@ -1859,7 +1859,7 @@ plisql_fulfill_promise(PLiSQL_execstate * estate,
  * have one already.  It will be a child of stmt_mcontext_parent, which is
  * either the function's main context or a pushed-down outer stmt_mcontext.
  */
-static MemoryContext
+MemoryContext
 get_stmt_mcontext(PLiSQL_execstate * estate)
 {
 	if (estate->stmt_mcontext == NULL)
@@ -4682,25 +4682,36 @@ exec_prepare_plan(PLiSQL_execstate * estate,
 {
 	SPIPlanPtr	plan;
 	SPIPrepareOptions options;
+	MemoryContext oldcontext;
 
 	/*
-	 * Generate and save the plan
+	 * Generate and save the plan.  The plan and its simple-expression cache
+	 * are cached on the compiled function, so they must be allocated in the
+	 * function's own context, whatever context the caller runs in (the
+	 * resumable pipelined interpreter keeps CurrentMemoryContext in the
+	 * query-lifespan invocation context across calls).
 	 */
 	memset(&options, 0, sizeof(options));
 	options.parserSetup = (ParserSetupHook) plisql_parser_setup;
 	options.parserSetupArg = expr;
 	options.parseMode = expr->parseMode;
 	options.cursorOptions = cursorOptions;
+
+	oldcontext = MemoryContextSwitchTo(estate->func->fn_cxt);
 	plan = SPI_prepare_extended(expr->query, &options);
 	if (plan == NULL)
+	{
+		MemoryContextSwitchTo(oldcontext);
 		elog(ERROR, "SPI_prepare_extended failed for \"%s\": %s",
 			 expr->query, SPI_result_code_string(SPI_result));
+	}
 
 	SPI_keepplan(plan);
 	expr->plan = plan;
 
 	/* Check to see if it's a simple expression */
 	exec_simple_check_plan(estate, expr);
+	MemoryContextSwitchTo(oldcontext);
 }
 
 
@@ -8572,7 +8583,7 @@ make_tuple_from_row(PLiSQL_execstate * estate,
  * Note: it's caller's responsibility to be sure value is of composite type.
  * Also, best to call this in a short-lived context, as it might leak memory.
  */
-static TupleDesc
+TupleDesc
 deconstruct_composite_datum(Datum value, HeapTupleData *tmptup)
 {
 	HeapTupleHeader td;
@@ -9800,7 +9811,7 @@ plisql_create_econtext(PLiSQL_execstate * estate)
  * We check that it matches the top stack entry, and destroy the stack
  * entry along with the context.
  */
-static void
+void
 plisql_destroy_econtext(PLiSQL_execstate * estate)
 {
 	SimpleEcontextStackEntry *next;
