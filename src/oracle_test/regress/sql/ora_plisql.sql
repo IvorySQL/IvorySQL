@@ -1530,3 +1530,18 @@ SELECT pg_get_function_arguments(oid) AS args FROM pg_proc WHERE proname = 'ora_
 -- cleanup: CASCADE drops the dependent function along with the type
 DROP TYPE ora_ct_dep CASCADE;
 SELECT count(*) AS function_rows FROM pg_proc WHERE proname = 'ora_ct_dep_f';
+
+-- Exercise the return-type path separately: no argument names this type.
+CREATE TYPE ora_ct_ret_dep AS (a int);
+CREATE OR REPLACE FUNCTION ora_ct_ret_dep_f RETURN ora_ct_ret_dep IS
+BEGIN
+    RETURN NULL;
+END;
+/
+DROP TYPE ora_ct_ret_dep;
+SELECT count(*) AS missing_return_type_refs
+  FROM pg_proc p
+ WHERE p.proname = 'ora_ct_ret_dep_f'
+   AND NOT EXISTS (SELECT 1 FROM pg_type ty WHERE ty.oid = p.prorettype);
+DROP TYPE ora_ct_ret_dep CASCADE;
+SELECT count(*) AS return_function_rows FROM pg_proc WHERE proname = 'ora_ct_ret_dep_f';

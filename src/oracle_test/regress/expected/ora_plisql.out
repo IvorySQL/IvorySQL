@@ -1917,3 +1917,31 @@ SELECT count(*) AS function_rows FROM pg_proc WHERE proname = 'ora_ct_dep_f';
              0
 (1 row)
 
+-- Exercise the return-type path separately: no argument names this type.
+CREATE TYPE ora_ct_ret_dep AS (a int);
+CREATE OR REPLACE FUNCTION ora_ct_ret_dep_f RETURN ora_ct_ret_dep IS
+BEGIN
+    RETURN NULL;
+END;
+/
+DROP TYPE ora_ct_ret_dep;
+ERROR:  cannot drop type ora_ct_ret_dep because other objects depend on it
+DETAIL:  function ora_ct_ret_dep_f() depends on type ora_ct_ret_dep
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+SELECT count(*) AS missing_return_type_refs
+  FROM pg_proc p
+ WHERE p.proname = 'ora_ct_ret_dep_f'
+   AND NOT EXISTS (SELECT 1 FROM pg_type ty WHERE ty.oid = p.prorettype);
+ missing_return_type_refs 
+--------------------------
+                        0
+(1 row)
+
+DROP TYPE ora_ct_ret_dep CASCADE;
+NOTICE:  drop cascades to function ora_ct_ret_dep_f()
+SELECT count(*) AS return_function_rows FROM pg_proc WHERE proname = 'ora_ct_ret_dep_f';
+ return_function_rows 
+----------------------
+                    0
+(1 row)
+
