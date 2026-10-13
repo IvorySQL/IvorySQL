@@ -34,9 +34,9 @@ int			identifier_case_switch = INTERCHANGE;
 bool		identifier_case_from_pg_dump = false;
 bool		enable_case_switch = true;
 
-static char	   *nls_territory = "AMERICA";
-static char	   *nls_currency = "$";
-static char	   *nls_iso_currency = "AMERICA";
+static char *nls_territory = "AMERICA";
+static char *nls_currency = "$";
+static char *nls_iso_currency = "AMERICA";
 
 bool		enable_emptystring_to_NULL = false;
 
@@ -56,7 +56,8 @@ int			rowid_seq_cache = 20;
 
 #ifdef IVY_GUC_VAR_STRUCT
 
-/* The comments shown as below define the
+/*
+ * The comments shown as below define the
  * value range of guc parameters "database_mode"
  * and "compatible_db".
  */
@@ -105,6 +106,7 @@ void		assign_compatible_mode(int newval, void *extra);
 static void nls_case_conversion(char **param, char type);
 static bool nls_length_check(char **newval, void **extra, GucSource source);
 static bool nls_territory_check(char **newval, void **extra, GucSource source);
+static bool nls_numeric_characters_check(char **newval, void **extra, GucSource source);
 #endif
 
 #if 0
@@ -186,12 +188,11 @@ static struct config_bool Ivy_ConfigureNamesBool[] =
 	/*
 	 * ivorysql.default_with_rowids
 	 *
-	 * When enabled, all newly created tables will automatically include
-	 * an Oracle-compatible ROWID pseudo-column. This provides compatibility
-	 * with Oracle applications that rely on ROWID for row identification.
+	 * When enabled, all newly created tables will automatically include an
+	 * Oracle-compatible ROWID pseudo-column. This provides compatibility with
+	 * Oracle applications that rely on ROWID for row identification.
 	 *
-	 * Default: off
-	 * Context: USERSET (can be changed by any user)
+	 * Default: off Context: USERSET (can be changed by any user)
 	 */
 	{
 		{"ivorysql.default_with_rowids", PGC_USERSET, DEVELOPER_OPTIONS,
@@ -494,7 +495,7 @@ static void
 nls_case_conversion(char **param, char type)
 {
 	char	   *p;
-	size_t	  len;
+	size_t		len;
 
 CASE_CONVERSION:
 	len = strlen(*param);
@@ -560,6 +561,24 @@ nls_length_check(char **newval, void **extra, GucSource source)
 		}
 		else if (identifier_case_switch == INTERCHANGE)
 			nls_case_conversion(newval, 'b');
+	}
+
+	return true;
+}
+
+static bool
+nls_numeric_characters_check(char **newval, void **extra, GucSource source)
+{
+	if (strlen(*newval) != 2 ||
+		(unsigned char) (*newval)[0] >= 0x80 ||
+		(unsigned char) (*newval)[1] >= 0x80 ||
+		(*newval)[0] == (*newval)[1] ||
+		strchr("0123456789+-<>", (*newval)[0]) != NULL ||
+		strchr("0123456789+-<>", (*newval)[1]) != NULL)
+	{
+		GUC_check_errcode(ERRCODE_INVALID_PARAMETER_VALUE);
+		GUC_check_errmsg("NLS_NUMERIC_CHARACTERS must contain two distinct single-byte characters that are not numeric syntax characters");
+		return false;
 	}
 
 	return true;
