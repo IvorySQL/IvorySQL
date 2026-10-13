@@ -78,6 +78,9 @@
 <!ENTITY plsql      SYSTEM "plpgsql.sgml">
 <!ENTITY pltcl      SYSTEM "pltcl.sgml">
 
+<!-- IvorySQL: Oracle compatibility features -->
+<!ENTITY oracle-pipelined SYSTEM "oracle-pipelined.sgml">
+
 <!-- reference pages -->
 <!ENTITY % allfiles   SYSTEM "ref/allfiles.sgml">
 %allfiles;
