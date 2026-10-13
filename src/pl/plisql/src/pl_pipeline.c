@@ -57,6 +57,7 @@
 #include "storage/lock.h"
 #include "tcop/pquery.h"
 #include "utils/datum.h"
+#include "utils/expandeddatum.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -496,9 +497,6 @@ pipe_setup_forc(PipeInvocation *inv, PLiSQL_stmt_forc *stmt)
 /*
  * Evaluate a PIPE ROW expression once, convert it to the element type and
  * park the result in the invocation so it outlives this call.
-/*
- * Evaluate a PIPE ROW expression once, convert it to the element type and
- * park the result in the invocation so it outlives this call.
  *
  * All per-yield allocations go into inv->yieldcxt, which the driver resets
  * at the start of each call: the previous row has already been consumed by
@@ -584,6 +582,64 @@ pipe_do_yield(PipeInvocation *inv, PLiSQL_stmt_pipe_row *stmt)
 
 	MemoryContextSwitchTo(oldcontext);
 	exec_eval_cleanup(estate);
+}
+
+/*
+ * Reparent or copy the variable values the suspended invocation still
+ * points at into inv->mcxt, which lives until the invocation is released.
+ *
+ * exec_assign_value transfers ownership of by-reference values via
+ * datumTransfer() into CurrentMemoryContext, and SPI leaves the current
+ * context in procCxt after every query (_SPI_end_call does not restore
+ * the caller's context).  plisql_call_handler SPI_finish()es at the end
+ * of each call, destroying procCxt, so anything parked there must be
+ * migrated before the executor gets control back.  Expanded objects are
+ * reparented; plain varlena values are copied and the source (still
+ * valid at this point) is freed.
+ */
+static void
+pipe_migrate_values(PipeInvocation *inv)
+{
+	PLiSQL_execstate *estate = &inv->estate;
+	MemoryContext oldcontext;
+	int			i;
+
+	oldcontext = MemoryContextSwitchTo(inv->mcxt);
+
+	for (i = 0; i < estate->ndatums; i++)
+	{
+		PLiSQL_datum *d = estate->datums[i];
+
+		if (d->dtype == PLISQL_DTYPE_VAR || d->dtype == PLISQL_DTYPE_PROMISE)
+		{
+			PLiSQL_var *var = (PLiSQL_var *) d;
+
+			if (var->freeval && !var->isnull &&
+				!var->datatype->typbyval)
+			{
+				Datum		newvalue;
+
+				newvalue = datumTransfer(var->value, false,
+										 var->datatype->typlen);
+				if (newvalue != var->value)
+				{
+					pfree(DatumGetPointer(var->value));
+					var->value = newvalue;
+				}
+			}
+		}
+		else if (d->dtype == PLISQL_DTYPE_REC)
+		{
+			PLiSQL_rec *rec = (PLiSQL_rec *) d;
+
+			if (rec->erh != NULL &&
+				rec->erh->hdr.eoh_context != inv->mcxt)
+				TransferExpandedObject(EOHPGetRWDatum(&rec->erh->hdr),
+									   inv->mcxt);
+		}
+	}
+
+	MemoryContextSwitchTo(oldcontext);
 }
 /* --------------------------------------------------------------------------
  * CASE selection (evaluated once when the CASE frame is pushed)
@@ -1324,6 +1380,12 @@ plisql_exec_pipelined_function(PLiSQL_function * func, FunctionCallInfo fcinfo)
 
 	if (step == PIPE_STEP_YIELD)
 	{
+		/* The executor consumes each returned row synchronously before
+		 * issuing the next call, so inv->retval is safe to hand out as
+		 * is.  Live variable values are a different matter: they may be
+		 * parked in this call's SPI procedure context, which dies at
+		 * SPI_finish, so migrate them now (see pipe_migrate_values). */
+		pipe_migrate_values(inv);
 		rsi->isDone = ExprMultipleResult;
 		fcinfo->isnull = inv->retisnull;
 		return inv->retval;
