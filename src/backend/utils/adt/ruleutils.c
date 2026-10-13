@@ -3653,8 +3653,23 @@ ivy_get_plisql_functiondef(PG_FUNCTION_ARGS)
 /* Oracle uses the RETURN keyword in function return syntax */
 	if (isfunction)
 	{
-		appendStringInfoString(&buf, " RETURN ");
-		print_function_rettype(&buf, proctup);
+		if (proc->propipelined && OidIsValid(proc->procollectiontype))
+		{
+			/*
+			 * Preserve the Oracle declaration: return the collection type
+			 * with the PIPELINED marker instead of SETOF <element>, so the
+			 * definition can be replayed as-is.
+			 */
+			appendStringInfoString(&buf, " RETURN ");
+			appendStringInfoString(&buf,
+								   format_type_be_qualified(proc->procollectiontype));
+			appendStringInfoString(&buf, " PIPELINED");
+		}
+		else
+		{
+			appendStringInfoString(&buf, " RETURN ");
+			print_function_rettype(&buf, proctup);
+		}
 		appendStringInfoChar(&buf, '\n');
 	}
 
