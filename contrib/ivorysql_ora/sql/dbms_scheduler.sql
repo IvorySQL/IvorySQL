@@ -121,18 +121,19 @@ SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
   'FREQ=WEEKLY;BYDAY=MON;BYMONTHDAY=14;BYHOUR=9;BYMINUTE=0;BYSECOND=0',
   '2030-01-07 09:00:00+00', '2030-01-06 00:00:00+00') AS weekly_bymonthday;
 
--- CREATE_JOB must persist the same filtered first run date
+-- CREATE_JOB must persist the same filtered first run date. Keep the job
+-- fixtures well into the future so they remain runnable after 2030.
 SET client_min_messages TO error;
 BEGIN
   dbms_scheduler.create_job(job_name => 'reg_job_weekly_bydate',
       job_type => 'PLSQL_BLOCK', job_action => 'BEGIN NULL; END;',
-      start_date => TIMESTAMP '2030-01-07 09:00:00+00',
+      start_date => TIMESTAMP '2092-01-07 09:00:00+00',
       repeat_interval =>
-        'FREQ=WEEKLY;BYDAY=MON;BYDATE=20300114;BYHOUR=9;BYMINUTE=0;BYSECOND=0',
+        'FREQ=WEEKLY;BYDAY=MON;BYDATE=20920114;BYHOUR=9;BYMINUTE=0;BYSECOND=0',
       enabled => TRUE);
   dbms_scheduler.create_job(job_name => 'reg_job_weekly_bymonthday',
       job_type => 'PLSQL_BLOCK', job_action => 'BEGIN NULL; END;',
-      start_date => TIMESTAMP '2030-01-07 09:00:00+00',
+      start_date => TIMESTAMP '2092-01-07 09:00:00+00',
       repeat_interval =>
         'FREQ=WEEKLY;BYDAY=MON;BYMONTHDAY=14;BYHOUR=9;BYMINUTE=0;BYSECOND=0',
       enabled => TRUE);
