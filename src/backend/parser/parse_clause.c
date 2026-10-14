@@ -588,11 +588,11 @@ transformOracleTableFunction(ParseState *pstate, RangeFunction *r)
 		ort->val = (Node *) ind;
 		outerq->targetList = list_make1(ort);
 
-		innerFrom->lateral = false;
+		innerFrom->lateral = true;
 		innerFrom->subquery = (Node *) innerq;
 		outerq->fromClause = list_make1(innerFrom);
 
-		outer->lateral = false;
+		outer->lateral = true;
 		outer->subquery = (Node *) outerq;
 		outer->alias = r->alias;
 		return transformRangeSubselect(pstate, outer);
