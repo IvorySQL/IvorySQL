@@ -291,6 +291,13 @@ pipe_frame_iteration(PipeInvocation *inv, PipeFrame *frame)
 				if (frame->fori_done)
 					return false;
 
+				if (frame->fori_reverse ?
+					(frame->fori_value < PG_INT32_MIN + frame->fori_step) :
+					(frame->fori_value > PG_INT32_MAX - frame->fori_step))
+				{
+					frame->fori_done = true;
+					return false;
+				}
 				frame->fori_value += (frame->fori_reverse ?
 									  -frame->fori_step : frame->fori_step);
 				if (frame->fori_reverse ?
@@ -539,6 +546,7 @@ pipe_do_yield(PipeInvocation *inv, PLiSQL_stmt_pipe_row *stmt)
 			HeapTupleData tmptup;
 			TupleDesc	valuedesc;
 			HeapTuple	tuple;
+			TupleConversionMap *map;
 			int			natts = inv->rettupdesc->natts;
 			Datum	   *values;
 			bool	   *nulls;
@@ -549,6 +557,8 @@ pipe_do_yield(PipeInvocation *inv, PLiSQL_stmt_pipe_row *stmt)
 						 errmsg("cannot return non-composite value from pipelined function returning composite type")));
 
 			valuedesc = deconstruct_composite_datum(value, &tmptup);
+			map = convert_tuples_by_position(valuedesc, inv->rettupdesc,
+											  "PIPE ROW value has the wrong row type");
 
 			/*
 			 * Rebuild the tuple from its fields against the expected row
@@ -556,16 +566,22 @@ pipe_do_yield(PipeInvocation *inv, PLiSQL_stmt_pipe_row *stmt)
 			 * (type OID / typmod from inv->rettupdesc) and clean payload,
 			 * independent of the source datum's header state.
 			 */
-			values = (Datum *) palloc(natts * sizeof(Datum));
-			nulls = (bool *) palloc(natts * sizeof(bool));
-			heap_deform_tuple(&tmptup, valuedesc, values, nulls);
-
-			tuple = heap_form_tuple(inv->rettupdesc, values, nulls);
+			if (map != NULL)
+				tuple = execute_attr_map_tuple(&tmptup, map);
+			else
+			{
+				values = (Datum *) palloc(natts * sizeof(Datum));
+				nulls = (bool *) palloc(natts * sizeof(bool));
+				heap_deform_tuple(&tmptup, valuedesc, values, nulls);
+				tuple = heap_form_tuple(inv->rettupdesc, values, nulls);
+				pfree(values);
+				pfree(nulls);
+			}
 			HeapTupleHeaderSetDatumLength(tuple->t_data, tuple->t_len);
 			HeapTupleHeaderSetTypeId(tuple->t_data, estate->fn_rettype);
 			HeapTupleHeaderSetTypMod(tuple->t_data, inv->rettupdesc->tdtypmod);
-			pfree(values);
-			pfree(nulls);
+			if (map != NULL)
+				free_conversion_map(map);
 			ReleaseTupleDesc(valuedesc);
 
 			inv->retval = PointerGetDatum(tuple->t_data);
@@ -1129,7 +1145,11 @@ pipe_resume(PipeInvocation *inv)
 static void
 pipe_owner_release(Datum res)
 {
-	pipe_release_invocation((PipeInvocation *) DatumGetPointer(res), false);
+	PipeInvocation *inv = (PipeInvocation *) DatumGetPointer(res);
+
+	/* ResourceOwner has already removed this item from its array. */
+	inv->resowner = NULL;
+	pipe_release_invocation(inv, false);
 }
 
 static void
