@@ -174,6 +174,76 @@ END;
 
 SELECT * FROM TABLE(f_recs_null());
 
+-- A PIPE ROW composite must match the declared element descriptor. A wider
+-- value must raise an error instead of deforming into a smaller Datum array.
+CREATE TYPE pipeline_wide_rec AS (a NUMBER, b VARCHAR2(10), c NUMBER);
+CREATE OR REPLACE FUNCTION f_bad_rec
+RETURN rec_tab PIPELINED IS
+  r pipeline_wide_rec;
+BEGIN
+  r.a := 1;
+  r.b := 'x';
+  r.c := 2;
+  PIPE ROW(r);
+  RETURN;
+END;
+/
+SELECT * FROM TABLE(f_bad_rec());
+
+-- Composite TABLE() must also see preceding FROM items.
+SELECT p.k, t.a FROM pipeline_src p, TABLE(f_recs(p.k)) t
+WHERE p.k IN (1, 2) AND t.a = 1 ORDER BY p.k;
+
+-- EXIT from nested query FOR loops must close both implicit portals.
+CREATE OR REPLACE FUNCTION f_exit_cursors
+RETURN num_tab PIPELINED IS
+  open_cursors NUMBER;
+BEGIN
+  FOR r IN (SELECT k FROM pipeline_src) LOOP
+    FOR s IN (SELECT k FROM pipeline_src) LOOP
+      EXIT;
+    END LOOP;
+    EXIT;
+  END LOOP;
+  SELECT count(*) INTO open_cursors FROM pg_cursors;
+  PIPE ROW(open_cursors);
+  RETURN;
+END;
+/
+SELECT column_value FROM TABLE(f_exit_cursors());
+SELECT count(*) FROM pg_cursors;
+
+-- Integer FOR bounds may reach int32's maximum without wrapping.
+CREATE OR REPLACE FUNCTION f_max_loop
+RETURN num_tab PIPELINED IS
+BEGIN
+  FOR i IN 2147483647 .. 2147483647 LOOP
+    PIPE ROW(i);
+  END LOOP;
+  RETURN;
+END;
+/
+SET statement_timeout = '2s';
+SELECT column_value FROM TABLE(f_max_loop());
+RESET statement_timeout;
+
+-- FOUND reports whether a completed FOR loop ran at least once.
+CREATE OR REPLACE FUNCTION f_loop_found
+RETURN num_tab PIPELINED IS
+BEGIN
+  FOR i IN 1 .. 1 LOOP
+    NULL;
+  END LOOP;
+  IF FOUND THEN
+    PIPE ROW(1);
+  ELSE
+    PIPE ROW(0);
+  END IF;
+  RETURN;
+END;
+/
+SELECT column_value FROM TABLE(f_loop_found());
+
 --
 -- Collection constructors.
 --
@@ -341,10 +411,15 @@ DROP FUNCTION f_nulls;
 DROP FUNCTION f_cursor_for;
 DROP FUNCTION f_recs;
 DROP FUNCTION f_recs_null;
+DROP FUNCTION f_bad_rec;
+DROP FUNCTION f_exit_cursors;
+DROP FUNCTION f_max_loop;
+DROP FUNCTION f_loop_found;
 DROP FUNCTION f_materialized;
 DROP FUNCTION f_counted;
 DROP TYPE num_tab CASCADE;
 DROP TYPE rec_tab;
 DROP TYPE pipeline_rec;
+DROP TYPE pipeline_wide_rec;
 DROP TYPE pipeline_schema.limited_tab;
 DROP SCHEMA pipeline_schema;
