@@ -95,6 +95,7 @@ typedef struct PipeFrame
 	int32		fori_upper;
 	int32		fori_step;
 	bool		fori_done;
+	bool		loop_found;
 
 	/* query FOR state */
 	Portal		portal;			/* open across yields */
@@ -126,9 +127,6 @@ typedef struct PipeInvocation
 	 * the executor has consumed the previous row.
 	 */
 	MemoryContext yieldcxt;
-
-	/* open query-FOR portal held across yields, or NULL */
-	Portal		portal;
 
 	/* expected composite tupdesc (from get_call_result_type) */
 	TupleDesc	rettupdesc;
@@ -174,6 +172,43 @@ pipe_push_frame(PipeInvocation *inv, PipeFrameKind kind, PLiSQL_stmt *stmt,
 	return frame;
 }
 
+static void
+pipe_close_frame_portal(PipeFrame *frame)
+{
+	if (frame->portal != NULL)
+	{
+		SPI_cursor_close(frame->portal);
+		frame->portal = NULL;
+	}
+}
+
+/* Unwind every discarded frame before shortening the stack. */
+static void
+pipe_discard_frames(PipeInvocation *inv, int keep)
+{
+	int			i;
+
+	for (i = list_length(inv->frames) - 1; i >= keep; i--)
+	{
+		PipeFrame  *frame = (PipeFrame *) list_nth(inv->frames, i);
+
+		pipe_close_frame_portal(frame);
+		if (frame->kind == PIPE_FRAME_FORC && frame->curvar_was_null)
+		{
+			PLiSQL_var *curvar = (PLiSQL_var *)
+				plisql_get_datum(&inv->estate,
+								 inv->estate.datums[frame->curvarno]);
+
+			assign_simple_var(&inv->estate, curvar, (Datum) 0, true, false);
+		}
+		if (frame->kind == PIPE_FRAME_FORI ||
+			frame->kind == PIPE_FRAME_FORS ||
+			frame->kind == PIPE_FRAME_FORC)
+			exec_set_found(&inv->estate, frame->loop_found);
+	}
+	inv->frames = list_truncate(inv->frames, keep);
+}
+
 /* --------------------------------------------------------------------------
  * EXIT / CONTINUE handling
  * --------------------------------------------------------------------------
@@ -208,12 +243,12 @@ pipe_handle_exit(PipeInvocation *inv, int rc)
 				if (rc == PLISQL_RC_CONTINUE)
 				{
 					/* drop everything above the loop, restart it */
-					inv->frames = list_truncate(inv->frames, i + 1);
+					pipe_discard_frames(inv, i + 1);
 					frame->pc = list_length(frame->body);
 				}
 				else
 					/* EXIT: drop the target frame and everything above */
-					inv->frames = list_truncate(inv->frames, i);
+					pipe_discard_frames(inv, i);
 				return;
 			}
 			continue;			/* keep unwinding through non-matching frames */
@@ -223,7 +258,7 @@ pipe_handle_exit(PipeInvocation *inv, int rc)
 		{
 			if (is_loop)
 			{
-				inv->frames = list_truncate(inv->frames, i + 1);
+				pipe_discard_frames(inv, i + 1);
 				frame->pc = list_length(frame->body);
 				return;
 			}
@@ -236,7 +271,7 @@ pipe_handle_exit(PipeInvocation *inv, int rc)
 		{
 			if (is_loop)
 			{
-				inv->frames = list_truncate(inv->frames, i);
+				pipe_discard_frames(inv, i);
 				return;
 			}
 			/* unlabeled EXIT through a block: pop it and keep going */
@@ -289,13 +324,17 @@ pipe_frame_iteration(PipeInvocation *inv, PipeFrame *frame)
 				PLiSQL_var *lvar;
 
 				if (frame->fori_done)
+				{
+					exec_set_found(estate, frame->loop_found);
 					return false;
+				}
 
 				if (frame->fori_reverse ?
 					(frame->fori_value < PG_INT32_MIN + frame->fori_step) :
 					(frame->fori_value > PG_INT32_MAX - frame->fori_step))
 				{
 					frame->fori_done = true;
+					exec_set_found(estate, frame->loop_found);
 					return false;
 				}
 				frame->fori_value += (frame->fori_reverse ?
@@ -305,6 +344,7 @@ pipe_frame_iteration(PipeInvocation *inv, PipeFrame *frame)
 					(frame->fori_value > frame->fori_upper))
 				{
 					frame->fori_done = true;
+					exec_set_found(estate, frame->loop_found);
 					return false;
 				}
 				/* assign the invocation's copy of the datum */
@@ -330,11 +370,11 @@ pipe_frame_iteration(PipeInvocation *inv, PipeFrame *frame)
 				if (SPI_processed == 0)
 				{
 					/* exhausted */
-					SPI_cursor_close(frame->portal);
-					frame->portal = NULL;
-					inv->portal = NULL;
+					pipe_close_frame_portal(frame);
+					exec_set_found(estate, frame->loop_found);
 					return false;
 				}
+				frame->loop_found = true;
 
 				/* assign the invocation's copy of the loop variable */
 				lvar = (PLiSQL_variable *)
@@ -377,7 +417,6 @@ pipe_setup_fors(PipeInvocation *inv, PLiSQL_stmt_fors *stmt)
 	if (frame->portal == NULL)
 		elog(ERROR, "could not open implicit cursor: %s",
 			 SPI_result_code_string(SPI_result));
-	inv->portal = frame->portal;
 
 	/*
 	 * Fetch the first row now: like exec_stmt_fors, the loop body must not
@@ -387,7 +426,6 @@ pipe_setup_fors(PipeInvocation *inv, PLiSQL_stmt_fors *stmt)
 	if (!pipe_frame_iteration(inv, frame))
 	{
 		inv->frames = list_delete_ptr(inv->frames, frame);
-		inv->portal = NULL;
 	}
 }
 
@@ -470,7 +508,6 @@ pipe_setup_forc(PipeInvocation *inv, PLiSQL_stmt_forc *stmt)
 	if (frame->portal == NULL)
 		elog(ERROR, "could not open cursor: %s",
 			 SPI_result_code_string(SPI_result));
-	inv->portal = frame->portal;
 	frame->curvarno = stmt->curvar;
 	frame->curvar_was_null = (curname == NULL);
 
@@ -485,7 +522,6 @@ pipe_setup_forc(PipeInvocation *inv, PLiSQL_stmt_forc *stmt)
 	if (!pipe_frame_iteration(inv, frame))
 	{
 		inv->frames = list_delete_ptr(inv->frames, frame);
-		inv->portal = NULL;
 		if (frame->curvar_was_null)
 		{
 			PLiSQL_var *curvar2 = (PLiSQL_var *)
@@ -967,11 +1003,14 @@ pipe_resume(PipeInvocation *inv)
 							(fframe->fori_value > upper))
 						{
 							/* zero iterations: drop the frame at once */
+							exec_set_found(estate, false);
 							inv->frames = list_delete_ptr(inv->frames, fframe);
 						}
 						else
 						{
 							PLiSQL_var *lvar;
+
+							fframe->loop_found = true;
 
 							/* assign the invocation's copy of the datum,
 							 * exactly as exec_stmt_fori does */
@@ -1186,11 +1225,13 @@ pipe_release_invocation(PipeInvocation *inv, bool close_portal)
 		inv->resowner = NULL;
 	}
 
-	/* Close a still-open query-FOR portal on normal paths only. */
-	if (close_portal && inv->portal != NULL)
+	/* Close every suspended query-FOR portal on normal paths only. */
+	if (close_portal)
 	{
-		SPI_cursor_close(inv->portal);
-		inv->portal = NULL;
+		ListCell   *lc;
+
+		foreach(lc, inv->frames)
+			pipe_close_frame_portal((PipeFrame *) lfirst(lc));
 	}
 
 	/* Drop the persistent execution state's expression context.  Only
