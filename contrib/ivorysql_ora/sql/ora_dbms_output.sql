@@ -756,3 +756,12 @@ $$;
 -- =============================================================================
 DROP PROCEDURE test_output_proc;
 DROP FUNCTION test_output_func;
+-- A failed PUT_LINE must not append its argument to the pending PUT text.
+SELECT sys.ora_dbms_output_enable(2000);
+SELECT sys.ora_dbms_output_put_line(repeat('x', 1998));
+SELECT sys.ora_dbms_output_put('a');
+SELECT sys.ora_dbms_output_put_line('bc');
+SELECT length((sys.ora_dbms_output_get_line()).line) AS drained_length;
+SELECT sys.ora_dbms_output_new_line();
+SELECT (sys.ora_dbms_output_get_line()).line AS pending_line;
+SELECT sys.ora_dbms_output_disable();

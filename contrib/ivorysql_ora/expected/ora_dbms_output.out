@@ -765,3 +765,48 @@ NOTICE:  Test 13.1 - DISCARD ALL cleared buffer: PASSED (status=1, buffer is NUL
 -- =============================================================================
 DROP PROCEDURE test_output_proc;
 DROP FUNCTION test_output_func;
+-- A failed PUT_LINE must not append its argument to the pending PUT text.
+SELECT sys.ora_dbms_output_enable(2000);
+ ora_dbms_output_enable 
+------------------------
+ 
+(1 row)
+
+SELECT sys.ora_dbms_output_put_line(repeat('x', 1998));
+ ora_dbms_output_put_line 
+--------------------------
+ 
+(1 row)
+
+SELECT sys.ora_dbms_output_put('a');
+ ora_dbms_output_put 
+---------------------
+ 
+(1 row)
+
+SELECT sys.ora_dbms_output_put_line('bc');
+ERROR:  ORU-10027: buffer overflow, limit of 2000 bytes
+SELECT length((sys.ora_dbms_output_get_line()).line) AS drained_length;
+ drained_length 
+----------------
+           1998
+(1 row)
+
+SELECT sys.ora_dbms_output_new_line();
+ ora_dbms_output_new_line 
+--------------------------
+ 
+(1 row)
+
+SELECT (sys.ora_dbms_output_get_line()).line AS pending_line;
+ pending_line 
+--------------
+ a
+(1 row)
+
+SELECT sys.ora_dbms_output_disable();
+ ora_dbms_output_disable 
+-------------------------
+ 
+(1 row)
+
