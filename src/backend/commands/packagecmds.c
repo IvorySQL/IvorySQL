@@ -435,6 +435,14 @@ CreatePackageBody_internal(const char *pkgname,
 		/* Creating a new package body */
 		Oid newOid;
 
+		/*
+		 * Permission check: must own the package to create its body for
+		 * the first time, matching the check done for CREATE OR REPLACE.
+		 */
+		if (!pg_package_ownercheck(pkgOid, GetUserId()))
+			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_PACKAGE_BODY,
+						   pkgname);
+
 		newOid = GetNewOidWithIndex(rel, PackageBodyObjectIndexId,
 									Anum_pg_package_body_oid);
 		values[Anum_pg_package_body_oid - 1] = ObjectIdGetDatum(newOid);
