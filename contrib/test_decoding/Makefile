@@ -18,7 +18,8 @@ SLOT_CREATION_TST = $(if $(filter win32,$(PORTNAME)),,slot_creation_error)
 ISOLATION = mxact delayed_startup ondisk_startup concurrent_ddl_dml \
 	oldest_xmin snapshot_transfer subxact_without_top concurrent_stream \
 	twophase_snapshot $(SLOT_CREATION_TST) catalog_change_snapshot \
-	skip_snapshot_restore invalidation_distribution
+	skip_snapshot_restore invalidation_distribution \
+	tuplecid_restart tuplecid_nested
 ORA_ISOLATION = mxact delayed_startup ondisk_startup concurrent_ddl_dml \
 	oldest_xmin snapshot_transfer subxact_without_top concurrent_stream \
 	twophase_snapshot slot_creation_error catalog_change_snapshot \
