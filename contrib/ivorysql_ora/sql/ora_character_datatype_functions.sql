@@ -1588,9 +1588,15 @@ select nchr(1114111), pg_catalog.octet_length(nchr(1114111)), pg_catalog.encode(
 -- Tests for nchr: non-UTF8 branches, using temporary LATIN1 (single-byte)
 -- and EUC_JP (multi-byte) databases created from template0
 \set original_db :DBNAME
+-- clean-up in case a prior regression run failed
+SET client_min_messages TO 'warning';
+DROP DATABASE IF EXISTS nchr_latin1;
+DROP DATABASE IF EXISTS nchr_euc_jp;
+RESET client_min_messages;
 CREATE DATABASE nchr_latin1
     TEMPLATE template0 ENCODING 'LATIN1' LC_COLLATE 'C' LC_CTYPE 'C';
 \c nchr_latin1
+SET client_encoding TO UTF8;
 select nchr(233), pg_catalog.octet_length(nchr(233)), pg_catalog.encode(pg_catalog.convert_to(nchr(233), 'LATIN1'), 'hex');
 select nchr(255), pg_catalog.octet_length(nchr(255)), pg_catalog.encode(pg_catalog.convert_to(nchr(255), 'LATIN1'), 'hex');
 select nchr(256);
