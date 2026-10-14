@@ -111,9 +111,10 @@ diag("staged installation: " . (defined $staged ? $staged : "<none>"))
 # --------------------------------------------------------------------------
 # independent Oracle session helper
 #
-# The password is only ever placed inside a temporary SQL*Plus script (in a
-# 0700 directory) and never on a command line, so it cannot leak into test
-# logs or process listings.  The script is unlinked immediately after use.
+# The SQL*Plus password is placed in a temporary script inside a 0700
+# directory, never on a command line.  It is unlinked immediately after use.
+# CREATE USER MAPPING also sends the password through psql, so server-side
+# statement and error-statement logging are disabled for the test clusters.
 # --------------------------------------------------------------------------
 my $sqlplus_dir = PostgreSQL::Test::Utils::tempdir();
 my $oracle_seq  = 0;
@@ -205,6 +206,8 @@ my $pgnode = PostgreSQL::Test::Cluster->new('iv1307_pg');
 # oracle_fdw are part of the matrix, and a C-locale default cluster would
 # be SQL_ASCII.
 $pgnode->init(extra => [ '--encoding=UTF8', '--locale=C' ]);
+$pgnode->append_conf('postgresql.conf',
+	"log_statement = none\nlog_min_error_statement = PANIC\n");
 $pgnode->start;
 diag("pgnode postgres: " . PostgreSQL::Test::Utils::slurp_file(
 	$pgnode->data_dir . '/postmaster.opts'));
@@ -237,6 +240,8 @@ port = $ora_pg_port
 ivorysql.port = $ora_ora_port
 listen_addresses = '127.0.0.1'
 unix_socket_directories = ''
+log_statement = none
+log_min_error_statement = PANIC
 });
 $oranode->start;
 diag("oranode postgres: " . PostgreSQL::Test::Utils::slurp_file(
@@ -433,7 +438,7 @@ sub run_matrix
 			  . 'FROM iv1307_types WHERE id = 9008']);
 		is($rc, 0, "$L: independent session after empty-string insert")
 		  or diag($out);
-		like($out, qr/NULL/,
+		like($out, qr/^\s*NULL\s*$/m,
 			"$L: empty string stored as Oracle NULL (Oracle '' = NULL semantics)"
 		);
 	};
