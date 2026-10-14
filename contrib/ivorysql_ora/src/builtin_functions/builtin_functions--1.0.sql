@@ -634,6 +634,14 @@ PARALLEL SAFE
 STRICT
 STABLE;
 
+CREATE FUNCTION sys.regexp_like(text, text)
+RETURNS bool
+AS 'MODULE_PATHNAME','ora_regexp_like_no_flags'
+LANGUAGE C
+PARALLEL SAFE
+STRICT
+STABLE;
+
 CREATE FUNCTION sys.regexp_like(varchar2, varchar2, varchar2)
 RETURNS bool
 AS 'MODULE_PATHNAME','ora_regexp_like'
@@ -641,6 +649,15 @@ LANGUAGE C
 PARALLEL SAFE
 STRICT
 STABLE;
+
+CREATE FUNCTION sys.regexp_like(text, text, text)
+RETURNS bool
+AS 'MODULE_PATHNAME','ora_regexp_like'
+LANGUAGE C
+PARALLEL SAFE
+STRICT
+STABLE;
+
 CREATE FUNCTION sys.regexp_count(text, text, integer)
 RETURNS int AS $$
 	SELECT sys.regexp_count($1::varchar2, $2::varchar2, $3::number);
