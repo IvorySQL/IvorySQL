@@ -955,9 +955,9 @@ raise notice 'protest';
 end;
 / 
 
-CALL protest;  -- should failed 
+CALL protest;
 CALL protest();
-exec protest;      
+exec protest;
 exec protest();
 drop  procedure protest ;
 
@@ -981,9 +981,9 @@ BEGIN
 END;
 /
 
-CALL test_proc1;  -- should failed 
+CALL test_proc1;
 CALL test_proc1();
-EXEC test_proc1;   
+EXEC test_proc1;
 EXEC test_proc1();
 DROP PROCEDURE test_proc1;
 
@@ -1182,7 +1182,7 @@ raise notice 'this procedure without args';
 end;
 /
 
--- fail
+-- ok
 call p_noarg;
 
 --ok
@@ -1199,7 +1199,7 @@ end;
 
 variable x number;
 
--- fail
+-- ok
 call f_noarg into :x;
 
 --ok
@@ -1214,7 +1214,7 @@ raise notice '%', a;
 end;
 /
 
--- fail
+-- ok
 call p_defs;
 
 -- ok
@@ -1233,7 +1233,7 @@ end;
 
 variable x number
 
---fail
+-- ok
 call f_defs into :x;
 
 --ok
