@@ -325,24 +325,31 @@ sub run_matrix
 	my $sqltail = defined $e->{connstr} ? " [via $e->{connstr}]" : "";
 
 	subtest "$L: entry dialect and extension loading" => sub {
-		plan tests => 16;
+		plan tests => 14;
 
-		# The entry point must prove its actual dialect; do not fake it
-		# with a session-level SET.
-		my $mode = ok_sql_val($e, 'read ivorysql.compatible_mode',
-			'SHOW ivorysql.compatible_mode');
+		# CREATE EXTENSION and both observations must use one backend;
+		# separate calls to Cluster::psql would hide a leaked session GUC.
+		my ($install_rc, $install_out, $install_err) = entry_psql($e,
+			"SELECT 'IV1307_BEFORE|' || current_setting('ivorysql.compatible_mode') "
+			  . "|| '|' || current_setting('search_path');\n"
+			  . "CREATE EXTENSION oracle_fdw;\n"
+			  . "SELECT 'IV1307_AFTER|' || current_setting('ivorysql.compatible_mode') "
+			  . "|| '|' || current_setting('search_path');\n");
+		is($install_rc, 0, "$L: CREATE EXTENSION in one backend")
+		  or diag($install_err);
+		my ($mode, $sp_before) =
+		  $install_out =~ /^IV1307_BEFORE\|([^|]*)\|(.*)$/m;
+		my ($mode_after, $sp_after) =
+		  $install_out =~ /^IV1307_AFTER\|([^|]*)\|(.*)$/m;
+		like($install_out, qr/^IV1307_BEFORE\|/m,
+			"$L: captured the pre-install session state");
+		like($install_out, qr/^IV1307_AFTER\|/m,
+			"$L: captured the post-install session state");
 		is($mode, $e->{mode},
 			"$L: entry runs in $e->{mode} dialect$sqltail");
-
-		my $sp_before = ok_sql_val($e, 'read search_path', 'SHOW search_path');
-
-		ok_sql($e, 'CREATE EXTENSION oracle_fdw', 'CREATE EXTENSION oracle_fdw;');
-
-		# session state must be restored after the install script ran
-		is(ok_sql_val($e, 'mode after install', 'SHOW ivorysql.compatible_mode'),
-			$mode, "$L: compatible_mode restored after CREATE EXTENSION");
-		is(ok_sql_val($e, 'search_path after install', 'SHOW search_path'),
-			$sp_before,
+		is($mode_after, $mode,
+			"$L: compatible_mode restored in the same backend");
+		is($sp_after, $sp_before,
 			"$L: search_path restored after CREATE EXTENSION");
 
 		is(ok_sql_val($e, 'handler and validator registered',
@@ -474,14 +481,16 @@ sub run_matrix
 	};
 
 	subtest "$L: DML with independent Oracle verification" => sub {
-		plan tests => 10;
+		plan tests => 13;
 
 		my ($rc, $out);
 
-		ok_sql($e, 'INSERT ... RETURNING',
+		my $insert_returning = ok_sql_val($e, 'INSERT ... RETURNING',
 			"INSERT INTO iv1307_types (id, amount, txt) "
 			  . "VALUES (9001, 3.1416, 'FDW插入中文') "
 			  . 'RETURNING id, amount, txt;');
+		like($insert_returning, qr/^9001\|3\.1416\|FDW插入中文$/m,
+			"$L: INSERT RETURNING returns the inserted values");
 		($rc, $out) = oracle_sql([
 			"SELECT amount || '|' || txt FROM iv1307_types WHERE id = 9001"
 		]);
@@ -489,16 +498,20 @@ sub run_matrix
 		like($out, qr/3\.1416/, "$L: committed INSERT visible in Oracle");
 		like($out, qr/FDW插入中文/, "$L: Chinese DML text visible in Oracle");
 
-		ok_sql($e, 'UPDATE ... RETURNING',
+		my $update_returning = ok_sql_val($e, 'UPDATE ... RETURNING',
 			'UPDATE iv1307_types SET amount = 6.2832 WHERE id = 9001 '
 			  . 'RETURNING amount;');
+		like($update_returning, qr/^6\.2832$/m,
+			"$L: UPDATE RETURNING returns the new value");
 		($rc, $out) =
 		  oracle_sql(["SELECT amount FROM iv1307_types WHERE id = 9001"]);
 		is($rc, 0, "$L: independent Oracle session after UPDATE") or diag($out);
 		like($out, qr/6\.2832/, "$L: committed UPDATE visible in Oracle");
 
-		ok_sql($e, 'DELETE ... RETURNING',
+		my $delete_returning = ok_sql_val($e, 'DELETE ... RETURNING',
 			'DELETE FROM iv1307_types WHERE id = 9001 RETURNING id;');
+		like($delete_returning, qr/^9001$/m,
+			"$L: DELETE RETURNING returns the removed id");
 		($rc, $out) = oracle_sql(
 			["SELECT COUNT(*) FROM iv1307_types WHERE id = 9001"]);
 		is($rc, 0, "$L: independent Oracle session after DELETE") or diag($out);
@@ -522,18 +535,26 @@ sub run_matrix
 			  . 'INSERT INTO iv1307_types (id, amount) VALUES (9004, 4); '
 			  . 'ROLLBACK TO SAVEPOINT s1; COMMIT;');
 		($rc, $out) = oracle_sql(
-			["SELECT COUNT(*) FROM iv1307_types WHERE id IN (9003, 9004)"]);
+			["SELECT CASE WHEN COUNT(*) = 1 AND MIN(id) = 9003 "
+			  . "THEN 'OK' ELSE 'WRONG' END "
+			  . "FROM iv1307_types WHERE id IN (9003, 9004)"]);
 		is($rc, 0, "$L: independent session after SAVEPOINT/ROLLBACK TO")
 		  or diag($out);
-		like($out, qr/^\s*1\s*$/m,
+		like($out, qr/^\s*OK\s*$/m,
 			"$L: ROLLBACK TO keeps 9003 and drops 9004 remotely");
 
-		# A remote constraint violation must not wedge the connection.
-		fail_sql($e, 'remote unique violation rejected',
-			'INSERT INTO iv1307_types (id, amount) VALUES (9003, 9);',
-			qr/(ORA-00001|unique|duplicate)/);
-		ok_sql($e, 'connection usable after remote error',
-			'SELECT COUNT(*) FROM iv1307_types;');
+		# Continue in the SAME psql backend after a remote constraint error.
+		my ($recover_rc, $recover_out, $recover_err) = $e->{node}->psql(
+			'postgres',
+			"INSERT INTO iv1307_types (id, amount) VALUES (9003, 9);\n"
+			  . "SELECT 'RECOVERED|' || COUNT(*) FROM iv1307_types;\n",
+			connstr => $e->{connstr}, on_error_stop => 0);
+		is($recover_rc, 0, "$L: psql continued after remote error")
+		  or diag($recover_err);
+		like($recover_err, qr/(ORA-00001|unique|duplicate)/,
+			"$L: remote unique violation was rejected");
+		like($recover_out, qr/^RECOVERED\|\d+$/m,
+			"$L: the same backend can query after the remote error");
 	};
 
 	subtest "$L: privileges and user mappings" => sub {
@@ -568,35 +589,21 @@ sub run_matrix
 	};
 
 	subtest "$L: concurrent sessions, connection lifecycle" => sub {
-		plan tests => 11;
+		plan tests => 12;
 
 		# A second backend must not see uncommitted FDW writes, and must
 		# see them after commit.
-		my $pid = fork();
-		if (!defined $pid)
-		{
-			BAIL_OUT('cannot fork holding-transaction session');
-		}
-		if ($pid == 0)
-		{
-			$ENV{PGHOST}    = $e->{bg_env}{'PGHOST'};
-			$ENV{PGPORT}    = $e->{bg_env}{'PGPORT'};
-			$ENV{PGDATABASE} = 'postgres';
-			delete $ENV{PGOPTIONS};
-			open(STDOUT, '>', '/dev/null') or exit(126);
-			open(STDERR, '>', '/dev/null') or exit(126);
-			exec('psql', '-X', '-q', '-A', '-t', '-v', 'ON_ERROR_STOP=1',
-				'-c', 'BEGIN; '
-				  . 'INSERT INTO iv1307_types (id, amount) VALUES (9006, 6); '
-				  . 'SELECT pg_sleep(6); COMMIT;');
-			exit(127);
-		}
-		sleep 3;
+		my $holder = $e->{node}->background_psql('postgres',
+			connstr => $e->{connstr});
+		$holder->query_safe('BEGIN; '
+			  . 'INSERT INTO iv1307_types (id, amount) VALUES (9006, 6);',
+			verbose => 0);
 		is(ok_sql_val($e, 'uncommitted write invisible to second session',
 				'SELECT COUNT(*) FROM iv1307_types WHERE id = 9006'),
 			'0', "$L: second session cannot see uncommitted FDW write");
-		waitpid($pid, 0);
-		is($? >> 8, 0, "$L: holding session committed cleanly");
+		$holder->query_safe('COMMIT;', verbose => 0);
+		pass("$L: holding session committed cleanly");
+		$holder->quit;
 		is(ok_sql_val($e, 'committed write visible to second session',
 				'SELECT COUNT(*) FROM iv1307_types WHERE id = 9006'),
 			'1', "$L: second session sees the write after commit");
@@ -614,25 +621,20 @@ sub run_matrix
 			"$L: backend exit leaves no remote residue");
 
 		# oracle_close_connections() must not wedge subsequent use.
-		ok_sql($e, 'oracle_close_connections()',
-			'SELECT oracle_close_connections();');
-		ok_sql($e, 'queries work after close/reconnect',
-			'SELECT COUNT(*) FROM iv1307_types;');
+		my ($close_rc, $close_out, $close_err) = entry_psql($e,
+			"SELECT oracle_close_connections();\n"
+			  . "SELECT 'RECONNECTED|' || COUNT(*) FROM iv1307_types;\n");
+		is($close_rc, 0, "$L: close and query in the same backend")
+		  or diag($close_err);
+		like($close_out, qr/^RECONNECTED\|\d+$/m,
+			"$L: oracle_fdw reconnects after close");
 
-		# best-effort: no lingering remote transaction after backend exit
+		# The fixture grants access to this view: an error must fail the test.
 		(my $vrc, my $vout) =
 		  oracle_sql(['SELECT COUNT(*) FROM v$transaction']);
-		if ($vrc == 0)
-		{
-			like($vout, qr/^\s*0\s*$/m,
-				"$L: no lingering remote transaction");
-		}
-		else
-		{
-			diag("v\$transaction not accessible from test user, "
-				  . "skipping lingering-transaction check: $vout");
-			ok(1, "$L: no lingering remote transaction (not checkable)");
-		}
+		is($vrc, 0, "$L: v\$transaction is accessible") or diag($vout);
+		like($vout, qr/^\s*0\s*$/m,
+			"$L: no lingering remote transaction");
 	};
 
 	subtest "$L: DROP EXTENSION cleanup and reinstall" => sub {
