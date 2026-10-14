@@ -1575,22 +1575,41 @@ select * from t_regexp_like where regexp_like(null, null, null);
 (0 rows)
 
 -- REGEXP_LIKE match_parameter n/m/default (issue #2295)
-select regexp_like('X'||chr(10), 'X.');
+CREATE TABLE t_regexp_like_types
+(
+  text_value text,
+  varchar2_value varchar2(20)
+);
+INSERT INTO t_regexp_like_types
+VALUES ('X'||chr(10), 'X'||chr(10));
+select regexp_like(text_value, 'X.') from t_regexp_like_types;
  regexp_like 
 -------------
  f
 (1 row)
 
-select regexp_like('X'||chr(10), 'X.', 'n');
+select regexp_like(text_value, 'X.', 'n') from t_regexp_like_types;
  regexp_like 
 -------------
  t
 (1 row)
 
-select regexp_like('X'||chr(10), 'X.', 'c');
+select regexp_like(text_value, 'X.', 'c') from t_regexp_like_types;
  regexp_like 
 -------------
  f
+(1 row)
+
+select regexp_like(varchar2_value, 'X.') from t_regexp_like_types;
+ regexp_like 
+-------------
+ f
+(1 row)
+
+select regexp_like(varchar2_value, 'X.', 'n') from t_regexp_like_types;
+ regexp_like 
+-------------
+ t
 (1 row)
 
 select regexp_like('x'||chr(10)||'b'||chr(10)||'y', '^b$', 'm');
@@ -1599,15 +1618,16 @@ select regexp_like('x'||chr(10)||'b'||chr(10)||'y', '^b$', 'm');
  t
 (1 row)
 
-select regexp_substr('X'||chr(10), 'X.', 1, 1, 'n');
- regexp_substr 
----------------
- X
-
+select regexp_substr('X'||chr(10), 'X.', 1, 1, 'n') =
+       ('X'||chr(10)) as regexp_substr_n;
+ regexp_substr_n 
+-----------------
+ t
 (1 row)
 
-select regexp_like('X'||chr(10), 'X.', 'z');
-ERROR:  invalid regular expression option: "z"
+select regexp_like(text_value, 'X.', 'z') from t_regexp_like_types;
+ERROR:  invalid option of regexp_like: z
+DROP table t_regexp_like_types;
 DROP table t_regexp_like;
 /*
  * regexp_count
