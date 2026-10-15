@@ -2464,3 +2464,19 @@ reset default_text_search_config;
 -- should throw errors, because dummy_config is not a valid configuration name
 set ivorysql.dummy_config to dummy;
 reset ivorysql.dummy_config;
+
+/* Start - ORA_HASH */
+/* the same input always hashes to the same value ... */
+SELECT ora_hash('abc') = ora_hash('abc') AS stable;
+SELECT ora_hash('abc', 100, 42) = ora_hash('abc', 100, 42) AS stable_seeded;
+/* ... and the value is always inside 0 .. max_bucket */
+SELECT ora_hash('abc') BETWEEN 0 AND 4294967295 AS default_range;
+SELECT ora_hash('abc', 9) BETWEEN 0 AND 9 AS range_9;
+SELECT ora_hash(12345, 100) BETWEEN 0 AND 100 AS range_100;
+/* a value, a bucket count and a seed are hashed differently */
+SELECT ora_hash('abc', 9) <> ora_hash('abd', 9) AS differs_by_value;
+SELECT ora_hash('abc', 100, 1) BETWEEN 0 AND 100 AS seeded_range;
+/* NULL propagates, a negative bucket count is rejected */
+SELECT ora_hash(NULL) IS NULL AS null_hash;
+SELECT ora_hash('abc', -1) AS negative_bucket;
+/* End - ORA_HASH */
