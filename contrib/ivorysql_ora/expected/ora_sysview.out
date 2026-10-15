@@ -493,3 +493,41 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- USER_TAB_COMMENTS / USER_COL_COMMENTS
+DROP TABLE IF EXISTS TEST_TAB_COMMENTS;
+NOTICE:  table "test_tab_comments" does not exist, skipping
+CREATE TABLE TEST_TAB_COMMENTS (ID INT, NAME VARCHAR2(10));
+COMMENT ON TABLE TEST_TAB_COMMENTS IS 'a table comment';
+COMMENT ON COLUMN TEST_TAB_COMMENTS.NAME IS 'a column comment';
+SELECT TABLE_NAME, TABLE_TYPE, COMMENTS FROM SYS.USER_TAB_COMMENTS
+WHERE TABLE_NAME = 'TEST_TAB_COMMENTS';
+    table_name     | table_type |    comments     
+-------------------+------------+-----------------
+ TEST_TAB_COMMENTS | TABLE      | a table comment
+(1 row)
+
+SELECT COLUMN_NAME, COMMENTS FROM SYS.USER_COL_COMMENTS
+WHERE TABLE_NAME = 'TEST_TAB_COMMENTS' ORDER BY COLUMN_NAME;
+ column_name |     comments     
+-------------+------------------
+ ID          | 
+ NAME        | a column comment
+(2 rows)
+
+-- a relation owned by another role is not listed here
+DROP ROLE IF EXISTS tab_comments_owner;
+NOTICE:  role "tab_comments_owner" does not exist, skipping
+CREATE ROLE tab_comments_owner;
+CREATE TABLE TEST_TAB_COMMENTS_OTHER (ID INT);
+ALTER TABLE TEST_TAB_COMMENTS_OTHER OWNER TO tab_comments_owner;
+COMMENT ON TABLE TEST_TAB_COMMENTS_OTHER IS 'another owner';
+SELECT count(*) AS rows_for_other_owner FROM SYS.USER_TAB_COMMENTS
+WHERE TABLE_NAME = 'TEST_TAB_COMMENTS_OTHER';
+ rows_for_other_owner 
+----------------------
+                    0
+(1 row)
+
+DROP TABLE TEST_TAB_COMMENTS_OTHER;
+DROP ROLE tab_comments_owner;
+DROP TABLE IF EXISTS TEST_TAB_COMMENTS;

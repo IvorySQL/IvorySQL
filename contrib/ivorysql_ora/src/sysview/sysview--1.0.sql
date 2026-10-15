@@ -1557,3 +1557,44 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+--
+-- USER_TAB_COMMENTS / USER_COL_COMMENTS: the comments Oracle stores with
+-- COMMENT ON, for the relations owned by the current user and for their
+-- columns.  Like the other USER_ views they filter on the owner only.
+--
+CREATE OR REPLACE VIEW SYS.USER_TAB_COMMENTS AS
+SELECT
+    sys.ora_case_trans(pg_class.relname::varchar2)::varchar2(128) AS table_name,
+    CASE pg_class.relkind
+        WHEN 'v' THEN 'VIEW'
+        WHEN 'm' THEN 'MATERIALIZED VIEW'
+        ELSE 'TABLE'
+    END::varchar2(11) AS table_type,
+    pg_catalog.obj_description(pg_class.oid, 'pg_class')::varchar2(4000) AS comments
+FROM pg_class
+JOIN pg_namespace ON pg_class.relnamespace = pg_namespace.oid
+WHERE
+    pg_catalog.pg_get_userbyid(pg_class.relowner) = current_user
+    AND pg_class.relkind IN ('r','v','m','p','f')
+    AND pg_namespace.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND NOT pg_class.relispartition;
+
+CREATE OR REPLACE VIEW SYS.USER_COL_COMMENTS AS
+SELECT
+    sys.ora_case_trans(pg_class.relname::varchar2)::varchar2(128) AS table_name,
+    sys.ora_case_trans(pg_attribute.attname::varchar2)::varchar2(128) AS column_name,
+    pg_catalog.col_description(pg_class.oid, pg_attribute.attnum)::varchar2(4000) AS comments
+FROM pg_class
+JOIN pg_namespace ON pg_class.relnamespace = pg_namespace.oid
+JOIN pg_attribute ON pg_class.oid = pg_attribute.attrelid
+WHERE
+    pg_catalog.pg_get_userbyid(pg_class.relowner) = current_user
+    AND pg_class.relkind IN ('r','v','m','p','f')
+    AND pg_attribute.attnum > 0
+    AND NOT pg_attribute.attisdropped
+    AND pg_namespace.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND NOT pg_class.relispartition;
+
+GRANT SELECT ON SYS.USER_TAB_COMMENTS TO PUBLIC;
+GRANT SELECT ON SYS.USER_COL_COMMENTS TO PUBLIC;
