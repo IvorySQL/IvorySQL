@@ -2464,3 +2464,17 @@ reset default_text_search_config;
 -- should throw errors, because dummy_config is not a valid configuration name
 set ivorysql.dummy_config to dummy;
 reset ivorysql.dummy_config;
+
+/* Start - WM_CONCAT */
+/* Oracle's legacy aggregate: the values joined by a comma */
+SELECT wm_concat(x) AS joined FROM (SELECT x FROM (VALUES ('a'), ('b'), ('c')) v(x) ORDER BY x) t;
+/* numbers are converted, NULLs are skipped */
+SELECT wm_concat(x) AS numbers FROM (SELECT x FROM (VALUES (3), (1)) v(x) ORDER BY x) t;
+SELECT wm_concat(x) AS with_null FROM (SELECT x FROM (VALUES ('a'), (NULL)) v(x) ORDER BY x) t;
+/* no value at all gives NULL, not an empty string */
+SELECT wm_concat(x) IS NULL AS empty_is_null FROM (SELECT NULL AS x) t;
+/* it is an aggregate, so it works per group as well */
+SELECT i AS grp, wm_concat(x) AS joined
+FROM (SELECT 1 AS i, 'a' AS x UNION ALL SELECT 1, 'b' UNION ALL SELECT 2, 'c') t
+GROUP BY i ORDER BY i;
+/* End - WM_CONCAT */
