@@ -223,7 +223,7 @@ orachar_to_long_with_typmod(PG_FUNCTION_ARGS)
 					(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
 					 errmsg("value too long for type long(%d)",
 							maxlen)));
-		len = maxlen;	
+		len = pg_mbcliplen(s, len, maxlen);
 	}
 
 	Assert(maxlen >= len);
