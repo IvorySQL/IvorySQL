@@ -295,11 +295,13 @@ SELECT REMAINDER(1);
 SELECT REMAINDER(1, 2, 3);
 
 --
--- The precedence rewrite is a preference, not a mandate.  It applies only
--- to unqualified calls or to calls qualified with "sys": a user-defined
--- remainder in another schema keeps resolving with its own signature even
--- when the call passes numeric-looking literals, and a rewritten lookup
--- that finds no unique overload falls back to the actual argument types.
+-- The precedence rewrite is a preference, not a mandate.  The parser looks
+-- the name up with the caller's real argument types first, so a
+-- user-defined remainder in another schema keeps resolving with its own
+-- signature, and only when that lookup yields no exact match do the
+-- precedence-rewritten types take over.  The rewrite applies only to
+-- unqualified calls or to calls qualified with "sys": a schema-qualified
+-- call never takes part in it at all.
 --
 CREATE SCHEMA remainder_shadow;
 CREATE FUNCTION remainder_shadow.remainder(a varchar2, b varchar2)
@@ -317,4 +319,31 @@ SELECT remainder_shadow.remainder('7', '0') FROM DUAL;
 SELECT SYS.REMAINDER(7, 0) FROM DUAL;
 
 DROP FUNCTION remainder_shadow.remainder(a varchar2, b varchar2);
+DROP SCHEMA remainder_shadow;
+
+--
+-- An exact user-defined overload must also win on an unqualified call: the
+-- real-argument-type lookup runs before the precedence rewrite, so a
+-- same-named remainder(integer, integer) in a schema that fronts the
+-- search_path is not shadowed by sys.remainder(number, number).
+--
+CREATE SCHEMA remainder_shadow;
+CREATE FUNCTION remainder_shadow.remainder(a integer, b integer)
+RETURN varchar2
+IS
+BEGIN
+  RETURN 'user-int';
+END;
+/
+ALTER SESSION SET search_path = remainder_shadow, sys, pg_catalog;
+
+-- the unqualified call must reach the exact integer/integer overload
+SELECT pg_typeof(REMAINDER(11, 4)) AS type, REMAINDER(11, 4) AS r FROM DUAL;
+
+-- the schema-qualified call must keep reaching the user-defined function
+SELECT pg_typeof(remainder_shadow.remainder(11, 4)) AS type,
+       remainder_shadow.remainder(11, 4) AS r FROM DUAL;
+
+ALTER SESSION SET search_path = sys, pg_catalog;
+DROP FUNCTION remainder_shadow.remainder(a integer, b integer);
 DROP SCHEMA remainder_shadow;
