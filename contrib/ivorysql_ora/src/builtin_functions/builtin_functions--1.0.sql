@@ -1931,3 +1931,33 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 /* End - VSIZE */
+
+
+/* Start - SUBSTR4 */
+/*
+ * Oracle's SUBSTR4 counts positions and lengths in UCS4 code points, which
+ * is what PostgreSQL's character based substr() does as well; the function
+ * exists so that the code that spells out the variant keeps working, and
+ * SUBSTR2 (UCS2 code units) can follow on top of the same definition.
+ *
+ * Like Oracle, a length below one returns NULL, while a position below one
+ * counts from the end of the string, and a valid position with no length
+ * returns the rest of the string.
+ */
+CREATE FUNCTION sys.substr4(text, integer, integer DEFAULT NULL)
+RETURNS text
+AS
+$$
+begin
+	if $3 is null then
+		return pg_catalog.substr($1, $2);
+	end if;
+	if $3 <= 0 then
+		return null;
+	end if;
+	return pg_catalog.substr($1, $2, $3);
+end;
+$$
+LANGUAGE plpgsql
+IMMUTABLE;
+/* End - SUBSTR4 */

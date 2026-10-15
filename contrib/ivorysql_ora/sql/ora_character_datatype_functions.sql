@@ -1558,3 +1558,18 @@ select to_single_byte('１．２');
 select to_single_byte(１．２);
 select to_single_byte(3.4);
 select to_single_byte(NULL);
+
+/* Start - SUBSTR4 */
+/* positions and lengths count UCS4 code points, like character semantics */
+SELECT substr4('abcdef', 2, 3) AS middle;
+SELECT substr4('abcdef', 3) AS from_three;
+SELECT substr4('abcdef', -2, 2) AS from_end;
+/* a supplementary character is one code point, so it is never split */
+SELECT substr4('a😀b', 2, 1) AS one_code_point;
+SELECT substr4('a😀b', 2) AS rest;
+/* a length below one returns NULL, like Oracle */
+SELECT substr4('abcdef', 2, 0) IS NULL AS zero_length_is_null;
+SELECT substr4('abcdef', 2, -1) IS NULL AS negative_length_is_null;
+/* NULL propagates */
+SELECT substr4(NULL, 1, 2) IS NULL AS null_input;
+/* End - SUBSTR4 */
