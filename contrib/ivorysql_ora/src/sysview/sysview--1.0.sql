@@ -1557,3 +1557,100 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+--
+-- USER_OBJECTS: the objects owned by the current user, like Oracle's
+-- USER_OBJECTS view.  OBJECT_TYPE maps the PostgreSQL catalog entries to
+-- Oracle's object names; CREATED and LAST_DDL_TIME stay NULL because
+-- PostgreSQL does not track those timestamps, and STATUS is always VALID
+-- because the catalogs have no invalid objects.
+--
+CREATE OR REPLACE VIEW SYS.USER_OBJECTS AS
+SELECT
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS object_name,
+    c.oid::int8::NUMBER AS object_id,
+    c.oid::int8::NUMBER AS data_object_id,
+    (CASE c.relkind
+        WHEN 'r' THEN 'TABLE'
+        WHEN 'p' THEN 'TABLE'
+        WHEN 'f' THEN 'FOREIGN TABLE'
+        WHEN 'v' THEN 'VIEW'
+        WHEN 'm' THEN 'MATERIALIZED VIEW'
+        WHEN 'i' THEN 'INDEX'
+        WHEN 'I' THEN 'INDEX'
+        WHEN 'S' THEN 'SEQUENCE'
+        WHEN 't' THEN 'TOAST TABLE'
+        ELSE 'TABLE'
+    END)::varchar2(20) AS object_type,
+    NULL::timestamp AS created,
+    NULL::timestamp AS last_ddl_time,
+    'VALID'::varchar2(7) AS status
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+WHERE
+    pg_catalog.pg_get_userbyid(c.relowner) = current_user
+    AND c.relkind IN ('r','p','f','v','m','i','I','S','t')
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND NOT c.relispartition
+UNION ALL
+SELECT
+    sys.ora_case_trans(p.proname::varchar2)::varchar2(128) AS object_name,
+    p.oid::int8::NUMBER AS object_id,
+    p.oid::int8::NUMBER AS data_object_id,
+    (CASE p.prokind
+        WHEN 'p' THEN 'PROCEDURE'
+        WHEN 'a' THEN 'AGGREGATE'
+        WHEN 'w' THEN 'WINDOW FUNCTION'
+        ELSE 'FUNCTION'
+    END)::varchar2(20) AS object_type,
+    NULL::timestamp AS created,
+    NULL::timestamp AS last_ddl_time,
+    'VALID'::varchar2(7) AS status
+FROM pg_proc p
+JOIN pg_namespace n ON p.pronamespace = n.oid
+WHERE
+    pg_catalog.pg_get_userbyid(p.proowner) = current_user
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+UNION ALL
+SELECT
+    sys.ora_case_trans(pk.pkgname::varchar2)::varchar2(128) AS object_name,
+    pk.oid::int8::NUMBER AS object_id,
+    pk.oid::int8::NUMBER AS data_object_id,
+    'PACKAGE'::varchar2(20) AS object_type,
+    NULL::timestamp AS created,
+    NULL::timestamp AS last_ddl_time,
+    'VALID'::varchar2(7) AS status
+FROM pg_catalog.pg_package pk
+WHERE pk.pkgowner = current_user::regrole
+UNION ALL
+SELECT
+    sys.ora_case_trans(pk.pkgname::varchar2)::varchar2(128) AS object_name,
+    pb.oid::int8::NUMBER AS object_id,
+    pb.oid::int8::NUMBER AS data_object_id,
+    'PACKAGE BODY'::varchar2(20) AS object_type,
+    NULL::timestamp AS created,
+    NULL::timestamp AS last_ddl_time,
+    'VALID'::varchar2(7) AS status
+FROM pg_catalog.pg_package_body pb
+JOIN pg_catalog.pg_package pk ON pk.oid = pb.pkgoid
+WHERE pk.pkgowner = current_user::regrole
+UNION ALL
+SELECT
+    sys.ora_case_trans(t.typname::varchar2)::varchar2(128) AS object_name,
+    t.oid::int8::NUMBER AS object_id,
+    t.oid::int8::NUMBER AS data_object_id,
+    'TYPE'::varchar2(20) AS object_type,
+    NULL::timestamp AS created,
+    NULL::timestamp AS last_ddl_time,
+    'VALID'::varchar2(7) AS status
+FROM pg_catalog.pg_type t
+JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+  AND (t.typtype IN ('d', 'e')
+       OR (t.typtype = 'c'
+           AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_class c
+                           WHERE c.reltype = t.oid
+                             AND c.relkind IN ('r', 'p', 'v', 'm', 'f'))))
+  AND pg_catalog.pg_get_userbyid(t.typowner) = current_user;
+
+GRANT SELECT ON SYS.USER_OBJECTS TO PUBLIC;
