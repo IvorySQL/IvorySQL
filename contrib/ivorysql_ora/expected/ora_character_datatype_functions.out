@@ -4074,3 +4074,57 @@ select to_single_byte(NULL);
  
 (1 row)
 
+/* Start - SUBSTR4 */
+/* positions and lengths count UCS4 code points, like character semantics */
+SELECT substr4('abcdef', 2, 3) AS middle;
+ middle 
+--------
+ bcd
+(1 row)
+
+SELECT substr4('abcdef', 3) AS from_three;
+ from_three 
+------------
+ cdef
+(1 row)
+
+SELECT substr4('abcdef', -2, 2) AS from_end;
+ from_end 
+----------
+ 
+(1 row)
+
+/* a supplementary character is one code point, so it is never split */
+SELECT substr4('a😀b', 2, 1) AS one_code_point;
+ one_code_point 
+----------------
+ 😀
+(1 row)
+
+SELECT substr4('a😀b', 2) AS rest;
+ rest 
+------
+ 😀b
+(1 row)
+
+/* a length below one returns NULL, like Oracle */
+SELECT substr4('abcdef', 2, 0) IS NULL AS zero_length_is_null;
+ zero_length_is_null 
+---------------------
+ t
+(1 row)
+
+SELECT substr4('abcdef', 2, -1) IS NULL AS negative_length_is_null;
+ negative_length_is_null 
+-------------------------
+ t
+(1 row)
+
+/* NULL propagates */
+SELECT substr4(NULL, 1, 2) IS NULL AS null_input;
+ null_input 
+------------
+ t
+(1 row)
+
+/* End - SUBSTR4 */
