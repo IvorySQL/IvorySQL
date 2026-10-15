@@ -26,6 +26,14 @@ INSERT INTO xmlnstest VALUES(1, xmltype('<soapenv:Envelope xmlns:soapenv="http:/
 --
 -- extrct(XML)
 --
+-- An XPath with no matches produces an empty XML value.  Keep the
+-- trailing-newline cleanup path safe for that zero-length result.
+SELECT pg_catalog.octet_length(sys.extract('<a/>'::sys.xmltype, '/missing')::text) AS empty_length;
+ empty_length 
+--------------
+            0
+(1 row)
+
 SELECT extract(XMLType('<AA><ID>1</ID></AA>'), '/AA/ID') from dual;
 ERROR:  syntax error at or near "("
 LINE 1: SELECT extract(XMLType('<AA><ID>1</ID></AA>'), '/AA/ID') fro...
