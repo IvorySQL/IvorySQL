@@ -1558,3 +1558,18 @@ select to_single_byte('１．２');
 select to_single_byte(１．２);
 select to_single_byte(3.4);
 select to_single_byte(NULL);
+
+/* Start - LENGTH2 / LENGTH4 */
+/* for single-byte and BMP characters both are the character count */
+SELECT length2('abc') AS l2_abc, length4('abc') AS l4_abc;
+SELECT length2('中文字') AS l2_cjk, length4('中文字') AS l4_cjk;
+/* a supplementary character is one code point (LENGTH4) but two UCS2 units (LENGTH2) */
+SELECT length2('😀') AS l2_astral, length4('😀') AS l4_astral;
+SELECT length2('a😀中') AS l2_mixed, length4('a😀中') AS l4_mixed;
+/* LENGTHB keeps counting bytes, so the supplementary character has four */
+SELECT lengthb('😀') AS lb_astral;
+/* NULL propagates */
+SELECT length2(NULL) IS NULL AS l2_null, length4(NULL) IS NULL AS l4_null;
+/* the oracle character types are accepted as well */
+SELECT length2(cast('abc' as varchar2(10))) AS l2_varchar2, length4(cast('abc' as char(10))) AS l4_char;
+/* End - LENGTH2 / LENGTH4 */
