@@ -16951,12 +16951,11 @@ SimpleTypename:
 						A_Const *n;
 
 						if (typmods == NULL)
-							ereport(ERROR,
-									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-									 errmsg("missing or invalid datetime field.")));
-
-						//n = lfirst(typmods->elements[0]);
-						n = linitial(typmods);
+							$$ = $1;
+						else
+						{
+							//n = lfirst(typmods->elements[0]);
+							n = linitial(typmods);
 
 						/*
 						 * Compatible oracle
@@ -16985,6 +16984,7 @@ SimpleTypename:
 									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 									 errmsg("unsupported interval type.")));
 						}
+					}
 					}
 					else
 					{
