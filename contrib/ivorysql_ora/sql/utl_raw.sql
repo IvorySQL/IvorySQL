@@ -62,3 +62,14 @@ SELECT UTL_RAW.CAST_TO_VARCHAR2(pg_catalog.decode('e9', 'hex'))
     = pg_catalog.convert_from(pg_catalog.decode('e9', 'hex'), 'LATIN1');
 \c :original_db2
 DROP DATABASE utl_raw_latin1_decode;
+
+-- UTL_RAW.LENGTH counts bytes, not characters
+SELECT UTL_RAW.LENGTH(UTL_RAW.CAST_TO_RAW('hello'));
+SELECT UTL_RAW.LENGTH(UTL_RAW.CAST_TO_RAW('你好'));
+SELECT UTL_RAW.LENGTH(NULL) IS NULL;
+
+-- UTL_RAW.REVERSE reverses the byte order
+SELECT UTL_RAW.REVERSE(pg_catalog.decode('01020304', 'hex'));
+SELECT pg_catalog.encode(UTL_RAW.REVERSE(UTL_RAW.CAST_TO_RAW('你好')), 'hex');
+SELECT UTL_RAW.REVERSE(NULL) IS NULL;
+SELECT UTL_RAW.REVERSE(''::raw) = ''::raw;
