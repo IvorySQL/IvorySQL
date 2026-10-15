@@ -38,6 +38,7 @@
 
 /* Hooks */
 extern bool pg_compatible_oracle_precedence(Oid arg1, Oid arg2, char *opname_p, Oid *result_arg1, Oid *result_arg2);
+extern bool pg_compatible_oracle_funcarg_precedence(const char *proname_p, int nargs, const Oid *actual_arg_types, Oid *rewritten_arg_types);
 extern TupleTableSlot *IvyExecMergeMatched(IvyModifyTableContext *context,
 										ResultRelInfo *resultRelInfo,
 										ItemPointer tupleid,
@@ -60,3 +61,4 @@ extern void ora_dbms_session_reset(void);
 extern void ora_dbms_random_reset(void);
 
 #endif	/* IVORYSQL_ORA_H_ */
+
