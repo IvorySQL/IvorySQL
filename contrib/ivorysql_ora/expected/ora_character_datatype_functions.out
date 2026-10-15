@@ -1612,7 +1612,25 @@ select regexp_like(varchar2_value, 'X.', 'n') from t_regexp_like_types;
  t
 (1 row)
 
+select regexp_like('x'||chr(10)||'b'||chr(10)||'y', '^b$');
+ regexp_like 
+-------------
+ f
+(1 row)
+
+select regexp_like('x'||chr(10)||'b'||chr(10)||'y', '^b$', 'n');
+ regexp_like 
+-------------
+ f
+(1 row)
+
 select regexp_like('x'||chr(10)||'b'||chr(10)||'y', '^b$', 'm');
+ regexp_like 
+-------------
+ t
+(1 row)
+
+select regexp_like('x'||chr(10)||'b'||chr(10)||'y', '^b$', 'mn');
  regexp_like 
 -------------
  t
