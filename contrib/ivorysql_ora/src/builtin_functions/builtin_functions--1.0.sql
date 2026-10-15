@@ -1931,3 +1931,56 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 /* End - VSIZE */
+
+/* MEDIAN */
+/*
+ * MEDIAN: Oracle-compatible median aggregate function.
+ *
+ * Oracle's MEDIAN is an inverse distribution function that returns the
+ * continuous-distribution median of its input: for an odd number of values
+ * the middle value of the ordered set, for an even number the arithmetic
+ * mean of the two middle values.  NULL values are ignored and the result
+ * for an empty set is NULL.  It is the same statistic as PostgreSQL's
+ * percentile_cont(0.5) WITHIN GROUP (ORDER BY value).
+ *
+ * The aggregate is implemented in pure SQL with an array as the transition
+ * state.  The transition function is STRICT (the default for SQL-language
+ * functions), so NULL inputs never reach the state and are ignored, exactly
+ * as in Oracle.  The final function sorts the collected values and computes
+ * the median; sorting in the final function keeps the implementation free
+ * of C code while remaining correct for the typical small aggregates.
+ *
+ * Only a numeric overload is provided.  Every other numeric type (int2,
+ * int4, int8, float4, float8) has an implicit cast to numeric, so calls
+ * such as MEDIAN(emp_salary) resolve to this single aggregate without
+ * ambiguity and the result is computed in exact numeric arithmetic.
+ */
+CREATE FUNCTION sys.median_transfn(state numeric[], val numeric)
+RETURNS numeric[]
+AS $$ SELECT array_append(state, val) $$
+LANGUAGE sql
+IMMUTABLE;
+
+CREATE FUNCTION sys.median_finalfn(state numeric[])
+RETURNS numeric
+AS $$
+    SELECT CASE
+               WHEN n = 0 THEN NULL
+               WHEN n % 2 = 1 THEN sorted[(n + 1) / 2]
+               ELSE (sorted[n / 2] + sorted[n / 2 + 1]) / 2
+           END
+    FROM (
+        SELECT count(*)::int AS n, array_agg(v ORDER BY v) AS sorted
+        FROM unnest(state) AS u(v)
+    ) s
+$$
+LANGUAGE sql
+IMMUTABLE;
+
+CREATE AGGREGATE sys.median(numeric) (
+    SFUNC = sys.median_transfn,
+    STYPE = numeric[],
+    FINALFUNC = sys.median_finalfn,
+    INITCOND = '{}'
+);
+/* End - MEDIAN */
