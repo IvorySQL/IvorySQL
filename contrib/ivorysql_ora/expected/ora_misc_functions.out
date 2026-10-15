@@ -4521,3 +4521,60 @@ DETAIL:  "ivorysql" is a reserved prefix.
 reset ivorysql.dummy_config;
 ERROR:  invalid configuration parameter name "ivorysql.dummy_config"
 DETAIL:  "ivorysql" is a reserved prefix.
+/* Start - ORA_HASH */
+/* the same input always hashes to the same value ... */
+SELECT ora_hash('abc') = ora_hash('abc') AS stable;
+ stable 
+--------
+ t
+(1 row)
+
+SELECT ora_hash('abc', 100, 42) = ora_hash('abc', 100, 42) AS stable_seeded;
+ stable_seeded 
+---------------
+ t
+(1 row)
+
+/* ... and the value is always inside 0 .. max_bucket */
+SELECT ora_hash('abc') BETWEEN 0 AND 4294967295 AS default_range;
+ default_range 
+---------------
+ t
+(1 row)
+
+SELECT ora_hash('abc', 9) BETWEEN 0 AND 9 AS range_9;
+ range_9 
+---------
+ t
+(1 row)
+
+SELECT ora_hash(12345, 100) BETWEEN 0 AND 100 AS range_100;
+ range_100 
+-----------
+ t
+(1 row)
+
+/* a value, a bucket count and a seed are hashed differently */
+SELECT ora_hash('abc', 9) <> ora_hash('abd', 9) AS differs_by_value;
+ differs_by_value 
+------------------
+ t
+(1 row)
+
+SELECT ora_hash('abc', 100, 1) BETWEEN 0 AND 100 AS seeded_range;
+ seeded_range 
+--------------
+ t
+(1 row)
+
+/* NULL propagates, a negative bucket count is rejected */
+SELECT ora_hash(NULL) IS NULL AS null_hash;
+ null_hash 
+-----------
+ t
+(1 row)
+
+SELECT ora_hash('abc', -1) AS negative_bucket;
+ERROR:  ORA_HASH: max_bucket must be a non-negative integer
+CONTEXT:  PL/pgSQL function ora_hash(anycompatible,pg_catalog.int8,pg_catalog.int8) line 4 at RAISE
+/* End - ORA_HASH */
