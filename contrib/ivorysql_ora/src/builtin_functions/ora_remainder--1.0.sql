@@ -32,65 +32,53 @@
  *
  * Oracle names the arguments REMAINDER(n2, n1): n2 (the dividend) is the
  * first argument and n1 (the divisor) is the second.  The C implementation
- * and the SQL bodies below use the same convention.  Note that the bare
- * REMAINDER(7, 0) -- two integer literals -- does NOT reach the NUMBER
- * body: with no exact candidate the all-literal call resolves to
- * BINARY_DOUBLE (see below) and returns NaN.  The all-literal resolution to
- * BINARY_DOUBLE follows the same overload set as sys.nanvl (the three
- * Oracle numeric types), which is why that precedent is used here.
- * The NUMBER zero-divisor error ORA-01476 is raised only when at least
- * one operand is typed NUMBER (a NUMBER column or an explicit cast).
+ * and the SQL bodies below use the same convention.
  *
  * ---------------------------------------------------------------------
- * Why exactly three signatures
+ * How calls resolve in Oracle mode
  * ---------------------------------------------------------------------
- * This mirrors the already-merged sys.nanvl, which has the same three
- * Oracle overloads over sys.number, sys.binary_float and sys.binary_double.
- * IvorySQL's three numeric types are distinct from pg_catalog.numeric,
- * float4 and float8, and sys.binary_double is marked typispreferred, so
- * PostgreSQL's function resolution (which compares candidates position by
- * position and then falls back to the preferred type of the category)
- * behaves as follows:
+ * The three signatures mirror the already-merged sys.nanvl: the same
+ * three homogeneous families over sys.number, sys.binary_float and
+ * sys.binary_double.  IvorySQL's three numeric types are distinct from
+ * pg_catalog.numeric, float4 and float8, and plain PostgreSQL overload
+ * resolution cannot pick the family Oracle's numeric precedence requires
+ * for mixed or literal calls.  In Oracle mode the function argument
+ * precedence hook (oracle_funcarg_precedence_hook) completes the
+ * resolution:
+ *
+ *   * The parser first looks the name up with the caller's real argument
+ *     types, so an exact user-defined overload visible through the
+ *     search_path (or a schema-qualified call) always wins.
+ *
+ *   * Only when that lookup does not yield an exact match are the
+ *     argument types rewritten per Oracle numeric precedence -- ordinary
+ *     numeric literals (int2/int4/int8/numeric, or an unknown string
+ *     literal in this numeric context) behave as NUMBER values and a
+ *     common target type is chosen with BINARY_DOUBLE > BINARY_FLOAT >
+ *     NUMBER -- and the lookup is retried.  The real argument types are
+ *     kept for the actual call so that the arguments are coerced to the
+ *     selected overload.
+ *
+ * Observed consequences (all asserted in the regression suite, verified
+ * against Oracle Database 23ai):
  *
  *   * An argument that is exactly one of the three sys types selects the
  *     matching family.  A column of type sys.number, sys.binary_float or
- *     sys.binary_double -- the common case in migrated code -- therefore
- *     resolves to NUMBER, BINARY_FLOAT or BINARY_DOUBLE respectively, and
- *     a bare integer or decimal literal next to it is absorbed by that
- *     family (REMAINDER(number_col, 4) and REMAINDER(number_col, 1.5)
- *     both stay on the NUMBER path).
+ *     sys.binary_double -- the common case in migrated code -- resolves
+ *     to NUMBER, BINARY_FLOAT or BINARY_DOUBLE respectively, and a bare
+ *     integer or decimal literal next to it is absorbed by that family
+ *     (REMAINDER(number_col, 4) and REMAINDER(number_col, 1.5) both stay
+ *     on the NUMBER path).
  *
- *   * A call whose operands are all bare literals (int4 / numeric) has no
- *     exact match and resolves to BINARY_DOUBLE, the preferred type of
- *     the numeric category.  This is the same behaviour as sys.nanvl, and
- *     it has two observable consequences that callers migrating Oracle
- *     code should know about (both verified on a live server):
+ *   * Ordinary numeric literals are NUMBER values: the all-literal form
+ *     REMAINDER(7, 0) reaches the NUMBER body and raises
+ *     division_by_zero (ORA-01476), and a wide literal keeps its exact
+ *     decimal digits (REMAINDER(10000000000000000001, 2) = 1).
  *
- *       - REMAINDER(7, 0) returns NaN instead of raising ORA-01476,
- *         because the call never reaches the NUMBER body.  Add a cast
- *         (REMAINDER(CAST(7 AS NUMBER), 0)) or use a NUMBER column to get
- *         the Oracle error.
- *       - A literal with more significant digits than a double can hold
- *         (about 17), such as the 20-digit 10000000000000000001, is
- *         carried as a double and loses its low digits:
- *         REMAINDER(10000000000000000001, 2) is 0, whereas
- *         REMAINDER(CAST(10000000000000000001 AS NUMBER), 2) is 1.
- *
- *     Both are accepted consequences of the three-signature design, not
- *     defects of the NUMBER body.
- *
- *   * A call that explicitly mixes NUMBER with BINARY_FLOAT has two
- *     equally good candidates and fails with "function ... is not unique".
- *     This is a known limitation shared with sys.nanvl; an explicit cast
- *     on either operand resolves it.  NUMBER combined with BINARY_DOUBLE,
- *     and BINARY_FLOAT combined with BINARY_DOUBLE, both resolve to
- *     BINARY_DOUBLE as Oracle's precedence rule requires.
- *
- * Verified against a live IvorySQL server: a NUMBER, BINARY_FLOAT or
- * BINARY_DOUBLE column combined with a literal returns NUMBER,
- * BINARY_FLOAT or BINARY_DOUBLE respectively; on the NUMBER path a zero
- * divisor raises division_by_zero; and an all-literal call resolves to
- * BINARY_DOUBLE and returns NaN for a zero divisor, as described above.
+ *   * Mixed families follow the precedence rule:
+ *     REMAINDER(number, binary_float) resolves to BINARY_FLOAT;
+ *     NUMBER combined with BINARY_DOUBLE, and BINARY_FLOAT combined
+ *     with BINARY_DOUBLE, both resolve to BINARY_DOUBLE.
  */
 
 /*
