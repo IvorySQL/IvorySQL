@@ -1061,6 +1061,10 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	{
 		ListCell   *option;
 
+		if (relkind == RELKIND_PARTITIONED_TABLE)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("partitioned object tables are not supported")));
 		/* REFs need a stable logical row identifier on every object table. */
 		foreach(option, stmt->options)
 		{
@@ -19529,6 +19533,11 @@ ATExecAddOf(Relation rel, const TypeName *ofTypename, LOCKMODE lockmode)
 	check_of_type(typetuple);
 	typeform = (Form_pg_type) GETSTRUCT(typetuple);
 	typeid = typeform->oid;
+	if (typeform->typisobject &&
+		rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("partitioned object tables are not supported")));
 
 	/* Fail if the table has any inheritance parents. */
 	inheritsRelation = table_open(InheritsRelationId, AccessShareLock);

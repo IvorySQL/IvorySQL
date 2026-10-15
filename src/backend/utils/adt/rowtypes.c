@@ -20,6 +20,7 @@
 #include "access/detoast.h"
 #include "access/htup_details.h"
 #include "access/relation.h"
+#include "catalog/pg_class.h"
 #include "catalog/pg_type.h"
 #include "catalog/namespace.h"
 #include "funcapi.h"
@@ -58,6 +59,8 @@ ora_deref_internal(PG_FUNCTION_ARGS)
 	TupleDesc	desc;
 	Datum		tableDatum;
 	Datum		rowDatum;
+	Oid			refType;
+	Oid			baseRefType;
 	Oid		targetType;
 	Oid		tableId;
 	int64		rowNo;
@@ -71,13 +74,29 @@ ora_deref_internal(PG_FUNCTION_ARGS)
 	HeapTupleHeader output;
 	Size		outputSize;
 
-	if (PG_ARGISNULL(0))
-		PG_RETURN_NULL();
+	/*
+	 * This helper is callable directly as well as through DEREF.  Validate the
+	 * SQL argument type before interpreting its Datum as a varlena pointer;
+	 * anyelement also accepts pass-by-value scalars and domains over them.
+	 * Direct calls with a genuine object_ref are intentionally supported and
+	 * run the SPI query with the caller's ordinary SELECT privileges.
+	 */
+	refType = get_fn_expr_argtype(fcinfo->flinfo, 0);
+	baseRefType = GetSysCacheOid2(TYPENAMENSP, Anum_pg_type_oid,
+								CStringGetDatum("object_ref"),
+								ObjectIdGetDatum(get_namespace_oid("sys", false)));
+	if (!OidIsValid(refType) || !OidIsValid(baseRefType) ||
+		getBaseType(refType) != baseRefType)
+		ereport(ERROR,
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+				 errmsg("DEREF requires an object reference")));
 	targetType = get_fn_expr_argtype(fcinfo->flinfo, 1);
 	if (!OidIsValid(targetType) || !get_typisobject(targetType))
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("DEREF requires an Oracle object type")));
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
 
 	ref = PG_GETARG_HEAPTUPLEHEADER(0);
 	desc = lookup_rowtype_tupdesc(HeapTupleHeaderGetTypeId(ref),
@@ -111,7 +130,8 @@ ora_deref_internal(PG_FUNCTION_ARGS)
 	if (relation == NULL)
 		PG_RETURN_NULL();
 	if (relation->rd_rel->reloftype != targetType ||
-		!relation->rd_rel->relhasrowid)
+		!relation->rd_rel->relhasrowid ||
+		relation->rd_rel->relkind != RELKIND_RELATION)
 	{
 		relation_close(relation, AccessShareLock);
 		PG_RETURN_NULL();

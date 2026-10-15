@@ -271,6 +271,10 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 		{
 			ListCell   *option;
 
+			if (stmt->partspec != NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("partitioned object tables are not supported")));
 			foreach(option, stmt->options)
 			{
 				DefElem    *def = lfirst_node(DefElem, option);

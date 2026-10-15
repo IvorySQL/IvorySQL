@@ -8,6 +8,32 @@ CREATE OR REPLACE TYPE ref_reg_person AS OBJECT (
     parent REF ref_reg_person
 );
 CREATE TYPE ref_reg_other AS OBJECT (name varchar2(10));
+-- Direct helper calls must reject scalars before reading a composite Datum.
+SELECT sys.ora_deref_internal(1, NULL::ref_reg_person);
+ERROR:  DEREF requires an object reference
+SELECT sys.ora_deref_internal('scalar'::text, NULL::ref_reg_person);
+ERROR:  DEREF requires an object reference
+CREATE DOMAIN ref_reg_scalar AS integer;
+SELECT sys.ora_deref_internal(1::ref_reg_scalar, NULL::ref_reg_person);
+ERROR:  DEREF requires an object reference
+DROP DOMAIN ref_reg_scalar;
+SELECT sys.ora_deref_internal(ROW(1, 2), NULL::ref_reg_person);
+ERROR:  DEREF requires an object reference
+SELECT sys.ora_deref_internal(NULL::sys.object_ref,
+                              NULL::ref_reg_person) IS NULL AS null_ref;
+ null_ref 
+----------
+ t
+(1 row)
+
+-- Reject the unsupported partition path, including ALTER TABLE ... OF.
+CREATE TABLE ref_reg_partitioned OF ref_reg_person PARTITION BY RANGE (name);
+ERROR:  partitioned object tables are not supported
+CREATE TABLE ref_reg_partitioned (name varchar2(10), parent REF ref_reg_person)
+    PARTITION BY RANGE (name);
+ALTER TABLE ref_reg_partitioned OF ref_reg_person;
+ERROR:  partitioned object tables are not supported
+DROP TABLE ref_reg_partitioned;
 CREATE TABLE ref_reg_people OF ref_reg_person;
 CREATE TABLE ref_reg_others OF ref_reg_other;
 CREATE TABLE ref_reg_holder (person REF ref_reg_person NOT NULL);

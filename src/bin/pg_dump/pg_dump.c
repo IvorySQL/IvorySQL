@@ -2570,6 +2570,10 @@ dumpTableData_insert(Archive *fout, const void *dcontext)
 
 	if (tbinfo->relhasrowid)
 	{
+		/*
+		 * Keep the trusted ROWID override inside the INSERT's FROM clause.
+		 * A separate SELECT must not leave restore state for a later command.
+		 */
 		rowidRelname = createPQExpBuffer();
 		appendStringLiteralAH(rowidRelname, fmtQualifiedDumpable(tbinfo), fout);
 	}
@@ -2592,7 +2596,8 @@ dumpTableData_insert(Archive *fout, const void *dcontext)
 	{
 		if (tbinfo->attisdropped[i])
 			continue;
-		if (tbinfo->attgenerated[i] && dopt->column_inserts)
+		if (tbinfo->attgenerated[i] &&
+			(dopt->column_inserts || tbinfo->relhasrowid))
 			continue;
 		if (nfields > 0)
 			appendPQExpBufferStr(q, ", ");
@@ -2635,7 +2640,7 @@ dumpTableData_insert(Archive *fout, const void *dcontext)
 		 * possible in "insertStmt", which we can then just print for each
 		 * statement. If the table happens to have zero dumpable columns then
 		 * this will be a complete statement, otherwise it will end in
-		 * "VALUES" and be ready to have the row's column values printed.
+		 * "VALUES" (or "SELECT" for ROWID tables) ready for the column values.
 		 */
 		if (insertStmt == NULL)
 		{
@@ -2659,14 +2664,14 @@ dumpTableData_insert(Archive *fout, const void *dcontext)
 							  fmtQualifiedDumpable(targettab));
 
 			/* corner case for zero-column table */
-			if (nfields == 0)
+			if (nfields == 0 && !tbinfo->relhasrowid)
 			{
 				appendPQExpBufferStr(insertStmt, "DEFAULT VALUES;\n");
 			}
 			else
 			{
 				/* append the list of column names if required */
-				if (dopt->column_inserts || tbinfo->relhasrowid)
+				if (nfields > 0 && (dopt->column_inserts || tbinfo->relhasrowid))
 				{
 					appendPQExpBufferChar(insertStmt, '(');
 					for (int field = 0; field < nfields; field++)
@@ -2682,16 +2687,13 @@ dumpTableData_insert(Archive *fout, const void *dcontext)
 				if (tbinfo->needs_override)
 					appendPQExpBufferStr(insertStmt, "OVERRIDING SYSTEM VALUE ");
 
-				appendPQExpBufferStr(insertStmt, "VALUES");
+				appendPQExpBufferStr(insertStmt,
+									 tbinfo->relhasrowid ? "SELECT " : "VALUES");
 			}
 		}
 
 		for (int tuple = 0; tuple < PQntuples(res); tuple++)
 		{
-			if (tbinfo->relhasrowid)
-				archprintf(fout,
-						   "SELECT sys.ora_set_next_rowid(%s::regclass, %s);\n",
-						   rowidRelname->data, PQgetvalue(res, tuple, nfields));
 			/* Write the INSERT if not in the middle of a multi-row INSERT. */
 			if (rows_this_statement == 0)
 				archputs(insertStmt->data, fout);
@@ -2705,16 +2707,19 @@ dumpTableData_insert(Archive *fout, const void *dcontext)
 			 * given that using INSERTs is mostly only ever needed for
 			 * cross-database exports.
 			 */
-			if (nfields == 0)
+			if (nfields == 0 && !tbinfo->relhasrowid)
 				continue;
 
-			/* Emit a row heading */
-			if (rows_per_statement == 1)
-				archputs(" (", fout);
-			else if (rows_this_statement > 0)
-				archputs(",\n\t(", fout);
-			else
-				archputs("\n\t(", fout);
+			/* SELECT does not use the VALUES row delimiters. */
+			if (!tbinfo->relhasrowid)
+			{
+				if (rows_per_statement == 1)
+					archputs(" (", fout);
+				else if (rows_this_statement > 0)
+					archputs(",\n\t(", fout);
+				else
+					archputs("\n\t(", fout);
+			}
 
 			for (int field = 0; field < nfields; field++)
 			{
@@ -2787,7 +2792,12 @@ dumpTableData_insert(Archive *fout, const void *dcontext)
 			}
 
 			/* Terminate the row ... */
-			archputs(")", fout);
+			if (tbinfo->relhasrowid)
+				archprintf(fout,
+						   " FROM sys.ora_set_next_rowid(%s::regclass, %s) WHERE true",
+						   rowidRelname->data, PQgetvalue(res, tuple, nfields));
+			else
+				archputs(")", fout);
 
 			/* ... and the statement, if the target no. of rows is reached */
 			if (++rows_this_statement >= rows_per_statement)

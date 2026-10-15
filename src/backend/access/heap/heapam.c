@@ -38,19 +38,23 @@
 #include "access/multixact.h"
 #include "access/subtrans.h"
 #include "access/syncscan.h"
+#include "access/table.h"
 #include "access/valid.h"
 #include "access/visibilitymap.h"
+#include "access/xact.h"
 #include "access/xloginsert.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_database_d.h"
 #include "commands/vacuum.h"
 #include "executor/instrument_node.h"
+#include "miscadmin.h"
 #include "pgstat.h"
 #include "port/pg_bitutils.h"
 #include "storage/lmgr.h"
 #include "storage/predicate.h"
 #include "storage/proc.h"
 #include "storage/procarray.h"
+#include "utils/acl.h"
 #include "utils/datum.h"
 #include "utils/injection_point.h"
 #include "utils/inval.h"
@@ -61,7 +65,33 @@
 
 /* One-shot ROWID override used by pg_dump's object-table restore stream. */
 static Oid	ora_restore_relid = InvalidOid;
-static int32 ora_restore_rowno = 0;
+static int64 ora_restore_rowno = 0;
+static CommandId ora_restore_cid = InvalidCommandId;
+static SubTransactionId ora_restore_subid = InvalidSubTransactionId;
+static bool ora_restore_callbacks_registered = false;
+
+static void
+ora_reset_restore_rowid(void)
+{
+	ora_restore_relid = InvalidOid;
+	ora_restore_rowno = 0;
+	ora_restore_cid = InvalidCommandId;
+	ora_restore_subid = InvalidSubTransactionId;
+}
+
+static void
+ora_restore_xact_callback(XactEvent event, void *arg)
+{
+	ora_reset_restore_rowid();
+}
+
+static void
+ora_restore_subxact_callback(SubXactEvent event, SubTransactionId mySubid,
+							SubTransactionId parentSubid, void *arg)
+{
+	if (event == SUBXACT_EVENT_ABORT_SUB || event == SUBXACT_EVENT_COMMIT_SUB)
+		ora_reset_restore_rowid();
+}
 
 Datum ora_set_next_rowid(PG_FUNCTION_ARGS);
 
@@ -70,13 +100,45 @@ ora_set_next_rowid(PG_FUNCTION_ARGS)
 {
 	Oid		relid = PG_GETARG_OID(0);
 	int64	rowno = PG_GETARG_INT64(1);
+	Relation	rel;
 
-	if (rowno <= 0 || rowno > PG_INT32_MAX)
+	ora_reset_restore_rowid();
+	/* ACLs can be granted, so enforce the trusted-restore boundary here too. */
+	if (!superuser())
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("must be superuser to restore ROWID values")));
+	if (rowno <= 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("ROWID value is out of range")));
+	rel = table_open(relid, RowExclusiveLock);
+	if (!object_ownercheck(RelationRelationId, relid, GetUserId()))
+		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_TABLE,
+					   RelationGetRelationName(rel));
+	if (rel->rd_rel->relkind != RELKIND_RELATION ||
+		!rel->rd_rel->relhasrowid)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("ROWID restoration requires a heap table with ROWID")));
+	/* Before-row triggers/rules could suppress or redirect the intended row. */
+	if ((rel->trigdesc != NULL && rel->trigdesc->trig_insert_before_row) ||
+		rel->rd_rel->relhasrules)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot restore ROWID values with BEFORE INSERT triggers or rules present")));
+	table_close(rel, NoLock);
+	if (!ora_restore_callbacks_registered)
+	{
+		RegisterXactCallback(ora_restore_xact_callback, NULL);
+		RegisterSubXactCallback(ora_restore_subxact_callback, NULL);
+		ora_restore_callbacks_registered = true;
+	}
 	ora_restore_relid = relid;
-	ora_restore_rowno = (int32) rowno;
+	ora_restore_rowno = rowno;
+	/* pg_dump calls this in the FROM clause of the INSERT being restored. */
+	ora_restore_cid = GetCurrentCommandId(true);
+	ora_restore_subid = GetCurrentSubTransactionId();
 	PG_RETURN_VOID();
 }
 
@@ -2149,7 +2211,7 @@ static HeapTuple
 heap_prepare_insert(Relation relation, HeapTuple tup, TransactionId xid,
 					CommandId cid, uint32 options)
 {
-	int	seqnum;
+	int64	seqnum;
 
 	/*
 	 * To allow parallel inserts, we need to ensure that they are safe to be
@@ -2168,14 +2230,19 @@ heap_prepare_insert(Relation relation, HeapTuple tup, TransactionId xid,
 		/* this is redundant with an Assert in HeapTupleSetRowId */
 		Assert(tup->t_data->t_infomask & HEAP_HASROWID);
 #endif
-		/* Get the sequence next value */
-		seqnum = nextval_internal(relation->rd_rowdSeqid, true);
+		/* Never let a skipped/redirected insert affect a subsequent command. */
+		if (OidIsValid(ora_restore_relid) &&
+			(ora_restore_cid != cid ||
+			 ora_restore_subid != GetCurrentSubTransactionId()))
+			ora_reset_restore_rowid();
 		if (ora_restore_relid == RelationGetRelid(relation))
 		{
+			/* pg_dump restores sequence state separately after the table data. */
 			seqnum = ora_restore_rowno;
-			ora_restore_relid = InvalidOid;
-			ora_restore_rowno = 0;
+			ora_reset_restore_rowid();
 		}
+		else
+			seqnum = nextval_internal(relation->rd_rowdSeqid, true);
 		/* Set the HeapTupleHeader */
 		HeapTupleSetRowId(tup, seqnum);
 	}

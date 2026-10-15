@@ -1705,6 +1705,11 @@ transformFuncCall(ParseState *pstate, FuncCall *fn)
 		if (!HeapTupleIsValid(reltup))
 			elog(ERROR, "cache lookup failed for relation %u", nsitem->p_rte->relid);
 		relform = (Form_pg_class) GETSTRUCT(reltup);
+		if (relform->relkind == RELKIND_PARTITIONED_TABLE)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("partitioned object tables are not supported"),
+					 parser_errposition(pstate, fn->location)));
 		objectType = relform->reloftype;
 		if (!OidIsValid(objectType) || !get_typisobject(objectType) ||
 			!relform->relhasrowid)
