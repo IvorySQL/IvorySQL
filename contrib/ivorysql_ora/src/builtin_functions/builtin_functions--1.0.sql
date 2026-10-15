@@ -332,6 +332,131 @@ $$
 language plpgsql
 PARALLEL SAFE;
 
+/* Oracle NUMBER math: sqrt/ln/exp/log/power take and return NUMBER.  Without
+   these overloads an integer argument binds the pg_catalog float8 variants
+   (float8 is the preferred type of the numeric category), which loses any
+   digits past ~16 and returns a non-NUMBER type, e.g. power(3, 50) yields
+   7.178979876918526e+23 instead of the exact 717897987691852588770249. */
+CREATE FUNCTION sys.sqrt(integer)
+RETURNS numeric
+AS $$SELECT pg_catalog.sqrt($1::pg_catalog.numeric)$$
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.sqrt(bigint)
+RETURNS numeric
+AS $$SELECT pg_catalog.sqrt($1::pg_catalog.numeric)$$
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.ln(integer)
+RETURNS numeric
+AS $$SELECT pg_catalog.ln($1::pg_catalog.numeric)$$
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.ln(bigint)
+RETURNS numeric
+AS $$SELECT pg_catalog.ln($1::pg_catalog.numeric)$$
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.exp(integer)
+RETURNS numeric
+AS $$SELECT pg_catalog.exp($1::pg_catalog.numeric)$$
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.exp(bigint)
+RETURNS numeric
+AS $$SELECT pg_catalog.exp($1::pg_catalog.numeric)$$
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.log(integer)
+RETURNS numeric
+AS $$SELECT pg_catalog.log($1::pg_catalog.numeric)$$
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.log(bigint)
+RETURNS numeric
+AS $$SELECT pg_catalog.log($1::pg_catalog.numeric)$$
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.log(integer, integer)
+RETURNS numeric
+AS $$SELECT pg_catalog.log($1::pg_catalog.numeric, $2::pg_catalog.numeric)$$
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.log(integer, bigint)
+RETURNS numeric
+AS $$SELECT pg_catalog.log($1::pg_catalog.numeric, $2::pg_catalog.numeric)$$
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.log(bigint, integer)
+RETURNS numeric
+AS $$SELECT pg_catalog.log($1::pg_catalog.numeric, $2::pg_catalog.numeric)$$
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.log(bigint, bigint)
+RETURNS numeric
+AS $$SELECT pg_catalog.log($1::pg_catalog.numeric, $2::pg_catalog.numeric)$$
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.power(integer, integer)
+RETURNS numeric
+AS $$SELECT pg_catalog.power($1::pg_catalog.numeric, $2::pg_catalog.numeric)$$
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.power(integer, bigint)
+RETURNS numeric
+AS $$SELECT pg_catalog.power($1::pg_catalog.numeric, $2::pg_catalog.numeric)$$
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.power(bigint, integer)
+RETURNS numeric
+AS $$SELECT pg_catalog.power($1::pg_catalog.numeric, $2::pg_catalog.numeric)$$
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.power(bigint, bigint)
+RETURNS numeric
+AS $$SELECT pg_catalog.power($1::pg_catalog.numeric, $2::pg_catalog.numeric)$$
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.power(integer, numeric)
+RETURNS numeric
+AS $$SELECT pg_catalog.power($1::pg_catalog.numeric, $2)$$
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.power(numeric, integer)
+RETURNS numeric
+AS $$SELECT pg_catalog.power($1, $2::pg_catalog.numeric)$$
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.power(bigint, numeric)
+RETURNS numeric
+AS $$SELECT pg_catalog.power($1::pg_catalog.numeric, $2)$$
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.power(numeric, bigint)
+RETURNS numeric
+AS $$SELECT pg_catalog.power($1, $2::pg_catalog.numeric)$$
+LANGUAGE SQL
+IMMUTABLE PARALLEL SAFE STRICT;
+
 
 /* trim/ltrim/rtrim functions */
 CREATE FUNCTION sys.rtrim(sys.oravarcharchar)
