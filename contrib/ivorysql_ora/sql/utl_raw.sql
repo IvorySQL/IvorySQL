@@ -33,3 +33,30 @@ SELECT pg_catalog.encode(
     'hex');
 \c :original_db
 DROP DATABASE utl_raw_latin1;
+
+-- CAST_TO_VARCHAR2: the decoding half of CAST_TO_RAW
+
+-- Basic decoding from hex bytes
+SELECT UTL_RAW.CAST_TO_VARCHAR2(pg_catalog.decode('68656c6c6f', 'hex'));
+
+-- Round-trip identity: CAST_TO_VARCHAR2(CAST_TO_RAW(x)) = x
+SELECT UTL_RAW.CAST_TO_VARCHAR2(UTL_RAW.CAST_TO_RAW('hello'));
+
+-- Multi-byte characters survive the round trip
+SELECT UTL_RAW.CAST_TO_VARCHAR2(UTL_RAW.CAST_TO_RAW('你好ABC世界'));
+
+-- NULL input returns NULL
+SELECT UTL_RAW.CAST_TO_VARCHAR2(NULL) IS NULL;
+
+-- Empty raw returns the empty string
+SELECT UTL_RAW.CAST_TO_VARCHAR2(UTL_RAW.CAST_TO_RAW(''));
+
+-- CAST_TO_VARCHAR2 reads bytes in a non-UTF8 database
+\set original_db2 :DBNAME
+CREATE DATABASE utl_raw_latin1_decode
+    TEMPLATE template0 ENCODING 'LATIN1' LC_COLLATE 'C' LC_CTYPE 'C';
+\c utl_raw_latin1_decode
+SELECT UTL_RAW.CAST_TO_VARCHAR2(pg_catalog.decode('e9', 'hex'))
+    = pg_catalog.convert_from(pg_catalog.decode('e9', 'hex'), 'LATIN1');
+\c :original_db2
+DROP DATABASE utl_raw_latin1_decode;
