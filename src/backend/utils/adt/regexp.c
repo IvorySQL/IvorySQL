@@ -1673,9 +1673,19 @@ ora_build_regexp_instr_matches_result(regexp_matches_ctx *matchctx ,int ret_opt,
 	loc = matchctx->next_match * matchctx->npatterns * 2;
 	if (subexpr_pos <= matchctx->npatterns)
 	{
-		int	so = 0;
-		int	eo = 0;
+		int		so = 0;
+		int		eo = 0;
 
+		/*
+		 * Both branches leave so/eo holding the zero-based exclusive match
+		 * bounds.  With the exclusive end the returned positions are
+		 * start + 1 for ret_opt 0 and end + 1 for ret_opt 1, matching
+		 * Oracle for empty and single-character matches too; the old code
+		 * decremented the whole-match end before comparing it with the
+		 * start, which made every one-character match (and an empty match
+		 * at the beginning of the string) report "no match", and charged
+		 * the subexpression branch an extra position for ret_opt 1.
+		 */
 		if (matchctx->npatterns >= 1 && matchctx->use_subpatterns && subexpr_pos > 0)
 		{
 			so = matchctx->match_locs[loc + 2 *(subexpr_pos - 1)];
@@ -1684,11 +1694,7 @@ ora_build_regexp_instr_matches_result(regexp_matches_ctx *matchctx ,int ret_opt,
 		else if (matchctx->npatterns == 1)
 		{
 			so = matchctx->match_locs[loc];
-			eo = matchctx->match_locs[loc + matchctx->npatterns * 2 -1] - 1;
-			if(eo < 0)
-				eo = 0;
-			if(so == eo)
-				return false;
+			eo = matchctx->match_locs[loc + matchctx->npatterns * 2 -1];
 		}
 
 		if (so < 0 || eo < 0)
@@ -1704,7 +1710,7 @@ ora_build_regexp_instr_matches_result(regexp_matches_ctx *matchctx ,int ret_opt,
 			}
 			else
 			{
-				sprintf(ret_str_val,"%d",eo + 2);
+				sprintf(ret_str_val,"%d",eo + 1);
 				*subpattern = PointerGetDatum(cstring_to_text(ret_str_val));
 			}
 		}
