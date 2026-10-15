@@ -16,6 +16,7 @@ CREATE OR REPLACE PACKAGE UTL_RAW IS
     machine_endian  CONSTANT INTEGER := 3;
 
     FUNCTION CAST_TO_RAW(c IN VARCHAR2) RETURN RAW;
+    FUNCTION CAST_TO_VARCHAR2(r IN RAW) RETURN VARCHAR2;
 END;
 
 -- UTL_RAW Package Body
@@ -23,5 +24,10 @@ CREATE OR REPLACE PACKAGE BODY UTL_RAW IS
     FUNCTION CAST_TO_RAW(c IN VARCHAR2) RETURN RAW IS
     BEGIN
         RETURN pg_catalog.convert_to(c::text, pg_catalog.getdatabaseencoding());
+    END;
+
+    FUNCTION CAST_TO_VARCHAR2(r IN RAW) RETURN VARCHAR2 IS
+    BEGIN
+        RETURN pg_catalog.convert_from(r, pg_catalog.getdatabaseencoding());
     END;
 END;
