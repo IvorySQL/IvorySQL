@@ -49,7 +49,9 @@ SELECT UTL_RAW.CAST_TO_VARCHAR2(UTL_RAW.CAST_TO_RAW('你好ABC世界'));
 SELECT UTL_RAW.CAST_TO_VARCHAR2(NULL) IS NULL;
 
 -- Empty raw returns the empty string
-SELECT UTL_RAW.CAST_TO_VARCHAR2(UTL_RAW.CAST_TO_RAW(''));
+SELECT UTL_RAW.CAST_TO_VARCHAR2('\x'::bytea) IS NOT NULL
+   AND pg_catalog.octet_length(
+       UTL_RAW.CAST_TO_VARCHAR2('\x'::bytea)::text) = 0;
 
 -- CAST_TO_VARCHAR2 reads bytes in a non-UTF8 database
 \set original_db2 :DBNAME
