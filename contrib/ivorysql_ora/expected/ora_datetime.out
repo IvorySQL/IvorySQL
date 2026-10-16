@@ -1260,3 +1260,62 @@ select 25::number <= to_char('1990-01-01'::oradate, 'yyyy');
  t
 (1 row)
 
+--
+-- TZ_OFFSET / FROM_TZ: a numerically specified offset keeps its sign even when
+-- the hour field is zero.  TZ_OFFSET('-0:30') is UTC-00:30, and FROM_TZ must
+-- read the same offset as half an hour west of GMT, not east of it.
+--
+select tz_offset('-0:30') from dual;
+ tz_offset 
+-----------
+ -00:30
+(1 row)
+
+select tz_offset('+0:30') from dual;
+ tz_offset 
+-----------
+ +00:30
+(1 row)
+
+select tz_offset('-0:30') = '+00:30' from dual;
+ ?column? 
+----------
+ f
+(1 row)
+
+select tz_offset('-0:30') = '-00:30' from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+select tz_offset('-1:30') = '-01:30' from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
+select tz_offset('-1:30') = '+01:30' from dual;
+ ?column? 
+----------
+ f
+(1 row)
+
+select tz_offset('-12:59') from dual;
+ tz_offset 
+-----------
+ -12:59
+(1 row)
+
+select from_tz(timestamp '2000-03-28 08:00:00', '-0:30') = from_tz(timestamp '2000-03-28 08:00:00', '+0:30') from dual;
+ ?column? 
+----------
+ f
+(1 row)
+
+select from_tz(timestamp '2000-03-28 08:00:00', '-0:30') > from_tz(timestamp '2000-03-28 08:00:00', '0:00') from dual;
+ ?column? 
+----------
+ t
+(1 row)
+
