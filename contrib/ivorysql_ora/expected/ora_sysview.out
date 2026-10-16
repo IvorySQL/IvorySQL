@@ -493,3 +493,34 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- ALL_TABLES
+DROP TABLE IF EXISTS TEST_ALL_TABLES;
+NOTICE:  table "test_all_tables" does not exist, skipping
+CREATE TABLE TEST_ALL_TABLES (ID INT);
+INSERT INTO TEST_ALL_TABLES VALUES (1), (2);
+ANALYZE TEST_ALL_TABLES;
+SELECT OWNER IS NOT NULL AS has_owner, TABLE_NAME, STATUS, TEMPORARY, PARTITIONED,
+       (NUM_ROWS IS NOT NULL) AS has_num_rows,
+       (LAST_ANALYZED IS NOT NULL) AS analyzed
+FROM SYS.ALL_TABLES WHERE TABLE_NAME = 'TEST_ALL_TABLES';
+ has_owner |   table_name    | status | temporary | partitioned | has_num_rows | analyzed 
+-----------+-----------------+--------+-----------+-------------+--------------+----------
+ t         | TEST_ALL_TABLES | VALID  | N         | NO          | t            | t
+(1 row)
+
+-- a table owned by another role is visible here
+DROP ROLE IF EXISTS all_tables_owner;
+NOTICE:  role "all_tables_owner" does not exist, skipping
+CREATE ROLE all_tables_owner;
+CREATE TABLE TEST_ALL_TABLES_OTHER (ID INT);
+ALTER TABLE TEST_ALL_TABLES_OTHER OWNER TO all_tables_owner;
+SELECT count(*) AS rows_for_other_owner FROM SYS.ALL_TABLES
+WHERE TABLE_NAME = 'TEST_ALL_TABLES_OTHER';
+ rows_for_other_owner 
+----------------------
+                    1
+(1 row)
+
+DROP TABLE TEST_ALL_TABLES_OTHER;
+DROP ROLE all_tables_owner;
+DROP TABLE IF EXISTS TEST_ALL_TABLES;
