@@ -284,7 +284,8 @@ endif
 	rm -f '$(DESTDIR)$(datadir)/pg_hba.conf.sample' \
 	      '$(DESTDIR)$(datadir)/pg_ident.conf.sample' \
 	      '$(DESTDIR)$(datadir)/pg_hosts.conf.sample' \
-	      '$(DESTDIR)$(datadir)/postgresql.conf.sample'
+	      '$(DESTDIR)$(datadir)/postgresql.conf.sample' \
+	      '$(DESTDIR)$(datadir)/ivorysql.conf.sample'
 ifeq ($(with_llvm), yes)
 	$(call uninstall_llvm_module,postgres)
 endif
