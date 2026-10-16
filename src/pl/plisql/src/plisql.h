@@ -1106,6 +1106,8 @@ typedef struct PLiSQL_execstate
 
 	bool		readonly_func;
 	bool		atomic;
+	int			stmt_subxact_level; /* depth of per-statement subtransactions
+									 * used for Oracle-style exception blocks */
 
 	char	   *exitlabel;		/* the "target" label of the current EXIT or
 								 * CONTINUE stmt, if any */
