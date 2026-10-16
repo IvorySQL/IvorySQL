@@ -1557,3 +1557,29 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+--
+-- USER_TABLES: the relations owned by the current user, like Oracle's
+-- USER_TABLES view.  PostgreSQL has no tablespace, LOGGING or storage
+-- clauses to report, so only the columns that map cleanly are filled in;
+-- NUM_ROWS and LAST_ANALYZED come from the statistics and stay NULL until
+-- the relation has been analyzed.
+--
+CREATE OR REPLACE VIEW SYS.USER_TABLES AS
+SELECT
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    NULL::varchar2(30) AS tablespace_name,
+    'VALID'::varchar2(8) AS status,
+    (CASE WHEN c.reltuples < 0 THEN NULL ELSE c.reltuples::numeric END) AS num_rows,
+    pg_catalog.pg_stat_get_last_analyze_time(c.oid) AS last_analyzed,
+    'N'::varchar2(1) AS temporary,
+    (CASE WHEN c.relkind = 'p' THEN 'YES' ELSE 'NO' END)::varchar2(3) AS partitioned
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+WHERE
+    pg_catalog.pg_get_userbyid(c.relowner) = current_user
+    AND c.relkind IN ('r','p')
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND NOT c.relispartition;
+
+GRANT SELECT ON SYS.USER_TABLES TO PUBLIC;
