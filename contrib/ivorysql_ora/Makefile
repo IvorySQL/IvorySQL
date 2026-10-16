@@ -25,6 +25,7 @@ OBJS = \
 	src/builtin_functions/datetime_datatype_functions.o \
 	src/builtin_functions/numeric_datatype_functions.o \
 	src/builtin_functions/misc_functions.o \
+	src/builtin_functions/nls_functions.o \
 	src/builtin_packages/dbms_output/dbms_output.o \
 	src/builtin_packages/utl_file/utl_file.o \
 	src/merge/ora_merge.o \
@@ -85,6 +86,7 @@ ORA_REGRESS = \
 	ora_character_datatype_functions \
 	ora_datetime_datatype_functions \
 	ora_misc_functions \
+	ora_nls_case_functions \
 	ora_vsize \
 	ora_merge \
 	datatype_and_func_bugs \
