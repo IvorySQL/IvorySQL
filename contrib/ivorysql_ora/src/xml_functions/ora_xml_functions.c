@@ -1849,6 +1849,12 @@ ivy_insertchildxml(PG_FUNCTION_ARGS)
 	else
 	{
 		/* Begin - Bug#Z204 */
+		if (new_node->children == NULL)
+		{
+			xmlFreeDoc(new_node);
+			ereport(ERROR, (errcode(ERRCODE_INVALID_XML_DOCUMENT),
+					errmsg("The document being inserted has no child nodes")));
+		}
 		if (strcmp(cname, (char *)((xmlNodePtr)new_node->children->name)) != 0)
 		{
 			xmlFreeDoc(new_node);
@@ -1947,6 +1953,12 @@ ivy_insertchildxml2(PG_FUNCTION_ARGS)
 
 		if (strstr((char *)nodestring, r.data))
 		{
+			if (new_node->children == NULL)
+			{
+				xmlFreeDoc(new_node);
+				ereport(ERROR, (errcode(ERRCODE_INVALID_XML_DOCUMENT),
+						errmsg("The document being inserted has no child nodes")));
+			}
 			if (!strstr(cname, (char *)((xmlNodePtr)new_node->children->name)))
 			{
 				xmlFreeDoc(new_node);
