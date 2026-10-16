@@ -2265,12 +2265,32 @@ for_control		: for_variable K_IN
 							$$ = (PLiSQL_stmt *) new;
 						}
 						else if (tok == T_DATUM &&
-								 yylval.wdatum.datum->dtype == PLISQL_DTYPE_VAR &&
-								 ((PLiSQL_var *) yylval.wdatum.datum)->datatype->typoid == REFCURSOROID)
+								 ((yylval.wdatum.datum->dtype == PLISQL_DTYPE_VAR &&
+								   ((PLiSQL_var *) yylval.wdatum.datum)->datatype->typoid == REFCURSOROID) ||
+								  (yylval.wdatum.datum->dtype == PLISQL_DTYPE_PACKAGE_DATUM &&
+								   ((PLiSQL_pkg_datum *) yylval.wdatum.datum)->pkgvar->dtype == PLISQL_DTYPE_VAR &&
+								   ((PLiSQL_var *) ((PLiSQL_pkg_datum *) yylval.wdatum.datum)->pkgvar)->datatype->typoid == REFCURSOROID)))
 						{
 							/* It's FOR var IN cursor */
 							PLiSQL_stmt_forc	*new;
 							PLiSQL_var			*cursor = (PLiSQL_var *) yylval.wdatum.datum;
+							PLiSQL_var			*real_cursor;
+
+							/*
+							 * A cursor declared in a package and referenced
+							 * from outside the package as pkg.cursor arrives
+							 * here as a package datum wrapper.  The checks
+							 * below need the package's own cursor variable,
+							 * while new->curvar keeps the wrapper's dno,
+							 * which numbers the current compilation's datum
+							 * array - the same convention OPEN/FETCH/CLOSE
+							 * already follow for package cursors.
+							 */
+							if (cursor->dtype == PLISQL_DTYPE_PACKAGE_DATUM)
+								real_cursor = (PLiSQL_var *)
+									((PLiSQL_pkg_datum *) cursor)->pkgvar;
+							else
+								real_cursor = cursor;
 
 							new = palloc0_object(PLiSQL_stmt_forc);
 							new->cmd_type = PLISQL_STMT_FORC;
@@ -2285,7 +2305,7 @@ for_control		: for_variable K_IN
 										 parser_errposition(@1)));
 
 							/* can't use an unbound cursor this way */
-							if (cursor->cursor_explicit_expr == NULL)
+							if (real_cursor->cursor_explicit_expr == NULL)
 								ereport(ERROR,
 										(errcode(ERRCODE_SYNTAX_ERROR),
 										 errmsg("cursor FOR loop must use a bound cursor variable"),
