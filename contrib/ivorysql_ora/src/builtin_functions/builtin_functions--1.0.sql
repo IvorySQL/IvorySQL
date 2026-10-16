@@ -1931,3 +1931,98 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 /* End - VSIZE */
+
+
+/* Start - INSTR4 */
+/*
+ * Oracle's INSTR4 counts positions in UCS4 code points, which is the
+ * character semantics PostgreSQL's substr() and strpos() already use; the
+ * function exists so that the code that spells out the variant keeps
+ * working, next to INSTR, INSTRB and the family.
+ *
+ * Oracle's rules are followed: a position below one counts from the end of
+ * the string and the search then runs backwards, occurrence selects which
+ * match to report (counting from the end in the backwards case), a string
+ * or substring that is NULL returns NULL and no match returns 0.
+ */
+CREATE FUNCTION sys.instr4(text, text, integer DEFAULT 1, integer DEFAULT 1)
+RETURNS integer
+AS
+$$
+declare
+	src text := $1;
+	sub text := $2;
+	pos integer := $3;
+	occ integer := $4;
+	len integer;
+	region text;
+	start integer;
+	idx integer;
+	p integer;
+	total integer := 0;
+	want integer;
+	i integer := 0;
+begin
+	if src is null or sub is null then
+		return null;
+	end if;
+
+	if occ is null or occ < 1 then
+		return 0;
+	end if;
+	if pos is null then
+		pos := 1;
+	end if;
+
+	len := pg_catalog.length(src);
+
+	if pos >= 0 then
+		start := greatest(pos, 1);
+		while start <= len loop
+			idx := pg_catalog.strpos(pg_catalog.substr(src, start), sub);
+			if idx = 0 then
+				return 0;
+			end if;
+			i := i + 1;
+			if i = occ then
+				return start + idx - 1;
+			end if;
+			start := start + idx - 1 + greatest(pg_catalog.length(sub), 1);
+		end loop;
+		return 0;
+	end if;
+
+	/* backwards from the given position, counted from the end */
+	region := pg_catalog.substr(src, 1, greatest(len + pos + 1, 1));
+	p := 1;
+	while p <= pg_catalog.length(region) loop
+		idx := pg_catalog.strpos(pg_catalog.substr(region, p), sub);
+		exit when idx = 0;
+		total := total + 1;
+		p := p + idx - 1 + greatest(pg_catalog.length(sub), 1);
+	end loop;
+
+	if total < occ then
+		return 0;
+	end if;
+
+	want := total - occ + 1;
+	p := 1;
+	while p <= pg_catalog.length(region) loop
+		idx := pg_catalog.strpos(pg_catalog.substr(region, p), sub);
+		if idx = 0 then
+			return 0;
+		end if;
+		i := i + 1;
+		if i = want then
+			return p + idx - 1;
+		end if;
+		p := p + idx - 1 + greatest(pg_catalog.length(sub), 1);
+	end loop;
+
+	return 0;
+end;
+$$
+LANGUAGE plpgsql
+IMMUTABLE;
+/* End - INSTR4 */
