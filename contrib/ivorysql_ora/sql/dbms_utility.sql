@@ -329,15 +329,15 @@ DROP PROCEDURE test_error_stack_no_error;
 
 -- Test 14: FORMAT_CALL_STACK - Basic single procedure (verify structure)
 -- Note: Addresses vary between runs, so we just verify the stack is not null
--- and contains the expected function name pattern
+-- and contains the expected procedure name pattern
 CREATE OR REPLACE PROCEDURE test_call_stack_basic AS
   v_stack VARCHAR2(4000);
 BEGIN
   v_stack := DBMS_UTILITY.FORMAT_CALL_STACK;
   IF v_stack IS NOT NULL AND v_stack LIKE '%----- PL/SQL Call Stack -----%' THEN
-    -- Extract just the function name part for verification
-    IF v_stack LIKE '%TEST_CALL_STACK_BASIC%' THEN
-      RAISE INFO 'Call stack contains expected function';
+    -- Verify that this frame is identified as a procedure.
+    IF v_stack LIKE '%procedure TEST_CALL_STACK_BASIC()%' THEN
+      RAISE INFO 'Call stack contains expected procedure';
     END IF;
   END IF;
 END;
@@ -353,9 +353,9 @@ CREATE OR REPLACE PROCEDURE test_call_stack_level3 AS
   v_count INTEGER;
 BEGIN
   v_stack := DBMS_UTILITY.FORMAT_CALL_STACK;
-  -- Count the number of function entries (look for 'function ' pattern)
-  v_count := (LENGTH(v_stack) - LENGTH(REPLACE(v_stack, 'function ', ''))) / 9;
-  RAISE INFO 'Call stack has % function entries', v_count;
+  -- Count the number of procedure entries (look for 'procedure ' pattern)
+  v_count := (LENGTH(v_stack) - LENGTH(REPLACE(v_stack, 'procedure ', ''))) / 10;
+  RAISE INFO 'Call stack has % procedure entries', v_count;
 END;
 /
 
@@ -376,6 +376,29 @@ CALL test_call_stack_level1();
 DROP PROCEDURE test_call_stack_level1;
 DROP PROCEDURE test_call_stack_level2;
 DROP PROCEDURE test_call_stack_level3;
+
+-- Test 15a: Functions retain their type, and anonymous blocks have no name.
+CREATE OR REPLACE FUNCTION test_call_stack_kind RETURN TEXT AS
+BEGIN
+  RETURN DBMS_UTILITY.FORMAT_CALL_STACK;
+END;
+/
+SELECT test_call_stack_kind() LIKE '%function TEST_CALL_STACK_KIND()%' AS function_frame;
+DROP FUNCTION test_call_stack_kind;
+
+DO $$
+DECLARE
+  v_stack TEXT;
+BEGIN
+  v_stack := DBMS_UTILITY.FORMAT_CALL_STACK;
+  IF v_stack LIKE '%anonymous block%'
+     AND v_stack NOT LIKE '%function INLINE_CODE_BLOCK%' THEN
+    RAISE INFO 'Anonymous call stack frame: OK';
+  ELSE
+    RAISE INFO 'Anonymous call stack frame: FAILED';
+  END IF;
+END;
+$$;
 
 -- Test 16: FORMAT_CALL_STACK - In exception handler
 CREATE OR REPLACE PROCEDURE test_call_stack_exception AS
@@ -461,7 +484,7 @@ CREATE OR REPLACE PACKAGE BODY callstack_ns.test_call_stack_pkg IS
     v_stack VARCHAR2(4000);
   BEGIN
     v_stack := DBMS_UTILITY.FORMAT_CALL_STACK;
-    IF v_stack LIKE '%CALLSTACK_NS.TEST_CALL_STACK_PKG.STACK_CALLER%'
+    IF v_stack LIKE '%procedure CALLSTACK_NS.TEST_CALL_STACK_PKG.STACK_CALLER%'
        AND v_stack NOT LIKE '%PUBLIC.CALLSTACK_NS%' THEN
       RAISE INFO 'Call stack is package-qualified: OK';
     ELSE
