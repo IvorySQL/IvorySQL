@@ -3598,7 +3598,7 @@ IvyhandleParamsValues(IvyPreparedStatement *stmtHandle,
 			int len;
 			char buf[256];
 
-			if (*tmp->indp == -1)
+			if (tmp->indp != NULL && *tmp->indp == -1)
 				continue;
 
 			memset(buf, 0x00, 256);
@@ -3674,7 +3674,7 @@ IvyhandleParamsValues(IvyPreparedStatement *stmtHandle,
 			if (tmp1 == NULL)
 				goto ERROR_HANDLE;
 
-			if (*tmp1->indp == -1)
+			if (tmp1->indp != NULL && *tmp1->indp == -1)
 				continue;
 
 			switch (get_paramvalue_type(tmp1->dtype))
