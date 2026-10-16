@@ -79,7 +79,7 @@ static OraParamNumbers *CurrentOraParamNode = NULL;
  * IsParseDynSql: grammer is parsing dynamic sql.
  * IsParseDynDoStmt: grammer is parsing dynamic sql that is DoStmt.
  * HasPgParam: grammer found pg model variables like $1...$n.
- * DoStmtCheckVar: wether should check bound var matching.
+ * DoStmtCheckVar: whether should check bound var matching.
  * Should not check var bound match for grammer:
  *     'select xxx; begin xxx end;begin xxx end;'
  * IsBindByName: the paramter is bound by name.

@@ -146,8 +146,8 @@ typedef struct PLiSQL_subproc_function
 	List *arg;					/* function'args, list of PLiSQL_function_argitem */
 	List *properties;				/* function propers, list of PLSQL_subproc_proper */
 	PLiSQL_type *rettype;
-	bool		is_proc;			/* wether it is procedure or function */
-	bool		has_poly_argument;		/* wether it has poly argument */
+	bool		is_proc;			/* whether it is procedure or function */
+	bool		has_poly_argument;		/* whether it has poly argument */
 	char		*src;				/* block src for polymorphic argtype function or procedure */
 	PLiSQL_function *function;			/* function that save action and dautms */
 	bool		has_declare;			/* has declare or not */
