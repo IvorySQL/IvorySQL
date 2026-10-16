@@ -15,9 +15,11 @@
  */
 #include "postgres.h"
 
+#include "access/detoast.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
 #include "funcapi.h"
+#include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
@@ -32,9 +34,13 @@
 #include "utils/lsyscache.h"
 #include "utils/ora_compatible.h"
 #include "utils/rel.h"
+#include "utils/varlena.h"
 
 static void markTargetListOrigin(ParseState *pstate, TargetEntry *tle,
 								 Var *var, int levelsup);
+static bool const_string_datum(Const *con, const char **s, size_t *len);
+static void check_assigned_const_length(Oid attrtype, int32 attrtypmod,
+										const char *colname, Node *expr);
 static Node *transformAssignmentSubscripts(ParseState *pstate,
 										   Node *basenode,
 										   const char *targetName,
@@ -453,6 +459,129 @@ markTargetListOrigin(ParseState *pstate, TargetEntry *tle,
 
 
 /*
+ * const_string_datum
+ *		If con holds a non-NULL character-string constant, return its bytes.
+ *
+ * Accepts unknown/cstring literals and text/varchar/bpchar datums.  Used to
+ * attach a column name to length-overflow errors that the type I/O and typmod
+ * coercion functions cannot name themselves.
+ */
+static bool
+const_string_datum(Const *con, const char **s, size_t *len)
+{
+	Oid			basetype;
+	int32		dummy = -1;
+
+	if (con->constisnull)
+		return false;
+
+	basetype = getBaseTypeAndTypmod(con->consttype, &dummy);
+	switch (basetype)
+	{
+		case UNKNOWNOID:
+		case CSTRINGOID:
+			*s = DatumGetCString(con->constvalue);
+			*len = strlen(*s);
+			return true;
+		case BPCHAROID:
+		case VARCHAROID:
+		case TEXTOID:
+			{
+				struct varlena *v = PG_DETOAST_DATUM_PACKED(con->constvalue);
+
+				*s = VARDATA_ANY(v);
+				*len = VARSIZE_ANY_EXHDR(v);
+				return true;
+			}
+		default:
+			return false;
+	}
+}
+
+/*
+ * check_assigned_const_length
+ *		Raise a column-named length error if a string constant cannot fit in a
+ *		char(n)/varchar(n) assignment target.
+ *
+ * The underlying varchar()/bpchar() length checks run inside type I/O and
+ * typmod coercion and therefore cannot mention the column.  For the common
+ * INSERT/UPDATE literal case we detect the overflow here so the message can
+ * name the column (GitHub issue #1823).  Trailing-space rules match
+ * varchar()/bpchar(): only non-space overflow is an error.
+ */
+static void
+check_assigned_const_length(Oid attrtype, int32 attrtypmod,
+							const char *colname, Node *expr)
+{
+	Oid			baseTypeId;
+	int32		baseTypeMod;
+	const char *s;
+	size_t		len;
+	size_t		maxlen;
+	size_t		charlen;
+	size_t		mbmaxlen;
+	size_t		j;
+
+	if (attrtypmod < (int32) VARHDRSZ)
+		return;
+
+	/* Arrays carry the element typmod; the constant is the array literal. */
+	if (type_is_array_domain(attrtype))
+		return;
+
+	/*
+	 * getBaseTypeAndTypmod requires *typmod == -1 on domain input and leaves
+	 * it unchanged for non-domains.
+	 */
+	baseTypeMod = -1;
+	baseTypeId = getBaseTypeAndTypmod(attrtype, &baseTypeMod);
+	if (baseTypeId != BPCHAROID && baseTypeId != VARCHAROID)
+		return;
+	if (baseTypeMod < (int32) VARHDRSZ)
+		baseTypeMod = attrtypmod;
+	if (baseTypeMod < (int32) VARHDRSZ)
+		return;
+	if (type_is_array_domain(baseTypeId))
+		return;
+
+	while (expr && (IsA(expr, RelabelType) || IsA(expr, CoerceToDomain)))
+	{
+		if (IsA(expr, RelabelType))
+			expr = (Node *) ((RelabelType *) expr)->arg;
+		else
+			expr = (Node *) ((CoerceToDomain *) expr)->arg;
+	}
+	if (expr == NULL || !IsA(expr, Const))
+		return;
+	if (!const_string_datum((Const *) expr, &s, &len))
+		return;
+
+	maxlen = baseTypeMod - VARHDRSZ;
+	charlen = pg_mbstrlen_with_len(s, len);
+	if (charlen <= maxlen)
+		return;
+
+	mbmaxlen = pg_mbcharcliplen(s, len, maxlen);
+	for (j = mbmaxlen; j < len; j++)
+	{
+		if (s[j] != ' ')
+		{
+			if (baseTypeId == BPCHAROID)
+				ereport(ERROR,
+						(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+						 errmsg("value too long for column \"%s\" (type character(%zu))",
+								colname, maxlen)));
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+						 errmsg("value too long for column \"%s\" (type character varying(%zu))",
+								colname, maxlen)));
+		}
+	}
+}
+
+
+/*
  * transformAssignedExpr()
  *	This is used in INSERT and UPDATE statements only.  It prepares an
  *	expression for assignment to a column of the target table.
@@ -603,6 +732,12 @@ transformAssignedExpr(ParseState *pstate,
 		 * coercion.
 		 */
 		Node	   *orig_expr = (Node *) expr;
+
+		/*
+		 * Detect length overflow of a literal before typmod coercion wraps it
+		 * in a context-free varchar()/bpchar() call.
+		 */
+		check_assigned_const_length(attrtype, attrtypmod, colname, orig_expr);
 
 		expr = (Expr *)
 			coerce_to_target_type(pstate,
