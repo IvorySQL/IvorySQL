@@ -956,8 +956,12 @@ static AlterTableCmd *makeModifyColumnTypeOrVisibilityCmd(char *colname,
 
 
 /* Precedence: lowest to highest */
-%left		UNION EXCEPT
-%left		INTERSECT
+/*
+ * Oracle gives every set operator the same precedence and runs them from
+ * left to right unless parentheses say otherwise, where PostgreSQL binds
+ * INTERSECT tighter than UNION and EXCEPT.
+ */
+%left		UNION EXCEPT INTERSECT
 %left		OR
 %left		AND
 %right		NOT
