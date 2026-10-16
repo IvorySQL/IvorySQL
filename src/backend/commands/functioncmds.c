@@ -1683,7 +1683,7 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 }
 
 /*
- * Support oracle grammer:
+ * Support oracle grammar:
  * alter function func editionable|noneditionable or compile
  * In this function we don't support function arguments or 
  * searching pg_proc directly, if we found more than one or less
