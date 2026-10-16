@@ -1557,3 +1557,230 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+--
+-- USER_CONSTRAINTS / ALL_CONSTRAINTS / DBA_CONSTRAINTS: the constraints of
+-- the relations, like Oracle's views of the same name.  CONSTRAINT_TYPE
+-- maps the catalog codes to Oracle's letters (P primary key, U unique,
+-- R referential, C check), SEARCH_CONDITION carries the check expression
+-- and DELETE_RULE the referential action; STATUS is always ENABLED because
+-- the catalogs have no disabled constraints.
+--
+CREATE OR REPLACE VIEW SYS.USER_CONSTRAINTS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(con.conname::varchar2)::varchar2(128) AS constraint_name,
+    (CASE con.contype
+        WHEN 'p' THEN 'P'
+        WHEN 'u' THEN 'U'
+        WHEN 'f' THEN 'R'
+        ELSE 'C'
+    END)::varchar2(1) AS constraint_type,
+    sys.ora_case_trans(t.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE WHEN con.contype = 'c'
+          THEN pg_catalog.pg_get_constraintdef(con.oid)
+          ELSE NULL
+     END)::varchar2(4000) AS search_condition,
+    (CASE WHEN con.contype = 'f' THEN
+        (CASE con.confdeltype
+            WHEN 'c' THEN 'CASCADE'
+            WHEN 'n' THEN 'SET NULL'
+            WHEN 'd' THEN 'SET DEFAULT'
+            ELSE 'NO ACTION'
+        END)
+     END)::varchar2(9) AS delete_rule,
+    'ENABLED'::varchar2(8) AS status
+FROM pg_constraint con
+JOIN pg_class t ON t.oid = con.conrelid
+JOIN pg_namespace n ON t.relnamespace = n.oid
+WHERE
+    pg_catalog.pg_get_userbyid(t.relowner) = current_user
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND con.contype IN ('p','u','f','c')
+    AND NOT t.relispartition;
+
+GRANT SELECT ON SYS.USER_CONSTRAINTS TO PUBLIC;
+
+--
+-- ALL_CONSTRAINTS: the same constraints for every relation the current user
+-- may access, with the privilege filter the ALL_ views carry.  CONSTRAINT_TYPE
+-- maps the catalog codes to Oracle's letters (P primary key, U unique,
+-- R referential, C check), SEARCH_CONDITION carries the check expression
+-- and DELETE_RULE the referential action; STATUS is always ENABLED because
+-- the catalogs have no disabled constraints.
+--
+CREATE OR REPLACE VIEW SYS.ALL_CONSTRAINTS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(con.conname::varchar2)::varchar2(128) AS constraint_name,
+    (CASE con.contype
+        WHEN 'p' THEN 'P'
+        WHEN 'u' THEN 'U'
+        WHEN 'f' THEN 'R'
+        ELSE 'C'
+    END)::varchar2(1) AS constraint_type,
+    sys.ora_case_trans(t.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE WHEN con.contype = 'c'
+          THEN pg_catalog.pg_get_constraintdef(con.oid)
+          ELSE NULL
+     END)::varchar2(4000) AS search_condition,
+    (CASE WHEN con.contype = 'f' THEN
+        (CASE con.confdeltype
+            WHEN 'c' THEN 'CASCADE'
+            WHEN 'n' THEN 'SET NULL'
+            WHEN 'd' THEN 'SET DEFAULT'
+            ELSE 'NO ACTION'
+        END)
+     END)::varchar2(9) AS delete_rule,
+    'ENABLED'::varchar2(8) AS status
+FROM pg_constraint con
+JOIN pg_class t ON t.oid = con.conrelid
+JOIN pg_namespace n ON t.relnamespace = n.oid
+WHERE
+    pg_catalog.has_table_privilege(current_user, t.oid,
+         'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND con.contype IN ('p','u','f','c')
+    AND NOT t.relispartition;
+
+GRANT SELECT ON SYS.ALL_CONSTRAINTS TO PUBLIC;
+
+--
+-- DBA_CONSTRAINTS: the same rows without the privilege filter, like the
+-- other DBA_ views.  CONSTRAINT_TYPE
+-- maps the catalog codes to Oracle's letters (P primary key, U unique,
+-- R referential, C check), SEARCH_CONDITION carries the check expression
+-- and DELETE_RULE the referential action; STATUS is always ENABLED because
+-- the catalogs have no disabled constraints.
+--
+CREATE OR REPLACE VIEW SYS.DBA_CONSTRAINTS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(con.conname::varchar2)::varchar2(128) AS constraint_name,
+    (CASE con.contype
+        WHEN 'p' THEN 'P'
+        WHEN 'u' THEN 'U'
+        WHEN 'f' THEN 'R'
+        ELSE 'C'
+    END)::varchar2(1) AS constraint_type,
+    sys.ora_case_trans(t.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE WHEN con.contype = 'c'
+          THEN pg_catalog.pg_get_constraintdef(con.oid)
+          ELSE NULL
+     END)::varchar2(4000) AS search_condition,
+    (CASE WHEN con.contype = 'f' THEN
+        (CASE con.confdeltype
+            WHEN 'c' THEN 'CASCADE'
+            WHEN 'n' THEN 'SET NULL'
+            WHEN 'd' THEN 'SET DEFAULT'
+            ELSE 'NO ACTION'
+        END)
+     END)::varchar2(9) AS delete_rule,
+    'ENABLED'::varchar2(8) AS status
+FROM pg_constraint con
+JOIN pg_class t ON t.oid = con.conrelid
+JOIN pg_namespace n ON t.relnamespace = n.oid
+WHERE
+n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND con.contype IN ('p','u','f','c')
+    AND NOT t.relispartition;
+
+
+GRANT SELECT ON SYS.DBA_CONSTRAINTS TO PUBLIC;
+
+--
+-- USER_TRIGGERS / ALL_TRIGGERS / DBA_TRIGGERS: the triggers of the
+-- relations, like Oracle's views of the same name.  TRIGGER_TYPE spells
+-- BEFORE/AFTER/INSTEAD OF with EACH ROW or STATEMENT, TRIGGERING_EVENT
+-- lists INSERT/UPDATE/DELETE and STATUS reports whether the trigger is
+-- enabled.
+--
+CREATE OR REPLACE VIEW SYS.USER_TRIGGERS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(tg.tgname::varchar2)::varchar2(128) AS trigger_name,
+    sys.ora_case_trans(t.relname::varchar2)::varchar2(128) AS table_name,
+    ((CASE WHEN tg.tgtype & 2 = 2 THEN 'BEFORE '
+           WHEN tg.tgtype & 64 = 64 THEN 'INSTEAD OF '
+           ELSE 'AFTER ' END) ||
+     (CASE WHEN tg.tgtype & 1 = 1 THEN 'EACH ROW' ELSE 'EACH STATEMENT' END)
+    )::varchar2(20) AS trigger_type,
+    ((CASE WHEN tg.tgtype & 4 = 4 THEN 'INSERT ' ELSE '' END) ||
+     (CASE WHEN tg.tgtype & 16 = 16 THEN 'UPDATE ' ELSE '' END) ||
+     (CASE WHEN tg.tgtype & 8 = 8 THEN 'DELETE ' ELSE '' END)
+    )::varchar2(25) AS triggering_event,
+    (CASE WHEN tg.tgenabled = 'D' THEN 'DISABLED' ELSE 'ENABLED' END)::varchar2(8) AS status
+FROM pg_trigger tg
+JOIN pg_class t ON t.oid = tg.tgrelid
+JOIN pg_namespace n ON t.relnamespace = n.oid
+WHERE
+    pg_catalog.pg_get_userbyid(t.relowner) = current_user
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND NOT tg.tgisinternal;
+
+GRANT SELECT ON SYS.USER_TRIGGERS TO PUBLIC;
+
+--
+-- ALL_TRIGGERS: the same triggers for every relation the current user
+-- may access, with the privilege filter the ALL_ views carry.  TRIGGER_TYPE
+-- BEFORE/AFTER/INSTEAD OF with EACH ROW or STATEMENT, TRIGGERING_EVENT
+-- lists INSERT/UPDATE/DELETE and STATUS reports whether the trigger is
+-- enabled.
+--
+CREATE OR REPLACE VIEW SYS.ALL_TRIGGERS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(tg.tgname::varchar2)::varchar2(128) AS trigger_name,
+    sys.ora_case_trans(t.relname::varchar2)::varchar2(128) AS table_name,
+    ((CASE WHEN tg.tgtype & 2 = 2 THEN 'BEFORE '
+           WHEN tg.tgtype & 64 = 64 THEN 'INSTEAD OF '
+           ELSE 'AFTER ' END) ||
+     (CASE WHEN tg.tgtype & 1 = 1 THEN 'EACH ROW' ELSE 'EACH STATEMENT' END)
+    )::varchar2(20) AS trigger_type,
+    ((CASE WHEN tg.tgtype & 4 = 4 THEN 'INSERT ' ELSE '' END) ||
+     (CASE WHEN tg.tgtype & 16 = 16 THEN 'UPDATE ' ELSE '' END) ||
+     (CASE WHEN tg.tgtype & 8 = 8 THEN 'DELETE ' ELSE '' END)
+    )::varchar2(25) AS triggering_event,
+    (CASE WHEN tg.tgenabled = 'D' THEN 'DISABLED' ELSE 'ENABLED' END)::varchar2(8) AS status
+FROM pg_trigger tg
+JOIN pg_class t ON t.oid = tg.tgrelid
+JOIN pg_namespace n ON t.relnamespace = n.oid
+WHERE
+    pg_catalog.has_table_privilege(current_user, t.oid,
+         'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND NOT tg.tgisinternal;
+
+GRANT SELECT ON SYS.ALL_TRIGGERS TO PUBLIC;
+
+--
+-- DBA_TRIGGERS: the same rows without the privilege filter, like the
+-- other DBA_ views.  TRIGGER_TYPE
+-- BEFORE/AFTER/INSTEAD OF with EACH ROW or STATEMENT, TRIGGERING_EVENT
+-- lists INSERT/UPDATE/DELETE and STATUS reports whether the trigger is
+-- enabled.
+--
+CREATE OR REPLACE VIEW SYS.DBA_TRIGGERS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(tg.tgname::varchar2)::varchar2(128) AS trigger_name,
+    sys.ora_case_trans(t.relname::varchar2)::varchar2(128) AS table_name,
+    ((CASE WHEN tg.tgtype & 2 = 2 THEN 'BEFORE '
+           WHEN tg.tgtype & 64 = 64 THEN 'INSTEAD OF '
+           ELSE 'AFTER ' END) ||
+     (CASE WHEN tg.tgtype & 1 = 1 THEN 'EACH ROW' ELSE 'EACH STATEMENT' END)
+    )::varchar2(20) AS trigger_type,
+    ((CASE WHEN tg.tgtype & 4 = 4 THEN 'INSERT ' ELSE '' END) ||
+     (CASE WHEN tg.tgtype & 16 = 16 THEN 'UPDATE ' ELSE '' END) ||
+     (CASE WHEN tg.tgtype & 8 = 8 THEN 'DELETE ' ELSE '' END)
+    )::varchar2(25) AS triggering_event,
+    (CASE WHEN tg.tgenabled = 'D' THEN 'DISABLED' ELSE 'ENABLED' END)::varchar2(8) AS status
+FROM pg_trigger tg
+JOIN pg_class t ON t.oid = tg.tgrelid
+JOIN pg_namespace n ON t.relnamespace = n.oid
+WHERE
+n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND NOT tg.tgisinternal;
+
+
+GRANT SELECT ON SYS.DBA_TRIGGERS TO PUBLIC;
