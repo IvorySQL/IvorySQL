@@ -98,7 +98,7 @@ IMMUTABLE;
 -- Convert between text with orachar 
 CREATE FUNCTION sys.text(sys.oracharchar)
 RETURNS text
-AS 'MODULE_PATHNAME','rtrim'
+AS 'MODULE_PATHNAME','orachar_rtrim'
 LANGUAGE C
 PARALLEL SAFE
 STRICT
@@ -407,7 +407,7 @@ AS IMPLICIT;
 -- Convert 'oracharchar' to 'oravarcharchar' 
 CREATE FUNCTION sys.orachar_oravarchar(sys.oracharchar)
 RETURNS sys.oravarcharchar
-AS 'MODULE_PATHNAME','rtrim'
+AS 'MODULE_PATHNAME','orachar_rtrim'
 LANGUAGE C
 STRICT
 IMMUTABLE;
@@ -419,7 +419,7 @@ AS IMPLICIT;
 -- Convert 'oracharchar' to 'oravarcharbyte' 
 CREATE FUNCTION sys.orachar_oravarcharbyte(sys.oracharchar)
 RETURNS sys.oravarcharbyte
-AS 'MODULE_PATHNAME','rtrim'
+AS 'MODULE_PATHNAME','orachar_rtrim'
 LANGUAGE C
 STRICT
 IMMUTABLE;
@@ -557,7 +557,7 @@ IMMUTABLE;
 -- Convert between text with oracharbyte
 CREATE FUNCTION sys.text(sys.oracharbyte)
 RETURNS text
-AS 'MODULE_PATHNAME','rtrim'
+AS 'MODULE_PATHNAME','orachar_rtrim'
 LANGUAGE C
 PARALLEL SAFE
 STRICT
@@ -831,7 +831,7 @@ AS IMPLICIT;
 -- Convert 'oracharbyte' to 'oravarcharchar' 
 CREATE FUNCTION sys.orachar_oravarchar(sys.oracharbyte)
 RETURNS sys.oravarcharchar
-AS 'MODULE_PATHNAME','rtrim'
+AS 'MODULE_PATHNAME','orachar_rtrim'
 LANGUAGE C
 STRICT
 IMMUTABLE;
@@ -843,7 +843,7 @@ AS IMPLICIT;
 -- Convert 'oracharbyte' to 'oravarcharbyte' 
 CREATE FUNCTION sys.orachar_oravarcharbyte(sys.oracharbyte)
 RETURNS sys.oravarcharbyte
-AS 'MODULE_PATHNAME','rtrim'
+AS 'MODULE_PATHNAME','orachar_rtrim'
 LANGUAGE C
 STRICT
 IMMUTABLE;
@@ -2053,7 +2053,7 @@ AS IMPLICIT;
 -- Convert 'bpchar' to 'oravarcharchar' 
 CREATE FUNCTION sys.bpchar_oravarchar(pg_catalog.bpchar)
 RETURNS sys.oravarcharchar
-AS 'MODULE_PATHNAME','rtrim'
+AS 'MODULE_PATHNAME','orachar_rtrim'
 LANGUAGE C
 PARALLEL SAFE
 STRICT
