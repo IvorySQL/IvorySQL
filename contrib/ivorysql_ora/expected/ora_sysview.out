@@ -493,3 +493,42 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- USER_TAB_STATISTICS / ALL_TAB_STATISTICS / DBA_TAB_STATISTICS
+DROP TABLE IF EXISTS TEST_TAB_STATS;
+NOTICE:  table "test_tab_stats" does not exist, skipping
+CREATE TABLE TEST_TAB_STATS (ID INT, NAME VARCHAR2(10));
+INSERT INTO TEST_TAB_STATS VALUES (1, 'a'), (2, 'b'), (3, 'a');
+ANALYZE TEST_TAB_STATS;
+SELECT TABLE_NAME, (NUM_ROWS IS NOT NULL) AS has_num_rows,
+       (LAST_ANALYZED IS NOT NULL) AS analyzed, STALE_STATS
+FROM SYS.USER_TAB_STATISTICS WHERE TABLE_NAME = 'TEST_TAB_STATS';
+   table_name   | has_num_rows | analyzed | stale_stats 
+----------------+--------------+----------+-------------
+ TEST_TAB_STATS | t            | t        | NO
+(1 row)
+
+SELECT count(*) = (SELECT count(*) FROM SYS.DBA_TAB_STATISTICS WHERE TABLE_NAME = 'TEST_TAB_STATS')
+       AS dba_matches FROM SYS.ALL_TAB_STATISTICS WHERE TABLE_NAME = 'TEST_TAB_STATS';
+ dba_matches 
+-------------
+ t
+(1 row)
+
+-- USER_TAB_COL_STATISTICS / ALL_TAB_COL_STATISTICS / DBA_TAB_COL_STATISTICS
+SELECT COLUMN_NAME, (NUM_DISTINCT IS NOT NULL) AS has_num_distinct,
+       NUM_BUCKETS IS NULL AS buckets_null
+FROM SYS.USER_TAB_COL_STATISTICS WHERE TABLE_NAME = 'TEST_TAB_STATS' ORDER BY COLUMN_NAME;
+ column_name | has_num_distinct | buckets_null 
+-------------+------------------+--------------
+ ID          | t                | t
+ NAME        | t                | t
+(2 rows)
+
+SELECT count(*) = (SELECT count(*) FROM SYS.DBA_TAB_COL_STATISTICS WHERE TABLE_NAME = 'TEST_TAB_STATS')
+       AS dba_matches FROM SYS.ALL_TAB_COL_STATISTICS WHERE TABLE_NAME = 'TEST_TAB_STATS';
+ dba_matches 
+-------------
+ t
+(1 row)
+
+DROP TABLE TEST_TAB_STATS;
