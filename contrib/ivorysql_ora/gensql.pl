@@ -34,6 +34,7 @@ use warnings FATAL => 'all';
 use Carp;
 
 use File::Spec;
+use FindBin qw($RealBin);
 
 my @sql_set;
 
@@ -55,7 +56,10 @@ sub sql_merge
 	# Read information from ivorysql_ora_merge_sqls.
 	#     There are SQLs specified which need to be merged.
 	if ($first_arg eq 'meson') {
-		open(INFO, "<", File::Spec->rel2abs("../contrib/ivorysql_ora/ivorysql_ora_merge_sqls"))
+		# meson runs this script from the build directory, which need not be a
+		# child of the source tree: the merge list and the sql files are found
+		# beside the script, not relative to the working directory
+		open(INFO, "<", "$RealBin/ivorysql_ora_merge_sqls")
 		|| croak "Could not open file ivorysql_ora_merge_sqls: $!";
 	}
 	else {
@@ -68,7 +72,7 @@ sub sql_merge
 		# Delete the last tailing "\n" of this line.
 		chomp($_);
 		if ($first_arg eq 'meson') {
-			push @sql_set, "../contrib/ivorysql_ora/$_";
+			push @sql_set, "$RealBin/$_";
 		}
 		else
 		{
