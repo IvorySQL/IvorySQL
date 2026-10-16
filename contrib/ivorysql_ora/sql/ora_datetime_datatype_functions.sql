@@ -805,3 +805,31 @@ drop table ds_tb;
 reset NLS_TIMESTAMP_FORMAT;
 reset NLS_TIMESTAMP_TZ_FORMAT;
 reset NLS_DATE_FORMAT;
+
+-- PostgreSQL date casts can pass infinity to the Oracle date functions.
+select sys.last_day('infinity'::pg_catalog.date::sys.oradate) =
+       'infinity'::pg_catalog.date::sys.oradate as last_day_infinity;
+select sys.last_day('-infinity'::pg_catalog.date::sys.oradate) =
+       '-infinity'::pg_catalog.date::sys.oradate as last_day_neg_infinity;
+select sys.next_day('infinity'::pg_catalog.date::sys.oradate, 1) =
+       'infinity'::pg_catalog.date::sys.oradate as next_day_index_infinity;
+select sys.next_day('-infinity'::pg_catalog.date::sys.oradate, 1) =
+       '-infinity'::pg_catalog.date::sys.oradate as next_day_index_neg_infinity;
+select sys.next_day('infinity'::pg_catalog.date::sys.oradate, 'Sunday') =
+       'infinity'::pg_catalog.date::sys.oradate as next_day_text_infinity;
+select sys.next_day('-infinity'::pg_catalog.date::sys.oradate, 'Sunday') =
+       '-infinity'::pg_catalog.date::sys.oradate as next_day_text_neg_infinity;
+
+-- Reject an unrepresentable result even when no output conversion is needed.
+select sys.next_day('294276-12-31'::pg_catalog.date::sys.oradate, 1) is not null;
+select sys.next_day('294276-12-31'::pg_catalog.date::sys.oradate, 'Sunday') is not null;
+
+-- Finite month-end results and dates before the timestamp epoch still work.
+select sys.last_day('294276-12-01'::pg_catalog.date::sys.oradate) =
+       '294276-12-31'::pg_catalog.date::sys.oradate as last_day_upper_bound;
+select sys.last_day(to_date('1996-02-10 12:34:56', 'YYYY-MM-DD HH24:MI:SS')) =
+       to_date('1996-02-29 12:34:56', 'YYYY-MM-DD HH24:MI:SS') as last_day_preserves_time;
+select sys.next_day(to_date('1999-12-26 12:34:56', 'YYYY-MM-DD HH24:MI:SS'), 1) =
+       to_date('2000-01-02 12:34:56', 'YYYY-MM-DD HH24:MI:SS') as next_day_index_preserves_time;
+select sys.next_day(to_date('1999-12-26 12:34:56', 'YYYY-MM-DD HH24:MI:SS'), 'Sunday') =
+       to_date('2000-01-02 12:34:56', 'YYYY-MM-DD HH24:MI:SS') as next_day_text_preserves_time;
