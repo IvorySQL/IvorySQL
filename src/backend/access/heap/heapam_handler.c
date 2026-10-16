@@ -22,6 +22,7 @@
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/heaptoast.h"
+#include "access/htup_details.h"
 #include "access/multixact.h"
 #include "access/rewriteheap.h"
 #include "access/syncscan.h"
@@ -2357,6 +2358,16 @@ reform_and_rewrite_tuple(HeapTuple tuple,
 
 	newtuple = reform_tuple(tuple, OldHeap, NewHeap, values, isnull);
 
+	/*
+	 * Keep the old ROWID: tuples that need reform are rebuilt from their
+	 * column values, and the rebuilt tuple would otherwise lose the ROWID
+	 * sequence number stored in the old tuple header, leaving every
+	 * rewritten row with the degenerate value 0.
+	 */
+	if (NewHeap->rd_rel->relhasrowid &&
+		(tuple->t_data->t_infomask & HEAP_HASROWID))
+		HeapTupleSetRowId(newtuple, HeapTupleGetRowId(tuple));
+
 	/* The heap rewrite module does the rest */
 	rewrite_heap_tuple(rwstate, tuple, newtuple);
 
@@ -2386,6 +2397,14 @@ heap_insert_for_repack(HeapTuple tuple, Relation OldHeap, Relation NewHeap,
 	HeapTuple	newtuple;
 
 	newtuple = reform_tuple(tuple, OldHeap, NewHeap, values, isnull);
+
+	/*
+	 * Preserve the old ROWID through the CONCURRENTLY rewrite as well, just
+	 * as the non-concurrent path above does.
+	 */
+	if (NewHeap->rd_rel->relhasrowid &&
+		(tuple->t_data->t_infomask & HEAP_HASROWID))
+		HeapTupleSetRowId(newtuple, HeapTupleGetRowId(tuple));
 
 	heap_insert(NewHeap, newtuple, GetCurrentCommandId(true),
 				HEAP_INSERT_NO_LOGICAL, bistate);

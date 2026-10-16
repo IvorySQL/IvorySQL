@@ -1334,6 +1334,14 @@ copy_table_data(Relation NewHeap, Relation OldHeap, Relation OldIndex,
 	Assert(newTupDesc->natts == oldTupDesc->natts);
 
 	/*
+	 * The new heap inherits the old one's ROWID sequence (if any), so that
+	 * concurrent changes replayed into the new heap during REPACK
+	 * CONCURRENTLY receive fresh ROWIDs, and so that heap_insert() does not
+	 * assign fresh ROWIDs to tuples whose old ROWIDs we preserved.
+	 */
+	NewHeap->rd_rowdSeqid = OldHeap->rd_rowdSeqid;
+
+	/*
 	 * If the OldHeap has a toast table, get lock on the toast table to keep
 	 * it from being vacuumed.  This is needed because autovacuum processes
 	 * toast tables independently of their main tables, with no lock on the
