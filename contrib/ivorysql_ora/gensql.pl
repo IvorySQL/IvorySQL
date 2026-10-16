@@ -34,6 +34,7 @@ use warnings FATAL => 'all';
 use Carp;
 
 use File::Spec;
+use FindBin;
 
 my @sql_set;
 
@@ -54,26 +55,15 @@ sub sql_merge
 {
 	# Read information from ivorysql_ora_merge_sqls.
 	#     There are SQLs specified which need to be merged.
-	if ($first_arg eq 'meson') {
-		open(INFO, "<", File::Spec->rel2abs("../contrib/ivorysql_ora/ivorysql_ora_merge_sqls"))
+	# Inputs live beside this script, not in the current build directory.
+	open(INFO, "<", File::Spec->catfile($FindBin::RealBin, "ivorysql_ora_merge_sqls"))
 		|| croak "Could not open file ivorysql_ora_merge_sqls: $!";
-	}
-	else {
-		open(INFO, "<", File::Spec->rel2abs("ivorysql_ora_merge_sqls"))
-                || croak "Could not open file ivorysql_ora_merge_sqls: $!";
-	}
 
 	while (<INFO>)
 	{
 		# Delete the last tailing "\n" of this line.
 		chomp($_);
-		if ($first_arg eq 'meson') {
-			push @sql_set, "../contrib/ivorysql_ora/$_";
-		}
-		else
-		{
-			push @sql_set, "$_";
-		}
+		push @sql_set, File::Spec->catfile($FindBin::RealBin, $_);
 	}
 	close INFO;
 
