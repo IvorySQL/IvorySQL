@@ -76,6 +76,23 @@ call dbms_session.clear_all_context('other_ns');
 select sys_context('other_ns', 'k1') is null as other_ns_cleared;
 select count(*) as remaining from sys.dbms_session_list_context();
 
+-- Explicit NULL context values must not expose an older GUC value.
+set fallback_ctx.user_id = 'legacy';
+select sys_context('fallback_ctx', 'user_id') as absent_uses_guc;
+call dbms_session.set_context('fallback_ctx', 'user_id', 'current');
+select sys_context('fallback_ctx', 'user_id') as context_wins;
+call dbms_session.set_context('fallback_ctx', 'user_id', null);
+select sys_context('FALLBACK_CTX', 'USER_ID') is null as context_is_null,
+       sys.ora_dbms_session_get_context('fallback_ctx', 'user_id') is null
+         as direct_reader_is_null;
+select value is null as stored_null from sys.dbms_session_list_context()
+  where namespace = 'FALLBACK_CTX' and attribute = 'USER_ID';
+call dbms_session.reset_package();
+select sys_context('fallback_ctx', 'user_id') is null as null_after_reset;
+call dbms_session.clear_context('Fallback_Ctx', 'User_Id');
+select sys_context('fallback_ctx', 'user_id') as cleared_uses_guc;
+reset fallback_ctx.user_id;
+
 --
 -- Row-level security driven by application context.
 -- Queries run as a non-superuser role so RLS is actually enforced
@@ -111,6 +128,14 @@ call dbms_session.set_context('app', 'usr', 'carol');
 select sys_context('app', 'usr') as before_discard;
 discard all;
 select sys_context('app', 'usr') is null as after_discard;
+
+-- A stored NULL must not fall back to another user's GUC identity.
+set app.usr = 'alice';
+call dbms_session.set_context('app', 'usr', null);
+set role dbms_sess_rls;
+select * from docs order by id;          -- explicit NULL -> no rows
+reset role;
+reset app.usr;
 
 drop table docs;
 drop role dbms_sess_rls;

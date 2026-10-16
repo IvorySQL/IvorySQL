@@ -1766,10 +1766,12 @@ BEGIN
 		END CASE;
 	ELSE
 	  /* Custom namespace: read DBMS_SESSION application context first,
-	   * then fall back to a GUC named <namespace>.<attribute>. */
+	   * then fall back to a GUC only if the attribute is absent, not NULL. */
 	  SELECT sys.ora_dbms_session_get_context(a, b) INTO res;
 	  IF res IS NULL THEN
-	    SELECT current_setting(a||'.'||b, true) INTO res;
+	    IF NOT sys.ora_dbms_session_context_exists(a, b) THEN
+	      SELECT current_setting(a||'.'||b, true) INTO res;
+	    END IF;
 	  END IF;
 	END IF;
 	RETURN res;
