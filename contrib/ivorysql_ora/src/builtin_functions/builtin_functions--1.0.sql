@@ -1931,3 +1931,60 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 /* End - VSIZE */
+
+
+/* Start - BITOR / BITXOR */
+/*
+ * BITOR and BITXOR were added to Oracle in 21c next to the long-standing
+ * BITAND: the bitwise OR and exclusive OR of two numbers, using the same
+ * int64 conversion (and saturation) as sys.bitand().
+ */
+
+CREATE FUNCTION sys.bitor(number,number)
+RETURNS number
+AS 'MODULE_PATHNAME','number_bitor'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.bitor(text, text)
+RETURNS number
+AS
+$$
+declare
+  v1 number = cast($1 as number);
+  v2 number = cast($2 as number);
+begin
+	return sys.bitor(v1, v2);
+end;
+$$
+LANGUAGE plpgsql
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.bitxor(number,number)
+RETURNS number
+AS 'MODULE_PATHNAME','number_bitxor'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.bitxor(text, text)
+RETURNS number
+AS
+$$
+declare
+  v1 number = cast($1 as number);
+  v2 number = cast($2 as number);
+begin
+	return sys.bitxor(v1, v2);
+end;
+$$
+LANGUAGE plpgsql
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+/* End - BITOR / BITXOR */
