@@ -1557,3 +1557,59 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+--
+-- ALL_INDEXES / DBA_INDEXES: the index inventory of USER_INDEXES at the
+-- other two Oracle scopes.  The ALL_ view lists the indexes on every
+-- relation the current user may access and the DBA_ view every index in the
+-- database, so only the ALL_ one carries the privilege filter; both add the
+-- OWNER and TABLE_OWNER columns.
+--
+CREATE OR REPLACE VIEW SYS.ALL_INDEXES AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS index_name,
+    sys.ora_case_trans(tn.nspname::varchar2)::varchar2(128) AS table_owner,
+    sys.ora_case_trans(t.relname::varchar2)::varchar2(128) AS table_name,
+    sys.ora_case_trans(c.relam::regclass::text::varchar2)::varchar2(30) AS index_type,
+    (CASE WHEN i.indisunique THEN 'UNIQUE' ELSE 'NONUNIQUE' END)::varchar2(9) AS uniqueness,
+    'VALID'::varchar2(8) AS status,
+    NULL::varchar2(30) AS tablespace_name
+FROM pg_index i
+JOIN pg_class c ON c.oid = i.indexrelid
+JOIN pg_class t ON t.oid = i.indrelid
+JOIN pg_namespace n ON c.relnamespace = n.oid
+JOIN pg_namespace tn ON t.relnamespace = tn.oid
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND pg_catalog.has_table_privilege(current_user, t.oid,
+         'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+    AND NOT c.relispartition;
+
+GRANT SELECT ON SYS.ALL_INDEXES TO PUBLIC;
+
+--
+-- DBA_INDEXES: the same rows as ALL_INDEXES without the privilege filter,
+-- like the other DBA_ views.
+--
+CREATE OR REPLACE VIEW SYS.DBA_INDEXES AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS index_name,
+    sys.ora_case_trans(tn.nspname::varchar2)::varchar2(128) AS table_owner,
+    sys.ora_case_trans(t.relname::varchar2)::varchar2(128) AS table_name,
+    sys.ora_case_trans(c.relam::regclass::text::varchar2)::varchar2(30) AS index_type,
+    (CASE WHEN i.indisunique THEN 'UNIQUE' ELSE 'NONUNIQUE' END)::varchar2(9) AS uniqueness,
+    'VALID'::varchar2(8) AS status,
+    NULL::varchar2(30) AS tablespace_name
+FROM pg_index i
+JOIN pg_class c ON c.oid = i.indexrelid
+JOIN pg_class t ON t.oid = i.indrelid
+JOIN pg_namespace n ON c.relnamespace = n.oid
+JOIN pg_namespace tn ON t.relnamespace = tn.oid
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND NOT c.relispartition;
+
+
+GRANT SELECT ON SYS.DBA_INDEXES TO PUBLIC;
