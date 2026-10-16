@@ -796,6 +796,29 @@ select * from t_regexp_like where regexp_like('', null);
 select * from t_regexp_like where regexp_like(null, null);
 select * from t_regexp_like where regexp_like(null, null, null);
 
+-- REGEXP_LIKE match_parameter n/m/default (issue #2295)
+CREATE TABLE t_regexp_like_types
+(
+  text_value text,
+  varchar2_value varchar2(20)
+);
+INSERT INTO t_regexp_like_types
+VALUES ('X'||chr(10), 'X'||chr(10));
+
+select regexp_like(text_value, 'X.') from t_regexp_like_types;
+select regexp_like(text_value, 'X.', 'n') from t_regexp_like_types;
+select regexp_like(text_value, 'X.', 'c') from t_regexp_like_types;
+select regexp_like(varchar2_value, 'X.') from t_regexp_like_types;
+select regexp_like(varchar2_value, 'X.', 'n') from t_regexp_like_types;
+select regexp_like('x'||chr(10)||'b'||chr(10)||'y', '^b$');
+select regexp_like('x'||chr(10)||'b'||chr(10)||'y', '^b$', 'n');
+select regexp_like('x'||chr(10)||'b'||chr(10)||'y', '^b$', 'm');
+select regexp_like('x'||chr(10)||'b'||chr(10)||'y', '^b$', 'mn');
+select regexp_substr('X'||chr(10), 'X.', 1, 1, 'n') =
+       ('X'||chr(10)) as regexp_substr_n;
+select regexp_like(text_value, 'X.', 'z') from t_regexp_like_types;
+
+DROP table t_regexp_like_types;
 DROP table t_regexp_like;
 
 /*
