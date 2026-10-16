@@ -1558,3 +1558,21 @@ select to_single_byte('１．２');
 select to_single_byte(１．２);
 select to_single_byte(3.4);
 select to_single_byte(NULL);
+
+-- Verify sys.regexp_* family volatility is consistently IMMUTABLE.
+-- regexp_substr was already IMMUTABLE; regexp_instr/replace/like/count
+-- were STABLE despite being pure functions of their arguments, which
+-- blocked constant folding and expression indexes.
+SELECT count(*) = 0 AS regexp_family_all_immutable
+FROM pg_catalog.pg_proc
+WHERE pronamespace = 'sys'::regnamespace
+  AND proname IN ('regexp_instr', 'regexp_replace', 'regexp_like',
+                  'regexp_count', 'regexp_substr')
+  AND provolatile <> 'i';
+
+-- Expression indexes must accept previously-STABLE members of the family.
+CREATE TABLE TEST_REGEXP_VOL(s text);
+CREATE INDEX TEST_REGEXP_VOL_I ON TEST_REGEXP_VOL ((sys.regexp_like(s, 'abc')));
+CREATE INDEX TEST_REGEXP_VOL_J ON TEST_REGEXP_VOL ((sys.regexp_instr(s, 'abc')));
+CREATE INDEX TEST_REGEXP_VOL_K ON TEST_REGEXP_VOL ((sys.regexp_replace(s, 'a', 'b')));
+DROP TABLE TEST_REGEXP_VOL;

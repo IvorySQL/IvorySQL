@@ -397,70 +397,70 @@ RETURNS varchar2
 AS 'MODULE_PATHNAME','ora_regexp_replace'
 LANGUAGE C
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 CREATE FUNCTION sys.regexp_replace(varchar2, varchar2, varchar2, integer,integer)
 RETURNS varchar2
 AS 'MODULE_PATHNAME','ora_regexp_replace'
 LANGUAGE C
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 CREATE FUNCTION sys.regexp_replace(varchar2, varchar2, varchar2, integer)
 RETURNS varchar2
 AS 'MODULE_PATHNAME','ora_regexp_replace'
 LANGUAGE C
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 CREATE FUNCTION sys.regexp_replace(text, text, text, integer,integer,text)
 RETURNS varchar2
 AS 'MODULE_PATHNAME','ora_regexp_replace'
 LANGUAGE C
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 CREATE FUNCTION sys.regexp_replace(text, text, text, integer,integer)
 RETURNS varchar2
 AS 'MODULE_PATHNAME','ora_regexp_replace'
 LANGUAGE C
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 CREATE FUNCTION sys.regexp_replace(text, text, text, integer)
 RETURNS varchar2
 AS 'MODULE_PATHNAME','ora_regexp_replace'
 LANGUAGE C
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 CREATE FUNCTION sys.regexp_replace(varchar2, varchar2, varchar2)
 RETURNS varchar2
 AS 'MODULE_PATHNAME','ora_regexp_replace'
 LANGUAGE C
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 CREATE FUNCTION sys.regexp_replace(text, text, text)
 RETURNS varchar2
 AS 'MODULE_PATHNAME','ora_regexp_replace'
 LANGUAGE C
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 CREATE FUNCTION sys.regexp_replace(varchar2, varchar2)
 RETURNS varchar2
 AS 'MODULE_PATHNAME','ora_regexp_replace'
 LANGUAGE C
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 CREATE FUNCTION sys.regexp_replace(varchar2)
 RETURNS varchar2
 AS 'MODULE_PATHNAME','ora_regexp_replace'
 LANGUAGE C
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 /*regexp_substr*/
 CREATE FUNCTION sys.regexp_substr(varchar2, varchar2, integer, integer, varchar2, integer)
@@ -539,91 +539,91 @@ RETURNS varchar2
 AS 'MODULE_PATHNAME','ora_regexp_instr'
 LANGUAGE C
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 CREATE FUNCTION sys.regexp_instr(varchar2, varchar2, integer, integer, integer, varchar2)
 RETURNS varchar2
 AS 'MODULE_PATHNAME','ora_regexp_instr'
 LANGUAGE C
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 CREATE FUNCTION sys.regexp_instr(varchar2, varchar2, integer, integer, integer)
 RETURNS varchar2
 AS 'MODULE_PATHNAME','ora_regexp_instr'
 LANGUAGE C
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 CREATE FUNCTION sys.regexp_instr(varchar2, varchar2, integer, integer)
 RETURNS varchar2
 AS 'MODULE_PATHNAME','ora_regexp_instr'
 LANGUAGE C
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 CREATE FUNCTION sys.regexp_instr(varchar2, varchar2, integer)
 RETURNS varchar2
 AS 'MODULE_PATHNAME','ora_regexp_instr'
 LANGUAGE C
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 CREATE FUNCTION sys.regexp_instr(text, text, integer, integer, integer, text, integer)
 RETURNS varchar2
 AS 'MODULE_PATHNAME','ora_regexp_instr'
 LANGUAGE C
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 CREATE FUNCTION sys.regexp_instr(text, text, integer, integer, integer, text)
 RETURNS varchar2
 AS 'MODULE_PATHNAME','ora_regexp_instr'
 LANGUAGE C
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 CREATE FUNCTION sys.regexp_instr(text, text, integer, integer, integer)
 RETURNS varchar2
 AS 'MODULE_PATHNAME','ora_regexp_instr'
 LANGUAGE C
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 CREATE FUNCTION sys.regexp_instr(text, text, integer, integer)
 RETURNS varchar2
 AS 'MODULE_PATHNAME','ora_regexp_instr'
 LANGUAGE C
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 CREATE FUNCTION sys.regexp_instr(text, text, integer)
 RETURNS varchar2
 AS 'MODULE_PATHNAME','ora_regexp_instr'
 LANGUAGE C
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 CREATE FUNCTION sys.regexp_instr(varchar2, varchar2)
 RETURNS varchar2
 AS 'MODULE_PATHNAME','ora_regexp_instr'
 LANGUAGE C
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 CREATE FUNCTION sys.regexp_instr(varchar2)
 RETURNS varchar2
 AS 'MODULE_PATHNAME','ora_regexp_instr'
 LANGUAGE C
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 CREATE FUNCTION sys.regexp_instr(text)
 RETURNS varchar2
 AS 'MODULE_PATHNAME','ora_regexp_instr'
 LANGUAGE C
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 /* regexp_like */
 CREATE FUNCTION sys.regexp_like(varchar2, varchar2)
@@ -632,7 +632,7 @@ AS 'MODULE_PATHNAME','ora_regexp_like_no_flags'
 LANGUAGE C
 PARALLEL SAFE
 STRICT
-STABLE;
+IMMUTABLE;
 
 CREATE FUNCTION sys.regexp_like(varchar2, varchar2, varchar2)
 RETURNS bool
@@ -640,27 +640,27 @@ AS 'MODULE_PATHNAME','ora_regexp_like'
 LANGUAGE C
 PARALLEL SAFE
 STRICT
-STABLE;
+IMMUTABLE;
 CREATE FUNCTION sys.regexp_count(text, text, integer)
 RETURNS int AS $$
 	SELECT sys.regexp_count($1::varchar2, $2::varchar2, $3::number);
 $$ LANGUAGE SQL
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 CREATE FUNCTION sys.regexp_count(text, text, integer, text)
 RETURNS int AS $$
 	SELECT sys.regexp_count($1::varchar2, $2::varchar2, $3::number, $4::varchar2);
 $$ LANGUAGE SQL
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 CREATE FUNCTION sys.regexp_count(varchar2, varchar2, number default 1, varchar2 default 'g')
 RETURNS int
 AS 'MODULE_PATHNAME','ora_regexp_count'
 LANGUAGE C
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 /* SR */
 CREATE FUNCTION sys.substrb(varchar, number)
