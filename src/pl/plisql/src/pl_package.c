@@ -3011,6 +3011,23 @@ plisql_get_portal_from_var(PLiSQL_var *var)
 }
 
 /*
+ * Is "func" the compile result of a package itself, as opposed to one of
+ * the package's subprograms (whose ->item also points at the package)?
+ *
+ * Expressions owned by a package (for example the query of a cursor
+ * declared in a package spec or body) carry dnos that number the
+ * package's own datum array, so their parameters must be resolved
+ * through the owning package function rather than through the estate
+ * of whatever function happens to execute them.
+ */
+bool
+plisql_func_is_package(PLiSQL_function *func)
+{
+	return func->item != NULL &&
+		func == &((PLiSQL_package *) func->item->source)->source;
+}
+
+/*
  * get package datum
  */
 PLiSQL_datum *

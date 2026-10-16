@@ -196,6 +196,7 @@ extern PackageCacheItem *plisql_package_handle(Oid objectid, bool is_body);
 extern bool plisql_cursor_is_open(PLiSQL_var *var);
 extern char *plisql_get_portal_from_var(PLiSQL_var *var);
 extern PLiSQL_datum *plisql_get_datum(PLiSQL_execstate *estste, PLiSQL_datum *pkgdatum);
+extern bool plisql_func_is_package(PLiSQL_function *func);
 extern MemoryContext plisql_get_relevantContext(Oid pkgoid, MemoryContext orig);
 extern PLiSQL_datum *get_package_datum_bydno(PLiSQL_execstate *estate,
 									Oid pkgoid, int dno);
