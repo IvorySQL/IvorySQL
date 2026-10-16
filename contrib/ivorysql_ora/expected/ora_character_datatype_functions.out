@@ -4074,3 +4074,52 @@ select to_single_byte(NULL);
  
 (1 row)
 
+/* Start - LENGTH2 / LENGTH4 */
+/* for single-byte and BMP characters both are the character count */
+SELECT length2('abc') AS l2_abc, length4('abc') AS l4_abc;
+ l2_abc | l4_abc 
+--------+--------
+      3 |      3
+(1 row)
+
+SELECT length2('中文字') AS l2_cjk, length4('中文字') AS l4_cjk;
+ l2_cjk | l4_cjk 
+--------+--------
+      3 |      3
+(1 row)
+
+/* a supplementary character is one code point (LENGTH4) but two UCS2 units (LENGTH2) */
+SELECT length2('😀') AS l2_astral, length4('😀') AS l4_astral;
+ l2_astral | l4_astral 
+-----------+-----------
+         2 |         1
+(1 row)
+
+SELECT length2('a😀中') AS l2_mixed, length4('a😀中') AS l4_mixed;
+ l2_mixed | l4_mixed 
+----------+----------
+        4 |        3
+(1 row)
+
+/* LENGTHB keeps counting bytes, so the supplementary character has four */
+SELECT lengthb('😀') AS lb_astral;
+ lb_astral 
+-----------
+         4
+(1 row)
+
+/* NULL propagates */
+SELECT length2(NULL) IS NULL AS l2_null, length4(NULL) IS NULL AS l4_null;
+ l2_null | l4_null 
+---------+---------
+ t       | t
+(1 row)
+
+/* the oracle character types are accepted as well */
+SELECT length2(cast('abc' as varchar2(10))) AS l2_varchar2, length4(cast('abc' as char(10))) AS l4_char;
+ l2_varchar2 | l4_char 
+-------------+---------
+           3 |      10
+(1 row)
+
+/* End - LENGTH2 / LENGTH4 */
