@@ -48,7 +48,7 @@ mkdir $datadir;
 	delete $ENV{TZ};
 
 	# while we are here, also exercise --text-search-config and --set options
-	command_ok(
+	command_like(
 		[
 			'initdb', '--no-sync',
 			'--text-search-config' => 'german',
@@ -56,6 +56,7 @@ mkdir $datadir;
 			'--waldir' => $xlogdir,
 			$datadir
 		],
+		qr/The database cluster will be initialized in Oracle compatibility mode\.\nUse "--dbmode=pg" to initialize the cluster in PostgreSQL compatibility mode instead\./,
 		'successful creation');
 
 	# Permissions on PGDATA should be default
@@ -67,6 +68,18 @@ mkdir $datadir;
 		ok(check_mode_recursive($datadir, 0700, 0600),
 			"check PGDATA permissions");
 	}
+}
+
+for my $test (
+	[ 'pg', 'data_pg', 'lowercase PostgreSQL mode' ],
+	[ 'PG', 'data_pg_upper', 'case-insensitive PostgreSQL mode' ],
+	[ '0', 'data_pg_numeric', 'numeric PostgreSQL mode alias' ])
+{
+	command_like(
+		[ 'initdb', '--no-sync', '--dbmode' => $test->[0],
+			"$tempdir/$test->[1]" ],
+		qr/The database cluster will be initialized in PostgreSQL compatibility mode\./,
+		"$test->[2] is reported");
 }
 
 # Control file should tell that data checksums are enabled by default.
