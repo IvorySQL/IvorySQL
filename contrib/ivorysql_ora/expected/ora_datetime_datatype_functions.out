@@ -630,12 +630,42 @@ DETAIL:  time zone offset "+15:00" is out of range for DBTIMEZONE (-12:59 to +14
 alter database :cur_db set ivorysql.dbtimezone = '-13:00';
 ERROR:  invalid value for parameter "ivorysql.dbtimezone": "-13:00"
 DETAIL:  time zone offset "-13:00" is out of range for DBTIMEZONE (-12:59 to +14:00)
+/* offsets that only look numeric are rejected too: pg_tzset() would accept
+ * them as POSIX-style TZ specs, violating the documented +/-HH:MI format
+ * and the range checks above */
+alter database :cur_db set ivorysql.dbtimezone = '+15:00:00';
+ERROR:  invalid value for parameter "ivorysql.dbtimezone": "+15:00:00"
+DETAIL:  time zone offset "+15:00:00" must use +/-HH:MI format
+alter database :cur_db set ivorysql.dbtimezone = '+015:00';
+ERROR:  invalid value for parameter "ivorysql.dbtimezone": "+015:00"
+DETAIL:  time zone offset "+015:00" must use +/-HH:MI format
+alter database :cur_db set ivorysql.dbtimezone = '+14:00:00';
+ERROR:  invalid value for parameter "ivorysql.dbtimezone": "+14:00:00"
+DETAIL:  time zone offset "+14:00:00" must use +/-HH:MI format
+alter database :cur_db set ivorysql.dbtimezone = '00:00';
+ERROR:  invalid value for parameter "ivorysql.dbtimezone": "00:00"
+DETAIL:  time zone offset "00:00" must use +/-HH:MI format
+/* leading whitespace must not smuggle a numeric offset past the format
+ * check either: pg_tzset() would treat the space as part of a POSIX
+ * abbreviation and accept " +15:00" */
+alter database :cur_db set ivorysql.dbtimezone = ' +15:00';
+ERROR:  invalid value for parameter "ivorysql.dbtimezone": " +15:00"
+DETAIL:  time zone offset " +15:00" must use +/-HH:MI format
 alter database :cur_db set ivorysql.dbtimezone = '+00:00';
 \c -
 select dbtimezone() from dual;
  dbtimezone 
 ------------
  +00:00
+(1 row)
+
+/* a time zone region name is still accepted and reported verbatim */
+alter database :cur_db set ivorysql.dbtimezone = 'Asia/Shanghai';
+\c -
+select dbtimezone() from dual;
+  dbtimezone   
+---------------
+ Asia/Shanghai
 (1 row)
 
 /* contrib_regression is shared by the rest of this schedule (and reused
