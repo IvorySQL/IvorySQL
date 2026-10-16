@@ -408,7 +408,7 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 
 		relnamelist = list_make3(makeString(snamespace),
 								 makeString(cxt.relation->relname),
-								 makeString(sname));
+								 makeString("rowid"));
 
 		altseqstmt->options = list_make1(makeDefElem("owned_by",
 													 (Node *) relnamelist, -1));
@@ -4147,8 +4147,8 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 						altseqstmt->sequence = makeRangeVar(snamespace, sname, -1);
 
 						relnamelist = list_make3(makeString(snamespace),
-												 makeString(cxt.relation->relname),
-												 makeString(sname));
+											 makeString(cxt.relation->relname),
+											 makeString("rowid"));
 
 						altseqstmt->options = list_make1(makeDefElem("owned_by",
 																	 (Node *) relnamelist, -1));
