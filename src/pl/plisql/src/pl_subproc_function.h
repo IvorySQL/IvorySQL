@@ -179,6 +179,19 @@ extern int	subprocFuncs_alloc;
 extern int	cur_compile_func_level;
 extern PLiSQL_function * plisql_saved_compile[];
 extern int	plisql_saved_datums_last[];
+
+/*
+ * Per compile level: the value of plisql_nDatums when the frame at that
+ * level was entered (recorded by plisql_push_subproc_func()).  A frame
+ * compiled at level N treats datums below plisql_frame_datum_boundary[N-1]
+ * as belonging to an outer scope: the package globals plus the locals of
+ * every enclosing frame.  Unlike datums_last (which tracks the
+ * initialization scans of plisql_add_initdatums and can lag behind the
+ * datum array between block-BEGIN scans), this is the true frame-entry
+ * boundary.  See for_variable_is_outer_datum() in pl_gram.y.
+ */
+extern int	plisql_frame_datum_boundary[FUNC_MAX_NEST_LEVEL];
+
 extern char *plisql_saved_error_funcname[];
 extern int	plisql_saved_nsubprocfuncs[];
 extern int	plisql_saved_subprocfunc_alloc[];
