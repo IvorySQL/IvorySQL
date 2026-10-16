@@ -1557,3 +1557,37 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+--
+-- USER_TABLES: tables owned by the current user.
+--
+CREATE OR REPLACE VIEW SYS.USER_TABLES AS
+SELECT
+  sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+  NULL::varchar2(30) AS tablespace_name,
+  'VALID'::varchar2(8) AS status,
+  CASE
+    WHEN c.reltuples < 0 THEN NULL
+    ELSE c.reltuples::numeric
+  END AS num_rows,
+  GREATEST(
+    pg_catalog.pg_stat_get_last_analyze_time(c.oid),
+    pg_catalog.pg_stat_get_last_autoanalyze_time(c.oid)
+  ) AS last_analyzed,
+  CASE
+    WHEN c.relpersistence = 't' THEN 'Y'
+    ELSE 'N'
+  END::varchar2(1) AS temporary,
+  CASE
+    WHEN c.relkind = 'p' THEN 'YES'
+    ELSE 'NO'
+  END::varchar2(3) AS partitioned
+FROM pg_catalog.pg_class c
+JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+WHERE
+  c.relowner::regrole = current_user::regrole
+  AND c.relkind IN ('r', 'p')
+  AND n.nspname NOT IN ('pg_catalog', 'pg_toast', 'information_schema')
+  AND NOT c.relispartition;
+
+GRANT SELECT ON SYS.USER_TABLES TO PUBLIC;
