@@ -34,6 +34,7 @@
 #include "parser/parse_type.h"
 #include "parser/parse_package.h"
 #include "utils/builtins.h"
+#include "utils/fmgroids.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/ora_compatible.h"
@@ -140,6 +141,7 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 	char		function_from = FUNC_FROM_PG_PROC;
 	void	   *pfunc = NULL;
 	Oid			pkgoid = InvalidOid;
+	bool		subprocfunc_hook_redirected_to_pg_proc = false;
 
 
 	/*
@@ -329,13 +331,30 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 			/*
 			 * Distinguish WITH-clause inline functions from PL/iSQL nested
 			 * subprograms.  The WITH-clause hook (withFuncLookupHook) always
-			 * leaves pfunc == NULL; the PL/iSQL subproc hook always sets it
-			 * to a non-NULL PLiSQL_function pointer.
+			 * leaves pfunc == NULL; the PL/iSQL subproc hook sets it to a
+			 * non-NULL PLiSQL_function pointer when it resolved to a genuine
+			 * nested subprogram (whose funcid is a local index into that
+			 * function's subproc table, not a pg_proc OID), but leaves it
+			 * NULL when it instead redirected the call to an ordinary
+			 * catalog function (e.g. Oracle collection-method syntactic
+			 * sugar) -- such a funcid must be tagged FUNC_FROM_PG_PROC so
+			 * every consumer of FuncExpr->function_from treats it as the
+			 * real pg_proc entry it is, not a subproc-table index.
 			 */
 			if (pstate->p_subprocfunc_hook == withFuncLookupHook)
 				function_from = FUNC_FROM_WITH_CLAUSE;
-			else
+			else if (pfunc != NULL)
 				function_from = FUNC_FROM_SUBPROCFUNC;
+			else
+			{
+				function_from = FUNC_FROM_PG_PROC;
+				/* see the fargs-rebuild comment below: this redirect may
+				 * have replaced fargs with a differently-shaped list (e.g.
+				 * prepending an implicit argument) that actual_arg_types,
+				 * still describing the pre-redirect call, no longer
+				 * matches. */
+				subprocfunc_hook_redirected_to_pg_proc = true;
+			}
 		}
 		else if (list_length(funcname) == 1)
 		{
@@ -440,13 +459,37 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 	 * For subprocedures, the fix in pl_subproc_function.c also rebuilds
 	 * true_typeids (declared_arg_types) in declared order after reordering,
 	 * so that both arrays match the reordered fargs.
+	 *
+	 * The same rebuild is needed when the subprocfunc hook redirected the
+	 * call to an ordinary pg_proc function with a different fargs shape
+	 * (see subprocfunc_hook_redirected_to_pg_proc above) -- that path
+	 * already returns declared_arg_types/true_typeids describing the new
+	 * signature, but actual_arg_types/nargs here still describe the
+	 * pre-redirect call unless rebuilt too.
 	 */
 	if ((function_from == FUNC_FROM_PACKAGE ||
-		 function_from == FUNC_FROM_SUBPROCFUNC) &&
+		 function_from == FUNC_FROM_SUBPROCFUNC ||
+		 subprocfunc_hook_redirected_to_pg_proc) &&
 		fdresult != FUNCDETAIL_NOTFOUND)
 	{
 		ListCell   *lc;
 		int			i = 0;
+
+		/*
+		 * The earlier FUNC_MAX_ARGS check above ran on the pre-redirect
+		 * fargs; a redirect (e.g. the Oracle composite-type constructor,
+		 * which prepends an implicit type-OID argument) can grow the list
+		 * past that check.  actual_arg_types is fixed at FUNC_MAX_ARGS
+		 * entries, so re-check here before writing into it.
+		 */
+		if (list_length(fargs) > FUNC_MAX_ARGS)
+			ereport(ERROR,
+					(errcode(ERRCODE_TOO_MANY_ARGUMENTS),
+					 errmsg_plural("cannot pass more than %d argument to a function",
+								   "cannot pass more than %d arguments to a function",
+								   FUNC_MAX_ARGS,
+								   FUNC_MAX_ARGS),
+					 parser_errposition(pstate, location)));
 
 		foreach(lc, fargs)
 		{
@@ -1111,6 +1154,31 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 		}
 
 		retval = (Node *) funcexpr;
+
+		/*
+		 * A PL/iSQL collection element read, coll(i), is compiled into
+		 * plisql_coll_get_internal(coll, i, NULL::elemtype), whose anyelement
+		 * result is anchored by that typed NULL.  For a collection of a
+		 * "TYPE ... IS RECORD" element the anchor is RECORD plus the record's
+		 * blessed typmod, but a FuncExpr has no typmod of its own, so
+		 * "(coll(i)).field" could not find the row shape.  Carry the
+		 * anchor's typmod on a no-op RelabelType, which
+		 * get_expr_result_type() resolves like any typmod-bearing RECORD
+		 * expression.
+		 */
+		if (funcid == F_PLISQL_COLL_GET_INTERNAL && rettype == RECORDOID)
+		{
+			int32		elemtypmod;
+
+			Assert(list_length(fargs) == 3);
+			elemtypmod = exprTypmod((Node *) lthird(fargs));
+
+			if (elemtypmod >= 0)
+				retval = (Node *) makeRelabelType((Expr *) funcexpr,
+												  RECORDOID, elemtypmod,
+												  InvalidOid,
+												  COERCE_IMPLICIT_CAST);
+		}
 	}
 	else if (fdresult == FUNCDETAIL_AGGREGATE && !over)
 	{
@@ -2481,6 +2549,16 @@ ParseComplexProjection(ParseState *pstate, const char *funcname, Node *first_arg
 	if (IsA(first_arg, Var) &&
 		((Var *) first_arg)->vartype == RECORDOID)
 		tupdesc = expandRecordVariable(pstate, (Var *) first_arg, 0);
+	else if (exprType(first_arg) == RECORDOID && exprTypmod(first_arg) >= 0)
+	{
+		/*
+		 * A RECORD expression that declares a blessed typmod -- e.g. a
+		 * PL/iSQL collection element read of a "TYPE ... IS RECORD"
+		 * element, see ParseFuncOrColumn() -- already says which row
+		 * shape it has; get_expr_result_tupdesc() would not consult it.
+		 */
+		tupdesc = lookup_rowtype_tupdesc_copy(RECORDOID, exprTypmod(first_arg));
+	}
 	else
 		tupdesc = get_expr_result_tupdesc(first_arg, true);
 	if (!tupdesc)

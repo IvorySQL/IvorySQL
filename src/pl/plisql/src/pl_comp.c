@@ -110,7 +110,6 @@ static Node *plisql_post_column_ref(ParseState *pstate, ColumnRef *cref, Node *v
 static Node *plisql_param_ref(ParseState *pstate, ParamRef *pref);
 static Node *resolve_column_ref(ParseState *pstate, PLiSQL_expr *expr,
 					ColumnRef *cref, bool error_if_no_field);
-static Node *make_datum_param(PLiSQL_expr *expr, int dno, int location);
 static PLiSQL_type *build_datatype(HeapTuple typeTup, int32 typmod,
 					Oid collation, TypeName *origtypname);
 static void compute_function_hashkey(FunctionCallInfo fcinfo,
@@ -795,7 +794,8 @@ do_compile(FunctionCallInfo fcinfo,
 			if (typeStruct->typtype == TYPTYPE_PSEUDO)
 			{
 				if (rettypeid == VOIDOID ||
-					rettypeid == RECORDOID)
+					rettypeid == RECORDOID ||
+					(rettype != NULL && rettype->tbltype != NULL))
 					 /* okay */ ;
 				else if (rettypeid == TRIGGEROID || rettypeid == EVENT_TRIGGEROID)
 					ereport(ERROR,
@@ -1749,7 +1749,8 @@ plisql_param_ref(ParseState *pstate, ParamRef *pref)
 			for (i = 0; i < expr->func->fn_nargs; i++)
 				if (expr->func->paramnames[i] != NULL &&
 					strcmp(expr->func->paramnames[i], oraref->name) == 0)
-					return make_datum_param(expr, expr->func->fn_argvarnos[i], oraref->location);
+					return make_datum_param(expr, expr->func->fn_argvarnos[i], oraref->location,
+										PLISQL_PARAM_SQL_VALUE);
 		}
 	}
 
@@ -1762,7 +1763,52 @@ plisql_param_ref(ParseState *pstate, ParamRef *pref)
 	if (nse == NULL)
 		return NULL;			/* name not known to plisql */
 
-	return make_datum_param(expr, nse->itemno, pref->location);
+	return make_datum_param(expr, nse->itemno, pref->location,
+										PLISQL_PARAM_SQL_VALUE);
+}
+
+/*
+ * Build "plisql_coll_count_internal(coll_param)", the expression behind a
+ * declared collection's ".COUNT" pseudo-attribute.
+ *
+ * This deliberately does not use Postgres's own array_length(coll, 1):
+ * besides COUNT being 0 rather than NULL for an empty collection, the
+ * backing function enforces the one-dimensionality invariant that every
+ * other collection operation enforces, whereas array_length() would
+ * quietly report the length of the first dimension of a multidimensional
+ * value.  Likewise for ".FIRST" / ".LAST" below.
+ */
+static Node *
+build_coll_count_expr(Node *coll_param, int location)
+{
+	FuncExpr   *count;
+
+	count = makeFuncExpr(F_PLISQL_COLL_COUNT_INTERNAL, INT4OID,
+						 list_make1(coll_param),
+						 InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+	count->location = location;
+
+	return (Node *) count;
+}
+
+/*
+ * Build "plisql_coll_first_internal(coll_param)" /
+ * "plisql_coll_last_internal(coll_param)",
+ * the expressions behind a declared collection's ".FIRST" / ".LAST"
+ * pseudo-attributes (NULL on an empty collection, matching Oracle).
+ */
+static Node *
+build_coll_bound_expr(Node *coll_param, bool is_first, int location)
+{
+	FuncExpr   *bound;
+
+	bound = makeFuncExpr(is_first ? F_PLISQL_COLL_FIRST_INTERNAL :
+						 F_PLISQL_COLL_LAST_INTERNAL,
+						 INT4OID, list_make1(coll_param),
+						 InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+	bound->location = location;
+
+	return (Node *) bound;
 }
 
 /*
@@ -1885,22 +1931,64 @@ resolve_column_ref(ParseState *pstate, PLiSQL_expr * expr,
 		if (nse != NULL)
 		{
 			Assert(nse->itemtype == PLISQL_NSTYPE_VAR);
-			return make_datum_param(expr, nse->itemno, cref->location);
+			return make_datum_param(expr, nse->itemno, cref->location,
+										PLISQL_PARAM_SQL_VALUE);
 		}
 	}
 
 	if (nse == NULL)
+	{
+		/*
+		 * Not resolvable as a block- or package-qualified reference. If
+		 * this is a bare two-part "var.METHOD" reference, and var is a
+		 * declared collection variable ("TYPE ... IS TABLE OF / VARRAY"),
+		 * recognize the argument-less pseudo-attributes COUNT/FIRST/LAST
+		 * here. ".EXISTS(i)" and "coll(i)" are function-call shaped
+		 * (followed by '(') and are handled in plisql_subprocfunc_ref
+		 * instead, since a ColumnRef never carries call arguments.
+		 */
+		if (name2 != NULL && name3 == NULL && strcmp(name2, "*") != 0)
+		{
+			PLiSQL_nsitem *varnse;
+			int			varnnames;
+
+			varnse = plisql_ns_lookup(expr->ns, false, name1, NULL, NULL,
+									  &varnnames);
+			if (varnse != NULL && varnse->itemtype == PLISQL_NSTYPE_VAR)
+			{
+				PLiSQL_var *var = (PLiSQL_var *) estate->datums[varnse->itemno];
+
+				if (var->datatype != NULL && var->datatype->tbltype != NULL)
+				{
+					if (pg_strcasecmp(name2, "COUNT") == 0)
+						return build_coll_count_expr(make_datum_param(expr, varnse->itemno, cref->location,
+																		   PLISQL_PARAM_COLLECTION_VALUE),
+													 cref->location);
+					else if (pg_strcasecmp(name2, "FIRST") == 0)
+						return build_coll_bound_expr(make_datum_param(expr, varnse->itemno, cref->location,
+																		   PLISQL_PARAM_COLLECTION_VALUE),
+													 true, cref->location);
+					else if (pg_strcasecmp(name2, "LAST") == 0)
+						return build_coll_bound_expr(make_datum_param(expr, varnse->itemno, cref->location,
+																		   PLISQL_PARAM_COLLECTION_VALUE),
+													 false, cref->location);
+				}
+			}
+		}
 		return NULL;			/* name not known to plisql */
+	}
 
 	switch (nse->itemtype)
 	{
 		case PLISQL_NSTYPE_VAR:
 			if (nnames == nnames_scalar)
-				return make_datum_param(expr, nse->itemno, cref->location);
+				return make_datum_param(expr, nse->itemno, cref->location,
+										PLISQL_PARAM_SQL_VALUE);
 			break;
 		case PLISQL_NSTYPE_REC:
 			if (nnames == nnames_wholerow)
-				return make_datum_param(expr, nse->itemno, cref->location);
+				return make_datum_param(expr, nse->itemno, cref->location,
+										PLISQL_PARAM_SQL_VALUE);
 			if (nnames == nnames_field)
 			{
 				/* colname could be a field in this record */
@@ -1917,7 +2005,8 @@ resolve_column_ref(ParseState *pstate, PLiSQL_expr * expr,
 						   fld->recparentno == nse->itemno);
 					if (strcmp(fld->fieldname, colname) == 0)
 					{
-						return make_datum_param(expr, i, cref->location);
+						return make_datum_param(expr, i, cref->location,
+										PLISQL_PARAM_SQL_VALUE);
 					}
 					i = fld->nextfield;
 				}
@@ -2013,7 +2102,8 @@ resolve_column_ref(ParseState *pstate, PLiSQL_expr * expr,
 										 * earlier would leave a stray unused
 										 * paramno set if no subfield matched.
 										 */
-										fselect->arg = (Expr *) make_datum_param(expr, i, cref->location);
+										fselect->arg = (Expr *) make_datum_param(expr, i, cref->location,
+																				 PLISQL_PARAM_SQL_VALUE);
 										fselect->fieldnum = attr->attnum;
 										fselect->resulttype = attr->atttypid;
 										fselect->resulttypmod = attr->atttypmod;
@@ -2035,6 +2125,7 @@ resolve_column_ref(ParseState *pstate, PLiSQL_expr * expr,
 		case PLISQL_NSTYPE_SUBPROC_FUNC:
 		case PLISQL_NSTYPE_SUBPROC_PROC:
 		case PLISQL_NSTYPE_ROWTYPE:
+		case PLISQL_NSTYPE_TBLTYPE:
 			break;
 		default:
 			elog(ERROR, "unrecognized plisql itemtype: %d", nse->itemtype);
@@ -2047,9 +2138,20 @@ resolve_column_ref(ParseState *pstate, PLiSQL_expr * expr,
 /*
  * Helper for columnref parsing: build a Param referencing a plisql datum,
  * and make sure that datum is listed in the expression's paramnos.
+ *
+ * context selects which semantic representation the Param carries; see
+ * PLiSQL_param_context in plisql.h.  It is an explicit argument rather than
+ * something derived here because the choice belongs to the REFERENCE, not to
+ * the variable: the same collection variable is an elem[] in an ordinary SQL
+ * expression and an internal collection in a collection-aware one.
+ *
+ * Not static: also used by pl_subproc_function.c to build the collection
+ * argument when redirecting Oracle collection-method call syntax
+ * (coll(i), coll.EXISTS(i), etc.) to a real backing function.
  */
-static Node *
-make_datum_param(PLiSQL_expr * expr, int dno, int location)
+Node *
+make_datum_param(PLiSQL_expr * expr, int dno, int location,
+				 PLiSQL_param_context context)
 {
 	PLiSQL_execstate *estate;
 	PLiSQL_datum *datum;
@@ -2077,6 +2179,39 @@ make_datum_param(PLiSQL_expr * expr, int dno, int location)
 					 &param->paramtypmod,
 					 &param->paramcollid);
 	param->location = location;
+
+	/*
+	 * A collection-context reference carries the INTERNAL collection type,
+	 * not the declared elem[].  That is the type-safety boundary: array
+	 * operators and array coercion cannot name this type, so they can never
+	 * reach the expanded object (see pl_collection.h).  The value itself is
+	 * produced by plisql_param_eval_collection(), which converts from the
+	 * variable's stored representation.
+	 */
+	if (context == PLISQL_PARAM_COLLECTION_VALUE)
+	{
+		/*
+		 * Only a declared collection variable has a collection
+		 * representation to ask for.
+		 */
+		Assert(datum->dtype == PLISQL_DTYPE_VAR &&
+			   ((PLiSQL_var *) datum)->datatype->tbltype != NULL);
+
+		param->paramtype = PLISQL_COLLECTIONOID;
+		param->paramtypmod = -1;
+		param->paramcollid = InvalidOid;
+	}
+	else
+	{
+		/*
+		 * The type-safety boundary, asserted rather than assumed: an
+		 * ordinary SQL reference must never carry the internal collection
+		 * type, because that is the type array code cannot safely receive
+		 * (see pl_collection.h).  A collection variable referenced here
+		 * keeps its declared elem[].
+		 */
+		Assert(param->paramtype != PLISQL_COLLECTIONOID);
+	}
 
 	return (Node *) param;
 }
@@ -2137,6 +2272,7 @@ plisql_parse_word(char *paramname, char *word1, const char *yytxt, bool lookup,
 				case PLISQL_NSTYPE_SUBPROC_FUNC:
 				case PLISQL_NSTYPE_SUBPROC_PROC:
 				case PLISQL_NSTYPE_ROWTYPE:
+				case PLISQL_NSTYPE_TBLTYPE:
 					break;
 
 				default:
@@ -2536,12 +2672,14 @@ plisql_parse_wordtype(char *ident)
 			case PLISQL_NSTYPE_REC:
 				return ((PLiSQL_rec *) (plisql_Datums[nse->itemno]))->datatype;
 			case PLISQL_NSTYPE_ROWTYPE:
+			case PLISQL_NSTYPE_TBLTYPE:
 
 				/*
-				 * A "TYPE ... IS RECORD" declaration isn't a variable, so
-				 * "rec_t%TYPE" (where rec_t names the declaration itself,
-				 * not a variable of that type) doesn't resolve here; fall
-				 * through to the "does not exist" error below.
+				 * A "TYPE ... IS RECORD" or "TYPE ... IS TABLE OF / VARRAY"
+				 * declaration isn't a variable, so "t%TYPE" (where t names
+				 * the declaration itself, not a variable of that type)
+				 * doesn't resolve here; fall through to the "does not
+				 * exist" error below.
 				 */
 				break;
 			default:
@@ -3149,6 +3287,68 @@ plisql_build_datatype(Oid typeOid, int32 typmod,
 }
 
 /*
+ * plisql_build_tbl_datatype
+ *		Build the PLiSQL_type of a variable declared with a collection type
+ *		("TYPE ... IS TABLE OF / VARRAY"): its backing array type, tagged
+ *		with the collection declaration.
+ *
+ * A collection of a "TYPE ... IS RECORD" element is backed by record[],
+ * which on its own is a pseudo-type -- a bare record[] has no element row
+ * shape.  The collection supplies that shape (each element tuple carries
+ * the record's blessed typmod), so here, and only here, record[] is an
+ * ordinary array-typed scalar like any other collection.
+ */
+PLiSQL_type *
+plisql_build_tbl_datatype(PLiSQL_tbl_type * tbltype)
+{
+	PLiSQL_type *typ;
+
+	typ = plisql_build_datatype(tbltype->arraytypoid, tbltype->arraytypmod,
+								tbltype->elemcollation, NULL);
+	typ->tbltype = tbltype;
+	if (typ->typoid == RECORDARRAYOID)
+		typ->ttype = PLISQL_TTYPE_SCALAR;
+
+	return typ;
+}
+
+/*
+ * plisql_is_pkg_collection_type
+ *		May a routine's argument or result type, stored in pg_proc as the
+ *		pseudo-type record[], be a package collection type?
+ *
+ * pg_proc records a package type, or a %TYPE reference, by the OID it
+ * resolves to, and keeps the name it was written with alongside
+ * (protypenames / rettypename).  A package "TYPE ... IS TABLE OF <TYPE ...
+ * IS RECORD>" resolves to record[], which on its own a PL/iSQL routine can
+ * neither accept nor return -- and it is the only thing a stored name can
+ * resolve to record[] from, since no variable can be declared with a bare
+ * record[].  So record[] with a stored name passes the signature checks;
+ * compiling the routine resolves the name and confirms it (see
+ * do_compile()).  Not looking the package up here keeps the validator from
+ * loading it, which matters while pg_restore is still creating objects.
+ */
+bool
+plisql_is_pkg_collection_type(Oid typeoid, const char *typname)
+{
+	return typeoid == RECORDARRAYOID && typname != NULL && typname[0] != '\0';
+}
+
+/*
+ * plisql_proc_returns_pkg_collection
+ *		plisql_is_pkg_collection_type() for a pg_proc entry's result type.
+ */
+bool
+plisql_proc_returns_pkg_collection(HeapTuple procTup)
+{
+	Form_pg_proc proc = (Form_pg_proc) GETSTRUCT(procTup);
+	char	   *rettypename;
+
+	get_func_typename_info(procTup, NULL, &rettypename);
+	return plisql_is_pkg_collection_type(proc->prorettype, rettypename);
+}
+
+/*
  * Utility subroutine to make a PLiSQL_type struct given a pg_type entry
  * and additional details (see comments for plisql_build_datatype).
  */
@@ -3166,6 +3366,11 @@ build_datatype(HeapTuple typeTup, int32 typmod,
 						NameStr(typeStruct->typname))));
 
 	typ = palloc_object(PLiSQL_type);
+	typ->tbltype = NULL;		/* set below by callers that need it (a
+								 * declared TABLE OF/VARRAY variable);
+								 * palloc_object() does not zero memory, so
+								 * every other field below must likewise be
+								 * assigned explicitly */
 
 	typ->typname = pstrdup(NameStr(typeStruct->typname));
 	typ->typoid = typeStruct->oid;
@@ -4142,7 +4347,8 @@ plisql_free_function(Oid funcOid)
 			is_event_trigger = true;
 		else if (proc->prorettype != RECORDOID &&
 				 proc->prorettype != VOIDOID &&
-				 !IsPolymorphicType(proc->prorettype))
+				 !IsPolymorphicType(proc->prorettype) &&
+				 !plisql_proc_returns_pkg_collection(procTup))
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("PL/iSQL functions cannot return type %s",

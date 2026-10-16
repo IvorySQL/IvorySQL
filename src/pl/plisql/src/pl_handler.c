@@ -1002,6 +1002,7 @@ plisql_validator(PG_FUNCTION_ARGS)
 	Oid		   *argtypes;
 	char	  **argnames;
 	char	   *argmodes;
+	char	  **argtypenames;
 	bool		is_dml_trigger = false;
 	bool		is_event_trigger = false;
 	int			i;
@@ -1027,7 +1028,8 @@ plisql_validator(PG_FUNCTION_ARGS)
 			is_event_trigger = true;
 		else if (proc->prorettype != RECORDOID &&
 				 proc->prorettype != VOIDOID &&
-				 !IsPolymorphicType(proc->prorettype))
+				 !IsPolymorphicType(proc->prorettype) &&
+				 !plisql_proc_returns_pkg_collection(tuple))
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("PL/iSQL functions cannot return type %s",
@@ -1035,15 +1037,18 @@ plisql_validator(PG_FUNCTION_ARGS)
 	}
 
 	/* Disallow pseudotypes in arguments (either IN or OUT) */
-	/* except for RECORD and polymorphic */
+	/* except for RECORD, polymorphic, and package collection types */
 	numargs = get_func_arg_info(tuple,
 								&argtypes, &argnames, &argmodes);
+	get_func_typename_info(tuple, &argtypenames, NULL);
 	for (i = 0; i < numargs; i++)
 	{
 		if (get_typtype(argtypes[i]) == TYPTYPE_PSEUDO)
 		{
 			if (argtypes[i] != RECORDOID &&
-				!IsPolymorphicType(argtypes[i]))
+				!IsPolymorphicType(argtypes[i]) &&
+				!plisql_is_pkg_collection_type(argtypes[i],
+											   argtypenames ? argtypenames[i] : NULL))
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("PL/iSQL functions cannot accept type %s",
