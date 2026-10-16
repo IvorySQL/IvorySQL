@@ -32,6 +32,7 @@ OBJS = \
 	src/xml_functions/ora_xml_functions.o \
 	src/builtin_packages/dbms_utility/dbms_utility.o \
 	src/builtin_packages/dbms_lock/dbms_lock.o \
+	src/builtin_packages/utl_raw/utl_raw_integer.o \
 	src/builtin_packages/utl_encode/utl_encode.o \
 	src/builtin_packages/utl_url/utl_url.o \
 	src/builtin_packages/dbms_session/dbms_session.o \
@@ -99,6 +100,7 @@ ORA_REGRESS = \
 	utl_file \
 	utl_file_putf \
 	utl_raw \
+	utl_raw_integer \
 	utl_encode \
 	utl_url \
 	dbms_session \
