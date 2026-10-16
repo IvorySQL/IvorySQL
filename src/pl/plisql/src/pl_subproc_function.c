@@ -295,7 +295,7 @@ plisql_build_variable_from_funcargs(PLiSQL_subproc_function * subprocfunc, bool 
 										forValidator,
 										plisql_error_funcname);
 
-	outvar = (PLiSQL_variable **) palloc(sizeof(PLiSQL_variable *) * (nargs + 1));
+	outvar = (PLiSQL_variable * *) palloc(sizeof(PLiSQL_variable *) * (nargs + 1));
 	i = 0;
 	noutargs = 0;
 	nargdefaults = 0;
@@ -343,15 +343,16 @@ plisql_build_variable_from_funcargs(PLiSQL_subproc_function * subprocfunc, bool 
 			argitemtype = PLISQL_NSTYPE_VAR;
 
 			/*
-			 * Use the info field to remember the variable' IN, OUT, IN OUT mode,
-			 * IN mode variable is not allowned to be assigned with value.
+			 * Use the info field to remember the variable' IN, OUT, IN OUT
+			 * mode, IN mode variable is not allowned to be assigned with
+			 * value.
 			 */
 			if (argmode == PROARGMODE_IN ||
 				argmode == PROARGMODE_OUT ||
 				argmode == PROARGMODE_INOUT)
-				((PLiSQL_var *)argvariable)->info = argmode;
+				((PLiSQL_var *) argvariable)->info = argmode;
 			else
-				((PLiSQL_var *)argvariable)->info = PROARGMODE_IN;
+				((PLiSQL_var *) argvariable)->info = PROARGMODE_IN;
 		}
 		else
 		{
@@ -359,15 +360,16 @@ plisql_build_variable_from_funcargs(PLiSQL_subproc_function * subprocfunc, bool 
 			argitemtype = PLISQL_NSTYPE_REC;
 
 			/*
-			 * Use the info field to remember the variable' IN, OUT, IN OUT mode,
-			 * IN mode variable is not allowned to be assigned with value.
+			 * Use the info field to remember the variable' IN, OUT, IN OUT
+			 * mode, IN mode variable is not allowned to be assigned with
+			 * value.
 			 */
 			if (argmode == PROARGMODE_IN ||
 				argmode == PROARGMODE_OUT ||
 				argmode == PROARGMODE_INOUT)
-				((PLiSQL_rec *)argvariable)->info = argmode;
+				((PLiSQL_rec *) argvariable)->info = argmode;
 			else
-				((PLiSQL_rec *)argvariable)->info = PROARGMODE_IN;
+				((PLiSQL_rec *) argvariable)->info = PROARGMODE_IN;
 		}
 		function->fn_argvarnos[i] = argvariable->dno;
 
@@ -404,7 +406,7 @@ plisql_build_variable_from_funcargs(PLiSQL_subproc_function * subprocfunc, bool 
 	}
 
 	norigoutargs = noutargs;
-	/*Build a '_retval_' varaible for the function return value */
+	/* Build a '_retval_' varaible for the function return value */
 	if (noutargs > 0)
 	{
 		if (subprocfunc->rettype != NULL &&
@@ -413,7 +415,7 @@ plisql_build_variable_from_funcargs(PLiSQL_subproc_function * subprocfunc, bool 
 			char		buf[32];
 			PLiSQL_type *argdtype;
 			PLiSQL_nsitem_type argitemtype;
-			Oid 		argtypeid = subprocfunc->rettype->typoid;
+			Oid			argtypeid = subprocfunc->rettype->typoid;
 
 			/* Is the function's return type a PSEUDO type? */
 			if (IsPolymorphicType(argtypeid))
@@ -432,9 +434,9 @@ plisql_build_variable_from_funcargs(PLiSQL_subproc_function * subprocfunc, bool 
 					argtypeid = get_fn_expr_rettype(fcinfo->flinfo);
 					if (!OidIsValid(argtypeid))
 						ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								errmsg("could not determine actual return type "
-									"for polymorphic function \"%s\"",
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("could not determine actual return type "
+										"for polymorphic function \"%s\"",
 										plisql_error_funcname)));
 				}
 			}
@@ -442,9 +444,9 @@ plisql_build_variable_from_funcargs(PLiSQL_subproc_function * subprocfunc, bool 
 			snprintf(buf, sizeof(buf), "$%d", i + 1);
 
 			argdtype = plisql_build_datatype(argtypeid,
-								-1,
-								function->fn_input_collation,
-								NULL);
+											 -1,
+											 function->fn_input_collation,
+											 NULL);
 			argvariable = plisql_build_variable("_RETVAL_", 0, argdtype, false);
 			function->fn_ret_vardno = argvariable->dno;
 
@@ -453,7 +455,10 @@ plisql_build_variable_from_funcargs(PLiSQL_subproc_function * subprocfunc, bool 
 			else
 				argitemtype = PLISQL_NSTYPE_REC;
 
-			/* the new builded variable for function return value is after all function OUT args */
+			/*
+			 * the new builded variable for function return value is after all
+			 * function OUT args
+			 */
 			outvar[noutargs] = argvariable;
 			noutargs++;
 
@@ -483,6 +488,7 @@ no_argument:
 	 * Note: using FEATURE_NOT_SUPPORTED reflects that resolution should
 	 * generally succeed; failure indicates missing context.
 	 */
+
 	/*
 	 * proceduew with out paramster, change its rettypeid to RECORDOID
 	 */
@@ -497,7 +503,7 @@ no_argument:
 	{
 		if (norigoutargs > 0)
 			elog(ERROR, "result type must not be PolymorphicType because "
-					"of OUT parameters");
+				 "of OUT parameters");
 
 		if (forValidator)
 		{
@@ -1268,9 +1274,9 @@ plisql_init_subprocfunc_globalvar(PLiSQL_execstate * estate, FunctionCallInfo fc
 			continue;
 
 		/*
-		 * Skip RECFIELD datums.  A RECFIELD carries no independent value;
-		 * it is purely field-reference metadata (recparentno + fieldname).
-		 * Such datums can appear in the outer-scope range as a compile-time
+		 * Skip RECFIELD datums.  A RECFIELD carries no independent value; it
+		 * is purely field-reference metadata (recparentno + fieldname). Such
+		 * datums can appear in the outer-scope range as a compile-time
 		 * side-effect: when scanning a DEFAULT expression that references a
 		 * record field (e.g. "var1 integer := new.id"), plisql_build_recfield
 		 * is called by the lexer before lastassignvardno is recorded, placing
@@ -1499,8 +1505,7 @@ plisql_get_subprocfunc_detail(ParseState *pstate,
 		{
 			/* Begin - ReqID:SRS-SQL-PACKAGE */
 			/*
-			 * procedure with out parameter, we replace rettype
-			 * use RECORDOID
+			 * procedure with out parameter, we replace rettype use RECORDOID
 			 */
 			if (subprocfunc->noutargs != 0)
 				*rettype = RECORDOID;
@@ -1549,10 +1554,10 @@ plisql_get_subprocfunc_detail(ParseState *pstate,
 
 			/*
 			 * After reordering fargs to declared order, we must also rebuild
-			 * true_typeids (which becomes declared_arg_types in the caller) to
-			 * match. The original best_candidate->args is in call order for
-			 * overload resolution, but make_fn_arguments needs declared order
-			 * to match the reordered fargs.
+			 * true_typeids (which becomes declared_arg_types in the caller)
+			 * to match. The original best_candidate->args is in call order
+			 * for overload resolution, but make_fn_arguments needs declared
+			 * order to match the reordered fargs.
 			 */
 			if (best_candidate->argnumbers != NULL)
 			{
@@ -1726,7 +1731,7 @@ plisql_build_subproc_function_internal(char *funcname, List *args,
 	PLiSQL_function *function;
 	bool		has_poly_argument = false;
 	MemoryContext func_cxt = plisql_curr_compile->fn_cxt;
-	int		noutargs = 0;
+	int			noutargs = 0;
 
 	funcs = (PLiSQL_subproc_function *) palloc0(sizeof(PLiSQL_subproc_function));
 	funcs->function = (PLiSQL_function *) palloc0(sizeof(PLiSQL_function));
@@ -2268,10 +2273,62 @@ plisql_func_select_candidate(int nargs,
 
 	/*
 	 * If ambiguity persists, try to ascribe types to the unknown inputs. If
-	 * there are no unknowns, no further heuristics apply and we must fail.
+	 * there are no unknowns, the remaining candidate set differs only in
+	 * argument types that the input is implicitly convertible to; prefer the
+	 * candidates whose argument type is in the same type category as the
+	 * input, and fail only if even that does not single one out.
+	 *
+	 * This matters in oracle mode, where numeric and character types are
+	 * mutually convertible: a call such as DBMS_RANDOM.SEED(42) matches both
+	 * the NUMBER and the VARCHAR2 overload of the package procedure, and the
+	 * heuristics above cannot separate them (an integer input is not the
+	 * preferred type of the numeric category, and neither is NUMERIC). Oracle
+	 * resolves a numeric argument to the numeric overload, and this pass does
+	 * the same.  It also fixes the equivalent calls with BIGINT and SMALLINT
+	 * arguments, which hit the same tie.
 	 */
 	if (nunknowns == 0)
-		return NULL;
+	{
+		ncandidates = 0;
+		nbestMatch = 0;
+		last_candidate = NULL;
+		for (current_candidate = candidates;
+			 current_candidate != NULL;
+			 current_candidate = current_candidate->next)
+		{
+			current_typeids = current_candidate->args;
+			nmatch = 0;
+			for (i = 0; i < nargs; i++)
+			{
+				if (TypeCategory(getBaseType(current_typeids[i])) ==
+					slot_category[i])
+					nmatch++;
+			}
+
+			if ((nmatch > nbestMatch) || (last_candidate == NULL))
+			{
+				nbestMatch = nmatch;
+				candidates = current_candidate;
+				last_candidate = current_candidate;
+				first_candidate = last_candidate;
+				ncandidates = 1;
+			}
+			else if (nmatch == nbestMatch)
+			{
+				last_candidate->next = current_candidate;
+				last_candidate = current_candidate;
+				ncandidates++;
+			}
+		}
+
+		if (last_candidate)		/* terminate rebuilt list */
+			last_candidate->next = NULL;
+
+		if (ncandidates == 1)
+			return candidates;
+
+		return NULL;			/* no unique best candidate */
+	}
 
 	/*
 	 * For each unknown position, determine a common type category. Prefer
@@ -2699,9 +2756,9 @@ build_subprocfunction_result_tupdesc_t(PLiSQL_subproc_function * subprocfunc)
 			outargtypes[i] = argitem->type->typoid;
 
 			/*
-			 * If the guc pararmeter out_parameter_column_position is set to be true,
-			 * make out parameter column name to be special,
-			 * so we can distinguish it from the return value.
+			 * If the guc pararmeter out_parameter_column_position is set to
+			 * be true, make out parameter column name to be special, so we
+			 * can distinguish it from the return value.
 			 */
 			if (out_parameter_column_position)
 				outargnames[i] = psprintf("_column_%d", i + 1);

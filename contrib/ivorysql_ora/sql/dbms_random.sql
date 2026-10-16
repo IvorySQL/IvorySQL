@@ -98,6 +98,19 @@ call dbms_random.terminate();
 select dbms_random.value() >= 0 as works_after_terminate;
 
 --
+-- Numeric literals select the numeric overload, as in Oracle
+--
+call dbms_random.seed(42);
+select dbms_random.random() as literal_seed_r1,
+       dbms_random.random() as literal_seed_r2;
+-- the same literal replays the same sequence
+call dbms_random.seed(42);
+select dbms_random.random() as literal_seed_replayed;
+-- fractional literals resolve to the numeric overload as well
+call dbms_random.seed(42.5);
+select dbms_random.random() is not null as works_after_fractional_seed;
+
+--
 -- The generator state is reset by DISCARD ALL, so the next value comes
 -- from a fresh entropy-seeded state (cannot be asserted exactly).
 --
