@@ -8,13 +8,13 @@
 --
 CREATE FUNCTION mydouble(int) returns int strict immutable parallel safe AS $$
 BEGIN
-  atomic select $1 * 2;
+  RETURN $1 * 2;
 END; $$ LANGUAGE plpgsql;
 /
 
-create collation mycollation from posix;
+create collation mycollation from "POSIX";
 
-create table pt (category int, sdata ::seg, tdata text)
+create table pt (category int, sdata seg, tdata text)
   partition by list (category);
 
 -- pre-existing partition
