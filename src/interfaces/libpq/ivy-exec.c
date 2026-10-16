@@ -1268,8 +1268,27 @@ IvyStmtPrepare(IvyPreparedStatement *stmthandle,
 		return 0;
 	}
 
+	/*
+	 * The query text is not required to be NUL-terminated (OCI semantics:
+	 * the caller supplies the exact statement length), so copy exactly
+	 * query_len bytes and add the terminating NUL ourselves.  strdup/strlen
+	 * must not be used here: they would over-read past the caller's buffer
+	 * whenever the text has no embedded terminator, and would also leave
+	 * stmthandle->query_len inconsistent with the stored string length.
+	 */
+	stmthandle->query = (char *) malloc(query_len + 1);
+	if (stmthandle->query == NULL)
+	{
+		snprintf(errhp->error_msg, errhp->err_buf_size, "%s",
+			"failed to allocate memory");
+		PGSemaphoreUnlock(&stmthandle->lock);
+
+		return 0;
+	}
+
+	memcpy(stmthandle->query, query, query_len);
+	stmthandle->query[query_len] = '\0';
 	stmthandle->query_len = query_len;
-	stmthandle->query = strdup(query);
 	stmthandle->mode = mode;
 	stmthandle->language = language;
 
