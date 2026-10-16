@@ -1623,6 +1623,12 @@ PARALLEL SAFE
 IMMUTABLE;
 
 /* Begin - SYS_CONTEXT */
+-- SYS_CONTEXT is installed before DBMS_SESSION in the merged extension SQL.
+CREATE FUNCTION sys.ora_dbms_session_get_identifier()
+RETURNS TEXT
+AS 'MODULE_PATHNAME', 'ora_dbms_session_get_identifier'
+LANGUAGE C STABLE;
+
 CREATE OR REPLACE FUNCTION sys.sys_context(a varchar2, b varchar2)
 RETURNS varchar2 AS $$
 DECLARE
@@ -1695,7 +1701,8 @@ BEGIN
 			SELECT sys.get_bg_job_id() INTO res;
 		  WHEN 'CDB_DOMAIN' THEN SELECT NULL INTO res;
 		  WHEN 'CDB_NAME' THEN SELECT NULL INTO res;
-		  WHEN 'CLIENT_IDENTIFIER' THEN SELECT NULL INTO res;
+		  WHEN 'CLIENT_IDENTIFIER' THEN
+			SELECT sys.ora_dbms_session_get_identifier() INTO res;
 		  WHEN 'CLIENT_INFO' THEN
 			SELECT sys.get_client_info() INTO res;
 		  WHEN 'CON_ID' THEN SELECT NULL INTO res;

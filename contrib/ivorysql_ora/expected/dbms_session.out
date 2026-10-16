@@ -8,6 +8,97 @@
 --
 -- SET_CONTEXT + SYS_CONTEXT read-back
 --
+-- CLIENT_IDENTIFIER is case-sensitive, backend-local session state.
+select sys_context('USERENV', 'CLIENT_IDENTIFIER') is null as id_initially_null;
+ id_initially_null 
+-------------------
+ t
+(1 row)
+
+call dbms_session.set_identifier('MixedCase');
+select sys_context('userenv', 'client_identifier') as client_id;
+ client_id 
+-----------
+ MixedCase
+(1 row)
+
+call dbms_session.set_identifier('second');
+select sys_context('USERENV', 'CLIENT_IDENTIFIER') as client_id;
+ client_id 
+-----------
+ second
+(1 row)
+
+call dbms_session.set_identifier(null);
+select sys_context('USERENV', 'CLIENT_IDENTIFIER') is null as id_null_clears;
+ id_null_clears 
+----------------
+ t
+(1 row)
+
+call dbms_session.set_identifier('');
+select sys_context('USERENV', 'CLIENT_IDENTIFIER') is null as id_empty_clears;
+ id_empty_clears 
+-----------------
+ t
+(1 row)
+
+call dbms_session.set_identifier(repeat('x', 64));
+select octet_length(sys_context('USERENV', 'CLIENT_IDENTIFIER')) as id_bytes;
+ id_bytes 
+----------
+       64
+(1 row)
+
+call dbms_session.set_identifier(repeat('x', 65));
+select sys_context('USERENV', 'CLIENT_IDENTIFIER') = repeat('x', 64) as id_truncated;
+ id_truncated 
+--------------
+ t
+(1 row)
+
+call dbms_session.set_identifier(repeat('x', 63) || chr(233));
+select octet_length(sys_context('USERENV', 'CLIENT_IDENTIFIER')) as clipped_bytes;
+ clipped_bytes 
+---------------
+            63
+(1 row)
+
+select sys_context('USERENV', 'CLIENT_IDENTIFIER') = repeat('x', 63) as clipped_content;
+ clipped_content 
+-----------------
+ t
+(1 row)
+
+call dbms_session.set_identifier(repeat('x', 62) || chr(233));
+select octet_length(sys_context('USERENV', 'CLIENT_IDENTIFIER')) as exact_bytes;
+ exact_bytes 
+-------------
+          64
+(1 row)
+
+select sys_context('USERENV', 'CLIENT_IDENTIFIER') = repeat('x', 62) || chr(233) as exact_content;
+ exact_content 
+---------------
+ t
+(1 row)
+
+begin;
+call dbms_session.set_identifier('after rollback');
+rollback;
+select sys_context('USERENV', 'CLIENT_IDENTIFIER') as id_after_rollback;
+ id_after_rollback 
+-------------------
+ after rollback
+(1 row)
+
+call dbms_session.clear_identifier();
+select sys_context('USERENV', 'CLIENT_IDENTIFIER') is null as id_cleared;
+ id_cleared 
+------------
+ t
+(1 row)
+
 call dbms_session.set_context('app_ctx', 'user_id', '42');
 call dbms_session.set_context('app_ctx', 'role', 'manager');
 select sys_context('app_ctx', 'user_id') as user_id,
@@ -195,6 +286,16 @@ reset role;
 -- DISCARD ALL clears session context (connection-pool safety)
 --
 call dbms_session.set_context('app', 'usr', 'carol');
+call dbms_session.set_identifier('discard packages');
+discard package;
+select sys_context('USERENV', 'CLIENT_IDENTIFIER') is null as id_after_packages;
+ id_after_packages 
+-------------------
+ t
+(1 row)
+
+call dbms_session.set_context('app', 'usr', 'carol');
+call dbms_session.set_identifier('discard all');
 select sys_context('app', 'usr') as before_discard;
  before_discard 
 ----------------
@@ -205,6 +306,12 @@ discard all;
 select sys_context('app', 'usr') is null as after_discard;
  after_discard 
 ---------------
+ t
+(1 row)
+
+select sys_context('USERENV', 'CLIENT_IDENTIFIER') is null as id_after_discard;
+ id_after_discard 
+------------------
  t
 (1 row)
 
@@ -257,11 +364,18 @@ SELECT rp_pkg.get_n;
 
 -- reset_package must not touch application-context values (non-package session state)
 call dbms_session.set_context('rp_ns', 'key', 'preserved');
+call dbms_session.set_identifier('preserved ID');
 call dbms_session.reset_package();
 select sys_context('rp_ns', 'key') as ctx_after_reset;
  ctx_after_reset 
 -----------------
  preserved
+(1 row)
+
+select sys_context('USERENV', 'CLIENT_IDENTIFIER') as id_after_reset;
+ id_after_reset 
+----------------
+ preserved ID
 (1 row)
 
 DROP PACKAGE rp_pkg;
