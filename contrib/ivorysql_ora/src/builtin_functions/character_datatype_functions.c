@@ -75,6 +75,11 @@ PG_FUNCTION_INFO_V1(ora_instrb);
 PG_FUNCTION_INFO_V1(oracle_instr_2);
 PG_FUNCTION_INFO_V1(oracle_instr_3);
 PG_FUNCTION_INFO_V1(oracle_instr_4);
+PG_FUNCTION_INFO_V1(ora_instrc_2);
+PG_FUNCTION_INFO_V1(ora_instrc_3);
+PG_FUNCTION_INFO_V1(ora_instrc_4);
+PG_FUNCTION_INFO_V1(ora_substrc);
+PG_FUNCTION_INFO_V1(ora_substrc_no_length);
 PG_FUNCTION_INFO_V1(ora_asciistr);
 PG_FUNCTION_INFO_V1(ora_to_multi_byte);
 PG_FUNCTION_INFO_V1(ora_to_single_byte);
@@ -99,6 +104,9 @@ typedef struct
 } TextPositionState;
 
 static text *text_substring_byte(Datum str, int32 start, int32 length, bool length_not_specified);
+static text *text_substring_complete_chars(text *str, int32 start, int32 length,
+										   bool length_not_specified);
+static text *ora_nfc_normalize(text *arg);
 static void text_position_setup(text *t1, text *t2, TextPositionState *state, bool isbyte);
 static void text_position_cleanup(TextPositionState *state);
 static int	text_position_next(int start_pos, TextPositionState *state);
@@ -1937,6 +1945,285 @@ oracle_instr_4 (PG_FUNCTION_ARGS)
 	int arg4 = PG_GETARG_INT32(3);
 
 	PG_RETURN_INT32(text_instring(arg1, arg2, arg3, arg4, false));
+}
+
+/*
+ * ora_nfc_normalize --- return arg in NFC form, for the Oracle *C string
+ * functions (LENGTHC, INSTRC, SUBSTRC) that measure "Unicode complete
+ * characters".  INSTRC/SUBSTRC share LENGTHC's counting unit: a base
+ * character followed by combining marks is one complete character, and the
+ * code points of the NFC-normalized string are that unit.  See ora_lengthc()
+ * above for the full rationale.
+ *
+ * The encoding gates mirror ora_lengthc() exactly: canonical composition is
+ * only defined for Unicode, so single-byte and legacy multibyte server
+ * encodings get the string back unchanged (there, complete characters are
+ * just pg_mbstrlen characters).  For UTF-8 input that is already in NFC --
+ * including every pure ASCII string -- the input pointer is returned as-is.
+ *
+ * The return value may therefore be the caller's own pointer; callers must
+ * not pfree it.  Any palloc'd copy lives in the fcinfo context and is
+ * reclaimed when the function returns.
+ *
+ * This is deliberately not folded into ora_lengthc(): that function needs
+ * the intermediate char32_t array (not a re-encoded text) to count the
+ * normalization output, and sharing would force a char32_t -> UTF-8 ->
+ * count round-trip on its hot path.
+ */
+static text *
+ora_nfc_normalize(text *arg)
+{
+	const unsigned char *str = (const unsigned char *) VARDATA_ANY(arg);
+	int			nbytes = VARSIZE_ANY_EXHDR(arg);
+	int			nchars;
+	int			i;
+	char32_t   *input_chars;
+	char32_t   *output_chars;
+	const unsigned char *p;
+
+	/* single-byte and non-Unicode multibyte encodings: NFC is a no-op */
+	if (pg_database_encoding_max_length() == 1 || GetDatabaseEncoding() != PG_UTF8)
+		return arg;
+
+	/* fast path: pure ASCII is NFC-invariant (covers the empty string) */
+	for (i = 0; i < nbytes; i++)
+	{
+		if (str[i] >= 0x80)
+			break;
+	}
+	if (i == nbytes)
+		return arg;
+
+	nchars = pg_mbstrlen_with_len((const char *) str, nbytes);
+
+	if ((Size) nchars + 1 > MaxAllocSize / sizeof(char32_t))
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("string is too long for the *C string functions"),
+				 errdetail("These functions can normalize at most %zu characters.",
+						   MaxAllocSize / sizeof(char32_t) - 1)));
+
+	/* convert to char32_t, same as unicode_normalize_func() does */
+	input_chars = (char32_t *) palloc((nchars + 1) * sizeof(char32_t));
+	p = str;
+	for (i = 0; i < nchars; i++)
+	{
+		input_chars[i] = utf8_to_unicode(p);
+		p += pg_utf_mblen(p);
+	}
+	input_chars[i] = (char32_t) '\0';
+
+	/* UAX #15 quick check: text already in NFC needs no normalization */
+	if (unicode_is_normalized_quickcheck(UNICODE_NFC, input_chars) == UNICODE_NORM_QC_YES)
+	{
+		pfree(input_chars);
+		return arg;
+	}
+
+	output_chars = unicode_normalize(UNICODE_NFC, input_chars);
+	pfree(input_chars);
+
+	/* re-encode the normalized code points to UTF-8 */
+	{
+		StringInfoData buf;
+		char32_t   *wp;
+
+		initStringInfo(&buf);
+		for (wp = output_chars; *wp; wp++)
+		{
+			unsigned char utf8[4];
+
+			unicode_to_utf8(*wp, utf8);
+			appendBinaryStringInfo(&buf, (const char *) utf8, unicode_utf8len(*wp));
+		}
+
+		pfree(output_chars);
+		return cstring_to_text_with_len(buf.data, buf.len);
+	}
+}
+
+/****************************************************************
+ * instrc
+ *
+ * Oracle's INSTRC: like INSTR (oracle_instr_2/3/4 above) but positions are
+ * counted in Unicode complete characters -- the code points of the
+ * NFC-normalized string, the same unit sys.lengthc() counts.  The search
+ * itself is the character-based text_instring(): in a UTF-8 database
+ * pg_mb2wchar yields one pg_wchar per code point, so matching and position
+ * arithmetic operate on complete characters once both inputs are NFC.
+ * The same degradation as ora_lengthc() applies on non-Unicode server
+ * encodings, where INSTRC simply behaves like INSTR.
+ *
+ * Syntax:
+ *   instrc (string TEXT, substring TEXT)
+ *   instrc (string TEXT, substring TEXT, position INTEGER)
+ *   instrc (string TEXT, substring TEXT, position INTEGER, occurrence INTEGER)
+ *
+ ****************************************************************/
+Datum
+ora_instrc_2(PG_FUNCTION_ARGS)
+{
+	text	   *arg1 = ora_nfc_normalize(PG_GETARG_TEXT_PP(0));
+	text	   *arg2 = ora_nfc_normalize(PG_GETARG_TEXT_PP(1));
+
+	PG_RETURN_INT32(text_instring(arg1, arg2, 1, 1, false));
+}
+
+Datum
+ora_instrc_3(PG_FUNCTION_ARGS)
+{
+	text	   *arg1 = ora_nfc_normalize(PG_GETARG_TEXT_PP(0));
+	text	   *arg2 = ora_nfc_normalize(PG_GETARG_TEXT_PP(1));
+	int			arg3 = PG_GETARG_INT32(2);
+
+	PG_RETURN_INT32(text_instring(arg1, arg2, arg3, 1, false));
+}
+
+Datum
+ora_instrc_4(PG_FUNCTION_ARGS)
+{
+	text	   *arg1 = ora_nfc_normalize(PG_GETARG_TEXT_PP(0));
+	text	   *arg2 = ora_nfc_normalize(PG_GETARG_TEXT_PP(1));
+	int			arg3 = PG_GETARG_INT32(2);
+	int			arg4 = PG_GETARG_INT32(3);
+
+	PG_RETURN_INT32(text_instring(arg1, arg2, arg3, arg4, false));
+}
+
+/****************************************************************
+ * substrc
+ *
+ * Oracle's SUBSTRC: like SUBSTR but position and length are counted in
+ * Unicode complete characters -- the code points of the NFC-normalized
+ * string, the same unit sys.lengthc() counts.  On top of the NFC
+ * normalization this implements Oracle's documented SUBSTR position
+ * semantics (pg_catalog.substr clamps a negative start instead of counting
+ * back from the end, and errors on a negative length):
+ *
+ *   - position 0 is treated as 1;
+ *   - a negative position counts backward from the end of the string,
+ *     clamped to 1 when it reaches past the beginning;
+ *   - a length less than 1, or a start past the end, yields the empty
+ *     string, which the callers turn into NULL (Oracle: empty string is
+ *     NULL -- same convention as ora_substrb()).
+ *
+ ****************************************************************/
+static text *
+text_substring_complete_chars(text *str, int32 start, int32 length,
+							  bool length_not_specified)
+{
+	int32		eml = pg_database_encoding_max_length();
+	int32		char_len;		/* number of complete characters */
+	int32		L1;				/* adjusted substring length */
+	const char *p;
+	const char *s;
+	text	   *ret;
+
+	if (!length_not_specified && length < 1)
+		return cstring_to_text("");
+
+	/* position 0 is treated as 1; a negative one counts back from the end */
+	if (start == 0)
+		start = 1;
+	else if (start < 0)
+	{
+		char_len = (eml == 1) ?
+			VARSIZE_ANY_EXHDR(str) :
+			pg_mbstrlen_with_len(VARDATA_ANY(str), VARSIZE_ANY_EXHDR(str));
+
+		/* clamp before adding, so a huge negative start cannot overflow */
+		if (start < -char_len)
+			start = 1;
+		else
+			start = char_len + start + 1;
+	}
+
+	if (eml == 1)
+	{
+		char_len = VARSIZE_ANY_EXHDR(str);
+		if (start > char_len)
+			return cstring_to_text("");
+
+		L1 = length_not_specified ? char_len - start + 1 :
+			Min(length, char_len - start + 1);
+
+		return DatumGetTextPSlice(PointerGetDatum(str), start - 1, L1);
+	}
+	else if (eml > 1)
+	{
+		int32		i;
+		int			last_len;
+
+		char_len = pg_mbstrlen_with_len(VARDATA_ANY(str), VARSIZE_ANY_EXHDR(str));
+		if (start > char_len)
+			return cstring_to_text("");
+
+		L1 = length_not_specified ? char_len - start + 1 :
+			Min(length, char_len - start + 1);
+
+		/* walk to the first character of the substring */
+		p = s = VARDATA_ANY(str);
+		for (i = 1; i < start; i++)
+			p += pg_mblen(p);
+		s = p;
+
+		/* walk onto the last character and record its byte length */
+		for (i = 1; i < L1; i++)
+			p += pg_mblen(p);
+		last_len = pg_mblen(p);
+
+		ret = (text *) palloc(VARHDRSZ + (p - s) + last_len);
+		SET_VARSIZE(ret, VARHDRSZ + (p - s) + last_len);
+		memcpy(VARDATA(ret), s, (p - s) + last_len);
+
+		return ret;
+	}
+	else
+		elog(ERROR, "invalid backend encoding: encoding max length < 1");
+
+	/* not reached: suppress compiler warning */
+	return NULL;
+}
+
+Datum
+ora_substrc(PG_FUNCTION_ARGS)
+{
+	text	   *res;
+	int32		len;
+	int32		start = DatumGetInt32(DirectFunctionCall1(numeric_int4, PG_GETARG_DATUM(1)));
+	int32		length = DatumGetInt32(DirectFunctionCall1(numeric_int4, PG_GETARG_DATUM(2)));
+
+	res = text_substring_complete_chars(ora_nfc_normalize(PG_GETARG_TEXT_PP(0)),
+										start, length, false);
+	len = VARSIZE_ANY_EXHDR(res);
+
+	if (len == 0)
+	{
+		pfree(res);
+		PG_RETURN_NULL();
+	}
+
+	PG_RETURN_TEXT_P(res);
+}
+
+Datum
+ora_substrc_no_length(PG_FUNCTION_ARGS)
+{
+	text	   *res;
+	int32		len;
+	int32		start = DatumGetInt32(DirectFunctionCall1(numeric_int4, PG_GETARG_DATUM(1)));
+
+	res = text_substring_complete_chars(ora_nfc_normalize(PG_GETARG_TEXT_PP(0)),
+										start, -1, true);
+	len = VARSIZE_ANY_EXHDR(res);
+
+	if (len == 0)
+	{
+		pfree(res);
+		PG_RETURN_NULL();
+	}
+
+	PG_RETURN_TEXT_P(res);
 }
 
 /********************************************************************
