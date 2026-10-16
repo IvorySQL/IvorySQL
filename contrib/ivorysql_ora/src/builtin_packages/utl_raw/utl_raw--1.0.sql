@@ -42,7 +42,13 @@ CREATE OR REPLACE PACKAGE BODY UTL_RAW IS
         result RAW := ''::raw;
         i INTEGER;
     BEGIN
-        FOR i IN REVERSE 1 .. pg_catalog.octet_length(r) LOOP
+        -- A NULL bound makes the FOR loop raise instead of returning NULL,
+        -- and REVERSE iterates from the first bound down to the second,
+        -- so the length must lead and 1 must close.
+        IF r IS NULL THEN
+            RETURN NULL;
+        END IF;
+        FOR i IN REVERSE pg_catalog.octet_length(r) .. 1 LOOP
             result := result || pg_catalog.substring(r FROM i FOR 1);
         END LOOP;
         RETURN result;
