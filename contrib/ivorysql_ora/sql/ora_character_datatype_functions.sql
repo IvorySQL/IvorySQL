@@ -1558,3 +1558,17 @@ select to_single_byte('１．２');
 select to_single_byte(１．２);
 select to_single_byte(3.4);
 select to_single_byte(NULL);
+
+/* Start - INSTR4 */
+/* positions count UCS4 code points; the -1 position searches backwards */
+SELECT instr4('abcabcabc', 'c') AS first;
+SELECT instr4('abcabcabc', 'c', 4) AS from_four;
+SELECT instr4('abcabcabc', 'c', 1, 3) AS third;
+SELECT instr4('abcabcabc', 'c', -1) AS last;
+SELECT instr4('abcabcabc', 'c', -4) AS backwards_four;
+SELECT instr4('abcabcabc', 'c', -1, 2) AS second_from_end;
+SELECT instr4('abcabcabc', 'z') AS not_found;
+SELECT instr4('中文字', '字') AS cjk;
+SELECT instr4(NULL, 'a') IS NULL AS null_input;
+SELECT instr4('abcabcabc', 'c', 2, 2) AS second_from_two;
+/* End - INSTR4 */
