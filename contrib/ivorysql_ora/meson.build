@@ -51,7 +51,7 @@ endif
 
 custom_target('ivorysql_ora--1.0.sql',
   output: 'ivorysql_ora--1.0.sql',
-  command: [perl, '../contrib/ivorysql_ora/gensql.pl', 'meson', '1.0'],
+  command: [perl, files('gensql.pl'), 'meson', '1.0'],
   capture: true,
   install: true,
   install_dir: contrib_data_args['install_dir'],

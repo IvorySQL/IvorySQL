@@ -222,6 +222,7 @@ typedef struct _typeInfo
 	bool		isArray;		/* true if auto-generated array type */
 	bool		isMultirange;	/* true if auto-generated multirange type */
 	bool		isDefined;		/* true if typisdefined */
+	bool		typ_oranestedtable; /* IvorySQL: TABLE OF collection domain */
 	/* If needed, we'll create a "shell type" entry for it; link that here: */
 	struct _shellTypeInfo *shellType;	/* shell-type entry, or NULL */
 	/* If it's a domain, its not-null constraint is here: */
@@ -258,6 +259,9 @@ typedef struct _funcInfo
 	int			nargs;
 	Oid		   *argtypes;
 	Oid			prorettype;
+	bool		pro_pipelined;	/* IvorySQL: PIPELINED table function */
+	Oid			procollectiontype;	/* IvorySQL: collection type of a
+									 * PIPELINED function */
 	bool		postponed_def;	/* function must be postponed into post-data */
 } FuncInfo;
 

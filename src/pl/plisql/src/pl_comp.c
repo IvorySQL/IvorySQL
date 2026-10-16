@@ -783,6 +783,19 @@ do_compile(FunctionCallInfo fcinfo,
 			function->fn_retset = procStruct->proretset;
 
 			/*
+			 * IvorySQL: Oracle pipelined table function metadata.  For a
+			 * pipelined function prorettype is the collection's element
+			 * type (set by functioncmds), and procollectiontype records
+			 * the declared collection domain.  A pipelined routine whose
+			 * declared type was not a collection (rejected at DDL time in
+			 * non-Oracle parsers, deferred to INVALID status in Oracle
+			 * mode) keeps fn_retset as stored; the body checks below and
+			 * at runtime give the same errors as before.
+			 */
+			function->fn_pipelined = procStruct->propipelined;
+			function->fn_collectiontype = procStruct->procollectiontype;
+
+			/*
 			 * Lookup the function's return type
 			 */
 			typeTup = SearchSysCache1(TYPEOID, ObjectIdGetDatum(rettypeid));
@@ -3910,7 +3923,6 @@ plisql_HashTableDelete(PLiSQL_function * function)
 						 NULL);
 	if (hentry == NULL)
 		elog(WARNING, "trying to delete function that does not exist");
-
 	/* remove back link, which no longer points to allocated storage */
 	function->fn_hashkey = NULL;
 }

@@ -1,0 +1,165 @@
+<!-- doc/src/sgml/oracle-pipelined.sgml -->
+
+<chapter id="oracle-pipelined">
+  <title>Oracle Pipelined Table Functions</title>
+
+ <indexterm zone="oracle-pipelined">
+  <primary>pipelined table function</primary>
+ </indexterm>
+
+ <para>
+  A <firstterm>pipelined table function</firstterm> returns its result as a
+  stream of rows instead of materializing the whole collection first.  Each
+  <literal>PIPE ROW</literal> statement hands one row to the caller and
+  suspends the function until the caller asks for the next row, so a query
+  that stops early (for example <literal>LIMIT 10</literal>) never executes
+  the remainder of the function.  This mirrors the behavior of the same
+  feature in Oracle databases and is available on a server initialized in
+  Oracle compatibility mode.
+ </para>
+
+ <sect1 id="oracle-pipelined-creating">
+  <title>Creating a Pipelined Function</title>
+
+  <para>
+   A pipelined function returns a collection type declared with
+   <literal>CREATE TYPE ... AS TABLE OF</literal>:
+<programlisting><![CDATA[
+CREATE TYPE num_tab AS TABLE OF NUMBER;
+
+CREATE OR REPLACE FUNCTION f_num_list(p_n NUMBER)
+RETURN num_tab PIPELINED IS
+BEGIN
+  FOR i IN 1 .. p_n LOOP
+    PIPE ROW(i);
+  END LOOP;
+  RETURN;
+END;
+/]]></programlisting>
+  </para>
+
+  <para>
+   The <literal>PIPELINED</literal> marker changes the meaning of the
+   <literal>RETURN</literal> clause: it names the collection type whose
+   <firstterm>element type</firstterm> the function pipes one row at a
+   time.  Inside the body, <literal>PIPE ROW(<replaceable>expr</replaceable>)</literal>
+   evaluates <replaceable>expr</replaceable> once, converts it to the
+   element type, and delivers it to the caller as the next row.  A bare
+   <literal>RETURN</literal> ends the stream.  Falling off the end of the
+   function without a <literal>RETURN</literal> raises the usual
+   <quote>control reached end of function without RETURN</quote> error,
+   and <literal>PIPE ROW(NULL)</literal> pipes a genuine SQL NULL element
+   rather than ending the stream.
+  </para>
+
+  <para>
+   The element type may be a composite type, in which case each
+   <literal>PIPE ROW</literal> produces a full row:
+<programlisting><![CDATA[
+CREATE TYPE emp_tab AS TABLE OF emp%ROWTYPE;]]></programlisting>
+  </para>
+ </sect1>
+
+ <sect1 id="oracle-pipelined-consuming">
+  <title>Consuming a Pipelined Function</title>
+
+  <para>
+   Call a pipelined function in the <literal>FROM</literal> clause wrapped
+   in <literal>TABLE(...)</literal>, exactly like a collection:
+<programlisting><![CDATA[
+SELECT column_value FROM TABLE(f_num_list(3));
+ column_value
+--------------
+            1
+            2
+            3
+
+SELECT e.ename FROM TABLE(emp_by_dept(20)) e;]]></programlisting>
+  </para>
+
+  <para>
+   Pipelined functions are planned as ordinary set-returning functions and
+   stream lazily.  Side effects observe the on-demand behavior:
+<programlisting><![CDATA[
+CREATE SEQUENCE s;
+
+CREATE OR REPLACE FUNCTION f_counted(p_n NUMBER)
+RETURN num_tab PIPELINED IS
+BEGIN
+  FOR i IN 1 .. p_n LOOP
+    PERFORM nextval('s');
+    PIPE ROW(i);
+  END LOOP;
+  RETURN;
+END;
+/
+
+SELECT setval('s', 1, false);
+SELECT column_value FROM TABLE(f_counted(100)) LIMIT 1;
+-- the sequence has been called exactly once, not 100 times
+SELECT currval('s');]]></programlisting>
+  </para>
+
+  <para>
+   Multiple invocations in one query keep independent execution state, and
+   the functions can be used in joins, subqueries, and
+   <literal>LATERAL</literal> correlation like any other row source.
+  </para>
+ </sect1>
+
+ <sect1 id="oracle-pipelined-limits">
+  <title>Restrictions</title>
+
+  <para>
+   The first release of this feature rejects the following forms with an
+   <literal>0A000</literal> (<literal>feature_not_supported</literal>)
+   error; they are candidates for later work:
+   <itemizedlist>
+    <listitem>
+     <para>
+      <literal>VARRAY</literal> types and collections declared inside
+      packages as the return type of a standalone pipelined function.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      Polymorphic element types (<literal>ANYELEMENT</literal>,
+      <literal>RECORD</literal>, and friends).
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      Collection methods (<literal>EXTEND</literal>, <literal>COUNT</literal>,
+      ...) inside the function body.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      Parallel execution: a pipelined function is marked
+      <literal>PARALLEL UNSAFE</literal>.
+     </para>
+    </listitem>
+   </itemizedlist>
+  </para>
+ </sect1>
+
+ <sect1 id="oracle-pipelined-tools">
+  <title>Tools and Dump/Restore</title>
+
+  <para>
+   <function>pg_get_functiondef</function> (and <application>psql</application>'s
+   <command>\ef</command>) render a pipelined function with its original
+   Oracle declaration, including the collection type and the
+   <literal>PIPELINED</literal> marker, so the output can be replayed
+   unchanged.
+  </para>
+  <para>
+   <application>pg_dump</application> emits nested-table collection types
+   as <literal>CREATE TYPE ... AS TABLE OF</literal> rather than as the
+   underlying domain, and preserves the <literal>PIPELINED</literal>
+   declaration of functions.  A dump taken from an Oracle-mode cluster
+   should be restored into an Oracle-mode cluster, for example with
+   <command>pg_restore</command> for archive-format dumps.
+  </para>
+ </sect1>
+</chapter>

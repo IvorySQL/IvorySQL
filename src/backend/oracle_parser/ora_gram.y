@@ -864,7 +864,7 @@ static bool oracleJoinOpExists(const Node *expr);
 	UESCAPE UNBOUNDED UNCONDITIONAL UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN
 	UNLISTEN UNLOGGED UNTIL UNUSABLE UPDATE UPDATEXML USER USERENV USING
 
-	VACUUM VALID VALIDATE VALIDATOR VALUE_P VALUES VARCHAR VARCHAR2 VARIADIC VARYING
+	VACUUM VALID VALIDATE VALIDATOR VALUE_P VALUES VARCHAR VARCHAR2 VARIADIC VARYING VARRAY_P
 	VERBOSE VERSION_P VERTEX VIEW VIEWS VIRTUAL VISIBLE VOLATILE
 
 	WAIT WHEN WHERE WHITESPACE_P WINDOW WITH WITHIN WITHOUT WORK WRAPPER WRITE
@@ -7115,6 +7115,55 @@ DefineStmt:
 					n->defnames = $3;
 					n->args = NIL;
 					n->definition = $4;
+					$$ = (Node *) n;
+				}
+			| CREATE TYPE_P any_name AS TABLE OF Typename
+				{
+					/*
+					 * IvorySQL: Oracle nested-table collection type,
+					 * "CREATE TYPE name AS TABLE OF element".  The element
+					 * type is carried to DefineType as an Oracle-specific
+					 * DefElem; typecmds turns it into a domain over the
+					 * element's array type.
+					 */
+					DefineStmt *n = makeNode(DefineStmt);
+
+					n->kind = OBJECT_TYPE;
+					n->oldstyle = false;
+					n->defnames = $3;
+					n->args = NIL;
+					n->definition = list_make1(makeDefElem("oracle_nested_table",
+														   (Node *) $7, @4));
+					$$ = (Node *) n;
+				}
+			| CREATE TYPE_P any_name IS TABLE OF Typename
+				{
+					/* IvorySQL: same, with the Oracle "IS TABLE OF" spelling */
+					DefineStmt *n = makeNode(DefineStmt);
+
+					n->kind = OBJECT_TYPE;
+					n->oldstyle = false;
+					n->defnames = $3;
+					n->args = NIL;
+					n->definition = list_make1(makeDefElem("oracle_nested_table",
+														   (Node *) $7, @4));
+					$$ = (Node *) n;
+				}
+			| CREATE TYPE_P any_name AS VARRAY_P '(' SignedIconst ')' OF Typename
+				{
+					/*
+					 * IvorySQL: VARRAY is parsed only so it can be rejected
+					 * with a clean error by typecmds; it is out of scope
+					 * for #1329.
+					 */
+					DefineStmt *n = makeNode(DefineStmt);
+
+					n->kind = OBJECT_TYPE;
+					n->oldstyle = false;
+					n->defnames = $3;
+					n->args = NIL;
+					n->definition = list_make1(makeDefElem("oracle_varray",
+														   (Node *) $10, @4));
 					$$ = (Node *) n;
 				}
 			| CREATE TYPE_P any_name
@@ -16476,6 +16525,25 @@ func_table: func_expr_windowless opt_ordinality
 					/* alias and coldeflist are set by table_ref production */
 					$$ = (Node *) n;
 				}
+			| TABLE '(' func_expr_windowless ')' opt_ordinality
+				{
+					/*
+					 * IvorySQL: Oracle-style TABLE(collection_expr) table
+					 * source.  The oracle_table flag makes parse analysis
+					 * rewrite this into a subquery carrying the function
+					 * call in its target list, which plans as a lazy
+					 * ProjectSet instead of a materializing FunctionScan.
+					 */
+					RangeFunction *n = makeNode(RangeFunction);
+
+					n->lateral = false;
+					n->ordinality = $5;
+					n->is_rowsfrom = false;
+					n->oracle_table = true;
+					n->functions = list_make1(list_make2($3, NIL));
+					/* alias and coldeflist are set by table_ref production */
+					$$ = (Node *) n;
+				}
 			| ROWS FROM '(' rowsfrom_list ')' opt_ordinality
 				{
 					RangeFunction *n = makeNode(RangeFunction);
@@ -22057,6 +22125,7 @@ unreserved_keyword:
 			| VALIDATE
 			| VALIDATOR
 			| VALUE_P
+			| VARRAY_P
 			| VARYING
 			| VERSION_P
 			| VERTEX
@@ -22825,6 +22894,7 @@ bare_label_keyword:
 			| VARCHAR
 			| VARCHAR2
 			| VARIADIC
+			| VARRAY_P
 			| VERBOSE
 			| VERSION_P
 			| VERTEX

@@ -122,6 +122,7 @@ typedef enum PLiSQL_stmt_type
 	PLISQL_STMT_RETURN,
 	PLISQL_STMT_RETURN_NEXT,
 	PLISQL_STMT_RETURN_QUERY,
+	PLISQL_STMT_PIPE_ROW,
 	PLISQL_STMT_RAISE,
 	PLISQL_STMT_ASSERT,
 	PLISQL_STMT_EXECSQL,
@@ -881,6 +882,19 @@ typedef struct PLiSQL_stmt_return_next
 }			PLiSQL_stmt_return_next;
 
 /*
+ * PIPE ROW statement (Oracle pipelined table functions).  Evaluates expr
+ * once, converts it to the function's element type, and suspends the
+ * resumable interpreter so the executor receives one row per call.
+ */
+typedef struct PLiSQL_stmt_pipe_row
+{
+	PLiSQL_stmt_type cmd_type;
+	int			lineno;
+	unsigned int stmtid;
+	PLiSQL_expr *expr;
+}			PLiSQL_stmt_pipe_row;
+
+/*
  * RETURN QUERY statement
  */
 typedef struct PLiSQL_stmt_return_query
@@ -1029,6 +1043,11 @@ typedef struct PLiSQL_function
 	bool		fn_retset;
 	bool		fn_readonly;
 	char		fn_prokind;
+
+	/* IvorySQL: true for Oracle PIPELINED table functions; fn_rettype is
+	 * then the element type of the declared collection. */
+	bool		fn_pipelined;
+	Oid			fn_collectiontype;	/* declared collection type, or 0 */
 
 	int			fn_nargs;
 	int			fn_argvarnos[FUNC_MAX_ARGS];
@@ -1379,6 +1398,10 @@ extern void delete_function(PLiSQL_function * func);
 
 extern void plisql_free_function(Oid funcOid);
 
+extern void plisql_walk_stmt_exprs(PLiSQL_stmt * stmt,
+								   void (*cb) (PLiSQL_expr * expr,
+											   void *context));
+
 /*
  * Functions in pl_exec.c
  */
@@ -1388,6 +1411,104 @@ extern Datum plisql_exec_function(PLiSQL_function * func,
 								  ResourceOwner simple_eval_resowner,
 								  ResourceOwner procedure_resowner,
 								  bool atomic);
+
+/*
+ * Internal execution primitives shared with the resumable pipelined
+ * interpreter (pl_pipeline.c).  These are the same helpers the regular
+ * executor uses; exporting them avoids duplicating the executor.
+ */
+extern void plisql_estate_setup(PLiSQL_execstate * estate,
+								PLiSQL_function * func,
+								ReturnSetInfo *rsi,
+								EState *simple_eval_estate,
+								ResourceOwner simple_eval_resowner);
+extern void copy_plisql_datums(PLiSQL_execstate * estate,
+							   PLiSQL_function * func);
+extern void plisql_bind_call_args(PLiSQL_execstate * estate,
+								  PLiSQL_function * func,
+								  FunctionCallInfo fcinfo);
+extern void plisql_exec_block_init(PLiSQL_execstate * estate,
+								   PLiSQL_stmt_block * block);
+extern int	exec_stmt_assign(PLiSQL_execstate * estate,
+							 PLiSQL_stmt_assign * stmt);
+extern int	exec_stmt_perform(PLiSQL_execstate * estate,
+							  PLiSQL_stmt_perform * stmt);
+extern int	exec_stmt_call(PLiSQL_execstate * estate,
+						   PLiSQL_stmt_call * stmt);
+extern int	exec_stmt_getdiag(PLiSQL_execstate * estate,
+							  PLiSQL_stmt_getdiag * stmt);
+extern int	exec_stmt_raise(PLiSQL_execstate * estate,
+							PLiSQL_stmt_raise * stmt);
+extern int	exec_stmt_assert(PLiSQL_execstate * estate,
+							 PLiSQL_stmt_assert * stmt);
+extern int	exec_stmt_execsql(PLiSQL_execstate * estate,
+							  PLiSQL_stmt_execsql * stmt);
+extern int	exec_stmt_dynexecute(PLiSQL_execstate * estate,
+								 PLiSQL_stmt_dynexecute * stmt);
+extern int	exec_stmt_commit(PLiSQL_execstate * estate,
+							 PLiSQL_stmt_commit * stmt);
+extern int	exec_stmt_rollback(PLiSQL_execstate * estate,
+							   PLiSQL_stmt_rollback * stmt);
+extern int	exec_stmt_open(PLiSQL_execstate * estate,
+						   PLiSQL_stmt_open * stmt);
+extern int	exec_stmt_fetch(PLiSQL_execstate * estate,
+							PLiSQL_stmt_fetch * stmt);
+extern int	exec_stmt_close(PLiSQL_execstate * estate,
+							PLiSQL_stmt_close * stmt);
+extern int	exec_stmt_exit(PLiSQL_execstate * estate,
+						   PLiSQL_stmt_exit * stmt);
+extern int	exec_stmt_return(PLiSQL_execstate * estate,
+							 PLiSQL_stmt_return * stmt);
+extern void exec_prepare_plan(PLiSQL_execstate * estate,
+							  PLiSQL_expr * expr, int cursorOptions);
+extern ParamListInfo setup_param_list(PLiSQL_execstate * estate,
+									  PLiSQL_expr * expr);
+extern void exec_move_row(PLiSQL_execstate * estate,
+						  PLiSQL_variable * target,
+						  HeapTuple tup, TupleDesc tupdesc);
+extern void exec_move_row_from_datum(PLiSQL_execstate * estate,
+									 PLiSQL_variable * target,
+									 Datum value);
+extern Datum exec_eval_expr(PLiSQL_execstate * estate,
+							PLiSQL_expr * expr,
+							bool *isNull,
+							Oid *rettype,
+							int32 *rettypmod);
+extern Datum exec_cast_value(PLiSQL_execstate * estate,
+							 Datum value,
+							 bool *isnull,
+							 Oid valtype,
+							 int32 valtypmod,
+							 Oid reqtype,
+							 int32 reqtypmod);
+extern int	exec_eval_integer(PLiSQL_execstate * estate,
+							  PLiSQL_expr * expr,
+							  bool *isNull);
+extern bool exec_eval_boolean(PLiSQL_execstate * estate,
+							  PLiSQL_expr * expr,
+							  bool *isNull);
+extern void exec_assign_expr(PLiSQL_execstate * estate,
+							 PLiSQL_datum * target,
+							 PLiSQL_expr * expr);
+extern void exec_assign_value(PLiSQL_execstate * estate,
+							  PLiSQL_datum * target,
+							  Datum value,
+							  bool isNull,
+							  Oid valtype,
+							  int32 valtypmod);
+extern void exec_set_found(PLiSQL_execstate * estate, bool state);
+extern void assign_simple_var(PLiSQL_execstate * estate, PLiSQL_var * var,
+							  Datum value, bool isNull, bool freeval);
+extern void assign_text_var(PLiSQL_execstate * estate, PLiSQL_var * var,
+							const char *str);
+extern void exec_eval_cleanup(PLiSQL_execstate * estate);
+extern MemoryContext get_stmt_mcontext(PLiSQL_execstate * estate);
+extern void plisql_destroy_econtext(PLiSQL_execstate * estate);
+extern TupleDesc deconstruct_composite_datum(Datum value,
+											 HeapTupleData *tmptup);
+extern Datum plisql_exec_pipelined_function(PLiSQL_function * func,
+											FunctionCallInfo fcinfo);
+
 extern HeapTuple plisql_exec_trigger(PLiSQL_function * func,
 									 TriggerData *trigdata);
 extern void plisql_exec_event_trigger(PLiSQL_function * func,

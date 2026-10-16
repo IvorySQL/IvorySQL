@@ -224,6 +224,9 @@ break is not needed in a wider output rendering.
   &plperl;
   &plpython;
 
+  <!-- IvorySQL: Oracle compatibility features -->
+  &oracle-pipelined;
+
   &spi;
   &bgworker;
   &logicaldecoding;

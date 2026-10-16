@@ -51,6 +51,7 @@
 #include "commands/extension.h"
 #include "commands/proclang.h"
 #include "commands/packagecmds.h"
+#include "commands/typecmds.h"
 #include "executor/executor.h"
 #include "executor/functions.h"
 #include "funcapi.h"
@@ -957,7 +958,8 @@ compute_function_attributes(ParseState *pstate,
 							float4 *procost,
 							float4 *prorows,
 							Oid *prosupport,
-							char *parallel_p)
+							char *parallel_p,
+							bool *pipelined_p)
 {
 	ListCell   *option;
 	DefElem    *as_item = NULL;
@@ -1195,6 +1197,23 @@ compute_function_attributes(ParseState *pstate,
 		*prosupport = interpret_func_support(support_item);
 	if (parallel_item)
 		*parallel_p = interpret_func_parallel(parallel_item);
+
+	/* IvorySQL: the PIPELINED attribute; the USING/package forms are out
+	 * of scope for value-per-call pipelined table functions. */
+	if (pipelined_item)
+	{
+		if (pipelined_item->arg != NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("PIPELINED USING implementation is not supported"),
+					 parser_errposition(pstate, pipelined_item->location)));
+		if (is_procedure)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+					 errmsg("PIPELINED attribute is not allowed in a procedure definition"),
+					 parser_errposition(pstate, pipelined_item->location)));
+		*pipelined_p = true;
+	}
 }
 
 
@@ -1375,6 +1394,8 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 	Node	   *prosqlbody;
 	Oid			prorettype;
 	bool		returnsSet;
+	bool		is_pipelined = false;
+	Oid			procollectiontype = InvalidOid;
 	char	   *language;
 	Oid			languageOid;
 	Oid			languageValidator;
@@ -1442,7 +1463,7 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 								&isWindowFunc, &volatility,
 								&isStrict, &security, &isLeakProof,
 								&proconfig, &procost, &prorows,
-								&prosupport, &parallel);
+								&prosupport, &parallel, &is_pipelined);
 
 	if (!language)
 	{
@@ -1545,6 +1566,50 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 		/* explicit RETURNS clause */
 		compute_return_type(stmt->returnType, languageOid,
 							&prorettype, &returnsSet, &rettypeName);
+
+		/*
+		 * IvorySQL: an Oracle PIPELINED function declares "RETURN
+		 * <collection>"; store the collection type in procollectiontype and
+		 * make the routine a set-returning function over the collection's
+		 * *element* type, which is what value-per-call execution produces.
+		 */
+		if (is_pipelined)
+		{
+			Oid			elemOid;
+			int32		elemTypmod;
+			Oid			collation;
+
+			if (!get_oracle_collection_element(prorettype, &elemOid,
+											   &elemTypmod, &collation))
+			{
+				/*
+				 * Not a collection.  Outside the Oracle parser this is a
+				 * hard error; in Oracle mode keep the deferred-compilation
+				 * contract (the routine is created with prostatus INVALID
+				 * or the validator failure is downgraded to a WARNING) and
+				 * leave the declared type untouched.
+				 */
+				if (compatible_db != ORA_PARSER)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+							 errmsg("PIPELINED function must return a collection type"),
+							 errhint("Declare the return type with CREATE TYPE ... AS TABLE OF."),
+							 parser_errposition(pstate, stmt->returnType->location)));
+				procollectiontype = InvalidOid;
+			}
+			else
+			{
+				if (IsPolymorphicType(elemOid) || elemOid == RECORDOID)
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("polymorphic PIPELINED functions are not supported"),
+							 parser_errposition(pstate, stmt->returnType->location)));
+				procollectiontype = prorettype;
+				prorettype = elemOid;
+				returnsSet = true;
+			}
+		}
+
 		if (OidIsValid(requiredResultType) && prorettype != requiredResultType &&
 			!(compatible_db == ORA_PARSER && LANG_PLISQL_OID == languageOid))
 			ereport(ERROR,
@@ -1650,7 +1715,7 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 	 * And now that we have all the parameters, and know we're permitted to do
 	 * so, go ahead and create the function.
 	 */
-	return ProcedureCreate(funcname,
+	return ProcedureCreateEx(funcname,
 						   namespaceId,
 						   stmt->replace,
 						   returnsSet,
@@ -1679,7 +1744,9 @@ CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt)
 						   procost,
 						   prorows,
 						   PointerGetDatum(parametertypeNames),
-						   rettypeName);
+						   rettypeName,
+						   is_pipelined,
+						   procollectiontype);
 }
 
 /*

@@ -89,10 +89,26 @@ CATALOG(pg_proc,1255,ProcedureRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(81,Proce
 	/* OID of result type */
 	Oid			prorettype BKI_LOOKUP(pg_type);
 
-	/* procedure status: N/A, VALID, INVALID 
+	/* procedure status: N/A, VALID, INVALID
 	 * see PROSTATUS_NA, PROSTATUS_VALID and PROSTATUS_INVALID below.
 	 */
 	char		prostatus	BKI_DEFAULT(v);
+
+	/*
+	 * IvorySQL: true for Oracle PIPELINED table functions.  Such a function
+	 * is a set-returning function whose prorettype is the *element* type of
+	 * its declared collection type; results are produced one row per call
+	 * (value-per-call) so the executor can consume them on demand.
+	 */
+	bool		propipelined BKI_DEFAULT(f);
+
+	/*
+	 * IvorySQL: the declared collection (nested-table) type of the function,
+	 * or 0.  For a PIPELINED function this records the RETURN <collection>
+	 * type even though prorettype holds the element type.  For an ordinary
+	 * function returning a collection value it records that collection type.
+	 */
+	Oid			procollectiontype BKI_DEFAULT(0) BKI_LOOKUP_OPT(pg_type);
 
 	/*
 	 * variable-length fields start here, but we allow direct access to
@@ -251,6 +267,44 @@ extern ObjectAddress ProcedureCreate(const char *procedureName,
 									 float4 prorows,
 									 Datum parametertypeNames,
 									 char *rettypeName);
+
+/*
+ * IvorySQL: extended ProcedureCreate carrying the Oracle collection-function
+ * metadata (see pg_proc.propipelined / procollectiontype).  ProcedureCreate
+ * is a compatibility wrapper passing false/InvalidOid.
+ */
+extern ObjectAddress ProcedureCreateEx(const char *procedureName,
+									   Oid procNamespace,
+									   bool replace,
+									   bool returnsSet,
+									   Oid returnType,
+									   Oid proowner,
+									   Oid languageObjectId,
+									   Oid languageValidator,
+									   const char *prosrc,
+									   const char *probin,
+									   Node *prosqlbody,
+									   char prokind,
+									   bool security_definer,
+									   bool isLeakProof,
+									   bool isStrict,
+									   char volatility,
+									   char parallel,
+									   oidvector *parameterTypes,
+									   Datum allParameterTypes,
+									   Datum parameterModes,
+									   Datum parameterNames,
+									   List *parameterDefaults,
+									   Datum trftypes,
+									   List *trfoids,
+									   Datum proconfig,
+									   Oid prosupport,
+									   float4 procost,
+									   float4 prorows,
+									   Datum parametertypeNames,
+									   char *rettypeName,
+									   bool propipelined,
+									   Oid procollectiontype);
 
 extern bool function_parse_error_transpose(const char *prosrc);
 

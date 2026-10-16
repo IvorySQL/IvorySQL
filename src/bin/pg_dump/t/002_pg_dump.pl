@@ -4606,6 +4606,8 @@ my %tests = (
 						   pronargs,
 						   pronargdefaults,
 						   prorettype,
+						   propipelined,
+						   procollectiontype,
 						   proargtypes,
 						   proallargtypes,
 						   proargmodes,
@@ -4638,6 +4640,8 @@ my %tests = (
 		\QGRANT SELECT(pronargs) ON TABLE pg_catalog.pg_proc TO PUBLIC;\E\n.*
 		\QGRANT SELECT(pronargdefaults) ON TABLE pg_catalog.pg_proc TO PUBLIC;\E\n.*
 		\QGRANT SELECT(prorettype) ON TABLE pg_catalog.pg_proc TO PUBLIC;\E\n.*
+		\QGRANT SELECT(propipelined) ON TABLE pg_catalog.pg_proc TO PUBLIC;\E\n.*
+		\QGRANT SELECT(procollectiontype) ON TABLE pg_catalog.pg_proc TO PUBLIC;\E\n.*
 		\QGRANT SELECT(proargtypes) ON TABLE pg_catalog.pg_proc TO PUBLIC;\E\n.*
 		\QGRANT SELECT(proallargtypes) ON TABLE pg_catalog.pg_proc TO PUBLIC;\E\n.*
 		\QGRANT SELECT(proargmodes) ON TABLE pg_catalog.pg_proc TO PUBLIC;\E\n.*

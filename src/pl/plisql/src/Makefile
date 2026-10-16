@@ -45,6 +45,7 @@ OBJS = \
 	pl_funcs.o \
 	pl_gram.o \
 	pl_handler.o \
+	pl_pipeline.o \
 	pl_scanner.o \
 	pl_subproc_function.o \
 	pl_package.o \
@@ -64,7 +65,7 @@ REGRESS = plisql_array plisql_call plisql_control plisql_copy plisql_domain \
 	plisql_trap plisql_trigger plisql_varprops plisql_nested_subproc \
 	plisql_nested_subproc2 plisql_out_parameter plisql_type_rowtype \
 	plisql_exception plisql_for_loop_implicit plisql_autonomous plisql_bugs plisql_rownum \
-	plisql_package_type_record
+	plisql_package_type_record plisql_pipeline
 
 # where to find ora_gen_keywordlist.pl and subsidiary files
 TOOLSDIR = $(top_srcdir)/src/tools
@@ -131,9 +132,11 @@ pl_unreserved_kwlist_d.h: pl_unreserved_kwlist.h $(GEN_KEYWORDLIST_DEPS)
 
 oracle-check: submake
 	$(oracle_regress_check) $(ORACLE_REGRESS_OPTS) $(REGRESS)
+	$(oracle_prove_check)
 
 oracle-installcheck: submake
 	$(oracle_regress_installcheck) $(ORACLE_REGRESS_OPTS) $(REGRESS)
+	$(oracle_prove_installcheck)
 
 .PHONY: submake
 submake:

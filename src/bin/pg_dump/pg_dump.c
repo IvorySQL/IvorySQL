@@ -6320,6 +6320,7 @@ getTypes(Archive *fout)
 	int			i_typisdefined;
 	int			i_isarray;
 	int			i_typarray;
+	int			i_oranestedtable;
 
 	/*
 	 * we include even the built-in types because those may be used as array
@@ -6345,8 +6346,32 @@ getTypes(Archive *fout)
 						 "ELSE (SELECT relkind FROM pg_class WHERE oid = typrelid) END AS typrelkind, "
 						 "typtype, typisdefined, "
 						 "typname[0] = '_' AND typelem != 0 AND "
-						 "(SELECT typarray FROM pg_type te WHERE oid = pg_type.typelem) = oid AS isarray "
-						 "FROM pg_type");
+						 "(SELECT typarray FROM pg_type te WHERE oid = pg_type.typelem) = oid AS isarray, ");
+
+	/*
+	 * Check if typoranestedtable column exists. This column is IvorySQL-specific
+	 * for Oracle nested-table collection types (CREATE TYPE ... AS TABLE OF),
+	 * and doesn't exist in native PostgreSQL.  We probe at runtime rather than
+	 * relying on remoteVersion because the source database may be PostgreSQL
+	 * with the same version number but without this column.
+	 */
+	{
+		PGresult   *res_ora;
+
+		res_ora = ExecuteSqlQuery(fout,
+								  "SELECT 1 FROM pg_catalog.pg_attribute "
+								  "WHERE attrelid = 'pg_type'::regclass "
+								  "AND attname = 'typoranestedtable' "
+								  "AND attnum > 0 LIMIT 1",
+								  PGRES_TUPLES_OK);
+		if (PQntuples(res_ora) > 0)
+			appendPQExpBufferStr(query, "typoranestedtable ");
+		else
+			appendPQExpBufferStr(query, "false AS typoranestedtable ");
+		PQclear(res_ora);
+	}
+
+	appendPQExpBufferStr(query, "FROM pg_type");
 
 	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
 
@@ -6367,6 +6392,7 @@ getTypes(Archive *fout)
 	i_typtype = PQfnumber(res, "typtype");
 	i_typisdefined = PQfnumber(res, "typisdefined");
 	i_isarray = PQfnumber(res, "isarray");
+	i_oranestedtable = PQfnumber(res, "typoranestedtable");
 	i_typarray = PQfnumber(res, "typarray");
 
 	for (i = 0; i < ntups; i++)
@@ -6399,6 +6425,11 @@ getTypes(Archive *fout)
 			tyinfo[i].isArray = true;
 		else
 			tyinfo[i].isArray = false;
+
+		if (strcmp(PQgetvalue(res, i, i_oranestedtable), "t") == 0)
+			tyinfo[i].typ_oranestedtable = true;
+		else
+			tyinfo[i].typ_oranestedtable = false;
 
 		tyinfo[i].typarray = atooid(PQgetvalue(res, i, i_typarray));
 
@@ -7032,6 +7063,8 @@ getFuncs(Archive *fout)
 	int			i_prorettype;
 	int			i_proacl;
 	int			i_acldefault;
+	int			i_propipelined;
+	int			i_procollectiontype;
 
 	/*
 	 * Find all interesting functions.  This is a bit complicated:
@@ -7067,7 +7100,34 @@ getFuncs(Archive *fout)
 						  "p.proacl, "
 						  "acldefault('f', p.proowner) AS acldefault, "
 						  "p.pronamespace, "
-						  "p.proowner "
+						  "p.proowner ");
+
+		/*
+		 * Check if propipelined/procollectiontype columns exist. These
+		 * columns are IvorySQL-specific for Oracle PIPELINED table
+		 * functions, and don't exist in native PostgreSQL.  Probe at
+		 * runtime rather than relying on remoteVersion for the same
+		 * reason as the relhasrowid probe above.
+		 */
+		{
+			PGresult   *res_pipe;
+
+			res_pipe = ExecuteSqlQuery(fout,
+									   "SELECT 1 FROM pg_catalog.pg_attribute "
+									   "WHERE attrelid = 'pg_proc'::regclass "
+									   "AND attname = 'propipelined' "
+									   "AND attnum > 0 LIMIT 1",
+									   PGRES_TUPLES_OK);
+			if (PQntuples(res_pipe) > 0)
+				appendPQExpBufferStr(query,
+									 ", p.propipelined, p.procollectiontype ");
+			else
+				appendPQExpBufferStr(query,
+									 ", false AS propipelined, 0 AS procollectiontype ");
+			PQclear(res_pipe);
+		}
+
+		appendPQExpBuffer(query,
 						  "FROM pg_proc p "
 						  "LEFT JOIN pg_init_privs pip ON "
 						  "(p.oid = pip.objoid "
@@ -7159,6 +7219,8 @@ getFuncs(Archive *fout)
 	i_prorettype = PQfnumber(res, "prorettype");
 	i_proacl = PQfnumber(res, "proacl");
 	i_acldefault = PQfnumber(res, "acldefault");
+	i_propipelined = PQfnumber(res, "propipelined");
+	i_procollectiontype = PQfnumber(res, "procollectiontype");
 
 	for (i = 0; i < ntups; i++)
 	{
@@ -7173,9 +7235,15 @@ getFuncs(Archive *fout)
 		finfo[i].dacl.acldefault = pg_strdup(PQgetvalue(res, i, i_acldefault));
 		finfo[i].dacl.privtype = 0;
 		finfo[i].dacl.initprivs = NULL;
-		finfo[i].rolname = getRoleName(PQgetvalue(res, i, i_proowner));
-		finfo[i].lang = atooid(PQgetvalue(res, i, i_prolang));
-		finfo[i].prorettype = atooid(PQgetvalue(res, i, i_prorettype));
+	finfo[i].rolname = getRoleName(PQgetvalue(res, i, i_proowner));
+	finfo[i].lang = atooid(PQgetvalue(res, i, i_prolang));
+	finfo[i].prorettype = atooid(PQgetvalue(res, i, i_prorettype));
+	if (strcmp(PQgetvalue(res, i, i_propipelined), "t") == 0)
+		finfo[i].pro_pipelined = true;
+	else
+		finfo[i].pro_pipelined = false;
+	finfo[i].procollectiontype =
+		atooid(PQgetvalue(res, i, i_procollectiontype));
 		finfo[i].nargs = atoi(PQgetvalue(res, i, i_pronargs));
 		if (finfo[i].nargs == 0)
 			finfo[i].argtypes = NULL;
@@ -13054,6 +13122,24 @@ dumpDomain(Archive *fout, const TypeInfo *tyinfo)
 
 	if (!fout->is_prepared[PREPQUERY_DUMPDOMAIN])
 	{
+		/*
+		 * Check if typoranestedtable column exists. This column is
+		 * IvorySQL-specific for Oracle nested-table collection types
+		 * (CREATE TYPE ... AS TABLE OF); probe at runtime since the source
+		 * may be PostgreSQL with the same version number but without it.
+		 */
+		bool		has_oranestedtable;
+		PGresult   *res_ora;
+
+		res_ora = ExecuteSqlQuery(fout,
+								  "SELECT 1 FROM pg_catalog.pg_attribute "
+								  "WHERE attrelid = 'pg_type'::regclass "
+								  "AND attname = 'typoranestedtable' "
+								  "AND attnum > 0 LIMIT 1",
+								  PGRES_TUPLES_OK);
+		has_oranestedtable = (PQntuples(res_ora) > 0);
+		PQclear(res_ora);
+
 		/* Set up query for domain-specific details */
 		appendPQExpBufferStr(query,
 							 "PREPARE dumpDomain(pg_catalog.oid) AS\n");
@@ -13063,7 +13149,20 @@ dumpDomain(Archive *fout, const TypeInfo *tyinfo)
 							 "pg_catalog.pg_get_expr(t.typdefaultbin, 'pg_catalog.pg_type'::pg_catalog.regclass) AS typdefaultbin, "
 							 "t.typdefault, "
 							 "CASE WHEN t.typcollation <> u.typcollation "
-							 "THEN t.typcollation ELSE 0 END AS typcollation "
+							 "THEN t.typcollation ELSE 0 END AS typcollation");
+
+		if (has_oranestedtable)
+			appendPQExpBufferStr(query,
+								 ", t.typoranestedtable, "
+								 "pg_catalog.format_type((SELECT a.typelem "
+								 "FROM pg_catalog.pg_type a "
+								 "WHERE a.oid = t.typbasetype), t.typtypmod) AS oraelemdefn ");
+		else
+			appendPQExpBufferStr(query,
+								 ", false AS typoranestedtable, "
+								 "NULL::text AS oraelemdefn ");
+
+		appendPQExpBufferStr(query,
 							 "FROM pg_catalog.pg_type t "
 							 "LEFT JOIN pg_catalog.pg_type u ON (t.typbasetype = u.oid) "
 							 "WHERE t.oid = $1");
@@ -13100,6 +13199,62 @@ dumpDomain(Archive *fout, const TypeInfo *tyinfo)
 
 	qtypname = pg_strdup(fmtId(tyinfo->dobj.name));
 	qualtypname = pg_strdup(fmtQualifiedDumpable(tyinfo));
+
+	if (strcmp(PQgetvalue(res, 0, PQfnumber(res, "typoranestedtable")),
+			   "t") == 0)
+	{
+		/*
+		 * IvorySQL Oracle nested-table collection: stored as a domain over
+		 * an element array, but declared as CREATE TYPE ... AS TABLE OF.
+		 * Restore the Oracle declaration so constructor and PIPELINED
+		 * semantics survive a dump/restore cycle.  Such a domain never
+		 * carries collation, default, not-null, or CHECK clauses.
+		 */
+		appendPQExpBuffer(q,
+						  "CREATE TYPE %s AS TABLE OF %s",
+						  qualtypname,
+						  PQgetvalue(res, 0, PQfnumber(res, "oraelemdefn")));
+		appendPQExpBufferStr(q, ";\n");
+
+		appendPQExpBuffer(delq, "DROP TYPE %s;\n", qualtypname);
+
+		if (dopt->binary_upgrade)
+			binary_upgrade_extension_member(q, &tyinfo->dobj,
+											"TYPE", qtypname,
+											tyinfo->dobj.namespace->dobj.name);
+
+		if (tyinfo->dobj.dump & DUMP_COMPONENT_DEFINITION)
+			ArchiveEntry(fout, tyinfo->dobj.catId, tyinfo->dobj.dumpId,
+						 ARCHIVE_OPTS(.tag = tyinfo->dobj.name,
+									  .namespace = tyinfo->dobj.namespace->dobj.name,
+									  .owner = tyinfo->rolname,
+									  .description = "TYPE",
+									  .section = SECTION_PRE_DATA,
+									  .createStmt = q->data,
+									  .dropStmt = delq->data));
+
+		/* Dump Domain Comments and Security Labels */
+		if (tyinfo->dobj.dump & DUMP_COMPONENT_COMMENT)
+			dumpComment(fout, "TYPE", qtypname,
+						tyinfo->dobj.namespace->dobj.name, tyinfo->rolname,
+						tyinfo->dobj.catId, 0, tyinfo->dobj.dumpId);
+
+		if (tyinfo->dobj.dump & DUMP_COMPONENT_SECLABEL)
+			dumpSecLabel(fout, "TYPE", qtypname,
+						 tyinfo->dobj.namespace->dobj.name, tyinfo->rolname,
+						 tyinfo->dobj.catId, 0, tyinfo->dobj.dumpId);
+
+		if (tyinfo->dobj.dump & DUMP_COMPONENT_ACL)
+			dumpACL(fout, tyinfo->dobj.dumpId, InvalidDumpId, "TYPE",
+					qtypname, NULL,
+					tyinfo->dobj.namespace->dobj.name,
+					NULL, tyinfo->rolname, &tyinfo->dacl);
+
+		destroyPQExpBuffer(q);
+		destroyPQExpBuffer(delq);
+		destroyPQExpBuffer(query);
+		return;
+	}
 
 	appendPQExpBuffer(q,
 					  "CREATE DOMAIN %s AS %s",
@@ -14127,6 +14282,19 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 
 	if (prokind[0] == PROKIND_PROCEDURE)
 		 /* no result type to output */ ;
+	else if (finfo->pro_pipelined && OidIsValid(finfo->procollectiontype))
+	{
+		/*
+		 * IvorySQL: preserve the Oracle declaration, including the
+		 * collection type and the PIPELINED marker.  Emitting RETURNS
+		 * SETOF <element> instead would restore an ordinary set-returning
+		 * function and lose the pipeline semantics.
+		 */
+		appendPQExpBuffer(q, " RETURN %s PIPELINED",
+						  getFormattedTypeName(fout,
+											   finfo->procollectiontype,
+											   zeroAsNone));
+	}
 	else if (funcresult)
 		appendPQExpBuffer(q, " RETURNS %s", funcresult);
 	else

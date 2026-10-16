@@ -271,6 +271,8 @@ plisql_stmt_typename(PLiSQL_stmt * stmt)
 			return "RETURN";
 		case PLISQL_STMT_RETURN_NEXT:
 			return "RETURN NEXT";
+		case PLISQL_STMT_PIPE_ROW:
+			return "PIPE ROW";
 		case PLISQL_STMT_RETURN_QUERY:
 			return "RETURN QUERY";
 		case PLISQL_STMT_RAISE:
@@ -371,6 +373,42 @@ typedef void (*plisql_expr_walker_callback) (PLiSQL_expr * expr,
 #define plisql_statement_tree_walker(s, sw, ew, c) \
 	plisql_statement_tree_walker_impl(s, (plisql_stmt_walker_callback) (sw), \
 									   (plisql_expr_walker_callback) (ew), c)
+
+/* Internal helpers for plisql_walk_stmt_exprs(). */
+static void plisql_statement_tree_walker_impl(PLiSQL_stmt * stmt,
+											  plisql_stmt_walker_callback stmt_callback,
+											  plisql_expr_walker_callback expr_callback,
+											  void *context);
+static void walk_exprs_stmt_cb(PLiSQL_stmt * stmt, void *context);
+static void walk_exprs_expr_cb(PLiSQL_expr * expr, void *context);
+
+/*
+ * plisql_walk_stmt_exprs
+ *
+ * Invoke the caller's expression callback on every PLiSQL_expr reachable
+ * from the statement tree rooted at stmt.  Used by the resumable pipelined
+ * interpreter to clear per-invocation caches carried on compiled
+ * expressions.
+ */
+void
+plisql_walk_stmt_exprs(PLiSQL_stmt * stmt, plisql_expr_walker_callback cb)
+{
+	plisql_statement_tree_walker(stmt, walk_exprs_stmt_cb, walk_exprs_expr_cb,
+								 (void *) cb);
+}
+
+static void
+walk_exprs_stmt_cb(PLiSQL_stmt * stmt, void *context)
+{
+	plisql_statement_tree_walker(stmt, walk_exprs_stmt_cb,
+								 walk_exprs_expr_cb, context);
+}
+
+static void
+walk_exprs_expr_cb(PLiSQL_expr * expr, void *context)
+{
+	((plisql_expr_walker_callback) context) (expr, NULL);
+}
 
 static void
 plisql_statement_tree_walker_impl(PLiSQL_stmt * stmt,
@@ -500,6 +538,13 @@ plisql_statement_tree_walker_impl(PLiSQL_stmt * stmt,
 		case PLISQL_STMT_RETURN_NEXT:
 			{
 				PLiSQL_stmt_return_next *rstmt = (PLiSQL_stmt_return_next *) stmt;
+
+				E_WALK(rstmt->expr);
+				break;
+			}
+		case PLISQL_STMT_PIPE_ROW:
+			{
+				PLiSQL_stmt_pipe_row *rstmt = (PLiSQL_stmt_pipe_row *) stmt;
 
 				E_WALK(rstmt->expr);
 				break;
@@ -865,6 +910,7 @@ static void dump_foreach_a(PLiSQL_stmt_foreach_a * stmt);
 static void dump_exit(PLiSQL_stmt_exit * stmt);
 static void dump_return(PLiSQL_stmt_return * stmt);
 static void dump_return_next(PLiSQL_stmt_return_next * stmt);
+static void dump_pipe_row(PLiSQL_stmt_pipe_row * stmt);
 static void dump_return_query(PLiSQL_stmt_return_query * stmt);
 static void dump_raise(PLiSQL_stmt_raise * stmt);
 static void dump_assert(PLiSQL_stmt_assert * stmt);
@@ -936,6 +982,9 @@ dump_stmt(PLiSQL_stmt * stmt)
 			break;
 		case PLISQL_STMT_RETURN_NEXT:
 			dump_return_next((PLiSQL_stmt_return_next *) stmt);
+			break;
+		case PLISQL_STMT_PIPE_ROW:
+			dump_pipe_row((PLiSQL_stmt_pipe_row *) stmt);
 			break;
 		case PLISQL_STMT_RETURN_QUERY:
 			dump_return_query((PLiSQL_stmt_return_query *) stmt);
@@ -1417,6 +1466,18 @@ dump_return_next(PLiSQL_stmt_return_next * stmt)
 	if (stmt->retvarno >= 0)
 		printf("variable %d", stmt->retvarno);
 	else if (stmt->expr != NULL)
+		dump_expr(stmt->expr);
+	else
+		printf("NULL");
+	printf("\n");
+}
+
+static void
+dump_pipe_row(PLiSQL_stmt_pipe_row * stmt)
+{
+	dump_ind();
+	printf("PIPE ROW ");
+	if (stmt->expr != NULL)
 		dump_expr(stmt->expr);
 	else
 		printf("NULL");
