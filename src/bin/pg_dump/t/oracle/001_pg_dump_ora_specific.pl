@@ -132,7 +132,7 @@ my %tests = (
 				FUNCTION hello() RETURN text;
 			END test_pkg;',
 		regexp       => qr/^CREATE EDITIONABLE PACKAGE public.test_pkg AUTHID DEFINER  AS/m,
-		like => { %full_runs,},
+		like => { %full_runs, oracle_port => 1, },
 	},
 
 	'CREATE PACKAGE BODY test_pkg' => {
@@ -145,7 +145,77 @@ my %tests = (
 				END;
 			END test_pkg;',
 		regexp       => qr/^CREATE PACKAGE BODY public.test_pkg  AS/m,
+		like => { %full_runs, oracle_port => 1, },
+	},
+
+	# Sequences of an Oracle-mode database. The full runs dump through the
+	# PostgreSQL-mode port, where format_type() prints the standard names
+	# and NUMBER as sys.number; the oracle_port run dumps through the
+	# Oracle-mode port. pg_dump must accept every spelling and write the
+	# declared type back, the same way from both ports.
+	'CREATE SEQUENCE seq_small AS smallint' => {
+		create_order => 3,
+		create_sql   => 'CREATE SEQUENCE seq_small AS smallint;',
+		regexp       => qr/^CREATE SEQUENCE public\.seq_small\n\s+AS smallint\n/m,
+		like => { %full_runs, oracle_port => 1, },
+	},
+
+	'CREATE SEQUENCE seq_number AS number' => {
+		create_order => 4,
+		create_sql   => 'CREATE SEQUENCE seq_number AS number;',
+		regexp       => qr/^CREATE SEQUENCE public\.seq_number\n\s+AS sys\.number\n/m,
+		like => { %full_runs, oracle_port => 1, },
+	},
+
+	'CREATE SEQUENCE seq_double AS float8' => {
+		create_order => 5,
+		create_sql   => 'CREATE SEQUENCE seq_double AS float8;',
+		regexp       => qr/^CREATE SEQUENCE public\.seq_double\n\s+AS pg_catalog\.float8\n/m,
+		like => { %full_runs, oracle_port => 1, },
+	},
+
+	# The cache is a value: NOCACHE stores 1. A dump through the
+	# PostgreSQL-mode port writes CACHE 1, which only PostgreSQL mode
+	# accepts; a dump through the Oracle-mode port writes NOCACHE, which
+	# is what restores into Oracle mode (checked below).
+	'CREATE SEQUENCE seq_nocache NOCACHE (PostgreSQL-mode dump)' => {
+		create_order => 6,
+		create_sql   => 'CREATE SEQUENCE seq_nocache NOCACHE;',
+		regexp       => qr/^CREATE SEQUENCE public\.seq_nocache\n(?:\s+\S.*\n){4}\s+CACHE 1;/m,
 		like => { %full_runs, },
+	},
+
+	'CREATE SEQUENCE seq_nocache NOCACHE (Oracle-mode dump)' => {
+		regexp       => qr/^CREATE SEQUENCE public\.seq_nocache\n(?:\s+\S.*\n){4}\s+NOCACHE;/m,
+		like => { oracle_port => 1, },
+	},
+
+	'CREATE SEQUENCE seq_cached CACHE 50' => {
+		create_order => 7,
+		create_sql   => 'CREATE SEQUENCE seq_cached CACHE 50;',
+		regexp       => qr/^CREATE SEQUENCE public\.seq_cached\n(?:\s+\S.*\n){4}\s+CACHE 50;/m,
+		like => { %full_runs, oracle_port => 1, },
+	},
+
+	# The Oracle sequence options live in pg_sequence.flags.
+	'CREATE SEQUENCE seq_session SESSION' => {
+		create_order => 8,
+		create_sql   => 'CREATE SEQUENCE seq_session SESSION;',
+		regexp       => qr/^CREATE SEQUENCE public\.seq_session\n(?:\s+\S.*\n){4}\s+CACHE 20 SESSION;/m,
+		like => { %full_runs, oracle_port => 1, },
+	},
+
+	'CREATE SEQUENCE seq_scale SCALE EXTEND' => {
+		create_order => 9,
+		create_sql   => 'CREATE SEQUENCE seq_scale SCALE EXTEND;',
+		regexp       => qr/^CREATE SEQUENCE public\.seq_scale\n(?:\s+\S.*\n){4}\s+CACHE 20 SCALE EXTEND;/m,
+		like => { %full_runs, oracle_port => 1, },
+	},
+
+	# The owner must be a role name, never the OID.
+	'ALTER PACKAGE test_pkg OWNER TO' => {
+		regexp => qr/^ALTER PACKAGE public\.test_pkg OWNER TO (?!"\d+")\S+;/m,
+		like   => { clean_if_exists => 1, oracle_port => 1, },
 	},
 
 	'DROP PACKAGE IF EXISTS public.test_pkg;' => {
@@ -160,6 +230,17 @@ my %tests = (
 my $node = PostgreSQL::Test::Cluster->new('main');
 $node->init;
 $node->start;
+
+# A dump through the Oracle-mode port: the syntax pg_dump writes depends on
+# the mode of its connection, and only this dump restores into Oracle mode.
+$pgdump_runs{oracle_port} = {
+	dump_cmd => [
+		'pg_dump', '--format=plain', '--no-sync',
+		"--file=$tempdir/oracle_port.sql",
+		'--port=' . $node->oraport,
+		'testdb',
+	],
+};
 
 my ($connect_to_oraport);
 
@@ -344,6 +425,37 @@ foreach my $run (sort keys %pgdump_runs)
 
 #########################################
 # Stop the database instance, which will be removed at the end of the tests.
+
+#########################################
+# The Oracle-mode dump restores into Oracle mode, and the sequences and the
+# package owner come back as they were.
+
+$node->safe_psql('postgres', 'CREATE DATABASE restoredb',
+	connect_to_oraport => 1);
+$node->command_ok(
+	[
+		'psql', '--no-psqlrc', '--quiet',
+		'--port=' . $node->oraport,
+		'--set=ON_ERROR_STOP=1',
+		'--dbname=restoredb',
+		"--file=$tempdir/oracle_port.sql",
+	],
+	'oracle_port: the dump restores through the Oracle-mode port');
+
+my $sequences_sql =
+  'SELECT seqrelid::regclass::text, format_type(seqtypid, NULL), seqstart, '
+  . 'seqincrement, seqmin, seqmax, seqcache, seqcycle, flags '
+  . 'FROM pg_sequence ORDER BY 1';
+is( $node->safe_psql('restoredb', $sequences_sql, connect_to_oraport => 1),
+	$node->safe_psql('testdb', $sequences_sql, connect_to_oraport => 1),
+	'oracle_port: pg_sequence rows identical after the restore');
+
+my $owner_sql =
+  'SELECT pkgname, pg_get_userbyid(pkgowner) FROM pg_package ORDER BY 1';
+is( $node->safe_psql('restoredb', $owner_sql, connect_to_oraport => 1),
+	$node->safe_psql('testdb', $owner_sql, connect_to_oraport => 1),
+	'oracle_port: package owner identical after the restore');
+
 
 $node->stop('fast');
 

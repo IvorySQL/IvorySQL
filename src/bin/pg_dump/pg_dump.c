@@ -133,10 +133,43 @@ static const char *const SeqTypeNames[] =
 StaticAssertDecl(lengthof(SeqTypeNames) == (SEQTYPE_BIGINT + 1),
 				 "array length mismatch");
 
+/*
+ * The types a sequence can have in an Oracle-mode database, as format_type()
+ * names them. Through an Oracle-mode connection the built-in integer types
+ * print with their internal, schema-qualified names and NUMBER prints bare;
+ * through a PostgreSQL-mode connection the same sequences print with the
+ * standard names and NUMBER as sys.number. A sequence declared AS one of the
+ * numeric types takes bigint limits but keeps its declared type, which is
+ * written back schema-qualified so the restore does not depend on the
+ * search path.
+ */
+typedef struct
+{
+	const char *name;		/* as format_type() prints it */
+	SeqType		type;		/* the limits it takes */
+	const char *as;			/* AS clause to write back, NULL for the standard one */
+} OraSeqTypeName;
+
+static const OraSeqTypeName OraSeqTypeNames[] =
+{
+	{"pg_catalog.int2", SEQTYPE_SMALLINT, NULL},
+	{"pg_catalog.int4", SEQTYPE_INTEGER, NULL},
+	{"pg_catalog.int8", SEQTYPE_BIGINT, NULL},
+	{"number", SEQTYPE_BIGINT, "sys.number"},
+	{"sys.number", SEQTYPE_BIGINT, "sys.number"},
+	{"pg_catalog.numeric", SEQTYPE_BIGINT, "pg_catalog.numeric"},
+	{"numeric", SEQTYPE_BIGINT, "pg_catalog.numeric"},
+	{"pg_catalog.float4", SEQTYPE_BIGINT, "pg_catalog.float4"},
+	{"real", SEQTYPE_BIGINT, "pg_catalog.float4"},
+	{"pg_catalog.float8", SEQTYPE_BIGINT, "pg_catalog.float8"},
+	{"double precision", SEQTYPE_BIGINT, "pg_catalog.float8"},
+};
+
 typedef struct
 {
 	Oid			oid;			/* sequence OID */
 	SeqType		seqtype;		/* data type of sequence */
+	const char *ora_as;		/* Oracle-mode AS clause to write back, or NULL */
 	bool		cycled;			/* whether sequence cycles */
 	int64		minv;			/* minimum value */
 	int64		maxv;			/* maximum value */
@@ -7279,7 +7312,7 @@ getPackages(Archive *fout, int *numPkgs)
 		pkginfo[i].dobj.name = pg_strdup(PQgetvalue(res, i, i_pkgname));
 		pkginfo[i].dobj.namespace =
 			findNamespace(atooid(PQgetvalue(res, i, i_pkgnamespace)));
-		pkginfo[i].rolname = pg_strdup(PQgetvalue(res, i, i_rolname));
+		pkginfo[i].rolname = getRoleName(PQgetvalue(res, i, i_rolname));
 		pkginfo[i].pkgacl = pg_strdup(PQgetvalue(res, i, i_pkgacl));
 		pkginfo[i].dacl.acldefault = pg_strdup(PQgetvalue(res, i, i_acldefault));
 		pkginfo[i].dacl.privtype = 0;
@@ -19692,12 +19725,30 @@ dumpTableConstraintComment(Archive *fout, const ConstraintInfo *coninfo)
 }
 
 static inline SeqType
-parse_sequence_type(const char *name)
+parse_sequence_type(const char *name, const char **ora_as)
 {
+	if (ora_as)
+		*ora_as = NULL;
+
 	for (int i = 0; i < lengthof(SeqTypeNames); i++)
 	{
 		if (strcmp(SeqTypeNames[i], name) == 0)
 			return (SeqType) i;
+	}
+
+	/*
+	 * A sequence created in an Oracle-mode database reports its type as
+	 * format_type() names it; map it onto the standard type whose limits it
+	 * takes, and remember the AS clause to write back.
+	 */
+	for (int i = 0; i < lengthof(OraSeqTypeNames); i++)
+	{
+		if (strcmp(OraSeqTypeNames[i].name, name) == 0)
+		{
+			if (ora_as)
+				*ora_as = OraSeqTypeNames[i].as;
+			return OraSeqTypeNames[i].type;
+		}
 	}
 
 	pg_fatal("unrecognized sequence type: %s", name);
@@ -19726,7 +19777,8 @@ static void
 collectSequences(Archive *fout)
 {
 	PGresult   *res;
-	const char *query;
+	PQExpBuffer query;
+	const char *flags_col;
 
 	/*
 	 * Before Postgres 10, sequence metadata is in the sequence itself.  With
@@ -19738,26 +19790,45 @@ collectSequences(Archive *fout)
 	 */
 	if (fout->remoteVersion < 100000)
 		return;
-	else if (fout->remoteVersion < 180000 ||
-			 (!fout->dopt->dumpData && !fout->dopt->sequence_data))
-		query = "SELECT seqrelid, format_type(seqtypid, NULL), "
-			"seqstart, seqincrement, "
-			"seqmax, seqmin, "
-			"seqcache, seqcycle, "
-			"NULL, 'f' "
-			"FROM pg_catalog.pg_sequence "
-			"ORDER BY seqrelid";
-	else
-		query = "SELECT seqrelid, format_type(seqtypid, NULL), "
-			"seqstart, seqincrement, "
-			"seqmax, seqmin, "
-			"seqcache, seqcycle, "
-			"last_value, is_called "
-			"FROM pg_catalog.pg_sequence, "
-			"pg_get_sequence_data(seqrelid) "
-			"ORDER BY seqrelid;";
 
-	res = ExecuteSqlQuery(fout, query, PGRES_TUPLES_OK);
+	/*
+	 * pg_sequence.flags carries the Oracle sequence options (SCALE, EXTEND,
+	 * SESSION). PostgreSQL has no such column, and a pg_upgrade from a
+	 * PostgreSQL source of the same version reaches here too, so look
+	 * before selecting it.
+	 */
+	res = ExecuteSqlQuery(fout,
+						  "SELECT 1 FROM pg_catalog.pg_attribute "
+						  "WHERE attrelid = 'pg_catalog.pg_sequence'::regclass "
+						  "AND attname = 'flags' AND attnum > 0 LIMIT 1",
+						  PGRES_TUPLES_OK);
+	flags_col = (PQntuples(res) > 0) ? "flags" : "0 AS flags";
+	PQclear(res);
+
+	query = createPQExpBuffer();
+	if (fout->remoteVersion < 180000 ||
+		(!fout->dopt->dumpData && !fout->dopt->sequence_data))
+		appendPQExpBuffer(query,
+					  "SELECT seqrelid, format_type(seqtypid, NULL), "
+					  "seqstart, seqincrement, "
+					  "seqmax, seqmin, "
+					  "seqcache, seqcycle, "
+					  "NULL, 'f', %s "
+					  "FROM pg_catalog.pg_sequence "
+					  "ORDER BY seqrelid", flags_col);
+	else
+		appendPQExpBuffer(query,
+					  "SELECT seqrelid, format_type(seqtypid, NULL), "
+					  "seqstart, seqincrement, "
+					  "seqmax, seqmin, "
+					  "seqcache, seqcycle, "
+					  "last_value, is_called, %s "
+					  "FROM pg_catalog.pg_sequence, "
+					  "pg_get_sequence_data(seqrelid) "
+					  "ORDER BY seqrelid", flags_col);
+
+	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
+	destroyPQExpBuffer(query);
 
 	nsequences = PQntuples(res);
 	sequences = pg_malloc_array(SequenceItem, nsequences);
@@ -19765,14 +19836,14 @@ collectSequences(Archive *fout)
 	for (int i = 0; i < nsequences; i++)
 	{
 		sequences[i].oid = atooid(PQgetvalue(res, i, 0));
-		sequences[i].seqtype = parse_sequence_type(PQgetvalue(res, i, 1));
+		sequences[i].seqtype = parse_sequence_type(PQgetvalue(res, i, 1), &sequences[i].ora_as);
 		sequences[i].startv = strtoi64(PQgetvalue(res, i, 2), NULL, 10);
 		sequences[i].incby = strtoi64(PQgetvalue(res, i, 3), NULL, 10);
 		sequences[i].maxv = strtoi64(PQgetvalue(res, i, 4), NULL, 10);
 		sequences[i].minv = strtoi64(PQgetvalue(res, i, 5), NULL, 10);
 		sequences[i].cache = strtoi64(PQgetvalue(res, i, 6), NULL, 10);
 		sequences[i].cycled = (strcmp(PQgetvalue(res, i, 7), "t") == 0);
-		sequences[i].flags = atoi(PQgetvalue(res, 0, 7));
+		sequences[i].flags = atoi(PQgetvalue(res, i, 10));
 		sequences[i].last_value = strtoi64(PQgetvalue(res, i, 8), NULL, 10);
 		sequences[i].is_called = (strcmp(PQgetvalue(res, i, 9), "t") == 0);
 		sequences[i].null_seqtuple = (PQgetisnull(res, i, 8) || PQgetisnull(res, i, 9));
@@ -19848,7 +19919,7 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 					 tbinfo->dobj.name, PQntuples(res));
 
 		seq = pg_malloc0_object(SequenceItem);
-		seq->seqtype = parse_sequence_type(PQgetvalue(res, 0, 0));
+		seq->seqtype = parse_sequence_type(PQgetvalue(res, 0, 0), &seq->ora_as);
 		seq->startv = strtoi64(PQgetvalue(res, 0, 1), NULL, 10);
 		seq->incby = strtoi64(PQgetvalue(res, 0, 2), NULL, 10);
 		seq->maxv = strtoi64(PQgetvalue(res, 0, 3), NULL, 10);
@@ -19963,7 +20034,9 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 						  "UNLOGGED " : "",
 						  fmtQualifiedDumpable(tbinfo));
 
-		if (seq->seqtype != SEQTYPE_BIGINT)
+		if (seq->ora_as != NULL)
+			appendPQExpBuffer(query, "    AS %s\n", seq->ora_as);
+		else if (seq->seqtype != SEQTYPE_BIGINT)
 			appendPQExpBuffer(query, "    AS %s\n", SeqTypeNames[seq->seqtype]);
 	}
 
@@ -19986,9 +20059,13 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
         appendPQExpBufferStr(query, "    NO MAXVALUE\n");
 
 
-	if ( seq->cache && db_mode == DB_ORACLE)
+	/*
+	 * In Oracle mode NOCACHE stores a cache of 1, and CACHE 1 is refused
+	 * by CREATE SEQUENCE, so a cache of 1 can only be written as NOCACHE.
+	 */
+	if (seq->cache == 1 && db_mode == DB_ORACLE)
 		appendPQExpBuffer(query,
-						"    NOCACHE %s",
+						"    NOCACHE%s",
 						(seq->cycled ? "\n    CYCLE" : ""));
 	else
 		appendPQExpBuffer(query,
