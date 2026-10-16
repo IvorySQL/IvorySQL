@@ -1931,3 +1931,70 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 /* End - VSIZE */
+
+/* MEDIAN */
+/*
+ * MEDIAN: Oracle-compatible inverse distribution aggregate returning the
+ * median of the non-null input values.  NULLs are ignored; an empty or
+ * all-null input returns NULL.  For an even number of input values the
+ * result is the linear interpolation between the two middle values,
+ * matching the computation documented for Oracle MEDIAN, which is the
+ * specific case of PERCENTILE_CONT with the percentile defaulting to 0.5.
+ *
+ * The aggregate is declared for sys.number only: numeric literals are
+ * NUMBER in Oracle, and the remaining numeric inputs (pg_catalog
+ * int2/int4/int8/numeric and sys.binary_float/binary_double) reach it
+ * through the existing implicit casts.  Interpolation is done in decimal
+ * arithmetic, so results stay exact where a float8 percentile
+ * implementation would lose precision.  The midpoint is computed by
+ * multiplying the sum of the two middle values by 0.5 rather than
+ * dividing by 2: division keeps only NUMERIC_MIN_SIG_DIGITS significant
+ * digits, which rounds away an attainable fractional midpoint for large
+ * integers (the median of 100000000000000000001 and 100000000000000000002
+ * is 100000000000000000001.5), while multiplication preserves the exact
+ * sum scale; trim_scale then drops insignificant trailing zeros.  The
+ * operators are qualified with OPERATOR(sys.*), so the interpolation keeps
+ * its decimal semantics no matter which search_path is in effect when the
+ * extension script runs.
+ *
+ * Known deviation (documented in the regression tests): Oracle returns
+ * the same data type as its argument, so median() over a BINARY_FLOAT or
+ * BINARY_DOUBLE column returns that type there.  Adding those overloads
+ * would route plain numeric literals to BINARY_DOUBLE (it is the
+ * preferred type of the numeric category), so they are omitted for now
+ * and every input resolves to sys.number.
+ */
+CREATE FUNCTION sys.median_transfn(sys.number[], sys.number)
+RETURNS sys.number[]
+LANGUAGE sql
+IMMUTABLE
+CALLED ON NULL INPUT
+PARALLEL SAFE
+AS $$ SELECT CASE WHEN $2 IS NULL THEN $1
+                  ELSE pg_catalog.array_append($1, $2) END $$;
+
+CREATE FUNCTION sys.median_finalfn(sys.number[])
+RETURNS sys.number
+LANGUAGE sql
+IMMUTABLE
+STRICT
+PARALLEL SAFE
+AS $$
+    SELECT CASE WHEN n = 0 THEN NULL
+                WHEN n % 2 = 1 THEN v[(n + 1) / 2]
+                ELSE pg_catalog.trim_scale(
+                       ((v[n / 2] OPERATOR(sys.+) v[n / 2 + 1]) OPERATOR(sys.*) 0.5::sys.number)
+                       ::pg_catalog.numeric)::sys.number END
+    FROM (SELECT array_agg(x ORDER BY x) AS v, count(*)::int AS n
+          FROM unnest($1) AS t(x) WHERE x IS NOT NULL) s
+$$;
+
+CREATE AGGREGATE sys.median(sys.number) (
+    SFUNC = sys.median_transfn,
+    STYPE = sys.number[],
+    FINALFUNC = sys.median_finalfn,
+    COMBINEFUNC = pg_catalog.array_cat,
+    INITCOND = '{}',
+    PARALLEL = SAFE
+);
+/* End - MEDIAN */
