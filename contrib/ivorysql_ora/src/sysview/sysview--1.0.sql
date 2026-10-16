@@ -1588,6 +1588,7 @@ WHERE
   c.relowner::regrole = current_user::regrole
   AND c.relkind IN ('r', 'p')
   AND n.nspname NOT IN ('pg_catalog', 'pg_toast', 'information_schema')
+  AND NOT pg_catalog.pg_is_other_temp_schema(n.oid)
   AND NOT c.relispartition;
 
 GRANT SELECT ON SYS.USER_TABLES TO PUBLIC;
