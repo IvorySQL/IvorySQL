@@ -12,3 +12,14 @@ id             name
 id             name           
 1              	ok             	
 32             	update         	
+first handle: 11
+second handle: 22
+first handle again: 12
+first on other connection: 12
+second on other connection: 22
+second after first freed: 22
+other after first freed: 22
+new handle: 33
+new on other connection: 33
+second after new handle: 22
+released handles leave no prepared statements
