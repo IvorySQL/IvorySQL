@@ -2076,3 +2076,31 @@ drop table ds_tb;
 reset NLS_TIMESTAMP_FORMAT;
 reset NLS_TIMESTAMP_TZ_FORMAT;
 reset NLS_DATE_FORMAT;
+-- NUMTOYMINTERVAL: rounding must not narrow a wide intermediate value into
+-- the int32 month field, and a small negative value must round away from zero.
+SELECT NUMTOYMINTERVAL(300000000, 'month');
+ numtoyminterval 
+-----------------
+ +025000000-00
+(1 row)
+
+SELECT NUMTOYMINTERVAL(100000000, 'year');
+ numtoyminterval 
+-----------------
+ +100000000-00
+(1 row)
+
+SELECT NUMTOYMINTERVAL(214748364, 'month');
+ numtoyminterval 
+-----------------
+ +017895697-00
+(1 row)
+
+SELECT NUMTOYMINTERVAL(3000000000, 'month');
+ERROR:  interval year to month out of range
+SELECT NUMTOYMINTERVAL(-0.9, 'month');
+ numtoyminterval 
+-----------------
+ -000000000-01
+(1 row)
+
