@@ -493,3 +493,33 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- ALL_OBJECTS
+DROP TABLE IF EXISTS TEST_ALL_OBJECTS;
+NOTICE:  table "test_all_objects" does not exist, skipping
+CREATE TABLE TEST_ALL_OBJECTS (ID INT);
+CREATE INDEX TEST_ALL_OBJECTS_IDX ON TEST_ALL_OBJECTS (ID);
+SELECT OBJECT_NAME, OBJECT_TYPE, STATUS, OWNER IS NOT NULL AS has_owner
+FROM SYS.ALL_OBJECTS WHERE OBJECT_NAME IN ('TEST_ALL_OBJECTS', 'TEST_ALL_OBJECTS_IDX')
+ORDER BY OBJECT_NAME;
+     object_name      | object_type | status | has_owner 
+----------------------+-------------+--------+-----------
+ TEST_ALL_OBJECTS     | TABLE       | VALID  | t
+ TEST_ALL_OBJECTS_IDX | INDEX       | VALID  | t
+(2 rows)
+
+-- unlike the USER_ views, a relation owned by another role is visible here
+DROP ROLE IF EXISTS all_objects_owner;
+NOTICE:  role "all_objects_owner" does not exist, skipping
+CREATE ROLE all_objects_owner;
+CREATE TABLE TEST_ALL_OBJECTS_OTHER (ID INT);
+ALTER TABLE TEST_ALL_OBJECTS_OTHER OWNER TO all_objects_owner;
+SELECT count(*) AS rows_for_other_owner FROM SYS.ALL_OBJECTS
+WHERE OBJECT_NAME = 'TEST_ALL_OBJECTS_OTHER';
+ rows_for_other_owner 
+----------------------
+                    1
+(1 row)
+
+DROP TABLE TEST_ALL_OBJECTS_OTHER;
+DROP ROLE all_objects_owner;
+DROP TABLE TEST_ALL_OBJECTS;
