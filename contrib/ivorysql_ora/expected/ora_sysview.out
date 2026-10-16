@@ -493,3 +493,29 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- V$INSTANCE / V$VERSION
+SELECT INSTANCE_NUMBER, STATUS, DATABASE_STATUS, INSTANCE_ROLE, ACTIVE_STATE, LOGINS
+FROM SYS.V$INSTANCE;
+ instance_number | status | database_status |  instance_role   | active_state | logins  
+-----------------+--------+-----------------+------------------+--------------+---------
+ 1               | OPEN   | ACTIVE          | PRIMARY_INSTANCE | NORMAL       | ALLOWED
+(1 row)
+
+SELECT INSTANCE_NAME IS NOT NULL AS has_instance_name,
+       HOST_NAME IS NOT NULL AS has_host_name,
+       VERSION IS NOT NULL AS has_version,
+       STARTUP_TIME IS NOT NULL AS has_startup_time
+FROM SYS.V$INSTANCE;
+ has_instance_name | has_host_name | has_version | has_startup_time 
+-------------------+---------------+-------------+------------------
+ t                 | t             | t           | t
+(1 row)
+
+SELECT BANNER IS NOT NULL AS has_banner,
+       BANNER_FULL IS NOT NULL AS has_banner_full
+FROM SYS.V$VERSION;
+ has_banner | has_banner_full 
+------------+-----------------
+ t          | t
+(1 row)
+
