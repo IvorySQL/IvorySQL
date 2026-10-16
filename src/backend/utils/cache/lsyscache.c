@@ -1983,7 +1983,7 @@ get_func_rettype(Oid funcid)
  * the variable may be changed with package. If A function's 
  * returned datatype is tablename.columnname%TYPE, the tablename
  * or the columnname can be changed or droped. 
- * so, this function created to get the realy type.
+ * so, this function created to get the really type.
  */
 Oid
 get_func_real_rettype(HeapTuple proc_tup)
