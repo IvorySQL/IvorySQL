@@ -815,3 +815,49 @@ DROP PROCEDURE sched_reg_proc;
 DELETE FROM sys.scheduler_job_run_details;
 DROP ROLE regress_dbms_scheduler;
 RESET timezone;
+
+-- Coarse BY filters must not consume the fine-frequency search horizon.
+-- Use explicit PostgreSQL timestamp input to preserve numeric UTC offsets.
+SET timezone TO 'UTC';
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=SECONDLY;BYHOUR=9', '2026-01-01 00:00:00+00'::pg_catalog.timestamptz, '2026-01-01 00:00:00+00'::pg_catalog.timestamptz)
+  = '2026-01-01 09:00:00+00'::pg_catalog.timestamptz AS secondly_byhour;
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=MINUTELY;BYDAY=MON', '2026-01-01 00:00:00+00'::pg_catalog.timestamptz, '2026-01-01 00:00:00+00'::pg_catalog.timestamptz)
+  = '2026-01-05 00:00:00+00'::pg_catalog.timestamptz AS minutely_byday;
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=HOURLY;BYMONTH=DEC', '2026-01-01 00:00:00+00'::pg_catalog.timestamptz, '2026-01-01 00:00:00+00'::pg_catalog.timestamptz)
+  = '2026-12-01 00:00:00+00'::pg_catalog.timestamptz AS hourly_bymonth;
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=SECONDLY;INTERVAL=7;BYHOUR=9;BYMINUTE=30',
+  '2026-01-01 00:00:00+00'::pg_catalog.timestamptz, '2026-01-01 00:00:00+00'::pg_catalog.timestamptz)
+  = '2026-01-01 09:30:02+00'::pg_catalog.timestamptz AS secondly_aligned;
+RESET timezone;
+
+-- A skipped date must not skip the first occurrence of a repeated midnight.
+SET timezone TO 'America/Havana';
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=SECONDLY;BYMONTHDAY=1',
+  '2026-10-31 23:59:00-04'::pg_catalog.timestamptz, '2026-10-31 23:59:00-04'::pg_catalog.timestamptz)
+  = '2026-11-01 00:00:00-04'::pg_catalog.timestamptz AS first_midnight;
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=SECONDLY;INTERVAL=7;BYMONTHDAY=1',
+  '2026-10-31 23:59:00-04'::pg_catalog.timestamptz, '2026-10-31 23:59:00-04'::pg_catalog.timestamptz)
+  = '2026-11-01 00:00:03-04'::pg_catalog.timestamptz AS midnight_aligned;
+RESET timezone;
+
+-- A date skip must stop when a forward transition enters an allowed date.
+SET timezone TO 'Pacific/Apia';
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=SECONDLY;BYMONTHDAY=31',
+  '2011-12-29 23:59:00-10'::pg_catalog.timestamptz, '2011-12-29 23:59:00-10'::pg_catalog.timestamptz)
+  = '2011-12-31 00:00:00+14'::pg_catalog.timestamptz AS skipped_date;
+RESET timezone;
+
+-- Recompute the next midnight after a transition within a rejected date.
+SET timezone TO 'America/New_York';
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=SECONDLY;BYMONTHDAY=9',
+  '2026-03-08 00:00:00-05'::pg_catalog.timestamptz, '2026-03-08 00:00:00-05'::pg_catalog.timestamptz)
+  = '2026-03-09 00:00:00-04'::pg_catalog.timestamptz AS midnight_after_gap;
+RESET timezone;

@@ -102,7 +102,7 @@ typedef struct CalendarRule
 	bool		has_bysecond;
 } CalendarRule;
 
-/* Search this many periods past the fast-forward point before giving up. */
+/* Limit search iterations, including one per skipped block of periods. */
 #define SCHED_MAX_PERIODS	4000
 
 static void parse_calendar(const char *calendar, CalendarRule *rule);
@@ -895,6 +895,7 @@ eval_calendar(const CalendarRule *rule, TimestampTz start, TimestampTz after,
 	const char *tzn;
 	int64		k,
 				k0 = 0;
+	int			attempts;
 	TimestampTz best = 0;
 	bool		found = false;
 
@@ -906,8 +907,8 @@ eval_calendar(const CalendarRule *rule, TimestampTz start, TimestampTz after,
 	/*
 	 * Fast-forward: estimate the first period that could contain a candidate
 	 * greater than "after", so that e.g. FREQ=SECONDLY anchored years in the
-	 * past does not step through billions of periods.  Back off one period
-	 * to stay safe against boundary effects.
+	 * past does not step through billions of periods.  Back off one period to
+	 * stay safe against boundary effects.
 	 */
 	if (after > start)
 	{
@@ -941,7 +942,7 @@ eval_calendar(const CalendarRule *rule, TimestampTz start, TimestampTz after,
 		k0 = periods > 2 ? periods - 2 : 0;
 	}
 
-	for (k = k0; k < k0 + SCHED_MAX_PERIODS; k++)
+	for (k = k0, attempts = 0; attempts < SCHED_MAX_PERIODS; k++, attempts++)
 	{
 		CHECK_FOR_INTERRUPTS();
 
@@ -1104,8 +1105,61 @@ eval_calendar(const CalendarRule *rule, TimestampTz start, TimestampTz after,
 					if (timestamp2tm(base, &tz2, &tm, &f2, NULL, session_timezone) != 0)
 						break;
 
-					if (!date_matches(rule, tm.tm_year, tm.tm_mon, tm.tm_mday))
-						break;
+					/*
+					 * A coarse filter can exclude thousands of fine-grained
+					 * periods.  Skip them without consuming the search
+					 * budget, retaining the original interval's absolute-time
+					 * alignment.
+					 */
+					{
+						TimestampTz boundary = base;
+
+						if (!date_matches(rule, tm.tm_year, tm.tm_mon, tm.tm_mday))
+							boundary = base - tm.tm_hour * USECS_PER_HOUR -
+								tm.tm_min * USECS_PER_MINUTE -
+								tm.tm_sec * USECS_PER_SEC - f2 + USECS_PER_DAY;
+						else if (rule->has_byhour && !rule->byhour[tm.tm_hour])
+							boundary = base - tm.tm_min * USECS_PER_MINUTE -
+								tm.tm_sec * USECS_PER_SEC - f2 + USECS_PER_HOUR;
+						else if (rule->freq != FREQ_HOURLY &&
+								 rule->has_byminute && !rule->byminute[tm.tm_min])
+							boundary = base - tm.tm_sec * USECS_PER_SEC - f2 +
+								USECS_PER_MINUTE;
+
+						if (boundary > base)
+						{
+							pg_time_t	now = timestamptz_to_time_t(base);
+							pg_time_t	transition;
+							long int	before_offset,
+										after_offset;
+							int			before_dst,
+										after_dst;
+							int			status;
+							int64		skip;
+
+							/*
+							 * The boundary uses the current UTC offset.  Do
+							 * not skip across a transition, which can change
+							 * the filtered local date/hour/minute sooner.
+							 * Resolving midnight as a local time could
+							 * instead select its second occurrence during a
+							 * fall-back transition.
+							 */
+							status = pg_next_dst_boundary(&now, &before_offset,
+														  &before_dst, &transition,
+														  &after_offset, &after_dst,
+														  session_timezone);
+							if (status < 0)
+								break;	/* cannot safely skip this period */
+							if (status > 0 &&
+								transition < timestamptz_to_time_t(boundary))
+								boundary = time_t_to_timestamptz(transition);
+
+							skip = (boundary - base + step_usec - 1) / step_usec;
+							k += skip - 1;	/* the loop advances once more */
+							break;
+						}
+					}
 
 					if (rule->freq == FREQ_HOURLY)
 					{
