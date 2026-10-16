@@ -1661,7 +1661,7 @@ BEGIN
 		  WHEN 'LANG' THEN
 			SELECT sys.get_lang() INTO res;
 		  WHEN 'NLS_CURRENCY' THEN
-			SELECT null INTO res;
+			SELECT current_setting('nls_currency') INTO res;
 		  WHEN 'NLS_DATE_FORMAT' THEN
 			SELECT current_setting('nls_date_format') INTO res;
 		  WHEN 'NLS_DATE_LANGUAGE' THEN
@@ -1669,7 +1669,7 @@ BEGIN
 		  WHEN 'NLS_SORT' THEN
 			SELECT null INTO res;
 		  WHEN 'NLS_TERRITORY' THEN
-			SELECT null INTO res;
+			SELECT current_setting('nls_territory') INTO res;
 		  WHEN 'ORACLE_HOME' THEN
 			SELECT current_setting('data_directory') INTO res;
 		  WHEN 'PLATFORM_SLASH' THEN
