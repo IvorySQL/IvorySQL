@@ -410,13 +410,17 @@ ERROR:  syntax error at or near "with"
 LINE 1: SELECT date '2001-02-03' + time with time zone '04:05:06 UTC...
                                         ^
 SELECT date '1991-02-03' + interval '2 years' AS "Add Two Years";
-ERROR:  syntax error at or near "AS"
-LINE 1: SELECT date '1991-02-03' + interval '2 years' AS "Add Two Ye...
-                                                      ^
+      Add Two Years       
+--------------------------
+ Wed Feb 03 00:00:00 1993
+(1 row)
+
 SELECT date '2001-12-13' - interval '2 years' AS "Subtract Two Years";
-ERROR:  syntax error at or near "AS"
-LINE 1: SELECT date '2001-12-13' - interval '2 years' AS "Subtract T...
-                                                      ^
+    Subtract Two Years    
+--------------------------
+ Mon Dec 13 00:00:00 1999
+(1 row)
+
 -- subtract time from date should not make sense; use interval instead
 SELECT date '1991-02-03' - time '04:05:06' AS "Subtract Time";
       Subtract Time       
@@ -540,13 +544,19 @@ ERROR:  syntax error at or near "with"
 LINE 1: SELECT timestamptz(date '1994-01-01', time with time zone '1...
                                                    ^
 SELECT d1 + interval '1 year' AS one_year FROM TIMESTAMP_TBL;
-ERROR:  syntax error at or near "AS"
-LINE 1: SELECT d1 + interval '1 year' AS one_year FROM TIMESTAMP_TBL...
-                                      ^
+         one_year         
+--------------------------
+ Fri Jan 02 00:00:00 1998
+ Fri Jan 02 03:04:05 1998
+(2 rows)
+
 SELECT d1 - interval '1 year' AS one_year FROM TIMESTAMP_TBL;
-ERROR:  syntax error at or near "AS"
-LINE 1: SELECT d1 - interval '1 year' AS one_year FROM TIMESTAMP_TBL...
-                                      ^
+         one_year         
+--------------------------
+ Tue Jan 02 00:00:00 1996
+ Tue Jan 02 03:04:05 1996
+(2 rows)
+
 SELECT timestamp with time zone '1996-03-01' - interval '1 second' AS "Feb 29";
 ERROR:  syntax error at or near "with"
 LINE 1: SELECT timestamp with time zone '1996-03-01' - interval '1 s...
@@ -632,54 +642,90 @@ ERROR:  syntax error at or near "with"
 LINE 1: SELECT timestamptz(date '1994-01-01', time with time zone '1...
                                                    ^
 SELECT d1 + interval '1 year' AS one_year FROM TIMESTAMPTZ_TBL;
-ERROR:  syntax error at or near "AS"
-LINE 1: SELECT d1 + interval '1 year' AS one_year FROM TIMESTAMPTZ_T...
-                                      ^
+           one_year           
+------------------------------
+ Fri Jan 02 00:00:00 1998 PST
+ Fri Jan 02 03:04:05 1998 PST
+ Tue Feb 10 01:32:01 1998 PST
+ Tue Feb 10 01:32:01 1998 PST
+ Tue Feb 10 01:32:01 1998 PST
+ Tue Feb 10 01:32:01 1998 PST
+ Wed Jun 10 03:32:01 1998 PDT
+ Tue Feb 10 01:32:01 1998 PST
+(8 rows)
+
 SELECT d1 - interval '1 year' AS one_year FROM TIMESTAMPTZ_TBL;
-ERROR:  syntax error at or near "AS"
-LINE 1: SELECT d1 - interval '1 year' AS one_year FROM TIMESTAMPTZ_T...
-                                      ^
+           one_year           
+------------------------------
+ Tue Jan 02 00:00:00 1996 PST
+ Tue Jan 02 03:04:05 1996 PST
+ Sat Feb 10 01:32:01 1996 PST
+ Sat Feb 10 01:32:01 1996 PST
+ Sat Feb 10 01:32:01 1996 PST
+ Sat Feb 10 01:32:01 1996 PST
+ Mon Jun 10 03:32:01 1996 PDT
+ Sat Feb 10 01:32:01 1996 PST
+(8 rows)
+
 --
 -- time, interval arithmetic
 --
 SELECT CAST(time '01:02' AS interval) AS "+01:02";
-ERROR:  missing or invalid datetime field.
+     +01:02      
+-----------------
+ @ 1 hour 2 mins
+(1 row)
+
 SELECT CAST(interval '02:03' AS time) AS "02:03:00";
-ERROR:  syntax error at or near "AS"
-LINE 1: SELECT CAST(interval '02:03' AS time) AS "02:03:00";
-                                     ^
+ 02:03:00 
+----------
+ 02:03:00
+(1 row)
+
 SELECT CAST(interval '-02:03' AS time) AS "21:57:00";
-ERROR:  syntax error at or near "AS"
-LINE 1: SELECT CAST(interval '-02:03' AS time) AS "21:57:00";
-                                      ^
+ 21:57:00 
+----------
+ 21:57:00
+(1 row)
+
 SELECT CAST(interval '-9223372022400000000 us' AS time) AS "00:00:00";
-ERROR:  syntax error at or near "AS"
-LINE 1: SELECT CAST(interval '-9223372022400000000 us' AS time) AS "...
-                                                       ^
+ 00:00:00 
+----------
+ 00:00:00
+(1 row)
+
 SELECT time '01:30' + interval '02:01' AS "03:31:00";
-ERROR:  syntax error at or near "AS"
-LINE 1: SELECT time '01:30' + interval '02:01' AS "03:31:00";
-                                               ^
+ 03:31:00 
+----------
+ 03:31:00
+(1 row)
+
 SELECT time '01:30' - interval '02:01' AS "23:29:00";
-ERROR:  syntax error at or near "AS"
-LINE 1: SELECT time '01:30' - interval '02:01' AS "23:29:00";
-                                               ^
+ 23:29:00 
+----------
+ 23:29:00
+(1 row)
+
 SELECT time '02:30' + interval '36:01' AS "14:31:00";
-ERROR:  syntax error at or near "AS"
-LINE 1: SELECT time '02:30' + interval '36:01' AS "14:31:00";
-                                               ^
+ 14:31:00 
+----------
+ 14:31:00
+(1 row)
+
 SELECT time '03:30' + interval '1 month 04:01' AS "07:31:00";
-ERROR:  syntax error at or near "AS"
-LINE 1: SELECT time '03:30' + interval '1 month 04:01' AS "07:31:00"...
-                                                       ^
+ 07:31:00 
+----------
+ 07:31:00
+(1 row)
+
 SELECT CAST(time with time zone '01:02-08' AS interval) AS "+00:01";
 ERROR:  syntax error at or near "with"
 LINE 1: SELECT CAST(time with time zone '01:02-08' AS interval) AS "...
                          ^
 SELECT CAST(interval '02:03' AS time with time zone) AS "02:03:00-08";
-ERROR:  syntax error at or near "AS"
+ERROR:  cannot cast type interval to pg_catalog.timetz
 LINE 1: SELECT CAST(interval '02:03' AS time with time zone) AS "02:...
-                                     ^
+               ^
 SELECT time with time zone '01:30-08' - interval '02:01' AS "23:29:00-08";
 ERROR:  syntax error at or near "with"
 LINE 1: SELECT time with time zone '01:30-08' - interval '02:01' AS ...
@@ -708,23 +754,250 @@ SELECT t.d1 AS t, i.f1 AS i, t.d1 + i.f1 AS "add", t.d1 - i.f1 AS "subtract"
   WHERE t.d1 BETWEEN '1990-01-01' AND '2001-01-01'
     AND i.f1 BETWEEN '00:00' AND '23:00'
   ORDER BY 1,2;
-ERROR:  relation "interval_tbl" does not exist
-LINE 2:   FROM TIMESTAMP_TBL t, INTERVAL_TBL i
-                                ^
+             t              |     i     |           add            |         subtract         
+----------------------------+-----------+--------------------------+--------------------------
+ 1997-01-02 00:00:00.000000 | @ 1 min   | Thu Jan 02 00:01:00 1997 | Wed Jan 01 23:59:00 1997
+ 1997-01-02 00:00:00.000000 | @ 5 hours | Thu Jan 02 05:00:00 1997 | Wed Jan 01 19:00:00 1997
+ 1997-01-02 03:04:05.000000 | @ 1 min   | Thu Jan 02 03:05:05 1997 | Thu Jan 02 03:03:05 1997
+ 1997-01-02 03:04:05.000000 | @ 5 hours | Thu Jan 02 08:04:05 1997 | Wed Jan 01 22:04:05 1997
+(4 rows)
+
 SELECT t.f1 AS t, i.f1 AS i, t.f1 + i.f1 AS "add", t.f1 - i.f1 AS "subtract"
   FROM TIME_TBL t, INTERVAL_TBL i
   WHERE isfinite(i.f1)
   ORDER BY 1,2;
-ERROR:  relation "interval_tbl" does not exist
-LINE 2:   FROM TIME_TBL t, INTERVAL_TBL i
-                           ^
+      t      |               i               |     add     |  subtract   
+-------------+-------------------------------+-------------+-------------
+ 00:00:00    | @ 14 secs ago                 | 23:59:46    | 00:00:14
+ 00:00:00    | @ 1 min                       | 00:01:00    | 23:59:00
+ 00:00:00    | @ 5 hours                     | 05:00:00    | 19:00:00
+ 00:00:00    | @ 1 day 2 hours 3 mins 4 secs | 02:03:04    | 21:56:56
+ 00:00:00    | @ 10 days                     | 00:00:00    | 00:00:00
+ 00:00:00    | @ 3 mons                      | 00:00:00    | 00:00:00
+ 00:00:00    | @ 5 mons                      | 00:00:00    | 00:00:00
+ 00:00:00    | @ 5 mons 12 hours             | 12:00:00    | 12:00:00
+ 00:00:00    | @ 6 years                     | 00:00:00    | 00:00:00
+ 00:00:00    | @ 34 years                    | 00:00:00    | 00:00:00
+ 01:00:00    | @ 14 secs ago                 | 00:59:46    | 01:00:14
+ 01:00:00    | @ 1 min                       | 01:01:00    | 00:59:00
+ 01:00:00    | @ 5 hours                     | 06:00:00    | 20:00:00
+ 01:00:00    | @ 1 day 2 hours 3 mins 4 secs | 03:03:04    | 22:56:56
+ 01:00:00    | @ 10 days                     | 01:00:00    | 01:00:00
+ 01:00:00    | @ 3 mons                      | 01:00:00    | 01:00:00
+ 01:00:00    | @ 5 mons                      | 01:00:00    | 01:00:00
+ 01:00:00    | @ 5 mons 12 hours             | 13:00:00    | 13:00:00
+ 01:00:00    | @ 6 years                     | 01:00:00    | 01:00:00
+ 01:00:00    | @ 34 years                    | 01:00:00    | 01:00:00
+ 02:03:00    | @ 14 secs ago                 | 02:02:46    | 02:03:14
+ 02:03:00    | @ 1 min                       | 02:04:00    | 02:02:00
+ 02:03:00    | @ 5 hours                     | 07:03:00    | 21:03:00
+ 02:03:00    | @ 1 day 2 hours 3 mins 4 secs | 04:06:04    | 23:59:56
+ 02:03:00    | @ 10 days                     | 02:03:00    | 02:03:00
+ 02:03:00    | @ 3 mons                      | 02:03:00    | 02:03:00
+ 02:03:00    | @ 5 mons                      | 02:03:00    | 02:03:00
+ 02:03:00    | @ 5 mons 12 hours             | 14:03:00    | 14:03:00
+ 02:03:00    | @ 6 years                     | 02:03:00    | 02:03:00
+ 02:03:00    | @ 34 years                    | 02:03:00    | 02:03:00
+ 11:59:00    | @ 14 secs ago                 | 11:58:46    | 11:59:14
+ 11:59:00    | @ 1 min                       | 12:00:00    | 11:58:00
+ 11:59:00    | @ 5 hours                     | 16:59:00    | 06:59:00
+ 11:59:00    | @ 1 day 2 hours 3 mins 4 secs | 14:02:04    | 09:55:56
+ 11:59:00    | @ 10 days                     | 11:59:00    | 11:59:00
+ 11:59:00    | @ 3 mons                      | 11:59:00    | 11:59:00
+ 11:59:00    | @ 5 mons                      | 11:59:00    | 11:59:00
+ 11:59:00    | @ 5 mons 12 hours             | 23:59:00    | 23:59:00
+ 11:59:00    | @ 6 years                     | 11:59:00    | 11:59:00
+ 11:59:00    | @ 34 years                    | 11:59:00    | 11:59:00
+ 12:00:00    | @ 14 secs ago                 | 11:59:46    | 12:00:14
+ 12:00:00    | @ 1 min                       | 12:01:00    | 11:59:00
+ 12:00:00    | @ 5 hours                     | 17:00:00    | 07:00:00
+ 12:00:00    | @ 1 day 2 hours 3 mins 4 secs | 14:03:04    | 09:56:56
+ 12:00:00    | @ 10 days                     | 12:00:00    | 12:00:00
+ 12:00:00    | @ 3 mons                      | 12:00:00    | 12:00:00
+ 12:00:00    | @ 5 mons                      | 12:00:00    | 12:00:00
+ 12:00:00    | @ 5 mons 12 hours             | 00:00:00    | 00:00:00
+ 12:00:00    | @ 6 years                     | 12:00:00    | 12:00:00
+ 12:00:00    | @ 34 years                    | 12:00:00    | 12:00:00
+ 12:01:00    | @ 14 secs ago                 | 12:00:46    | 12:01:14
+ 12:01:00    | @ 1 min                       | 12:02:00    | 12:00:00
+ 12:01:00    | @ 5 hours                     | 17:01:00    | 07:01:00
+ 12:01:00    | @ 1 day 2 hours 3 mins 4 secs | 14:04:04    | 09:57:56
+ 12:01:00    | @ 10 days                     | 12:01:00    | 12:01:00
+ 12:01:00    | @ 3 mons                      | 12:01:00    | 12:01:00
+ 12:01:00    | @ 5 mons                      | 12:01:00    | 12:01:00
+ 12:01:00    | @ 5 mons 12 hours             | 00:01:00    | 00:01:00
+ 12:01:00    | @ 6 years                     | 12:01:00    | 12:01:00
+ 12:01:00    | @ 34 years                    | 12:01:00    | 12:01:00
+ 15:36:39    | @ 14 secs ago                 | 15:36:25    | 15:36:53
+ 15:36:39    | @ 14 secs ago                 | 15:36:25    | 15:36:53
+ 15:36:39    | @ 1 min                       | 15:37:39    | 15:35:39
+ 15:36:39    | @ 1 min                       | 15:37:39    | 15:35:39
+ 15:36:39    | @ 5 hours                     | 20:36:39    | 10:36:39
+ 15:36:39    | @ 5 hours                     | 20:36:39    | 10:36:39
+ 15:36:39    | @ 1 day 2 hours 3 mins 4 secs | 17:39:43    | 13:33:35
+ 15:36:39    | @ 1 day 2 hours 3 mins 4 secs | 17:39:43    | 13:33:35
+ 15:36:39    | @ 10 days                     | 15:36:39    | 15:36:39
+ 15:36:39    | @ 10 days                     | 15:36:39    | 15:36:39
+ 15:36:39    | @ 3 mons                      | 15:36:39    | 15:36:39
+ 15:36:39    | @ 3 mons                      | 15:36:39    | 15:36:39
+ 15:36:39    | @ 5 mons                      | 15:36:39    | 15:36:39
+ 15:36:39    | @ 5 mons                      | 15:36:39    | 15:36:39
+ 15:36:39    | @ 5 mons 12 hours             | 03:36:39    | 03:36:39
+ 15:36:39    | @ 5 mons 12 hours             | 03:36:39    | 03:36:39
+ 15:36:39    | @ 6 years                     | 15:36:39    | 15:36:39
+ 15:36:39    | @ 6 years                     | 15:36:39    | 15:36:39
+ 15:36:39    | @ 34 years                    | 15:36:39    | 15:36:39
+ 15:36:39    | @ 34 years                    | 15:36:39    | 15:36:39
+ 23:59:00    | @ 14 secs ago                 | 23:58:46    | 23:59:14
+ 23:59:00    | @ 1 min                       | 00:00:00    | 23:58:00
+ 23:59:00    | @ 5 hours                     | 04:59:00    | 18:59:00
+ 23:59:00    | @ 1 day 2 hours 3 mins 4 secs | 02:02:04    | 21:55:56
+ 23:59:00    | @ 10 days                     | 23:59:00    | 23:59:00
+ 23:59:00    | @ 3 mons                      | 23:59:00    | 23:59:00
+ 23:59:00    | @ 5 mons                      | 23:59:00    | 23:59:00
+ 23:59:00    | @ 5 mons 12 hours             | 11:59:00    | 11:59:00
+ 23:59:00    | @ 6 years                     | 23:59:00    | 23:59:00
+ 23:59:00    | @ 34 years                    | 23:59:00    | 23:59:00
+ 23:59:59.99 | @ 14 secs ago                 | 23:59:45.99 | 00:00:13.99
+ 23:59:59.99 | @ 1 min                       | 00:00:59.99 | 23:58:59.99
+ 23:59:59.99 | @ 5 hours                     | 04:59:59.99 | 18:59:59.99
+ 23:59:59.99 | @ 1 day 2 hours 3 mins 4 secs | 02:03:03.99 | 21:56:55.99
+ 23:59:59.99 | @ 10 days                     | 23:59:59.99 | 23:59:59.99
+ 23:59:59.99 | @ 3 mons                      | 23:59:59.99 | 23:59:59.99
+ 23:59:59.99 | @ 5 mons                      | 23:59:59.99 | 23:59:59.99
+ 23:59:59.99 | @ 5 mons 12 hours             | 11:59:59.99 | 11:59:59.99
+ 23:59:59.99 | @ 6 years                     | 23:59:59.99 | 23:59:59.99
+ 23:59:59.99 | @ 34 years                    | 23:59:59.99 | 23:59:59.99
+(100 rows)
+
 SELECT t.f1 AS t, i.f1 AS i, t.f1 + i.f1 AS "add", t.f1 - i.f1 AS "subtract"
   FROM TIMETZ_TBL t, INTERVAL_TBL i
   WHERE isfinite(i.f1)
   ORDER BY 1,2;
-ERROR:  relation "interval_tbl" does not exist
-LINE 2:   FROM TIMETZ_TBL t, INTERVAL_TBL i
-                             ^
+       t        |               i               |      add       |    subtract    
+----------------+-------------------------------+----------------+----------------
+ 00:01:00-07    | @ 14 secs ago                 | 00:00:46-07    | 00:01:14-07
+ 00:01:00-07    | @ 1 min                       | 00:02:00-07    | 00:00:00-07
+ 00:01:00-07    | @ 5 hours                     | 05:01:00-07    | 19:01:00-07
+ 00:01:00-07    | @ 1 day 2 hours 3 mins 4 secs | 02:04:04-07    | 21:57:56-07
+ 00:01:00-07    | @ 10 days                     | 00:01:00-07    | 00:01:00-07
+ 00:01:00-07    | @ 3 mons                      | 00:01:00-07    | 00:01:00-07
+ 00:01:00-07    | @ 5 mons                      | 00:01:00-07    | 00:01:00-07
+ 00:01:00-07    | @ 5 mons 12 hours             | 12:01:00-07    | 12:01:00-07
+ 00:01:00-07    | @ 6 years                     | 00:01:00-07    | 00:01:00-07
+ 00:01:00-07    | @ 34 years                    | 00:01:00-07    | 00:01:00-07
+ 01:00:00-07    | @ 14 secs ago                 | 00:59:46-07    | 01:00:14-07
+ 01:00:00-07    | @ 1 min                       | 01:01:00-07    | 00:59:00-07
+ 01:00:00-07    | @ 5 hours                     | 06:00:00-07    | 20:00:00-07
+ 01:00:00-07    | @ 1 day 2 hours 3 mins 4 secs | 03:03:04-07    | 22:56:56-07
+ 01:00:00-07    | @ 10 days                     | 01:00:00-07    | 01:00:00-07
+ 01:00:00-07    | @ 3 mons                      | 01:00:00-07    | 01:00:00-07
+ 01:00:00-07    | @ 5 mons                      | 01:00:00-07    | 01:00:00-07
+ 01:00:00-07    | @ 5 mons 12 hours             | 13:00:00-07    | 13:00:00-07
+ 01:00:00-07    | @ 6 years                     | 01:00:00-07    | 01:00:00-07
+ 01:00:00-07    | @ 34 years                    | 01:00:00-07    | 01:00:00-07
+ 02:03:00-07    | @ 14 secs ago                 | 02:02:46-07    | 02:03:14-07
+ 02:03:00-07    | @ 1 min                       | 02:04:00-07    | 02:02:00-07
+ 02:03:00-07    | @ 5 hours                     | 07:03:00-07    | 21:03:00-07
+ 02:03:00-07    | @ 1 day 2 hours 3 mins 4 secs | 04:06:04-07    | 23:59:56-07
+ 02:03:00-07    | @ 10 days                     | 02:03:00-07    | 02:03:00-07
+ 02:03:00-07    | @ 3 mons                      | 02:03:00-07    | 02:03:00-07
+ 02:03:00-07    | @ 5 mons                      | 02:03:00-07    | 02:03:00-07
+ 02:03:00-07    | @ 5 mons 12 hours             | 14:03:00-07    | 14:03:00-07
+ 02:03:00-07    | @ 6 years                     | 02:03:00-07    | 02:03:00-07
+ 02:03:00-07    | @ 34 years                    | 02:03:00-07    | 02:03:00-07
+ 08:08:00-04    | @ 14 secs ago                 | 08:07:46-04    | 08:08:14-04
+ 08:08:00-04    | @ 1 min                       | 08:09:00-04    | 08:07:00-04
+ 08:08:00-04    | @ 5 hours                     | 13:08:00-04    | 03:08:00-04
+ 08:08:00-04    | @ 1 day 2 hours 3 mins 4 secs | 10:11:04-04    | 06:04:56-04
+ 08:08:00-04    | @ 10 days                     | 08:08:00-04    | 08:08:00-04
+ 08:08:00-04    | @ 3 mons                      | 08:08:00-04    | 08:08:00-04
+ 08:08:00-04    | @ 5 mons                      | 08:08:00-04    | 08:08:00-04
+ 08:08:00-04    | @ 5 mons 12 hours             | 20:08:00-04    | 20:08:00-04
+ 08:08:00-04    | @ 6 years                     | 08:08:00-04    | 08:08:00-04
+ 08:08:00-04    | @ 34 years                    | 08:08:00-04    | 08:08:00-04
+ 07:07:00-08    | @ 14 secs ago                 | 07:06:46-08    | 07:07:14-08
+ 07:07:00-08    | @ 1 min                       | 07:08:00-08    | 07:06:00-08
+ 07:07:00-08    | @ 5 hours                     | 12:07:00-08    | 02:07:00-08
+ 07:07:00-08    | @ 1 day 2 hours 3 mins 4 secs | 09:10:04-08    | 05:03:56-08
+ 07:07:00-08    | @ 10 days                     | 07:07:00-08    | 07:07:00-08
+ 07:07:00-08    | @ 3 mons                      | 07:07:00-08    | 07:07:00-08
+ 07:07:00-08    | @ 5 mons                      | 07:07:00-08    | 07:07:00-08
+ 07:07:00-08    | @ 5 mons 12 hours             | 19:07:00-08    | 19:07:00-08
+ 07:07:00-08    | @ 6 years                     | 07:07:00-08    | 07:07:00-08
+ 07:07:00-08    | @ 34 years                    | 07:07:00-08    | 07:07:00-08
+ 11:59:00-07    | @ 14 secs ago                 | 11:58:46-07    | 11:59:14-07
+ 11:59:00-07    | @ 1 min                       | 12:00:00-07    | 11:58:00-07
+ 11:59:00-07    | @ 5 hours                     | 16:59:00-07    | 06:59:00-07
+ 11:59:00-07    | @ 1 day 2 hours 3 mins 4 secs | 14:02:04-07    | 09:55:56-07
+ 11:59:00-07    | @ 10 days                     | 11:59:00-07    | 11:59:00-07
+ 11:59:00-07    | @ 3 mons                      | 11:59:00-07    | 11:59:00-07
+ 11:59:00-07    | @ 5 mons                      | 11:59:00-07    | 11:59:00-07
+ 11:59:00-07    | @ 5 mons 12 hours             | 23:59:00-07    | 23:59:00-07
+ 11:59:00-07    | @ 6 years                     | 11:59:00-07    | 11:59:00-07
+ 11:59:00-07    | @ 34 years                    | 11:59:00-07    | 11:59:00-07
+ 12:00:00-07    | @ 14 secs ago                 | 11:59:46-07    | 12:00:14-07
+ 12:00:00-07    | @ 1 min                       | 12:01:00-07    | 11:59:00-07
+ 12:00:00-07    | @ 5 hours                     | 17:00:00-07    | 07:00:00-07
+ 12:00:00-07    | @ 1 day 2 hours 3 mins 4 secs | 14:03:04-07    | 09:56:56-07
+ 12:00:00-07    | @ 10 days                     | 12:00:00-07    | 12:00:00-07
+ 12:00:00-07    | @ 3 mons                      | 12:00:00-07    | 12:00:00-07
+ 12:00:00-07    | @ 5 mons                      | 12:00:00-07    | 12:00:00-07
+ 12:00:00-07    | @ 5 mons 12 hours             | 00:00:00-07    | 00:00:00-07
+ 12:00:00-07    | @ 6 years                     | 12:00:00-07    | 12:00:00-07
+ 12:00:00-07    | @ 34 years                    | 12:00:00-07    | 12:00:00-07
+ 12:01:00-07    | @ 14 secs ago                 | 12:00:46-07    | 12:01:14-07
+ 12:01:00-07    | @ 1 min                       | 12:02:00-07    | 12:00:00-07
+ 12:01:00-07    | @ 5 hours                     | 17:01:00-07    | 07:01:00-07
+ 12:01:00-07    | @ 1 day 2 hours 3 mins 4 secs | 14:04:04-07    | 09:57:56-07
+ 12:01:00-07    | @ 10 days                     | 12:01:00-07    | 12:01:00-07
+ 12:01:00-07    | @ 3 mons                      | 12:01:00-07    | 12:01:00-07
+ 12:01:00-07    | @ 5 mons                      | 12:01:00-07    | 12:01:00-07
+ 12:01:00-07    | @ 5 mons 12 hours             | 00:01:00-07    | 00:01:00-07
+ 12:01:00-07    | @ 6 years                     | 12:01:00-07    | 12:01:00-07
+ 12:01:00-07    | @ 34 years                    | 12:01:00-07    | 12:01:00-07
+ 15:36:39-04    | @ 14 secs ago                 | 15:36:25-04    | 15:36:53-04
+ 15:36:39-04    | @ 1 min                       | 15:37:39-04    | 15:35:39-04
+ 15:36:39-04    | @ 5 hours                     | 20:36:39-04    | 10:36:39-04
+ 15:36:39-04    | @ 1 day 2 hours 3 mins 4 secs | 17:39:43-04    | 13:33:35-04
+ 15:36:39-04    | @ 10 days                     | 15:36:39-04    | 15:36:39-04
+ 15:36:39-04    | @ 3 mons                      | 15:36:39-04    | 15:36:39-04
+ 15:36:39-04    | @ 5 mons                      | 15:36:39-04    | 15:36:39-04
+ 15:36:39-04    | @ 5 mons 12 hours             | 03:36:39-04    | 03:36:39-04
+ 15:36:39-04    | @ 6 years                     | 15:36:39-04    | 15:36:39-04
+ 15:36:39-04    | @ 34 years                    | 15:36:39-04    | 15:36:39-04
+ 15:36:39-05    | @ 14 secs ago                 | 15:36:25-05    | 15:36:53-05
+ 15:36:39-05    | @ 1 min                       | 15:37:39-05    | 15:35:39-05
+ 15:36:39-05    | @ 5 hours                     | 20:36:39-05    | 10:36:39-05
+ 15:36:39-05    | @ 1 day 2 hours 3 mins 4 secs | 17:39:43-05    | 13:33:35-05
+ 15:36:39-05    | @ 10 days                     | 15:36:39-05    | 15:36:39-05
+ 15:36:39-05    | @ 3 mons                      | 15:36:39-05    | 15:36:39-05
+ 15:36:39-05    | @ 5 mons                      | 15:36:39-05    | 15:36:39-05
+ 15:36:39-05    | @ 5 mons 12 hours             | 03:36:39-05    | 03:36:39-05
+ 15:36:39-05    | @ 6 years                     | 15:36:39-05    | 15:36:39-05
+ 15:36:39-05    | @ 34 years                    | 15:36:39-05    | 15:36:39-05
+ 23:59:00-07    | @ 14 secs ago                 | 23:58:46-07    | 23:59:14-07
+ 23:59:00-07    | @ 1 min                       | 00:00:00-07    | 23:58:00-07
+ 23:59:00-07    | @ 5 hours                     | 04:59:00-07    | 18:59:00-07
+ 23:59:00-07    | @ 1 day 2 hours 3 mins 4 secs | 02:02:04-07    | 21:55:56-07
+ 23:59:00-07    | @ 10 days                     | 23:59:00-07    | 23:59:00-07
+ 23:59:00-07    | @ 3 mons                      | 23:59:00-07    | 23:59:00-07
+ 23:59:00-07    | @ 5 mons                      | 23:59:00-07    | 23:59:00-07
+ 23:59:00-07    | @ 5 mons 12 hours             | 11:59:00-07    | 11:59:00-07
+ 23:59:00-07    | @ 6 years                     | 23:59:00-07    | 23:59:00-07
+ 23:59:00-07    | @ 34 years                    | 23:59:00-07    | 23:59:00-07
+ 23:59:59.99-07 | @ 14 secs ago                 | 23:59:45.99-07 | 00:00:13.99-07
+ 23:59:59.99-07 | @ 1 min                       | 00:00:59.99-07 | 23:58:59.99-07
+ 23:59:59.99-07 | @ 5 hours                     | 04:59:59.99-07 | 18:59:59.99-07
+ 23:59:59.99-07 | @ 1 day 2 hours 3 mins 4 secs | 02:03:03.99-07 | 21:56:55.99-07
+ 23:59:59.99-07 | @ 10 days                     | 23:59:59.99-07 | 23:59:59.99-07
+ 23:59:59.99-07 | @ 3 mons                      | 23:59:59.99-07 | 23:59:59.99-07
+ 23:59:59.99-07 | @ 5 mons                      | 23:59:59.99-07 | 23:59:59.99-07
+ 23:59:59.99-07 | @ 5 mons 12 hours             | 11:59:59.99-07 | 11:59:59.99-07
+ 23:59:59.99-07 | @ 6 years                     | 23:59:59.99-07 | 23:59:59.99-07
+ 23:59:59.99-07 | @ 34 years                    | 23:59:59.99-07 | 23:59:59.99-07
+(120 rows)
+
 -- SQL9x OVERLAPS operator
 -- test with time zone
 SELECT (timestamp with time zone '2000-11-27', timestamp with time zone '2000-11-28')
@@ -798,22 +1071,28 @@ SELECT (time '00:00', time '01:00')
 
 SELECT (time '00:00', interval '1 hour')
   OVERLAPS (time '00:30', interval '1 hour') AS "True";
-ERROR:  syntax error at or near ")"
-LINE 1: SELECT (time '00:00', interval '1 hour')
-                                               ^
+ True 
+------
+ t
+(1 row)
+
 SELECT (time '00:00', interval '1 hour')
   OVERLAPS (time '01:30', interval '1 hour') AS "False";
-ERROR:  syntax error at or near ")"
-LINE 1: SELECT (time '00:00', interval '1 hour')
-                                               ^
+ False 
+-------
+ f
+(1 row)
+
 -- SQL99 seems to want this to be false (and we conform to the spec).
 -- istm that this *should* return true, on the theory that time
 -- intervals can wrap around the day boundary - thomas 2001-09-25
 SELECT (time '00:00', interval '1 hour')
   OVERLAPS (time '01:30', interval '1 day') AS "False";
-ERROR:  syntax error at or near ")"
-LINE 1: SELECT (time '00:00', interval '1 hour')
-                                               ^
+ False 
+-------
+ f
+(1 row)
+
 CREATE TABLE TEMP_TIMESTAMP (f1 timestamp with time zone);
 -- get some candidate input values
 INSERT INTO TEMP_TIMESTAMP (f1)
@@ -834,15 +1113,17 @@ SELECT f1 AS "timestamp"
 SELECT d.f1 AS "timestamp", t.f1 AS "interval", d.f1 + t.f1 AS plus
   FROM TEMP_TIMESTAMP d, INTERVAL_TBL t
   ORDER BY plus, "timestamp", "interval";
-ERROR:  relation "interval_tbl" does not exist
-LINE 2:   FROM TEMP_TIMESTAMP d, INTERVAL_TBL t
-                                 ^
+ timestamp | interval | plus 
+-----------+----------+------
+(0 rows)
+
 SELECT d.f1 AS "timestamp", t.f1 AS "interval", d.f1 - t.f1 AS minus
   FROM TEMP_TIMESTAMP d, INTERVAL_TBL t
   ORDER BY minus, "timestamp", "interval";
-ERROR:  relation "interval_tbl" does not exist
-LINE 2:   FROM TEMP_TIMESTAMP d, INTERVAL_TBL t
-                                 ^
+ timestamp | interval | minus 
+-----------+----------+-------
+(0 rows)
+
 SELECT d.f1 AS "timestamp",
    timestamp with time zone '1980-01-06 00:00 GMT' AS gpstime_zero,
    d.f1 - timestamp with time zone '1980-01-06 00:00 GMT' AS difference

@@ -644,6 +644,14 @@ INSERT INTO INFINITE_INTERVAL_TBL VALUES ('infinity'), ('-infinity'), ('1 year 2
 SELECT i, isfinite(i) FROM INFINITE_INTERVAL_TBL;
 
 -- test basic arithmetic
+--
+-- Run the arithmetic checks in PG mode: the eval() helper drives the
+-- arithmetic by executing format strings, and in Oracle mode the bare
+-- date/timestamp literals map to the Oracle date-time types, producing
+-- mode-specific errors including a nondeterministic "function %p returned
+-- NULL" message for the timestamptz case.  The arithmetic itself is
+-- mode-independent, so evaluate it against the PostgreSQL types.
+SET ivorysql.compatible_mode = pg;
 CREATE FUNCTION eval(expr text)
 RETURNS text AS
 $$
@@ -657,6 +665,7 @@ EXCEPTION WHEN OTHERS THEN
 END
 $$
 LANGUAGE plpgsql;
+/
 
 SELECT d AS date, i AS interval,
        eval(format('date %L + interval %L', d, i)) AS plus,
@@ -699,6 +708,7 @@ FROM (VALUES (timestamptz '-infinity'),
              (timestamptz 'infinity')) AS t1(t),
      (VALUES (interval '-infinity'),
              (interval 'infinity')) AS t2(i);
+SET ivorysql.compatible_mode = oracle;
 
 -- time +/- infinite interval not supported
 SELECT time '11:27:42' + interval 'infinity';
