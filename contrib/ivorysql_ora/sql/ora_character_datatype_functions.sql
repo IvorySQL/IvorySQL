@@ -1558,3 +1558,45 @@ select to_single_byte('１．２');
 select to_single_byte(１．２);
 select to_single_byte(3.4);
 select to_single_byte(NULL);
+
+--
+-- Tests for soundex
+--
+-- Examples from the Oracle SQL Language Reference (SOUNDEX):
+select soundex('SMITH') from dual;
+select soundex('SMYTHE') from dual;
+select soundex('smith') from dual;
+
+-- Same-digit letters adjacent in the original string, or separated
+-- only by h or w, are coded once; vowels break the adjacency.
+-- Ashcraft is A261 per the documented algorithm, not A-226.
+select soundex('Ashcraft') from dual;
+select soundex('Pfister') from dual;
+select soundex('Tymczak') from dual;
+select soundex('Honeyman') from dual;
+select soundex('Boothdavis') from dual;
+
+-- Only h and w may intervene between same-code letters: digits,
+-- punctuation and whitespace break the adjacency, so the P of B-P
+-- is coded (B100) while the P of BWP is suppressed (B000).
+select soundex('BP') from dual;
+select soundex('B-P') from dual;
+select soundex('B P') from dual;
+select soundex('BWP') from dual;
+select soundex('Ash-craft') from dual;
+
+-- Zero padding
+select soundex('Lee') from dual;
+select soundex('Washington') from dual;
+select soundex('GUTIERREZ') from dual;
+select soundex('VANDEUSEN') from dual;
+select soundex('hello world!') from dual;
+
+-- NULL input propagates
+select soundex(NULL) from dual;
+
+-- Strings without ASCII letters produce an empty result
+-- (undocumented region; convention matches contrib/fuzzystrmatch)
+select soundex('12345') from dual;
+select soundex('') from dual;
+select soundex('中文') from dual;
