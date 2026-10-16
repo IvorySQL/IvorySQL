@@ -1053,3 +1053,66 @@ select insertchildxml(XMLtype('<a>A<b>B</b></a>'), '/', 'c', XMLType('<c>C</c>')
  <a>A<b>B</b><c>C</c></a>
 (1 row)
 
+--
+-- Issue #2277: an invalid XPath expression must be reported with
+-- ERRCODE_INVALID_ARGUMENT_FOR_XQUERY (SQLSTATE 10608), like core
+-- PostgreSQL, not as an internal error (XX000).
+--
+create table xpath_err_codes(func text, sqlstate text, message text);
+DO $$
+DECLARE
+    st  text;
+    msg text;
+BEGIN
+    -- extractvalue(): compile failure in ivy_xml_xpath()
+    BEGIN
+        PERFORM extractvalue(XMLType('<a><b>100</b></a>'), 'a[');
+    EXCEPTION WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS st = RETURNED_SQLSTATE;
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        INSERT INTO xpath_err_codes VALUES ('extractvalue', st, msg);
+    END;
+
+    -- existsnode(): compile failure in ivy_xml_xpath()
+    BEGIN
+        PERFORM existsnode(XMLType('<a><b>d</b></a>'), '/a/[');
+    EXCEPTION WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS st = RETURNED_SQLSTATE;
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        INSERT INTO xpath_err_codes VALUES ('existsnode', st, msg);
+    END;
+
+    -- updatexml(): compile failure in ivy_xml_xpath2()
+    BEGIN
+        PERFORM updatexml(XMLType('<a><b>1</b></a>'), 'a[', '2');
+    EXCEPTION WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS st = RETURNED_SQLSTATE;
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        INSERT INTO xpath_err_codes VALUES ('updatexml', st, msg);
+    END;
+END;
+$$;
+select * from xpath_err_codes order by func;
+     func     | sqlstate |         message          
+--------------+----------+--------------------------
+ existsnode   | 10608    | invalid XPath expression
+ extractvalue | 10608    | invalid XPath expression
+ updatexml    | 10608    | invalid XPath expression
+(3 rows)
+
+drop table xpath_err_codes;
+-- valid calls still work
+select extractvalue(XMLType('<a><b>100</b></a>'), '/a/b') from dual;
+ extractvalue 
+--------------
+ 100
+(1 row)
+
+select updatexml(XMLType('<a><b>1</b></a>'), '/b/text()', '2') from dual;
+ updatexml  
+------------
+ <a>       +
+   <b>1</b>+
+ </a>
+(1 row)
+
