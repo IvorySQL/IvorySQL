@@ -1557,3 +1557,29 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+--
+-- USER_INDEXES: the indexes on the relations owned by the current user,
+-- like Oracle's USER_INDEXES view.  INDEX_TYPE maps the PostgreSQL access
+-- method (b-tree, hash, gin, ...) and UNIQUENESS the unique constraint;
+-- TABLESPACE_NAME stays NULL because PostgreSQL has no tablespaces to name
+-- in the Oracle sense here.
+--
+CREATE OR REPLACE VIEW SYS.USER_INDEXES AS
+SELECT
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS index_name,
+    sys.ora_case_trans(t.relname::varchar2)::varchar2(128) AS table_name,
+    sys.ora_case_trans(c.relam::regclass::text::varchar2)::varchar2(30) AS index_type,
+    (CASE WHEN i.indisunique THEN 'UNIQUE' ELSE 'NONUNIQUE' END)::varchar2(9) AS uniqueness,
+    'VALID'::varchar2(8) AS status,
+    NULL::varchar2(30) AS tablespace_name
+FROM pg_index i
+JOIN pg_class c ON c.oid = i.indexrelid
+JOIN pg_class t ON t.oid = i.indrelid
+JOIN pg_namespace n ON c.relnamespace = n.oid
+WHERE
+    pg_catalog.pg_get_userbyid(c.relowner) = current_user
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND NOT c.relispartition;
+
+GRANT SELECT ON SYS.USER_INDEXES TO PUBLIC;
