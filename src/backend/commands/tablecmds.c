@@ -16319,8 +16319,15 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 
 					rule = (Form_pg_rewrite) GETSTRUCT(tup);
 
-					/* view ? */
-					if (strcmp(NameStr(rule->rulename), "_RETURN") == 0)
+					/*
+					 * A materialized view owns a _RETURN rule too, but it also keeps
+					 * the rows produced by that rule and the type change does not
+					 * rewrite them.  Turning such a relation into a force view
+					 * would leave it unusable, so only plain views are invalidated
+					 * here and materialized views take the error path below.
+					 */
+					if (strcmp(NameStr(rule->rulename), "_RETURN") == 0 &&
+						get_rel_relkind(rule->ev_class) == RELKIND_VIEW)
 					{
 						make_view_invalid(rule->ev_class);
 						systable_endscan(rcscan);
