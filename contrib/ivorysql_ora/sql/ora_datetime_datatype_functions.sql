@@ -805,3 +805,10 @@ drop table ds_tb;
 reset NLS_TIMESTAMP_FORMAT;
 reset NLS_TIMESTAMP_TZ_FORMAT;
 reset NLS_DATE_FORMAT;
+
+
+-- Verify oradate-to-date cast helper is parallel safe.
+SELECT count(*) = 1 AS oradate_date_parallel_safe
+FROM pg_catalog.pg_proc
+WHERE oid = 'sys.oradate_date(sys.oradate)'::regprocedure
+  AND proparallel = 's';
