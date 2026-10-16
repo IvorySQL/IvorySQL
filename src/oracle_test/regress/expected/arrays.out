@@ -2736,10 +2736,11 @@ FROM generate_series(0,11) as op;
 
 SELECT width_bucket(now(),
                     array['yesterday', 'today', 'tomorrow']::timestamptz[]);
-ERROR:  invalid value "yest" for "YYYY"
-LINE 2:                     array['yesterday', 'today', 'tomorrow']:...
-                                  ^
-DETAIL:  Value must be an integer.
+ width_bucket 
+--------------
+            2
+(1 row)
+
 -- corner cases
 SELECT width_bucket(5, ARRAY[3]);
  width_bucket 

@@ -1009,17 +1009,23 @@ SHOW DateStyle;
 SELECT d1 AS us_postgres FROM TIMESTAMP_TBL;
         us_postgres         
 ----------------------------
+ -infinity
+ infinity
+ 1970-01-01 00:00:00.000000
  1997-01-02 00:00:00.000000
  1997-01-02 03:04:05.000000
-(2 rows)
+(5 rows)
 
 SET DateStyle TO 'US,ISO';
 SELECT d1 AS us_iso FROM TIMESTAMP_TBL;
            us_iso           
 ----------------------------
+ -infinity
+ infinity
+ 1970-01-01 00:00:00.000000
  1997-01-02 00:00:00.000000
  1997-01-02 03:04:05.000000
-(2 rows)
+(5 rows)
 
 SET DateStyle TO 'US,SQL';
 SHOW DateStyle;
@@ -1031,9 +1037,12 @@ SHOW DateStyle;
 SELECT d1 AS us_sql FROM TIMESTAMP_TBL;
            us_sql           
 ----------------------------
+ -infinity
+ infinity
+ 1970-01-01 00:00:00.000000
  1997-01-02 00:00:00.000000
  1997-01-02 03:04:05.000000
-(2 rows)
+(5 rows)
 
 SET DateStyle TO 'European,Postgres';
 SHOW DateStyle;
@@ -1054,9 +1063,12 @@ DETAIL:  Value must be an integer.
 SELECT d1 AS european_postgres FROM TIMESTAMP_TBL;
      european_postgres      
 ----------------------------
+ -infinity
+ infinity
+ 1970-01-01 00:00:00.000000
  1997-01-02 00:00:00.000000
  1997-01-02 03:04:05.000000
-(2 rows)
+(5 rows)
 
 SET DateStyle TO 'European,ISO';
 SHOW DateStyle;
@@ -1068,9 +1080,12 @@ SHOW DateStyle;
 SELECT d1 AS european_iso FROM TIMESTAMP_TBL;
         european_iso        
 ----------------------------
+ -infinity
+ infinity
+ 1970-01-01 00:00:00.000000
  1997-01-02 00:00:00.000000
  1997-01-02 03:04:05.000000
-(2 rows)
+(5 rows)
 
 SET DateStyle TO 'European,SQL';
 SHOW DateStyle;
@@ -1082,9 +1097,12 @@ SHOW DateStyle;
 SELECT d1 AS european_sql FROM TIMESTAMP_TBL;
         european_sql        
 ----------------------------
+ -infinity
+ infinity
+ 1970-01-01 00:00:00.000000
  1997-01-02 00:00:00.000000
  1997-01-02 03:04:05.000000
-(2 rows)
+(5 rows)
 
 RESET DateStyle;
 --
