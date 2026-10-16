@@ -1,0 +1,122 @@
+-- date check
+SET NLS_date_FORMAT='YYYY-MM-DD HH24:MI:SS.FF9';
+CREATE TABLE datetest(a DATE);
+\copy datetest from 'data/date.data'
+SET enable_seqscan=on;
+SELECT count(*) FROM datetest WHERE a <  '2016-11-27';
+ count 
+-------
+     9
+(1 row)
+
+SELECT count(*) FROM datetest WHERE a <= '2016-11-27';
+ count 
+-------
+    10
+(1 row)
+
+SELECT count(*) FROM datetest WHERE a  = '2016-11-27';
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM datetest WHERE a >= '2016-11-27';
+ count 
+-------
+    10
+(1 row)
+
+SELECT count(*) FROM datetest WHERE a >  '2016-11-27';
+ count 
+-------
+     9
+(1 row)
+
+CREATE INDEX dateidx on datetest USING gin(a);
+SET enable_seqscan=off;
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM datetest WHERE a <  '2016-11-27'::date;
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on datetest
+         Recheck Cond: (a < '2016-11-27 00:00:00.000000000'::date)
+         ->  Bitmap Index Scan on dateidx
+               Index Cond: (a < '2016-11-27 00:00:00.000000000'::date)
+(5 rows)
+
+SELECT count(*) FROM datetest WHERE a <  '2016-11-27'::date;
+ count 
+-------
+     9
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM datetest WHERE a <= '2016-11-27'::date;
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on datetest
+         Recheck Cond: (a <= '2016-11-27 00:00:00.000000000'::date)
+         ->  Bitmap Index Scan on dateidx
+               Index Cond: (a <= '2016-11-27 00:00:00.000000000'::date)
+(5 rows)
+
+SELECT count(*) FROM datetest WHERE a <= '2016-11-27'::date;
+ count 
+-------
+    10
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM datetest WHERE a  = '2016-11-27'::date;
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on datetest
+         Recheck Cond: (a = '2016-11-27 00:00:00.000000000'::date)
+         ->  Bitmap Index Scan on dateidx
+               Index Cond: (a = '2016-11-27 00:00:00.000000000'::date)
+(5 rows)
+
+SELECT count(*) FROM datetest WHERE a  = '2016-11-27'::date;
+ count 
+-------
+     1
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM datetest WHERE a >= '2016-11-27'::date;
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on datetest
+         Recheck Cond: (a >= '2016-11-27 00:00:00.000000000'::date)
+         ->  Bitmap Index Scan on dateidx
+               Index Cond: (a >= '2016-11-27 00:00:00.000000000'::date)
+(5 rows)
+
+SELECT count(*) FROM datetest WHERE a >= '2016-11-27'::date;
+ count 
+-------
+    10
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM datetest WHERE a >  '2016-11-27'::date;
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on datetest
+         Recheck Cond: (a > '2016-11-27 00:00:00.000000000'::date)
+         ->  Bitmap Index Scan on dateidx
+               Index Cond: (a > '2016-11-27 00:00:00.000000000'::date)
+(5 rows)
+
+SELECT count(*) FROM datetest WHERE a >  '2016-11-27'::date;
+ count 
+-------
+     9
+(1 row)
+

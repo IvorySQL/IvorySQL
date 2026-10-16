@@ -1,0 +1,58 @@
+--
+-- ora_ascii.sql: test ASCII function
+--
+--
+select ascii(321) from dual;
+ ascii 
+-------
+    51
+(1 row)
+
+select ascii(213.3f) from dual;
+ ascii 
+-------
+    50
+(1 row)
+
+select ascii(123.4d) from dual;
+ ascii 
+-------
+    49
+(1 row)
+
+select ascii('abc') from dual;
+ ascii 
+-------
+    97
+(1 row)
+
+select ascii('xyz') from dual;
+ ascii 
+-------
+   120
+(1 row)
+
+select ascii(to_char('2026-01-01'::date,'DD-MON-YYYY HH24:MI:SS')) from dual;
+ ascii 
+-------
+    48
+(1 row)
+
+select ascii(to_char('2026-01-11 01:02:03.00'::timestamp,'DD-MON-YYYY HH24:MI:SS.FF6')) from dual;
+ ascii 
+-------
+    49
+(1 row)
+
+select ascii(to_char('2026-01-22 01:02:03.00 +01:00'::timestamptz,'DD-MON-YYYY HH24:MI:SS TZH:TZM')) from dual;
+ ascii 
+-------
+    50
+(1 row)
+
+select ascii('') is null from dual;
+ ?column? 
+----------
+ t
+(1 row)
+

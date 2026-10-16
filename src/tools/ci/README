@@ -1,0 +1,77 @@
+Postgres Continuous Integration (CI)
+====================================
+
+Postgres has two forms of CI:
+
+1) All supported branches in the main postgres repository are continuously
+   tested via the buildfarm. As this covers only the main repository, it
+   cannot be used during development of features.
+
+   For details see https://buildfarm.postgresql.org/
+
+2) For not yet merged development work, CI can be enabled for some git hosting
+   providers. This allows developers to test patches on a number of platforms
+   before they are merged (or even submitted).
+
+
+Configuring CI on personal repositories
+=======================================
+
+Currently postgres contains CI support utilizing GitHub Actions.
+
+
+Configuring CI use for a GitHub repository
+==========================================
+
+The GitHub Actions based CI workflow may or may not be active by default,
+depending on when the repository was forked.
+
+To disable the CI workflow on a repository, navigate to
+https://github.com/<username>/<reponame>/actions/workflows/pg-ci.yml
+and click on the '...' on the top right and choose 'Disable workflow'.
+
+To enable the workflow, go to the same page and click on "Enable workflow" at
+the top.
+
+However, to avoid issues with the thousands of forks of the postgres/postgres
+repository starting to run CI the next time the forks re-synchronize with the
+postgres/postgres, each repository needs to explicitly opt-in to actually run
+the full CI tests.
+
+To opt into CI, go to
+https://github.com/<username>/<reponame>/settings/variables/actions and
+create a new repository variable named PG_CI_ENABLED, with the value 1.
+
+
+Viewing CI results in a GitHub repository
+=========================================
+
+CI runs are visible at https://github.com/<username>/<reponame>/actions
+
+The high-level status of workflow runs on public repositories are visible
+without being logged into GitHub, however details including logs require being
+logged in.
+
+
+Containers / Images used for CI
+===============================
+
+To keep CI times tolerable, several platforms use pre-generated containers /
+images. The containers and images are generated separately from CI runs,
+otherwise each git repository that is being tested would need to build its own
+set of containers, which would be wasteful (both in space and time).
+
+These containers / images are built, on a daily basis, from the specifications
+in github.com/anarazel/pg-vm-images/
+
+
+Controlling CI via commit messages
+==================================
+
+The behavior of CI can be controlled by special content in commit
+messages. Currently the following controls are available:
+
+- ci-os-only: {(compilerwarnings|linux|macos|mingw|sanitycheck|windows)}
+
+  Only runs CI on operating systems specified. This can be useful when
+  addressing portability issues affecting only a subset of platforms.

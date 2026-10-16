@@ -1,0 +1,64 @@
+--
+-- ora_stragg.sql: test Oracle-compatible STRAGG aggregate function
+--
+-- Basic usage
+CREATE TABLE stragg_test (dept TEXT, name TEXT);
+INSERT INTO stragg_test VALUES ('HR', 'Alice');
+INSERT INTO stragg_test VALUES ('HR', 'Bob');
+INSERT INTO stragg_test VALUES ('HR', 'Carol');
+INSERT INTO stragg_test VALUES ('IT', 'Dave');
+INSERT INTO stragg_test VALUES ('IT', 'Eve');
+-- Simple aggregation (sort result for determinism)
+SELECT sys.stragg(name ORDER BY name) FROM stragg_test WHERE dept = 'HR';
+     stragg      
+-----------------
+ Alice,Bob,Carol
+(1 row)
+
+-- GROUP BY usage (sort for determinism)
+SELECT dept, sys.stragg(name ORDER BY name) FROM stragg_test GROUP BY dept ORDER BY dept;
+ dept |     stragg      
+------+-----------------
+ HR   | Alice,Bob,Carol
+ IT   | Dave,Eve
+(2 rows)
+
+-- NULL handling: NULLs are ignored
+INSERT INTO stragg_test VALUES ('HR', NULL);
+SELECT sys.stragg(name ORDER BY name) FROM stragg_test WHERE dept = 'HR';
+     stragg      
+-----------------
+ Alice,Bob,Carol
+(1 row)
+
+-- All-NULL input returns NULL
+SELECT sys.stragg(name) IS NULL FROM stragg_test WHERE name IS NULL;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Empty set returns NULL
+SELECT sys.stragg(name) IS NULL FROM stragg_test WHERE dept = 'NONE';
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Single value (no comma)
+SELECT sys.stragg(name) FROM stragg_test WHERE dept = 'IT' AND name = 'Dave';
+ stragg 
+--------
+ Dave
+(1 row)
+
+-- Works in PG mode too
+SET ivorysql.compatible_mode = pg;
+SELECT sys.stragg(name ORDER BY name) FROM stragg_test WHERE dept = 'HR';
+     stragg      
+-----------------
+ Alice,Bob,Carol
+(1 row)
+
+RESET ivorysql.compatible_mode;
+DROP TABLE stragg_test;

@@ -1,0 +1,68 @@
+name: Auto Assign Issue on Command
+
+on:
+  issue_comment:
+    types: [created] 
+
+jobs:
+  assign_on_command:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+    steps:
+      - name: Assign to user on /assign command
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{secrets.IVORY_TOKEN}}
+          script: |
+            const commentBody = context.payload.comment.body.trim().toLowerCase();
+            const commenter = context.payload.comment.user.login;
+            const issueNumber = context.issue.number;
+            const repoOwner = context.repo.owner;
+            const repoName = context.repo.repo;
+            if (commentBody === '/assign') {
+              console.log(`User @${commenter} commented "/assign" on issue #${issueNumber}. Attempting to assign.`);
+              if (commenter.endsWith('[bot]') || commenter === 'github-actions[bot]') {
+                console.log(`Skipping assignment for bot user: ${commenter}`);
+                return;
+              }
+              const { data: issue } = await github.rest.issues.get({
+                owner: repoOwner,
+                repo: repoName,
+                issue_number: issueNumber
+              });
+              if (issue.assignees && issue.assignees.some(a => a.login === commenter)) {
+                console.log(`Issue #${issueNumber} is already assigned to @${commenter}. No action needed.`);
+                return;
+              }
+              if (issue.state === 'closed') {
+                console.log(`Issue #${issueNumber} is closed. No assignment will be made.`);
+                await github.rest.issues.createComment({
+                  owner: repoOwner,
+                  repo: repoName,
+                  issue_number: issueNumber,
+                  body: `Hi @${commenter}, issue #${issueNumber} is closed and cannot be assigned.`
+                });
+                return;
+              }
+              try {
+                await github.rest.issues.addAssignees({
+                  owner: repoOwner,
+                  repo: repoName,
+                  issue_number: issueNumber,
+                  assignees: [commenter]
+                });
+                console.log(`Successfully assigned issue #${issueNumber} to @${commenter}.`);
+              } catch (error) {
+                console.error(`Error assigning issue #${issueNumber} to @${commenter}:`, error);
+                await github.rest.issues.createComment({
+                  owner: repoOwner,
+                  repo: repoName,
+                  issue_number: issueNumber,
+                  body: `Hi @${commenter}, I encountered an error trying to assign you to issue #${issueNumber}. Please check permissions or assign manually. \nError: ${error.message}`
+                });
+              }
+            } else {
+              console.log(`Comment by @${commenter} on issue #${issueNumber} was not an "/assign" command. Body: "${context.payload.comment.body.trim()}"`);
+            }

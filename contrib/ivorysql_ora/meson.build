@@ -1,0 +1,74 @@
+# Copyright (c) 2022-2024, PostgreSQL Global Development Group
+# Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
+
+ivorysql_ora_sources = files(
+  'src/ivorysql_ora.c',
+  'src/guc/guc.c',
+  'src/datatype/oracharchar.c',
+  'src/datatype/oracharbyte.c',
+  'src/datatype/oravarcharchar.c',
+  'src/datatype/oravarcharbyte.c',
+  'src/datatype/oradate.c',
+  'src/datatype/oratimestamp.c',
+  'src/datatype/oratimestamptz.c',
+  'src/datatype/oratimestampltz.c',
+  'src/datatype/yminterval.c',
+  'src/datatype/dsinterval.c',
+  'src/datatype/compatible_oracle_precedence.c',
+  'src/datatype/common_datatypes.c',
+  'src/datatype/raw_long.c',
+  'src/datatype/binary_float.c',
+  'src/datatype/binary_double.c',
+  'src/builtin_functions/character_datatype_functions.c',
+  'src/builtin_functions/datetime_datatype_functions.c',
+  'src/builtin_functions/numeric_datatype_functions.c',
+  'src/builtin_functions/misc_functions.c',
+  'src/builtin_packages/dbms_output/dbms_output.c',
+  'src/builtin_packages/utl_file/utl_file.c',
+  'src/merge/ora_merge.c',
+  'src/sysview/sysview_functions.c',
+  'src/xml_functions/ora_xml_functions.c',
+  'src/builtin_packages/dbms_utility/dbms_utility.c',
+  'src/builtin_packages/dbms_lock/dbms_lock.c',
+  'src/builtin_packages/utl_raw/utl_raw.c',
+  'src/builtin_packages/utl_encode/utl_encode.c',
+  'src/builtin_packages/utl_url/utl_url.c',
+  'src/builtin_packages/dbms_session/dbms_session.c',
+  'src/builtin_packages/dbms_transaction/dbms_transaction.c',
+  'src/builtin_packages/dbms_random/dbms_random.c',
+  'src/builtin_packages/utl_match/utl_match.c',
+  'src/builtin_packages/dbms_scheduler/dbms_scheduler.c',
+  'src/builtin_packages/dbms_scheduler/scheduler_calendar.c',
+  'src/builtin_packages/dbms_scheduler/scheduler_launcher.c',
+  'src/builtin_packages/dbms_scheduler/scheduler_worker.c'
+)
+
+if host_system == 'windows'
+  ivorysql_ora_sources += rc_lib_gen.process(win32ver_rc, extra_args: [
+    '--NAME', 'ivorysql_ora',
+    '--FILEDESC', 'ivorysql_ora - Oracle Compatible extension on Postgres Database',])
+endif
+
+custom_target('ivorysql_ora--1.0.sql',
+  output: 'ivorysql_ora--1.0.sql',
+  command: [perl, '../contrib/ivorysql_ora/gensql.pl', 'meson', '1.0'],
+  capture: true,
+  install: true,
+  install_dir: contrib_data_args['install_dir'],
+)
+
+ivorysql_ora = shared_module('ivorysql_ora',
+  ivorysql_ora_sources,
+  kwargs: contrib_mod_args,
+)
+contrib_targets += ivorysql_ora
+
+install_data(
+  'ivorysql_ora.control',
+  kwargs: contrib_data_args,
+)
+
+install_data(
+  'preload_ora_misc.sql',
+  install_dir: dir_data,
+)

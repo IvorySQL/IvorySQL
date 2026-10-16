@@ -1,0 +1,186 @@
+#
+# PostgreSQL top level makefile
+#
+# GNUmakefile.in
+#
+
+subdir =
+top_builddir = .
+include $(top_builddir)/src/Makefile.global
+
+$(call recurse,all install,src config contrib/gb18030_2022 contrib/ivorysql_ora contrib/uuid-ossp contrib/ora_btree_gist contrib/ora_btree_gin)
+
+docs:
+	$(MAKE) -C doc all
+
+$(call recurse,world,doc src config contrib,all)
+
+# build src/ before contrib/
+world-contrib-recurse: world-src-recurse
+
+$(call recurse,world-bin,src config contrib,all)
+
+# build src/ before contrib/
+world-bin-contrib-recurse: world-bin-src-recurse
+
+html man:
+	$(MAKE) -C doc $@
+
+install-docs:
+	$(MAKE) -C doc install
+
+$(call recurse,install-world,doc src config contrib,install)
+
+# build src/ before contrib/
+install-world-contrib-recurse: install-world-src-recurse
+
+$(call recurse,install-world-bin,src config contrib,install)
+
+# build src/ before contrib/
+install-world-bin-contrib-recurse: install-world-bin-src-recurse
+
+$(call recurse,installdirs uninstall init-po update-po,doc src config)
+
+$(call recurse,coverage,doc src config contrib)
+
+# clean, distclean, etc should apply to contrib too, even though
+# it's not built by default
+$(call recurse,clean,doc contrib contrib/ivorysql_ora contrib/uuid-ossp contrib/ora_btree_gist contrib/ora_btree_gin src config)
+clean:
+	rm -rf tmp_install/ portlock/
+# Garbage from autoconf:
+	@rm -rf autom4te.cache/
+
+# Important: distclean `src' last, otherwise Makefile.global
+# will be gone too soon.
+distclean:
+	$(MAKE) -C doc $@
+	$(MAKE) -C contrib $@
+	$(MAKE) -C config $@
+	$(MAKE) -C src $@
+	rm -rf tmp_install/ portlock/
+# Garbage from autoconf:
+	@rm -rf autom4te.cache/
+	rm -f config.cache config.log config.status GNUmakefile
+
+# Generated files added by IvorySQL are intentionally kept by distclean, but
+# must not remain after maintainer-clean because they conflict with an
+# out-of-tree Meson build.
+maintainer-clean: distclean
+	rm -f src/backend/oracle_parser/ora_scan.c \
+		src/backend/oracle_parser/ora_gram.c \
+		src/backend/oracle_parser/ora_gram.h \
+		src/backend/oracle_parser/ora_kwlist_d.h \
+		src/oracle_fe_utils/ora_psqlscan.c \
+		src/oracle_test/isolation/specparse.h \
+		src/oracle_test/isolation/specparse.c \
+		src/oracle_test/isolation/specscanner.c \
+		src/pl/plisql/src/pl_gram.c \
+		src/pl/plisql/src/pl_gram.h \
+		src/pl/plisql/src/plerrcodes.h \
+		src/pl/plisql/src/pl_reserved_kwlist_d.h \
+		src/pl/plisql/src/pl_unreserved_kwlist_d.h
+
+check-tests: | temp-install
+
+check check-tests installcheck installcheck-parallel installcheck-tests oracle-pg-check: CHECKPREP_TOP=src/test/regress
+check check-tests installcheck installcheck-parallel installcheck-tests oracle-pg-check: submake-generated-headers
+	$(MAKE) -C src/test/regress $@
+
+oracle-check-tests: | oracle-temp-install
+
+# add oracle regression
+oracle-check oracle-check-tests oracle-installcheck oracle-installcheck-parallel oracle-installcheck-tests: CHECKPREP_TOP=src/oracle_test/regress
+oracle-check oracle-check-tests oracle-installcheck oracle-installcheck-parallel oracle-installcheck-tests: submake-generated-headers
+	$(MAKE) -C src/oracle_test/regress $@
+
+#add all check regression
+all-check: check oracle-check
+all-installcheck: installcheck oracle-installcheck
+all-check-world:check-world oracle-pg-check-world oracle-check-world
+all-installcheck-world:installcheck-world oracle-installcheck-world
+
+
+$(call recurse,check-world,src/test src/pl src/interfaces contrib src/bin src/tools/pg_bsd_indent,check)
+$(call recurse,checkprep,  src/test src/pl src/interfaces contrib src/bin)
+
+$(call recurse,installcheck-world,src/test src/pl src/interfaces contrib src/bin,installcheck)
+$(call recurse,install-tests,src/test/regress,install-tests)
+
+GNUmakefile: GNUmakefile.in $(top_builddir)/config.status
+	./config.status $@
+
+
+$(call recurse,oracle-pg-check-world,src/test,oracle-pg-check)
+#add oracle regression
+$(call recurse,oracle-check-world,src/oracle_test src/pl src/interfaces/ecpg src/interfaces/libpq/ivytest contrib contrib/ivorysql_ora contrib/uuid-ossp contrib/ora_btree_gist contrib/ora_btree_gin src/bin,oracle-check)
+$(call recurse,oracle-checkprep,  src/oracle_test src/pl src/interfaces/ecpg contrib src/bin)
+
+$(call recurse,oracle-installcheck-world,src/oracle_test src/pl src/interfaces/ecpg contrib src/bin,oracle-installcheck)
+
+
+update-unicode: | submake-generated-headers submake-libpgport
+	$(MAKE) -C src/common/unicode $@
+	$(MAKE) -C contrib/unaccent $@
+
+
+##########################################################################
+
+distdir	= postgresql-$(VERSION)
+dummy	= =install=
+
+# git revision to be packaged
+PG_GIT_REVISION = HEAD
+
+GIT = git
+
+dist: $(distdir).tar.gz $(distdir).tar.bz2
+
+.PHONY: $(distdir).tar.gz $(distdir).tar.bz2
+
+distdir-location:
+	@echo $(distdir)
+
+# Note: core.autocrlf=false is needed to avoid line-ending conversion
+# in case the environment has a different setting.  Without this, a
+# tarball created on Windows might be different than on, and unusable
+# on, Unix machines.
+
+$(distdir).tar.gz:
+	$(GIT) -C $(srcdir) -c core.autocrlf=false archive --format tar.gz -9 --prefix $(distdir)/ $(PG_GIT_REVISION) -o $(abs_top_builddir)/$@
+
+$(distdir).tar.bz2:
+	$(GIT) -C $(srcdir) -c core.autocrlf=false -c tar.tar.bz2.command='$(BZIP2) -c' archive --format tar.bz2 --prefix $(distdir)/ $(PG_GIT_REVISION) -o $(abs_top_builddir)/$@
+
+distcheck: dist
+	rm -rf $(dummy)
+	mkdir $(dummy)
+	$(GZIP) -d -c $(distdir).tar.gz | $(TAR) xf -
+	install_prefix=`cd $(dummy) && pwd`; \
+	cd $(distdir) \
+	&& ./configure --prefix="$$install_prefix"
+	$(MAKE) -C $(distdir)
+	$(MAKE) -C $(distdir) install
+	$(MAKE) -C $(distdir) uninstall
+	@echo "checking whether \`$(MAKE) uninstall' works"
+	test `find $(dummy) ! -type d | wc -l` -eq 0
+	$(MAKE) -C $(distdir) dist
+# Room for improvement: Check here whether this distribution tarball
+# is sufficiently similar to the original one.
+	rm -rf $(distdir) $(dummy)
+	@echo "Distribution integrity checks out."
+
+headerscheck: submake-generated-headers
+	$(top_srcdir)/src/tools/pginclude/headerscheck $(top_srcdir) $(abs_top_builddir)
+
+cpluspluscheck: submake-generated-headers
+	$(top_srcdir)/src/tools/pginclude/headerscheck --cplusplus $(top_srcdir) $(abs_top_builddir)
+
+# ivorysql code format
+code-format: submake-generated-headers
+	@bash tools/enable-git-hooks.sh
+
+#.PHONY: dist distdir distcheck docs install-docs world check-world install-world installcheck-world headerscheck cpluspluscheck
+
+.PHONY: dist distcheck docs install-docs world check-world install-world installcheck-world headerscheck cpluspluscheck oracle-pg-check-world oracle-check-world oracle-installcheck-world all-check all-check-world all-installcheck-world code-format
+

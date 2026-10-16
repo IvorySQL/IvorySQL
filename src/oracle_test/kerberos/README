@@ -1,0 +1,11 @@
+src/oracle_test/kerberos/README
+
+Tests for Kerberos/GSSAPI functionality
+=======================================
+
+This directory contains a test suite for Kerberos/GSSAPI
+functionality.  This requires a full MIT Kerberos installation,
+including server and client tools, and is therefore kept separate and
+not run by default.
+
+For more detailed instructions, refer to the "README" file in the "src/test/kerberos" directory.

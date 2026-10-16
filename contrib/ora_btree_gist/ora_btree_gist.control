@@ -1,0 +1,8 @@
+# ora_btree_gist extension
+comment = 'support for oracle indexing common datatypes in GiST'
+default_version = '1.0'
+module_pathname = '$libdir/ora_btree_gist'
+relocatable = false
+trusted = true
+schema = sys
+requires = 'ivorysql_ora'

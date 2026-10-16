@@ -1,0 +1,16 @@
+src/datatype/datatype
+src/builtin_functions/builtin_functions
+src/builtin_packages/dbms_output/dbms_output
+src/builtin_packages/utl_file/utl_file
+src/sysview/sysview
+src/xml_functions/xml_functions
+src/builtin_packages/dbms_utility/dbms_utility
+src/builtin_packages/dbms_lock/dbms_lock
+src/builtin_packages/utl_raw/utl_raw
+src/builtin_packages/utl_encode/utl_encode
+src/builtin_packages/utl_url/utl_url
+src/builtin_packages/dbms_session/dbms_session
+src/builtin_packages/dbms_transaction/dbms_transaction
+src/builtin_packages/dbms_random/dbms_random
+src/builtin_packages/utl_match/utl_match
+src/builtin_packages/dbms_scheduler/dbms_scheduler

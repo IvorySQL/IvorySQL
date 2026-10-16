@@ -1,0 +1,647 @@
+--
+-- CREATE SEQUENCE
+--
+SET ivorysql.enable_seq_scale_fixed = TRUE;
+-- various error cases
+CREATE SEQUENCE sequence_testx INCREMENT BY 0;
+CREATE SEQUENCE sequence_testx INCREMENT BY -1 MINVALUE 20;
+CREATE SEQUENCE sequence_testx INCREMENT BY 1 MAXVALUE -20;
+CREATE SEQUENCE sequence_testx INCREMENT BY 1 START WITH -10;
+CREATE SEQUENCE sequence_testx CACHE 0;
+
+-- OWNED BY errors
+CREATE SEQUENCE sequence_testx OWNED BY nobody;  -- nonsense word
+CREATE SEQUENCE sequence_testx OWNED BY pg_class_oid_index.oid;  -- not a table
+CREATE SEQUENCE sequence_testx OWNED BY pg_class.relname;  -- not same schema
+CREATE TABLE sequence_test_table (a int);
+CREATE SEQUENCE sequence_testx OWNED BY sequence_test_table.b;  -- wrong column
+DROP TABLE sequence_test_table;
+
+-- sequence data types
+CREATE SEQUENCE sequence_test5 AS integer NOCACHE;
+CREATE SEQUENCE sequence_test6 AS smallint NOCACHE;
+CREATE SEQUENCE sequence_test7 AS bigint NOCACHE;
+CREATE SEQUENCE sequence_test8 AS integer MAXVALUE 100000 NOCACHE;
+CREATE SEQUENCE sequence_test9 AS integer INCREMENT BY -1 NOCACHE;
+CREATE SEQUENCE sequence_test10 AS integer MINVALUE -100000 START WITH 1 NOCACHE;
+CREATE SEQUENCE sequence_test11 AS smallint NOCACHE;
+CREATE SEQUENCE sequence_test12 AS smallint INCREMENT BY -1 NOCACHE;
+CREATE SEQUENCE sequence_test13 AS smallint MINVALUE -32768 NOCACHE;
+CREATE SEQUENCE sequence_test14 AS smallint MAXVALUE 32767 INCREMENT BY -1 NOCACHE;
+CREATE SEQUENCE sequence_testx AS text;
+CREATE SEQUENCE sequence_testx AS nosuchtype;
+
+CREATE SEQUENCE sequence_testx AS smallint MAXVALUE 100000;
+CREATE SEQUENCE sequence_testx AS smallint MINVALUE -100000;
+
+ALTER SEQUENCE sequence_test5 AS smallint;  -- success, max will be adjusted
+ALTER SEQUENCE sequence_test8 AS smallint;  -- fail, max has to be adjusted
+ALTER SEQUENCE sequence_test8 AS smallint MAXVALUE 20000;  -- ok now
+ALTER SEQUENCE sequence_test9 AS smallint;  -- success, min will be adjusted
+ALTER SEQUENCE sequence_test10 AS smallint;  -- fail, min has to be adjusted
+ALTER SEQUENCE sequence_test10 AS smallint MINVALUE -20000;  -- ok now
+
+ALTER SEQUENCE sequence_test11 AS int;  -- max will be adjusted
+ALTER SEQUENCE sequence_test12 AS int;  -- min will be adjusted
+ALTER SEQUENCE sequence_test13 AS int;  -- min and max will be adjusted
+ALTER SEQUENCE sequence_test14 AS int;  -- min and max will be adjusted
+
+---
+--- test creation of SERIAL column
+---
+
+CREATE TABLE serialTest1 (f1 text, f2 serial);
+
+INSERT INTO serialTest1 VALUES ('foo');
+INSERT INTO serialTest1 VALUES ('bar');
+INSERT INTO serialTest1 VALUES ('force', 100);
+INSERT INTO serialTest1 VALUES ('wrong', NULL);
+
+SELECT * FROM serialTest1;
+
+SELECT pg_get_serial_sequence('serialTest1', 'f2');
+
+-- test smallserial / bigserial
+CREATE TABLE serialTest2 (f1 text, f2 serial, f3 smallserial, f4 serial2,
+  f5 bigserial, f6 serial8);
+
+INSERT INTO serialTest2 (f1)
+  VALUES ('test_defaults');
+
+INSERT INTO serialTest2 (f1, f2, f3, f4, f5, f6)
+  VALUES ('test_max_vals', 2147483647, 32767, 32767, 9223372036854775807,
+          9223372036854775807),
+         ('test_min_vals', -2147483648, -32768, -32768, -9223372036854775808,
+          -9223372036854775808);
+
+-- All these INSERTs should fail:
+INSERT INTO serialTest2 (f1, f3)
+  VALUES ('bogus', -32769);
+
+INSERT INTO serialTest2 (f1, f4)
+  VALUES ('bogus', -32769);
+
+INSERT INTO serialTest2 (f1, f3)
+  VALUES ('bogus', 32768);
+
+INSERT INTO serialTest2 (f1, f4)
+  VALUES ('bogus', 32768);
+
+INSERT INTO serialTest2 (f1, f5)
+  VALUES ('bogus', -9223372036854775809);
+
+INSERT INTO serialTest2 (f1, f6)
+  VALUES ('bogus', -9223372036854775809);
+
+INSERT INTO serialTest2 (f1, f5)
+  VALUES ('bogus', 9223372036854775808);
+
+INSERT INTO serialTest2 (f1, f6)
+  VALUES ('bogus', 9223372036854775808);
+
+SELECT * FROM serialTest2 ORDER BY f2 ASC;
+
+SELECT nextval('serialTest2_f2_seq');
+SELECT nextval('serialTest2_f3_seq');
+SELECT nextval('serialTest2_f4_seq');
+SELECT nextval('serialTest2_f5_seq');
+SELECT nextval('serialTest2_f6_seq');
+
+-- basic sequence operations using both text and oid references
+CREATE SEQUENCE sequence_test;
+CREATE SEQUENCE IF NOT EXISTS sequence_test;
+
+SELECT nextval('sequence_test'::text);
+SELECT nextval('sequence_test'::regclass);
+SELECT currval('sequence_test'::text);
+SELECT currval('sequence_test'::regclass);
+SELECT setval('sequence_test'::text, 32);
+SELECT nextval('sequence_test'::regclass);
+SELECT setval('sequence_test'::text, 99, false);
+SELECT nextval('sequence_test'::regclass);
+SELECT setval('sequence_test'::regclass, 32);
+SELECT nextval('sequence_test'::text);
+SELECT setval('sequence_test'::regclass, 99, false);
+SELECT nextval('sequence_test'::text);
+DISCARD SEQUENCES;
+SELECT currval('sequence_test'::regclass);
+
+DROP SEQUENCE sequence_test;
+
+-- renaming sequences
+CREATE SEQUENCE foo_seq nocache;
+ALTER TABLE foo_seq RENAME TO foo_seq_new;
+SELECT * FROM foo_seq_new;
+SELECT nextval('foo_seq_new');
+SELECT nextval('foo_seq_new');
+-- log_cnt can be higher if there is a checkpoint just at the right
+-- time, so just test for the expected range
+SELECT last_value, log_cnt IN (31, 32) AS log_cnt_ok, is_called FROM foo_seq_new;
+DROP SEQUENCE foo_seq_new;
+
+-- renaming serial sequences
+ALTER TABLE serialtest1_f2_seq RENAME TO serialtest1_f2_foo;
+INSERT INTO serialTest1 VALUES ('more');
+SELECT * FROM serialTest1;
+
+--
+-- Check dependencies of serial and ordinary sequences
+--
+CREATE TEMP SEQUENCE myseq2;
+CREATE TEMP SEQUENCE myseq3;
+CREATE TEMP TABLE t1 (
+  f1 serial,
+  f2 int DEFAULT nextval('myseq2'),
+  f3 int DEFAULT nextval('myseq3'::text)
+);
+-- Both drops should fail, but with different error messages:
+DROP SEQUENCE t1_f1_seq;
+DROP SEQUENCE myseq2;
+-- This however will work:
+DROP SEQUENCE myseq3;
+DROP TABLE t1;
+-- Fails because no longer existent:
+DROP SEQUENCE t1_f1_seq;
+-- Now OK:
+DROP SEQUENCE myseq2;
+
+--
+-- Alter sequence
+--
+
+ALTER SEQUENCE IF EXISTS sequence_test2 RESTART WITH 24
+  INCREMENT BY 4 MAXVALUE 36 MINVALUE 5 CYCLE;
+
+ALTER SEQUENCE serialTest1 CYCLE;  -- error, not a sequence
+
+CREATE SEQUENCE sequence_test2 START WITH 32 NOCACHE;
+CREATE SEQUENCE sequence_test4 INCREMENT BY -1 NOCACHE;
+
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test4');
+
+ALTER SEQUENCE sequence_test2 RESTART;
+SELECT nextval('sequence_test2');
+
+ALTER SEQUENCE sequence_test2 RESTART WITH 0;  -- error
+
+-- test CYCLE and NO CYCLE
+ALTER SEQUENCE sequence_test2 RESTART START WITH 24
+  INCREMENT BY 4 MAXVALUE 36 MINVALUE 5 CYCLE;
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');  -- cycled
+
+ALTER SEQUENCE sequence_test2 RESTART START WITH 24
+  NOCYCLE;
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');  -- error
+
+ALTER SEQUENCE sequence_test2 RESTART START WITH -24
+  INCREMENT BY -4 MINVALUE -36 MAXVALUE -5 CYCLE;
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');  -- cycled
+
+ALTER SEQUENCE sequence_test2 RESTART START WITH -24
+  NOCYCLE;
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');
+SELECT nextval('sequence_test2');  -- error
+
+-- reset
+ALTER SEQUENCE IF EXISTS sequence_test2 RESTART START WITH 32
+  INCREMENT BY 4 MAXVALUE 36 MINVALUE 5 CYCLE;
+
+SELECT setval('sequence_test2', -100);  -- error
+SELECT setval('sequence_test2', 100);  -- error
+SELECT setval('sequence_test2', 5);
+
+CREATE SEQUENCE sequence_test3 NOCACHE;  -- not read from, to test is_called
+
+
+-- Information schema
+SELECT * FROM information_schema.sequences
+  WHERE sequence_name ~ ANY(ARRAY['sequence_test', 'serialtest'])
+  ORDER BY sequence_name ASC;
+
+SELECT schemaname, sequencename, start_value, min_value, max_value, increment_by, cycle, cache_size, last_value
+FROM pg_sequences
+WHERE sequencename ~ ANY(ARRAY['sequence_test', 'serialtest'])
+  ORDER BY sequencename ASC;
+
+
+SELECT * FROM pg_sequence_parameters('sequence_test4'::regclass);
+
+
+\d sequence_test4
+\d serialtest2_f2_seq
+
+
+-- Test comments
+COMMENT ON SEQUENCE asdf IS 'won''t work';
+COMMENT ON SEQUENCE sequence_test2 IS 'will work';
+COMMENT ON SEQUENCE sequence_test2 IS NULL;
+
+-- Test lastval()
+CREATE SEQUENCE seq;
+SELECT nextval('seq');
+SELECT lastval();
+SELECT setval('seq', 99);
+SELECT lastval();
+DISCARD SEQUENCES;
+SELECT lastval();
+
+CREATE SEQUENCE seq2;
+SELECT nextval('seq2');
+SELECT lastval();
+
+DROP SEQUENCE seq2;
+-- should fail
+SELECT lastval();
+
+-- unlogged sequences
+-- (more tests in src/test/recovery/)
+CREATE UNLOGGED SEQUENCE sequence_test_unlogged;
+ALTER SEQUENCE sequence_test_unlogged SET LOGGED;
+\d sequence_test_unlogged
+ALTER SEQUENCE sequence_test_unlogged SET UNLOGGED;
+\d sequence_test_unlogged
+DROP SEQUENCE sequence_test_unlogged;
+
+-- Test sequences in read-only transactions
+CREATE TEMPORARY SEQUENCE sequence_test_temp1;
+START TRANSACTION READ ONLY;
+SELECT nextval('sequence_test_temp1');  -- ok
+SELECT nextval('sequence_test2');  -- error
+ROLLBACK;
+START TRANSACTION READ ONLY;
+SELECT setval('sequence_test_temp1', 1);  -- ok
+SELECT setval('sequence_test2', 1);  -- error
+ROLLBACK;
+
+-- privileges tests
+
+CREATE USER regress_seq_user;
+
+-- nextval
+BEGIN;
+SET LOCAL SESSION AUTHORIZATION regress_seq_user;
+CREATE SEQUENCE seq3;
+REVOKE ALL ON seq3 FROM regress_seq_user;
+GRANT SELECT ON seq3 TO regress_seq_user;
+SELECT nextval('seq3');
+ROLLBACK;
+
+BEGIN;
+SET LOCAL SESSION AUTHORIZATION regress_seq_user;
+CREATE SEQUENCE seq3;
+REVOKE ALL ON seq3 FROM regress_seq_user;
+GRANT UPDATE ON seq3 TO regress_seq_user;
+SELECT nextval('seq3');
+ROLLBACK;
+
+BEGIN;
+SET LOCAL SESSION AUTHORIZATION regress_seq_user;
+CREATE SEQUENCE seq3;
+REVOKE ALL ON seq3 FROM regress_seq_user;
+GRANT USAGE ON seq3 TO regress_seq_user;
+SELECT nextval('seq3');
+ROLLBACK;
+
+-- currval
+BEGIN;
+SET LOCAL SESSION AUTHORIZATION regress_seq_user;
+CREATE SEQUENCE seq3;
+SELECT nextval('seq3');
+REVOKE ALL ON seq3 FROM regress_seq_user;
+GRANT SELECT ON seq3 TO regress_seq_user;
+SELECT currval('seq3');
+ROLLBACK;
+
+BEGIN;
+SET LOCAL SESSION AUTHORIZATION regress_seq_user;
+CREATE SEQUENCE seq3;
+SELECT nextval('seq3');
+REVOKE ALL ON seq3 FROM regress_seq_user;
+GRANT UPDATE ON seq3 TO regress_seq_user;
+SELECT currval('seq3');
+ROLLBACK;
+
+BEGIN;
+SET LOCAL SESSION AUTHORIZATION regress_seq_user;
+CREATE SEQUENCE seq3;
+SELECT nextval('seq3');
+REVOKE ALL ON seq3 FROM regress_seq_user;
+GRANT USAGE ON seq3 TO regress_seq_user;
+SELECT currval('seq3');
+ROLLBACK;
+
+-- lastval
+BEGIN;
+SET LOCAL SESSION AUTHORIZATION regress_seq_user;
+CREATE SEQUENCE seq3;
+SELECT nextval('seq3');
+REVOKE ALL ON seq3 FROM regress_seq_user;
+GRANT SELECT ON seq3 TO regress_seq_user;
+SELECT lastval();
+ROLLBACK;
+
+BEGIN;
+SET LOCAL SESSION AUTHORIZATION regress_seq_user;
+CREATE SEQUENCE seq3;
+SELECT nextval('seq3');
+REVOKE ALL ON seq3 FROM regress_seq_user;
+GRANT UPDATE ON seq3 TO regress_seq_user;
+SELECT lastval();
+ROLLBACK;
+
+BEGIN;
+SET LOCAL SESSION AUTHORIZATION regress_seq_user;
+CREATE SEQUENCE seq3;
+SELECT nextval('seq3');
+REVOKE ALL ON seq3 FROM regress_seq_user;
+GRANT USAGE ON seq3 TO regress_seq_user;
+SELECT lastval();
+ROLLBACK;
+
+-- setval
+BEGIN;
+SET LOCAL SESSION AUTHORIZATION regress_seq_user;
+CREATE SEQUENCE seq3;
+REVOKE ALL ON seq3 FROM regress_seq_user;
+SAVEPOINT save;
+SELECT setval('seq3', 5);
+ROLLBACK TO save;
+GRANT UPDATE ON seq3 TO regress_seq_user;
+SELECT setval('seq3', 5);
+SELECT nextval('seq3');
+ROLLBACK;
+
+-- ALTER SEQUENCE
+BEGIN;
+SET LOCAL SESSION AUTHORIZATION regress_seq_user;
+ALTER SEQUENCE sequence_test2 START WITH 1;
+ROLLBACK;
+
+-- Sequences should get wiped out as well:
+DROP TABLE serialTest1, serialTest2;
+
+-- Make sure sequences are gone:
+SELECT * FROM information_schema.sequences WHERE sequence_name IN
+  ('sequence_test2', 'serialtest2_f2_seq', 'serialtest2_f3_seq',
+   'serialtest2_f4_seq', 'serialtest2_f5_seq', 'serialtest2_f6_seq')
+  ORDER BY sequence_name ASC;
+
+DROP USER regress_seq_user;
+DROP SEQUENCE seq;
+
+-- cache tests
+CREATE SEQUENCE test_seq1 CACHE 10;
+SELECT nextval('test_seq1');
+SELECT nextval('test_seq1');
+SELECT nextval('test_seq1');
+
+-- pg_get_sequence_data
+SELECT last_value, is_called, page_lsn <= pg_current_wal_lsn() as lsn FROM pg_get_sequence_data('test_seq1');
+
+DROP SEQUENCE test_seq1;
+
+
+--
+-- Test oracle compatible fetures
+--
+
+--just for syntax
+CREATE SEQUENCE seq_sharing1 SHARING=METADATA INCREMENT BY 2 START WITH 30 MINVALUE 10 MAXVALUE 50 CYCLE CACHE 2 ORDER KEEP NOSCALE GLOBAL;
+DROP SEQUENCE seq_sharing1;
+CREATE SEQUENCE seq_sharing2 SHARING=DATA INCREMENT BY 2 START WITH 30 MINVALUE 10 MAXVALUE 50 CYCLE CACHE 2 ORDER KEEP NOSCALE GLOBAL;
+DROP SEQUENCE seq_sharing2;
+CREATE SEQUENCE seq_sharing3 SHARING=NONE INCREMENT BY 2 START WITH 30 MINVALUE 10 MAXVALUE 50 CYCLE CACHE 2 ORDER KEEP NOSCALE GLOBAL;
+DROP SEQUENCE seq_sharing3;
+CREATE SEQUENCE seq_order1 INCREMENT BY 2 START WITH 30 MINVALUE 10 MAXVALUE 50 CYCLE CACHE 2 ORDER KEEP NOSCALE GLOBAL;
+DROP SEQUENCE seq_order1;
+CREATE SEQUENCE seq_order2 INCREMENT BY 2 START WITH 30 MINVALUE 10 MAXVALUE 50 CYCLE CACHE 2 NOORDER KEEP NOSCALE GLOBAL;
+DROP SEQUENCE seq_order2;
+CREATE SEQUENCE seq_shard1 SHARING=NONE INCREMENT BY 2 START WITH 30 MINVALUE 10 MAXVALUE 50 CYCLE CACHE 2 ORDER KEEP NOSCALE SHARD EXTEND GLOBAL;
+DROP SEQUENCE seq_shard1;
+CREATE SEQUENCE seq_shard2 SHARING=NONE INCREMENT BY 2 START WITH 30 MINVALUE 10 MAXVALUE 50 CYCLE CACHE 2 ORDER KEEP NOSCALE SHARD NOEXTEND GLOBAL;
+DROP SEQUENCE seq_shard2;
+create sequence seq_shard3 shard;
+DROP SEQUENCE seq_shard3;
+create sequence seq_shard4 noshard;
+DROP SEQUENCE seq_shard4;
+create sequence seq_shard5 shard extend ;
+alter sequence seq_shard5 noshard ;
+DROP SEQUENCE seq_shard5;
+
+-- Reject conflicting SHARD options.
+CREATE SEQUENCE seq_shard_conflict SHARD EXTEND NOSHARD;
+
+create sequence seq;
+SELECT seq.NEXTVAL FROM DUAL;--result:1
+alter sequence seq restart start with 10;
+SELECT seq.NEXTVAL FROM DUAL;--result:10
+DROP SEQUENCE seq;
+
+CREATE SEQUENCE seq_restart1 INCREMENT BY 1 START WITH 32 MINVALUE 10 MAXVALUE 50;
+select seq_restart1.nextval from dual;
+alter sequence seq_restart1 restart;
+select seq_restart1.nextval from dual;
+DROP SEQUENCE seq_restart1;
+
+create sequence seq_restart2 increment by -1 start with 32 minvalue 10 maxvalue 50;
+select seq_restart2.nextval from dual;
+alter sequence seq_restart2 restart;
+select seq_restart2.nextval from dual;
+DROP SEQUENCE seq_restart2;
+
+create sequence seq_max4 increment by 2 start with 15 maxvalue 10;--error
+create sequence seq_max4 increment by -2 start with 15 maxvalue 10;--error
+
+create sequence seq_min4 increment by 2 start with 10 minvalue 15;--error
+create sequence seq_min4 increment by -2 start with 10 minvalue 15 maxvalue 25;--error
+
+create sequence seq_cache1 cache 1;--error
+create sequence seq_cache1 cache 2;--ok
+select cache_size from all_sequences where sequence_name='seq_cache1';
+DROP SEQUENCE seq_cache1;
+
+create sequence seq_cache2 nocache;
+select cache_size from all_sequences where sequence_name='seq_cache2';
+DROP SEQUENCE seq_cache2;
+
+create sequence seq_cache3;
+select cache_size from all_sequences where sequence_name='seq_cache3';
+DROP SEQUENCE seq_cache3;
+
+create sequence seq_scale4 minvalue 1 maxvalue 100 noscale;
+select seq_scale5.nextval from dual;
+DROP SEQUENCE seq_cache4;
+
+create sequence seq_session1 session ;
+select session_flag from all_sequences where sequence_name='seq_session1';
+select seq_session1.nextval from dual;
+select seq_session1.nextval from dual;
+DROP SEQUENCE seq_session1;
+
+-- Reject duplicate and conflicting SESSION/GLOBAL options.
+CREATE SEQUENCE seq_dup_session SESSION SESSION;
+CREATE SEQUENCE seq_dup_global GLOBAL GLOBAL;
+CREATE SEQUENCE seq_conflict_sg SESSION GLOBAL;
+CREATE SEQUENCE seq_conflict_gs GLOBAL SESSION;
+
+-- Reject duplicate and conflicting SCALE/NOSCALE options.
+CREATE SEQUENCE seq_dup_scale SCALE SCALE;
+CREATE SEQUENCE seq_conflict_sn SCALE NOSCALE;
+CREATE SEQUENCE seq_dup_noscale NOSCALE NOSCALE;
+CREATE SEQUENCE seq_conflict_ns NOSCALE SCALE;
+
+-- Reject duplicate and conflicting CACHE/NOCACHE options.
+CREATE SEQUENCE seq_conflict_cn CACHE 5 NOCACHE;
+CREATE SEQUENCE seq_conflict_nc NOCACHE CACHE 5;
+CREATE SEQUENCE seq_dup_nocache NOCACHE NOCACHE;
+
+-- An explicit NOCACHE on an Oracle-compatible identity column must not be
+-- overridden by the default identity cache size of 20; an explicit CACHE size
+-- must still be honored.
+CREATE TABLE seq_ident_nocache (id number GENERATED BY DEFAULT AS IDENTITY (NOCACHE));
+SELECT cache_size FROM all_sequences WHERE sequence_name = 'seq_ident_nocache_id_seq';
+DROP TABLE seq_ident_nocache;
+CREATE TABLE seq_ident_cache (id number GENERATED BY DEFAULT AS IDENTITY (CACHE 7));
+SELECT cache_size FROM all_sequences WHERE sequence_name = 'seq_ident_cache_id_seq';
+DROP TABLE seq_ident_cache;
+
+create sequence seq start with 6 minvalue 3 maxvalue 8 cycle session nocache;
+select seq.nextval from dual;
+select seq.nextval from dual;
+select seq.nextval from dual;
+select seq.nextval from dual; --cycle from minavlue 3
+DROP SEQUENCE seq;
+
+create sequence seq start with -2 minvalue -5 maxvalue -1 increment by -2 cycle session nocache;
+select seq.nextval from dual;
+select seq.nextval from dual;
+select seq.nextval from dual; --cycle from  maxvalue -1
+DROP SEQUENCE seq;
+
+--nocacle
+create sequence seq start with -2 minvalue -5 maxvalue -1 increment by -2 session nocache;
+select seq.nextval from dual;
+select seq.nextval from dual;
+select seq.nextval from dual; --error
+DROP SEQUENCE seq;
+
+-- Exceeded the maximum value of scale extend
+create sequence seq scale extend maxvalue 99999999999999;--maximum value will decrease to 9999999999999
+select min_value, max_value from user_sequences where sequence_name = 'seq';
+DROP SEQUENCE seq;
+
+create sequence seq scale extend increment by -1 minvalue -99999999999999;--minvalue -9999999999999 maxvalue -1
+select min_value, max_value from user_sequences where sequence_name = 'seq';
+DROP SEQUENCE seq;
+
+-- test seq number after alter table
+create sequence seq start with 100;
+select seq.nextval from dual;
+select seq.nextval from dual;
+alter sequence seq session;
+select seq.currval from dual;
+select seq.nextval from dual;
+DROP SEQUENCE seq;
+
+--test scale option
+CREATE SEQUENCE seq scale extend;
+select seq.nextval from dual;
+select seq.currval from dual;
+DROP SEQUENCE seq;
+
+create sequence seq scale noextend;
+select seq.nextval from dual;
+select seq.currval from dual;
+DROP SEQUENCE seq;
+
+CREATE SEQUENCE seq scale extend;
+select seq.nextval from dual;
+ALTER SEQUENCE seq SCALE NOEXTEND RESTART;
+select seq.nextval from dual;
+select seq.currval from dual;
+DROP SEQUENCE seq;
+
+CREATE SEQUENCE scale_err_seq START WITH 1 MAXVALUE 999 SCALE;
+SELECT scale_err_seq.nextval FROM dual;--ERROR
+DROP SEQUENCE scale_err_seq;
+
+CREATE SEQUENCE scale_seq START WITH 8 MAXVALUE 9999999 SCALE;
+SELECT scale_seq.nextval FROM dual;--OK
+SELECT scale_seq.nextval FROM dual;--OK
+SELECT scale_seq.nextval FROM dual;--ERROR
+DROP SEQUENCE scale_seq;
+
+create sequence seq_scale1 minvalue 1 maxvalue 100 scale extend;
+select seq_scale1.nextval from dual;
+alter sequence seq_scale1 maxvalue 9999999999999 noscale;
+select seq_scale1.nextval from dual;
+DROP SEQUENCE seq_scale1;
+
+create sequence seq_scale2 minvalue 1 maxvalue 100 scale extend;
+alter sequence seq_scale2 maxvalue 9999999999999 noscale;
+select seq_scale2.nextval from dual;
+DROP SEQUENCE seq_scale2;
+
+create sequence seq maxvalue -1 minvalue -99999999 start with -2 scale extend;
+select seq.nextval from dual;
+select seq.nextval from dual;
+select seq.currval from dual;
+DROP SEQUENCE seq;
+
+create sequence seq maxvalue -1 minvalue -99999999 start with -2 increment by -1 scale extend;
+select seq.nextval from dual;
+select seq.currval from dual;
+DROP SEQUENCE seq;
+
+create sequence seq session start with 10 increment by 2 maxvalue 20 cycle;
+select seq.nextval from dual;
+DISCARD sequences;
+select seq.nextval from dual;
+DROP SEQUENCE seq;
+
+create sequence test_conversion start with 100 scale extend maxvalue 9999;
+select test_conversion.nextval from dual;
+select test_conversion.nextval from dual;
+alter sequence test_conversion SESSION;
+select test_conversion.currval from dual;
+select test_conversion.nextval from dual;
+select test_conversion.currval from dual;
+DROP SEQUENCE test_conversion;
+
+create sequence test_conversion start with 100 scale extend  session maxvalue 9999;
+select test_conversion.nextval from dual;
+select test_conversion.nextval from dual;
+alter sequence test_conversion global;
+select test_conversion.currval from dual;
+select test_conversion.nextval from dual;
+DROP SEQUENCE test_conversion;
+
+set ivorysql.enable_internal_warning = true;
+CREATE SEQUENCE seq scale extend;
+create sequence seq_scale2 minvalue 1 maxvalue 9999999999999999 scale extend;
+DROP SEQUENCE seq;
+DROP SEQUENCE seq_scale2;
+set ivorysql.enable_internal_warning = false;
+CREATE SEQUENCE seq scale extend;
+create sequence seq_scale2 minvalue 1 maxvalue 9999999999999999 scale extend;
+DROP SEQUENCE seq;
+DROP SEQUENCE seq_scale2;
+create sequence seq_restart3 increment by 1 start with 32 minvalue 10 maxvalue 50;
+alter sequence seq_restart3 start with 20;
+SET ivorysql.enable_seq_scale_fixed = FALSE;

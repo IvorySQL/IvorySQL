@@ -1,0 +1,122 @@
+--
+-- dbms_lock.sql
+--
+-- tests for DBMS_LOCK
+--
+call dbms_lock.sleep(1);
+create table handle(h text);
+--
+-- test DBMS_LOCK.S
+--
+begin;
+declare
+ v_lockname varchar2(10) = 'LOCKS';
+ v_handle text;
+ v_rc int;
+begin
+ dbms_lock.allocate_unique(v_lockname, v_handle);
+ v_rc := dbms_lock.request(v_handle, dbms_lock.s_mode, 0);  
+ raise notice 'request rc=%', v_rc;
+ assert v_rc = 0, format('DBMS_LOCK.request failed: rc=%s', v_rc);
+ insert into handle values(v_handle);
+end;
+/
+NOTICE:  request rc=0
+do
+$$
+declare
+ v_lockmode text;
+begin
+ select mode into v_lockmode from pg_locks where pid = pg_backend_pid() and locktype ='advisory' and mode = 'ShareLock';
+  if not found then
+  v_lockmode := 'not found';
+ end if;
+ raise notice 'mode=%', v_lockmode;
+end
+$$;
+NOTICE:  mode=ShareLock
+--
+declare
+ v_rc int;
+ v_handle text;
+begin
+ select h into v_handle from handle;
+ v_rc := dbms_lock.release(v_handle); 
+ raise notice 'release rc=%', v_rc;
+ assert v_rc = 0, format('DBMS_LOCK.release failed: rc=%s', v_rc);
+ delete from handle;
+end;
+/
+NOTICE:  release rc=0
+do
+$$
+declare
+ v_lockmode text;
+begin
+ select mode into v_lockmode from pg_locks where pid = pg_backend_pid() and locktype ='advisory' and mode = 'ShareLock';
+ if not found then
+  v_lockmode := 'not found';
+ end if;
+ raise notice 'mode=%', v_lockmode;
+end
+$$;
+NOTICE:  mode=not found
+--
+commit;
+--
+-- test DBMS_LOCK.X
+--
+begin;
+declare
+ v_lockname varchar2(10) = 'LOCKX';
+ v_handle text;
+ v_rc int;
+begin
+ dbms_lock.allocate_unique(v_lockname, v_handle);
+ v_rc := dbms_lock.request(v_handle, dbms_lock.x_mode, 0);  
+ raise notice 'request rc=%', v_rc;
+ assert v_rc = 0, format('DBMS_LOCK.request failed: rc=%s', v_rc);
+ insert into handle values(v_handle);
+end;
+/
+NOTICE:  request rc=0
+do
+$$
+declare
+ v_lockmode text;
+begin
+ select mode into v_lockmode from pg_locks where pid = pg_backend_pid() and locktype='advisory' and mode = 'ExclusiveLock';
+ if not found then
+  v_lockmode := 'not found';
+ end if;
+ raise notice 'mode=%', v_lockmode;
+end
+$$;
+NOTICE:  mode=ExclusiveLock
+--
+declare
+ v_rc int;
+ v_handle text;
+begin
+ select h into v_handle from handle;
+ v_rc := dbms_lock.release(v_handle); 
+ raise notice 'release rc=%', v_rc;
+ assert v_rc = 0, format('DBMS_LOCK.release failed: rc=%s', v_rc);
+ delete from handle;
+end;
+/
+NOTICE:  release rc=0
+do
+$$
+declare
+ v_lockmode text ;
+begin
+ select mode into v_lockmode from pg_locks where pid = pg_backend_pid() and locktype = 'advisory' and mode = 'ExclusiveLock';
+ if not found then
+  v_lockmode := 'not found';
+ end if;
+ raise notice 'mode=%', v_lockmode;
+end
+$$;
+NOTICE:  mode=not found
+commit;

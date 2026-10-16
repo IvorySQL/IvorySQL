@@ -1,0 +1,272 @@
+-- compatible_mode
+SET IVORYSQL.COMPATIBLE_MODE TO ORACLE;
+SHOW IVORYSQL.COMPATIBLE_MODE;
+
+SET IVORYSQL.IDENTIFIER_CASE_SWITCH = INTERCHANGE;
+SHOW IVORYSQL.IDENTIFIER_CASE_SWITCH;
+
+-- create a procedure
+CREATE TABLE TB_TODEL(ID INT);
+CREATE OR REPLACE PROCEDURE PROC_DEL_TB(I INT) IS
+BEGIN
+	DROP TABLE TB_TODEL;
+END;
+/
+
+-- create a function with security definer
+CREATE OR REPLACE FUNCTION FUNC_AUTHID(P VARCHAR2)
+RETURN INT DETERMINISTIC IS
+BEGIN
+	RETURN 123;
+END;
+/
+-- select ... from all_procedures
+SELECT OBJECT_NAME, OBJECT_TYPE, DETERMINISTIC, PARALLEL, AUTHID
+FROM ALL_PROCEDURES
+WHERE OBJECT_NAME = 'PROC_DEL_TB' OR OBJECT_NAME = 'FUNC_AUTHID';
+
+-- create a function with all-lowercase name
+CREATE OR REPLACE FUNCTION "func_quotes_lower"(ID INT)
+RETURN VARCHAR2 IS
+BEGIN
+	RETURN 'func_quotes_lower'::VARCHAR2;
+END;
+/
+-- select ... from all_source
+SELECT NAME, LINE, TEXT FROM ALL_SOURCE WHERE NAME = 'func_quotes_lower';
+
+-- data_type and pls_type in all_arguments
+CREATE OR REPLACE FUNCTION FUNC_22_ARG_TYPES
+(
+	T1 CHAR, T2 NCHAR, T3 VARCHAR2, T4 INTEGER, T5 NUMBER, T6 NUMERIC,
+	T7 BINARY_FLOAT, T8 BINARY_DOUBLE, T9 REAL, T10 FLOAT, T11 DOUBLE PRECISION,
+	T12 DATE, T13 TIMESTAMP, T14 TIMESTAMP WITH TIME ZONE,
+	T15 TIMESTAMP WITH LOCAL TIME ZONE,
+	T16 CLOB, T17 BLOB, T18 NCLOB, T19 LONG, T20 LONG RAW, T21 BOOLEAN
+)
+RETURN RAW IS
+BEGIN
+	RETURN CAST('FUNC_22_ARG_TYPES' AS RAW);
+END;
+/
+
+-- select ... from all_arguments
+SELECT
+	ARGUMENT_NAME || ',' || POSITION || ',' || SEQUENCE || ',' || 
+	IN_OUT || ',' || DATA_TYPE || ',' || PLS_TYPE
+FROM ALL_ARGUMENTS WHERE OBJECT_NAME = 'FUNC_22_ARG_TYPES'
+ORDER BY OBJECT_ID, POSITION;
+
+-- clean data
+DROP TABLE IF EXISTS TB_TODEL;
+DROP PROCEDURE IF EXISTS PROC_DEL_TB;
+DROP FUNCTION IF EXISTS FUNC_AUTHID;
+DROP FUNCTION IF EXISTS "func_quotes_lower";
+DROP FUNCTION IF EXISTS FUNC_22_ARG_TYPES;
+-- create a function with arguments defaulted
+CREATE OR REPLACE FUNCTION FUNC_WITH_DEFAULT
+(
+	ARG1 IN INT DEFAULT 10,
+	ARG2 OUT INT,
+	ARG3 IN OUT INT,
+	ARG4 IN VARCHAR2(10) DEFAULT NULL
+)
+RETURN void IS
+BEGIN
+	ARG2 := ARG1 + 10;
+	ARG3 := ARG1 / 2;
+END;
+/
+-- check arguments with default value
+SELECT ARGUMENT_NAME, IN_OUT, POSITION, DEFAULTED FROM ALL_ARGUMENTS
+WHERE OBJECT_NAME = 'FUNC_WITH_DEFAULT';
+-- clean data
+DROP FUNCTION IF EXISTS FUNC_WITH_DEFAULT;
+
+-- Oracle dynamic views
+\d SYS.V$SESSION
+\d SYS.V$PROCESS
+SELECT * 
+FROM SYS.V$PARAMETER 
+WHERE NAME IN ('listen_addresses','application_name','archive_command','archive_mode','block_size')
+ORDER BY NAME;
+
+CREATE TABLE t_pk_single (id NUMBER PRIMARY KEY, name VARCHAR2(50));
+CREATE TABLE t_pk_composite (id1 NUMBER, id2 NUMBER, CONSTRAINT pk_composite PRIMARY KEY (id1, id2));
+
+CREATE TABLE t_unique (col1 INT, col2 VARCHAR2(20), CONSTRAINT uk_col1 UNIQUE (col1));
+
+CREATE TABLE t_parent (pid INT PRIMARY KEY, pname VARCHAR2(50));
+CREATE TABLE t_child (cid INT, pid INT, CONSTRAINT fk_child_parent FOREIGN KEY (pid) REFERENCES t_parent(pid));
+
+CREATE TABLE t_check (
+    age INT,
+    salary NUMERIC(10,2),
+    CONSTRAINT chk_age CHECK (age >= 0),
+    CONSTRAINT chk_salary_range CHECK (salary BETWEEN 1000 AND 100000)
+);
+
+-- t_partitioned removed as unnecessary
+
+CREATE VIEW v_dummy AS SELECT 1 AS col FROM DUAL;
+
+CREATE MATERIALIZED VIEW mv_dummy AS SELECT 2 AS col FROM DUAL;
+
+CREATE TABLE t_data_types (
+    c_varchar VARCHAR2(100),
+    c_char CHAR(10),
+    c_number NUMBER,
+    c_int INT,
+    c_numeric NUMERIC,
+    c_float FLOAT,
+    c_double DOUBLE PRECISION,
+    c_date DATE,
+    c_ts TIMESTAMP,
+    c_tstz TIMESTAMP WITH TIME ZONE,
+    c_text TEXT,
+    CONSTRAINT pk_data_types PRIMARY KEY (c_varchar, c_char)
+);
+
+-- Convert CURRENT_USER to varchar2 then uppercase to match view's owner
+SELECT table_name, constraint_name, column_name, position
+FROM all_cons_columns
+WHERE owner = SYS.ORA_CASE_TRANS(CURRENT_USER::VARCHAR2)
+ORDER BY table_name, constraint_name, position;
+
+SELECT constraint_name, COUNT(*) AS column_count
+FROM all_cons_columns
+WHERE owner = SYS.ORA_CASE_TRANS(CURRENT_USER::VARCHAR2)
+GROUP BY constraint_name
+ORDER BY constraint_name;
+
+DROP VIEW IF EXISTS v_dummy;
+DROP MATERIALIZED VIEW IF EXISTS mv_dummy;
+DROP TABLE IF EXISTS t_child;
+DROP TABLE IF EXISTS t_parent;
+DROP TABLE IF EXISTS t_pk_single;
+DROP TABLE IF EXISTS t_pk_composite;
+DROP TABLE IF EXISTS t_unique;
+DROP TABLE IF EXISTS t_check;
+DROP TABLE IF EXISTS t_data_types;
+-- USER_CONS_COLUMNS
+CREATE TABLE TEST_USER_CONS_COLUMNS (
+    ID INT NOT NULL,
+    NAME VARCHAR2(30) NOT NULL,
+    AGE INT NOT NULL,
+    EMAIL VARCHAR2(50),
+    CONSTRAINT PK_TEST PRIMARY KEY (ID, NAME),
+    CONSTRAINT UQ_EMAIL UNIQUE (EMAIL)
+);
+
+SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, POSITION
+FROM SYS.USER_CONS_COLUMNS
+WHERE TABLE_NAME = 'TEST_USER_CONS_COLUMNS'
+AND CONSTRAINT_NAME LIKE '%NOT_NULL%'
+ORDER BY CONSTRAINT_NAME, COLUMN_NAME;
+
+SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, POSITION
+FROM SYS.USER_CONS_COLUMNS
+WHERE TABLE_NAME = 'TEST_USER_CONS_COLUMNS'
+AND CONSTRAINT_NAME = 'PK_TEST'
+ORDER BY CONSTRAINT_NAME, POSITION;
+
+
+SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, POSITION
+FROM SYS.USER_CONS_COLUMNS
+WHERE TABLE_NAME = 'TEST_USER_CONS_COLUMNS'
+AND CONSTRAINT_NAME = 'UQ_EMAIL'
+ORDER BY CONSTRAINT_NAME, COLUMN_NAME;
+
+-- Clean
+DROP TABLE IF EXISTS TEST_USER_CONS_COLUMNS;
+
+-- Test NOT NULL constraint in all_cons_columns
+CREATE TABLE t_notnull_test (
+    id INT,
+    name VARCHAR2(50) NOT NULL,
+    age INT
+);
+
+SELECT table_name, constraint_name, column_name, position
+FROM all_cons_columns
+WHERE table_name = 'T_NOTNULL_TEST'
+ORDER BY constraint_name, column_name;
+
+DROP TABLE IF EXISTS t_notnull_test;
+-- Test DBA_CONS_COLUMNS view
+SELECT count(*) > 0 AS view_exists
+FROM information_schema.views
+WHERE table_schema = 'sys' AND table_name = 'dba_cons_columns';
+
+-- Restricted to tables this test owns: the unrestricted form reported
+-- whichever rows happened to sort first in the whole cluster, so any new
+-- catalog or test table anywhere rewrote the expected output.
+CREATE TABLE t_dba_cons_cols (
+    id INT,
+    code VARCHAR2(10),
+    CONSTRAINT pk_dba_cons_cols PRIMARY KEY (id),
+    CONSTRAINT uq_dba_cons_cols UNIQUE (code)
+);
+
+SELECT constraint_name, table_name, column_name, position
+FROM sys.dba_cons_columns
+WHERE table_name = 'T_DBA_CONS_COLS'
+AND constraint_name IN ('PK_DBA_CONS_COLS', 'UQ_DBA_CONS_COLS')
+ORDER BY constraint_name, table_name, column_name;
+
+DROP TABLE t_dba_cons_cols;
+
+-- ALL_TAB_COLUMNS
+DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+
+CREATE TABLE TEST_ALL_TAB_COLUMNS (
+    ID INT PRIMARY KEY,
+    NAME VARCHAR2(50) NOT NULL,
+    AGE NUMERIC(5,2),
+    CREATE_TIME DATE
+);
+
+ANALYZE TEST_ALL_TAB_COLUMNS;
+
+SELECT 
+    TABLE_NAME,
+    COLUMN_NAME,
+    COLUMN_ID,
+    DATA_TYPE,
+    DATA_TYPE_MOD,
+    DATA_LENGTH,
+    DATA_PRECISION,
+    DATA_SCALE,
+    NULLABLE,
+    DATA_DEFAULT,
+    NUM_DISTINCT,
+    LOW_VALUE,
+    HIGH_VALUE,
+    DENSITY,
+    NUM_NULLS,
+    NUM_BUCKETS,
+    SAMPLE_SIZE,
+    CHARACTER_SET_NAME,
+    CHAR_COL_DECL_LENGTH,
+    GLOBAL_STATS,
+    USER_STATS,
+    AVG_COL_LEN,
+    CHAR_LENGTH,
+    CHAR_USED,
+    V80_FMT_IMAGE,
+    DATA_UPGRADED,
+    HISTOGRAM,
+    DEFAULT_LENGTH,
+    "COLLATION",
+    IDENTITY_COLUMN,
+    DEFAULT_ON_NULL
+FROM SYS.ALL_TAB_COLUMNS
+WHERE TABLE_NAME = 'TEST_ALL_TAB_COLUMNS'
+AND OWNER = SYS.ORA_CASE_TRANS(CURRENT_SCHEMA::VARCHAR2)
+ORDER BY COLUMN_ID;
+
+\set ON_ERROR_STOP off
+SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'TEST_ALL_TAB_COLUMNS';
+\set ON_ERROR_STOP on
+
+DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;

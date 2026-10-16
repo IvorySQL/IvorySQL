@@ -1,0 +1,172 @@
+--
+-- VSIZE
+--
+-- Oracle-compatible VSIZE: number of bytes in the internal representation.
+--
+-- character data: byte length of the value (header excluded)
+SELECT vsize('abc');
+ vsize 
+-------
+     3
+(1 row)
+
+SELECT vsize(CAST('abc' AS VARCHAR2));
+ vsize 
+-------
+     3
+(1 row)
+
+SELECT vsize('abc'::varchar);
+ vsize 
+-------
+     3
+(1 row)
+
+SELECT vsize('abc'::char(10));
+ vsize 
+-------
+    10
+(1 row)
+
+SELECT vsize('abc'::text) = vsize(CAST('abc' AS VARCHAR2)) AS same_as_varchar2;
+ same_as_varchar2 
+------------------
+ t
+(1 row)
+
+SELECT vsize('abc') = lengthb('abc') AS same_as_lengthb;
+ same_as_lengthb 
+-----------------
+ t
+(1 row)
+
+-- multibyte data
+SELECT vsize('你好'::text);
+ vsize 
+-------
+     6
+(1 row)
+
+-- numeric data
+SELECT vsize(0::number);
+ vsize 
+-------
+     2
+(1 row)
+
+SELECT vsize(1::number);
+ vsize 
+-------
+     4
+(1 row)
+
+SELECT vsize(123::number);
+ vsize 
+-------
+     4
+(1 row)
+
+SELECT vsize(1.23::number);
+ vsize 
+-------
+     6
+(1 row)
+
+SELECT vsize(123::int4);
+ vsize 
+-------
+     4
+(1 row)
+
+SELECT vsize(123::int8);
+ vsize 
+-------
+     8
+(1 row)
+
+SELECT vsize(1.23::float8);
+ vsize 
+-------
+     8
+(1 row)
+
+SELECT vsize('NaN'::float8);
+ vsize 
+-------
+     8
+(1 row)
+
+-- other fixed-width types
+SELECT vsize(true);
+ vsize 
+-------
+     1
+(1 row)
+
+SELECT vsize('2024-01-01'::date);
+ vsize 
+-------
+     8
+(1 row)
+
+SELECT vsize('2024-01-01 10:00:00'::timestamp);
+ vsize 
+-------
+     8
+(1 row)
+
+SELECT vsize('2024-01-01 10:00:00+08'::timestamptz);
+ vsize 
+-------
+     8
+(1 row)
+
+-- NULL input returns NULL
+SELECT vsize(NULL::text);
+ vsize 
+-------
+      
+(1 row)
+
+SELECT vsize(NULL::number);
+ vsize 
+-------
+      
+(1 row)
+
+-- NULL values in a table
+CREATE TABLE vsize_tbl(a text, b number);
+INSERT INTO vsize_tbl VALUES ('hello', 12345);
+INSERT INTO vsize_tbl VALUES (NULL, NULL);
+INSERT INTO vsize_tbl VALUES ('world', 0);
+SELECT vsize(a), vsize(b) FROM vsize_tbl ORDER BY a NULLS LAST;
+ vsize | vsize 
+-------+-------
+     5 |     6
+     5 |     2
+       |      
+(3 rows)
+
+DROP TABLE vsize_tbl;
+-- large values that get toasted/compressed still report the logical size
+SELECT vsize(repeat('a', 100000)) = lengthb(repeat('a', 100000)) AS big_text_matches_lengthb;
+ big_text_matches_lengthb 
+--------------------------
+ t
+(1 row)
+
+SELECT vsize(repeat('a', 100000));
+ vsize  
+--------
+ 100000
+(1 row)
+
+CREATE TABLE vsize_big(a text);
+INSERT INTO vsize_big SELECT repeat('b', 200000) FROM generate_series(1, 10);
+SELECT bool_and(vsize(a) = lengthb(a)) AS toasted_matches_lengthb, min(vsize(a)) AS min_size FROM vsize_big;
+ toasted_matches_lengthb | min_size 
+-------------------------+----------
+ t                       |   200000
+(1 row)
+
+DROP TABLE vsize_big;

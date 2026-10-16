@@ -1,0 +1,4 @@
+test_rls_hooks is an example of how to use the hooks provided for RLS to
+define additional policies to be used.
+
+For more detailed instructions, refer to the "README" file in the "src/test/modules/test_rls_hooks" directory.

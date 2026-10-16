@@ -1,0 +1,64 @@
+## Cirrus CI: PR-only Linux FormatCheck
+task:
+  name: FormatCheck
+  only_if: $CIRRUS_PR != ''
+
+  container:
+    image: debian:bookworm-slim
+    cpu: 2
+    memory: 2G
+
+  format_check_script: |
+    set -euo pipefail
+    echo "[FormatCheck] Installing build dependencies..."
+    apt-get update -qq
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+      build-essential git ca-certificates perl python3 meson ninja-build pkg-config flex bison
+
+    echo "[FormatCheck] Configuring minimal Meson build..."
+    meson setup build --buildtype=release --auto-features=disabled
+
+    echo "[FormatCheck] Building pg_bsd_indent via Meson..."
+    ninja -C build src/tools/pg_bsd_indent/pg_bsd_indent || ninja -C build pg_bsd_indent || ninja -C build
+
+    echo "[FormatCheck] Determining changed files..."
+    HEAD_SHA=$(git rev-parse HEAD)
+    BASE_BRANCH="${CIRRUS_BASE_BRANCH:-}"
+    if [ -z "$BASE_BRANCH" ]; then
+      BASE_BRANCH=$(git remote show origin 2>/dev/null | sed -n '/HEAD branch/s/.*: //p')
+    fi
+    BASE=""
+    if [ -n "$BASE_BRANCH" ]; then
+      git fetch --quiet origin "$BASE_BRANCH" || true
+      BASE=$(git merge-base HEAD "origin/$BASE_BRANCH" || true)
+    fi
+    if [ -z "$BASE" ]; then
+      BASE="${CIRRUS_BASE_SHA:-}"
+    fi
+    if [ -z "$BASE" ] || [ "$BASE" = "$HEAD_SHA" ]; then
+      BASE=$(git rev-parse HEAD~1 2>/dev/null || echo "$HEAD_SHA")
+    fi
+    echo "HEAD=$HEAD_SHA BASE_BRANCH=$BASE_BRANCH BASE=$BASE"
+
+    files=$(git diff --name-only "$BASE"..HEAD | grep -E -i '\.(c|h|cpp|hpp)$' | grep -v '^src/tools/pg_bsd_indent/' || true)
+    if [ -z "$files" ]; then
+      echo "[FormatCheck] No C/C++ changes detected; skipping."
+      exit 0
+    fi
+    export PGTYPEDEFS=$(pwd)/src/tools/pgindent/typedefs.list
+    export PGINDENT=$(pwd)/build/src/tools/pg_bsd_indent/pg_bsd_indent
+
+    export LANG=C.UTF-8
+    export LC_ALL=C.UTF-8
+
+    echo "[FormatCheck] Running pgindent --check..."
+    set +e
+    ./src/tools/pgindent/pgindent --check $files
+    rc=$?
+    set -e
+    if [ $rc -ne 0 ]; then
+      echo "[FormatCheck] Unformatted changes detected; suggested patch below:"
+      ./src/tools/pgindent/pgindent --diff $files || true
+      exit $rc
+    fi
+    echo "[FormatCheck] Passed."

@@ -1,0 +1,324 @@
+-- varcharbyte check
+CREATE TABLE varchar2tmp (a varchar2(32 byte));
+\copy varchar2tmp from 'data/varchar2.data'
+SET enable_seqscan=on;
+SELECT count(*) FROM varchar2tmp WHERE a <   '31b0'::varchar2(32);
+ count 
+-------
+   587
+(1 row)
+
+SELECT count(*) FROM varchar2tmp WHERE a <=  '31b0'::varchar2(32);
+ count 
+-------
+   588
+(1 row)
+
+SELECT count(*) FROM varchar2tmp WHERE a  =  '31b0'::varchar2(32);
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM varchar2tmp WHERE a >=  '31b0'::varchar2(32);
+ count 
+-------
+   401
+(1 row)
+
+SELECT count(*) FROM varchar2tmp WHERE a >   '31b0'::varchar2(32);
+ count 
+-------
+   400
+(1 row)
+
+CREATE INDEX varcharbyteidx ON varchar2tmp USING GIN (a);
+SET enable_seqscan=off;
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM varchar2tmp WHERE a <   '31b0'::varchar2(32 byte);
+                      QUERY PLAN                      
+------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on varchar2tmp
+         Recheck Cond: (a < '31b0'::varchar2(32))
+         ->  Bitmap Index Scan on varcharbyteidx
+               Index Cond: (a < '31b0'::varchar2(32))
+(5 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM varchar2tmp WHERE a <   '31b0'::varchar2(32 char);
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on varchar2tmp
+         Recheck Cond: (a < '31b0'::varchar2(32 char))
+         ->  Bitmap Index Scan on varcharbyteidx
+               Index Cond: (a < '31b0'::varchar2(32 char))
+(5 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM varchar2tmp WHERE a <=  '31b0'::varchar2(32 byte);
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on varchar2tmp
+         Recheck Cond: (a <= '31b0'::varchar2(32))
+         ->  Bitmap Index Scan on varcharbyteidx
+               Index Cond: (a <= '31b0'::varchar2(32))
+(5 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM varchar2tmp WHERE a <=  '31b0'::varchar2(32 char);
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on varchar2tmp
+         Recheck Cond: (a <= '31b0'::varchar2(32 char))
+         ->  Bitmap Index Scan on varcharbyteidx
+               Index Cond: (a <= '31b0'::varchar2(32 char))
+(5 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM varchar2tmp WHERE a  =  '31b0'::varchar2(32 byte);
+                      QUERY PLAN                      
+------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on varchar2tmp
+         Recheck Cond: (a = '31b0'::varchar2(32))
+         ->  Bitmap Index Scan on varcharbyteidx
+               Index Cond: (a = '31b0'::varchar2(32))
+(5 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM varchar2tmp WHERE a  =  '31b0'::varchar2(32 char);
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on varchar2tmp
+         Recheck Cond: (a = '31b0'::varchar2(32 char))
+         ->  Bitmap Index Scan on varcharbyteidx
+               Index Cond: (a = '31b0'::varchar2(32 char))
+(5 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM varchar2tmp WHERE a >=  '31b0'::varchar2(32 byte);
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on varchar2tmp
+         Recheck Cond: (a >= '31b0'::varchar2(32))
+         ->  Bitmap Index Scan on varcharbyteidx
+               Index Cond: (a >= '31b0'::varchar2(32))
+(5 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM varchar2tmp WHERE a >=  '31b0'::varchar2(32 char);
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on varchar2tmp
+         Recheck Cond: (a >= '31b0'::varchar2(32 char))
+         ->  Bitmap Index Scan on varcharbyteidx
+               Index Cond: (a >= '31b0'::varchar2(32 char))
+(5 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM varchar2tmp WHERE a >   '31b0'::varchar2(32 byte);
+                      QUERY PLAN                      
+------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on varchar2tmp
+         Recheck Cond: (a > '31b0'::varchar2(32))
+         ->  Bitmap Index Scan on varcharbyteidx
+               Index Cond: (a > '31b0'::varchar2(32))
+(5 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM varchar2tmp WHERE a >   '31b0'::varchar2(32 char);
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on varchar2tmp
+         Recheck Cond: (a > '31b0'::varchar2(32 char))
+         ->  Bitmap Index Scan on varcharbyteidx
+               Index Cond: (a > '31b0'::varchar2(32 char))
+(5 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM varchar2tmp WHERE a BETWEEN '31a'::varchar2(32 byte) AND '31c'::varchar2(32 char);
+                                      QUERY PLAN                                      
+--------------------------------------------------------------------------------------
+ Bitmap Heap Scan on varchar2tmp
+   Recheck Cond: ((a >= '31a'::varchar2(32)) AND (a <= '31c'::varchar2(32 char)))
+   ->  Bitmap Index Scan on varcharbyteidx
+         Index Cond: ((a >= '31a'::varchar2(32)) AND (a <= '31c'::varchar2(32 char)))
+(4 rows)
+
+SELECT * FROM varchar2tmp WHERE a BETWEEN '31a'::varchar2(32 byte) AND '31c'::varchar2(32 char);
+  a   
+------
+ 31b0
+(1 row)
+
+-- varcharchar check
+CREATE TABLE varchar2test (a varchar2(32 char));
+\copy varchar2test from 'data/varchar2.data'
+SET enable_seqscan=on;
+SELECT count(*) FROM varchar2test WHERE a <   '31b0'::varchar2(32);
+ count 
+-------
+   587
+(1 row)
+
+SELECT count(*) FROM varchar2test WHERE a <=  '31b0'::varchar2(32);
+ count 
+-------
+   588
+(1 row)
+
+SELECT count(*) FROM varchar2test WHERE a  =  '31b0'::varchar2(32);
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM varchar2test WHERE a >=  '31b0'::varchar2(32);
+ count 
+-------
+   401
+(1 row)
+
+SELECT count(*) FROM varchar2test WHERE a >   '31b0'::varchar2(32);
+ count 
+-------
+   400
+(1 row)
+
+CREATE INDEX varcharcharidx ON varchar2test USING GIN (a);
+SET enable_seqscan=off;
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM varchar2test WHERE a <   '31b0'::varchar2(32 byte);
+                      QUERY PLAN                      
+------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on varchar2test
+         Recheck Cond: (a < '31b0'::varchar2(32))
+         ->  Bitmap Index Scan on varcharcharidx
+               Index Cond: (a < '31b0'::varchar2(32))
+(5 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM varchar2test WHERE a <   '31b0'::varchar2(32 char);
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on varchar2test
+         Recheck Cond: (a < '31b0'::varchar2(32 char))
+         ->  Bitmap Index Scan on varcharcharidx
+               Index Cond: (a < '31b0'::varchar2(32 char))
+(5 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM varchar2test WHERE a <=  '31b0'::varchar2(32 byte);
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on varchar2test
+         Recheck Cond: (a <= '31b0'::varchar2(32))
+         ->  Bitmap Index Scan on varcharcharidx
+               Index Cond: (a <= '31b0'::varchar2(32))
+(5 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM varchar2test WHERE a <=  '31b0'::varchar2(32 char);
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on varchar2test
+         Recheck Cond: (a <= '31b0'::varchar2(32 char))
+         ->  Bitmap Index Scan on varcharcharidx
+               Index Cond: (a <= '31b0'::varchar2(32 char))
+(5 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM varchar2test WHERE a  =  '31b0'::varchar2(32 byte);
+                      QUERY PLAN                      
+------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on varchar2test
+         Recheck Cond: (a = '31b0'::varchar2(32))
+         ->  Bitmap Index Scan on varcharcharidx
+               Index Cond: (a = '31b0'::varchar2(32))
+(5 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM varchar2test WHERE a  =  '31b0'::varchar2(32 char);
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on varchar2test
+         Recheck Cond: (a = '31b0'::varchar2(32 char))
+         ->  Bitmap Index Scan on varcharcharidx
+               Index Cond: (a = '31b0'::varchar2(32 char))
+(5 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM varchar2test WHERE a >=  '31b0'::varchar2(32 byte);
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on varchar2test
+         Recheck Cond: (a >= '31b0'::varchar2(32))
+         ->  Bitmap Index Scan on varcharcharidx
+               Index Cond: (a >= '31b0'::varchar2(32))
+(5 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM varchar2test WHERE a >=  '31b0'::varchar2(32 char);
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on varchar2test
+         Recheck Cond: (a >= '31b0'::varchar2(32 char))
+         ->  Bitmap Index Scan on varcharcharidx
+               Index Cond: (a >= '31b0'::varchar2(32 char))
+(5 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM varchar2test WHERE a >   '31b0'::varchar2(32 byte);
+                      QUERY PLAN                      
+------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on varchar2test
+         Recheck Cond: (a > '31b0'::varchar2(32))
+         ->  Bitmap Index Scan on varcharcharidx
+               Index Cond: (a > '31b0'::varchar2(32))
+(5 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM varchar2test WHERE a >   '31b0'::varchar2(32 char);
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on varchar2test
+         Recheck Cond: (a > '31b0'::varchar2(32 char))
+         ->  Bitmap Index Scan on varcharcharidx
+               Index Cond: (a > '31b0'::varchar2(32 char))
+(5 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM varchar2test WHERE a BETWEEN '31a'::varchar2(32 byte) AND '31c'::varchar2(32 char);
+                                      QUERY PLAN                                      
+--------------------------------------------------------------------------------------
+ Bitmap Heap Scan on varchar2test
+   Recheck Cond: ((a >= '31a'::varchar2(32)) AND (a <= '31c'::varchar2(32 char)))
+   ->  Bitmap Index Scan on varcharcharidx
+         Index Cond: ((a >= '31a'::varchar2(32)) AND (a <= '31c'::varchar2(32 char)))
+(4 rows)
+
+SELECT * FROM varchar2test WHERE a BETWEEN '31a'::varchar2(32 byte) AND '31c'::varchar2(32 char);
+  a   
+------
+ 31b0
+(1 row)
+

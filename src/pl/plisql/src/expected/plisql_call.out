@@ -1,0 +1,893 @@
+--
+-- Tests for procedures / CALL syntax
+--
+CREATE PROCEDURE test_proc0()
+LANGUAGE plisql
+AS $$
+BEGIN
+    RAISE NOTICE 'test_proc0 called';
+END;
+$$;
+/
+CALL test_proc0();
+NOTICE:  test_proc0 called
+CALL test_proc0;
+NOTICE:  test_proc0 called
+DO
+LANGUAGE plisql
+$$
+BEGIN
+  test_proc0();
+  test_proc0;
+END;
+$$;
+NOTICE:  test_proc0 called
+NOTICE:  test_proc0 called
+/
+CREATE PROCEDURE test_proc1()
+LANGUAGE plisql
+AS $$
+BEGIN
+    NULL;
+END;
+$$;
+/
+CALL test_proc1();
+CALL test_proc1;
+-- error: can't return non-NULL
+CREATE PROCEDURE test_proc2()
+LANGUAGE plisql
+AS $$
+BEGIN
+    RETURN 5;
+END;
+$$;
+/
+WARNING:  compilation error
+LINE 5:     RETURN 5;
+                   ^
+HINT:  RETURN cannot have a parameter in a procedure
+CREATE TABLE test1 (a int);
+CREATE PROCEDURE test_proc3(x int)
+LANGUAGE plisql
+AS $$
+BEGIN
+    INSERT INTO test1 VALUES (x);
+END;
+$$;
+/
+CALL test_proc3(55);
+SELECT * FROM test1;
+ a  
+----
+ 55
+(1 row)
+
+-- Check that plan revalidation doesn't prevent setting transaction properties
+-- (bug #18059).  This test must include the first temp-object creation in
+-- this script, or it won't exercise the bug scenario.  Hence we put it early.
+CREATE PROCEDURE test_proc3a()
+LANGUAGE plisql
+AS $$
+BEGIN
+   COMMIT;
+   SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+   RAISE NOTICE 'done';
+END;
+$$;
+/
+CALL test_proc3a();
+NOTICE:  done
+CREATE TEMP TABLE tt1(f1 int);
+CALL test_proc3a();
+NOTICE:  done
+-- nested CALL
+TRUNCATE TABLE test1;
+CREATE PROCEDURE test_proc4(y int)
+LANGUAGE plisql
+AS $$
+BEGIN
+     test_proc3(y);
+     test_proc3($1);
+END;
+$$;
+/
+CALL test_proc4(66);
+SELECT * FROM test1;
+ a  
+----
+ 66
+ 66
+(2 rows)
+
+CALL test_proc4(66);
+SELECT * FROM test1;
+ a  
+----
+ 66
+ 66
+ 66
+ 66
+(4 rows)
+
+-- output arguments
+CREATE PROCEDURE test_proc5(INOUT a text)
+LANGUAGE plisql
+AS $$
+BEGIN
+    a := a || '+' || a;
+END;
+$$;
+/
+CALL test_proc5('abc');
+    a    
+---------
+ abc+abc
+(1 row)
+
+CREATE PROCEDURE test_proc6(a int, INOUT b int, INOUT c int)
+LANGUAGE plisql
+AS $$
+BEGIN
+    b := b * a;
+    c := c * a;
+END;
+$$;
+/
+CALL test_proc6(2, 3, 4);
+ b | c 
+---+---
+ 6 | 8
+(1 row)
+
+DO
+LANGUAGE plisql
+$$
+DECLARE
+    x int := 3;
+    y int := 4;
+BEGIN
+     test_proc6(2, x, y);
+    RAISE INFO 'x = %, y = %', x, y;
+     test_proc6(2, c => y, b => x);
+    RAISE INFO 'x = %, y = %', x, y;
+END;
+$$;
+INFO:  x = 6, y = 8
+INFO:  x = 12, y = 16
+DO
+LANGUAGE plisql
+$$
+DECLARE
+    x int := 3;
+    y int := 4;
+BEGIN
+     test_proc6(2, x + 1, y);  -- error
+    RAISE INFO 'x = %, y = %', x, y;
+END;
+$$;
+ERROR:  procedure parameter "b" is an output parameter but corresponding argument is not writable
+CONTEXT:  PL/iSQL function inline_code_block line 6 at CALL
+DO
+LANGUAGE plisql
+$$
+DECLARE
+    x constant int := 3;
+    y int := 4;
+BEGIN
+     test_proc6(2, x, y);  -- error because x is constant
+END;
+$$;
+ERROR:  variable "x" is declared CONSTANT
+CONTEXT:  PL/iSQL function inline_code_block line 6 at CALL
+DO
+LANGUAGE plisql
+$$
+DECLARE
+    x int := 3;
+    y int := 4;
+BEGIN
+    FOR i IN 1..5 LOOP
+        CALL test_proc6(i, x, y);
+        RAISE INFO 'x = %, y = %', x, y;
+    END LOOP;
+END;
+$$;
+INFO:  x = 3, y = 4
+INFO:  x = 6, y = 8
+INFO:  x = 18, y = 24
+INFO:  x = 72, y = 96
+INFO:  x = 360, y = 480
+-- recursive with output arguments
+CREATE PROCEDURE test_proc7(x int, INOUT a int, INOUT b numeric)
+LANGUAGE plisql
+AS $$
+BEGIN
+IF x > 1 THEN
+    a := x / 10;
+    b := x / 2;
+     test_proc7(b::int, a, b);
+END IF;
+END;
+$$;
+/
+CALL test_proc7(100, -1, -1);
+ a | b 
+---+---
+ 0 | 1
+(1 row)
+
+-- inner COMMIT with output arguments
+CREATE PROCEDURE test_proc7c(x int, INOUT a int, INOUT b numeric)
+LANGUAGE plisql
+AS $$
+BEGIN
+  a := x / 10;
+  b := x / 2;
+  COMMIT;
+END;
+$$;
+/
+CREATE PROCEDURE test_proc7cc(_x int)
+LANGUAGE plisql
+AS $$
+DECLARE _a int; _b numeric;
+BEGIN
+   test_proc7c(_x, _a, _b);
+  RAISE NOTICE '_x: %,_a: %, _b: %', _x, _a, _b;
+END
+$$;
+/
+CALL test_proc7cc(10);
+NOTICE:  _x: 10,_a: 1, _b: 5
+-- named parameters and defaults
+CREATE PROCEDURE test_proc8a(INOUT a int, INOUT b int)
+LANGUAGE plisql
+AS $$
+BEGIN
+  RAISE NOTICE 'a: %, b: %', a, b;
+  a := a * 10;
+  b := b + 10;
+END;
+$$;
+/
+CALL test_proc8a(10, 20);
+NOTICE:  a: 10, b: 20
+  a  | b  
+-----+----
+ 100 | 30
+(1 row)
+
+CALL test_proc8a(b => 20, a => 10);
+NOTICE:  a: 10, b: 20
+  a  | b  
+-----+----
+ 100 | 30
+(1 row)
+
+DO $$
+DECLARE _a int; _b int;
+BEGIN
+  _a := 10; _b := 30;
+   test_proc8a(_a, _b);
+  RAISE NOTICE '_a: %, _b: %', _a, _b;
+   test_proc8a(b => _b, a => _a);
+  RAISE NOTICE '_a: %, _b: %', _a, _b;
+END
+$$;
+NOTICE:  a: 10, b: 30
+NOTICE:  _a: 100, _b: 40
+NOTICE:  a: 100, b: 40
+NOTICE:  _a: 1000, _b: 50
+CREATE PROCEDURE test_proc8b(INOUT a int, INOUT b int, INOUT c int)
+LANGUAGE plisql
+AS $$
+BEGIN
+  RAISE NOTICE 'a: %, b: %, c: %', a, b, c;
+  a := a * 10;
+  b := b + 10;
+  c := c * -10;
+END;
+$$;
+/
+DO $$
+DECLARE _a int; _b int; _c int;
+BEGIN
+  _a := 10; _b := 30; _c := 50;
+   test_proc8b(_a, _b, _c);
+  RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
+   test_proc8b(_a, c => _c, b => _b);
+  RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
+END
+$$;
+NOTICE:  a: 10, b: 30, c: 50
+NOTICE:  _a: 100, _b: 40, _c: -500
+NOTICE:  a: 100, b: 40, c: -500
+NOTICE:  _a: 1000, _b: 50, _c: 5000
+CREATE PROCEDURE test_proc8c(INOUT a int, INOUT b int, INOUT c int)
+LANGUAGE plisql
+AS $$
+BEGIN
+  RAISE NOTICE 'a: %, b: %, c: %', a, b, c;
+  a := a * 10;
+  b := b + 10;
+  c := c * -10;
+END;
+$$;
+/
+DO $$
+DECLARE _a int; _b int; _c int;
+BEGIN
+  _a := 10; _b := 30; _c := 50;
+   test_proc8c(_a, _b, _c);
+  RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
+  _a := 10; _b := 30; _c := 50;
+   test_proc8c(_a, c => _c, b => _b);
+  RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
+  _a := 10; _b := 30; _c := 50;
+   test_proc8c(c => _c, b => _b, a => _a);
+  RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
+END
+$$;
+NOTICE:  a: 10, b: 30, c: 50
+NOTICE:  _a: 100, _b: 40, _c: -500
+NOTICE:  a: 10, b: 30, c: 50
+NOTICE:  _a: 100, _b: 40, _c: -500
+NOTICE:  a: 10, b: 30, c: 50
+NOTICE:  _a: 100, _b: 40, _c: -500
+DO $$
+DECLARE _a int; _b int; _c int;
+BEGIN
+  _a := 10; _b := 30; _c := 50;
+   test_proc8c(_a, _b);  -- fail, no output argument for c
+  RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
+END
+$$;
+ERROR:  procedure test_proc8c(pg_catalog.int4, pg_catalog.int4) does not exist
+LINE 1: CALL test_proc8c(_a, _b)
+             ^
+DETAIL:  No procedure of that name accepts the given number of arguments.
+QUERY:  CALL test_proc8c(_a, _b)
+CONTEXT:  PL/iSQL function inline_code_block line 5 at CALL
+DO $$
+DECLARE _a int; _b int; _c int;
+BEGIN
+  _a := 10; _b := 30; _c := 50;
+   test_proc8c(_a, b => _b);  -- fail, no output argument for c
+  RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
+END
+$$;
+ERROR:  procedure test_proc8c(pg_catalog.int4, b => pg_catalog.int4) does not exist
+LINE 1: CALL test_proc8c(_a, b => _b)
+             ^
+DETAIL:  No procedure of that name accepts the given number of arguments.
+QUERY:  CALL test_proc8c(_a, b => _b)
+CONTEXT:  PL/iSQL function inline_code_block line 5 at CALL
+-- OUT parameters
+CREATE PROCEDURE test_proc9(IN a int, OUT b int)
+LANGUAGE plisql
+AS $$
+BEGIN
+  RAISE NOTICE 'a: %, b: %', a, b;
+  b := a * 2;
+END;
+$$;
+/
+DO $$
+DECLARE _a int; _b int;
+BEGIN
+  _a := 10; _b := 30;
+   test_proc9(_a, _b);
+  RAISE NOTICE '_a: %, _b: %', _a, _b;
+END
+$$;
+NOTICE:  a: 10, b: <NULL>
+NOTICE:  _a: 10, _b: 20
+CREATE PROCEDURE test_proc10(IN a int, OUT b int, IN c int DEFAULT 11)
+LANGUAGE plisql
+AS $$
+BEGIN
+  RAISE NOTICE 'a: %, b: %, c: %', a, b, c;
+  b := a - c;
+END;
+$$;
+/
+DO $$
+DECLARE _a int; _b int; _c int;
+BEGIN
+  _a := 10; _b := 30; _c := 7;
+   test_proc10(_a, _b, _c);
+  RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
+
+  _a := 10; _b := 30; _c := 7;
+   test_proc10(_a, _b, c => _c);
+  RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
+
+  _a := 10; _b := 30; _c := 7;
+   test_proc10(a => _a, b => _b, c => _c);
+  RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
+
+  _a := 10; _b := 30; _c := 7;
+   test_proc10(_a, c => _c, b => _b);
+  RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
+
+  _a := 10; _b := 30; _c := 7;
+   test_proc10(_a, _b);
+  RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
+
+  _a := 10; _b := 30; _c := 7;
+   test_proc10(_a, b => _b);
+  RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
+
+  _a := 10; _b := 30; _c := 7;
+   test_proc10(b => _b, a => _a);
+  RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
+END
+$$;
+NOTICE:  a: 10, b: <NULL>, c: 7
+NOTICE:  _a: 10, _b: 3, _c: 7
+NOTICE:  a: 10, b: <NULL>, c: 7
+NOTICE:  _a: 10, _b: 3, _c: 7
+NOTICE:  a: 10, b: <NULL>, c: 7
+NOTICE:  _a: 10, _b: 3, _c: 7
+NOTICE:  a: 10, b: <NULL>, c: 7
+NOTICE:  _a: 10, _b: 3, _c: 7
+NOTICE:  a: 10, b: <NULL>, c: 11
+NOTICE:  _a: 10, _b: -1, _c: 7
+NOTICE:  a: 10, b: <NULL>, c: 11
+NOTICE:  _a: 10, _b: -1, _c: 7
+NOTICE:  a: 10, b: <NULL>, c: 11
+NOTICE:  _a: 10, _b: -1, _c: 7
+-- OUT + VARIADIC
+CREATE PROCEDURE test_proc11(a OUT int, VARIADIC b int[])
+LANGUAGE plisql
+AS $$
+BEGIN
+  RAISE NOTICE 'a: %, b: %', a, b;
+  a := b[1] + b[2];
+END;
+$$;
+/
+DO $$
+DECLARE _a int; _b int; _c int;
+BEGIN
+  _a := 10; _b := 30; _c := 7;
+   test_proc11(_a, _b, _c);
+  RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
+END
+$$;
+NOTICE:  a: <NULL>, b: {30,7}
+NOTICE:  _a: 37, _b: 30, _c: 7
+-- polymorphic OUT arguments
+CREATE PROCEDURE test_proc12(a anyelement, OUT b anyelement, OUT c anyarray)
+LANGUAGE plisql
+AS $$
+BEGIN
+  RAISE NOTICE 'a: %', a;
+  b := a;
+  c := array[a];
+END;
+$$;
+/
+DO $$
+DECLARE _a int; _b int; _c int[];
+BEGIN
+  _a := 10;
+  CALL test_proc12(_a, _b, _c);
+  RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
+END
+$$;
+NOTICE:  a: 10
+NOTICE:  _a: 10, _b: 10, _c: {10}
+DO $$
+DECLARE _a int; _b int; _c text[];
+BEGIN
+  _a := 10;
+  CALL test_proc12(_a, _b, _c);  -- error
+  RAISE NOTICE '_a: %, _b: %, _c: %', _a, _b, _c;
+END
+$$;
+ERROR:  procedure test_proc12(pg_catalog.int4, pg_catalog.int4, text[]) does not exist
+LINE 1: CALL test_proc12(_a, _b, _c)
+             ^
+DETAIL:  No procedure of that name accepts the given argument types.
+HINT:  You might need to add explicit type casts.
+QUERY:  CALL test_proc12(_a, _b, _c)
+CONTEXT:  PL/iSQL function inline_code_block line 5 at CALL
+-- transition variable assignment
+TRUNCATE test1;
+CREATE FUNCTION triggerfunc1() RETURNS trigger
+LANGUAGE plisql
+AS $$
+DECLARE
+    z int := 0;
+BEGIN
+     test_proc6(2, NEW.a, NEW.a);
+    RETURN NEW;
+END;
+$$;
+/
+CREATE TRIGGER t1 BEFORE INSERT ON test1 EXECUTE PROCEDURE triggerfunc1();
+INSERT INTO test1 VALUES (1), (2), (3);
+UPDATE test1 SET a = 22 WHERE a = 2;
+SELECT * FROM test1 ORDER BY a;
+ a  
+----
+  1
+  3
+ 22
+(3 rows)
+
+DROP PROCEDURE test_proc1;
+DROP PROCEDURE test_proc3;
+DROP PROCEDURE test_proc4;
+DROP TABLE test1;
+-- more checks for named-parameter handling
+CREATE PROCEDURE p1(v_cnt int, v_Text inout text)
+AS $$
+BEGIN
+  v_Text := 'v_cnt = ' || v_cnt;
+END
+$$ LANGUAGE plisql;
+/
+DO $$
+DECLARE
+  v_Text text;
+  v_cnt  integer := 42;
+BEGIN
+   p1(v_cnt := v_cnt);  -- error, must supply something for v_Text
+  RAISE NOTICE '%', v_Text;
+END;
+$$;
+ERROR:  procedure p1(v_cnt => pg_catalog.int4) does not exist
+LINE 1: CALL p1(v_cnt := v_cnt)
+             ^
+DETAIL:  No procedure of that name accepts the given number of arguments.
+QUERY:  CALL p1(v_cnt := v_cnt)
+CONTEXT:  PL/iSQL function inline_code_block line 6 at CALL
+DO $$
+DECLARE
+  v_Text text;
+  v_cnt  integer := 42;
+BEGIN
+   p1(v_cnt := v_cnt, v_Text := v_Text);
+  RAISE NOTICE '%', v_Text;
+END;
+$$;
+NOTICE:  v_cnt = 42
+DO $$
+DECLARE
+  v_Text text;
+BEGIN
+   p1(10, v_Text := v_Text);
+  RAISE NOTICE '%', v_Text;
+END;
+$$;
+NOTICE:  v_cnt = 10
+DO $$
+DECLARE
+  v_Text text;
+  v_cnt  integer;
+BEGIN
+   p1(v_Text := v_Text, v_cnt := v_cnt);
+  RAISE NOTICE '%', v_Text;
+END;
+$$;
+NOTICE:  v_cnt = 
+-- check that we detect change of dependencies in CALL
+-- atomic and non-atomic call sites used to do this differently, so check both
+CREATE PROCEDURE inner_p (f1 int)
+AS $$
+BEGIN
+  RAISE NOTICE 'inner_p(%)', f1;
+END
+$$ LANGUAGE plisql;
+/
+CREATE FUNCTION f(int) RETURNS int AS $$ SELECT $1 + 1 $$ LANGUAGE sql;
+/
+CREATE PROCEDURE outer_p (f1 int)
+AS $$
+BEGIN
+  RAISE NOTICE 'outer_p(%)', f1;
+  CALL inner_p(f(f1));
+END
+$$ LANGUAGE plisql;
+/
+CREATE FUNCTION outer_f (f1 int) RETURNS void
+AS $$
+BEGIN
+  RAISE NOTICE 'outer_f(%)', f1;
+  CALL inner_p(f(f1));
+END
+$$ LANGUAGE plisql;
+/
+CALL outer_p(42);
+NOTICE:  outer_p(42)
+NOTICE:  inner_p(43)
+SELECT outer_f(42);
+NOTICE:  outer_f(42)
+NOTICE:  inner_p(43)
+ outer_f 
+---------
+ 
+(1 row)
+
+DROP FUNCTION f(int);
+CREATE FUNCTION f(int) RETURNS int AS $$ SELECT $1 + 2 $$ LANGUAGE sql;
+/
+CALL outer_p(42);
+NOTICE:  outer_p(42)
+NOTICE:  inner_p(44)
+SELECT outer_f(42);
+NOTICE:  outer_f(42)
+NOTICE:  inner_p(44)
+ outer_f 
+---------
+ 
+(1 row)
+
+-- Check that stable functions in CALL see the correct snapshot
+CREATE TABLE t_test (x int);
+INSERT INTO t_test VALUES (0);
+CREATE FUNCTION f_get_x () RETURNS int
+AS $$
+DECLARE l_result int;
+BEGIN
+  SELECT x INTO l_result FROM t_test;
+  RETURN l_result;
+END
+$$ LANGUAGE plisql STABLE;
+/
+CREATE PROCEDURE f_print_x (x int)
+AS $$
+BEGIN
+  RAISE NOTICE 'f_print_x(%)', x;
+END
+$$ LANGUAGE plisql;
+/
+-- test in non-atomic context
+DO $$
+BEGIN
+  UPDATE t_test SET x = x + 1;
+  RAISE NOTICE 'f_get_x(%)', f_get_x();
+  CALL f_print_x(f_get_x());
+  UPDATE t_test SET x = x + 1;
+  RAISE NOTICE 'f_get_x(%)', f_get_x();
+  CALL f_print_x(f_get_x());
+  ROLLBACK;
+END
+$$;
+NOTICE:  f_get_x(1)
+NOTICE:  f_print_x(1)
+NOTICE:  f_get_x(2)
+NOTICE:  f_print_x(2)
+-- test in non-atomic context, except exception block is locally atomic
+DO $$
+BEGIN
+ BEGIN
+  UPDATE t_test SET x = x + 1;
+  RAISE NOTICE 'f_get_x(%)', f_get_x();
+  CALL f_print_x(f_get_x());
+  UPDATE t_test SET x = x + 1;
+  RAISE NOTICE 'f_get_x(%)', f_get_x();
+  CALL f_print_x(f_get_x());
+ EXCEPTION WHEN division_by_zero THEN
+   RAISE NOTICE '%', SQLERRM;
+ END;
+  ROLLBACK;
+END
+$$;
+NOTICE:  f_get_x(1)
+NOTICE:  f_print_x(1)
+NOTICE:  f_get_x(2)
+NOTICE:  f_print_x(2)
+-- test in atomic context
+BEGIN;
+DO $$
+BEGIN
+  UPDATE t_test SET x = x + 1;
+  RAISE NOTICE 'f_get_x(%)', f_get_x();
+  CALL f_print_x(f_get_x());
+  UPDATE t_test SET x = x + 1;
+  RAISE NOTICE 'f_get_x(%)', f_get_x();
+  CALL f_print_x(f_get_x());
+END
+$$;
+NOTICE:  f_get_x(1)
+NOTICE:  f_print_x(1)
+NOTICE:  f_get_x(2)
+NOTICE:  f_print_x(2)
+ROLLBACK;
+-- Test for issue #1006: Mixed positional and named parameters with variables
+-- calling package procedures with default parameters
+CREATE OR REPLACE PACKAGE test_mixed_params_pkg AS
+  PROCEDURE proc_with_defaults(
+    p1 VARCHAR2,
+    p2 VARCHAR2 DEFAULT 'default_p2',
+    p3 VARCHAR2 DEFAULT 'default_p3'
+  );
+END test_mixed_params_pkg;
+/
+CREATE OR REPLACE PACKAGE BODY test_mixed_params_pkg AS
+  PROCEDURE proc_with_defaults(
+    p1 VARCHAR2,
+    p2 VARCHAR2 DEFAULT 'default_p2',
+    p3 VARCHAR2 DEFAULT 'default_p3'
+  ) IS
+  BEGIN
+    RAISE NOTICE 'p1=%, p2=%, p3=%', p1, p2, p3;
+  END;
+END test_mixed_params_pkg;
+/
+-- Test 1: All positional parameters (should work)
+DO $$
+BEGIN
+  test_mixed_params_pkg.proc_with_defaults('a', 'b', 'c');
+END;
+$$;
+NOTICE:  p1=a, p2=b, p3=c
+-- Test 2: All named parameters with variable (should work)
+DO $$
+DECLARE
+  v_val VARCHAR2(20) := 'var_value';
+BEGIN
+  test_mixed_params_pkg.proc_with_defaults(p1=>'a', p2=>'b', p3=>v_val);
+END;
+$$;
+NOTICE:  p1=a, p2=b, p3=var_value
+-- Test 3: Mixed positional and named with literal (should work)
+DO $$
+BEGIN
+  test_mixed_params_pkg.proc_with_defaults('a', p3=>'c');
+END;
+$$;
+NOTICE:  p1=a, p2=default_p2, p3=c
+-- Test 4: Mixed positional and named with variable (issue #1006)
+-- This would fail before the fix with:
+-- ERROR: failed to find conversion function from unknown to varchar2
+DO $$
+DECLARE
+  v_val VARCHAR2(20) := 'var_value';
+BEGIN
+  test_mixed_params_pkg.proc_with_defaults('a', p3=>v_val);
+END;
+$$;
+NOTICE:  p1=a, p2=default_p2, p3=var_value
+-- Test 5: Multiple variables with mixed notation
+DO $$
+DECLARE
+  v1 VARCHAR2(20) := 'value1';
+  v2 VARCHAR2(20) := 'value2';
+BEGIN
+  test_mixed_params_pkg.proc_with_defaults(v1, p3=>v2);
+END;
+$$;
+NOTICE:  p1=value1, p2=default_p2, p3=value2
+DROP PACKAGE test_mixed_params_pkg;
+-- Test subprocedures with mixed positional and named parameters (Issue #1006)
+-- This tests the same bug scenario but for subprocedures instead of packages
+DO $$
+DECLARE
+    v_name VARCHAR2(100) := 'Test Name';
+    v_value NUMBER := 42;
+    v_result VARCHAR2(200);
+
+    PROCEDURE test_subproc(p_id NUMBER, p_name VARCHAR2, p_value NUMBER DEFAULT 0) AS
+    BEGIN
+        RAISE NOTICE 'test_subproc called: id=%, name=%, value=%', p_id, p_name, p_value;
+    END;
+
+    FUNCTION test_subfunc(p_id NUMBER, p_name VARCHAR2, p_value NUMBER DEFAULT 0) RETURN VARCHAR2 AS
+    BEGIN
+        RETURN 'id=' || p_id || ', name=' || p_name || ', value=' || p_value;
+    END;
+BEGIN
+    -- Test 1: All positional parameters
+    test_subproc(1, 'literal', 10);
+
+    -- Test 2: All named parameters with variables
+    test_subproc(p_id => 2, p_name => v_name, p_value => v_value);
+
+    -- Test 3: Mixed positional and named with literals
+    test_subproc(3, p_name => 'mixed literal');
+
+    -- Test 4: Mixed positional and named with variables (the bug case)
+    test_subproc(4, p_name => v_name);
+
+    -- Test 5: Multiple variables with mixed notation
+    test_subproc(5, p_name => v_name, p_value => v_value);
+
+    -- Test 6: Function with mixed parameters and variables
+    v_result := test_subfunc(6, p_name => v_name, p_value => v_value);
+    RAISE NOTICE 'Function result: %', v_result;
+END;
+$$ LANGUAGE plisql;
+NOTICE:  test_subproc called: id=1, name=literal, value=10
+NOTICE:  test_subproc called: id=2, name=Test Name, value=42
+NOTICE:  test_subproc called: id=3, name=mixed literal, value=0
+NOTICE:  test_subproc called: id=4, name=Test Name, value=0
+NOTICE:  test_subproc called: id=5, name=Test Name, value=42
+NOTICE:  Function result: id=6, name=Test Name, value=42
+-- Test subprocedure overloading still works with the fix
+DO $$
+DECLARE
+    v_int INTEGER := 10;
+    v_str VARCHAR2(50) := 'hello';
+    v_result INTEGER;
+
+    FUNCTION overloaded(p_val INTEGER) RETURN INTEGER AS
+    BEGIN
+        RAISE NOTICE 'overloaded(INTEGER) called with %', p_val;
+        RETURN p_val * 2;
+    END;
+
+    FUNCTION overloaded(p_val VARCHAR2) RETURN INTEGER AS
+    BEGIN
+        RAISE NOTICE 'overloaded(VARCHAR2) called with %', p_val;
+        RETURN LENGTH(p_val);
+    END;
+
+    FUNCTION overloaded(p_id INTEGER, p_name VARCHAR2) RETURN INTEGER AS
+    BEGIN
+        RAISE NOTICE 'overloaded(INTEGER, VARCHAR2) called with %, %', p_id, p_name;
+        RETURN p_id + LENGTH(p_name);
+    END;
+BEGIN
+    -- Test overload resolution with different types
+    v_result := overloaded(v_int);
+    RAISE NOTICE 'Result 1: %', v_result;
+
+    v_result := overloaded(v_str);
+    RAISE NOTICE 'Result 2: %', v_result;
+
+    -- Test overload with multiple args
+    v_result := overloaded(5, 'test');
+    RAISE NOTICE 'Result 3: %', v_result;
+
+    -- Test overload with named parameters
+    v_result := overloaded(p_id => v_int, p_name => v_str);
+    RAISE NOTICE 'Result 4: %', v_result;
+END;
+$$ LANGUAGE plisql;
+NOTICE:  overloaded(INTEGER) called with 10
+NOTICE:  Result 1: 20
+NOTICE:  overloaded(VARCHAR2) called with hello
+NOTICE:  Result 2: 5
+NOTICE:  overloaded(INTEGER, VARCHAR2) called with 5, test
+NOTICE:  Result 3: 9
+NOTICE:  overloaded(INTEGER, VARCHAR2) called with 10, hello
+NOTICE:  Result 4: 15
+-- Minimal test case for issue #1006 subprocedure fix
+-- This is the exact bug scenario: mixed positional + named params with variable
+-- The bug occurs when argument types need coercion after reordering
+-- Before fix: ERROR: failed to find conversion function from unknown to varchar2
+DO $$
+DECLARE
+    v_str VARCHAR2(50) := 'test_value';
+    v_num NUMBER := 99;
+
+    -- Test with different type combinations that require proper type alignment
+    PROCEDURE test_types(p_num NUMBER, p_str VARCHAR2, p_extra NUMBER DEFAULT 0) AS
+    BEGIN
+        RAISE NOTICE 'test_types: num=%, str=%, extra=%', p_num, p_str, p_extra;
+    END;
+BEGIN
+    -- Case 1: Mixed positional + named with variable (varchar arg)
+    -- Call order: (1, p_str => v_str)
+    -- Declared order: (p_num NUMBER, p_str VARCHAR2, p_extra NUMBER)
+    test_types(1, p_str => v_str);
+
+    -- Case 2: Mixed positional + named with variable (number arg)
+    test_types(2, p_str => 'literal', p_extra => v_num);
+
+    -- Case 3: Named parameters in different order than declared
+    test_types(p_str => v_str, p_num => 3);
+
+    -- Case 4: All named with variables
+    test_types(p_num => v_num, p_str => v_str, p_extra => 10);
+END;
+$$ LANGUAGE plisql;
+NOTICE:  test_types: num=1, str=test_value, extra=0
+NOTICE:  test_types: num=2, str=literal, extra=99
+NOTICE:  test_types: num=3, str=test_value, extra=0
+NOTICE:  test_types: num=99, str=test_value, extra=10

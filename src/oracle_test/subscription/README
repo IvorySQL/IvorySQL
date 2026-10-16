@@ -1,0 +1,8 @@
+src/oracle_test/subscription/README
+
+Regression tests for subscription/logical replication
+=====================================================
+
+This directory contains a test suite for subscription/logical replication.
+
+For more detailed instructions, refer to the "README" file in the "src/test/subscription" directory.

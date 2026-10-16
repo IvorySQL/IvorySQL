@@ -1,0 +1,168 @@
+<!--
+doc/src/sgml/ref/create_package_body.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-createpackagebody">
+ <indexterm zone="sql-createpackagebody">
+  <primary>CREATE PACKAGE BODY</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>CREATE PACKAGE BODY</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>CREATE PACKAGE BODY</refname>
+  <refpurpose>define a package body</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+CREATE [ OR REPLACE ] [ EDITIONABLE | NONEDITIONABLE ] PACKAGE BODY <replaceable class="parameter">name</replaceable>
+    [ SHARING = { METADATA | NONE } ]
+    { IS | AS }
+    [ <replaceable class="parameter">package_body_item</replaceable> ... ]
+    [ BEGIN
+        <replaceable class="parameter">statement</replaceable> ...
+      [ EXCEPTION
+        <replaceable class="parameter">exception_handler</replaceable> ... ] ]
+END [ <replaceable class="parameter">name</replaceable> ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1 id="sql-createpackagebody-description">
+  <title>Description</title>
+
+  <para>
+   <command>CREATE PACKAGE BODY</command> defines the implementation of a
+   package.  It supplies definitions for public procedures and functions
+   declared by the package specification, and can also contain private
+   declarations and definitions.  An optional <literal>BEGIN</literal> block
+   provides package initialization code.
+  </para>
+
+  <para>
+   A package specification of the same name must already exist.  If a schema
+   name is included, the package is looked up in that schema; otherwise the
+   current schema is used.  The body and specification must have the same
+   editionability property.
+  </para>
+
+  <para>
+   The user must have <literal>CREATE</literal> privilege on the target schema.
+   Replacing an existing package body additionally requires ownership of the
+   package.
+  </para>
+ </refsect1>
+
+ <refsect1 id="sql-createpackagebody-parameters">
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>OR REPLACE</literal></term>
+    <listitem>
+     <para>
+      Replace the body if one already exists.  Without this clause, an
+      existing package body causes an error.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>EDITIONABLE</literal></term>
+    <term><literal>NONEDITIONABLE</literal></term>
+    <listitem>
+     <para>
+      Specify the editionability expected by the package specification.  The
+      default is <literal>EDITIONABLE</literal>.  Use
+      <literal>NONEDITIONABLE</literal> explicitly for a noneditionable
+      specification.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of the package whose body is being
+      defined.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SHARING = { METADATA | NONE }</literal></term>
+    <listitem>
+     <para>
+      This clause is accepted for Oracle syntax compatibility and currently
+      has no effect on package behavior.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">package_body_item</replaceable></term>
+    <listitem>
+     <para>
+      A PL/iSQL declaration or definition.  Public procedure and function
+      definitions must agree with their declarations in the package
+      specification.  Additional declarations are private to the body.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">statement</replaceable></term>
+    <term><replaceable class="parameter">exception_handler</replaceable></term>
+    <listitem>
+     <para>
+      Statements in the optional package initialization block and handlers for
+      exceptions raised by that block.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1 id="sql-createpackagebody-examples">
+  <title>Examples</title>
+
+  <para>
+   Define the body for the <literal>inventory_api</literal> specification:
+<programlisting>
+CREATE OR REPLACE PACKAGE BODY inventory_api AS
+  PROCEDURE add_item(p_id INT, p_label TEXT) AS
+  BEGIN
+    RAISE NOTICE 'adding item %: %', p_id, p_label;
+  END add_item;
+END inventory_api;
+</programlisting>
+  </para>
+ </refsect1>
+
+ <refsect1 id="sql-createpackagebody-compatibility">
+  <title>Compatibility</title>
+
+  <para>
+   <command>CREATE PACKAGE BODY</command> is an
+   <productname>IvorySQL</productname> extension for Oracle compatibility.  It
+   is not defined by the SQL standard.  The supported syntax is a subset of
+   Oracle package body syntax.
+  </para>
+ </refsect1>
+
+ <refsect1 id="sql-createpackagebody-see-also">
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createpackage"/></member>
+   <member><xref linkend="sql-alterpackage"/></member>
+   <member><xref linkend="sql-droppackage"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

@@ -1,0 +1,495 @@
+-- compatible_mode
+SET IVORYSQL.COMPATIBLE_MODE TO ORACLE;
+SHOW IVORYSQL.COMPATIBLE_MODE;
+ ivorysql.compatible_mode 
+--------------------------
+ oracle
+(1 row)
+
+SET IVORYSQL.IDENTIFIER_CASE_SWITCH = INTERCHANGE;
+SHOW IVORYSQL.IDENTIFIER_CASE_SWITCH;
+ ivorysql.identifier_case_switch 
+---------------------------------
+ interchange
+(1 row)
+
+-- create a procedure
+CREATE TABLE TB_TODEL(ID INT);
+CREATE OR REPLACE PROCEDURE PROC_DEL_TB(I INT) IS
+BEGIN
+	DROP TABLE TB_TODEL;
+END;
+/
+-- create a function with security definer
+CREATE OR REPLACE FUNCTION FUNC_AUTHID(P VARCHAR2)
+RETURN INT DETERMINISTIC IS
+BEGIN
+	RETURN 123;
+END;
+/
+-- select ... from all_procedures
+SELECT OBJECT_NAME, OBJECT_TYPE, DETERMINISTIC, PARALLEL, AUTHID
+FROM ALL_PROCEDURES
+WHERE OBJECT_NAME = 'PROC_DEL_TB' OR OBJECT_NAME = 'FUNC_AUTHID';
+ object_name | object_type | deterministic | parallel | authid  
+-------------+-------------+---------------+----------+---------
+ PROC_DEL_TB | PROCEDURE   | NO            | NO       | DEFINER
+ FUNC_AUTHID | FUNCTION    | YES           | NO       | DEFINER
+(2 rows)
+
+-- create a function with all-lowercase name
+CREATE OR REPLACE FUNCTION "func_quotes_lower"(ID INT)
+RETURN VARCHAR2 IS
+BEGIN
+	RETURN 'func_quotes_lower'::VARCHAR2;
+END;
+/
+-- select ... from all_source
+SELECT NAME, LINE, TEXT FROM ALL_SOURCE WHERE NAME = 'func_quotes_lower';
+       name        | line |                          text                           
+-------------------+------+---------------------------------------------------------
+ func_quotes_lower | 1    | FUNCTION public."FUNC_QUOTES_LOWER"(id pg_catalog.int4)
+ func_quotes_lower | 2    |  RETURN varchar2
+ func_quotes_lower | 3    |  AUTHID DEFINER
+ func_quotes_lower |      | IS 
+ func_quotes_lower |      | BEGIN
+ func_quotes_lower |      |         RETURN 'func_quotes_lower'::VARCHAR2;
+ func_quotes_lower |      | END;
+(7 rows)
+
+-- data_type and pls_type in all_arguments
+CREATE OR REPLACE FUNCTION FUNC_22_ARG_TYPES
+(
+	T1 CHAR, T2 NCHAR, T3 VARCHAR2, T4 INTEGER, T5 NUMBER, T6 NUMERIC,
+	T7 BINARY_FLOAT, T8 BINARY_DOUBLE, T9 REAL, T10 FLOAT, T11 DOUBLE PRECISION,
+	T12 DATE, T13 TIMESTAMP, T14 TIMESTAMP WITH TIME ZONE,
+	T15 TIMESTAMP WITH LOCAL TIME ZONE,
+	T16 CLOB, T17 BLOB, T18 NCLOB, T19 LONG, T20 LONG RAW, T21 BOOLEAN
+)
+RETURN RAW IS
+BEGIN
+	RETURN CAST('FUNC_22_ARG_TYPES' AS RAW);
+END;
+/
+-- select ... from all_arguments
+SELECT
+	ARGUMENT_NAME || ',' || POSITION || ',' || SEQUENCE || ',' || 
+	IN_OUT || ',' || DATA_TYPE || ',' || PLS_TYPE
+FROM ALL_ARGUMENTS WHERE OBJECT_NAME = 'FUNC_22_ARG_TYPES'
+ORDER BY OBJECT_ID, POSITION;
+                                  ?column?                                  
+----------------------------------------------------------------------------
+ ,0,1,OUT,RAW,RAW
+ T1,1,2,IN,CHAR,CHAR
+ T2,2,3,IN,CHAR,CHAR
+ T3,3,4,IN,VARCHAR2,VARCHAR2
+ T4,4,5,IN,NUMBER,PG_CATALOG.INT4
+ T5,5,6,IN,NUMBER,NUMBER
+ T6,6,7,IN,NUMBER,PG_CATALOG.NUMERIC
+ T7,7,8,IN,BINARY_FLOAT,BINARY_FLOAT
+ T8,8,9,IN,BINARY_DOUBLE,BINARY_DOUBLE
+ T9,9,10,IN,FLOAT,PG_CATALOG.FLOAT4
+ T10,10,11,IN,FLOAT,PG_CATALOG.FLOAT8
+ T11,11,12,IN,FLOAT,PG_CATALOG.FLOAT8
+ T12,12,13,IN,DATE,DATE
+ T13,13,14,IN,TIMESTAMP,TIMESTAMP
+ T14,14,15,IN,TIMESTAMP WITH TIME ZONE,TIMESTAMP WITH TIME ZONE
+ T15,15,16,IN,TIMESTAMP WITH LOCAL TIME ZONE,TIMESTAMP WITH LOCAL TIME ZONE
+ T16,16,17,IN,CLOB,CLOB
+ T17,17,18,IN,BLOB,BLOB
+ T18,18,19,IN,NCLOB,CLOB
+ T19,19,20,IN,LONG,LONG
+ T20,20,21,IN,LONG_RAW,LONG_RAW
+ T21,21,22,IN,PG_CATALOG.BOOL,PG_CATALOG.BOOL
+(22 rows)
+
+-- clean data
+DROP TABLE IF EXISTS TB_TODEL;
+DROP PROCEDURE IF EXISTS PROC_DEL_TB;
+DROP FUNCTION IF EXISTS FUNC_AUTHID;
+DROP FUNCTION IF EXISTS "func_quotes_lower";
+DROP FUNCTION IF EXISTS FUNC_22_ARG_TYPES;
+-- create a function with arguments defaulted
+CREATE OR REPLACE FUNCTION FUNC_WITH_DEFAULT
+(
+	ARG1 IN INT DEFAULT 10,
+	ARG2 OUT INT,
+	ARG3 IN OUT INT,
+	ARG4 IN VARCHAR2(10) DEFAULT NULL
+)
+RETURN void IS
+BEGIN
+	ARG2 := ARG1 + 10;
+	ARG3 := ARG1 / 2;
+END;
+/
+-- check arguments with default value
+SELECT ARGUMENT_NAME, IN_OUT, POSITION, DEFAULTED FROM ALL_ARGUMENTS
+WHERE OBJECT_NAME = 'FUNC_WITH_DEFAULT';
+ argument_name | in_out | position | defaulted 
+---------------+--------+----------+-----------
+               | OUT    | 0        | N
+ ARG1          | IN     | 1        | Y
+ ARG2          | OUT    | 2        | N
+ ARG3          | IN/OUT | 3        | Y
+ ARG4          | IN     | 4        | Y
+(5 rows)
+
+-- clean data
+DROP FUNCTION IF EXISTS FUNC_WITH_DEFAULT;
+-- Oracle dynamic views
+\d SYS.V$SESSION
+                            View "sys.v$session"
+      Column       |          Type          | Collation | Nullable | Default 
+-------------------+------------------------+-----------+----------+---------
+ sid               | number                 |           |          | 
+ username          | varchar2(128)          | C         |          | 
+ status            | varchar2(40)           |           |          | 
+ machine           | varchar2(128)          |           |          | 
+ program           | varchar2(256)          |           |          | 
+ type              | varchar2(30)           |           |          | 
+ logon_time        | pg_catalog.timestamptz |           |          | 
+ sql_exec_start    | pg_catalog.timestamptz |           |          | 
+ sql_id            | varchar2(19)           |           |          | 
+ sql_text          | varchar2(4000)         |           |          | 
+ blocking_session  | number                 |           |          | 
+ event             | varchar2(64)           |           |          | 
+ wait_class        | varchar2(64)           |           |          | 
+ transaction_start | pg_catalog.timestamptz |           |          | 
+ port              | number                 |           |          | 
+
+\d SYS.V$PROCESS
+                    View "sys.v$process"
+   Column   |     Type      | Collation | Nullable | Default 
+------------+---------------+-----------+----------+---------
+ spid       | number        |           |          | 
+ username   | varchar2(128) | C         |          | 
+ program    | varchar2(256) |           |          | 
+ pname      | varchar2(30)  |           |          | 
+ background | varchar2(1)   |           |          | 
+
+SELECT * 
+FROM SYS.V$PARAMETER 
+WHERE NAME IN ('listen_addresses','application_name','archive_command','archive_mode','block_size')
+ORDER BY NAME;
+       name       | type |         value          | default_value | isdefault | isses_modifiable | issys_modifiable |                            description                            
+------------------+------+------------------------+---------------+-----------+------------------+------------------+-------------------------------------------------------------------
+ application_name | 2    | pg_regress/ora_sysview |               | FALSE     | TRUE             | IMMEDIATE        | Sets the application name to be reported in statistics and logs.
+ archive_command  | 2    | (disabled)             |               | FALSE     | FALSE            | IMMEDIATE        | Sets the shell command that will be called to archive a WAL file.
+ archive_mode     | 2    | off                    | off           | TRUE      | FALSE            | FALSE            | Allows archiving of WAL files using "archive_command".
+ block_size       | 3    | 8192                   | 8192          | TRUE      | FALSE            | FALSE            | Shows the size of a disk block.
+ listen_addresses | 2    |                        | localhost     | FALSE     | FALSE            | FALSE            | Sets the host name or IP address(es) to listen to.
+(5 rows)
+
+CREATE TABLE t_pk_single (id NUMBER PRIMARY KEY, name VARCHAR2(50));
+CREATE TABLE t_pk_composite (id1 NUMBER, id2 NUMBER, CONSTRAINT pk_composite PRIMARY KEY (id1, id2));
+CREATE TABLE t_unique (col1 INT, col2 VARCHAR2(20), CONSTRAINT uk_col1 UNIQUE (col1));
+CREATE TABLE t_parent (pid INT PRIMARY KEY, pname VARCHAR2(50));
+CREATE TABLE t_child (cid INT, pid INT, CONSTRAINT fk_child_parent FOREIGN KEY (pid) REFERENCES t_parent(pid));
+CREATE TABLE t_check (
+    age INT,
+    salary NUMERIC(10,2),
+    CONSTRAINT chk_age CHECK (age >= 0),
+    CONSTRAINT chk_salary_range CHECK (salary BETWEEN 1000 AND 100000)
+);
+-- t_partitioned removed as unnecessary
+CREATE VIEW v_dummy AS SELECT 1 AS col FROM DUAL;
+CREATE MATERIALIZED VIEW mv_dummy AS SELECT 2 AS col FROM DUAL;
+CREATE TABLE t_data_types (
+    c_varchar VARCHAR2(100),
+    c_char CHAR(10),
+    c_number NUMBER,
+    c_int INT,
+    c_numeric NUMERIC,
+    c_float FLOAT,
+    c_double DOUBLE PRECISION,
+    c_date DATE,
+    c_ts TIMESTAMP,
+    c_tstz TIMESTAMP WITH TIME ZONE,
+    c_text TEXT,
+    CONSTRAINT pk_data_types PRIMARY KEY (c_varchar, c_char)
+);
+-- Convert CURRENT_USER to varchar2 then uppercase to match view's owner
+SELECT table_name, constraint_name, column_name, position
+FROM all_cons_columns
+WHERE owner = SYS.ORA_CASE_TRANS(CURRENT_USER::VARCHAR2)
+ORDER BY table_name, constraint_name, position;
+        table_name         |                 constraint_name                 |     column_name     | position 
+---------------------------+-------------------------------------------------+---------------------+----------
+ NULL_SPECIAL              | null_special_id_NOT_NULL                        | ID                  | 1
+ NULL_SPECIALBK            | null_specialbk_id_NOT_NULL                      | ID                  | 1
+ SCHEDULER_JOBS            | SCHEDULER_JOBS_JOB_TYPE_CHECK                   | JOB_TYPE            | 1
+ SCHEDULER_JOBS            | SCHEDULER_JOBS_NUMBER_OF_ARGUMENTS_CHECK        | NUMBER_OF_ARGUMENTS | 1
+ SCHEDULER_JOBS            | SCHEDULER_JOBS_PKEY                             | JOB_OWNER           | 1
+ SCHEDULER_JOBS            | SCHEDULER_JOBS_PKEY                             | JOB_NAME            | 2
+ SCHEDULER_JOBS            | SCHEDULER_JOBS_STATE_CHECK                      | STATE               | 1
+ SCHEDULER_JOBS            | SCHEDULER_JOBS_STYLE_CHECK                      | JOB_TYPE            | 1
+ SCHEDULER_JOBS            | SCHEDULER_JOBS_STYLE_CHECK                      | JOB_ACTION          | 2
+ SCHEDULER_JOBS            | SCHEDULER_JOBS_STYLE_CHECK                      | PROGRAM_OWNER       | 3
+ SCHEDULER_JOBS            | SCHEDULER_JOBS_STYLE_CHECK                      | PROGRAM_NAME        | 4
+ SCHEDULER_JOBS            | SCHEDULER_JOBS_STYLE_CHECK                      | SCHEDULE_OWNER      | 5
+ SCHEDULER_JOBS            | SCHEDULER_JOBS_STYLE_CHECK                      | SCHEDULE_NAME       | 6
+ SCHEDULER_JOBS            | scheduler_jobs_auto_drop_NOT_NULL               | AUTO_DROP           | 1
+ SCHEDULER_JOBS            | scheduler_jobs_enabled_NOT_NULL                 | ENABLED             | 1
+ SCHEDULER_JOBS            | scheduler_jobs_failure_count_NOT_NULL           | FAILURE_COUNT       | 1
+ SCHEDULER_JOBS            | scheduler_jobs_job_id_NOT_NULL                  | JOB_ID              | 1
+ SCHEDULER_JOBS            | scheduler_jobs_number_of_arguments_NOT_NULL     | NUMBER_OF_ARGUMENTS | 1
+ SCHEDULER_JOBS            | scheduler_jobs_run_count_NOT_NULL               | RUN_COUNT           | 1
+ SCHEDULER_JOBS            | scheduler_jobs_state_NOT_NULL                   | STATE               | 1
+ SCHEDULER_JOB_ARGS        | SCHEDULER_JOB_ARGS_ARGUMENT_POSITION_CHECK      | ARGUMENT_POSITION   | 1
+ SCHEDULER_JOB_ARGS        | SCHEDULER_JOB_ARGS_FK                           | JOB_OWNER           | 1
+ SCHEDULER_JOB_ARGS        | SCHEDULER_JOB_ARGS_FK                           | JOB_NAME            | 2
+ SCHEDULER_JOB_ARGS        | SCHEDULER_JOB_ARGS_PKEY                         | JOB_OWNER           | 1
+ SCHEDULER_JOB_ARGS        | SCHEDULER_JOB_ARGS_PKEY                         | JOB_NAME            | 2
+ SCHEDULER_JOB_ARGS        | SCHEDULER_JOB_ARGS_PKEY                         | ARGUMENT_POSITION   | 3
+ SCHEDULER_JOB_RUN_DETAILS | SCHEDULER_JOB_RUN_DETAILS_PKEY                  | LOG_ID              | 1
+ SCHEDULER_JOB_RUN_DETAILS | SCHEDULER_JOB_RUN_DETAILS_STATUS_CHECK          | STATUS              | 1
+ SCHEDULER_JOB_RUN_DETAILS | scheduler_job_run_details_job_name_NOT_NULL     | JOB_NAME            | 1
+ SCHEDULER_JOB_RUN_DETAILS | scheduler_job_run_details_job_owner_NOT_NULL    | JOB_OWNER           | 1
+ SCHEDULER_JOB_RUN_DETAILS | scheduler_job_run_details_log_date_NOT_NULL     | LOG_DATE            | 1
+ SCHEDULER_JOB_RUN_DETAILS | scheduler_job_run_details_status_NOT_NULL       | STATUS              | 1
+ SCHEDULER_PROGRAMS        | SCHEDULER_PROGRAMS_NUMBER_OF_ARGUMENTS_CHECK    | NUMBER_OF_ARGUMENTS | 1
+ SCHEDULER_PROGRAMS        | SCHEDULER_PROGRAMS_PKEY                         | PROGRAM_OWNER       | 1
+ SCHEDULER_PROGRAMS        | SCHEDULER_PROGRAMS_PKEY                         | PROGRAM_NAME        | 2
+ SCHEDULER_PROGRAMS        | SCHEDULER_PROGRAMS_PROGRAM_TYPE_CHECK           | PROGRAM_TYPE        | 1
+ SCHEDULER_PROGRAMS        | scheduler_programs_enabled_NOT_NULL             | ENABLED             | 1
+ SCHEDULER_PROGRAMS        | scheduler_programs_number_of_arguments_NOT_NULL | NUMBER_OF_ARGUMENTS | 1
+ SCHEDULER_PROGRAMS        | scheduler_programs_program_action_NOT_NULL      | PROGRAM_ACTION      | 1
+ SCHEDULER_PROGRAMS        | scheduler_programs_program_type_NOT_NULL        | PROGRAM_TYPE        | 1
+ SCHEDULER_PROGRAM_ARGS    | SCHEDULER_PROGRAM_ARGS_ARGUMENT_POSITION_CHECK  | ARGUMENT_POSITION   | 1
+ SCHEDULER_PROGRAM_ARGS    | SCHEDULER_PROGRAM_ARGS_FK                       | PROGRAM_OWNER       | 1
+ SCHEDULER_PROGRAM_ARGS    | SCHEDULER_PROGRAM_ARGS_FK                       | PROGRAM_NAME        | 2
+ SCHEDULER_PROGRAM_ARGS    | SCHEDULER_PROGRAM_ARGS_PKEY                     | PROGRAM_OWNER       | 1
+ SCHEDULER_PROGRAM_ARGS    | SCHEDULER_PROGRAM_ARGS_PKEY                     | PROGRAM_NAME        | 2
+ SCHEDULER_PROGRAM_ARGS    | SCHEDULER_PROGRAM_ARGS_PKEY                     | ARGUMENT_POSITION   | 3
+ SCHEDULER_PROGRAM_ARGS    | scheduler_program_args_has_default_NOT_NULL     | HAS_DEFAULT         | 1
+ SCHEDULER_PROGRAM_ARGS    | scheduler_program_args_out_argument_NOT_NULL    | OUT_ARGUMENT        | 1
+ SCHEDULER_SCHEDULES       | SCHEDULER_SCHEDULES_PKEY                        | SCHEDULE_OWNER      | 1
+ SCHEDULER_SCHEDULES       | SCHEDULER_SCHEDULES_PKEY                        | SCHEDULE_NAME       | 2
+ T_CHECK                   | CHK_AGE                                         | AGE                 | 1
+ T_CHECK                   | CHK_SALARY_RANGE                                | SALARY              | 1
+ T_CHILD                   | FK_CHILD_PARENT                                 | PID                 | 1
+ T_DATA_TYPES              | PK_DATA_TYPES                                   | C_VARCHAR           | 1
+ T_DATA_TYPES              | PK_DATA_TYPES                                   | C_CHAR              | 2
+ T_PARENT                  | T_PARENT_PKEY                                   | PID                 | 1
+ T_PK_COMPOSITE            | PK_COMPOSITE                                    | ID1                 | 1
+ T_PK_COMPOSITE            | PK_COMPOSITE                                    | ID2                 | 2
+ T_PK_SINGLE               | T_PK_SINGLE_PKEY                                | ID                  | 1
+ T_UNIQUE                  | UK_COL1                                         | COL1                | 1
+ UTL_FILE_DIRECTORY        | UTL_FILE_DIRECTORY_PKEY                         | DIRNAME             | 1
+(61 rows)
+
+SELECT constraint_name, COUNT(*) AS column_count
+FROM all_cons_columns
+WHERE owner = SYS.ORA_CASE_TRANS(CURRENT_USER::VARCHAR2)
+GROUP BY constraint_name
+ORDER BY constraint_name;
+                 constraint_name                 | column_count 
+-------------------------------------------------+--------------
+ CHK_AGE                                         |            1
+ CHK_SALARY_RANGE                                |            1
+ FK_CHILD_PARENT                                 |            1
+ PK_COMPOSITE                                    |            2
+ PK_DATA_TYPES                                   |            2
+ SCHEDULER_JOBS_JOB_TYPE_CHECK                   |            1
+ SCHEDULER_JOBS_NUMBER_OF_ARGUMENTS_CHECK        |            1
+ SCHEDULER_JOBS_PKEY                             |            2
+ SCHEDULER_JOBS_STATE_CHECK                      |            1
+ SCHEDULER_JOBS_STYLE_CHECK                      |            6
+ SCHEDULER_JOB_ARGS_ARGUMENT_POSITION_CHECK      |            1
+ SCHEDULER_JOB_ARGS_FK                           |            2
+ SCHEDULER_JOB_ARGS_PKEY                         |            3
+ SCHEDULER_JOB_RUN_DETAILS_PKEY                  |            1
+ SCHEDULER_JOB_RUN_DETAILS_STATUS_CHECK          |            1
+ SCHEDULER_PROGRAMS_NUMBER_OF_ARGUMENTS_CHECK    |            1
+ SCHEDULER_PROGRAMS_PKEY                         |            2
+ SCHEDULER_PROGRAMS_PROGRAM_TYPE_CHECK           |            1
+ SCHEDULER_PROGRAM_ARGS_ARGUMENT_POSITION_CHECK  |            1
+ SCHEDULER_PROGRAM_ARGS_FK                       |            2
+ SCHEDULER_PROGRAM_ARGS_PKEY                     |            3
+ SCHEDULER_SCHEDULES_PKEY                        |            2
+ T_PARENT_PKEY                                   |            1
+ T_PK_SINGLE_PKEY                                |            1
+ UK_COL1                                         |            1
+ UTL_FILE_DIRECTORY_PKEY                         |            1
+ null_special_id_NOT_NULL                        |            1
+ null_specialbk_id_NOT_NULL                      |            1
+ scheduler_job_run_details_job_name_NOT_NULL     |            1
+ scheduler_job_run_details_job_owner_NOT_NULL    |            1
+ scheduler_job_run_details_log_date_NOT_NULL     |            1
+ scheduler_job_run_details_status_NOT_NULL       |            1
+ scheduler_jobs_auto_drop_NOT_NULL               |            1
+ scheduler_jobs_enabled_NOT_NULL                 |            1
+ scheduler_jobs_failure_count_NOT_NULL           |            1
+ scheduler_jobs_job_id_NOT_NULL                  |            1
+ scheduler_jobs_number_of_arguments_NOT_NULL     |            1
+ scheduler_jobs_run_count_NOT_NULL               |            1
+ scheduler_jobs_state_NOT_NULL                   |            1
+ scheduler_program_args_has_default_NOT_NULL     |            1
+ scheduler_program_args_out_argument_NOT_NULL    |            1
+ scheduler_programs_enabled_NOT_NULL             |            1
+ scheduler_programs_number_of_arguments_NOT_NULL |            1
+ scheduler_programs_program_action_NOT_NULL      |            1
+ scheduler_programs_program_type_NOT_NULL        |            1
+(45 rows)
+
+DROP VIEW IF EXISTS v_dummy;
+DROP MATERIALIZED VIEW IF EXISTS mv_dummy;
+DROP TABLE IF EXISTS t_child;
+DROP TABLE IF EXISTS t_parent;
+DROP TABLE IF EXISTS t_pk_single;
+DROP TABLE IF EXISTS t_pk_composite;
+DROP TABLE IF EXISTS t_unique;
+DROP TABLE IF EXISTS t_check;
+DROP TABLE IF EXISTS t_data_types;
+-- USER_CONS_COLUMNS
+CREATE TABLE TEST_USER_CONS_COLUMNS (
+    ID INT NOT NULL,
+    NAME VARCHAR2(30) NOT NULL,
+    AGE INT NOT NULL,
+    EMAIL VARCHAR2(50),
+    CONSTRAINT PK_TEST PRIMARY KEY (ID, NAME),
+    CONSTRAINT UQ_EMAIL UNIQUE (EMAIL)
+);
+SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, POSITION
+FROM SYS.USER_CONS_COLUMNS
+WHERE TABLE_NAME = 'TEST_USER_CONS_COLUMNS'
+AND CONSTRAINT_NAME LIKE '%NOT_NULL%'
+ORDER BY CONSTRAINT_NAME, COLUMN_NAME;
+       table_name       |           constraint_name            | column_name | position 
+------------------------+--------------------------------------+-------------+----------
+ TEST_USER_CONS_COLUMNS | TEST_USER_CONS_COLUMNS_AGE_NOT_NULL  | AGE         | 1
+ TEST_USER_CONS_COLUMNS | TEST_USER_CONS_COLUMNS_ID_NOT_NULL   | ID          | 1
+ TEST_USER_CONS_COLUMNS | TEST_USER_CONS_COLUMNS_NAME_NOT_NULL | NAME        | 1
+(3 rows)
+
+SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, POSITION
+FROM SYS.USER_CONS_COLUMNS
+WHERE TABLE_NAME = 'TEST_USER_CONS_COLUMNS'
+AND CONSTRAINT_NAME = 'PK_TEST'
+ORDER BY CONSTRAINT_NAME, POSITION;
+       table_name       | constraint_name | column_name | position 
+------------------------+-----------------+-------------+----------
+ TEST_USER_CONS_COLUMNS | PK_TEST         | ID          | 1
+ TEST_USER_CONS_COLUMNS | PK_TEST         | NAME        | 2
+(2 rows)
+
+SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, POSITION
+FROM SYS.USER_CONS_COLUMNS
+WHERE TABLE_NAME = 'TEST_USER_CONS_COLUMNS'
+AND CONSTRAINT_NAME = 'UQ_EMAIL'
+ORDER BY CONSTRAINT_NAME, COLUMN_NAME;
+       table_name       | constraint_name | column_name | position 
+------------------------+-----------------+-------------+----------
+ TEST_USER_CONS_COLUMNS | UQ_EMAIL        | EMAIL       | 1
+(1 row)
+
+-- Clean
+DROP TABLE IF EXISTS TEST_USER_CONS_COLUMNS;
+-- Test NOT NULL constraint in all_cons_columns
+CREATE TABLE t_notnull_test (
+    id INT,
+    name VARCHAR2(50) NOT NULL,
+    age INT
+);
+SELECT table_name, constraint_name, column_name, position
+FROM all_cons_columns
+WHERE table_name = 'T_NOTNULL_TEST'
+ORDER BY constraint_name, column_name;
+   table_name   |       constraint_name        | column_name | position 
+----------------+------------------------------+-------------+----------
+ T_NOTNULL_TEST | t_notnull_test_name_NOT_NULL | NAME        | 1
+(1 row)
+
+DROP TABLE IF EXISTS t_notnull_test;
+-- Test DBA_CONS_COLUMNS view
+SELECT count(*) > 0 AS view_exists
+FROM information_schema.views
+WHERE table_schema = 'sys' AND table_name = 'dba_cons_columns';
+ view_exists 
+-------------
+ t
+(1 row)
+
+-- Restricted to tables this test owns: the unrestricted form reported
+-- whichever rows happened to sort first in the whole cluster, so any new
+-- catalog or test table anywhere rewrote the expected output.
+CREATE TABLE t_dba_cons_cols (
+    id INT,
+    code VARCHAR2(10),
+    CONSTRAINT pk_dba_cons_cols PRIMARY KEY (id),
+    CONSTRAINT uq_dba_cons_cols UNIQUE (code)
+);
+SELECT constraint_name, table_name, column_name, position
+FROM sys.dba_cons_columns
+WHERE table_name = 'T_DBA_CONS_COLS'
+AND constraint_name IN ('PK_DBA_CONS_COLS', 'UQ_DBA_CONS_COLS')
+ORDER BY constraint_name, table_name, column_name;
+ constraint_name  |   table_name    | column_name | position 
+------------------+-----------------+-------------+----------
+ PK_DBA_CONS_COLS | T_DBA_CONS_COLS | ID          | 1
+ UQ_DBA_CONS_COLS | T_DBA_CONS_COLS | CODE        | 1
+(2 rows)
+
+DROP TABLE t_dba_cons_cols;
+-- ALL_TAB_COLUMNS
+DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+NOTICE:  table "test_all_tab_columns" does not exist, skipping
+CREATE TABLE TEST_ALL_TAB_COLUMNS (
+    ID INT PRIMARY KEY,
+    NAME VARCHAR2(50) NOT NULL,
+    AGE NUMERIC(5,2),
+    CREATE_TIME DATE
+);
+ANALYZE TEST_ALL_TAB_COLUMNS;
+SELECT 
+    TABLE_NAME,
+    COLUMN_NAME,
+    COLUMN_ID,
+    DATA_TYPE,
+    DATA_TYPE_MOD,
+    DATA_LENGTH,
+    DATA_PRECISION,
+    DATA_SCALE,
+    NULLABLE,
+    DATA_DEFAULT,
+    NUM_DISTINCT,
+    LOW_VALUE,
+    HIGH_VALUE,
+    DENSITY,
+    NUM_NULLS,
+    NUM_BUCKETS,
+    SAMPLE_SIZE,
+    CHARACTER_SET_NAME,
+    CHAR_COL_DECL_LENGTH,
+    GLOBAL_STATS,
+    USER_STATS,
+    AVG_COL_LEN,
+    CHAR_LENGTH,
+    CHAR_USED,
+    V80_FMT_IMAGE,
+    DATA_UPGRADED,
+    HISTOGRAM,
+    DEFAULT_LENGTH,
+    "COLLATION",
+    IDENTITY_COLUMN,
+    DEFAULT_ON_NULL
+FROM SYS.ALL_TAB_COLUMNS
+WHERE TABLE_NAME = 'TEST_ALL_TAB_COLUMNS'
+AND OWNER = SYS.ORA_CASE_TRANS(CURRENT_SCHEMA::VARCHAR2)
+ORDER BY COLUMN_ID;
+      table_name      | column_name | column_id | data_type | data_type_mod | data_length | data_precision | data_scale | nullable | data_default | num_distinct | low_value | high_value | density | num_nulls | num_buckets | sample_size | character_set_name | char_col_decl_length | global_stats | user_stats | avg_col_len | char_length | char_used | v80_fmt_image | data_upgraded | histogram | default_length | collation | identity_column | default_on_null 
+----------------------+-------------+-----------+-----------+---------------+-------------+----------------+------------+----------+--------------+--------------+-----------+------------+---------+-----------+-------------+-------------+--------------------+----------------------+--------------+------------+-------------+-------------+-----------+---------------+---------------+-----------+----------------+-----------+-----------------+-----------------
+ TEST_ALL_TAB_COLUMNS | ID          |         1 | NUMBER    |               |           4 |             10 |          0 | N        |              |              |           |            |         |           |             |             |                    |                      | YES          | NO         |             |             |           | NO            | NO            |           |                |           | NO              | NO
+ TEST_ALL_TAB_COLUMNS | NAME        |         2 | VARCHAR2  |               |          50 |                |            | N        |              |              |           |            |         |           |             |             | CHAR_CS            |                   50 | YES          | NO         |             |          50 | B         | NO            | NO            |           |                |           | NO              | NO
+ TEST_ALL_TAB_COLUMNS | AGE         |         3 | NUMBER    |               |          22 |              5 |          2 | Y        |              |              |           |            |         |           |             |             |                    |                      | YES          | NO         |             |             |           | NO            | NO            |           |                |           | NO              | NO
+ TEST_ALL_TAB_COLUMNS | CREATE_TIME |         4 | DATE      |               |           7 |                |            | Y        |              |              |           |            |         |           |             |             |                    |                      | YES          | NO         |             |             |           | NO            | NO            |           |                |           | NO              | NO
+(4 rows)
+
+\set ON_ERROR_STOP off
+SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'TEST_ALL_TAB_COLUMNS';
+ERROR:  "collation_name": invalid identifier
+LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
+               ^
+\set ON_ERROR_STOP on
+DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;

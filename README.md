@@ -1,0 +1,129 @@
+[![LICENSE](https://img.shields.io/badge/license-Apache--2.0-blue?logo=apache)](https://github.com/IvorySQL/IvorySQL/blob/master/LICENSE)
+
+[![build](https://github.com/IvorySQL/IvorySQL/actions/workflows/build.yml/badge.svg?branch=master&event=push)](https://github.com/IvorySQL/IvorySQL/actions/workflows/build.yml)
+[![Contrib_regression](https://github.com/IvorySQL/IvorySQL/actions/workflows/contrib_regression.yml/badge.svg?branch=master&event=push)](https://github.com/IvorySQL/IvorySQL/actions/workflows/contrib_regression.yml)
+[![meson_build](https://github.com/IvorySQL/IvorySQL/actions/workflows/meson_build.yml/badge.svg?branch=master&event=push)](https://github.com/IvorySQL/IvorySQL/actions/workflows/meson_build.yml)
+[![pg_regression](https://github.com/IvorySQL/IvorySQL/actions/workflows/pg_regression.yml/badge.svg?branch=master&event=push)](https://github.com/IvorySQL/IvorySQL/actions/workflows/pg_regression.yml)
+[![oracle_regression](https://github.com/IvorySQL/IvorySQL/actions/workflows/oracle_regression.yml/badge.svg?branch=master&event=push)](https://github.com/IvorySQL/IvorySQL/actions/workflows/oracle_regression.yml)
+
+![IvorySQL](https://github.com/IvorySQL/Ivory-www/blob/main/static/img/IvorySQL-black.png?raw=true)
+
+English | [中文](README_CN.md)
+
+IvorySQL is developed based on [PostgreSQL](https://github.com/postgres/postgres). 
+IvorySQL is advanced, fully featured, open-source Oracle-compatible PostgreSQL with a firm commitment to always remain 100% compatible and a drop-in replacement for the latest PostgreSQL. IvorySQL adds the `ivorysql.compatible_mode` GUC parameter to switch between Oracle and PostgreSQL compatibility modes.
+One of the highlights of IvorySQL is PL/iSQL procedural language that supports oracle’s PL/SQL syntax and Oracle style Packages.
+
+The IvorySQL project is released under the Apache 2 license and encourages all types of contributions. For IvorySQL community no contribution is too small, and we want to thank all our community contributors.
+
+</br>
+
+## We are committed to following the principles of the open source way
+We are committed to abiding by the principles of [open-source ways](https://opensource.com/open-source-way) and we strongly believe in building a healthy and inclusive community. We maintain that good ideas can come from anywhere, and the best ideas should win. Only by including diverse perspectives, we can reach the best decision. While the first version of IvorySQL is mainly focused on Oracle Compatibility features, going forward the future road map and feature set will be determined by the community in an open-source way.
+</br>
+
+## Installation
+We recommend following our [Quick Start](https://docs.ivorysql.org/en/ivorysql-doc/v5.6/3.1#quick-installation) for how to install and running IvorySQL.
+
+Furthermore, for more detailed installation instructions, please refer to the [Installation Docs](https://docs.ivorysql.org/en/ivorysql-doc/v5.6/4.1#introduction). We provide four installation methods for IvorySQL, as outlined below:
+- [Yum installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.6/4.1#Yum-installation)
+- [Docker installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.6/4.1#Docker-installation)
+- [Rpm installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.6/4.1#Rpm-installation)
+- [Source code installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.6/4.1#Source-code-installation)
+
+## Development with Docker
+
+For a consistent development environment, we provide a Docker-based setup that includes all build dependencies.
+
+### Quick Start
+
+```bash
+# Start the development containers
+docker compose up -d
+
+# Enter the development container
+docker compose exec dev bash
+
+# Configure and build IvorySQL
+./configure --prefix=/home/ivorysql/ivorysql \
+    --enable-debug --enable-cassert \
+    --with-uuid=e2fs --with-libxml
+
+make -j$(nproc)
+make install
+
+# Initialize database in Oracle mode
+/home/ivorysql/ivorysql/bin/initdb -D data_ora -m oracle
+
+# Start the server
+/home/ivorysql/ivorysql/bin/pg_ctl -D data_ora start
+
+# Run tests
+make oracle-check
+```
+
+### Meson Build (Alternative)
+
+```bash
+# Enter the development container
+docker compose exec dev bash
+
+# Configure with meson
+meson setup build -Dcassert=true -Dbuildtype=debug
+
+# Build with ninja
+ninja -C build
+
+# Run from build directory
+./build/src/backend/postgres --version
+```
+
+Note: Meson requires a clean source tree. If you previously ran `./configure`,
+run `make distclean` first.
+
+## Developer Formatting hooks and CI:
+- A pre-commit formatting hook is provided at `.githooks/pre-commit`. Enable it with `git config core.hooksPath .githooks`, or run `make code-format` (equivalently `bash tools/enable-git-hooks.sh`).
+- The hook depends only on in-tree tools `src/tools/pgindent` and `src/tools/pg_bsd_indent`. On commit it formats staged C/C++ files with pgindent and re-adds them to the staged area. 
+- A Cirrus workflow `FormatCheck` runs `pgindent --check` on files changed in a PR.
+
+## Contributing to the IvorySQL
+There are plenty of ways to contribute to IvorySQL. You can contribute by providing the documentation updates, by providing the
+translations for the documentation. If you have design skills you can contribute to the IvorySQL website project.
+Testing the IvorySQL and reporting issues or by issuing pull requests for bug fixes or new features or answering the questions
+on mailing lists are some ways to contribute to the IvorySQL project and all types of contributions are welcomed and appreciated
+by the IvorySQL community.
+For contribution guidelines, please refer to the [Community Contribution Guide](https://www.ivorysql.org/zh-cn/contribution-guidelines/) and [the Developer Contribution Guide](https://docs.ivorysql.org/cn/ivorysql-doc/v5.6/8.1).
+
+**Important:** Before submitting any code contribution, all contributors are required to sign the Contributor License Agreement (CLA). The CLA protects both contributors and the project, and helps the community build a more standardized and sustainable open-source governance system.
+
+## AI Coding Assistant
+
+If you are an LLM or AI-powered coding assistant contributing to IvorySQL, you MUST read and follow the [AI coding assistants documentation](coding-assistants.md) before making contributions.
+
+This documentation contains essential requirements about licensing, attribution, and code quality standards that all AI tools must comply with.
+
+## Documentation
+Please check the [online documentation](https://docs.ivorysql.org/).
+
+## Community and Contact
+
+IvorySQL is an open-source project built by and for the community. Whether you have questions, ideas, bug reports, or would like to contribute, you are welcome to connect with us through the following channels.
+
+### Community
+
+* **General Mailing List:** [general@ivorysql.org](https://lists.ivorysql.org/postorius/lists/general.ivorysql.org/) — General discussions, usage questions, and community communication.
+* **Hackers Mailing List:** [hackers@ivorysql.org](https://lists.ivorysql.org/postorius/lists/hackers.ivorysql.org/) — Development discussions, technical proposals, patches, and contributions.
+* **Discord:** [Join the IvorySQL Discord community](https://discord.gg/w79Ta45Gkc)
+* **X / Twitter:** [@IvorySQL](https://twitter.com/IvorySQL)
+
+### Support and Feedback
+
+* **Bug reports and feature requests:** [GitHub Issues](https://github.com/IvorySQL/IvorySQL/issues/new/choose)
+* **Source code and contributions:** [GitHub](https://github.com/IvorySQL/IvorySQL)
+* **GitCode / AtomGit:** [IvorySQL on GitCode](https://atomgit.com/IvorySQL/IvorySQL)
+
+### Official Resources
+
+* **Website:** [ivorysql.org](https://www.ivorysql.org/)
+* **Documentation:** [docs.ivorysql.org](https://docs.ivorysql.org/)
+* **Mailing lists:** [lists.ivorysql.org](https://lists.ivorysql.org/)

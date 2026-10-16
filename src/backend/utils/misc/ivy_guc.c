@@ -1,0 +1,305 @@
+/*-------------------------------------------------------------------------
+ * Copyright 2026 IvorySQL Global Development Team
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * ivy_guc.c
+ *
+ * Support for grand unified configuration scheme(for ivorysql), including SET
+ * command, configuration file, and command line options
+ *
+ * Authored by lanke@highgo.com, 20220819.
+ *
+ * Copyright (c) 2022-2026, IvorySQL Global Development Team
+ *
+ * IDENTIFICATION
+ *        src/backend/utils/misc/ivy_guc.c
+ *
+ *-------------------------------------------------------------------------
+ */
+#ifdef IVY_GUC_VAR_DEFINE
+#define ISLOADIVORYSQL_ORA pg_transform_merge_stmt_hook
+
+int			identifier_case_switch = INTERCHANGE;
+bool		identifier_case_from_pg_dump = false;
+bool		enable_case_switch = true;
+
+static char	   *nls_territory = "AMERICA";
+static char	   *nls_currency = "$";
+static char	   *nls_iso_currency = "AMERICA";
+
+bool		enable_emptystring_to_NULL = false;
+
+int			database_mode = DB_PG;
+int			compatible_db = PG_PARSER;
+
+bool		allow_out_parameter_const = false;
+bool		out_parameter_column_position = false;
+
+bool		seq_scale_fixed = false;
+bool		internal_warning = false;
+
+bool		default_with_rowids = false;
+int			rowid_seq_cache = 20;
+
+#endif
+
+#ifdef IVY_GUC_VAR_STRUCT
+
+/* The comments shown as below define the
+ * value range of guc parameters "database_mode"
+ * and "compatible_db".
+ */
+static const struct config_enum_entry db_mode_options[] = {
+	{"pg", DB_PG, false},
+	{"oracle", DB_ORACLE, false},
+	{"0", DB_PG, false},
+	{"1", DB_ORACLE, false},
+	{NULL, 0, false}
+};
+
+static const struct config_enum_entry db_parser_options[] = {
+	{"pg", PG_PARSER, false},
+	{"oracle", ORA_PARSER, false},
+	{NULL, 0, false}
+
+};
+
+
+static const struct config_enum_entry case_conversion_mode[] = {
+	{"normal", NORMAL, false},
+	{"interchange", INTERCHANGE, false},
+	{"lowercase", LOWERCASE, false},
+	{"0", NORMAL, false},
+	{"1", INTERCHANGE, false},
+	{"2", LOWERCASE, false},
+	{NULL, 0, false}
+};
+
+static const struct config_enum_entry nls_length_options[] = {
+	{"byte", NLS_LENGTH_BYTE, false},
+	{"char", NLS_LENGTH_CHAR, false},
+	{NULL, 0, false}
+};
+
+#endif
+
+#ifdef IVY_GUC_FUNC_DECLARE
+
+static bool check_nls_length_semantics(int *newval, void **extra, GucSource source);
+
+static bool check_compatible_mode(int *newval, void **extra, GucSource source);
+static bool check_database_mode(int *newval, void **extra, GucSource source);
+void		assign_compatible_mode(int newval, void *extra);
+
+static void nls_case_conversion(char **param, char type);
+static bool nls_length_check(char **newval, void **extra, GucSource source);
+static bool nls_territory_check(char **newval, void **extra, GucSource source);
+#endif
+
+
+#ifdef IVY_GUC_FUNC_DEFINE
+
+static bool
+check_nls_length_semantics(int *newval, void **extra, GucSource source)
+{
+	if (source >= PGC_S_INTERACTIVE &&
+		IsUnderPostmaster && DB_PG == database_mode)
+	{
+		GUC_check_errcode(ERRCODE_FEATURE_NOT_SUPPORTED);
+		GUC_check_errmsg("Do not use this GUC variable in the current cluster (PG).");
+		return false;
+	}
+
+	return true;
+}
+
+
+static bool
+check_compatible_mode(int *newval, void **extra, GucSource source)
+{
+	int			newmode = *newval;
+
+	if (DB_PG == database_mode && newmode == ORA_PARSER)
+	{
+		GUC_check_errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM);
+		GUC_check_errmsg("parameter ivorysql.compatible_mode cannot be changed in native PG mode.");
+		return false;
+	}
+
+	if (DB_ORACLE == database_mode
+		&& (IsNormalProcessingMode() || (IsUnderPostmaster && MyProcPort)))
+	{
+		if (newmode == ORA_PARSER)
+		{
+			if (ora_raw_parser == NULL)
+			{
+				GUC_check_errcode(ERRCODE_SYSTEM_ERROR);
+				GUC_check_errmsg("liboracle_parser not found!");
+				GUC_check_errhint("You must load liboracle_parser to use oracle parser.");
+				return false;
+			}
+			if (!ISLOADIVORYSQL_ORA)
+			{
+				GUC_check_errcode(ERRCODE_SYSTEM_ERROR);
+				GUC_check_errmsg("IVORYSQL_ORA library not found!");
+				GUC_check_errhint("You must load IVORYSQL_ORA to use oracle parser.");
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
+static bool
+check_database_mode(int *newval, void **extra, GucSource source)
+{
+	int			newmode = *newval;
+
+	if (source >= PGC_S_INTERACTIVE &&
+		DB_PG == database_mode && DB_ORACLE == newmode)
+	{
+		GUC_check_errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM);
+		GUC_check_errmsg("parameter ivorysql.database_mode cannot be changed");
+		return false;
+	}
+
+	return true;
+}
+
+void
+assign_compatible_mode(int newval, void *extra)
+{
+	if (DB_ORACLE == database_mode
+		&& (IsNormalProcessingMode() || (IsUnderPostmaster && MyProcPort)))
+	{
+		if (newval == ORA_PARSER)
+		{
+			sql_raw_parser = ora_raw_parser;
+
+
+			pg_transform_merge_stmt_hook = ora_transform_merge_stmt_hook;
+			pg_exec_merge_matched_hook = ora_exec_merge_matched_hook;
+
+			assign_search_path(NULL, NULL);
+		}
+		else if (newval == PG_PARSER)
+		{
+			sql_raw_parser = standard_raw_parser;
+
+
+			pg_transform_merge_stmt_hook = transformMergeStmt;
+			pg_exec_merge_matched_hook = ExecMergeMatched;
+
+			assign_search_path(NULL, NULL);
+		}
+	}
+}
+
+static void
+nls_case_conversion(char **param, char type)
+{
+	char	   *p;
+	size_t	  len;
+
+CASE_CONVERSION:
+	len = strlen(*param);
+	if (type == 'u')
+	{
+		for (p = *param; p < *param + len; ++p)
+			if ('a' <= *p && *p <= 'z')
+				*p -= 32;
+		*p = '\0';
+	}
+	else if (type == 'l')
+	{
+		for (p = *param; p < *param + len; ++p)
+			if ('A' <= *p && *p <= 'Z')
+				*p += 32;
+		*p = '\0';
+	}
+	else if (type == 'b')
+	{
+		bool		has_upper = false,
+					has_lower = false;
+
+		for (p = *param; p < *param + len; ++p)
+		{
+			if ('A' <= *p && *p <= 'Z')
+				has_upper = true;
+			else if ('a' <= *p && *p <= 'z')
+				has_lower = true;
+			if (has_upper && has_lower)
+				return;
+		}
+
+		if (has_upper && !has_lower)
+		{
+			type = 'l';
+			goto CASE_CONVERSION;
+		}
+		else if (!has_upper && has_lower)
+		{
+			type = 'u';
+			goto CASE_CONVERSION;
+		}
+	}
+}
+static bool
+nls_length_check(char **newval, void **extra, GucSource source)
+{
+	if (DB_ORACLE == database_mode
+		&& (IsNormalProcessingMode() || (IsUnderPostmaster && MyProcPort)))
+	{
+		if (strlen(*newval) > 255)
+		{
+			GUC_check_errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION);
+			GUC_check_errmsg("parameter value longer than 255 characters");
+			return false;
+		}
+		else if (isdigit(**newval))
+		{
+			GUC_check_errcode(ERRCODE_INVALID_PARAMETER_VALUE);
+			GUC_check_errmsg("Cannot access NLS data files "
+							 "or invalid environment specified");
+			return false;
+		}
+		else if (identifier_case_switch == INTERCHANGE)
+			nls_case_conversion(newval, 'b');
+	}
+
+	return true;
+}
+
+static bool
+nls_territory_check(char **newval, void **extra, GucSource source)
+{
+	if (DB_ORACLE == database_mode
+		&& (IsNormalProcessingMode() || (IsUnderPostmaster && MyProcPort)))
+	{
+		if (pg_strcasecmp(*newval, "CHINA") == 0)
+			memcpy(*newval, "CHINA", 5);
+		else if (pg_strcasecmp(*newval, "AMERICA") == 0)
+			memcpy(*newval, "AMERICA", 7);
+		else
+		{
+			GUC_check_errcode(ERRCODE_INVALID_PARAMETER_VALUE);
+			GUC_check_errmsg("Cannot access NLS data files "
+							 "or invalid environment specified");
+			return false;
+		}
+	}
+
+	return true;
+}
+#endif

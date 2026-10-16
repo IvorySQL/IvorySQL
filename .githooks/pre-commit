@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# Allow skipping via env var (e.g. to temporarily skip formatting):
+#   PG_NO_FORMAT=1 git commit -m "..."
+if [[ "${PG_NO_FORMAT:-}" == "1" ]]; then
+  exit 0
+fi
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+
+# Process only staged C/C++ files (exclude pg_bsd_indent sources)
+mapfile -t files < <(\
+  git diff --cached --name-only --diff-filter=ACMR | \
+  grep -E '\.(c|h|cpp|hpp)$' | \
+  grep -vE '^src/tools/pg_bsd_indent/' || true)
+
+if [[ ${#files[@]} -eq 0 ]]; then
+  exit 0
+fi
+
+echo "[pre-commit] Ensuring pg_bsd_indent is built..."
+if ! make -C src/tools/pg_bsd_indent -s pg_bsd_indent >/dev/null; then
+  echo "[pre-commit] Failed to build src/tools/pg_bsd_indent/pg_bsd_indent." >&2
+  echo "[pre-commit] Install build tools and try: make -C src/tools/pg_bsd_indent V=1" >&2
+  exit 1
+fi
+
+if [[ ! -x src/tools/pg_bsd_indent/pg_bsd_indent ]]; then
+  echo "[pre-commit] Built binary not found: src/tools/pg_bsd_indent/pg_bsd_indent" >&2
+  exit 1
+fi
+
+export PGINDENT="$repo_root/src/tools/pg_bsd_indent/pg_bsd_indent"
+
+# Pin typedefs list
+export PGTYPEDEFS="$repo_root/src/tools/pgindent/typedefs.list"
+
+pgindent_script="$repo_root/src/tools/pgindent/pgindent"
+if [[ ! -x "$pgindent_script" ]]; then
+  echo "[pre-commit] Executable $pgindent_script not found; cannot format." >&2
+  exit 1
+fi
+
+echo "[pre-commit] Formatting staged files with pgindent..."
+"$pgindent_script" "${files[@]}"
+
+# Re-add formatted files to the index
+git add -- "${files[@]}"
+
+# Second check to ensure no remaining diffs
+echo "[pre-commit] Verifying formatting consistency..."
+if ! "$pgindent_script" --check "${files[@]}"; then
+  echo "[pre-commit] Unformatted changes remain. Review the diff and retry commit." >&2
+  exit 1
+fi
+
+exit 0
+

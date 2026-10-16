@@ -1,0 +1,5 @@
+src/oracle_test/modules/test_checksums/README
+
+Regression tests for data checksums
+===================================
+For more detailed instructions, refer to the "README" file in the "src/test/modules/test_checksums" directory.

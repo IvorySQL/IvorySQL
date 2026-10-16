@@ -1,0 +1,92 @@
+--
+-- Test Oracle-compatible identifier syntax
+-- Issue #1002: Support # character in unquoted identifiers
+--
+-- Test # in column names
+CREATE TABLE test_hash_ident (
+    statistic# INT,
+    col#1 INT,
+    my#column INT
+);
+INSERT INTO test_hash_ident VALUES (1, 2, 3);
+SELECT statistic#, col#1, my#column FROM test_hash_ident;
+ statistic# | col#1 | my#column 
+------------+-------+-----------
+          1 |     2 |         3
+(1 row)
+
+-- Test # in table names
+CREATE TABLE test#table (id INT);
+INSERT INTO test#table VALUES (100);
+SELECT * FROM test#table;
+ id  
+-----
+ 100
+(1 row)
+
+DROP TABLE test#table;
+-- Test $ in identifiers (already supported, verify no regression)
+CREATE TABLE test$table (col$1 INT);
+INSERT INTO test$table VALUES (200);
+SELECT col$1 FROM test$table;
+ col$1 
+-------
+   200
+(1 row)
+
+DROP TABLE test$table;
+-- Test mixed special characters
+CREATE TABLE test_mixed (
+    col_1 INT,
+    col$2 INT,
+    col#3 INT,
+    col_$#4 INT
+);
+INSERT INTO test_mixed VALUES (1, 2, 3, 4);
+SELECT col_1, col$2, col#3, col_$#4 FROM test_mixed;
+ col_1 | col$2 | col#3 | col_$#4 
+-------+-------+-------+---------
+     1 |     2 |     3 |       4
+(1 row)
+
+DROP TABLE test_mixed;
+-- Verify # XOR operator still works (both with and without spaces)
+SELECT 5 # 3 AS xor_result;
+ xor_result 
+------------
+          6
+(1 row)
+
+SELECT 5#3 AS xor_no_spaces;
+ xor_no_spaces 
+---------------
+             6
+(1 row)
+
+SELECT B'1010' # B'1100' AS bit_xor;
+ bit_xor 
+---------
+ 0110
+(1 row)
+
+-- Verify JSON path operators work without spaces (issue was potential conflict)
+SELECT '{"a":1}'::json#>'{a}' AS json_path_no_space;
+ json_path_no_space 
+--------------------
+ 1
+(1 row)
+
+SELECT '{"b":2}'::jsonb#>>'{b}' AS jsonb_path_no_space;
+ jsonb_path_no_space 
+---------------------
+ 2
+(1 row)
+
+SELECT '{"a":1,"b":2}'::jsonb#-'{a}' AS jsonb_delete_no_space;
+ jsonb_delete_no_space 
+-----------------------
+ {"b": 2}
+(1 row)
+
+-- Clean up
+DROP TABLE test_hash_ident;
