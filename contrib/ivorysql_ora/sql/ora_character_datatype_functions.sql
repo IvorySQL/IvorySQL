@@ -1558,3 +1558,21 @@ select to_single_byte('１．２');
 select to_single_byte(１．２);
 select to_single_byte(3.4);
 select to_single_byte(NULL);
+
+-- Large SUBSTRB lengths must be clipped to the available bytes without overflow.
+select sys.substrb('abcdef', 1, 2147483647) = 'abcdef' as huge_length;
+select sys.substrb('abcdef', 2, 2147483647) = 'bcdef' as huge_suffix;
+select sys.substrb('abcdef', -2, 2147483647) = 'ef' as huge_negative_start;
+select sys.substrb('你好吗', 1, 2147483647) = '你好吗' as huge_utf8_length;
+select sys.substrb('abcdef', 2147483647, 1) is null as huge_start;
+select sys.substrb('abcdef', 2, 3) = 'bcd' as ordinary_length;
+
+-- Exercise the detoasting slice calculation as well as an inline datum.
+create table substrb_large_length_test (s text);
+alter table substrb_large_length_test alter column s set storage external;
+insert into substrb_large_length_test values (repeat('abcdef', 2000));
+select sys.substrb(s, 1, 2147483647) = s as huge_toasted_length,
+       sys.substrb(s, 1, 2147483643) = s as large_toasted_slice,
+       sys.substrb(s, 2147483647, 1) is null as huge_toasted_start
+from substrb_large_length_test;
+drop table substrb_large_length_test;
