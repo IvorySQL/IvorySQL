@@ -444,3 +444,44 @@ explain (costs off) SELECT * FROM TEST_ORAVARCHAR WHERE a='111';
 -- drop table
 DROP TABLE TEST_ORACHAR;
 DROP TABLE TEST_ORAVARCHAR;
+-- Untyped NVL/COALESCE/DECODE result type follows nls_length_semantics:
+--   CHAR -> oravarcharchar, BYTE -> oravarcharbyte
+SET nls_length_semantics to char;
+SELECT typname FROM pg_type WHERE oid = pg_typeof(NVL('a','b'))::regtype;
+    typname     
+----------------
+ oravarcharchar
+(1 row)
+
+SELECT typname FROM pg_type WHERE oid = pg_typeof(COALESCE('a','b'))::regtype;
+    typname     
+----------------
+ oravarcharchar
+(1 row)
+
+SELECT typname FROM pg_type WHERE oid = pg_typeof(DECODE('a','a','yes','no'))::regtype;
+    typname     
+----------------
+ oravarcharchar
+(1 row)
+
+SET nls_length_semantics to byte;
+SELECT typname FROM pg_type WHERE oid = pg_typeof(NVL('a','b'))::regtype;
+    typname     
+----------------
+ oravarcharbyte
+(1 row)
+
+SELECT typname FROM pg_type WHERE oid = pg_typeof(COALESCE('a','b'))::regtype;
+    typname     
+----------------
+ oravarcharbyte
+(1 row)
+
+SELECT typname FROM pg_type WHERE oid = pg_typeof(DECODE('a','a','yes','no'))::regtype;
+    typname     
+----------------
+ oravarcharbyte
+(1 row)
+
+RESET nls_length_semantics;
