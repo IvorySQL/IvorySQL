@@ -65,6 +65,37 @@ SELECT extractvalue(XMLType('<a><b><c><d><e>111></e><f>222</f></d></c></b></a>')
 SELECT extractvalue(data, 'soapenv:Envelope/soapenv:Body/web:BBB/typ:EEE', 'xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"') from xmlnstest where id = 1;
 
 --
+-- extractvalue with a non-node-set XPath
+--
+-- A scalar XPath such as count(), string(), true() or an arithmetic
+-- expression evaluates to a number, string or boolean rather than a node
+-- set.  EXTRACTVALUE has no way to return such a value, so it must report
+-- an error instead of dereferencing the absent node set and crashing.
+SELECT extractvalue(XMLType('<a><b>100</b></a>'), 'count(/a)') from dual;
+
+SELECT extractvalue(XMLType('<a><b>100</b></a>'), 'string(/a)') from dual;
+
+SELECT extractvalue(XMLType('<a><b>100</b></a>'), 'true()') from dual;
+
+SELECT extractvalue(XMLType('<a><b>100</b></a>'), '1+1') from dual;
+
+SELECT extractvalue(XMLType('<a><b> 100 </b></a>'), 'normalize-space(/a)') from dual;
+
+-- Same expressions through the namespace-aware overload.
+SELECT extractvalue(XMLType('<a><b>100</b></a>'), 'count(/x:a)', 'xmlns:x="http://www.example.com"') from dual;
+
+SELECT extractvalue(XMLType('<a><b>100</b></a>'), 'string(/x:a)', 'xmlns:x="http://www.example.com"') from dual;
+
+SELECT extractvalue(XMLType('<a><b>100</b></a>'), 'true()', 'xmlns:x="http://www.example.com"') from dual;
+
+SELECT extractvalue(XMLType('<a><b>100</b></a>'), '1+1', 'xmlns:x="http://www.example.com"') from dual;
+
+SELECT extractvalue(XMLType('<a><b> 100 </b></a>'), 'normalize-space(/x:a)', 'xmlns:x="http://www.example.com"') from dual;
+
+-- A node-set XPath that matches no node must still return an empty value.
+SELECT extractvalue(XMLType('<a><b>100</b></a>'), '/a/c') from dual;
+
+--
 -- existsnode
 --
 SELECT existsnode(XMLType('<a><b>d</b></a>'), '/a') from dual;
