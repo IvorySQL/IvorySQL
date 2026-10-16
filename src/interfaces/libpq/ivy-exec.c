@@ -2012,6 +2012,8 @@ IvyHandleDostmt(Ivyconn *tconn,
 
 	/* record in stmthandle */
 	stmtHandle->do_using_query = query_buf->data;
+	/* The statement owns the data; release the temporary buffer wrapper. */
+	free(query_buf);
 	stmtHandle->stmttype = IVY_STMT_DOHANDLED;
 
 	return 1;
