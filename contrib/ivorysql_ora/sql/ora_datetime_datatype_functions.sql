@@ -805,3 +805,17 @@ drop table ds_tb;
 reset NLS_TIMESTAMP_FORMAT;
 reset NLS_TIMESTAMP_TZ_FORMAT;
 reset NLS_DATE_FORMAT;
+
+-- Verify LENGTH/LENGTHB datetime wrappers are STABLE (NLS datetime formats).
+SELECT count(*) = 6 AS length_datetime_stable_ok
+FROM pg_catalog.pg_proc
+WHERE oid IN ('sys.length(sys.oradate)'::regprocedure,
+              'sys.length(sys.oratimestamp)'::regprocedure,
+              'sys.length(sys.oratimestamptz)'::regprocedure,
+              'sys.lengthb(sys.oradate)'::regprocedure,
+              'sys.lengthb(sys.oratimestamp)'::regprocedure,
+              'sys.lengthb(sys.oratimestamptz)'::regprocedure)
+  AND provolatile = 's'
+  AND proisstrict = true
+  AND proparallel = 's';
+
