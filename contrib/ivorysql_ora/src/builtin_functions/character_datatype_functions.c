@@ -104,7 +104,6 @@ static void text_position_cleanup(TextPositionState *state);
 static int	text_position_next(int start_pos, TextPositionState *state);
 static int text_instring(text *str, text *search_str, int32 position, int32 occurrence, bool isByte);
 static int	text_position_prev(int start_pos, TextPositionState *state);
-static void appendStringInfoText(StringInfo str, const text *t);
 static int getindex(const char **map, char *mbchar, int mblen);
 
 /*
@@ -1077,99 +1076,48 @@ ora_substrb_no_length(PG_FUNCTION_ARGS)
  *	2. Returns 'src_text' if 'from_sub_text' == NULL or 'src_text' == NULL.
  *	3. If 'to_sub_text' is omitted or null, then all occurrences of 
  *	   'from_sub_text' are removed.
+ *	4. The search itself is delegated to core replace_text so that the
+ *	   call's collation is honoured, as Oracle does under
+ *	   NLS_COMP=LINGUISTIC.
  *
  ********************************************************************/
 Datum
 ora_replace(PG_FUNCTION_ARGS)
 {
-	text	   *src_text = NULL;
-	text	   *from_sub_text = NULL;
-	text	   *to_sub_text = NULL;
-	int			src_text_len;
-	int			from_sub_text_len;
-	TextPositionState state;
-	text	   *ret_text;
-	int			start_posn;
-	int			curr_posn;
-	int			chunk_len;
-	char	   *start_ptr;
-	StringInfoData str;
+	text	   *src_text;
+	text	   *from_sub_text;
+	text	   *to_sub_text;
 
 	/*
-	 * Compatible with oracle, if arg1 or agr2 is null return 'src_text'.
-	 * if arg3 is null, then all occurrences of arg2 are removed.
+	 * Oracle's NULL rules: a NULL subject gives NULL, a NULL search string
+	 * returns the subject unchanged, and a NULL replacement removes every
+	 * occurrence of the search string.
 	 */
 	if (PG_ARGISNULL(0))
 		PG_RETURN_NULL();
-	else if (PG_ARGISNULL(1))
-		PG_RETURN_TEXT_P(PG_GETARG_TEXT_PP(0));
-	
 	src_text = PG_GETARG_TEXT_PP(0);
+
+	if (PG_ARGISNULL(1))
+		PG_RETURN_TEXT_P(src_text);
 	from_sub_text = PG_GETARG_TEXT_PP(1);
-	if (!PG_ARGISNULL(2))
+
+	if (PG_ARGISNULL(2))
+		to_sub_text = cstring_to_text("");
+	else
 		to_sub_text = PG_GETARG_TEXT_PP(2);
 
-	text_position_setup(src_text, from_sub_text, &state, false);
-
 	/*
-	 * Note: we check the converted string length, not the original, because
-	 * they could be different if the input contained invalid encoding.
+	 * The search itself belongs to core replace_text, which honours the
+	 * call's collation, nondeterministic ones included. Oracle's REPLACE
+	 * does the same under NLS_COMP=LINGUISTIC: measured on 21c,
+	 * REPLACE('testX', 'x', 'er') is 'tester' there and 'testX' under
+	 * NLS_COMP=BINARY. An empty search string comes back unchanged from
+	 * core as well.
 	 */
-	src_text_len = state.len1;
-	from_sub_text_len = state.len2;
-
-	/* Return unmodified source string if empty source or pattern */
-	if (src_text_len < 1 || from_sub_text_len < 1)
-	{
-		text_position_cleanup(&state);
-		PG_RETURN_TEXT_P(src_text);
-	}
-
-	start_posn = 1;
-	curr_posn = text_position_next(1, &state);
-
-	/* When the from_sub_text is not found, there is nothing to do. */
-	if (curr_posn == 0)
-	{
-		text_position_cleanup(&state);
-		PG_RETURN_TEXT_P(src_text);
-	}
-
-	/* start_ptr points to the start_posn'th character of src_text */
-	start_ptr = VARDATA_ANY(src_text);
-
-	initStringInfo(&str);
-
-	do
-	{
-		CHECK_FOR_INTERRUPTS();
-
-		/* copy the data skipped over by last text_position_next() */
-		chunk_len = charlen_to_bytelen(start_ptr, curr_posn - start_posn);
-		appendBinaryStringInfo(&str, start_ptr, chunk_len);
-
-		if (to_sub_text != NULL)
-			appendStringInfoText(&str, to_sub_text);
-
-		start_posn = curr_posn;
-		start_ptr += chunk_len;
-		start_posn += from_sub_text_len;
-		start_ptr += charlen_to_bytelen(start_ptr, from_sub_text_len);
-
-		curr_posn = text_position_next(start_posn, &state);
-	}
-	while (curr_posn > 0);
-
-	/* copy trailing data */
-	chunk_len = ((char *) src_text + VARSIZE_ANY(src_text)) - start_ptr;
-	appendBinaryStringInfo(&str, start_ptr, chunk_len);
-
-	text_position_cleanup(&state);
-
-	ret_text = cstring_to_text_with_len(str.data, str.len);
-	pfree(str.data);
-
-	PG_RETURN_TEXT_P(ret_text);
+	return DirectFunctionCall3Coll(replace_text, PG_GET_COLLATION(),
+								   PointerGetDatum(src_text),
+								   PointerGetDatum(from_sub_text),
+								   PointerGetDatum(to_sub_text));
 }
 
 /**********************************************************************
@@ -1689,7 +1637,7 @@ text_instring(text *str, text *search_str, int32 position, int32 occurrence, boo
 	int32	src_text_len;	/* length of src text */
 	int32	sub_text_len;	/* length of search_str text */
 	int32	result;
-	TextPositionState	state;
+	TextPositionState	state = {0};
 
 	text_position_setup(str, search_str, &state, isByte);
 
@@ -1755,18 +1703,6 @@ text_instring(text *str, text *search_str, int32 position, int32 occurrence, boo
 	text_position_cleanup(&state);
 
 	return result;
-}
-
-/*
- * appendStringInfoText
- *
- * Append a text to str.
- * Like appendStringInfoString(str, text_to_cstring(t)) but faster.
- */
-static void
-appendStringInfoText(StringInfo str, const text *t)
-{
-	appendBinaryStringInfo(str, VARDATA_ANY(t), VARSIZE_ANY_EXHDR(t));
 }
 
 /*
