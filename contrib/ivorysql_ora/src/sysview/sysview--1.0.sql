@@ -1557,3 +1557,83 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+--
+-- USER_IND_EXPRESSIONS / ALL_IND_EXPRESSIONS / DBA_IND_EXPRESSIONS: the
+-- expression keys of the indexes, the entries the column view skips
+-- because they have no column name.  COLUMN_EXPRESSION carries the
+-- expression as PostgreSQL spells it.
+--
+CREATE OR REPLACE VIEW SYS.USER_IND_EXPRESSIONS AS
+SELECT
+    sys.ora_case_trans(ic.relname::varchar2)::varchar2(128) AS index_name,
+    sys.ora_case_trans(tc.relname::varchar2)::varchar2(128) AS table_name,
+    pg_catalog.pg_get_indexdef(i.indexrelid, k.ordinality::int, true)::varchar2(4000) AS column_expression,
+    k.ordinality::numeric AS column_position
+FROM pg_index i
+JOIN pg_class ic ON ic.oid = i.indexrelid
+JOIN pg_class tc ON tc.oid = i.indrelid
+JOIN pg_namespace n ON ic.relnamespace = n.oid
+CROSS JOIN LATERAL unnest(
+    pg_catalog.string_to_array(i.indkey::text, ' ')::int2[]
+) WITH ORDINALITY AS k(attnum, ordinality)
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND pg_catalog.pg_get_userbyid(ic.relowner) = current_user
+    AND k.attnum = 0;
+
+GRANT SELECT ON SYS.USER_IND_EXPRESSIONS TO PUBLIC;
+
+--
+-- ALL_IND_EXPRESSIONS: the same rows for every index the current user may
+-- read, with the privilege filter the ALL_ views carry.  The expressions are
+-- the entries the column view skips.  COLUMN_EXPRESSION carries them as
+-- PostgreSQL spells them.
+--
+CREATE OR REPLACE VIEW SYS.ALL_IND_EXPRESSIONS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(ic.relname::varchar2)::varchar2(128) AS index_name,
+    sys.ora_case_trans(tc.relname::varchar2)::varchar2(128) AS table_name,
+    pg_catalog.pg_get_indexdef(i.indexrelid, k.ordinality::int, true)::varchar2(4000) AS column_expression,
+    k.ordinality::numeric AS column_position
+FROM pg_index i
+JOIN pg_class ic ON ic.oid = i.indexrelid
+JOIN pg_class tc ON tc.oid = i.indrelid
+JOIN pg_namespace n ON ic.relnamespace = n.oid
+CROSS JOIN LATERAL unnest(
+    pg_catalog.string_to_array(i.indkey::text, ' ')::int2[]
+) WITH ORDINALITY AS k(attnum, ordinality)
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND pg_catalog.has_table_privilege(current_user, tc.oid, 'SELECT')
+    AND k.attnum = 0;
+
+GRANT SELECT ON SYS.ALL_IND_EXPRESSIONS TO PUBLIC;
+
+--
+-- DBA_IND_EXPRESSIONS: the same rows without the privilege filter, like the
+-- other DBA_ views.  The expressions are
+-- the entries the column view skips.  COLUMN_EXPRESSION carries them as
+-- PostgreSQL spells them.
+--
+CREATE OR REPLACE VIEW SYS.DBA_IND_EXPRESSIONS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(ic.relname::varchar2)::varchar2(128) AS index_name,
+    sys.ora_case_trans(tc.relname::varchar2)::varchar2(128) AS table_name,
+    pg_catalog.pg_get_indexdef(i.indexrelid, k.ordinality::int, true)::varchar2(4000) AS column_expression,
+    k.ordinality::numeric AS column_position
+FROM pg_index i
+JOIN pg_class ic ON ic.oid = i.indexrelid
+JOIN pg_class tc ON tc.oid = i.indrelid
+JOIN pg_namespace n ON ic.relnamespace = n.oid
+CROSS JOIN LATERAL unnest(
+    pg_catalog.string_to_array(i.indkey::text, ' ')::int2[]
+) WITH ORDINALITY AS k(attnum, ordinality)
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND k.attnum = 0;
+
+
+GRANT SELECT ON SYS.DBA_IND_EXPRESSIONS TO PUBLIC;
