@@ -220,7 +220,7 @@ plisql_yylex(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 			int			num;
 
 			/*
-			 * exmaple syntax: ****************************************
+			 * example syntax: ****************************************
 			 *
 			 * do $$ begin :x = 78; :y = 'thanks'; end; using y inout, x
 			 * inout; *****************************************

@@ -1814,7 +1814,7 @@ plisql_check_package_status(PLiSQL_execstate *estate,
 
 
 /*
- * internel function to check subproc wether has define
+ * internal function to check subproc wether has define
  */
 static void
 plisql_check_subproc_define_recurse(PLiSQL_function *function, List **already_checks, yyscan_t yyscanner)
