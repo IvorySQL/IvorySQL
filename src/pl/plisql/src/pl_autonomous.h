@@ -33,9 +33,18 @@ extern void plisql_mark_autonomous_transaction(PLiSQL_function *func,
  * Execute function in autonomous transaction using dblink
  */
 extern Datum plisql_exec_autonomous_function(PLiSQL_function *func,
-											 FunctionCallInfo fcinfo,
-											 EState *simple_eval_estate,
-											 ResourceOwner simple_eval_resowner);
+												 FunctionCallInfo fcinfo,
+												 EState *simple_eval_estate,
+												 ResourceOwner simple_eval_resowner);
+
+/*
+ * Recognize the invocation of a package member that carries
+ * PRAGMA AUTONOMOUS_TRANSACTION (the package dispatch synthesizes the
+ * FmgrInfo, so the fn_oid equality test in plisql_exec_function cannot
+ * identify it as a real call)
+ */
+extern bool plisql_pkg_member_autonomous_call(PLiSQL_function *func,
+											  FunctionCallInfo fcinfo);
 
 /*
  * Check if dblink extension is available
