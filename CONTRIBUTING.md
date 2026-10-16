@@ -38,6 +38,8 @@ If the change you're working on touches functionality that is common between Pos
 # Patch submission
 Once you are ready to share your work with the IvorySQL core team and the rest of the IvorySQL community, you should push all the commits to a branch in your own repository forked from the official IvorySQL and send us a pull request.
 
+Each pull request must reference at least one issue in its description (for example, `Fixes #1234`) or be linked to an issue through the GitHub sidebar. The `pr-governance` policy check verifies this association; a failed policy check does not indicate that the build or regression tests ran and failed.
+
 # Patch review
 A submitted pull request with passing validation checks is assumed to be available for peer review. Peer review is the process that ensures that contributions to IvorySQL are of high quality and align well with the road map and community expectations. Every member of the IvorySQL community is encouraged to review pull requests and provide feedback. Since you don't have to be a core team member to be able to do that, we recommend following a stream of pull reviews to anybody who's interested in becoming a long-term contributor to IvorySQL.
 
