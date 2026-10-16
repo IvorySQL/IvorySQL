@@ -20,6 +20,7 @@
 #include "access/gist.h"
 #include "access/heapam.h"
 #include "access/heapam_xlog.h"
+#include "access/htup_details.h"
 #include "access/multixact.h"
 #include "access/reloptions.h"
 #include "access/relscan.h"
@@ -6853,8 +6854,41 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 
 			/* Write the tuple out to the new relation */
 			if (newrel)
+			{
+				uint32		insert_options = ti_options;
+
+				/*
+				 * Preserve the Oracle-compatible ROWID across the rewrite.
+				 * Without this, a table rewrite such as ALTER TABLE ...
+				 * ALTER COLUMN TYPE would hand out fresh ROWIDs, silently
+				 * invalidating ROWIDs that applications may have cached.
+				 * The new relation must keep ROWIDs and the source tuple
+				 * must actually have one; when a table is merely converted
+				 * to have ROWIDs (ALTER TABLE ... SET WITH ROWID) there is
+				 * nothing to carry and the AM assigns a fresh value.
+				 */
+				if (newrel->rd_rel->relhasrowid)
+				{
+					HeapTuple	oldtuple;
+
+					oldtuple = ExecFetchSlotHeapTuple(oldslot, false, NULL);
+					if (oldtuple->t_data->t_infomask & HEAP_HASROWID)
+					{
+						HeapTuple	newtuple;
+
+						/*
+						 * Materialize the slot's tuple so that the ROWID we
+						 * install survives until the tuple is inserted.
+						 */
+						newtuple = ExecFetchSlotHeapTuple(insertslot, true, NULL);
+						HeapTupleSetRowId(newtuple, HeapTupleGetRowId(oldtuple));
+						insert_options |= TABLE_INSERT_KEEP_ROWID;
+					}
+				}
+
 				table_tuple_insert(newrel, insertslot, mycid,
-								   ti_options, bistate);
+								   insert_options, bistate);
+			}
 
 			ResetExprContext(econtext);
 
