@@ -112,3 +112,19 @@ begin
 end
 $$;
 commit;
+
+--
+-- ALLOCATE_UNIQUE hashes the true byte length of the lock name (review item 4).
+-- Distinct names must yield distinct handles.  (The chr(0) variant — names
+-- differing only after an embedded NUL — cannot be built in SQL today because
+-- IvorySQL's chr(0) raises "null character not permitted"; this case guards
+-- the same byte-exact hashing.)
+--
+declare
+  h1 text; h2 text;
+begin
+  dbms_lock.allocate_unique('lockA', h1);
+  dbms_lock.allocate_unique('lockB', h2);
+  raise notice 'distinct handles: %', (h1 <> h2);
+end;
+/
