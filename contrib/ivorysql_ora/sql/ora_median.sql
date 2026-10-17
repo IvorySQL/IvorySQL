@@ -24,11 +24,24 @@ SELECT sys.median(x) FROM (VALUES (NULL::numeric), (NULL)) t(x);
 -- Empty set returns NULL
 SELECT sys.median(x) FROM (VALUES (1::numeric)) t(x) WHERE false;
 
--- Values of other numeric types resolve to the numeric aggregate
+-- Integer input resolves to the float8 overload
 SELECT sys.median(x) FROM (VALUES (10::int), (20), (30)) t(x);
 
--- float8 input (implicit cast to numeric)
+-- numeric input resolves to the numeric overload: exact arithmetic, so the
+-- even case keeps the full numeric display scale
+SELECT sys.median(x) FROM (VALUES (1::numeric), (2), (3), (4)) t(x);
+
+-- numeric input ignores NULLs as well
+SELECT sys.median(x) FROM (VALUES (1::numeric), (NULL), (2), (3)) t(x);
+
+-- float8 input resolves to the float8 overload
 SELECT sys.median(x) FROM (VALUES (1.5::float8), (2.5), (3.5)) t(x);
+
+-- float8: NULLs are ignored, so an even count averages the two middle values
+SELECT sys.median(x) FROM (VALUES (1.5::float8), (2.5), (NULL), (4.5), (5.5)) t(x);
+
+-- float4 reaches the float8 overload through the implicit cast
+SELECT sys.median(x) FROM (VALUES (1.5::float4), (2.5), (3.5)) t(x);
 
 -- Duplicate values
 SELECT sys.median(x) FROM (VALUES (2), (2), (1)) t(x);
