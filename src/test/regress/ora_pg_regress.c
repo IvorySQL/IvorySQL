@@ -2483,35 +2483,54 @@ regression_main(int argc, char *argv[],
 		}
 		
 		/* BEGIN - SQL PARSER */
+		/*
+		 * Oracle-compatible mode opens a second listener on the port named by
+		 * the ivorysql.port GUC, so the temporary instance needs one more free
+		 * port.  Probe the candidate itself: the original loop re-ran
+		 * PQpingParams() with the connection parameters still pointing at the
+		 * primary port, just found to be free, so the loop always stopped on
+		 * its first iteration and handed port + 1 to the postmaster without
+		 * checking it.  If that port was already taken the postmaster could
+		 * not create the second listener and the whole run aborted with
+		 * "postmaster failed" before any test had run.  The extra block below
+		 * keeps oraPortStr declared at the start of a block, which this file
+		 * requires because it is compiled with -Wdeclaration-after-statement.
+		 */
 		oraPort = port + 1;
-
-		for (i = 0; i < 16; i++)
 		{
-			rv = PQpingParams(keywords, values, 1);
+			char		oraPortStr[16];
 
-			if (rv == PQPING_OK)
+			for (i = 0; i < 16; i++)
 			{
-				if (i == 15)
+				sprintf(oraPortStr, "%d", oraPort);
+				values[1] = oraPortStr;
+				rv = PQpingParams(keywords, values, 1);
+
+				if (rv == PQPING_OK)
 				{
-					fprintf(stderr, _("port %d apparently in use in oracle-pg compatible mode\n"), oraPort);
-					fprintf(stderr, _("Specify an unused port using the --port option or shut down any conflicting PostgreSQL servers.\n"));
-					exit(2);
+					if (i == 15)
+					{
+						fprintf(stderr, _("port %d apparently in use in oracle-pg compatible mode\n"), oraPort);
+						fprintf(stderr, _("Specify an unused port using the --port option or shut down any conflicting PostgreSQL servers.\n"));
+						exit(2);
+					}
+
+					fprintf(stderr, _("port %d apparently in use, trying %d in oracle-pg compatible mode\n"), oraPort, oraPort + 1);
+					oraPort++;
 				}
-
-				fprintf(stderr, _("port %d apparently in use, trying %d in oracle-pg compatible mode\n"), oraPort, oraPort + 1);
-				oraPort++;
-				sprintf(portstr, "%d", oraPort);
-				setenv("PGPORT", portstr, 1);
+				else
+					break;
 			}
-			else
-			{
-				char		s[16];
 
-				sprintf(s, "%d", oraPort);
-				setenv("PGPORT", s, 1);
-				break;
-			}
+			/* The first free candidate becomes the second listener's port. */
+			setenv("PGPORT", oraPortStr, 1);
 		}
+
+		/*
+		 * Point the connection parameters back at the primary port, which is
+		 * what the startup wait below expects.
+		 */
+		values[1] = portstr;
 
 		sprintf(port_str, "%d", port);
 		setenv("PGPORT", port_str, 1);

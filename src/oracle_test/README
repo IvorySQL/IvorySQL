@@ -46,3 +46,62 @@ ssl/
 
 subscription/
   Tests for logical replication
+
+Oracle-compatible regression notes
+==================================
+
+The tests under regress/ and modules/ are a parallel copy of src/test that is
+run against a server started in Oracle-compatible mode, so their SQL and
+expected files are maintained by hand and have to be kept in step with their
+src/test counterparts.  Two things are easy to get wrong.
+
+The temporary instance uses two listeners
+-----------------------------------------
+
+Both Oracle-compatible drivers start the temporary server as
+
+    postgres -p <port> -o <ivorysql.port>
+
+so two listeners are opened: the regular PostgreSQL port and the port named by
+the ivorysql.port GUC (1521 by default).  Both ports have to be free before the
+postmaster is spawned; otherwise it exits while binding the second listener and
+the run stops with "postmaster failed" before a single test has run.  The
+drivers therefore search for a free primary port and then for a free secondary
+port.  When the suite dies right at startup, look at
+tmp_check/log/postmaster.log first: it is usually an address already in use.
+
+Keeping expected output in sync
+-------------------------------
+
+pg_regress runs psql with -a (echo all), so psql copies every line of a test's
+.sql file into results/ and pg_regress compares that with expected/.  Only
+blank lines and the data of a COPY ... FROM stdin block are held back;
+backslash meta-commands and the lone "/" lines that Oracle mode uses to
+terminate a PL/SQL block are echoed as well.  A line that a .sql file gained,
+lost or fixed a typo in therefore has to be mirrored in expected/.  When a
+test is ported or a .sql file is edited, update expected/ from the .sql; never
+edit only one side.
+
+Drift can be checked without a build
+------------------------------------
+
+src/oracle_test/tools/check_expected_echo.py rebuilds the lines psql is
+supposed to echo for every scheduled test and verifies that one of the
+expected/*.out variants still contains them in order.  It needs neither a build
+nor a server, so it can be run right after a sync from src/test or from
+PostgreSQL to spot drift before the suite is started:
+
+    python3 src/oracle_test/tools/check_expected_echo.py
+
+The command exits non-zero when it finds drift and prints the offending lines.
+Its unit tests run with:
+
+    python3 src/oracle_test/tools/test_check_expected_echo.py
+
+Pass --all to include tests that no schedule runs.  A few of those are left
+stale on purpose (tests that Oracle mode does not execute), so their drift is
+reported but is not a failure of the tree.
+
+The checker only knows the psql echo rule; it cannot replace a real run of the
+suite, and it skips the few tests that build their input at run time (\gexec,
+\echo, \if, \set ECHO).
