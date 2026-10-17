@@ -92,8 +92,12 @@ SELECT extractvalue(XMLType('<a><b>100</b></a>'), '1+1', 'xmlns:x="http://www.ex
 
 SELECT extractvalue(XMLType('<a><b> 100 </b></a>'), 'normalize-space(/x:a)', 'xmlns:x="http://www.example.com"') from dual;
 
--- A node-set XPath that matches no node must still return an empty value.
-SELECT extractvalue(XMLType('<a><b>100</b></a>'), '/a/c') from dual;
+-- A node-set XPath that matches no node must still return an empty string
+-- rather than SQL NULL.  The empty string is also the NULL literal in this
+-- dialect, so compare the length: an empty string has length 0 while a NULL
+-- result falls back to -1 through the coalesce.
+SELECT coalesce(length(result), -1) AS len
+FROM (SELECT extractvalue(XMLType('<a><b>100</b></a>'), '/a/c') AS result FROM dual) AS q;
 
 --
 -- existsnode
