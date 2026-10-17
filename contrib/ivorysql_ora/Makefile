@@ -76,6 +76,7 @@ ENCODING = UTF8
 ORA_REGRESS = \
 	ora_character \
 	ora_datetime \
+	ora_timestamp_arith \
 	ora_interval \
 	ora_number \
 	ora_binary_float \
