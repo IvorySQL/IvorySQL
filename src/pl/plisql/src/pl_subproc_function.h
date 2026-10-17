@@ -192,7 +192,7 @@ extern void plisql_pop_subproc_func(void);
 
 extern void plisql_build_variable_from_funcargs(PLiSQL_subproc_function *subprocfunc,
 							bool forValidator, FunctionCallInfo fcinfo,
-							int found_varno);
+							PLiSQL_function *parentfunc);
 extern void plisql_set_subprocfunc_action(PLiSQL_subproc_function *inlinefunc,
 							PLiSQL_stmt_block *action);
 extern void plisql_check_subprocfunc_properties(PLiSQL_subproc_function *subprocfunc,
