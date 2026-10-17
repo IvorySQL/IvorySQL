@@ -1931,3 +1931,102 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 /* End - VSIZE */
+
+/* MEDIAN */
+/*
+ * MEDIAN: Oracle-compatible median aggregate function.
+ *
+ * Oracle's MEDIAN is an inverse distribution function that returns the
+ * continuous-distribution median of its input: for an odd number of values
+ * the middle value of the ordered set, for an even number the arithmetic
+ * mean of the two middle values.  NULL values are ignored and the result
+ * for an empty set is NULL.  It is the same statistic as PostgreSQL's
+ * percentile_cont(0.5) WITHIN GROUP (ORDER BY value).
+ *
+ * Both overloads are implemented in pure SQL with an array as the transition
+ * state.  SQL-language functions are CALLED ON NULL INPUT unless told
+ * otherwise, so the transition functions declare STRICT explicitly: a NULL
+ * input is then skipped and leaves the state untouched, instead of appending
+ * a NULL that the final function would count as a value.  The '{}' INITCOND
+ * keeps the state non-NULL for that case.  The final function sorts the
+ * collected values and computes the median, which keeps the implementation
+ * free of C code.
+ *
+ * Two overloads cover the numeric types, mirroring Oracle returning NUMBER
+ * for numeric input and BINARY_DOUBLE for binary input:
+ *
+ *   numeric - used for numeric input; the median is computed in exact
+ *             numeric arithmetic.
+ *   float8  - used for float8, and for float4 which casts implicitly to
+ *             float8.  Neither has an implicit cast to numeric, so a
+ *             numeric-only aggregate would not resolve for them at all.
+ *
+ * Note that PostgreSQL treats float8 as the preferred type of the numeric
+ * type category, so integer input (int2/int4/int8) resolves to the float8
+ * overload rather than to the numeric one.  Integer overloads cannot be
+ * added to change that: an exact integer match and the preferred float8
+ * match score equally in func_select_candidate() and make the call
+ * ambiguous.  The float8 result still represents every int4 value and its
+ * .5 midpoint exactly.
+ */
+CREATE FUNCTION sys.median_transfn(state numeric[], val numeric)
+RETURNS numeric[]
+AS $$ SELECT array_append(state, val) $$
+LANGUAGE sql
+IMMUTABLE
+STRICT;
+
+CREATE FUNCTION sys.median_finalfn(state numeric[])
+RETURNS numeric
+AS $$
+    SELECT CASE
+               WHEN n = 0 THEN NULL
+               WHEN n % 2 = 1 THEN sorted[(n + 1) / 2]
+               ELSE (sorted[n / 2] + sorted[n / 2 + 1]) / 2
+           END
+    FROM (
+        SELECT count(*)::int AS n, array_agg(v ORDER BY v) AS sorted
+        FROM unnest(state) AS u(v)
+    ) s
+$$
+LANGUAGE sql
+IMMUTABLE;
+
+CREATE AGGREGATE sys.median(numeric) (
+    SFUNC = sys.median_transfn,
+    STYPE = numeric[],
+    FINALFUNC = sys.median_finalfn,
+    INITCOND = '{}'
+);
+
+CREATE FUNCTION sys.median_transfn_float8(state float8[], val float8)
+RETURNS float8[]
+AS $$ SELECT array_append(state, val) $$
+LANGUAGE sql
+IMMUTABLE
+STRICT;
+
+CREATE FUNCTION sys.median_finalfn_float8(state float8[])
+RETURNS float8
+AS $$
+    SELECT CASE
+               WHEN n = 0 THEN NULL
+               WHEN n % 2 = 1 THEN sorted[(n + 1) / 2]
+               ELSE (sorted[n / 2] + sorted[n / 2 + 1]) / 2
+           END
+    FROM (
+        SELECT count(*)::int AS n, array_agg(v ORDER BY v) AS sorted
+        FROM unnest(state) AS u(v)
+    ) s
+$$
+LANGUAGE sql
+IMMUTABLE;
+
+CREATE AGGREGATE sys.median(float8) (
+    SFUNC = sys.median_transfn_float8,
+    STYPE = float8[],
+    FINALFUNC = sys.median_finalfn_float8,
+    INITCOND = '{}'
+);
+/* End - MEDIAN */
+
