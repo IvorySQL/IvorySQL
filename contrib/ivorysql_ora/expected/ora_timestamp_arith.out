@@ -1,0 +1,78 @@
+-- Timestamp differences can exceed the int64 microsecond range used by
+-- PostgreSQL intervals even when both input timestamps are finite.
+SET TIME ZONE 'UTC';
+SELECT sys.oratimestamp_mi(
+           pg_catalog.timestamp '294000-01-01'::sys.oratimestamp,
+           pg_catalog.timestamp '1000-01-01'::sys.oratimestamp);
+ERROR:  interval out of range
+SELECT sys.oratimestamp_mi(
+           pg_catalog.timestamp '1000-01-01'::sys.oratimestamp,
+           pg_catalog.timestamp '294000-01-01'::sys.oratimestamp);
+ERROR:  interval out of range
+-- The SQL subtraction operator reaches the same interval overflow path.
+SELECT pg_catalog.timestamp '294000-01-01'::sys.oratimestamp
+       OPERATOR(sys.-)
+       pg_catalog.timestamp '1000-01-01'::sys.oratimestamp;
+ERROR:  interval out of range
+-- Oracle DATE subtraction returns a NUMBER, so preserve the wide difference.
+SELECT sys.oradate_mi(
+           pg_catalog.date '294000-01-01'::sys.oradate,
+           pg_catalog.date '1000-01-01'::sys.oradate) > 100000000;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT sys.oradate_mi(
+           pg_catalog.date '1000-01-01'::sys.oradate,
+           pg_catalog.date '294000-01-01'::sys.oradate) < -100000000;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT sys.oradate_mi(
+           pg_catalog.date '2000-01-02'::sys.oradate,
+           pg_catalog.date '2000-01-01'::sys.oradate) = 1;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- DATE subtraction through the operator must keep the large NUMBER result.
+SELECT (pg_catalog.date '294000-01-01'::sys.oradate
+        OPERATOR(sys.-)
+        pg_catalog.date '1000-01-01'::sys.oradate) > 100000000;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT sys.oradate_mi_oratimestampltz(
+           pg_catalog.date '294000-01-01'::sys.oradate,
+           pg_catalog.timestamptz '1000-01-01 00:00:00+00'::sys.oratimestamptz);
+ERROR:  interval out of range
+SELECT sys.oradate_mi_oratimestampltz(
+           pg_catalog.date '1000-01-01'::sys.oradate,
+           pg_catalog.timestamptz '294000-01-01 00:00:00+00'::sys.oratimestamptz);
+ERROR:  interval out of range
+SELECT sys.oratimestampltz_mi_oradate(
+           sys.oratimestamp_oratimestampltz(
+               pg_catalog.timestamp '294000-01-01 00:00:00'::sys.oratimestamp),
+           pg_catalog.date '1000-01-01'::sys.oradate);
+ERROR:  interval out of range
+SELECT sys.oratimestampltz_mi_oradate(
+           sys.oratimestamp_oratimestampltz(
+               pg_catalog.timestamp '1000-01-01 00:00:00'::sys.oratimestamp),
+           pg_catalog.date '294000-01-01'::sys.oradate);
+ERROR:  interval out of range
+-- A representable difference near the upper timestamp boundary still works.
+SELECT sys.oratimestamp_mi(
+           pg_catalog.timestamp '294000-01-02'::sys.oratimestamp,
+           pg_catalog.timestamp '294000-01-01'::sys.oratimestamp) IS NOT NULL;
+ ?column? 
+----------
+ t
+(1 row)
+
+RESET TIME ZONE;
