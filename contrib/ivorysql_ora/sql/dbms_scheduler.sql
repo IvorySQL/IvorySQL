@@ -713,8 +713,11 @@ INSERT INTO sys.scheduler_job_run_details
     ('regress_dbms_scheduler', 'PURGE_OLD',  's', now() - '30 days'::pg_catalog.interval),
     ('regress_dbms_scheduler', 'PURGE_OLD',  'f', now() - '20 days'::pg_catalog.interval),
     ('regress_dbms_scheduler', 'PURGE_NEW',  's', now() - '1 day'::pg_catalog.interval),
+    ('regress_dbms_scheduler', 'quoted,job',  's', now() - '35 days'::pg_catalog.interval),
+    ('regress_dbms_scheduler', 'Case.Job,One', 's', now() - '35 days'::pg_catalog.interval),
     ('regress_dbms_scheduler', 'PURGE_LIVE', 'r', now() - '40 days'::pg_catalog.interval),
     ('sched_regress_u1',       'U1_LOG',     's', now() - '30 days'::pg_catalog.interval),
+    ('sched_regress_u1',       'U1_KEEP',    's', now() - '30 days'::pg_catalog.interval),
     ('sched_regress_u2',       'U2_LOG',     's', now() - '1 day'::pg_catalog.interval);
 SELECT job_owner, job_name, status, count(*) FROM sys.scheduler_job_run_details
   GROUP BY 1, 2, 3 ORDER BY 1, 2, 3;
@@ -738,15 +741,17 @@ BEGIN
   dbms_scheduler.purge_log(which_log => 'JOB_HISTORY');
 END;
 /
--- Oracle takes a comma-separated list of job and job class names here; one
--- name at a time is supported, and the list has to be refused rather than
--- parsed as a single odd name that matches nothing
+-- malformed lists are rejected before any selected history is removed
 BEGIN
-  dbms_scheduler.purge_log(job_name => 'purge_old,purge_new');
+  dbms_scheduler.purge_log(job_name => 'purge_old,');
 END;
 /
 BEGIN
-  dbms_scheduler.purge_log(job_name => 'no_such_owner.purge_old');
+  dbms_scheduler.purge_log(job_name => '"purge_old,purge_new');
+END;
+/
+BEGIN
+  dbms_scheduler.purge_log(job_name => 'purge_old,no_such_owner.purge_new');
 END;
 /
 SELECT count(*) AS rows_untouched FROM sys.scheduler_job_run_details;
@@ -762,7 +767,20 @@ BEGIN
   dbms_scheduler.purge_log(job_name => 'no_such_job');
 END;
 /
--- keeping more history than exists purges nothing (upper end of the range)
+-- duplicate names are accepted and folded to one target
+BEGIN
+  dbms_scheduler.purge_log(log_history => 1000000,
+      job_name => 'purge_new,purge_new');
+END;
+/
+SELECT count(*) AS duplicate_target_left
+  FROM sys.scheduler_job_run_details WHERE job_name = 'PURGE_NEW';
+-- NULL keeps the existing omitted-name behavior; keeping more history than
+-- exists purges nothing (upper end of the range)
+BEGIN
+  dbms_scheduler.purge_log(log_history => 1000000, job_name => NULL);
+END;
+/
 BEGIN
   dbms_scheduler.purge_log(log_history => 1000000);
 END;
@@ -779,13 +797,36 @@ END;
 SELECT job_owner, job_name, status, count(*) FROM sys.scheduler_job_run_details
   GROUP BY 1, 2, 3 ORDER BY 1, 2, 3;
 
--- a plain user cannot reach another user's history by naming it ...
-SET SESSION AUTHORIZATION sched_regress_u1;
+-- separators inside quoted identifiers are data; quoted qualification and
+-- dots inside a quoted job name are preserved
 BEGIN
-  dbms_scheduler.purge_log(job_name => 'regress_dbms_scheduler.purge_new');
+  dbms_scheduler.purge_log(log_history => 25,
+      job_name => '"quoted,job","regress_dbms_scheduler"."Case.Job,One"');
 END;
 /
--- ... and purging everything reaches only their own rows
+SELECT count(*) AS quoted_rows_left FROM sys.scheduler_job_run_details
+  WHERE job_owner = 'regress_dbms_scheduler'
+    AND job_name IN ('quoted,job', 'Case.Job,One');
+
+-- a superuser can mix schemas in one list; retention still applies to every
+-- selected name, so the one-day PURGE_NEW row remains
+BEGIN
+  dbms_scheduler.purge_log(log_history => 25,
+      job_name => 'sched_regress_u1.u1_log, purge_new');
+END;
+/
+SELECT job_owner, job_name FROM sys.scheduler_job_run_details
+  WHERE job_name IN ('U1_LOG', 'PURGE_NEW') ORDER BY 1, 2;
+
+-- a plain user cannot reach another user's history by putting it after one of
+-- their own names; the whole list fails before U1_KEEP is removed
+SET SESSION AUTHORIZATION sched_regress_u1;
+BEGIN
+  dbms_scheduler.purge_log(job_name => 'u1_keep, regress_dbms_scheduler.purge_new');
+END;
+/
+SELECT count(*) AS mine_left FROM user_scheduler_job_run_details;
+-- purging everything still reaches only their own rows
 BEGIN
   dbms_scheduler.purge_log();
 END;

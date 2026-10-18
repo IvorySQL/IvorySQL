@@ -1209,20 +1209,26 @@ INSERT INTO sys.scheduler_job_run_details
     ('regress_dbms_scheduler', 'PURGE_OLD',  's', now() - '30 days'::pg_catalog.interval),
     ('regress_dbms_scheduler', 'PURGE_OLD',  'f', now() - '20 days'::pg_catalog.interval),
     ('regress_dbms_scheduler', 'PURGE_NEW',  's', now() - '1 day'::pg_catalog.interval),
+    ('regress_dbms_scheduler', 'quoted,job',  's', now() - '35 days'::pg_catalog.interval),
+    ('regress_dbms_scheduler', 'Case.Job,One', 's', now() - '35 days'::pg_catalog.interval),
     ('regress_dbms_scheduler', 'PURGE_LIVE', 'r', now() - '40 days'::pg_catalog.interval),
     ('sched_regress_u1',       'U1_LOG',     's', now() - '30 days'::pg_catalog.interval),
+    ('sched_regress_u1',       'U1_KEEP',    's', now() - '30 days'::pg_catalog.interval),
     ('sched_regress_u2',       'U2_LOG',     's', now() - '1 day'::pg_catalog.interval);
 SELECT job_owner, job_name, status, count(*) FROM sys.scheduler_job_run_details
   GROUP BY 1, 2, 3 ORDER BY 1, 2, 3;
-       job_owner        |  job_name  | status | count 
-------------------------+------------+--------+-------
- regress_dbms_scheduler | PURGE_LIVE | r      |     1
- regress_dbms_scheduler | PURGE_NEW  | s      |     1
- regress_dbms_scheduler | PURGE_OLD  | f      |     1
- regress_dbms_scheduler | PURGE_OLD  | s      |     1
- sched_regress_u1       | U1_LOG     | s      |     1
- sched_regress_u2       | U2_LOG     | s      |     1
-(6 rows)
+       job_owner        |   job_name   | status | count 
+------------------------+--------------+--------+-------
+ regress_dbms_scheduler | Case.Job,One | s      |     1
+ regress_dbms_scheduler | PURGE_LIVE   | r      |     1
+ regress_dbms_scheduler | PURGE_NEW    | s      |     1
+ regress_dbms_scheduler | PURGE_OLD    | f      |     1
+ regress_dbms_scheduler | PURGE_OLD    | s      |     1
+ regress_dbms_scheduler | quoted,job   | s      |     1
+ sched_regress_u1       | U1_KEEP      | s      |     1
+ sched_regress_u1       | U1_LOG       | s      |     1
+ sched_regress_u2       | U2_LOG       | s      |     1
+(9 rows)
 
 -- arguments that are refused purge nothing.  A null log_history is not read
 -- as the default of 0: 0 deletes the whole log, so an unset variable would be
@@ -1269,34 +1275,43 @@ CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_purge_log(log_history, wh
 PL/iSQL function sys.dbms_scheduler.purge_log line 170 at PERFORM
 SQL statement "CALL dbms_scheduler.purge_log(which_log => 'JOB_HISTORY')"
 PL/iSQL function inline_code_block line 2 at CALL
--- Oracle takes a comma-separated list of job and job class names here; one
--- name at a time is supported, and the list has to be refused rather than
--- parsed as a single odd name that matches nothing
+-- malformed lists are rejected before any selected history is removed
 BEGIN
-  dbms_scheduler.purge_log(job_name => 'purge_old,purge_new');
+  dbms_scheduler.purge_log(job_name => 'purge_old,');
 END;
 /
-ERROR:  purging the log of a list of jobs is not supported
-HINT:  Call PURGE_LOG once per job, or leave job_name out to purge every job's log.
+ERROR:  invalid job name list "purge_old,"
+DETAIL:  List elements must not be empty.
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_purge_log(log_history, which_log,
 			job_name)"
 PL/iSQL function sys.dbms_scheduler.purge_log line 170 at PERFORM
-SQL statement "CALL dbms_scheduler.purge_log(job_name => 'purge_old,purge_new')"
+SQL statement "CALL dbms_scheduler.purge_log(job_name => 'purge_old,')"
 PL/iSQL function inline_code_block line 2 at CALL
 BEGIN
-  dbms_scheduler.purge_log(job_name => 'no_such_owner.purge_old');
+  dbms_scheduler.purge_log(job_name => '"purge_old,purge_new');
+END;
+/
+ERROR:  invalid job name list ""purge_old,purge_new"
+DETAIL:  Unterminated quoted identifier.
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_purge_log(log_history, which_log,
+			job_name)"
+PL/iSQL function sys.dbms_scheduler.purge_log line 170 at PERFORM
+SQL statement "CALL dbms_scheduler.purge_log(job_name => '"purge_old,purge_new')"
+PL/iSQL function inline_code_block line 2 at CALL
+BEGIN
+  dbms_scheduler.purge_log(job_name => 'purge_old,no_such_owner.purge_new');
 END;
 /
 ERROR:  user "NO_SUCH_OWNER" does not exist
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_purge_log(log_history, which_log,
 			job_name)"
 PL/iSQL function sys.dbms_scheduler.purge_log line 170 at PERFORM
-SQL statement "CALL dbms_scheduler.purge_log(job_name => 'no_such_owner.purge_old')"
+SQL statement "CALL dbms_scheduler.purge_log(job_name => 'purge_old,no_such_owner.purge_new')"
 PL/iSQL function inline_code_block line 2 at CALL
 SELECT count(*) AS rows_untouched FROM sys.scheduler_job_run_details;
  rows_untouched 
 ----------------
-              6
+              9
 (1 row)
 
 -- there is no window log, so WINDOW_LOG succeeds and purges nothing
@@ -1312,7 +1327,25 @@ BEGIN
   dbms_scheduler.purge_log(job_name => 'no_such_job');
 END;
 /
--- keeping more history than exists purges nothing (upper end of the range)
+-- duplicate names are accepted and folded to one target
+BEGIN
+  dbms_scheduler.purge_log(log_history => 1000000,
+      job_name => 'purge_new,purge_new');
+END;
+/
+SELECT count(*) AS duplicate_target_left
+  FROM sys.scheduler_job_run_details WHERE job_name = 'PURGE_NEW';
+ duplicate_target_left 
+-----------------------
+                     1
+(1 row)
+
+-- NULL keeps the existing omitted-name behavior; keeping more history than
+-- exists purges nothing (upper end of the range)
+BEGIN
+  dbms_scheduler.purge_log(log_history => 1000000, job_name => NULL);
+END;
+/
 BEGIN
   dbms_scheduler.purge_log(log_history => 1000000);
 END;
@@ -1320,7 +1353,7 @@ END;
 SELECT count(*) AS rows_untouched FROM sys.scheduler_job_run_details;
  rows_untouched 
 ----------------
-              6
+              9
 (1 row)
 
 -- retention confined to one job: that job's 30-day row goes, its 20-day row
@@ -1332,28 +1365,67 @@ END;
 /
 SELECT job_owner, job_name, status, count(*) FROM sys.scheduler_job_run_details
   GROUP BY 1, 2, 3 ORDER BY 1, 2, 3;
-       job_owner        |  job_name  | status | count 
-------------------------+------------+--------+-------
- regress_dbms_scheduler | PURGE_LIVE | r      |     1
- regress_dbms_scheduler | PURGE_NEW  | s      |     1
- regress_dbms_scheduler | PURGE_OLD  | f      |     1
- sched_regress_u1       | U1_LOG     | s      |     1
- sched_regress_u2       | U2_LOG     | s      |     1
-(5 rows)
+       job_owner        |   job_name   | status | count 
+------------------------+--------------+--------+-------
+ regress_dbms_scheduler | Case.Job,One | s      |     1
+ regress_dbms_scheduler | PURGE_LIVE   | r      |     1
+ regress_dbms_scheduler | PURGE_NEW    | s      |     1
+ regress_dbms_scheduler | PURGE_OLD    | f      |     1
+ regress_dbms_scheduler | quoted,job   | s      |     1
+ sched_regress_u1       | U1_KEEP      | s      |     1
+ sched_regress_u1       | U1_LOG       | s      |     1
+ sched_regress_u2       | U2_LOG       | s      |     1
+(8 rows)
 
--- a plain user cannot reach another user's history by naming it ...
+-- separators inside quoted identifiers are data; quoted qualification and
+-- dots inside a quoted job name are preserved
+BEGIN
+  dbms_scheduler.purge_log(log_history => 25,
+      job_name => '"quoted,job","regress_dbms_scheduler"."Case.Job,One"');
+END;
+/
+SELECT count(*) AS quoted_rows_left FROM sys.scheduler_job_run_details
+  WHERE job_owner = 'regress_dbms_scheduler'
+    AND job_name IN ('quoted,job', 'Case.Job,One');
+ quoted_rows_left 
+------------------
+                0
+(1 row)
+
+-- a superuser can mix schemas in one list; retention still applies to every
+-- selected name, so the one-day PURGE_NEW row remains
+BEGIN
+  dbms_scheduler.purge_log(log_history => 25,
+      job_name => 'sched_regress_u1.u1_log, purge_new');
+END;
+/
+SELECT job_owner, job_name FROM sys.scheduler_job_run_details
+  WHERE job_name IN ('U1_LOG', 'PURGE_NEW') ORDER BY 1, 2;
+       job_owner        | job_name  
+------------------------+-----------
+ regress_dbms_scheduler | PURGE_NEW
+(1 row)
+
+-- a plain user cannot reach another user's history by putting it after one of
+-- their own names; the whole list fails before U1_KEEP is removed
 SET SESSION AUTHORIZATION sched_regress_u1;
 BEGIN
-  dbms_scheduler.purge_log(job_name => 'regress_dbms_scheduler.purge_new');
+  dbms_scheduler.purge_log(job_name => 'u1_keep, regress_dbms_scheduler.purge_new');
 END;
 /
 ERROR:  insufficient privileges to operate on scheduler objects owned by "regress_dbms_scheduler"
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_purge_log(log_history, which_log,
 			job_name)"
 PL/iSQL function sys.dbms_scheduler.purge_log line 170 at PERFORM
-SQL statement "CALL dbms_scheduler.purge_log(job_name => 'regress_dbms_scheduler.purge_new')"
+SQL statement "CALL dbms_scheduler.purge_log(job_name => 'u1_keep, regress_dbms_scheduler.purge_new')"
 PL/iSQL function inline_code_block line 2 at CALL
--- ... and purging everything reaches only their own rows
+SELECT count(*) AS mine_left FROM user_scheduler_job_run_details;
+ mine_left 
+-----------
+         1
+(1 row)
+
+-- purging everything still reaches only their own rows
 BEGIN
   dbms_scheduler.purge_log();
 END;
