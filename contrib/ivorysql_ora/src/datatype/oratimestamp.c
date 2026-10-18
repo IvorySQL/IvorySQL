@@ -953,8 +953,8 @@ oratimestampltz_mi_oradate(PG_FUNCTION_ARGS)
  * The arithmetic operation of oradate minus oradate, Result
  * type is NUMBER.
  *
- * Because Operates internally using float8 data type, so the
- * number type to be returned maximum significant digits is 15.
+ * Differences representable in int64 use float8 internally, limiting the
+ * result to 15 significant digits.  Wider differences use numeric arithmetic.
  *
  */
 Datum
@@ -970,15 +970,15 @@ oradate_mi(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("cannot subtract infinite timestamps")));
 
-	/*
-	 * Keep precision for representable differences; widen the operands
-	 * otherwise.
-	 */
+	/* Avoid integer overflow and loss of precision in wide differences. */
 	if (pg_sub_s64_overflow(dt1, dt2, &difference))
-		result = (double) dt1 - (double) dt2;
-	else
-		result = (double) difference;
+		PG_RETURN_NUMERIC(numeric_div_safe(numeric_sub_safe(int64_to_numeric(dt1),
+															int64_to_numeric(dt2),
+															NULL),
+										   int64_to_numeric(USECS_PER_DAY),
+										   NULL));
 
+	result = (double) difference;
 	result = result / USECS_PER_DAY;
 
 	PG_RETURN_DATUM(DirectFunctionCall1(float8_numeric, Float8GetDatum(result)));

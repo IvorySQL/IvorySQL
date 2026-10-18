@@ -33,6 +33,28 @@ SELECT (pg_catalog.date '294000-01-01'::sys.oradate
         OPERATOR(sys.-)
         pg_catalog.date '1000-01-01'::sys.oradate) = 107016052;
 
+-- Preserve seconds as well as whole days when the int64 difference overflows.
+SELECT sys.oradate_mi(
+           pg_catalog.timestamp '294000-01-01 00:00:01'::sys.oratimestamp::sys.oradate,
+           pg_catalog.timestamp '1000-01-01'::sys.oratimestamp::sys.oradate)
+       = 9246186892801000000::pg_catalog.numeric / 86400000000::pg_catalog.numeric;
+
+SELECT sys.oradate_mi(
+           pg_catalog.timestamp '1000-01-01'::sys.oratimestamp::sys.oradate,
+           pg_catalog.timestamp '294000-01-01 00:00:01'::sys.oratimestamp::sys.oradate)
+       = -9246186892801000000::pg_catalog.numeric / 86400000000::pg_catalog.numeric;
+
+-- Also cover a second on the earlier date through the SQL operator.
+SELECT (pg_catalog.timestamp '294000-01-01'::sys.oratimestamp::sys.oradate
+        OPERATOR(sys.-)
+        pg_catalog.timestamp '1000-01-01 00:00:01'::sys.oratimestamp::sys.oradate)
+       = 9246186892799000000::pg_catalog.numeric / 86400000000::pg_catalog.numeric;
+
+SELECT (pg_catalog.timestamp '1000-01-01 00:00:01'::sys.oratimestamp::sys.oradate
+        OPERATOR(sys.-)
+        pg_catalog.timestamp '294000-01-01'::sys.oratimestamp::sys.oradate)
+       = -9246186892799000000::pg_catalog.numeric / 86400000000::pg_catalog.numeric;
+
 SELECT sys.oradate_mi_oratimestampltz(
            pg_catalog.date '294000-01-01'::sys.oradate,
            pg_catalog.timestamptz '1000-01-01 00:00:00+00'::sys.oratimestamptz);
