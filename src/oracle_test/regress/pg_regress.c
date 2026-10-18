@@ -2143,6 +2143,35 @@ help(void)
 	printf(_("%s home page: <%s>\n"), PACKAGE_NAME, PACKAGE_URL);
 }
 
+/*
+ * Check whether a candidate port already has a listener.
+ *
+ * In Oracle-compatible mode the temporary postmaster opens a second listener
+ * on a TCP port next to the Unix socket of the primary one.  The connection
+ * parameters still name the socket directory when no --host option was
+ * given, so pinging them alone inspects the socket and ignores that TCP
+ * listener; probe the socket first and then the loopback address where the
+ * second listener is bound.  Copying the parameters keeps the caller's array
+ * untouched.
+ */
+static bool
+oracle_port_in_use(const char *const *keywords, const char *const *values,
+				   const char *portstr, const char *sockhost)
+{
+	const char *probe[4];
+
+	probe[0] = values[0];
+	probe[1] = portstr;
+	probe[2] = sockhost;
+	probe[3] = values[3];
+
+	if (PQpingParams(keywords, probe, 1) == PQPING_OK)
+		return true;
+
+	probe[2] = "localhost";
+	return PQpingParams(keywords, probe, 1) == PQPING_OK;
+}
+
 int
 regression_main(int argc, char *argv[],
 				init_function ifunc,
@@ -2569,7 +2598,10 @@ regression_main(int argc, char *argv[],
 		 * its first iteration and handed port + 1 to the postmaster without
 		 * checking it.  If that port was already taken the postmaster could
 		 * not create the second listener and the whole run aborted with
-		 * "postmaster failed" before any test had run.  The extra block below
+		 * "postmaster failed" before any test had run.  A free Unix socket
+		 * alone does not mean the port is free, because the postmaster also
+		 * opens a TCP listener on the loopback address, so the probe below
+		 * goes through oracle_port_in_use() and checks both.  The extra block
 		 * keeps oraPortStr declared at the start of a block, which this file
 		 * requires because it is compiled with -Wdeclaration-after-statement.
 		 */
@@ -2580,10 +2612,9 @@ regression_main(int argc, char *argv[],
 			for (i = 0; i < 16; i++)
 			{
 				sprintf(oraPortStr, "%d", oraPort);
-				values[1] = oraPortStr;
-				rv = PQpingParams(keywords, values, 1);
 
-				if (rv == PQPING_OK)
+				if (oracle_port_in_use(keywords, values, oraPortStr,
+									   values[2]))
 				{
 					if (i == 15)
 					{
