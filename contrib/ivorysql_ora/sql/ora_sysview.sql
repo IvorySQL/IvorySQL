@@ -219,6 +219,133 @@ DROP TABLE t_dba_cons_cols;
 -- ALL_TAB_COLUMNS
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
 
+-- Oracle-compatible partition dictionary views
+DROP SCHEMA IF EXISTS partition_view_owner_schema CASCADE;
+DROP ROLE IF EXISTS partition_view_reader;
+DROP ROLE IF EXISTS partition_view_owner;
+CREATE ROLE partition_view_owner;
+CREATE ROLE partition_view_reader;
+CREATE SCHEMA partition_view_owner_schema AUTHORIZATION partition_view_owner;
+
+SET ROLE partition_view_owner;
+SET search_path = partition_view_owner_schema;
+
+CREATE TABLE pv_range (id INT) PARTITION BY RANGE (id);
+CREATE TABLE pv_range_p2 PARTITION OF pv_range
+	FOR VALUES FROM (10) TO (20);
+CREATE TABLE pv_range_p1 PARTITION OF pv_range
+	FOR VALUES FROM (0) TO (10);
+
+CREATE TABLE pv_list (id INT) PARTITION BY LIST (id);
+CREATE TABLE pv_list_p2 PARTITION OF pv_list FOR VALUES IN (2);
+CREATE TABLE pv_list_p1 PARTITION OF pv_list FOR VALUES IN (1);
+
+CREATE TABLE pv_hash (id INT) PARTITION BY HASH (id);
+CREATE TABLE pv_hash_p1 PARTITION OF pv_hash
+	FOR VALUES WITH (MODULUS 2, REMAINDER 1);
+CREATE TABLE pv_hash_p0 PARTITION OF pv_hash
+	FOR VALUES WITH (MODULUS 2, REMAINDER 0);
+
+RESET ROLE;
+RESET search_path;
+
+GRANT USAGE ON SCHEMA partition_view_owner_schema TO partition_view_reader;
+GRANT SELECT ON partition_view_owner_schema.pv_range,
+	partition_view_owner_schema.pv_list,
+	partition_view_owner_schema.pv_hash TO partition_view_reader;
+
+SET ROLE partition_view_owner;
+SELECT COUNT(*) = 3
+	AND COUNT(*) FILTER (WHERE status = 'VALID') = 3
+	AND COUNT(*) FILTER (
+		WHERE table_name = 'PV_RANGE' AND partitioning_type = 'RANGE') = 1
+	AND COUNT(*) FILTER (
+		WHERE table_name = 'PV_LIST' AND partitioning_type = 'LIST') = 1
+	AND COUNT(*) FILTER (
+		WHERE table_name = 'PV_HASH' AND partitioning_type = 'HASH') = 1
+	AS user_part_tables_ok
+FROM sys.user_part_tables
+WHERE table_name IN ('PV_RANGE', 'PV_LIST', 'PV_HASH');
+
+SELECT COUNT(*) = 6
+	AND COUNT(*) FILTER (
+		WHERE table_name = 'PV_RANGE' AND partition_name = 'PV_RANGE_P1'
+			AND partition_position = 1 AND high_value::TEXT = '10') = 1
+	AND COUNT(*) FILTER (
+		WHERE table_name = 'PV_RANGE' AND partition_name = 'PV_RANGE_P2'
+			AND partition_position = 2 AND high_value::TEXT = '20') = 1
+	AND COUNT(*) FILTER (
+		WHERE table_name = 'PV_LIST' AND partition_name = 'PV_LIST_P1'
+			AND partition_position = 1 AND high_value::TEXT = '1') = 1
+	AND COUNT(*) FILTER (
+		WHERE table_name = 'PV_LIST' AND partition_name = 'PV_LIST_P2'
+			AND partition_position = 2 AND high_value::TEXT = '2') = 1
+	AND COUNT(*) FILTER (
+		WHERE table_name = 'PV_HASH' AND partition_name = 'PV_HASH_P0'
+			AND partition_position = 1 AND high_value IS NULL) = 1
+	AND COUNT(*) FILTER (
+		WHERE table_name = 'PV_HASH' AND partition_name = 'PV_HASH_P1'
+			AND partition_position = 2 AND high_value IS NULL) = 1
+	AS user_tab_partitions_ok
+FROM sys.user_tab_partitions
+WHERE table_name IN ('PV_RANGE', 'PV_LIST', 'PV_HASH');
+RESET ROLE;
+
+SET ROLE partition_view_reader;
+SELECT COUNT(*) = 3
+	AND COUNT(*) FILTER (WHERE owner = 'PARTITION_VIEW_OWNER') = 3
+	AND COUNT(*) FILTER (WHERE partitioning_type = 'RANGE') = 1
+	AND COUNT(*) FILTER (WHERE partitioning_type = 'LIST') = 1
+	AND COUNT(*) FILTER (WHERE partitioning_type = 'HASH') = 1
+	AS all_part_tables_ok
+FROM sys.all_part_tables
+WHERE table_name IN ('PV_RANGE', 'PV_LIST', 'PV_HASH');
+
+SELECT COUNT(*) = 6
+	AND COUNT(*) FILTER (WHERE table_owner = 'PARTITION_VIEW_OWNER') = 6
+	AND MIN(partition_position) = 1
+	AND MAX(partition_position) = 2
+	AND COUNT(*) FILTER (WHERE high_value IS NULL) = 2
+	AS all_tab_partitions_ok
+FROM sys.all_tab_partitions
+WHERE table_name IN ('PV_RANGE', 'PV_LIST', 'PV_HASH');
+
+SELECT COUNT(*) = 0 AS reader_user_views_empty
+FROM sys.user_part_tables
+WHERE table_name IN ('PV_RANGE', 'PV_LIST', 'PV_HASH');
+RESET ROLE;
+
+SELECT COUNT(*) = 3
+	AND COUNT(*) FILTER (WHERE status = 'VALID') = 3
+	AND COUNT(*) FILTER (WHERE partitioning_type = 'RANGE') = 1
+	AND COUNT(*) FILTER (WHERE partitioning_type = 'LIST') = 1
+	AND COUNT(*) FILTER (WHERE partitioning_type = 'HASH') = 1
+	AS dba_part_tables_ok
+FROM sys.dba_part_tables
+WHERE owner = 'PARTITION_VIEW_OWNER'
+	AND table_name IN ('PV_RANGE', 'PV_LIST', 'PV_HASH');
+
+SELECT COUNT(*) = 6
+	AND COUNT(*) FILTER (
+		WHERE table_name = 'PV_RANGE' AND partition_name = 'PV_RANGE_P1'
+			AND partition_position = 1 AND high_value::TEXT = '10') = 1
+	AND COUNT(*) FILTER (
+		WHERE table_name = 'PV_LIST' AND partition_name = 'PV_LIST_P2'
+			AND partition_position = 2 AND high_value::TEXT = '2') = 1
+	AND COUNT(*) FILTER (
+		WHERE table_name = 'PV_HASH' AND high_value IS NULL) = 2
+	AS dba_tab_partitions_ok
+FROM sys.dba_tab_partitions
+WHERE table_owner = 'PARTITION_VIEW_OWNER'
+	AND table_name IN ('PV_RANGE', 'PV_LIST', 'PV_HASH');
+
+DROP TABLE partition_view_owner_schema.pv_range;
+DROP TABLE partition_view_owner_schema.pv_list;
+DROP TABLE partition_view_owner_schema.pv_hash;
+DROP SCHEMA partition_view_owner_schema;
+DROP ROLE partition_view_reader;
+DROP ROLE partition_view_owner;
+
 CREATE TABLE TEST_ALL_TAB_COLUMNS (
     ID INT PRIMARY KEY,
     NAME VARCHAR2(50) NOT NULL,
