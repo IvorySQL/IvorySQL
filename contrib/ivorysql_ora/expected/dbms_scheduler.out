@@ -252,7 +252,7 @@ DETAIL:  duplicate BYHOUR clause.
 SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
   'FREQ=DAILY;BYSETPOS=1', '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00');
 ERROR:  invalid calendar string "FREQ=DAILY;BYSETPOS=1"
-DETAIL:  Clause "BYSETPOS" is not supported.
+DETAIL:  BYSETPOS is only supported with FREQ=YEARLY or FREQ=MONTHLY.
 SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
   'FREQ=WEEKLY;BYDAY=2FRI', '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00');
 ERROR:  invalid calendar string "FREQ=WEEKLY;BYDAY=2FRI"
