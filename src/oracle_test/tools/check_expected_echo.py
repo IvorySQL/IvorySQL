@@ -50,6 +50,45 @@ _COPY_FROM_STDIN = re.compile(
 # script: \gexec runs a query built while the script runs, \echo prints a chosen
 # string, \if selects a branch and \set ECHO changes what is echoed from that
 # point on.  The psql and create_table tests use these deliberately.
+def _strip_comments_and_literals(line):
+    r"""Line with SQL comments and single-quoted literals blanked out.
+
+    The COPY detector has to look at code only: a commented-out COPY, or the
+    words COPY ... FROM stdin inside a string literal, is echoed text rather
+    than a command that reads client data.  Single quotes are blanked and a
+    doubled quote inside a literal is skipped, so E'it''s' survives intact;
+    double-quoted names are kept because COPY "t" FROM stdin is code.
+    """
+    out = []
+    index = 0
+    length = len(line)
+    while index < length:
+        char = line[index]
+        if char == "'":
+            index += 1
+            while index < length:
+                if line[index] == "'":
+                    if index + 1 < length and line[index + 1] == "'":
+                        index += 2
+                        continue
+                    index += 1
+                    break
+                index += 1
+            out.append(' ')
+        elif line.startswith('--', index):
+            break
+        elif line.startswith('/*', index):
+            end = line.find('*/', index + 2)
+            if end == -1:
+                break
+            index = end + 2
+            out.append(' ')
+        else:
+            out.append(char)
+            index += 1
+    return ''.join(out)
+
+
 _UNMODELLED = re.compile(r'\\(gexec\b|echo\b|if\b|set\s+ECHO\b)', re.IGNORECASE)
 
 
@@ -79,7 +118,8 @@ def echoed_lines(sql_text):
         if line.strip() == r'\.':
             # A terminator never reaches results/ as input text.
             continue
-        count = len(_COPY_FROM_STDIN.findall(line.lstrip()))
+        count = len(_COPY_FROM_STDIN.findall(
+            _strip_comments_and_literals(line.lstrip())))
         if count:
             echoed.append(line)
             skip_blocks = count
@@ -142,7 +182,7 @@ def _read(path):
 
 
 def collect_targets(root, include_all):
-    """Return (sql_path, expected_dir, base) for every test to check."""
+    """Return (sql_path, expected_dir, base, scheduled) for every test."""
     targets = []
 
     regress = os.path.join(root, 'regress')
@@ -156,7 +196,8 @@ def collect_targets(root, include_all):
             if not include_all and base not in scheduled:
                 continue
             targets.append((os.path.join(sql_dir, name),
-                            os.path.join(regress, 'expected'), base))
+                            os.path.join(regress, 'expected'), base,
+                            base in scheduled))
 
     modules = os.path.join(root, 'modules')
     if os.path.isdir(modules):
@@ -168,7 +209,8 @@ def collect_targets(root, include_all):
             for name in sorted(os.listdir(module_sql)):
                 if name.endswith('.sql'):
                     targets.append((os.path.join(module_sql, name),
-                                    module_expected, name[:-len('.sql')]))
+                                    module_expected, name[:-len('.sql')],
+                                    True))
 
     return targets
 
@@ -195,25 +237,35 @@ def main(argv=None):
                                              os.pardir),
                         help='oracle_test directory (default: the parent of this script)')
     parser.add_argument('--all', action='store_true',
-                        help='also check tests that no schedule runs')
+                        help='also check tests that no schedule runs; drift '
+                             'found there is reported but does not fail the '
+                             'check')
     args = parser.parse_args(argv)
 
     root = os.path.abspath(args.dir)
     targets = collect_targets(root, args.all)
     drift = 0
+    unscheduled_drift = 0
     skipped = 0
-    for sql_path, expected_dir, base in targets:
+    for sql_path, expected_dir, base, scheduled in targets:
         missing = check_target(sql_path, expected_dir, base)
         if missing is None:
             skipped += 1
             continue
-        if missing:
+        if not missing:
+            continue
+        if scheduled:
             drift += 1
-            print('%s: %d echoed line(s) missing from expected output:' %
-                  (os.path.relpath(sql_path, root), len(missing)))
-            for line in missing:
-                print('    %s' % line)
+        else:
+            unscheduled_drift += 1
+        print('%s: %d echoed line(s) missing from expected output:' %
+              (os.path.relpath(sql_path, root), len(missing)))
+        for line in missing:
+            print('    %s' % line)
 
+    if unscheduled_drift:
+        print('%d unscheduled test(s) with drift; no schedule runs them, so '
+              'they do not fail the check' % unscheduled_drift)
     print('%d test(s) checked, %d unmodelled, %d with drift' %
           (len(targets), skipped, drift))
     return 1 if drift else 0
