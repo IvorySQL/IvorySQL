@@ -101,6 +101,12 @@ class CopyDetectionTest(unittest.TestCase):
                          ["SELECT 'it''s a literal' AS s; COPY t FROM stdin;"])
 
 
+    def test_comment_markers_inside_quoted_identifier_are_kept(self):
+        sql = 'COPY "order--archive" FROM stdin;\n1\n\\.\nSELECT 1;\n'
+        self.assertEqual(echoed_lines(sql),
+                         ['COPY "order--archive" FROM stdin;', 'SELECT 1;'])
+
+
 class MissingLinesTest(unittest.TestCase):
     def test_lines_in_order_are_matched(self):
         expected = 'SELECT 1;\n 1\n(1 row)\nSELECT 2;\n 2\n(1 row)\n'

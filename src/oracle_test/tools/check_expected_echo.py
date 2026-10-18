@@ -57,7 +57,9 @@ def _strip_comments_and_literals(line):
     words COPY ... FROM stdin inside a string literal, is echoed text rather
     than a command that reads client data.  Single quotes are blanked and a
     doubled quote inside a literal is skipped, so E'it''s' survives intact;
-    double-quoted names are kept because COPY "t" FROM stdin is code.
+    double-quoted names are kept because COPY "t" FROM stdin is code, and
+    their contents are copied verbatim so a marker such as "--" inside an
+    identifier is not mistaken for a comment.
     """
     out = []
     index = 0
@@ -75,6 +77,19 @@ def _strip_comments_and_literals(line):
                     break
                 index += 1
             out.append(' ')
+        elif char == '"':
+            out.append(char)
+            index += 1
+            while index < length:
+                out.append(line[index])
+                if line[index] == '"':
+                    if index + 1 < length and line[index + 1] == '"':
+                        out.append(line[index + 1])
+                        index += 2
+                        continue
+                    index += 1
+                    break
+                index += 1
         elif line.startswith('--', index):
             break
         elif line.startswith('/*', index):
