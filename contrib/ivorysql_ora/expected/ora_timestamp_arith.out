@@ -1,5 +1,5 @@
--- Timestamp differences can exceed the int64 microsecond range used by
--- PostgreSQL intervals even when both input timestamps are finite.
+-- Follow PostgreSQL timestamp subtraction when the intermediate int64
+-- microsecond difference overflows, even when both inputs are finite.
 SET TIME ZONE 'UTC';
 SELECT sys.oratimestamp_mi(
            pg_catalog.timestamp '294000-01-01'::sys.oratimestamp,
@@ -17,7 +17,7 @@ ERROR:  interval out of range
 -- Oracle DATE subtraction returns a NUMBER, so preserve the wide difference.
 SELECT sys.oradate_mi(
            pg_catalog.date '294000-01-01'::sys.oradate,
-           pg_catalog.date '1000-01-01'::sys.oradate) > 100000000;
+           pg_catalog.date '1000-01-01'::sys.oradate) = 107016052;
  ?column? 
 ----------
  t
@@ -25,7 +25,7 @@ SELECT sys.oradate_mi(
 
 SELECT sys.oradate_mi(
            pg_catalog.date '1000-01-01'::sys.oradate,
-           pg_catalog.date '294000-01-01'::sys.oradate) < -100000000;
+           pg_catalog.date '294000-01-01'::sys.oradate) = -107016052;
  ?column? 
 ----------
  t
@@ -42,7 +42,7 @@ SELECT sys.oradate_mi(
 -- DATE subtraction through the operator must keep the large NUMBER result.
 SELECT (pg_catalog.date '294000-01-01'::sys.oradate
         OPERATOR(sys.-)
-        pg_catalog.date '1000-01-01'::sys.oradate) > 100000000;
+        pg_catalog.date '1000-01-01'::sys.oradate) = 107016052;
  ?column? 
 ----------
  t
@@ -69,10 +69,28 @@ ERROR:  interval out of range
 -- A representable difference near the upper timestamp boundary still works.
 SELECT sys.oratimestamp_mi(
            pg_catalog.timestamp '294000-01-02'::sys.oratimestamp,
-           pg_catalog.timestamp '294000-01-01'::sys.oratimestamp) IS NOT NULL;
- ?column? 
-----------
- t
+           pg_catalog.timestamp '294000-01-01'::sys.oratimestamp) AS one_day;
+            one_day            
+-------------------------------
+ +000000001 00:00:00.000000000
+(1 row)
+
+SELECT sys.oratimestamp_mi(
+           pg_catalog.timestamp '294000-01-01'::sys.oratimestamp,
+           pg_catalog.timestamp '294000-01-02'::sys.oratimestamp) AS negative_one_day;
+       negative_one_day        
+-------------------------------
+ -000000001 00:00:00.000000000
+(1 row)
+
+-- Subtract small DATE differences before converting them to floating point.
+SELECT sys.oradate_mi(
+           pg_catalog.timestamp '294000-01-01 00:00:01'::sys.oratimestamp::sys.oradate,
+           pg_catalog.timestamp '294000-01-01 00:00:00'::sys.oratimestamp::sys.oradate)
+       AS one_second_in_days;
+  one_second_in_days   
+-----------------------
+ 0.0000115740740740741
 (1 row)
 
 RESET TIME ZONE;
