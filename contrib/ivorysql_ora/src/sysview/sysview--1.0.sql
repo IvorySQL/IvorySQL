@@ -1047,7 +1047,9 @@ GRANT SELECT ON SYS.USER_ARGUMENTS TO PUBLIC;
 CREATE OR REPLACE VIEW SYS.DBA_SEQUENCES AS
 SELECT
 	c.relowner::regrole AS sequence_owner,c.relname AS sequence_name,s.seqmin AS min_value,s.seqmax AS max_value,
-	s.seqincrement AS increment_by,s.seqcycle AS cycle_flag,null AS order_flag,s.seqcache AS cache_size,
+	s.seqincrement AS increment_by,
+	(CASE WHEN s.seqcycle THEN 'Y' ELSE 'N' END)::VARCHAR2(1) AS cycle_flag,
+	null AS order_flag,s.seqcache AS cache_size,
 	CASE
 		WHEN has_sequence_privilege(c.oid, 'SELECT,USAGE'::text)
 			THEN pg_sequence_last_value(c.oid::regclass)
@@ -1062,7 +1064,9 @@ SELECT
 CREATE OR REPLACE VIEW SYS.ALL_SEQUENCES AS
 SELECT
 	c.relowner::regrole AS sequence_owner,c.relname AS sequence_name,s.seqmin AS min_value,s.seqmax AS max_value,
-	s.seqincrement AS increment_by,s.seqcycle AS cycle_flag,null AS order_flag,s.seqcache AS cache_size,
+	s.seqincrement AS increment_by,
+	(CASE WHEN s.seqcycle THEN 'Y' ELSE 'N' END)::VARCHAR2(1) AS cycle_flag,
+	null AS order_flag,s.seqcache AS cache_size,
 	CASE
 		WHEN has_sequence_privilege(c.oid, 'SELECT,USAGE'::text)
 			THEN pg_sequence_last_value(c.oid::regclass)
@@ -1077,7 +1081,9 @@ SELECT
 CREATE OR REPLACE VIEW SYS.USER_SEQUENCES AS
 SELECT
 	c.relname AS sequence_name,s.seqmin AS min_value,s.seqmax AS max_value,
-	s.seqincrement AS increment_by,s.seqcycle AS cycle_flag,null AS order_flag,s.seqcache AS cache_size,
+	s.seqincrement AS increment_by,
+	(CASE WHEN s.seqcycle THEN 'Y' ELSE 'N' END)::VARCHAR2(1) AS cycle_flag,
+	null AS order_flag,s.seqcache AS cache_size,
 	CASE
 		WHEN has_sequence_privilege(c.oid, 'SELECT,USAGE'::text)
 			THEN pg_sequence_last_value(c.oid::regclass)
