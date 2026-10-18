@@ -1381,7 +1381,21 @@ SELECT job_owner, job_name, status, count(*) FROM sys.scheduler_job_run_details
 -- dots inside a quoted job name are preserved
 BEGIN
   dbms_scheduler.purge_log(log_history => 25,
-      job_name => '"quoted,job","regress_dbms_scheduler"."Case.Job,One"');
+      job_name => '"quoted,job", purge_new');
+END;
+/
+SELECT count(*) AS unselected_quoted_rows_left
+  FROM sys.scheduler_job_run_details
+  WHERE job_owner = 'regress_dbms_scheduler'
+    AND job_name = 'Case.Job,One';
+ unselected_quoted_rows_left 
+-----------------------------
+                           1
+(1 row)
+
+BEGIN
+  dbms_scheduler.purge_log(log_history => 25,
+      job_name => '"regress_dbms_scheduler"."Case.Job,One"');
 END;
 /
 SELECT count(*) AS quoted_rows_left FROM sys.scheduler_job_run_details
