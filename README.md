@@ -31,6 +31,22 @@ Furthermore, for more detailed installation instructions, please refer to the [I
 - [Rpm installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.6/4.1#Rpm-installation)
 - [Source code installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.6/4.1#Source-code-installation)
 
+### Oracle dictionary changes on existing clusters
+
+The `CYCLE_FLAG` correction in `SYS.ALL_SEQUENCES`, `SYS.DBA_SEQUENCES` and
+`SYS.USER_SEQUENCES` applies to fresh Oracle-mode catalogs initialized from a
+build containing the fix. It changes the column from `boolean` (`t`/`f`) to
+`VARCHAR2(1)` (`Y`/`N`).
+
+Existing databases keep their installed `ivorysql_ora` 1.0 view definitions.
+Installing new binaries or restarting the server does not update those catalog
+objects, and this change does not provide a versioned extension upgrade script.
+`CREATE OR REPLACE VIEW` cannot change the existing column type. Existing
+clusters therefore retain the boolean column until a supported catalog migration
+is available. Before migrating, inventory dependent objects and grants and agree
+on a migration procedure with the maintainers; do not drop dependent objects or
+reinitialize an existing data directory to apply this fix.
+
 ## Development with Docker
 
 For a consistent development environment, we provide a Docker-based setup that includes all build dependencies.
