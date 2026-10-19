@@ -154,28 +154,6 @@ generated_catalog_headers = custom_target('generated_catalog_headers',
   ],
 )
 
-#temp code to compatible
-ara_output_files = ['tmp_postgres_oracle.bki']
-ara_output_install = [dir_data]
-ara_generated_catalog_headers = custom_target('ara_generated_catalog_headers',
-  output: ara_output_files,
-  install_dir: ara_output_install,
-  input: input,
-  depend_files: bki_data_f + catalog_pm,
-  build_by_default: true,
-  install: false,
-  command: [
-    perl,
-    files('../../backend/catalog/genbki.pl'),
-    '--include-path=@SOURCE_ROOT@/src/include',
-    '--set-version=' + pg_version_major.to_string(),
-    '--output=@OUTDIR@',
-    '@INPUT@',
-    '-M=oracle'
-  ],
-  depends: [generated_catalog_headers]
-)
-
 # Target for Oracle
 ora_output_files = ['postgres_oracle.bki']
 ora_output_install = [dir_data]
@@ -195,7 +173,7 @@ ora_generated_catalog_headers = custom_target('ora_generated_catalog_headers',
     '@INPUT@',
     '-M=oracle'
   ],
-  depends: [ara_generated_catalog_headers]
+  depends: [generated_catalog_headers]
 )
 
 
