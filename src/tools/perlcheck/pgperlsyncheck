@@ -13,4 +13,11 @@ set -e
 # for zsh
 setopt shwordsplit 2>/dev/null || true
 
-find_perl_files "$@" | xargs -L 1 perl $INCLUDES -cw 2>&1 | grep -v OK
+# Keep the compiler status separately: grep succeeds on diagnostics and fails
+# when successful syntax checks are the only output.
+status=0
+output=$(find_perl_files "$@" | xargs -L 1 perl $INCLUDES -cw 2>&1) || status=$?
+if [ -n "$output" ]; then
+	printf '%s\n' "$output" | grep -v ' syntax OK$' || true
+fi
+exit "$status"
