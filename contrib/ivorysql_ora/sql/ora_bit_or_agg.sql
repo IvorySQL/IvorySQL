@@ -72,9 +72,23 @@ INSERT INTO bit_or_agg_number VALUES ('b', 15);
 SELECT grp, bit_or_agg(val) FROM bit_or_agg_number GROUP BY grp ORDER BY grp;
 
 --
+-- The result type is NUMBER, as in Oracle
+--
+SELECT pg_typeof(bit_or_agg(val)) FROM bit_or_agg_test;
+
+--
 -- DISTINCT keyword
+-- Bitwise OR is idempotent, so DISTINCT cannot change the result; the
+-- query proves the keyword is accepted and no error is raised.
 --
 SELECT bit_or_agg(DISTINCT val) FROM bit_or_agg_test WHERE grp = 'a';
+
+--
+-- Window function usage (Oracle lists BIT_OR_AGG as an analytic
+-- function too); the default RANGE frame keeps peer rows together.
+--
+SELECT grp, val, bit_or_agg(val) OVER (PARTITION BY grp ORDER BY val)
+FROM bit_or_agg_test ORDER BY grp, val;
 
 --
 -- Values beyond the bigint domain raise an error
@@ -89,6 +103,5 @@ DROP TABLE bit_or_agg_number;
 -- Works in PG mode too
 --
 SET ivorysql.compatible_mode = pg;
-SELECT sys.bit_or_agg(x) FROM (SELECT 12 x FROM dual
-                               UNION ALL SELECT 10 FROM dual) t;
+SELECT sys.bit_or_agg(x) FROM (VALUES (12), (10)) AS t(x);
 RESET ivorysql.compatible_mode;

@@ -373,3 +373,20 @@ ora_bit_or_agg_combinefn(PG_FUNCTION_ARGS)
 
 	PG_RETURN_INT64(PG_GETARG_INT64(0) | PG_GETARG_INT64(1));
 }
+
+/*
+ * ora_bit_or_agg_finalfn
+ * Final function of the BIT_OR_AGG aggregate.
+ *
+ * Oracle's BIT_OR_AGG returns NUMBER, so expose the int8 state as number
+ * rather than bigint.  Not STRICT, so an aggregate that never saw a non-null
+ * input keeps returning NULL.
+ */
+Datum
+ora_bit_or_agg_finalfn(PG_FUNCTION_ARGS)
+{
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+
+	PG_RETURN_NUMERIC(int64_to_numeric(PG_GETARG_INT64(0)));
+}

@@ -1218,10 +1218,18 @@ LANGUAGE C
 IMMUTABLE
 PARALLEL SAFE;
 
+CREATE FUNCTION sys.bit_or_agg_finalfn(int8)
+RETURNS number
+AS 'MODULE_PATHNAME','ora_bit_or_agg_finalfn'
+LANGUAGE C
+IMMUTABLE
+PARALLEL SAFE;
+
 CREATE AGGREGATE sys.bit_or_agg(number) (
     SFUNC = sys.bit_or_agg_transfn,
     STYPE = int8,
     COMBINEFUNC = sys.bit_or_agg_combinefn,
+    FINALFUNC = sys.bit_or_agg_finalfn,
     PARALLEL = SAFE
 );
 /* End - BIT_OR_AGG */
