@@ -2076,3 +2076,120 @@ drop table ds_tb;
 reset NLS_TIMESTAMP_FORMAT;
 reset NLS_TIMESTAMP_TZ_FORMAT;
 reset NLS_DATE_FORMAT;
+/*
+ * Date/time function coverage: sysdate/systimestamp nullability and types,
+ * session time zone reporting, FROM_TZ offset range checks and
+ * SYS_EXTRACT_UTC offset handling.
+ */
+set timezone = 'UTC';
+select sysdate() is not null as sysdate_not_null from dual;
+ sysdate_not_null 
+------------------
+ t
+(1 row)
+
+select systimestamp() is not null as systimestamp_not_null from dual;
+ systimestamp_not_null 
+-----------------------
+ t
+(1 row)
+
+select pg_typeof(sysdate()) as sysdate_type from dual;
+ sysdate_type 
+--------------
+ date
+(1 row)
+
+select pg_typeof(systimestamp()) as systimestamp_type from dual;
+    systimestamp_type     
+--------------------------
+ timestamp with time zone
+(1 row)
+
+select pg_typeof(current_date) as current_date_type from dual;
+ current_date_type 
+-------------------
+ date
+(1 row)
+
+select pg_typeof(current_timestamp) as current_timestamp_type from dual;
+  current_timestamp_type  
+--------------------------
+ timestamp with time zone
+(1 row)
+
+select pg_typeof(current_timestamp(3)) as current_timestamp_3_type from dual;
+ current_timestamp_3_type 
+--------------------------
+ timestamp with time zone
+(1 row)
+
+select pg_typeof(localtimestamp) as localtimestamp_type from dual;
+ localtimestamp_type 
+---------------------
+ timestamp
+(1 row)
+
+select pg_typeof(localtimestamp(3)) as localtimestamp_3_type from dual;
+ localtimestamp_3_type 
+-----------------------
+ timestamp
+(1 row)
+
+select pg_typeof(sessiontimezone()) as sessiontimezone_type from dual;
+ sessiontimezone_type 
+----------------------
+ text
+(1 row)
+
+set timezone = 'America/New_York';
+select sessiontimezone() from dual;
+ sessiontimezone  
+------------------
+ America/New_York
+(1 row)
+
+set timezone = 'UTC';
+select from_tz(timestamp '2024-01-01 00:00:00', '+14:00') from dual;
+              from_tz              
+-----------------------------------
+ 2023-12-31 10:00:00.000000 +00:00
+(1 row)
+
+select from_tz(timestamp '2024-01-01 00:00:00', '-12:00') from dual;
+              from_tz              
+-----------------------------------
+ 2024-01-01 12:00:00.000000 +00:00
+(1 row)
+
+select from_tz(timestamp '2024-01-01 00:00:00', '+15:00') from dual;
+ERROR:  timezone hour between -12 and 14
+select from_tz(timestamp '2024-01-01 00:00:00', '-13:00') from dual;
+ERROR:  timezone hour between -12 and 14
+select from_tz(timestamp '2024-01-01 00:00:00', '99:99') from dual;
+ERROR:  timezone hour between -12 and 14
+select sys_extract_utc(null) from dual;
+ sys_extract_utc 
+-----------------
+ 
+(1 row)
+
+select sys_extract_utc(timestamp '2024-01-01 00:00:00') from dual;
+      sys_extract_utc       
+----------------------------
+ 2024-01-01 00:00:00.000000
+(1 row)
+
+select sys_extract_utc(from_tz(timestamp '2024-01-01 00:00:00', '+05:30')) from dual;
+      sys_extract_utc       
+----------------------------
+ 2023-12-31 18:30:00.000000
+(1 row)
+
+select sys_extract_utc(from_tz(timestamp '2024-01-01 00:00:00', '-08:00')) from dual;
+      sys_extract_utc       
+----------------------------
+ 2024-01-01 08:00:00.000000
+(1 row)
+
+reset timezone;
