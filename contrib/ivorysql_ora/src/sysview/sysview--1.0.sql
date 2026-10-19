@@ -1567,7 +1567,9 @@ GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
 -- through pg_inherits (those children are USER_IND_PARTITIONS rows,
 -- not rows here).  PARTITIONING_TYPE/PARTITIONING_KEY_COUNT come from
 -- pg_partitioned_table of the indexed table; PARTITION_COUNT is the
--- number of attached child indexes.  Every PostgreSQL partitioned
+-- number of attached child indexes, excluding partitions whose table
+-- inheritance row is pending concurrent detach (the child index row is
+-- not marked pending until the detach is finalized).  Every PostgreSQL partitioned
 -- index is local and aligned with its table, so LOCALITY is always
 -- 'LOCAL'; ALIGNMENT applies Oracle's rule that a partitioned index is
 -- PREFIXED when the table's partitioning key columns are a leading
@@ -1589,7 +1591,10 @@ SELECT
 			ON PT4.PARTRELID = H4.INHRELID
 			WHERE H4.INHPARENT = T.OID)
 		THEN 'NONE' END::VARCHAR2(9) AS SUBPARTITIONING_TYPE,
-	(SELECT COUNT(*) FROM PG_INHERITS H3 WHERE H3.INHPARENT = I.OID)::NUMBER AS PARTITION_COUNT,
+	(SELECT COUNT(*) FROM PG_INHERITS H3
+	JOIN PG_INDEX XI ON XI.INDEXRELID = H3.INHRELID
+	JOIN PG_INHERITS HT ON HT.INHRELID = XI.INDRELID AND HT.INHPARENT = T.OID
+	WHERE H3.INHPARENT = I.OID AND NOT HT.INHDETACHPENDING)::NUMBER AS PARTITION_COUNT,
 	NULL::NUMBER AS DEF_SUBPARTITION_COUNT,
 	PT.PARTNATTS::NUMBER AS PARTITIONING_KEY_COUNT,
 	CASE WHEN NOT EXISTS (

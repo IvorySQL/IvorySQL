@@ -91,6 +91,7 @@ SELECT count(*) AS user_rows FROM user_part_indexes;
 (1 row)
 
 RESET ROLE;
+DROP TABLE ipi_p2;
 DROP TABLE ipi_tab;
 DROP TABLE ipi_comp;
 DROP TABLE ipi_hash;

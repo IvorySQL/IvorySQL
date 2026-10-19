@@ -66,6 +66,7 @@ SET ROLE ipi_other;
 SELECT count(*) AS user_rows FROM user_part_indexes;
 RESET ROLE;
 
+DROP TABLE ipi_p2;
 DROP TABLE ipi_tab;
 DROP TABLE ipi_comp;
 DROP TABLE ipi_hash;
