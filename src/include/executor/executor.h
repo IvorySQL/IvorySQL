@@ -260,7 +260,7 @@ extern bool ExecCheckPermissions(List *rangeTable,
 extern bool ExecCheckOneRelPerms(RTEPermissionInfo *perminfo);
 extern void CheckValidResultRel(ResultRelInfo *resultRelInfo, CmdType operation,
 								OnConflictAction onConflictAction,
-								List *mergeActions);
+								List *mergeActions, ModifyTable *mtnode);
 extern void InitResultRelInfo(ResultRelInfo *resultRelInfo,
 							  Relation resultRelationDesc,
 							  Index resultRelationIndex,
@@ -344,7 +344,6 @@ ExecProcNode(PlanState *node)
  * prototypes from functions in execExpr.c
  */
 extern ExprState *ExecInitExpr(Expr *node, PlanState *parent);
-extern ExprState *ExecInitExprWithContext(Expr *node, PlanState *parent, Node *escontext);
 extern ExprState *ExecInitExprWithParams(Expr *node, ParamListInfo ext_params);
 extern ExprState *ExecInitQual(List *qual, PlanState *parent);
 extern ExprState *ExecInitCheck(List *qual, PlanState *parent);
@@ -393,7 +392,6 @@ extern ProjectionInfo *ExecBuildUpdateProjection(List *targetList,
 												 TupleTableSlot *slot,
 												 PlanState *parent);
 extern ExprState *ExecPrepareExpr(Expr *node, EState *estate);
-extern ExprState *ExecPrepareExprWithContext(Expr *node, EState *estate, Node *escontext);
 extern ExprState *ExecPrepareQual(List *qual, EState *estate);
 extern ExprState *ExecPrepareCheck(List *qual, EState *estate);
 extern List *ExecPrepareExprList(List *nodes, EState *estate);
@@ -784,7 +782,7 @@ extern void ExecCloseIndices(ResultRelInfo *resultRelInfo);
 #define		EIIT_NO_DUPE_ERROR		(1<<1)
 #define		EIIT_ONLY_SUMMARIZING	(1<<2)
 extern List *ExecInsertIndexTuples(ResultRelInfo *resultRelInfo, EState *estate,
-								   uint32 options, TupleTableSlot *slot,
+								   uint32 flags, TupleTableSlot *slot,
 								   List *arbiterIndexes,
 								   bool *specConflict);
 extern bool ExecCheckIndexConstraints(ResultRelInfo *resultRelInfo,

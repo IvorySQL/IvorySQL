@@ -118,6 +118,82 @@ static Node *make_nulltest_from_distinct(ParseState *pstate,
 										 A_Expr *distincta, Node *arg);
 static Node *transformColumnRefOrFunCall(ParseState *pstate, ColumnRefOrFuncCall *cref_func);
 
+/*
+ * record_orajoin_operand
+ *		Bookkeeping for the Oracle outer-join operator (+), called from
+ *		transformColumnRefInternal() for every column reference.
+ *
+ *		While transformOraJoinClause() probes a WHERE predicate it sets
+ *		pstate->p_orajoin_state; in that case we stash the resolved Var (and
+ *		its ColumnRef) so extractOraJoins() can tell which relation each side
+ *		of the predicate belongs to.  Only a plain Var can act as a join
+ *		operand -- anything else (a whole-row reference, a function call)
+ *		leaves ojs->var NULL and extractOraJoins() then leaves the predicate
+ *		alone.  "node" can legitimately be NULL here (an unresolved column
+ *		about to raise "column does not exist"), so it must be checked before
+ *		IsA().
+ *		An outer join cannot be specified on a correlation column (a
+ *		column belonging to an enclosing query, varlevelsup > 0), matching
+ *		Oracle's ORA-01705 restriction.
+ *
+ *		A ColumnRef that still carries the (+) marker at this point, with
+ *		p_orajoin_state unset, is in a place the operator is not allowed:
+ *		transformOraJoinClause() strips the marker from every predicate it
+ *		keeps (whether it became a JOIN ON clause or stayed in WHERE), so the
+ *		only way to get here still marked is a context that is never routed
+ *		through it -- a target list, GROUP BY/HAVING, ORDER BY, or the WHERE
+ *		clause of an UPDATE/DELETE.  Oracle rejects those too.
+ */
+static void
+record_orajoin_operand(ParseState *pstate, Node *node, ColumnRef *cref)
+{
+	if (cref->ora_join_op_exists && node != NULL && IsA(node, Var) &&
+		((Var *) node)->varlevelsup > 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("an outer join cannot be specified on a correlation column"),
+				 errdetail("*Cause: An outer join was specified on a correlation column in a subquery. "
+						   "*Action: Remove the outer join specification from the correlation column.")));
+
+	if (cref->ora_join_op_exists && pstate->p_orajoin_state == NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				  errmsg("outer join operator (+) is not allowed here"),
+				  errdetail("*Cause: An attempt was made to reference (+) in either the select-list, "
+							"CONNECT BY clause, START WITH clause, or ORDER BY clause. "
+							"*Action: Do not use the operator in the select-list, CONNECT BY clause, "
+							"START WITH clause, or ORDER BY clause.")));
+
+	if (pstate->p_orajoin_state != NULL && node != NULL && IsA(node, Var))
+	{
+		OraJoinState *ojs = (OraJoinState *) pstate->p_orajoin_state;
+
+		/*
+		 * If a marked (+) column was already recorded for this operand,
+		 * an unmarked column in the same expression must not overwrite it.
+		 * Conversely, a marked (+) column always takes precedence over an
+		 * earlier unmarked column.
+		 */
+		if (cref->ora_join_op_exists)
+		{
+			if (ojs->cref != NULL && ojs->cref->ora_join_op_exists &&
+				ojs->var != NULL && ojs->var->varno != ((Var *) node)->varno)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("a predicate may reference only one outer-joined table")));
+			}
+			ojs->var = (Var *) node;
+			ojs->cref = cref;
+		}
+		else if (ojs->cref == NULL || !ojs->cref->ora_join_op_exists)
+		{
+			ojs->var = (Var *) node;
+			ojs->cref = cref;
+		}
+	}
+}
+
 static inline void
 set_merge_on_attrno(ParseState *pstate, char *colname)
 {
@@ -739,6 +815,9 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 						node = transformWholeRowRef(pstate, nsitem, levels_up,
 													cref->location);
 				}
+
+				record_orajoin_operand(pstate, node, cref);
+
 				break;
 			}
 		case 2:
@@ -805,6 +884,9 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 											 false,
 											 cref->location);
 				}
+
+				record_orajoin_operand(pstate, node, cref);
+
 				break;
 			}
 		case 3:
@@ -873,6 +955,9 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 											 false,
 											 cref->location);
 				}
+
+				record_orajoin_operand(pstate, node, cref);
+
 				break;
 			}
 		case 4:
@@ -953,6 +1038,9 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 											 false,
 											 cref->location);
 				}
+
+				record_orajoin_operand(pstate, node, cref);
+
 				break;
 			}
 		default:
@@ -4425,24 +4513,54 @@ transformJsonObjectConstructor(ParseState *pstate, JsonObjectConstructor *ctor)
 }
 
 /*
- * Transform JSON_ARRAY(query [FORMAT] [RETURNING] [ON NULL]) into
- *  (SELECT  JSON_ARRAYAGG(a  [FORMAT] [RETURNING] [ON NULL]) FROM (query) q(a))
+ * Transform JSON_ARRAY(subquery) constructor.
+ *
+ * JSON_ARRAY(subquery) is transformed into a JsonConstructorExpr node of type
+ * JSCTOR_JSON_ARRAY_QUERY.  The node carries:
+ *
+ *  - func: the executable form, which is a COALESCE expression wrapping a
+ *    JSON_ARRAYAGG subquery:
+ *
+ *        COALESCE((SELECT JSON_ARRAYAGG(a) FROM (subquery) q(a)), '[]')
+ *
+ *    The COALESCE ensures that an empty result set produces '[]' rather than
+ *    NULL, per the SQL/JSON standard.
+ *
+ *  - orig_query: the transformed Query of the user's original subquery, so
+ *    that ruleutils.c can deparse the original JSON_ARRAY(SELECT ...) syntax
+ *    for view definitions.
  */
 static Node *
 transformJsonArrayQueryConstructor(ParseState *pstate,
 								   JsonArrayQueryConstructor *ctor)
 {
-	SubLink    *sublink = makeNode(SubLink);
-	SelectStmt *select = makeNode(SelectStmt);
-	RangeSubselect *range = makeNode(RangeSubselect);
-	Alias	   *alias = makeNode(Alias);
-	ResTarget  *target = makeNode(ResTarget);
-	JsonArrayAgg *agg = makeNode(JsonArrayAgg);
-	ColumnRef  *colref = makeNode(ColumnRef);
 	Query	   *query;
 	ParseState *qpstate;
+	SubLink    *sublink;
+	SelectStmt *select;
+	RangeSubselect *range;
+	Alias	   *alias;
+	ResTarget  *target;
+	JsonArrayAgg *agg;
+	ColumnRef  *colref;
+	Node	   *exec_expr;
+	CoalesceExpr *coalesce;
+	Const	   *empty_const;
+	Oid			result_type;
+	int32		result_typmod;
+	Oid			typinput;
+	Oid			typioparam;
+	int16		typlen;
+	bool		typbyval;
+	JsonReturning *returning;
+	List	   *args;
+	Node	   *result;
 
-	/* Transform query only for counting target list entries. */
+	/*
+	 * Transform a copy of the subquery to validate the single-column
+	 * constraint and to obtain the transformed Query for deparsing.  This
+	 * uses a private ParseState so it doesn't affect the main parse context.
+	 */
 	qpstate = make_parsestate(pstate);
 
 	query = transformStmt(qpstate, copyObject(ctor->query));
@@ -4455,14 +4573,20 @@ transformJsonArrayQueryConstructor(ParseState *pstate,
 
 	free_parsestate(qpstate);
 
+	/*
+	 * Build the executable form by constructing query:
+	 *
+	 * (SELECT JSON_ARRAYAGG(a [FORMAT] [RETURNING]) FROM (subquery) q(a))
+	 *
+	 * ... using raw parse tree nodes, then transforming via
+	 * transformExprRecurse.
+	 */
+	colref = makeNode(ColumnRef);
 	colref->fields = list_make2(makeString(pstrdup("q")),
 								makeString(pstrdup("a")));
 	colref->location = ctor->location;
 
-	/*
-	 * No formatting necessary, so set formatted_expr to be the same as
-	 * raw_expr.
-	 */
+	agg = makeNode(JsonArrayAgg);
 	agg->arg = makeJsonValueExpr((Expr *) colref, (Expr *) colref,
 								 ctor->format);
 	agg->absent_on_null = ctor->absent_on_null;
@@ -4471,21 +4595,26 @@ transformJsonArrayQueryConstructor(ParseState *pstate,
 	agg->constructor->output = ctor->output;
 	agg->constructor->location = ctor->location;
 
+	target = makeNode(ResTarget);
 	target->name = NULL;
 	target->indirection = NIL;
 	target->val = (Node *) agg;
 	target->location = ctor->location;
 
+	alias = makeNode(Alias);
 	alias->aliasname = pstrdup("q");
 	alias->colnames = list_make1(makeString(pstrdup("a")));
 
+	range = makeNode(RangeSubselect);
 	range->lateral = false;
 	range->subquery = ctor->query;
 	range->alias = alias;
 
+	select = makeNode(SelectStmt);
 	select->targetList = list_make1(target);
 	select->fromClause = list_make1(range);
 
+	sublink = makeNode(SubLink);
 	sublink->subLinkType = EXPR_SUBLINK;
 	sublink->subLinkId = 0;
 	sublink->testexpr = NULL;
@@ -4493,7 +4622,51 @@ transformJsonArrayQueryConstructor(ParseState *pstate,
 	sublink->subselect = (Node *) select;
 	sublink->location = ctor->location;
 
-	return transformExprRecurse(pstate, (Node *) sublink);
+	exec_expr = transformExprRecurse(pstate, (Node *) sublink);
+
+	/*
+	 * Wrap in COALESCE so that an empty result set produces '[]' rather than
+	 * NULL.  The empty-array constant is created in the output type and
+	 * typmod, so that the COALESCE arguments have consistent types and any
+	 * length restriction from the RETURNING clause is enforced uniformly
+	 * across the empty and non-empty paths.
+	 */
+	result_type = exprType(exec_expr);
+	result_typmod = exprTypmod(exec_expr);
+	getTypeInputInfo(result_type, &typinput, &typioparam);
+	get_typlenbyval(result_type, &typlen, &typbyval);
+
+	empty_const = makeConst(result_type,
+							result_typmod,
+							exprCollation(exec_expr),
+							(int) typlen,
+							OidInputFunctionCall(typinput, "[]",
+												 typioparam, result_typmod),
+							false,
+							typbyval);
+
+	coalesce = makeNode(CoalesceExpr);
+	coalesce->coalescetype = result_type;
+	coalesce->coalescecollid = exprCollation(exec_expr);
+	coalesce->args = list_make2(exec_expr, empty_const);
+	coalesce->location = ctor->location;
+
+	/*
+	 * Build the JSCTOR_JSON_ARRAY_QUERY node.  The COALESCE goes in func as
+	 * the executable form; during planning, eval_const_expressions replaces
+	 * the entire node with func.  The transformed Query is stored in
+	 * orig_query so that ruleutils.c can deparse the original syntax.
+	 */
+	args = list_make1(linitial_node(TargetEntry, query->targetList)->expr);
+	returning = transformJsonConstructorOutput(pstate, ctor->output, args);
+
+	result = makeJsonConstructorExpr(pstate, JSCTOR_JSON_ARRAY_QUERY,
+									 NIL, (Expr *) coalesce, returning,
+									 false, ctor->absent_on_null,
+									 ctor->location);
+	((JsonConstructorExpr *) result)->orig_query = (Node *) query;
+
+	return result;
 }
 
 /*
@@ -4747,10 +4920,20 @@ transformJsonParseArg(ParseState *pstate, Node *jsexpr, JsonFormat *format,
 
 		if (*exprtype == UNKNOWNOID || typcategory == TYPCATEGORY_STRING)
 		{
+			int			location = exprLocation(expr);
+
 			expr = coerce_to_target_type(pstate, expr, *exprtype,
 										 TEXTOID, -1,
 										 COERCION_IMPLICIT,
 										 COERCE_IMPLICIT_CAST, -1);
+			if (expr == NULL)
+				ereport(ERROR,
+						errcode(ERRCODE_CANNOT_COERCE),
+						errmsg("cannot cast type %s to %s",
+							   format_type_be(*exprtype),
+							   format_type_be(TEXTOID)),
+						parser_errposition(pstate, location));
+
 			*exprtype = TEXTOID;
 		}
 

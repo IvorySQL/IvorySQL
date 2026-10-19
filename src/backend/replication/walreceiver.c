@@ -267,6 +267,20 @@ WalReceiverMain(const void *startup_data, size_t startup_data_len)
 	/* Unblock signals (they were blocked when the postmaster forked us) */
 	sigprocmask(SIG_SETMASK, &UnBlockSig, NULL);
 
+	/*
+	 * Switch the WAL receiver state as ready for display before doing a
+	 * connection attempt, so as its connecting state is visible before
+	 * attempting to contact the primary server.  Note that this resets the
+	 * original conninfo, sender_port and sender_host, for security.  These
+	 * fields are filled once the connection is fully established.
+	 */
+	SpinLockAcquire(&walrcv->mutex);
+	memset(walrcv->conninfo, 0, MAXCONNINFO);
+	memset(walrcv->sender_host, 0, NI_MAXHOST);
+	walrcv->sender_port = 0;
+	walrcv->ready_to_display = true;
+	SpinLockRelease(&walrcv->mutex);
+
 	/* Establish the connection to the primary for XLOG streaming */
 	appname = cluster_name[0] ? cluster_name : "walreceiver";
 	wrconn = walrcv_connect(conninfo, true, false, false, appname, &err);
@@ -277,23 +291,17 @@ WalReceiverMain(const void *startup_data, size_t startup_data_len)
 						appname, err)));
 
 	/*
-	 * Save user-visible connection string.  This clobbers the original
-	 * conninfo, for security. Also save host and port of the sender server
-	 * this walreceiver is connected to.
+	 * Save user-visible connection string, now that the connection has been
+	 * achieved.
 	 */
 	tmp_conninfo = walrcv_get_conninfo(wrconn);
 	walrcv_get_senderinfo(wrconn, &sender_host, &sender_port);
 	SpinLockAcquire(&walrcv->mutex);
-	memset(walrcv->conninfo, 0, MAXCONNINFO);
 	if (tmp_conninfo)
 		strlcpy(walrcv->conninfo, tmp_conninfo, MAXCONNINFO);
-
-	memset(walrcv->sender_host, 0, NI_MAXHOST);
 	if (sender_host)
 		strlcpy(walrcv->sender_host, sender_host, NI_MAXHOST);
-
 	walrcv->sender_port = sender_port;
-	walrcv->ready_to_display = true;
 	SpinLockRelease(&walrcv->mutex);
 
 	if (tmp_conninfo)
@@ -301,6 +309,9 @@ WalReceiverMain(const void *startup_data, size_t startup_data_len)
 
 	if (sender_host)
 		pfree(sender_host);
+
+	/* Initialize buffers for processing messages */
+	initStringInfo(&reply_message);
 
 	first_stream = true;
 	for (;;)
@@ -325,6 +336,7 @@ WalReceiverMain(const void *startup_data, size_t startup_data_len)
 					 errdetail("The primary's identifier is %s, the standby's identifier is %s.",
 							   primary_sysid, standby_sysid)));
 		}
+		pfree(primary_sysid);
 
 		/*
 		 * Confirm that the current timeline of the primary is the same or
@@ -405,9 +417,8 @@ WalReceiverMain(const void *startup_data, size_t startup_data_len)
 				walrcv->walRcvState = WALRCV_STREAMING;
 			SpinLockRelease(&walrcv->mutex);
 
-			/* Initialize LogstreamResult and buffers for processing messages */
+			/* Initialize LogstreamResult for processing messages */
 			LogstreamResult.Write = LogstreamResult.Flush = GetXLogReplayRecPtr(NULL);
-			initStringInfo(&reply_message);
 
 			/* Initialize nap wakeup times. */
 			now = GetCurrentTimestamp();
@@ -943,9 +954,6 @@ XLogWalRcvWrite(char *buf, Size nbytes, XLogRecPtr recptr, TimeLineID tli)
 		byteswritten = pg_pwrite(recvFile, buf, segbytes, (pgoff_t) startoff);
 		pgstat_report_wait_end();
 
-		pgstat_count_io_op_time(IOOBJECT_WAL, IOCONTEXT_NORMAL,
-								IOOP_WRITE, start, 1, byteswritten);
-
 		if (byteswritten <= 0)
 		{
 			char		xlogfname[MAXFNAMELEN];
@@ -965,6 +973,9 @@ XLogWalRcvWrite(char *buf, Size nbytes, XLogRecPtr recptr, TimeLineID tli)
 							xlogfname, startoff, segbytes)));
 		}
 
+		pgstat_count_io_op_time(IOOBJECT_WAL, IOCONTEXT_NORMAL,
+								IOOP_WRITE, start, 1, byteswritten);
+
 		/* Update state for write */
 		recptr += byteswritten;
 
@@ -975,15 +986,13 @@ XLogWalRcvWrite(char *buf, Size nbytes, XLogRecPtr recptr, TimeLineID tli)
 	}
 
 	/* Update shared-memory status */
-	pg_atomic_write_u64(&WalRcv->writtenUpto, LogstreamResult.Write);
+	pg_atomic_write_membarrier_u64(&WalRcv->writtenUpto, LogstreamResult.Write);
 
 	/*
-	 * If we wrote an LSN that someone was waiting for, notify the waiters.
+	 * Wake up processes waiting for standby write LSN to reach current write
+	 * position.
 	 */
-	if (waitLSNState &&
-		(LogstreamResult.Write >=
-		 pg_atomic_read_u64(&waitLSNState->minWaitedLSN[WAIT_LSN_TYPE_STANDBY_WRITE])))
-		WaitLSNWakeup(WAIT_LSN_TYPE_STANDBY_WRITE, LogstreamResult.Write);
+	WaitLSNWakeup(WAIT_LSN_TYPE_STANDBY_WRITE, LogstreamResult.Write);
 
 	/*
 	 * Close the current segment if it's fully written up in the last cycle of
@@ -1025,13 +1034,10 @@ XLogWalRcvFlush(bool dying, TimeLineID tli)
 		SpinLockRelease(&walrcv->mutex);
 
 		/*
-		 * If we flushed an LSN that someone was waiting for, notify the
-		 * waiters.
+		 * Wake up processes waiting for standby flush LSN to reach current
+		 * flush position.
 		 */
-		if (waitLSNState &&
-			(LogstreamResult.Flush >=
-			 pg_atomic_read_u64(&waitLSNState->minWaitedLSN[WAIT_LSN_TYPE_STANDBY_FLUSH])))
-			WaitLSNWakeup(WAIT_LSN_TYPE_STANDBY_FLUSH, LogstreamResult.Flush);
+		WaitLSNWakeup(WAIT_LSN_TYPE_STANDBY_FLUSH, LogstreamResult.Flush);
 
 		/* Signal the startup process and walsender that new WAL has arrived */
 		WakeupRecovery();

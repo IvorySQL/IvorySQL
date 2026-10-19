@@ -1549,7 +1549,7 @@ HeapTupleSatisfiesHistoricMVCC(HeapTuple htup, Snapshot snapshot,
 }
 
 /*
- * Perform HeaptupleSatisfiesMVCC() on each passed in tuple. This is more
+ * Perform HeapTupleSatisfiesMVCC() on each passed in tuple. This is more
  * efficient than doing HeapTupleSatisfiesMVCC() one-by-one.
  *
  * To be checked tuples are passed via BatchMVCCState->tuples. Each tuple's

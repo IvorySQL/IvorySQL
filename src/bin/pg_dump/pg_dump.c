@@ -1290,7 +1290,7 @@ main(int argc, char **argv)
 	 * right now.
 	 */
 	if (plainText)
-		RestoreArchive(fout, false);
+		RestoreArchive(fout);
 
 	CloseArchive(fout);
 
@@ -8309,8 +8309,6 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 	{
 		Oid			indrelid = atooid(PQgetvalue(res, j, i_indrelid));
 		TableInfo  *tbinfo = NULL;
-		char	  **indAttNames = NULL;
-		int			nindAttNames = 0;
 		int			numinds;
 
 		/* Count rows for this table */
@@ -8344,6 +8342,8 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 		{
 			char		contype;
 			char		indexkind;
+			char	  **indAttNames = NULL;
+			int			nindAttNames = 0;
 			RelStatsInfo *relstats;
 			int32		relpages = atoi(PQgetvalue(res, j, i_relpages));
 			int32		relallvisible = atoi(PQgetvalue(res, j, i_relallvisible));
@@ -19182,7 +19182,7 @@ dumpStatisticsExtStats(Archive *fout, const StatsExtInfo *statsextinfo)
 		{
 			/*
 			 * There is no ordering column in pg_stats_ext_exprs.  However, we
-			 * can rely on the unnesting of pg_statistic.ext_data.stxdexpr to
+			 * can rely on the unnesting of pg_statistic_ext_data.stxdexpr to
 			 * maintain the desired order of expression elements.
 			 */
 			appendPQExpBufferStr(pq,

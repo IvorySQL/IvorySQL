@@ -1,63 +1,63 @@
 # Copyright (c) 2022-2026, PostgreSQL Global Development Group
 
-# pg_regress_c helpfully provided by regress/meson.build
+# oracle_pg_regress_c helpfully provided by regress/meson.build
 
-isolation_sources = pg_regress_c + files(
+oracle_isolation_sources = oracle_pg_regress_c + files(
   'isolation_main.c',
 )
 
-isolationtester_sources = files(
+oracle_isolationtester_sources = files(
   'isolationtester.c',
 )
 
-spec_scanner = custom_target('specscanner',
+oracle_spec_scanner = custom_target('specscanner',
   input: 'specscanner.l',
   output: 'specscanner.c',
   command: flex_cmd,
 )
-isolationtester_sources += spec_scanner
-generated_sources += spec_scanner
+oracle_isolationtester_sources += oracle_spec_scanner
+generated_sources += oracle_spec_scanner
 
-spec_parser = custom_target('specparse',
+oracle_spec_parser = custom_target('specparse',
   input: 'specparse.y',
   kwargs: bison_kw,
 )
-isolationtester_sources += spec_parser
-generated_sources += spec_parser.to_list()
+oracle_isolationtester_sources += oracle_spec_parser
+generated_sources += oracle_spec_parser.to_list()
 
 if host_system == 'windows'
-  isolation_sources += rc_bin_gen.process(win32ver_rc, extra_args: [
+  oracle_isolation_sources += rc_bin_gen.process(win32ver_rc, extra_args: [
     '--NAME', 'pg_isolation_regress',
     '--FILEDESC', 'pg_isolation_regress - multi-client test driver',])
 endif
 
-pg_isolation_regress = executable('pg_isolation_regress',
-  isolation_sources,
-  c_args: pg_regress_cflags,
-  include_directories: pg_regress_inc,
+oracle_pg_isolation_regress = executable('pg_isolation_regress',
+  oracle_isolation_sources,
+  c_args: oracle_pg_regress_cflags,
+  include_directories: oracle_pg_regress_inc,
   dependencies: [frontend_code, libpq],
   kwargs: default_bin_args + {
     'install_dir': dir_pgxs / 'src/oracle_test/isolation',
   },
 )
-bin_targets += pg_isolation_regress
+bin_targets += oracle_pg_isolation_regress
 
 
 if host_system == 'windows'
-  isolationtester_sources += rc_bin_gen.process(win32ver_rc, extra_args: [
+  oracle_isolationtester_sources += rc_bin_gen.process(win32ver_rc, extra_args: [
     '--NAME', 'isolationtester',
     '--FILEDESC', 'isolationtester - multi-client test driver',])
 endif
 
-isolationtester = executable('isolationtester',
-  isolationtester_sources,
+oracle_isolationtester = executable('isolationtester',
+  oracle_isolationtester_sources,
   include_directories: include_directories('.'),
   dependencies: [frontend_code, libpq],
   kwargs: default_bin_args + {
     'install_dir': dir_pgxs / 'src/oracle_test/isolation',
   },
 )
-bin_targets += isolationtester
+bin_targets += oracle_isolationtester
 
 tests += {
   'name': 'isolation',

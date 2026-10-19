@@ -3342,7 +3342,8 @@ pg_package_aclmask(Oid pkg_oid, Oid roleid, AclMode mask, AclMaskHow how)
 }
 
 
-/* ****************************************************************
+/*
+ * ****************************************************************
  * Exported routines for examining a user's privileges for various objects
  *
  * See aclmask() for a description of the common API for these functions.

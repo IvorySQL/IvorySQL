@@ -139,7 +139,7 @@ static void wait_for_end_recovery(const char *conninfo,
 static void create_publication(PGconn *conn, struct LogicalRepInfo *dbinfo);
 static bool find_publication(PGconn *conn, const char *pubname, const char *dbname);
 static void drop_publication(PGconn *conn, const char *pubname,
-							 const char *dbname, bool *made_publication);
+							 const char *dbname);
 static void check_and_drop_publications(PGconn *conn, struct LogicalRepInfo *dbinfo);
 static void create_subscription(PGconn *conn, const struct LogicalRepInfo *dbinfo);
 static void set_replication_progress(PGconn *conn, const struct LogicalRepInfo *dbinfo,
@@ -214,7 +214,7 @@ cleanup_objects_atexit(void)
 		if (durable_rename(conf_filename, conf_filename_disabled) != 0)
 		{
 			/* durable_rename() has already logged something. */
-			pg_log_warning_hint("A manual removal of the recovery parameters may be required.");
+			pg_log_warning_hint("A manual removal of the recovery parameters might be required.");
 		}
 	}
 
@@ -245,8 +245,7 @@ cleanup_objects_atexit(void)
 			if (conn != NULL)
 			{
 				if (dbinfo->made_publication)
-					drop_publication(conn, dbinfo->pubname, dbinfo->dbname,
-									 &dbinfo->made_publication);
+					drop_publication(conn, dbinfo->pubname, dbinfo->dbname);
 				if (dbinfo->made_replslot)
 					drop_replication_slot(conn, dbinfo, dbinfo->replslotname);
 				disconnect_database(conn, false);
@@ -897,7 +896,7 @@ setup_publisher(struct LogicalRepInfo *dbinfo)
 		if (find_publication(conn, dbinfo[i].pubname, dbinfo[i].dbname))
 		{
 			/* Reuse existing publication on publisher. */
-			pg_log_info("use existing publication \"%s\" in database \"%s\"",
+			pg_log_info("using existing publication \"%s\" in database \"%s\"",
 						dbinfo[i].pubname, dbinfo[i].dbname);
 			/* Don't remove pre-existing publication if an error occurs. */
 			dbinfo[i].made_publication = false;
@@ -1257,18 +1256,23 @@ drop_existing_subscription(PGconn *conn, const char *subname, const char *dbname
 {
 	PQExpBuffer query = createPQExpBuffer();
 	PGresult   *res;
+	char	   *subname_esc;
 
 	Assert(conn != NULL);
+
+	subname_esc = PQescapeIdentifier(conn, subname, strlen(subname));
 
 	/*
 	 * Construct a query string. These commands are allowed to be executed
 	 * within a transaction.
 	 */
 	appendPQExpBuffer(query, "ALTER SUBSCRIPTION %s DISABLE;",
-					  subname);
+					  subname_esc);
 	appendPQExpBuffer(query, " ALTER SUBSCRIPTION %s SET (slot_name = NONE);",
-					  subname);
-	appendPQExpBuffer(query, " DROP SUBSCRIPTION %s;", subname);
+					  subname_esc);
+	appendPQExpBuffer(query, " DROP SUBSCRIPTION %s;", subname_esc);
+
+	PQfreemem(subname_esc);
 
 	if (dry_run)
 		pg_log_info("dry-run: would drop subscription \"%s\" in database \"%s\"",
@@ -1624,7 +1628,6 @@ drop_replication_slot(PGconn *conn, struct LogicalRepInfo *dbinfo,
 		{
 			pg_log_error("could not drop replication slot \"%s\" in database \"%s\": %s",
 						 slot_name, dbinfo->dbname, PQresultErrorMessage(res));
-			dbinfo->made_replslot = false;	/* don't try again. */
 		}
 
 		PQclear(res);
@@ -1866,8 +1869,7 @@ create_publication(PGconn *conn, struct LogicalRepInfo *dbinfo)
  * Drop the specified publication in the given database.
  */
 static void
-drop_publication(PGconn *conn, const char *pubname, const char *dbname,
-				 bool *made_publication)
+drop_publication(PGconn *conn, const char *pubname, const char *dbname)
 {
 	PQExpBuffer str = createPQExpBuffer();
 	PGresult   *res;
@@ -1897,7 +1899,6 @@ drop_publication(PGconn *conn, const char *pubname, const char *dbname,
 		{
 			pg_log_error("could not drop publication \"%s\" in database \"%s\": %s",
 						 pubname, dbname, PQresultErrorMessage(res));
-			*made_publication = false;	/* don't try again. */
 
 			/*
 			 * Don't disconnect and exit here. This routine is used by primary
@@ -1946,8 +1947,7 @@ check_and_drop_publications(PGconn *conn, struct LogicalRepInfo *dbinfo)
 
 		/* Drop each publication */
 		for (int i = 0; i < PQntuples(res); i++)
-			drop_publication(conn, PQgetvalue(res, i, 0), dbinfo->dbname,
-							 &dbinfo->made_publication);
+			drop_publication(conn, PQgetvalue(res, i, 0), dbinfo->dbname);
 
 		PQclear(res);
 	}
@@ -1956,8 +1956,7 @@ check_and_drop_publications(PGconn *conn, struct LogicalRepInfo *dbinfo)
 		/* Drop publication only if it was created by this tool */
 		if (dbinfo->made_publication)
 		{
-			drop_publication(conn, dbinfo->pubname, dbinfo->dbname,
-							 &dbinfo->made_publication);
+			drop_publication(conn, dbinfo->pubname, dbinfo->dbname);
 		}
 		else
 		{
@@ -1965,7 +1964,7 @@ check_and_drop_publications(PGconn *conn, struct LogicalRepInfo *dbinfo)
 				pg_log_info("dry-run: would preserve existing publication \"%s\" in database \"%s\"",
 							dbinfo->pubname, dbinfo->dbname);
 			else
-				pg_log_info("preserve existing publication \"%s\" in database \"%s\"",
+				pg_log_info("preserving existing publication \"%s\" in database \"%s\"",
 							dbinfo->pubname, dbinfo->dbname);
 		}
 	}
@@ -2390,13 +2389,8 @@ main(int argc, char **argv)
 				opt.config_file = pg_strdup(optarg);
 				break;
 			case 2:
-				if (!simple_string_list_member(&opt.pub_names, optarg))
-				{
-					simple_string_list_append(&opt.pub_names, optarg);
-					num_pubs++;
-				}
-				else
-					pg_fatal("publication \"%s\" specified more than once for --publication", optarg);
+				simple_string_list_append(&opt.pub_names, optarg);
+				num_pubs++;
 				break;
 			case 3:
 				if (!simple_string_list_member(&opt.replslot_names, optarg))
@@ -2607,7 +2601,7 @@ main(int argc, char **argv)
 			dbinfos.objecttypes_to_clean |= OBJECTTYPE_PUBLICATIONS;
 		else
 		{
-			pg_log_error("invalid object type \"%s\" specified for %s",
+			pg_log_error("invalid object type \"%s\" specified for option %s",
 						 cell->val, "--clean");
 			pg_log_error_hint("The valid value is: \"%s\"", "publications");
 			exit(1);

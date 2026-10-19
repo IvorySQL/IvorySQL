@@ -362,6 +362,12 @@ CreatePackageBody_internal(const char *pkgname,
 	if (pkg_editable != editable)
 		elog(ERROR, "The EDITIONABLE property of a TYPE or PACKAGE specification and its"
 					" body must match");
+    /*
+     * Permission check: must own package or superuser
+     */
+	if (!pg_package_ownercheck(pkgOid, GetUserId()))
+		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_PACKAGE_BODY,
+					pkgname);
 
 	/*
 	 * All seems OK; prepare the data to be inserted into sys_package_body.
@@ -391,10 +397,6 @@ CreatePackageBody_internal(const char *pkgname,
 
 		if (!replace)
 			elog(ERROR, "package \"%s\" body already exists", pkgname);
-
-		if (!pg_package_ownercheck(pkgOid, GetUserId()))
-			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_PACKAGE_BODY,
-						   pkgname);
 
 		bodydatum = SysCacheGetAttr(PKGBODYOID, oldtup,
 								  Anum_pg_package_body_bodysrc, &isnull);

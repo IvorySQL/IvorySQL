@@ -2581,7 +2581,8 @@ convert_saop_to_hashed_saop_walker(Node *node, void *context)
 	if (IsA(node, ScalarArrayOpExpr))
 	{
 		ScalarArrayOpExpr *saop = (ScalarArrayOpExpr *) node;
-		Expr	   *arrayarg = (Expr *) lsecond(saop->args);
+		Node	   *leftarg = (Node *) linitial(saop->args);
+		Node	   *arrayarg = (Node *) lsecond(saop->args);
 		Oid			lefthashfunc;
 		Oid			righthashfunc;
 
@@ -2590,7 +2591,8 @@ convert_saop_to_hashed_saop_walker(Node *node, void *context)
 		{
 			if (saop->useOr)
 			{
-				if (get_op_hash_functions(saop->opno, &lefthashfunc, &righthashfunc) &&
+				if (get_op_hash_functions_ext(saop->opno, exprType(leftarg),
+											  &lefthashfunc, &righthashfunc) &&
 					lefthashfunc == righthashfunc)
 				{
 					Datum		arrdatum = ((Const *) arrayarg)->constvalue;
@@ -2622,7 +2624,8 @@ convert_saop_to_hashed_saop_walker(Node *node, void *context)
 				 * just ensure the lookup items are not in the hash table.
 				 */
 				if (OidIsValid(negator) &&
-					get_op_hash_functions(negator, &lefthashfunc, &righthashfunc) &&
+					get_op_hash_functions_ext(negator, exprType(leftarg),
+											  &lefthashfunc, &righthashfunc) &&
 					lefthashfunc == righthashfunc)
 				{
 					Datum		arrdatum = ((Const *) arrayarg)->constvalue;
@@ -3305,7 +3308,6 @@ eval_const_expressions_mutator(Node *node,
 				}
 				break;
 			}
-
 		case T_JsonValueExpr:
 			{
 				JsonValueExpr *jve = (JsonValueExpr *) node;
@@ -3329,7 +3331,21 @@ eval_const_expressions_mutator(Node *node,
 												  (Expr *) formatted_expr,
 												  copyObject(jve->format));
 			}
+		case T_JsonConstructorExpr:
+			{
+				JsonConstructorExpr *jce = (JsonConstructorExpr *) node;
 
+				/*
+				 * JSCTOR_JSON_ARRAY_QUERY carries a pre-built executable form
+				 * in its func field (a COALESCE-wrapped JSON_ARRAYAGG
+				 * subquery, constructed during parse analysis).  Replace the
+				 * node with that expression and continue simplifying.
+				 */
+				if (jce->type == JSCTOR_JSON_ARRAY_QUERY)
+					return eval_const_expressions_mutator((Node *) jce->func,
+														  context);
+			}
+			break;
 		case T_SubPlan:
 		case T_AlternativeSubPlan:
 
@@ -5354,7 +5370,7 @@ recheck_cast_function_args(List *args, Oid result_type,
 						   HeapTuple func_tuple)
 {
 	int			nargs;
-	Oid			actual_arg_types[FUNC_MAX_ARGS];
+	Oid			actual_arg_types[FUNC_MAX_ARGS] = {0};
 	Oid			declared_arg_types[FUNC_MAX_ARGS];
 	Oid			rettype;
 	Oid			declared_rettype;

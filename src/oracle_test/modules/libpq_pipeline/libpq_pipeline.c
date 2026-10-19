@@ -25,7 +25,7 @@
 
 
 static void exit_nicely(PGconn *conn);
-pg_noreturn static void pg_fatal_impl(int line, const char *fmt,...)
+pg_noreturn static void pg_fatal_impl(int line, const char *fmt, ...)
 			pg_attribute_printf(2, 3);
 static bool process_result(PGconn *conn, PGresult *res, int results,
 						   int numsent);
@@ -73,7 +73,7 @@ exit_nicely(PGconn *conn)
  */
 #define pg_fatal(...) pg_fatal_impl(__LINE__, __VA_ARGS__)
 pg_noreturn static void
-pg_fatal_impl(int line, const char *fmt,...)
+pg_fatal_impl(int line, const char *fmt, ...)
 {
 	va_list		args;
 
@@ -2125,6 +2125,7 @@ print_test_list(void)
 	printf("pipeline_idle\n");
 	printf("pipelined_insert\n");
 	printf("prepared\n");
+	printf("protocol_version\n");
 	printf("simple_pipeline\n");
 	printf("singlerow\n");
 	printf("transaction\n");
@@ -2237,6 +2238,8 @@ main(int argc, char **argv)
 		test_pipelined_insert(conn, numrows);
 	else if (strcmp(testname, "prepared") == 0)
 		test_prepared(conn);
+	else if (strcmp(testname, "protocol_version") == 0)
+		test_protocol_version(conn);
 	else if (strcmp(testname, "simple_pipeline") == 0)
 		test_simple_pipeline(conn);
 	else if (strcmp(testname, "singlerow") == 0)

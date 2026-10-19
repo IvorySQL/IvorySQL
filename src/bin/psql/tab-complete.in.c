@@ -212,7 +212,8 @@ typedef struct SchemaQuery
 } SchemaQuery;
 
 
-/* Store maximum number of records we want from database queries
+/*
+ * Store maximum number of records we want from database queries
  * (implemented via SELECT ... LIMIT xx).
  */
 static int	completion_max_records;
@@ -1707,7 +1708,7 @@ TailMatchesArray(bool case_sensitive,
 static bool
 TailMatchesImpl(bool case_sensitive,
 				int previous_words_count, char **previous_words,
-				int narg,...)
+				int narg, ...)
 {
 	const char *argarray[64];
 	va_list		args;
@@ -1757,7 +1758,7 @@ HeadMatchesArray(bool case_sensitive,
 static bool
 HeadMatchesImpl(bool case_sensitive,
 				int previous_words_count, char **previous_words,
-				int narg,...)
+				int narg, ...)
 {
 	const char *argarray[64];
 	va_list		args;
@@ -1844,7 +1845,7 @@ MatchesArray(bool case_sensitive,
 static bool
 MatchesImpl(bool case_sensitive,
 			int previous_words_count, char **previous_words,
-			int narg,...)
+			int narg, ...)
 {
 	const char *argarray[64];
 	va_list		args;
@@ -2397,7 +2398,8 @@ match_previous_words(int pattern_id,
 					  "max_retention_duration", "origin",
 					  "password_required", "retain_dead_tuples",
 					  "run_as_owner", "slot_name", "streaming",
-					  "synchronous_commit", "two_phase");
+					  "synchronous_commit", "two_phase",
+					  "wal_receiver_timeout");
 	/* ALTER SUBSCRIPTION <name> SKIP ( */
 	else if (Matches("ALTER", "SUBSCRIPTION", MatchAny, MatchAnyN, "SKIP", "("))
 		COMPLETE_WITH("lsn");
@@ -3302,6 +3304,8 @@ match_previous_words(int pattern_id,
 			COMPLETE_WITH("MODE", "FLUSH_UNLOGGED");
 		else if (TailMatches("MODE"))
 			COMPLETE_WITH("FAST", "SPREAD");
+		else if (TailMatches("FLUSH_UNLOGGED"))
+			COMPLETE_WITH("ON", "OFF");
 	}
 /* CLOSE */
 	else if (Matches("CLOSE"))
@@ -3991,7 +3995,8 @@ match_previous_words(int pattern_id,
 					  "max_retention_duration", "origin",
 					  "password_required", "retain_dead_tuples",
 					  "run_as_owner", "slot_name", "streaming",
-					  "synchronous_commit", "two_phase");
+					  "synchronous_commit", "two_phase",
+					  "wal_receiver_timeout");
 
 /* CREATE TRIGGER --- is allowed inside CREATE SCHEMA, so use TailMatches */
 
@@ -4391,7 +4396,19 @@ match_previous_words(int pattern_id,
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_updatables);
 	/* Complete DELETE FROM <table> */
 	else if (TailMatches("DELETE", "FROM", MatchAny))
-		COMPLETE_WITH("USING", "WHERE");
+		COMPLETE_WITH("FOR", "USING", "WHERE");
+	/* Complete DELETE FROM <table> FOR with PORTION */
+	else if (TailMatches("DELETE", "FROM", MatchAny, "FOR"))
+		COMPLETE_WITH("PORTION");
+	/* Complete DELETE FROM <table> FOR PORTION with OF */
+	else if (TailMatches("DELETE", "FROM", MatchAny, "FOR", "PORTION"))
+		COMPLETE_WITH("OF");
+	/* Complete DELETE FROM <table> FOR PORTION OF with column names */
+	else if (TailMatches("DELETE", "FROM", MatchAny, "FOR", "PORTION", "OF"))
+		COMPLETE_WITH_ATTR(prev4_wd);
+	/* Complete DELETE FROM <table> FOR PORTION OF <period> with FROM */
+	else if (TailMatches("DELETE", "FROM", MatchAny, "FOR", "PORTION", "OF", MatchAny))
+		COMPLETE_WITH("FROM");
 	/* Complete DELETE FROM <table> USING with relations supporting SELECT */
 	else if (TailMatches("DELETE", "FROM", MatchAny, "USING"))
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_selectables);
@@ -4554,8 +4571,8 @@ match_previous_words(int pattern_id,
 		if (ends_with(prev_wd, '(') || ends_with(prev_wd, ','))
 			COMPLETE_WITH("ANALYZE", "VERBOSE", "COSTS", "SETTINGS", "GENERIC_PLAN",
 						  "BUFFERS", "SERIALIZE", "WAL", "TIMING", "SUMMARY",
-						  "MEMORY", "FORMAT");
-		else if (TailMatches("ANALYZE|VERBOSE|COSTS|SETTINGS|GENERIC_PLAN|BUFFERS|WAL|TIMING|SUMMARY|MEMORY"))
+						  "MEMORY", "IO", "FORMAT");
+		else if (TailMatches("ANALYZE|VERBOSE|COSTS|SETTINGS|GENERIC_PLAN|BUFFERS|WAL|TIMING|SUMMARY|MEMORY|IO"))
 			COMPLETE_WITH("ON", "OFF");
 		else if (TailMatches("SERIALIZE"))
 			COMPLETE_WITH("TEXT", "NONE", "BINARY");
@@ -4933,7 +4950,7 @@ match_previous_words(int pattern_id,
 	else if (Matches("IMPORT", "FOREIGN", "SCHEMA", MatchAny))
 		COMPLETE_WITH("EXCEPT (", "FROM SERVER", "LIMIT TO (");
 	else if (TailMatches("LIMIT", "TO", "(*)") ||
-			 TailMatches("EXCEPT", "(*)"))
+			 Matches("IMPORT", "FOREIGN", "SCHEMA", MatchAny, "EXCEPT", "(*)"))
 		COMPLETE_WITH("FROM SERVER");
 	else if (TailMatches("FROM", "SERVER", MatchAny))
 		COMPLETE_WITH("INTO");
@@ -5270,7 +5287,7 @@ match_previous_words(int pattern_id,
 		 */
 		if (ends_with(prev_wd, '(') || ends_with(prev_wd, ','))
 			COMPLETE_WITH("ANALYZE", "CONCURRENTLY", "VERBOSE");
-		else if (TailMatches("ANALYZE", "CONCURRENTLY", "VERBOSE"))
+		else if (TailMatches("ANALYZE|CONCURRENTLY|VERBOSE"))
 			COMPLETE_WITH("ON", "OFF");
 	}
 
@@ -5467,9 +5484,21 @@ match_previous_words(int pattern_id,
 	/* If prev. word is UPDATE suggest a list of tables */
 	else if (TailMatches("UPDATE"))
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_updatables);
-	/* Complete UPDATE <table> with "SET" */
+	/* Complete UPDATE <table> with "SET" or "FOR" (for FOR PORTION OF) */
 	else if (TailMatches("UPDATE", MatchAny))
-		COMPLETE_WITH("SET");
+		COMPLETE_WITH("FOR", "SET");
+	/* Complete UPDATE <table> FOR with PORTION */
+	else if (TailMatches("UPDATE", MatchAny, "FOR"))
+		COMPLETE_WITH("PORTION");
+	/* Complete UPDATE <table> FOR PORTION with OF */
+	else if (TailMatches("UPDATE", MatchAny, "FOR", "PORTION"))
+		COMPLETE_WITH("OF");
+	/* Complete UPDATE <table> FOR PORTION OF with column names */
+	else if (TailMatches("UPDATE", MatchAny, "FOR", "PORTION", "OF"))
+		COMPLETE_WITH_ATTR(prev4_wd);
+	/* Complete UPDATE <table> FOR PORTION OF <period> with FROM */
+	else if (TailMatches("UPDATE", MatchAny, "FOR", "PORTION", "OF", MatchAny))
+		COMPLETE_WITH("FROM");
 	/* Complete UPDATE <table> SET with list of attributes */
 	else if (TailMatches("UPDATE", MatchAny, "SET"))
 		COMPLETE_WITH_ATTR(prev2_wd);

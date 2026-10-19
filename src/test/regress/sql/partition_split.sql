@@ -19,75 +19,72 @@ CREATE TABLE sales_jan2022 PARTITION OF sales_range FOR VALUES FROM ('2022-01-01
 CREATE TABLE sales_feb_mar_apr2022 PARTITION OF sales_range FOR VALUES FROM ('2022-02-01') TO ('2022-05-01');
 CREATE TABLE sales_others PARTITION OF sales_range DEFAULT;
 
--- ERROR:  relation "sales_xxx" does not exist
+-- ERROR
 ALTER TABLE sales_range SPLIT PARTITION sales_xxx INTO
   (PARTITION sales_feb2022 FOR VALUES FROM ('2022-02-01') TO ('2022-03-01'),
    PARTITION sales_mar2022 FOR VALUES FROM ('2022-03-01') TO ('2022-04-01'),
    PARTITION sales_apr2022 FOR VALUES FROM ('2022-04-01') TO ('2022-05-01'));
 
--- ERROR:  relation "sales_jan2022" already exists
+-- ERROR
 ALTER TABLE sales_range SPLIT PARTITION sales_feb_mar_apr2022 INTO
   (PARTITION sales_jan2022 FOR VALUES FROM ('2022-02-01') TO ('2022-03-01'),
    PARTITION sales_mar2022 FOR VALUES FROM ('2022-03-01') TO ('2022-04-01'),
    PARTITION sales_apr2022 FOR VALUES FROM ('2022-04-01') TO ('2022-05-01'));
 
--- ERROR:  invalid bound specification for a range partition
+-- ERROR
 ALTER TABLE sales_range SPLIT PARTITION sales_feb_mar_apr2022 INTO
   (PARTITION sales_jan2022 FOR VALUES IN ('2022-05-01', '2022-06-01'),
    PARTITION sales_mar2022 FOR VALUES FROM ('2022-03-01') TO ('2022-04-01'),
    PARTITION sales_apr2022 FOR VALUES FROM ('2022-04-01') TO ('2022-05-01'));
 
--- ERROR:  empty range bound specified for partition "sales_mar2022"
+-- ERROR
 ALTER TABLE sales_range SPLIT PARTITION sales_feb_mar_apr2022 INTO
   (PARTITION sales_feb2022 FOR VALUES FROM ('2022-02-01') TO ('2022-03-01'),
    PARTITION sales_mar2022 FOR VALUES FROM ('2022-03-01') TO ('2022-02-01'),
    PARTITION sales_apr2022 FOR VALUES FROM ('2022-04-01') TO ('2022-05-01'));
 
---ERROR:  list of split partitions should contain at least two items
+-- ERROR
 ALTER TABLE sales_range SPLIT PARTITION sales_feb_mar_apr2022 INTO
   (PARTITION sales_feb2022 FOR VALUES FROM ('2022-02-01') TO ('2022-10-01'));
 
--- ERROR:  lower bound of partition "sales_feb2022" is not equal to lower bound of split partition "sales_feb_mar_apr2022"
--- HINT:  ALTER TABLE ... SPLIT PARTITION require combined bounds of new partitions must exactly match the bound of the split partition.
+-- ERROR
 ALTER TABLE sales_range SPLIT PARTITION sales_feb_mar_apr2022 INTO
   (PARTITION sales_feb2022 FOR VALUES FROM ('2022-01-01') TO ('2022-03-01'),
    PARTITION sales_mar2022 FOR VALUES FROM ('2022-03-01') TO ('2022-04-01'),
    PARTITION sales_apr2022 FOR VALUES FROM ('2022-04-01') TO ('2022-05-01'));
 
--- ERROR:  partition with name "sales_feb_mar_apr2022" is already used
+-- ERROR
 -- (We can create partition with the same name as split partition, but can't create two partitions with the same name)
 ALTER TABLE sales_range SPLIT PARTITION sales_feb_mar_apr2022 INTO
   (PARTITION sales_feb_mar_apr2022 FOR VALUES FROM ('2022-02-01') TO ('2022-03-01'),
    PARTITION sales_feb_mar_apr2022 FOR VALUES FROM ('2022-03-01') TO ('2022-04-01'),
    PARTITION sales_apr2022 FOR VALUES FROM ('2022-04-01') TO ('2022-05-01'));
 
--- ERROR:  partition with name "sales_feb2022" is already used
+-- ERROR
 ALTER TABLE sales_range SPLIT PARTITION sales_feb_mar_apr2022 INTO
   (PARTITION sales_feb2022 FOR VALUES FROM ('2022-02-01') TO ('2022-03-01'),
    PARTITION sales_feb2022 FOR VALUES FROM ('2022-03-01') TO ('2022-04-01'),
    PARTITION sales_apr2022 FOR VALUES FROM ('2022-04-01') TO ('2022-05-01'));
 
--- ERROR:  partition with name "sales_feb2022" is already used
+-- ERROR
 ALTER TABLE sales_range SPLIT PARTITION sales_feb_mar_apr2022 INTO
   (PARTITION sales_feb2022 FOR VALUES FROM ('2022-02-01') TO ('2022-03-01'),
    PARTITION partition_split_schema.sales_feb2022 FOR VALUES FROM ('2022-03-01') TO ('2022-04-01'),
    PARTITION sales_apr2022 FOR VALUES FROM ('2022-04-01') TO ('2022-05-01'));
 
--- ERROR:  ALTER action SPLIT PARTITION cannot be performed on relation "sales_feb_mar_apr2022"
--- DETAIL:  This operation is not supported for tables.
+-- ERROR
 ALTER TABLE sales_feb_mar_apr2022 SPLIT PARTITION sales_feb_mar_apr2022 INTO
   (PARTITION sales_jan2022 FOR VALUES FROM ('2022-02-01') TO ('2022-03-01'),
    PARTITION sales_feb2022 FOR VALUES FROM ('2022-03-01') TO ('2022-04-01'),
    PARTITION sales_apr2022 FOR VALUES FROM ('2022-04-01') TO ('2022-05-01'));
 
--- ERROR:  upper bound of partition "sales_apr2022" is not equal to upper bound of split partition "sales_feb_mar_apr2022"
--- HINT:  ALTER TABLE ... SPLIT PARTITION require combined bounds of new partitions must exactly match the bound of the split partition.
+-- ERROR
 ALTER TABLE sales_range SPLIT PARTITION sales_feb_mar_apr2022 INTO
   (PARTITION sales_feb2022 FOR VALUES FROM ('2022-02-01') TO ('2022-03-01'),
    PARTITION sales_mar2022 FOR VALUES FROM ('2022-03-01') TO ('2022-04-01'),
    PARTITION sales_apr2022 FOR VALUES FROM ('2022-04-01') TO ('2022-06-01'));
 
--- ERROR:  can not split to partition "sales_mar2022" together with partition "sales_feb2022"
+-- ERROR
 ALTER TABLE sales_range SPLIT PARTITION sales_feb_mar_apr2022 INTO
   (PARTITION sales_feb2022 FOR VALUES FROM ('2022-02-01') TO ('2022-03-01'),
    PARTITION sales_mar2022 FOR VALUES FROM ('2022-02-01') TO ('2022-04-01'),
@@ -96,8 +93,7 @@ ALTER TABLE sales_range SPLIT PARTITION sales_feb_mar_apr2022 INTO
 -- Tests for spaces between partitions, them should be executed without DEFAULT partition
 ALTER TABLE sales_range DETACH PARTITION sales_others;
 
--- ERROR:  lower bound of partition "sales_feb2022" is not equal to lower bound of split partition "sales_feb_mar_apr2022"
--- HINT:  ALTER TABLE ... SPLIT PARTITION require combined bounds of new partitions must exactly match the bound of the split partition.
+-- ERROR
 ALTER TABLE sales_range SPLIT PARTITION sales_feb_mar_apr2022 INTO
   (PARTITION sales_feb2022 FOR VALUES FROM ('2022-02-02') TO ('2022-03-01'),
    PARTITION sales_mar2022 FOR VALUES FROM ('2022-03-01') TO ('2022-04-01'),
@@ -121,8 +117,7 @@ CREATE TABLE sales_range (sales_date date) PARTITION BY RANGE (sales_date);
 CREATE TABLE sales_jan2022 PARTITION OF sales_range FOR VALUES FROM ('2022-01-01') TO ('2022-02-01');
 CREATE TABLE sales_feb_mar_apr2022 PARTITION OF sales_range FOR VALUES FROM ('2022-02-01') TO ('2022-05-01');
 
--- ERROR:  upper bound of partition "sales_apr2022" is not equal to upper bound of split partition "sales_feb_mar_apr2022"
--- HINT:  ALTER TABLE ... SPLIT PARTITION require combined bounds of new partitions must exactly match the bound of the split partition.
+-- ERROR
 ALTER TABLE sales_range SPLIT PARTITION sales_feb_mar_apr2022 INTO
   (PARTITION sales_feb2022 FOR VALUES FROM ('2022-02-01') TO ('2022-03-01'),
    PARTITION sales_mar2022 FOR VALUES FROM ('2022-03-01') TO ('2022-04-01'),
@@ -299,7 +294,7 @@ CREATE TABLE sales_range (salesperson_id INT, sales_date date) PARTITION BY RANG
 CREATE TABLE sales_others PARTITION OF sales_range DEFAULT;
 
 -- sales_error intersects with sales_dec2021 (lower bound)
--- ERROR:  can not split to partition "sales_error" together with partition "sales_dec2021"
+-- ERROR
 ALTER TABLE sales_range SPLIT PARTITION sales_others INTO
   (PARTITION sales_dec2021 FOR VALUES FROM ('2021-12-01') TO ('2022-01-01'),
    PARTITION sales_error FOR VALUES FROM ('2021-12-30') TO ('2022-02-01'),
@@ -307,7 +302,7 @@ ALTER TABLE sales_range SPLIT PARTITION sales_others INTO
    PARTITION sales_others DEFAULT);
 
 -- sales_error intersects with sales_feb2022 (upper bound)
--- ERROR:  can not split to partition "sales_feb2022" together with partition "sales_error"
+-- ERROR
 ALTER TABLE sales_range SPLIT PARTITION sales_others INTO
   (PARTITION sales_dec2021 FOR VALUES FROM ('2021-12-01') TO ('2022-01-01'),
    PARTITION sales_error FOR VALUES FROM ('2022-01-01') TO ('2022-02-02'),
@@ -315,7 +310,7 @@ ALTER TABLE sales_range SPLIT PARTITION sales_others INTO
    PARTITION sales_others DEFAULT);
 
 -- sales_error intersects with sales_dec2021 (inside bound)
--- ERROR:  can not split to partition "sales_error" together with partition "sales_dec2021"
+-- ERROR
 ALTER TABLE sales_range SPLIT PARTITION sales_others INTO
   (PARTITION sales_dec2021 FOR VALUES FROM ('2021-12-01') TO ('2022-01-01'),
    PARTITION sales_error FOR VALUES FROM ('2021-12-10') TO ('2021-12-20'),
@@ -323,15 +318,14 @@ ALTER TABLE sales_range SPLIT PARTITION sales_others INTO
    PARTITION sales_others DEFAULT);
 
 -- sales_error intersects with sales_dec2021 (exactly the same bounds)
--- ERROR:  can not split to partition "sales_error" together with partition "sales_dec2021"
+-- ERROR
 ALTER TABLE sales_range SPLIT PARTITION sales_others INTO
   (PARTITION sales_dec2021 FOR VALUES FROM ('2021-12-01') TO ('2022-01-01'),
    PARTITION sales_error FOR VALUES FROM ('2021-12-01') TO ('2022-01-01'),
    PARTITION sales_feb2022 FOR VALUES FROM ('2022-02-01') TO ('2022-03-01'),
    PARTITION sales_others DEFAULT);
 
--- ERROR:  can not split DEFAULT partition "sales_others"
--- HINT:  To split DEFAULT partition one of the new partition must be DEFAULT.
+-- ERROR
 ALTER TABLE sales_range SPLIT PARTITION sales_others INTO
   (PARTITION sales_dec2021 FOR VALUES FROM ('2021-12-01') TO ('2022-01-01'),
    PARTITION sales_jan2022 FOR VALUES FROM ('2022-01-01') TO ('2022-02-01'),
@@ -385,9 +379,9 @@ SELECT pg_get_constraintdef(oid), conname, conkey FROM pg_constraint WHERE conre
 SELECT pg_get_constraintdef(oid), conname, conkey FROM pg_constraint WHERE conrelid = 'sales_mar2022'::regclass::oid ORDER BY conname COLLATE "C";
 SELECT pg_get_constraintdef(oid), conname, conkey FROM pg_constraint WHERE conrelid = 'sales_apr2022'::regclass::oid ORDER BY conname COLLATE "C";
 
--- ERROR:  new row for relation "sales_mar2022" violates check constraint "sales_range_sales_amount_check"
+-- ERROR
 INSERT INTO sales_range VALUES (1, 0, '2022-03-11');
--- ERROR:  insert or update on table "sales_mar2022" violates foreign key constraint "sales_range_salesperson_id_fkey"
+-- ERROR
 INSERT INTO sales_range VALUES (-1, 10, '2022-03-11');
 -- ok
 INSERT INTO sales_range VALUES (1, 10, '2022-03-11');
@@ -430,7 +424,7 @@ ALTER TABLE salespeople SPLIT PARTITION salespeople10_40 INTO
 
 SELECT tableoid::regclass, * FROM salespeople ORDER BY tableoid::regclass::text COLLATE "C", salesperson_id;
 
--- ERROR:  insert or update on table "sales" violates foreign key constraint "sales_salesperson_id_fkey"
+-- ERROR
 INSERT INTO sales VALUES (40, 50,  '2022-03-04');
 -- ok
 INSERT INTO sales VALUES (30, 50,  '2022-03-04');
@@ -608,31 +602,31 @@ CREATE TABLE sales_nord PARTITION OF sales_list FOR VALUES IN ('Oslo', 'St. Pete
 CREATE TABLE sales_all PARTITION OF sales_list FOR VALUES IN ('Warsaw', 'Lisbon', 'New York', 'Madrid', 'Beijing', 'Berlin', 'Delhi', 'Kyiv', 'Vladivostok');
 CREATE TABLE sales_others PARTITION OF sales_list DEFAULT;
 
--- ERROR:  new partition "sales_east" would overlap with another (not split) partition "sales_nord"
+-- ERROR
 ALTER TABLE sales_list SPLIT PARTITION sales_all INTO
   (PARTITION sales_west FOR VALUES IN ('Lisbon', 'New York', 'Madrid'),
    PARTITION sales_east FOR VALUES IN ('Beijing', 'Delhi', 'Vladivostok', 'Helsinki'),
    PARTITION sales_central FOR VALUES IN ('Warsaw', 'Berlin', 'Kyiv'));
 
--- ERROR:  new partition "sales_west" would overlap with another new partition "sales_central"
+-- ERROR
 ALTER TABLE sales_list SPLIT PARTITION sales_all INTO
   (PARTITION sales_west FOR VALUES IN ('Lisbon', 'New York', 'Madrid'),
    PARTITION sales_east FOR VALUES IN ('Beijing', 'Delhi', 'Vladivostok'),
    PARTITION sales_central FOR VALUES IN ('Warsaw', 'Berlin', 'Lisbon', 'Kyiv'));
 
--- ERROR:  new partition "sales_west" cannot have NULL value because split partition "sales_all" does not have
+-- ERROR
 ALTER TABLE sales_list SPLIT PARTITION sales_all INTO
   (PARTITION sales_west FOR VALUES IN ('Lisbon', 'New York', 'Madrid', NULL),
    PARTITION sales_east FOR VALUES IN ('Beijing', 'Delhi', 'Vladivostok'),
    PARTITION sales_central FOR VALUES IN ('Warsaw', 'Berlin', 'Kyiv'));
 
--- ERROR:  new partition "sales_west" cannot have this value because split partition "sales_all" does not have
+-- ERROR
 ALTER TABLE sales_list SPLIT PARTITION sales_all INTO
   (PARTITION sales_west FOR VALUES IN ('Lisbon', 'New York', 'Madrid', 'Melbourne'),
    PARTITION sales_east FOR VALUES IN ('Beijing', 'Delhi', 'Vladivostok'),
    PARTITION sales_central FOR VALUES IN ('Warsaw', 'Berlin', 'Kyiv'));
 
--- ERROR:  new partition cannot be DEFAULT because DEFAULT partition "sales_others" already exists
+-- ERROR
 ALTER TABLE sales_list SPLIT PARTITION sales_all INTO
   (PARTITION sales_west FOR VALUES IN ('Lisbon', 'New York', 'Madrid', 'Melbourne'),
    PARTITION sales_east FOR VALUES IN ('Beijing', 'Delhi', 'Vladivostok'),
@@ -644,7 +638,7 @@ DROP TABLE sales_list;
 -- Test for non-symbolic comparison of values (numeric values '0' and '0.0' are equal).
 CREATE TABLE t (a numeric) PARTITION BY LIST (a);
 CREATE TABLE t1 PARTITION OF t FOR VALUES in  ('0', '1');
--- ERROR:  new partition "x" would overlap with another new partition "x1"
+-- ERROR
 ALTER TABLE t SPLIT PARTITION t1 INTO
   (PARTITION x FOR VALUES IN ('0'),
    PARTITION x1 FOR VALUES IN ('0.0', '1'));
@@ -660,21 +654,19 @@ CREATE TABLE sales_list(sales_state VARCHAR(20)) PARTITION BY LIST (sales_state)
 CREATE TABLE sales_nord PARTITION OF sales_list FOR VALUES IN ('Helsinki', 'St. Petersburg', 'Oslo');
 CREATE TABLE sales_all PARTITION OF sales_list FOR VALUES IN ('Warsaw', 'Lisbon', 'New York', 'Madrid', 'Beijing', 'Berlin', 'Delhi', 'Kyiv', 'Vladivostok', NULL);
 
--- ERROR:  new partitions combined partition bounds do not contain value (NULL) but split partition "sales_all" does
--- HINT:  ALTER TABLE ... SPLIT PARTITION require combined bounds of new partitions must exactly match the bound of the split partition.
+-- ERROR
 ALTER TABLE sales_list SPLIT PARTITION sales_all INTO
   (PARTITION sales_west FOR VALUES IN ('Lisbon', 'New York', 'Madrid'),
    PARTITION sales_east FOR VALUES IN ('Beijing', 'Delhi', 'Vladivostok'),
    PARTITION sales_central FOR VALUES IN ('Warsaw', 'Berlin', 'Kyiv'));
 
--- ERROR:  new partitions combined partition bounds do not contain value ('Kyiv'::character varying(20)) but split partition "sales_all" does
--- HINT:  ALTER TABLE ... SPLIT PARTITION require combined bounds of new partitions must exactly match the bound of the split partition.
+-- ERROR
 ALTER TABLE sales_list SPLIT PARTITION sales_all INTO
   (PARTITION sales_west FOR VALUES IN ('Lisbon', 'New York', 'Madrid'),
    PARTITION sales_east FOR VALUES IN ('Beijing', 'Delhi', 'Vladivostok'),
    PARTITION sales_central FOR VALUES IN ('Warsaw', 'Berlin', NULL));
 
--- ERROR  DEFAULT partition should be one
+-- ERROR
 ALTER TABLE sales_list SPLIT PARTITION sales_all INTO
   (PARTITION sales_west FOR VALUES IN ('Lisbon', 'New York', 'Madrid'),
    PARTITION sales_east FOR VALUES IN ('Beijing', 'Delhi', 'Vladivostok'),
@@ -843,13 +835,79 @@ SELECT tableoid::regclass, * FROM sales_range ORDER BY tableoid::regclass::text 
 DROP TABLE sales_range;
 
 --
+-- Test that SPLIT PARTITION rejects the degenerate case where the only
+-- non-DEFAULT replacement partition keeps the original bound and the command
+-- merely adds a DEFAULT partition.
+--
+CREATE TABLE t (i int) PARTITION BY RANGE (i);
+CREATE TABLE tp_0_50 PARTITION OF t FOR VALUES FROM (0) TO (50);
+INSERT INTO t VALUES (1);
+
+-- ERROR
+ALTER TABLE t SPLIT PARTITION tp_0_50 INTO
+  (PARTITION tp_0_50 FOR VALUES FROM (0) TO (50),
+   PARTITION tp_default DEFAULT);
+
+DROP TABLE t;
+
+--
+-- Test that a LIST split with DEFAULT is not considered degenerate when
+-- only NULL is removed from the explicit replacement partition.
+--
+CREATE TABLE t (i int) PARTITION BY LIST (i);
+CREATE TABLE tp_null_1 PARTITION OF t FOR VALUES IN (NULL, 1);
+
+ALTER TABLE t SPLIT PARTITION tp_null_1 INTO
+  (PARTITION tp_1 FOR VALUES IN (1),
+   PARTITION tp_default DEFAULT);
+
+INSERT INTO t VALUES (NULL), (1), (2);
+SELECT tableoid::regclass, i FROM t ORDER BY tableoid::regclass::text COLLATE "C", i NULLS FIRST;
+
+DROP TABLE t;
+
+--
+-- Test that the same-bound check for LIST partitioning uses the
+-- partition operator family, not byte equality.  -0.0 and 0.0 have
+-- different bit patterns but compare equal under float8, so the
+-- replacement bound (-0.0, 1.0) is the same set as the original
+-- (0.0, 1.0) and the SPLIT is degenerate.  A datumIsEqual()-based
+-- check would let this through; the partsupfunc-based check correctly
+-- rejects it.
+--
+CREATE TABLE t (v float8) PARTITION BY LIST (v);
+CREATE TABLE tp_zero_one PARTITION OF t FOR VALUES IN (0.0, 1.0);
+
+-- ERROR
+ALTER TABLE t SPLIT PARTITION tp_zero_one INTO
+  (PARTITION tp_zero_one FOR VALUES IN (-0.0, 1.0),
+   PARTITION tp_default DEFAULT);
+
+DROP TABLE t;
+
+--
+-- Test that the explicit partition bound cannot extend outside the split
+-- partition's bound when a DEFAULT partition is specified.
+--
+CREATE TABLE t (i int) PARTITION BY RANGE (i);
+CREATE TABLE tp_0_51 PARTITION OF t FOR VALUES FROM (0) TO (51);
+CREATE TABLE tp_51_100 PARTITION OF t FOR VALUES FROM (51) TO (100);
+
+-- ERROR
+ALTER TABLE t SPLIT PARTITION tp_0_51 INTO
+  (PARTITION tp_0_51 FOR VALUES FROM (0) TO (53),
+   PARTITION tp_default DEFAULT);
+
+DROP TABLE t;
+
+--
 -- Try to SPLIT partition of another table.
 --
 CREATE TABLE t1(i int, t text) PARTITION BY LIST (t);
 CREATE TABLE t1pa PARTITION OF t1 FOR VALUES IN ('A');
 CREATE TABLE t2 (i int, t text) PARTITION BY RANGE (t);
 
--- ERROR:  relation "t1pa" is not a partition of relation "t2"
+-- ERROR
 ALTER TABLE t2 SPLIT PARTITION t1pa INTO
    (PARTITION t2a FOR VALUES FROM ('A') TO ('B'),
     PARTITION t2b FOR VALUES FROM ('B') TO ('C'));
@@ -868,7 +926,7 @@ SELECT c.oid::pg_catalog.regclass, pg_catalog.pg_get_expr(c.relpartbound, c.oid)
   WHERE c.oid = i.inhrelid AND i.inhparent = 't'::regclass
   ORDER BY pg_catalog.pg_get_expr(c.relpartbound, c.oid) = 'DEFAULT', c.oid::pg_catalog.regclass::pg_catalog.text COLLATE "C";
 
--- ERROR:  cannot create a permanent relation as partition of temporary relation "t"
+-- ERROR
 ALTER TABLE t SPLIT PARTITION tp_0_2 INTO
   (PARTITION tp_0_1 FOR VALUES FROM (0) TO (1),
    PARTITION tp_1_2 FOR VALUES FROM (1) TO (2));
@@ -1033,12 +1091,12 @@ CREATE TABLE t (i int) PARTITION BY HASH(i);
 CREATE TABLE tp1 PARTITION OF t FOR VALUES WITH (MODULUS 2, REMAINDER 0);
 CREATE TABLE tp2 PARTITION OF t FOR VALUES WITH (MODULUS 2, REMAINDER 1);
 
--- ERROR:  partition of hash-partitioned table cannot be split
+-- ERROR
 ALTER TABLE t SPLIT PARTITION tp1 INTO
   (PARTITION tp1_1 FOR VALUES WITH (MODULUS 4, REMAINDER 0),
    PARTITION tp1_2 FOR VALUES WITH (MODULUS 4, REMAINDER 2));
 
--- ERROR:  list of new partitions should contain at least two partitions
+-- ERROR
 ALTER TABLE t SPLIT PARTITION tp1 INTO
   (PARTITION tp1_1 FOR VALUES WITH (MODULUS 4, REMAINDER 0));
 
@@ -1126,6 +1184,77 @@ SELECT count(*) FROM t WHERE i = 0 AND tab_id IN (SELECT tab_id FROM t WHERE i =
 
 DROP TABLE t;
 
+-- Each new partition produced by SPLIT must get its own TOAST table so
+-- that out-of-line varlena attributes coming from the source partition
+-- can be stored.  SET STORAGE EXTERNAL forces externalization for any
+-- value over the TOAST threshold, so a string over that threshold
+-- suffices to exercise the toast-table dependency.
+CREATE TABLE t (a text) PARTITION BY RANGE(a);
+ALTER TABLE t ALTER COLUMN a SET STORAGE EXTERNAL;
+CREATE TABLE tp_all PARTITION OF t FOR VALUES FROM (MINVALUE) TO (MAXVALUE);
+INSERT INTO t SELECT repeat('1', 10000);
+ALTER TABLE t SPLIT PARTITION tp_all INTO (
+    PARTITION tp_lo FOR VALUES FROM (MINVALUE) TO ('2'),
+    PARTITION tp_hi FOR VALUES FROM ('2') TO (MAXVALUE)
+);
+SELECT relname,
+       reltoastrelid <> 0 AS has_toast,
+       pg_relation_size(reltoastrelid) > 0 AS toast_used
+  FROM pg_class WHERE relname IN ('tp_lo', 'tp_hi') ORDER BY relname;
+SELECT length(a) FROM t;
+DROP TABLE t;
+
+-- Tablespace selection for the new partitions mirrors
+-- CREATE TABLE ... PARTITION OF: the partitioned root's explicit
+-- tablespace wins; otherwise default_tablespace applies; otherwise the
+-- database default is used.
+CREATE TABLE t (i int) PARTITION BY RANGE(i) TABLESPACE regress_tblspace;
+CREATE TABLE tp_all PARTITION OF t FOR VALUES FROM (0) TO (10);
+INSERT INTO t SELECT generate_series(0, 9);
+ALTER TABLE t SPLIT PARTITION tp_all INTO (
+    PARTITION tp_lo FOR VALUES FROM (0) TO (5),
+    PARTITION tp_hi FOR VALUES FROM (5) TO (10)
+);
+SELECT c.relname, s.spcname FROM pg_class c LEFT JOIN pg_tablespace s
+  ON c.reltablespace = s.oid WHERE c.relname IN ('tp_lo', 'tp_hi')
+  ORDER BY c.relname;
+DROP TABLE t;
+
+-- Parent has no explicit tablespace, but default_tablespace is set: the
+-- new partitions land on default_tablespace.
+CREATE TABLE t (i int) PARTITION BY RANGE(i);
+CREATE TABLE tp_all PARTITION OF t FOR VALUES FROM (0) TO (10);
+INSERT INTO t SELECT generate_series(0, 9);
+SET default_tablespace TO regress_tblspace;
+ALTER TABLE t SPLIT PARTITION tp_all INTO (
+    PARTITION tp_lo FOR VALUES FROM (0) TO (5),
+    PARTITION tp_hi FOR VALUES FROM (5) TO (10)
+);
+RESET default_tablespace;
+SELECT c.relname, s.spcname FROM pg_class c LEFT JOIN pg_tablespace s
+  ON c.reltablespace = s.oid WHERE c.relname IN ('tp_lo', 'tp_hi')
+  ORDER BY c.relname;
+DROP TABLE t;
+
+CREATE TABLE t (i int) PARTITION BY RANGE(i);
+CREATE TABLE tp_all PARTITION OF t FOR VALUES FROM (0) TO (10);
+INSERT INTO t SELECT generate_series(0, 9);
+-- pg_global is rejected when picked up from default_tablespace.
+SET default_tablespace TO pg_global;
+ALTER TABLE t SPLIT PARTITION tp_all INTO (
+    PARTITION tp_lo FOR VALUES FROM (0) TO (5),
+    PARTITION tp_hi FOR VALUES FROM (5) TO (10)
+);	-- fails
+RESET default_tablespace;
+-- Parent has no explicit tablespace and default_tablespace is empty: new
+-- partitions use the database default (reltablespace = 0).
+ALTER TABLE t SPLIT PARTITION tp_all INTO (
+    PARTITION tp_lo FOR VALUES FROM (0) TO (5),
+    PARTITION tp_hi FOR VALUES FROM (5) TO (10)
+);
+SELECT relname, reltablespace FROM pg_class
+  WHERE relname IN ('tp_lo', 'tp_hi') ORDER BY relname;
+DROP TABLE t;
 
 RESET search_path;
 
