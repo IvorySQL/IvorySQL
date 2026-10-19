@@ -47,6 +47,8 @@ PG_FUNCTION_INFO_V1(binary_float_nanvl);
 PG_FUNCTION_INFO_V1(binary_double_nanvl);
 PG_FUNCTION_INFO_V1(ora_to_binary_float);
 PG_FUNCTION_INFO_V1(ora_to_binary_double);
+PG_FUNCTION_INFO_V1(ora_bit_and_agg_transfn);
+PG_FUNCTION_INFO_V1(ora_bit_and_agg_combinefn);
 
 
 Datum
@@ -299,4 +301,52 @@ ora_to_binary_double(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 
 	PG_RETURN_FLOAT8(result);
+}
+
+/*
+ * ora_bit_and_agg_transfn
+ * Transition function for the Oracle-compatible BIT_AND_AGG aggregate.
+ *
+ * The aggregate is declared STRICT with an int8 transition state and no
+ * INITCOND, so the executor seeds the state with the first non-null input
+ * and skips NULL inputs without calling this function; NULL inputs are
+ * ignored and a group with no non-null input aggregates to NULL, matching
+ * Oracle.
+ *
+ * Oracle truncates fractional input values toward zero before aggregating,
+ * so 4.64 and 4.4 both contribute 4; numeric_trunc() implements exactly
+ * that.  Values that do not fit in bigint raise an error, while Oracle
+ * aggregates the wider 128-bit range; the int64 state keeps the aggregate
+ * trivially parallel-safe.
+ */
+Datum
+ora_bit_and_agg_transfn(PG_FUNCTION_ARGS)
+{
+	int64		state = PG_GETARG_INT64(0);
+	Numeric		arg = PG_GETARG_NUMERIC(1);
+	Datum		truncated;
+	int64		input;
+
+	truncated = DirectFunctionCall2(numeric_trunc,
+									NumericGetDatum(arg),
+									Int32GetDatum(0));
+	input = DatumGetInt64(DirectFunctionCall1(numeric_int8, truncated));
+
+	PG_RETURN_INT64(state & input);
+}
+
+/*
+ * ora_bit_and_agg_combinefn
+ * Combine function for partial states of the BIT_AND_AGG aggregate.
+ *
+ * STRICT makes a NULL partial state (a worker that saw no non-null rows)
+ * drop out and the surviving side pass through unchanged.
+ */
+Datum
+ora_bit_and_agg_combinefn(PG_FUNCTION_ARGS)
+{
+	int64		state1 = PG_GETARG_INT64(0);
+	int64		state2 = PG_GETARG_INT64(1);
+
+	PG_RETURN_INT64(state1 & state2);
 }
