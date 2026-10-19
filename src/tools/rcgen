@@ -8,6 +8,7 @@
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 
@@ -40,6 +41,15 @@ replacements.add_argument('--ICO', type=str)
 
 args = parser.parse_args()
 
+
+def depfile_path(path):
+    # Follow GCC depfile quoting. Backslashes before whitespace must also be
+    # escaped; other backslashes (including Windows path separators) are kept.
+    path = re.sub(r'(\\*)([ \t])',
+                  lambda match: match[1] * 2 + '\\' + match[2], path)
+    return path.replace('#', '\\#').replace('$', '$$')
+
+
 # determine replacement strings
 
 internal_name = '"{0}"'.format(args.NAME)
@@ -59,7 +69,8 @@ filedesc = '"{0}"'.format(filedesc)
 if args.ICO:
     ico = 'IDI_ICON ICON "{0}"'.format(args.ICO)
     if args.depfile:
-        args.depfile.write("{0} : {1}\n".format(args.rcout.name, args.ICO))
+        args.depfile.write("{0} : {1}\n".format(
+            depfile_path(args.rcout.name), depfile_path(args.ICO)))
 else:
     ico = ''
 
@@ -100,6 +111,6 @@ if sp.returncode != 0:
 # doesn't support doing so. It's unlikely we'll ever need more, so...
 if args.depfile:
     args.depfile.write("{0} : {1}\n".format(
-        args.rcout.name, args.input.name))
+        depfile_path(args.rcout.name), depfile_path(args.input.name)))
     args.depfile.write("{0} : {1}/{2}\n".format(
-        args.out, args.builddir, 'src/include/pg_config.h'))
+        depfile_path(args.out), depfile_path(args.builddir), 'src/include/pg_config.h'))
