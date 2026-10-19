@@ -39,7 +39,7 @@ def generate_rsa_keypair(key_size: int = 2048) -> dict:
     The generated key includes all components needed for PGP operations:
     - n: public modulus (p * q)
     - e: public exponent (typically 65537)
-    - d: private exponent (e^-1 mod phi(n))
+    - d: private exponent (e^-1 mod lcm(p-1, q-1))
     - p, q: prime factors of n
     - u: coefficient (p^-1 mod q) for CRT optimization
 
@@ -78,7 +78,7 @@ def validate_rsa_key(rsa: dict) -> None:
     Validations performed:
     1. n = p * q (modulus is product of primes)
     2. gcd(e, phi(n)) = 1 (public exponent is coprime to phi(n))
-    3. (d * e) mod(phi(n)) = 1 (private exponent is multiplicative inverse)
+    3. (d * e) mod(lcm(p-1, q-1)) = 1 (private exponent is inverse)
     4. (u * p) (mod q) = 1 (coefficient is correct for CRT)
     """
 
@@ -104,9 +104,11 @@ def validate_rsa_key(rsa: dict) -> None:
     if gcd(e, phi_n) != 1:
         raise ValueError("RSA validation failed: gcd(e, phi(n)) <> 1")
 
-    # Check that (d * e) mod(phi(n)) = 1
-    if (d * e) % phi_n != 1:
-        raise ValueError("RSA validation failed: d * e <> 1 (mod phi(n))")
+    # RFC 8017, Section 3.2 requires the inverse modulo lambda(n), not
+    # phi(n).  PyCryptodome also generates d using this least common multiple.
+    lambda_n = phi_n // gcd(p - 1, q - 1)
+    if (d * e) % lambda_n != 1:
+        raise ValueError("RSA validation failed: d * e <> 1 (mod lambda(n))")
 
     # Check that (u * p) (mod q) = 1
     if (u * p) % q != 1:
