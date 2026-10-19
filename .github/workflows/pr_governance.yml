@@ -41,7 +41,7 @@ jobs:
             function uniqueById(items) {
               const map = new Map();
               for (const item of items) {
-                map.set(item.id ?? `${item.repository?.nameWithOwner || ""}#${item.number}`, item);
+                map.set(item.id ?? `${(item.repository?.nameWithOwner || "").toLowerCase()}#${item.number}`, item);
               }
               return [...map.values()];
             }
