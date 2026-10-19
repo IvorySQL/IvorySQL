@@ -3601,6 +3601,7 @@ unit_name_keyword:
 				| K_FORWARD
 				| K_GET
 				| K_HINT
+				| K_IMMEDIATE
 				| K_IMPORT
 				| K_INFO
 				| K_INSERT

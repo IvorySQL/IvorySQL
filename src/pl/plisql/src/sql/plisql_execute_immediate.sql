@@ -76,5 +76,18 @@ begin
     raise notice 'after delete = %', v;
 end $$;
 
+-- 'immediate' remains usable as a unit name in ACCESSIBLE BY
+create or replace function ei_immediate return int
+    accessible by (immediate)
+is
+begin
+    return 1;
+end;
+/
+
+select ei_immediate() as ei_immediate_ok;
+
+drop function ei_immediate();
+
 DROP TABLE ei_test;
 DROP TABLE ei_ddl;
