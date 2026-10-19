@@ -250,16 +250,28 @@ ora_partition_position(PG_FUNCTION_ARGS)
 	int			position = 0;
 	int			i;
 
-	parentid = get_partition_parent(relid, false);
+	/*
+	 * Allow the parent lookup even if the partition is currently pending
+	 * concurrent detach.
+	 */
+	parentid = get_partition_parent(relid, true);
 	parent = table_open(parentid, AccessShareLock);
-	partdesc = RelationGetPartitionDesc(parent, true);
 
-	for (i = 0; i < partdesc->nparts; i++)
+	/*
+	 * Request a partition descriptor that includes pending-detach partitions
+	 * so that the partition can still be resolved to its bound position.
+	 */
+	partdesc = RelationGetPartitionDesc(parent, false);
+
+	if (partdesc)
 	{
-		if (partdesc->oids[i] == relid)
+		for (i = 0; i < partdesc->nparts; i++)
 		{
-			position = i + 1;
-			break;
+			if (partdesc->oids[i] == relid)
+			{
+				position = i + 1;
+				break;
+			}
 		}
 	}
 
