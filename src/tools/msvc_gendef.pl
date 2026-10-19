@@ -166,7 +166,11 @@ foreach my $in (@ARGV)
 {
 	if (-d $in)
 	{
-		push @files, glob "$in/*.obj";
+		opendir(my $dir, $in) or die "Could not open directory $in: $!\n";
+		push @files,
+		  map { "$in/$_" }
+		  sort grep { /\.obj\z/ && !/^\./ } readdir($dir);
+		closedir($dir);
 	}
 	else
 	{
@@ -191,9 +195,8 @@ my $symfile = "$tempdir/all.sym";
 my $tmpfile = "$tempdir/tmp.sym";
 mkdir($tempdir) unless -d $tempdir;
 
-my $cmd = "dumpbin /nologo /symbols /out:$tmpfile " . join(' ', @files);
-
-system($cmd) == 0 or die "Could not call dumpbin";
+system('dumpbin', '/nologo', '/symbols', "/out:$tmpfile", @files) == 0
+  or die "Could not call dumpbin";
 rename($tmpfile, $symfile) or die $!;
 extract_syms($symfile, \%def);
 print "\n";
