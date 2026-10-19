@@ -14,9 +14,9 @@ use warnings FATAL => 'all';
 
 use Cwd qw(abs_path getcwd);
 use File::Find;
-use File::Spec;
 use File::Temp;
 use IO::Handle;
+use IPC::Open3;
 use Getopt::Long;
 
 # By default Perl's SIGINT/SIGTERM kill the process without running
@@ -40,8 +40,6 @@ my $INDENT_VERSION = "2.1.3";
 # Our standard indent settings
 my $indent_opts =
   "-bad -bap -bbb -bc -bl -cli1 -cp33 -cdb -nce -d0 -di12 -nfc1 -i4 -l79 -lp -lpl -nip -npro -sac -tpg -ts4";
-
-my $devnull = File::Spec->devnull;
 
 my ($typedefs_file, $typedef_str, @excludes, $indent, $diff,
 	$check, $help, @commits,);
@@ -102,11 +100,27 @@ my %excluded = map { +"$_\n" => 1 } qw(
 my @files;
 my $filtered_typedefs_fh;
 
+# Capture both output streams without passing executable or file names
+# through a shell.  Closing the input pipe supplies EOF to indent probes.
+sub run_command
+{
+	my ($input, $output);
+	my $pid = eval { open3($input, $output, '', @_) };
+	return (-1, $@) unless defined $pid;
+
+	close($input);
+	my $text = do { local $/; <$output> };
+	close($output);
+	waitpid($pid, 0);
+	return ($?, defined($text) ? $text : '');
+}
+
 sub check_indent
 {
-	if (system("$indent -? < $devnull > $devnull 2>&1") != 0)
+	my ($status, $output) = run_command($indent, '-?');
+	if ($status != 0)
 	{
-		if ($? >> 8 != 1)
+		if ($status >> 8 != 1)
 		{
 			print STDERR
 			  "You do not appear to have $indent installed on your system.\n";
@@ -114,14 +128,16 @@ sub check_indent
 		}
 	}
 
-	if (`$indent --version` !~ m/ $INDENT_VERSION /)
+	($status, $output) = run_command($indent, '--version');
+	if ($output !~ m/ $INDENT_VERSION /)
 	{
 		print STDERR
 		  "You do not appear to have $indent version $INDENT_VERSION installed on your system.\n";
 		exit 1;
 	}
 
-	if (system("$indent -gnu < $devnull > $devnull 2>&1") == 0)
+	($status, $output) = run_command($indent, '-gnu');
+	if ($status == 0)
 	{
 		print STDERR
 		  "You appear to have GNU indent rather than BSD indent.\n";
@@ -343,7 +359,8 @@ sub run_indent
 	my $source        = shift;
 	my $error_message = shift;
 
-	my $cmd = "$indent $indent_opts -U" . $filtered_typedefs_fh->filename;
+	my @cmd = ($indent, split(/ /, $indent_opts),
+		'-U' . $filtered_typedefs_fh->filename);
 
 	my $tmp_fh = new File::Temp(TEMPLATE => "pgsrcXXXXX");
 	my $filename = $tmp_fh->filename;
@@ -352,9 +369,10 @@ sub run_indent
 
 	$bak_to_cleanup = "$filename.BAK";
 
-	$$error_message = `$cmd $filename 2>&1`;
+	my $status;
+	($status, $$error_message) = run_command(@cmd, $filename);
 
-	return "" if ($? || length($$error_message) > 0);
+	return "" if ($status || length($$error_message) > 0);
 
 	unlink $bak_to_cleanup;
 	$bak_to_cleanup = undef;
@@ -379,7 +397,8 @@ sub diff
 
 	$post_fh->close();
 
-	my $diff = `diff -upd "$source_filename" "$post_fh_filename"  2>&1`;
+	my (undef, $diff) =
+	  run_command('diff', '-upd', '--', $source_filename, $post_fh_filename);
 	return $diff;
 }
 
@@ -437,9 +456,15 @@ chdir "$sourcedir/../../.." if @commits && $sourcedir;
 foreach my $commit (@commits)
 {
 	my $prev="$commit~";
-	my @affected=`git diff --diff-filter=ACMR --name-only $prev $commit`;
-	die "git error" if $?;
-	chomp(@affected);
+	open(my $git, '-|', 'git', 'diff', '--diff-filter=ACMR', '--name-only',
+		'-z', $prev, $commit, '--') or die "could not run git: $!";
+	my @affected;
+	{
+		local $/ = "\0";
+		@affected = <$git>;
+		chomp(@affected);
+	}
+	close($git) or die "git error";
 	push(@files,@affected);
 }
 
