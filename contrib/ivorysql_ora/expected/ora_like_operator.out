@@ -263,4 +263,153 @@ select * from t_ora_like where str2 like 'test%';
 (0 rows)
 
 drop table t_ora_like;
+-- Oracle LIKE does not have a default escape character (including for CLOB).
+create table t_ora_like_escape (id int, str clob);
+insert into t_ora_like_escape values
+    (1, ' ab%m'), (2, '123m_ab'), (3, 'ert#qw'), (4, 'fa\fsd'), (5, 'x''y');
+select 1 as step, array_agg(id order by id) as matched from t_ora_like_escape where str like '%%%'
+union all
+select 2, array_agg(id order by id) from t_ora_like_escape where str like '%_%'
+union all
+select 3, array_agg(id order by id) from t_ora_like_escape where str like '%\%'
+union all
+select 4, array_agg(id order by id) from t_ora_like_escape where str like '%#%'
+union all
+select 5, array_agg(id order by id) from t_ora_like_escape where str like '%''%'
+union all
+select 6, array_agg(id order by id) from t_ora_like_escape where str like '%\%%'
+union all
+select 7, array_agg(id order by id) from t_ora_like_escape where str like '%\_%'
+union all
+select 8, array_agg(id order by id) from t_ora_like_escape where str like '%\\%'
+union all
+select 9, array_agg(id order by id) from t_ora_like_escape where str like '%\#%'
+union all
+select 10, array_agg(id order by id) from t_ora_like_escape where str like '%\''%'
+union all
+select 11, array_agg(id order by id) from t_ora_like_escape where str like '%\%%' escape '\'
+union all
+select 12, array_agg(id order by id) from t_ora_like_escape where str like '%\_%' escape '\'
+union all
+select 13, array_agg(id order by id) from t_ora_like_escape where str like '%\\%' escape '\'
+union all
+select 14, array_agg(id order by id) from t_ora_like_escape where str like '%+%%' escape '+'
+order by step;
+ step |   matched   
+------+-------------
+    1 | {1,2,3,4,5}
+    2 | {1,2,3,4,5}
+    3 | {4}
+    4 | {3}
+    5 | {5}
+    6 | {4}
+    7 | {4}
+    8 | 
+    9 | 
+   10 | 
+   11 | {1}
+   12 | {2}
+   13 | {4}
+   14 | {1}
+(14 rows)
+
+-- Invalid escapes are checked even when no row could match the pattern.
+select * from t_ora_like_escape where str like '%\#%' escape '\';
+ERROR:  missing or illegal character following the escape character
+select * from t_ora_like_escape where str like '%\''%' escape '\';
+ERROR:  missing or illegal character following the escape character
+select * from t_ora_like_escape where str like '%++%%' escape '++';
+ERROR:  escape character must be a character string of length 1
+select 'abc' like 'xyz\' escape '\';
+ERROR:  missing or illegal character following the escape character
+select 'abc' not like '%+x%' escape '+';
+ERROR:  missing or illegal character following the escape character
+-- Other string types, NOT LIKE, and literal backslashes at the pattern end.
+select 'fa\fsd'::varchar2 like '%\%' as varchar2_like,
+       'fa\fsd'::varchar2 not like '%\%' as varchar2_not_like,
+       'ab%m'::varchar2 like '%\%%' escape '\' as escaped_like,
+       'fa\fsd'::char(6) like '%\%' as char_like,
+       'fa\fsd'::nclob like '%\%' as nclob_like,
+       'abc\' like 'abc\' as trailing_backslash;
+ varchar2_like | varchar2_not_like | escaped_like | char_like | nclob_like | trailing_backslash 
+---------------+-------------------+--------------+-----------+------------+--------------------
+ t             | f                 | t            | t         | t          | t
+(1 row)
+
+select 'ab%m' not like '%\%%' escape '\' as escaped_not_like,
+       (null like '%\%') is null as null_value,
+       ('abc' like null) is null as null_pattern,
+       ('abc' like '%' escape null) is null as null_escape,
+       ('abc' like '%' escape '') is null as empty_escape;
+ escaped_not_like | null_value | null_pattern | null_escape | empty_escape 
+------------------+------------+--------------+-------------+--------------
+ f                | t          | t            | t           | t
+(1 row)
+
+-- Escape length and scanning must be measured in characters, not bytes.
+select 'a%b' like '%汉%%' escape '汉' as escaped_percent,
+       'a_b' like '%汉_%' escape '汉' as escaped_underscore,
+       'a汉b' like '%汉汉%' escape '汉' as escaped_escape,
+       'a\b' like '%\%' escape '+' as literal_backslash;
+ escaped_percent | escaped_underscore | escaped_escape | literal_backslash 
+-----------------+--------------------+----------------+-------------------
+ t               | t                  | t              | t
+(1 row)
+
+select 'abc' like '%汉x%' escape '汉';
+ERROR:  missing or illegal character following the escape character
+select 'abc' like '%' escape '汉字';
+ERROR:  escape character must be a character string of length 1
+-- A stored pattern is normalized at execution time.
+select value like pattern as matched
+from (values ('fa\fsd'::text, '%\%'::text),
+             ('abc'::text, '%\%'::text)) as v(value, pattern);
+ matched 
+---------
+ t
+ f
+(2 rows)
+
+prepare ora_like_escape_plan(text, text, text) as
+    select $1 like $2 as matched, $1 like $2 escape $3 as explicit_escape;
+-- Bypass Oracle psql's EXECUTE-to-PL/iSQL command rewriting.
+select $$execute ora_like_escape_plan('fa\fsd', '%\%', '+');$$ \gexec
+execute ora_like_escape_plan('fa\fsd', '%\%', '+');
+ matched | explicit_escape 
+---------+-----------------
+ t       | t
+(1 row)
+
+set ivorysql.compatible_mode to pg;
+-- Prepared Oracle expressions retain their semantics after a mode switch.
+select $$execute ora_like_escape_plan('fa\fsd', '%\%', '+');$$ \gexec
+execute ora_like_escape_plan('fa\fsd', '%\%', '+');
+ matched | explicit_escape 
+---------+-----------------
+ t       | t
+(1 row)
+
+deallocate ora_like_escape_plan;
+-- PostgreSQL keeps its default backslash escape and permissive escaping.
+select 'fa\fsd' like '%\%' as default_escape,
+       'fa\fsd' like '%\\%' as escaped_backslash,
+       'ert#qw' like '%\#%' escape '\' as escaped_hash,
+       'x''y' like '%\''%' escape '\' as escaped_quote,
+       'fa\fsd' like '%\%' escape '' as no_escape;
+ default_escape | escaped_backslash | escaped_hash | escaped_quote | no_escape 
+----------------+-------------------+--------------+---------------+-----------
+ f              | t                 | t            | t             | t
+(1 row)
+
+prepare pg_like_escape_plan(text, text) as select $1 like $2 as matched;
+set ivorysql.compatible_mode to oracle;
+select $$execute pg_like_escape_plan('fa\fsd', '%\%');$$ \gexec
+execute pg_like_escape_plan('fa\fsd', '%\%');
+ matched 
+---------
+ f
+(1 row)
+
+deallocate pg_like_escape_plan;
+drop table t_ora_like_escape;
 set ivorysql.compatible_mode to pg;

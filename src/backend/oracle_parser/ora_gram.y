@@ -17064,12 +17064,25 @@ a_expr:		c_expr									{ $$ = $1; }
 
 			| a_expr LIKE a_expr
 				{
+					Node	   *pattern = $3;
+					A_Const    *aconst = IsA(pattern, A_Const) ?
+						(A_Const *) pattern : NULL;
+
+					/* Only plain string constants can safely skip conversion. */
+					if (aconst == NULL || aconst->isnull ||
+						!IsA(&aconst->val, String) ||
+						strchr(strVal(&aconst->val), '\\') != NULL)
+						pattern = (Node *) makeFuncCall(OracleSystemFuncName("like_escape"),
+														   list_make1(pattern),
+														   COERCE_EXPLICIT_CALL,
+														   @2);
+
 					$$ = (Node *) makeSimpleA_Expr(AEXPR_LIKE, "~~",
-												   $1, $3, @2);
+												   $1, pattern, @2);
 				}
 			| a_expr LIKE a_expr ESCAPE a_expr					%prec LIKE
 				{
-					FuncCall   *n = makeFuncCall(SystemFuncName("like_escape"),
+					FuncCall   *n = makeFuncCall(OracleSystemFuncName("like_escape"),
 												 list_make2($3, $5),
 												 COERCE_EXPLICIT_CALL,
 												 @2);
@@ -17078,12 +17091,25 @@ a_expr:		c_expr									{ $$ = $1; }
 				}
 			| a_expr NOT_LA LIKE a_expr							%prec NOT_LA
 				{
+					Node	   *pattern = $4;
+					A_Const    *aconst = IsA(pattern, A_Const) ?
+						(A_Const *) pattern : NULL;
+
+					/* Only plain string constants can safely skip conversion. */
+					if (aconst == NULL || aconst->isnull ||
+						!IsA(&aconst->val, String) ||
+						strchr(strVal(&aconst->val), '\\') != NULL)
+						pattern = (Node *) makeFuncCall(OracleSystemFuncName("like_escape"),
+														   list_make1(pattern),
+														   COERCE_EXPLICIT_CALL,
+														   @2);
+
 					$$ = (Node *) makeSimpleA_Expr(AEXPR_LIKE, "!~~",
-												   $1, $4, @2);
+												   $1, pattern, @2);
 				}
 			| a_expr NOT_LA LIKE a_expr ESCAPE a_expr			%prec NOT_LA
 				{
-					FuncCall   *n = makeFuncCall(SystemFuncName("like_escape"),
+					FuncCall   *n = makeFuncCall(OracleSystemFuncName("like_escape"),
 												 list_make2($4, $6),
 												 COERCE_EXPLICIT_CALL,
 												 @2);
