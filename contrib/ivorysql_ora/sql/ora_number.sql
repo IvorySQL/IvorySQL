@@ -1020,3 +1020,20 @@ SELECT exp(20) AS exp20;
 SELECT sqrt(1000000) AS sqrt_mil;
 SELECT log(2, 3) AS log23;
 SELECT log(100) AS log100;
+
+/* explicit argument types exercise every added overload */
+SELECT sqrt(2::bigint) AS sqrt_bigint, pg_typeof(sqrt(2::bigint)) AS sqrt_bigint_type;
+SELECT ln(100::bigint) AS ln_bigint, pg_typeof(ln(100::bigint)) AS ln_bigint_type;
+SELECT exp(20::bigint) AS exp_bigint, pg_typeof(exp(20::bigint)) AS exp_bigint_type;
+SELECT log(100::bigint) AS log_bigint, pg_typeof(log(100::bigint)) AS log_bigint_type;
+SELECT log(2::integer, 3::bigint) AS log_int_bigint;
+SELECT log(2::bigint, 3::integer) AS log_bigint_int;
+SELECT log(2::bigint, 3::bigint) AS log_bigint_bigint;
+SELECT power(2::integer, 3::bigint) AS pow_int_bigint;
+SELECT power(2::bigint, 3::integer) AS pow_bigint_int;
+SELECT power(2::bigint, 3::bigint) AS pow_bigint_bigint;
+SELECT power(2::integer, 0.5::numeric) AS pow_int_numeric;
+SELECT power(2.0::numeric, 3::integer) AS pow_numeric_int;
+SELECT power(2::bigint, 0.5::numeric) AS pow_bigint_numeric;
+SELECT power(2.0::numeric, 3::bigint) AS pow_numeric_bigint;
+SELECT pg_typeof(power(2::bigint, 3::bigint)) AS pow_bigint_type;

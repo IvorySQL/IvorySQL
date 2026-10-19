@@ -2036,3 +2036,94 @@ SELECT log(100) AS log100;
  2.0000000000000000
 (1 row)
 
+/* explicit argument types exercise every added overload */
+SELECT sqrt(2::bigint) AS sqrt_bigint, pg_typeof(sqrt(2::bigint)) AS sqrt_bigint_type;
+    sqrt_bigint    |  sqrt_bigint_type  
+-------------------+--------------------
+ 1.414213562373095 | pg_catalog.numeric
+(1 row)
+
+SELECT ln(100::bigint) AS ln_bigint, pg_typeof(ln(100::bigint)) AS ln_bigint_type;
+     ln_bigint      |   ln_bigint_type   
+--------------------+--------------------
+ 4.6051701859880914 | pg_catalog.numeric
+(1 row)
+
+SELECT exp(20::bigint) AS exp_bigint, pg_typeof(exp(20::bigint)) AS exp_bigint_type;
+     exp_bigint     |  exp_bigint_type   
+--------------------+--------------------
+ 485165195.40979028 | pg_catalog.numeric
+(1 row)
+
+SELECT log(100::bigint) AS log_bigint, pg_typeof(log(100::bigint)) AS log_bigint_type;
+     log_bigint     |  log_bigint_type   
+--------------------+--------------------
+ 2.0000000000000000 | pg_catalog.numeric
+(1 row)
+
+SELECT log(2::integer, 3::bigint) AS log_int_bigint;
+   log_int_bigint   
+--------------------
+ 1.5849625007211562
+(1 row)
+
+SELECT log(2::bigint, 3::integer) AS log_bigint_int;
+   log_bigint_int   
+--------------------
+ 1.5849625007211562
+(1 row)
+
+SELECT log(2::bigint, 3::bigint) AS log_bigint_bigint;
+ log_bigint_bigint  
+--------------------
+ 1.5849625007211562
+(1 row)
+
+SELECT power(2::integer, 3::bigint) AS pow_int_bigint;
+   pow_int_bigint   
+--------------------
+ 8.0000000000000000
+(1 row)
+
+SELECT power(2::bigint, 3::integer) AS pow_bigint_int;
+   pow_bigint_int   
+--------------------
+ 8.0000000000000000
+(1 row)
+
+SELECT power(2::bigint, 3::bigint) AS pow_bigint_bigint;
+ pow_bigint_bigint  
+--------------------
+ 8.0000000000000000
+(1 row)
+
+SELECT power(2::integer, 0.5::numeric) AS pow_int_numeric;
+  pow_int_numeric   
+--------------------
+ 1.4142135623730950
+(1 row)
+
+SELECT power(2.0::numeric, 3::integer) AS pow_numeric_int;
+  pow_numeric_int   
+--------------------
+ 8.0000000000000000
+(1 row)
+
+SELECT power(2::bigint, 0.5::numeric) AS pow_bigint_numeric;
+ pow_bigint_numeric 
+--------------------
+ 1.4142135623730950
+(1 row)
+
+SELECT power(2.0::numeric, 3::bigint) AS pow_numeric_bigint;
+ pow_numeric_bigint 
+--------------------
+ 8.0000000000000000
+(1 row)
+
+SELECT pg_typeof(power(2::bigint, 3::bigint)) AS pow_bigint_type;
+  pow_bigint_type   
+--------------------
+ pg_catalog.numeric
+(1 row)
+
