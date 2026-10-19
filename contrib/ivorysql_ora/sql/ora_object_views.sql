@@ -8,7 +8,10 @@ SET IVORYSQL.IDENTIFIER_CASE_SWITCH = INTERCHANGE;
 -- that built-in scalar types are not listed.
 --
 
-CREATE TABLE OBJECTS_T (ID INT);
+CREATE TABLE OBJECTS_T (ID INT PRIMARY KEY);
+-- the foreign key creates an internal constraint trigger, which must not
+-- surface as a TRIGGER object
+CREATE TABLE OBJECTS_T2 (ID INT REFERENCES OBJECTS_T(ID));
 CREATE VIEW OBJECTS_V AS SELECT * FROM OBJECTS_T;
 CREATE MATERIALIZED VIEW OBJECTS_MV AS SELECT * FROM OBJECTS_T;
 CREATE SEQUENCE OBJECTS_SEQ;
@@ -59,8 +62,8 @@ FROM DBA_OBJECTS
 WHERE OBJECT_NAME = 'OBJECTS_T';
 
 -- ALL_OBJECTS without grants: only objects PostgreSQL makes PUBLIC-visible
--- (functions/procedures/packages/types carry default PUBLIC EXECUTE/USAGE;
--- tables and their triggers do not) -- consistent with ALL_PROCEDURES
+-- (functions/procedures and composite types carry default PUBLIC
+-- EXECUTE/USAGE; packages, tables and their triggers do not)
 CREATE ROLE OBJECTS_VIEWER NOLOGIN;
 SET ROLE OBJECTS_VIEWER;
 SELECT OBJECT_NAME, OBJECT_TYPE
@@ -97,6 +100,17 @@ FROM DBA_OBJECTS
 WHERE OBJECT_TYPE = 'TYPE'
   AND OBJECT_NAME IN ('NUMBER', 'VARCHAR2', 'CLOB', 'BLOB', 'RAW');
 
+-- a standalone composite type is a TYPE object
+SELECT COUNT(*) AS composite_type_listed
+FROM DBA_OBJECTS
+WHERE OBJECT_NAME = 'OBJECTS_TYPE' AND OBJECT_TYPE = 'TYPE';
+
+-- internal foreign-key triggers are not TRIGGER objects
+SELECT COUNT(*) AS internal_triggers_listed
+FROM DBA_OBJECTS
+WHERE OBJECT_TYPE = 'TRIGGER'
+  AND OBJECT_NAME LIKE 'RI\_%' ESCAPE '\';
+
 -- a partitioned table appears once as TABLE; partition children are not
 -- separate objects (Oracle does not list partitions in DBA_OBJECTS either)
 CREATE TABLE OBJECTS_PT (ID INT) PARTITION BY RANGE (ID);
@@ -125,5 +139,6 @@ DROP INDEX OBJECTS_IDX;
 DROP SEQUENCE OBJECTS_SEQ;
 DROP MATERIALIZED VIEW OBJECTS_MV;
 DROP VIEW OBJECTS_V;
+DROP TABLE OBJECTS_T2;
 DROP TABLE OBJECTS_T;
 DROP ROLE OBJECTS_VIEWER;
