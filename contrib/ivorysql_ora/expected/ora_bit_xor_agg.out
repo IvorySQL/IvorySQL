@@ -15,7 +15,7 @@ FROM (SELECT 3 bits FROM dual
       UNION ALL SELECT 5 FROM dual);
  bit_xor_agg 
 -------------
-           6
+ 6
 (1 row)
 
 SELECT bit_xor_agg(x) FROM (SELECT 12 x FROM dual
@@ -23,7 +23,7 @@ SELECT bit_xor_agg(x) FROM (SELECT 12 x FROM dual
                             UNION ALL SELECT 4 FROM dual) t;
  bit_xor_agg 
 -------------
-           2
+ 2
 (1 row)
 
 --
@@ -38,8 +38,8 @@ INSERT INTO bit_xor_agg_test VALUES ('b', 5);
 SELECT grp, bit_xor_agg(val) FROM bit_xor_agg_test GROUP BY grp ORDER BY grp;
  grp | bit_xor_agg 
 -----+-------------
- a   |           0
- b   |           2
+ a   | 0
+ b   | 2
 (2 rows)
 
 --
@@ -49,8 +49,8 @@ INSERT INTO bit_xor_agg_test VALUES ('a', NULL);
 SELECT grp, bit_xor_agg(val) FROM bit_xor_agg_test GROUP BY grp ORDER BY grp;
  grp | bit_xor_agg 
 -----+-------------
- a   |           0
- b   |           2
+ a   | 0
+ b   | 2
 (2 rows)
 
 -- All-NULL group returns NULL
@@ -77,14 +77,14 @@ SELECT bit_xor_agg(x) FROM (SELECT -1 x FROM dual
                             UNION ALL SELECT 6 FROM dual) t;
  bit_xor_agg 
 -------------
-          -7
+ -7
 (1 row)
 
 SELECT bit_xor_agg(x) FROM (SELECT -8 x FROM dual
                             UNION ALL SELECT 12 FROM dual) t;
  bit_xor_agg 
 -------------
-         -12
+ -12
 (1 row)
 
 --
@@ -94,14 +94,14 @@ SELECT bit_xor_agg(x) FROM (SELECT 4.64 x FROM dual
                             UNION ALL SELECT 4.4 FROM dual) t;
  bit_xor_agg 
 -------------
-           0
+ 0
 (1 row)
 
 SELECT bit_xor_agg(x) FROM (SELECT 12.9 x FROM dual
                             UNION ALL SELECT 10.2 FROM dual) t;
  bit_xor_agg 
 -------------
-           6
+ 6
 (1 row)
 
 --
@@ -115,18 +115,55 @@ INSERT INTO bit_xor_agg_number VALUES ('b', 15);
 SELECT grp, bit_xor_agg(val) FROM bit_xor_agg_number GROUP BY grp ORDER BY grp;
  grp | bit_xor_agg 
 -----+-------------
- a   |           6
- b   |          15
+ a   | 6
+ b   | 15
 (2 rows)
 
 --
--- DISTINCT keyword
+-- The result type is NUMBER, as in Oracle
 --
+SELECT pg_typeof(bit_xor_agg(val)) FROM bit_xor_agg_test;
+ pg_typeof 
+-----------
+ number
+(1 row)
+
+--
+-- DISTINCT keyword
+-- Unlike AND and OR, XOR is not idempotent, so a duplicate input makes
+-- DISTINCT observable: group a is (12, 10, 6, 6, NULL), where the plain
+-- aggregate folds the two 6s away while DISTINCT keeps one.
+--
+INSERT INTO bit_xor_agg_test VALUES ('a', 6);
 SELECT bit_xor_agg(DISTINCT val) FROM bit_xor_agg_test WHERE grp = 'a';
  bit_xor_agg 
 -------------
-           0
+ 0
 (1 row)
+
+SELECT bit_xor_agg(val) FROM bit_xor_agg_test WHERE grp = 'a';
+ bit_xor_agg 
+-------------
+ 6
+(1 row)
+
+--
+-- Window function usage (Oracle lists BIT_XOR_AGG as an analytic
+-- function too); the default RANGE frame keeps peer rows together, so
+-- both 6 rows enter the running aggregate at the same time.
+--
+SELECT grp, val, bit_xor_agg(val) OVER (PARTITION BY grp ORDER BY val)
+FROM bit_xor_agg_test ORDER BY grp, val;
+ grp | val | bit_xor_agg 
+-----+-----+-------------
+ a   |   6 | 0
+ a   |   6 | 0
+ a   |  10 | 10
+ a   |  12 | 6
+ a   |     | 6
+ b   |   5 | 5
+ b   |   7 | 2
+(7 rows)
 
 --
 -- Values beyond the bigint domain raise an error
@@ -140,9 +177,10 @@ DROP TABLE bit_xor_agg_number;
 -- Works in PG mode too
 --
 SET ivorysql.compatible_mode = pg;
-SELECT sys.bit_xor_agg(x) FROM (SELECT 12 x FROM dual
-                                UNION ALL SELECT 10 FROM dual) t;
-ERROR:  relation "dual" does not exist
-LINE 1: SELECT sys.bit_xor_agg(x) FROM (SELECT 12 x FROM dual
-                                                         ^
+SELECT sys.bit_xor_agg(x) FROM (VALUES (12), (10)) AS t(x);
+ bit_xor_agg 
+-------------
+ 6
+(1 row)
+
 RESET ivorysql.compatible_mode;
