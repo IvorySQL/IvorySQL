@@ -2478,3 +2478,8 @@ SELECT greatest(1, 2, 3);
 SELECT least('abc', NULL);
 SELECT greatest(NULL, NULL) IS NULL AS all_null;
 SELECT greatest(1.5, NULL) IS NULL AS numeric_null;
+
+-- PostgreSQL mode keeps the standard NULL-ignoring behavior
+SET IVORYSQL.COMPATIBLE_MODE TO pg;
+SELECT greatest(NULL, 1) AS pg_greatest, least(NULL, 1) AS pg_least;
+SET IVORYSQL.COMPATIBLE_MODE TO ORACLE;
