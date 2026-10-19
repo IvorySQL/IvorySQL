@@ -7,7 +7,7 @@
 # path old-file old-hash old-mode new-file new-hash new-mode
 # 'path' is the git-tree-relative path of the file being diff'ed
 
-=comment
+: <<'DOCUMENTATION'
 
 This info is copied from the old wiki page on Working with git:
 
@@ -40,7 +40,7 @@ Alternatively, configure a git alias in ~/.gitconfig or .git/config:
 
     [alias]
         cdiff = !GIT_EXTERNAL_DIFF=git-context-diff git diff
-=cut
+DOCUMENTATION
 
 old_hash="$3"
 new_hash=$(git hash-object "$5")
