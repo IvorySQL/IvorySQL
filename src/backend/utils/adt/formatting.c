@@ -1030,6 +1030,7 @@ static const int NUM_index[KeyWord_INDEX_SIZE] = {
 typedef struct NUMProc
 {
 	bool		is_to_char;
+	bool		is_oracle;		/* Oracle-compatible number processing */
 	NUMDesc    *Num;			/* number description		*/
 
 	int			sign,			/* '-' or '+'			*/
@@ -6374,7 +6375,7 @@ NUM_prepare_locale(NUMProc *Np)
 	 * the first significant digit regardless of where it appears in the
 	 * format picture, so it always renders as a plain "$".
 	 */
-	if (IS_DOLLAR(Np->Num))
+	if (IS_DOLLAR(Np->Num) && (Np->is_oracle || ORA_PARSER == compatible_db))
 		Np->L_currency_symbol = "$";
 }
 
@@ -6707,7 +6708,8 @@ NUM_numpart_to_char(NUMProc *Np, int id)
 	 * above), like Oracle does, instead of at the position of the "$"
 	 * pattern itself.
 	 */
-	if (IS_DOLLAR(Np->Num) && Np->dollar_wrote == false &&
+	if ((Np->is_oracle || ORA_PARSER == compatible_db) &&
+		IS_DOLLAR(Np->Num) && Np->dollar_wrote == false &&
 		(Np->num_curr >= Np->out_pre_spaces || (IS_ZERO(Np->Num) && Np->Num->zero_start == Np->num_curr)) &&
 		(IS_PREDEC_SPACE(Np) == false || (Np->last_relevant && *Np->last_relevant == '.')))
 	{
@@ -6880,6 +6882,7 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 
 	Np->Num = Num;
 	Np->is_to_char = is_to_char;
+	Np->is_oracle = true;
 	Np->number = number;
 	Np->inout = inout;
 	Np->last_relevant = NULL;
@@ -7028,6 +7031,26 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 	 * Locale
 	 */
 	NUM_prepare_locale(Np);
+
+	/*
+	 * Oracle's "$" format element requires the currency sign in the input.
+	 * The backwards scan below can start after the "$" node when the input
+	 * has no sign, so validate it independently.
+	 */
+	if (IS_DOLLAR(Np->Num) && !Np->is_to_char)
+	{
+		char	   *p = Np->inout;
+		char	   *end = Np->inout + from_char_input_len;
+
+		while (p < end && *p == ' ')
+			p++;
+		if (p < end && (*p == '-' || *p == '+'))
+			p++;
+		if (p >= end || *p != *Np->L_currency_symbol)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("invalid number")));
+	}
 
 	/*
 	 * Processor direct cycle
@@ -7975,6 +7998,24 @@ NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 					break;
 
 				case NUM_DOLLAR:
+					if (!Np->is_oracle && ORA_PARSER != compatible_db)
+					{
+						/*
+						 * In PostgreSQL mode "$" remains an ordinary literal
+						 * in the format picture, as it was before it became a
+						 * keyword: copy it in TO_CHAR and consume one input
+						 * character in TO_NUMBER.
+						 */
+						if (Np->is_to_char)
+						{
+							*Np->inout_p = '$';
+							Np->inout_p++;
+						}
+						else
+							Np->inout_p += pg_mblen_range(Np->inout_p,
+														  Np->inout + input_len);
+						continue;
+					}
 					if (Np->is_to_char)
 					{
 						/*

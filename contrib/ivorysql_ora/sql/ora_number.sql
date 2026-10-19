@@ -1009,7 +1009,9 @@ SELECT to_number('-$123', '$999') AS dol_sign_to_num;
 SELECT to_number('$1,234.50', '$999,999.99') AS dol_comma_to_num;
 SELECT to_number(' $123', '$999') AS dol_blank_to_num;
 SELECT to_number('$123', 'L999') AS dol_l_to_num;
+/* the currency sign is required when the format has "$" */
 SELECT to_number('123', '$999') AS dol_missing_in_input;
+SELECT to_number('+$123', '$999') AS dol_plus_sign_to_num;
 /* dollar currency format model: to_char floats it next to the first digit */
 SELECT to_char(123.45, '$999.99') AS dol_float;
 SELECT to_char(-123, '$999') AS dol_neg;
@@ -1020,3 +1022,10 @@ SELECT to_char(1, '$999') AS dol_one;
 SELECT to_char(123, 'FM$999') AS dol_fm;
 SELECT to_char(123, '9,999$') AS dol_comma;
 SELECT to_char(0.5, '$999.99') = '    $.50' AS dol_frac_eq;
+
+/* PostgreSQL mode keeps "$" as a literal format character */
+SET IVORYSQL.COMPATIBLE_MODE TO pg;
+SELECT to_char(123, '999$') AS pg_dollar_trailing;
+SELECT to_char(123, '$999') AS pg_dollar_leading;
+SELECT pg_catalog.to_number('123$', '999$') AS pg_dollar_num;
+SET IVORYSQL.COMPATIBLE_MODE TO ORACLE;

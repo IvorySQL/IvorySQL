@@ -1975,8 +1975,11 @@ SELECT to_number('$123', 'L999') AS dol_l_to_num;
  123
 (1 row)
 
+/* the currency sign is required when the format has "$" */
 SELECT to_number('123', '$999') AS dol_missing_in_input;
- dol_missing_in_input 
+ERROR:  invalid number
+SELECT to_number('+$123', '$999') AS dol_plus_sign_to_num;
+ dol_plus_sign_to_num 
 ----------------------
  123
 (1 row)
@@ -2036,3 +2039,24 @@ SELECT to_char(0.5, '$999.99') = '    $.50' AS dol_frac_eq;
  t
 (1 row)
 
+/* PostgreSQL mode keeps "$" as a literal format character */
+SET IVORYSQL.COMPATIBLE_MODE TO pg;
+SELECT to_char(123, '999$') AS pg_dollar_trailing;
+ pg_dollar_trailing 
+--------------------
+  123$
+(1 row)
+
+SELECT to_char(123, '$999') AS pg_dollar_leading;
+ pg_dollar_leading 
+-------------------
+ $ 123
+(1 row)
+
+SELECT pg_catalog.to_number('123$', '999$') AS pg_dollar_num;
+ pg_dollar_num 
+---------------
+           123
+(1 row)
+
+SET IVORYSQL.COMPATIBLE_MODE TO ORACLE;
