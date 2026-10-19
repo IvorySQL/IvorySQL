@@ -32,70 +32,72 @@ MAKE="${MAKE:-make}"
 # If PGOPTIONS is already defined, we'll add the -f switches to it.
 PGOPTIONS="${PGOPTIONS:-}"
 
-mkdir planregress
+EXITCODE=0
 
-PGOPTIONS="$PGOPTIONS                     " $MAKE runtest
-mv -f regression.out planregress/out.normal
-mv -f regression.diffs planregress/diffs.normal
-PGOPTIONS="$PGOPTIONS                  -fh" $MAKE runtest
-mv -f regression.out planregress/out.h
-mv -f regression.diffs planregress/diffs.h
-PGOPTIONS="$PGOPTIONS              -fm    " $MAKE runtest
-mv -f regression.out planregress/out.m
-mv -f regression.diffs planregress/diffs.m
-PGOPTIONS="$PGOPTIONS              -fm -fh" $MAKE runtest
-mv -f regression.out planregress/out.mh
-mv -f regression.diffs planregress/diffs.mh
-PGOPTIONS="$PGOPTIONS          -fn        " $MAKE runtest
-mv -f regression.out planregress/out.n
-mv -f regression.diffs planregress/diffs.n
-PGOPTIONS="$PGOPTIONS          -fn     -fh" $MAKE runtest
-mv -f regression.out planregress/out.nh
-mv -f regression.diffs planregress/diffs.nh
-PGOPTIONS="$PGOPTIONS          -fn -fm    " $MAKE runtest
-mv -f regression.out planregress/out.nm
-mv -f regression.diffs planregress/diffs.nm
-PGOPTIONS="$PGOPTIONS      -fi            " $MAKE runtest
-mv -f regression.out planregress/out.i
-mv -f regression.diffs planregress/diffs.i
-PGOPTIONS="$PGOPTIONS      -fi         -fh" $MAKE runtest
-mv -f regression.out planregress/out.ih
-mv -f regression.diffs planregress/diffs.ih
-PGOPTIONS="$PGOPTIONS      -fi     -fm    " $MAKE runtest
-mv -f regression.out planregress/out.im
-mv -f regression.diffs planregress/diffs.im
-PGOPTIONS="$PGOPTIONS      -fi     -fm -fh" $MAKE runtest
-mv -f regression.out planregress/out.imh
-mv -f regression.diffs planregress/diffs.imh
-PGOPTIONS="$PGOPTIONS      -fi -fn        " $MAKE runtest
-mv -f regression.out planregress/out.in
-mv -f regression.diffs planregress/diffs.in
-PGOPTIONS="$PGOPTIONS      -fi -fn     -fh" $MAKE runtest
-mv -f regression.out planregress/out.inh
-mv -f regression.diffs planregress/diffs.inh
-PGOPTIONS="$PGOPTIONS      -fi -fn -fm    " $MAKE runtest
-mv -f regression.out planregress/out.inm
-mv -f regression.diffs planregress/diffs.inm
-PGOPTIONS="$PGOPTIONS  -fs                " $MAKE runtest
-mv -f regression.out planregress/out.s
-mv -f regression.diffs planregress/diffs.s
-PGOPTIONS="$PGOPTIONS  -fs             -fh" $MAKE runtest
-mv -f regression.out planregress/out.sh
-mv -f regression.diffs planregress/diffs.sh
-PGOPTIONS="$PGOPTIONS  -fs         -fm    " $MAKE runtest
-mv -f regression.out planregress/out.sm
-mv -f regression.diffs planregress/diffs.sm
-PGOPTIONS="$PGOPTIONS  -fs         -fm -fh" $MAKE runtest
-mv -f regression.out planregress/out.smh
-mv -f regression.diffs planregress/diffs.smh
-PGOPTIONS="$PGOPTIONS  -fs     -fn        " $MAKE runtest
-mv -f regression.out planregress/out.sn
-mv -f regression.diffs planregress/diffs.sn
-PGOPTIONS="$PGOPTIONS  -fs     -fn     -fh" $MAKE runtest
-mv -f regression.out planregress/out.snh
-mv -f regression.diffs planregress/diffs.snh
-PGOPTIONS="$PGOPTIONS  -fs     -fn -fm    " $MAKE runtest
-mv -f regression.out planregress/out.snm
-mv -f regression.diffs planregress/diffs.snm
+mkdir -p planregress || exit 1
 
-exit 0
+PGOPTIONS="$PGOPTIONS                     " $MAKE runtest || EXITCODE=1
+mv -f regression.out planregress/out.normal || EXITCODE=1
+mv -f regression.diffs planregress/diffs.normal || EXITCODE=1
+PGOPTIONS="$PGOPTIONS                  -fh" $MAKE runtest || EXITCODE=1
+mv -f regression.out planregress/out.h || EXITCODE=1
+mv -f regression.diffs planregress/diffs.h || EXITCODE=1
+PGOPTIONS="$PGOPTIONS              -fm    " $MAKE runtest || EXITCODE=1
+mv -f regression.out planregress/out.m || EXITCODE=1
+mv -f regression.diffs planregress/diffs.m || EXITCODE=1
+PGOPTIONS="$PGOPTIONS              -fm -fh" $MAKE runtest || EXITCODE=1
+mv -f regression.out planregress/out.mh || EXITCODE=1
+mv -f regression.diffs planregress/diffs.mh || EXITCODE=1
+PGOPTIONS="$PGOPTIONS          -fn        " $MAKE runtest || EXITCODE=1
+mv -f regression.out planregress/out.n || EXITCODE=1
+mv -f regression.diffs planregress/diffs.n || EXITCODE=1
+PGOPTIONS="$PGOPTIONS          -fn     -fh" $MAKE runtest || EXITCODE=1
+mv -f regression.out planregress/out.nh || EXITCODE=1
+mv -f regression.diffs planregress/diffs.nh || EXITCODE=1
+PGOPTIONS="$PGOPTIONS          -fn -fm    " $MAKE runtest || EXITCODE=1
+mv -f regression.out planregress/out.nm || EXITCODE=1
+mv -f regression.diffs planregress/diffs.nm || EXITCODE=1
+PGOPTIONS="$PGOPTIONS      -fi            " $MAKE runtest || EXITCODE=1
+mv -f regression.out planregress/out.i || EXITCODE=1
+mv -f regression.diffs planregress/diffs.i || EXITCODE=1
+PGOPTIONS="$PGOPTIONS      -fi         -fh" $MAKE runtest || EXITCODE=1
+mv -f regression.out planregress/out.ih || EXITCODE=1
+mv -f regression.diffs planregress/diffs.ih || EXITCODE=1
+PGOPTIONS="$PGOPTIONS      -fi     -fm    " $MAKE runtest || EXITCODE=1
+mv -f regression.out planregress/out.im || EXITCODE=1
+mv -f regression.diffs planregress/diffs.im || EXITCODE=1
+PGOPTIONS="$PGOPTIONS      -fi     -fm -fh" $MAKE runtest || EXITCODE=1
+mv -f regression.out planregress/out.imh || EXITCODE=1
+mv -f regression.diffs planregress/diffs.imh || EXITCODE=1
+PGOPTIONS="$PGOPTIONS      -fi -fn        " $MAKE runtest || EXITCODE=1
+mv -f regression.out planregress/out.in || EXITCODE=1
+mv -f regression.diffs planregress/diffs.in || EXITCODE=1
+PGOPTIONS="$PGOPTIONS      -fi -fn     -fh" $MAKE runtest || EXITCODE=1
+mv -f regression.out planregress/out.inh || EXITCODE=1
+mv -f regression.diffs planregress/diffs.inh || EXITCODE=1
+PGOPTIONS="$PGOPTIONS      -fi -fn -fm    " $MAKE runtest || EXITCODE=1
+mv -f regression.out planregress/out.inm || EXITCODE=1
+mv -f regression.diffs planregress/diffs.inm || EXITCODE=1
+PGOPTIONS="$PGOPTIONS  -fs                " $MAKE runtest || EXITCODE=1
+mv -f regression.out planregress/out.s || EXITCODE=1
+mv -f regression.diffs planregress/diffs.s || EXITCODE=1
+PGOPTIONS="$PGOPTIONS  -fs             -fh" $MAKE runtest || EXITCODE=1
+mv -f regression.out planregress/out.sh || EXITCODE=1
+mv -f regression.diffs planregress/diffs.sh || EXITCODE=1
+PGOPTIONS="$PGOPTIONS  -fs         -fm    " $MAKE runtest || EXITCODE=1
+mv -f regression.out planregress/out.sm || EXITCODE=1
+mv -f regression.diffs planregress/diffs.sm || EXITCODE=1
+PGOPTIONS="$PGOPTIONS  -fs         -fm -fh" $MAKE runtest || EXITCODE=1
+mv -f regression.out planregress/out.smh || EXITCODE=1
+mv -f regression.diffs planregress/diffs.smh || EXITCODE=1
+PGOPTIONS="$PGOPTIONS  -fs     -fn        " $MAKE runtest || EXITCODE=1
+mv -f regression.out planregress/out.sn || EXITCODE=1
+mv -f regression.diffs planregress/diffs.sn || EXITCODE=1
+PGOPTIONS="$PGOPTIONS  -fs     -fn     -fh" $MAKE runtest || EXITCODE=1
+mv -f regression.out planregress/out.snh || EXITCODE=1
+mv -f regression.diffs planregress/diffs.snh || EXITCODE=1
+PGOPTIONS="$PGOPTIONS  -fs     -fn -fm    " $MAKE runtest || EXITCODE=1
+mv -f regression.out planregress/out.snm || EXITCODE=1
+mv -f regression.diffs planregress/diffs.snm || EXITCODE=1
+
+exit $EXITCODE

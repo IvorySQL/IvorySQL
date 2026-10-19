@@ -58,16 +58,22 @@ do
 		EXPECTED="expected/${i}.out"
 	fi
 
-	if [ `diff ${EXPECTED} results/${i}.out | wc -l` -ne 0 ]
+	if diff "$EXPECTED" "results/${i}.out" > /dev/null
 	then
+		echo ok
+	else
+		DIFF_STATUS=$?
+		if [ "$DIFF_STATUS" -gt 1 ]
+		then
+			echo "comparison failed (diff exit status $DIFF_STATUS)" >&2
+		fi
+		# Retain context diffs even when comparison itself failed.
 		( diff -C3 ${EXPECTED} results/${i}.out; \
 		echo "";  \
 		echo "----------------------"; \
 		echo "" ) >> regression.diffs
 		echo failed
 		EXITCODE=1
-	else
-		echo ok
 	fi
 done
 
