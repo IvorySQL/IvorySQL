@@ -178,7 +178,7 @@ test: ora_force_view ora_read_only_view
 # Oracle ROWNUM pseudocolumn
 # ----------
 
-test: rownum ora_listagg
+test: rownum ora_listagg ora_jit
 
 # ----------
 # Oracle identifier syntax (#1002)

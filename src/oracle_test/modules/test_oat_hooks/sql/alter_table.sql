@@ -28,6 +28,7 @@ BEGIN
     RETURN NEW;
   END IF;
 END; $$;
+/
 CREATE TRIGGER test_oat_trigger BEFORE INSERT ON test_oat_schema.test_oat_tab
   FOR EACH STATEMENT EXECUTE FUNCTION test_oat_schema.test_trigger();
 
