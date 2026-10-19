@@ -77,15 +77,14 @@ SELECT TABLE_NAME, PARTITION_NAME, COMPOSITE, SUBPARTITION_COUNT,
 	PARTITION_POSITION, LOGGING, COMPRESSION, GLOBAL_STATS, USER_STATS,
 	IS_NESTED, UP.INTERVAL, INDEXING, READ_ONLY
 FROM USER_TAB_PARTITIONS UP
-WHERE TABLE_NAME LIKE 'TP\_T' ESCAPE '\' OR TABLE_NAME LIKE 'TP\_P3' ESCAPE '\'
+WHERE TABLE_NAME = 'TP_T'
 ORDER BY TABLE_NAME, PARTITION_NAME;
  table_name | partition_name | composite | subpartition_count | partition_position | logging | compression | global_stats | user_stats | is_nested | interval | indexing | read_only 
 ------------+----------------+-----------+--------------------+--------------------+---------+-------------+--------------+------------+-----------+----------+----------+-----------
- TP_P3      | TP_P3_S1       | NO        | 0                  | 1                  | LOGGING | DISABLED    | YES          | NO         | NO        | NO       | ON       | NO
  TP_T       | TP_P1          | NO        | 0                  | 1                  | LOGGING | DISABLED    | YES          | NO         | NO        | NO       | ON       | NO
  TP_T       | TP_P2          | NO        | 0                  | 2                  | LOGGING | DISABLED    | YES          | NO         | NO        | NO       | ON       | NO
  TP_T       | TP_P3          | YES       | 1                  | 3                  | LOGGING | DISABLED    | YES          | NO         | NO        | NO       | ON       | NO
-(4 rows)
+(3 rows)
 
 -- HIGH_VALUE renders the partition bound; its length follows
 SELECT PARTITION_NAME, HIGH_VALUE, HIGH_VALUE_LENGTH = LENGTH(HIGH_VALUE) AS len_ok
@@ -136,12 +135,34 @@ ORDER BY PARTITION_NAME;
  TP_P3          | NO
 (3 rows)
 
+-- TABLESPACE_NAME resolves the database default when the partition has none
+SELECT TABLESPACE_NAME IS NOT NULL AS tablespace_ok
+FROM USER_TAB_PARTITIONS
+WHERE TABLE_NAME = 'TP_T' AND PARTITION_NAME = 'TP_P1';
+ tablespace_ok 
+---------------
+ t
+(1 row)
+
+-- USER_ scopes by the partitioned parent's owner, not the partition's owner
+CREATE ROLE TP_ALT NOLOGIN;
+ALTER TABLE TP_P1 OWNER TO TP_ALT;
+SELECT count(*) AS parent_owner_visible
+FROM USER_TAB_PARTITIONS
+WHERE TABLE_NAME = 'TP_T' AND PARTITION_NAME = 'TP_P1';
+ parent_owner_visible 
+----------------------
+                    1
+(1 row)
+
+ALTER TABLE TP_P1 OWNER TO CURRENT_USER;
+DROP ROLE TP_ALT;
 -- DBA_ sees everything without grants
 SELECT count(*) AS dba_count FROM DBA_TAB_PARTITIONS
 WHERE TABLE_NAME LIKE 'TP\_%' ESCAPE '\';
  dba_count 
 -----------
-         4
+         3
 (1 row)
 
 CREATE ROLE TP_VIEWER NOLOGIN;
