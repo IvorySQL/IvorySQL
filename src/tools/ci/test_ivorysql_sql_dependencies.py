@@ -3,7 +3,7 @@
 
 """Check incremental SQL generation using the real ivorysql_ora Meson target.
 
-Run with python3 src/tools/ci/test_ivorysql_sql_dependencies.py. Requires Meson,
+Run on Linux with python3 src/tools/ci/test_ivorysql_sql_dependencies.py. Requires Meson,
 Ninja, Perl and a C compiler. Uses a disposable extension copy; no database
 server or configured PostgreSQL build is needed.
 """
@@ -32,6 +32,7 @@ host_system = host_machine.system()
 contrib_data_args = {'install_dir': 'share/extension'}
 contrib_mod_args = {'build_by_default': false}
 contrib_targets = []
+tests = []
 dir_data = 'share'
 subdir('contrib/ivorysql_ora')
 """, encoding='utf-8')

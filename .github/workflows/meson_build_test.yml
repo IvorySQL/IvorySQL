@@ -32,6 +32,9 @@ jobs:
         cd meson-1.0.1
         sudo python3 setup.py install
     
+    - name: check incremental extension SQL generation
+      run: python3 src/tools/ci/test_ivorysql_sql_dependencies.py
+
     - name: configure - linux
       if: ${{ matrix.os == 'ubuntu-latest' }}
       run: |
