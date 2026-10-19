@@ -27,45 +27,51 @@ if [ "$os" = 'openbsd' ]; then
     export PATH="${executable_directory}:${PATH}"
 fi
 
+# Pass file names as arguments rather than splitting find output.  This also
+# preserves newlines and shell wildcard characters in paths on all platforms.
+find "$directory" -type f -exec sh -c '
+os=$1
+shift
 first=1
-for corefile in $(find "$directory" -type f) ; do
+for corefile
+do
     if [ "$first" -eq 1 ]; then
         first=0
     else
         # to make it easier to separate the different crash reports
-        echo -e '\n\n'
+        printf "\n\n\n"
     fi
 
-    if [ "$os" = 'macos' ]; then
-        lldb -c $corefile --batch -o 'thread backtrace all' -o 'quit'
-    elif [ "$os" = 'openbsd' ]; then
-        # OpenBSD's ELF format doesn't include executable information, so we
+    if [ "$os" = "macos" ]; then
+        lldb -c "$corefile" --batch -o "thread backtrace all" -o "quit"
+    elif [ "$os" = "openbsd" ]; then
+        # The OpenBSD ELF format does not include executable information, so we
         # search for the executable manually in <executable_directory>.
         filename=$(basename "$corefile")
-        base=$(echo "$filename" | sed 's/\.core.*$//')
+        base=$(echo "$filename" | sed "s/\.core.*$//")
         binary=$(which "${base}")
 
         if [ -z "$binary" ]; then
-            echo "executable ${base} not found in ${PATH}, running 'lldb' without debug information"
-            lldb -c "$corefile" --batch -o 'thread backtrace all' -o 'quit'
+            echo "executable ${base} not found in ${PATH}, running lldb without debug information"
+            lldb -c "$corefile" --batch -o "thread backtrace all" -o "quit"
         else
-            lldb "$binary" -c "$corefile" --batch -o 'thread backtrace all' -o 'quit'
+            lldb "$binary" -c "$corefile" --batch -o "thread backtrace all" -o "quit"
         fi
     else
-        auxv=$(gdb --quiet --core ${corefile} --batch -ex 'info auxv' 2>/dev/null)
+        auxv=$(gdb --quiet --core "$corefile" --batch -ex "info auxv" 2>/dev/null)
         if [ $? -ne 0 ]; then
             echo "could not process ${corefile}"
             continue
         fi
 
-        if [ "$os" = 'freebsd' ]; then
+        if [ "$os" = "freebsd" ]; then
             binary=$(echo "$auxv" | grep AT_EXECPATH | perl -pe "s/^.*\"(.*)\"\$/\$1/g")
-        elif [ "$os" = 'netbsd' ]; then
+        elif [ "$os" = "netbsd" ]; then
             binary=$(echo "$auxv" | grep AT_SUN_EXECNAME | perl -pe "s/^.*\"(.*)\"\$/\$1/g")
-        elif [ "$os" = 'linux' ]; then
+        elif [ "$os" = "linux" ]; then
             binary=$(echo "$auxv" | grep AT_EXECFN | perl -pe "s/^.*\"(.*)\"\$/\$1/g")
         else
-            echo 'should not get here'
+            echo "should not get here"
             exit 1
         fi
 
@@ -73,3 +79,5 @@ for corefile in $(find "$directory" -type f) ; do
         gdb --batch --quiet -ex "thread apply all bt full" -ex "quit" "$binary" "$corefile" 2>/dev/null
     fi
 done
+
+' sh "$os" {} +
