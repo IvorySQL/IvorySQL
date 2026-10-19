@@ -15,7 +15,7 @@ FROM (SELECT 3 bits FROM dual
       UNION ALL SELECT 5 FROM dual);
  bit_and_agg 
 -------------
-           1
+ 1
 (1 row)
 
 SELECT bit_and_agg(x) FROM (SELECT 12 x FROM dual
@@ -23,7 +23,7 @@ SELECT bit_and_agg(x) FROM (SELECT 12 x FROM dual
                             UNION ALL SELECT 4 FROM dual) t;
  bit_and_agg 
 -------------
-           0
+ 0
 (1 row)
 
 --
@@ -38,8 +38,8 @@ INSERT INTO bit_and_agg_test VALUES ('b', 5);
 SELECT grp, bit_and_agg(val) FROM bit_and_agg_test GROUP BY grp ORDER BY grp;
  grp | bit_and_agg 
 -----+-------------
- a   |           0
- b   |           5
+ a   | 0
+ b   | 5
 (2 rows)
 
 --
@@ -49,8 +49,8 @@ INSERT INTO bit_and_agg_test VALUES ('a', NULL);
 SELECT grp, bit_and_agg(val) FROM bit_and_agg_test GROUP BY grp ORDER BY grp;
  grp | bit_and_agg 
 -----+-------------
- a   |           0
- b   |           5
+ a   | 0
+ b   | 5
 (2 rows)
 
 -- All-NULL group returns NULL
@@ -77,14 +77,14 @@ SELECT bit_and_agg(x) FROM (SELECT -1 x FROM dual
                             UNION ALL SELECT 6 FROM dual) t;
  bit_and_agg 
 -------------
-           6
+ 6
 (1 row)
 
 SELECT bit_and_agg(x) FROM (SELECT -8 x FROM dual
                             UNION ALL SELECT 12 FROM dual) t;
  bit_and_agg 
 -------------
-           8
+ 8
 (1 row)
 
 --
@@ -94,14 +94,14 @@ SELECT bit_and_agg(x) FROM (SELECT 4.64 x FROM dual
                             UNION ALL SELECT 4.4 FROM dual) t;
  bit_and_agg 
 -------------
-           4
+ 4
 (1 row)
 
 SELECT bit_and_agg(x) FROM (SELECT 12.9 x FROM dual
                             UNION ALL SELECT 10.2 FROM dual) t;
  bit_and_agg 
 -------------
-           8
+ 8
 (1 row)
 
 --
@@ -115,18 +115,45 @@ INSERT INTO bit_and_agg_number VALUES ('b', 15);
 SELECT grp, bit_and_agg(val) FROM bit_and_agg_number GROUP BY grp ORDER BY grp;
  grp | bit_and_agg 
 -----+-------------
- a   |           8
- b   |          15
+ a   | 8
+ b   | 15
 (2 rows)
 
 --
+-- The result type is NUMBER, as in Oracle
+--
+SELECT pg_typeof(bit_and_agg(val)) FROM bit_and_agg_test;
+ pg_typeof 
+-----------
+ number
+(1 row)
+
+--
 -- DISTINCT keyword
+-- Bitwise AND is idempotent, so DISTINCT cannot change the result; the
+-- query proves the keyword is accepted and no error is raised.
 --
 SELECT bit_and_agg(DISTINCT val) FROM bit_and_agg_test WHERE grp = 'a';
  bit_and_agg 
 -------------
-           0
+ 0
 (1 row)
+
+--
+-- Window function usage (Oracle lists BIT_AND_AGG as an analytic
+-- function too); the default RANGE frame keeps peer rows together.
+--
+SELECT grp, val, bit_and_agg(val) OVER (PARTITION BY grp ORDER BY val)
+FROM bit_and_agg_test ORDER BY grp, val;
+ grp | val | bit_and_agg 
+-----+-----+-------------
+ a   |   6 | 6
+ a   |  10 | 2
+ a   |  12 | 0
+ a   |     | 0
+ b   |   5 | 5
+ b   |   7 | 5
+(6 rows)
 
 --
 -- Values beyond the bigint domain raise an error
@@ -143,7 +170,7 @@ SET ivorysql.compatible_mode = pg;
 SELECT sys.bit_and_agg(x) FROM (VALUES (12), (10)) AS t(x);
  bit_and_agg 
 -------------
-           8
+ 8
 (1 row)
 
 RESET ivorysql.compatible_mode;
