@@ -1419,9 +1419,10 @@ plisql_exec_event_trigger(PLiSQL_function * func, EventTriggerData *trigdata)
 }
 
 /*
- * If func is a package member, return its package-qualified name (e.g.
- * "schema"."package".funcname) for use in error context messages; otherwise
- * return NULL.
+ * If func belongs to a package, return its package-qualified name for use in
+ * error context messages.  Package members are rendered as
+ * "schema"."package".funcname, while the package initialization block is
+ * rendered as just "schema"."package".  Otherwise return NULL.
  *
  * A package member's fn_signature is only ever the bare routine name (see
  * quote_qualified_identifier(NULL, funcname) in
@@ -1462,7 +1463,11 @@ plisql_package_qualified_signature(PLiSQL_function *func)
 	ReleaseSysCache(pkgTup);
 	pfree(nspname);
 
-	result = psprintf("%s.%s", pkgqual, func->fn_signature);
+	/* The package initialization block is represented by package->source. */
+	if (func == &((PLiSQL_package *) func->item->source)->source)
+		result = pstrdup(pkgqual);
+	else
+		result = psprintf("%s.%s", pkgqual, func->fn_signature);
 	pfree(pkgqual);
 
 	return result;
@@ -8808,12 +8813,34 @@ instantiate_empty_record_variable(PLiSQL_execstate * estate, PLiSQL_rec * rec)
 
 	Assert(rec->erh == NULL);	/* else caller error */
 
-	/* If declared type is RECORD, we can't instantiate */
+	/* If declared type is RECORD, check for a known structure via typmod */
 	if (rec->rectypeid == RECORDOID)
+	{
+		if (rec->datatype != NULL && rec->datatype->atttypmod >= 0)
+		{
+			/*
+			 * This record was declared as a package-defined record type whose
+			 * structure was registered via BlessTupleDesc.  Look up the
+			 * TupleDesc by typmod and use it to create the expanded record.
+			 */
+			TupleDesc	tupdesc;
+
+			tupdesc = lookup_rowtype_tupdesc_noerror(RECORDOID,
+													 rec->datatype->atttypmod,
+													 true);
+			if (tupdesc != NULL)
+			{
+				mc = plisql_get_relevantContext(rec->pkgoid, estate->datum_context);
+				rec->erh = make_expanded_record_from_tupdesc(tupdesc, mc);
+				ReleaseTupleDesc(tupdesc);
+				return;
+			}
+		}
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("record \"%s\" is not assigned yet", rec->refname),
 				 errdetail("The tuple structure of a not-yet-assigned record is indeterminate.")));
+	}
 
 	/* Make sure rec->rectypeid is up-to-date before using it */
 	revalidate_rectypeid(rec);

@@ -979,8 +979,8 @@ static const KeyWord NUM_keywords[] = {
  */
 static const int DCH_index[KeyWord_INDEX_SIZE] = {
 /*
-0	1	2	3	4	5	6	7	8	9
-*/
+ * 0	1	2	3	4	5	6	7	8	9
+ */
 	/*---- first 0..31 chars are skipped ----*/
 
 	-1, -1, -1, -1, -1, -1, -1, -1,
@@ -1002,8 +1002,8 @@ static const int DCH_index[KeyWord_INDEX_SIZE] = {
  */
 static const int NUM_index[KeyWord_INDEX_SIZE] = {
 /*
-0	1	2	3	4	5	6	7	8	9
-*/
+ * 0	1	2	3	4	5	6	7	8	9
+ */
 	/*---- first 0..31 chars are skipped ----*/
 
 	-1, -1, -1, -1, -1, -1, -1, -1,
@@ -1119,6 +1119,7 @@ static void NUM_prepare_locale(NUMProc *Np);
 static const char *get_last_relevant_decnum(const char *num);
 static void NUM_numpart_from_char(NUMProc *Np, int id, size_t input_len);
 static void NUM_numpart_to_char(NUMProc *Np, int id);
+static void NUM_add_locale_symbol(NUMProc *Np, const char *pattern);
 static char *NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 						   char *number, size_t input_len, int to_char_out_pre_spaces,
 						   int sign, bool is_to_char, Oid collid);
@@ -4538,7 +4539,7 @@ datetime_to_char_body(TmToChar *tmtc, const text *fmt, bool is_interval, Oid col
 	/*
 	 * Allocate workspace for result as C string
 	 */
-	result = palloc((fmt_len * DCH_MAX_ITEM_SIZ) + 1);
+	result = palloc(mul_size(fmt_len, DCH_MAX_ITEM_SIZ) + 1);
 	*result = '\0';
 
 	if (fmt_len > DCH_CACHE_SIZE)
@@ -4549,7 +4550,7 @@ datetime_to_char_body(TmToChar *tmtc, const text *fmt, bool is_interval, Oid col
 		 */
 		incache = false;
 
-		format = (FormatNode *) palloc((fmt_len + 1) * sizeof(FormatNode));
+		format = palloc_array(FormatNode, fmt_len + 1);
 
 		parse_format(format, fmt_str, DCH_keywords,
 					 DCH_suff, DCH_index, DCH_FLAG, NULL);
@@ -4980,7 +4981,7 @@ datetime_format_has_tz(const char *fmt_str)
 		 */
 		incache = false;
 
-		format = (FormatNode *) palloc((fmt_len + 1) * sizeof(FormatNode));
+		format = palloc_array(FormatNode, fmt_len + 1);
 
 		parse_format(format, fmt_str, DCH_keywords,
 					 DCH_suff, DCH_index, DCH_FLAG, NULL);
@@ -5067,7 +5068,7 @@ do_to_timestamp(const text *date_txt, const text *fmt, Oid collid, bool std,
 			 * Allocate new memory if format picture is bigger than static
 			 * cache and do not use cache (call parser always)
 			 */
-			format = (FormatNode *) palloc((fmt_len + 1) * sizeof(FormatNode));
+			format = palloc_array(FormatNode, fmt_len + 1);
 
 			parse_format(format, fmt_str, DCH_keywords, DCH_suff, DCH_index,
 						 DCH_FLAG | (std ? STD_FLAG : 0), NULL);
@@ -6028,7 +6029,7 @@ NUM_cache(int len, NUMDesc *Num, const text *pars_str, bool *shouldFree)
 		 * Allocate new memory if format picture is bigger than static cache
 		 * and do not use cache (call parser always)
 		 */
-		format = (FormatNode *) palloc((len + 1) * sizeof(FormatNode));
+		format = palloc_array(FormatNode, len + 1);
 
 		*shouldFree = true;
 
@@ -6653,11 +6654,9 @@ NUM_numpart_to_char(NUMProc *Np, int id)
 		{
 			if (Np->Num->lsign == NUM_LSIGN_PRE)
 			{
-				if (Np->sign == '-')
-					strcpy(Np->inout_p, Np->L_negative_sign);
-				else
-					strcpy(Np->inout_p, Np->L_positive_sign);
-				Np->inout_p += strlen(Np->inout_p);
+				NUM_add_locale_symbol(Np, (Np->sign == '-') ?
+									  Np->L_negative_sign :
+									  Np->L_positive_sign);
 				Np->sign_wrote = true;
 			}
 		}
@@ -6722,8 +6721,7 @@ NUM_numpart_to_char(NUMProc *Np, int id)
 			{
 				if (!Np->last_relevant || *Np->last_relevant != '.')
 				{
-					strcpy(Np->inout_p, Np->decimal);	/* Write DEC/D */
-					Np->inout_p += strlen(Np->inout_p);
+					NUM_add_locale_symbol(Np, Np->decimal); /* Write DEC/D */
 				}
 
 				/*
@@ -6732,8 +6730,7 @@ NUM_numpart_to_char(NUMProc *Np, int id)
 				else if (IS_FILLMODE(Np->Num) &&
 						 Np->last_relevant && *Np->last_relevant == '.')
 				{
-					strcpy(Np->inout_p, Np->decimal);	/* Write DEC/D */
-					Np->inout_p += strlen(Np->inout_p);
+					NUM_add_locale_symbol(Np, Np->decimal); /* Write DEC/D */
 				}
 			}
 			else
@@ -6791,16 +6788,31 @@ NUM_numpart_to_char(NUMProc *Np, int id)
 			}
 			else if (IS_LSIGN(Np->Num) && Np->Num->lsign == NUM_LSIGN_POST)
 			{
-				if (Np->sign == '-')
-					strcpy(Np->inout_p, Np->L_negative_sign);
-				else
-					strcpy(Np->inout_p, Np->L_positive_sign);
-				Np->inout_p += strlen(Np->inout_p);
+				NUM_add_locale_symbol(Np, (Np->sign == '-') ?
+									  Np->L_negative_sign :
+									  Np->L_positive_sign);
 			}
 		}
 	}
 
 	++Np->num_curr;
+}
+
+/*
+ * Append locale-specific symbol to Np->inout.
+ * Note we don't null-terminate the output
+ */
+static void
+NUM_add_locale_symbol(NUMProc *Np, const char *pattern)
+{
+	size_t		pattern_len = strlen(pattern);
+
+	/* Truncate symbol if it's potentially too long */
+	if (unlikely(pattern_len > NUM_MAX_ITEM_SIZ))
+		pattern_len = pg_mbcliplen(pattern, pattern_len,
+								   NUM_MAX_ITEM_SIZ);
+	memcpy(Np->inout_p, pattern, pattern_len);
+	Np->inout_p += pattern_len;
 }
 
 /*
@@ -7399,8 +7411,6 @@ Numeric ora_to_number_internal(text *value, text *fmt)
 	Datum		result;
 	int			scale = 0,
 				precision = 0;
-	char 		*tem = NULL;
-	bool 		isleft = true;
 
 	if(fmt)
 	{
@@ -7422,68 +7432,169 @@ Numeric ora_to_number_internal(text *value, text *fmt)
 	}
 	else
 	{
-		numstr = text_to_cstring(value);
-		tem = numstr;
-		precision = 0;
-		scale = 0;
-		while(*tem == ' ')
-		{
-		/* Remove leading space */
-			tem++;
-		}
-		if(*tem == '-' || *tem == '+')
-		{
-			precision++;
-			tem++;
-		}
-		for (; *tem != '\0'; tem++)
-		{
-			if (isleft)
-			{
-				if (isdigit((unsigned char) *tem))
-					precision++;
-				else if (*tem == '.')
-					isleft = false;
-				else if (*tem == ' ')
-				{
-					/* allow trailing whitespace only (same as the scale side) */
-					while (*tem == ' ')
-						tem++;
+		const char *p;
+		int			int_digits = 0;
+		int			frac_digits = 0;
+		int64		exponent = 0;
+		bool		has_exp_digit = false;
+		bool		exp_overflow = false;
+		bool		underflow_to_zero = false;
+		bool		has_dot = false;
+		bool		has_digit = false;
+		bool		has_nonzero_digit = false;
 
-					if (*tem == '\0')
-						break;
-					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								 errmsg("invalid number format model")));
-				}
+		numstr = text_to_cstring(value);
+		p = numstr;
+
+		/* Skip leading blanks (Oracle ignores them) */
+		while (*p == ' ')
+			p++;
+
+		/* Optional sign */
+		if (*p == '-' || *p == '+')
+			p++;
+
+		/*
+		 * Mantissa: digits with an optional decimal point.  Integer and
+		 * fractional digits are counted separately so that the numeric
+		 * typmod can be derived after the exponent is applied.
+		 */
+		while (*p != '\0')
+		{
+			if (isdigit((unsigned char) *p))
+			{
+				has_digit = true;
+				if (*p != '0')
+					has_nonzero_digit = true;
+				if (!has_dot)
+					int_digits++;
 				else
-					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								 errmsg("invalid number format model")));
+					frac_digits++;
+				p++;
+			}
+			else if (*p == '.' && !has_dot)
+			{
+				has_dot = true;
+				p++;
 			}
 			else
-			{
-				if (isdigit((unsigned char) *tem))
-					scale++;
-				else
-				{
-					while(*tem == ' ')
-						tem++;
-
-					if(*tem == '\0')
-						break;
-					else
-						ereport(ERROR,
-								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-									errmsg("invalid number format model")));
-				}
-			}
+				break;
 		}
-		precision += scale;
-		if (precision == 0)
+
+		/*
+		 * Optional exponent (scientific notation), e.g. '1e3' or '-1.5E-2'.
+		 * Oracle's TO_NUMBER accepts these.
+		 */
+		if (*p == 'e' || *p == 'E')
+		{
+			int			exp_sign = 1;
+
+			p++;
+
+			if (*p == '-')
+			{
+				exp_sign = -1;
+				p++;
+			}
+			else if (*p == '+')
+				p++;
+
+			while (isdigit((unsigned char) *p))
+			{
+				/*
+				 * Consume every exponent digit rather than stopping after a
+				 * fixed number of them, so that '1e0000000010' is not misread
+				 * as '1e1'.  Accumulate the magnitude in int64 and apply the
+				 * same bound as numeric_in() (PG_INT32_MAX / 2) to spot
+				 * exponents that can no longer be represented.  Past that
+				 * bound the outcome is already fixed: a positive exponent
+				 * overflows numeric, while a negative one underflows to zero
+				 * (matching Oracle's TO_NUMBER).  Keep scanning so the rest of
+				 * the input is still validated, but stop accumulating.
+				 */
+				has_exp_digit = true;
+				if (!exp_overflow)
+				{
+					if (exponent > PG_INT32_MAX / 2)
+						exp_overflow = true;
+					else
+					{
+						exponent = exponent * 10 + (*p - '0');
+						if (exponent > PG_INT32_MAX / 2)
+							exp_overflow = true;
+					}
+				}
+				p++;
+			}
+
+			/* An exponent must have at least one digit */
+			if (!has_exp_digit)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("invalid number format model")));
+
+			if (exp_overflow)
+			{
+				if (exp_sign > 0 && has_nonzero_digit)
+					ereport(ERROR,
+							(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+							 errmsg("value overflows numeric format")));
+
+				/*
+				 * An oversized exponent times an all-zero mantissa is still
+				 * zero, and a negative exponent that large underflows to
+				 * zero as well -- both match Oracle's TO_NUMBER.  numeric_in()
+				 * would instead raise an out-of-range error, so parse a
+				 * plain "0" below.
+				 */
+				underflow_to_zero = true;
+				exponent = 0;
+			}
+			else
+				exponent *= exp_sign;
+		}
+
+		/* Skip trailing blanks (Oracle ignores them) */
+		while (*p == ' ')
+			p++;
+
+		if (*p != '\0')
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						errmsg("invalid number format model")));
+					 errmsg("invalid number format model")));
+
+		if (!has_digit)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("invalid number format model")));
+
+		/*
+		 * Derive the numeric typmod from the mantissa digits and the
+		 * exponent: scale = max(0, frac_digits - exponent), precision =
+		 * mantissa digits shifted by the exponent (never less than the
+		 * scale).  Values beyond numeric's limits are rejected by
+		 * numeric_in() with an overflow error.
+		 */
+		scale = Max(0, frac_digits - (int) exponent);
+		precision = Max(int_digits + frac_digits +
+						Max(0, (int) exponent - frac_digits), scale);
+
+		/* Keep the typmod within numeric's valid range */
+		if (precision > NUMERIC_MAX_PRECISION)
+			precision = NUMERIC_MAX_PRECISION;
+		if (scale > precision)
+			scale = precision;
+
+		/*
+		 * A negative exponent that underflows numeric's range yields zero
+		 * (as Oracle's TO_NUMBER does), so hand numeric_in() a plain "0"
+		 * instead of the original string, which would overflow.
+		 */
+		if (underflow_to_zero)
+		{
+			pfree(numstr);
+			numstr = pstrdup("0");
+		}
 	}
 
 	result = DirectFunctionCall3(numeric_in,
@@ -7724,6 +7835,10 @@ NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 					pattern_len = strlen(pattern);
 					if (Np->is_to_char)
 					{
+						/* Truncate symbol if it's potentially too long */
+						if (unlikely(pattern_len > NUM_MAX_ITEM_SIZ))
+							pattern_len = pg_mbcliplen(pattern, pattern_len,
+													   NUM_MAX_ITEM_SIZ);
 						if (!Np->num_in)
 						{
 							if (IS_FILLMODE(Np->Num))
@@ -7731,19 +7846,21 @@ NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 							else
 							{
 								/* just in case there are MB chars */
-								pattern_len = pg_mbstrlen(pattern);
+								pattern_len = pg_mbstrlen_with_len(pattern,
+																   pattern_len);
 								memset(Np->inout_p, ' ', pattern_len);
 								Np->inout_p += pattern_len - 1;
 							}
 						}
 						else
 						{
-							strcpy(Np->inout_p, pattern);
+							memcpy(Np->inout_p, pattern, pattern_len);
 							Np->inout_p += pattern_len - 1;
 						}
 					}
 					else
 					{
+						/* Here we do not truncate the symbol ... */
 						if (!Np->num_in)
 						{
 							if (IS_FILLMODE(Np->Num))
@@ -7768,11 +7885,18 @@ NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 					pattern = Np->L_currency_symbol;
 					if (Np->is_to_char)
 					{
-						strcpy(Np->inout_p, pattern);
-						Np->inout_p += strlen(pattern) - 1;
+						/* Truncate symbol if it's potentially too long */
+						pattern_len = strlen(pattern);
+						if (unlikely(pattern_len > NUM_MAX_ITEM_SIZ))
+							pattern_len = pg_mbcliplen(pattern, pattern_len,
+													   NUM_MAX_ITEM_SIZ);
+
+						memcpy(Np->inout_p, pattern, pattern_len);
+						Np->inout_p += pattern_len - 1;
 					}
 					else
 					{
+						/* Here we do not truncate the symbol ... */
 						NUM_eat_non_data_chars(Np, pg_mbstrlen(pattern), input_len);
 						continue;
 					}

@@ -677,32 +677,58 @@ ora_utl_file_frename(PG_FUNCTION_ARGS)
 Datum
 ora_utl_file_fseek(PG_FUNCTION_ARGS)
 {
-	FILE   *fd;
+	FILE	   *fd;
+	bool		absolute_specified;
+	bool		relative_specified;
+	long		current_offset;
+	int64		target_offset;
+	long		file_size;
+
 	CHECK_FILE_HANDLE();
 	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL);
-	if(fd == NULL)
+	if (fd == NULL)
 		INVALID_FILEHANDLE_EXCEPTION();
-	if (PG_NARGS() > 1 && !PG_ARGISNULL(1))
+
+	absolute_specified = PG_NARGS() > 1 && !PG_ARGISNULL(1);
+	relative_specified = PG_NARGS() > 2 && !PG_ARGISNULL(2);
+	if (!absolute_specified && !relative_specified)
+		CUSTOM_EXCEPTION(INVALID_OFFSET,
+						 "Absolute and relative offsets cannot both be NULL.");
+
+	current_offset = ftell(fd);
+	if (current_offset < 0)
+		IO_EXCEPTION();
+
+	/*
+	 * fstat() reports only the size already on disk; buffered writes are
+	 * not included.  Flush the stream and measure the logical end of the
+	 * file, then restore the original position before validating the seek.
+	 */
+	do_flush(fd);
+	if (fseek(fd, 0, SEEK_END) != 0)
+		IO_EXCEPTION();
+	file_size = ftell(fd);
+	if (file_size < 0)
+		IO_EXCEPTION();
+	if (fseek(fd, current_offset, SEEK_SET) != 0)
+		IO_EXCEPTION();
+
+	if (absolute_specified)
 	{
-		/* absolute_offset: seek from beginning */
-		long abs_offset = (long) PG_GETARG_INT32(1);
-		rewind(fd); /* first, reset pos to beginning */
-		if (fseek(fd, abs_offset, SEEK_SET) != 0)
-			CUSTOM_EXCEPTION(INVALID_OFFSET, "Provided absolute offsets are invalid.");
-	}
-	else if (PG_NARGS() > 2 && !PG_ARGISNULL(2))
-	{
-		/* relative_offset: seek from current position */
-		long rel_offset = (long) PG_GETARG_INT32(2);
-		if (fseek(fd, rel_offset, SEEK_CUR) != 0)
-			CUSTOM_EXCEPTION(INVALID_OFFSET, "Provided relative offsets are invalid.");
+		target_offset = PG_GETARG_INT32(1);
 	}
 	else
 	{
-		/* no offset provided: no-op or reset to beginning */
-		if (fseek(fd, 0, SEEK_SET) != 0)
-			CUSTOM_EXCEPTION(INVALID_OFFSET, "Provided offsets are invalid.");
+		target_offset = (int64) current_offset + PG_GETARG_INT32(2);
 	}
+
+	if (target_offset < 0 || target_offset > file_size ||
+		target_offset > LONG_MAX)
+		CUSTOM_EXCEPTION(INVALID_OFFSET, "Provided offset is outside the file.");
+
+	if (fseek(fd, (long) target_offset, SEEK_SET) != 0)
+		CUSTOM_EXCEPTION(INVALID_OFFSET, "Provided offset is invalid.");
+
 	PG_RETURN_VOID();
 }
 
@@ -751,13 +777,15 @@ ora_utl_file_get_line(PG_FUNCTION_ARGS)
 
 	result = get_line(fd, max_linesize, encoding, &iseof);
 
+	/*
+	 * Oracle raises NO_DATA_FOUND (ORA-01403) when no text was read
+	 * because of end of file, so PL/iSQL callers can catch it explicitly.
+	 */
 	if (iseof)
 	{
-		ereport(LOG,
-			(errcode(ERRCODE_NO_DATA_FOUND),
-					errmsg("no data found")));
-
-		PG_RETURN_NULL();
+		ereport(ERROR,
+				(errcode(ERRCODE_NO_DATA_FOUND),
+						errmsg("no data found")));
 	}
 
 	PG_RETURN_TEXT_P(result);
@@ -822,6 +850,8 @@ ora_utl_file_putf(PG_FUNCTION_ARGS)
 
 	for (fpt = format; format_length > 0; fpt++, format_length--)
 	{
+		int			char_len;
+
 		if (format_length == 1)
 		{
 			/* last char */
@@ -830,7 +860,29 @@ ora_utl_file_putf(PG_FUNCTION_ARGS)
 				CHECK_ERRNO_PUT();
 			continue;
 		}
-		/* ansi compatible string */
+		/*
+		 * The format is already in the file encoding, not necessarily the
+		 * database encoding.  A multibyte character can contain a backslash
+		 * as a trailing byte (for example in GB18030, BIG5 or SJIS).  Copy
+		 * the whole character before looking for ASCII format directives.
+		 */
+		char_len = pg_encoding_mblen(encoding, fpt);
+		if ((size_t) char_len > format_length)
+			ereport(ERROR,
+					(errcode(ERRCODE_CHARACTER_NOT_IN_REPERTOIRE),
+					 errmsg("invalid multibyte character in UTL_FILE.PUTF format")));
+		if (char_len > 1)
+		{
+			cur_len += char_len;
+			CHECK_LENGTH(cur_len);
+			if (fwrite(fpt, 1, char_len, fd) != (size_t) char_len)
+				CHECK_ERRNO_PUT();
+			fpt += char_len - 1;
+			format_length -= char_len - 1;
+			continue;
+		}
+
+		/* ASCII format directives */
 		if (fpt[0] == '\\' && fpt[1] == 'n')
 		{
 			CHECK_LENGTH(++cur_len);
@@ -839,7 +891,8 @@ ora_utl_file_putf(PG_FUNCTION_ARGS)
 			fpt++; format_length--;
 			continue;
 		}
-		if (fpt[0] == '%')
+		/* Never consume the first byte of a multibyte character after '%'. */
+		if (fpt[0] == '%' && !IS_HIGHBIT_SET(fpt[1]))
 		{
 			if (fpt[1] == '%')
 			{

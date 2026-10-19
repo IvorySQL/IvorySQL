@@ -28,6 +28,17 @@ BEGIN
 END;
 /
 
+-- nclob arguments resolve to the CLOB overloads
+DECLARE
+    x nclob := 'abcd';
+    y nclob := 'bc';
+BEGIN
+    RAISE NOTICE 'NCLOB substr: %', dbms_lob.substr(x, 2, 2);
+    RAISE NOTICE 'NCLOB instr: %', dbms_lob.instr(x, y);
+    RAISE NOTICE 'NCLOB compare: %', dbms_lob.compare(x, 'abcd'::nclob);
+END;
+/
+
 -- =============================================================================
 -- SUBSTR (amount first, offset second; opposite order of SQL SUBSTR)
 -- =============================================================================
@@ -41,6 +52,9 @@ SELECT dbms_lob.substr('abcde'::clob, 3, 10) AS s_offset_high;
 SELECT dbms_lob.substr('abcde'::clob, 0, 1) AS s_amount_0;
 SELECT dbms_lob.substr('abcde'::clob, -1, 1) AS s_amount_neg;
 SELECT dbms_lob.substr('abcde'::clob, 32768, 1) AS s_amount_over_cap;
+SELECT dbms_lob.substr('abcde'::clob, 3, 2147483648) AS s_offset_over_int;
+SELECT dbms_lob.substr('abcde'::clob, 2147483648, 1) AS s_amount_over_int;
+SELECT dbms_lob.substr(hextoraw('aabbccddee')::blob, 2, 2147483648) AS s_blob_offset_over_int;
 SELECT dbms_lob.substr('abcde'::clob, 2.7, 2.7) AS s_fractional_truncated;
 SELECT dbms_lob.substr(NULL::clob, 1, 1) AS s_null;
 SELECT dbms_lob.substr(hextoraw('aabbccddee')::blob, 2, 2) AS s_blob;
@@ -64,6 +78,7 @@ SELECT dbms_lob.instr(NULL::clob, 'bc') AS i_null;
 SELECT dbms_lob.instr(hextoraw('aabbccbbaa')::blob, hextoraw('bb')::raw) AS i_blob;
 SELECT dbms_lob.instr(hextoraw('aabbccbbaa')::blob, hextoraw('bb')::raw, 3, 2) AS i_blob_occ;
 SELECT dbms_lob.instr(hextoraw('aabbccbbaa')::blob, hextoraw('cc')::raw, 4) AS i_blob_none;
+SELECT dbms_lob.instr(hextoraw('aaaaaaaa')::blob, hextoraw('aaaa')::raw, 1, 2) AS i_blob_overlap;
 
 -- =============================================================================
 -- COMPARE: strcmp-style -1/0/+1 (verified on Oracle 23ai, including the
@@ -144,6 +159,24 @@ BEGIN
     b := hextoraw('aabb');
     dbms_lob.copy(b, hextoraw('dd')::raw, 1, 5, 1);
     RAISE NOTICE 'COPY blob gap: %', b;
+
+    BEGIN
+        d := 'abc';
+        dbms_lob.copy(d, 'xy', 2, 1, 4);
+        RAISE NOTICE 'COPY src beyond: no error';
+    EXCEPTION
+        WHEN OTHERS THEN
+            RAISE NOTICE 'COPY src beyond raised: %', sqlerrm;
+    END;
+
+    BEGIN
+        b := hextoraw('aabb');
+        dbms_lob.copy(b, hextoraw('dd')::raw, 1, 1, 3);
+        RAISE NOTICE 'COPY blob src beyond: no error';
+    EXCEPTION
+        WHEN OTHERS THEN
+            RAISE NOTICE 'COPY blob src beyond raised: %', sqlerrm;
+    END;
 END;
 /
 

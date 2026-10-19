@@ -142,11 +142,10 @@ my ($ret, $out, $err) = $node->psql('postgres',
 is($ret, 2, 'server crash: psql exit code');
 like($out, qr/before/, 'server crash: output before crash');
 unlike($out, qr/AFTER/, 'server crash: no output after crash');
-my $detail_re = check_pg_config("#define HAVE_SA_SIGINFO 1")
-	? qr/DETAIL:  Signal sent by PID \d+, UID \d+\.\n/
-	: qr//;
-like( $err, qr/psql:<stdin>:2: FATAL:  terminating connection due to administrator command
-${detail_re}psql:<stdin>:2: server closed the connection unexpectedly
+like(
+	$err,
+	qr/psql:<stdin>:2: FATAL:  terminating connection due to administrator command
+psql:<stdin>:2: server closed the connection unexpectedly
 	This probably means the server terminated abnormally
 	before or while processing the request.
 psql:<stdin>:2: error: connection to server was lost/,
@@ -454,6 +453,8 @@ psql_fails_like(
 	'\set WATCH_INTERVAL 1e500',
 	qr/is out of range/,
 	'WATCH_INTERVAL variable is out of range');
+psql_like($node, '\echo :WATCH_INTERVAL',
+	qr/^2$/m, 'WATCH_INTERVAL variable was not altered');
 
 # Test \g output piped into a program.
 # The program is perl -pe '' to simply copy the input to the output.
@@ -539,5 +540,26 @@ psql_fails_like(
 \\! should_fail},
 	qr/backslash commands are restricted; only \\unrestrict is allowed/,
 	'meta-command in restrict mode fails');
+
+# Whole-line slash options use a separate scanner in Oracle mode.  Confirm
+# that it honors the request to strip trailing whitespace and semicolons.
+{
+	local $ENV{PG_TEST_INITDB_EXTRA_OPTS} = '-m oracle';
+	my $oracle_node = PostgreSQL::Test::Cluster->new('oracle_slash');
+
+	$oracle_node->init;
+	$oracle_node->start;
+	$oracle_node->safe_psql(
+		'postgres',
+		'CREATE FUNCTION slash_semicolon_test() RETURNS integer '
+		  . q{LANGUAGE SQL AS 'SELECT 1'});
+
+	local $ENV{PGOPTIONS} = '-c ivorysql.compatible_mode=oracle';
+	psql_like(
+		$oracle_node,
+		'\\sf public.slash_semicolon_test ;',
+		qr/CREATE OR REPLACE FUNCTION public\.slash_semicolon_test\(\)/,
+		'Oracle \\sf strips a trailing semicolon');
+}
 
 done_testing();

@@ -638,6 +638,7 @@ connect_pg_server(ForeignServer *server, UserMapping *user)
 		const char **keywords;
 		const char **values;
 		char	   *appname;
+		PGconn	   *start_conn;
 
 		construct_connection_params(server, user, &keywords, &values, &appname);
 
@@ -646,9 +647,13 @@ connect_pg_server(ForeignServer *server, UserMapping *user)
 			pgfdw_we_connect = WaitEventExtensionNew("PostgresFdwConnect");
 
 		/* OK to make connection */
-		conn = libpqsrv_connect_params(keywords, values,
-									   false,	/* expand_dbname */
-									   pgfdw_we_connect);
+		start_conn =
+			libpqsrv_connect_params_start(keywords, values,
+										   /* expand_dbname = */ false);
+		PQsetNoticeReceiver(start_conn, libpqsrv_notice_receiver,
+							"received message via remote connection");
+		libpqsrv_connect_complete(start_conn, pgfdw_we_connect);
+		conn = start_conn;
 
 		if (!conn || PQstatus(conn) != CONNECTION_OK)
 			ereport(ERROR,
@@ -656,9 +661,6 @@ connect_pg_server(ForeignServer *server, UserMapping *user)
 					 errmsg("could not connect to server \"%s\"",
 							server->servername),
 					 errdetail_internal("%s", pchomp(PQerrorMessage(conn)))));
-
-		PQsetNoticeReceiver(conn, libpqsrv_notice_receiver,
-							"received message via remote connection");
 
 		/* Perform post-connection security checks. */
 		pgfdw_security_check(keywords, values, user, conn);
@@ -715,12 +717,18 @@ UserMappingPasswordRequired(UserMapping *user)
 	return true;
 }
 
+/*
+ * Return whether SCRAM pass-through is enabled.
+ *
+ * If use_scram_passthrough is specified in both the foreign server
+ * and the user mapping, the user mapping setting takes precedence.
+ */
 static bool
 UseScramPassthrough(ForeignServer *server, UserMapping *user)
 {
 	ListCell   *cell;
 
-	foreach(cell, server->options)
+	foreach(cell, user->options)
 	{
 		DefElem    *def = (DefElem *) lfirst(cell);
 
@@ -728,7 +736,7 @@ UseScramPassthrough(ForeignServer *server, UserMapping *user)
 			return defGetBoolean(def);
 	}
 
-	foreach(cell, user->options)
+	foreach(cell, server->options)
 	{
 		DefElem    *def = (DefElem *) lfirst(cell);
 
@@ -1480,6 +1488,11 @@ pgfdw_inval_callback(Datum arg, SysCacheIdentifier cacheid, uint32 hashvalue)
  * Such connections can't safely be further used.  Re-establishing the
  * connection would change the snapshot and roll back any writes already
  * performed, so that's not an option, either. Thus, we must abort.
+ *
+ * Note: there might be open cursors that use the connection, so even if the
+ * connection cache entry is marked as such, we will retain it until abort
+ * cleanup of the main transaction, to ensure such open cursors can safely
+ * refer to the PGconn for the connection.
  */
 static void
 pgfdw_reject_incomplete_xact_state_change(ConnCacheEntry *entry)
@@ -1490,15 +1503,12 @@ pgfdw_reject_incomplete_xact_state_change(ConnCacheEntry *entry)
 	if (entry->conn == NULL || !entry->changing_xact_state)
 		return;
 
-	/* make sure this entry is inactive */
-	disconnect_pg_server(entry);
-
 	/* find server name to be shown in the message below */
 	server = GetForeignServer(entry->serverid);
 
 	ereport(ERROR,
 			(errcode(ERRCODE_CONNECTION_EXCEPTION),
-			 errmsg("connection to server \"%s\" was lost",
+			 errmsg("connection to server \"%s\" cannot be used due to abort cleanup failure",
 					server->servername)));
 }
 

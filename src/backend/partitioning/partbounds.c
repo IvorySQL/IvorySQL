@@ -5030,18 +5030,18 @@ check_two_partitions_bounds_range(Relation parent,
 		if (is_merge)
 			ereport(ERROR,
 					errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-					errmsg("can not merge partition \"%s\" together with partition \"%s\"",
+					errmsg("cannot merge partition \"%s\" together with partition \"%s\"",
 						   second_name->relname, first_name->relname),
-					errdetail("lower bound of partition \"%s\" is not equal to the upper bound of partition \"%s\"",
+					errdetail("The lower bound of partition \"%s\" is not equal to the upper bound of partition \"%s\".",
 							  second_name->relname, first_name->relname),
 					errhint("ALTER TABLE ... MERGE PARTITIONS requires the partition bounds to be adjacent."),
 					parser_errposition(pstate, datum->location));
 		else
 			ereport(ERROR,
 					errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-					errmsg("can not split to partition \"%s\" together with partition \"%s\"",
+					errmsg("cannot split to partition \"%s\" together with partition \"%s\"",
 						   second_name->relname, first_name->relname),
-					errdetail("lower bound of partition \"%s\" is not equal to the upper bound of partition \"%s\"",
+					errdetail("The lower bound of partition \"%s\" is not equal to the upper bound of partition \"%s\".",
 							  second_name->relname, first_name->relname),
 					errhint("ALTER TABLE ... SPLIT PARTITION requires the partition bounds to be adjacent."),
 					parser_errposition(pstate, datum->location));
@@ -5062,7 +5062,7 @@ get_partition_bound_spec(Oid partOid)
 	PartitionBoundSpec *boundspec = NULL;
 
 	/* Try fetching the tuple from the catcache, for speed. */
-	tuple = SearchSysCache1(RELOID, partOid);
+	tuple = SearchSysCache1(RELOID, ObjectIdGetDatum(partOid));
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for relation %u", partOid);
 
@@ -5405,7 +5405,7 @@ check_partition_bounds_for_split_range(Relation parent,
 							errmsg("lower bound of partition \"%s\" is not equal to lower bound of split partition \"%s\"",
 								   relname,
 								   get_rel_name(splitPartOid)),
-							errhint("%s require combined bounds of new partitions must exactly match the bound of the split partition.",
+							errhint("%s requires the combined bounds of the new partitions to exactly match the bound of the split partition.",
 									"ALTER TABLE ... SPLIT PARTITION"),
 							parser_errposition(pstate, exprLocation((Node *) datum)));
 			}
@@ -5415,11 +5415,11 @@ check_partition_bounds_for_split_range(Relation parent,
 						errmsg("lower bound of partition \"%s\" is less than lower bound of split partition \"%s\"",
 							   relname,
 							   get_rel_name(splitPartOid)),
-						errhint("%s require combined bounds of new partitions must exactly match the bound of the split partition.",
-								"ALTER TABLE ... SPLIT PARTITION"),
+						errhint("Explicit partition bounds must be contained within the bounds of the split partition when a DEFAULT partition is specified."),
 						parser_errposition(pstate, exprLocation((Node *) datum)));
 		}
-		else
+
+		if (last)
 		{
 			PartitionRangeBound *split_upper;
 
@@ -5447,7 +5447,7 @@ check_partition_bounds_for_split_range(Relation parent,
 							errmsg("upper bound of partition \"%s\" is not equal to upper bound of split partition \"%s\"",
 								   relname,
 								   get_rel_name(splitPartOid)),
-							errhint("%s require combined bounds of new partitions must exactly match the bound of the split partition.",
+							errhint("%s requires the combined bounds of the new partitions to exactly match the bound of the split partition.",
 									"ALTER TABLE ... SPLIT PARTITION"),
 							parser_errposition(pstate, exprLocation((Node *) datum)));
 			}
@@ -5457,8 +5457,7 @@ check_partition_bounds_for_split_range(Relation parent,
 						errmsg("upper bound of partition \"%s\" is greater than upper bound of split partition \"%s\"",
 							   relname,
 							   get_rel_name(splitPartOid)),
-						errhint("%s require combined bounds of new partitions must exactly match the bound of the split partition.",
-								"ALTER TABLE ... SPLIT PARTITION"),
+						errhint("Explicit partition bounds must be contained within the bounds of the split partition when a DEFAULT partition is specified."),
 						parser_errposition(pstate, exprLocation((Node *) datum)));
 		}
 	}
@@ -5525,7 +5524,7 @@ check_partition_bounds_for_split_list(Relation parent, char *relname,
 			else
 				ereport(ERROR,
 						errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						errmsg("new partition \"%s\" cannot have this value because split partition \"%s\" does not have",
+						errmsg("new partition \"%s\" cannot have this value because split partition \"%s\" does not have it",
 							   relname,
 							   get_rel_name(splitPartOid)),
 						parser_errposition(pstate, overlap_location));
@@ -5542,7 +5541,7 @@ check_partition_bounds_for_split_list(Relation parent, char *relname,
 		else
 			ereport(ERROR,
 					errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-					errmsg("new partition \"%s\" cannot have NULL value because split partition \"%s\" does not have",
+					errmsg("new partition \"%s\" cannot have NULL value because split partition \"%s\" does not have it",
 						   relname,
 						   get_rel_name(splitPartOid)),
 					parser_errposition(pstate, overlap_location));
@@ -5650,10 +5649,10 @@ check_parent_values_in_new_partitions(Relation parent,
 	if (!found)
 		ereport(ERROR,
 				errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-				errmsg("new partitions combined partition bounds do not contain value (%s) but split partition \"%s\" does",
+				errmsg("new partitions' combined partition bounds do not contain value (%s) but split partition \"%s\" does",
 					   "NULL",
 					   get_rel_name(partOid)),
-				errhint("%s require combined bounds of new partitions must exactly match the bound of the split partition.",
+				errhint("%s requires the combined bounds of the new partitions to exactly match the bound of the split partition.",
 						"ALTER TABLE ... SPLIT PARTITION"));
 
 	/*
@@ -5693,12 +5692,152 @@ check_parent_values_in_new_partitions(Relation parent,
 
 		ereport(ERROR,
 				errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-				errmsg("new partitions combined partition bounds do not contain value (%s) but split partition \"%s\" does",
+				errmsg("new partitions' combined partition bounds do not contain value (%s) but split partition \"%s\" does",
 					   deparse_expression((Node *) notFoundVal, NIL, false, false),
 					   get_rel_name(partOid)),
-				errhint("%s require combined bounds of new partitions must exactly match the bound of the split partition.",
+				errhint("%s requires the combined bounds of the new partitions to exactly match the bound of the split partition.",
 						"ALTER TABLE ... SPLIT PARTITION"));
 	}
+}
+
+/*
+ * split_partition_values_contained_in_new_part
+ *
+ * (function for BY LIST partitioning)
+ *
+ * Returns true if all values in the LIST bound of the partition being split
+ * are contained in the specified non-DEFAULT replacement partition's bound.
+ *
+ * The caller must already have verified containment in the other direction,
+ * so this check is sufficient to prove that the two LIST bounds are equal.
+ */
+static bool
+split_partition_values_contained_in_new_part(Relation parent,
+											 Oid splitPartOid,
+											 SinglePartitionSpec *part)
+{
+	PartitionKey key = RelationGetPartitionKey(parent);
+	PartitionDesc partdesc = RelationGetPartitionDesc(parent, false);
+	PartitionBoundInfo boundinfo = partdesc->boundinfo;
+	SinglePartitionSpec *parts[1];
+	Datum		datum = PointerGetDatum(NULL);
+
+	Assert(key->strategy == PARTITION_STRATEGY_LIST);
+
+	parts[0] = part;
+
+	/*
+	 * Special processing for NULL value.  Search for a NULL value if the
+	 * split partition contains it.
+	 */
+	if (partition_bound_accepts_nulls(boundinfo) &&
+		partdesc->oids[boundinfo->null_index] == splitPartOid)
+	{
+		if (!find_value_in_new_partitions_list(&key->partsupfunc[0],
+											   key->partcollation, parts, 1,
+											   datum, true))
+			return false;
+	}
+
+	/*
+	 * Search all values of the split partition in the single non-DEFAULT
+	 * replacement partition.
+	 */
+	for (int i = 0; i < boundinfo->ndatums; i++)
+	{
+		if (partdesc->oids[boundinfo->indexes[i]] == splitPartOid)
+		{
+			datum = boundinfo->datums[i][0];
+
+			if (!find_value_in_new_partitions_list(&key->partsupfunc[0],
+												   key->partcollation, parts, 1,
+												   datum, false))
+				return false;
+		}
+	}
+
+	return true;
+}
+
+/*
+ * check_split_partition_not_same_bound
+ *
+ * Reject splitting a non-DEFAULT partition into one non-DEFAULT partition
+ * with the original bound plus a DEFAULT partition.  That form does not
+ * perform a real split; it merely adds a DEFAULT partition to the parent
+ * table through the split-partition path.  Users should use
+ * CREATE TABLE ... PARTITION OF ... DEFAULT or ALTER TABLE ... ATTACH
+ * PARTITION ... DEFAULT for that.
+ *
+ * Must be called after the per-partition bound validation in
+ * check_partitions_for_split() so that containment of new bounds within the
+ * split partition is already established.  Given containment, RANGE bounds
+ * are equal iff their lower and upper rbounds match; LIST bound sets are
+ * equal iff the split partition's values are also contained in the new
+ * partition (the containment is then bidirectional).  Both checks go
+ * through the partition operator family (partition_rbound_cmp /
+ * find_value_in_new_partitions_list) rather than byte equality, so e.g.
+ * -0.0 and 0.0 -- which have different bit patterns but compare equal
+ * under float8 -- are correctly recognised as the same bound.
+ */
+static void
+check_split_partition_not_same_bound(Relation parent,
+									 Oid splitPartOid,
+									 SinglePartitionSpec **parts,
+									 int nparts,
+									 ParseState *pstate)
+{
+	PartitionKey key = RelationGetPartitionKey(parent);
+	PartitionBoundSpec *new_spec;
+	PartitionBoundSpec *split_spec;
+
+	if (nparts != 1)
+		return;
+
+	new_spec = parts[0]->bound;
+	split_spec = get_partition_bound_spec(splitPartOid);
+
+	Assert(new_spec->strategy == split_spec->strategy);
+
+	if (key->strategy == PARTITION_STRATEGY_RANGE)
+	{
+		PartitionRangeBound *new_lower;
+		PartitionRangeBound *new_upper;
+		PartitionRangeBound *split_lower;
+		PartitionRangeBound *split_upper;
+
+		new_lower = make_one_partition_rbound(key, -1, new_spec->lowerdatums, true);
+		new_upper = make_one_partition_rbound(key, -1, new_spec->upperdatums, false);
+		split_lower = make_one_partition_rbound(key, -1, split_spec->lowerdatums, true);
+		split_upper = make_one_partition_rbound(key, -1, split_spec->upperdatums, false);
+
+		if (partition_rbound_cmp(key->partnatts, key->partsupfunc,
+								 key->partcollation,
+								 new_lower->datums, new_lower->kind, true,
+								 split_lower) != 0)
+			return;
+		if (partition_rbound_cmp(key->partnatts, key->partsupfunc,
+								 key->partcollation,
+								 new_upper->datums, new_upper->kind, false,
+								 split_upper) != 0)
+			return;
+	}
+	else
+	{
+		Assert(key->strategy == PARTITION_STRATEGY_LIST);
+
+		if (!split_partition_values_contained_in_new_part(parent, splitPartOid,
+														  parts[0]))
+			return;
+	}
+
+	ereport(ERROR,
+			errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+			errmsg("cannot split partition \"%s\" only to add a DEFAULT partition",
+				   get_rel_name(splitPartOid)),
+			errdetail("The non-DEFAULT partition would keep the same partition bound."),
+			errhint("Use CREATE TABLE ... PARTITION OF ... DEFAULT to add a DEFAULT partition."),
+			parser_errposition(pstate, parts[0]->name->location));
 }
 
 /*
@@ -5713,7 +5852,7 @@ check_parent_values_in_new_partitions(Relation parent,
  * 3. In case new partitions don't contain the DEFAULT partition and the
  *	  partitioned table does not have the DEFAULT partition, the following
  *	  should be true: the sum of the bounds of new partitions should be equal
- &	  to the bound of the split partition.
+ *	  to the bound of the split partition.
  *
  * parent:			partitioned table
  * splitPartOid:	split partition Oid
@@ -5871,6 +6010,16 @@ check_partitions_for_split(Relation parent,
 			check_parent_values_in_new_partitions(parent, splitPartOid,
 												  new_parts, nparts, pstate);
 	}
+
+	/*
+	 * Reject the degenerate form where the single non-DEFAULT replacement
+	 * partition keeps the bound of the split partition; the command then does
+	 * nothing beyond adding a DEFAULT partition.  Containment was established
+	 * by the per-partition validation above, so an equality check is enough.
+	 */
+	if (!isSplitPartDefault && createDefaultPart)
+		check_split_partition_not_same_bound(parent, splitPartOid, new_parts,
+											 nparts, pstate);
 
 	pfree(new_parts);
 }

@@ -157,7 +157,7 @@ transformGraphTablePropertyRef(ParseState *pstate, ColumnRef *cref)
  * A label expression is parsed as either a ColumnRef with a single field or a
  * label expression like label disjunction. The single field in the ColumnRef is
  * treated as a label name and transformed to a GraphLabelRef node. The label
- * expression is recursively transformed into an expression tree containg
+ * expression is recursively transformed into an expression tree containing
  * GraphLabelRef nodes corresponding to the names of the labels appearing in the
  * expression. If any label name cannot be resolved to a label in the property
  * graph, an error is raised.
@@ -252,6 +252,11 @@ transformGraphElementPattern(ParseState *pstate, GraphElementPattern *gep)
 	gep->labelexpr = transformLabelExpr(gpstate, gep->labelexpr);
 
 	gep->whereClause = transformExpr(pstate, gep->whereClause, EXPR_KIND_WHERE);
+
+	/*
+	 * Assign collations here for the reason mentioned in the prologue of
+	 * transformGraphPattern().
+	 */
 	assign_expr_collations(pstate, gep->whereClause);
 
 	gpstate->cur_gep = NULL;
@@ -366,9 +371,14 @@ transformPathPatternList(ParseState *pstate, List *path_pattern)
  * Transform a GraphPattern.
  *
  * A GraphPattern consists of a list of one or more path patterns and an
- * optional where clause. Transform them. We use the previously constructure
+ * optional where clause. Transform them. We use the previously constructed
  * list of variables in the GraphTableParseState to resolve property references
  * in the WHERE clause.
+ *
+ * Since most parts of the GraphPattern do not require collation assignment, we
+ * assign collations to the required expressions as they are transformed.  This
+ * avoids the need to traverse the whole GraphPattern again and avoids exposing
+ * it to assign_expr_collations().
  */
 Node *
 transformGraphPattern(ParseState *pstate, GraphPattern *graph_pattern)

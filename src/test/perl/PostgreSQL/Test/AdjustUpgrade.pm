@@ -117,11 +117,17 @@ sub adjust_database_contents
 	{
 		if ($dbnames{"contrib_regression_btree_gist"})
 		{
-			_add_st($result, 'contrib_regression_btree_gist',
+			_add_st(
+				$result,
+				'contrib_regression_btree_gist',
 				"drop index if exists public.inettmp_a_a1_idx");
-			_add_st($result, 'contrib_regression_btree_gist',
+			_add_st(
+				$result,
+				'contrib_regression_btree_gist',
 				"drop index if exists public.inetidx");
-			_add_st($result, 'contrib_regression_btree_gist',
+			_add_st(
+				$result,
+				'contrib_regression_btree_gist',
 				"drop index public.cidridx");
 		}
 		if ($dbnames{"regression_btree_gist"})
@@ -189,6 +195,14 @@ sub adjust_database_contents
 				$result, $regrdb,
 				'drop function if exists public.putenv(text)',
 				'drop function if exists public.wait_pid(integer)');
+		}
+
+		# delete seg row that pre-14 was printed incorrectly but would now
+		# be printed correctly
+		if ($dbnames{contrib_regression_seg})
+		{
+			_add_st($result, 'contrib_regression_seg',
+				"delete from test_seg where s = '4.6 .. ~7.0'");
 		}
 	}
 

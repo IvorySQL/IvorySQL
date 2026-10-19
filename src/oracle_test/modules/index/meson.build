@@ -1,12 +1,6 @@
 # Copyright (c) 2025, PostgreSQL Global Development Group
 
-tests += {
-  'name': 'index',
-  'sd': meson.current_source_dir(),
-  'bd': meson.current_build_dir(),
-  'isolation': {
-    'specs': [
-      'killtuples',
-    ],
-  },
-}
+# No Oracle isolation registration: this module defines no ORACLE_ISOLATION in
+# the GNU Make build either, and the killtuples expectation drifts under an
+# Oracle-mode instance. Re-enable only as part of an Oracle-compatible test
+# subset.

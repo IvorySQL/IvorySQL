@@ -96,8 +96,8 @@ CREATE PACKAGE BODY dbms_lob AS
     END;
 
     FUNCTION substr(lob CLOB, amount NUMBER DEFAULT 32767, pos NUMBER DEFAULT 1) RETURN VARCHAR2 IS
-        v_pos int;
-        v_amount int;
+        v_pos number;
+        v_amount number;
     BEGIN
         IF lob IS NULL OR amount IS NULL OR pos IS NULL THEN
             RETURN NULL;
@@ -108,12 +108,12 @@ CREATE PACKAGE BODY dbms_lob AS
            OR v_pos > pg_catalog.length(lob) THEN
             RETURN NULL;
         END IF;
-        RETURN pg_catalog.substr(lob, v_pos, v_amount);
+        RETURN pg_catalog.substr(lob, v_pos::int, v_amount::int);
     END;
 
     FUNCTION substr(lob BLOB, amount NUMBER DEFAULT 32767, pos NUMBER DEFAULT 1) RETURN sys.raw IS
-        v_pos int;
-        v_amount int;
+        v_pos number;
+        v_amount number;
     BEGIN
         IF lob IS NULL OR amount IS NULL OR pos IS NULL THEN
             RETURN NULL;
@@ -124,7 +124,7 @@ CREATE PACKAGE BODY dbms_lob AS
            OR v_pos > pg_catalog.octet_length(lob) THEN
             RETURN NULL;
         END IF;
-        RETURN pg_catalog.substr(lob, v_pos, v_amount);
+        RETURN pg_catalog.substr(lob, v_pos::int, v_amount::int);
     END;
 
     FUNCTION instr(lob CLOB, pattern CLOB, pos NUMBER DEFAULT 1, occurrence NUMBER DEFAULT 1) RETURN NUMBER IS
@@ -157,7 +157,7 @@ CREATE PACKAGE BODY dbms_lob AS
             v_pos := position(pattern IN pg_catalog.substr(lob, v_start, 2147483647));
             EXIT WHEN v_pos = 0;
             v_found := v_start + v_pos - 1;
-            v_start := v_found + pg_catalog.octet_length(pattern);
+            v_start := v_found + 1;
             v_matches := v_matches + 1;
         END LOOP;
         IF v_matches = trunc(occurrence) THEN
@@ -296,9 +296,11 @@ CREATE PACKAGE BODY dbms_lob AS
         v_dpos := pg_catalog.trunc(dest_pos);
         v_spos := pg_catalog.trunc(src_pos);
         v_amount := pg_catalog.trunc(amount);
-        IF v_dpos < 1 OR v_spos < 1 OR v_amount < 1
-           OR v_spos > pg_catalog.length(src_lob) THEN
+        IF v_dpos < 1 OR v_spos < 1 OR v_amount < 1 THEN
             RETURN;
+        END IF;
+        IF v_spos > pg_catalog.length(src_lob) THEN
+            RAISE EXCEPTION 'source offset is beyond the end of the source LOB';
         END IF;
         v_amt := least(v_amount, pg_catalog.length(src_lob) - v_spos + 1)::int;
         v_gap := greatest(v_dpos - 1 - pg_catalog.length(dest_lob), 0);
@@ -326,9 +328,11 @@ CREATE PACKAGE BODY dbms_lob AS
         v_dpos := pg_catalog.trunc(dest_pos);
         v_spos := pg_catalog.trunc(src_pos);
         v_amount := pg_catalog.trunc(amount);
-        IF v_dpos < 1 OR v_spos < 1 OR v_amount < 1
-           OR v_spos > pg_catalog.octet_length(src_lob) THEN
+        IF v_dpos < 1 OR v_spos < 1 OR v_amount < 1 THEN
             RETURN;
+        END IF;
+        IF v_spos > pg_catalog.octet_length(src_lob) THEN
+            RAISE EXCEPTION 'source offset is beyond the end of the source LOB';
         END IF;
         v_amt := least(v_amount, pg_catalog.octet_length(src_lob) - v_spos + 1)::int;
         v_gap := greatest(v_dpos - 1 - pg_catalog.octet_length(dest_lob), 0);
@@ -389,7 +393,11 @@ CREATE PACKAGE BODY dbms_lob AS
         IF v_pos < 1 THEN
             RAISE EXCEPTION 'argument 3 is null, invalid, or out of range';
         END IF;
-        IF dest_lob IS NULL OR v_pos > pg_catalog.length(dest_lob) THEN
+        IF dest_lob IS NULL THEN
+            RETURN;
+        END IF;
+        IF v_pos > pg_catalog.length(dest_lob) THEN
+            amount := 0;
             RETURN;
         END IF;
         v_erase := least(v_amount, pg_catalog.length(dest_lob) - v_pos + 1)::int;
@@ -420,7 +428,11 @@ CREATE PACKAGE BODY dbms_lob AS
         IF v_pos < 1 THEN
             RAISE EXCEPTION 'argument 3 is null, invalid, or out of range';
         END IF;
-        IF dest_lob IS NULL OR v_pos > pg_catalog.octet_length(dest_lob) THEN
+        IF dest_lob IS NULL THEN
+            RETURN;
+        END IF;
+        IF v_pos > pg_catalog.octet_length(dest_lob) THEN
+            amount := 0;
             RETURN;
         END IF;
         v_erase := least(v_amount, pg_catalog.octet_length(dest_lob) - v_pos + 1)::int;

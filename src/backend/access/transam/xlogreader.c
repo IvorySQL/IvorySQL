@@ -41,7 +41,7 @@
 #include "common/logging.h"
 #endif
 
-static void report_invalid_record(XLogReaderState *state, const char *fmt,...)
+static void report_invalid_record(XLogReaderState *state, const char *fmt, ...)
 			pg_attribute_printf(2, 3);
 static void allocate_recordbuf(XLogReaderState *state, uint32 reclength);
 static int	ReadPageInternal(XLogReaderState *state, XLogRecPtr pageptr,
@@ -70,7 +70,7 @@ static void WALOpenSegmentInit(WALOpenSegment *seg, WALSegmentContext *segcxt,
  * the current record being read.
  */
 static void
-report_invalid_record(XLogReaderState *state, const char *fmt,...)
+report_invalid_record(XLogReaderState *state, const char *fmt, ...)
 {
 	va_list		args;
 
@@ -1579,9 +1579,6 @@ WALRead(XLogReaderState *state,
 
 #ifndef FRONTEND
 		pgstat_report_wait_end();
-
-		pgstat_count_io_op_time(IOOBJECT_WAL, IOCONTEXT_NORMAL, IOOP_READ,
-								io_start, 1, readbytes);
 #endif
 
 		if (readbytes <= 0)
@@ -1593,6 +1590,11 @@ WALRead(XLogReaderState *state,
 			errinfo->wre_seg = state->seg;
 			return false;
 		}
+
+#ifndef FRONTEND
+		pgstat_count_io_op_time(IOOBJECT_WAL, IOCONTEXT_NORMAL, IOOP_READ,
+								io_start, 1, readbytes);
+#endif
 
 		/* Update state for read */
 		recptr += readbytes;

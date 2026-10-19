@@ -16,6 +16,11 @@ test_package_reset = shared_module('test_package_reset',
 )
 test_install_libs += test_package_reset
 
+test_install_data += files(
+  'test_package_reset.control',
+  'test_package_reset--1.0.sql',
+)
+
 tests += {
   'name': 'test_package_reset',
   'sd': meson.current_source_dir(),

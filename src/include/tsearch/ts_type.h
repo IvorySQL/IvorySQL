@@ -195,7 +195,7 @@ typedef struct
 {
 	QueryItemType type;
 	int8		oper;			/* see above */
-	int16		distance;		/* distance between agrs for OP_PHRASE */
+	int16		distance;		/* distance between args for OP_PHRASE */
 	uint32		left;			/* pointer to left operand. Right operand is
 								 * item + 1, left operand is placed
 								 * item+item->left */
@@ -228,7 +228,8 @@ typedef TSQueryData *TSQuery;
 
 #define HDRSIZETQ	( VARHDRSZ + sizeof(int32) )
 
-/* Computes the size of header and all QueryItems. size is the number of
+/*
+ * Computes the size of header and all QueryItems. size is the number of
  * QueryItems, and lenofoperand is the total length of all operands
  */
 #define COMPUTESIZE(size, lenofoperand) ( HDRSIZETQ + (size) * sizeof(QueryItem) + (lenofoperand) )
