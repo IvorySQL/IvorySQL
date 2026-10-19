@@ -307,11 +307,13 @@ ora_to_binary_double(PG_FUNCTION_ARGS)
  * ora_bit_and_agg_transfn
  * Transition function for the Oracle-compatible BIT_AND_AGG aggregate.
  *
- * The aggregate is declared STRICT with an int8 transition state and no
- * INITCOND, so the executor seeds the state with the first non-null input
- * and skips NULL inputs without calling this function; NULL inputs are
- * ignored and a group with no non-null input aggregates to NULL, matching
- * Oracle.
+ * The function is deliberately not STRICT: the int8 state is not binary
+ * compatible with the number input, so an INITCOND would be required for
+ * a strict transition function, and an initial value would surface as the
+ * result of an empty or all-NULL group instead of the NULL that Oracle
+ * returns.  Handling a NULL state explicitly keeps an unset state NULL,
+ * skips NULL inputs, and seeds the first non-null input from the all-ones
+ * identity.
  *
  * Oracle truncates fractional input values toward zero before aggregating,
  * so 4.64 and 4.4 both contribute 4; numeric_trunc() implements exactly
@@ -322,10 +324,25 @@ ora_to_binary_double(PG_FUNCTION_ARGS)
 Datum
 ora_bit_and_agg_transfn(PG_FUNCTION_ARGS)
 {
-	int64		state = PG_GETARG_INT64(0);
-	Numeric		arg = PG_GETARG_NUMERIC(1);
+	int64		state;
+	Numeric		arg;
 	Datum		truncated;
 	int64		input;
+
+	/* NULL inputs are ignored; an unset state stays unset. */
+	if (PG_ARGISNULL(1))
+	{
+		if (PG_ARGISNULL(0))
+			PG_RETURN_NULL();
+		PG_RETURN_INT64(PG_GETARG_INT64(0));
+	}
+
+	if (PG_ARGISNULL(0))
+		state = -1;			/* identity: all bits set */
+	else
+		state = PG_GETARG_INT64(0);
+
+	arg = PG_GETARG_NUMERIC(1);
 
 	truncated = DirectFunctionCall2(numeric_trunc,
 									NumericGetDatum(arg),
@@ -339,14 +356,20 @@ ora_bit_and_agg_transfn(PG_FUNCTION_ARGS)
  * ora_bit_and_agg_combinefn
  * Combine function for partial states of the BIT_AND_AGG aggregate.
  *
- * STRICT makes a NULL partial state (a worker that saw no non-null rows)
- * drop out and the surviving side pass through unchanged.
+ * Not STRICT either, so a NULL partial state (a worker that saw no
+ * non-null rows) drops out and the surviving side passes through.
  */
 Datum
 ora_bit_and_agg_combinefn(PG_FUNCTION_ARGS)
 {
-	int64		state1 = PG_GETARG_INT64(0);
-	int64		state2 = PG_GETARG_INT64(1);
+	if (PG_ARGISNULL(0))
+	{
+		if (PG_ARGISNULL(1))
+			PG_RETURN_NULL();
+		PG_RETURN_INT64(PG_GETARG_INT64(1));
+	}
+	if (PG_ARGISNULL(1))
+		PG_RETURN_INT64(PG_GETARG_INT64(0));
 
-	PG_RETURN_INT64(state1 & state2);
+	PG_RETURN_INT64(PG_GETARG_INT64(0) & PG_GETARG_INT64(1));
 }

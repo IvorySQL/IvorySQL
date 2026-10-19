@@ -1194,20 +1194,20 @@ PARALLEL SAFE;
 /*
  * BIT_AND_AGG: Oracle-compatible bitwise AND aggregate.
  *
- * The transition function is STRICT over an int8 state with no INITCOND, so
- * the first non-null input seeds the state, NULL inputs are skipped, and
- * combining partial states treats an empty partial state as the identity of
- * the other side; a group without non-null input stays NULL, as in Oracle.
- * Fractional inputs are truncated toward zero before contributing, and any
- * numeric-family input (integer, numeric, binary_double, ...) reaches the
- * NUMBER parameter through an implicit cast.  Values that do not fit in
- * bigint raise an error, while Oracle aggregates the wider 128-bit range.
+ * The transition and combine functions are not STRICT: the int8 state is
+ * not binary compatible with the number input, so a strict transition
+ * function would need an INITCOND whose value an empty or all-NULL group
+ * would wrongly return instead of NULL.  Handling a NULL state explicitly
+ * keeps such groups NULL, as in Oracle.  Fractional inputs are truncated
+ * toward zero before contributing, and any numeric-family input (integer,
+ * numeric, binary_double, ...) reaches the NUMBER parameter through an
+ * implicit cast.  Values that do not fit in bigint raise an error, while
+ * Oracle aggregates the wider 128-bit range.
  */
 CREATE FUNCTION sys.bit_and_agg_transfn(int8, number)
 RETURNS int8
 AS 'MODULE_PATHNAME','ora_bit_and_agg_transfn'
 LANGUAGE C
-STRICT
 IMMUTABLE
 PARALLEL SAFE;
 
@@ -1215,7 +1215,6 @@ CREATE FUNCTION sys.bit_and_agg_combinefn(int8, int8)
 RETURNS int8
 AS 'MODULE_PATHNAME','ora_bit_and_agg_combinefn'
 LANGUAGE C
-STRICT
 IMMUTABLE
 PARALLEL SAFE;
 
