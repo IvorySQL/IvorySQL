@@ -49,9 +49,18 @@ if host_system == 'windows'
     '--FILEDESC', 'ivorysql_ora - Oracle Compatible extension on Postgres Database',])
 endif
 
+# gensql reads these files itself, so Ninja cannot discover the dependencies
+# from the command line. Reading the manifest also makes Meson reconfigure
+# when entries are added or removed.
+ivorysql_ora_sql_inputs = files('gensql.pl', 'ivorysql_ora_merge_sqls')
+foreach sql_fragment : fs.read('ivorysql_ora_merge_sqls').strip().split('\n')
+  ivorysql_ora_sql_inputs += files(sql_fragment.strip() + '--1.0.sql')
+endforeach
+
 custom_target('ivorysql_ora--1.0.sql',
   output: 'ivorysql_ora--1.0.sql',
   command: [perl, '../contrib/ivorysql_ora/gensql.pl', 'meson', '1.0'],
+  depend_files: ivorysql_ora_sql_inputs,
   capture: true,
   install: true,
   install_dir: contrib_data_args['install_dir'],
