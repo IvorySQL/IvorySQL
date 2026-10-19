@@ -118,6 +118,15 @@ WHERE TABLE_NAME = 'TV_T';
  t                 | t
 (1 row)
 
+-- TABLESPACE_NAME resolves the database default when none was specified
+SELECT TABLESPACE_NAME IS NOT NULL AS tablespace_ok
+FROM USER_TABLES
+WHERE TABLE_NAME = 'TV_T';
+ tablespace_ok 
+---------------
+ t
+(1 row)
+
 -- constant markers match the Oracle defaults for an ordinary table
 SELECT STATUS, DEGREE, INSTANCES, CACHE, TABLE_LOCK, GLOBAL_STATS,
 	USER_STATS, SKIP_CORRUPT, MONITORING, DEPENDENCIES, COMPRESSION,
