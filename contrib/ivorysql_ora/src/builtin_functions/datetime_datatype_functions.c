@@ -30,6 +30,7 @@
 #include <time.h>
 
 #include "postgres.h"
+#include "common/int.h"
 #include "datatype/timestamp.h"
 #include "mb/pg_wchar.h"
 #include "pgtime.h"
@@ -401,7 +402,8 @@ add_months(PG_FUNCTION_ARGS)
 	Timestamp	result;
 	lldiv_t		v;
 	bool		last_day;
-	int64		n;
+	int64		n,
+				total;
 	Numeric		num = PG_GETARG_NUMERIC(1);
 
 	n = DatumGetInt64(DirectFunctionCall1(numeric_int8, NumericGetDatum(num)));
@@ -424,7 +426,15 @@ add_months(PG_FUNCTION_ARGS)
 	 * results that land in BC years (year <= 0) valid, instead of producing
 	 * month 0 or a negative month and a bogus date.
 	 */
-	v = lldiv((int64) y * 12 + m - 1 + n, 12);
+	if (pg_add_s64_overflow((int64) y * 12 + m - 1, n, &total))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("timestamp out of range")));
+	v = lldiv(total, 12);
+	if (v.quot > PG_INT32_MAX || v.quot < PG_INT32_MIN)
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("timestamp out of range")));
 	y = (int) v.quot;
 	m = (int) v.rem + 1;
 	if (m <= 0)
@@ -439,7 +449,12 @@ add_months(PG_FUNCTION_ARGS)
 
 	result = date2j(y, m, d) - POSTGRES_EPOCH_JDATE;
 
-	result = result * USECS_PER_DAY + time;
+	if (pg_mul_s64_overflow(result, USECS_PER_DAY, &result) ||
+		pg_add_s64_overflow(result, time, &result) ||
+		!IS_VALID_TIMESTAMP(result))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("timestamp out of range")));
 
 	PG_RETURN_TIMESTAMP(result);
 }

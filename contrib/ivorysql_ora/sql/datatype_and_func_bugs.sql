@@ -23,6 +23,10 @@ select to_char(add_months(to_date('4712-01-01 BC', 'yyyy-mm-dd ad'), 12), 'syyyy
 select to_char(add_months(to_date('0005-01-31 BC', 'yyyy-mm-dd ad'), 1), 'syyyy-mm-dd') as add_months_bc_leap;
 select to_char(add_months('0001-01-01', -25), 'syyyy-mm-dd') as add_months_ad_to_bc;
 select to_char(add_months('9999-12-31', -120002), 'syyyy-mm-dd') as add_months_back_to_bc;
+-- out-of-range offsets must raise instead of overflowing
+select add_months('2022-08-23', 9223372036854775807) from dual;
+select add_months('2022-08-23', -9223372036854775808) from dual;
+select add_months('2022-08-23', 2147483647) from dual;
 alter session set NLS_LENGTH_SEMANTICS='BYTE';
 create table char_tb(char_clo char(3));
 insert into char_tb values('测试');

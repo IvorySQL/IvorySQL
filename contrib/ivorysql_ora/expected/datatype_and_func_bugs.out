@@ -60,6 +60,13 @@ select to_char(add_months('9999-12-31', -120002), 'syyyy-mm-dd') as add_months_b
  -0002-10-31
 (1 row)
 
+-- out-of-range offsets must raise instead of overflowing
+select add_months('2022-08-23', 9223372036854775807) from dual;
+ERROR:  timestamp out of range
+select add_months('2022-08-23', -9223372036854775808) from dual;
+ERROR:  timestamp out of range
+select add_months('2022-08-23', 2147483647) from dual;
+ERROR:  timestamp out of range
 alter session set NLS_LENGTH_SEMANTICS='BYTE';
 create table char_tb(char_clo char(3));
 insert into char_tb values('测试');
