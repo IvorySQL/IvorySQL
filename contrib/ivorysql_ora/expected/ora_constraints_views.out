@@ -16,6 +16,10 @@ CREATE TABLE CV_T (ID INT PRIMARY KEY, NAME VARCHAR2(30) NOT NULL,
 		ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED);
 -- a second foreign key with the default NO ACTION rule
 CREATE TABLE CV_T2 (ID INT REFERENCES CV_P (PID));
+-- a foreign key whose local column order differs from the referenced key:
+-- resolution must use confkey, not conkey
+CREATE TABLE CV_P2 (A INT, B INT, PRIMARY KEY (A, B));
+CREATE TABLE CV_T3 (X INT, Y INT, FOREIGN KEY (Y, X) REFERENCES CV_P2 (B, A));
 -- the three views have Oracle's column counts (26 each, OWNER included)
 SELECT count(*) AS dba_cols
 FROM pg_attribute
@@ -103,25 +107,27 @@ ORDER BY CONSTRAINT_NAME;
 
 -- foreign keys resolve to the referenced primary-key constraint
 -- (DEFERRABLE is a keyword in oracle mode, so qualify the column)
-SELECT CONSTRAINT_NAME, CONSTRAINT_TYPE, R_OWNER,
+SELECT CONSTRAINT_NAME, CONSTRAINT_TYPE, R_OWNER = SYS.ORA_CASE_TRANS(CURRENT_USER::VARCHAR2)::VARCHAR2(128) AS r_owner_ok,
 	R_CONSTRAINT_NAME, DELETE_RULE, STATUS, UC.DEFERRABLE, DEFERRED, VALIDATED
 FROM USER_CONSTRAINTS UC
 WHERE CONSTRAINT_TYPE = 'R'
 ORDER BY TABLE_NAME;
- constraint_name | constraint_type | r_owner  | r_constraint_name | delete_rule | status  |   deferrable   | deferred  | validated 
------------------+-----------------+----------+-------------------+-------------+---------+----------------+-----------+-----------
- CV_FK           | R               | XIAOYANG | CV_P_PKEY         | SET NULL    | ENABLED | DEFERRABLE     | DEFERRED  | VALIDATED
- CV_T2_ID_FKEY   | R               | XIAOYANG | CV_P_PKEY         | NO ACTION   | ENABLED | NOT DEFERRABLE | IMMEDIATE | VALIDATED
-(2 rows)
+ constraint_name | constraint_type | r_owner_ok | r_constraint_name | delete_rule | status  |   deferrable   | deferred  | validated 
+-----------------+-----------------+------------+-------------------+-------------+---------+----------------+-----------+-----------
+ CV_FK           | R               | t          | CV_P_PKEY         | SET NULL    | ENABLED | DEFERRABLE     | DEFERRED  | VALIDATED
+ CV_T2_ID_FKEY   | R               | t          | CV_P_PKEY         | NO ACTION   | ENABLED | NOT DEFERRABLE | IMMEDIATE | VALIDATED
+ CV_T3_Y_X_FKEY  | R               | t          | CV_P2_PKEY        | NO ACTION   | ENABLED | NOT DEFERRABLE | IMMEDIATE | VALIDATED
+(3 rows)
 
 -- primary-key and unique constraints report their backing index
-SELECT CONSTRAINT_NAME, CONSTRAINT_TYPE, INDEX_OWNER, INDEX_NAME
+SELECT CONSTRAINT_NAME, CONSTRAINT_TYPE, INDEX_OWNER = SYS.ORA_CASE_TRANS(CURRENT_USER::VARCHAR2)::VARCHAR2(128) AS index_owner_ok,
+	INDEX_NAME
 FROM USER_CONSTRAINTS
 WHERE TABLE_NAME = 'CV_T' AND CONSTRAINT_TYPE IN ('P', 'U')
 ORDER BY CONSTRAINT_NAME;
- constraint_name | constraint_type | index_owner | index_name 
------------------+-----------------+-------------+------------
- CV_T_PKEY       | P               | XIAOYANG    | CV_T_PKEY
+ constraint_name | constraint_type | index_owner_ok | index_name 
+-----------------+-----------------+----------------+------------
+ CV_T_PKEY       | P               | t              | CV_T_PKEY
 (1 row)
 
 -- constant markers for an ordinary check constraint
@@ -140,7 +146,7 @@ FROM DBA_CONSTRAINTS
 WHERE TABLE_NAME LIKE 'CV\_T%' ESCAPE '\' OR TABLE_NAME = 'CV_P';
  dba_count 
 -----------
-         8
+         9
 (1 row)
 
 CREATE ROLE CV_VIEWER NOLOGIN;
@@ -184,6 +190,8 @@ SELECT count(*) AS user_count FROM USER_CONSTRAINTS WHERE TABLE_NAME = 'CV_T';
 RESET ROLE;
 REVOKE SELECT ON CV_T FROM CV_VIEWER;
 DROP ROLE CV_VIEWER;
+DROP TABLE CV_T3;
+DROP TABLE CV_P2;
 DROP TABLE CV_T2;
 DROP TABLE CV_T;
 DROP TABLE CV_P;
