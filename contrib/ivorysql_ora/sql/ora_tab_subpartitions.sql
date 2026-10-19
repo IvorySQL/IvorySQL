@@ -30,6 +30,24 @@ SELECT partition_name, subpartition_name, partition_position,
 FROM user_tab_subpartitions
 ORDER BY partition_position, subpartition_position;
 
+-- DBA_/ALL_ expose TABLE_OWNER before TABLE_NAME, as Oracle does
+SELECT attname FROM pg_attribute
+WHERE attrelid = 'sys.dba_tab_subpartitions'::regclass
+	AND attnum > 0 AND NOT attisdropped
+ORDER BY attnum LIMIT 4;
+SELECT attname FROM pg_attribute
+WHERE attrelid = 'sys.all_tab_subpartitions'::regclass
+	AND attnum > 0 AND NOT attisdropped
+ORDER BY attnum LIMIT 4;
+
+-- owner and tablespace resolve like Oracle (default tablespace included)
+SELECT TABLE_OWNER = SYS.ORA_CASE_TRANS(CURRENT_USER::VARCHAR2)::VARCHAR2(128) AS owner_ok,
+	TABLESPACE_NAME IS NOT NULL AS tablespace_ok
+FROM DBA_TAB_SUBPARTITIONS
+WHERE table_name = 'MSP_ROOT'
+ORDER BY subpartition_name
+LIMIT 1;
+
 -- USER_ view is scoped to the owning user, DBA_ sees every schema.
 SELECT count(*) AS dba_rows FROM dba_tab_subpartitions;
 SELECT count(*) AS all_rows FROM all_tab_subpartitions;
