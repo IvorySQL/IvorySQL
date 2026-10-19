@@ -72,9 +72,27 @@ INSERT INTO bit_xor_agg_number VALUES ('b', 15);
 SELECT grp, bit_xor_agg(val) FROM bit_xor_agg_number GROUP BY grp ORDER BY grp;
 
 --
--- DISTINCT keyword
+-- The result type is NUMBER, as in Oracle
 --
+SELECT pg_typeof(bit_xor_agg(val)) FROM bit_xor_agg_test;
+
+--
+-- DISTINCT keyword
+-- Unlike AND and OR, XOR is not idempotent, so a duplicate input makes
+-- DISTINCT observable: group a is (12, 10, 6, 6, NULL), where the plain
+-- aggregate folds the two 6s away while DISTINCT keeps one.
+--
+INSERT INTO bit_xor_agg_test VALUES ('a', 6);
 SELECT bit_xor_agg(DISTINCT val) FROM bit_xor_agg_test WHERE grp = 'a';
+SELECT bit_xor_agg(val) FROM bit_xor_agg_test WHERE grp = 'a';
+
+--
+-- Window function usage (Oracle lists BIT_XOR_AGG as an analytic
+-- function too); the default RANGE frame keeps peer rows together, so
+-- both 6 rows enter the running aggregate at the same time.
+--
+SELECT grp, val, bit_xor_agg(val) OVER (PARTITION BY grp ORDER BY val)
+FROM bit_xor_agg_test ORDER BY grp, val;
 
 --
 -- Values beyond the bigint domain raise an error
@@ -89,6 +107,5 @@ DROP TABLE bit_xor_agg_number;
 -- Works in PG mode too
 --
 SET ivorysql.compatible_mode = pg;
-SELECT sys.bit_xor_agg(x) FROM (SELECT 12 x FROM dual
-                                UNION ALL SELECT 10 FROM dual) t;
+SELECT sys.bit_xor_agg(x) FROM (VALUES (12), (10)) AS t(x);
 RESET ivorysql.compatible_mode;
