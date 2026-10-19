@@ -89,6 +89,5 @@ DROP TABLE bit_and_agg_number;
 -- Works in PG mode too
 --
 SET ivorysql.compatible_mode = pg;
-SELECT sys.bit_and_agg(x) FROM (SELECT 12 x FROM dual
-                                UNION ALL SELECT 10 FROM dual) t;
+SELECT sys.bit_and_agg(x) FROM (VALUES (12), (10)) AS t(x);
 RESET ivorysql.compatible_mode;
