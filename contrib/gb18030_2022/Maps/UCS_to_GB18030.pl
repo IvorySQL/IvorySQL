@@ -26,7 +26,7 @@ my $this_script = 'src/backend/utils/mb/Unicode/UCS_to_GB18030.pl';
 
 # Read the input
 
-my $in_file = "gb-18030-2022.xml";
+my $in_file = $ARGV[0] // "gb-18030-2022.xml";
 
 open(my $in, '<', $in_file) || die("cannot open $in_file");
 
