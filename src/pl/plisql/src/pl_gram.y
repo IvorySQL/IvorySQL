@@ -1602,6 +1602,11 @@ ora_function_name : T_WORD
 					{
 						$$ = pstrdup($1);
 					}
+				| K_EXECUTE
+					{
+						/* DBMS_SQL.EXECUTE is a callable package member. */
+						$$ = pstrdup($1);
+					}
 				;
 
 function_arg_nocopy:

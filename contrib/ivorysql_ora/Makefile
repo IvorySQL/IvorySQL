@@ -38,6 +38,7 @@ OBJS = \
 	src/builtin_packages/dbms_transaction/dbms_transaction.o \
 	src/builtin_packages/dbms_random/dbms_random.o \
 	src/builtin_packages/utl_match/utl_match.o \
+	src/builtin_packages/dbms_sql/dbms_sql.o \
 	src/builtin_packages/dbms_scheduler/dbms_scheduler.o \
 	src/builtin_packages/dbms_scheduler/scheduler_calendar.o \
 	src/builtin_packages/dbms_scheduler/scheduler_launcher.o \
@@ -105,7 +106,8 @@ ORA_REGRESS = \
 	dbms_transaction \
 	dbms_random \
 	utl_match \
-	dbms_scheduler
+	dbms_scheduler \
+	dbms_sql
 
 TAP_TESTS = 1
 
