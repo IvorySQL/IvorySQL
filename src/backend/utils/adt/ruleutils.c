@@ -7664,8 +7664,11 @@ get_update_query_def(Query *query, deparse_context *context)
 					 only_marker(rte),
 					 generate_relation_name(rte->relid, NIL));
 
-	/* Print the relation alias, if needed */
-	get_rte_alias(rte, query->resultRelation, false, context);
+	/*
+	 * Print the relation alias, if needed.  Always write AS, since a bare
+	 * alias named "set" would be read as the SET keyword.
+	 */
+	get_rte_alias(rte, query->resultRelation, true, context);
 
 	appendStringInfoString(buf, " SET ");
 
@@ -7868,8 +7871,11 @@ get_delete_query_def(Query *query, deparse_context *context)
 					 only_marker(rte),
 					 generate_relation_name(rte->relid, NIL));
 
-	/* Print the relation alias, if needed */
-	get_rte_alias(rte, query->resultRelation, false, context);
+	/*
+	 * Print the relation alias, if needed.  Always write AS, since a bare
+	 * alias named "set" would be read as the SET keyword.
+	 */
+	get_rte_alias(rte, query->resultRelation, true, context);
 
 	/* Add the USING clause if given */
 	get_from_clause(query, " USING ", context);
@@ -7917,8 +7923,11 @@ get_merge_query_def(Query *query, deparse_context *context)
 					 only_marker(rte),
 					 generate_relation_name(rte->relid, NIL));
 
-	/* Print the relation alias, if needed */
-	get_rte_alias(rte, query->resultRelation, false, context);
+	/*
+	 * Print the relation alias, if needed.  Always write AS, since a bare
+	 * alias named "set" would be read as the SET keyword.
+	 */
+	get_rte_alias(rte, query->resultRelation, true, context);
 
 	/* Print the source relation and join clause */
 	get_from_clause(query, " USING ", context);
@@ -12445,7 +12454,9 @@ get_sublink_expr(SubLink *sublink, deparse_context *context)
 			/* single combining operator */
 			OpExpr	   *opexpr = (OpExpr *) sublink->testexpr;
 
-			get_rule_expr(linitial(opexpr->args), context, true);
+			/* Use get_rule_expr_paren to add parens if needed */
+			get_rule_expr_paren(linitial(opexpr->args), context, true,
+								(Node *) sublink);
 			opname = generate_operator_name(opexpr->opno,
 											exprType(linitial(opexpr->args)),
 											exprType(lsecond(opexpr->args)));
