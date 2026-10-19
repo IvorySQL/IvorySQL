@@ -190,9 +190,12 @@ jobs:
             // Policy passes if either:
             // - the PR body references at least one issue
             // - a same-repository manual sidebar link is detected
-            const rawBodyReferences = extractIssueReferencesFromBody(body);
+            const rawBodyReferences = uniqueById(extractIssueReferencesFromBody(body));
             const issuesMentionedInBody = await filterOutPullRequestsFromBodyReferences(rawBodyReferences);
-            const manualLinkedIssues = await getSameRepoManuallyLinkedIssues(pr.node_id);
+            // The timeline scan is only a fallback when the body has no valid issue.
+            const manualLinkedIssues = issuesMentionedInBody.length > 0
+              ? []
+              : await getSameRepoManuallyLinkedIssues(pr.node_id);
 
             const linkedIssues = uniqueById([
               ...issuesMentionedInBody,
