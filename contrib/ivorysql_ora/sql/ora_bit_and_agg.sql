@@ -72,9 +72,23 @@ INSERT INTO bit_and_agg_number VALUES ('b', 15);
 SELECT grp, bit_and_agg(val) FROM bit_and_agg_number GROUP BY grp ORDER BY grp;
 
 --
+-- The result type is NUMBER, as in Oracle
+--
+SELECT pg_typeof(bit_and_agg(val)) FROM bit_and_agg_test;
+
+--
 -- DISTINCT keyword
+-- Bitwise AND is idempotent, so DISTINCT cannot change the result; the
+-- query proves the keyword is accepted and no error is raised.
 --
 SELECT bit_and_agg(DISTINCT val) FROM bit_and_agg_test WHERE grp = 'a';
+
+--
+-- Window function usage (Oracle lists BIT_AND_AGG as an analytic
+-- function too); the default RANGE frame keeps peer rows together.
+--
+SELECT grp, val, bit_and_agg(val) OVER (PARTITION BY grp ORDER BY val)
+FROM bit_and_agg_test ORDER BY grp, val;
 
 --
 -- Values beyond the bigint domain raise an error
