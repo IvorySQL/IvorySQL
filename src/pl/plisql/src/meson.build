@@ -34,6 +34,7 @@ gen_keywordlist = files('../../../../src/tools/ora_gen_keywordlist.pl')
 pl_reserved = custom_target('pl_reserved_kwlist',
   input: ['pl_reserved_kwlist.h'],
   output: ['pl_reserved_kwlist_d.h'],
+  depend_files: gen_kwlist_deps,
   command: [perl, '-I', '@SOURCE_ROOT@/src/tools', gen_keywordlist, '--output', '@OUTDIR@', '--varname', 'ReservedPLKeywords', '@INPUT@']
 )
 generated_sources += pl_reserved
@@ -42,6 +43,7 @@ plisql_sources += pl_reserved
 pl_unreserved = custom_target('pl_unreserved_kwlist',
   input: ['pl_unreserved_kwlist.h'],
   output: ['pl_unreserved_kwlist_d.h'],
+  depend_files: gen_kwlist_deps,
   command: [perl, '-I', '@SOURCE_ROOT@/src/tools', gen_keywordlist, '--output', '@OUTDIR@', '--varname', 'UnreservedPLKeywords', '@INPUT@']
 )
 generated_sources += pl_unreserved
