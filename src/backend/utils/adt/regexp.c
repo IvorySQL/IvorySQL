@@ -1577,7 +1577,13 @@ ora_setup_regexp_substr_matches(text *src_text,
 	{
 		use_subpatterns = true;
 		matchctx->use_subpatterns = true;
-		matchctx->npatterns = re->re_nsub;
+
+		/*
+		 * pmatch has room for the whole match plus nine subexpressions, the
+		 * same limit Oracle documents for SUBEXPR.  Clamp here so a pattern
+		 * with more captures cannot read past pmatch[].
+		 */
+		matchctx->npatterns = Min(re->re_nsub, 9);
 	}
 	else
 	{
@@ -1755,7 +1761,13 @@ ora_setup_regexp_instr_matches(text *src_text,
 	{
 		use_subpatterns = true;
 		matchctx->use_subpatterns = true;
-		matchctx->npatterns = re->re_nsub;
+
+		/*
+		 * pmatch has room for the whole match plus nine subexpressions, the
+		 * same limit Oracle documents for SUBEXPR.  Clamp here so a pattern
+		 * with more captures cannot read past pmatch[].
+		 */
+		matchctx->npatterns = Min(re->re_nsub, 9);
 	}
 	else
 	{
