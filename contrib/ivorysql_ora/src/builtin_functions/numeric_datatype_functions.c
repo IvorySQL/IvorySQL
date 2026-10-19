@@ -49,6 +49,7 @@ PG_FUNCTION_INFO_V1(ora_to_binary_float);
 PG_FUNCTION_INFO_V1(ora_to_binary_double);
 PG_FUNCTION_INFO_V1(ora_bit_or_agg_transfn);
 PG_FUNCTION_INFO_V1(ora_bit_or_agg_combinefn);
+PG_FUNCTION_INFO_V1(ora_bit_or_agg_finalfn);
 
 
 Datum
