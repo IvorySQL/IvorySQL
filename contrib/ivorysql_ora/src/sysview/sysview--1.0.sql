@@ -1563,31 +1563,35 @@ GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
 
 -- Oracle-compatible index-partition metadata view.  A partitioned
 -- index (relkind 'I') created on a partitioned table gets one attached
--- child index per table partition, recorded in pg_inherits; each child
--- is a relkind 'i' row with relispartition set.  Those child indexes
--- are the index partitions reported here.  INDEX_NAME is the parent
--- partitioned index; PARTITION_NAME is the child index name, which
--- PostgreSQL derives from the table partition rather than defaulting
--- to the partition name as Oracle does.  HIGH_VALUE carries the bound
--- of the corresponding table partition (an index partition inherits
--- its table partition's bound), rendered as pg_get_expr text instead
--- of Oracle's bare-literal LONG.  STATUS maps indisunusable/indisvalid
--- to Oracle's USABLE/UNUSABLE.  COMPOSITE and SUBPARTITION_COUNT
--- reflect that PostgreSQL does not partition indexes further.  Storage
--- and statistics attributes PostgreSQL does not track per index
--- partition are reported NULL.
+-- child index per table partition, recorded in pg_inherits.  A direct
+-- child is either a leaf index partition (relkind 'i') or, when the
+-- table partition is itself subpartitioned, an intermediate partitioned
+-- index (relkind 'I').  Both are first-level index partitions and are
+-- reported here; intermediate ones carry COMPOSITE = YES and their
+-- SUBPARTITION_COUNT, matching Oracle's first-level semantics.
+-- INDEX_NAME is the parent partitioned index; PARTITION_NAME is the
+-- child index name, which PostgreSQL derives from the table partition
+-- rather than defaulting to the partition name as Oracle does.
+-- HIGH_VALUE carries the bound of the corresponding table partition
+-- (an index partition inherits its table partition's bound), rendered
+-- as pg_get_expr text instead of Oracle's bare-literal LONG.  STATUS
+-- maps indisunusable/indisvalid to Oracle's USABLE/UNUSABLE.
+-- PARTITION_POSITION is ordered by catalog creation OID: pg_inherits.
+-- inhseqno is 1 for every declarative partition and does not encode
+-- bound order.  Storage and statistics attributes PostgreSQL does not
+-- track per index partition are reported NULL.
 
 CREATE OR REPLACE VIEW SYS.USER_IND_PARTITIONS AS
 SELECT
 	SYS.ORA_CASE_TRANS(PI.RELNAME::VARCHAR2)::VARCHAR2(128) AS INDEX_NAME,
-	'NO'::VARCHAR2(3) AS COMPOSITE,
+	CASE WHEN CI.RELKIND = 'I' THEN 'YES' ELSE 'NO' END::VARCHAR2(3) AS COMPOSITE,
 	SYS.ORA_CASE_TRANS(CI.RELNAME::VARCHAR2)::VARCHAR2(128) AS PARTITION_NAME,
-	0::NUMBER AS SUBPARTITION_COUNT,
+	(SELECT COUNT(*) FROM PG_INHERITS H2 WHERE H2.INHPARENT = CI.OID)::NUMBER AS SUBPARTITION_COUNT,
 	PG_GET_EXPR(P.RELPARTBOUND, P.OID)::CLOB AS HIGH_VALUE,
 	LENGTH(PG_GET_EXPR(P.RELPARTBOUND, P.OID))::NUMBER AS HIGH_VALUE_LENGTH,
-	ROW_NUMBER() OVER (PARTITION BY PI.OID ORDER BY H.INHSEQNO)::NUMBER AS PARTITION_POSITION,
+	ROW_NUMBER() OVER (PARTITION BY PI.OID ORDER BY H.INHSEQNO, CI.OID)::NUMBER AS PARTITION_POSITION,
 	CASE X2.INDISUNUSABLE WHEN true THEN 'UNUSABLE' ELSE 'USABLE' END::VARCHAR2(8) AS STATUS,
-	(SELECT SYS.ORA_CASE_TRANS(SPC.SPCNAME::VARCHAR2)::VARCHAR2(30) FROM PG_TABLESPACE SPC WHERE SPC.OID = CI.RELTABLESPACE AND CI.RELTABLESPACE <> 0) AS TABLESPACE_NAME,
+	(SELECT SYS.ORA_CASE_TRANS(TS.SPCNAME::VARCHAR2)::VARCHAR2(30) FROM PG_TABLESPACE TS WHERE TS.OID = CASE WHEN CI.RELTABLESPACE = 0 THEN (SELECT D.DATTABLESPACE FROM PG_DATABASE D WHERE D.DATNAME = CURRENT_DATABASE()) ELSE CI.RELTABLESPACE END) AS TABLESPACE_NAME,
 	NULL::NUMBER AS PCT_FREE,
 	NULL::NUMBER AS INI_TRANS,
 	NULL::NUMBER AS MAX_TRANS,
@@ -1634,7 +1638,7 @@ JOIN PG_CLASS P
 ON P.OID = X2.INDRELID
 JOIN PG_NAMESPACE N
 ON N.OID = PI.RELNAMESPACE
-WHERE CI.RELKIND = 'i'
+WHERE CI.RELKIND IN ('i', 'I')
 AND CI.RELISPARTITION
 AND PI.RELKIND = 'I'
 AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')

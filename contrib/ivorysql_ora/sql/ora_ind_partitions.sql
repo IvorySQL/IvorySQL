@@ -57,12 +57,27 @@ ALTER TABLE ipn_tab DETACH PARTITION ipn_p2;
 SELECT count(*) AS ipn_rows FROM user_ind_partitions
 WHERE index_name = 'IPN_DT_IX';
 
+-- A two-level partitioned table reports the intermediate index partition
+-- (COMPOSITE = YES) instead of its leaf index partitions.
+CREATE TABLE ipn_sub (id int, dt date, cat text) PARTITION BY RANGE (dt);
+CREATE TABLE ipn_sub_p1 PARTITION OF ipn_sub
+	FOR VALUES FROM ('2023-01-01') TO ('2024-01-01') PARTITION BY LIST (cat);
+CREATE TABLE ipn_sub_p1a PARTITION OF ipn_sub_p1 FOR VALUES IN ('a');
+CREATE TABLE ipn_sub_p1b PARTITION OF ipn_sub_p1 FOR VALUES IN ('b');
+CREATE INDEX ipn_sub_ix ON ipn_sub (dt);
+SELECT index_name, partition_name, composite, subpartition_count, high_value
+FROM user_ind_partitions
+WHERE index_name = 'IPN_SUB_IX'
+ORDER BY partition_position;
+
 -- Visibility: other roles see nothing through USER_.
 CREATE ROLE ipn_other LOGIN;
 SET ROLE ipn_other;
 SELECT count(*) AS user_rows FROM user_ind_partitions;
 RESET ROLE;
 
+DROP TABLE ipn_p2;
+DROP TABLE ipn_sub;
 DROP TABLE ipn_tab;
 DROP TABLE ipn_list;
 DROP TABLE ipn_plain;
