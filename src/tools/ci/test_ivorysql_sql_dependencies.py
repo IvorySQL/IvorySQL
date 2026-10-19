@@ -16,7 +16,10 @@ import unittest
 
 
 class SqlDependenciesTest(unittest.TestCase):
+    """Exercise the real SQL target without compiling or starting a server."""
+
     def test_incremental_generation(self):
+        """Verify input changes rebuild SQL and unchanged inputs leave it intact."""
         source = Path(__file__).resolve().parents[3] / 'contrib/ivorysql_ora'
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -39,12 +42,14 @@ subdir('contrib/ivorysql_ora')
             build = root / 'build'
 
             def run(*command):
+                """Run a build command and include its output on failure."""
                 result = subprocess.run(command, cwd=root, capture_output=True,
                                         text=True, encoding='utf-8')
                 self.assertEqual(result.returncode, 0,
                                  result.stdout + result.stderr)
 
             def rebuild():
+                """Build the SQL target and return its generated contents."""
                 run('ninja', '-C', str(build),
                     'contrib/ivorysql_ora/ivorysql_ora--1.0.sql')
                 return output.read_text(encoding='utf-8')
