@@ -246,28 +246,44 @@ CREATE TABLE pv_hash_p1 PARTITION OF pv_hash
 CREATE TABLE pv_hash_p0 PARTITION OF pv_hash
 	FOR VALUES WITH (MODULUS 2, REMAINDER 0);
 
+CREATE TABLE pv_list_str (code TEXT) PARTITION BY LIST (code);
+CREATE TABLE pv_list_str_p2 PARTITION OF pv_list_str FOR VALUES IN ('B');
+CREATE TABLE pv_list_str_p1 PARTITION OF pv_list_str FOR VALUES IN ('A');
+
+CREATE TABLE pv_range_date (dt DATE) PARTITION BY RANGE (dt);
+CREATE TABLE pv_range_date_p2 PARTITION OF pv_range_date
+	FOR VALUES FROM ('2020-01-02') TO ('2020-01-03');
+CREATE TABLE pv_range_date_p1 PARTITION OF pv_range_date
+	FOR VALUES FROM ('2020-01-01') TO ('2020-01-02');
+
 RESET ROLE;
 RESET search_path;
 
 GRANT USAGE ON SCHEMA partition_view_owner_schema TO partition_view_reader;
 GRANT SELECT ON partition_view_owner_schema.pv_range,
 	partition_view_owner_schema.pv_list,
-	partition_view_owner_schema.pv_hash TO partition_view_reader;
+	partition_view_owner_schema.pv_hash,
+	partition_view_owner_schema.pv_list_str,
+	partition_view_owner_schema.pv_range_date TO partition_view_reader;
 
 SET ROLE partition_view_owner;
-SELECT COUNT(*) = 3
-	AND COUNT(*) FILTER (WHERE status = 'VALID') = 3
+SELECT COUNT(*) = 5
+	AND COUNT(*) FILTER (WHERE status = 'VALID') = 5
 	AND COUNT(*) FILTER (
 		WHERE table_name = 'PV_RANGE' AND partitioning_type = 'RANGE') = 1
 	AND COUNT(*) FILTER (
 		WHERE table_name = 'PV_LIST' AND partitioning_type = 'LIST') = 1
 	AND COUNT(*) FILTER (
 		WHERE table_name = 'PV_HASH' AND partitioning_type = 'HASH') = 1
+	AND COUNT(*) FILTER (
+		WHERE table_name = 'PV_LIST_STR' AND partitioning_type = 'LIST') = 1
+	AND COUNT(*) FILTER (
+		WHERE table_name = 'PV_RANGE_DATE' AND partitioning_type = 'RANGE') = 1
 	AS user_part_tables_ok
 FROM sys.user_part_tables
-WHERE table_name IN ('PV_RANGE', 'PV_LIST', 'PV_HASH');
+WHERE table_name IN ('PV_RANGE', 'PV_LIST', 'PV_HASH', 'PV_LIST_STR', 'PV_RANGE_DATE');
 
-SELECT COUNT(*) = 6
+SELECT COUNT(*) = 10
 	AND COUNT(*) FILTER (
 		WHERE table_name = 'PV_RANGE' AND partition_name = 'PV_RANGE_P1'
 			AND partition_position = 1 AND high_value::TEXT = '10') = 1
@@ -281,6 +297,18 @@ SELECT COUNT(*) = 6
 		WHERE table_name = 'PV_LIST' AND partition_name = 'PV_LIST_P2'
 			AND partition_position = 2 AND high_value::TEXT = '2') = 1
 	AND COUNT(*) FILTER (
+		WHERE table_name = 'PV_LIST_STR' AND partition_name = 'PV_LIST_STR_P1'
+			AND partition_position = 1 AND high_value::TEXT = '''A''') = 1
+	AND COUNT(*) FILTER (
+		WHERE table_name = 'PV_LIST_STR' AND partition_name = 'PV_LIST_STR_P2'
+			AND partition_position = 2 AND high_value::TEXT = '''B''') = 1
+	AND COUNT(*) FILTER (
+		WHERE table_name = 'PV_RANGE_DATE' AND partition_name = 'PV_RANGE_DATE_P1'
+			AND partition_position = 1 AND high_value::TEXT = '''2020-01-02''') = 1
+	AND COUNT(*) FILTER (
+		WHERE table_name = 'PV_RANGE_DATE' AND partition_name = 'PV_RANGE_DATE_P2'
+			AND partition_position = 2 AND high_value::TEXT = '''2020-01-03''') = 1
+	AND COUNT(*) FILTER (
 		WHERE table_name = 'PV_HASH' AND partition_name = 'PV_HASH_P0'
 			AND partition_position = 1 AND high_value IS NULL) = 1
 	AND COUNT(*) FILTER (
@@ -288,44 +316,44 @@ SELECT COUNT(*) = 6
 			AND partition_position = 2 AND high_value IS NULL) = 1
 	AS user_tab_partitions_ok
 FROM sys.user_tab_partitions
-WHERE table_name IN ('PV_RANGE', 'PV_LIST', 'PV_HASH');
+WHERE table_name IN ('PV_RANGE', 'PV_LIST', 'PV_HASH', 'PV_LIST_STR', 'PV_RANGE_DATE');
 RESET ROLE;
 
 SET ROLE partition_view_reader;
-SELECT COUNT(*) = 3
-	AND COUNT(*) FILTER (WHERE owner = 'PARTITION_VIEW_OWNER') = 3
-	AND COUNT(*) FILTER (WHERE partitioning_type = 'RANGE') = 1
-	AND COUNT(*) FILTER (WHERE partitioning_type = 'LIST') = 1
+SELECT COUNT(*) = 5
+	AND COUNT(*) FILTER (WHERE owner = 'PARTITION_VIEW_OWNER') = 5
+	AND COUNT(*) FILTER (WHERE partitioning_type = 'RANGE') = 2
+	AND COUNT(*) FILTER (WHERE partitioning_type = 'LIST') = 2
 	AND COUNT(*) FILTER (WHERE partitioning_type = 'HASH') = 1
 	AS all_part_tables_ok
 FROM sys.all_part_tables
-WHERE table_name IN ('PV_RANGE', 'PV_LIST', 'PV_HASH');
+WHERE table_name IN ('PV_RANGE', 'PV_LIST', 'PV_HASH', 'PV_LIST_STR', 'PV_RANGE_DATE');
 
-SELECT COUNT(*) = 6
-	AND COUNT(*) FILTER (WHERE table_owner = 'PARTITION_VIEW_OWNER') = 6
+SELECT COUNT(*) = 10
+	AND COUNT(*) FILTER (WHERE table_owner = 'PARTITION_VIEW_OWNER') = 10
 	AND MIN(partition_position) = 1
 	AND MAX(partition_position) = 2
 	AND COUNT(*) FILTER (WHERE high_value IS NULL) = 2
 	AS all_tab_partitions_ok
 FROM sys.all_tab_partitions
-WHERE table_name IN ('PV_RANGE', 'PV_LIST', 'PV_HASH');
+WHERE table_name IN ('PV_RANGE', 'PV_LIST', 'PV_HASH', 'PV_LIST_STR', 'PV_RANGE_DATE');
 
 SELECT COUNT(*) = 0 AS reader_user_views_empty
 FROM sys.user_part_tables
-WHERE table_name IN ('PV_RANGE', 'PV_LIST', 'PV_HASH');
+WHERE table_name IN ('PV_RANGE', 'PV_LIST', 'PV_HASH', 'PV_LIST_STR', 'PV_RANGE_DATE');
 RESET ROLE;
 
-SELECT COUNT(*) = 3
-	AND COUNT(*) FILTER (WHERE status = 'VALID') = 3
-	AND COUNT(*) FILTER (WHERE partitioning_type = 'RANGE') = 1
-	AND COUNT(*) FILTER (WHERE partitioning_type = 'LIST') = 1
+SELECT COUNT(*) = 5
+	AND COUNT(*) FILTER (WHERE status = 'VALID') = 5
+	AND COUNT(*) FILTER (WHERE partitioning_type = 'RANGE') = 2
+	AND COUNT(*) FILTER (WHERE partitioning_type = 'LIST') = 2
 	AND COUNT(*) FILTER (WHERE partitioning_type = 'HASH') = 1
 	AS dba_part_tables_ok
 FROM sys.dba_part_tables
 WHERE owner = 'PARTITION_VIEW_OWNER'
-	AND table_name IN ('PV_RANGE', 'PV_LIST', 'PV_HASH');
+	AND table_name IN ('PV_RANGE', 'PV_LIST', 'PV_HASH', 'PV_LIST_STR', 'PV_RANGE_DATE');
 
-SELECT COUNT(*) = 6
+SELECT COUNT(*) = 10
 	AND COUNT(*) FILTER (
 		WHERE table_name = 'PV_RANGE' AND partition_name = 'PV_RANGE_P1'
 			AND partition_position = 1 AND high_value::TEXT = '10') = 1
@@ -333,15 +361,23 @@ SELECT COUNT(*) = 6
 		WHERE table_name = 'PV_LIST' AND partition_name = 'PV_LIST_P2'
 			AND partition_position = 2 AND high_value::TEXT = '2') = 1
 	AND COUNT(*) FILTER (
+		WHERE table_name = 'PV_LIST_STR' AND partition_name = 'PV_LIST_STR_P1'
+			AND partition_position = 1 AND high_value::TEXT = '''A''') = 1
+	AND COUNT(*) FILTER (
+		WHERE table_name = 'PV_RANGE_DATE' AND partition_name = 'PV_RANGE_DATE_P1'
+			AND partition_position = 1 AND high_value::TEXT = '''2020-01-02''') = 1
+	AND COUNT(*) FILTER (
 		WHERE table_name = 'PV_HASH' AND high_value IS NULL) = 2
 	AS dba_tab_partitions_ok
 FROM sys.dba_tab_partitions
 WHERE table_owner = 'PARTITION_VIEW_OWNER'
-	AND table_name IN ('PV_RANGE', 'PV_LIST', 'PV_HASH');
+	AND table_name IN ('PV_RANGE', 'PV_LIST', 'PV_HASH', 'PV_LIST_STR', 'PV_RANGE_DATE');
 
 DROP TABLE partition_view_owner_schema.pv_range;
 DROP TABLE partition_view_owner_schema.pv_list;
 DROP TABLE partition_view_owner_schema.pv_hash;
+DROP TABLE partition_view_owner_schema.pv_list_str;
+DROP TABLE partition_view_owner_schema.pv_range_date;
 DROP SCHEMA partition_view_owner_schema;
 DROP ROLE partition_view_reader;
 DROP ROLE partition_view_owner;

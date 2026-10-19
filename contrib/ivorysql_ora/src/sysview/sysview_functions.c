@@ -32,12 +32,14 @@
 #include "access/table.h"
 #include "catalog/partition.h"
 #include "catalog/pg_class.h"
+#include "catalog/pg_type.h"
 #include "fmgr.h"
 #include "nodes/parsenodes.h"
 #include "nodes/readfuncs.h"
 #include "parser/scansup.h"
 #include "partitioning/partdesc.h"
 #include "utils/builtins.h"
+#include "utils/lsyscache.h"
 #include "utils/ruleutils.h"
 #include "utils/syscache.h"
 
@@ -45,9 +47,13 @@ PG_FUNCTION_INFO_V1(ora_case_trans);
 PG_FUNCTION_INFO_V1(ora_partition_high_value);
 PG_FUNCTION_INFO_V1(ora_partition_position);
 
+static void strip_trailing_cast(char *expr);
 static void append_partition_const(StringInfo buf, Node *value,
 								   const char **separator);
 
+/*
+ * Transform identifier case based on IvorySQL settings.
+ */
 Datum
 ora_case_trans(PG_FUNCTION_ARGS)
 {
@@ -65,19 +71,94 @@ ora_case_trans(PG_FUNCTION_ARGS)
 }
 
 /*
- * Append a partition bound constant using PostgreSQL's expression deparser.
- * Reading the stored PartitionBoundSpec avoids depending on the textual
- * format produced by pg_get_expr().
+ * Strip trailing PostgreSQL explicit type cast (e.g., "::text", "::date")
+ * from a deparsed expression string in place.
+ */
+static void
+strip_trailing_cast(char *expr)
+{
+	int			len = strlen(expr);
+	int			i;
+	bool		in_quote = false;
+	int			last_colon_colon = -1;
+
+	for (i = 0; i < len; i++)
+	{
+		if (expr[i] == '\'')
+		{
+			if (in_quote && i + 1 < len && expr[i + 1] == '\'')
+				i++;			/* skip escaped single quote */
+			else
+				in_quote = !in_quote;
+		}
+		else if (!in_quote && expr[i] == ':' && i + 1 < len && expr[i + 1] == ':')
+		{
+			last_colon_colon = i;
+		}
+	}
+
+	if (last_colon_colon >= 0)
+	{
+		while (last_colon_colon > 0 && isspace((unsigned char) expr[last_colon_colon - 1]))
+			last_colon_colon--;
+		expr[last_colon_colon] = '\0';
+	}
+}
+
+/*
+ * Append a partition bound constant formatted for Oracle dictionary views
+ * without PostgreSQL type casts (e.g. 'A' instead of 'A'::text).
  */
 static void
 append_partition_const(StringInfo buf, Node *value, const char **separator)
 {
 	char	   *deparsed;
 
-	deparsed = deparse_expression(value, NIL, false, false);
 	appendStringInfoString(buf, *separator);
-	appendStringInfoString(buf, deparsed);
 	*separator = ", ";
+
+	if (IsA(value, Const))
+	{
+		Const	   *con = (Const *) value;
+
+		if (con->constisnull)
+		{
+			appendStringInfoString(buf, "NULL");
+			return;
+		}
+
+		/*
+		 * Numeric constants in Oracle partition bounds are exposed directly
+		 * as numbers without quotes or PostgreSQL type casts.
+		 */
+		switch (con->consttype)
+		{
+			case INT2OID:
+			case INT4OID:
+			case INT8OID:
+			case FLOAT4OID:
+			case FLOAT8OID:
+			case NUMERICOID:
+			case OIDOID:
+				{
+					Oid			typoutput;
+					bool		typIsVarlena;
+					char	   *extval;
+
+					getTypeOutputInfo(con->consttype, &typoutput, &typIsVarlena);
+					extval = OidOutputFunctionCall(typoutput, con->constvalue);
+					appendStringInfoString(buf, extval);
+					pfree(extval);
+					return;
+				}
+			default:
+				break;
+		}
+	}
+
+	deparsed = deparse_expression(value, NIL, false, false);
+	strip_trailing_cast(deparsed);
+	appendStringInfoString(buf, deparsed);
 }
 
 /*
