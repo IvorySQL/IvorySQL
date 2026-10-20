@@ -343,6 +343,24 @@ begin
 end;
 /
 
+-- PUT_LINE must reserve space for its line terminator in max_linesize.
+declare
+    f UTL_FILE.FILE_TYPE;
+    rejected boolean := false;
+begin
+    f := utl_file.fopen('data_directory', 'regress_put_line_limit.txt', 'w', 3);
+    begin
+        utl_file.put_line(f, 'abc');
+    exception when others then
+        rejected := true;
+    end;
+    utl_file.fclose(f);
+    if not rejected then
+        raise exception 'PUT_LINE unexpectedly exceeded max_linesize';
+    end if;
+end;
+/
+
 -- clean up
 delete from sys.utl_file_directory where dirname = 'data_directory';
 /
