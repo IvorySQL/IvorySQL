@@ -4521,3 +4521,49 @@ DETAIL:  "ivorysql" is a reserved prefix.
 reset ivorysql.dummy_config;
 ERROR:  invalid configuration parameter name "ivorysql.dummy_config"
 DETAIL:  "ivorysql" is a reserved prefix.
+-- DECODE, NVL and NVL2 are col_name keywords with dedicated productions, so
+-- they must be accepted as function-based index expressions as well as in a
+-- SELECT list (issue #631).
+create table t_func_index_decode(a int, b varchar2(10), c int);
+insert into t_func_index_decode values (1, 'x', 2), (2, 'y', 3);
+create index t_func_index_decode_dec on t_func_index_decode(decode(a, 1, 'x', 'y'));
+create index t_func_index_decode_nvl on t_func_index_decode(nvl(c, 0));
+create index t_func_index_decode_nvl2 on t_func_index_decode(nvl2(b, 'yes', 'no'));
+select indexname from pg_indexes
+  where tablename = 't_func_index_decode' order by indexname;
+        indexname         
+--------------------------
+ t_func_index_decode_dec
+ t_func_index_decode_nvl
+ t_func_index_decode_nvl2
+(3 rows)
+
+set enable_seqscan = off;
+set enable_bitmapscan = off;
+explain (costs off)
+  select * from t_func_index_decode where decode(a, 1, 'x', 'y') = 'y';
+                                                                            QUERY PLAN                                                                            
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using t_func_index_decode_dec on t_func_index_decode
+   Index Cond: (CASE (a)::number WHEN CASE WHEN ((a IS NOT NULL) AND (a = 1)) THEN true ELSE false END THEN 'x'::varchar2 ELSE 'y'::varchar2 END = 'y'::varchar2)
+(2 rows)
+
+select * from t_func_index_decode where decode(a, 1, 'x', 'y') = 'y';
+ a | b | c 
+---+---+---
+ 2 | y | 3
+(1 row)
+
+set enable_bitmapscan = on;
+set enable_seqscan = on;
+drop table t_func_index_decode;
+-- the same keywords remain usable as plain column names in an index
+create table t_func_index_col(decode int, nvl int);
+create index t_func_index_col_i on t_func_index_col(decode, nvl);
+select indexname from pg_indexes where tablename = 't_func_index_col';
+     indexname      
+--------------------
+ t_func_index_col_i
+(1 row)
+
+drop table t_func_index_col;

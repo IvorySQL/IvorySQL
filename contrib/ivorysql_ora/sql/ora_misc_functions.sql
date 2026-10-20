@@ -2464,3 +2464,28 @@ reset default_text_search_config;
 -- should throw errors, because dummy_config is not a valid configuration name
 set ivorysql.dummy_config to dummy;
 reset ivorysql.dummy_config;
+
+-- DECODE, NVL and NVL2 are col_name keywords with dedicated productions, so
+-- they must be accepted as function-based index expressions as well as in a
+-- SELECT list (issue #631).
+create table t_func_index_decode(a int, b varchar2(10), c int);
+insert into t_func_index_decode values (1, 'x', 2), (2, 'y', 3);
+create index t_func_index_decode_dec on t_func_index_decode(decode(a, 1, 'x', 'y'));
+create index t_func_index_decode_nvl on t_func_index_decode(nvl(c, 0));
+create index t_func_index_decode_nvl2 on t_func_index_decode(nvl2(b, 'yes', 'no'));
+select indexname from pg_indexes
+  where tablename = 't_func_index_decode' order by indexname;
+set enable_seqscan = off;
+set enable_bitmapscan = off;
+explain (costs off)
+  select * from t_func_index_decode where decode(a, 1, 'x', 'y') = 'y';
+select * from t_func_index_decode where decode(a, 1, 'x', 'y') = 'y';
+set enable_bitmapscan = on;
+set enable_seqscan = on;
+drop table t_func_index_decode;
+
+-- the same keywords remain usable as plain column names in an index
+create table t_func_index_col(decode int, nvl int);
+create index t_func_index_col_i on t_func_index_col(decode, nvl);
+select indexname from pg_indexes where tablename = 't_func_index_col';
+drop table t_func_index_col;
