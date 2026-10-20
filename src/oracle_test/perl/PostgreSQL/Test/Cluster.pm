@@ -2302,6 +2302,14 @@ sub psql
 			$ret = $?;
 		};
 		my $exc_save = $@;
+
+		# We need a dummy stderr for error reporting if it was not captured.
+		if (!defined $stderr)
+		{
+			my $errtxt = "<not collected>";
+			$stderr = \$errtxt;
+		}
+
 		if ($exc_save)
 		{
 

@@ -16,3 +16,12 @@ install_data(
   'PostgreSQL/Test/AdjustDump.pm',
   'PostgreSQL/Test/AdjustUpgrade.pm',
   install_dir: dir_pgxs / 'src/oracle_test/perl/PostgreSQL/Test')
+
+tests += {
+  'name': 'perl',
+  'sd': meson.current_source_dir(),
+  'bd': meson.current_build_dir(),
+  'tap': {
+    'tests': ['t/001_psql_errors.pl'],
+  },
+}

@@ -43,3 +43,12 @@ uninstall:
 	rm -f '$(DESTDIR)$(pgxsdir)/$(subdir)/PostgreSQL/Version.pm'
 
 endif
+
+check oracle-check:
+	$(oracle_prove_check)
+
+installcheck oracle-installcheck:
+	$(oracle_prove_installcheck)
+
+clean distclean:
+	rm -rf tmp_check
