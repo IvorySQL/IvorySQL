@@ -292,7 +292,7 @@ BEGIN
 END;
 /
 
--- Test 4.4: Buffer size above 1000000 (now allowed, no max limit)
+-- Test 4.4: Buffer size above 1000000 is accepted, but writes use the cap
 CALL dbms_output.enable(1000001);
 
 -- Test 4.5: NULL buffer size uses unlimited (starts at 20000, grows dynamically)
