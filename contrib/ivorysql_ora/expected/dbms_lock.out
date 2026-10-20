@@ -63,6 +63,20 @@ $$;
 NOTICE:  mode=not found
 --
 commit;
+
+-- Invalid lock modes return Oracle's parameter_error status instead of
+-- aborting the surrounding PL/iSQL block.
+DO $$
+DECLARE
+ v_rc int;
+BEGIN
+ v_rc := dbms_lock.request('INVALID_MODE_TEST', 99, 0);
+ RAISE NOTICE 'invalid mode rc=%', v_rc;
+ ASSERT v_rc = dbms_lock.parameter_error,
+        format('DBMS_LOCK.request invalid mode returned %s', v_rc);
+END
+$$;
+NOTICE:  invalid mode rc=3
 --
 -- test DBMS_LOCK.X
 --
