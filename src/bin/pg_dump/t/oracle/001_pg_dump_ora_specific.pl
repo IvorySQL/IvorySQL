@@ -141,6 +141,14 @@ my %tests = (
 		like => { %full_runs, },
 	},
 
+	'ALTER TABLE ONLY test_table_identity_primary_key' => {
+		regexp => qr/^
+			\QALTER TABLE ONLY public.test_table_identity_primary_key\E \n\s+
+			\QADD CONSTRAINT test_table_identity_primary_key_pkey PRIMARY KEY (col1);\E
+			/xm,
+		like => { %full_runs, },
+	},
+
 	'CREATE PACKAGE test_pkg' => {
 		create_order => 1,
 		create_sql   => 
