@@ -214,8 +214,8 @@ static void addunicode(char32_t c, yyscan_t yyscanner);
  * to agree.
  */
 
-space			[ \t\n\r\f]
-horiz_space		[ \t\f]
+space			[ \t\n\r\f\v]
+horiz_space		[ \t\f\v]
 newline			[\n\r]
 non_newline		[^\n\r]
 

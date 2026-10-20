@@ -3,6 +3,9 @@
 -- Issue #1002: Support # character in unquoted identifiers
 --
 
+-- Whitespace parity with the standard Oracle parser.
+SELECT1 AS vertical_tab_whitespace;
+
 -- Test # in column names
 CREATE TABLE test_hash_ident (
     statistic# INT,
