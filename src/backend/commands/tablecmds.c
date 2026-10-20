@@ -17677,8 +17677,8 @@ change_owner_fix_column_acls(Oid relationOid, Oid oldOwnerId, Oid newOwnerId)
  * change_owner_recurse_to_sequences
  *
  * Helper function for ATExecChangeOwner.  Examines pg_depend searching
- * for sequences that are dependent on serial columns, and changes their
- * ownership.
+ * for sequences that are dependent on serial columns or are implicit ROWID
+ * sequences, and changes their ownership.
  */
 static void
 change_owner_recurse_to_sequences(Oid relationOid, Oid newOwnerId, LOCKMODE lockmode)
@@ -17689,8 +17689,9 @@ change_owner_recurse_to_sequences(Oid relationOid, Oid newOwnerId, LOCKMODE lock
 	HeapTuple	tup;
 
 	/*
-	 * SERIAL sequences are those having an auto dependency on one of the
-	 * table's columns (we don't care *which* column, exactly).
+	 * SERIAL sequences depend on a table column.  Implicit ROWID sequences
+	 * instead have an auto dependency on the whole table, since ROWID is not
+	 * a user column.  Both must follow the table's owner.
 	 */
 	depRel = table_open(DependRelationId, AccessShareLock);
 
@@ -17712,9 +17713,8 @@ change_owner_recurse_to_sequences(Oid relationOid, Oid newOwnerId, LOCKMODE lock
 		Form_pg_depend depForm = (Form_pg_depend) GETSTRUCT(tup);
 		Relation	seqRel;
 
-		/* skip dependencies other than auto dependencies on columns */
-		if (depForm->refobjsubid == 0 ||
-			depForm->classid != RelationRelationId ||
+		/* skip dependencies other than auto or internal dependencies */
+		if (depForm->classid != RelationRelationId ||
 			depForm->objsubid != 0 ||
 			!(depForm->deptype == DEPENDENCY_AUTO || depForm->deptype == DEPENDENCY_INTERNAL))
 			continue;
@@ -17722,8 +17722,9 @@ change_owner_recurse_to_sequences(Oid relationOid, Oid newOwnerId, LOCKMODE lock
 		/* Use relation_open just in case it's an index */
 		seqRel = relation_open(depForm->objid, lockmode);
 
-		/* skip non-sequence relations */
-		if (RelationGetForm(seqRel)->relkind != RELKIND_SEQUENCE)
+		/* Whole-table dependencies are relevant only for ROWID sequences. */
+		if (RelationGetForm(seqRel)->relkind != RELKIND_SEQUENCE ||
+			(depForm->refobjsubid == 0 && !seqRel->rd_rel->relhasrowid))
 		{
 			/* No need to keep the lock */
 			relation_close(seqRel, lockmode);

@@ -53,14 +53,14 @@ fails_like(q{SET ROLE ref_no_select;
 	'direct typed helper calls cannot bypass SELECT privileges');
 fails_like(q{SET ROLE ref_writer;
 	SELECT sys.ora_set_next_rowid('safety_objects', 1)},
-	qr/permission denied for function ora_set_next_rowid/,
-	'PUBLIC cannot restore object identities');
+	qr/must be owner of table safety_objects/,
+	'INSERT privileges do not permit restoring object identities');
 sql('GRANT EXECUTE ON FUNCTION sys.ora_set_next_rowid(regclass,bigint) TO ref_writer');
 fails_like(q{SET ROLE ref_writer;
 	INSERT INTO safety_objects SELECT 2
 	FROM sys.ora_set_next_rowid('safety_objects', 1)},
-	qr/must be superuser to restore ROWID values/,
-	'an EXECUTE grant cannot bypass trusted-restore checks');
+	qr/must be owner of table safety_objects/,
+	'an EXECUTE grant cannot bypass the table ownership check');
 is(sql(q{SET ROLE ref_writer;
 	SELECT DEREF(r) IS NULL FROM safety_refs}),
 	't', 'ordinary callers can still dereference a typed REF');
@@ -120,8 +120,36 @@ $node->safe_psql('postgres', q{
 });
 fails_like(q{INSERT INTO safety_objects SELECT 8
 	FROM sys.ora_set_next_rowid('safety_objects', 46)},
-	qr/cannot restore ROWID values with BEFORE INSERT triggers or rules present/,
+	qr/cannot restore ROWID values with enabled BEFORE INSERT triggers or INSERT rules/,
 	'unsafe trigger restore is rejected');
+sql(q{ALTER TABLE safety_objects DISABLE TRIGGER safety_skip;
+	INSERT INTO safety_objects SELECT 80
+	FROM sys.ora_set_next_rowid('safety_objects', 8080)});
+is(sql('SELECT (rowid).rowno FROM safety_objects WHERE id=80'),
+	'8080', 'a disabled BEFORE INSERT trigger does not prevent restoration');
+sql(q{ALTER TABLE safety_objects ENABLE REPLICA TRIGGER safety_skip;
+	INSERT INTO safety_objects SELECT 81
+	FROM sys.ora_set_next_rowid('safety_objects', 8081)});
+is(sql('SELECT (rowid).rowno FROM safety_objects WHERE id=81'),
+	'8081', 'a replica-only trigger does not prevent origin restoration');
+fails_like(q{SET session_replication_role = replica;
+	SELECT sys.ora_set_next_rowid('safety_objects', 8082)},
+	qr/cannot restore ROWID values with enabled BEFORE INSERT triggers or INSERT rules/,
+	'a replica-only trigger prevents replica restoration');
+sql(q{ALTER TABLE safety_objects ENABLE TRIGGER safety_skip;
+	SET session_replication_role = replica;
+	INSERT INTO safety_objects SELECT 83
+	FROM sys.ora_set_next_rowid('safety_objects', 8083)});
+is(sql('SELECT (rowid).rowno FROM safety_objects WHERE id=83'),
+	'8083', 'an origin-only trigger does not prevent replica restoration');
+sql('ALTER TABLE safety_objects ENABLE ALWAYS TRIGGER safety_skip');
+foreach my $role (qw(origin replica))
+{
+	fails_like("SET session_replication_role = $role; " .
+		q{SELECT sys.ora_set_next_rowid('safety_objects', 8084)},
+		qr/cannot restore ROWID values with enabled BEFORE INSERT triggers or INSERT rules/,
+		"an ALWAYS trigger prevents $role restoration");
+}
 sql(q{DROP TRIGGER safety_skip ON safety_objects;
 	INSERT INTO safety_objects VALUES (9)});
 is(sql('SELECT (rowid).rowno <> 46 FROM safety_objects WHERE id=9'),
@@ -134,6 +162,51 @@ fails_like(q{INSERT INTO safety_check SELECT -1
 sql('INSERT INTO safety_check VALUES (1)');
 is(sql('SELECT (rowid).rowno <> 47 FROM safety_check'),
 	't', 'failed insert cannot change a later identity');
+
+# Rules for other events and disabled INSERT rules cannot redirect an INSERT.
+sql('CREATE TABLE safety_rules (n integer) WITH ROWID');
+$node->safe_psql('postgres', q{
+	CREATE RULE safety_update AS ON UPDATE TO safety_rules DO INSTEAD NOTHING;
+});
+sql(q{INSERT INTO safety_rules SELECT 1
+	FROM sys.ora_set_next_rowid('safety_rules', 101)});
+is(sql('SELECT (rowid).rowno FROM safety_rules WHERE n=1'),
+	'101', 'an UPDATE rule does not prevent ROWID restoration');
+$node->safe_psql('postgres', q{
+	CREATE RULE safety_insert AS ON INSERT TO safety_rules
+	DO ALSO NOTIFY rowid_restore;
+});
+fails_like(q{SELECT sys.ora_set_next_rowid('safety_rules', 102)},
+	qr/cannot restore ROWID values with enabled BEFORE INSERT triggers or INSERT rules/,
+	'an enabled INSERT rule prevents restoration');
+sql(q{ALTER TABLE safety_rules DISABLE RULE safety_insert;
+	INSERT INTO safety_rules SELECT 2
+	FROM sys.ora_set_next_rowid('safety_rules', 102)});
+is(sql('SELECT (rowid).rowno FROM safety_rules WHERE n=2'),
+	'102', 'a disabled INSERT rule does not prevent restoration');
+sql(q{ALTER TABLE safety_rules ENABLE REPLICA RULE safety_insert;
+	INSERT INTO safety_rules SELECT 3
+	FROM sys.ora_set_next_rowid('safety_rules', 103)});
+is(sql('SELECT (rowid).rowno FROM safety_rules WHERE n=3'),
+	'103', 'a replica-only rule does not prevent origin restoration');
+fails_like(q{SET session_replication_role = replica;
+	SELECT sys.ora_set_next_rowid('safety_rules', 104)},
+	qr/cannot restore ROWID values with enabled BEFORE INSERT triggers or INSERT rules/,
+	'a replica-only rule prevents replica restoration');
+sql(q{ALTER TABLE safety_rules ENABLE RULE safety_insert;
+	SET session_replication_role = replica;
+	INSERT INTO safety_rules SELECT 4
+	FROM sys.ora_set_next_rowid('safety_rules', 104)});
+is(sql('SELECT (rowid).rowno FROM safety_rules WHERE n=4'),
+	'104', 'an origin-only rule does not prevent replica restoration');
+sql('ALTER TABLE safety_rules ENABLE ALWAYS RULE safety_insert');
+foreach my $role (qw(origin replica))
+{
+	fails_like("SET session_replication_role = $role; " .
+		q{SELECT sys.ora_set_next_rowid('safety_rules', 105)},
+		qr/cannot restore ROWID values with enabled BEFORE INSERT triggers or INSERT rules/,
+		"an ALWAYS rule prevents $role restoration");
+}
 
 $node->stop('fast');
 done_testing();

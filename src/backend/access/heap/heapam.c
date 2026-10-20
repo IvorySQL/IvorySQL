@@ -45,11 +45,15 @@
 #include "access/xloginsert.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_database_d.h"
+#include "catalog/pg_trigger.h"
+#include "commands/trigger.h"
 #include "commands/vacuum.h"
 #include "executor/instrument_node.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "port/pg_bitutils.h"
+#include "rewrite/prs2lock.h"
+#include "rewrite/rewriteDefine.h"
 #include "storage/lmgr.h"
 #include "storage/predicate.h"
 #include "storage/proc.h"
@@ -87,32 +91,82 @@ ora_restore_xact_callback(XactEvent event, void *arg)
 
 static void
 ora_restore_subxact_callback(SubXactEvent event, SubTransactionId mySubid,
-							SubTransactionId parentSubid, void *arg)
+							 SubTransactionId parentSubid, void *arg)
 {
 	if (event == SUBXACT_EVENT_ABORT_SUB || event == SUBXACT_EVENT_COMMIT_SUB)
 		ora_reset_restore_rowid();
 }
 
-Datum ora_set_next_rowid(PG_FUNCTION_ARGS);
+Datum		ora_set_next_rowid(PG_FUNCTION_ARGS);
+
+/* Only hooks that can run for this INSERT can consume or redirect its ROWID. */
+static bool
+ora_restore_rowid_has_insert_hooks(Relation rel)
+{
+	int			i;
+
+	if (rel->trigdesc != NULL && rel->trigdesc->trig_insert_before_row)
+	{
+		for (i = 0; i < rel->trigdesc->numtriggers; i++)
+		{
+			Trigger    *trigger = &rel->trigdesc->triggers[i];
+
+			if (!TRIGGER_TYPE_MATCHES(trigger->tgtype, TRIGGER_TYPE_ROW,
+									  TRIGGER_TYPE_BEFORE, TRIGGER_TYPE_INSERT))
+				continue;
+			if (trigger->tgenabled == TRIGGER_DISABLED)
+				continue;
+			if (SessionReplicationRole == SESSION_REPLICATION_ROLE_REPLICA)
+			{
+				if (trigger->tgenabled == TRIGGER_FIRES_ON_ORIGIN)
+					continue;
+			}
+			else if (trigger->tgenabled == TRIGGER_FIRES_ON_REPLICA)
+				continue;
+			return true;
+		}
+	}
+
+	if (rel->rd_rules != NULL)
+	{
+		for (i = 0; i < rel->rd_rules->numLocks; i++)
+		{
+			RewriteRule *rule = rel->rd_rules->rules[i];
+
+			if (rule->event != CMD_INSERT || rule->enabled == RULE_DISABLED)
+				continue;
+			if (SessionReplicationRole == SESSION_REPLICATION_ROLE_REPLICA)
+			{
+				if (rule->enabled == RULE_FIRES_ON_ORIGIN)
+					continue;
+			}
+			else if (rule->enabled == RULE_FIRES_ON_REPLICA)
+				continue;
+			return true;
+		}
+	}
+
+	return false;
+}
 
 Datum
 ora_set_next_rowid(PG_FUNCTION_ARGS)
 {
-	Oid		relid = PG_GETARG_OID(0);
-	int64	rowno = PG_GETARG_INT64(1);
+	Oid			relid = PG_GETARG_OID(0);
+	int64		rowno = PG_GETARG_INT64(1);
 	Relation	rel;
 
 	ora_reset_restore_rowid();
-	/* ACLs can be granted, so enforce the trusted-restore boundary here too. */
-	if (!superuser())
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser to restore ROWID values")));
 	if (rowno <= 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 				 errmsg("ROWID value is out of range")));
 	rel = table_open(relid, RowExclusiveLock);
+
+	/*
+	 * Restoring identities is an owner operation, like resetting the ROWID
+	 * sequence.  An INSERT or EXECUTE grant alone must not allow ROWID reuse.
+	 */
 	if (!object_ownercheck(RelationRelationId, relid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_TABLE,
 					   RelationGetRelationName(rel));
@@ -121,12 +175,10 @@ ora_set_next_rowid(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("ROWID restoration requires a heap table with ROWID")));
-	/* Before-row triggers/rules could suppress or redirect the intended row. */
-	if ((rel->trigdesc != NULL && rel->trigdesc->trig_insert_before_row) ||
-		rel->rd_rel->relhasrules)
+	if (ora_restore_rowid_has_insert_hooks(rel))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("cannot restore ROWID values with BEFORE INSERT triggers or rules present")));
+				 errmsg("cannot restore ROWID values with enabled BEFORE INSERT triggers or INSERT rules")));
 	table_close(rel, NoLock);
 	if (!ora_restore_callbacks_registered)
 	{
@@ -2211,7 +2263,7 @@ static HeapTuple
 heap_prepare_insert(Relation relation, HeapTuple tup, TransactionId xid,
 					CommandId cid, uint32 options)
 {
-	int64	seqnum;
+	int64		seqnum;
 
 	/*
 	 * To allow parallel inserts, we need to ensure that they are safe to be
@@ -2237,7 +2289,10 @@ heap_prepare_insert(Relation relation, HeapTuple tup, TransactionId xid,
 			ora_reset_restore_rowid();
 		if (ora_restore_relid == RelationGetRelid(relation))
 		{
-			/* pg_dump restores sequence state separately after the table data. */
+			/*
+			 * pg_dump restores sequence state separately after the table
+			 * data.
+			 */
 			seqnum = ora_restore_rowno;
 			ora_reset_restore_rowid();
 		}

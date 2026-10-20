@@ -12774,7 +12774,6 @@
 { oid => '9701', descr => 'set the ROWID of one restored row in the current command',
   proname => 'ora_set_next_rowid', pronamespace => 'sys',
   proisstrict => 't', provolatile => 'v', proparallel => 'u', prorettype => 'void',
-  proargtypes => 'regclass int8', prosrc => 'ora_set_next_rowid',
-  proacl => '{POSTGRES=X}' },
+  proargtypes => 'regclass int8', prosrc => 'ora_set_next_rowid' },
 
 ]
