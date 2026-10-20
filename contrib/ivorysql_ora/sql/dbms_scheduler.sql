@@ -805,6 +805,36 @@ SELECT job_owner, job_name, status FROM sys.scheduler_job_run_details
 
 -- cleanup
 RESET SESSION AUTHORIZATION;
+
+-- DISABLE must reject a running job unless force => TRUE is requested.
+CALL dbms_scheduler.create_job(
+  job_name   => 'DISABLE_RUNNING',
+  job_type   => 'PLSQL_BLOCK',
+  job_action => 'BEGIN NULL; END;');
+INSERT INTO sys.scheduler_job_run_details(job_owner, job_name, status)
+  VALUES (current_user, 'DISABLE_RUNNING', 'r');
+DO $$
+DECLARE
+  rejected BOOLEAN := FALSE;
+BEGIN
+  BEGIN
+    CALL dbms_scheduler.disable('DISABLE_RUNNING', force => FALSE);
+  EXCEPTION WHEN OTHERS THEN
+    rejected := TRUE;
+  END;
+  IF NOT rejected THEN
+    RAISE EXCEPTION 'DISABLE unexpectedly accepted a running job without force';
+  END IF;
+END;
+$$;
+SELECT enabled, state FROM sys.scheduler_jobs
+  WHERE job_name = 'DISABLE_RUNNING';
+CALL dbms_scheduler.disable('DISABLE_RUNNING', force => TRUE);
+SELECT enabled, state FROM sys.scheduler_jobs
+  WHERE job_name = 'DISABLE_RUNNING';
+DELETE FROM sys.scheduler_job_run_details WHERE job_name = 'DISABLE_RUNNING';
+CALL dbms_scheduler.drop_job('DISABLE_RUNNING');
+
 DROP USER sched_regress_u1;
 DROP USER sched_regress_u2;
 DROP TABLE sched_reg_t;

@@ -1589,13 +1589,13 @@ Datum
 ora_dbms_scheduler_disable(PG_FUNCTION_ARGS)
 {
 	char	   *raw_name = text_arg_or_null(fcinfo, 0);
+	bool		force = PG_ARGISNULL(1) ? false : PG_GETARG_BOOL(1);
 	char	   *commit_semantics = text_arg_or_null(fcinfo, 2);
 	SchedName	obj;
 	char		kind;
 	Oid			argtypes[2] = {TEXTOID, TEXTOID};
 	Datum		values[2];
-
-	/* "force" (arg 1) is accepted for Oracle compatibility and ignored */
+	uint64		running;
 
 	SPI_connect();
 
@@ -1609,6 +1609,19 @@ ora_dbms_scheduler_disable(PG_FUNCTION_ARGS)
 	switch (kind)
 	{
 		case SCHED_KIND_JOB:
+			if (!force)
+			{
+				running = sched_meta_select("SELECT 1 FROM sys.scheduler_job_run_details"
+									 " WHERE job_owner = $1 AND job_name = $2"
+									 "   AND status = 'r' LIMIT 1",
+									 2, argtypes, values, NULL);
+				if (running > 0)
+					ereport(ERROR,
+							(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+							 errmsg("job \"%s\".\"%s\" is running",
+									 obj.owner, obj.name),
+							 errhint("Use force => true to disable a running job.")));
+			}
 
 			/*
 			 * A job that is running keeps the RUNNING state: dropping it here
