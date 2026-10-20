@@ -832,6 +832,9 @@ BEGIN
     BEGIN
         dbms_output.put_line('x');
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM NOT LIKE '%ORU-10027: buffer overflow, limit of 1000000 bytes%' THEN
+            RAISE;
+        END IF;
         overflowed := TRUE;
     END;
     IF NOT overflowed THEN
