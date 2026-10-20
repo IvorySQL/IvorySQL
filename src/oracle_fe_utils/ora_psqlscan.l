@@ -160,8 +160,8 @@ extern void ora_psql_yyset_column(int column_no, yyscan_t yyscanner);
  * to agree.
  */
 
-space			[ \t\n\r\f]
-horiz_space		[ \t\f]
+space			[ \t\n\r\f\v]
+horiz_space		[ \t\f\v]
 newline			[\n\r]
 non_newline		[^\n\r]
 
