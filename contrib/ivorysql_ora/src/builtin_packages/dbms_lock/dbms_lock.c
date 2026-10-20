@@ -85,6 +85,7 @@ static void dbms_lock_init_hash_table(void);
 static bool dbms_lock_record_acquire(int64, int8);
 static bool dbms_lock_check(int64, int8);
 static bool dbms_lock_record_release(int64, int8);
+static bool dbms_lock_handle_is_valid(text *lockhandle);
 
 /*
  * init private lock hash table
@@ -190,6 +191,26 @@ lockname_to_key(text *lockname)
     return key;
 }
 
+/* ALLOCATE_UNIQUE returns an unsigned 64-bit value in decimal form. */
+static bool
+dbms_lock_handle_is_valid(text *lockhandle)
+{
+	char   *name = text_to_cstring(lockhandle);
+	size_t	len = strlen(name);
+	bool	valid = (len > 0 && len <= 20);
+	size_t	i;
+
+	for (i = 0; valid && i < len; i++)
+		valid = (name[i] >= '0' && name[i] <= '9');
+
+	/* Reject decimal values outside the range emitted by ALLOCATE_UNIQUE. */
+	if (valid && len == 20 && strcmp(name, "18446744073709551615") > 0)
+		valid = false;
+
+	pfree(name);
+	return valid;
+}
+
 static bool
 is_exclusive_mode(int mode)
 {
@@ -256,6 +277,9 @@ ivorysql_dbms_lock_request(PG_FUNCTION_ARGS)
     bool acquired = false;
     bool hash_enter_is_ok = false;
 
+	if (!dbms_lock_handle_is_valid(lockhandle))
+		PG_RETURN_INT32(DBMS_LOCK_INVALID_HANDLE);
+
     if (dbms_lock_hash_table == NULL)
 	    dbms_lock_init_hash_table();
 
@@ -309,6 +333,9 @@ ivorysql_dbms_lock_release(PG_FUNCTION_ARGS)
     bool lock_x_held = false;
     bool released = false;
     int8 lockmode;
+
+	if (!dbms_lock_handle_is_valid(lockhandle))
+		PG_RETURN_INT32(DBMS_LOCK_INVALID_HANDLE);
 
     if (dbms_lock_hash_table == NULL)
 	    dbms_lock_init_hash_table();
