@@ -47,6 +47,10 @@ select sys_context('ns2', 'a') is null as ns2_cleared;
 select sys_context(repeat('x', 300), 'attr') is null as overlong_ns_is_null;
 select sys_context('app_ctx', repeat('y', 300)) is null as overlong_attr_is_null;
 
+-- The default session edition is ORA$BASE in the absence of edition changes.
+select sys_context('USERENV', 'CURRENT_EDITION_NAME') as current_edition,
+       sys_context('USERENV', 'SESSION_EDITION_NAME') as session_edition;
+
 --
 -- LIST_CONTEXT (order by for stable output).
 -- Note: stored names are folded to upper case, matching Oracle.
