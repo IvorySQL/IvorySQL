@@ -810,9 +810,27 @@ RESET SESSION AUTHORIZATION;
 CALL dbms_scheduler.create_job(
   job_name   => 'ENABLE_COUNTERS',
   job_type   => 'PLSQL_BLOCK',
-  job_action => 'BEGIN NULL; END;',
+  job_action => 'BEGIN RAISE EXCEPTION ''expected failure''; END;',
   auto_drop  => FALSE);
-CALL dbms_scheduler.run_job('ENABLE_COUNTERS');
+DO $$
+DECLARE
+  failed BOOLEAN := FALSE;
+BEGIN
+  BEGIN
+    CALL dbms_scheduler.run_job('ENABLE_COUNTERS');
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM NOT LIKE '%expected failure%' THEN
+      RAISE;
+    END IF;
+    failed := TRUE;
+  END;
+  IF NOT failed THEN
+    RAISE EXCEPTION 'RUN_JOB unexpectedly succeeded';
+  END IF;
+END;
+$$;
+SELECT run_count, failure_count FROM sys.scheduler_jobs
+  WHERE job_name = 'ENABLE_COUNTERS';
 CALL dbms_scheduler.disable('ENABLE_COUNTERS');
 CALL dbms_scheduler.enable('ENABLE_COUNTERS');
 SELECT run_count, failure_count FROM sys.scheduler_jobs
