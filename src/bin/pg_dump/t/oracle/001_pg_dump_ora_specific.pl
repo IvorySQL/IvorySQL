@@ -136,7 +136,7 @@ my %tests = (
 		\s+\Qcol2 text\E\n
 		\);
 		.*
-		\QALTER TABLE public.test_table_identity_always ALTER COLUMN col1 MODIFY GENERATED ALWAYS AS IDENTITY (\E
+		\QALTER TABLE public.test_table_identity_always MODIFY col1 GENERATED ALWAYS AS IDENTITY (\E
 		/xms,
 		like => { %full_runs, },
 	},
