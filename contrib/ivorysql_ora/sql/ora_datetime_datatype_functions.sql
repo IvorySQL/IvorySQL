@@ -805,3 +805,38 @@ drop table ds_tb;
 reset NLS_TIMESTAMP_FORMAT;
 reset NLS_TIMESTAMP_TZ_FORMAT;
 reset NLS_DATE_FORMAT;
+
+-- NUMTODSINTERVAL keeps the day field separate from sub-day microseconds.
+-- Compare text, not interval equality, to avoid flattening large day fields.
+SELECT numtodsinterval(106751991, 'DAY')::text = to_dsinterval('106751991 00:00:00')::text AS exact;
+SELECT numtodsinterval(106751992, 'DAY')::text = to_dsinterval('106751992 00:00:00')::text AS exact;
+SELECT numtodsinterval(-106751992, 'DAY')::text = to_dsinterval('-106751992 00:00:00')::text AS exact;
+SELECT numtodsinterval(200000000, 'DAY')::text = to_dsinterval('200000000 00:00:00')::text AS exact;
+SELECT numtodsinterval(-200000000, 'DAY')::text = to_dsinterval('-200000000 00:00:00')::text AS exact;
+SELECT numtodsinterval(999999999, 'DAY')::text = to_dsinterval('999999999 00:00:00')::text AS exact;
+SELECT numtodsinterval(-999999999, 'DAY')::text = to_dsinterval('-999999999 00:00:00')::text AS exact;
+SELECT numtodsinterval(200000000.5, 'DAY')::text = to_dsinterval('200000000 12:00:00')::text AS exact;
+SELECT numtodsinterval(-200000000.5, 'DAY')::text = to_dsinterval('-200000000 12:00:00')::text AS exact;
+SELECT numtodsinterval(4800000000, 'HOUR')::text = to_dsinterval('200000000 00:00:00')::text AS exact;
+SELECT numtodsinterval(288000000000, 'MINUTE')::text = to_dsinterval('200000000 00:00:00')::text AS exact;
+SELECT numtodsinterval(17280000000000, 'SECOND')::text = to_dsinterval('200000000 00:00:00')::text AS exact;
+SELECT numtodsinterval(-1.5, 'HOUR')::text = to_dsinterval('-0 01:30:00')::text AS exact;
+-- Reject nonfinite values and day fields outside the supported precision.
+SELECT numtodsinterval(1000000000, 'DAY');
+SELECT numtodsinterval(-1000000000, 'DAY');
+SELECT numtodsinterval('NaN'::float8, 'DAY');
+SELECT numtodsinterval('Infinity'::float8, 'DAY');
+SELECT numtodsinterval('-Infinity'::float8, 'DAY');
+SELECT numtodsinterval(1e300::float8, 'DAY');
+SELECT numtodsinterval(106751991.5, 'DAY')::text = to_dsinterval('106751991 12:00:00')::text AS exact;
+SELECT numtodsinterval(-106751991.5, 'DAY')::text = to_dsinterval('-106751991 12:00:00')::text AS exact;
+SELECT numtodsinterval(106751992.5, 'DAY')::text = to_dsinterval('106751992 12:00:00')::text AS exact;
+SELECT numtodsinterval(-106751992.5, 'DAY')::text = to_dsinterval('-106751992 12:00:00')::text AS exact;
+SELECT numtodsinterval(999999999.5, 'DAY')::text = to_dsinterval('999999999 12:00:00')::text AS exact;
+SELECT numtodsinterval(4800000000.5, 'HOUR')::text = to_dsinterval('200000000 00:30:00')::text AS exact;
+SELECT numtodsinterval(288000000000.5, 'MINUTE')::text = to_dsinterval('200000000 00:00:30')::text AS exact;
+SELECT numtodsinterval(17280000000000.5, 'SECOND')::text = to_dsinterval('200000000 00:00:00.5')::text AS exact;
+-- Preserve established fractional truncation in the previously safe range.
+SELECT numtodsinterval(1440.1, 'MINUTE')::text = to_dsinterval('1 00:00:06')::text AS exact;
+SELECT numtodsinterval(1440.1, 'HOUR')::text = to_dsinterval('60 00:06:00')::text AS exact;
+SELECT numtodsinterval(0.000001, 'SECOND')::text = to_dsinterval('0 00:00:00.000001')::text AS exact;
