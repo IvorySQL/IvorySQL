@@ -1387,18 +1387,6 @@ SELECT job_owner, job_name, status FROM sys.scheduler_job_run_details
  regress_dbms_scheduler | PURGE_LIVE | r
 (1 row)
 
--- cleanup
-RESET SESSION AUTHORIZATION;
-DROP USER sched_regress_u1;
-DROP USER sched_regress_u2;
-DROP TABLE sched_reg_t;
-DROP PROCEDURE sched_reg_proc;
--- load bearing: the PURGE_LOG tests deliberately leave an 'r' row behind, and
--- PURGE_LOG will never remove one.  Without this it would leak into whatever
--- runs next against this database.
-DELETE FROM sys.scheduler_job_run_details;
-DROP ROLE regress_dbms_scheduler;
-RESET timezone;
 -- A completed one-shot job with the default auto_drop setting disappears,
 -- while explicitly retaining a job keeps it available for another RUN_JOB.
 BEGIN
@@ -1423,3 +1411,16 @@ BEGIN
 END;
 /
 CALL dbms_scheduler.drop_job('KEEP_ONCE');
+
+-- cleanup
+RESET SESSION AUTHORIZATION;
+DROP USER sched_regress_u1;
+DROP USER sched_regress_u2;
+DROP TABLE sched_reg_t;
+DROP PROCEDURE sched_reg_proc;
+-- load bearing: the PURGE_LOG tests deliberately leave an 'r' row behind, and
+-- PURGE_LOG will never remove one.  Without this it would leak into whatever
+-- runs next against this database.
+DELETE FROM sys.scheduler_job_run_details;
+DROP ROLE regress_dbms_scheduler;
+RESET timezone;
