@@ -101,11 +101,11 @@
 #include "utils/builtins.h"
 
 /*
- * Oracle limits a savepoint identifier to 30 bytes; we are more generous but
- * still reject absurdly long names up front rather than let them flow into
- * TopTransactionContext-allocated savepoint bookkeeping.
+ * Oracle limits an identifier to 128 bytes on supported modern releases.
+ * Keep the bridge at that limit rather than accepting names that cannot be
+ * used by compatible Oracle applications.
  */
-#define DBMS_TRANSACTION_SAVEPOINT_NAME_LEN	256
+#define DBMS_TRANSACTION_SAVEPOINT_NAME_LEN	129
 
 PG_FUNCTION_INFO_V1(ora_dbms_transaction_savepoint);
 PG_FUNCTION_INFO_V1(ora_dbms_transaction_rollback_savepoint);
