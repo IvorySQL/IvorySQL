@@ -814,6 +814,24 @@ END;
 $$;
 
 -- =============================================================================
+-- Section 14: PUT buffer limit
+-- =============================================================================
+
+-- Test 14.1: PUT enforces the configured content limit before flushing
+DO $$
+BEGIN
+    dbms_output.disable();
+    dbms_output.enable(2000);
+    BEGIN
+        dbms_output.put(rpad('X', 2001, 'X'));
+        RAISE NOTICE 'Test 14.1 - PUT buffer limit: unexpected success';
+    EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE 'Test 14.1 - PUT buffer limit: %', SQLERRM;
+    END;
+END;
+$$;
+
+-- =============================================================================
 -- Cleanup
 -- =============================================================================
 DROP PROCEDURE test_output_proc;

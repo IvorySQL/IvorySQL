@@ -98,6 +98,7 @@ static DbmsOutputBuffer *output_buffer = NULL;
 /* Internal function declarations */
 static void init_output_buffer(int64 buffer_size);
 static void cleanup_output_buffer(void);
+static void check_buffer_limit(int64 additional_bytes);
 static void add_line_to_buffer(const char *line, int line_len);
 static DbmsOutputLine *pop_line_from_buffer(void);
 
@@ -184,16 +185,39 @@ cleanup_output_buffer(void)
 }
 
 /*
+ * check_buffer_limit
+ *
+ * Check whether additional content can fit in the configured buffer.
+ * Pending PUT text is included by the caller, because it is not yet
+ * represented by a completed line in buffer_used.
+ */
+static void
+check_buffer_limit(int64 additional_bytes)
+{
+	/*
+	 * Check user-perceived buffer limit (Oracle behavior).
+	 * Only content bytes count toward the limit, not node overhead.
+	 * Skip check for unlimited buffer (buffer_size == -1).
+	 */
+	if (output_buffer->buffer_size != DBMS_OUTPUT_UNLIMITED)
+	{
+		/* Use subtraction to avoid potential integer overflow in addition. */
+		if (output_buffer->buffer_used > output_buffer->buffer_size ||
+			additional_bytes > output_buffer->buffer_size - output_buffer->buffer_used)
+			ereport(ERROR,
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg("ORU-10027: buffer overflow, limit of %lld bytes",
+							(long long) output_buffer->buffer_size)));
+	}
+}
+
+/*
  * add_line_to_buffer
  *
  * Add a completed line to the linked list buffer.
  *
  * line: pointer to line data, or NULL for a NULL line
  * line_len: length of line data (ignored if line is NULL)
- *
- * Overflow check (Oracle behavior):
- * - Only content bytes count toward user limit (not node overhead)
- * - Raises ORU-10027 if limit exceeded
  */
 static void
 add_line_to_buffer(const char *line, int line_len)
@@ -202,20 +226,7 @@ add_line_to_buffer(const char *line, int line_len)
 	DbmsOutputLine *node;
 	Size		node_size;
 
-	/*
-	 * Check user-perceived buffer limit BEFORE adding (Oracle behavior).
-	 * Only content bytes count toward limit, not node overhead.
-	 * Skip check for unlimited buffer (buffer_size == -1).
-	 */
-	if (output_buffer->buffer_size != DBMS_OUTPUT_UNLIMITED)
-	{
-		/* Use subtraction to avoid potential integer overflow in addition */
-		if (line_len > output_buffer->buffer_size - output_buffer->buffer_used)
-			ereport(ERROR,
-					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-					 errmsg("ORU-10027: buffer overflow, limit of %lld bytes",
-							(long long) output_buffer->buffer_size)));
-	}
+	check_buffer_limit(line_len);
 
 	/* Allocate node with embedded data in buffer memory context */
 	oldcontext = MemoryContextSwitchTo(output_buffer->buffer_mcxt);
@@ -434,6 +445,9 @@ ora_dbms_output_put(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("ORU-10028: line length overflow, limit of %d bytes per line",
 						DBMS_OUTPUT_MAX_LINE_LENGTH)));
+
+	/* PUT contributes to the configured buffer limit before the line is flushed. */
+	check_buffer_limit(output_buffer->current_line->len + str_len);
 
 	/* Accumulate in current_line without creating a line yet */
 	appendStringInfoString(output_buffer->current_line, str);

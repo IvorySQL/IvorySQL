@@ -824,6 +824,23 @@ END;
 $$;
 NOTICE:  Test 13.1 - DISCARD ALL cleared buffer: PASSED (status=1, buffer is NULL)
 -- =============================================================================
+-- Section 14: PUT buffer limit
+-- =============================================================================
+-- Test 14.1: PUT enforces the configured content limit before flushing
+DO $$
+BEGIN
+    dbms_output.disable();
+    dbms_output.enable(2000);
+    BEGIN
+        dbms_output.put(rpad('X', 2001, 'X'));
+        RAISE NOTICE 'Test 14.1 - PUT buffer limit: unexpected success';
+    EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE 'Test 14.1 - PUT buffer limit: %', SQLERRM;
+    END;
+END;
+$$;
+NOTICE:  Test 14.1 - PUT buffer limit: ORU-10027: buffer overflow, limit of 2000 bytes
+-- =============================================================================
 -- Cleanup
 -- =============================================================================
 DROP PROCEDURE test_output_proc;
