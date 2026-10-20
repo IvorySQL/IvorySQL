@@ -338,7 +338,11 @@ ivorysql_dbms_lock_release(PG_FUNCTION_ARGS)
 }
 
 /*
- * DBMS_LOCK.SLEEP
+ * ivorysql_dbms_lock_sleep - sleep for a finite, non-negative delay.
+ *
+ * Non-finite values are rejected before conversion to a platform microsecond
+ * count; finite negative and excessively large values retain their existing
+ * validation behavior.
  */
 PG_FUNCTION_INFO_V1(ivorysql_dbms_lock_sleep);
 
