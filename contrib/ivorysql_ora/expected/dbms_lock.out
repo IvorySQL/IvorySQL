@@ -63,6 +63,19 @@ $$;
 NOTICE:  mode=not found
 --
 commit;
+
+-- malformed textual handles must not create an unrelated advisory lock
+declare
+ v_rc int;
+begin
+ v_rc := dbms_lock.request('not-a-lock-handle', dbms_lock.x_mode, 0);
+ assert v_rc = dbms_lock.illegal_handle,
+        format('DBMS_LOCK.request accepted malformed handle: rc=%s', v_rc);
+ v_rc := dbms_lock.release('not-a-lock-handle');
+ assert v_rc = dbms_lock.illegal_handle,
+        format('DBMS_LOCK.release accepted malformed handle: rc=%s', v_rc);
+end;
+/
 --
 -- test DBMS_LOCK.X
 --
