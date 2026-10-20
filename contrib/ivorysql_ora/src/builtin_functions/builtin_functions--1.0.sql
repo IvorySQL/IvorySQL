@@ -1321,11 +1321,11 @@ IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION sys.rawtohex(text)
 RETURNS varchar2
-AS $$ SELECT CASE WHEN pg_catalog.octet_length($1) > 0 THEN upper(pg_catalog.encode($1::bytea, 'hex'))::varchar2 END; $$ 
+AS $$ SELECT CASE WHEN pg_catalog.octet_length($1) > 0 THEN upper(pg_catalog.encode(pg_catalog.textsend($1), 'hex'))::varchar2 END; $$
 LANGUAGE SQL
 PARALLEL SAFE
 STRICT
-IMMUTABLE;
+STABLE;
 
 
 /***************************************************************

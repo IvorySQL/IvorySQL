@@ -200,6 +200,24 @@ SELECT sys.rawtohex('hello'::varchar2);
  68656C6C6F
 (1 row)
 
+SELECT sys.rawtohex('\\x4142'::text);
+   rawtohex   
+--------------
+ 5C7834313432
+(1 row)
+
+SELECT sys.rawtohex('\\101'::text);
+ rawtohex 
+----------
+ 5C313031
+(1 row)
+
+SELECT sys.rawtohex('\\q'::text);
+ rawtohex 
+----------
+ 5C71
+(1 row)
+
 SELECT sys.rawtohex(sys.hextoraw('DEADBEEF'));
  rawtohex 
 ----------
