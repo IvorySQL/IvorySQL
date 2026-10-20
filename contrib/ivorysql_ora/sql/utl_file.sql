@@ -343,6 +343,22 @@ begin
 end;
 /
 
+-- IS_OPEN must reject a handle that was never returned by FOPEN.
+DO $$
+DECLARE
+    rejected BOOLEAN := FALSE;
+BEGIN
+    BEGIN
+        PERFORM sys.ora_utl_file_is_open(2147483647);
+    EXCEPTION WHEN OTHERS THEN
+        rejected := TRUE;
+    END;
+    IF NOT rejected THEN
+        RAISE EXCEPTION 'IS_OPEN unexpectedly accepted an invalid file handle';
+    END IF;
+END;
+$$;
+
 -- clean up
 delete from sys.utl_file_directory where dirname = 'data_directory';
 /

@@ -410,16 +410,14 @@ ora_utl_file_is_open(PG_FUNCTION_ARGS)
 {
 	uint32	sid = PG_GETARG_UINT32(0);
 
-	if(sid == INVALID_SLOTID)
-		PG_RETURN_BOOL(false);
-
 	for (int i = 0; i < MAX_SLOTS; i++)
 	{
 		if (slots[i].id == sid)
 			PG_RETURN_BOOL(slots[i].fd != NULL);
 	}
 
-	PG_RETURN_BOOL(false);
+	INVALID_FILEHANDLE_EXCEPTION();
+	pg_unreachable();
 }
 
 /*
