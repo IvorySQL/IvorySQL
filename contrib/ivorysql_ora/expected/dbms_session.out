@@ -77,7 +77,7 @@ select sys_context('ns2', 'a') is null as ns2_cleared;
  t
 (1 row)
 
--- read path: an over-long name (>= 256 bytes) cannot match any stored key,
+-- read path: an over-long name (>= 31 bytes) cannot match any stored key,
 -- so SYS_CONTEXT returns NULL instead of raising an error (usable in predicates)
 select sys_context(repeat('x', 300), 'attr') is null as overlong_ns_is_null;
  overlong_ns_is_null 
@@ -92,6 +92,28 @@ select sys_context('app_ctx', repeat('y', 300)) is null as overlong_attr_is_null
 (1 row)
 
 --
+-- Oracle limits context namespace and attribute names to 30 bytes.
+DO $$
+DECLARE
+ rejected boolean;
+BEGIN
+ rejected := false;
+ BEGIN
+   CALL dbms_session.set_context(repeat('n', 31), 'attr', 'value');
+ EXCEPTION WHEN OTHERS THEN
+   rejected := true;
+ END;
+ ASSERT rejected, 'an overlong namespace was accepted';
+
+ rejected := false;
+ BEGIN
+   CALL dbms_session.set_context('namespace', repeat('a', 31), 'value');
+ EXCEPTION WHEN OTHERS THEN
+   rejected := true;
+ END;
+ ASSERT rejected, 'an overlong attribute was accepted';
+END
+$$;
 -- LIST_CONTEXT (order by for stable output).
 -- Note: stored names are folded to upper case, matching Oracle.
 --

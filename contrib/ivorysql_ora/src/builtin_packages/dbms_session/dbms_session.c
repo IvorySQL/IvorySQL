@@ -46,7 +46,7 @@
  * oversized names rather than silently truncating (truncation would corrupt
  * the hash key).
  */
-#define DBMS_SESSION_NAME_LEN		256
+#define DBMS_SESSION_NAME_LEN		31
 #define DBMS_SESSION_MAX_VALUE_LEN	4000
 #define DBMS_SESSION_HASH_INIT_SIZE	64
 
@@ -117,7 +117,8 @@ dbms_session_init(void)
  * Oracle treats namespace and attribute names case-insensitively (it folds
  * them to upper case internally), so we upper-case both while copying.  This
  * makes SET_CONTEXT('app', 'usr', ...) readable via SYS_CONTEXT('APP', 'USR'),
- * matching Oracle.  Rejects names that do not fit the fixed-size key buffer.
+ * matching Oracle.  Oracle limits both names to 30 bytes; the extra byte in
+ * the fixed-size buffer is for the terminating NUL.
  */
 static void
 make_key(CtxKey *key, const char *ns, const char *attr)
