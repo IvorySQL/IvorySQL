@@ -554,13 +554,20 @@ psql_fails_like(
 		'CREATE FUNCTION slash_semicolon_test() RETURNS integer '
 		  . q{LANGUAGE SQL AS 'SELECT 1'});
 
-		psql_like(
-			$oracle_node,
-			"SELECT\x0b1;\n",
-			qr/\n1\n/,
-			'Oracle scanner accepts vertical-tab whitespace');
-
 	local $ENV{PGOPTIONS} = '-c ivorysql.compatible_mode=oracle';
+	psql_like(
+		$oracle_node,
+		"SELECT\x0b1;\n",
+		qr/\n1\n/,
+		'Oracle scanner accepts vertical-tab whitespace');
+
+	psql_like(
+		$oracle_node,
+		"CREATE FUNCTION slash_vertical_tab_test() RETURNS integer "
+		  . "LANGUAGE SQL AS 'SELECT 1'\n\x0b/\x0b\n",
+		qr/CREATE FUNCTION/,
+		'Oracle slash terminator accepts vertical-tab padding');
+
 	psql_like(
 		$oracle_node,
 		'\\sf public.slash_semicolon_test ;',

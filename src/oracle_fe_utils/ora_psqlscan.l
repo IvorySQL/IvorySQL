@@ -1960,6 +1960,8 @@ is_oracle_slash(PsqlScanState state, const char *line)
 					if (line[i] == '\t' ||
 						line[i] == '\n' ||
 						line[i] == '\r' ||
+						line[i] == '\f' ||
+						line[i] == '\v' ||
 						line[i] == ' ')
 						continue;
 
