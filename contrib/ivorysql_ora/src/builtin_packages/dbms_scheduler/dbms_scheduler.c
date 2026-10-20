@@ -866,7 +866,7 @@ sched_enable_job(const SchedName *job)
 		sched_meta_dml("UPDATE sys.scheduler_jobs SET enabled = true,"
 				  " state = CASE WHEN state = 'RUNNING' THEN state"
 				  "              ELSE 'SCHEDULED' END,"
-				  " next_run_date = $3, failure_count = 0"
+				  " next_run_date = $3, run_count = 0, failure_count = 0"
 				  " WHERE job_owner = $1 AND job_name = $2",
 				  3, at3, v3, NULL);
 	}

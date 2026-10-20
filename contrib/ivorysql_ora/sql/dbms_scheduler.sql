@@ -805,6 +805,20 @@ SELECT job_owner, job_name, status FROM sys.scheduler_job_run_details
 
 -- cleanup
 RESET SESSION AUTHORIZATION;
+
+-- ENABLE resets both execution counters, including RUN_COUNT.
+CALL dbms_scheduler.create_job(
+  job_name   => 'ENABLE_COUNTERS',
+  job_type   => 'PLSQL_BLOCK',
+  job_action => 'BEGIN NULL; END;',
+  auto_drop  => FALSE);
+CALL dbms_scheduler.run_job('ENABLE_COUNTERS');
+CALL dbms_scheduler.disable('ENABLE_COUNTERS');
+CALL dbms_scheduler.enable('ENABLE_COUNTERS');
+SELECT run_count, failure_count FROM sys.scheduler_jobs
+  WHERE job_name = 'ENABLE_COUNTERS';
+CALL dbms_scheduler.drop_job('ENABLE_COUNTERS');
+
 DROP USER sched_regress_u1;
 DROP USER sched_regress_u2;
 DROP TABLE sched_reg_t;
