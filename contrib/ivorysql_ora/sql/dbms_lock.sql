@@ -20,6 +20,13 @@ BEGIN
     EXCEPTION WHEN invalid_parameter_value THEN
         RAISE NOTICE 'Infinity rejected: true';
     END;
+
+    BEGIN
+        PERFORM sys.dbms_lock_sleep('-Infinity'::double precision);
+        RAISE NOTICE '-Infinity rejected: false';
+    EXCEPTION WHEN invalid_parameter_value THEN
+        RAISE NOTICE '-Infinity rejected: true';
+    END;
 END
 $$;
 create table handle(h text);

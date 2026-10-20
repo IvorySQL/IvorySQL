@@ -24,6 +24,7 @@ END
 $$;
 NOTICE:  NaN rejected: true
 NOTICE:  Infinity rejected: true
+NOTICE:  -Infinity rejected: true
 create table handle(h text);
 --
 -- test DBMS_LOCK.S
