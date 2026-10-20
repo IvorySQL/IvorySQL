@@ -59,6 +59,21 @@ end
 $$;
 --
 commit;
+
+-- Oracle defaults mode to X_MODE and timeout to MAXWAIT.
+begin;
+declare
+ v_handle text;
+ v_rc int;
+begin
+ dbms_lock.allocate_unique('LOCK_DEFAULTS', v_handle);
+ v_rc := dbms_lock.request(v_handle);
+ assert v_rc = 0, format('DBMS_LOCK.request defaults failed: rc=%s', v_rc);
+ v_rc := dbms_lock.release(v_handle);
+ assert v_rc = 0, format('DBMS_LOCK.release defaults failed: rc=%s', v_rc);
+end;
+/
+commit;
 --
 -- test DBMS_LOCK.X
 --

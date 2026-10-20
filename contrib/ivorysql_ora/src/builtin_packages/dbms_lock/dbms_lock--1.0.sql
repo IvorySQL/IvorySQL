@@ -43,7 +43,8 @@ CREATE PACKAGE dbms_lock AS
     
     PROCEDURE allocate_unique(lockname text, lockname_handle OUT text); 
 
-    FUNCTION request(lockname_handle text, mode integer, timeout integer)
+    FUNCTION request(lockname_handle text, mode integer DEFAULT x_mode,
+                     timeout integer DEFAULT 32767)
         RETURN int;
 
     FUNCTION release(lockname_handle text)
