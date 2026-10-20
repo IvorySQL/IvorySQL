@@ -22,6 +22,6 @@ tests += {
   'sd': meson.current_source_dir(),
   'bd': meson.current_build_dir(),
   'tap': {
-    'tests': ['t/001_psql_errors.pl'],
+    'tests': ['t/001_psql_errors.pl', 't/002_adjust_upgrade.pl'],
   },
 }
