@@ -36,6 +36,7 @@
 #include "access/hash.h"
 #include "access/xact.h"
 #include "catalog/pg_type.h"
+#include "common/int.h"
 #include "funcapi.h"
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
@@ -81,6 +82,31 @@ PG_FUNCTION_INFO_V1(oratimestamp_hash_extended);
 PG_FUNCTION_INFO_V1(oratimestamp_smaller);
 PG_FUNCTION_INFO_V1(oratimestamp_larger);
 PG_FUNCTION_INFO_V1(oratimestamp);
+
+/* Add a numeric day offset without allowing Timestamp overflow to wrap. */
+static Timestamp
+ora_timestamp_add_days(Timestamp timestamp, float8 days)
+{
+	float8		usecs_float;
+	int64		usecs;
+	Timestamp	result;
+
+	usecs_float = rint(days * USECS_PER_DAY);
+	if (!isfinite(usecs_float) ||
+		usecs_float >= (float8) INT64_MAX + 1.0 ||
+		usecs_float < (float8) INT64_MIN)
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("timestamp out of range")));
+
+	usecs = (int64) usecs_float;
+	if (pg_add_s64_overflow(timestamp, usecs, &result))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("timestamp out of range")));
+
+	return result;
+}
 
 PG_FUNCTION_INFO_V1(oratimestamp_eq_oradate);
 PG_FUNCTION_INFO_V1(oratimestamp_ne_oradate);
@@ -1397,8 +1423,7 @@ oradate_pl_number(PG_FUNCTION_ARGS)
 	else
 	{
 		addend = DatumGetFloat8(DirectFunctionCall1(numeric_float8, NumericGetDatum(num)));
-		addend = rint(addend * USECS_PER_DAY);
-		result = timestamp + addend;
+		result = ora_timestamp_add_days(timestamp, addend);
 	}
 
 	PG_RETURN_TIMESTAMP(result);
@@ -1423,8 +1448,7 @@ number_pl_oradate(PG_FUNCTION_ARGS)
 	else
 	{
 		addend = DatumGetFloat8(DirectFunctionCall1(numeric_float8, NumericGetDatum(num)));
-		addend = rint(addend * USECS_PER_DAY);
-		result = timestamp + addend;
+		result = ora_timestamp_add_days(timestamp, addend);
 	}
 
 	PG_RETURN_TIMESTAMP(result);
@@ -1489,9 +1513,7 @@ oratimestamp_pl_number(PG_FUNCTION_ARGS)
 					 errmsg("timestamp out of range")));
 
 		addend = DatumGetFloat8(DirectFunctionCall1(numeric_float8, NumericGetDatum(num)));
-		addend = rint(addend * USECS_PER_DAY);
-
-		result = result + addend;
+		result = ora_timestamp_add_days(result, addend);
 	}
 
 	PG_RETURN_TIMESTAMP(result);
@@ -1530,9 +1552,7 @@ number_pl_oratimestamp(PG_FUNCTION_ARGS)
 					 errmsg("timestamp out of range")));
 
 		addend = DatumGetFloat8(DirectFunctionCall1(numeric_float8, NumericGetDatum(num)));
-		addend = rint(addend * USECS_PER_DAY);
-
-		result = result + addend;
+		result = ora_timestamp_add_days(result, addend);
 	}
 
 	PG_RETURN_TIMESTAMP(result);
@@ -1654,9 +1674,7 @@ oratimestamptz_pl_number(PG_FUNCTION_ARGS)
 					 errmsg("timestamp out of range")));
 
 		addend = DatumGetFloat8(DirectFunctionCall1(numeric_float8, NumericGetDatum(num)));
-		addend = rint(addend * USECS_PER_DAY);
-
-		result = result + addend;
+		result = ora_timestamp_add_days(result, addend);
 	}
 
 	PG_RETURN_TIMESTAMP(result);
@@ -1696,9 +1714,7 @@ number_pl_oratimestamptz(PG_FUNCTION_ARGS)
 					 errmsg("timestamp out of range")));
 
 		addend = DatumGetFloat8(DirectFunctionCall1(numeric_float8, NumericGetDatum(num)));
-		addend = rint(addend * USECS_PER_DAY);
-
-		result = result + addend;
+		result = ora_timestamp_add_days(result, addend);
 	}
 
 	PG_RETURN_TIMESTAMP(result);

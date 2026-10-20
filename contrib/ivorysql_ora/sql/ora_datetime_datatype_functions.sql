@@ -63,6 +63,25 @@ SELECT to_timestamp_tz('10-9-2016 14:10:10.123000 +1:00', 'DD-MM-YYYY HH24:MI:SS
 SELECT to_timestamp_tz('10-9-2016 14:10:10.123000 -12:00', 'DD-MM-YYYY HH24:MI:SS.FF TZH:TZM') FROM DUAL;
 SELECT to_timestamp_tz('10-9-2016 14:10:10.123000 -13:00', 'DD-MM-YYYY HH24:MI:SS.FF TZH:TZM') FROM DUAL;
 
+-- Numeric date arithmetic must report overflow instead of wrapping.
+DO $$
+BEGIN
+	BEGIN
+		PERFORM timestamp '294276-12-31 23:59:59.999999'::sys.oradate + 1;
+		RAISE NOTICE 'oradate addition overflow: false';
+	EXCEPTION WHEN datetime_value_out_of_range THEN
+		RAISE NOTICE 'oradate addition overflow: true';
+	END;
+
+	BEGIN
+		PERFORM timestamp '294276-12-31 23:59:59.999999'::sys.oratimestamp + 1;
+		RAISE NOTICE 'oratimestamp addition overflow: false';
+	EXCEPTION WHEN datetime_value_out_of_range THEN
+		RAISE NOTICE 'oratimestamp addition overflow: true';
+	END;
+END
+$$;
+
 /*
  * to_char
  */
