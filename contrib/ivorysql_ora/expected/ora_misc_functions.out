@@ -4521,3 +4521,24 @@ DETAIL:  "ivorysql" is a reserved prefix.
 reset ivorysql.dummy_config;
 ERROR:  invalid configuration parameter name "ivorysql.dummy_config"
 DETAIL:  "ivorysql" is a reserved prefix.
+-- PLATFORM_SLASH returns a path delimiter, never an operating system name.
+SELECT sys.sys_context('USERENV', 'PLATFORM_SLASH') IN ('/', chr(92)) AS platform_slash;
+ platform_slash 
+----------------
+ t
+(1 row)
+
+SELECT sys.sys_context('userenv', 'platform_slash') =
+       sys.sys_context('USERENV', 'PLATFORM_SLASH') AS case_insensitive;
+ case_insensitive 
+------------------
+ t
+(1 row)
+
+SELECT sys.sys_context('USERENV', 'PLATFORM_SLASH', 1) =
+       sys.sys_context('USERENV', 'PLATFORM_SLASH') AS one_character;
+ one_character 
+---------------
+ t
+(1 row)
+
