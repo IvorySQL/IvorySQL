@@ -108,7 +108,9 @@ uninstall-headers:
 
 
 # Force these dependencies to be known even without dependency info built:
-pl_gram.o pl_handler.o pl_comp.o pl_exec.o pl_funcs.o pl_scanner.o pl_autonomous.o: plisql.h pl_gram.h plerrcodes.h pl_subproc_function.h pl_package.h pl_autonomous.h
+pl_gram.o pl_handler.o pl_comp.o pl_exec.o pl_funcs.o pl_scanner.o pl_autonomous.o \
+pl_package.o pl_subproc_function.o pl_exception_type.o: plisql.h pl_gram.h plerrcodes.h pl_subproc_function.h pl_package.h pl_autonomous.h
+pl_comp.o pl_exec.o pl_funcs.o pl_gram.o pl_exception_type.o: pl_exception_type.h
 pl_scanner.o: pl_reserved_kwlist_d.h pl_unreserved_kwlist_d.h
 
 # See notes in src/backend/parser/Makefile about the following two rules
