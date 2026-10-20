@@ -79,6 +79,55 @@ BEGIN
 	EXCEPTION WHEN datetime_value_out_of_range THEN
 		RAISE NOTICE 'oratimestamp addition overflow: true';
 	END;
+
+	BEGIN
+		PERFORM 1::numeric + timestamp '294276-12-31 23:59:59.999999'::sys.oradate;
+		RAISE NOTICE 'numeric plus oradate overflow: false';
+	EXCEPTION WHEN datetime_value_out_of_range THEN
+		RAISE NOTICE 'numeric plus oradate overflow: true';
+	END;
+
+	BEGIN
+		PERFORM 1::numeric + timestamp '294276-12-31 23:59:59.999999'::sys.oratimestamp;
+		RAISE NOTICE 'numeric plus oratimestamp overflow: false';
+	EXCEPTION WHEN datetime_value_out_of_range THEN
+		RAISE NOTICE 'numeric plus oratimestamp overflow: true';
+	END;
+
+	BEGIN
+		PERFORM timestamp with time zone '294276-12-31 23:59:59.999999+00'::sys.oratimestamptz + 1;
+		RAISE NOTICE 'oratimestamptz addition overflow: false';
+	EXCEPTION WHEN datetime_value_out_of_range THEN
+		RAISE NOTICE 'oratimestamptz addition overflow: true';
+	END;
+
+	BEGIN
+		PERFORM 1::numeric + timestamp with time zone '294276-12-31 23:59:59.999999+00'::sys.oratimestamptz;
+		RAISE NOTICE 'numeric plus oratimestamptz overflow: false';
+	EXCEPTION WHEN datetime_value_out_of_range THEN
+		RAISE NOTICE 'numeric plus oratimestamptz overflow: true';
+	END;
+
+	BEGIN
+		PERFORM timestamp '4713-11-24 00:00:00 BC'::sys.oradate - 1;
+		RAISE NOTICE 'oradate subtraction underflow: false';
+	EXCEPTION WHEN datetime_value_out_of_range THEN
+		RAISE NOTICE 'oradate subtraction underflow: true';
+	END;
+
+	BEGIN
+		PERFORM timestamp '4713-11-24 00:00:00 BC'::sys.oratimestamp - 1;
+		RAISE NOTICE 'oratimestamp subtraction underflow: false';
+	EXCEPTION WHEN datetime_value_out_of_range THEN
+		RAISE NOTICE 'oratimestamp subtraction underflow: true';
+	END;
+
+	BEGIN
+		PERFORM timestamp with time zone '4713-11-24 00:00:00 BC+00'::sys.oratimestamptz - 1;
+		RAISE NOTICE 'oratimestamptz subtraction underflow: false';
+	EXCEPTION WHEN datetime_value_out_of_range THEN
+		RAISE NOTICE 'oratimestamptz subtraction underflow: true';
+	END;
 END
 $$;
 
