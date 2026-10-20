@@ -557,6 +557,12 @@ psql_fails_like(
 	local $ENV{PGOPTIONS} = '-c ivorysql.compatible_mode=oracle';
 	psql_like(
 		$oracle_node,
+		"\\echo\x0bvertical-tab\n",
+		qr/vertical-tab/,
+		'Oracle slash scanner accepts vertical-tab whitespace');
+
+	psql_like(
+		$oracle_node,
 		'\\sf public.slash_semicolon_test ;',
 		qr/CREATE OR REPLACE FUNCTION public\.slash_semicolon_test\(\)/,
 		'Oracle \\sf strips a trailing semicolon');
