@@ -90,6 +90,7 @@ static DbmsOutputBuffer *output_buffer = NULL;
 /* Buffer size constants */
 #define DBMS_OUTPUT_MIN_BUFFER_SIZE 2000
 #define DBMS_OUTPUT_DEFAULT_BUFFER_SIZE 20000
+#define DBMS_OUTPUT_MAX_BUFFER_SIZE 1000000
 #define DBMS_OUTPUT_UNLIMITED ((int64) -1)
 
 /* Marker for NULL lines */
@@ -316,6 +317,8 @@ ora_dbms_output_enable(PG_FUNCTION_ARGS)
 		/* Oracle behavior: silently clamp below-min values to 2000 */
 		if (buffer_size < DBMS_OUTPUT_MIN_BUFFER_SIZE)
 			buffer_size = DBMS_OUTPUT_MIN_BUFFER_SIZE;
+		else if (buffer_size > DBMS_OUTPUT_MAX_BUFFER_SIZE)
+			buffer_size = DBMS_OUTPUT_MAX_BUFFER_SIZE;
 	}
 
 	/* Initialize the buffer or update the active buffer's size limit */

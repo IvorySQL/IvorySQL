@@ -818,3 +818,25 @@ $$;
 -- =============================================================================
 DROP PROCEDURE test_output_proc;
 DROP FUNCTION test_output_func;
+
+-- A non-NULL ENABLE limit is capped at Oracle's 1,000,000-byte maximum.
+DO $$
+DECLARE
+    overflowed BOOLEAN := FALSE;
+BEGIN
+    dbms_output.disable();
+    dbms_output.enable(1000001);
+    FOR i IN 1..500 LOOP
+        dbms_output.put_line(rpad('x', 2000, 'x'));
+    END LOOP;
+    BEGIN
+        dbms_output.put_line('x');
+    EXCEPTION WHEN OTHERS THEN
+        overflowed := TRUE;
+    END;
+    IF NOT overflowed THEN
+        RAISE EXCEPTION 'DBMS_OUTPUT accepted data beyond the 1,000,000-byte limit';
+    END IF;
+    dbms_output.disable();
+END;
+$$;
