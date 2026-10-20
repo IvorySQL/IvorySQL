@@ -42,8 +42,8 @@
 
 #include "../../include/ivorysql_ora.h"
 
-/* Oracle's DBMS_RANDOM.STRING() maximum length */
-#define DBMS_RANDOM_MAX_STRING_LEN	4000
+/* PL/iSQL VARCHAR2 values can contain up to 32767 bytes. */
+#define DBMS_RANDOM_MAX_STRING_LEN	32767
 
 /* Per-backend generator state */
 static pg_prng_state random_state;

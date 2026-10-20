@@ -187,13 +187,13 @@ select length(dbms_random.string('U', 11.22)) as fractional_len;
 select length(dbms_random.string('U', '32767')) as capped_text_len;
  capped_text_len 
 -----------------
-            4000
+           32767
 (1 row)
 
 select length(dbms_random.string('U', '32768')) as capped_text_len_over;
  capped_text_len_over 
 ----------------------
-                 4000
+                32767
 (1 row)
 
 -- unknown character classes default to uppercase; malformed input is rejected
