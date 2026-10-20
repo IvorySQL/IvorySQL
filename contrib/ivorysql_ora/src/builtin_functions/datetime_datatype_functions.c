@@ -1012,15 +1012,6 @@ to_oratimestamptz2(PG_FUNCTION_ARGS)
 	else
 		tz = DetermineTimeZoneOffset(&tm, session_timezone);
 
-#if 0
-	if (tm.tm_gmtoff == -1)
-	{
-		tm.tm_gmtoff = 0;
-		tz = DetermineTimeZoneOffset(&tm, session_timezone);
-	}
-	else
-		tz = (int) tm.tm_gmtoff * (-1);
-#endif
 
 	if (tm2timestamp(&tm, fsec, &tz, &result) != 0)
 		ereport(ERROR,

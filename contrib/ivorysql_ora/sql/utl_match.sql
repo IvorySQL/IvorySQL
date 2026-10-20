@@ -224,3 +224,14 @@ BEGIN
                  UTL_MATCH.JARO_WINKLER_SIMILARITY('中文测试', '中文测试');
 END;
 $$;
+
+-- Large equal values exercise the exact-match path without changing the
+-- bytewise semantics of any of the four public calculations.
+CREATE TEMP TABLE utl_match_equal_input AS
+SELECT repeat('ab', 4000) AS left_value, repeat('ab', 4000) AS right_value;
+SELECT sys.ora_utl_match_edit_distance(left_value, right_value) = 0 AS ed,
+       sys.ora_utl_match_edit_distance_similarity(left_value, right_value) = 100 AS eds,
+       sys.ora_utl_match_jaro_winkler(left_value, right_value) = 1.0 AS jw,
+       sys.ora_utl_match_jaro_winkler_similarity(left_value, right_value) = 100 AS jws
+FROM utl_match_equal_input;
+DROP TABLE utl_match_equal_input;

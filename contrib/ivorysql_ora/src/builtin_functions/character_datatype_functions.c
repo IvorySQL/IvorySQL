@@ -1028,6 +1028,16 @@ ora_substrb(PG_FUNCTION_ARGS)
 	int32 	start = DatumGetInt32(DirectFunctionCall1(numeric_int4, PG_GETARG_DATUM(1)));
 	int32	length = DatumGetInt32(DirectFunctionCall1(numeric_int4, PG_GETARG_DATUM(2)));
 
+	/*
+	 * Test the supplied length, not its rounded integer value: a positive
+	 * fraction below one must return NULL.  Keep the conversions above so
+	 * nonfinite and out-of-range numeric arguments retain their errors.
+	 */
+	if (DatumGetInt32(DirectFunctionCall2(numeric_cmp,
+										PG_GETARG_DATUM(2),
+										NumericGetDatum(int64_to_numeric(1)))) < 0)
+		PG_RETURN_NULL();
+
 	res = text_substring_byte(PG_GETARG_DATUM(0), start, length, false);
 	len = VARSIZE_ANY_EXHDR(res);
 	

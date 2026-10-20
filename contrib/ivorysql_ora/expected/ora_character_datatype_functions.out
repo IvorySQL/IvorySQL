@@ -1705,6 +1705,90 @@ SELECT SUBSTRB('ABCDEFG',5) "Substring with bytes" FROM DUAL;
  EFG
 (1 row)
 
+-- A subunit byte length is NULL before integer rounding.
+SELECT SUBSTRB('abcdef', 1, 0.49) IS NULL AS subunit_length FROM DUAL;
+ subunit_length 
+----------------
+ t
+(1 row)
+
+SELECT SUBSTRB('abcdef', 1, 0.5) IS NULL AS subunit_length FROM DUAL;
+ subunit_length 
+----------------
+ t
+(1 row)
+
+SELECT SUBSTRB('abcdef', 1, 0.6) IS NULL AS subunit_length FROM DUAL;
+ subunit_length 
+----------------
+ t
+(1 row)
+
+SELECT SUBSTRB('abcdef', 1, 0.9) IS NULL AS subunit_length FROM DUAL;
+ subunit_length 
+----------------
+ t
+(1 row)
+
+SELECT SUBSTRB('abcdef', 1, 0.99999999999999999999) IS NULL AS subunit_length FROM DUAL;
+ subunit_length 
+----------------
+ t
+(1 row)
+
+SELECT SUBSTRB('中文', 1, 0.9) IS NULL AS subunit_length FROM DUAL;
+ subunit_length 
+----------------
+ t
+(1 row)
+
+SELECT SUBSTRB('abcdef', 1, 0) IS NULL AS zero_length FROM DUAL;
+ zero_length 
+-------------
+ t
+(1 row)
+
+SELECT SUBSTRB('abcdef', 1, -0.9) IS NULL AS negative_length FROM DUAL;
+ negative_length 
+-----------------
+ t
+(1 row)
+
+SELECT SUBSTRB('abcdef', 1, 1) AS one_byte FROM DUAL;
+ one_byte 
+----------
+ a
+(1 row)
+
+SELECT SUBSTRB('abcdef', 1, NULL) IS NULL AS null_length FROM DUAL;
+ null_length 
+-------------
+ t
+(1 row)
+
+SELECT SUBSTRB(NULL, 1, 0.9) IS NULL AS null_string FROM DUAL;
+ null_string 
+-------------
+ t
+(1 row)
+
+SELECT SUBSTRB('abcdef', NULL, 0.9) IS NULL AS null_position FROM DUAL;
+ null_position 
+---------------
+ t
+(1 row)
+
+-- Preserve existing conversion errors; do not turn them into NULL.
+SELECT SUBSTRB('abcdef', 1, 'NaN'::numeric) FROM DUAL;
+ERROR:  cannot convert NaN to integer
+SELECT SUBSTRB('abcdef', 1, 'Infinity'::numeric) FROM DUAL;
+ERROR:  cannot convert infinity to integer
+SELECT SUBSTRB('abcdef', 1, '-Infinity'::numeric) FROM DUAL;
+ERROR:  cannot convert infinity to integer
+SELECT SUBSTRB('abcdef', 1, 2147483648) FROM DUAL;
+ERROR:  integer out of range
+SELECT SUBSTRB('abcdef', 2147483648, 0.9) FROM DUAL;
+ERROR:  integer out of range
 /*
  * instrb
  */
