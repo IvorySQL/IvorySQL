@@ -4,6 +4,8 @@
 -- tests for DBMS_LOCK
 --
 call dbms_lock.sleep(1);
+-- The sub-second path must retain microsecond precision.
+call dbms_lock.sleep(0.01);
 create table handle(h text);
 --
 -- test DBMS_LOCK.S

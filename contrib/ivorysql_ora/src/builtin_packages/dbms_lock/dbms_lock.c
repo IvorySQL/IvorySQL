@@ -344,8 +344,8 @@ PG_FUNCTION_INFO_V1(ivorysql_dbms_lock_sleep);
 Datum
 ivorysql_dbms_lock_sleep(PG_FUNCTION_ARGS)
 {
-    long total_usec;
-    long remaining;
+	int64 total_usec;
+	int64 remaining;
     float8 seconds = PG_GETARG_FLOAT8(0);
 
     if (dbms_lock_hash_table == NULL)
@@ -365,8 +365,8 @@ ivorysql_dbms_lock_sleep(PG_FUNCTION_ARGS)
     remaining = total_usec;
     while (remaining > 0)
     {
-        long chunk = (remaining > 1000000) ? 1000000 : remaining;
-        pg_usleep(chunk);
+		int64 chunk = (remaining > 1000000) ? 1000000 : remaining;
+		pg_usleep((long) chunk);
         remaining -= chunk;
         CHECK_FOR_INTERRUPTS();
     }
