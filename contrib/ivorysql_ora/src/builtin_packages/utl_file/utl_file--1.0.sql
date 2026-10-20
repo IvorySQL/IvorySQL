@@ -186,10 +186,6 @@ CREATE TABLE IF NOT EXISTS sys.utl_file_directory(
 REVOKE ALL ON sys.utl_file_directory FROM PUBLIC;
 GRANT SELECT ON TABLE sys.utl_file_directory TO PUBLIC;
 
--- ORA_UTL_FILE_FILE_TYPE Definition
--- XXX - I could not find a way to define a type inside a package and use it
-CREATE TYPE sys.ORA_UTL_FILE_FILE_TYPE AS(id INTEGER, datatype INTEGER, byte_mode BOOLEAN);
-
 -- XXX - role 'utl_file_set_umask' causing failures in pg_dump regression tests, 
 -- so we skip it till we find a viable solution.
 -- DO $$
@@ -203,8 +199,13 @@ CREATE TYPE sys.ORA_UTL_FILE_FILE_TYPE AS(id INTEGER, datatype INTEGER, byte_mod
 -- UTL_FILE Package Definition
 -- UTL_FILE package Header
 CREATE OR REPLACE PACKAGE UTL_FILE IS
+    TYPE FILE_TYPE IS RECORD (
+        id          INTEGER, 
+        datatype    INTEGER,    -- 1 for NCHAR, 0 otherwise
+        byte_mode   BOOLEAN);   -- alway false, byte mode is not supported yet
+
     PROCEDURE FCLOSE(
-        file IN OUT ORA_UTL_FILE_FILE_TYPE
+        file IN OUT UTL_FILE.FILE_TYPE
     );
 
     PROCEDURE FCLOSE_ALL;
@@ -219,7 +220,7 @@ CREATE OR REPLACE PACKAGE UTL_FILE IS
     );
 
     PROCEDURE FFLUSH(
-        file IN ORA_UTL_FILE_FILE_TYPE
+        file IN UTL_FILE.FILE_TYPE
     );
 
     PROCEDURE FGETATTR(
@@ -236,7 +237,7 @@ CREATE OR REPLACE PACKAGE UTL_FILE IS
         open_mode IN VARCHAR2,
         max_linesize IN INTEGER DEFAULT 1024
     )
-    RETURN ORA_UTL_FILE_FILE_TYPE;
+    RETURN UTL_FILE.FILE_TYPE;
 
     FUNCTION FOPEN_NCHAR(
         location IN VARCHAR2,
@@ -244,7 +245,7 @@ CREATE OR REPLACE PACKAGE UTL_FILE IS
         open_mode IN VARCHAR2,
         max_linesize IN INTEGER DEFAULT 1024
     )
-    RETURN ORA_UTL_FILE_FILE_TYPE;
+    RETURN UTL_FILE.FILE_TYPE;
 
     PROCEDURE FREMOVE(
         location IN VARCHAR2,
@@ -260,45 +261,45 @@ CREATE OR REPLACE PACKAGE UTL_FILE IS
     );
 
     PROCEDURE FSEEK(
-        file IN OUT  ORA_UTL_FILE_FILE_TYPE,
+        file IN OUT  UTL_FILE.FILE_TYPE,
         absolute_offset IN INTEGER DEFAULT NULL,
         relative_offset IN INTEGER DEFAULT NULL
     );
 
     PROCEDURE GET_LINE(
-        file IN ORA_UTL_FILE_FILE_TYPE,
+        file IN UTL_FILE.FILE_TYPE,
         buffer OUT TEXT,
         len IN INTEGER DEFAULT NULL
     );
 
     PROCEDURE GET_LINE_NCHAR(
-        file IN ORA_UTL_FILE_FILE_TYPE,
+        file IN UTL_FILE.FILE_TYPE,
         buffer OUT TEXT,
         len IN INTEGER DEFAULT NULL
     );
 
     FUNCTION FGETPOS(
-        file IN ORA_UTL_FILE_FILE_TYPE
+        file IN UTL_FILE.FILE_TYPE
     )
     RETURN INTEGER;
 
     FUNCTION IS_OPEN(
-        file IN ORA_UTL_FILE_FILE_TYPE
+        file IN UTL_FILE.FILE_TYPE
     )
     RETURN BOOLEAN;
 
     PROCEDURE NEW_LINE(
-        file IN ORA_UTL_FILE_FILE_TYPE,
+        file IN UTL_FILE.FILE_TYPE,
         lines IN INTEGER DEFAULT 1
     );
 
     PROCEDURE PUT(
-        file IN ORA_UTL_FILE_FILE_TYPE,
+        file IN UTL_FILE.FILE_TYPE,
         buffer IN VARCHAR2
     );
 
     PROCEDURE PUTF(
-        file IN ORA_UTL_FILE_FILE_TYPE,
+        file IN UTL_FILE.FILE_TYPE,
         format IN VARCHAR2,
         arg1 IN VARCHAR2 DEFAULT NULL,
         arg2 IN VARCHAR2 DEFAULT NULL,
@@ -308,18 +309,18 @@ CREATE OR REPLACE PACKAGE UTL_FILE IS
     );
 
     PROCEDURE PUT_LINE(
-        file IN ORA_UTL_FILE_FILE_TYPE,
+        file IN UTL_FILE.FILE_TYPE,
         buffer IN VARCHAR2,
         autoflush IN BOOLEAN DEFAULT FALSE
     );
 
     PROCEDURE PUT_LINE_NCHAR(
-        file IN ORA_UTL_FILE_FILE_TYPE,
+        file IN UTL_FILE.FILE_TYPE,
         buffer IN TEXT -- use TEXT as NVARCHAR2 is not supported yet
     );
 
     PROCEDURE PUT_RAW(
-        file IN ORA_UTL_FILE_FILE_TYPE,
+        file IN UTL_FILE.FILE_TYPE,
         buffer IN BYTEA, -- use BYTEA as RAW is not supported yet
         autoflush IN BOOLEAN DEFAULT FALSE
     );
@@ -328,7 +329,7 @@ END UTL_FILE;
 -- UTL_FILE package Body
 CREATE OR REPLACE PACKAGE BODY UTL_FILE IS
     PROCEDURE FCLOSE(
-        file IN OUT ORA_UTL_FILE_FILE_TYPE
+        file IN OUT UTL_FILE.FILE_TYPE
     ) IS
     BEGIN
         PERFORM sys.ora_utl_file_fclose(file.id);
@@ -352,7 +353,7 @@ CREATE OR REPLACE PACKAGE BODY UTL_FILE IS
     END;
 
     PROCEDURE FFLUSH(
-        file IN ORA_UTL_FILE_FILE_TYPE
+        file IN UTL_FILE.FILE_TYPE
     ) IS
     BEGIN
         PERFORM sys.ora_utl_file_fflush(file.id);
@@ -379,10 +380,12 @@ CREATE OR REPLACE PACKAGE BODY UTL_FILE IS
         open_mode IN VARCHAR2,
         max_linesize IN INTEGER DEFAULT 1024
     )
-    RETURN ORA_UTL_FILE_FILE_TYPE IS
-    file ORA_UTL_FILE_FILE_TYPE;
+    RETURN UTL_FILE.FILE_TYPE IS
+    file UTL_FILE.FILE_TYPE;
     BEGIN
         file.id := sys.ora_utl_file_fopen(location, filename, open_mode, max_linesize);
+        file.datatype := 0;
+        file.byte_mode := false;
         RETURN file;
     END;
 
@@ -392,10 +395,12 @@ CREATE OR REPLACE PACKAGE BODY UTL_FILE IS
         open_mode IN VARCHAR2,
         max_linesize IN INTEGER DEFAULT 1024
     )
-    RETURN ORA_UTL_FILE_FILE_TYPE IS
-    file ORA_UTL_FILE_FILE_TYPE;
+    RETURN UTL_FILE.FILE_TYPE IS
+    file UTL_FILE.FILE_TYPE;
     BEGIN
         file.id := sys.ora_utl_file_fopen(location, filename, open_mode, max_linesize, 'UTF8');
+        file.datatype := 1;
+        file.byte_mode := false; -- default byte mode
         RETURN file;
     END;
 
@@ -419,7 +424,7 @@ CREATE OR REPLACE PACKAGE BODY UTL_FILE IS
     END;
 
     PROCEDURE FSEEK(
-        file IN OUT  ORA_UTL_FILE_FILE_TYPE,
+        file IN OUT  UTL_FILE.FILE_TYPE,
         absolute_offset IN INTEGER DEFAULT NULL,
         relative_offset IN INTEGER DEFAULT NULL
     ) IS
@@ -428,7 +433,7 @@ CREATE OR REPLACE PACKAGE BODY UTL_FILE IS
     END;
 
     PROCEDURE GET_LINE(
-        file IN ORA_UTL_FILE_FILE_TYPE,
+        file IN UTL_FILE.FILE_TYPE,
         buffer OUT TEXT,
         len IN INTEGER DEFAULT NULL
     ) IS
@@ -439,7 +444,7 @@ CREATE OR REPLACE PACKAGE BODY UTL_FILE IS
     END;
 
     PROCEDURE GET_LINE_NCHAR(
-        file IN ORA_UTL_FILE_FILE_TYPE,
+        file IN UTL_FILE.FILE_TYPE,
         buffer OUT TEXT,
         len IN INTEGER DEFAULT NULL
     ) IS
@@ -450,7 +455,7 @@ CREATE OR REPLACE PACKAGE BODY UTL_FILE IS
     END;
 
     FUNCTION FGETPOS(
-        file IN ORA_UTL_FILE_FILE_TYPE
+        file IN UTL_FILE.FILE_TYPE
     )
     RETURN INTEGER IS
     BEGIN
@@ -459,7 +464,7 @@ CREATE OR REPLACE PACKAGE BODY UTL_FILE IS
 
 
     FUNCTION IS_OPEN(
-        file IN ORA_UTL_FILE_FILE_TYPE
+        file IN UTL_FILE.FILE_TYPE
     )
     RETURN boolean IS
     BEGIN
@@ -467,7 +472,7 @@ CREATE OR REPLACE PACKAGE BODY UTL_FILE IS
     END;
 
     PROCEDURE NEW_LINE(
-        file IN ORA_UTL_FILE_FILE_TYPE,
+        file IN UTL_FILE.FILE_TYPE,
         lines IN INTEGER DEFAULT 1
     ) IS
     DECLARE
@@ -477,7 +482,7 @@ CREATE OR REPLACE PACKAGE BODY UTL_FILE IS
     END;
 
     PROCEDURE PUT(
-        file IN ORA_UTL_FILE_FILE_TYPE,
+        file IN UTL_FILE.FILE_TYPE,
         buffer IN VARCHAR2
     ) IS
     DECLARE
@@ -487,7 +492,7 @@ CREATE OR REPLACE PACKAGE BODY UTL_FILE IS
     END;
 
     PROCEDURE PUTF(
-        file IN ORA_UTL_FILE_FILE_TYPE,
+        file IN UTL_FILE.FILE_TYPE,
         format IN VARCHAR2,
         arg1 IN VARCHAR2 DEFAULT NULL,
         arg2 IN VARCHAR2 DEFAULT NULL,
@@ -502,7 +507,7 @@ CREATE OR REPLACE PACKAGE BODY UTL_FILE IS
     END;
 
     PROCEDURE PUT_LINE(
-        file IN ORA_UTL_FILE_FILE_TYPE,
+        file IN UTL_FILE.FILE_TYPE,
         buffer IN VARCHAR2,
         autoflush IN BOOLEAN DEFAULT FALSE
     ) IS
@@ -513,7 +518,7 @@ CREATE OR REPLACE PACKAGE BODY UTL_FILE IS
     END;
 
     PROCEDURE PUT_LINE_NCHAR(
-        file IN ORA_UTL_FILE_FILE_TYPE,
+        file IN UTL_FILE.FILE_TYPE,
         buffer IN TEXT
     ) IS
     DECLARE
@@ -523,7 +528,7 @@ CREATE OR REPLACE PACKAGE BODY UTL_FILE IS
     END;
 
     PROCEDURE PUT_RAW(
-        file IN ORA_UTL_FILE_FILE_TYPE,
+        file IN UTL_FILE.FILE_TYPE,
         buffer IN BYTEA,
         autoflush IN BOOLEAN DEFAULT FALSE
     ) IS

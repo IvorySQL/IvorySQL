@@ -334,6 +334,76 @@ CREATE TABLE like_constraint_rename_cache
 DROP TABLE constraint_rename_cache;
 DROP TABLE like_constraint_rename_cache;
 
+-- ALTER TABLE ... ADD ( constraint [, constraint ...] )
+-- Oracle allows a parenthesized, comma-separated list of table constraints.
+CREATE TABLE regress_multi_add (a integer, b integer);
+ALTER TABLE regress_multi_add ADD (
+    CONSTRAINT regress_multi_a_ck CHECK (a > 0),
+    CONSTRAINT regress_multi_b_uk UNIQUE (b)
+);
+SELECT conname, contype FROM pg_constraint
+  WHERE conrelid = 'regress_multi_add'::regclass
+    AND conname IN ('regress_multi_a_ck', 'regress_multi_b_uk')
+  ORDER BY conname;
+INSERT INTO regress_multi_add VALUES (1, 1); -- succeeds
+INSERT INTO regress_multi_add VALUES (0, 2); -- CHECK violation
+INSERT INTO regress_multi_add VALUES (2, 1); -- UNIQUE violation
+-- two constraints of the same kind
+ALTER TABLE regress_multi_add ADD (
+    CONSTRAINT regress_multi_a_lt_ck CHECK (a < 100),
+    CONSTRAINT regress_multi_b_lt_ck CHECK (b < 100)
+);
+INSERT INTO regress_multi_add VALUES (100, 2); -- CHECK violation
+INSERT INTO regress_multi_add VALUES (2, 100); -- CHECK violation
+-- commas nested inside a constraint are not list separators
+ALTER TABLE regress_multi_add ADD (
+    CONSTRAINT regress_multi_ab_uk UNIQUE (a, b),
+    CONSTRAINT regress_multi_b_in_ck CHECK (b NOT IN (98, 99))
+);
+INSERT INTO regress_multi_add VALUES (2, 99); -- CHECK violation
+INSERT INTO regress_multi_add VALUES (2, 2); -- succeeds
+-- unnamed constraints
+ALTER TABLE regress_multi_add ADD (CHECK (a <> 42), UNIQUE (a));
+INSERT INTO regress_multi_add VALUES (42, 3); -- CHECK violation
+INSERT INTO regress_multi_add VALUES (1, 3); -- UNIQUE violation
+-- the existing single-item forms still work
+ALTER TABLE regress_multi_add ADD CONSTRAINT regress_multi_a_ne_ck CHECK (a <> 7);
+ALTER TABLE regress_multi_add ADD (CONSTRAINT regress_multi_b_ne_ck CHECK (b <> 7));
+ALTER TABLE regress_multi_add ADD (c integer);
+INSERT INTO regress_multi_add VALUES (7, 3, 1); -- CHECK violation
+INSERT INTO regress_multi_add VALUES (3, 7, 1); -- CHECK violation
+-- a list expands to ordinary commands and combines with other commands
+ALTER TABLE regress_multi_add
+  ADD (CONSTRAINT regress_multi_c_ck CHECK (c > 0), CONSTRAINT regress_multi_c_uk UNIQUE (c)),
+  ADD (d integer);
+SELECT conname, contype FROM pg_constraint
+  WHERE conrelid = 'regress_multi_add'::regclass
+    AND conname IN ('regress_multi_c_ck', 'regress_multi_c_uk')
+  ORDER BY conname;
+INSERT INTO regress_multi_add VALUES (3, 3, 0, 1); -- CHECK violation
+INSERT INTO regress_multi_add VALUES (3, 3, 1, 1); -- succeeds
+INSERT INTO regress_multi_add VALUES (4, 4, 1, 2); -- UNIQUE violation
+-- empty list, trailing comma and mixed column/constraint lists are rejected
+ALTER TABLE regress_multi_add ADD ();
+ALTER TABLE regress_multi_add ADD (CHECK (a > 0),);
+ALTER TABLE regress_multi_add ADD (e int, CHECK (a > 0));
+ALTER TABLE regress_multi_add ADD (CHECK (a > 0), e int);
+SELECT contype, count(*) FROM pg_constraint
+  WHERE conrelid = 'regress_multi_add'::regclass
+  GROUP BY contype ORDER BY contype;
+DROP TABLE regress_multi_add;
+-- a constraint that fails validation rolls back the whole list
+CREATE TABLE regress_multi_atomic (a integer, b integer);
+INSERT INTO regress_multi_atomic VALUES (-1, 1);
+ALTER TABLE regress_multi_atomic ADD (
+    CONSTRAINT regress_atomic_b_ck CHECK (b > 0),
+    CONSTRAINT regress_atomic_a_ck CHECK (a > 0)
+);
+SELECT conname FROM pg_constraint
+  WHERE conrelid = 'regress_multi_atomic'::regclass
+  ORDER BY conname;
+DROP TABLE regress_multi_atomic;
+
 -- FOREIGN KEY CONSTRAINT adding TEST
 
 CREATE TABLE attmp2 (a int primary key);

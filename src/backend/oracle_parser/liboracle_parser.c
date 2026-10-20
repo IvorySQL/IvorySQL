@@ -700,6 +700,9 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 		case STATIC_P:
 			cur_token_length = 6;
 			break;
+		case '(':
+			cur_token_length = 1;
+			break;
 		default:
 			return cur_token;
 	}
@@ -909,6 +912,46 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 			else if (cur_token == USCONST)
 			{
 				cur_token = SCONST;
+			}
+			break;
+
+		case '(':
+			/*
+			 * Combine the three tokens "(" "+" ")" into one ORAJOINOPR token
+			 * (the Oracle outer join operator).  Whitespace and comments may
+			 * appear between them, which is why this is done here with
+			 * lookahead rather than as a scanner rule.
+			 */
+			if (next_token == '+')
+			{
+				/* fetch the third token directly (not via the cache) */
+				next_token = ora_internal_yylex(yyscanner, llocp, &aux1);
+				if (next_token == ')')
+				{
+					cur_token = ORAJOINOPR;
+					/*
+					 * Consume the cached '+'; the ')' just fetched is
+					 * simply dropped.  lookahead_end / lookahead_hold_char
+					 * were already set up for '(' by the common lookahead
+					 * code above and still point one past '(' with the real
+					 * character saved, so leave them alone -- recomputing
+					 * lookahead_hold_char here would capture the scanner's
+					 * temporary '\0' after ')' instead of the real byte.
+					 */
+					yyextra->loc_pushback++;
+				}
+				else
+				{
+					/* not "(+)": keep '(', replay the cached '+' then this token */
+					push_back_token(yyscanner, next_token, &aux1);
+				}
+
+				/*
+				 * ora_internal_yylex() above moved *llocp to the third
+				 * token; restore it to '(' so this token is reported at the
+				 * right position (matching the matched and unmatched cases).
+				 */
+				*llocp = cur_yylloc;
 			}
 			break;
 	}

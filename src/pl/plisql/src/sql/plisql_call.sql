@@ -2,6 +2,28 @@
 -- Tests for procedures / CALL syntax
 --
 
+CREATE PROCEDURE test_proc0()
+LANGUAGE plisql
+AS $$
+BEGIN
+    RAISE NOTICE 'test_proc0 called';
+END;
+$$;
+/
+
+CALL test_proc0();
+CALL test_proc0;
+
+DO
+LANGUAGE plisql
+$$
+BEGIN
+  test_proc0();
+  test_proc0;
+END;
+$$;
+/
+
 CREATE PROCEDURE test_proc1()
 LANGUAGE plisql
 AS $$
@@ -12,7 +34,7 @@ $$;
 /
 
 CALL test_proc1();
-
+CALL test_proc1;
 
 -- error: can't return non-NULL
 CREATE PROCEDURE test_proc2()

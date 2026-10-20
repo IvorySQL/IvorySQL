@@ -295,7 +295,7 @@ get_altertable_subcmdinfo(PG_FUNCTION_ARGS)
 				strtype = "SET OPTIONS";
 				break;
 			case AT_ForceViewCompile:
-				strtype = "COMPILE FOIRCE VIEW";
+				strtype = "COMPILE FORCE VIEW";
 				break;
 			case AT_DetachPartition:
 				strtype = "DETACH PARTITION";
@@ -305,6 +305,12 @@ get_altertable_subcmdinfo(PG_FUNCTION_ARGS)
 				break;
 			case AT_DetachPartitionFinalize:
 				strtype = "DETACH PARTITION ... FINALIZE";
+				break;
+			case AT_SplitPartition:
+				strtype = "SPLIT PARTITION";
+				break;
+			case AT_MergePartitions:
+				strtype = "MERGE PARTITIONS";
 				break;
 			case AT_AddIdentity:
 				strtype = "ADD IDENTITY";
@@ -319,17 +325,17 @@ get_altertable_subcmdinfo(PG_FUNCTION_ARGS)
 				strtype = "(re) ADD STATS";
 				break;
 			case AT_DropInvisible:
-				strtype = "DROP INVISIBLE";
+				strtype = "ALTER COLUMN DROP INVISIBLE";
 				break;
 			case AT_SetInvisible:
-				strtype = "SET INVISIBLE";
+				strtype = "ALTER COLUMN SET INVISIBLE";
 				break;
 			case AT_AddRowids:
 			case AT_AddRowidsRecurse:
-				strtype = "ALTER COLUMN SET WITH RWOID";
+				strtype = "SET WITH ROWID";
 				break;
 			case AT_DropRowids:
-				strtype = "ALTER COLUMN SET WITHOUT RWOID";
+				strtype = "SET WITHOUT ROWID";
 				break;
 		}
 

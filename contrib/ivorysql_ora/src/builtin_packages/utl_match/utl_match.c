@@ -110,6 +110,11 @@ edit_distance(const unsigned char *s1, int n1, const unsigned char *s2, int n2)
 		return n2;
 	if (n2 == 0)
 		return n1;
+	if (n1 == n2 && memcmp(s1, s2, n1) == 0)
+	{
+		CHECK_FOR_INTERRUPTS();
+		return 0;
+	}
 
 	/* Levenshtein distance is symmetric, so swap to save memory. */
 	if (n1 < n2)
@@ -202,6 +207,11 @@ jaro(const unsigned char *s1, int n1, const unsigned char *s2, int n2)
 
 	if (n1 == 0 || n2 == 0)
 		return 0.0;
+	if (n1 == n2 && memcmp(s1, s2, n1) == 0)
+	{
+		CHECK_FOR_INTERRUPTS();
+		return 1.0;
+	}
 
 	/* Oracle uses the textbook window floor(max(n1,n2)/2) - 1. */
 	window = (n1 > n2 ? n1 : n2) / 2;

@@ -216,6 +216,7 @@ static void determineLanguage(List *options);
 static AlterTableCmd *makeModifyColumnTypeOrVisibilityCmd(char *colname,
 												  TypeName *typeName,
 												  int location);
+static bool oracleJoinOpExists(const Node *expr);
 
 %}
 
@@ -351,6 +352,7 @@ static AlterTableCmd *makeModifyColumnTypeOrVisibilityCmd(char *colname,
 %type <list>	create_index_opt_list
 %type <defelt>	create_index_opt
 %type <list>	alter_table_cmds alter_type_cmds
+%type <list>	alter_table_cmd_group table_constraint_list
 %type <list>    alter_identity_column_option_list
 %type <defelt>  alter_identity_column_option
 %type <node>	set_statistics_value
@@ -1043,7 +1045,7 @@ static AlterTableCmd *makeModifyColumnTypeOrVisibilityCmd(char *colname,
  * They wouldn't be given a precedence at all, were it not that we need
  * left-associativity among the JOIN rules themselves.
  */
-%left		JOIN CROSS LEFT FULL RIGHT INNER_P NATURAL
+%left		JOIN CROSS LEFT FULL RIGHT INNER_P NATURAL ORAJOINOPR
 /*
  * Precedences used to resolve the shift/reduce conflicts that arise from
  * "WITH plsql_declarations" when followed by an unreserved DML keyword
@@ -1375,14 +1377,14 @@ utility_option_arg:
  *
  *****************************************************************************/
 
-CallStmt:	CALL func_application
+CallStmt:	CALL exec_func_application
 				{
 					CallStmt   *n = makeNode(CallStmt);
 
 					n->funccall = castNode(FuncCall, $2);
 					$$ = (Node *) n;
 				}
-			| CALL func_application INTO ORAPARAM
+			| CALL exec_func_application INTO ORAPARAM
 				{
 					CallStmt *n = makeNode(CallStmt);
 					OraParamRef *hostvar = makeNode(OraParamRef);
@@ -2632,11 +2634,43 @@ AlterTableStmt:
 		;
 
 alter_table_cmds:
-			alter_table_cmd							{ $$ = list_make1($1); }
-			| alter_table_cmds ',' alter_table_cmd	{ $$ = lappend($1, $3); }
+			alter_table_cmd_group					{ $$ = $1; }
+			| alter_table_cmds ',' alter_table_cmd_group
+													{ $$ = list_concat($1, $3); }
 			| MODIFY modify_clause				{ $$ = $2; }
 			| alter_table_cmds ',' MODIFY modify_clause
 											{ $$ = list_concat($1, $4); }
+		;
+
+/*
+ * A group is normally one command, but Oracle's ADD ( constraint [, ...] )
+ * expands into one AT_AddConstraint command per constraint so that
+ * AlterTableStmt.cmds stays a flat list of AlterTableCmd nodes.
+ */
+alter_table_cmd_group:
+			alter_table_cmd							{ $$ = list_make1($1); }
+			/* ALTER TABLE <name> ADD ( <constraint> [, ...] ) */
+			| ADD_P '(' table_constraint_list ')'
+				{
+					List	   *cmds = NIL;
+					ListCell   *lc;
+
+					foreach(lc, $3)
+					{
+						AlterTableCmd *n = makeNode(AlterTableCmd);
+
+						n->subtype = AT_AddConstraint;
+						n->def = (Node *) lfirst(lc);
+						cmds = lappend(cmds, n);
+					}
+					$$ = cmds;
+				}
+		;
+
+table_constraint_list:
+			TableConstraint							{ $$ = list_make1($1); }
+			| table_constraint_list ',' TableConstraint
+													{ $$ = lappend($1, $3); }
 		;
 
 ora_alter_view_cmds:
@@ -3159,15 +3193,6 @@ alter_table_cmd:
 
 					n->subtype = AT_AddConstraint;
 					n->def = $2;
-					$$ = (Node *) n;
-				}
-			/* ALTER TABLE <name> ADD (CONSTRAINT ...) */
-			| ADD_P '(' TableConstraint ')'
-				{
-					AlterTableCmd *n = makeNode(AlterTableCmd);
-
-					n->subtype = AT_AddConstraint;
-					n->def = $3;
 					$$ = (Node *) n;
 				}
 			/* ALTER TABLE <name> ALTER CONSTRAINT ... */
@@ -15339,6 +15364,7 @@ simple_select:
 					n->groupDistinct = ($7)->distinct;
 					n->havingClause = $8;
 					n->windowClause = $9;
+					n->ora_join_op_exists = oracleJoinOpExists(n->whereClause);
 					$$ = (Node *) n;
 				}
 			| SELECT distinct_clause target_list
@@ -15356,6 +15382,7 @@ simple_select:
 					n->groupDistinct = ($7)->distinct;
 					n->havingClause = $8;
 					n->windowClause = $9;
+					n->ora_join_op_exists = oracleJoinOpExists(n->whereClause);
 					$$ = (Node *) n;
 				}
 			| values_clause							{ $$ = $1; }
@@ -20875,6 +20902,32 @@ columnref:	ColId
 						}
 					}
 				}
+			| ColId ORAJOINOPR
+				{
+					$$ = makeColumnRef($1, NIL, @1, yyscanner);
+					if (IsA($$, ColumnRef))
+						((ColumnRef *) $$)->ora_join_op_exists = true;
+					else if (IsA($$, A_Indirection))
+						((ColumnRef *) ((A_Indirection *) $$)->arg)->ora_join_op_exists = true;
+					else
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("Oracle join operator (+) cannot be applied to a subscripted expression"),
+								 parser_errposition(@1)));
+				}
+			| ColId indirection ORAJOINOPR
+				{
+					$$ = makeColumnRef($1, $2, @1, yyscanner);
+					if (IsA($$, ColumnRef))
+						((ColumnRef *) $$)->ora_join_op_exists = true;
+					else if (IsA($$, A_Indirection))
+						((ColumnRef *) ((A_Indirection *) $$)->arg)->ora_join_op_exists = true;
+					else
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("Oracle join operator (+) cannot be applied to a subscripted expression"),
+								 parser_errposition(@1)));
+				}
 		;
 
 indirection_el:
@@ -24197,6 +24250,39 @@ preprocess_pubobj_list(List *pubobjspec_list, ora_core_yyscan_t yyscanner)
 
 		prevobjtype = pubobj->pubobjtype;
 	}
+}
+
+/*
+ * oracleJoinOpExists
+ *		Return true if any ColumnRef in this raw WHERE tree carries the
+ *		Oracle (+) outer-join marker, so transformSelectStmt() knows to run
+ *		transformOraJoinClause().
+ *
+ * That routine is also where (+) placement is validated or rejected, so the
+ * scan here has to be broad: it walks the whole expression -- not just the
+ * direct operands of a comparison -- and descends through OR and NOT as
+ * well as AND.  It stops at a sub-select boundary: a (+) inside a subquery
+ * is that subquery's own concern and is handled when it is analyzed.
+ */
+static bool
+oracleJoinOpMarkerWalker(Node *node, void *context)
+{
+	if (node == NULL)
+		return false;
+
+	if (IsA(node, ColumnRef))
+		return ((ColumnRef *) node)->ora_join_op_exists;
+
+	if (IsA(node, SubLink) || IsA(node, SelectStmt) || IsA(node, RangeSubselect))
+		return false;
+
+	return raw_expression_tree_walker(node, oracleJoinOpMarkerWalker, context);
+}
+
+static bool
+oracleJoinOpExists(const Node *expr)
+{
+	return oracleJoinOpMarkerWalker((Node *) expr, NULL);
 }
 
 /*----------
