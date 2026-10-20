@@ -805,3 +805,21 @@ drop table ds_tb;
 reset NLS_TIMESTAMP_FORMAT;
 reset NLS_TIMESTAMP_TZ_FORMAT;
 reset NLS_DATE_FORMAT;
+
+-- Explicit clock-function precision must be in the Oracle range 0..9.
+SELECT CURRENT_TIMESTAMP(10) IS NOT NULL;
+SELECT LOCALTIMESTAMP(10) IS NOT NULL;
+SELECT sys.current_timestamp(-1) IS NOT NULL;
+SELECT sys.localtimestamp(-1) IS NOT NULL;
+SELECT sys.current_timestamp(2147483647) IS NOT NULL;
+SELECT sys.localtimestamp(2147483647) IS NOT NULL;
+SELECT sys.current_timestamp(0) IS NOT NULL AS current_zero,
+       sys.localtimestamp(0) IS NOT NULL AS local_zero,
+       sys.current_timestamp(6) IS NOT NULL AS current_six,
+       sys.localtimestamp(6) IS NOT NULL AS local_six;
+SELECT sys.current_timestamp(7) IS NOT NULL AS current_seven,
+       sys.localtimestamp(7) IS NOT NULL AS local_seven;
+SELECT sys.current_timestamp(9) IS NOT NULL AS current_nine,
+       sys.localtimestamp(9) IS NOT NULL AS local_nine;
+SELECT sys.current_timestamp() IS NOT NULL AS current_default,
+       sys.localtimestamp() IS NOT NULL AS local_default;

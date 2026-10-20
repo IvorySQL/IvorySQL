@@ -2076,3 +2076,50 @@ drop table ds_tb;
 reset NLS_TIMESTAMP_FORMAT;
 reset NLS_TIMESTAMP_TZ_FORMAT;
 reset NLS_DATE_FORMAT;
+-- Explicit clock-function precision must be in the Oracle range 0..9.
+SELECT CURRENT_TIMESTAMP(10) IS NOT NULL;
+ERROR:  timestamp precision must be between 0 and 9
+SELECT LOCALTIMESTAMP(10) IS NOT NULL;
+ERROR:  timestamp precision must be between 0 and 9
+SELECT sys.current_timestamp(-1) IS NOT NULL;
+ERROR:  timestamp precision must be between 0 and 9
+SELECT sys.localtimestamp(-1) IS NOT NULL;
+ERROR:  timestamp precision must be between 0 and 9
+SELECT sys.current_timestamp(2147483647) IS NOT NULL;
+ERROR:  timestamp precision must be between 0 and 9
+SELECT sys.localtimestamp(2147483647) IS NOT NULL;
+ERROR:  timestamp precision must be between 0 and 9
+SELECT sys.current_timestamp(0) IS NOT NULL AS current_zero,
+       sys.localtimestamp(0) IS NOT NULL AS local_zero,
+       sys.current_timestamp(6) IS NOT NULL AS current_six,
+       sys.localtimestamp(6) IS NOT NULL AS local_six;
+ current_zero | local_zero | current_six | local_six 
+--------------+------------+-------------+-----------
+ t            | t          | t           | t
+(1 row)
+
+SELECT sys.current_timestamp(7) IS NOT NULL AS current_seven,
+       sys.localtimestamp(7) IS NOT NULL AS local_seven;
+WARNING:  TIMESTAMP(7) effective number of fractional seconds is 6, the part of excess is 0
+WARNING:  TIMESTAMP(7) effective number of fractional seconds is 6, the part of excess is 0
+ current_seven | local_seven 
+---------------+-------------
+ t             | t
+(1 row)
+
+SELECT sys.current_timestamp(9) IS NOT NULL AS current_nine,
+       sys.localtimestamp(9) IS NOT NULL AS local_nine;
+WARNING:  TIMESTAMP(9) effective number of fractional seconds is 6, the part of excess is 0
+WARNING:  TIMESTAMP(9) effective number of fractional seconds is 6, the part of excess is 0
+ current_nine | local_nine 
+--------------+------------
+ t            | t
+(1 row)
+
+SELECT sys.current_timestamp() IS NOT NULL AS current_default,
+       sys.localtimestamp() IS NOT NULL AS local_default;
+ current_default | local_default 
+-----------------+---------------
+ t               | t
+(1 row)
+
