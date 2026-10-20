@@ -346,15 +346,38 @@ end;
 -- IS_OPEN must reject a handle that was never returned by FOPEN.
 DO $$
 DECLARE
+    f UTL_FILE.FILE_TYPE;
     rejected BOOLEAN := FALSE;
 BEGIN
     BEGIN
+        PERFORM sys.ora_utl_file_is_open(0);
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM NOT LIKE '%INVALID_FILEHANDLE%' THEN
+            RAISE;
+        END IF;
+        rejected := TRUE;
+    END;
+    IF NOT rejected THEN
+        RAISE EXCEPTION 'IS_OPEN unexpectedly accepted the zero file handle';
+    END IF;
+
+    rejected := FALSE;
+    BEGIN
         PERFORM sys.ora_utl_file_is_open(2147483647);
     EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM NOT LIKE '%INVALID_FILEHANDLE%' THEN
+            RAISE;
+        END IF;
         rejected := TRUE;
     END;
     IF NOT rejected THEN
         RAISE EXCEPTION 'IS_OPEN unexpectedly accepted an invalid file handle';
+    END IF;
+
+    f := utl_file.fopen('data_directory', 'regress_is_open_closed.txt', 'w');
+    utl_file.fclose(f);
+    IF utl_file.is_open(f) THEN
+        RAISE EXCEPTION 'IS_OPEN reported a closed file as open';
     END IF;
 END;
 $$;

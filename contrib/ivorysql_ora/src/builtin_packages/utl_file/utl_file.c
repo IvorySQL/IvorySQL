@@ -196,8 +196,12 @@ typedef struct FileSlot
 
 #define MAX_SLOTS		50			/* Oracle 10g supports 50 files */
 #define INVALID_SLOTID	0			/* invalid slot id */
+#define CLOSED_SLOTID_HISTORY	1024
 
 static FileSlot	slots[MAX_SLOTS];	/* initialized with zeros */
+
+static uint32	closed_slotids[CLOSED_SLOTID_HISTORY];
+static int	closed_slotid_next = 0;
 
 static uint32	slotid = INVALID_SLOTID;			/* next slot id */
 static inline uint32
@@ -209,6 +213,28 @@ next_slotid(void)
         slotid++;
 
     return slotid;
+}
+
+static void
+remember_closed_slot(uint32 sid)
+{
+	if (sid == INVALID_SLOTID)
+		return;
+
+	closed_slotids[closed_slotid_next] = sid;
+	closed_slotid_next = (closed_slotid_next + 1) % CLOSED_SLOTID_HISTORY;
+}
+
+static bool
+was_closed_slot(uint32 sid)
+{
+	for (int i = 0; i < CLOSED_SLOTID_HISTORY; i++)
+	{
+		if (closed_slotids[i] == sid)
+			return true;
+	}
+
+	return false;
 }
 
 /*
@@ -255,6 +281,7 @@ free_slot(uint32 sid)
 		if (slots[i].id == sid)
 		{
 			fd = slots[i].fd;
+			remember_closed_slot(sid);
 
 			slots[i].id = INVALID_SLOTID;
 			slots[i].fd = NULL;
@@ -410,11 +437,17 @@ ora_utl_file_is_open(PG_FUNCTION_ARGS)
 {
 	uint32	sid = PG_GETARG_UINT32(0);
 
+	if (sid == INVALID_SLOTID)
+		INVALID_FILEHANDLE_EXCEPTION();
+
 	for (int i = 0; i < MAX_SLOTS; i++)
 	{
 		if (slots[i].id == sid)
 			PG_RETURN_BOOL(slots[i].fd != NULL);
 	}
+
+	if (was_closed_slot(sid))
+		PG_RETURN_BOOL(false);
 
 	INVALID_FILEHANDLE_EXCEPTION();
 	pg_unreachable();
@@ -1136,6 +1169,7 @@ close_all_files(void)
 		if (slots[i].id != INVALID_SLOTID)
 		{
 			fd = slots[i].fd;
+			remember_closed_slot(slots[i].id);
 
 			slots[i].id = INVALID_SLOTID;
 			slots[i].fd = NULL;
