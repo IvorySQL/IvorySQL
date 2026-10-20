@@ -833,6 +833,27 @@ DROP TABLE regexp_temp;
 SELECT SUBSTRB('ABCDEFG',5,4.2) "Substring with bytes" FROM DUAL;
 SELECT SUBSTRB('ABCDEFG',5) "Substring with bytes" FROM DUAL;
 
+-- A subunit byte length is NULL before integer rounding.
+SELECT SUBSTRB('abcdef', 1, 0.49) IS NULL AS subunit_length FROM DUAL;
+SELECT SUBSTRB('abcdef', 1, 0.5) IS NULL AS subunit_length FROM DUAL;
+SELECT SUBSTRB('abcdef', 1, 0.6) IS NULL AS subunit_length FROM DUAL;
+SELECT SUBSTRB('abcdef', 1, 0.9) IS NULL AS subunit_length FROM DUAL;
+SELECT SUBSTRB('abcdef', 1, 0.99999999999999999999) IS NULL AS subunit_length FROM DUAL;
+SELECT SUBSTRB('中文', 1, 0.9) IS NULL AS subunit_length FROM DUAL;
+SELECT SUBSTRB('abcdef', 1, 0) IS NULL AS zero_length FROM DUAL;
+SELECT SUBSTRB('abcdef', 1, -0.9) IS NULL AS negative_length FROM DUAL;
+SELECT SUBSTRB('abcdef', 1, 1) AS one_byte FROM DUAL;
+SELECT SUBSTRB('abcdef', 1, NULL) IS NULL AS null_length FROM DUAL;
+SELECT SUBSTRB(NULL, 1, 0.9) IS NULL AS null_string FROM DUAL;
+SELECT SUBSTRB('abcdef', NULL, 0.9) IS NULL AS null_position FROM DUAL;
+-- Preserve existing conversion errors; do not turn them into NULL.
+SELECT SUBSTRB('abcdef', 1, 'NaN'::numeric) FROM DUAL;
+SELECT SUBSTRB('abcdef', 1, 'Infinity'::numeric) FROM DUAL;
+SELECT SUBSTRB('abcdef', 1, '-Infinity'::numeric) FROM DUAL;
+SELECT SUBSTRB('abcdef', 1, 2147483648) FROM DUAL;
+SELECT SUBSTRB('abcdef', 2147483648, 0.9) FROM DUAL;
+
+
 /*
  * instrb
  */
