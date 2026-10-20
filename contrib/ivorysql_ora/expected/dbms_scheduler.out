@@ -1399,3 +1399,27 @@ DROP PROCEDURE sched_reg_proc;
 DELETE FROM sys.scheduler_job_run_details;
 DROP ROLE regress_dbms_scheduler;
 RESET timezone;
+-- A completed one-shot job with the default auto_drop setting disappears,
+-- while explicitly retaining a job keeps it available for another RUN_JOB.
+BEGIN
+  dbms_scheduler.create_job(
+    job_name   => 'AUTO_DROP_ONCE',
+    job_type   => 'PLSQL_BLOCK',
+    job_action => 'BEGIN NULL; END;');
+  dbms_scheduler.run_job('AUTO_DROP_ONCE');
+  ASSERT (SELECT count(*) FROM sys.user_scheduler_jobs
+          WHERE job_name = 'AUTO_DROP_ONCE') = 0,
+         'completed auto-drop job was not removed';
+
+  dbms_scheduler.create_job(
+    job_name   => 'KEEP_ONCE',
+    job_type   => 'PLSQL_BLOCK',
+    job_action => 'BEGIN NULL; END;',
+    auto_drop  => FALSE);
+  dbms_scheduler.run_job('KEEP_ONCE');
+  ASSERT (SELECT count(*) FROM sys.user_scheduler_jobs
+          WHERE job_name = 'KEEP_ONCE') = 1,
+         'auto_drop false job was removed';
+END;
+/
+CALL dbms_scheduler.drop_job('KEEP_ONCE');

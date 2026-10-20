@@ -1857,7 +1857,7 @@ sched_load_job_definition(const SchedName *job, SchedJobDef *def)
 	values[0] = CStringGetTextDatum(job->owner);
 	values[1] = CStringGetTextDatum(job->name);
 	if (sched_meta_select("SELECT job_id, job_type, job_action,"
-					 " number_of_arguments, program_owner, program_name"
+						 " number_of_arguments, program_owner, program_name, auto_drop"
 					 " FROM sys.scheduler_jobs"
 					 " WHERE job_owner = $1 AND job_name = $2",
 					 2, argtypes, values, NULL) != 1)
@@ -1874,6 +1874,8 @@ sched_load_job_definition(const SchedName *job, SchedJobDef *def)
 	def->number_of_arguments = isnull ? 0 : DatumGetInt32(d);
 	prog_owner = sched_getstring(0, 5);
 	prog_name = sched_getstring(0, 6);
+	d = sched_getdatum(0, 7, &isnull);
+	def->auto_drop = !isnull && DatumGetBool(d);
 
 	if (def->job_type == NULL)
 	{
@@ -2152,6 +2154,26 @@ sched_update_job_stats(const SchedJobDef *def, bool success,
 				  " state = CASE WHEN enabled THEN state ELSE $4 END"
 				  " WHERE job_owner = $1 AND job_name = $2",
 				  4, argtypes, values, NULL);
+
+	/*
+	 * Oracle removes a completed one-shot job when auto_drop is true.  A
+	 * repeating job still has a next_run_date after a successful run, so the
+	 * condition deliberately leaves it in the catalog.  Keep this cleanup in
+	 * the shared completion path so foreground and background runs agree.
+	 */
+	if (success && def->auto_drop)
+	{
+		Oid			at2[2] = {TEXTOID, TEXTOID};
+		Datum		v2[2];
+
+		v2[0] = values[0];
+		v2[1] = values[1];
+		sched_meta_dml("DELETE FROM sys.scheduler_jobs"
+					  " WHERE job_owner = $1 AND job_name = $2"
+					  "   AND auto_drop AND next_run_date IS NULL"
+					  "   AND state = 'SUCCEEDED'",
+					  2, at2, v2, NULL);
+	}
 }
 
 /*

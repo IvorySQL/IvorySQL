@@ -93,6 +93,7 @@ typedef struct SchedJobDef
 	char	   *job_name;
 	char	   *job_type;		/* PLSQL_BLOCK or STORED_PROCEDURE */
 	char	   *job_action;
+	bool		auto_drop;
 	int			number_of_arguments;
 	char	  **arg_values;		/* argument values (NULL element = no value) */
 	char	  **arg_types;		/* declared argument types, NULL when unknown */
