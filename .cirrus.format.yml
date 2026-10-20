@@ -40,25 +40,10 @@ task:
     fi
     echo "HEAD=$HEAD_SHA BASE_BRANCH=$BASE_BRANCH BASE=$BASE"
 
-    files=$(git diff --name-only "$BASE"..HEAD | grep -E -i '\.(c|h|cpp|hpp)$' | grep -v '^src/tools/pg_bsd_indent/' || true)
-    if [ -z "$files" ]; then
-      echo "[FormatCheck] No C/C++ changes detected; skipping."
-      exit 0
-    fi
     export PGTYPEDEFS=$(pwd)/src/tools/pgindent/typedefs.list
     export PGINDENT=$(pwd)/build/src/tools/pg_bsd_indent/pg_bsd_indent
 
     export LANG=C.UTF-8
     export LC_ALL=C.UTF-8
 
-    echo "[FormatCheck] Running pgindent --check..."
-    set +e
-    ./src/tools/pgindent/pgindent --check $files
-    rc=$?
-    set -e
-    if [ $rc -ne 0 ]; then
-      echo "[FormatCheck] Unformatted changes detected; suggested patch below:"
-      ./src/tools/pgindent/pgindent --diff $files || true
-      exit $rc
-    fi
-    echo "[FormatCheck] Passed."
+    python3 src/tools/ci/check_format.py "$BASE"
