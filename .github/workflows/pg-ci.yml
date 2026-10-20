@@ -29,7 +29,10 @@ concurrency:
   group: |
     ${{github.workflow }}-${{
     case(github.ref == 'refs/heads/master' ||
-         (startsWith(github.ref, 'refs/heads/REL_') && endsWith(github.ref, '_STABLE')),
+         ((startsWith(github.ref, 'refs/heads/REL_') ||
+           startsWith(github.ref, 'refs/heads/IVORY_REL_') ||
+           startsWith(github.ref, 'refs/heads/IVORYSQL_REL_')) &&
+          endsWith(github.ref, '_STABLE')),
          github.run_id,
          github.ref)
     }}
