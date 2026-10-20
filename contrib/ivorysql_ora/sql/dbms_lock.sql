@@ -4,6 +4,24 @@
 -- tests for DBMS_LOCK
 --
 call dbms_lock.sleep(1);
+-- Non-finite delays must be rejected before float-to-integer conversion.
+DO $$
+BEGIN
+    BEGIN
+        PERFORM sys.dbms_lock_sleep('NaN'::double precision);
+        RAISE NOTICE 'NaN rejected: false';
+    EXCEPTION WHEN invalid_parameter_value THEN
+        RAISE NOTICE 'NaN rejected: true';
+    END;
+
+    BEGIN
+        PERFORM sys.dbms_lock_sleep('Infinity'::double precision);
+        RAISE NOTICE 'Infinity rejected: false';
+    EXCEPTION WHEN invalid_parameter_value THEN
+        RAISE NOTICE 'Infinity rejected: true';
+    END;
+END
+$$;
 create table handle(h text);
 --
 -- test DBMS_LOCK.S

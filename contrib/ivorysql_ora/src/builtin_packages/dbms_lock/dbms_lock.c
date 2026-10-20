@@ -23,6 +23,7 @@
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
+#include <math.h>
 #include "fmgr.h"
 #include "miscadmin.h" 
 #include "pgtime.h" 
@@ -351,9 +352,10 @@ ivorysql_dbms_lock_sleep(PG_FUNCTION_ARGS)
     if (dbms_lock_hash_table == NULL)
 	    dbms_lock_init_hash_table();
 
-    if (seconds < 0)
+	if (!isfinite(seconds) || seconds < 0)
         ereport(ERROR,
-                (errmsg("DBMS_LOCK.SLEEP: seconds must be non-negative")));
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("DBMS_LOCK.SLEEP: seconds must be a finite, non-negative number")));
 
     if (seconds > 100000000)
         ereport(ERROR,
