@@ -90,6 +90,13 @@ SELECT sys.ora_utl_file_fclose(:fd) AS closed \gset
 SELECT 'ascii_tokens=' || encode(pg_read_binary_file('utl_file_putf_ascii_tokens.dat'), 'hex');
 SELECT sys.ora_utl_file_fremove('putf_multibyte', 'utl_file_putf_ascii_tokens.dat') AS removed \gset
 
+-- Unsupported percent sequences are ordinary text, not printf directives.
+SELECT sys.ora_utl_file_fopen('putf_multibyte', 'utl_file_putf_literal_percent.dat', 'w', 1024, 'UTF8') AS fd \gset
+SELECT sys.ora_utl_file_putf(:fd, 'value=%d') AS wrote \gset
+SELECT sys.ora_utl_file_fclose(:fd) AS closed \gset
+SELECT 'literal_percent=' || encode(pg_read_binary_file('utl_file_putf_literal_percent.dat'), 'hex');
+SELECT sys.ora_utl_file_fremove('putf_multibyte', 'utl_file_putf_literal_percent.dat') AS removed \gset
+
 -- null_argument
 SELECT sys.ora_utl_file_fopen('putf_multibyte', 'utl_file_putf_null_argument.dat', 'w', 1024, 'UTF8') AS fd \gset
 SELECT sys.ora_utl_file_putf(:fd, '%s|%s', 'OK') AS wrote \gset

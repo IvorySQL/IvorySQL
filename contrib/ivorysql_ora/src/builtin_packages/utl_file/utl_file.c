@@ -899,13 +899,18 @@ ora_utl_file_putf(PG_FUNCTION_ARGS)
 				CHECK_LENGTH(++cur_len);
 				if (fputc('%', fd) == EOF)
 					CHECK_ERRNO_PUT();
+				fpt++; format_length--;
+				continue;
 			}
-			else if (fpt[1] == 's' && ++cur_par <= 5 && !PG_ARGISNULL(cur_par + 1))
+			else if (fpt[1] == 's')
 			{
-				cur_len += do_write(fcinfo, cur_par + 1, fd, max_linesize - cur_len, encoding);
+				cur_par++;
+				if (cur_par <= 5 && !PG_ARGISNULL(cur_par + 1))
+					cur_len += do_write(fcinfo, cur_par + 1, fd,
+											 max_linesize - cur_len, encoding);
+				fpt++; format_length--;
+				continue;
 			}
-			fpt++; format_length--;
-			continue;
 		}
 		CHECK_LENGTH(++cur_len);
 		if (fputc(fpt[0], fd) == EOF)
