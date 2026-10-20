@@ -1957,10 +1957,7 @@ is_oracle_slash(PsqlScanState state, const char *line)
 				for (i = 0; i < len; i++)
 				{
 					/* allow special char */
-					if (line[i] == '\t' ||
-						line[i] == '\n' ||
-						line[i] == '\r' ||
-						line[i] == ' ')
+					if (isspace((unsigned char) line[i]))
 						continue;
 
 					if (line[i] == '/')
