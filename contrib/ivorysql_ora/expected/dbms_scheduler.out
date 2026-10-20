@@ -1389,6 +1389,33 @@ SELECT job_owner, job_name, status FROM sys.scheduler_job_run_details
 
 -- cleanup
 RESET SESSION AUTHORIZATION;
+CALL dbms_scheduler.create_job(
+  job_name   => 'DROP_RUNNING',
+  job_type   => 'PLSQL_BLOCK',
+  job_action => 'BEGIN NULL; END;');
+INSERT INTO sys.scheduler_job_run_details(job_owner, job_name, status)
+  VALUES (current_user, 'DROP_RUNNING', 'r');
+DO $$
+BEGIN
+  BEGIN
+    CALL dbms_scheduler.drop_job('DROP_RUNNING');
+    RAISE EXCEPTION 'DROP_JOB unexpectedly removed a running job';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM = 'DROP_JOB unexpectedly removed a running job' THEN
+      RAISE;
+    END IF;
+  END;
+END;
+$$;
+SELECT count(*) AS running_job_preserved
+  FROM sys.scheduler_jobs WHERE job_name = 'DROP_RUNNING';
+ running_job_preserved 
+-----------------------
+                     1
+(1 row)
+
+DELETE FROM sys.scheduler_job_run_details WHERE job_name = 'DROP_RUNNING';
+CALL dbms_scheduler.drop_job('DROP_RUNNING', force => TRUE);
 DROP USER sched_regress_u1;
 DROP USER sched_regress_u2;
 DROP TABLE sched_reg_t;
