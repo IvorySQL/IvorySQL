@@ -1611,9 +1611,11 @@ ora_dbms_scheduler_disable(PG_FUNCTION_ARGS)
 		case SCHED_KIND_JOB:
 			if (!force)
 			{
-				running = sched_meta_select("SELECT 1 FROM sys.scheduler_job_run_details"
-									 " WHERE job_owner = $1 AND job_name = $2"
-									 "   AND status = 'r' LIMIT 1",
+				running = sched_meta_select("SELECT 1 FROM sys.scheduler_job_run_details r"
+									 " JOIN sys.scheduler_jobs j"
+									 "   ON j.job_id = r.job_id"
+									 " WHERE r.job_owner = $1 AND r.job_name = $2"
+									 "   AND r.status = 'r' LIMIT 1",
 									 2, argtypes, values, NULL);
 				if (running > 0)
 					ereport(ERROR,

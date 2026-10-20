@@ -811,8 +811,15 @@ CALL dbms_scheduler.create_job(
   job_name   => 'DISABLE_RUNNING',
   job_type   => 'PLSQL_BLOCK',
   job_action => 'BEGIN NULL; END;');
-INSERT INTO sys.scheduler_job_run_details(job_owner, job_name, status)
-  VALUES (current_user, 'DISABLE_RUNNING', 'r');
+INSERT INTO sys.scheduler_job_run_details(job_owner, job_name, job_id, status)
+  SELECT current_user, 'DISABLE_RUNNING', job_id, 'r'
+    FROM sys.scheduler_jobs
+   WHERE job_owner = current_user
+     AND job_name = 'DISABLE_RUNNING';
+UPDATE sys.scheduler_jobs
+   SET enabled = true, state = 'RUNNING'
+ WHERE job_owner = current_user
+   AND job_name = 'DISABLE_RUNNING';
 DO $$
 DECLARE
   rejected BOOLEAN := FALSE;
@@ -820,6 +827,9 @@ BEGIN
   BEGIN
     CALL dbms_scheduler.disable('DISABLE_RUNNING', force => FALSE);
   EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM NOT LIKE '%is running%' THEN
+      RAISE;
+    END IF;
     rejected := TRUE;
   END;
   IF NOT rejected THEN
