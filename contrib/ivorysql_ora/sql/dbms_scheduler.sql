@@ -815,3 +815,20 @@ DROP PROCEDURE sched_reg_proc;
 DELETE FROM sys.scheduler_job_run_details;
 DROP ROLE regress_dbms_scheduler;
 RESET timezone;
+
+
+-- Oracle-compatible scheduler job log views
+-- The table has defaults for log_id/log_date, so one history row is enough to
+-- exercise both views.
+INSERT INTO sys.scheduler_job_run_details (job_owner, job_name, status)
+VALUES (CURRENT_USER, 'reg_job_log_test', 's');
+
+SELECT job_name, status
+FROM sys.user_scheduler_job_log
+WHERE lower(job_name) = 'reg_job_log_test';
+
+SELECT COUNT(*) = 1 AS dba_has
+FROM sys.dba_scheduler_job_log
+WHERE lower(job_name) = 'reg_job_log_test' AND status = 'SUCCEEDED';
+
+DELETE FROM sys.scheduler_job_run_details WHERE job_name = 'reg_job_log_test';
