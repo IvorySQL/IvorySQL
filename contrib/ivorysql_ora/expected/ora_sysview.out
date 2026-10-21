@@ -493,3 +493,49 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- Oracle-compatible role and user dictionary views
+DROP ROLE IF EXISTS ora_view_role_test;
+NOTICE:  role "ora_view_role_test" does not exist, skipping
+CREATE ROLE ora_view_role_test LOGIN;
+SELECT ROLE, PASSWORD_REQUIRED, ORACLE_MAINTAINED
+FROM SYS.DBA_ROLES
+WHERE ROLE = 'ORA_VIEW_ROLE_TEST';
+        role        | password_required | oracle_maintained 
+--------------------+-------------------+-------------------
+ ORA_VIEW_ROLE_TEST | NO                | N
+(1 row)
+
+SELECT USERNAME, ACCOUNT_STATUS, DEFAULT_TABLESPACE, AUTHENTICATION_TYPE
+FROM SYS.DBA_USERS
+WHERE USERNAME = 'ORA_VIEW_ROLE_TEST';
+      username      | account_status | default_tablespace | authentication_type 
+--------------------+----------------+--------------------+---------------------
+ ORA_VIEW_ROLE_TEST | OPEN           | PG_DEFAULT         | PASSWORD
+(1 row)
+
+SELECT USERNAME, USER_ID > 0 AS has_id
+FROM SYS.ALL_USERS
+WHERE USERNAME = 'ORA_VIEW_ROLE_TEST';
+      username      | has_id 
+--------------------+--------
+ ORA_VIEW_ROLE_TEST | t
+(1 row)
+
+-- USER_USERS is restricted to the caller
+SELECT COUNT(*) = 1 AS one_row, MIN(USERNAME) = SYS.ORA_CASE_TRANS(CURRENT_USER::VARCHAR2) AS is_me
+FROM SYS.USER_USERS;
+ one_row | is_me 
+---------+-------
+ t       | t
+(1 row)
+
+GRANT ora_view_role_test TO CURRENT_USER;
+SELECT COUNT(*) > 0 AS role_visible
+FROM SYS.SESSION_ROLES
+WHERE ROLE = 'ORA_VIEW_ROLE_TEST';
+ role_visible 
+--------------
+ t
+(1 row)
+
+DROP ROLE ora_view_role_test;
