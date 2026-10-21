@@ -1557,3 +1557,124 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- USER_TYPES: the user-defined types of the current user, in Oracle's shape.
+-- A composite type is an OBJECT, a domain a DOMAIN, an enum an ENUM and a
+-- range type a RANGE.  METHODS is 0 because PostgreSQL types carry no methods.
+CREATE OR REPLACE VIEW SYS.USER_TYPES AS
+SELECT TYPE_NAME, TYPE_OID, TYPECODE, ATTRIBUTES, METHODS, PREDEFINED,
+       INCOMPLETE, FINAL, INSTANTIABLE, SUPERTYPE_OWNER, SUPERTYPE_NAME,
+       LOCAL_ATTRIBUTES, LOCAL_METHODS
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(T.TYPOWNER)::VARCHAR2)::VARCHAR2(128)   AS OWNER,
+    SYS.ORA_CASE_TRANS(T.TYPNAME::VARCHAR2)::VARCHAR2(128)                     AS TYPE_NAME,
+    T.OID::INT8::NUMBER                                                        AS TYPE_OID,
+    CASE T.TYPTYPE
+        WHEN 'c' THEN 'OBJECT'
+        WHEN 'd' THEN 'DOMAIN'
+        WHEN 'e' THEN 'ENUM'
+        WHEN 'r' THEN 'RANGE'
+        ELSE 'OBJECT'
+    END::VARCHAR2(11)                                                          AS TYPECODE,
+    (SELECT COUNT(*) FROM PG_CATALOG.PG_ATTRIBUTE A
+      WHERE A.ATTRELID = T.TYPRELID AND A.ATTNUM > 0 AND NOT A.ATTISDROPPED)::NUMBER AS ATTRIBUTES,
+    0::NUMBER                                                                  AS METHODS,
+    'NO'::VARCHAR2(3)                                                          AS PREDEFINED,
+    'NO'::VARCHAR2(3)                                                          AS INCOMPLETE,
+    'YES'::VARCHAR2(3)                                                         AS FINAL,
+    'YES'::VARCHAR2(3)                                                         AS INSTANTIABLE,
+    NULL::VARCHAR2(128)                                                        AS SUPERTYPE_OWNER,
+    NULL::VARCHAR2(128)                                                        AS SUPERTYPE_NAME,
+    (SELECT COUNT(*) FROM PG_CATALOG.PG_ATTRIBUTE A
+      WHERE A.ATTRELID = T.TYPRELID AND A.ATTNUM > 0 AND NOT A.ATTISDROPPED)::NUMBER AS LOCAL_ATTRIBUTES,
+    0::NUMBER                                                                  AS LOCAL_METHODS,
+    T.TYPOWNER                                                                 AS OWNER_OID
+FROM PG_CATALOG.PG_TYPE T
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = T.TYPNAMESPACE
+WHERE T.TYPTYPE IN ('c', 'd', 'e', 'r')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+WHERE S.OWNER_OID = CURRENT_USER::REGROLE;
+GRANT SELECT ON SYS.USER_TYPES TO PUBLIC;
+
+-- ALL_TYPES: the same rows for types in any schema.
+CREATE OR REPLACE VIEW SYS.ALL_TYPES AS
+SELECT OWNER, TYPE_NAME, TYPE_OID, TYPECODE, ATTRIBUTES, METHODS, PREDEFINED,
+       INCOMPLETE, FINAL, INSTANTIABLE, SUPERTYPE_OWNER, SUPERTYPE_NAME,
+       LOCAL_ATTRIBUTES, LOCAL_METHODS
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(T.TYPOWNER)::VARCHAR2)::VARCHAR2(128)   AS OWNER,
+    SYS.ORA_CASE_TRANS(T.TYPNAME::VARCHAR2)::VARCHAR2(128)                     AS TYPE_NAME,
+    T.OID::INT8::NUMBER                                                        AS TYPE_OID,
+    CASE T.TYPTYPE
+        WHEN 'c' THEN 'OBJECT'
+        WHEN 'd' THEN 'DOMAIN'
+        WHEN 'e' THEN 'ENUM'
+        WHEN 'r' THEN 'RANGE'
+        ELSE 'OBJECT'
+    END::VARCHAR2(11)                                                          AS TYPECODE,
+    (SELECT COUNT(*) FROM PG_CATALOG.PG_ATTRIBUTE A
+      WHERE A.ATTRELID = T.TYPRELID AND A.ATTNUM > 0 AND NOT A.ATTISDROPPED)::NUMBER AS ATTRIBUTES,
+    0::NUMBER                                                                  AS METHODS,
+    'NO'::VARCHAR2(3)                                                          AS PREDEFINED,
+    'NO'::VARCHAR2(3)                                                          AS INCOMPLETE,
+    'YES'::VARCHAR2(3)                                                         AS FINAL,
+    'YES'::VARCHAR2(3)                                                         AS INSTANTIABLE,
+    NULL::VARCHAR2(128)                                                        AS SUPERTYPE_OWNER,
+    NULL::VARCHAR2(128)                                                        AS SUPERTYPE_NAME,
+    (SELECT COUNT(*) FROM PG_CATALOG.PG_ATTRIBUTE A
+      WHERE A.ATTRELID = T.TYPRELID AND A.ATTNUM > 0 AND NOT A.ATTISDROPPED)::NUMBER AS LOCAL_ATTRIBUTES,
+    0::NUMBER                                                                  AS LOCAL_METHODS,
+    T.OID                                                                      AS OWNER_OID
+FROM PG_CATALOG.PG_TYPE T
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = T.TYPNAMESPACE
+WHERE T.TYPTYPE IN ('c', 'd', 'e', 'r')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S;
+GRANT SELECT ON SYS.ALL_TYPES TO PUBLIC;
+
+-- DBA_TYPES: same column set as ALL_TYPES; PostgreSQL exposes type owners to
+-- every user, so there is no extra restriction to apply here.
+CREATE OR REPLACE VIEW SYS.DBA_TYPES AS
+SELECT OWNER, TYPE_NAME, TYPE_OID, TYPECODE, ATTRIBUTES, METHODS, PREDEFINED,
+       INCOMPLETE, FINAL, INSTANTIABLE, SUPERTYPE_OWNER, SUPERTYPE_NAME,
+       LOCAL_ATTRIBUTES, LOCAL_METHODS
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(T.TYPOWNER)::VARCHAR2)::VARCHAR2(128)   AS OWNER,
+    SYS.ORA_CASE_TRANS(T.TYPNAME::VARCHAR2)::VARCHAR2(128)                     AS TYPE_NAME,
+    T.OID::INT8::NUMBER                                                        AS TYPE_OID,
+    CASE T.TYPTYPE
+        WHEN 'c' THEN 'OBJECT'
+        WHEN 'd' THEN 'DOMAIN'
+        WHEN 'e' THEN 'ENUM'
+        WHEN 'r' THEN 'RANGE'
+        ELSE 'OBJECT'
+    END::VARCHAR2(11)                                                          AS TYPECODE,
+    (SELECT COUNT(*) FROM PG_CATALOG.PG_ATTRIBUTE A
+      WHERE A.ATTRELID = T.TYPRELID AND A.ATTNUM > 0 AND NOT A.ATTISDROPPED)::NUMBER AS ATTRIBUTES,
+    0::NUMBER                                                                  AS METHODS,
+    'NO'::VARCHAR2(3)                                                          AS PREDEFINED,
+    'NO'::VARCHAR2(3)                                                          AS INCOMPLETE,
+    'YES'::VARCHAR2(3)                                                         AS FINAL,
+    'YES'::VARCHAR2(3)                                                         AS INSTANTIABLE,
+    NULL::VARCHAR2(128)                                                        AS SUPERTYPE_OWNER,
+    NULL::VARCHAR2(128)                                                        AS SUPERTYPE_NAME,
+    (SELECT COUNT(*) FROM PG_CATALOG.PG_ATTRIBUTE A
+      WHERE A.ATTRELID = T.TYPRELID AND A.ATTNUM > 0 AND NOT A.ATTISDROPPED)::NUMBER AS LOCAL_ATTRIBUTES,
+    0::NUMBER                                                                  AS LOCAL_METHODS,
+    T.OID                                                                      AS OWNER_OID
+FROM PG_CATALOG.PG_TYPE T
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = T.TYPNAMESPACE
+WHERE T.TYPTYPE IN ('c', 'd', 'e', 'r')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S;
+GRANT SELECT ON SYS.DBA_TYPES TO PUBLIC;
