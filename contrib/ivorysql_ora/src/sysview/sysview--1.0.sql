@@ -1557,3 +1557,120 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- USER_LOBS: the large-object columns of the current user's tables.  A LOB in
+-- PostgreSQL is a text/bytea column stored through the table's TOAST relation,
+-- so there is no per-LOB segment or index to report and those columns are
+-- NULL; TABLE_NAME/COLUMN_NAME/TABLESPACE_NAME are the parts an application
+-- actually queries.
+CREATE OR REPLACE VIEW SYS.USER_LOBS AS
+SELECT TABLE_NAME, COLUMN_NAME, TABLESPACE_NAME, SEGMENT_NAME, INDEX_NAME, CHUNK
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS TABLE_NAME,
+    SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(128)                    AS COLUMN_NAME,
+    SYS.ORA_CASE_TRANS(TS.SPCNAME::VARCHAR2)::VARCHAR2(30)                    AS TABLESPACE_NAME,
+    NULL::VARCHAR2(128)                                                        AS SEGMENT_NAME,
+    NULL::VARCHAR2(128)                                                        AS INDEX_NAME,
+    NULL::NUMBER                                                               AS CHUNK,
+    C.RELOWNER                                                                 AS OWNER_OID,
+    C.OID                                                                      AS REL_OID
+FROM PG_CATALOG.PG_ATTRIBUTE A
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = A.ATTRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+JOIN PG_CATALOG.PG_TABLESPACE TS
+  ON TS.OID = (CASE WHEN C.RELTABLESPACE = 0
+                    THEN (SELECT DATTABLESPACE FROM PG_CATALOG.PG_DATABASE
+                           WHERE DATNAME = CURRENT_DATABASE())
+                    ELSE C.RELTABLESPACE
+               END)
+WHERE A.ATTNUM > 0
+  AND NOT A.ATTISDROPPED
+  AND C.RELKIND IN ('r', 'p', 'm')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+  AND EXISTS (
+      SELECT 1 FROM PG_CATALOG.PG_TYPE T
+       WHERE T.OID = A.ATTTYPID
+         AND T.TYPNAME IN ('text', 'bytea', 'clob', 'blob', 'long', 'raw'))
+
+) S
+WHERE S.OWNER_OID = (SELECT OID FROM PG_CATALOG.PG_ROLES WHERE ROLNAME = CURRENT_USER)
+ORDER BY S.TABLE_NAME, S.COLUMN_NAME;
+GRANT SELECT ON SYS.USER_LOBS TO PUBLIC;
+
+-- ALL_LOBS: the same rows for tables the current user can read.
+CREATE OR REPLACE VIEW SYS.ALL_LOBS AS
+SELECT TABLE_NAME, COLUMN_NAME, TABLESPACE_NAME, SEGMENT_NAME, INDEX_NAME, CHUNK
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS TABLE_NAME,
+    SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(128)                    AS COLUMN_NAME,
+    SYS.ORA_CASE_TRANS(TS.SPCNAME::VARCHAR2)::VARCHAR2(30)                    AS TABLESPACE_NAME,
+    NULL::VARCHAR2(128)                                                        AS SEGMENT_NAME,
+    NULL::VARCHAR2(128)                                                        AS INDEX_NAME,
+    NULL::NUMBER                                                               AS CHUNK,
+    C.RELOWNER                                                                 AS OWNER_OID,
+    C.OID                                                                      AS REL_OID
+FROM PG_CATALOG.PG_ATTRIBUTE A
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = A.ATTRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+JOIN PG_CATALOG.PG_TABLESPACE TS
+  ON TS.OID = (CASE WHEN C.RELTABLESPACE = 0
+                    THEN (SELECT DATTABLESPACE FROM PG_CATALOG.PG_DATABASE
+                           WHERE DATNAME = CURRENT_DATABASE())
+                    ELSE C.RELTABLESPACE
+               END)
+WHERE A.ATTNUM > 0
+  AND NOT A.ATTISDROPPED
+  AND C.RELKIND IN ('r', 'p', 'm')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+  AND EXISTS (
+      SELECT 1 FROM PG_CATALOG.PG_TYPE T
+       WHERE T.OID = A.ATTTYPID
+         AND T.TYPNAME IN ('text', 'bytea', 'clob', 'blob', 'long', 'raw'))
+
+) S
+WHERE HAS_TABLE_PRIVILEGE(S.REL_OID, 'SELECT')
+ORDER BY S.OWNER, S.TABLE_NAME, S.COLUMN_NAME;
+GRANT SELECT ON SYS.ALL_LOBS TO PUBLIC;
+
+-- DBA_LOBS: unrestricted.
+CREATE OR REPLACE VIEW SYS.DBA_LOBS AS
+SELECT OWNER, TABLE_NAME, COLUMN_NAME, TABLESPACE_NAME, SEGMENT_NAME, INDEX_NAME, CHUNK
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS TABLE_NAME,
+    SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(128)                    AS COLUMN_NAME,
+    SYS.ORA_CASE_TRANS(TS.SPCNAME::VARCHAR2)::VARCHAR2(30)                    AS TABLESPACE_NAME,
+    NULL::VARCHAR2(128)                                                        AS SEGMENT_NAME,
+    NULL::VARCHAR2(128)                                                        AS INDEX_NAME,
+    NULL::NUMBER                                                               AS CHUNK,
+    C.RELOWNER                                                                 AS OWNER_OID,
+    C.OID                                                                      AS REL_OID
+FROM PG_CATALOG.PG_ATTRIBUTE A
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = A.ATTRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+JOIN PG_CATALOG.PG_TABLESPACE TS
+  ON TS.OID = (CASE WHEN C.RELTABLESPACE = 0
+                    THEN (SELECT DATTABLESPACE FROM PG_CATALOG.PG_DATABASE
+                           WHERE DATNAME = CURRENT_DATABASE())
+                    ELSE C.RELTABLESPACE
+               END)
+WHERE A.ATTNUM > 0
+  AND NOT A.ATTISDROPPED
+  AND C.RELKIND IN ('r', 'p', 'm')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+  AND EXISTS (
+      SELECT 1 FROM PG_CATALOG.PG_TYPE T
+       WHERE T.OID = A.ATTTYPID
+         AND T.TYPNAME IN ('text', 'bytea', 'clob', 'blob', 'long', 'raw'))
+
+) S
+ORDER BY S.OWNER, S.TABLE_NAME, S.COLUMN_NAME;
+GRANT SELECT ON SYS.DBA_LOBS TO PUBLIC;

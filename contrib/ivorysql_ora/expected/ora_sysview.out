@@ -493,3 +493,34 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- Oracle-compatible LOB column dictionary views
+DROP TABLE IF EXISTS t_lob_test;
+NOTICE:  table "t_lob_test" does not exist, skipping
+CREATE TABLE t_lob_test (id INT, doc TEXT, bin BYTEA, note VARCHAR2(10));
+SELECT TABLE_NAME, COLUMN_NAME, TABLESPACE_NAME
+FROM SYS.USER_LOBS
+WHERE TABLE_NAME = 'T_LOB_TEST'
+ORDER BY COLUMN_NAME;
+ table_name | column_name | tablespace_name 
+------------+-------------+-----------------
+ T_LOB_TEST | BIN         | PG_DEFAULT
+ T_LOB_TEST | DOC         | PG_DEFAULT
+(2 rows)
+
+SELECT COUNT(*) = 2 AS all_has
+FROM SYS.ALL_LOBS
+WHERE TABLE_NAME = 'T_LOB_TEST';
+ all_has 
+---------
+ t
+(1 row)
+
+SELECT COUNT(*) = 2 AS dba_has
+FROM SYS.DBA_LOBS
+WHERE TABLE_NAME = 'T_LOB_TEST';
+ dba_has 
+---------
+ t
+(1 row)
+
+DROP TABLE t_lob_test;
