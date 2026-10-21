@@ -1557,3 +1557,84 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- USER_PART_KEY_COLUMNS: the partition key columns of the current user's
+-- partitioned tables.  PostgreSQL does not support subpartitions, so there is
+-- no subpartition counterpart to add.  Expression keys have no column name in
+-- pg_attribute and are reported with COLUMN_NAME NULL.
+CREATE OR REPLACE VIEW SYS.USER_PART_KEY_COLUMNS AS
+SELECT NAME, OBJECT_TYPE, COLUMN_NAME, COLUMN_POSITION
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS NAME,
+    'TABLE'::VARCHAR2(13)                                                      AS OBJECT_TYPE,
+    SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(4000)                   AS COLUMN_NAME,
+    (G.I + 1)::NUMBER                                                          AS COLUMN_POSITION,
+    C.RELOWNER                                                                 AS OWNER_OID,
+    C.OID                                                                      AS REL_OID
+FROM PG_CATALOG.PG_PARTITIONED_TABLE PT
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = PT.PARTRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+CROSS JOIN LATERAL PG_CATALOG.GENERATE_SERIES(0, PT.PARTNATTS - 1) AS G(I)
+LEFT JOIN PG_CATALOG.PG_ATTRIBUTE A
+  ON A.ATTRELID = C.OID AND A.ATTNUM = PT.PARTATTRS[G.I]
+WHERE N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+WHERE S.OWNER_OID = (SELECT OID FROM PG_CATALOG.PG_ROLES WHERE ROLNAME = CURRENT_USER)
+ORDER BY S.COLUMN_POSITION;
+GRANT SELECT ON SYS.USER_PART_KEY_COLUMNS TO PUBLIC;
+
+-- ALL_PART_KEY_COLUMNS: the same rows for partitioned tables the current user
+-- can read.
+CREATE OR REPLACE VIEW SYS.ALL_PART_KEY_COLUMNS AS
+SELECT NAME, OBJECT_TYPE, COLUMN_NAME, COLUMN_POSITION
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS NAME,
+    'TABLE'::VARCHAR2(13)                                                      AS OBJECT_TYPE,
+    SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(4000)                   AS COLUMN_NAME,
+    (G.I + 1)::NUMBER                                                          AS COLUMN_POSITION,
+    C.RELOWNER                                                                 AS OWNER_OID,
+    C.OID                                                                      AS REL_OID
+FROM PG_CATALOG.PG_PARTITIONED_TABLE PT
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = PT.PARTRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+CROSS JOIN LATERAL PG_CATALOG.GENERATE_SERIES(0, PT.PARTNATTS - 1) AS G(I)
+LEFT JOIN PG_CATALOG.PG_ATTRIBUTE A
+  ON A.ATTRELID = C.OID AND A.ATTNUM = PT.PARTATTRS[G.I]
+WHERE N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+WHERE HAS_TABLE_PRIVILEGE(S.REL_OID, 'SELECT')
+ORDER BY S.OWNER, S.NAME, S.COLUMN_POSITION;
+GRANT SELECT ON SYS.ALL_PART_KEY_COLUMNS TO PUBLIC;
+
+-- DBA_PART_KEY_COLUMNS: unrestricted.
+CREATE OR REPLACE VIEW SYS.DBA_PART_KEY_COLUMNS AS
+SELECT OWNER, NAME, OBJECT_TYPE, COLUMN_NAME, COLUMN_POSITION
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS NAME,
+    'TABLE'::VARCHAR2(13)                                                      AS OBJECT_TYPE,
+    SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(4000)                   AS COLUMN_NAME,
+    (G.I + 1)::NUMBER                                                          AS COLUMN_POSITION,
+    C.RELOWNER                                                                 AS OWNER_OID,
+    C.OID                                                                      AS REL_OID
+FROM PG_CATALOG.PG_PARTITIONED_TABLE PT
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = PT.PARTRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+CROSS JOIN LATERAL PG_CATALOG.GENERATE_SERIES(0, PT.PARTNATTS - 1) AS G(I)
+LEFT JOIN PG_CATALOG.PG_ATTRIBUTE A
+  ON A.ATTRELID = C.OID AND A.ATTNUM = PT.PARTATTRS[G.I]
+WHERE N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+ORDER BY S.OWNER, S.NAME, S.COLUMN_POSITION;
+GRANT SELECT ON SYS.DBA_PART_KEY_COLUMNS TO PUBLIC;
