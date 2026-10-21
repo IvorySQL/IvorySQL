@@ -59,11 +59,13 @@
 #define INVALID_OPERATION		"INVALID_OPERATION"
 #define	INVALID_PATH			"INVALID_PATH"
 #define READ_ERROR				"READ_ERROR"
+#define CHARSETMISMATCH			"CHARSETMISMATCH"
 #define VALUE_ERROR				"VALUE_ERROR"
 #define WRITE_ERROR				"WRITE_ERROR"
 
 /* ora_utl_file functions */
 PG_FUNCTION_INFO_V1(ora_utl_file_fopen);
+PG_FUNCTION_INFO_V1(ora_utl_file_fopen_nchar);
 PG_FUNCTION_INFO_V1(ora_utl_file_is_open);
 PG_FUNCTION_INFO_V1(ora_utl_file_fclose);
 PG_FUNCTION_INFO_V1(ora_utl_file_fclose_all);
@@ -75,10 +77,12 @@ PG_FUNCTION_INFO_V1(ora_utl_file_frename);
 PG_FUNCTION_INFO_V1(ora_utl_file_fseek);
 PG_FUNCTION_INFO_V1(ora_utl_file_ftell);
 PG_FUNCTION_INFO_V1(ora_utl_file_get_line);
+PG_FUNCTION_INFO_V1(ora_utl_file_get_line_nchar);
 PG_FUNCTION_INFO_V1(ora_utl_file_new_line);
 PG_FUNCTION_INFO_V1(ora_utl_file_put);
 PG_FUNCTION_INFO_V1(ora_utl_file_putf);
 PG_FUNCTION_INFO_V1(ora_utl_file_put_line);
+PG_FUNCTION_INFO_V1(ora_utl_file_put_line_nchar);
 PG_FUNCTION_INFO_V1(ora_utl_file_put_raw);
 
 static int	utl_file_umask = 077;
@@ -96,12 +100,13 @@ static void close_all_files(void);
 static int copy_text_file(FILE *srcfile, FILE *dstfile,
 						  int start_line, int end_line);
 static void put_lines(FILE *fd, int lines);
-static FILE *do_put(PG_FUNCTION_ARGS);
+static FILE *do_put(FunctionCallInfo fcinfo, bool nchar);
 static size_t
 do_write(PG_FUNCTION_ARGS, int n, FILE *fd,
 	size_t max_linesize, int encoding);
 static FILE *
-get_file_handle_from_slot(uint32 sid, size_t *max_linesize, int *encoding);
+get_file_handle_from_slot(uint32 sid, size_t *max_linesize, int *encoding,
+						  bool *nchar);
 static void do_flush(FILE *fd);
 static char *
 encode_text(int encoding, text *t, size_t *length);
@@ -118,7 +123,10 @@ resource_cleanup_callback(ResourceReleasePhase phase,
                          bool isTopLevel,
                          void *arg);
 static FILE *free_slot(uint32 sid);
-static uint32 reserve_slot(FILE *fd, int max_linesize, int encoding);
+static uint32 reserve_slot(FILE *fd, int max_linesize, int encoding, bool nchar);
+static Datum utl_file_fopen(FunctionCallInfo fcinfo, bool nchar);
+static Datum utl_file_get_line(FunctionCallInfo fcinfo, bool nchar);
+static Datum utl_file_put_line(FunctionCallInfo fcinfo, bool nchar);
 
 /* Helper macros */
 #define IS_VALID_PTR(d) ((d) != (NULL))
@@ -142,6 +150,7 @@ static uint32 reserve_slot(FILE *fd, int max_linesize, int encoding);
 	do { char *strerr = strerror(errno); CUSTOM_WARNING(msg, strerr); } while(0);
 
 #define INVALID_FILEHANDLE_EXCEPTION()	CUSTOM_EXCEPTION(INVALID_FILEHANDLE, "File handle is invalid.")
+#define CHARSETMISMATCH_EXCEPTION()	CUSTOM_EXCEPTION(CHARSETMISMATCH, "NCHAR and non-NCHAR file operations cannot be mixed.")
 #define INVALID_FILEHANDLE_WARNING()	CUSTOM_WARNING(INVALID_FILEHANDLE, "File handle is invalid.")
 
 #define NON_EMPTY_TEXT(dat) \
@@ -191,6 +200,7 @@ typedef struct FileSlot
 	FILE	*fd;
 	int		max_linesize;
 	int		encoding;
+	bool		nchar;
 	uint32	id;
 } FileSlot;
 
@@ -216,7 +226,7 @@ next_slotid(void)
  * Returns slot ID or INVALID_SLOTID if no free slot found
  */
 static uint32
-reserve_slot(FILE *fd, int max_linesize, int encoding)
+reserve_slot(FILE *fd, int max_linesize, int encoding, bool nchar)
 {
 	if(fd == NULL)
 	{
@@ -233,6 +243,7 @@ reserve_slot(FILE *fd, int max_linesize, int encoding)
 		slots[i].fd = fd;
 		slots[i].max_linesize = max_linesize;
 		slots[i].encoding = encoding;
+		slots[i].nchar = nchar;
 
 		return slots[i].id;
 	}
@@ -260,6 +271,7 @@ free_slot(uint32 sid)
 			slots[i].fd = NULL;
 			slots[i].max_linesize = 0;
 			slots[i].encoding = 0;
+			slots[i].nchar = false;
 
 			return fd;
 		}
@@ -300,8 +312,8 @@ IO_EXCEPTION(void)
  * Exceptions:
  *  INVALID_MODE, INVALID_OPERATION, INVALID_PATH, INVALID_MAXLINESIZE
  */
-Datum
-ora_utl_file_fopen(PG_FUNCTION_ARGS)
+static Datum
+utl_file_fopen(FunctionCallInfo fcinfo, bool nchar)
 {
 	text			*open_mode;
 	int				max_linesize;
@@ -377,7 +389,7 @@ ora_utl_file_fopen(PG_FUNCTION_ARGS)
 	if (fd == NULL)
 		IO_EXCEPTION();
 
-	sid = reserve_slot(fd, max_linesize, encoding);
+	sid = reserve_slot(fd, max_linesize, encoding, nchar);
 	if (sid == INVALID_SLOTID)
 	{
 		fclose(fd);
@@ -403,6 +415,18 @@ ora_utl_file_fopen(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_UINT32(sid);
+}
+
+Datum
+ora_utl_file_fopen(PG_FUNCTION_ARGS)
+{
+	return utl_file_fopen(fcinfo, false);
+}
+
+Datum
+ora_utl_file_fopen_nchar(PG_FUNCTION_ARGS)
+{
+	return utl_file_fopen(fcinfo, true);
 }
 
 Datum
@@ -553,7 +577,7 @@ ora_utl_file_fflush(PG_FUNCTION_ARGS)
 	FILE *fd;
 
 	CHECK_FILE_HANDLE();
-	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL);
+	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL, NULL);
 	do_flush(fd);
 
 	PG_RETURN_VOID();
@@ -685,7 +709,7 @@ ora_utl_file_fseek(PG_FUNCTION_ARGS)
 	long		file_size;
 
 	CHECK_FILE_HANDLE();
-	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL);
+	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL, NULL);
 	if (fd == NULL)
 		INVALID_FILEHANDLE_EXCEPTION();
 
@@ -737,7 +761,7 @@ ora_utl_file_ftell(PG_FUNCTION_ARGS)
 {
 	FILE   *fd;
 	CHECK_FILE_HANDLE();
-	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL);
+	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL, NULL);
 
 	if(fd == NULL)
 		INVALID_FILEHANDLE_EXCEPTION();
@@ -754,17 +778,21 @@ ora_utl_file_ftell(PG_FUNCTION_ARGS)
  * Exceptions:
  *  NO_DATA_FOUND, INVALID_FILEHANDLE, INVALID_OPERATION, READ_ERROR
  */
-Datum
-ora_utl_file_get_line(PG_FUNCTION_ARGS)
+static Datum
+utl_file_get_line(FunctionCallInfo fcinfo, bool nchar)
 {
 	size_t	max_linesize = 0;
 	int		encoding = 0;
+	bool		handle_nchar = false;
 	FILE   *fd;
 	text   *result;
 	bool	iseof;
 
 	CHECK_FILE_HANDLE();
-	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), &max_linesize, &encoding);
+	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), &max_linesize, &encoding,
+								  &handle_nchar);
+	if (handle_nchar != nchar)
+		CHARSETMISMATCH_EXCEPTION();
 
 	/* 'len' overwrites max_linesize, but must be smaller than max_linesize */
 	if (PG_NARGS() > 1 && !PG_ARGISNULL(1))
@@ -792,13 +820,25 @@ ora_utl_file_get_line(PG_FUNCTION_ARGS)
 }
 
 Datum
+ora_utl_file_get_line(PG_FUNCTION_ARGS)
+{
+	return utl_file_get_line(fcinfo, false);
+}
+
+Datum
+ora_utl_file_get_line_nchar(PG_FUNCTION_ARGS)
+{
+	return utl_file_get_line(fcinfo, true);
+}
+
+Datum
 ora_utl_file_new_line(PG_FUNCTION_ARGS)
 {
 	FILE   *fd;
 	int		lines;
 
 	CHECK_FILE_HANDLE();
-	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL);
+	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL, NULL);
 	lines = PG_GETARG_IF_EXISTS(1, INT32, 1);
 
 	put_lines(fd, lines);
@@ -809,7 +849,7 @@ ora_utl_file_new_line(PG_FUNCTION_ARGS)
 Datum
 ora_utl_file_put(PG_FUNCTION_ARGS)
 {
-	do_put(fcinfo);
+	do_put(fcinfo, false);
 	PG_RETURN_BOOL(true);
 }
 
@@ -843,7 +883,14 @@ ora_utl_file_putf(PG_FUNCTION_ARGS)
 	size_t	cur_len = 0;
 
 	CHECK_FILE_HANDLE();
-	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), &max_linesize, &encoding);
+	{
+		bool handle_nchar;
+
+		fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), &max_linesize,
+								   &encoding, &handle_nchar);
+		if (handle_nchar)
+			CHARSETMISMATCH_EXCEPTION();
+	}
 
 	NOT_NULL_ARG(1);
 	format = encode_text(encoding, PG_GETARG_TEXT_P(1), &format_length);
@@ -915,13 +962,13 @@ ora_utl_file_putf(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(true);
 }
 
-Datum
-ora_utl_file_put_line(PG_FUNCTION_ARGS)
+static Datum
+utl_file_put_line(FunctionCallInfo fcinfo, bool nchar)
 {
 	FILE   *fd;
 	bool	autoflush;
 
-	fd = do_put(fcinfo);
+	fd = do_put(fcinfo, nchar);
 
 	autoflush = PG_GETARG_IF_EXISTS(2, BOOL, false);
 
@@ -933,13 +980,25 @@ ora_utl_file_put_line(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(true);
 }
 
+Datum
+ora_utl_file_put_line(PG_FUNCTION_ARGS)
+{
+	return utl_file_put_line(fcinfo, false);
+}
+
+Datum
+ora_utl_file_put_line_nchar(PG_FUNCTION_ARGS)
+{
+	return utl_file_put_line(fcinfo, true);
+}
+
 Datum ora_utl_file_put_raw(PG_FUNCTION_ARGS)
 {
 	FILE   *fd;
 	bool    autoflush;
 
 	CHECK_FILE_HANDLE();
-	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL);
+	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL, NULL);
 
 	NOT_NULL_ARG(1);
 	{
@@ -1143,6 +1202,7 @@ close_all_files(void)
 			slots[i].fd = NULL;
 			slots[i].max_linesize = 0;
 			slots[i].encoding = 0;
+			slots[i].nchar = false;
 
 			/* 
 			 * Oracle documentation says: FCLOSE_ALL does not alter the state of the 
@@ -1263,16 +1323,20 @@ put_lines(FILE *fd, int lines)
 }
 
 static FILE *
-do_put(PG_FUNCTION_ARGS)
+do_put(FunctionCallInfo fcinfo, bool nchar)
 {
 	FILE   *fd;
 	size_t	max_linesize = 0;
 	int		encoding = 0;
+	bool		handle_nchar = false;
 
 	if (PG_ARGISNULL(0))
 		INVALID_FILEHANDLE_EXCEPTION();
 
-	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), &max_linesize, &encoding);
+	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), &max_linesize, &encoding,
+								  &handle_nchar);
+	if (handle_nchar != nchar)
+		CHARSETMISMATCH_EXCEPTION();
 
 	NOT_NULL_ARG(1);
 	do_write(fcinfo, 1, fd, max_linesize, encoding);
@@ -1305,7 +1369,8 @@ do_write(PG_FUNCTION_ARGS, int n, FILE *fd, size_t max_linesize, int encoding)
  * Also, sets max_linesize and encoding
  */
 static FILE *
-get_file_handle_from_slot(uint32 sid, size_t *max_linesize, int *encoding)
+get_file_handle_from_slot(uint32 sid, size_t *max_linesize, int *encoding,
+						  bool *nchar)
 {
 	int i;
 
@@ -1320,6 +1385,8 @@ get_file_handle_from_slot(uint32 sid, size_t *max_linesize, int *encoding)
 				*max_linesize = slots[i].max_linesize;
 			if (encoding)
 				*encoding = slots[i].encoding;
+			if (nchar)
+				*nchar = slots[i].nchar;
 			return slots[i].fd;
 		}
 	}

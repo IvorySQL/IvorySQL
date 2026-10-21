@@ -343,6 +343,38 @@ begin
 end;
 /
 
+-- NCHAR and non-NCHAR handles must not be mixed with text operations.
+declare
+    f UTL_FILE.FILE_TYPE;
+begin
+    f := utl_file.fopen_nchar('data_directory', 'regress-mismatch-nchar.txt', 'w');
+    begin
+        utl_file.put_line(f, 'ordinary text routine');
+        raise exception 'PUT_LINE accepted an NCHAR handle';
+    exception
+        when others then
+            if sqlerrm = 'PUT_LINE accepted an NCHAR handle' then
+                raise;
+            end if;
+            raise notice 'NCHAR with ordinary PUT_LINE error=%', sqlerrm;
+    end;
+    utl_file.fclose(f);
+
+    f := utl_file.fopen('data_directory', 'regress-mismatch-ordinary.txt', 'w');
+    begin
+        utl_file.put_line_nchar(f, 'NCHAR text routine');
+        raise exception 'PUT_LINE_NCHAR accepted an ordinary handle';
+    exception
+        when others then
+            if sqlerrm = 'PUT_LINE_NCHAR accepted an ordinary handle' then
+                raise;
+            end if;
+            raise notice 'ordinary handle with PUT_LINE_NCHAR error=%', sqlerrm;
+    end;
+    utl_file.fclose(f);
+end;
+/
+
 -- clean up
 delete from sys.utl_file_directory where dirname = 'data_directory';
 /

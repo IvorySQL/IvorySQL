@@ -17,6 +17,11 @@ RETURNS INTEGER
 AS 'MODULE_PATHNAME','ora_utl_file_fopen'
 LANGUAGE C VOLATILE;
 
+CREATE FUNCTION sys.ora_utl_file_fopen_nchar(location text, filename text, open_mode text, max_linesize integer)
+RETURNS INTEGER
+AS 'MODULE_PATHNAME','ora_utl_file_fopen_nchar'
+LANGUAGE C VOLATILE;
+
 CREATE FUNCTION sys.ora_utl_file_fopen(location text, filename text, open_mode text)
 RETURNS INTEGER
 AS $$SELECT sys.ora_utl_file_fopen($1, $2, $3, 1024); $$
@@ -100,6 +105,11 @@ RETURNS TEXT
 AS 'MODULE_PATHNAME','ora_utl_file_get_line'
 LANGUAGE C VOLATILE;
 
+CREATE FUNCTION sys.ora_utl_file_get_line_nchar(file integer, len integer)
+RETURNS TEXT
+AS 'MODULE_PATHNAME','ora_utl_file_get_line_nchar'
+LANGUAGE C VOLATILE;
+
 CREATE FUNCTION sys.ora_utl_file_new_line(file integer)
 RETURNS bool
 AS 'MODULE_PATHNAME','ora_utl_file_new_line'
@@ -153,6 +163,11 @@ LANGUAGE SQL VOLATILE;
 CREATE FUNCTION sys.ora_utl_file_put_line(file INTEGER, buffer text)
 RETURNS bool
 AS 'MODULE_PATHNAME','ora_utl_file_put_line'
+LANGUAGE C VOLATILE;
+
+CREATE FUNCTION sys.ora_utl_file_put_line_nchar(file INTEGER, buffer text)
+RETURNS bool
+AS 'MODULE_PATHNAME','ora_utl_file_put_line_nchar'
 LANGUAGE C VOLATILE;
 
 CREATE FUNCTION sys.ora_utl_file_put_line(file INTEGER, buffer text, autoflush bool)
@@ -398,7 +413,7 @@ CREATE OR REPLACE PACKAGE BODY UTL_FILE IS
     RETURN UTL_FILE.FILE_TYPE IS
     file UTL_FILE.FILE_TYPE;
     BEGIN
-        file.id := sys.ora_utl_file_fopen(location, filename, open_mode, max_linesize, 'UTF8');
+        file.id := sys.ora_utl_file_fopen_nchar(location, filename, open_mode, max_linesize);
         file.datatype := 1;
         file.byte_mode := false; -- default byte mode
         RETURN file;
@@ -439,7 +454,7 @@ CREATE OR REPLACE PACKAGE BODY UTL_FILE IS
     ) IS
     line TEXT;
     BEGIN
-        SELECT * INTO line FROM sys.ora_utl_file_get_line(file.id, len);
+        SELECT * INTO line FROM sys.ora_utl_file_get_line_nchar(file.id, len);
         buffer := line;
     END;
 
@@ -524,7 +539,7 @@ CREATE OR REPLACE PACKAGE BODY UTL_FILE IS
     DECLARE
         status BOOLEAN;
     BEGIN
-        SELECT sys.ora_utl_file_put_line(file.id, buffer, true) INTO status;
+        SELECT sys.ora_utl_file_put_line_nchar(file.id, buffer) INTO status;
     END;
 
     PROCEDURE PUT_RAW(
