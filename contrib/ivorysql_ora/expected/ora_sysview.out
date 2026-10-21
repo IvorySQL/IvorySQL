@@ -493,3 +493,38 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- Oracle-compatible role grant dictionary views
+DROP ROLE IF EXISTS rp_child;
+NOTICE:  role "rp_child" does not exist, skipping
+DROP ROLE IF EXISTS rp_parent;
+NOTICE:  role "rp_parent" does not exist, skipping
+CREATE ROLE rp_parent;
+CREATE ROLE rp_child;
+GRANT rp_parent TO rp_child;
+SELECT GRANTEE, GRANTED_ROLE, ADMIN_OPTION, DEFAULT_ROLE
+FROM SYS.ROLE_ROLE_PRIVS
+WHERE GRANTEE = 'RP_CHILD';
+ grantee  | granted_role | admin_option | default_role 
+----------+--------------+--------------+--------------
+ RP_CHILD | RP_PARENT    | NO           | YES
+(1 row)
+
+SELECT COUNT(*) = 1 AS dba_has
+FROM SYS.DBA_ROLE_PRIVS
+WHERE GRANTEE = 'RP_CHILD' AND GRANTED_ROLE = 'RP_PARENT';
+ dba_has 
+---------
+ t
+(1 row)
+
+-- The parent is not granted to the current user, so USER_ROLE_PRIVS stays empty
+SELECT COUNT(*) = 0 AS user_empty
+FROM SYS.USER_ROLE_PRIVS
+WHERE GRANTED_ROLE = 'RP_PARENT';
+ user_empty 
+------------
+ t
+(1 row)
+
+DROP ROLE rp_child;
+DROP ROLE rp_parent;
