@@ -1557,3 +1557,77 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+--
+-- USER_CATALOG / ALL_CATALOG / DBA_CATALOG: the tables, views,
+-- materialized views and sequences, like Oracle's views of the same name.
+-- TABLE_TYPE tells the relation kind apart.
+--
+CREATE OR REPLACE VIEW SYS.USER_CATALOG AS
+SELECT
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE c.relkind
+        WHEN 'v' THEN 'VIEW'
+        WHEN 'm' THEN 'MATERIALIZED VIEW'
+        WHEN 'S' THEN 'SEQUENCE'
+        ELSE 'TABLE'
+    END)::varchar2(18) AS table_type
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND c.relkind IN ('r','p','v','m','S')
+    AND NOT c.relispartition
+    AND pg_catalog.pg_get_userbyid(c.relowner) = current_user;
+
+GRANT SELECT ON SYS.USER_CATALOG TO PUBLIC;
+
+--
+-- ALL_CATALOG: the same rows for every relation the current user may
+-- read, with the privilege filter the ALL_ views carry.
+-- TABLE_TYPE tells the relation kind apart.
+--
+CREATE OR REPLACE VIEW SYS.ALL_CATALOG AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE c.relkind
+        WHEN 'v' THEN 'VIEW'
+        WHEN 'm' THEN 'MATERIALIZED VIEW'
+        WHEN 'S' THEN 'SEQUENCE'
+        ELSE 'TABLE'
+    END)::varchar2(18) AS table_type
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND c.relkind IN ('r','p','v','m','S')
+    AND NOT c.relispartition
+    AND pg_catalog.has_table_privilege(current_user, c.oid, 'SELECT');
+
+GRANT SELECT ON SYS.ALL_CATALOG TO PUBLIC;
+
+--
+-- DBA_CATALOG: the same rows without the privilege filter, like the other
+-- DBA_ views.
+-- TABLE_TYPE tells the relation kind apart.
+--
+CREATE OR REPLACE VIEW SYS.DBA_CATALOG AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE c.relkind
+        WHEN 'v' THEN 'VIEW'
+        WHEN 'm' THEN 'MATERIALIZED VIEW'
+        WHEN 'S' THEN 'SEQUENCE'
+        ELSE 'TABLE'
+    END)::varchar2(18) AS table_type
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND c.relkind IN ('r','p','v','m','S')
+    AND NOT c.relispartition;
+
+
+GRANT SELECT ON SYS.DBA_CATALOG TO PUBLIC;
