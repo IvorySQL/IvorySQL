@@ -468,6 +468,23 @@ LANGUAGE C
 PARALLEL SAFE
 STABLE;
 
+/* SUBSTR uses character positions; SUBSTRB below uses byte positions. */
+CREATE FUNCTION sys.substr(text, pg_catalog.int4)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substr_no_length'
+LANGUAGE C
+STRICT
+IMMUTABLE
+PARALLEL SAFE;
+
+CREATE FUNCTION sys.substr(text, pg_catalog.int4, pg_catalog.int4)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substr'
+LANGUAGE C
+STRICT
+IMMUTABLE
+PARALLEL SAFE;
+
 /* SR */
 CREATE FUNCTION sys.substrb(varchar, number)
 RETURNS text

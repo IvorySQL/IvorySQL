@@ -63,6 +63,7 @@ ORA_REGRESS = \
 	ora_binary_double \
 	ora_raw_long \
 	ora_character_datatype_functions \
+	ora_substr \
 	ora_datetime_datatype_functions \
 	ora_misc_functions \
 	ora_merge \

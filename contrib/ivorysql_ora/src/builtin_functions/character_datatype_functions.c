@@ -58,6 +58,8 @@ PG_FUNCTION_INFO_V1(ora_regexp_instr);
 PG_FUNCTION_INFO_V1(ora_regexp_like);
 PG_FUNCTION_INFO_V1(ora_regexp_like_no_flags);
 PG_FUNCTION_INFO_V1(ora_regexp_count);
+PG_FUNCTION_INFO_V1(ora_substr_no_length);
+PG_FUNCTION_INFO_V1(ora_substr);
 PG_FUNCTION_INFO_V1(ora_substrb_no_length);
 PG_FUNCTION_INFO_V1(ora_substrb);
 PG_FUNCTION_INFO_V1(ora_replace);
@@ -86,6 +88,7 @@ typedef struct
 	int			 skiptable[256]; /* skip distance for given mismatched char */
 } TextPositionState;
 
+static text *ora_substr_internal(Datum str, int32 start, int32 length, bool length_not_specified);
 static text *text_substring_byte(Datum str, int32 start, int32 length, bool length_not_specified);
 static void text_position_setup(text *t1, text *t2, TextPositionState *state, bool isbyte);
 static void text_position_cleanup(TextPositionState *state);
@@ -825,6 +828,77 @@ ora_regexp_count(PG_FUNCTION_ARGS)
 	pfree(data);
 
 	PG_RETURN_INT32(occurrence_cnt);
+}
+
+/*
+ * Oracle SUBSTR counts negative positions from the end of the string, treats
+ * zero as one, and returns NULL for an empty result or a nonpositive length.
+ * Normalize the position here so the shared PostgreSQL substring routines
+ * retain their existing semantics for other callers.
+ */
+static text *
+ora_substr_internal(Datum str, int32 start, int32 length,
+					bool length_not_specified)
+{
+	text	   *result;
+
+	if (!length_not_specified && length < 1)
+		return NULL;
+
+	if (start < 0)
+	{
+		int32		nchars;
+
+		/* Count characters, not bytes, including for toasted input. */
+		nchars = DatumGetInt32(DirectFunctionCall1(textlen, str));
+		start = start + nchars + 1;
+		if (start < 1)
+			return NULL;
+	}
+	else if (start == 0)
+		start = 1;
+
+	if (length_not_specified)
+		result = DatumGetTextP(DirectFunctionCall2(text_substr_no_len,
+												 str, Int32GetDatum(start)));
+	else
+		result = DatumGetTextP(DirectFunctionCall3(text_substr,
+													 str, Int32GetDatum(start),
+													 Int32GetDatum(length)));
+
+	if (VARSIZE_ANY_EXHDR(result) == 0)
+	{
+		pfree(result);
+		return NULL;
+	}
+
+	return result;
+}
+
+Datum
+ora_substr(PG_FUNCTION_ARGS)
+{
+	text	   *result;
+
+	result = ora_substr_internal(PG_GETARG_DATUM(0), PG_GETARG_INT32(1),
+								PG_GETARG_INT32(2), false);
+	if (result == NULL)
+		PG_RETURN_NULL();
+
+	PG_RETURN_TEXT_P(result);
+}
+
+Datum
+ora_substr_no_length(PG_FUNCTION_ARGS)
+{
+	text	   *result;
+
+	result = ora_substr_internal(PG_GETARG_DATUM(0), PG_GETARG_INT32(1),
+								0, true);
+	if (result == NULL)
+		PG_RETURN_NULL();
+
+	PG_RETURN_TEXT_P(result);
 }
 
 /********************************************************************
