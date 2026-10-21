@@ -39,6 +39,7 @@
 #include "storage/lockdefs.h"
 #include "c.h"
 #include "utils/float.h"
+#include "mb/pg_wchar.h"
 
 /* Oracle compatible lock modes */
 /* we support only:
@@ -57,6 +58,7 @@
 #define DBMS_LOCK_INVALID_HANDLE  5 
 
 #define DBMS_LOCK_HANDLE_LENGTH 64	
+#define DBMS_LOCK_MAX_LOCKNAME  128
 /*
  * 0x9e3779b9 = 2654435769 
  * derived from 2**32/PHI(golden ratio)
@@ -217,6 +219,12 @@ ivorysql_dbms_lock_allocate_unique(PG_FUNCTION_ARGS)
 {
     char *lockname_text = text_to_cstring(PG_GETARG_TEXT_PP(0));
     char handle[DBMS_LOCK_HANDLE_LENGTH + 1];
+
+	if (pg_mbstrlen(lockname_text) > DBMS_LOCK_MAX_LOCKNAME)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("lock name must not exceed %d characters",
+						DBMS_LOCK_MAX_LOCKNAME)));
 
     /* Use PostgreSQL 64-bit stable hash */
     uint64 hash =

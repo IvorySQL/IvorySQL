@@ -66,6 +66,19 @@ commit;
 --
 -- test DBMS_LOCK.X
 --
+-- Oracle limits ALLOCATE_UNIQUE lock names to VARCHAR2(128).
+declare
+ v_handle text;
+begin
+ dbms_lock.allocate_unique(repeat('x', 129), v_handle);
+ raise exception 'DBMS_LOCK.ALLOCATE_UNIQUE accepted an overlong lock name';
+exception
+ when others then
+   raise notice 'overlong lock name error=%', sqlerrm;
+end;
+/
+NOTICE:  overlong lock name error=lock name must not exceed 128 characters
+
 begin;
 declare
  v_lockname varchar2(10) = 'LOCKX';
