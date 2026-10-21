@@ -1557,3 +1557,31 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- V$SYSTEM_PARAMETER: the instance-wide value of every parameter.  Oracle
+-- distinguishes it from V$PARAMETER (the session value); PostgreSQL keeps both
+-- in pg_settings, so this view reports the same columns V$PARAMETER already
+-- exposes, which is what tools that query either name expect to find.
+CREATE OR REPLACE VIEW SYS.V$SYSTEM_PARAMETER AS
+SELECT
+    NAME::VARCHAR2(80)                                            AS NAME,
+    CASE
+        WHEN VARTYPE = 'bool'    THEN 1
+        WHEN VARTYPE = 'integer' THEN 3
+        ELSE 2
+    END::NUMBER                                                   AS TYPE,
+    SETTING::VARCHAR2(4000)                                       AS VALUE,
+    BOOT_VAL::VARCHAR2(255)                                       AS DEFAULT_VALUE,
+    CASE WHEN SETTING IS NOT DISTINCT FROM BOOT_VAL THEN 'TRUE'
+         ELSE 'FALSE'
+    END::VARCHAR2(5)                                              AS ISDEFAULT,
+    CASE WHEN CONTEXT IN ('user', 'superuser') THEN 'TRUE'
+         ELSE 'FALSE'
+    END::VARCHAR2(5)                                              AS ISSES_MODIFIABLE,
+    CASE WHEN CONTEXT IN ('user', 'superuser', 'sighup') THEN 'IMMEDIATE'
+         WHEN CONTEXT IN ('postmaster', 'internal') THEN 'FALSE'
+         ELSE 'DEFERRED'
+    END::VARCHAR2(9)                                              AS ISSYS_MODIFIABLE,
+    SHORT_DESC::VARCHAR2(255)                                     AS DESCRIPTION
+FROM PG_CATALOG.PG_SETTINGS;
+GRANT SELECT ON SYS.V$SYSTEM_PARAMETER TO PUBLIC;

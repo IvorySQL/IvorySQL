@@ -493,3 +493,26 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- Oracle-compatible V$SYSTEM_PARAMETER view
+SELECT COUNT(*) = (SELECT COUNT(*) FROM PG_SETTINGS) AS matches_pg_settings
+FROM SYS.V$SYSTEM_PARAMETER;
+ matches_pg_settings 
+---------------------
+ t
+(1 row)
+
+SELECT VALUE = CURRENT_SETTING('shared_buffers') AS value_matches,
+       DEFAULT_VALUE IS NOT NULL AS has_default
+FROM SYS.V$SYSTEM_PARAMETER
+WHERE NAME = 'shared_buffers';
+ value_matches | has_default 
+---------------+-------------
+ f             | t
+(1 row)
+
+SELECT COUNT(*) = COUNT(DISTINCT NAME) AS names_unique FROM SYS.V$SYSTEM_PARAMETER;
+ names_unique 
+--------------
+ t
+(1 row)
+
