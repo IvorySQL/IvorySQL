@@ -430,6 +430,22 @@ BEGIN
 END;
 /
 
+-- Test 6.4: a new write discards unread lines after GET_LINE
+DECLARE
+    line TEXT;
+    status INTEGER;
+BEGIN
+    dbms_output.disable();
+    dbms_output.enable();
+    dbms_output.put_line('old-1');
+    dbms_output.put_line('old-2');
+    dbms_output.get_line(line, status);
+    dbms_output.put_line('new');
+    dbms_output.get_line(line, status);
+    RAISE NOTICE 'Test 6.4 - After new write: [%], Status: %', line, status;
+END;
+/
+
 -- =============================================================================
 -- Section 7: Usage in procedures and functions
 -- =============================================================================

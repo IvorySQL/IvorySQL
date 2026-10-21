@@ -77,6 +77,7 @@ typedef struct DbmsOutputBuffer
 	int64		buffer_used;	/* Content bytes only (user-perceived usage) */
 	int			line_count;		/* Number of lines currently in buffer */
 	bool		enabled;		/* Buffer enabled/disabled state */
+	bool			read_since_write;	/* A GET call left unread lines behind */
 	StringInfo	current_line;	/* Accumulator for PUT calls (not yet a line) */
 	MemoryContext buffer_mcxt;	/* Memory context for buffer allocations */
 } DbmsOutputBuffer;
@@ -98,6 +99,7 @@ static DbmsOutputBuffer *output_buffer = NULL;
 /* Internal function declarations */
 static void init_output_buffer(int64 buffer_size);
 static void cleanup_output_buffer(void);
+static void discard_unread_lines(void);
 static void add_line_to_buffer(const char *line, int line_len);
 static DbmsOutputLine *pop_line_from_buffer(void);
 
@@ -181,6 +183,30 @@ cleanup_output_buffer(void)
 	/* Free buffer structure itself */
 	pfree(output_buffer);
 	output_buffer = NULL;
+}
+
+/*
+ * Oracle discards lines left in the buffer when output is written after a
+ * GET_LINE or GET_LINES call.  Keep the current PUT fragment intact; it is
+ * not a completed output line yet.
+ */
+static void
+discard_unread_lines(void)
+{
+	DbmsOutputLine *line;
+
+	if (output_buffer == NULL || !output_buffer->read_since_write)
+		return;
+
+	while ((line = output_buffer->head) != NULL)
+	{
+		output_buffer->head = line->next;
+		pfree(line);
+	}
+	output_buffer->tail = NULL;
+	output_buffer->buffer_used = 0;
+	output_buffer->line_count = 0;
+	output_buffer->read_since_write = false;
 }
 
 /*
@@ -280,6 +306,7 @@ pop_line_from_buffer(void)
 	/* If list is now empty, clear tail pointer too */
 	if (output_buffer->head == NULL)
 		output_buffer->tail = NULL;
+	output_buffer->read_since_write = true;
 
 	/* Update usage tracking (NULL lines have len = -1, don't count) */
 	if (node->len > 0)
@@ -356,6 +383,7 @@ ora_dbms_output_put_line(PG_FUNCTION_ARGS)
 	/* Silently discard if buffer not enabled (Oracle behavior) */
 	if (output_buffer == NULL || !output_buffer->enabled)
 		PG_RETURN_VOID();
+	discard_unread_lines();
 
 	/* Handle NULL argument - Oracle stores actual NULL */
 	if (PG_ARGISNULL(0))
@@ -420,6 +448,7 @@ ora_dbms_output_put(PG_FUNCTION_ARGS)
 	/* Silently discard if buffer not enabled */
 	if (output_buffer == NULL || !output_buffer->enabled)
 		PG_RETURN_VOID();
+	discard_unread_lines();
 
 	/* Handle NULL argument - treat as empty string (Oracle behavior) */
 	if (PG_ARGISNULL(0))
@@ -453,6 +482,7 @@ ora_dbms_output_new_line(PG_FUNCTION_ARGS)
 	/* Silently discard if buffer not enabled */
 	if (output_buffer == NULL || !output_buffer->enabled)
 		PG_RETURN_VOID();
+	discard_unread_lines();
 
 	/* Flush current_line to buffer as a completed line */
 	if (output_buffer->current_line->len > 0)
