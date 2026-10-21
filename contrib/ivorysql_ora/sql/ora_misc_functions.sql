@@ -2464,3 +2464,8 @@ reset default_text_search_config;
 -- should throw errors, because dummy_config is not a valid configuration name
 set ivorysql.dummy_config to dummy;
 reset ivorysql.dummy_config;
+
+-- Oracle-compatible ROWIDTOCHAR and CHARTOROWID
+SELECT SYS.ROWIDTOCHAR('(0,1)'::SYS.ROWID) AS rowid_text;
+SELECT SYS.CHARTOROWID(SYS.ROWIDTOCHAR('(0,1)'::SYS.ROWID)) = '(0,1)'::SYS.ROWID AS roundtrip;
+SELECT SYS.ROWIDTOCHAR(NULL::SYS.ROWID) IS NULL AS strict_null;
