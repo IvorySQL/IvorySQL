@@ -4521,3 +4521,22 @@ DETAIL:  "ivorysql" is a reserved prefix.
 reset ivorysql.dummy_config;
 ERROR:  invalid configuration parameter name "ivorysql.dummy_config"
 DETAIL:  "ivorysql" is a reserved prefix.
+-- Oracle-compatible SYS_GUID
+SELECT pg_catalog.octet_length(SYS.SYS_GUID()) = 16 AS guid_16_bytes;
+ guid_16_bytes 
+---------------
+ 
+(1 row)
+
+SELECT SYS.RAWTOHEX(SYS.SYS_GUID()) ~ '^[0-9A-F]{32}$' AS guid_hex_shape;
+ guid_hex_shape 
+----------------
+ 
+(1 row)
+
+SELECT SYS.SYS_GUID() <> SYS.SYS_GUID() AS guid_unique;
+ guid_unique 
+-------------
+ 
+(1 row)
+
