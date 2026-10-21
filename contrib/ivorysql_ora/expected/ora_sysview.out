@@ -493,3 +493,33 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- Oracle-compatible extent dictionary views
+DROP TABLE IF EXISTS t_extent_test;
+NOTICE:  table "t_extent_test" does not exist, skipping
+CREATE TABLE t_extent_test (id INT);
+INSERT INTO t_extent_test VALUES (1);
+SELECT SEGMENT_TYPE, EXTENT_ID, BLOCKS >= 1 AS has_blocks
+FROM SYS.USER_EXTENTS
+WHERE SEGMENT_NAME = 'T_EXTENT_TEST';
+ segment_type | extent_id | has_blocks 
+--------------+-----------+------------
+ TABLE        | 0         | t
+(1 row)
+
+SELECT COUNT(*) = 1 AS all_has
+FROM SYS.ALL_EXTENTS
+WHERE SEGMENT_NAME = 'T_EXTENT_TEST';
+ all_has 
+---------
+ t
+(1 row)
+
+SELECT COUNT(*) = 1 AS dba_has
+FROM SYS.DBA_EXTENTS
+WHERE SEGMENT_NAME = 'T_EXTENT_TEST';
+ dba_has 
+---------
+ t
+(1 row)
+
+DROP TABLE t_extent_test;

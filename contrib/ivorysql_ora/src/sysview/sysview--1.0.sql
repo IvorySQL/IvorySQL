@@ -1557,3 +1557,57 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- USER_/ALL_/DBA_EXTENTS: Oracle reports the extent map of a segment.
+-- PostgreSQL does not expose its block map through SQL, so the views report
+-- one extent per relation (EXTENT_ID 0) with the relation's real size in
+-- bytes and blocks.  That is the granularity the catalog actually knows; the
+-- comment says so instead of inventing a multi-extent map.
+CREATE OR REPLACE VIEW SYS.DBA_EXTENTS AS
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128) AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)         AS SEGMENT_NAME,
+    NULL::VARCHAR2(128)                                            AS PARTITION_NAME,
+    CASE C.RELKIND
+        WHEN 'r' THEN 'TABLE'
+        WHEN 'p' THEN 'TABLE PARTITION'
+        WHEN 'm' THEN 'MATERIALIZED VIEW'
+        WHEN 'i' THEN 'INDEX'
+        WHEN 'I' THEN 'INDEX PARTITION'
+        WHEN 'S' THEN 'SEQUENCE'
+        ELSE 'TABLE'
+    END::VARCHAR2(18)                                              AS SEGMENT_TYPE,
+    SYS.ORA_CASE_TRANS(TS.SPCNAME::VARCHAR2)::VARCHAR2(30)         AS TABLESPACE_NAME,
+    0::NUMBER                                                      AS EXTENT_ID,
+    TS.OID::INT8::NUMBER                                           AS FILE_ID,
+    0::NUMBER                                                      AS BLOCK_ID,
+    PG_TOTAL_RELATION_SIZE(C.OID)::NUMBER                          AS BYTES,
+    (PG_TOTAL_RELATION_SIZE(C.OID) / CURRENT_SETTING('block_size')::INT)::NUMBER AS BLOCKS,
+    TS.OID::INT8::NUMBER                                           AS RELATIVE_FNO,
+    C.RELOWNER                                                     AS OWNER_OID,
+    C.OID                                                          AS REL_OID
+FROM PG_CATALOG.PG_CLASS C
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+JOIN PG_CATALOG.PG_TABLESPACE TS
+  ON TS.OID = (CASE WHEN C.RELTABLESPACE = 0
+                    THEN (SELECT DATTABLESPACE FROM PG_CATALOG.PG_DATABASE
+                           WHERE DATNAME = CURRENT_DATABASE())
+                    ELSE C.RELTABLESPACE
+               END)
+WHERE C.RELKIND IN ('r', 'p', 'm', 'i', 'I', 'S', 'f')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast');
+GRANT SELECT ON SYS.DBA_EXTENTS TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.USER_EXTENTS AS
+SELECT SEGMENT_NAME, PARTITION_NAME, SEGMENT_TYPE, TABLESPACE_NAME, EXTENT_ID,
+       FILE_ID, BLOCK_ID, BYTES, BLOCKS, RELATIVE_FNO
+FROM SYS.DBA_EXTENTS
+WHERE OWNER_OID = (SELECT OID FROM PG_CATALOG.PG_ROLES WHERE ROLNAME = CURRENT_USER);
+GRANT SELECT ON SYS.USER_EXTENTS TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.ALL_EXTENTS AS
+SELECT OWNER, SEGMENT_NAME, PARTITION_NAME, SEGMENT_TYPE, TABLESPACE_NAME,
+       EXTENT_ID, FILE_ID, BLOCK_ID, BYTES, BLOCKS, RELATIVE_FNO
+FROM SYS.DBA_EXTENTS
+WHERE HAS_TABLE_PRIVILEGE(REL_OID, 'SELECT');
+GRANT SELECT ON SYS.ALL_EXTENTS TO PUBLIC;
