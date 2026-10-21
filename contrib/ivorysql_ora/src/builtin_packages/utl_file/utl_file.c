@@ -505,6 +505,9 @@ ora_utl_file_fcopy(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				errmsg("end_line must be positive (%d passed)", end_line)));
+	if (end_line < start_line)
+		CUSTOM_EXCEPTION(INVALID_OFFSET,
+						 "end_line must not precede start_line");
 
 	srcfile = fopen(srcpath, "rt");
 

@@ -102,6 +102,18 @@ begin
 end;
 /
 
+-- FCOPY must reject a range whose end precedes its start.
+declare
+begin
+    utl_file.fcopy('data_directory', 'regress2.txt',
+                   'data_directory', 'regress-reversed.txt', 3, 2);
+    raise exception 'FCOPY accepted a reversed line range';
+exception
+    when others then
+        raise notice 'reversed range error=%', sqlerrm;
+end;
+/
+
 -- test fflush, fseek
 declare
     f UTL_FILE.FILE_TYPE;
