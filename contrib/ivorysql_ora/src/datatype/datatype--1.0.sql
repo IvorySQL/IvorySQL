@@ -10762,3 +10762,44 @@ AS IMPLICIT;
 CREATE CAST (text AS text)
 WITH FUNCTION sys.orachar_to_long_with_typmod(text, integer, boolean)
 AS IMPLICIT;
+
+
+/* Casts from the Oracle interval types to the PostgreSQL interval type.  The
+ * Oracle types print a fixed-width external form ('+000000001-02' for a
+ * year-to-month value and '+000000001 00:00:00.000000000' for a day-to-second
+ * value), so the conversion reads that form instead of guessing the internal
+ * layout.  AS ASSIGNMENT keeps operator resolution unchanged. */
+CREATE OR REPLACE FUNCTION sys.yminterval_interval(sys.yminterval)
+RETURNS pg_catalog.interval
+AS $$
+SELECT pg_catalog.make_interval(months =>
+         (CASE WHEN pg_catalog.left($1::text, 1) = '-' THEN -1 ELSE 1 END) *
+         (pg_catalog.substr($1::text, 2, 9)::int * 12 +
+          pg_catalog.substr($1::text, 12, 2)::int))
+$$
+LANGUAGE SQL
+IMMUTABLE STRICT PARALLEL SAFE;
+
+CREATE CAST (sys.yminterval AS pg_catalog.interval)
+WITH FUNCTION sys.yminterval_interval(sys.yminterval)
+AS ASSIGNMENT;
+
+CREATE OR REPLACE FUNCTION sys.dsinterval_interval(sys.dsinterval)
+RETURNS pg_catalog.interval
+AS $$
+SELECT pg_catalog.make_interval(
+           days => V.SIGN * V.DAYS,
+           secs => (V.SIGN * (V.HOURS * 3600 + V.MINS * 60 + V.SECS))::double precision)
+  FROM (SELECT (CASE WHEN pg_catalog.left($1::text, 1) = '-' THEN -1 ELSE 1 END) AS SIGN,
+               pg_catalog.substr($1::text, 2, 9)::int AS DAYS,
+               pg_catalog.split_part(pg_catalog.substr($1::text, 12), ':', 1)::int AS HOURS,
+               pg_catalog.split_part(pg_catalog.substr($1::text, 12), ':', 2)::int AS MINS,
+               pg_catalog.split_part(pg_catalog.substr($1::text, 12), ':', 3)::numeric AS SECS
+       ) V
+$$
+LANGUAGE SQL
+IMMUTABLE STRICT PARALLEL SAFE;
+
+CREATE CAST (sys.dsinterval AS pg_catalog.interval)
+WITH FUNCTION sys.dsinterval_interval(sys.dsinterval)
+AS ASSIGNMENT;
