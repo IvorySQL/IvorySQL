@@ -49,28 +49,17 @@ CREATE OR REPLACE PACKAGE utl_url AS
      *   url_charset            IN VARCHAR2  - character set the characters are
      *                                         converted to before being
      *                                         escaped.  An omitted
-     *                                         url_charset and an explicit
-     *                                         NULL are equivalent here and
-     *                                         both mean the database
-     *                                         encoding, with no conversion.
-     *                                         Oracle distinguishes the two
-     *                                         forms: an omitted argument
-     *                                         defaults to
+     *                                         url_charset defaults to
      *                                         utl_http.body_charset
-     *                                         (ISO-8859-1) while an explicit
-     *                                         NULL selects the database
-     *                                         character set.  Using the
-     *                                         database encoding for both is
-     *                                         a deliberate deviation:
-     *                                         ISO-8859-1 cannot represent
-     *                                         non-Latin text and UTL_HTTP
-     *                                         is not available here.
+     *                                         (ISO-8859-1), while an
+     *                                         explicit NULL selects the
+     *                                         database character set.
      * Returns:
      *   VARCHAR2 - the escaped URL, or NULL when url IS NULL
      */
     FUNCTION escape(url IN VARCHAR2,
                     escape_reserved_chars IN BOOLEAN DEFAULT FALSE,
-                    url_charset IN VARCHAR2 DEFAULT NULL) RETURN VARCHAR2;
+                    url_charset IN VARCHAR2 DEFAULT 'ISO-8859-1') RETURN VARCHAR2;
 
     /*
      * UNESCAPE
@@ -83,13 +72,10 @@ CREATE OR REPLACE PACKAGE utl_url AS
      *   url_charset  IN VARCHAR2 - character set the unescaped bytes are
      *                              assumed to be in; they are converted from
      *                              it to the database encoding.  An omitted
-     *                              url_charset and an explicit NULL are
-     *                              equivalent here and both mean the bytes
-     *                              are already in the database encoding;
-     *                              Oracle's omitted form defaults to
-     *                              utl_http.body_charset (ISO-8859-1)
-     *                              instead (declared deviation, see the
-     *                              ESCAPE documentation above).
+     *                              url_charset defaults to
+     *                              utl_http.body_charset (ISO-8859-1), while
+     *                              an explicit NULL means the bytes are
+     *                              already in the database encoding.
      * Returns:
      *   VARCHAR2 - the unescaped URL, or NULL when url IS NULL
      *
@@ -99,7 +85,7 @@ CREATE OR REPLACE PACKAGE utl_url AS
      * instead returns a string containing a NUL byte).
      */
     FUNCTION unescape(url IN VARCHAR2,
-                      url_charset IN VARCHAR2 DEFAULT NULL) RETURN VARCHAR2;
+                      url_charset IN VARCHAR2 DEFAULT 'ISO-8859-1') RETURN VARCHAR2;
 
 END utl_url;
 
@@ -107,13 +93,13 @@ CREATE OR REPLACE PACKAGE BODY utl_url AS
 
     FUNCTION escape(url IN VARCHAR2,
                     escape_reserved_chars IN BOOLEAN DEFAULT FALSE,
-                    url_charset IN VARCHAR2 DEFAULT NULL) RETURN VARCHAR2 IS
+                    url_charset IN VARCHAR2 DEFAULT 'ISO-8859-1') RETURN VARCHAR2 IS
     BEGIN
         RETURN sys.utl_url_escape(url, escape_reserved_chars, url_charset);
     END;
 
     FUNCTION unescape(url IN VARCHAR2,
-                      url_charset IN VARCHAR2 DEFAULT NULL) RETURN VARCHAR2 IS
+                      url_charset IN VARCHAR2 DEFAULT 'ISO-8859-1') RETURN VARCHAR2 IS
     BEGIN
         RETURN sys.utl_url_unescape(url, url_charset);
     END;
