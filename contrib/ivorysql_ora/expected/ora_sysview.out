@@ -493,3 +493,66 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- Oracle-compatible type attribute dictionary views
+DROP TYPE IF EXISTS t_obj_type;
+NOTICE:  type "t_obj_type" does not exist, skipping
+CREATE TYPE t_obj_type AS (a INT, b TEXT);
+SELECT TYPE_NAME, ATTR_NAME, ATTR_TYPE_NAME, ATTR_NO
+FROM SYS.USER_TYPE_ATTRS
+WHERE TYPE_NAME = 'T_OBJ_TYPE'
+ORDER BY ATTR_NO;
+ type_name  | attr_name | attr_type_name | attr_no 
+------------+-----------+----------------+---------
+ T_OBJ_TYPE | A         | NUMBER         | 1
+ T_OBJ_TYPE | B         | CLOB           | 2
+(2 rows)
+
+SELECT COUNT(*) = 2 AS all_has
+FROM SYS.ALL_TYPE_ATTRS
+WHERE TYPE_NAME = 'T_OBJ_TYPE';
+ all_has 
+---------
+ t
+(1 row)
+
+SELECT COUNT(*) = 2 AS dba_has
+FROM SYS.DBA_TYPE_ATTRS
+WHERE TYPE_NAME = 'T_OBJ_TYPE';
+ dba_has 
+---------
+ t
+(1 row)
+
+DROP TYPE t_obj_type;
+-- TYPE_ATTRS describes CREATE TYPE objects only: a table's row type is not a
+-- type, the attribute type names are Oracle's, and CHAR_USED says whether the
+-- length is in bytes or characters
+CREATE TABLE p_plain_table (a INT, b TEXT);
+CREATE TYPE p_attr_probe AS OBJECT (s VARCHAR2(50 CHAR), n NUMBER(5), d DATE);
+SELECT COUNT(*) = 0 AS table_not_listed
+FROM SYS.ALL_TYPE_ATTRS WHERE TYPE_NAME = 'P_PLAIN_TABLE';
+ table_not_listed 
+------------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 3 AS attrs_listed
+FROM SYS.ALL_TYPE_ATTRS WHERE TYPE_NAME = 'P_ATTR_PROBE';
+ attrs_listed 
+--------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 3 AS attrs_match
+FROM SYS.ALL_TYPE_ATTRS
+WHERE TYPE_NAME = 'P_ATTR_PROBE'
+  AND (   (ATTR_NAME = 'S' AND ATTR_TYPE_NAME = 'VARCHAR2' AND CHAR_USED = 'C')
+       OR (ATTR_NAME = 'N' AND ATTR_TYPE_NAME = 'NUMBER')
+       OR (ATTR_NAME = 'D' AND ATTR_TYPE_NAME = 'DATE'));
+ attrs_match 
+-------------
+ t
+(1 row)
+
+DROP TYPE p_attr_probe;
+DROP TABLE p_plain_table;
