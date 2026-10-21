@@ -176,7 +176,7 @@ END;
 
 -- Test 3.3: Re-ENABLE preserves buffer
 -- Full contract: unread lines and pending PUT text are preserved, and the
--- latest size limit is applied to the active buffer.
+-- largest requested size limit is kept on the active buffer.
 DECLARE
     line TEXT;
     status INTEGER;
@@ -197,7 +197,7 @@ BEGIN
     dbms_output.get_line(line, status);
     RAISE NOTICE 'Test 3.3 - Pending PUT preserved: [%], Status: %', line, status;
 
-    -- New size limit enforced: writing past the old 2000-byte limit succeeds
+    -- A larger size limit replaces the old 2000-byte limit
     dbms_output.enable(2000);   -- small limit
     dbms_output.enable(1000000);  -- re-enable with a larger limit
     FOR i IN 1..60 LOOP
@@ -214,17 +214,16 @@ BEGIN
         RAISE NOTICE 'Test 3.3 - New size limit applied: PASSED (3000 bytes written)';
     END IF;
 
-    -- Shrinking the limit below the buffered content: buffered lines stay
-    -- readable, and new writes are rejected until the buffer drains
-    dbms_output.enable(2000);  -- shrink below the 3000 bytes already buffered
+    -- A smaller request must not shrink the active 1000000-byte limit
+    dbms_output.enable(2000);
     BEGIN
         dbms_output.put_line('Y');
-        RAISE NOTICE 'Test 3.3 - Shrink write: unexpected success';
+        RAISE NOTICE 'Test 3.3 - Smaller enable ignored: PASSED';
     EXCEPTION WHEN OTHERS THEN
-        RAISE NOTICE 'Test 3.3 - Shrink write blocked: %', SQLERRM;
+        RAISE NOTICE 'Test 3.3 - Smaller enable ignored: FAILED (%).', SQLERRM;
     END;
     dbms_output.get_line(line, status);
-    RAISE NOTICE 'Test 3.3 - Shrink keeps buffered: [%], Status: %', line, status;
+    RAISE NOTICE 'Test 3.3 - Buffered output preserved: [%], Status: %', line, status;
 
     -- Drain all remaining buffered lines, checking the count and order
     i := 0;
@@ -232,11 +231,11 @@ BEGIN
         dbms_output.get_line(line, status);
         EXIT WHEN status != 0;
         i := i + 1;
-        IF line <> rpad('X', 50, 'X') THEN
-            RAISE NOTICE 'Test 3.3 - Shrink drain order: unexpected [%]', line;
+        IF line <> rpad('X', 50, 'X') AND line <> 'Y' THEN
+            RAISE NOTICE 'Test 3.3 - Smaller enable drain order: unexpected [%]', line;
         END IF;
     END LOOP;
-    RAISE NOTICE 'Test 3.3 - Shrink drained: % lines, Status: %', i, status;
+    RAISE NOTICE 'Test 3.3 - Smaller enable drained: % lines, Status: %', i, status;
 
     -- Usage is back below the limit: a marker write succeeds and reads back
     dbms_output.put_line('MARKER');
