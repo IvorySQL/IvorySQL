@@ -1557,3 +1557,77 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- USER_UNUSED_COL_TABS: tables of the current user that still carry columns
+-- dropped with ALTER TABLE ... DROP COLUMN.  PostgreSQL marks those columns
+-- attisdropped and keeps the space until the table is rewritten, which is
+-- exactly what this Oracle view reports.
+CREATE OR REPLACE VIEW SYS.USER_UNUSED_COL_TABS AS
+SELECT TABLE_NAME, UNUSED_COLUMNS AS COUNT
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128)   AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)                     AS TABLE_NAME,
+    COUNT(*)::NUMBER                                                           AS UNUSED_COLUMNS,
+    C.RELOWNER                                                                 AS OWNER_OID,
+    C.OID                                                                      AS REL_OID
+FROM PG_CATALOG.PG_ATTRIBUTE A
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = A.ATTRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+WHERE A.ATTISDROPPED
+  AND C.RELKIND IN ('r', 'p', 'm')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+GROUP BY C.RELOWNER, C.RELNAME, C.OID
+
+) S
+WHERE S.OWNER_OID = (SELECT OID FROM PG_CATALOG.PG_ROLES WHERE ROLNAME = CURRENT_USER)
+ORDER BY S.TABLE_NAME;
+GRANT SELECT ON SYS.USER_UNUSED_COL_TABS TO PUBLIC;
+
+-- ALL_UNUSED_COL_TABS: the same rows for tables the current user can read.
+CREATE OR REPLACE VIEW SYS.ALL_UNUSED_COL_TABS AS
+SELECT OWNER, TABLE_NAME, UNUSED_COLUMNS AS COUNT
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128)   AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)                     AS TABLE_NAME,
+    COUNT(*)::NUMBER                                                           AS UNUSED_COLUMNS,
+    C.RELOWNER                                                                 AS OWNER_OID,
+    C.OID                                                                      AS REL_OID
+FROM PG_CATALOG.PG_ATTRIBUTE A
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = A.ATTRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+WHERE A.ATTISDROPPED
+  AND C.RELKIND IN ('r', 'p', 'm')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+GROUP BY C.RELOWNER, C.RELNAME, C.OID
+
+) S
+WHERE HAS_TABLE_PRIVILEGE(S.REL_OID, 'SELECT')
+ORDER BY S.OWNER, S.TABLE_NAME;
+GRANT SELECT ON SYS.ALL_UNUSED_COL_TABS TO PUBLIC;
+
+-- DBA_UNUSED_COL_TABS: unrestricted.
+CREATE OR REPLACE VIEW SYS.DBA_UNUSED_COL_TABS AS
+SELECT OWNER, TABLE_NAME, UNUSED_COLUMNS AS COUNT
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128)   AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)                     AS TABLE_NAME,
+    COUNT(*)::NUMBER                                                           AS UNUSED_COLUMNS,
+    C.RELOWNER                                                                 AS OWNER_OID,
+    C.OID                                                                      AS REL_OID
+FROM PG_CATALOG.PG_ATTRIBUTE A
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = A.ATTRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+WHERE A.ATTISDROPPED
+  AND C.RELKIND IN ('r', 'p', 'm')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+GROUP BY C.RELOWNER, C.RELNAME, C.OID
+
+) S
+ORDER BY S.OWNER, S.TABLE_NAME;
+GRANT SELECT ON SYS.DBA_UNUSED_COL_TABS TO PUBLIC;
