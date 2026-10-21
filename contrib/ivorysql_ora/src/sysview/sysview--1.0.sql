@@ -1557,3 +1557,82 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+--
+-- USER_TAB_PRIVS / ALL_TAB_PRIVS / DBA_TAB_PRIVS: the grants on the
+-- relations, like Oracle's views of the same name.  PUBLIC grants are
+-- reported with the GRANTEE spelled PUBLIC and the owner is reported as the
+-- grantor, because the catalog does not record who granted a privilege.
+--
+CREATE OR REPLACE VIEW SYS.USER_TAB_PRIVS AS
+SELECT
+    (CASE WHEN a.grantee = 0 THEN 'PUBLIC'
+          ELSE pg_catalog.pg_get_userbyid(a.grantee)
+     END)::varchar2(128) AS grantee,
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    pg_catalog.pg_get_userbyid(c.relowner)::varchar2(128) AS grantor,
+    a.privilege_type::varchar2(40) AS privilege,
+    (CASE WHEN a.is_grantable THEN 'YES' ELSE 'NO' END)::varchar2(3) AS grantable
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+CROSS JOIN LATERAL pg_catalog.aclexplode(c.relacl) AS a
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND c.relkind IN ('r','v','m','p','f','S')
+    AND (a.grantee = (SELECT r.oid FROM pg_roles r WHERE r.rolname = current_user)
+         OR pg_catalog.pg_get_userbyid(c.relowner) = current_user);
+
+GRANT SELECT ON SYS.USER_TAB_PRIVS TO PUBLIC;
+
+--
+-- ALL_TAB_PRIVS: the same rows for every relation the current user may
+-- read, with the privilege filter the ALL_ views carry.  PUBLIC grants are
+-- reported with the GRANTEE spelled PUBLIC and the owner is reported as the
+-- grantor, because the catalog does not record who granted a privilege.
+--
+CREATE OR REPLACE VIEW SYS.ALL_TAB_PRIVS AS
+SELECT
+    (CASE WHEN a.grantee = 0 THEN 'PUBLIC'
+          ELSE pg_catalog.pg_get_userbyid(a.grantee)
+     END)::varchar2(128) AS grantee,
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    pg_catalog.pg_get_userbyid(c.relowner)::varchar2(128) AS grantor,
+    a.privilege_type::varchar2(40) AS privilege,
+    (CASE WHEN a.is_grantable THEN 'YES' ELSE 'NO' END)::varchar2(3) AS grantable
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+CROSS JOIN LATERAL pg_catalog.aclexplode(c.relacl) AS a
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND c.relkind IN ('r','v','m','p','f','S')
+    AND pg_catalog.has_table_privilege(current_user, c.oid, 'SELECT');
+
+GRANT SELECT ON SYS.ALL_TAB_PRIVS TO PUBLIC;
+
+--
+-- DBA_TAB_PRIVS: the same rows without the privilege filter, like the
+-- other DBA_ views.  PUBLIC grants are
+-- reported with the GRANTEE spelled PUBLIC and the owner is reported as the
+-- grantor, because the catalog does not record who granted a privilege.
+--
+CREATE OR REPLACE VIEW SYS.DBA_TAB_PRIVS AS
+SELECT
+    (CASE WHEN a.grantee = 0 THEN 'PUBLIC'
+          ELSE pg_catalog.pg_get_userbyid(a.grantee)
+     END)::varchar2(128) AS grantee,
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    pg_catalog.pg_get_userbyid(c.relowner)::varchar2(128) AS grantor,
+    a.privilege_type::varchar2(40) AS privilege,
+    (CASE WHEN a.is_grantable THEN 'YES' ELSE 'NO' END)::varchar2(3) AS grantable
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+CROSS JOIN LATERAL pg_catalog.aclexplode(c.relacl) AS a
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND c.relkind IN ('r','v','m','p','f','S');
+
+
+GRANT SELECT ON SYS.DBA_TAB_PRIVS TO PUBLIC;
