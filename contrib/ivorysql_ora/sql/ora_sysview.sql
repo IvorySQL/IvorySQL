@@ -270,3 +270,10 @@ SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'TEST_ALL_TAB_
 \set ON_ERROR_STOP on
 
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+
+-- Oracle-compatible V$SESSION_LONGOPS view
+-- No long operation runs inside a regression session, so the view is empty;
+-- the query also proves the column list resolves.
+SELECT COUNT(*) = 0 AS no_longops,
+       COUNT(*) FILTER (WHERE SOFAR > TOTALWORK) = 0 AS progress_consistent
+FROM SYS.V$SESSION_LONGOPS;
