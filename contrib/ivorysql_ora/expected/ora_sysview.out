@@ -493,3 +493,53 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- Oracle-compatible product / data dictionary metadata views
+SELECT PRODUCT, VERSION, STATUS FROM SYS.PRODUCT_COMPONENT_VERSION;
+ product  | version | status 
+----------+---------+--------
+ IvorySQL | 19beta1 | Beta
+(1 row)
+
+SELECT PROPERTY_NAME, PROPERTY_VALUE
+FROM SYS.DATABASE_PROPERTIES
+WHERE PROPERTY_NAME IN ('DICT.BASE', 'NLS_CHARACTERSET',
+                        'DEFAULT_PERMANENT_TABLESPACE', 'GLOBAL_DB_NAME')
+ORDER BY PROPERTY_NAME;
+        property_name         |   property_value   
+------------------------------+--------------------
+ DEFAULT_PERMANENT_TABLESPACE | PG_DEFAULT
+ DICT.BASE                    | 2
+ GLOBAL_DB_NAME               | contrib_regression
+ NLS_CHARACTERSET             | UTF8
+(4 rows)
+
+-- DICTIONARY lists the dictionary views themselves
+SELECT TABLE_NAME
+FROM SYS.DICTIONARY
+WHERE TABLE_NAME IN ('DICTIONARY', 'DICT_COLUMNS', 'USER_VIEWS')
+ORDER BY TABLE_NAME;
+  table_name  
+--------------
+ DICTIONARY
+ DICT_COLUMNS
+ USER_VIEWS
+(3 rows)
+
+-- DICT_COLUMNS describes those views, so DICT_COLUMNS must describe itself
+SELECT COLUMN_NAME
+FROM SYS.DICT_COLUMNS
+WHERE TABLE_NAME = 'DICT_COLUMNS'
+ORDER BY COLUMN_NAME;
+ column_name 
+-------------
+ COLUMN_NAME
+ COMMENTS
+ TABLE_NAME
+(3 rows)
+
+SELECT COUNT(*) > 0 AS has_rows FROM SYS.DICTIONARY;
+ has_rows 
+----------
+ t
+(1 row)
+
