@@ -92,7 +92,9 @@ static char *safe_named_location(text *location);
 static text *
 get_line(FILE *fd, size_t max_linesize, int encoding, bool *iseof);
 static char *get_safe_path(text *location, text *filename);
-static void close_all_files(void);
+static void close_all_files(bool preserve_handles);
+static void remember_closed_handle(uint32 sid);
+static bool is_closed_handle(uint32 sid);
 static int copy_text_file(FILE *srcfile, FILE *dstfile,
 						  int start_line, int end_line);
 static void put_lines(FILE *fd, int lines);
@@ -199,6 +201,11 @@ typedef struct FileSlot
 
 static FileSlot	slots[MAX_SLOTS];	/* initialized with zeros */
 
+/* Handles closed by FCLOSE_ALL remain observable through IS_OPEN. */
+static uint32 *closed_handle_ids = NULL;
+static int	closed_handle_count = 0;
+static int	closed_handle_capacity = 0;
+
 static uint32	slotid = INVALID_SLOTID;			/* next slot id */
 static inline uint32
 next_slotid(void)
@@ -266,6 +273,45 @@ free_slot(uint32 sid)
 	}
 
 	return NULL;
+}
+
+static bool
+is_closed_handle(uint32 sid)
+{
+	int i;
+
+	for (i = 0; i < closed_handle_count; i++)
+	{
+		if (closed_handle_ids[i] == sid)
+			return true;
+	}
+
+	return false;
+}
+
+static void
+remember_closed_handle(uint32 sid)
+{
+	int new_capacity;
+
+	if (sid == INVALID_SLOTID || is_closed_handle(sid))
+		return;
+
+	if (closed_handle_count == closed_handle_capacity)
+	{
+		new_capacity = (closed_handle_capacity == 0) ? MAX_SLOTS :
+			closed_handle_capacity * 2;
+
+		if (closed_handle_ids == NULL)
+			closed_handle_ids = MemoryContextAlloc(TopMemoryContext,
+											new_capacity * sizeof(uint32));
+		else
+			closed_handle_ids = repalloc(closed_handle_ids,
+										 new_capacity * sizeof(uint32));
+		closed_handle_capacity = new_capacity;
+	}
+
+	closed_handle_ids[closed_handle_count++] = sid;
 }
 
 static void
@@ -416,10 +462,10 @@ ora_utl_file_is_open(PG_FUNCTION_ARGS)
 	for (int i = 0; i < MAX_SLOTS; i++)
 	{
 		if (slots[i].id == sid)
-			PG_RETURN_BOOL(slots[i].fd != NULL);
+			PG_RETURN_BOOL(true);
 	}
 
-	PG_RETURN_BOOL(false);
+	PG_RETURN_BOOL(is_closed_handle(sid));
 }
 
 /*
@@ -462,7 +508,7 @@ ora_utl_file_fclose(PG_FUNCTION_ARGS)
 Datum
 ora_utl_file_fclose_all(PG_FUNCTION_ARGS)
 {
-	close_all_files();
+	close_all_files(true);
 	PG_RETURN_VOID();
 }
 
@@ -1128,7 +1174,7 @@ get_safe_path(text *location_or_dirname, text *filename)
 }
 
 static void
-close_all_files(void)
+close_all_files(bool preserve_handles)
 {
 	FILE *fd = NULL;
 	bool report_error = false;
@@ -1137,7 +1183,11 @@ close_all_files(void)
 	{
 		if (slots[i].id != INVALID_SLOTID)
 		{
+			uint32 sid = slots[i].id;
 			fd = slots[i].fd;
+
+			if (preserve_handles)
+				remember_closed_handle(sid);
 
 			slots[i].id = INVALID_SLOTID;
 			slots[i].fd = NULL;
@@ -1237,7 +1287,7 @@ resource_cleanup_callback(ResourceReleasePhase phase,
 	/* Close all files if session ended abnormally */
 	if(!isCommit)
 	{
-		close_all_files();
+		close_all_files(false);
 	}
 }
 
@@ -1249,7 +1299,7 @@ resource_cleanup_callback(ResourceReleasePhase phase,
 static void
 BeforeShmemExit_Files(int code, Datum arg)
 {
-	close_all_files();
+	close_all_files(false);
 }
 
 static void

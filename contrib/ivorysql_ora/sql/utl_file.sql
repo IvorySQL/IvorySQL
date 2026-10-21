@@ -343,6 +343,26 @@ begin
 end;
 /
 
+-- FCLOSE_ALL closes the file but preserves the handle state for IS_OPEN.
+declare
+    f UTL_FILE.FILE_TYPE;
+begin
+    f := utl_file.fopen('data_directory', 'regress-fclose-all-state.txt', 'w');
+    utl_file.fclose_all;
+    raise notice 'is_open after fclose_all = %', utl_file.is_open(f);
+    begin
+        utl_file.put_line(f, 'must fail after fclose_all');
+        raise exception 'PUT_LINE accepted an FCLOSE_ALL handle';
+    exception
+        when others then
+            if sqlerrm = 'PUT_LINE accepted an FCLOSE_ALL handle' then
+                raise;
+            end if;
+            raise notice 'I/O after fclose_all error=%', sqlerrm;
+    end;
+end;
+/
+
 -- clean up
 delete from sys.utl_file_directory where dirname = 'data_directory';
 /
