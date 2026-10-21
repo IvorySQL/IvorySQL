@@ -493,3 +493,50 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- Oracle-compatible NLS parameter views
+SELECT PARAMETER, VALUE
+FROM SYS.NLS_SESSION_PARAMETERS
+WHERE PARAMETER IN ('NLS_DATE_FORMAT', 'NLS_TERRITORY', 'NLS_LENGTH_SEMANTICS')
+ORDER BY PARAMETER;
+      parameter       |   value    
+----------------------+------------
+ NLS_DATE_FORMAT      | YYYY-MM-DD
+ NLS_LENGTH_SEMANTICS | byte
+ NLS_TERRITORY        | AMERICA
+(3 rows)
+
+-- A session-level change is visible in the session view only
+SET nls_date_format = 'YYYY/MM/DD';
+SELECT VALUE AS session_value FROM SYS.NLS_SESSION_PARAMETERS
+WHERE PARAMETER = 'NLS_DATE_FORMAT';
+ session_value 
+---------------
+ YYYY/MM/DD
+(1 row)
+
+SELECT VALUE AS instance_value FROM SYS.NLS_INSTANCE_PARAMETERS
+WHERE PARAMETER = 'NLS_DATE_FORMAT';
+ instance_value 
+----------------
+ YYYY-MM-DD
+(1 row)
+
+RESET nls_date_format;
+SELECT VALUE AS restored_value FROM SYS.NLS_SESSION_PARAMETERS
+WHERE PARAMETER = 'NLS_DATE_FORMAT';
+ restored_value 
+----------------
+ YYYY-MM-DD
+(1 row)
+
+SELECT PARAMETER, VALUE
+FROM SYS.NLS_DATABASE_PARAMETERS
+WHERE PARAMETER IN ('NLS_CHARACTERSET', 'NLS_NCHAR_CHARACTERSET', 'NLS_DATE_FORMAT')
+ORDER BY PARAMETER;
+       parameter        |   value    
+------------------------+------------
+ NLS_CHARACTERSET       | UTF8
+ NLS_DATE_FORMAT        | YYYY-MM-DD
+ NLS_NCHAR_CHARACTERSET | UTF8
+(3 rows)
+
