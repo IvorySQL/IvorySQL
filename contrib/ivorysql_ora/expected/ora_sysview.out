@@ -493,3 +493,55 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- Oracle-compatible updatable column dictionary views
+DROP VIEW IF EXISTS v_upd_no;
+NOTICE:  view "v_upd_no" does not exist, skipping
+DROP VIEW IF EXISTS v_upd;
+NOTICE:  view "v_upd" does not exist, skipping
+DROP TABLE IF EXISTS t_upd;
+NOTICE:  table "t_upd" does not exist, skipping
+CREATE TABLE t_upd (id INT GENERATED ALWAYS AS IDENTITY, v TEXT);
+CREATE VIEW v_upd AS SELECT v FROM t_upd;
+CREATE VIEW v_upd_no AS SELECT DISTINCT v FROM t_upd;
+SELECT COLUMN_NAME, UPDATABLE, INSERTABLE, DELETABLE
+FROM SYS.USER_UPDATABLE_COLUMNS
+WHERE TABLE_NAME = 'T_UPD'
+ORDER BY COLUMN_NAME;
+ column_name | updatable | insertable | deletable 
+-------------+-----------+------------+-----------
+ ID          | YES       | NO         | YES
+ V           | YES       | YES        | YES
+(2 rows)
+
+SELECT UPDATABLE FROM SYS.USER_UPDATABLE_COLUMNS WHERE TABLE_NAME = 'V_UPD';
+ updatable 
+-----------
+ YES
+(1 row)
+
+SELECT UPDATABLE FROM SYS.USER_UPDATABLE_COLUMNS WHERE TABLE_NAME = 'V_UPD_NO';
+ updatable 
+-----------
+ NO
+(1 row)
+
+-- T_UPD has two columns, each view one: four rows in total
+SELECT COUNT(*) = 4 AS all_has
+FROM SYS.ALL_UPDATABLE_COLUMNS
+WHERE TABLE_NAME IN ('T_UPD', 'V_UPD', 'V_UPD_NO');
+ all_has 
+---------
+ t
+(1 row)
+
+SELECT COUNT(*) = 4 AS dba_has
+FROM SYS.DBA_UPDATABLE_COLUMNS
+WHERE TABLE_NAME IN ('T_UPD', 'V_UPD', 'V_UPD_NO');
+ dba_has 
+---------
+ t
+(1 row)
+
+DROP VIEW v_upd_no;
+DROP VIEW v_upd;
+DROP TABLE t_upd;
