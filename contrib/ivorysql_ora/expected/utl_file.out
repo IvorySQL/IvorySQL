@@ -314,6 +314,23 @@ exception
 end;
 /
 NOTICE:  caught NO_DATA_FOUND on empty file, sqlerrm=[no data found]
+-- GET_LINE must reject a physical line larger than max_linesize.
+declare
+    f UTL_FILE.FILE_TYPE;
+    line text;
+begin
+    f := utl_file.fopen('data_directory', 'regress_long_line.txt', 'w', 1024);
+    utl_file.put_line(f, '123456');
+    utl_file.fclose(f);
+    f := utl_file.fopen('data_directory', 'regress_long_line.txt', 'r', 5);
+    utl_file.get_line(f, line);
+    raise exception 'GET_LINE accepted a line larger than max_linesize';
+exception
+    when others then
+        raise notice 'long line error=%', sqlerrm;
+end;
+/
+NOTICE:  long line error=line exceeds the max_linesize value
 -- test cases for automatic file closing on session terminated/rollback etc
 declare
     f UTL_FILE.FILE_TYPE;

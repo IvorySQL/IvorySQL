@@ -1395,6 +1395,31 @@ get_line(FILE *fd, size_t max_linesize, int encoding, bool *iseof)
 		*bpt++ = c;
 	}
 
+	/*
+	 * A physical line must fit in the requested buffer.  Do not return a
+	 * prefix and leave the remainder to be mistaken for another line.
+	 * Oracle raises VALUE_ERROR for this case.
+	 */
+	if (!eof && csize == max_linesize)
+	{
+		c = fgetc(fd);
+		if (c != '\n' && c != '\r' && c != EOF)
+		{
+			do
+				c = fgetc(fd);
+			while (c != '\n' && c != EOF);
+
+			CUSTOM_EXCEPTION(VALUE_ERROR,
+							 "line exceeds the max_linesize value");
+		}
+		else if (c == '\r')
+		{
+			c = fgetc(fd);
+			if (c != '\n' && c != EOF)
+				ungetc(c, fd);
+		}
+	}
+
 	if (!eof)
 	{
 		char   *decoded;
