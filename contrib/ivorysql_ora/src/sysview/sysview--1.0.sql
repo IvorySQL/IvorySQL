@@ -1557,3 +1557,94 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- USER_DEPENDENCIES: which relations each view of the current user reads.
+-- PostgreSQL records view references in pg_rewrite/pg_depend; functions are
+-- not covered here, matching Oracle's object types that have an equivalent.
+CREATE OR REPLACE VIEW SYS.USER_DEPENDENCIES AS
+
+SELECT DISTINCT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(V.RELOWNER)::VARCHAR2)::VARCHAR2(128)   AS OWNER,
+    SYS.ORA_CASE_TRANS(V.RELNAME::VARCHAR2)::VARCHAR2(128)                     AS NAME,
+    'VIEW'::VARCHAR2(18)                                                       AS TYPE,
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(T.RELOWNER)::VARCHAR2)::VARCHAR2(128)   AS REFERENCED_OWNER,
+    SYS.ORA_CASE_TRANS(T.RELNAME::VARCHAR2)::VARCHAR2(128)                     AS REFERENCED_NAME,
+    CASE T.RELKIND
+        WHEN 'v' THEN 'VIEW'
+        WHEN 'm' THEN 'MATERIALIZED VIEW'
+        ELSE 'TABLE'
+    END::VARCHAR2(18)                                                          AS REFERENCED_TYPE,
+    NULL::VARCHAR2(128)                                                        AS REFERENCED_LINK_NAME,
+    'HARD'::VARCHAR2(4)                                                        AS DEPENDENCY_TYPE
+FROM PG_CATALOG.PG_REWRITE R
+JOIN PG_CATALOG.PG_CLASS V ON V.OID = R.EV_CLASS
+JOIN PG_CATALOG.PG_DEPEND D
+  ON D.CLASSID = 'pg_rewrite'::REGCLASS
+ AND D.OBJID = R.OID
+ AND D.REFCLASSID = 'pg_class'::REGCLASS
+JOIN PG_CATALOG.PG_CLASS T ON T.OID = D.REFOBJID
+WHERE V.RELKIND = 'v'
+  AND V.OID <> T.OID
+  AND T.RELKIND IN ('r', 'p', 'v', 'm', 'f')
+
+  AND V.RELOWNER = (SELECT OID FROM PG_CATALOG.PG_ROLES WHERE ROLNAME = CURRENT_USER);
+GRANT SELECT ON SYS.USER_DEPENDENCIES TO PUBLIC;
+
+-- ALL_DEPENDENCIES: the same rows for every view the current user can read.
+CREATE OR REPLACE VIEW SYS.ALL_DEPENDENCIES AS
+
+SELECT DISTINCT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(V.RELOWNER)::VARCHAR2)::VARCHAR2(128)   AS OWNER,
+    SYS.ORA_CASE_TRANS(V.RELNAME::VARCHAR2)::VARCHAR2(128)                     AS NAME,
+    'VIEW'::VARCHAR2(18)                                                       AS TYPE,
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(T.RELOWNER)::VARCHAR2)::VARCHAR2(128)   AS REFERENCED_OWNER,
+    SYS.ORA_CASE_TRANS(T.RELNAME::VARCHAR2)::VARCHAR2(128)                     AS REFERENCED_NAME,
+    CASE T.RELKIND
+        WHEN 'v' THEN 'VIEW'
+        WHEN 'm' THEN 'MATERIALIZED VIEW'
+        ELSE 'TABLE'
+    END::VARCHAR2(18)                                                          AS REFERENCED_TYPE,
+    NULL::VARCHAR2(128)                                                        AS REFERENCED_LINK_NAME,
+    'HARD'::VARCHAR2(4)                                                        AS DEPENDENCY_TYPE
+FROM PG_CATALOG.PG_REWRITE R
+JOIN PG_CATALOG.PG_CLASS V ON V.OID = R.EV_CLASS
+JOIN PG_CATALOG.PG_DEPEND D
+  ON D.CLASSID = 'pg_rewrite'::REGCLASS
+ AND D.OBJID = R.OID
+ AND D.REFCLASSID = 'pg_class'::REGCLASS
+JOIN PG_CATALOG.PG_CLASS T ON T.OID = D.REFOBJID
+WHERE V.RELKIND = 'v'
+  AND V.OID <> T.OID
+  AND T.RELKIND IN ('r', 'p', 'v', 'm', 'f')
+
+  AND HAS_TABLE_PRIVILEGE(V.OID, 'SELECT');
+GRANT SELECT ON SYS.ALL_DEPENDENCIES TO PUBLIC;
+
+-- DBA_DEPENDENCIES: unrestricted.
+CREATE OR REPLACE VIEW SYS.DBA_DEPENDENCIES AS
+
+SELECT DISTINCT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(V.RELOWNER)::VARCHAR2)::VARCHAR2(128)   AS OWNER,
+    SYS.ORA_CASE_TRANS(V.RELNAME::VARCHAR2)::VARCHAR2(128)                     AS NAME,
+    'VIEW'::VARCHAR2(18)                                                       AS TYPE,
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(T.RELOWNER)::VARCHAR2)::VARCHAR2(128)   AS REFERENCED_OWNER,
+    SYS.ORA_CASE_TRANS(T.RELNAME::VARCHAR2)::VARCHAR2(128)                     AS REFERENCED_NAME,
+    CASE T.RELKIND
+        WHEN 'v' THEN 'VIEW'
+        WHEN 'm' THEN 'MATERIALIZED VIEW'
+        ELSE 'TABLE'
+    END::VARCHAR2(18)                                                          AS REFERENCED_TYPE,
+    NULL::VARCHAR2(128)                                                        AS REFERENCED_LINK_NAME,
+    'HARD'::VARCHAR2(4)                                                        AS DEPENDENCY_TYPE
+FROM PG_CATALOG.PG_REWRITE R
+JOIN PG_CATALOG.PG_CLASS V ON V.OID = R.EV_CLASS
+JOIN PG_CATALOG.PG_DEPEND D
+  ON D.CLASSID = 'pg_rewrite'::REGCLASS
+ AND D.OBJID = R.OID
+ AND D.REFCLASSID = 'pg_class'::REGCLASS
+JOIN PG_CATALOG.PG_CLASS T ON T.OID = D.REFOBJID
+WHERE V.RELKIND = 'v'
+  AND V.OID <> T.OID
+  AND T.RELKIND IN ('r', 'p', 'v', 'm', 'f')
+;
+GRANT SELECT ON SYS.DBA_DEPENDENCIES TO PUBLIC;

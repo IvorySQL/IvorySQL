@@ -493,3 +493,37 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- Oracle-compatible dependency dictionary views
+DROP VIEW IF EXISTS v_dep_test;
+NOTICE:  view "v_dep_test" does not exist, skipping
+DROP TABLE IF EXISTS t_dep_test;
+NOTICE:  table "t_dep_test" does not exist, skipping
+CREATE TABLE t_dep_test (id INT PRIMARY KEY, name TEXT);
+CREATE VIEW v_dep_test AS SELECT id, name FROM t_dep_test;
+SELECT NAME, TYPE, REFERENCED_NAME, REFERENCED_TYPE, DEPENDENCY_TYPE
+FROM SYS.USER_DEPENDENCIES
+WHERE NAME = 'V_DEP_TEST'
+ORDER BY REFERENCED_NAME;
+    name    | type | referenced_name | referenced_type | dependency_type 
+------------+------+-----------------+-----------------+-----------------
+ V_DEP_TEST | VIEW | T_DEP_TEST      | TABLE           | HARD
+(1 row)
+
+SELECT COUNT(*) = 1 AS all_has
+FROM SYS.ALL_DEPENDENCIES
+WHERE NAME = 'V_DEP_TEST';
+ all_has 
+---------
+ t
+(1 row)
+
+SELECT COUNT(*) = 1 AS dba_has
+FROM SYS.DBA_DEPENDENCIES
+WHERE NAME = 'V_DEP_TEST';
+ dba_has 
+---------
+ t
+(1 row)
+
+DROP VIEW v_dep_test;
+DROP TABLE t_dep_test;
