@@ -1557,3 +1557,169 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- USER_IND_STATISTICS: optimizer statistics of the current user's indexes.
+-- PostgreSQL keeps index statistics in pg_statistic keyed by the index
+-- relation, so NUM_ROWS/LEAF_BLOCKS come from pg_class and DISTINCT_KEYS
+-- from the first indexed column.  Fields without a PostgreSQL source are
+-- NULL rather than invented.
+CREATE OR REPLACE VIEW SYS.USER_IND_STATISTICS AS
+SELECT INDEX_OWNER, INDEX_NAME, TABLE_OWNER, TABLE_NAME, PARTITION_NAME,
+       PARTITION_POSITION, SUBPARTITION_NAME, SUBPARTITION_POSITION,
+       OBJECT_TYPE, LAST_ANALYZED, NUM_ROWS, LEAF_BLOCKS, DISTINCT_KEYS,
+       AVG_LEAF_BLOCKS_PER_KEY, AVG_DATA_BLOCKS_PER_KEY, CLUSTERING_FACTOR,
+       STATUS, NUM_DISTINCT, SAMPLE_SIZE, GLOBAL_STATS, USER_STATS,
+       STALE_STATS, NOTE
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(IC.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS INDEX_OWNER,
+    SYS.ORA_CASE_TRANS(IC.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS INDEX_NAME,
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(TC.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS TABLE_OWNER,
+    SYS.ORA_CASE_TRANS(TC.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS TABLE_NAME,
+    NULL::VARCHAR2(128)                                                        AS PARTITION_NAME,
+    NULL::NUMBER                                                               AS PARTITION_POSITION,
+    NULL::VARCHAR2(128)                                                        AS SUBPARTITION_NAME,
+    NULL::NUMBER                                                               AS SUBPARTITION_POSITION,
+    'INDEX'::VARCHAR2(13)                                                      AS OBJECT_TYPE,
+    NULL::TIMESTAMPTZ                                                          AS LAST_ANALYZED,
+    CASE WHEN IC.RELTUPLES < 0 THEN NULL
+         ELSE ROUND(IC.RELTUPLES)::NUMBER
+    END                                                                        AS NUM_ROWS,
+    IC.RELPAGES::NUMBER                                                        AS LEAF_BLOCKS,
+    (SELECT CASE WHEN S.STADISTINCT >= 0 THEN ROUND(S.STADISTINCT)::NUMBER END
+       FROM PG_CATALOG.PG_STATISTIC S
+      WHERE S.STARELID = IC.OID AND S.STAATTNUM = 1
+      LIMIT 1)                                                                 AS DISTINCT_KEYS,
+    NULL::NUMBER                                                               AS AVG_LEAF_BLOCKS_PER_KEY,
+    NULL::NUMBER                                                               AS AVG_DATA_BLOCKS_PER_KEY,
+    NULL::NUMBER                                                               AS CLUSTERING_FACTOR,
+    'VALID'::VARCHAR2(8)                                                       AS STATUS,
+    (SELECT CASE WHEN S.STADISTINCT >= 0 THEN ROUND(S.STADISTINCT)::NUMBER END
+       FROM PG_CATALOG.PG_STATISTIC S
+      WHERE S.STARELID = IC.OID AND S.STAATTNUM = 1
+      LIMIT 1)                                                                 AS NUM_DISTINCT,
+    NULL::NUMBER                                                               AS SAMPLE_SIZE,
+    'YES'::VARCHAR2(3)                                                         AS GLOBAL_STATS,
+    'NO'::VARCHAR2(3)                                                          AS USER_STATS,
+    CASE WHEN IC.RELTUPLES < 0 THEN 'YES' ELSE 'NO' END::VARCHAR2(3)           AS STALE_STATS,
+    NULL::VARCHAR2(4000)                                                       AS NOTE,
+    TC.OID                                                                     AS TABLE_OID
+FROM PG_CATALOG.PG_INDEX I
+JOIN PG_CATALOG.PG_CLASS IC ON IC.OID = I.INDEXRELID
+JOIN PG_CATALOG.PG_CLASS TC ON TC.OID = I.INDRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = TC.RELNAMESPACE
+WHERE IC.RELKIND = 'i'
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+WHERE S.INDEX_OWNER = SYS.ORA_CASE_TRANS(CURRENT_USER::VARCHAR2);
+GRANT SELECT ON SYS.USER_IND_STATISTICS TO PUBLIC;
+
+-- ALL_IND_STATISTICS: the same rows for indexes on tables the current user
+-- can read.
+CREATE OR REPLACE VIEW SYS.ALL_IND_STATISTICS AS
+SELECT INDEX_OWNER, INDEX_NAME, TABLE_OWNER, TABLE_NAME, PARTITION_NAME,
+       PARTITION_POSITION, SUBPARTITION_NAME, SUBPARTITION_POSITION,
+       OBJECT_TYPE, LAST_ANALYZED, NUM_ROWS, LEAF_BLOCKS, DISTINCT_KEYS,
+       AVG_LEAF_BLOCKS_PER_KEY, AVG_DATA_BLOCKS_PER_KEY, CLUSTERING_FACTOR,
+       STATUS, NUM_DISTINCT, SAMPLE_SIZE, GLOBAL_STATS, USER_STATS,
+       STALE_STATS, NOTE
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(IC.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS INDEX_OWNER,
+    SYS.ORA_CASE_TRANS(IC.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS INDEX_NAME,
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(TC.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS TABLE_OWNER,
+    SYS.ORA_CASE_TRANS(TC.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS TABLE_NAME,
+    NULL::VARCHAR2(128)                                                        AS PARTITION_NAME,
+    NULL::NUMBER                                                               AS PARTITION_POSITION,
+    NULL::VARCHAR2(128)                                                        AS SUBPARTITION_NAME,
+    NULL::NUMBER                                                               AS SUBPARTITION_POSITION,
+    'INDEX'::VARCHAR2(13)                                                      AS OBJECT_TYPE,
+    NULL::TIMESTAMPTZ                                                          AS LAST_ANALYZED,
+    CASE WHEN IC.RELTUPLES < 0 THEN NULL
+         ELSE ROUND(IC.RELTUPLES)::NUMBER
+    END                                                                        AS NUM_ROWS,
+    IC.RELPAGES::NUMBER                                                        AS LEAF_BLOCKS,
+    (SELECT CASE WHEN S.STADISTINCT >= 0 THEN ROUND(S.STADISTINCT)::NUMBER END
+       FROM PG_CATALOG.PG_STATISTIC S
+      WHERE S.STARELID = IC.OID AND S.STAATTNUM = 1
+      LIMIT 1)                                                                 AS DISTINCT_KEYS,
+    NULL::NUMBER                                                               AS AVG_LEAF_BLOCKS_PER_KEY,
+    NULL::NUMBER                                                               AS AVG_DATA_BLOCKS_PER_KEY,
+    NULL::NUMBER                                                               AS CLUSTERING_FACTOR,
+    'VALID'::VARCHAR2(8)                                                       AS STATUS,
+    (SELECT CASE WHEN S.STADISTINCT >= 0 THEN ROUND(S.STADISTINCT)::NUMBER END
+       FROM PG_CATALOG.PG_STATISTIC S
+      WHERE S.STARELID = IC.OID AND S.STAATTNUM = 1
+      LIMIT 1)                                                                 AS NUM_DISTINCT,
+    NULL::NUMBER                                                               AS SAMPLE_SIZE,
+    'YES'::VARCHAR2(3)                                                         AS GLOBAL_STATS,
+    'NO'::VARCHAR2(3)                                                          AS USER_STATS,
+    CASE WHEN IC.RELTUPLES < 0 THEN 'YES' ELSE 'NO' END::VARCHAR2(3)           AS STALE_STATS,
+    NULL::VARCHAR2(4000)                                                       AS NOTE,
+    TC.OID                                                                     AS TABLE_OID
+FROM PG_CATALOG.PG_INDEX I
+JOIN PG_CATALOG.PG_CLASS IC ON IC.OID = I.INDEXRELID
+JOIN PG_CATALOG.PG_CLASS TC ON TC.OID = I.INDRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = TC.RELNAMESPACE
+WHERE IC.RELKIND = 'i'
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+WHERE HAS_TABLE_PRIVILEGE(S.TABLE_OID, 'SELECT');
+GRANT SELECT ON SYS.ALL_IND_STATISTICS TO PUBLIC;
+
+-- DBA_IND_STATISTICS: unrestricted.
+CREATE OR REPLACE VIEW SYS.DBA_IND_STATISTICS AS
+SELECT INDEX_OWNER, INDEX_NAME, TABLE_OWNER, TABLE_NAME, PARTITION_NAME,
+       PARTITION_POSITION, SUBPARTITION_NAME, SUBPARTITION_POSITION,
+       OBJECT_TYPE, LAST_ANALYZED, NUM_ROWS, LEAF_BLOCKS, DISTINCT_KEYS,
+       AVG_LEAF_BLOCKS_PER_KEY, AVG_DATA_BLOCKS_PER_KEY, CLUSTERING_FACTOR,
+       STATUS, NUM_DISTINCT, SAMPLE_SIZE, GLOBAL_STATS, USER_STATS,
+       STALE_STATS, NOTE
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(IC.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS INDEX_OWNER,
+    SYS.ORA_CASE_TRANS(IC.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS INDEX_NAME,
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(TC.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS TABLE_OWNER,
+    SYS.ORA_CASE_TRANS(TC.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS TABLE_NAME,
+    NULL::VARCHAR2(128)                                                        AS PARTITION_NAME,
+    NULL::NUMBER                                                               AS PARTITION_POSITION,
+    NULL::VARCHAR2(128)                                                        AS SUBPARTITION_NAME,
+    NULL::NUMBER                                                               AS SUBPARTITION_POSITION,
+    'INDEX'::VARCHAR2(13)                                                      AS OBJECT_TYPE,
+    NULL::TIMESTAMPTZ                                                          AS LAST_ANALYZED,
+    CASE WHEN IC.RELTUPLES < 0 THEN NULL
+         ELSE ROUND(IC.RELTUPLES)::NUMBER
+    END                                                                        AS NUM_ROWS,
+    IC.RELPAGES::NUMBER                                                        AS LEAF_BLOCKS,
+    (SELECT CASE WHEN S.STADISTINCT >= 0 THEN ROUND(S.STADISTINCT)::NUMBER END
+       FROM PG_CATALOG.PG_STATISTIC S
+      WHERE S.STARELID = IC.OID AND S.STAATTNUM = 1
+      LIMIT 1)                                                                 AS DISTINCT_KEYS,
+    NULL::NUMBER                                                               AS AVG_LEAF_BLOCKS_PER_KEY,
+    NULL::NUMBER                                                               AS AVG_DATA_BLOCKS_PER_KEY,
+    NULL::NUMBER                                                               AS CLUSTERING_FACTOR,
+    'VALID'::VARCHAR2(8)                                                       AS STATUS,
+    (SELECT CASE WHEN S.STADISTINCT >= 0 THEN ROUND(S.STADISTINCT)::NUMBER END
+       FROM PG_CATALOG.PG_STATISTIC S
+      WHERE S.STARELID = IC.OID AND S.STAATTNUM = 1
+      LIMIT 1)                                                                 AS NUM_DISTINCT,
+    NULL::NUMBER                                                               AS SAMPLE_SIZE,
+    'YES'::VARCHAR2(3)                                                         AS GLOBAL_STATS,
+    'NO'::VARCHAR2(3)                                                          AS USER_STATS,
+    CASE WHEN IC.RELTUPLES < 0 THEN 'YES' ELSE 'NO' END::VARCHAR2(3)           AS STALE_STATS,
+    NULL::VARCHAR2(4000)                                                       AS NOTE,
+    TC.OID                                                                     AS TABLE_OID
+FROM PG_CATALOG.PG_INDEX I
+JOIN PG_CATALOG.PG_CLASS IC ON IC.OID = I.INDEXRELID
+JOIN PG_CATALOG.PG_CLASS TC ON TC.OID = I.INDRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = TC.RELNAMESPACE
+WHERE IC.RELKIND = 'i'
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S;
+GRANT SELECT ON SYS.DBA_IND_STATISTICS TO PUBLIC;
