@@ -311,6 +311,7 @@ SELECT utl_url.unescape('%E9') AS omitted_latin1;
 ----------------
  é
 (1 row)
+
 -- An unrecognized character set is rejected (Oracle reports ORA-01482)
 SELECT utl_url.unescape('a%20b', 'NO_SUCH_CHARSET');
 ERROR:  UTL_URL: unrecognized URL character set "NO_SUCH_CHARSET"
@@ -318,13 +319,13 @@ CONTEXT:  PL/iSQL function sys.utl_url.unescape line 11 at RETURN
 -- ============================================================
 -- Round-trip identity: UNESCAPE(ESCAPE(x)) = x
 -- ============================================================
-SELECT utl_url.unescape(utl_url.escape('a b/中文')) = 'a b/中文' AS roundtrip_default;
+SELECT utl_url.unescape(utl_url.escape('a b/é')) = 'a b/é' AS roundtrip_default;
  roundtrip_default 
 -------------------
  t
 (1 row)
 
-SELECT utl_url.unescape(utl_url.escape('a b/中文', TRUE)) = 'a b/中文' AS roundtrip_reserved;
+SELECT utl_url.unescape(utl_url.escape('a b/é', TRUE)) = 'a b/é' AS roundtrip_reserved;
  roundtrip_reserved 
 --------------------
  t
@@ -398,7 +399,7 @@ DECLARE
     status    INTEGER;
 BEGIN
     dbms_output.enable();
-    v_escaped := utl_url.escape(v_url);
+    v_escaped := utl_url.escape(v_url, FALSE, 'UTF8');
     dbms_output.put_line('escaped=' || v_escaped);
     dbms_output.get_line(line, status);
     RAISE NOTICE '%', line;

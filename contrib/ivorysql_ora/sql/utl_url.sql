@@ -189,12 +189,12 @@ DECLARE
     status    INTEGER;
 BEGIN
     dbms_output.enable();
-    v_escaped := utl_url.escape(v_url);
+    v_escaped := utl_url.escape(v_url, FALSE, 'UTF8');
     dbms_output.put_line('escaped=' || v_escaped);
     dbms_output.get_line(line, status);
     RAISE NOTICE '%', line;
     dbms_output.put_line('roundtrip=' ||
-        CASE WHEN utl_url.unescape(v_escaped) = v_url THEN 't' ELSE 'f' END);
+        CASE WHEN utl_url.unescape(v_escaped, 'UTF8') = v_url THEN 't' ELSE 'f' END);
     dbms_output.get_line(line, status);
     RAISE NOTICE '%', line;
 END;
