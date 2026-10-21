@@ -493,3 +493,33 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- Oracle-compatible tablespace usage metrics views
+SELECT TABLESPACE_NAME,
+       USED_SPACE >= 0 AS used_ok,
+       TABLESPACE_SIZE > 0 AS size_ok,
+       USED_PERCENT BETWEEN 0 AND 100 AS percent_ok
+FROM SYS.V$TABLESPACE_USAGE_METRICS
+WHERE TABLESPACE_NAME = 'PG_DEFAULT';
+ tablespace_name | used_ok | size_ok | percent_ok 
+-----------------+---------+---------+------------
+ PG_DEFAULT      | t       | t       | t
+(1 row)
+
+SELECT TABLESPACE_NAME,
+       USED_BLOCKS = USED_BYTES / CURRENT_SETTING('block_size')::INT AS blocks_match,
+       ALLOCATED_BYTES > 0 AS allocated_ok,
+       READ_ONLY
+FROM SYS.DBA_TABLESPACE_USAGE_METRICS
+WHERE TABLESPACE_NAME = 'PG_DEFAULT';
+ tablespace_name | blocks_match | allocated_ok | read_only 
+-----------------+--------------+--------------+-----------
+ PG_DEFAULT      | t            | t            | NO
+(1 row)
+
+SELECT COUNT(*) = (SELECT COUNT(*) FROM PG_TABLESPACE) AS all_tablespaces
+FROM SYS.V$TABLESPACE_USAGE_METRICS;
+ all_tablespaces 
+-----------------
+ t
+(1 row)
+
