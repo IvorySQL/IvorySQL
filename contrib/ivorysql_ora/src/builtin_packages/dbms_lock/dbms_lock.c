@@ -57,6 +57,7 @@
 #define DBMS_LOCK_INVALID_HANDLE  5 
 
 #define DBMS_LOCK_HANDLE_LENGTH 64	
+#define DBMS_LOCK_MAXWAIT       32767
 /*
  * 0x9e3779b9 = 2654435769 
  * derived from 2**32/PHI(golden ratio)
@@ -259,7 +260,7 @@ ivorysql_dbms_lock_request(PG_FUNCTION_ARGS)
     if (dbms_lock_hash_table == NULL)
 	    dbms_lock_init_hash_table();
 
-    if (timeout < 0)
+	if (timeout < 0 || timeout > DBMS_LOCK_MAXWAIT)
         PG_RETURN_INT32(DBMS_LOCK_PARAM_ERROR);
 
     while (true)

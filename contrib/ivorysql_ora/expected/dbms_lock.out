@@ -63,6 +63,20 @@ $$;
 NOTICE:  mode=not found
 --
 commit;
+
+-- Oracle's MAXWAIT is 32767; larger timeouts are parameter errors.
+declare
+ v_handle text;
+ v_rc int;
+begin
+ dbms_lock.allocate_unique('LOCK_TIMEOUT_LIMIT', v_handle);
+ v_rc := dbms_lock.request(v_handle, dbms_lock.s_mode, 32768);
+ raise notice 'timeout above maxwait rc=%', v_rc;
+ assert v_rc = dbms_lock.parameter_error,
+        format('DBMS_LOCK.request accepted timeout above MAXWAIT: rc=%s', v_rc);
+end;
+/
+NOTICE:  timeout above maxwait rc=3
 --
 -- test DBMS_LOCK.X
 --
