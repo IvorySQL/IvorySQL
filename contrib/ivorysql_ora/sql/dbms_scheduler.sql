@@ -815,3 +815,21 @@ DROP PROCEDURE sched_reg_proc;
 DELETE FROM sys.scheduler_job_run_details;
 DROP ROLE regress_dbms_scheduler;
 RESET timezone;
+
+
+-- Oracle-compatible DBA_JOBS / USER_JOBS over the scheduler
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_jobs_view', job_type => 'PLSQL_BLOCK',
+      job_action => 'BEGIN NULL; END;', enabled => false);
+END;
+/
+SELECT broken, what, failures
+FROM user_jobs
+WHERE lower(log_user) = lower(current_user) AND what = 'BEGIN NULL; END;';
+SELECT COUNT(*) = 1 AS dba_has
+FROM dba_jobs
+WHERE lower(log_user) = lower(current_user) AND what = 'BEGIN NULL; END;';
+BEGIN
+  dbms_scheduler.drop_job('reg_jobs_view');
+END;
+/
