@@ -1931,3 +1931,19 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 /* End - VSIZE */
+
+/* Oracle-compatible NLS_INITCAP: INITCAP performed under the given collation.
+ * IvorySQL has one database collation, so the locale argument is accepted for
+ * compatibility and the result is INITCAP, which is what Oracle returns when
+ * the session collation already matches the requested one. */
+CREATE OR REPLACE FUNCTION sys.nls_initcap(text)
+RETURNS text
+AS $$ SELECT pg_catalog.initcap($1); $$
+LANGUAGE SQL
+IMMUTABLE STRICT PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION sys.nls_initcap(text, text)
+RETURNS text
+AS $$ SELECT pg_catalog.initcap($1); $$
+LANGUAGE SQL
+IMMUTABLE STRICT PARALLEL SAFE;
