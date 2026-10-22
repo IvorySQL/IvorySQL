@@ -493,3 +493,17 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- Oracle-compatible V$EVENT_NAME
+SELECT COUNT(*) = (SELECT COUNT(*) FROM PG_CATALOG.PG_WAIT_EVENTS) AS all_events
+FROM SYS.V$EVENT_NAME;
+ all_events 
+------------
+ t
+(1 row)
+
+SELECT COUNT(*) > 0 AS has_io_class FROM SYS.V$EVENT_NAME WHERE WAIT_CLASS = 'IO';
+ has_io_class 
+--------------
+ t
+(1 row)
+
