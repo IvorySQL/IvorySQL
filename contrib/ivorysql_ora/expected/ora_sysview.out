@@ -493,3 +493,42 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- The arguments views know a parameter has a default (DEFAULTED='Y'); they must
+-- also show the default expression and its length instead of NULL
+CREATE OR REPLACE FUNCTION f_default_probe(a INT, b VARCHAR2 DEFAULT 'x',
+                                          c NUMBER DEFAULT 42) RETURN INT IS
+BEGIN
+    RETURN a;
+END;
+/
+SELECT ARGUMENT_NAME, POSITION, DEFAULTED, DEFAULT_VALUE, DEFAULT_LENGTH
+FROM SYS.ALL_ARGUMENTS
+WHERE OBJECT_NAME = 'F_DEFAULT_PROBE' AND POSITION > 0
+ORDER BY POSITION;
+ argument_name | position | defaulted | default_value | default_length 
+---------------+----------+-----------+---------------+----------------
+ A             | 1        | N         |               | 
+ B             | 2        | Y         | 'x'::varchar2 | 13
+ C             | 3        | Y         | 42            | 2
+(3 rows)
+
+SELECT (SELECT COUNT(*) FROM SYS.DBA_ARGUMENTS
+        WHERE OBJECT_NAME = 'F_DEFAULT_PROBE' AND DEFAULT_VALUE IS NOT NULL
+          AND POSITION > 0)
+     = (SELECT COUNT(*) FROM SYS.ALL_ARGUMENTS
+        WHERE OBJECT_NAME = 'F_DEFAULT_PROBE' AND DEFAULT_VALUE IS NOT NULL
+          AND POSITION > 0) AS dba_matches_all;
+ dba_matches_all 
+-----------------
+ t
+(1 row)
+
+SELECT (SELECT COUNT(*) FROM SYS.USER_ARGUMENTS
+        WHERE OBJECT_NAME = 'F_DEFAULT_PROBE' AND DEFAULT_VALUE IS NOT NULL
+          AND POSITION > 0) AS user_defaults_visible;
+ user_defaults_visible 
+-----------------------
+                     2
+(1 row)
+
+DROP FUNCTION f_default_probe(INT, VARCHAR2, NUMBER);
