@@ -1327,66 +1327,79 @@ ORDER BY
     owner, table_name, constraint_name, position;
 GRANT SELECT ON SYS.all_cons_columns TO PUBLIC;
 /* USER_CONS_COLUMNS */
+-- USER_CONS_COLUMNS is the current user's slice of ALL_CONS_COLUMNS.  Both
+-- views have to come from the same source: reading pg_constraint here made the
+-- same NOT NULL constraint carry PostgreSQL's own name in this view and a
+-- synthesised name in ALL_CONS_COLUMNS, and listed a NOT NULL row for a column
+-- that ALL_CONS_COLUMNS skips because a primary key already covers it.
+-- Oracle's USER_ views do not carry OWNER, so it is not exposed here either.
 CREATE OR REPLACE VIEW SYS.USER_CONS_COLUMNS AS
 	SELECT
-		SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128) AS OWNER,
-		SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128) AS TABLE_NAME,
-		SYS.ORA_CASE_TRANS(CON.CONNAME::VARCHAR2)::VARCHAR2(128) AS CONSTRAINT_NAME,
-		SYS.ORA_CASE_TRANS(ATT.ATTNAME::VARCHAR2)::VARCHAR2(128) AS COLUMN_NAME,
-		ARRAY_POSITION(CON.CONKEY, ATT.ATTNUM)::NUMBER AS POSITION
-	FROM
-		PG_CONSTRAINT AS CON
-	JOIN PG_CLASS AS C
-		ON CON.CONRELID = C.OID
-	JOIN PG_ATTRIBUTE AS ATT
-		ON ATT.ATTRELID = C.OID
-		AND ATT.ATTNUM = ANY(CON.CONKEY)
-	WHERE
-		C.RELOWNER::REGROLE = CURRENT_USER::REGROLE
-		AND C.RELNAMESPACE != 'PG_CATALOG'::REGNAMESPACE::OID
-		AND C.RELNAMESPACE != 'PG_TOAST'::REGNAMESPACE::OID
-		AND C.RELNAMESPACE != 'INFORMATION_SCHEMA'::REGNAMESPACE::OID
-ORDER BY
-	TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME
-; 
+		TABLE_NAME,
+		CONSTRAINT_NAME,
+		COLUMN_NAME,
+		POSITION
+	FROM SYS.ALL_CONS_COLUMNS
+	WHERE OWNER = SYS.ORA_CASE_TRANS(CURRENT_USER::VARCHAR2)
+;
 GRANT SELECT ON SYS.USER_CONS_COLUMNS TO PUBLIC;
 
 
--- DBA_CONS_COLUMNS (including NOT NULL constraints)
-CREATE OR REPLACE VIEW sys.dba_cons_columns AS
--- Regular constraints (PRIMARY KEY, UNIQUE, FOREIGN KEY, CHECK, etc.)
+-- DBA_CONS_COLUMNS: the same rows as ALL_CONS_COLUMNS without the privilege
+-- filters.  It used to read pg_constraint and pg_attribute side by side, which
+-- returned every NOT NULL constraint twice (PostgreSQL's own name plus a
+-- synthesised one), exposed system columns such as CTID/CMAX as NOT NULL
+-- constraints, and added a NOT NULL row for columns a primary key covers.
+CREATE OR REPLACE VIEW SYS.DBA_CONS_COLUMNS AS
 SELECT
-    SYS.ORA_CASE_TRANS(pg_get_userbyid(cl.relowner)::varchar2(128)) AS owner,
-    SYS.ORA_CASE_TRANS(c.conname::varchar2(128)) AS constraint_name,
-    SYS.ORA_CASE_TRANS(cl.relname::varchar2(128)) AS table_name,
-    SYS.ORA_CASE_TRANS(a.attname::varchar2(128)) AS column_name,
-    array_position(c.conkey, a.attnum)::number AS position
-FROM pg_constraint c
-JOIN pg_class cl ON c.conrelid = cl.oid
-JOIN pg_namespace n ON cl.relnamespace = n.oid
-JOIN pg_attribute a ON a.attrelid = cl.oid AND a.attnum = ANY(c.conkey)
-WHERE cl.relkind = 'r'
-  AND a.attisdropped = false
-  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+    SYS.ORA_CASE_TRANS(pg_authid.rolname::VARCHAR2(128))    AS owner,
+    SYS.ORA_CASE_TRANS(con.conname::VARCHAR2(128))          AS constraint_name,
+    SYS.ORA_CASE_TRANS(cls.relname::VARCHAR2(128))          AS table_name,
+    SYS.ORA_CASE_TRANS(attr.attname::VARCHAR2(4000))        AS column_name,
+    pos.pos::NUMBER                                         AS position
+FROM
+    pg_catalog.pg_constraint con
+    JOIN pg_catalog.pg_class cls       ON con.conrelid = cls.oid
+    JOIN pg_catalog.pg_authid          ON cls.relowner = pg_authid.oid
+    JOIN pg_catalog.pg_namespace nsp   ON cls.relnamespace = nsp.oid
+    CROSS JOIN LATERAL unnest(con.conkey) WITH ORDINALITY AS pos(attnum, pos)
+    JOIN pg_catalog.pg_attribute attr  ON attr.attrelid = cls.oid
+                                      AND attr.attnum = pos.attnum
+WHERE
+    con.contype IN ('p', 'u', 'f', 'c')
+    AND nsp.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+    AND cls.relkind IN ('r', 'v', 'm', 'p')
+    AND attr.attnum > 0
+    AND NOT attr.attisdropped
 
 UNION ALL
 
--- NOT NULL constraints from pg_attribute
 SELECT
-    SYS.ORA_CASE_TRANS(pg_get_userbyid(cl.relowner)::varchar2(128)) AS owner,
-    SYS.ORA_CASE_TRANS(cl.relname::varchar2(128) || '_' || a.attname || '_NOT_NULL') AS constraint_name,
-    SYS.ORA_CASE_TRANS(cl.relname::varchar2(128)) AS table_name,
-    SYS.ORA_CASE_TRANS(a.attname::varchar2(128)) AS column_name,
-    1::number AS position
-FROM pg_class cl
-JOIN pg_namespace n ON cl.relnamespace = n.oid
-JOIN pg_attribute a ON a.attrelid = cl.oid
-WHERE cl.relkind = 'r'
-  AND a.attnotnull = true
-  AND a.attisdropped = false
-  AND n.nspname NOT IN ('pg_catalog', 'information_schema');
-
-GRANT SELECT ON sys.dba_cons_columns TO PUBLIC;
+    SYS.ORA_CASE_TRANS(pg_authid.rolname::VARCHAR2(128)),
+    SYS.ORA_CASE_TRANS((cls.relname || '_' || attr.attname || '_NOT_NULL')::VARCHAR2(128)),
+    SYS.ORA_CASE_TRANS(cls.relname::VARCHAR2(128)),
+    SYS.ORA_CASE_TRANS(attr.attname::VARCHAR2(4000)),
+    1::NUMBER
+FROM
+    pg_catalog.pg_class cls
+    JOIN pg_catalog.pg_authid          ON cls.relowner = pg_authid.oid
+    JOIN pg_catalog.pg_namespace nsp   ON cls.relnamespace = nsp.oid
+    JOIN pg_catalog.pg_attribute attr  ON attr.attrelid = cls.oid
+WHERE
+    attr.attnotnull
+    AND attr.attnum > 0
+    AND NOT attr.attisdropped
+    AND nsp.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+    AND cls.relkind IN ('r', 'v', 'm', 'p')
+    AND NOT EXISTS (
+        SELECT 1 FROM pg_catalog.pg_constraint con
+        WHERE con.conrelid = cls.oid
+          AND con.contype = 'p'
+          AND con.conkey && ARRAY[attr.attnum]
+    )
+ORDER BY
+    owner, table_name, constraint_name, position;
+GRANT SELECT ON SYS.DBA_CONS_COLUMNS TO PUBLIC;
 
 -- ALL_TAB_COLUMNS
 CREATE OR REPLACE VIEW SYS.ALL_TAB_COLUMNS AS
