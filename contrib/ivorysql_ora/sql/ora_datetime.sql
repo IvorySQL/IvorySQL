@@ -539,6 +539,20 @@ SELECT timestamp '2016-12-12 14:41:11.123456'::timestamp with local time zone + 
 -- oratimestampltz + number
 SELECT timestamp '2016-12-12 14:41:11.123456'::timestamp with local time zone + 11.11;
 
+--
+-- Oracle clamps the day to the last day of the resulting month, the same
+-- rule ADD_MONTHS follows.
+--
+SELECT date'2020-01-31' + interval'1' month;
+SELECT date'2020-03-31' - interval'1' month;
+SELECT date'2020-02-29' + interval'1' year;
+SELECT date'2020-01-31' + interval'1' year;
+SELECT timestamp'2020-01-31 23:30:59.123456' + interval'1' month;
+SELECT timestamp'2020-03-31 23:30:59.123456' - interval'1' month;
+SELECT timestamp'2020-02-29 23:30:59.123456' + interval'1' year;
+SELECT timestamp'2020-01-31 23:30:59.123456 +06:30' + interval'1' month;
+SELECT timestamp '2020-01-31 23:30:59.123456'::timestamp with local time zone + interval'1' month;
+
 
 -- interval year to month + oradate
 SELECT interval'10-11' year to month + date'2016-11-26';
