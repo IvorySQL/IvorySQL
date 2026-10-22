@@ -260,6 +260,32 @@ select trim('35' from id) from test_trim;
 drop table test_trim;
 
 /*
+ * Oracle has no distinct empty string, so TRIM/LTRIM/RTRIM return NULL when
+ * the whole input is trimmed away.
+ */
+select trim('   ') is null as trim_blank_is_null;
+select trim('x' from 'xxx') is null as trim_set_is_null;
+select trim(both 'x' from 'xxx') is null as trim_both_set_is_null;
+select trim(leading 'x' from 'xxx') is null as trim_leading_set_is_null;
+select trim(trailing 'x' from 'xxx') is null as trim_trailing_set_is_null;
+select ltrim('   ') is null as ltrim_blank_is_null;
+select ltrim('xxx','x') is null as ltrim_set_is_null;
+select rtrim('   ') is null as rtrim_blank_is_null;
+select rtrim('xxx','x') is null as rtrim_set_is_null;
+select btrim('   ') is null as btrim_blank_is_null;
+select sys.trim('   ') is null as sys_trim_blank_is_null;
+-- values that still have content are not affected
+select trim('  hi  ') = 'hi' as trim_keeps_content;
+select ltrim('  hi  ') = 'hi  ' as ltrim_keeps_content;
+select rtrim('  hi  ') = '  hi' as rtrim_keeps_content;
+select trim('abc') = 'abc' as trim_without_blanks;
+-- the same holds for a varchar2 column
+create table test_trim_blank(v varchar2(10));
+insert into test_trim_blank values('   ');
+select trim(v) is null as trim_varchar2_blank_is_null from test_trim_blank;
+drop table test_trim_blank;
+
+/*
  * regexp_replace
  */
 set ivorysql.enable_emptystring_to_null to on;

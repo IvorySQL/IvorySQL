@@ -2970,6 +2970,8 @@ executeStringInternalMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 			{
 				PGFunction	func1 = NULL;
 				PGFunction	func2 = NULL;
+				LOCAL_FCINFO(fcinfo, 2);
+				Datum		trim_datum;
 
 				switch (jsp->type)
 				{
@@ -2989,6 +2991,11 @@ executeStringInternalMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 						break;
 				}
 
+				/*
+				 * Call the trim function directly: in Oracle mode it can
+				 * return NULL, and DirectFunctionCall*Coll() would turn
+				 * that into an error.
+				 */
 				if (jsp->content.arg)
 				{
 					char	   *characters_str;
@@ -2999,15 +3006,25 @@ executeStringInternalMethod(JsonPathExecContext *cxt, JsonPathItem *jsp,
 							 jspOperationName(jsp->type));
 
 					characters_str = jspGetString(&elem, NULL);
-					resStr = TextDatumGetCString(DirectFunctionCall2Coll(func2,
-																		 DEFAULT_COLLATION_OID, str,
-																		 CStringGetTextDatum(characters_str)));
+
+					InitFunctionCallInfoData(*fcinfo, NULL, 2, DEFAULT_COLLATION_OID, NULL, NULL);
+					fcinfo->args[0].value = str;
+					fcinfo->args[0].isnull = false;
+					fcinfo->args[1].value = CStringGetTextDatum(characters_str);
+					fcinfo->args[1].isnull = false;
+					trim_datum = (*func2) (fcinfo);
 				}
 				else
 				{
-					resStr = TextDatumGetCString(DirectFunctionCall1Coll(func1,
-																		 DEFAULT_COLLATION_OID, str));
+					InitFunctionCallInfoData(*fcinfo, NULL, 1, DEFAULT_COLLATION_OID, NULL, NULL);
+					fcinfo->args[0].value = str;
+					fcinfo->args[0].isnull = false;
+					trim_datum = (*func1) (fcinfo);
 				}
+
+				/* A JSON path string is never NULL, so keep the empty string. */
+				resStr = DatumGetPointer(trim_datum) == NULL ?
+					pstrdup("") : TextDatumGetCString(trim_datum);
 				break;
 			}
 
