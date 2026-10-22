@@ -1,0 +1,466 @@
+name: Waiting on Author (unresolved reviews / unanswered @mentions)
+
+on:
+  schedule:
+    # run everyday
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      days_threshold:
+        description: 'days threshold(fill 0 or 1 for testing)'
+        required: false
+        default: '1'
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  check-waiting-on-author:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scan open PRs
+        uses: actions/github-script@v7
+        env:
+          DAYS_THRESHOLD: ${{ github.event.inputs.days_threshold || '15' }}
+        with:
+          script: |
+            // ---------- config ----------
+            const DAYS_THRESHOLD = parseInt(process.env.DAYS_THRESHOLD || '15', 10);
+            console.log(`DAYS_THRESHOLD = ${DAYS_THRESHOLD}`);
+            const LABEL = 'waiting-on-author';
+            const msPerDay = 24 * 60 * 60 * 1000;
+            const now = Date.now();
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            console.log(`DAYS_THRESHOLD = ${DAYS_THRESHOLD}`);
+
+            // ---------- if there is no 'waiting-on-author' label, create it ----------
+            try {
+              await github.rest.issues.getLabel({ owner, repo, name: LABEL });
+            } catch (e) {
+              if (e.status === 404) {
+                await github.rest.issues.createLabel({
+                  owner,
+                  repo,
+                  name: LABEL,
+                  color: 'fbca04',
+                  description:
+                    'Author has not responded to review comments or @mentions for a long time'
+                });
+                console.log(`Created label: ${LABEL}`);
+              } else {
+                throw e;
+              }
+            }
+
+            // ---------- tools function ----------
+            function daysSince(isoOrMs) {
+              const t =
+                typeof isoOrMs === 'number'
+                  ? isoOrMs
+                  : new Date(isoOrMs).getTime();
+              return (now - t) / msPerDay;
+            }
+
+            // Did author push code after afterMs?
+            async function authorPushedAfter(prNumber, afterMs, authorLogin) {
+              try {
+                const commits = await github.paginate(
+                  github.rest.pulls.listCommits,
+                  { owner, repo, pull_number: prNumber, per_page: 100 }
+                );
+                return commits.some((c) => {
+                  const login = (
+                    c.author?.login ||
+                    c.committer?.login ||
+                    ''
+                  ).toLowerCase();
+                  const dateStr =
+                    c.commit?.author?.date || c.commit?.committer?.date;
+                  if (!dateStr) return false;
+                  const t = new Date(dateStr).getTime();
+                  return (
+                    login === authorLogin.toLowerCase() && t > afterMs
+                  );
+                });
+              } catch (e) {
+                console.warn(
+                  `PR #${prNumber}: listCommits failed: ${e.message}`
+                );
+                return false;
+              }
+            }
+
+            // Did author give any response after afterMs?
+            // （Conversation comment / inline review comment / commit push）
+            async function authorHasResponded(
+              prNumber,
+              authorLogin,
+              afterMs
+            ) {
+              // 1) Conversation normal comment
+              try {
+                const issueComments = await github.paginate(
+                  github.rest.issues.listComments,
+                  {
+                    owner,
+                    repo,
+                    issue_number: prNumber,
+                    per_page: 100
+                  }
+                );
+                if (
+                  issueComments.some(
+                    (c) =>
+                      c.user.login === authorLogin &&
+                      new Date(c.created_at).getTime() > afterMs
+                  )
+                ) {
+                  return true;
+                }
+              } catch (e) {
+                console.warn(
+                  `PR #${prNumber}: listComments failed: ${e.message}`
+                );
+              }
+
+              // 2) inline review comment
+              try {
+                const reviewComments = await github.paginate(
+                  github.rest.pulls.listReviewComments,
+                  {
+                    owner,
+                    repo,
+                    pull_number: prNumber,
+                    per_page: 100
+                  }
+                );
+                if (
+                  reviewComments.some(
+                    (c) =>
+                      c.user.login === authorLogin &&
+                      new Date(c.created_at).getTime() > afterMs
+                  )
+                ) {
+                  return true;
+                }
+              } catch (e) {
+                console.warn(
+                  `PR #${prNumber}: listReviewComments failed: ${e.message}`
+                );
+              }
+
+              // 3) commit push
+              return await authorPushedAfter(
+                prNumber,
+                afterMs,
+                authorLogin
+              );
+            }
+
+            // Compute the "waiting start" time: the last non-author comment in unresolved review threads.
+            // Returns { waitingMs, reason } or null (no waiting needed).
+            async function checkUnresolvedReviewThreads(
+              prNumber,
+              authorLogin
+            ) {
+              const unresolved = [];
+              let tHasNext = true;
+              let tCursor = null;
+
+              while (tHasNext) {
+                const tq = `
+                  query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
+                    repository(owner: $owner, name: $repo) {
+                      pullRequest(number: $number) {
+                        reviewThreads(first: 50, after: $cursor) {
+                          pageInfo { hasNextPage endCursor }
+                          nodes {
+                            isResolved
+                            comments(first: 50) {
+                              nodes {
+                                author { login }
+                                createdAt
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                `;
+                const tr = await github.graphql(tq, {
+                  owner,
+                  repo,
+                  number: prNumber,
+                  cursor: tCursor
+                });
+                const threads =
+                  tr.repository.pullRequest.reviewThreads;
+                for (const th of threads.nodes) {
+                  if (!th.isResolved) unresolved.push(th);
+                }
+                tHasNext = threads.pageInfo.hasNextPage;
+                tCursor = threads.pageInfo.endCursor;
+              }
+
+              if (unresolved.length === 0) return null;
+
+              // Among all unresolved threads, take the earliest "last non-author comment" time
+              // (i.e. the thread that has been waiting the longest).
+              let oldestWaitingMs = null;
+
+              for (const th of unresolved) {
+                const comments = th.comments.nodes || [];
+                let lastNonAuthorMs = null;
+                for (let i = comments.length - 1; i >= 0; i--) {
+                  const c = comments[i];
+                  const login = c.author?.login;
+                  if (login && login !== authorLogin) {
+                    lastNonAuthorMs = new Date(c.createdAt).getTime();
+                    break;
+                  }
+                }
+                // If the whole thread is only the author's own comments, fall back to the first comment's time
+                if (lastNonAuthorMs === null && comments.length > 0) {
+                  lastNonAuthorMs = new Date(
+                    comments[0].createdAt
+                  ).getTime();
+                }
+                if (lastNonAuthorMs !== null) {
+                  if (
+                    oldestWaitingMs === null ||
+                    lastNonAuthorMs < oldestWaitingMs
+                  ) {
+                    oldestWaitingMs = lastNonAuthorMs;
+                  }
+                }
+              }
+
+              if (oldestWaitingMs === null) return null;
+
+              // Has the author replied after this point in time?
+              const responded = await authorHasResponded(
+                prNumber,
+                authorLogin,
+                oldestWaitingMs
+              );
+              if (responded) return null;
+
+              const d = daysSince(oldestWaitingMs);
+              if (d < DAYS_THRESHOLD) return null;
+
+              return {
+                waitingMs: oldestWaitingMs,
+                days: Math.floor(d),
+                reason: `Unresolved review comment exists (waiting about ${Math.floor(d)} days)`
+              };
+            }
+
+            // No reply after being @-mentioned in Conversation
+            async function checkUnansweredMentions(
+              prNumber,
+              authorLogin
+            ) {
+              const comments = await github.paginate(
+                github.rest.issues.listComments,
+                {
+                  owner,
+                  repo,
+                  issue_number: prNumber,
+                  per_page: 100
+                }
+              );
+              comments.sort(
+                (a, b) =>
+                  new Date(a.created_at) - new Date(b.created_at)
+              );
+
+              const mentionRe = new RegExp(
+                `@${authorLogin}\\b`,
+                'i'
+              );
+
+              for (const c of comments) {
+                if (c.user.login === authorLogin) continue;
+                if (c.user.type === 'Bot') continue;
+                if (!mentionRe.test(c.body || '')) continue;
+
+                const mentionMs = new Date(c.created_at).getTime();
+                const d = daysSince(mentionMs);
+                if (d < DAYS_THRESHOLD) continue;
+
+                // Has the author posted any comment after this?
+                const authorCommentedAfter = comments.some(
+                  (x) =>
+                    x.user.login === authorLogin &&
+                    new Date(x.created_at).getTime() > mentionMs
+                );
+                if (authorCommentedAfter) continue;
+
+                // Has the author pushed any commits after this?
+                const pushed = await authorPushedAfter(
+                  prNumber,
+                  mentionMs,
+                  authorLogin
+                );
+                if (pushed) continue;
+
+                return {
+                  waitingMs: mentionMs,
+                  days: Math.floor(d),
+                  reason: `No reply after @mention in Conversation (waiting about ${Math.floor(d)} days)`
+                };
+              }
+
+              return null;
+            }
+
+            // ---------- Paginate and fetch all open PRs ----------
+            const openPRs = [];
+            let hasNextPage = true;
+            let cursor = null;
+
+            while (hasNextPage) {
+              const query = `
+                query($owner: String!, $repo: String!, $cursor: String) {
+                  repository(owner: $owner, name: $repo) {
+                    pullRequests(first: 30, states: OPEN, after: $cursor) {
+                      pageInfo { hasNextPage endCursor }
+                      nodes {
+                        number
+                        title
+                        url
+                        isDraft
+                        createdAt
+                        author { login }
+                        labels(first: 30) { nodes { name } }
+                      }
+                    }
+                  }
+                }
+              `;
+              const result = await github.graphql(query, {
+                owner,
+                repo,
+                cursor
+              });
+              const conn = result.repository.pullRequests;
+              openPRs.push(...conn.nodes);
+              hasNextPage = conn.pageInfo.hasNextPage;
+              cursor = conn.pageInfo.endCursor;
+            }
+
+            console.log(`Found ${openPRs.length} open PR(s)`);
+
+            // ---------- Check each PR ----------
+            for (const pr of openPRs) {
+              const prNumber = pr.number;
+              const authorLogin = pr.author?.login;
+
+              if (pr.isDraft) {
+                console.log(`PR #${prNumber}: draft, skip`);
+                continue;
+              }
+              if (!authorLogin) {
+                console.log(`PR #${prNumber}: no author, skip`);
+                continue;
+              }
+
+              const hasLabel = pr.labels.nodes.some(
+                (l) => l.name === LABEL
+              );
+
+              // ===== Determine whether we are still in a "waiting on author" state =====
+              let waiting = await checkUnresolvedReviewThreads(
+                prNumber,
+                authorLogin
+              );
+              if (!waiting) {
+                waiting = await checkUnansweredMentions(
+                  prNumber,
+                  authorLogin
+                );
+              }
+
+              // ===== Label already present: keep it or remove it =====
+              if (hasLabel) {
+                if (waiting) {
+                  console.log(
+                    `PR #${prNumber}: already has ${LABEL}, still waiting — skip`
+                  );
+                } else {
+                  // Author has responded, or no longer meets the waiting condition → remove label
+                  try {
+                    await github.rest.issues.removeLabel({
+                      owner,
+                      repo,
+                      issue_number: prNumber,
+                      name: LABEL
+                    });
+                    console.log(
+                      `PR #${prNumber}: removed ${LABEL} (author responded or no longer waiting)`
+                    );
+                  } catch (e) {
+                    if (e.status === 404) {
+                      console.log(
+                        `PR #${prNumber}: label already absent`
+                      );
+                    } else {
+                      throw e;
+                    }
+                  }
+                }
+                continue;
+              }
+
+              // ===== No label + needs waiting → add label and comment =====
+              if (waiting) {
+                console.log(
+                  `PR #${prNumber}: labeling — ${waiting.reason}`
+                );
+
+                await github.rest.issues.addLabels({
+                  owner,
+                  repo,
+                  issue_number: prNumber,
+                  labels: [LABEL]
+                });
+
+                const body = [
+                  `Hi @${authorLogin},`,
+                  ``,
+                  `This pull request has been waiting for your response for about **${waiting.days} days**.`,
+                  ``,
+                  `**Reason:** ${waiting.reason}`,
+                  ``,
+                  `Please:`,
+                  `- reply to the pending review comments / conversation, or`,
+                  `- push updates addressing the feedback, or`,
+                  `- let us know if you need more time / want to close this PR.`,
+                  ``,
+                  `This is an automated reminder. The label \`${LABEL}\` was added so maintainers can track it.`,
+                  ``,
+                  `Thank you!`
+                ].join('\n');
+
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number: prNumber,
+                  body
+                });
+
+                console.log(
+                  `PR #${prNumber}: labeled and commented`
+                );
+              } else {
+                console.log(`PR #${prNumber}: OK, no action`);
+              }
+            }
+
+            console.log('Done.');
