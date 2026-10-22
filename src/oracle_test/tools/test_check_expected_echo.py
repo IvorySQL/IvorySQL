@@ -131,14 +131,26 @@ class MissingLinesTest(unittest.TestCase):
 
 
 class UnmodelledTest(unittest.TestCase):
-    def test_gexec_is_unmodelled(self):
-        self.assertTrue(is_unmodelled('SELECT 1 \\gexec\n'))
-
-    def test_echo_is_unmodelled(self):
-        self.assertTrue(is_unmodelled('\\echo hello\n'))
-
     def test_set_echo_is_unmodelled(self):
         self.assertTrue(is_unmodelled('\\set ECHO errors\n'))
+
+    def test_set_echo_none_is_unmodelled(self):
+        self.assertTrue(is_unmodelled('\\set ECHO none\nSELECT 1;\n'))
+
+    def test_if_does_not_suppress_the_echo(self):
+        # MainLoop echoes an input line before it checks whether the \if
+        # branch is active, so the echo model still applies.
+        self.assertFalse(is_unmodelled('\\if :foo\nSELECT 1;\n\\endif\n'))
+
+    def test_gexec_keeps_the_input_line(self):
+        # The statements that \gexec generates are not echoed, but the
+        # \gexec line itself is, so the test can still be compared.
+        self.assertFalse(is_unmodelled('SELECT 1 \\gexec\n'))
+
+    def test_echo_keeps_the_input_line(self):
+        # \echo prints an extra output line; its command line is still
+        # echoed like any other input line.
+        self.assertFalse(is_unmodelled('\\echo hello\n'))
 
     def test_plain_script_is_modelled(self):
         self.assertFalse(is_unmodelled('SELECT 1;\n'))

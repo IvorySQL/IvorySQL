@@ -45,11 +45,7 @@ _COPY_FROM_STDIN = re.compile(
     r'\bCOPY\s+(?:"[^"]*"|[\w$.]+)(?:\s*\([^)]*\))?\s+FROM\s+std(?:in|out)\b',
     re.IGNORECASE)
 
-# Constructs that make the echo model unreliable because the text that reaches
-# results/ is generated or suppressed at run time rather than copied from the
-# script: \gexec runs a query built while the script runs, \echo prints a chosen
-# string, \if selects a branch and \set ECHO changes what is echoed from that
-# point on.  The psql and create_table tests use these deliberately.
+
 def _strip_comments_and_literals(line):
     r"""Line with SQL comments and single-quoted literals blanked out.
 
@@ -104,7 +100,14 @@ def _strip_comments_and_literals(line):
     return ''.join(out)
 
 
-_UNMODELLED = re.compile(r'\\(gexec\b|echo\b|if\b|set\s+ECHO\b)', re.IGNORECASE)
+# \set ECHO is the only construct that changes what psql echoes from that
+# point on, so a file that uses it cannot be modelled line by line.  \if,
+# \echo and \gexec are different: MainLoop echoes every input line before it
+# decides whether a \if branch is active, and the text \echo or \gexec
+# produce is extra output rather than a replacement for the echoed input
+# line.  Those tests are therefore checked normally; only input lines are
+# compared, so generated output is simply ignored.
+_UNMODELLED = re.compile(r'\\set\s+ECHO\b', re.IGNORECASE)
 
 
 def echoed_lines(sql_text):
