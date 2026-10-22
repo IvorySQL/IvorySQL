@@ -4521,3 +4521,72 @@ DETAIL:  "ivorysql" is a reserved prefix.
 reset ivorysql.dummy_config;
 ERROR:  invalid configuration parameter name "ivorysql.dummy_config"
 DETAIL:  "ivorysql" is a reserved prefix.
+-- DBMS_XMLGEN.GETXML renders a query as Oracle's ROWSET document, upper-cases
+-- the column names, escapes character data and emits NULL columns as empty
+-- elements
+SELECT dbms_xmlgen.getxml('SELECT 1 AS a, ''x'' AS b FROM dual') AS doc FROM dual;
+          doc          
+-----------------------
+ <?xml version="1.0"?>+
+ <ROWSET>             +
+   <ROW>              +
+     <A>1</A>         +
+     <B>x</B>         +
+   </ROW>             +
+ </ROWSET>
+(1 row)
+
+SELECT dbms_xmlgen.getxml('SELECT 1 AS a FROM dual WHERE 1 = 0') AS empty_doc FROM dual;
+       empty_doc       
+-----------------------
+ <?xml version="1.0"?>+
+ <ROWSET/>
+(1 row)
+
+SELECT dbms_xmlgen.getxml(NULL) IS NULL AS null_query FROM dual;
+ null_query 
+------------
+ t
+(1 row)
+
+SELECT dbms_xmlgen.getxml('SELECT ''<a&b>'' AS escaped, NULL::text AS missing FROM dual') AS special_doc FROM dual;
+              special_doc               
+----------------------------------------
+ <?xml version="1.0"?>                 +
+ <ROWSET>                              +
+   <ROW>                               +
+     <ESCAPED>&lt;a&amp;b&gt;</ESCAPED>+
+     <MISSING/>                        +
+   </ROW>                              +
+ </ROWSET>
+(1 row)
+
+-- The context-handle API: skip rows, cap rows, custom tags, row counter, and
+-- an invalid handle after CLOSECONTEXT
+DECLARE
+    ctx NUMBER;
+BEGIN
+    ctx := dbms_xmlgen.newcontext('SELECT 1 AS a FROM dual UNION ALL SELECT 2 AS a FROM dual UNION ALL SELECT 3 AS a FROM dual');
+    dbms_xmlgen.setskiprows(ctx, 1);
+    dbms_xmlgen.setmaxrows(ctx, 1);
+    dbms_xmlgen.setrowsettag(ctx, 'RESULTS');
+    dbms_xmlgen.setrowtag(ctx, 'ITEM');
+    RAISE NOTICE 'doc=%', dbms_xmlgen.getxml(ctx);
+    RAISE NOTICE 'processed=%', dbms_xmlgen.getnumrowsprocessed(ctx);
+    dbms_xmlgen.closecontext(ctx);
+    BEGIN
+        PERFORM dbms_xmlgen.getxml(ctx);
+        RAISE NOTICE 'closed handle still worked';
+    EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE 'closed handle rejected';
+    END;
+END;
+/
+NOTICE:  doc=<?xml version="1.0"?>
+<RESULTS>
+  <ITEM>
+    <A>2</A>
+  </ITEM>
+</RESULTS>
+NOTICE:  processed=1
+NOTICE:  closed handle rejected
