@@ -84,11 +84,11 @@ regress_data_files = \
 install-tests: all install install-lib installdirs-tests
 	$(MAKE) -C $(top_builddir)/contrib/spi install
 	for file in $(subst $(srcdir)/,,$(regress_data_files)); do \
-		$(INSTALL_DATA) $(srcdir)/$$file '$(DESTDIR)$(pkglibdir)/regress/'$$file || exit; \
+		$(INSTALL_DATA) $(srcdir)/$$file '$(DESTDIR)$(pkglibdir)/oraregress/'$$file || exit; \
 	done
 
 installdirs-tests: installdirs
-	$(MKDIR_P)  $(patsubst $(srcdir)/%/,'$(DESTDIR)$(pkglibdir)/regress/%',$(sort $(dir $(regress_data_files))))
+	$(MKDIR_P)  $(patsubst $(srcdir)/%/,'$(DESTDIR)$(pkglibdir)/oraregress/%',$(sort $(dir $(regress_data_files))))
 
 
 ##
