@@ -1931,3 +1931,11 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 /* End - VSIZE */
+
+/* Oracle-compatible ORA_INVOKING_USER: the database user whose privileges the
+ * current statement runs with, which is CURRENT_USER in PostgreSQL. */
+CREATE OR REPLACE FUNCTION sys.ora_invoking_user()
+RETURNS varchar2
+AS $$ SELECT pg_catalog.current_user::varchar2; $$
+LANGUAGE SQL
+STABLE;
