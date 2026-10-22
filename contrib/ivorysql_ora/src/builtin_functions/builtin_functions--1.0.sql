@@ -1931,3 +1931,34 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 /* End - VSIZE */
+
+
+/* RAISE_APPLICATION_ERROR */
+/*
+ * RAISE_APPLICATION_ERROR: Oracle's way for application code to raise a
+ * user-defined error.  Oracle code calls it as a statement, so this has to be
+ * a procedure rather than a function.
+ *
+ * Oracle documents the error number as a negative integer in the range
+ * -20999 .. -20000 and prefixes the message with "ORA-<number>: "; anything
+ * outside that range is itself an ORA-21000 error.  The third argument,
+ * keep_errors, only matters for Oracle's error stack, which PostgreSQL does
+ * not have, so it is accepted and ignored.
+ */
+CREATE OR REPLACE PROCEDURE sys.raise_application_error(
+    error_number sys.number,
+    message pg_catalog.text,
+    keep_errors pg_catalog.bool DEFAULT false)
+AS $$
+BEGIN
+    IF error_number IS NULL OR message IS NULL THEN
+        RAISE EXCEPTION 'ORA-06531: null argument to raise_application_error';
+    END IF;
+    IF error_number > -20000 OR error_number < -20999 THEN
+        RAISE EXCEPTION 'ORA-21000: error number argument to raise_application_error of % is out of range',
+            error_number;
+    END IF;
+    RAISE EXCEPTION 'ORA-%: %', -error_number, message;
+END;
+$$ LANGUAGE plisql;
+/* End - RAISE_APPLICATION_ERROR */

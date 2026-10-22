@@ -2464,3 +2464,30 @@ reset default_text_search_config;
 -- should throw errors, because dummy_config is not a valid configuration name
 set ivorysql.dummy_config to dummy;
 reset ivorysql.dummy_config;
+
+-- RAISE_APPLICATION_ERROR turns its arguments into an ORA-<number>: <message>
+-- error, rejects numbers outside Oracle's user-defined range, and is callable
+-- as a statement from Oracle-style code.
+CREATE OR REPLACE FUNCTION rae_catch(n NUMBER, m VARCHAR2)
+RETURN VARCHAR2 AS $$
+BEGIN
+    RAISE_APPLICATION_ERROR(n, m);
+    RETURN 'not reached';
+EXCEPTION WHEN OTHERS THEN
+    RETURN SQLERRM;
+END;
+$$ LANGUAGE plisql;
+
+SELECT rae_catch(-20001, 'boom') AS caught;
+SELECT rae_catch(-20000, 'lowest allowed') AS caught_lowest;
+SELECT rae_catch(-20999, 'highest allowed') AS caught_highest;
+SELECT rae_catch(-1234, 'outside the range') AS caught_out_of_range;
+
+-- unqualified statement call, exactly as Oracle writes it
+DO $$
+BEGIN
+    RAISE_APPLICATION_ERROR(-20042, 'uncaught');
+END;
+$$;
+
+DROP FUNCTION rae_catch(NUMBER, VARCHAR2);
