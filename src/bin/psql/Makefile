@@ -51,8 +51,12 @@ OBJS = \
 
 all: psql
 
-psql: $(OBJS) | submake-libpq submake-libpgport submake-libpgfeutils submake-liborafeutils
+psql: $(OBJS) $(top_builddir)/src/oracle_fe_utils/liborafeutils.a | submake-libpq submake-libpgport submake-libpgfeutils
 	$(CC) $(CFLAGS) $(OBJS) $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) -o $@$(X)
+
+# Recheck the archive timestamp after the submake without changing it.
+$(top_builddir)/src/oracle_fe_utils/liborafeutils.a: submake-liborafeutils
+	@:
 
 .PHONY: submake-liborafeutils
 submake-liborafeutils: | submake-generated-headers
