@@ -1557,3 +1557,23 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- V$LOCK_TYPE: the lock classes V$LOCK reports, with a description.  The list
+-- mirrors the case expression in V$LOCK, so the two views agree.
+CREATE OR REPLACE VIEW SYS.V$LOCK_TYPE AS
+SELECT
+    T.TYPE::VARCHAR2(8)                                             AS TYPE,
+    NULL::VARCHAR2(32)                                              AS ID1TAG,
+    NULL::VARCHAR2(32)                                              AS ID2TAG,
+    T.DESCRIPTION::VARCHAR2(4000)                                   AS DESCRIPTION,
+    0::NUMBER                                                       AS CON_ID
+FROM (VALUES
+        ('TM', 'relation locks'),
+        ('TX', 'transaction id locks'),
+        ('TP', 'tuple locks'),
+        ('VX', 'virtual xid locks'),
+        ('AD', 'advisory locks'),
+        ('OB', 'object locks'),
+        ('EX', 'relation extension locks')
+     ) AS T(TYPE, DESCRIPTION);
+GRANT SELECT ON SYS.V$LOCK_TYPE TO PUBLIC;
