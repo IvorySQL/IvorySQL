@@ -493,3 +493,63 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- The sequence and V$ views must be readable by a plain user; these six used to
+-- raise "permission denied for view".
+DROP ROLE IF EXISTS ora_view_reader;
+NOTICE:  role "ora_view_reader" does not exist, skipping
+CREATE ROLE ora_view_reader;
+SET ROLE ora_view_reader;
+SELECT COUNT(*) >= 0 AS all_sequences_ok FROM SYS.ALL_SEQUENCES;
+ all_sequences_ok 
+------------------
+ t
+(1 row)
+
+SELECT COUNT(*) >= 0 AS dba_sequences_ok FROM SYS.DBA_SEQUENCES;
+ dba_sequences_ok 
+------------------
+ t
+(1 row)
+
+SELECT COUNT(*) >= 0 AS user_sequences_ok FROM SYS.USER_SEQUENCES;
+ user_sequences_ok 
+-------------------
+ t
+(1 row)
+
+SELECT COUNT(*) >= 0 AS v_parameter_ok FROM SYS.V$PARAMETER;
+ v_parameter_ok 
+----------------
+ t
+(1 row)
+
+SELECT COUNT(*) >= 0 AS v_process_ok FROM SYS.V$PROCESS;
+ v_process_ok 
+--------------
+ t
+(1 row)
+
+SELECT COUNT(*) >= 0 AS v_session_ok FROM SYS.V$SESSION;
+ v_session_ok 
+--------------
+ t
+(1 row)
+
+SET ROLE NONE;
+-- ... and no other dictionary view may be missing its PUBLIC grant; only the
+-- DBA_SCHEDULER_* family is intentionally restricted.
+SELECT COUNT(*) = 0 AS dictionaries_are_public
+FROM pg_catalog.pg_class C
+JOIN pg_catalog.pg_namespace N ON N.OID = C.RELNAMESPACE
+WHERE N.NSPNAME = 'sys'
+  AND C.RELKIND = 'v'
+  AND C.RELNAME NOT LIKE 'dba\_scheduler\_%'
+  AND NOT EXISTS (
+      SELECT 1 FROM pg_catalog.aclexplode(C.RELACL) A
+      WHERE A.GRANTEE = 0 AND A.PRIVILEGE_TYPE = 'SELECT');
+ dictionaries_are_public 
+-------------------------
+ t
+(1 row)
+
+DROP ROLE ora_view_reader;
