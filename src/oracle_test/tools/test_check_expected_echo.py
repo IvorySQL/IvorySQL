@@ -131,11 +131,27 @@ class MissingLinesTest(unittest.TestCase):
 
 
 class UnmodelledTest(unittest.TestCase):
-    def test_set_echo_is_unmodelled(self):
-        self.assertTrue(is_unmodelled('\\set ECHO errors\n'))
+    def test_set_echo_errors_is_unmodelled(self):
+        self.assertTrue(is_unmodelled('\\set ECHO errors\nSELECT 1;\n'))
 
-    def test_set_echo_none_is_unmodelled(self):
-        self.assertTrue(is_unmodelled('\\set ECHO none\nSELECT 1;\n'))
+    def test_comment_mentioning_echo_is_ignored(self):
+        self.assertFalse(is_unmodelled(
+            '-- \\set ECHO errors is documented here\nSELECT 1;\n'))
+
+    def test_set_echo_queries_is_unmodelled(self):
+        self.assertTrue(is_unmodelled('\\set ECHO queries\nSELECT 1;\n'))
+
+    def test_set_echo_none_is_modelled(self):
+        self.assertFalse(is_unmodelled('\\set ECHO none\nSELECT 1;\n'))
+
+    def test_unset_echo_is_modelled(self):
+        self.assertFalse(is_unmodelled('\\unset ECHO\nSELECT 1;\n'))
+
+    def test_conditional_echo_toggle_is_unmodelled(self):
+        # The toggle is skipped when the \if branch is inactive, so the
+        # state after the branch cannot be known without running it.
+        self.assertTrue(is_unmodelled(
+            '\\if :foo\n\\set ECHO none\n\\endif\nSELECT 1;\n'))
 
     def test_if_does_not_suppress_the_echo(self):
         # MainLoop echoes an input line before it checks whether the \if
@@ -154,6 +170,25 @@ class UnmodelledTest(unittest.TestCase):
 
     def test_plain_script_is_modelled(self):
         self.assertFalse(is_unmodelled('SELECT 1;\n'))
+
+
+class EchoStateTest(unittest.TestCase):
+    def test_none_suppresses_lines_until_all(self):
+        sql = '\\set ECHO none\nSELECT 1;\n\\set ECHO all\nSELECT 2;\n'
+        self.assertEqual(echoed_lines(sql),
+                         ['\\set ECHO none', 'SELECT 2;'])
+
+    def test_unset_echo_suppresses_lines(self):
+        self.assertEqual(echoed_lines('\\unset ECHO\nSELECT 1;\n'),
+                         ['\\unset ECHO'])
+
+    def test_copy_data_is_consumed_while_echo_is_off(self):
+        # The \copy command is not echoed, but its data still has to be
+        # skipped so that later lines are not mistaken for input.
+        sql = ('\\set ECHO none\n\\copy t from stdin\n1\n\\.\n'
+               '\\set ECHO all\nSELECT 1;\n')
+        self.assertEqual(echoed_lines(sql),
+                         ['\\set ECHO none', 'SELECT 1;'])
 
 
 class CheckTargetTest(unittest.TestCase):

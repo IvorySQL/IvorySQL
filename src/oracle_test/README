@@ -103,7 +103,9 @@ stale on purpose (tests that Oracle mode does not execute), so their drift is
 reported but is not a failure of the tree.
 
 The checker only knows the psql echo rule; it cannot replace a real run of the
-suite, and it skips the few tests that change the echo state with \set ECHO.
-Tests that use \if, \echo or \gexec are still checked: psql echoes those
-input lines before it acts on them, so the generated output does not affect
-the comparison.
+suite.  It follows \set ECHO none/all, but skips tests that use \set ECHO
+queries or \set ECHO errors, or that toggle ECHO inside a conditional branch,
+because in those cases the lines that reach results/ cannot be determined
+without running the script.  Tests that use \if, \echo or \gexec are still
+checked: psql echoes those input lines before it acts on them, so the
+generated output does not affect the comparison.

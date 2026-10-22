@@ -100,22 +100,27 @@ def _strip_comments_and_literals(line):
     return ''.join(out)
 
 
-# \set ECHO is the only construct that changes what psql echoes from that
-# point on, so a file that uses it cannot be modelled line by line.  \if,
-# \echo and \gexec are different: MainLoop echoes every input line before it
-# decides whether a \if branch is active, and the text \echo or \gexec
-# produce is extra output rather than a replacement for the echoed input
-# line.  Those tests are therefore checked normally; only input lines are
-# compared, so generated output is simply ignored.
-_UNMODELLED = re.compile(r'\\set\s+ECHO\b', re.IGNORECASE)
+# psql's ECHO setting decides whether an input line reaches results/.  "all"
+# echoes everything and "none" stops echoing, so both can be followed line by
+# line; "queries" and "errors" print the query buffer at a different point, and
+# a toggle inside an inactive \if branch never runs, so those files are left
+# unmodelled.  \if without a toggle, and \echo/\gexec, do not change the echo
+# of input lines: MainLoop echoes a line before it decides whether the branch
+# is active, and the text \echo or \gexec produce is extra output rather than
+# a replacement for the echoed input line.
+_ECHO_SETTING = re.compile(r'\\(set|unset)\s+ECHO\b\s*(\S*)', re.IGNORECASE)
+_IF_COMMAND = re.compile(r'\\if\b', re.IGNORECASE)
 
 
 def echoed_lines(sql_text):
     r"""Lines of a .sql file that psql -a copies into the results file.
 
-    --echo-all prints every nonempty input line as it is read, meta-commands
-    included; only blank lines and the contents of a COPY ... FROM stdin block
-    (its data plus the terminating "\." line) are left out.
+    With ECHO all psql prints every nonempty input line as it is read,
+    meta-commands included; blank lines, the contents of a COPY ... FROM stdin
+    block (its data plus the terminating "\." line), and lines read while
+    ECHO is none are left out.  \set ECHO none and \set ECHO all are followed
+    so the suppressed window is skipped; the toggle line itself is echoed
+    according to the state before it takes effect, exactly as psql does.
 
     A single input line can hold more than one command string separated by
     "\;", and a test may start two COPY ... FROM stdin blocks on one line, so
@@ -125,30 +130,65 @@ def echoed_lines(sql_text):
     """
     echoed = []
     skip_blocks = 0
+    echo_enabled = True
     for raw_line in sql_text.splitlines():
         line = raw_line.rstrip()
+        stripped = line.lstrip()
         if skip_blocks:
-            if line.strip() == r'\.':
+            if stripped == r'\.':
                 skip_blocks -= 1
             continue
-        if not line.strip():
+        if not stripped:
             continue
-        if line.strip() == r'\.':
+        if stripped == r'\.':
             # A terminator never reaches results/ as input text.
             continue
         count = len(_COPY_FROM_STDIN.findall(
-            _strip_comments_and_literals(line.lstrip())))
+            _strip_comments_and_literals(stripped)))
         if count:
-            echoed.append(line)
+            if echo_enabled:
+                echoed.append(line)
             skip_blocks = count
             continue
-        echoed.append(line)
+        if echo_enabled:
+            echoed.append(line)
+        setting = _ECHO_SETTING.match(stripped)
+        if setting:
+            if setting.group(1).lower() == 'unset':
+                echo_enabled = False
+            else:
+                value = setting.group(2).strip().strip("'\"").lower()
+                if value == 'none':
+                    echo_enabled = False
+                elif value == 'all':
+                    echo_enabled = True
     return echoed
 
 
 def is_unmodelled(sql_text):
-    """True when the echo model cannot be applied to this test."""
-    return bool(_UNMODELLED.search(sql_text))
+    """True when the echo state cannot be followed statically."""
+    settings = []
+    conditional = False
+    for raw_line in sql_text.splitlines():
+        stripped = raw_line.lstrip()
+        if _IF_COMMAND.match(stripped):
+            conditional = True
+        match = _ECHO_SETTING.match(stripped)
+        if match:
+            settings.append(match)
+    if not settings:
+        return False
+    if conditional:
+        # A toggle inside an inactive branch is not executed, so the state
+        # after the branch depends on the condition.
+        return True
+    for match in settings:
+        if match.group(1).lower() == 'unset':
+            continue        # \unset ECHO behaves like \set ECHO none
+        value = match.group(2).strip().strip("'\"").lower()
+        if value not in ('all', 'none'):
+            return True
+    return False
 
 
 def missing_lines(expected_text, echoed):
