@@ -493,3 +493,34 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- Timestamp columns report their fractional-seconds precision in DATA_SCALE,
+-- and NCLOB reports the same DATA_LENGTH as CLOB and BLOB
+CREATE TABLE t_ts_meta (
+    a TIMESTAMP,
+    b TIMESTAMP(3),
+    c TIMESTAMP(0),
+    d TIMESTAMP(3) WITH TIME ZONE,
+    e NCLOB
+);
+SELECT COUNT(*) = 5 AS five_columns
+FROM SYS.ALL_TAB_COLUMNS
+WHERE TABLE_NAME = 'T_TS_META';
+ five_columns 
+--------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 5 AS meta_matches
+FROM SYS.ALL_TAB_COLUMNS
+WHERE TABLE_NAME = 'T_TS_META'
+  AND (   (COLUMN_NAME = 'A' AND DATA_SCALE = 6 AND DATA_LENGTH = 11)
+       OR (COLUMN_NAME = 'B' AND DATA_SCALE = 3 AND DATA_LENGTH = 11)
+       OR (COLUMN_NAME = 'C' AND DATA_SCALE = 0 AND DATA_LENGTH = 7)
+       OR (COLUMN_NAME = 'D' AND DATA_SCALE = 3 AND DATA_LENGTH = 13)
+       OR (COLUMN_NAME = 'E' AND DATA_LENGTH = 4000 AND DATA_SCALE IS NULL));
+ meta_matches 
+--------------
+ t
+(1 row)
+
+DROP TABLE t_ts_meta;
