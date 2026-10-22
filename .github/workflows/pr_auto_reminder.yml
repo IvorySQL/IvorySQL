@@ -9,7 +9,7 @@ on:
       days_threshold:
         description: 'days threshold(fill 0 or 1 for testing)'
         required: false
-        default: '1'
+        default: '15'
 
 permissions:
   contents: read
