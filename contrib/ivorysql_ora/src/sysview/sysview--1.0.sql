@@ -1557,3 +1557,12 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- V$CONTROLFILE: Oracle lists its control files.  PostgreSQL's equivalent
+-- single control file lives in the data directory, and the path is derivable
+-- from settings every user may read.
+CREATE OR REPLACE VIEW SYS.V$CONTROLFILE AS
+SELECT
+    'VALID'::VARCHAR2(7)                                           AS STATUS,
+    (CURRENT_SETTING('data_directory') || '/global/pg_control')::VARCHAR2(4000) AS NAME;
+GRANT SELECT ON SYS.V$CONTROLFILE TO PUBLIC;
