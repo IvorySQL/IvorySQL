@@ -731,8 +731,29 @@ ivy_xml_xpathobjtoxmltype(xmlXPathObjectPtr xpathobj)
 				cur = xpathobj->nodesetval->nodeTab[i];
 				if (cur->type == XML_TEXT_NODE)
 				{
-					str = (char *)xmlNodeGetContent(cur);
-					appendStringInfoString(&buf, str);
+					/*
+					 * xmlNodeGetContent() returns memory allocated with libxml's
+					 * allocator, which is not tracked by any PostgreSQL memory
+					 * context, so it must be released explicitly.  Freeing in
+					 * PG_FINALLY also covers the out-of-memory error path in
+					 * appendStringInfoString().
+					 */
+					xmlChar    *content = xmlNodeGetContent(cur);
+
+					if (content == NULL)
+						ereport(ERROR,
+								(errcode(ERRCODE_OUT_OF_MEMORY),
+								 errmsg("could not get XML node content")));
+
+					PG_TRY();
+					{
+						appendStringInfoString(&buf, (const char *) content);
+					}
+					PG_FINALLY();
+					{
+						xmlFree(content);
+					}
+					PG_END_TRY();
 				}
 				else
 				{
