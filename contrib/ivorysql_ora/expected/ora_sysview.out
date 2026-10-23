@@ -193,7 +193,7 @@ ORDER BY NAME;
 SELECT BANNER, BANNER_FULL, BANNER_LEGACY, CON_ID FROM SYS.V$VERSION;
                 banner                |             banner_full              |            banner_legacy             | con_id 
 --------------------------------------+--------------------------------------+--------------------------------------+--------
- IvorySQL 5beta1 (PostgreSQL 19devel) | IvorySQL 5beta1 (PostgreSQL 19devel)+| IvorySQL 5beta1 (PostgreSQL 19devel) | 0
+ IvorySQL 5beta1 (PostgreSQL 19beta1) | IvorySQL 5beta1 (PostgreSQL 19beta1)+| IvorySQL 5beta1 (PostgreSQL 19beta1) | 0
                                       | Version 5beta1                       |                                      | 
 (1 row)
 
