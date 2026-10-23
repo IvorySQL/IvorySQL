@@ -13,8 +13,14 @@ jobs:
   contrib_regression:
     runs-on: ubuntu-latest
 
+    env:
+      LLVM_CONFIG: /usr/bin/llvm-config
+      CLANG: /usr/bin/clang
+      # Exercise the OAuth mock-server tests enabled by libcurl.
+      PG_TEST_EXTRA: oauth
+
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: dependancy
       run: |
         sudo apt-get update
@@ -23,7 +29,10 @@ jobs:
               tcl-dev libperl-dev gettext libxml2-dev libxslt-dev \
               libreadline-dev libedit-dev uuid-dev libossp-uuid-dev \
               libipc-run-perl libtime-hires-perl libtest-simple-perl \
-              libicu-dev libnuma-dev
+              libicu-dev libnuma-dev \
+              pkg-config llvm-dev clang liblz4-dev libzstd-dev lz4 zstd \
+              libsystemd-dev libselinux1-dev tzdata systemtap-sdt-dev \
+              libcurl4-openssl-dev liburing-dev
     - name: Setup ccache
       uses: hendrikmuhs/ccache-action@v1.2.23
       with:
@@ -39,17 +48,24 @@ jobs:
         CC: ccache gcc
         CXX: ccache g++
       run: |
-        curl -L -o cpanm http://cpanmin.us && chmod +x cpanm && \
-        ./cpanm --sudo IPC::Run && \
         ./configure \
             --prefix=$PWD/inst \
             --enable-cassert --enable-debug --enable-tap-tests --enable-rpath \
             --with-tcl --with-python --with-gssapi --with-pam --with-ldap \
             --with-openssl --with-libedit-preferred --with-uuid=e2fs \
             --with-ossp-uuid  --with-libxml --with-libxslt  --with-perl \
-            --with-icu --with-libnuma --enable-injection-points --enable-nls
+            --with-icu --with-libnuma --enable-injection-points --enable-nls \
+            --with-llvm --with-lz4 --with-zstd --with-systemd --with-selinux \
+            --with-system-tzdata=/usr/share/zoneinfo \
+            --enable-dtrace --with-libcurl --with-liburing \
+            --with-extra-version="-ci"
     - name: compile
       run: make -j"$(nproc)" && make install
+
+    - name: report build configuration
+      run: |
+        ./src/bin/pg_config/pg_config --version
+        ./src/bin/pg_config/pg_config --configure
 
     - name: contrib_regression
       run: |
