@@ -476,3 +476,13 @@ DETAIL:  drop cascades to function bug_schema.schema_error()
 drop cascades to function bug_schema.schema_caller()
 RESET ivorysql.identifier_case_switch;
 RESET ivorysql.enable_case_switch;
+-- Oracle-compatible DBMS_UTILITY.CANONICALIZE
+DECLARE
+  n text;
+  l int;
+BEGIN
+  dbms_utility.canonicalize('  scott.emp  ', n, l);
+  RAISE NOTICE 'canon=% len=%', n, l;
+END;
+/
+NOTICE:  canon=SCOTT.EMP len=9

@@ -507,3 +507,13 @@ DROP SCHEMA bug_schema CASCADE;
 
 RESET ivorysql.identifier_case_switch;
 RESET ivorysql.enable_case_switch;
+
+-- Oracle-compatible DBMS_UTILITY.CANONICALIZE
+DECLARE
+  n text;
+  l int;
+BEGIN
+  dbms_utility.canonicalize('  scott.emp  ', n, l);
+  RAISE NOTICE 'canon=% len=%', n, l;
+END;
+/
