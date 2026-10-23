@@ -1557,3 +1557,167 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- USER_SEGMENTS: storage of the current user's relations.  PostgreSQL has no
+-- extent bookkeeping exposed in SQL, so a relation below one block reports
+-- zero extents and everything above reports one; BYTES/BLOCKS are the real
+-- relation size.  Fields with no PostgreSQL source are NULL.
+CREATE OR REPLACE VIEW SYS.USER_SEGMENTS AS
+SELECT SEGMENT_NAME, PARTITION_NAME, SEGMENT_TYPE, SEGMENT_SUBTYPE,
+       TABLESPACE_NAME, BYTES, BLOCKS, EXTENTS, INITIAL_EXTENT, NEXT_EXTENT,
+       MIN_EXTENTS, MAX_EXTENTS, MAX_SIZE, RETENTION, MINRETENTION,
+       PCT_INCREASE, FREELISTS, FREELIST_GROUPS, BUFFER_POOL
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS SEGMENT_NAME,
+    NULL::VARCHAR2(128)                                                        AS PARTITION_NAME,
+    CASE C.RELKIND
+        WHEN 'r' THEN 'TABLE'
+        WHEN 'p' THEN 'TABLE PARTITION'
+        WHEN 'm' THEN 'MATERIALIZED VIEW'
+        WHEN 'i' THEN 'INDEX'
+        WHEN 'I' THEN 'INDEX PARTITION'
+        WHEN 'S' THEN 'SEQUENCE'
+        WHEN 'f' THEN 'TABLE'
+        ELSE 'TABLE'
+    END::VARCHAR2(18)                                                          AS SEGMENT_TYPE,
+    NULL::VARCHAR2(7)                                                          AS SEGMENT_SUBTYPE,
+    SYS.ORA_CASE_TRANS(TS.SPCNAME::VARCHAR2)::VARCHAR2(30)                     AS TABLESPACE_NAME,
+    PG_TABLE_SIZE(C.OID)::NUMBER                                               AS BYTES,
+    (PG_TABLE_SIZE(C.OID) / CURRENT_SETTING('block_size')::INT)::NUMBER        AS BLOCKS,
+    CASE WHEN PG_TABLE_SIZE(C.OID) = 0 THEN 0 ELSE 1 END::NUMBER               AS EXTENTS,
+    NULL::NUMBER                                                               AS INITIAL_EXTENT,
+    NULL::NUMBER                                                               AS NEXT_EXTENT,
+    NULL::NUMBER                                                               AS MIN_EXTENTS,
+    NULL::NUMBER                                                               AS MAX_EXTENTS,
+    NULL::NUMBER                                                               AS MAX_SIZE,
+    NULL::VARCHAR2(7)                                                          AS RETENTION,
+    NULL::NUMBER                                                               AS MINRETENTION,
+    NULL::NUMBER                                                               AS PCT_INCREASE,
+    NULL::NUMBER                                                               AS FREELISTS,
+    NULL::NUMBER                                                               AS FREELIST_GROUPS,
+    NULL::VARCHAR2(7)                                                          AS BUFFER_POOL,
+    C.OID                                                                      AS REL_OID
+FROM PG_CATALOG.PG_CLASS C
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+JOIN PG_CATALOG.PG_TABLESPACE TS
+  ON TS.OID = (CASE WHEN C.RELTABLESPACE = 0
+                    THEN (SELECT DATTABLESPACE FROM PG_CATALOG.PG_DATABASE
+                           WHERE DATNAME = CURRENT_DATABASE())
+                    ELSE C.RELTABLESPACE
+               END)
+WHERE C.RELKIND IN ('r', 'p', 'm', 'i', 'I', 'S', 'f')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+WHERE S.OWNER = SYS.ORA_CASE_TRANS(CURRENT_USER::VARCHAR2);
+GRANT SELECT ON SYS.USER_SEGMENTS TO PUBLIC;
+
+-- ALL_SEGMENTS: the same rows for relations the current user can read.
+CREATE OR REPLACE VIEW SYS.ALL_SEGMENTS AS
+SELECT OWNER, SEGMENT_NAME, PARTITION_NAME, SEGMENT_TYPE, SEGMENT_SUBTYPE,
+       TABLESPACE_NAME, BYTES, BLOCKS, EXTENTS, INITIAL_EXTENT, NEXT_EXTENT,
+       MIN_EXTENTS, MAX_EXTENTS, MAX_SIZE, RETENTION, MINRETENTION,
+       PCT_INCREASE, FREELISTS, FREELIST_GROUPS, BUFFER_POOL
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS SEGMENT_NAME,
+    NULL::VARCHAR2(128)                                                        AS PARTITION_NAME,
+    CASE C.RELKIND
+        WHEN 'r' THEN 'TABLE'
+        WHEN 'p' THEN 'TABLE PARTITION'
+        WHEN 'm' THEN 'MATERIALIZED VIEW'
+        WHEN 'i' THEN 'INDEX'
+        WHEN 'I' THEN 'INDEX PARTITION'
+        WHEN 'S' THEN 'SEQUENCE'
+        WHEN 'f' THEN 'TABLE'
+        ELSE 'TABLE'
+    END::VARCHAR2(18)                                                          AS SEGMENT_TYPE,
+    NULL::VARCHAR2(7)                                                          AS SEGMENT_SUBTYPE,
+    SYS.ORA_CASE_TRANS(TS.SPCNAME::VARCHAR2)::VARCHAR2(30)                     AS TABLESPACE_NAME,
+    PG_TABLE_SIZE(C.OID)::NUMBER                                               AS BYTES,
+    (PG_TABLE_SIZE(C.OID) / CURRENT_SETTING('block_size')::INT)::NUMBER        AS BLOCKS,
+    CASE WHEN PG_TABLE_SIZE(C.OID) = 0 THEN 0 ELSE 1 END::NUMBER               AS EXTENTS,
+    NULL::NUMBER                                                               AS INITIAL_EXTENT,
+    NULL::NUMBER                                                               AS NEXT_EXTENT,
+    NULL::NUMBER                                                               AS MIN_EXTENTS,
+    NULL::NUMBER                                                               AS MAX_EXTENTS,
+    NULL::NUMBER                                                               AS MAX_SIZE,
+    NULL::VARCHAR2(7)                                                          AS RETENTION,
+    NULL::NUMBER                                                               AS MINRETENTION,
+    NULL::NUMBER                                                               AS PCT_INCREASE,
+    NULL::NUMBER                                                               AS FREELISTS,
+    NULL::NUMBER                                                               AS FREELIST_GROUPS,
+    NULL::VARCHAR2(7)                                                          AS BUFFER_POOL,
+    C.OID                                                                      AS REL_OID
+FROM PG_CATALOG.PG_CLASS C
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+JOIN PG_CATALOG.PG_TABLESPACE TS
+  ON TS.OID = (CASE WHEN C.RELTABLESPACE = 0
+                    THEN (SELECT DATTABLESPACE FROM PG_CATALOG.PG_DATABASE
+                           WHERE DATNAME = CURRENT_DATABASE())
+                    ELSE C.RELTABLESPACE
+               END)
+WHERE C.RELKIND IN ('r', 'p', 'm', 'i', 'I', 'S', 'f')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+WHERE HAS_TABLE_PRIVILEGE(S.REL_OID, 'SELECT');
+GRANT SELECT ON SYS.ALL_SEGMENTS TO PUBLIC;
+
+-- DBA_SEGMENTS: unrestricted.
+CREATE OR REPLACE VIEW SYS.DBA_SEGMENTS AS
+SELECT OWNER, SEGMENT_NAME, PARTITION_NAME, SEGMENT_TYPE, SEGMENT_SUBTYPE,
+       TABLESPACE_NAME, BYTES, BLOCKS, EXTENTS, INITIAL_EXTENT, NEXT_EXTENT,
+       MIN_EXTENTS, MAX_EXTENTS, MAX_SIZE, RETENTION, MINRETENTION,
+       PCT_INCREASE, FREELISTS, FREELIST_GROUPS, BUFFER_POOL
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS SEGMENT_NAME,
+    NULL::VARCHAR2(128)                                                        AS PARTITION_NAME,
+    CASE C.RELKIND
+        WHEN 'r' THEN 'TABLE'
+        WHEN 'p' THEN 'TABLE PARTITION'
+        WHEN 'm' THEN 'MATERIALIZED VIEW'
+        WHEN 'i' THEN 'INDEX'
+        WHEN 'I' THEN 'INDEX PARTITION'
+        WHEN 'S' THEN 'SEQUENCE'
+        WHEN 'f' THEN 'TABLE'
+        ELSE 'TABLE'
+    END::VARCHAR2(18)                                                          AS SEGMENT_TYPE,
+    NULL::VARCHAR2(7)                                                          AS SEGMENT_SUBTYPE,
+    SYS.ORA_CASE_TRANS(TS.SPCNAME::VARCHAR2)::VARCHAR2(30)                     AS TABLESPACE_NAME,
+    PG_TABLE_SIZE(C.OID)::NUMBER                                               AS BYTES,
+    (PG_TABLE_SIZE(C.OID) / CURRENT_SETTING('block_size')::INT)::NUMBER        AS BLOCKS,
+    CASE WHEN PG_TABLE_SIZE(C.OID) = 0 THEN 0 ELSE 1 END::NUMBER               AS EXTENTS,
+    NULL::NUMBER                                                               AS INITIAL_EXTENT,
+    NULL::NUMBER                                                               AS NEXT_EXTENT,
+    NULL::NUMBER                                                               AS MIN_EXTENTS,
+    NULL::NUMBER                                                               AS MAX_EXTENTS,
+    NULL::NUMBER                                                               AS MAX_SIZE,
+    NULL::VARCHAR2(7)                                                          AS RETENTION,
+    NULL::NUMBER                                                               AS MINRETENTION,
+    NULL::NUMBER                                                               AS PCT_INCREASE,
+    NULL::NUMBER                                                               AS FREELISTS,
+    NULL::NUMBER                                                               AS FREELIST_GROUPS,
+    NULL::VARCHAR2(7)                                                          AS BUFFER_POOL,
+    C.OID                                                                      AS REL_OID
+FROM PG_CATALOG.PG_CLASS C
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+JOIN PG_CATALOG.PG_TABLESPACE TS
+  ON TS.OID = (CASE WHEN C.RELTABLESPACE = 0
+                    THEN (SELECT DATTABLESPACE FROM PG_CATALOG.PG_DATABASE
+                           WHERE DATNAME = CURRENT_DATABASE())
+                    ELSE C.RELTABLESPACE
+               END)
+WHERE C.RELKIND IN ('r', 'p', 'm', 'i', 'I', 'S', 'f')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S;
+GRANT SELECT ON SYS.DBA_SEGMENTS TO PUBLIC;
