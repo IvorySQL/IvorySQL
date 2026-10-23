@@ -10,13 +10,11 @@ CREATE FUNCTION int_custom_in(cstring)
 RETURNS int_custom
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
-/
 
 CREATE FUNCTION int_custom_out(int_custom)
 RETURNS cstring
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
-/
 
 --
 -- Typanalyze function that returns false
@@ -25,7 +23,6 @@ CREATE FUNCTION int_custom_typanalyze_false(internal)
 RETURNS boolean
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT;
-/
 
 --
 -- Typanalyze function that returns invalid stats
@@ -34,7 +31,6 @@ CREATE FUNCTION int_custom_typanalyze_invalid(internal)
 RETURNS boolean
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT;
-/
 
 --
 -- The int_custom type definition
@@ -58,43 +54,36 @@ CREATE FUNCTION int_custom_eq(int_custom, int_custom)
 RETURNS boolean
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
-/
 
 CREATE FUNCTION int_custom_ne(int_custom, int_custom)
 RETURNS boolean
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
-/
 
 CREATE FUNCTION int_custom_lt(int_custom, int_custom)
 RETURNS boolean
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
-/
 
 CREATE FUNCTION int_custom_le(int_custom, int_custom)
 RETURNS boolean
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
-/
 
 CREATE FUNCTION int_custom_gt(int_custom, int_custom)
 RETURNS boolean
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
-/
 
 CREATE FUNCTION int_custom_ge(int_custom, int_custom)
 RETURNS boolean
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
-/
 
 CREATE FUNCTION int_custom_cmp(int_custom, int_custom)
 RETURNS integer
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
-/
 
 -- Operators for int_custom, for btree operator class
 CREATE OPERATOR = (
