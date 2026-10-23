@@ -493,3 +493,37 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- Oracle-compatible TAB_MODIFICATIONS views
+DROP TABLE IF EXISTS t_tab_mods;
+NOTICE:  table "t_tab_mods" does not exist, skipping
+CREATE TABLE t_tab_mods (id INT);
+INSERT INTO t_tab_mods VALUES (1), (2), (3);
+-- statistics for the current backend become visible after a flush
+SELECT PG_STAT_FORCE_NEXT_FLUSH();
+ pg_stat_force_next_flush 
+--------------------------
+ 
+(1 row)
+
+SELECT INSERTS = 3 AS inserts_counted
+FROM SYS.USER_TAB_MODIFICATIONS WHERE TABLE_NAME = 'T_TAB_MODS';
+ inserts_counted 
+-----------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 1 AS all_has
+FROM SYS.ALL_TAB_MODIFICATIONS WHERE TABLE_NAME = 'T_TAB_MODS';
+ all_has 
+---------
+ t
+(1 row)
+
+SELECT COUNT(*) = 1 AS dba_has
+FROM SYS.DBA_TAB_MODIFICATIONS WHERE TABLE_NAME = 'T_TAB_MODS';
+ dba_has 
+---------
+ t
+(1 row)
+
+DROP TABLE t_tab_mods;

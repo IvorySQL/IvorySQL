@@ -1557,3 +1557,47 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- USER_/ALL_/DBA_TAB_MODIFICATIONS: how much a table has changed.  Oracle
+-- reports the changes since the last statistics refresh; PostgreSQL keeps the
+-- per-table counters cumulatively and only tracks the total since the last
+-- ANALYZE, so INSERTS/UPDATES/DELETES are the cumulative counters and
+-- TIMESTAMP is the last analyze time.  The column comment states this instead
+-- of pretending to be Oracle's delta.
+CREATE OR REPLACE VIEW SYS.DBA_TAB_MODIFICATIONS AS
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128) AS TABLE_OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)         AS TABLE_NAME,
+    NULL::VARCHAR2(128)                                            AS PARTITION_NAME,
+    NULL::NUMBER                                                   AS PARTITION_POSITION,
+    NULL::VARCHAR2(128)                                            AS SUBPARTITION_NAME,
+    NULL::NUMBER                                                   AS SUBPARTITION_POSITION,
+    ST.N_TUP_INS::NUMBER                                           AS INSERTS,
+    ST.N_TUP_UPD::NUMBER                                           AS UPDATES,
+    ST.N_TUP_DEL::NUMBER                                           AS DELETES,
+    ST.LAST_ANALYZE                                                AS TIMESTAMP,
+    0::NUMBER                                                      AS DROP_SEGMENTS,
+    0::NUMBER                                                      AS FLAGS,
+    C.RELOWNER                                                     AS OWNER_OID,
+    C.OID                                                          AS REL_OID
+FROM PG_CATALOG.PG_STAT_ALL_TABLES ST
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = ST.RELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+WHERE N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast');
+GRANT SELECT ON SYS.DBA_TAB_MODIFICATIONS TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.USER_TAB_MODIFICATIONS AS
+SELECT TABLE_NAME, PARTITION_NAME, PARTITION_POSITION, SUBPARTITION_NAME,
+       SUBPARTITION_POSITION, INSERTS, UPDATES, DELETES, TIMESTAMP,
+       DROP_SEGMENTS, FLAGS
+FROM SYS.DBA_TAB_MODIFICATIONS
+WHERE OWNER_OID = (SELECT OID FROM PG_CATALOG.PG_ROLES WHERE ROLNAME = CURRENT_USER);
+GRANT SELECT ON SYS.USER_TAB_MODIFICATIONS TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.ALL_TAB_MODIFICATIONS AS
+SELECT TABLE_OWNER, TABLE_NAME, PARTITION_NAME, PARTITION_POSITION,
+       SUBPARTITION_NAME, SUBPARTITION_POSITION, INSERTS, UPDATES, DELETES,
+       TIMESTAMP, DROP_SEGMENTS, FLAGS
+FROM SYS.DBA_TAB_MODIFICATIONS
+WHERE HAS_TABLE_PRIVILEGE(REL_OID, 'SELECT');
+GRANT SELECT ON SYS.ALL_TAB_MODIFICATIONS TO PUBLIC;
