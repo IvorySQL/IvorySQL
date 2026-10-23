@@ -4521,3 +4521,52 @@ DETAIL:  "ivorysql" is a reserved prefix.
 reset ivorysql.dummy_config;
 ERROR:  invalid configuration parameter name "ivorysql.dummy_config"
 DETAIL:  "ivorysql" is a reserved prefix.
+-- Oracle-compatible TO_NCHAR and UNISTR
+SELECT SYS.TO_NCHAR('abc') = 'abc' AS text_identity;
+ text_identity 
+---------------
+ t
+(1 row)
+
+SELECT SYS.TO_NCHAR(42) = '42' AS number_text;
+ number_text 
+-------------
+ t
+(1 row)
+
+SELECT SYS.TO_NCHAR(DATE '2020-01-02') = SYS.TO_CHAR(DATE '2020-01-02') AS date_text;
+ date_text 
+-----------
+ t
+(1 row)
+
+SELECT SYS.UNISTR('abc') = 'abc' AS plain;
+ plain 
+-------
+ t
+(1 row)
+
+SELECT SYS.UNISTR('a\0062c') = 'abc' AS escaped;
+ escaped 
+---------
+ t
+(1 row)
+
+SELECT SYS.UNISTR('\4E2D\6587') = '中文' AS cjk;
+ cjk 
+-----
+ t
+(1 row)
+
+SELECT pg_catalog.length(SYS.UNISTR('\D83D\DE00')) = 1 AS surrogate_pair;
+ surrogate_pair 
+----------------
+ t
+(1 row)
+
+SELECT SYS.UNISTR('x\zzz') = 'x\zzz' AS bad_escape_kept;
+ bad_escape_kept 
+-----------------
+ t
+(1 row)
+

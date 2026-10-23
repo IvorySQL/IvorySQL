@@ -2464,3 +2464,14 @@ reset default_text_search_config;
 -- should throw errors, because dummy_config is not a valid configuration name
 set ivorysql.dummy_config to dummy;
 reset ivorysql.dummy_config;
+
+-- Oracle-compatible TO_NCHAR and UNISTR
+SELECT SYS.TO_NCHAR('abc') = 'abc' AS text_identity;
+SELECT SYS.TO_NCHAR(42) = '42' AS number_text;
+SELECT SYS.TO_NCHAR(DATE '2020-01-02') = SYS.TO_CHAR(DATE '2020-01-02') AS date_text;
+
+SELECT SYS.UNISTR('abc') = 'abc' AS plain;
+SELECT SYS.UNISTR('a\0062c') = 'abc' AS escaped;
+SELECT SYS.UNISTR('\4E2D\6587') = '中文' AS cjk;
+SELECT pg_catalog.length(SYS.UNISTR('\D83D\DE00')) = 1 AS surrogate_pair;
+SELECT SYS.UNISTR('x\zzz') = 'x\zzz' AS bad_escape_kept;
