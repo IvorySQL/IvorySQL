@@ -4521,3 +4521,50 @@ DETAIL:  "ivorysql" is a reserved prefix.
 reset ivorysql.dummy_config;
 ERROR:  invalid configuration parameter name "ivorysql.dummy_config"
 DETAIL:  "ivorysql" is a reserved prefix.
+-- RAISE_APPLICATION_ERROR turns its arguments into an ORA-<number>: <message>
+-- error, rejects numbers outside Oracle's user-defined range, and is callable
+-- as a statement from Oracle-style code.
+CREATE OR REPLACE FUNCTION rae_catch(n NUMBER, m VARCHAR2)
+RETURN VARCHAR2 AS $$
+BEGIN
+    RAISE_APPLICATION_ERROR(n, m);
+    RETURN 'not reached';
+EXCEPTION WHEN OTHERS THEN
+    RETURN SQLERRM;
+END;
+$$ LANGUAGE plisql;
+SELECT rae_catch(-20001, 'boom') AS caught;
+SELECT rae_catch(-20000, 'lowest allowed') AS caught_lowest;
+SELECT rae_catch(-20999, 'highest allowed') AS caught_highest;
+SELECT rae_catch(-1234, 'outside the range') AS caught_out_of_range;
+-- unqualified statement call, exactly as Oracle writes it
+DO $$
+BEGIN
+    RAISE_APPLICATION_ERROR(-20042, 'uncaught');
+END;
+$$;
+DROP FUNCTION rae_catch(NUMBER, VARCHAR2);
+     caught      
+-----------------
+ ORA-20001: boom
+(1 row)
+
+       caught_lowest       
+---------------------------
+ ORA-20000: lowest allowed
+(1 row)
+
+       caught_highest       
+----------------------------
+ ORA-20999: highest allowed
+(1 row)
+
+                                 caught_out_of_range                                  
+--------------------------------------------------------------------------------------
+ ORA-21000: error number argument to raise_application_error of -1234 is out of range
+(1 row)
+
+ERROR:  ORA-20042: uncaught
+CONTEXT:  PL/iSQL function raise_application_error(number,text,pg_catalog.bool) line 10 at RAISE
+SQL statement "CALL RAISE_APPLICATION_ERROR(-20042, 'uncaught')"
+PL/iSQL function inline_code_block line 3 at CALL
