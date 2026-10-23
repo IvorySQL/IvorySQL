@@ -2464,3 +2464,22 @@ reset default_text_search_config;
 -- should throw errors, because dummy_config is not a valid configuration name
 set ivorysql.dummy_config to dummy;
 reset ivorysql.dummy_config;
+
+--
+-- GREATEST/LEAST return NULL when any argument is NULL in oracle mode
+--
+SELECT greatest(NULL, 1);
+SELECT greatest(1, NULL);
+SELECT least(NULL, 1);
+SELECT least(1, NULL);
+SELECT greatest(NULL, 1, 2);
+SELECT least(NULL, 1, 2);
+SELECT greatest(1, 2, 3);
+SELECT least('abc', NULL);
+SELECT greatest(NULL, NULL) IS NULL AS all_null;
+SELECT greatest(1.5, NULL) IS NULL AS numeric_null;
+
+-- PostgreSQL mode keeps the standard NULL-ignoring behavior
+SET IVORYSQL.COMPATIBLE_MODE TO pg;
+SELECT greatest(NULL, 1) AS pg_greatest, least(NULL, 1) AS pg_least;
+SET IVORYSQL.COMPATIBLE_MODE TO ORACLE;
