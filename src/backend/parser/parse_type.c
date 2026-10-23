@@ -84,7 +84,18 @@ LookupTypeNameExtended(ParseState *pstate,
 	HeapTuple	tup;
 	int32		typmod;
 
-	if (typeName->names == NIL)
+	if (typeName->refTypeName != NULL)
+	{
+		Oid		object_type;
+
+		if (compatible_db != ORA_PARSER)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("REF types require Oracle compatibility mode")));
+		object_type = typenameTypeId(pstate, typeName->refTypeName);
+		typoid = get_object_ref_domain_oid(object_type, missing_ok);
+	}
+	else if (typeName->names == NIL)
 	{
 		/* We have the OID already if it's an internally generated TypeName */
 		typoid = typeName->typeOid;
@@ -1082,4 +1093,3 @@ LookupOraTypeNameExtended(ParseState *pstate,
 
 	return (Type) tup;
 }
-

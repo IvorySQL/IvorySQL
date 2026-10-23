@@ -1992,9 +1992,29 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 			if (WALK(stmt->typevar))
 				return true;
 			if (WALK(stmt->coldeflist))
-				return true;		
+				return true;
+			if (WALK(stmt->methods))
+				return true;
 		}
 			break;		
+		case T_ObjectTypeMethod:
+		{
+			ObjectTypeMethod *stmt = (ObjectTypeMethod *) node;
+
+			if (WALK(stmt->parameters))
+				return true;
+			if (WALK(stmt->returnType))
+				return true;
+		}
+			break;
+		case T_CreateTypeBodyStmt:
+		{
+			CreateTypeBodyStmt *stmt = (CreateTypeBodyStmt *) node;
+
+			if (WALK(stmt->typeName))
+				return true;
+		}
+			break;
 		case T_CreateEnumStmt:
 		{
 		   CreateEnumStmt *stmt = (CreateEnumStmt *)node;	

@@ -46,6 +46,7 @@ test: copy copyselect copydml copyencoding insert insert_conflict
 # Note: many of the tests in later groups depend on create_index
 # ----------
 test: create_function_c create_misc create_operator create_procedure create_table create_type create_schema
+test: ref_type
 test: create_index create_index_spgist create_view index_including index_including_gist
 
 # ----------
@@ -93,7 +94,7 @@ test: create_table_like alter_generic alter_operator misc async dbsize misc_func
 # collate.*.utf8 tests cannot be run in parallel with each other
 # psql depends on create_am
 # amutils depends on geometry, create_index_spgist, hash_index, brin
-test: rules psql ora_psql psql_crosstab psql_pipeline amutils stats_ext collate.linux.utf8 collate.windows.win1252
+test: rules psql ora_psql oracle_join_operator psql_crosstab psql_pipeline amutils stats_ext collate.linux.utf8 collate.windows.win1252
 
 # ----------
 # Run these alone so they don't run out of parallel workers
@@ -178,7 +179,7 @@ test: ora_force_view ora_read_only_view
 # Oracle ROWNUM pseudocolumn
 # ----------
 
-test: rownum ora_listagg
+test: rownum ora_listagg ora_jit
 
 # ----------
 # Oracle identifier syntax (#1002)
