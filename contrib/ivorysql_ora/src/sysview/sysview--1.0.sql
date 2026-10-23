@@ -1557,3 +1557,23 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- DBA_DIRECTORIES: the directory objects UTL_FILE uses, which PostgreSQL keeps
+-- in sys.utl_file_directory.  Oracle reports the creating schema as OWNER;
+-- IvorySQL keeps the objects in the SYS schema, so that is what is reported.
+CREATE OR REPLACE VIEW SYS.DBA_DIRECTORIES AS
+SELECT
+    'SYS'::VARCHAR2(128)                                           AS OWNER,
+    PG_CATALOG.UPPER(D.DIRNAME::TEXT)::VARCHAR2(128)                AS DIRECTORY_NAME,
+    D.DIR::VARCHAR2(4000)                                           AS DIRECTORY_PATH
+FROM SYS.UTL_FILE_DIRECTORY D
+ORDER BY DIRECTORY_NAME;
+GRANT SELECT ON SYS.DBA_DIRECTORIES TO PUBLIC;
+
+-- ALL_DIRECTORIES: the directories the current user can read.  The table is
+-- world-readable (UTL_FILE needs it), so in practice this is the same list as
+-- DBA_DIRECTORIES; it exists because Oracle clients query it by that name.
+CREATE OR REPLACE VIEW SYS.ALL_DIRECTORIES AS
+SELECT OWNER, DIRECTORY_NAME, DIRECTORY_PATH
+FROM SYS.DBA_DIRECTORIES;
+GRANT SELECT ON SYS.ALL_DIRECTORIES TO PUBLIC;
