@@ -1557,3 +1557,22 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- V$DATAFILE: Oracle lists data files.  PostgreSQL stores each tablespace as a
+-- directory rather than as individually sized files, so one row per tablespace
+-- is reported, with the directory as NAME and the tablespace size as BYTES.
+-- "FILE#" and "TS#" keep Oracle's column spelling; both carry the tablespace
+-- identifier because there is no separate file id to report.
+CREATE OR REPLACE VIEW SYS.V$DATAFILE AS
+SELECT
+    TS.OID::INT8::NUMBER                                           AS "FILE#",
+    'AVAILABLE'::VARCHAR2(9)                                       AS STATUS,
+    'READ WRITE'::VARCHAR2(16)                                     AS ENABLED,
+    PG_TABLESPACE_SIZE(TS.OID)::NUMBER                             AS BYTES,
+    (PG_TABLESPACE_SIZE(TS.OID) / CURRENT_SETTING('block_size')::INT)::NUMBER AS BLOCKS,
+    COALESCE(PG_TABLESPACE_LOCATION(TS.OID), '')::VARCHAR2(4000)   AS NAME,
+    TS.OID::INT8::NUMBER                                           AS "TS#",
+    0::NUMBER                                                      AS CON_ID
+FROM PG_CATALOG.PG_TABLESPACE TS
+ORDER BY NAME;
+GRANT SELECT ON SYS.V$DATAFILE TO PUBLIC;
