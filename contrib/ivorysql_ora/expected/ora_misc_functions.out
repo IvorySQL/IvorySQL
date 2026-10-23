@@ -4521,3 +4521,42 @@ DETAIL:  "ivorysql" is a reserved prefix.
 reset ivorysql.dummy_config;
 ERROR:  invalid configuration parameter name "ivorysql.dummy_config"
 DETAIL:  "ivorysql" is a reserved prefix.
+/* Start - WM_CONCAT */
+/* Oracle's legacy aggregate: the values joined by a comma */
+SELECT wm_concat(x) AS joined FROM (SELECT x FROM (VALUES ('a'), ('b'), ('c')) v(x) ORDER BY x) t;
+ joined 
+--------
+ a,b,c
+(1 row)
+
+/* numbers are converted, NULLs are skipped */
+SELECT wm_concat(x) AS numbers FROM (SELECT x FROM (VALUES (3), (1)) v(x) ORDER BY x) t;
+ numbers 
+---------
+ 1,3
+(1 row)
+
+SELECT wm_concat(x) AS with_null FROM (SELECT x FROM (VALUES ('a'), (NULL)) v(x) ORDER BY x) t;
+ with_null 
+-----------
+ a
+(1 row)
+
+/* no value at all gives NULL, not an empty string */
+SELECT wm_concat(x) IS NULL AS empty_is_null FROM (SELECT NULL AS x) t;
+ empty_is_null 
+---------------
+ t
+(1 row)
+
+/* it is an aggregate, so it works per group as well */
+SELECT i AS grp, wm_concat(x) AS joined
+FROM (SELECT 1 AS i, 'a' AS x UNION ALL SELECT 1, 'b' UNION ALL SELECT 2, 'c') t
+GROUP BY i ORDER BY i;
+ grp | joined 
+-----+--------
+   1 | a,b
+   2 | c
+(2 rows)
+
+/* End - WM_CONCAT */
