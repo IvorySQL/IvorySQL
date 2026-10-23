@@ -493,3 +493,36 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- USER_TAB_PRIVS / ALL_TAB_PRIVS / DBA_TAB_PRIVS
+DROP TABLE IF EXISTS TEST_TAB_PRIVS;
+NOTICE:  table "test_tab_privs" does not exist, skipping
+CREATE TABLE TEST_TAB_PRIVS (ID INT);
+DROP ROLE IF EXISTS tab_privs_grantee;
+NOTICE:  role "tab_privs_grantee" does not exist, skipping
+CREATE ROLE tab_privs_grantee;
+GRANT SELECT, UPDATE ON TEST_TAB_PRIVS TO tab_privs_grantee WITH GRANT OPTION;
+SELECT GRANTEE, TABLE_NAME, PRIVILEGE, GRANTABLE FROM SYS.USER_TAB_PRIVS
+WHERE TABLE_NAME = 'TEST_TAB_PRIVS' ORDER BY PRIVILEGE;
+      grantee      |   table_name   | privilege  | grantable 
+-------------------+----------------+------------+-----------
+ theresia          | TEST_TAB_PRIVS | DELETE     | NO
+ theresia          | TEST_TAB_PRIVS | INSERT     | NO
+ theresia          | TEST_TAB_PRIVS | MAINTAIN   | NO
+ theresia          | TEST_TAB_PRIVS | REFERENCES | NO
+ theresia          | TEST_TAB_PRIVS | SELECT     | NO
+ tab_privs_grantee | TEST_TAB_PRIVS | SELECT     | YES
+ theresia          | TEST_TAB_PRIVS | TRIGGER    | NO
+ theresia          | TEST_TAB_PRIVS | TRUNCATE   | NO
+ theresia          | TEST_TAB_PRIVS | UPDATE     | NO
+ tab_privs_grantee | TEST_TAB_PRIVS | UPDATE     | YES
+(10 rows)
+
+SELECT count(*) AS granted_rows FROM SYS.DBA_TAB_PRIVS
+WHERE TABLE_NAME = 'TEST_TAB_PRIVS' AND GRANTEE = 'tab_privs_grantee';
+ granted_rows 
+--------------
+            2
+(1 row)
+
+DROP TABLE TEST_TAB_PRIVS;
+DROP ROLE tab_privs_grantee;
