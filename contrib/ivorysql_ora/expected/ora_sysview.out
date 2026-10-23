@@ -493,3 +493,17 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- Oracle-compatible V$NLS_PARAMETERS
+SELECT COUNT(*) = 7 AS seven_rows FROM SYS.V$NLS_PARAMETERS;
+ seven_rows 
+------------
+ t
+(1 row)
+
+SELECT VALUE = CURRENT_SETTING('nls_date_format') AS date_format_matches
+FROM SYS.V$NLS_PARAMETERS WHERE PARAMETER = 'NLS_DATE_FORMAT';
+ date_format_matches 
+---------------------
+ t
+(1 row)
+
