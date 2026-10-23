@@ -25,9 +25,12 @@
 #
 # By default only the tests that the Oracle-compatible suite actually executes
 # are checked: the tests named in regress/parallel_schedule and
-# regress/serial_schedule plus every test found under modules/.  Pass --all to
-# also walk the remaining sql/expected pairs, which may include tests that no
-# schedule runs.
+# regress/serial_schedule plus the modules that modules/Makefile builds.  Pass
+# --all to also walk the remaining sql/expected pairs, which may include tests
+# that no schedule runs and module directories that the build skips; their
+# drift is reported but does not fail the check.  A test whose expected file is
+# missing altogether is always an error, because pg_regress cannot pass it on
+# any machine.
 
 import argparse
 import os
@@ -110,6 +113,12 @@ def _strip_comments_and_literals(line):
 # a replacement for the echoed input line.
 _ECHO_SETTING = re.compile(r'\\(set|unset)\s+ECHO\b\s*(\S*)', re.IGNORECASE)
 _IF_COMMAND = re.compile(r'\\if\b', re.IGNORECASE)
+
+# Returned by check_target() when the expected directory holds no file for the
+# test at all.  That is different from an unmodelled test: an expected file
+# that does not exist makes pg_regress fail on every platform, so the caller
+# has to count it as drift rather than skipping the test.
+MISSING_EXPECTED = object()
 
 
 def echoed_lines(sql_text):
@@ -209,6 +218,61 @@ def missing_lines(expected_text, echoed):
     return missing
 
 
+# Only the plain "SUBDIRS =" assignment is read; "SUBDIRS += ..." lives inside
+# configure conditionals (openssl, C++, injection points, LDAP) whose outcome a
+# static reader cannot know.
+_SUBDIRS_ASSIGNMENT = re.compile(r'^SUBDIRS\s*(\+=|:=|=)\s*(.*)$')
+
+
+def _makefile_lines(makefile_text):
+    """Logical makefile lines: comments removed, continuations joined."""
+    lines = []
+    pending = ''
+    for raw_line in makefile_text.splitlines():
+        line = raw_line.split('#', 1)[0].rstrip()
+        if pending:
+            line = pending + ' ' + line.lstrip()
+        if line.endswith('\\'):
+            pending = line[:-1].rstrip()
+            continue
+        pending = ''
+        lines.append(line)
+    if pending:
+        lines.append(pending)
+    return lines
+
+
+def _module_subdirs(modules_dir):
+    """Module directories that modules/Makefile always builds, or None.
+
+    src/oracle_test/modules/Makefile is the authority for which module tests a
+    normal run executes.  It lists the modules in a single SUBDIRS assignment
+    spread over continuation lines, so the raw text is folded into logical
+    lines before the assignment is read.  A directory that exists in the tree
+    but is not listed (nbtree, for example) is never built, produces no
+    results file, and checking it would only report noise.
+
+    Conditional "SUBDIRS +=" additions depend on how the tree was configured,
+    so they are not part of the strict set; --all still walks them and treats
+    their drift as non-fatal, exactly like a test that no schedule runs.
+    None means the list could not be determined, in which case the caller
+    falls back to every directory in the tree so nothing is silently skipped.
+    """
+    try:
+        makefile_text = _read(os.path.join(modules_dir, 'Makefile'))
+    except OSError:
+        return None
+    names = set()
+    found = False
+    for line in _makefile_lines(makefile_text):
+        match = _SUBDIRS_ASSIGNMENT.match(line.strip())
+        if not match or match.group(1) != '=':
+            continue
+        found = True
+        names.update(match.group(2).split())
+    return names if found else None
+
+
 def _scheduled_tests(regress_dir):
     """Test names listed in parallel_schedule or serial_schedule."""
     names = set()
@@ -227,6 +291,8 @@ def _scheduled_tests(regress_dir):
 def _expected_variants(expected_dir, base):
     """All expected files for a test: base.out and base_<n>.out."""
     variants = []
+    if not os.path.isdir(expected_dir):
+        return variants
     for name in sorted(os.listdir(expected_dir)):
         if name == base + '.out' or (name.startswith(base + '_')
                                      and name.endswith('.out')):
@@ -259,28 +325,47 @@ def collect_targets(root, include_all):
 
     modules = os.path.join(root, 'modules')
     if os.path.isdir(modules):
+        built_modules = _module_subdirs(modules)
         for module in sorted(os.listdir(modules)):
             module_sql = os.path.join(modules, module, 'sql')
             module_expected = os.path.join(modules, module, 'expected')
-            if not (os.path.isdir(module_sql) and os.path.isdir(module_expected)):
+            # A module that lost its expected/ directory is still collected:
+            # check_target() reports the missing output instead of the module
+            # disappearing from the check.
+            if not os.path.isdir(module_sql):
+                continue
+            # A module that the Makefile does not descend into is not part of
+            # a normal run; --all still looks at it, flagged unscheduled so
+            # that drift there cannot fail the check.
+            is_built = built_modules is None or module in built_modules
+            if not is_built and not include_all:
                 continue
             for name in sorted(os.listdir(module_sql)):
                 if name.endswith('.sql'):
                     targets.append((os.path.join(module_sql, name),
                                     module_expected, name[:-len('.sql')],
-                                    True))
+                                    is_built))
 
     return targets
 
 
 def check_target(sql_path, expected_dir, base):
-    """Missing echoed lines for one test, or None when it is unmodelled."""
+    """Missing echoed lines for one test.
+
+    None means the echo model cannot follow the script, and MISSING_EXPECTED
+    means the test has no expected output at all.  The missing-file case is
+    checked before the echo model because it is a failure no matter how psql
+    behaves: pg_regress has nothing to compare the results with.
+    """
+    variants = _expected_variants(expected_dir, base)
+    if not variants:
+        return MISSING_EXPECTED
     sql_text = _read(sql_path)
     if is_unmodelled(sql_text):
         return None
     echoed = echoed_lines(sql_text)
     best = None
-    for variant in _expected_variants(expected_dir, base):
+    for variant in variants:
         missing = missing_lines(_read(variant), echoed)
         if best is None or len(missing) < len(best):
             best = missing
@@ -305,10 +390,21 @@ def main(argv=None):
     drift = 0
     unscheduled_drift = 0
     skipped = 0
+    no_expected = 0
     for sql_path, expected_dir, base, scheduled in targets:
         missing = check_target(sql_path, expected_dir, base)
         if missing is None:
             skipped += 1
+            continue
+        if missing is MISSING_EXPECTED:
+            no_expected += 1
+            if scheduled:
+                drift += 1
+            else:
+                unscheduled_drift += 1
+            print('%s: no %s.out in %s' %
+                  (os.path.relpath(sql_path, root), base,
+                   os.path.relpath(expected_dir, root)))
             continue
         if not missing:
             continue
@@ -324,8 +420,8 @@ def main(argv=None):
     if unscheduled_drift:
         print('%d unscheduled test(s) with drift; no schedule runs them, so '
               'they do not fail the check' % unscheduled_drift)
-    print('%d test(s) checked, %d unmodelled, %d with drift' %
-          (len(targets), skipped, drift))
+    print('%d test(s) checked, %d unmodelled, %d without expected output, '
+          '%d with drift' % (len(targets), skipped, no_expected, drift))
     return 1 if drift else 0
 
 

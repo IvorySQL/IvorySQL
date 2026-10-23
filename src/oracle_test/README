@@ -86,10 +86,10 @@ Drift can be checked without a build
 ------------------------------------
 
 src/oracle_test/tools/check_expected_echo.py rebuilds the lines psql is
-supposed to echo for every scheduled test and verifies that one of the
-expected/*.out variants still contains them in order.  It needs neither a build
-nor a server, so it can be run right after a sync from src/test or from
-PostgreSQL to spot drift before the suite is started:
+supposed to echo for every test that a normal run executes and verifies that
+one of the expected/*.out variants still contains them in order.  It needs
+neither a build nor a server, so it can be run right after a sync from src/test
+or from PostgreSQL to spot drift before the suite is started:
 
     python3 src/oracle_test/tools/check_expected_echo.py
 
@@ -98,9 +98,19 @@ Its unit tests run with:
 
     python3 src/oracle_test/tools/test_check_expected_echo.py
 
-Pass --all to include tests that no schedule runs.  A few of those are left
-stale on purpose (tests that Oracle mode does not execute), so their drift is
-reported but is not a failure of the tree.
+Module tests are limited to the directories that
+src/oracle_test/modules/Makefile lists, because a directory the build never
+descends into produces no results file and its drift cannot break a run.
+Modules added by a conditional SUBDIRS += (openssl, C++, injection points,
+LDAP, and so on) depend on how the tree was configured, so the checker cannot
+tell whether they run; it treats them like tests that no schedule runs.  A test
+that a normal run executes but that has no expected/*.out file at all is always
+a failure, since pg_regress has nothing to compare the results with.
+
+Pass --all to include the tests that no schedule runs and the modules that the
+unconditional build list leaves out.  A few of those are left stale on purpose
+(tests that Oracle mode does not execute), so their drift is reported but is
+not a failure of the tree.
 
 The checker only knows the psql echo rule; it cannot replace a real run of the
 suite.  It follows \set ECHO none/all, but skips tests that use \set ECHO

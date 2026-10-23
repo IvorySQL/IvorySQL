@@ -15,8 +15,9 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from check_expected_echo import (check_target, echoed_lines, is_unmodelled,
-                                 main, missing_lines)
+from check_expected_echo import (MISSING_EXPECTED, _module_subdirs,
+                                 check_target, collect_targets, echoed_lines,
+                                 is_unmodelled, main, missing_lines)
 
 
 class EchoedLinesTest(unittest.TestCase):
@@ -228,6 +229,123 @@ class CheckTargetTest(unittest.TestCase):
         self._write_expected('-- cleanup\nSELECT 1;\nSELECT 2;\n')
         self.assertEqual(check_target(self.sql_path, self.expected_dir, 't'), [])
 
+    def test_missing_expected_file_is_reported(self):
+        # pg_regress has nothing to compare the results with, so a test whose
+        # expected output was never generated must fail the check instead of
+        # being skipped as unmodelled.
+        self.assertIs(check_target(self.sql_path, self.expected_dir, 't'),
+                      MISSING_EXPECTED)
+
+    def test_missing_expected_directory_is_reported(self):
+        # Losing the whole expected/ directory is just as broken as losing a
+        # single file, and used to raise an unhandled FileNotFoundError from
+        # os.listdir().
+        self.assertIs(check_target(self.sql_path,
+                                   os.path.join(self.tmp, 'no_expected'), 't'),
+                      MISSING_EXPECTED)
+
+
+class ModuleSubdirsTest(unittest.TestCase):
+    """Only the modules that modules/Makefile builds run in a normal suite."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix='echo_modules_')
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.modules = os.path.join(self.tmp, 'modules')
+        os.makedirs(self.modules)
+
+    def _write_makefile(self, text):
+        with open(os.path.join(self.modules, 'Makefile'), 'w',
+                  encoding='utf-8') as handle:
+            handle.write(text)
+
+    def _add_test(self, module, expected_text):
+        sql_dir = os.path.join(self.modules, module, 'sql')
+        expected_dir = os.path.join(self.modules, module, 'expected')
+        os.makedirs(sql_dir)
+        os.makedirs(expected_dir)
+        with open(os.path.join(sql_dir, 't.sql'), 'w',
+                  encoding='utf-8') as handle:
+            handle.write('SELECT 1;\nSELECT 2;\n')
+        with open(os.path.join(expected_dir, 't.out'), 'w',
+                  encoding='utf-8') as handle:
+            handle.write(expected_text)
+
+    def test_continuation_lines_and_conditional_appends(self):
+        # SUBDIRS is spread over continuation lines, and the "+=" additions
+        # sit under configure conditionals whose value a static reader cannot
+        # evaluate; only the unconditional assignment is authoritative.
+        self._write_makefile(
+            'SUBDIRS = \\\n'
+            '\t\t  alpha \\\n'
+            '\t\t  beta\n'
+            '\n'
+            'ifeq ($(enable_injection_points),yes)\n'
+            'SUBDIRS += gamma\n'
+            'else\n'
+            'ALWAYS_SUBDIRS += gamma\n'
+            'endif\n')
+        self.assertEqual(_module_subdirs(self.modules), {'alpha', 'beta'})
+
+    def test_commented_out_assignment_is_ignored(self):
+        # A module name in a comment must not sneak into the build list.
+        self._write_makefile('SUBDIRS = alpha\n# SUBDIRS += beta\n')
+        self.assertEqual(_module_subdirs(self.modules), {'alpha'})
+
+    def test_missing_makefile_means_unknown(self):
+        # Falling back to every directory is safer than checking nothing when
+        # the build list cannot be read.
+        self.assertIsNone(_module_subdirs(self.modules))
+
+    def test_makefile_without_subdirs_means_unknown(self):
+        self._write_makefile('include ../Makefile.global\n')
+        self.assertIsNone(_module_subdirs(self.modules))
+
+    def test_unlisted_module_is_skipped_by_default(self):
+        self._write_makefile('SUBDIRS = alpha\n')
+        self._add_test('alpha', 'SELECT 1;\nSELECT 2;\n')
+        self._add_test('gamma', 'SELECT 1;\n')
+        default = collect_targets(self.tmp, False)
+        self.assertEqual(len(default), 1)
+        self.assertEqual(default[0][0],
+                         os.path.join(self.modules, 'alpha', 'sql', 't.sql'))
+        self.assertTrue(default[0][3])
+
+    def test_unlisted_module_is_unscheduled_with_all(self):
+        # --all still reports the module, but as unscheduled so that its drift
+        # cannot fail the check on a configuration that does not build it.
+        self._write_makefile('SUBDIRS = alpha\n')
+        self._add_test('alpha', 'SELECT 1;\nSELECT 2;\n')
+        self._add_test('gamma', 'SELECT 1;\n')
+        everything = collect_targets(self.tmp, True)
+        by_module = {}
+        for sql_path, dummy_expected, dummy_base, scheduled in everything:
+            module = os.path.basename(os.path.dirname(os.path.dirname(sql_path)))
+            by_module[module] = scheduled
+        self.assertEqual(by_module, {'alpha': True, 'gamma': False})
+
+    def test_missing_makefile_keeps_modules_scheduled(self):
+        self._add_test('alpha', 'SELECT 1;\nSELECT 2;\n')
+        targets = collect_targets(self.tmp, False)
+        self.assertEqual(len(targets), 1)
+        self.assertTrue(targets[0][3])
+
+    def test_module_without_expected_directory_is_collected(self):
+        # If the whole expected/ directory is gone the module must still be
+        # reported as broken instead of silently disappearing from the check.
+        sql_dir = os.path.join(self.modules, 'alpha', 'sql')
+        os.makedirs(sql_dir)
+        with open(os.path.join(sql_dir, 't.sql'), 'w',
+                  encoding='utf-8') as handle:
+            handle.write('SELECT 1;\n')
+        self._write_makefile('SUBDIRS = alpha\n')
+        targets = collect_targets(self.tmp, False)
+        self.assertEqual(len(targets), 1)
+        sql_path, expected_dir, base, scheduled = targets[0]
+        self.assertTrue(scheduled)
+        self.assertIs(check_target(sql_path, expected_dir, base),
+                      MISSING_EXPECTED)
+
 
 class MainExitStatusTest(unittest.TestCase):
     """Drift in a test that no schedule runs must not fail the check."""
@@ -258,6 +376,20 @@ class MainExitStatusTest(unittest.TestCase):
 
     def test_unscheduled_drift_is_reported_but_passes(self):
         self.assertEqual(self._run(['--dir', self.tmp]), 0)
+        self.assertEqual(self._run(['--dir', self.tmp, '--all']), 0)
+
+    def test_missing_expected_file_fails_scheduled_test(self):
+        # No expected output means no possible pass, whether or not there is
+        # an echoed line to compare.
+        os.remove(os.path.join(self.regress, 'expected', 't.out'))
+        with open(os.path.join(self.regress, 'parallel_schedule'), 'w',
+                  encoding='utf-8') as handle:
+            handle.write('test: t\n')
+        self.assertEqual(self._run(['--dir', self.tmp]), 1)
+
+    def test_missing_expected_file_passes_when_unscheduled(self):
+        os.remove(os.path.join(self.regress, 'expected', 't.out'))
+        # Only --all reaches the test when no schedule lists it.
         self.assertEqual(self._run(['--dir', self.tmp, '--all']), 0)
 
 
