@@ -107,7 +107,7 @@ extern int withFuncLookupHook(ParseState *pstate,
  * (i.e., when a WITH function is called recursively from inside a PL/iSQL
  * simple-expression path that has no parent PlanState).
  */
-extern struct EState *plisql_active_with_func_estate;
+extern PGDLLIMPORT struct EState *plisql_active_with_func_estate;
 
 /* -------------------------
  * Phase 3: execution-time compilation
