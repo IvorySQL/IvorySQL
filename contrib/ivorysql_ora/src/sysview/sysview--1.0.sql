@@ -1557,3 +1557,22 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- V$SPPARAMETER: Oracle's server parameter file view.  PostgreSQL's equivalent
+-- is the set of values that come from postgresql.conf (pg_settings.source =
+-- 'configuration file'), so the view reports those, with ORDINAL as the
+-- position in the settings list and ISSPECIFIED always TRUE because a row only
+-- exists when the file specifies the parameter.
+CREATE OR REPLACE VIEW SYS.V$SPPARAMETER AS
+SELECT
+    '*'::VARCHAR2(1)                                              AS SID,
+    NAME::VARCHAR2(80)                                             AS NAME,
+    SETTING::VARCHAR2(4000)                                        AS VALUE,
+    CASE WHEN CONTEXT IN ('user', 'superuser') THEN 'TRUE'
+         ELSE 'FALSE'
+    END::VARCHAR2(5)                                               AS ISSYS_MODIFIABLE,
+    ROW_NUMBER() OVER (ORDER BY NAME)::NUMBER                       AS ORDINAL,
+    'TRUE'::VARCHAR2(5)                                            AS ISSPECIFIED
+FROM PG_CATALOG.PG_SETTINGS
+WHERE SOURCE IN ('configuration file', 'override');
+GRANT SELECT ON SYS.V$SPPARAMETER TO PUBLIC;
