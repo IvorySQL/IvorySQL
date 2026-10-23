@@ -888,6 +888,12 @@ ora_utl_file_putf(PG_FUNCTION_ARGS)
 			CHECK_LENGTH(++cur_len);
 			if (fputc('\n', fd) == EOF)
 				CHECK_ERRNO_PUT();
+			/*
+			 * The newline is charged to the line it terminates; the budget
+			 * then restarts for the next line, as in Oracle where
+			 * max_linesize bounds a single line, not one PUTF call.
+			 */
+			cur_len = 0;
 			fpt++; format_length--;
 			continue;
 		}
