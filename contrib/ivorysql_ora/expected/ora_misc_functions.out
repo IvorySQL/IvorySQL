@@ -4521,3 +4521,11 @@ DETAIL:  "ivorysql" is a reserved prefix.
 reset ivorysql.dummy_config;
 ERROR:  invalid configuration parameter name "ivorysql.dummy_config"
 DETAIL:  "ivorysql" is a reserved prefix.
+-- Oracle-compatible ORA_INVOKING_USER
+SELECT SYS.ORA_INVOKING_USER() = CURRENT_USER::VARCHAR2 AS is_current_user
+FROM DUAL;
+ is_current_user 
+-----------------
+ t
+(1 row)
+

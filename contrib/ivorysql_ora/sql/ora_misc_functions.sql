@@ -2464,3 +2464,7 @@ reset default_text_search_config;
 -- should throw errors, because dummy_config is not a valid configuration name
 set ivorysql.dummy_config to dummy;
 reset ivorysql.dummy_config;
+
+-- Oracle-compatible ORA_INVOKING_USER
+SELECT SYS.ORA_INVOKING_USER() = CURRENT_USER::VARCHAR2 AS is_current_user
+FROM DUAL;
