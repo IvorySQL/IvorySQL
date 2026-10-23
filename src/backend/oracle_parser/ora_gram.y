@@ -575,6 +575,8 @@ static bool oracleJoinOpExists(const Node *expr);
 %type <alias>	for_portion_of_opt_alias
 %type <node>	for_portion_of_clause
 %type <node>	tablesample_clause opt_repeatable_clause
+%type <node>	ora_sample_clause opt_sample_seed
+%type <list>	opt_sample_block
 %type <target>	target_el set_target insert_column_item
 
 %type <str>		generic_option_name
@@ -782,7 +784,7 @@ static bool oracleJoinOpExists(const Node *expr);
 	ASENSITIVE ASSERTION ASSIGNMENT ASYMMETRIC ATOMIC AT ATTACH ATTRIBUTE AUTHORIZATION
 
 	BACKWARD BEFORE BEGIN_P BETWEEN BIGINT BINARY BINARY_DOUBLE
-	BINARY_FLOAT BIT BODY
+	BINARY_FLOAT BIT BLOCK BODY
 	BOOLEAN_P BOTH BREADTH BY BYTE_P
 
 	CACHE CALL CALLED CASCADE CASCADED CASE CAST CATALOG_P CHAIN CHAR_P
@@ -849,7 +851,7 @@ static bool oracleJoinOpExists(const Node *expr);
 	RESET RESPECT_P RESTART RESTRICT RESULT_P RETURN RETURNING RETURNS REVOKE RIGHT ROLE ROLLBACK ROLLUP
 	ROUTINE ROUTINES ROW ROWID ROWNUM ROWS  ROWTYPE RULE
 
-	SAVEPOINT SCALAR SCALE SCHEMA SCHEMAS SCROLL SEARCH SECOND_P SECURITY SELECT SELF_P
+	SAMPLE SAVEPOINT SCALAR SCALE SCHEMA SCHEMAS SCROLL SEARCH SECOND_P SECURITY SEED SELECT SELF_P
 	SEQUENCE SEQUENCES
 	SERIALIZABLE SERVER SESSION SESSION_USER SET SETS SETOF SHARD SHARE SHOW
 	SIMILAR SIMPLE SKIP SMALLINT SNAPSHOT SOME SOURCE SPECIFICATION SPLIT SQL_P STABLE STANDALONE_P
@@ -16121,6 +16123,15 @@ table_ref:	relation_expr opt_alias_clause
 					n->relation = (Node *) $1;
 					$$ = (Node *) n;
 				}
+			| relation_expr ora_sample_clause opt_alias_clause
+				{
+					RangeTableSample *n = (RangeTableSample *) $2;
+
+					$1->alias = $3;
+					/* relation_expr goes inside the RangeTableSample node */
+					n->relation = (Node *) $1;
+					$$ = (Node *) n;
+				}
 			| func_table func_alias_clause
 				{
 					RangeFunction *n = (RangeFunction *) $1;
@@ -16573,6 +16584,38 @@ tablesample_clause:
 
 opt_repeatable_clause:
 			REPEATABLE '(' a_expr ')'	{ $$ = (Node *) $3; }
+			| /*EMPTY*/					{ $$ = NULL; }
+		;
+
+/*
+ * Oracle SAMPLE decoration in a FROM item: SAMPLE [BLOCK] (percentage)
+ * [SEED (seed)].  It is sugar over the TABLESAMPLE machinery: the
+ * row-level default maps to the bernoulli method, whose per-row
+ * selection probability matches Oracle's documented SAMPLE semantics,
+ * SAMPLE BLOCK maps to the block-level system method, and SEED maps to
+ * REPEATABLE.  Like TABLESAMPLE, the alias follows the clause.
+ */
+ora_sample_clause:
+			SAMPLE opt_sample_block '(' a_expr ')' opt_sample_seed
+				{
+					RangeTableSample *n = makeNode(RangeTableSample);
+
+					/* n->relation will be filled in later */
+					n->method = $2;
+					n->args = list_make1($4);
+					n->repeatable = $6;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+		;
+
+opt_sample_block:
+			BLOCK						{ $$ = list_make1(makeString("system")); }
+			| /*EMPTY*/					{ $$ = list_make1(makeString("bernoulli")); }
+		;
+
+opt_sample_seed:
+			SEED '(' a_expr ')'			{ $$ = (Node *) $3; }
 			| /*EMPTY*/					{ $$ = NULL; }
 		;
 
@@ -21993,6 +22036,7 @@ unreserved_keyword:
 			| BACKWARD
 			| BEFORE
 			| BEGIN_P
+			| BLOCK
 			| BODY
 			| BREADTH
 			| BY
@@ -22493,6 +22537,8 @@ type_func_name_keyword:
 			| OUTER_P
 			| OVERLAPS
 			| RIGHT
+			| SAMPLE
+			| SEED
 			| SIMILAR
 			| SYSDATE
 			| SYSTIMESTAMP
@@ -22650,6 +22696,7 @@ bare_label_keyword:
 			| BINARY_FLOAT_INFINITY
 			| BINARY_FLOAT_NAN
 			| BIT
+			| BLOCK
 			| BODY
 			| BOOLEAN_P
 			| BOTH
@@ -23017,6 +23064,7 @@ bare_label_keyword:
 			| ROWS
 			| ROWTYPE
 			| RULE
+			| SAMPLE
 			| SAVEPOINT
 			| SCALAR
 			| SCALE
@@ -23025,6 +23073,7 @@ bare_label_keyword:
 			| SCROLL
 			| SEARCH
 			| SECURITY
+			| SEED
 			| SELECT
 			| SEQUENCE
 			| SEQUENCES
