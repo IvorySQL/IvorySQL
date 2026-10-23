@@ -507,3 +507,15 @@ DROP SCHEMA bug_schema CASCADE;
 
 RESET ivorysql.identifier_case_switch;
 RESET ivorysql.enable_case_switch;
+
+-- Oracle-compatible DBMS_UTILITY.GET_DEPENDENCY
+DROP VIEW IF EXISTS v_getdep_test;
+DROP TABLE IF EXISTS t_getdep_test;
+CREATE TABLE t_getdep_test (id INT);
+CREATE VIEW v_getdep_test AS SELECT id FROM t_getdep_test;
+BEGIN
+  dbms_utility.get_dependency('VIEW', 'public', 'v_getdep_test');
+END;
+/
+DROP VIEW v_getdep_test;
+DROP TABLE t_getdep_test;
