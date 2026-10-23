@@ -28,6 +28,10 @@ CREATE OR REPLACE PACKAGE dbms_utility IS
   FUNCTION FORMAT_ERROR_BACKTRACE RETURN TEXT;
   FUNCTION FORMAT_ERROR_STACK RETURN TEXT;
   FUNCTION FORMAT_CALL_STACK RETURN TEXT;
+
+  /* Canonical form of an object name: unquoted names upper-cased, without
+   * surrounding blanks, plus its length. */
+  PROCEDURE CANONICALIZE(NAME TEXT, CANON_NAME OUT TEXT, CANON_LEN OUT INTEGER);
 END dbms_utility;
 
 CREATE OR REPLACE PACKAGE BODY dbms_utility IS
@@ -44,5 +48,11 @@ CREATE OR REPLACE PACKAGE BODY dbms_utility IS
   FUNCTION FORMAT_CALL_STACK RETURN TEXT IS
   BEGIN
     RETURN sys.ora_format_call_stack();
+  END;
+
+  PROCEDURE CANONICALIZE(NAME TEXT, CANON_NAME OUT TEXT, CANON_LEN OUT INTEGER) IS
+  BEGIN
+    CANON_NAME := pg_catalog.upper(pg_catalog.btrim(NAME));
+    CANON_LEN := pg_catalog.length(CANON_NAME);
   END;
 END dbms_utility;
