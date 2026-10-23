@@ -1944,3 +1944,43 @@ SELECT to_number('1e-0') AS exp_minus_zero;
 (1 row)
 
 /* End - to_number scientific notation */
+/* Start - BIN_TO_NUM */
+/* Oracle reads the bit list left to right, the first bit is the most significant */
+SELECT bin_to_num(1, 0, 1, 0) AS bin_1010;
+ bin_1010 
+----------
+ 10
+(1 row)
+
+SELECT bin_to_num(1, 1, 1, 1, 1) AS bin_11111;
+ bin_11111 
+-----------
+ 31
+(1 row)
+
+SELECT bin_to_num(0) AS bin_0;
+ bin_0 
+-------
+ 0
+(1 row)
+
+SELECT bin_to_num(0, 0, 0, 0, 1) AS bin_1;
+ bin_1 
+-------
+ 1
+(1 row)
+
+SELECT bin_to_num(1, 0) AS two, bin_to_num(0, 1) AS one;
+ two | one 
+-----+-----
+ 2   | 1
+(1 row)
+
+/* a value that is not a bit raises an error, like Oracle */
+SELECT bin_to_num(1, 2) AS invalid_bit;
+ERROR:  BIN_TO_NUM: each bit must be 0 or 1
+CONTEXT:  PL/pgSQL function bin_to_num(number[]) line 12 at RAISE
+SELECT bin_to_num(1, NULL) AS null_bit;
+ERROR:  BIN_TO_NUM: each bit must be 0 or 1
+CONTEXT:  PL/pgSQL function bin_to_num(number[]) line 12 at RAISE
+/* End - BIN_TO_NUM */
