@@ -861,3 +861,130 @@ SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
   '2026-03-08 00:00:00-05'::pg_catalog.timestamptz, '2026-03-08 00:00:00-05'::pg_catalog.timestamptz)
   = '2026-03-09 00:00:00-04'::pg_catalog.timestamptz AS midnight_after_gap;
 RESET timezone;
+
+-- Subdaily frequencies retain both occurrences of an autumn repeated hour.
+-- Use explicit PostgreSQL timestamp input to preserve numeric UTC offsets.
+SET timezone TO 'America/New_York';
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=HOURLY', '2026-11-01 00:30:00-04'::pg_catalog.timestamptz, '2026-11-01 00:30:00-04'::pg_catalog.timestamptz)
+  = '2026-11-01 01:30:00-04'::pg_catalog.timestamptz AS hourly_first_fold;
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=HOURLY', '2026-11-01 00:30:00-04'::pg_catalog.timestamptz, '2026-11-01 01:30:00-04'::pg_catalog.timestamptz)
+  = '2026-11-01 01:30:00-05'::pg_catalog.timestamptz AS hourly_second_fold;
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=MINUTELY;INTERVAL=30', '2026-11-01 00:30:00-04'::pg_catalog.timestamptz, '2026-11-01 00:30:00-04'::pg_catalog.timestamptz)
+  = '2026-11-01 01:00:00-04'::pg_catalog.timestamptz AS minutely_first_fold;
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=HOURLY;BYMINUTE=15,45', '2026-11-01 00:00:00-04'::pg_catalog.timestamptz, '2026-11-01 01:15:00-04'::pg_catalog.timestamptz)
+  = '2026-11-01 01:45:00-04'::pg_catalog.timestamptz AS hourly_byminute_fold;
+RESET timezone;
+
+SET timezone TO 'America/New_York';
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=MINUTELY;INTERVAL=30', '2026-11-01 00:30:00-04'::pg_catalog.timestamptz, '2026-11-01 01:30:00-04'::pg_catalog.timestamptz)
+  = '2026-11-01 01:00:00-05'::pg_catalog.timestamptz AS minutely_second_fold;
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=HOURLY;BYHOUR=1;BYMINUTE=15,45',
+  '2026-11-01 00:00:00-04'::pg_catalog.timestamptz, '2026-11-01 01:45:00-04'::pg_catalog.timestamptz)
+  = '2026-11-01 01:15:00-05'::pg_catalog.timestamptz AS filtered_second_fold;
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=HOURLY', '2026-03-08 00:30:00-05'::pg_catalog.timestamptz, '2026-03-08 01:30:00-05'::pg_catalog.timestamptz)
+  = '2026-03-08 03:30:00-04'::pg_catalog.timestamptz AS hourly_spring_gap;
+RESET timezone;
+
+-- An offset borrowed from the period must still describe the candidate's
+-- actual local time, including transitions that move clocks by half an hour.
+SET timezone TO 'Australia/Lord_Howe';
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=HOURLY;BYMINUTE=15',
+  '2026-10-04 00:00:00+10:30'::pg_catalog.timestamptz, '2026-10-04 01:15:00+10:30'::pg_catalog.timestamptz)
+  = '2026-10-04 03:15:00+11'::pg_catalog.timestamptz AS half_hour_gap;
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=HOURLY;BYMINUTE=15,45',
+  '2026-10-04 00:00:00+10:30'::pg_catalog.timestamptz, '2026-10-04 01:45:00+10:30'::pg_catalog.timestamptz)
+  = '2026-10-04 02:45:00+11'::pg_catalog.timestamptz AS half_hour_gap_valid;
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=HOURLY;BYMINUTE=15,45',
+  '2026-04-05 00:00:00+11'::pg_catalog.timestamptz, '2026-04-05 01:15:00+11'::pg_catalog.timestamptz)
+  = '2026-04-05 01:45:00+11'::pg_catalog.timestamptz AS half_hour_first_fold;
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=HOURLY;BYMINUTE=15,45',
+  '2026-04-05 00:00:00+11'::pg_catalog.timestamptz, '2026-04-05 01:45:00+11'::pg_catalog.timestamptz)
+  = '2026-04-05 01:45:00+10:30'::pg_catalog.timestamptz AS half_hour_second_fold;
+RESET timezone;
+
+-- Compare mappings across sampled periods, including partial-hour folds.
+SET timezone TO 'Australia/Lord_Howe';
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string('FREQ=HOURLY', '2026-04-05 00:45:00+11'::pg_catalog.timestamptz, '2026-04-05 01:45:00+11'::pg_catalog.timestamptz) = '2026-04-04 15:15:00+00:00'::pg_catalog.timestamptz AS lh_fold_45;
+SET timezone TO 'Australia/Lord_Howe';
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string('FREQ=HOURLY;BYMINUTE=15,45', '2026-04-05 00:45:00+11'::pg_catalog.timestamptz, '2026-04-05 01:45:00+11'::pg_catalog.timestamptz) = '2026-04-04 15:15:00+00:00'::pg_catalog.timestamptz AS lh_fold_by_45;
+SET timezone TO 'Australia/Lord_Howe';
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string('FREQ=HOURLY', '2026-10-04 00:45:00+10:30'::pg_catalog.timestamptz, '2026-10-04 01:45:00+10:30'::pg_catalog.timestamptz) = '2026-10-03 16:45:00+00:00'::pg_catalog.timestamptz AS lh_gap_45;
+SET timezone TO 'America/New_York';
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string('FREQ=MINUTELY;INTERVAL=7', '2026-11-01 00:00:00-04'::pg_catalog.timestamptz, '2026-11-01 01:20:00-05'::pg_catalog.timestamptz) = '2026-11-01 06:24:00+00:00'::pg_catalog.timestamptz AS ny_min_7_14;
+SET timezone TO 'America/New_York';
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string('FREQ=MINUTELY;INTERVAL=10', '2026-11-01 00:00:00-04'::pg_catalog.timestamptz, '2026-11-01 01:00:00-04'::pg_catalog.timestamptz) = '2026-11-01 05:10:00+00:00'::pg_catalog.timestamptz AS ny_min_10_15;
+SET timezone TO 'America/New_York';
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string('FREQ=HOURLY;INTERVAL=2', '2026-11-01 00:00:00-04'::pg_catalog.timestamptz, '2026-11-01 00:00:00-04'::pg_catalog.timestamptz) = '2026-11-01 05:00:00+00:00'::pg_catalog.timestamptz AS ny_hour_two;
+SET timezone TO 'America/New_York';
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string('FREQ=MINUTELY;INTERVAL=7', '2026-11-01 01:55:00-04'::pg_catalog.timestamptz, '2026-11-01 01:00:00-04'::pg_catalog.timestamptz) = '2026-11-01 05:55:00+00:00'::pg_catalog.timestamptz AS start_lower_bound;
+SET timezone TO 'America/New_York';
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string('FREQ=MINUTELY;INTERVAL=10', '2026-11-01 00:00:00-04'::pg_catalog.timestamptz, '2026-11-01 01:00:00-05'::pg_catalog.timestamptz) = '2026-11-01 06:10:00+00:00'::pg_catalog.timestamptz AS strict_after;
+SET timezone TO 'Pacific/Kwajalein';
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string('FREQ=MINUTELY;INTERVAL=7', '1969-09-30 00:00:00+11'::pg_catalog.timestamptz, '1969-09-30 12:00:00-12'::pg_catalog.timestamptz) = '1969-10-01 00:01:00+00:00'::pg_catalog.timestamptz AS historical_large_fold;
+RESET timezone;
+
+-- Sparse filters and fold resolution must compose without losing either occurrence.
+SET timezone TO 'America/New_York';
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=HOURLY;INTERVAL=2;BYMONTH=NOV;BYMONTHDAY=1;BYHOUR=1;BYMINUTE=15',
+  '2026-10-01 00:00:00-04'::pg_catalog.timestamptz, '2026-10-01 00:00:00-04'::pg_catalog.timestamptz)
+  = '2026-11-01 01:15:00-04'::pg_catalog.timestamptz AS sparse_hourly_first_fold;
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=HOURLY;INTERVAL=2;BYMONTH=NOV;BYMONTHDAY=1;BYHOUR=1;BYMINUTE=15',
+  '2026-10-01 00:00:00-04'::pg_catalog.timestamptz, '2026-11-01 01:15:00-04'::pg_catalog.timestamptz)
+  = '2026-11-01 01:15:00-05'::pg_catalog.timestamptz AS sparse_hourly_second_fold;
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=MINUTELY;INTERVAL=7;BYMONTH=NOV;BYMONTHDAY=1;BYHOUR=1;BYMINUTE=2',
+  '2026-10-01 00:00:00-04'::pg_catalog.timestamptz, '2026-10-01 00:00:00-04'::pg_catalog.timestamptz)
+  = '2026-11-01 01:02:00-04'::pg_catalog.timestamptz AS sparse_minutely_first_fold;
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=MINUTELY;INTERVAL=7;BYMONTH=NOV;BYMONTHDAY=1;BYHOUR=1;BYMINUTE=2',
+  '2026-10-01 00:00:00-04'::pg_catalog.timestamptz, '2026-11-01 01:00:00-05'::pg_catalog.timestamptz)
+  = '2026-11-01 01:02:00-05'::pg_catalog.timestamptz AS sparse_minutely_second_fold;
+RESET timezone;
+
+-- Skipping into a partial-hour spring gap must not manufacture a wall time.
+SET timezone TO 'Australia/Lord_Howe';
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=HOURLY;BYMONTH=OCT;BYMONTHDAY=4,5;BYHOUR=2;BYMINUTE=15',
+  '2026-09-01 00:00:00+10:30'::pg_catalog.timestamptz, '2026-09-01 00:00:00+10:30'::pg_catalog.timestamptz)
+  = '2026-10-05 02:15:00+11'::pg_catalog.timestamptz AS sparse_half_hour_gap;
+RESET timezone;
+
+-- Impossible dates and interval/filter mismatches must still terminate.
+SET timezone TO 'UTC';
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=SECONDLY;BYMONTH=FEB;BYMONTHDAY=30',
+  '2026-01-01 00:00:00+00'::pg_catalog.timestamptz, '2026-01-01 00:00:00+00'::pg_catalog.timestamptz);
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=MINUTELY;INTERVAL=60;BYMINUTE=1',
+  '2026-01-01 00:00:00+00'::pg_catalog.timestamptz, '2026-01-01 00:00:00+00'::pg_catalog.timestamptz);
+RESET timezone;
+
+-- A negative fractional timestamp must not hide an imminent DST transition.
+SET timezone TO 'America/New_York';
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=SECONDLY;BYMONTHDAY=5',
+  '1999-04-04 01:59:59.5-05'::pg_catalog.timestamptz, '1999-04-04 01:59:59.5-05'::pg_catalog.timestamptz)
+  = '1999-04-05 00:00:00-04'::pg_catalog.timestamptz AS fractional_skip_gap;
+RESET timezone;
+
+-- Fold lookback must not consume the forward search budget for a sparse date.
+SET timezone TO 'America/New_York';
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=MINUTELY;BYDATE=20370923',
+  '2026-10-31 00:00:00-04'::pg_catalog.timestamptz,
+  '2026-11-01 01:30:00-05'::pg_catalog.timestamptz)
+  = '2037-09-23 00:00:00-04'::pg_catalog.timestamptz AS fold_lookback_preserves_budget;
+RESET timezone;
