@@ -18,6 +18,7 @@
 #include "getopt_long.h"
 #include "libpq-fe.h"
 #include "mb/pg_wchar.h"
+#include "oracle_fe_utils/ora_string_utils.h"
 #include "utils/memdebug.h"
 
 
@@ -164,6 +165,35 @@ encoding_conflicts_ascii(int encoding)
 	return false;
 }
 
+
+/* Oracle formatting receives raw catalog names, never prequoted SQL. */
+static void
+test_oracle_identifiers(pe_test_config *tc)
+{
+	static const struct
+	{
+		const char *raw;
+		const char *quoted;
+	} identifiers[] = {
+		{"plain", "plain"},
+		{"UPPER", "\"UPPER\""},
+		{"Mixed", "\"Mixed\""},
+		{"select", "\"select\""},
+		{"a\"b", "\"a\"\"b\""},
+		{"\"leading", "\"\"\"leading\""},
+		{"\"wrapped\"", "\"\"\"wrapped\"\"\""},
+		{"\"", "\"\"\"\""},
+	};
+
+	for (int i = 0; i < lengthof(identifiers); i++)
+	{
+		report_result(tc,
+					  strcmp(ora_fmtId(identifiers[i].raw),
+							 identifiers[i].quoted) == 0,
+					  identifiers[i].raw, "Oracle identifier",
+					  "raw identifier quoting", "ok");
+	}
+}
 
 /*
  * Confirm escaping doesn't read past the end of an allocation.  Consider the
@@ -958,6 +988,7 @@ main(int argc, char *argv[])
 
 	test_gb18030_page_multiple(&tc);
 	test_gb18030_json(&tc);
+	test_oracle_identifiers(&tc);
 
 	for (int i = 0; i < lengthof(pe_test_vectors); i++)
 	{

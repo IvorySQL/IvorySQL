@@ -81,10 +81,9 @@ ora_fmtId(const char *rawid)
 		need_quotes = true;
 	/* slightly different rules for first character */
 	else if (!((rawid[0] >= 'a' && rawid[0] <= 'z')
-			|| rawid[0] == '_'
-			|| rawid[0] == '"'))
+			|| rawid[0] == '_'))
 		need_quotes = true;
-	else if (rawid[0] != '"')
+	else
 	{
 		/* otherwise check the entire string */
 		for (cp = rawid; *cp; cp++)
