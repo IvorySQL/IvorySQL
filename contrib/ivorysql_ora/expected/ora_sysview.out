@@ -493,3 +493,76 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- ALL_OBJECTS
+DROP TABLE IF EXISTS TEST_ALL_OBJECTS;
+NOTICE:  table "test_all_objects" does not exist, skipping
+CREATE TABLE TEST_ALL_OBJECTS (ID INT);
+CREATE INDEX TEST_ALL_OBJECTS_IDX ON TEST_ALL_OBJECTS (ID);
+SELECT OBJECT_NAME, OBJECT_TYPE, STATUS, OWNER IS NOT NULL AS has_owner
+FROM SYS.ALL_OBJECTS WHERE OBJECT_NAME IN ('TEST_ALL_OBJECTS', 'TEST_ALL_OBJECTS_IDX')
+ORDER BY OBJECT_NAME;
+     object_name      | object_type | status | has_owner 
+----------------------+-------------+--------+-----------
+ TEST_ALL_OBJECTS     | TABLE       | VALID  | t
+ TEST_ALL_OBJECTS_IDX | INDEX       | VALID  | t
+(2 rows)
+
+-- unlike the USER_ views, a relation owned by another role is visible here
+DROP ROLE IF EXISTS all_objects_owner;
+NOTICE:  role "all_objects_owner" does not exist, skipping
+CREATE ROLE all_objects_owner;
+CREATE TABLE TEST_ALL_OBJECTS_OTHER (ID INT);
+ALTER TABLE TEST_ALL_OBJECTS_OTHER OWNER TO all_objects_owner;
+SELECT count(*) AS rows_for_other_owner FROM SYS.ALL_OBJECTS
+WHERE OBJECT_NAME = 'TEST_ALL_OBJECTS_OTHER';
+ rows_for_other_owner 
+----------------------
+                    1
+(1 row)
+
+DROP TABLE TEST_ALL_OBJECTS_OTHER;
+DROP ROLE all_objects_owner;
+DROP TABLE TEST_ALL_OBJECTS;
+-- Oracle lists a package and its body as objects; PL/iSQL keeps them in
+-- pg_package/pg_package_body, which the objects view used to ignore
+CREATE OR REPLACE PACKAGE p_obj_probe AS
+    FUNCTION f RETURN INT;
+END;
+/
+CREATE OR REPLACE PACKAGE BODY p_obj_probe AS
+    FUNCTION f RETURN INT IS BEGIN RETURN 1; END;
+END;
+/
+SELECT COUNT(*) > 0 AS package_listed
+FROM SYS.ALL_OBJECTS WHERE OBJECT_NAME = 'P_OBJ_PROBE' AND OBJECT_TYPE = 'PACKAGE';
+ package_listed 
+----------------
+ t
+(1 row)
+
+SELECT COUNT(*) > 0 AS package_body_listed
+FROM SYS.ALL_OBJECTS WHERE OBJECT_NAME = 'P_OBJ_PROBE' AND OBJECT_TYPE = 'PACKAGE BODY';
+ package_body_listed 
+---------------------
+ t
+(1 row)
+
+DROP PACKAGE p_obj_probe;
+-- User-defined types are objects too: a domain, an enum and an object type
+-- created with CREATE TYPE ... AS OBJECT must appear as OBJECT_TYPE 'TYPE'
+CREATE DOMAIN p_type_probe_dom AS INT;
+CREATE TYPE p_type_probe_enum AS ENUM ('a', 'b');
+CREATE OR REPLACE TYPE p_type_probe_obj AS OBJECT (x INT);
+/
+SELECT COUNT(*) = 3 AS types_listed
+FROM SYS.ALL_OBJECTS
+WHERE OBJECT_NAME IN ('P_TYPE_PROBE_DOM', 'P_TYPE_PROBE_ENUM', 'P_TYPE_PROBE_OBJ')
+  AND OBJECT_TYPE = 'TYPE';
+ types_listed 
+--------------
+ t
+(1 row)
+
+DROP TYPE p_type_probe_obj;
+DROP TYPE p_type_probe_enum;
+DROP DOMAIN p_type_probe_dom;
