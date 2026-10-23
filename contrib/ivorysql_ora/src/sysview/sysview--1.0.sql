@@ -1537,6 +1537,10 @@ LEFT JOIN pg_stats ON
   pg_stats.schemaname = pg_namespace.nspname
   AND pg_stats.tablename = pg_class.relname
   AND pg_stats.attname = pg_attribute.attname
+  -- a table with inheritance children has two statistics rows per column:
+  -- its own (inherited = false) and the whole tree (inherited = true).
+  -- Keep exactly one, the same way the DBA_/USER_ variants do.
+  AND pg_stats.inherited = (pg_class.relkind = 'p')
 
 LEFT JOIN LATERAL (
   SELECT
