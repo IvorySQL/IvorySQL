@@ -1557,3 +1557,81 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+--
+-- USER_IND_PARTITIONS / ALL_IND_PARTITIONS / DBA_IND_PARTITIONS: the
+-- partitions of a partitioned index, like Oracle's views of the same name.
+--
+CREATE OR REPLACE VIEW SYS.USER_IND_PARTITIONS AS
+SELECT
+    sys.ora_case_trans(pi.relname::varchar2)::varchar2(128) AS index_name,
+    sys.ora_case_trans(ci.relname::varchar2)::varchar2(128) AS partition_name,
+    sys.ora_case_trans(t.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE WHEN i.indisunique THEN 'UNIQUE' ELSE 'NONUNIQUE' END)::varchar2(9) AS uniqueness,
+    'VALID'::varchar2(8) AS status
+FROM pg_inherits inh
+JOIN pg_class ci ON ci.oid = inh.inhrelid
+JOIN pg_class pi ON pi.oid = inh.inhparent
+JOIN pg_index i ON i.indexrelid = pi.oid
+JOIN pg_class t ON t.oid = i.indrelid
+JOIN pg_namespace n ON ci.relnamespace = n.oid
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND ci.relispartition
+    AND pi.relkind = 'I'
+    AND pg_catalog.pg_get_userbyid(pi.relowner) = current_user;
+
+GRANT SELECT ON SYS.USER_IND_PARTITIONS TO PUBLIC;
+
+--
+-- ALL_IND_PARTITIONS: the same rows for every index the current user may
+-- read, with the privilege filter the ALL_ views carry.
+--
+CREATE OR REPLACE VIEW SYS.ALL_IND_PARTITIONS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(pi.relname::varchar2)::varchar2(128) AS index_name,
+    sys.ora_case_trans(ci.relname::varchar2)::varchar2(128) AS partition_name,
+    sys.ora_case_trans(t.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE WHEN i.indisunique THEN 'UNIQUE' ELSE 'NONUNIQUE' END)::varchar2(9) AS uniqueness,
+    'VALID'::varchar2(8) AS status
+FROM pg_inherits inh
+JOIN pg_class ci ON ci.oid = inh.inhrelid
+JOIN pg_class pi ON pi.oid = inh.inhparent
+JOIN pg_index i ON i.indexrelid = pi.oid
+JOIN pg_class t ON t.oid = i.indrelid
+JOIN pg_namespace n ON ci.relnamespace = n.oid
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND ci.relispartition
+    AND pi.relkind = 'I'
+    AND pg_catalog.has_table_privilege(current_user, t.oid, 'SELECT');
+
+GRANT SELECT ON SYS.ALL_IND_PARTITIONS TO PUBLIC;
+
+--
+-- DBA_IND_PARTITIONS: the same rows without the privilege filter, like the
+-- other DBA_ views.
+--
+CREATE OR REPLACE VIEW SYS.DBA_IND_PARTITIONS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(pi.relname::varchar2)::varchar2(128) AS index_name,
+    sys.ora_case_trans(ci.relname::varchar2)::varchar2(128) AS partition_name,
+    sys.ora_case_trans(t.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE WHEN i.indisunique THEN 'UNIQUE' ELSE 'NONUNIQUE' END)::varchar2(9) AS uniqueness,
+    'VALID'::varchar2(8) AS status
+FROM pg_inherits inh
+JOIN pg_class ci ON ci.oid = inh.inhrelid
+JOIN pg_class pi ON pi.oid = inh.inhparent
+JOIN pg_index i ON i.indexrelid = pi.oid
+JOIN pg_class t ON t.oid = i.indrelid
+JOIN pg_namespace n ON ci.relnamespace = n.oid
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND ci.relispartition
+    AND pi.relkind = 'I'
+;
+
+
+GRANT SELECT ON SYS.DBA_IND_PARTITIONS TO PUBLIC;
