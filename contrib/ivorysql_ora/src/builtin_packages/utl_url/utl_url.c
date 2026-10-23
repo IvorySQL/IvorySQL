@@ -188,15 +188,28 @@ ivorysql_utl_url_escape(PG_FUNCTION_ARGS)
 	len = strlen(converted);
 
 	initStringInfo(&buf);
-	for (i = 0; i < len; i++)
+	for (i = 0; i < len;)
 	{
 		unsigned char c = (unsigned char) converted[i];
+		int			charlen = pg_encoding_mblen(target_encoding, converted + i);
+		int			j;
 
-		if (utl_url_is_unreserved(c) ||
-			(!escape_reserved && utl_url_is_reserved(c)))
+		/*
+		 * Escape a multibyte character as a unit.  Its trailing bytes can
+		 * look like ASCII letters, digits or reserved delimiters in encodings
+		 * such as SJIS, GBK and GB18030; none are standalone URL characters.
+		 * The converted input is valid and NUL-terminated.
+		 */
+		if (charlen == 1 &&
+			(utl_url_is_unreserved(c) ||
+			 (!escape_reserved && utl_url_is_reserved(c))))
 			appendStringInfoChar(&buf, (char) c);
 		else
-			appendStringInfo(&buf, "%%%02X", c);
+		{
+			for (j = 0; j < charlen; j++)
+				appendStringInfo(&buf, "%%%02X", (unsigned char) converted[i + j]);
+		}
+		i += charlen;
 	}
 
 	/* The result is pure ASCII, hence valid in every server encoding */
