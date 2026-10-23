@@ -83,6 +83,7 @@ ORA_REGRESS = \
 	ora_nanvl \
 	ora_raw_long \
 	ora_character_datatype_functions \
+	ora_regexp_replace_null \
 	ora_datetime_datatype_functions \
 	ora_misc_functions \
 	ora_vsize \

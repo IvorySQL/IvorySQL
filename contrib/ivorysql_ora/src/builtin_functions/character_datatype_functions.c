@@ -527,6 +527,9 @@ ora_regexp_replace(PG_FUNCTION_ARGS)
 	ora_parse_re_flags(&flags, match_para);
 	re = ora_re_compile_and_cache(pattern_arg, flags.cflags, PG_GET_COLLATION());
 	tem = ora_replace_text_regexp(src_text, re, replace_str, start_posn, occur_posn);
+	/* Oracle treats an empty VARCHAR2 result as NULL. */
+	if (VARSIZE_ANY_EXHDR(tem) == 0)
+		PG_RETURN_NULL();
 	PG_RETURN_TEXT_P(tem);
 }
 
