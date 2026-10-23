@@ -4074,3 +4074,166 @@ select to_single_byte(NULL);
  
 (1 row)
 
+-- Tests for nls_charset_id / nls_charset_name
+select sys.nls_charset_id('US7ASCII');
+ nls_charset_id 
+----------------
+ 1
+(1 row)
+
+select sys.nls_charset_id('al32utf8');
+ nls_charset_id 
+----------------
+ 873
+(1 row)
+
+select sys.nls_charset_id('UTF8');
+ nls_charset_id 
+----------------
+ 871
+(1 row)
+
+select sys.nls_charset_id('AL16UTF16');
+ nls_charset_id 
+----------------
+ 2000
+(1 row)
+
+select sys.nls_charset_id('AL16UTF16LE');
+ nls_charset_id 
+----------------
+ 2002
+(1 row)
+
+select sys.nls_charset_id('ZHS16GBK');
+ nls_charset_id 
+----------------
+ 850
+(1 row)
+
+select sys.nls_charset_id('we8iso8859p1');
+ nls_charset_id 
+----------------
+ 31
+(1 row)
+
+select sys.nls_charset_id('we8mswin1252');
+ nls_charset_id 
+----------------
+ 178
+(1 row)
+
+select sys.nls_charset_id('utfe');
+ nls_charset_id 
+----------------
+ 872
+(1 row)
+
+select sys.nls_charset_id('we8dec');
+ nls_charset_id 
+----------------
+ 2
+(1 row)
+
+select sys.nls_charset_name(1);
+ nls_charset_name 
+------------------
+ US7ASCII
+(1 row)
+
+select sys.nls_charset_name(2);
+ nls_charset_name 
+------------------
+ WE8DEC
+(1 row)
+
+select sys.nls_charset_name(31);
+ nls_charset_name 
+------------------
+ WE8ISO8859P1
+(1 row)
+
+select sys.nls_charset_name(178);
+ nls_charset_name 
+------------------
+ WE8MSWIN1252
+(1 row)
+
+select sys.nls_charset_name(850);
+ nls_charset_name 
+------------------
+ ZHS16GBK
+(1 row)
+
+select sys.nls_charset_name(871);
+ nls_charset_name 
+------------------
+ UTF8
+(1 row)
+
+select sys.nls_charset_name(872);
+ nls_charset_name 
+------------------
+ UTFE
+(1 row)
+
+select sys.nls_charset_name(873);
+ nls_charset_name 
+------------------
+ AL32UTF8
+(1 row)
+
+select sys.nls_charset_name(2000);
+ nls_charset_name 
+------------------
+ AL16UTF16
+(1 row)
+
+select sys.nls_charset_name(2002);
+ nls_charset_name 
+------------------
+ AL16UTF16LE
+(1 row)
+
+-- NULL in, NULL out
+select sys.nls_charset_id(NULL) is null;
+ ?column? 
+----------
+ t
+(1 row)
+
+select sys.nls_charset_name(NULL) is null;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- an unknown id answers NULL
+select sys.nls_charset_name(12345) is null;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- an unknown name raises
+select sys.nls_charset_id('NOT_A_CHARSET');
+ERROR:  invalid character set name: "NOT_A_CHARSET"
+-- round trips
+select sys.nls_charset_name(nls_charset_id('AL32UTF8'));
+ nls_charset_name 
+------------------
+ AL32UTF8
+(1 row)
+
+select sys.nls_charset_name(nls_charset_id('ZHS16GBK'));
+ nls_charset_name 
+------------------
+ ZHS16GBK
+(1 row)
+
+select sys.nls_charset_name(nls_charset_id('al16utf16'));
+ nls_charset_name 
+------------------
+ AL16UTF16
+(1 row)
+
