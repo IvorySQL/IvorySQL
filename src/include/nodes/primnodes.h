@@ -803,6 +803,8 @@ typedef struct FuncExpr
 	Oid			inputcollid pg_node_attr(query_jumble_ignore);
 	/* arguments to the function */
 	List	   *args;
+	/* package arguments supplied from formal defaults */
+	Bitmapset  *default_argnos;
 	char		function_from;	/* proc func, subproc func, package func */
 	void 		*parent_func;	/* subproc funcs'parent func address */
 	char		*function_name;	/* package'func used in view */

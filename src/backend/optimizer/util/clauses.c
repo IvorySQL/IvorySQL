@@ -2918,6 +2918,7 @@ eval_const_expressions_mutator(Node *node,
 				newexpr->funccollid = expr->funccollid;
 				newexpr->inputcollid = expr->inputcollid;
 				newexpr->args = args;
+				newexpr->default_argnos = bms_copy(expr->default_argnos);
 				newexpr->function_from = expr->function_from;
 				newexpr->parent_func = expr->parent_func;
 				newexpr->ref_pkgtype = expr->ref_pkgtype;
