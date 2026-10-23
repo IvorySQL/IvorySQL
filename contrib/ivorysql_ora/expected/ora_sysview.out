@@ -493,3 +493,75 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- USER_OBJECTS
+DROP TABLE IF EXISTS TEST_USER_OBJECTS;
+NOTICE:  table "test_user_objects" does not exist, skipping
+CREATE TABLE TEST_USER_OBJECTS (ID INT);
+CREATE INDEX TEST_USER_OBJECTS_IDX ON TEST_USER_OBJECTS (ID);
+CREATE OR REPLACE FUNCTION TEST_USER_OBJECTS_FUNC() RETURN number IS
+BEGIN
+    RETURN 1;
+END;
+/
+SELECT OBJECT_NAME, OBJECT_TYPE, STATUS FROM SYS.USER_OBJECTS
+WHERE OBJECT_NAME IN ('TEST_USER_OBJECTS', 'TEST_USER_OBJECTS_IDX', 'TEST_USER_OBJECTS_FUNC')
+ORDER BY OBJECT_NAME;
+      object_name       | object_type | status 
+------------------------+-------------+--------
+ TEST_USER_OBJECTS      | TABLE       | VALID
+ TEST_USER_OBJECTS_FUNC | FUNCTION    | VALID
+ TEST_USER_OBJECTS_IDX  | INDEX       | VALID
+(3 rows)
+
+SELECT count(*) > 0 AS sees_own_sequence FROM SYS.USER_OBJECTS
+WHERE OBJECT_TYPE = 'SEQUENCE';
+ sees_own_sequence 
+-------------------
+ t
+(1 row)
+
+DROP FUNCTION TEST_USER_OBJECTS_FUNC;
+DROP TABLE TEST_USER_OBJECTS;
+-- Oracle lists a package and its body as objects; PL/iSQL keeps them in
+-- pg_package/pg_package_body, which the objects view used to ignore
+CREATE OR REPLACE PACKAGE p_obj_probe AS
+    FUNCTION f RETURN INT;
+END;
+/
+CREATE OR REPLACE PACKAGE BODY p_obj_probe AS
+    FUNCTION f RETURN INT IS BEGIN RETURN 1; END;
+END;
+/
+SELECT COUNT(*) > 0 AS package_listed
+FROM SYS.USER_OBJECTS WHERE OBJECT_NAME = 'P_OBJ_PROBE' AND OBJECT_TYPE = 'PACKAGE';
+ package_listed 
+----------------
+ t
+(1 row)
+
+SELECT COUNT(*) > 0 AS package_body_listed
+FROM SYS.USER_OBJECTS WHERE OBJECT_NAME = 'P_OBJ_PROBE' AND OBJECT_TYPE = 'PACKAGE BODY';
+ package_body_listed 
+---------------------
+ t
+(1 row)
+
+DROP PACKAGE p_obj_probe;
+-- User-defined types are objects too: a domain, an enum and an object type
+-- created with CREATE TYPE ... AS OBJECT must appear as OBJECT_TYPE 'TYPE'
+CREATE DOMAIN p_type_probe_dom AS INT;
+CREATE TYPE p_type_probe_enum AS ENUM ('a', 'b');
+CREATE OR REPLACE TYPE p_type_probe_obj AS OBJECT (x INT);
+/
+SELECT COUNT(*) = 3 AS types_listed
+FROM SYS.USER_OBJECTS
+WHERE OBJECT_NAME IN ('P_TYPE_PROBE_DOM', 'P_TYPE_PROBE_ENUM', 'P_TYPE_PROBE_OBJ')
+  AND OBJECT_TYPE = 'TYPE';
+ types_listed 
+--------------
+ t
+(1 row)
+
+DROP TYPE p_type_probe_obj;
+DROP TYPE p_type_probe_enum;
+DROP DOMAIN p_type_probe_dom;
