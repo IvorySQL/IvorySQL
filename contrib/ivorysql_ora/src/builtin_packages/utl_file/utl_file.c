@@ -736,13 +736,23 @@ Datum
 ora_utl_file_ftell(PG_FUNCTION_ARGS)
 {
 	FILE   *fd;
+	long	position;
+
 	CHECK_FILE_HANDLE();
 	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL);
 
 	if(fd == NULL)
 		INVALID_FILEHANDLE_EXCEPTION();
 
-	PG_RETURN_INT32(ftell(fd));
+	position = ftell(fd);
+	if (position < 0)
+		STRERROR_EXCEPTION(READ_ERROR);
+	if (position > PG_INT32_MAX)
+		ereport(ERROR,
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+				 errmsg("file position out of range")));
+
+	PG_RETURN_INT32((int32) position);
 }
 
 /*
