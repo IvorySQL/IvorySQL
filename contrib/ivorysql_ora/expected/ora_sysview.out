@@ -157,6 +157,9 @@ DROP FUNCTION IF EXISTS FUNC_WITH_DEFAULT;
  wait_class        | varchar2(64)           |           |          | 
  transaction_start | pg_catalog.timestamptz |           |          | 
  port              | number                 |           |          | 
+ user#             | number                 |           |          | 
+ process           | varchar2(20)           |           |          | 
+ last_call_et      | number                 |           |          | 
 
 \d SYS.V$PROCESS
                     View "sys.v$process"
@@ -493,3 +496,32 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- V$SESSION now reports the Oracle columns USER#, PROCESS and LAST_CALL_ET
+SELECT COUNT(*) = 1 AS has_me
+FROM SYS.V$SESSION WHERE SID = PG_BACKEND_PID();
+ has_me 
+--------
+ t
+(1 row)
+
+SELECT COUNT(*) = 1 AS user_number_present
+FROM SYS.V$SESSION WHERE SID = PG_BACKEND_PID() AND "USER#" > 0;
+ user_number_present 
+---------------------
+ t
+(1 row)
+
+SELECT PROCESS = PG_BACKEND_PID()::TEXT AS process_matches
+FROM SYS.V$SESSION WHERE SID = PG_BACKEND_PID();
+ process_matches 
+-----------------
+ t
+(1 row)
+
+SELECT LAST_CALL_ET >= 0 AS last_call_et_sane
+FROM SYS.V$SESSION WHERE SID = PG_BACKEND_PID();
+ last_call_et_sane 
+-------------------
+ t
+(1 row)
+
