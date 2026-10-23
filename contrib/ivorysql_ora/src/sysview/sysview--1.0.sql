@@ -1557,3 +1557,28 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+--
+-- ALL_TABLES: the same rows as USER_TABLES for every table the current user
+-- may access, with the OWNER column the ALL_ views carry.
+--
+CREATE OR REPLACE VIEW SYS.ALL_TABLES AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    NULL::varchar2(30) AS tablespace_name,
+    'VALID'::varchar2(8) AS status,
+    (CASE WHEN c.reltuples < 0 THEN NULL ELSE c.reltuples::numeric END) AS num_rows,
+    pg_catalog.pg_stat_get_last_analyze_time(c.oid) AS last_analyzed,
+    'N'::varchar2(1) AS temporary,
+    (CASE WHEN c.relkind = 'p' THEN 'YES' ELSE 'NO' END)::varchar2(3) AS partitioned
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+WHERE
+    c.relkind IN ('r','p')
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND pg_catalog.has_table_privilege(current_user, c.oid,
+         'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+    AND NOT c.relispartition;
+
+GRANT SELECT ON SYS.ALL_TABLES TO PUBLIC;
