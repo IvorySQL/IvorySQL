@@ -1557,3 +1557,164 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+--
+-- USER_TAB_STATISTICS / ALL_TAB_STATISTICS / DBA_TAB_STATISTICS: the
+-- optimizer statistics of the tables, like Oracle's views of the same
+-- name.  NUM_ROWS comes from reltuples and LAST_ANALYZED from the analyze
+-- timestamp (both NULL until the relation has been analyzed), and
+-- STALE_STATS reports whether rows were modified since the last analyze.
+--
+CREATE OR REPLACE VIEW SYS.USER_TAB_STATISTICS AS
+SELECT
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE WHEN c.reltuples < 0 THEN NULL ELSE c.reltuples::numeric END) AS num_rows,
+    pg_catalog.pg_stat_get_last_analyze_time(c.oid) AS last_analyzed,
+    (CASE WHEN COALESCE(s.n_mod_since_analyze, 0) > 0 THEN 'YES' ELSE 'NO' END)::varchar2(3) AS stale_stats
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+LEFT JOIN pg_catalog.pg_stat_all_tables s ON s.relid = c.oid
+WHERE
+    c.relkind IN ('r','p')
+    AND pg_catalog.pg_get_userbyid(c.relowner) = current_user
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND NOT c.relispartition;
+
+GRANT SELECT ON SYS.USER_TAB_STATISTICS TO PUBLIC;
+
+--
+-- ALL_TAB_STATISTICS: the same rows for every table the current user
+-- may read, with the privilege filter the ALL_ views carry.
+-- name.  NUM_ROWS comes from reltuples and LAST_ANALYZED from the analyze
+-- timestamp (both NULL until the relation has been analyzed), and
+-- STALE_STATS reports whether rows were modified since the last analyze.
+--
+CREATE OR REPLACE VIEW SYS.ALL_TAB_STATISTICS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE WHEN c.reltuples < 0 THEN NULL ELSE c.reltuples::numeric END) AS num_rows,
+    pg_catalog.pg_stat_get_last_analyze_time(c.oid) AS last_analyzed,
+    (CASE WHEN COALESCE(s.n_mod_since_analyze, 0) > 0 THEN 'YES' ELSE 'NO' END)::varchar2(3) AS stale_stats
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+LEFT JOIN pg_catalog.pg_stat_all_tables s ON s.relid = c.oid
+WHERE
+    c.relkind IN ('r','p')
+    AND pg_catalog.has_table_privilege(current_user, c.oid, 'SELECT')
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND NOT c.relispartition;
+
+GRANT SELECT ON SYS.ALL_TAB_STATISTICS TO PUBLIC;
+
+--
+-- DBA_TAB_STATISTICS: the same rows without the privilege filter, like the
+-- other DBA_ views.
+-- name.  NUM_ROWS comes from reltuples and LAST_ANALYZED from the analyze
+-- timestamp (both NULL until the relation has been analyzed), and
+-- STALE_STATS reports whether rows were modified since the last analyze.
+--
+CREATE OR REPLACE VIEW SYS.DBA_TAB_STATISTICS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE WHEN c.reltuples < 0 THEN NULL ELSE c.reltuples::numeric END) AS num_rows,
+    pg_catalog.pg_stat_get_last_analyze_time(c.oid) AS last_analyzed,
+    (CASE WHEN COALESCE(s.n_mod_since_analyze, 0) > 0 THEN 'YES' ELSE 'NO' END)::varchar2(3) AS stale_stats
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+LEFT JOIN pg_catalog.pg_stat_all_tables s ON s.relid = c.oid
+WHERE
+    c.relkind IN ('r','p')
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND NOT c.relispartition;
+
+
+GRANT SELECT ON SYS.DBA_TAB_STATISTICS TO PUBLIC;
+
+--
+-- USER_TAB_COL_STATISTICS / ALL_TAB_COL_STATISTICS /
+-- DBA_TAB_COL_STATISTICS: the per column statistics, like Oracle's views
+-- of the same name.  NUM_DISTINCT resolves PostgreSQL's negative "fraction
+-- of the rows" convention against reltuples, NUM_BUCKETS stays NULL
+-- because the histogram size is not exposed and LAST_ANALYZED is the
+-- analyze timestamp of the relation.
+--
+CREATE OR REPLACE VIEW SYS.USER_TAB_COL_STATISTICS AS
+SELECT
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    sys.ora_case_trans(st.attname::varchar2)::varchar2(128) AS column_name,
+    (CASE WHEN st.n_distinct < 0
+          THEN (-st.n_distinct * greatest(c.reltuples, 0))::numeric
+          ELSE st.n_distinct::numeric
+     END) AS num_distinct,
+    NULL::numeric AS num_buckets,
+    pg_catalog.pg_stat_get_last_analyze_time(c.oid) AS last_analyzed
+FROM pg_stats st
+JOIN pg_class c ON c.relname = st.tablename
+JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = st.schemaname
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND pg_catalog.pg_get_userbyid(c.relowner) = current_user
+    AND st.inherited = (c.relkind = 'p');
+
+GRANT SELECT ON SYS.USER_TAB_COL_STATISTICS TO PUBLIC;
+
+--
+-- ALL_TAB_COL_STATISTICS: the same rows for every table the current user
+-- may read, with the privilege filter the ALL_ views carry.  NUM_DISTINCT
+-- resolves PostgreSQL's negative "fraction
+-- of the rows" convention against reltuples, NUM_BUCKETS stays NULL
+-- because the histogram size is not exposed and LAST_ANALYZED is the
+-- analyze timestamp of the relation.
+--
+CREATE OR REPLACE VIEW SYS.ALL_TAB_COL_STATISTICS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    sys.ora_case_trans(st.attname::varchar2)::varchar2(128) AS column_name,
+    (CASE WHEN st.n_distinct < 0
+          THEN (-st.n_distinct * greatest(c.reltuples, 0))::numeric
+          ELSE st.n_distinct::numeric
+     END) AS num_distinct,
+    NULL::numeric AS num_buckets,
+    pg_catalog.pg_stat_get_last_analyze_time(c.oid) AS last_analyzed
+FROM pg_stats st
+JOIN pg_class c ON c.relname = st.tablename
+JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = st.schemaname
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND pg_catalog.pg_get_userbyid(c.relowner) = current_user
+    AND st.inherited = (c.relkind = 'p');
+
+GRANT SELECT ON SYS.ALL_TAB_COL_STATISTICS TO PUBLIC;
+
+--
+-- DBA_TAB_COL_STATISTICS: the same rows without the privilege filter, like the
+-- other DBA_ views.  NUM_DISTINCT
+-- resolves PostgreSQL's negative "fraction
+-- of the rows" convention against reltuples, NUM_BUCKETS stays NULL
+-- because the histogram size is not exposed and LAST_ANALYZED is the
+-- analyze timestamp of the relation.
+--
+CREATE OR REPLACE VIEW SYS.DBA_TAB_COL_STATISTICS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    sys.ora_case_trans(st.attname::varchar2)::varchar2(128) AS column_name,
+    (CASE WHEN st.n_distinct < 0
+          THEN (-st.n_distinct * greatest(c.reltuples, 0))::numeric
+          ELSE st.n_distinct::numeric
+     END) AS num_distinct,
+    NULL::numeric AS num_buckets,
+    pg_catalog.pg_stat_get_last_analyze_time(c.oid) AS last_analyzed
+FROM pg_stats st
+JOIN pg_class c ON c.relname = st.tablename
+JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = st.schemaname
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND pg_catalog.pg_get_userbyid(c.relowner) = current_user
+    AND st.inherited = (c.relkind = 'p');
+
+
+GRANT SELECT ON SYS.DBA_TAB_COL_STATISTICS TO PUBLIC;
