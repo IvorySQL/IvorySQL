@@ -235,3 +235,28 @@ SELECT sys.ora_utl_match_edit_distance(left_value, right_value) = 0 AS ed,
        sys.ora_utl_match_jaro_winkler_similarity(left_value, right_value) = 100 AS jws
 FROM utl_match_equal_input;
 DROP TABLE utl_match_equal_input;
+
+-- Common prefixes and suffixes can be removed from the distance calculation,
+-- but similarity must still use the original byte lengths.  Include cases
+-- where one remainder is empty and where an affix ends within a UTF8 character.
+SELECT label, UTL_MATCH.EDIT_DISTANCE(a, b) AS ed,
+       UTL_MATCH.EDIT_DISTANCE_SIMILARITY(a, b) AS eds
+FROM (VALUES
+    ('both', 'abXYcd', 'abYXcd'),
+    ('delete', 'abXcd', 'abcd'),
+    ('insert', 'abcd', 'abXcd'),
+    ('suffix', 'xabc', 'abc'),
+    ('utf8_prefix', 'á', 'â'),
+    ('utf8_suffix', 'aéz', 'aΩz')
+) AS inputs(label, a, b)
+ORDER BY label;
+
+-- Stored, unequal inputs exercise long affixes without constant folding.
+CREATE TEMP TABLE utl_match_affix_input AS
+SELECT repeat('ab', 2000) || 'X' || repeat('cd', 2000) AS a,
+       repeat('ab', 2000) || 'YZ' || repeat('cd', 2000) AS b;
+SELECT UTL_MATCH.EDIT_DISTANCE(a, b) = 2 AS ed,
+       UTL_MATCH.EDIT_DISTANCE(b, a) = 2 AS reverse_ed,
+       UTL_MATCH.EDIT_DISTANCE_SIMILARITY(a, b) = 100 AS eds
+FROM utl_match_affix_input;
+DROP TABLE utl_match_affix_input;
