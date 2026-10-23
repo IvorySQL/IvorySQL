@@ -33,3 +33,259 @@ SELECT pg_catalog.encode(
     'hex');
 \c :original_db
 DROP DATABASE utl_raw_latin1;
+
+-- ============================================================
+-- UTL_RAW byte-manipulation core
+--
+-- Reference behaviour follows the Oracle Database 19c "PL/SQL Packages and
+-- Types Reference" entry for UTL_RAW.  The cases the documentation leaves
+-- implicit are pinned down here:
+--   * SUBSTR counts forward from the beginning for pos > 0 and backwards from
+--     the end for pos < 0 (-1 is the last byte); a pos of 0 is read as 1 (the
+--     19c exception table reads otherwise, a 21c run does not).  A pos that
+--     resolves before the first byte, a pos past the end, a len < 1 and a len
+--     that runs past the end all raise ORA-06502.
+--   * BIT_AND/BIT_OR/BIT_XOR work over the longer operand, padding the shorter
+--     one with X'FF' (BIT_AND) or X'00' (BIT_OR, BIT_XOR).
+--   * COMPARE pads the shorter operand with the pad RAW (0x00 when pad is
+--     NULL) and returns the 1-based position of the first differing byte.
+--   * TRANSLATE drops input bytes whose position is past the end of to_set
+--     and ignores extra bytes in to_set; the first from_set occurrence wins.
+--   * COPIES returns NULL when n < 1.
+--
+-- All comparisons are byte-based: a multi-byte character is several bytes,
+-- so LENGTH of the UTF-8 bytes of a Chinese character is 3.
+-- ============================================================
+
+-- ------------------------------------------------------------
+-- LENGTH
+-- ------------------------------------------------------------
+SELECT UTL_RAW.LENGTH(hextoraw('414243')) = 3;
+SELECT UTL_RAW.LENGTH('\x'::bytea) = 0;
+SELECT UTL_RAW.LENGTH(hextoraw('E4BDA0E5A5BD')) = 6;
+SELECT UTL_RAW.LENGTH(NULL) IS NULL;
+
+-- ------------------------------------------------------------
+-- SUBSTR
+-- ------------------------------------------------------------
+SELECT UTL_RAW.SUBSTR(hextoraw('4142434445'), 2) = hextoraw('42434445');
+SELECT UTL_RAW.SUBSTR(hextoraw('4142434445'), 2, 2) = hextoraw('4243');
+SELECT UTL_RAW.SUBSTR(hextoraw('4142434445'), -2) = hextoraw('4445');
+SELECT UTL_RAW.SUBSTR(hextoraw('4142434445'), -2, 1) = hextoraw('44');
+SELECT UTL_RAW.SUBSTR(hextoraw('4142434445'), 0) = hextoraw('4142434445');
+SELECT UTL_RAW.SUBSTR(hextoraw('4142434445'), 0, 2) = hextoraw('4142');
+SELECT UTL_RAW.SUBSTR(hextoraw('4142434445'), 2, NULL) = hextoraw('42434445');
+-- A pos that resolves before the first byte, a pos past the end of the RAW, a
+-- len below one and a len that runs past the end all raise VALUE_ERROR
+-- (ORA-06502) on Oracle 21c.  The calls go through DO blocks so the expected
+-- output does not depend on PL/iSQL source line numbers, and the handler names
+-- VALUE_ERROR, so an unrelated error still fails the test.
+DO $$
+BEGIN
+    PERFORM UTL_RAW.SUBSTR(hextoraw('4142434445'), -10);
+    RAISE NOTICE 'SUBSTR position before the start: no error';
+EXCEPTION WHEN VALUE_ERROR THEN
+    RAISE NOTICE 'SUBSTR position before the start: error as expected';
+END;
+$$;
+
+DO $$
+BEGIN
+    PERFORM UTL_RAW.SUBSTR(hextoraw('4142434445'), 10);
+    RAISE NOTICE 'SUBSTR past the end: no error';
+EXCEPTION WHEN VALUE_ERROR THEN
+    RAISE NOTICE 'SUBSTR past the end: error as expected';
+END;
+$$;
+
+DO $$
+BEGIN
+    PERFORM UTL_RAW.SUBSTR(hextoraw('4142434445'), 2, 0);
+    RAISE NOTICE 'SUBSTR zero length: no error';
+EXCEPTION WHEN VALUE_ERROR THEN
+    RAISE NOTICE 'SUBSTR zero length: error as expected';
+END;
+$$;
+
+DO $$
+BEGIN
+    PERFORM UTL_RAW.SUBSTR(hextoraw('4142434445'), 2, -1);
+    RAISE NOTICE 'SUBSTR negative length: no error';
+EXCEPTION WHEN VALUE_ERROR THEN
+    RAISE NOTICE 'SUBSTR negative length: error as expected';
+END;
+$$;
+
+DO $$
+BEGIN
+    PERFORM UTL_RAW.SUBSTR(hextoraw('4142434445'), 3, 100);
+    RAISE NOTICE 'SUBSTR length past the end: no error';
+EXCEPTION WHEN VALUE_ERROR THEN
+    RAISE NOTICE 'SUBSTR length past the end: error as expected';
+END;
+$$;
+SELECT UTL_RAW.SUBSTR(NULL, 1) IS NULL;
+SELECT UTL_RAW.SUBSTR(hextoraw('414243'), NULL, 1) IS NULL;
+
+-- ------------------------------------------------------------
+-- CONCAT
+-- ------------------------------------------------------------
+SELECT UTL_RAW.CONCAT(hextoraw('4142'), hextoraw('4344')) = hextoraw('41424344');
+SELECT UTL_RAW.CONCAT(hextoraw('41'), '\x'::bytea) = hextoraw('41');
+SELECT UTL_RAW.CONCAT('\x'::bytea, hextoraw('41')) = hextoraw('41');
+SELECT UTL_RAW.CONCAT('\x'::bytea, '\x'::bytea) = '\x'::bytea;
+
+-- Oracle accepts up to 12 values and ignores the NULL ones.
+SELECT UTL_RAW.CONCAT(hextoraw('41'), hextoraw('42'), hextoraw('43')) = hextoraw('414243');
+SELECT UTL_RAW.CONCAT(hextoraw('41'), NULL, hextoraw('43')) = hextoraw('4143');
+SELECT UTL_RAW.CONCAT(NULL, hextoraw('41')) = hextoraw('41');
+SELECT UTL_RAW.CONCAT(hextoraw('41'), NULL) = hextoraw('41');
+SELECT UTL_RAW.CONCAT(NULL, NULL) IS NULL;
+SELECT UTL_RAW.CONCAT(hextoraw('41'), hextoraw('42'), hextoraw('43'),
+                      hextoraw('44'), hextoraw('45'), hextoraw('46'),
+                      hextoraw('47'), hextoraw('48'), hextoraw('49'),
+                      hextoraw('4A'), hextoraw('4B'), hextoraw('4C'))
+       = hextoraw('4142434445464748494A4B4C');
+SELECT UTL_RAW.CONCAT(hextoraw('41'), NULL, NULL, NULL, NULL, NULL,
+                      NULL, NULL, NULL, NULL, NULL, hextoraw('42')) = hextoraw('4142');
+
+-- ------------------------------------------------------------
+-- COMPARE
+-- ------------------------------------------------------------
+SELECT UTL_RAW.COMPARE(hextoraw('414243'), hextoraw('414243')) = 0;
+SELECT UTL_RAW.COMPARE(hextoraw('414243'), hextoraw('414244')) = 3;
+SELECT UTL_RAW.COMPARE(hextoraw('4142'), hextoraw('41424344')) = 3;
+SELECT UTL_RAW.COMPARE(hextoraw('41424344'), hextoraw('4142')) = 3;
+SELECT UTL_RAW.COMPARE(hextoraw('41424344'), hextoraw('414243'), hextoraw('44')) = 0;
+SELECT UTL_RAW.COMPARE(hextoraw('4142'), hextoraw('414243'), hextoraw('00')) = 3;
+SELECT UTL_RAW.COMPARE(hextoraw('4142'), hextoraw('414243'), hextoraw('43')) = 0;
+SELECT UTL_RAW.COMPARE(hextoraw('414243'), hextoraw('4142'), hextoraw('43')) = 0;
+SELECT UTL_RAW.COMPARE(hextoraw('E4BDA0'), hextoraw('E4BDA1')) = 3;
+SELECT UTL_RAW.COMPARE('\x'::bytea, '\x'::bytea) = 0;
+SELECT UTL_RAW.COMPARE('\x'::bytea, hextoraw('41')) = 1;
+SELECT UTL_RAW.COMPARE(NULL, hextoraw('41')) IS NULL;
+SELECT UTL_RAW.COMPARE(hextoraw('41'), NULL) IS NULL;
+-- Oracle compares two NULL RAW values as equal.
+SELECT UTL_RAW.COMPARE(NULL, NULL) = 0;
+
+-- ------------------------------------------------------------
+-- BIT_AND / BIT_OR / BIT_XOR
+-- ------------------------------------------------------------
+SELECT UTL_RAW.BIT_AND(hextoraw('0F0F'), hextoraw('00FF')) = hextoraw('000F');
+SELECT UTL_RAW.BIT_OR(hextoraw('0F0F'), hextoraw('00FF')) = hextoraw('0FFF');
+SELECT UTL_RAW.BIT_XOR(hextoraw('0F0F'), hextoraw('00FF')) = hextoraw('0FF0');
+SELECT UTL_RAW.BIT_AND('\x'::bytea, '\x'::bytea) = '\x'::bytea;
+SELECT UTL_RAW.BIT_OR('\x'::bytea, '\x'::bytea) = '\x'::bytea;
+SELECT UTL_RAW.BIT_XOR('\x'::bytea, '\x'::bytea) = '\x'::bytea;
+SELECT UTL_RAW.BIT_AND(hextoraw('E4BDA0'), hextoraw('FFFFFF')) = hextoraw('E4BDA0');
+SELECT UTL_RAW.BIT_AND(NULL, hextoraw('FF')) IS NULL;
+SELECT UTL_RAW.BIT_OR(hextoraw('FF'), NULL) IS NULL;
+SELECT UTL_RAW.BIT_XOR(NULL, NULL) IS NULL;
+
+-- Operands of different lengths are padded, not rejected: X'FF' keeps the
+-- longer operand under BIT_AND, X'00' leaves it under BIT_OR/BIT_XOR, and the
+-- result is as long as the longer operand.
+SELECT UTL_RAW.BIT_AND(hextoraw('FF'), hextoraw('0F0F')) = hextoraw('0F0F');
+
+SELECT UTL_RAW.BIT_OR(hextoraw('FF'), hextoraw('0F0F')) = hextoraw('FF0F');
+
+SELECT UTL_RAW.BIT_XOR(hextoraw('FF'), hextoraw('0F0F')) = hextoraw('F00F');
+
+-- The same rule through the C entry points, which the package wraps
+SELECT sys.utl_raw_bit_and(hextoraw('0F0F'), hextoraw('00')) = hextoraw('000F');
+
+SELECT sys.utl_raw_bit_xor(hextoraw('0F'), hextoraw('0000')) = hextoraw('0F00');
+
+-- ------------------------------------------------------------
+-- BIT_COMPLEMENT
+-- ------------------------------------------------------------
+SELECT UTL_RAW.BIT_COMPLEMENT(hextoraw('0F0F')) = hextoraw('F0F0');
+SELECT UTL_RAW.BIT_COMPLEMENT('\x'::bytea) = '\x'::bytea;
+SELECT UTL_RAW.BIT_COMPLEMENT(NULL) IS NULL;
+
+-- ------------------------------------------------------------
+-- REVERSE
+-- ------------------------------------------------------------
+SELECT UTL_RAW.REVERSE(hextoraw('41424344')) = hextoraw('44434241');
+SELECT UTL_RAW.REVERSE(hextoraw('41')) = hextoraw('41');
+SELECT UTL_RAW.REVERSE('\x'::bytea) = '\x'::bytea;
+SELECT UTL_RAW.REVERSE(hextoraw('E4BDA0E5A5BD')) = hextoraw('BDA5E5A0BDE4');
+SELECT UTL_RAW.REVERSE(NULL) IS NULL;
+
+-- ------------------------------------------------------------
+-- OVERLAY
+-- ------------------------------------------------------------
+SELECT UTL_RAW.OVERLAY(hextoraw('7879'), hextoraw('4142434445'), 2, 2) = hextoraw('4178794445');
+SELECT UTL_RAW.OVERLAY(hextoraw('7879'), hextoraw('4142434445')) = hextoraw('7879434445');
+SELECT UTL_RAW.OVERLAY(hextoraw('78'), hextoraw('4142'), 3) = hextoraw('414278');
+SELECT UTL_RAW.OVERLAY('\x'::bytea, hextoraw('4142'), 1) = hextoraw('4142');
+
+-- A NULL len means "length of overlay_str", a NULL pad means 0x00.
+SELECT UTL_RAW.OVERLAY(hextoraw('78'), hextoraw('4142'), 5) = hextoraw('4142000078');
+SELECT UTL_RAW.OVERLAY(hextoraw('78'), hextoraw('414243'), 1, 3) = hextoraw('780000');
+SELECT UTL_RAW.OVERLAY(hextoraw('78'), hextoraw('414243'), 1, 3, hextoraw('FF')) = hextoraw('78FFFF');
+SELECT UTL_RAW.OVERLAY(hextoraw('7879'), hextoraw('41424344'), 2, 2, hextoraw('FFFF')) = hextoraw('41787944');
+SELECT UTL_RAW.OVERLAY(hextoraw('99'), hextoraw('414243'), 1, 1, NULL) = hextoraw('994243');
+-- pad fills the gap between target and pos, and the window bytes past
+-- overlay_str, with its first byte repeated (21c).
+SELECT UTL_RAW.OVERLAY(hextoraw('78'), hextoraw('414243'), 1, 5, hextoraw('AABB')) = hextoraw('78AAAAAAAA');
+SELECT UTL_RAW.OVERLAY(hextoraw('AABB'), hextoraw('0102'), 6, 4, hextoraw('EEFF')) = hextoraw('0102EEEEEEAABBEEEE');
+SELECT UTL_RAW.OVERLAY(NULL, hextoraw('78'), 1) IS NULL;
+SELECT UTL_RAW.OVERLAY(hextoraw('41'), NULL) IS NULL;
+
+-- ------------------------------------------------------------
+-- TRANSLATE
+-- ------------------------------------------------------------
+SELECT UTL_RAW.TRANSLATE(hextoraw('41424344'), hextoraw('4142'), hextoraw('4241')) = hextoraw('42414344');
+SELECT UTL_RAW.TRANSLATE(hextoraw('414243'), hextoraw('414243'), hextoraw('58')) = hextoraw('58');
+SELECT UTL_RAW.TRANSLATE(hextoraw('4141'), hextoraw('4141'), hextoraw('5A00')) = hextoraw('5A5A');
+SELECT UTL_RAW.TRANSLATE(hextoraw('4142'), hextoraw('43'), hextoraw('44')) = hextoraw('4142');
+SELECT UTL_RAW.TRANSLATE('\x'::bytea, hextoraw('41'), hextoraw('42')) = '\x'::bytea;
+SELECT UTL_RAW.TRANSLATE(NULL, hextoraw('41'), hextoraw('42')) IS NULL;
+SELECT UTL_RAW.TRANSLATE(hextoraw('41'), NULL, hextoraw('42')) IS NULL;
+SELECT UTL_RAW.TRANSLATE(hextoraw('41'), hextoraw('41'), NULL) IS NULL;
+
+-- ------------------------------------------------------------
+-- COPIES
+-- ------------------------------------------------------------
+SELECT UTL_RAW.COPIES(hextoraw('4142'), 3) = hextoraw('414241424142');
+SELECT UTL_RAW.COPIES(hextoraw('4142'), 1) = hextoraw('4142');
+SELECT UTL_RAW.COPIES(hextoraw('4142'), 0) IS NULL;
+SELECT UTL_RAW.COPIES('\x'::bytea, 3) = '\x'::bytea;
+SELECT UTL_RAW.COPIES(NULL, 3) IS NULL;
+SELECT UTL_RAW.COPIES(hextoraw('41'), NULL) IS NULL;
+
+-- ------------------------------------------------------------
+-- Direct C entry points (sys.utl_raw_*)
+-- ------------------------------------------------------------
+SELECT sys.utl_raw_length(hextoraw('414243')) = 3;
+SELECT sys.utl_raw_substr(hextoraw('4142434445'), 2) = hextoraw('42434445');
+SELECT sys.utl_raw_substr(hextoraw('4142434445'), 2, 2) = hextoraw('4243');
+SELECT sys.utl_raw_compare(hextoraw('4142'), hextoraw('4143')) = 2;
+SELECT sys.utl_raw_compare(hextoraw('4142'), hextoraw('414243'), hextoraw('43')) = 0;
+SELECT sys.utl_raw_overlay(hextoraw('78'), hextoraw('414243'), 1, 1) = hextoraw('784243');
+SELECT sys.utl_raw_overlay_pad(hextoraw('78'), hextoraw('414243'), 1, 3, hextoraw('FF')) = hextoraw('78FFFF');
+SELECT sys.utl_raw_overlay_pad(hextoraw('AABB'), hextoraw('0102'), 6, 4, hextoraw('EEFF')) = hextoraw('0102EEEEEEAABBEEEE');
+SELECT sys.utl_raw_translate(hextoraw('41'), hextoraw('41'), hextoraw('42')) = hextoraw('42');
+SELECT sys.utl_raw_copies(hextoraw('41'), 2) = hextoraw('4141');
+
+-- ------------------------------------------------------------
+-- PL/iSQL package interface
+-- ------------------------------------------------------------
+DO $$
+DECLARE
+    v_raw RAW(100) := hextoraw('4142434445');
+    v_res RAW(100);
+    v_len INTEGER;
+    v_cmp INTEGER;
+    v_null_copies BOOLEAN;
+BEGIN
+    v_len := UTL_RAW.LENGTH(v_raw);
+    v_res := UTL_RAW.SUBSTR(v_raw, 2, 3);
+    v_cmp := UTL_RAW.COMPARE(v_raw, hextoraw('4142434446'));
+    RAISE NOTICE 'len=%, substr=%, compare=%', v_len, rawtohex(v_res), v_cmp;
+    RAISE NOTICE 'concat=%, reverse=%', rawtohex(UTL_RAW.CONCAT(hextoraw('4142'), hextoraw('4344'))), rawtohex(UTL_RAW.REVERSE(hextoraw('41424344')));
+    v_null_copies := UTL_RAW.COPIES(hextoraw('41'), 0) IS NULL;
+    RAISE NOTICE 'copies null=%', v_null_copies;
+END;
+$$;
