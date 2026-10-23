@@ -1557,3 +1557,19 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- V$EVENT_NAME: the wait events the server can report, which PostgreSQL keeps
+-- in pg_wait_events.  Oracle's view lists its own event names; this one lists
+-- the events an IvorySQL session can actually wait on.
+CREATE OR REPLACE VIEW SYS.V$EVENT_NAME AS
+SELECT
+    ROW_NUMBER() OVER (ORDER BY W.TYPE, W.NAME)::NUMBER             AS EVENT_NO,
+    W.NAME::VARCHAR2(64)                                            AS NAME,
+    W.TYPE::VARCHAR2(64)                                            AS WAIT_CLASS,
+    NULL::VARCHAR2(64)                                              AS PARAMETER1,
+    NULL::VARCHAR2(64)                                              AS PARAMETER2,
+    NULL::VARCHAR2(64)                                              AS PARAMETER3,
+    W.DESCRIPTION::VARCHAR2(4000)                                   AS DESCRIPTION,
+    0::NUMBER                                                       AS CON_ID
+FROM pg_catalog.pg_wait_events W;
+GRANT SELECT ON SYS.V$EVENT_NAME TO PUBLIC;
