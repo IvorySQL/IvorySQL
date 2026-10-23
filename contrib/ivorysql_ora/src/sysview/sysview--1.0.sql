@@ -1557,3 +1557,53 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- V$SEGSTAT_NAME / V$SEGSTAT: per-segment I/O statistics in Oracle's shape.
+-- PostgreSQL reports the same counters per relation in pg_statio_all_tables,
+-- so the name view lists the three statistics that can be derived and the
+-- value view reports them per segment.
+CREATE OR REPLACE VIEW SYS.V$SEGSTAT_NAME AS
+SELECT
+    'logical reads'::VARCHAR2(64)                                  AS STATISTIC_NAME,
+    1::NUMBER                                                      AS STATISTIC_NO,
+    'NO'::VARCHAR2(3)                                              AS SAMPLED,
+    0::NUMBER                                                      AS CON_ID
+UNION ALL
+SELECT 'physical reads'::VARCHAR2(64), 2::NUMBER, 'NO'::VARCHAR2(3), 0::NUMBER
+UNION ALL
+SELECT 'buffer gets'::VARCHAR2(64), 3::NUMBER, 'NO'::VARCHAR2(3), 0::NUMBER;
+GRANT SELECT ON SYS.V$SEGSTAT_NAME TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.V$SEGSTAT AS
+SELECT
+    C.OID::INT8::NUMBER                                            AS OBJ#,
+    C.OID::INT8::NUMBER                                            AS DATAOBJ#,
+    TS.OID::INT8::NUMBER                                           AS TS#,
+    'TABLE'::VARCHAR2(13)                                          AS OBJ_TYPE,
+    S.STATISTIC_NAME::VARCHAR2(64)                                 AS STATISTIC_NAME,
+    S.STATISTIC_NO::NUMBER                                         AS STATISTIC#,
+    S.VALUE::NUMBER                                                AS VALUE,
+    0::NUMBER                                                      AS CON_ID
+FROM PG_CATALOG.PG_CLASS C
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+JOIN PG_CATALOG.PG_TABLESPACE TS
+  ON TS.OID = (CASE WHEN C.RELTABLESPACE = 0
+                    THEN (SELECT DATTABLESPACE FROM PG_CATALOG.PG_DATABASE
+                           WHERE DATNAME = CURRENT_DATABASE())
+                    ELSE C.RELTABLESPACE
+               END)
+CROSS JOIN LATERAL (
+    SELECT ST.HEAP_BLKS_READ + ST.HEAP_BLKS_HIT + ST.IDX_BLKS_READ + ST.IDX_BLKS_HIT AS LOGICAL_READS,
+           ST.HEAP_BLKS_READ + ST.IDX_BLKS_READ AS PHYSICAL_READS,
+           ST.HEAP_BLKS_HIT + ST.IDX_BLKS_HIT AS BUFFER_GETS
+      FROM PG_CATALOG.PG_STATIO_ALL_TABLES ST
+     WHERE ST.RELID = C.OID
+) IO
+CROSS JOIN LATERAL (
+    VALUES ('logical reads'::VARCHAR2(64), 1::NUMBER, IO.LOGICAL_READS),
+           ('physical reads'::VARCHAR2(64), 2::NUMBER, IO.PHYSICAL_READS),
+           ('buffer gets'::VARCHAR2(64), 3::NUMBER, IO.BUFFER_GETS)
+) AS S(STATISTIC_NAME, STATISTIC_NO, VALUE)
+WHERE C.RELKIND IN ('r', 'p', 'm')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast');
+GRANT SELECT ON SYS.V$SEGSTAT TO PUBLIC;

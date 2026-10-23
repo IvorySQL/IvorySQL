@@ -270,3 +270,18 @@ SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'TEST_ALL_TAB_
 \set ON_ERROR_STOP on
 
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+
+-- Oracle-compatible V$SEGSTAT_NAME / V$SEGSTAT
+SELECT COUNT(*) = 3 AS three_statistics FROM SYS.V$SEGSTAT_NAME;
+DROP TABLE IF EXISTS t_segstat_test;
+CREATE TABLE t_segstat_test (id INT);
+INSERT INTO t_segstat_test SELECT GENERATE_SERIES(1, 10);
+SELECT id FROM t_segstat_test WHERE id = 1;
+SELECT COUNT(*) = 3 AS three_values_per_segment
+FROM SYS.V$SEGSTAT
+WHERE OBJ# = 't_segstat_test'::REGCLASS::INT8;
+SELECT COUNT(*) = 3 * (SELECT COUNT(*) FROM PG_STATIO_ALL_TABLES ST
+                        JOIN PG_CLASS C ON C.OID = ST.RELID
+                        JOIN PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+                       WHERE N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')) AS total_rows
+FROM SYS.V$SEGSTAT;
