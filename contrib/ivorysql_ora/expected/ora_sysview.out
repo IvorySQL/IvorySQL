@@ -493,3 +493,24 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- Oracle-compatible library dictionary views
+SELECT COUNT(*) > 0 AS has_libraries FROM SYS.DBA_LIBRARIES;
+ has_libraries 
+---------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 0 AS names_are_basenames
+FROM SYS.DBA_LIBRARIES
+WHERE FILE_SPEC NOT LIKE '%' || LIBRARY_NAME;
+ names_are_basenames 
+---------------------
+ t
+(1 row)
+
+SELECT COUNT(*) > 0 AS all_has FROM SYS.ALL_LIBRARIES WHERE STATUS = 'VALID';
+ all_has 
+---------
+ t
+(1 row)
+
