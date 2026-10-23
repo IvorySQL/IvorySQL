@@ -493,3 +493,37 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- Oracle-compatible policy dictionary views
+DROP TABLE IF EXISTS t_policy_test;
+NOTICE:  table "t_policy_test" does not exist, skipping
+CREATE TABLE t_policy_test (id INT, owner_name TEXT);
+ALTER TABLE t_policy_test ENABLE ROW LEVEL SECURITY;
+CREATE POLICY p_sel ON t_policy_test FOR SELECT USING (true);
+CREATE POLICY p_del ON t_policy_test FOR DELETE USING (true);
+SELECT POLICY_NAME, SEL, INS, UPD, CHK, ENABLE
+FROM SYS.USER_POLICIES
+WHERE OBJECT_NAME = 'T_POLICY_TEST'
+ORDER BY POLICY_NAME;
+ policy_name | sel | ins | upd | chk | enable 
+-------------+-----+-----+-----+-----+--------
+ P_DEL       | NO  | NO  | NO  | YES | YES
+ P_SEL       | YES | NO  | NO  | NO  | YES
+(2 rows)
+
+SELECT COUNT(*) = 2 AS all_has
+FROM SYS.ALL_POLICIES
+WHERE OBJECT_NAME = 'T_POLICY_TEST';
+ all_has 
+---------
+ t
+(1 row)
+
+SELECT COUNT(*) = 2 AS dba_has
+FROM SYS.DBA_POLICIES
+WHERE OBJECT_NAME = 'T_POLICY_TEST';
+ dba_has 
+---------
+ t
+(1 row)
+
+DROP TABLE t_policy_test;
