@@ -223,7 +223,6 @@ static int	database_mode = DB_ORACLE;
 "# the database superuser.  If you do not trust all your local users,\n" \
 "# use another authentication method.\n"
 static bool authwarning = false;
-static bool is_load_gb18030_2022 = true;
 
 /*
  * Centralized knowledge of switches to pass to backend
@@ -862,20 +861,15 @@ static int
 get_encoding_id(const char *encoding_name)
 {
 	int			enc;
-	char		*encoding_name_modify;
+	const char *encoding_name_modify = encoding_name;
 
 	if (encoding_name && *encoding_name)
 	{
-		encoding_name_modify = pg_strdup(encoding_name);
-		if(pg_strcasecmp(encoding_name,"gb18030_2022") == 0)
-		{
-			encoding_name_modify = pg_strdup("gb18030");
-			is_load_gb18030_2022 =  true;
-		}
-		else if(pg_strcasecmp(encoding_name,"gb18030") == 0)
-			is_load_gb18030_2022 = false;
+		/* Keep GB18030_2022 as an alias for the server encoding name. */
+		if (pg_strcasecmp(encoding_name, "gb18030_2022") == 0)
+			encoding_name_modify = "gb18030";
 
-		if ((enc = pg_valid_server_encoding((const char *)encoding_name_modify)) >= 0)
+		if ((enc = pg_valid_server_encoding(encoding_name_modify)) >= 0)
 			return enc;
 	}
 	pg_fatal("\"%s\" is not a valid server encoding name",
@@ -1343,7 +1337,7 @@ setup_config(void)
 								  repltok, false);
 
 
-	if(is_load_gb18030_2022 && database_mode == DB_PG)
+	if (database_mode == DB_PG)
 		conflines = replace_token(conflines,
 								  "#shared_preload_libraries = ''",
 								  "shared_preload_libraries = 'gb18030_2022'");
@@ -1520,7 +1514,6 @@ setup_config(void)
 			conflines = replace_token(conflines, "#ivorysql.port = 1521", repltok);
 		}
 
-		if(is_load_gb18030_2022)
 		conflines = replace_token(conflines,
 								  "shared_preload_libraries = 'liboracle_parser, ivorysql_ora'",
 								  "shared_preload_libraries = 'gb18030_2022, liboracle_parser, ivorysql_ora'");
@@ -2656,9 +2649,7 @@ usage(const char *progname)
 	printf(_("      --auth-local=METHOD   default authentication method for local-socket connections\n"));
 	printf(_(" [-D, --pgdata=]DATADIR     location for this database cluster\n"));
 	printf(_("  -E, --encoding=ENCODING   set default encoding for new databases\n"));
-	printf(_("	NOTICE: If you set this to gb18030,\n\
-		the database will initilized with gb18030_2000,but not gb18030_2022,\n\
-		if you want to use gb18030_2022,please set this option to gb18030_2022,\n"));
+	printf(_("      GB18030 conversions always use GB18030-2022 mappings.\n"));
 	printf(_("  -g, --allow-group-access  allow group read/execute on data directory\n"));
 	printf(_("      --icu-locale=LOCALE   set ICU locale ID for new databases\n"));
 	printf(_("      --icu-rules=RULES     set additional ICU collation rules for new databases\n"));
@@ -3302,8 +3293,7 @@ initialize_data_directory(void)
 
 	setup_schema(cmdfd);
 
-	if(is_load_gb18030_2022)
-		load_gb18030_2022(cmdfd);
+	load_gb18030_2022(cmdfd);
 
 	load_plpgsql(cmdfd);
 

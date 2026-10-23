@@ -1832,6 +1832,7 @@ SELECT text 'text' || varchar ' and varchar' AS "Concat text to varchar";
 
 --
 -- test substr with toasted text values
+-- Exercise PostgreSQL substring semantics explicitly in Oracle mode.
 --
 CREATE TABLE toasttest(f1 text);
 insert into toasttest values(repeat('1234567890',10000));
@@ -1845,7 +1846,7 @@ insert into toasttest values(repeat('1234567890',10000));
 insert into toasttest values(repeat('1234567890',10000));
 -- If the starting position is zero or less, then return from the start of the string
 -- adjusting the length to be consistent with the "negative start" per SQL.
-SELECT substr(f1, -1, 5) from toasttest;
+SELECT pg_catalog.substr(f1, -1, 5) from toasttest;
  substr 
 --------
  123
@@ -1855,11 +1856,11 @@ SELECT substr(f1, -1, 5) from toasttest;
 (4 rows)
 
 -- If the length is less than zero, an ERROR is thrown.
-SELECT substr(f1, 5, -1) from toasttest;
+SELECT pg_catalog.substr(f1, 5, -1) from toasttest;
 ERROR:  negative substring length not allowed
 -- If no third argument (length) is provided, the length to the end of the
 -- string is assumed.
-SELECT substr(f1, 99995) from toasttest;
+SELECT pg_catalog.substr(f1, 99995) from toasttest;
  substr 
 --------
  567890
@@ -1870,7 +1871,7 @@ SELECT substr(f1, 99995) from toasttest;
 
 -- If start plus length is > string length, the result is truncated to
 -- string length
-SELECT substr(f1, 99995, 10) from toasttest;
+SELECT pg_catalog.substr(f1, 99995, 10) from toasttest;
  substr 
 --------
  567890

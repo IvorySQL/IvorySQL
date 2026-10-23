@@ -25,6 +25,7 @@ OBJS = \
 	src/builtin_functions/datetime_datatype_functions.o \
 	src/builtin_functions/numeric_datatype_functions.o \
 	src/builtin_functions/misc_functions.o \
+	src/builtin_packages/dbms_output/dbms_output.o \
 	src/merge/ora_merge.o \
 	src/sysview/sysview_functions.o \
 	src/xml_functions/ora_xml_functions.o
@@ -59,18 +60,22 @@ ORA_REGRESS = \
 	ora_datetime \
 	ora_interval \
 	ora_number \
+	ora_to_number_hex \
 	ora_binary_float \
 	ora_binary_double \
 	ora_raw_long \
 	ora_character_datatype_functions \
+	ora_substr \
 	ora_datetime_datatype_functions \
 	ora_misc_functions \
 	ora_merge \
 	datatype_and_func_bugs \
 	ora_sysview \
+	ora_arguments \
 	ora_like_operator \
 	ora_like_bigint \
-	ora_xml_functions
+	ora_xml_functions \
+	ora_dbms_output
 
 SHLIB_LINK += -lxml2
 

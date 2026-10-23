@@ -60,6 +60,7 @@ CREATE OR REPLACE FUNCTION func_int_custom (p_value int_custom)
   BEGIN
     RETURN p_value;
   END; $$;
+/
 -- Switch type to use typanalyze function that always returns false.
 ALTER TYPE int_custom SET (ANALYZE = int_custom_typanalyze_false);
 -- Extended statistics with an attribute that cannot be analyzed.

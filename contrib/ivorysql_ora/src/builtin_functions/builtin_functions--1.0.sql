@@ -468,6 +468,23 @@ LANGUAGE C
 PARALLEL SAFE
 STABLE;
 
+/* SUBSTR uses character positions; SUBSTRB below uses byte positions. */
+CREATE FUNCTION sys.substr(text, pg_catalog.int4)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substr_no_length'
+LANGUAGE C
+STRICT
+IMMUTABLE
+PARALLEL SAFE;
+
+CREATE FUNCTION sys.substr(text, pg_catalog.int4, pg_catalog.int4)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substr'
+LANGUAGE C
+STRICT
+IMMUTABLE
+PARALLEL SAFE;
+
 /* SR */
 CREATE FUNCTION sys.substrb(varchar, number)
 RETURNS text
@@ -1384,3 +1401,19 @@ BEGIN
 END;
 $$ LANGUAGE plisql SECURITY INVOKER;
 /* End - SYS_CONTEXT */
+
+/*
+ * LISTAGG support
+ *
+ * sys.ora_listagg_check(text) enforces Oracle's VARCHAR2 maximum length (4000 bytes)
+ * on the LISTAGG result.  It is automatically injected by the Oracle-mode parser
+ * as a wrapper around string_agg() when LISTAGG(...) WITHIN GROUP (ORDER BY ...)
+ * is parsed, so users never call it directly.
+ */
+CREATE FUNCTION sys.ora_listagg_check(text)
+RETURNS text
+AS 'MODULE_PATHNAME', 'ora_listagg_check'
+LANGUAGE C
+CALLED ON NULL INPUT
+PARALLEL SAFE
+IMMUTABLE;

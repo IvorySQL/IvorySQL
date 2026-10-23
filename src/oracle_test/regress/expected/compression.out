@@ -142,7 +142,7 @@ CREATE TABLE cmdata2 (f1 int);
 --------+-----------------+-----------+----------+---------+-----------+---------+-------------+--------------+-------------
  f1     | pg_catalog.int4 |           |          |         |           | plain   |             |              | 
 
-ALTER TABLE cmdata2 ALTER COLUMN f1 TYPE varchar(4000);
+ALTER TABLE cmdata2 ALTER COLUMN f1 TYPE varchar;
 \d+ cmdata2
                                                    Table "public.cmdata2"
  Column |      Type      | Collation | Nullable | Default | Invisible | Storage  | Compression | Stats target | Description 
@@ -158,7 +158,7 @@ ALTER TABLE cmdata2 ALTER COLUMN f1 TYPE int USING f1::integer;
 
 --changing column storage should not impact the compression method
 --but the data should not be compressed
-ALTER TABLE cmdata2 ALTER COLUMN f1 TYPE varchar(4000);
+ALTER TABLE cmdata2 ALTER COLUMN f1 TYPE varchar;
 ALTER TABLE cmdata2 ALTER COLUMN f1 SET COMPRESSION pglz;
 \d+ cmdata2
                                                    Table "public.cmdata2"

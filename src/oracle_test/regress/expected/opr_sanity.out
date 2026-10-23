@@ -2344,10 +2344,12 @@ WHERE c.oid = attrelid AND c.oid < 16384 AND
     c.relkind != 'v' AND  -- we don't care about columns in views
     attcollation != 0 AND
     attcollation != (SELECT oid FROM pg_collation WHERE collname = 'C');
- relname | attname | attcollation 
----------+---------+--------------
- dual    | dummy   |          100
-(1 row)
+      relname      | attname | attcollation 
+-------------------+---------+--------------
+ dual              | dummy   |          100
+ dbms_output_line  | line    |          100
+ dbms_output_lines | lines   |          100
+(3 rows)
 
 -- Double-check that collation-sensitive indexes have "C" collation, too.
 SELECT indexrelid::regclass, indrelid::regclass, iclass, icoll
