@@ -1557,3 +1557,72 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- V$DATABASE: one row describing the database this session is connected to.
+-- Only values with a real PostgreSQL source are filled in; CREATED would
+-- need superuser-only file access and stays NULL.
+CREATE OR REPLACE VIEW SYS.V$DATABASE AS
+SELECT
+    D.OID::INT8::NUMBER                                                    AS DBID,
+    D.DATNAME::VARCHAR2(128)                                               AS NAME,
+    D.DATNAME::VARCHAR2(128)                                               AS DB_UNIQUE_NAME,
+    NULL::TIMESTAMPTZ                                                      AS CREATED,
+    'READ WRITE'::VARCHAR2(16)                                             AS OPEN_MODE,
+    CASE WHEN CURRENT_SETTING('archive_mode') IN ('on', 'always')
+         THEN 'ARCHIVELOG' ELSE 'NOARCHIVELOG'
+    END::VARCHAR2(16)                                                      AS LOG_MODE,
+    'PRIMARY'::VARCHAR2(16)                                                AS DATABASE_ROLE,
+    SPLIT_PART(SPLIT_PART(VERSION(), ' on ', 2), ',', 1)::VARCHAR2(128)    AS PLATFORM_NAME,
+    CURRENT_SETTING('server_version')::VARCHAR2(64)                        AS VERSION,
+    NULL::VARCHAR2(3)                                                      AS FORCE_LOGGING,
+    'NO'::VARCHAR2(3)                                                      AS FLASHBACK_ON,
+    'NO'::VARCHAR2(3)                                                      AS SUPPLEMENTAL_LOG_DATA_MIN,
+    'CURRENT'::VARCHAR2(9)                                                 AS CONTROLFILE_TYPE,
+    PG_WAL_LSN_DIFF(PG_CURRENT_WAL_LSN(), '0/0')::NUMBER                   AS CURRENT_SCN
+FROM PG_CATALOG.PG_DATABASE D
+WHERE D.DATNAME = CURRENT_DATABASE();
+GRANT SELECT ON SYS.V$DATABASE TO PUBLIC;
+
+-- V$SGA: the five rows Oracle reports, computed from the real PostgreSQL
+-- memory settings.  wal_buffers = -1 means "derive 1/32 of shared_buffers,
+-- at least 64kB", which is what the server does.
+CREATE OR REPLACE VIEW SYS.V$SGA AS
+SELECT X.NAME, X.VALUE::NUMBER AS VALUE, 0::NUMBER AS CON_ID
+FROM (
+    SELECT 'Fixed Size'::VARCHAR2(32) AS NAME, 0::NUMERIC AS VALUE, 1 AS ORD
+    UNION ALL
+    SELECT 'Variable Size'::VARCHAR2(32), 0::NUMERIC, 2
+    UNION ALL
+    SELECT 'Database Buffers'::VARCHAR2(32),
+           PG_SIZE_BYTES(CURRENT_SETTING('shared_buffers'))::NUMERIC, 3
+    UNION ALL
+    SELECT 'Redo Buffers'::VARCHAR2(32),
+           CASE WHEN CURRENT_SETTING('wal_buffers') = '-1'
+                THEN GREATEST(PG_SIZE_BYTES(CURRENT_SETTING('shared_buffers')) / 32,
+                              65536)
+                ELSE PG_SIZE_BYTES(CURRENT_SETTING('wal_buffers'))
+           END::NUMERIC, 4
+    UNION ALL
+    SELECT 'Total System Global Area'::VARCHAR2(32),
+           (PG_SIZE_BYTES(CURRENT_SETTING('shared_buffers')) +
+            CASE WHEN CURRENT_SETTING('wal_buffers') = '-1'
+                 THEN GREATEST(PG_SIZE_BYTES(CURRENT_SETTING('shared_buffers')) / 32,
+                               65536)
+                 ELSE PG_SIZE_BYTES(CURRENT_SETTING('wal_buffers'))
+            END)::NUMERIC, 5
+) X
+ORDER BY X.ORD;
+GRANT SELECT ON SYS.V$SGA TO PUBLIC;
+
+-- V$BGPROCESS: one row per background process, which is pg_stat_activity
+-- minus the client backends.
+CREATE OR REPLACE VIEW SYS.V$BGPROCESS AS
+SELECT
+    NULL::VARCHAR2(16)                                                     AS PADDR,
+    A.PID::NUMBER                                                          AS PSERIAL,
+    A.BACKEND_TYPE::VARCHAR2(80)                                           AS NAME,
+    NULL::VARCHAR2(4000)                                                   AS DESCRIPTION,
+    NULL::VARCHAR2(4000)                                                   AS ERROR
+FROM PG_CATALOG.PG_STAT_ACTIVITY A
+WHERE A.BACKEND_TYPE <> 'client backend';
+GRANT SELECT ON SYS.V$BGPROCESS TO PUBLIC;
