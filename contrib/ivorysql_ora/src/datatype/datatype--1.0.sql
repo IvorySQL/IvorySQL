@@ -10762,3 +10762,48 @@ AS IMPLICIT;
 CREATE CAST (text AS text)
 WITH FUNCTION sys.orachar_to_long_with_typmod(text, integer, boolean)
 AS IMPLICIT;
+
+
+/* Casts from the PostgreSQL interval type to the Oracle interval types.  The
+ * Oracle types read a fixed-width external form, so the conversion formats the
+ * PG fields into that form instead of guessing the internal layout.  Both are
+ * AS ASSIGNMENT so operator resolution is unchanged.  A PG interval that mixes
+ * months and days cannot become either Oracle type; the day part is ignored
+ * for the year-to-month cast and the month part for the day-to-second cast,
+ * which matches what Oracle's NUMTODSINTERVAL/NUMTOYMINTERVAL callers expect. */
+CREATE OR REPLACE FUNCTION sys.interval_yminterval(p_iv pg_catalog.interval)
+RETURNS sys.yminterval
+AS $$
+SELECT (CASE WHEN M < 0 THEN '-' ELSE '+' END
+        || pg_catalog.lpad((pg_catalog.abs(M) / 12)::text, 9, '0')
+        || '-' || pg_catalog.lpad((pg_catalog.abs(M) % 12)::text, 2, '0'))::sys.yminterval
+  FROM (SELECT (pg_catalog.date_part('year', p_iv)::int * 12
+              + pg_catalog.date_part('month', p_iv)::int) AS M) X
+$$
+LANGUAGE SQL
+IMMUTABLE STRICT PARALLEL SAFE;
+
+CREATE CAST (pg_catalog.interval AS sys.yminterval)
+WITH FUNCTION sys.interval_yminterval(pg_catalog.interval)
+AS ASSIGNMENT;
+
+CREATE OR REPLACE FUNCTION sys.interval_dsinterval(p_iv pg_catalog.interval)
+RETURNS sys.dsinterval
+AS $$
+SELECT (CASE WHEN D < 0 OR S < 0 THEN '-' ELSE '+' END
+        || pg_catalog.lpad(pg_catalog.abs(D)::text, 9, '0')
+        || ' '
+        || pg_catalog.lpad(pg_catalog.abs(H)::text, 2, '0') || ':'
+        || pg_catalog.lpad(pg_catalog.abs(Mi)::text, 2, '0') || ':'
+        || pg_catalog.lpad(pg_catalog.abs(S)::text, 2, '0') || '.000000000')::sys.dsinterval
+  FROM (SELECT pg_catalog.date_part('day', p_iv)::int AS D,
+               pg_catalog.date_part('hour', p_iv)::int AS H,
+               pg_catalog.date_part('minute', p_iv)::int AS Mi,
+               pg_catalog.trunc(pg_catalog.date_part('second', p_iv))::int AS S) X
+$$
+LANGUAGE SQL
+IMMUTABLE STRICT PARALLEL SAFE;
+
+CREATE CAST (pg_catalog.interval AS sys.dsinterval)
+WITH FUNCTION sys.interval_dsinterval(pg_catalog.interval)
+AS ASSIGNMENT;
