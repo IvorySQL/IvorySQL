@@ -493,3 +493,37 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- NUM_DISTINCT comes from the column statistics, like Oracle's, and stays NULL
+-- while the column has never been analyzed
+CREATE TABLE t_ndist_probe (a INT, b INT);
+INSERT INTO t_ndist_probe SELECT g, 1 FROM generate_series(1, 100) g;
+ANALYZE t_ndist_probe;
+SELECT COUNT(*) = 2 AS both_known
+FROM SYS.ALL_TAB_COLUMNS
+WHERE TABLE_NAME = 'T_NDIST_PROBE' AND NUM_DISTINCT IS NOT NULL;
+ both_known 
+------------
+ t
+(1 row)
+
+SELECT COLUMN_NAME, NUM_DISTINCT
+FROM SYS.ALL_TAB_COLUMNS
+WHERE TABLE_NAME = 'T_NDIST_PROBE'
+ORDER BY COLUMN_ID;
+ column_name | num_distinct 
+-------------+--------------
+ A           |          100
+ B           |            1
+(2 rows)
+
+CREATE TABLE t_ndist_probe2 (a INT);
+SELECT NUM_DISTINCT IS NULL AS unknown_before_analyze
+FROM SYS.ALL_TAB_COLUMNS
+WHERE TABLE_NAME = 'T_NDIST_PROBE2';
+ unknown_before_analyze 
+------------------------
+ t
+(1 row)
+
+DROP TABLE t_ndist_probe;
+DROP TABLE t_ndist_probe2;
