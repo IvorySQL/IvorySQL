@@ -1931,3 +1931,67 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 /* End - VSIZE */
+
+
+/* Start - WM_CONCAT */
+/*
+ * WM_CONCAT is Oracle's legacy aggregate for concatenating a column into a
+ * comma separated list, the job LISTAGG(t, ',') does today.  Like in
+ * Oracle, NULL values are skipped and the function returns NULL when no
+ * value was aggregated; the order of the values is not defined, exactly as
+ * in Oracle (WM_CONCAT has no WITHIN GROUP clause there either).
+ */
+CREATE FUNCTION sys.wm_concat_trans(state text, value text)
+RETURNS text
+AS
+$$
+begin
+	if value is null then
+		return state;
+	end if;
+	if state is null then
+		return value;
+	end if;
+	return state || ',' || value;
+end;
+$$
+LANGUAGE plpgsql
+IMMUTABLE;
+
+CREATE FUNCTION sys.wm_concat_final(state text)
+RETURNS text
+AS
+$$
+begin
+	return state;
+end;
+$$
+LANGUAGE plpgsql
+IMMUTABLE;
+
+CREATE AGGREGATE sys.wm_concat(text) (
+	SFUNC = sys.wm_concat_trans,
+	STYPE = text,
+	FINALFUNC = sys.wm_concat_final,
+	PARALLEL = SAFE
+);
+
+/* numbers are converted to their text form, like Oracle does implicitly */
+CREATE FUNCTION sys.wm_concat_trans(state text, value number)
+RETURNS text
+AS
+$$
+begin
+	return sys.wm_concat_trans(state, value::text);
+end;
+$$
+LANGUAGE plpgsql
+IMMUTABLE;
+
+CREATE AGGREGATE sys.wm_concat(number) (
+	SFUNC = sys.wm_concat_trans,
+	STYPE = text,
+	FINALFUNC = sys.wm_concat_final,
+	PARALLEL = SAFE
+);
+/* End - WM_CONCAT */
