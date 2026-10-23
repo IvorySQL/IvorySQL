@@ -50,6 +50,7 @@ test_install_libs += oracle_regress_module
 
 tests += {
   'name': 'regress',
+  'oracle': true,
   'sd': meson.current_source_dir(),
   'bd': meson.current_build_dir(),
   'regress': {
