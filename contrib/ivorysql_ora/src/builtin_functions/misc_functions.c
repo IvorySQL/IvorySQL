@@ -39,6 +39,7 @@
 #include "utils/builtins.h"
 
 PG_FUNCTION_INFO_V1(uid);
+PG_FUNCTION_INFO_V1(ora_platform_slash);
 PG_FUNCTION_INFO_V1(stragg_transfn);
 PG_FUNCTION_INFO_V1(ora_vsize);
 
@@ -102,6 +103,18 @@ ora_vsize(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_INT32(result);
+}
+
+
+/* Return the server platform's native path delimiter, not its OS name. */
+Datum
+ora_platform_slash(PG_FUNCTION_ARGS)
+{
+#ifdef WIN32
+	PG_RETURN_TEXT_P(cstring_to_text("\\"));
+#else
+	PG_RETURN_TEXT_P(cstring_to_text("/"));
+#endif
 }
 
 

@@ -2464,3 +2464,10 @@ reset default_text_search_config;
 -- should throw errors, because dummy_config is not a valid configuration name
 set ivorysql.dummy_config to dummy;
 reset ivorysql.dummy_config;
+
+-- PLATFORM_SLASH returns a path delimiter, never an operating system name.
+SELECT sys.sys_context('USERENV', 'PLATFORM_SLASH') IN ('/', chr(92)) AS platform_slash;
+SELECT sys.sys_context('userenv', 'platform_slash') =
+       sys.sys_context('USERENV', 'PLATFORM_SLASH') AS case_insensitive;
+SELECT sys.sys_context('USERENV', 'PLATFORM_SLASH', 1) =
+       sys.sys_context('USERENV', 'PLATFORM_SLASH') AS one_character;
