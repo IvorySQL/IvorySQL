@@ -1469,7 +1469,15 @@ SELECT
 
   CASE WHEN pg_attribute.attnotnull THEN 'N' ELSE 'Y' END::varchar2(1) AS nullable,
   def.adbin_text::varchar2(4000) AS data_default,
-  NULL::numeric AS num_distinct,
+  -- Oracle reports the number of distinct values once the column has been
+  -- analyzed; pg_stats.n_distinct is negative when it is a fraction of the
+  -- row count, so multiply it back.
+  CASE
+    WHEN pg_stats.n_distinct IS NULL THEN NULL
+    WHEN pg_stats.n_distinct < 0
+      THEN round(-pg_stats.n_distinct * greatest(pg_class.reltuples, 0))
+    ELSE round(pg_stats.n_distinct)
+  END::numeric AS num_distinct,
   NULL::raw AS low_value,
   NULL::raw AS high_value,
   NULL::numeric AS density,
