@@ -2464,3 +2464,59 @@ reset default_text_search_config;
 -- should throw errors, because dummy_config is not a valid configuration name
 set ivorysql.dummy_config to dummy;
 reset ivorysql.dummy_config;
+
+--
+-- greatest / least
+--
+-- Oracle's GREATEST/LEAST: answer NULL as soon as any argument is NULL,
+-- compare using the first argument's datatype (VARCHAR2 compares
+-- binary), and return that datatype.  In oracle mode an *unqualified*
+-- GREATEST/LEAST call is turned into a MinMaxExpr by the grammar, so
+-- these functions are exercised through the schema-qualified spelling;
+-- the pg_catalog builtins stay reachable when explicitly qualified and
+-- keep PostgreSQL's NULL-ignoring behavior.
+SELECT sys.greatest('abc', 'abd', 'ABC') FROM DUAL;
+SELECT sys.least('abc', 'abd', 'ABC') FROM DUAL;
+-- VARCHAR2 compares binary: uppercase sorts before lowercase, a proper
+-- prefix before its extension
+SELECT sys.greatest('a', 'B') FROM DUAL;
+SELECT sys.least('a', 'B') FROM DUAL;
+SELECT sys.greatest('abc', 'abcd') FROM DUAL;
+SELECT sys.least('abc', 'abcd') FROM DUAL;
+-- varchar2 arguments bind the varchar2 wrapper
+SELECT sys.greatest('a'::varchar2, 'B'::varchar2) FROM DUAL;
+SELECT pg_typeof(sys.greatest('a'::varchar2, 'b'::varchar2)) FROM DUAL;
+-- numeric arguments: int/numeric mix binds the numeric overload
+SELECT sys.greatest(1, 2.5, -3) FROM DUAL;
+SELECT sys.least(1, 2.5, -3) FROM DUAL;
+-- number arguments compare through number's implicit numeric cast
+SELECT sys.greatest(CAST('1.5' AS number), CAST('2.5' AS number)) FROM DUAL;
+-- dates and timestamps
+SELECT sys.greatest(DATE '2024-01-01', DATE '2023-07-15') FROM DUAL;
+SELECT sys.least(DATE '2024-01-01', DATE '2023-07-15') FROM DUAL;
+SELECT sys.greatest(TIMESTAMP '2024-01-01 08:30:00', TIMESTAMP '2024-01-01 09:15:00') FROM DUAL;
+SELECT sys.least(TIMESTAMP '2024-06-01 12:00:00', TIMESTAMP '2024-06-01 12:00:00') FROM DUAL;
+-- pin the zone so the timestamptz spelling of the result is stable
+SET timezone = 'UTC';
+SELECT sys.greatest(TIMESTAMPTZ '2024-06-01 12:00:00+08', TIMESTAMPTZ '2024-06-01 05:00:00+00') FROM DUAL;
+SELECT sys.least(TIMESTAMPTZ '2024-06-01 12:00:00+08', TIMESTAMPTZ '2024-06-01 05:00:00+00') FROM DUAL;
+RESET timezone;
+-- a two argument call answers the extreme of both
+SELECT sys.greatest(42, 17) FROM DUAL;
+SELECT sys.least(42, 17) FROM DUAL;
+-- any NULL argument, at any position, yields NULL
+SELECT sys.greatest(NULL, 1) IS NULL AS greatest_null_first FROM DUAL;
+SELECT sys.greatest(1, NULL) IS NULL AS greatest_null_rest FROM DUAL;
+SELECT sys.least('abc', NULL) IS NULL AS least_null_text FROM DUAL;
+SELECT sys.greatest(NULL, NULL) IS NULL AS all_null FROM DUAL;
+SELECT sys.greatest(DATE '2024-01-01', NULL) IS NULL AS null_date FROM DUAL;
+SELECT sys.greatest('x'::varchar2, NULL) IS NULL AS null_varchar2 FROM DUAL;
+-- the return type follows the first argument's datatype
+SELECT pg_typeof(sys.greatest(2, 1)) FROM DUAL;
+SELECT pg_typeof(sys.least(DATE '2024-01-01', DATE '2023-01-01')) FROM DUAL;
+-- resolution priority: in oracle mode the grammar owns the
+-- *unqualified* spelling (IS_GREATEST/IS_LEAST), so sys.greatest() /
+-- sys.least() are the qualified-compat surface; the unqualified call
+-- keeps the MinMaxExpr behavior
+SELECT greatest(1, 2, 3) FROM DUAL;
+SELECT least(1, 2, 3) FROM DUAL;
