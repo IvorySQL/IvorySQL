@@ -32,6 +32,7 @@
 #include "varatt.h"
 
 #include "access/detoast.h"
+#include "common/int.h"
 #include "common/unicode_norm.h"
 #include "lib/stringinfo.h"
 #include "mb/pg_wchar.h"
@@ -1027,6 +1028,16 @@ ora_substrb(PG_FUNCTION_ARGS)
 	int32 	start = DatumGetInt32(DirectFunctionCall1(numeric_int4, PG_GETARG_DATUM(1)));
 	int32	length = DatumGetInt32(DirectFunctionCall1(numeric_int4, PG_GETARG_DATUM(2)));
 
+	/*
+	 * Test the supplied length, not its rounded integer value: a positive
+	 * fraction below one must return NULL.  Keep the conversions above so
+	 * nonfinite and out-of-range numeric arguments retain their errors.
+	 */
+	if (DatumGetInt32(DirectFunctionCall2(numeric_cmp,
+										PG_GETARG_DATUM(2),
+										NumericGetDatum(int64_to_numeric(1)))) < 0)
+		PG_RETURN_NULL();
+
 	res = text_substring_byte(PG_GETARG_DATUM(0), start, length, false);
 	len = VARSIZE_ANY_EXHDR(res);
 	
@@ -1299,7 +1310,10 @@ text_substring_byte(Datum str, int32 start, int32 length, bool length_not_specif
 		else
 		{
 			L1 = length;
-			slice_size = S1 + L1 + eml;
+			/* An oversized request means fetch through the end of the datum. */
+			if (pg_add_s32_overflow(S1, L1, &slice_size) ||
+				pg_add_s32_overflow(slice_size, eml, &slice_size))
+				slice_size = -1;
 		}
 
 		/*
@@ -1339,7 +1353,8 @@ text_substring_byte(Datum str, int32 start, int32 length, bool length_not_specif
 		 * remember that S1 is one based, and slice_start is zero based.
 		 */
 		if (L1 > -1)
-			E1 = Min(S1 + L1, slice_start + 1 + slice_strlen);
+			/* Clamp the length before adding it to the start position. */
+			E1 = S1 + Min(L1, slice_strlen - S1 + 1);
 		else
 			E1 = slice_start + 1 + slice_strlen;
 
