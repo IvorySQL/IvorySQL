@@ -1436,7 +1436,7 @@ SELECT
     WHEN pg_type.typname IN ('oravarcharchar','oracharchar','varchar','bpchar') AND pg_attribute.atttypmod > 4
       THEN (pg_attribute.atttypmod - 4) * pg_catalog.pg_encoding_max_length(
             (SELECT d.encoding FROM pg_catalog.pg_database d WHERE d.datname = current_database()))
-    WHEN pg_type.typname IN ('clob','blob') THEN 4000
+    WHEN pg_type.typname IN ('clob','blob','nclob') THEN 4000
     WHEN pg_type.typname = 'rowid' THEN 10
     WHEN pg_attribute.atttypid = 'PG_CATALOG.INT2'::regtype THEN 2
     WHEN pg_attribute.atttypid = 'PG_CATALOG.INT4'::regtype THEN 4
@@ -1464,6 +1464,8 @@ SELECT
     WHEN pg_type.typname IN ('number','numeric') AND pg_attribute.atttypmod > 4
       THEN (((pg_attribute.atttypmod - 4) & 2047) # 1024) - 1024
     WHEN pg_type.typname IN ('int2','int4','int8') THEN 0
+    WHEN pg_type.typname IN ('oratimestamp','oratimestamptz','oratimestampltz')
+      THEN greatest(pg_attribute.atttypmod, 0)
     ELSE NULL
   END::numeric AS data_scale,
 
