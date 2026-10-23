@@ -493,3 +493,52 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- Oracle-compatible role privilege views
+DROP ROLE IF EXISTS rtab_role;
+NOTICE:  role "rtab_role" does not exist, skipping
+DROP ROLE IF EXISTS rlogin_role;
+NOTICE:  role "rlogin_role" does not exist, skipping
+CREATE ROLE rtab_role CREATEROLE;
+CREATE ROLE rlogin_role LOGIN;
+DROP TABLE IF EXISTS t_role_privs;
+NOTICE:  table "t_role_privs" does not exist, skipping
+CREATE TABLE t_role_privs (id INT);
+GRANT SELECT ON t_role_privs TO rtab_role;
+GRANT SELECT ON t_role_privs TO rlogin_role;
+SELECT ROLE, TABLE_NAME, PRIVILEGE, GRANTABLE
+FROM SYS.ROLE_TAB_PRIVS
+WHERE TABLE_NAME = 'T_ROLE_PRIVS'
+ORDER BY ROLE;
+   role    |  table_name  | privilege | grantable 
+-----------+--------------+-----------+-----------
+ RTAB_ROLE | T_ROLE_PRIVS | SELECT    | NO
+(1 row)
+
+SELECT ROLE, PRIVILEGE
+FROM SYS.ROLE_SYS_PRIVS
+WHERE ROLE = 'RTAB_ROLE';
+   role    |  privilege  
+-----------+-------------
+ RTAB_ROLE | CREATE USER
+(1 row)
+
+SELECT COUNT(*) = 1 AS role_has_priv
+FROM SYS.ROLE_SYS_PRIVS
+WHERE ROLE = 'RTAB_ROLE' AND PRIVILEGE = 'CREATE USER';
+ role_has_priv 
+---------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 0 AS login_role_excluded,
+       (SELECT COUNT(*) FROM SYS.ROLE_TAB_PRIVS WHERE ROLE = 'RLOGIN_ROLE') AS login_role_rows
+FROM SYS.ROLE_TAB_PRIVS
+WHERE ROLE = 'RLOGIN_ROLE';
+ login_role_excluded | login_role_rows 
+---------------------+-----------------
+ t                   |               0
+(1 row)
+
+DROP TABLE t_role_privs;
+DROP ROLE rtab_role;
+DROP ROLE rlogin_role;
