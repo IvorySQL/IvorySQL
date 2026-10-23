@@ -507,3 +507,11 @@ DROP SCHEMA bug_schema CASCADE;
 
 RESET ivorysql.identifier_case_switch;
 RESET ivorysql.enable_case_switch;
+
+-- Oracle-compatible DBMS_UTILITY.DB_VERSION / IS_BIT_SET
+SELECT DBMS_UTILITY.DB_VERSION() = CURRENT_SETTING('server_version') AS version_matches
+FROM DUAL;
+SELECT DBMS_UTILITY.IS_BIT_SET(4, 2) AS bit2_of_4,
+       DBMS_UTILITY.IS_BIT_SET(4, 1) AS bit1_of_4,
+       DBMS_UTILITY.IS_BIT_SET(7, 0) AS bit0_of_7
+FROM DUAL;

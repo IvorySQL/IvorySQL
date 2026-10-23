@@ -28,6 +28,10 @@ CREATE OR REPLACE PACKAGE dbms_utility IS
   FUNCTION FORMAT_ERROR_BACKTRACE RETURN TEXT;
   FUNCTION FORMAT_ERROR_STACK RETURN TEXT;
   FUNCTION FORMAT_CALL_STACK RETURN TEXT;
+
+  /* The database version banner, and a bit test. */
+  FUNCTION DB_VERSION RETURN TEXT;
+  FUNCTION IS_BIT_SET(VALUE NUMBER, BIT_IN_POSITION NUMBER) RETURN BOOLEAN;
 END dbms_utility;
 
 CREATE OR REPLACE PACKAGE BODY dbms_utility IS
@@ -44,5 +48,21 @@ CREATE OR REPLACE PACKAGE BODY dbms_utility IS
   FUNCTION FORMAT_CALL_STACK RETURN TEXT IS
   BEGIN
     RETURN sys.ora_format_call_stack();
+  END;
+
+  FUNCTION DB_VERSION RETURN TEXT IS
+  BEGIN
+    RETURN pg_catalog.current_setting('server_version');
+  END;
+
+  FUNCTION IS_BIT_SET(VALUE NUMBER, BIT_IN_POSITION NUMBER) RETURN BOOLEAN IS
+  BEGIN
+    IF VALUE IS NULL OR BIT_IN_POSITION IS NULL OR BIT_IN_POSITION < 0 THEN
+      RETURN NULL;
+    END IF;
+    RETURN pg_catalog.mod(
+             pg_catalog.trunc(VALUE::numeric /
+                 pg_catalog.power(2::numeric, BIT_IN_POSITION::numeric)),
+             2::numeric) = 1;
   END;
 END dbms_utility;
