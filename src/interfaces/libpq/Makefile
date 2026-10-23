@@ -170,7 +170,7 @@ install: all installdirs install-lib
 test-build:
 	$(MAKE) -C test all
 
-check installcheck: export PATH := $(CURDIR)/test:$(PATH)
+check installcheck oracle-installcheck: export PATH := $(CURDIR)/test:$(PATH)
 
 check: test-build all
 	$(prove_check)
