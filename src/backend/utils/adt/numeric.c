@@ -527,6 +527,7 @@ static bool numericvar_to_int32(const NumericVar *var, int32 *result);
 static bool numericvar_to_int64(const NumericVar *var, int64 *result);
 static void int64_to_numericvar(int64 val, NumericVar *var);
 static bool numericvar_to_uint64(const NumericVar *var, uint64 *result);
+static bool numericvar_to_int128_trunc(const NumericVar *var, INT128 *result);
 static void int128_to_numericvar(INT128 val, NumericVar *var);
 static double numericvar_to_double_no_overflow(const NumericVar *var);
 
@@ -626,42 +627,36 @@ static void accum_sum_combine(NumericSumAccum *accum, NumericSumAccum *accum2);
 Numeric
 numeric_bitand(Numeric arg1, Numeric arg2)
 {
-	int64		i1, i2;
+	INT128		i1,
+				i2;
 	NumericVar	num1, num2, result;
 	Numeric		res;
 
 	if (NUMERIC_IS_NAN(arg1) || NUMERIC_IS_NAN(arg2))
 		return make_result(&const_nan);
 
-	init_var(&num1);
-	init_var(&num2);
+	if (NUMERIC_IS_INF(arg1) || NUMERIC_IS_INF(arg2))
+		ereport(ERROR,
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+				 errmsg("BITAND argument out of range for a signed 128-bit integer")));
+
+	init_var_from_num(arg1, &num1);
+	init_var_from_num(arg2, &num2);
 	init_var(&result);
 
-	set_var_from_num(arg1, &num1);
-	set_var_from_num(arg2, &num2);
+	/* Oracle BITAND truncates both operands before taking their 128-bit AND. */
+	if (!numericvar_to_int128_trunc(&num1, &i1) ||
+		!numericvar_to_int128_trunc(&num2, &i2))
+		ereport(ERROR,
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+				 errmsg("BITAND argument out of range for a signed 128-bit integer")));
 
-	if (!numericvar_to_int64(&num1, &i1) )
-	{
-		if (NUMERIC_POS == num1.sign)
-			i1 = PG_INT64_MAX;
-		else
-			i1 = PG_INT64_MIN;
-	}
-
-	if (!numericvar_to_int64(&num2, &i2) )
-	{
-		if (NUMERIC_POS == num2.sign)
-			i2 = PG_INT64_MAX;
-		else
-			i2 = PG_INT64_MIN;
-	}
-
-	int64_to_numericvar(i1 & i2, &result);
+	int128_to_numericvar(make_int128(PG_INT128_HI_INT64(i1) & PG_INT128_HI_INT64(i2),
+										PG_INT128_LO_UINT64(i1) & PG_INT128_LO_UINT64(i2)),
+						 &result);
 
 	res = make_result(&result);
 	free_var(&result);
-	free_var(&num1);
-	free_var(&num2);
 
 	return res;
 }
@@ -8004,6 +7999,61 @@ numericvar_to_uint64(const NumericVar *var, uint64 *result)
 
 	*result = val;
 
+	return true;
+}
+
+/*
+ * Convert a finite numeric to signed 128 bits, truncating towards zero.
+ * Return false on overflow.  Four unsigned 32-bit limbs keep the conversion
+ * independent of compiler support for native 128-bit integers.
+ */
+static bool
+numericvar_to_int128_trunc(const NumericVar *var, INT128 *result)
+{
+	uint32		limbs[4] = {0, 0, 0, 0};
+	uint64		hi,
+				lo;
+	int			i,
+				j;
+
+	Assert(var->sign == NUMERIC_POS || var->sign == NUMERIC_NEG);
+
+	/* A signed 128-bit integer has at most 39 decimal digits. */
+	if (var->weight > 38 / DEC_DIGITS)
+		return false;
+
+	/* Only visit digits to the left of the decimal point: do not round. */
+	for (i = 0; i <= var->weight; i++)
+	{
+		uint64		carry = i < var->ndigits ? var->digits[i] : 0;
+
+		for (j = 0; j < 4; j++)
+		{
+			carry += (uint64) limbs[j] * NBASE;
+			limbs[j] = (uint32) carry;
+			carry >>= 32;
+		}
+		if (carry != 0)
+			return false;
+	}
+
+	lo = ((uint64) limbs[1] << 32) | limbs[0];
+	hi = ((uint64) limbs[3] << 32) | limbs[2];
+	if (var->sign == NUMERIC_NEG)
+	{
+		/* The magnitude of INT128_MIN is valid only with a negative sign. */
+		if (hi > (UINT64CONST(1) << 63) ||
+			(hi == (UINT64CONST(1) << 63) && lo != 0))
+			return false;
+
+		/* Form the two's complement without signed overflow. */
+		lo = ~lo + 1;
+		hi = ~hi + (lo == 0);
+	}
+	else if (hi > PG_INT64_MAX)
+		return false;
+
+	*result = make_int128((int64) hi, lo);
 	return true;
 }
 
