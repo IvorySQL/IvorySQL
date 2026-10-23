@@ -493,3 +493,31 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- Oracle-compatible V$SPPARAMETER view
+SELECT COUNT(*) > 0 AS has_entries FROM SYS.V$SPPARAMETER;
+ has_entries 
+-------------
+ t
+(1 row)
+
+SELECT COUNT(*) = COUNT(DISTINCT NAME) AS names_unique FROM SYS.V$SPPARAMETER;
+ names_unique 
+--------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 0 AS all_names_valid
+FROM SYS.V$SPPARAMETER
+WHERE NAME NOT IN (SELECT NAME FROM PG_SETTINGS);
+ all_names_valid 
+-----------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 1 AS one_shared_buffers
+FROM SYS.V$SPPARAMETER WHERE NAME = 'shared_buffers';
+ one_shared_buffers 
+--------------------
+ t
+(1 row)
+
