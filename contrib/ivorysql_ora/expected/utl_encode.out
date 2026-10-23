@@ -122,3 +122,13 @@ BEGIN
 END;
 /
 NOTICE:  round_trip_match=t
+-- Oracle-compatible UTL_ENCODE.QUOTED_PRINTABLE_ENCODE / DECODE
+SELECT UTL_ENCODE.QUOTED_PRINTABLE_DECODE(UTL_ENCODE.QUOTED_PRINTABLE_ENCODE('abc=def'::BYTEA))
+       = 'abc=def'::BYTEA AS roundtrip_eq,
+       UTL_ENCODE.QUOTED_PRINTABLE_ENCODE('A B'::BYTEA) = 'A=20B'::BYTEA AS encodes_space
+FROM DUAL;
+ roundtrip_eq | encodes_space 
+--------------+---------------
+              | t
+(1 row)
+
