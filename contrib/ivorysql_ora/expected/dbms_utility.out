@@ -476,3 +476,19 @@ DETAIL:  drop cascades to function bug_schema.schema_error()
 drop cascades to function bug_schema.schema_caller()
 RESET ivorysql.identifier_case_switch;
 RESET ivorysql.enable_case_switch;
+-- Oracle-compatible DBMS_UTILITY.ANALYZE_DATABASE
+DROP TABLE IF EXISTS t_analyze_db_test;
+NOTICE:  table "t_analyze_db_test" does not exist, skipping
+CREATE TABLE t_analyze_db_test (id INT);
+INSERT INTO t_analyze_db_test SELECT GENERATE_SERIES(1, 5);
+BEGIN
+  dbms_utility.analyze_database();
+END;
+/
+SELECT reltuples = 5 AS analyzed FROM pg_class WHERE oid = 't_analyze_db_test'::regclass;
+ analyzed 
+----------
+ t
+(1 row)
+
+DROP TABLE t_analyze_db_test;
