@@ -1557,3 +1557,33 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+--
+-- V$INSTANCE: one row describing the running instance, like Oracle's
+-- dynamic performance view.  PostgreSQL has no instance name of its own,
+-- so INSTANCE_NAME is the configured cluster_name and falls back to the
+-- port, and HOST_NAME is the address the server listens on.
+--
+CREATE OR REPLACE VIEW SYS.V$INSTANCE AS
+SELECT
+    1::NUMBER AS INSTANCE_NUMBER,
+    COALESCE(NULLIF(CURRENT_SETTING('cluster_name', TRUE), ''),
+             CURRENT_SETTING('port'))::VARCHAR2(16) AS INSTANCE_NAME,
+    COALESCE(PG_CATALOG.INET_SERVER_ADDR()::TEXT, 'localhost')::VARCHAR2(64) AS HOST_NAME,
+    CURRENT_SETTING('server_version')::VARCHAR2(17) AS VERSION,
+    PG_CATALOG.PG_POSTMASTER_START_TIME() AS STARTUP_TIME,
+    'OPEN'::VARCHAR2(12) AS STATUS,
+    'ALLOWED'::VARCHAR2(10) AS LOGINS,
+    'ACTIVE'::VARCHAR2(17) AS DATABASE_STATUS,
+    'PRIMARY_INSTANCE'::VARCHAR2(18) AS INSTANCE_ROLE,
+    'NORMAL'::VARCHAR2(9) AS ACTIVE_STATE;
+
+
+--
+-- V$VERSION: the version banner of the server, like Oracle's V$VERSION.
+--
+CREATE OR REPLACE VIEW SYS.V$VERSION AS
+SELECT
+    PG_CATALOG.VERSION()::VARCHAR2(200) AS BANNER,
+    PG_CATALOG.VERSION()::VARCHAR2(500) AS BANNER_FULL,
+    PG_CATALOG.VERSION()::VARCHAR2(200) AS BANNER_LEGACY;
