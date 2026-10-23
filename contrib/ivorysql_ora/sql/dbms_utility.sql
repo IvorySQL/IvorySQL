@@ -507,3 +507,31 @@ DROP SCHEMA bug_schema CASCADE;
 
 RESET ivorysql.identifier_case_switch;
 RESET ivorysql.enable_case_switch;
+
+-- DBMS_UTILITY.EXEC_DDL_STATEMENT runs a DDL statement given as a string
+BEGIN
+  dbms_utility.exec_ddl_statement('CREATE TABLE t_util_ddl (a INT)');
+END;
+/
+SELECT COUNT(*) = 1 AS ddl_ran
+FROM pg_catalog.pg_class
+WHERE relname = 't_util_ddl';
+BEGIN
+  dbms_utility.exec_ddl_statement('DROP TABLE t_util_ddl');
+END;
+/
+SELECT COUNT(*) = 0 AS ddl_dropped
+FROM pg_catalog.pg_class
+WHERE relname = 't_util_ddl';
+
+-- PORT_STRING identifies the platform, IS_PARALLEL_SERVER is FALSE outside RAC
+SELECT length(dbms_utility.port_string) > 0 AS port_string_set
+FROM dual;
+DO $$
+BEGIN
+  IF dbms_utility.is_parallel_server THEN
+    RAISE EXCEPTION 'unexpected parallel server';
+  END IF;
+  RAISE NOTICE 'is_parallel_server is false';
+END;
+$$;
