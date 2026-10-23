@@ -493,3 +493,19 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- Oracle-compatible tablespace storage views
+SELECT COUNT(*) = (SELECT COUNT(*) FROM PG_TABLESPACE) AS all_tablespaces
+FROM SYS.V$TABLESPACE;
+ all_tablespaces 
+-----------------
+ t
+(1 row)
+
+SELECT TABLESPACE_NAME, BYTES > 0 AS has_bytes, BLOCKS > 0 AS has_blocks, STATUS, ONLINE_STATUS
+FROM SYS.DBA_DATA_FILES
+WHERE TABLESPACE_NAME = 'PG_DEFAULT';
+ tablespace_name | has_bytes | has_blocks |  status   | online_status 
+-----------------+-----------+------------+-----------+---------------
+ PG_DEFAULT      | t         | t          | AVAILABLE | ONLINE
+(1 row)
+
