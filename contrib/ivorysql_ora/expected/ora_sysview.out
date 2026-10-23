@@ -493,3 +493,44 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- USER_MVIEWS / ALL_MVIEWS / DBA_MVIEWS
+DROP MATERIALIZED VIEW IF EXISTS TEST_MVIEW;
+NOTICE:  materialized view "test_mview" does not exist, skipping
+CREATE MATERIALIZED VIEW TEST_MVIEW AS SELECT 1 AS ID;
+SELECT MVIEW_NAME, LAST_REFRESH_TYPE, STATUS, LAST_REFRESH_DATE IS NULL AS refresh_date_null,
+       (QUERY IS NOT NULL) AS has_query
+FROM SYS.USER_MVIEWS WHERE MVIEW_NAME = 'TEST_MVIEW';
+ mview_name | last_refresh_type | status | refresh_date_null | has_query 
+------------+-------------------+--------+-------------------+-----------
+ TEST_MVIEW | COMPLETE          | VALID  | t                 | t
+(1 row)
+
+SELECT count(*) = (SELECT count(*) FROM SYS.DBA_MVIEWS WHERE MVIEW_NAME = 'TEST_MVIEW') AS dba_matches
+FROM SYS.ALL_MVIEWS WHERE MVIEW_NAME = 'TEST_MVIEW';
+ dba_matches 
+-------------
+ t
+(1 row)
+
+DROP MATERIALIZED VIEW TEST_MVIEW;
+-- USER_IND_COLUMNS / ALL_IND_COLUMNS / DBA_IND_COLUMNS
+DROP TABLE IF EXISTS TEST_IND_COLS;
+NOTICE:  table "test_ind_cols" does not exist, skipping
+CREATE TABLE TEST_IND_COLS (A INT, B INT, C INT);
+CREATE INDEX TEST_IND_COLS_IDX ON TEST_IND_COLS (C, A);
+SELECT INDEX_NAME, TABLE_NAME, COLUMN_NAME, COLUMN_POSITION FROM SYS.USER_IND_COLUMNS
+WHERE INDEX_NAME = 'TEST_IND_COLS_IDX' ORDER BY COLUMN_POSITION;
+    index_name     |  table_name   | column_name | column_position 
+-------------------+---------------+-------------+-----------------
+ TEST_IND_COLS_IDX | TEST_IND_COLS | C           |               1
+ TEST_IND_COLS_IDX | TEST_IND_COLS | A           |               2
+(2 rows)
+
+SELECT count(*) = (SELECT count(*) FROM SYS.ALL_IND_COLUMNS WHERE INDEX_NAME = 'TEST_IND_COLS_IDX')
+       AS all_matches FROM SYS.DBA_IND_COLUMNS WHERE INDEX_NAME = 'TEST_IND_COLS_IDX';
+ all_matches 
+-------------
+ t
+(1 row)
+
+DROP TABLE TEST_IND_COLS;

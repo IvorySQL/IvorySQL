@@ -1557,3 +1557,161 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+--
+-- USER_MVIEWS / ALL_MVIEWS / DBA_MVIEWS: the materialized views, like
+-- Oracle's views of the same name.  PostgreSQL records neither the last
+-- refresh time nor whether a refresh was complete or fast, so
+-- LAST_REFRESH_TYPE reports COMPLETE (REFRESH MATERIALIZED VIEW recomputes
+-- the view) and LAST_REFRESH_DATE stays NULL.
+--
+CREATE OR REPLACE VIEW SYS.USER_MVIEWS AS
+SELECT
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS mview_name,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS container_name,
+    pg_catalog.pg_get_viewdef(c.oid)::varchar2(4000) AS query,
+    'COMPLETE'::varchar2(8) AS last_refresh_type,
+    NULL::timestamptz AS last_refresh_date,
+    'VALID'::varchar2(8) AS status
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+WHERE
+    c.relkind = 'm'
+    AND pg_catalog.pg_get_userbyid(c.relowner) = current_user
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema');
+
+GRANT SELECT ON SYS.USER_MVIEWS TO PUBLIC;
+
+--
+-- ALL_MVIEWS: the same materialized views for every one the current user
+-- may read, with the privilege filter the ALL_ views carry.  PostgreSQL records neither the last
+-- refresh time nor whether a refresh was complete or fast, so
+-- LAST_REFRESH_TYPE reports COMPLETE (REFRESH MATERIALIZED VIEW recomputes
+-- the view) and LAST_REFRESH_DATE stays NULL.
+--
+CREATE OR REPLACE VIEW SYS.ALL_MVIEWS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS mview_name,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS container_name,
+    pg_catalog.pg_get_viewdef(c.oid)::varchar2(4000) AS query,
+    'COMPLETE'::varchar2(8) AS last_refresh_type,
+    NULL::timestamptz AS last_refresh_date,
+    'VALID'::varchar2(8) AS status
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+WHERE
+    c.relkind = 'm'
+    AND pg_catalog.has_table_privilege(current_user, c.oid, 'SELECT')
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema');
+
+GRANT SELECT ON SYS.ALL_MVIEWS TO PUBLIC;
+
+--
+-- DBA_MVIEWS: the same rows without the privilege filter, like the other
+-- DBA_ views.  PostgreSQL records neither the last
+-- refresh time nor whether a refresh was complete or fast, so
+-- LAST_REFRESH_TYPE reports COMPLETE (REFRESH MATERIALIZED VIEW recomputes
+-- the view) and LAST_REFRESH_DATE stays NULL.
+--
+CREATE OR REPLACE VIEW SYS.DBA_MVIEWS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS mview_name,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS container_name,
+    pg_catalog.pg_get_viewdef(c.oid)::varchar2(4000) AS query,
+    'COMPLETE'::varchar2(8) AS last_refresh_type,
+    NULL::timestamptz AS last_refresh_date,
+    'VALID'::varchar2(8) AS status
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+WHERE
+    c.relkind = 'm'
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema');
+
+
+GRANT SELECT ON SYS.DBA_MVIEWS TO PUBLIC;
+
+--
+-- USER_IND_COLUMNS / ALL_IND_COLUMNS / DBA_IND_COLUMNS: the columns of the
+-- indexes, like Oracle's views of the same name, in index position order.
+-- Expression indexes have no column name in the catalog, so those entries
+-- are skipped.
+--
+CREATE OR REPLACE VIEW SYS.USER_IND_COLUMNS AS
+SELECT
+    sys.ora_case_trans(ic.relname::varchar2)::varchar2(128) AS index_name,
+    sys.ora_case_trans(tc.relname::varchar2)::varchar2(128) AS table_name,
+    sys.ora_case_trans(a.attname::varchar2)::varchar2(128) AS column_name,
+    k.ordinality::numeric AS column_position
+FROM pg_index i
+JOIN pg_class ic ON ic.oid = i.indexrelid
+JOIN pg_class tc ON tc.oid = i.indrelid
+JOIN pg_namespace n ON ic.relnamespace = n.oid
+CROSS JOIN LATERAL unnest(
+    pg_catalog.string_to_array(i.indkey::text, ' ')::int2[]
+) WITH ORDINALITY AS k(attnum, ordinality)
+JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum
+WHERE
+    pg_catalog.pg_get_userbyid(ic.relowner) = current_user
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND k.attnum > 0;
+
+GRANT SELECT ON SYS.USER_IND_COLUMNS TO PUBLIC;
+
+--
+-- ALL_IND_COLUMNS: the same columns for every index the current user
+-- may read, with the privilege filter the ALL_ views carry.
+-- Expression indexes have no column name in the catalog, so those entries
+-- are skipped.
+--
+CREATE OR REPLACE VIEW SYS.ALL_IND_COLUMNS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(ic.relname::varchar2)::varchar2(128) AS index_name,
+    sys.ora_case_trans(tc.relname::varchar2)::varchar2(128) AS table_name,
+    sys.ora_case_trans(a.attname::varchar2)::varchar2(128) AS column_name,
+    k.ordinality::numeric AS column_position
+FROM pg_index i
+JOIN pg_class ic ON ic.oid = i.indexrelid
+JOIN pg_class tc ON tc.oid = i.indrelid
+JOIN pg_namespace n ON ic.relnamespace = n.oid
+CROSS JOIN LATERAL unnest(
+    pg_catalog.string_to_array(i.indkey::text, ' ')::int2[]
+) WITH ORDINALITY AS k(attnum, ordinality)
+JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum
+WHERE
+    pg_catalog.pg_get_userbyid(ic.relowner) = current_user
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND k.attnum > 0;
+
+GRANT SELECT ON SYS.ALL_IND_COLUMNS TO PUBLIC;
+
+--
+-- DBA_IND_COLUMNS: the same rows without the privilege filter, like the
+-- other DBA_ views.
+-- Expression indexes have no column name in the catalog, so those entries
+-- are skipped.
+--
+CREATE OR REPLACE VIEW SYS.DBA_IND_COLUMNS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(ic.relname::varchar2)::varchar2(128) AS index_name,
+    sys.ora_case_trans(tc.relname::varchar2)::varchar2(128) AS table_name,
+    sys.ora_case_trans(a.attname::varchar2)::varchar2(128) AS column_name,
+    k.ordinality::numeric AS column_position
+FROM pg_index i
+JOIN pg_class ic ON ic.oid = i.indexrelid
+JOIN pg_class tc ON tc.oid = i.indrelid
+JOIN pg_namespace n ON ic.relnamespace = n.oid
+CROSS JOIN LATERAL unnest(
+    pg_catalog.string_to_array(i.indkey::text, ' ')::int2[]
+) WITH ORDINALITY AS k(attnum, ordinality)
+JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum
+WHERE
+    pg_catalog.pg_get_userbyid(ic.relowner) = current_user
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND k.attnum > 0;
+
+
+GRANT SELECT ON SYS.DBA_IND_COLUMNS TO PUBLIC;
