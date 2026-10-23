@@ -493,3 +493,23 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- Oracle-compatible SESSION_PRIVS view
+SELECT COUNT(*) > 0 AS has_privileges FROM SYS.SESSION_PRIVS;
+ has_privileges 
+----------------
+ t
+(1 row)
+
+SELECT PRIVILEGE FROM SYS.SESSION_PRIVS WHERE PRIVILEGE = 'CREATE SESSION';
+   privilege    
+----------------
+ CREATE SESSION
+(1 row)
+
+SELECT COUNT(*) = 0 AS no_duplicates
+FROM (SELECT PRIVILEGE FROM SYS.SESSION_PRIVS GROUP BY PRIVILEGE HAVING COUNT(*) > 1) D;
+ no_duplicates 
+---------------
+ t
+(1 row)
+
