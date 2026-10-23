@@ -493,3 +493,40 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- USER_PART_TABLES / ALL_PART_TABLES / DBA_PART_TABLES
+DROP TABLE IF EXISTS TEST_PART;
+NOTICE:  table "test_part" does not exist, skipping
+CREATE TABLE TEST_PART (ID INT) PARTITION BY RANGE (ID);
+CREATE TABLE TEST_PART_1 PARTITION OF TEST_PART FOR VALUES FROM (1) TO (10);
+CREATE TABLE TEST_PART_2 PARTITION OF TEST_PART FOR VALUES FROM (10) TO (20);
+SELECT TABLE_NAME, PARTITIONING_TYPE, STATUS, PARTITIONED FROM SYS.USER_PART_TABLES
+WHERE TABLE_NAME = 'TEST_PART';
+ table_name | partitioning_type | status | partitioned 
+------------+-------------------+--------+-------------
+ TEST_PART  | RANGE             | VALID  | YES
+(1 row)
+
+SELECT count(*) = (SELECT count(*) FROM SYS.DBA_PART_TABLES WHERE TABLE_NAME = 'TEST_PART') AS dba_matches
+FROM SYS.ALL_PART_TABLES WHERE TABLE_NAME = 'TEST_PART';
+ dba_matches 
+-------------
+ t
+(1 row)
+
+-- USER_TAB_PARTITIONS / ALL_TAB_PARTITIONS / DBA_TAB_PARTITIONS
+SELECT TABLE_NAME, PARTITION_NAME, PARTITION_POSITION, (HIGH_VALUE IS NOT NULL) AS has_high_value, STATUS
+FROM SYS.USER_TAB_PARTITIONS WHERE TABLE_NAME = 'TEST_PART' ORDER BY PARTITION_POSITION;
+ table_name | partition_name | partition_position | has_high_value | status 
+------------+----------------+--------------------+----------------+--------
+ TEST_PART  | TEST_PART_1    |                  1 | t              | VALID
+ TEST_PART  | TEST_PART_2    |                  2 | t              | VALID
+(2 rows)
+
+SELECT count(*) = (SELECT count(*) FROM SYS.DBA_TAB_PARTITIONS WHERE TABLE_NAME = 'TEST_PART') AS dba_matches
+FROM SYS.ALL_TAB_PARTITIONS WHERE TABLE_NAME = 'TEST_PART';
+ dba_matches 
+-------------
+ t
+(1 row)
+
+DROP TABLE TEST_PART;

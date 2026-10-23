@@ -1557,3 +1557,163 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+--
+-- USER_PART_TABLES / ALL_PART_TABLES / DBA_PART_TABLES: the partitioned
+-- tables, like Oracle's views of the same name.  PARTITIONING_TYPE maps
+-- the catalog strategy to Oracle's RANGE, LIST or HASH and STATUS is
+-- always VALID.
+--
+CREATE OR REPLACE VIEW SYS.USER_PART_TABLES AS
+SELECT
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE p.partstrat
+        WHEN 'r' THEN 'RANGE'
+        WHEN 'l' THEN 'LIST'
+        WHEN 'h' THEN 'HASH'
+        ELSE 'RANGE'
+    END)::varchar2(12) AS partitioning_type,
+    'VALID'::varchar2(8) AS status,
+    'YES'::varchar2(3) AS partitioned
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+JOIN pg_partitioned_table p ON p.partrelid = c.oid
+WHERE
+    c.relkind = 'p'
+    AND pg_catalog.pg_get_userbyid(c.relowner) = current_user
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema');
+
+GRANT SELECT ON SYS.USER_PART_TABLES TO PUBLIC;
+
+--
+-- ALL_PART_TABLES: the same rows for every partitioned table the current
+-- user may read, with the privilege filter the ALL_ views carry.  PARTITIONING_TYPE maps
+-- the catalog strategy to Oracle's RANGE, LIST or HASH and STATUS is
+-- always VALID.
+--
+CREATE OR REPLACE VIEW SYS.ALL_PART_TABLES AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE p.partstrat
+        WHEN 'r' THEN 'RANGE'
+        WHEN 'l' THEN 'LIST'
+        WHEN 'h' THEN 'HASH'
+        ELSE 'RANGE'
+    END)::varchar2(12) AS partitioning_type,
+    'VALID'::varchar2(8) AS status,
+    'YES'::varchar2(3) AS partitioned
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+JOIN pg_partitioned_table p ON p.partrelid = c.oid
+WHERE
+    c.relkind = 'p'
+    AND pg_catalog.has_table_privilege(current_user, c.oid, 'SELECT')
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema');
+
+GRANT SELECT ON SYS.ALL_PART_TABLES TO PUBLIC;
+
+--
+-- DBA_PART_TABLES: the same rows without the privilege filter, like the
+-- other DBA_ views.  PARTITIONING_TYPE maps
+-- the catalog strategy to Oracle's RANGE, LIST or HASH and STATUS is
+-- always VALID.
+--
+CREATE OR REPLACE VIEW SYS.DBA_PART_TABLES AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE p.partstrat
+        WHEN 'r' THEN 'RANGE'
+        WHEN 'l' THEN 'LIST'
+        WHEN 'h' THEN 'HASH'
+        ELSE 'RANGE'
+    END)::varchar2(12) AS partitioning_type,
+    'VALID'::varchar2(8) AS status,
+    'YES'::varchar2(3) AS partitioned
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+JOIN pg_partitioned_table p ON p.partrelid = c.oid
+WHERE
+    c.relkind = 'p'
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema');
+
+
+GRANT SELECT ON SYS.DBA_PART_TABLES TO PUBLIC;
+
+--
+-- USER_TAB_PARTITIONS / ALL_TAB_PARTITIONS / DBA_TAB_PARTITIONS: the
+-- partitions of the partitioned tables, like Oracle's views of the same
+-- name.  PARTITION_POSITION numbers the partitions of a table and
+-- HIGH_VALUE carries the partition bound as PostgreSQL spells it.
+--
+CREATE OR REPLACE VIEW SYS.USER_TAB_PARTITIONS AS
+SELECT
+    sys.ora_case_trans(pc.relname::varchar2)::varchar2(128) AS table_name,
+    sys.ora_case_trans(cc.relname::varchar2)::varchar2(128) AS partition_name,
+    row_number() OVER (PARTITION BY pc.oid ORDER BY cc.relname)::numeric AS partition_position,
+    pg_catalog.pg_get_expr(cc.relpartbound, cc.oid)::varchar2(4000) AS high_value,
+    'VALID'::varchar2(8) AS status
+FROM pg_inherits i
+JOIN pg_class cc ON cc.oid = i.inhrelid
+JOIN pg_class pc ON pc.oid = i.inhparent
+JOIN pg_namespace n ON cc.relnamespace = n.oid
+WHERE
+    cc.relispartition
+    AND pc.relkind = 'p'
+    AND pg_catalog.pg_get_userbyid(pc.relowner) = current_user
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema');
+
+GRANT SELECT ON SYS.USER_TAB_PARTITIONS TO PUBLIC;
+
+--
+-- ALL_TAB_PARTITIONS: the same rows for every partitioned table the current
+-- user may read, with the privilege filter the ALL_ views carry.
+-- PARTITION_POSITION numbers the partitions of a table and
+-- HIGH_VALUE carries the partition bound as PostgreSQL spells it.
+--
+CREATE OR REPLACE VIEW SYS.ALL_TAB_PARTITIONS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(pc.relname::varchar2)::varchar2(128) AS table_name,
+    sys.ora_case_trans(cc.relname::varchar2)::varchar2(128) AS partition_name,
+    row_number() OVER (PARTITION BY pc.oid ORDER BY cc.relname)::numeric AS partition_position,
+    pg_catalog.pg_get_expr(cc.relpartbound, cc.oid)::varchar2(4000) AS high_value,
+    'VALID'::varchar2(8) AS status
+FROM pg_inherits i
+JOIN pg_class cc ON cc.oid = i.inhrelid
+JOIN pg_class pc ON pc.oid = i.inhparent
+JOIN pg_namespace n ON cc.relnamespace = n.oid
+WHERE
+    cc.relispartition
+    AND pc.relkind = 'p'
+    AND pg_catalog.has_table_privilege(current_user, pc.oid, 'SELECT')
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema');
+
+GRANT SELECT ON SYS.ALL_TAB_PARTITIONS TO PUBLIC;
+
+--
+-- DBA_TAB_PARTITIONS: the same rows without the privilege filter, like the
+-- other DBA_ views.
+-- PARTITION_POSITION numbers the partitions of a table and
+-- HIGH_VALUE carries the partition bound as PostgreSQL spells it.
+--
+CREATE OR REPLACE VIEW SYS.DBA_TAB_PARTITIONS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(pc.relname::varchar2)::varchar2(128) AS table_name,
+    sys.ora_case_trans(cc.relname::varchar2)::varchar2(128) AS partition_name,
+    row_number() OVER (PARTITION BY pc.oid ORDER BY cc.relname)::numeric AS partition_position,
+    pg_catalog.pg_get_expr(cc.relpartbound, cc.oid)::varchar2(4000) AS high_value,
+    'VALID'::varchar2(8) AS status
+FROM pg_inherits i
+JOIN pg_class cc ON cc.oid = i.inhrelid
+JOIN pg_class pc ON pc.oid = i.inhparent
+JOIN pg_namespace n ON cc.relnamespace = n.oid
+WHERE
+    cc.relispartition
+    AND pc.relkind = 'p'
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema');
+
+
+GRANT SELECT ON SYS.DBA_TAB_PARTITIONS TO PUBLIC;
