@@ -507,3 +507,15 @@ DROP SCHEMA bug_schema CASCADE;
 
 RESET ivorysql.identifier_case_switch;
 RESET ivorysql.enable_case_switch;
+
+-- Oracle-compatible DBMS_UTILITY.NAME_RESOLVE
+DROP TABLE IF EXISTS t_nameresolve_test;
+CREATE TABLE t_nameresolve_test (id INT);
+DECLARE
+  s text; p1 text; p2 text; db text; t int; o int;
+BEGIN
+  dbms_utility.name_resolve('public.t_nameresolve_test', 1, s, p1, p2, db, t, o);
+  RAISE NOTICE 'schema=% object=% type=% oid_positive=%', s, p1, t, (o > 0);
+END;
+/
+DROP TABLE t_nameresolve_test;
