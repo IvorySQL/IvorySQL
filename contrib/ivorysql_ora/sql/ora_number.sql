@@ -1016,9 +1016,12 @@ SELECT bitand(170141183460469231731687303715884105727, -1),
 SELECT bitand(100000000000000000000000000000000000000, -1),
        bitand(1e-100, -1), bitand(NULL::number, 1);
 -- Inputs outside the defined signed 128-bit domain must not silently saturate.
+-- Verify the SQLSTATE contract as well as rejecting out-of-range operands.
+\set VERBOSITY sqlstate
 SELECT bitand(170141183460469231731687303715884105728, 1);
 SELECT bitand(-170141183460469231731687303715884105729, 1);
 SELECT bitand(1e100, 1);
 SELECT bitand('NaN'::number, 1);
 SELECT bitand('Infinity'::number, 1);
 SELECT bitand('-Infinity'::number, 1);
+\set VERBOSITY default

@@ -1982,12 +1982,14 @@ SELECT bitand(100000000000000000000000000000000000000, -1),
 (1 row)
 
 -- Inputs outside the defined signed 128-bit domain must not silently saturate.
+-- Verify the SQLSTATE contract as well as rejecting out-of-range operands.
+\set VERBOSITY sqlstate
 SELECT bitand(170141183460469231731687303715884105728, 1);
-ERROR:  BITAND argument out of range for a signed 128-bit integer
+ERROR:  22003
 SELECT bitand(-170141183460469231731687303715884105729, 1);
-ERROR:  BITAND argument out of range for a signed 128-bit integer
+ERROR:  22003
 SELECT bitand(1e100, 1);
-ERROR:  BITAND argument out of range for a signed 128-bit integer
+ERROR:  22003
 SELECT bitand('NaN'::number, 1);
  bitand 
 --------
@@ -1995,6 +1997,7 @@ SELECT bitand('NaN'::number, 1);
 (1 row)
 
 SELECT bitand('Infinity'::number, 1);
-ERROR:  BITAND argument out of range for a signed 128-bit integer
+ERROR:  22003
 SELECT bitand('-Infinity'::number, 1);
-ERROR:  BITAND argument out of range for a signed 128-bit integer
+ERROR:  22003
+\set VERBOSITY default
