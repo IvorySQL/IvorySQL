@@ -825,7 +825,7 @@ static bool oracleJoinOpExists(const Node *expr);
 	LOCALTIME LOCALTIMESTAMP LOCATION LOCK_P LOCKED LOGGED
 
 	MAPPING MATCH MATCHED MATERIALIZED MAXVALUE MERGE MERGE_ACTION METHOD
-	MINUTE_P MINVALUE MODE MODIFY MONTH_P MOVE
+	MINUS MINUTE_P MINVALUE MODE MODIFY MONTH_P MOVE
 
 	NAME_P NAMES NATIONAL NATURAL NCHAR NESTED NEW NEXT NFC NFD NFKC NFKD NO NODE NOCACHE NOCYCLE
 	NOMAXVALUE NOMINVALUE NONE NOORDER NOPARALLEL
@@ -957,7 +957,7 @@ static bool oracleJoinOpExists(const Node *expr);
 
 
 /* Precedence: lowest to highest */
-%left		UNION EXCEPT
+%left		UNION EXCEPT MINUS
 %left		INTERSECT
 %left		OR
 %left		AND
@@ -15295,6 +15295,11 @@ simple_select:
 				{
 					$$ = makeSetOp(SETOP_EXCEPT, $3 == SET_QUANTIFIER_ALL, $1, $4);
 				}
+			/* MINUS is Oracle's spelling of EXCEPT: same node, same precedence */
+			| select_clause MINUS set_quantifier select_clause
+				{
+					$$ = makeSetOp(SETOP_EXCEPT, $3 == SET_QUANTIFIER_ALL, $1, $4);
+				}
 		;
 
 /*
@@ -22265,6 +22270,7 @@ reserved_keyword:
 			| LISTAGG
 			| LOCALTIME
 			| LOCALTIMESTAMP
+			| MINUS
 			| NAN_P
 			| NOCOPY
 			| NOCYCLE
