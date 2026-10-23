@@ -1557,3 +1557,82 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- V$LOCK: locks held and awaited by every backend.  TYPE keeps Oracle's two
+-- letter class where one exists (TM for relation, TX for transaction, VX for
+-- virtual xid, TP for tuple, AD for advisory, OB for object); LMODE maps the
+-- PostgreSQL lock mode onto Oracle's numeric mode.
+CREATE OR REPLACE VIEW SYS.V$LOCK AS
+SELECT
+    L.PID::NUMBER                                                          AS SID,
+    CASE L.LOCKTYPE
+        WHEN 'relation' THEN 'TM'
+        WHEN 'transactionid' THEN 'TX'
+        WHEN 'virtualxid' THEN 'VX'
+        WHEN 'tuple' THEN 'TP'
+        WHEN 'advisory' THEN 'AD'
+        WHEN 'object' THEN 'OB'
+        WHEN 'extend' THEN 'EX'
+        ELSE UPPER(L.LOCKTYPE)
+    END::VARCHAR2(8)                                                       AS TYPE,
+    COALESCE(L.RELATION, L.CLASSID, 0)::INT8::NUMBER                       AS ID1,
+    COALESCE(L.OBJID, L.OBJSUBID, 0)::INT8::NUMBER                         AS ID2,
+
+    CASE L.MODE
+        WHEN 'AccessShareLock' THEN 2
+        WHEN 'RowShareLock' THEN 2
+        WHEN 'RowExclusiveLock' THEN 3
+        WHEN 'ShareUpdateExclusiveLock' THEN 4
+        WHEN 'ShareLock' THEN 4
+        WHEN 'ShareRowExclusiveLock' THEN 5
+        WHEN 'ExclusiveLock' THEN 6
+        WHEN 'AccessExclusiveLock' THEN 6
+        ELSE 0
+    END::NUMBER                                                             AS LMODE,
+    CASE WHEN L.GRANTED THEN 0 ELSE 1 END::NUMBER                          AS REQUEST,
+    NULL::NUMBER                                                           AS CTIME,
+    CASE WHEN L.GRANTED THEN 0 ELSE 1 END::NUMBER                          AS BLOCK,
+    0::NUMBER                                                              AS CON_ID
+FROM PG_CATALOG.PG_LOCKS L;
+GRANT SELECT ON SYS.V$LOCK TO PUBLIC;
+
+-- V$LOCKED_OBJECT: one row per relation on which a backend holds a lock.
+CREATE OR REPLACE VIEW SYS.V$LOCKED_OBJECT AS
+SELECT
+    L.RELATION::INT8::NUMBER                                               AS OBJECT_ID,
+    L.PID::NUMBER                                                          AS SESSION_ID,
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128) AS ORACLE_USERNAME,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)                 AS OBJECT_NAME,
+
+    CASE L.MODE
+        WHEN 'AccessShareLock' THEN 2
+        WHEN 'RowShareLock' THEN 2
+        WHEN 'RowExclusiveLock' THEN 3
+        WHEN 'ShareUpdateExclusiveLock' THEN 4
+        WHEN 'ShareLock' THEN 4
+        WHEN 'ShareRowExclusiveLock' THEN 5
+        WHEN 'ExclusiveLock' THEN 6
+        WHEN 'AccessExclusiveLock' THEN 6
+        ELSE 0
+    END::NUMBER                                                             AS LOCKED_MODE
+FROM PG_CATALOG.PG_LOCKS L
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = L.RELATION
+WHERE L.LOCKTYPE = 'relation'
+  AND L.GRANTED;
+GRANT SELECT ON SYS.V$LOCKED_OBJECT TO PUBLIC;
+
+-- V$SESSION_WAIT: the wait event of every backend, in Oracle's shape.
+CREATE OR REPLACE VIEW SYS.V$SESSION_WAIT AS
+SELECT
+    A.PID::NUMBER                                                          AS SID,
+    A.PID::NUMBER                                                          AS SEQ,
+    A.WAIT_EVENT::VARCHAR2(64)                                             AS EVENT,
+    A.WAIT_EVENT_TYPE::VARCHAR2(64)                                        AS WAIT_CLASS,
+    CASE WHEN A.WAIT_EVENT IS NULL THEN 'WAITING'
+         ELSE 'WAITED UNKNOWN TIME'
+    END::VARCHAR2(64)                                                      AS STATE,
+    NULL::NUMBER                                                           AS WAIT_TIME,
+    NULL::NUMBER                                                           AS SECONDS_IN_WAIT,
+    0::NUMBER                                                              AS CON_ID
+FROM PG_CATALOG.PG_STAT_ACTIVITY A;
+GRANT SELECT ON SYS.V$SESSION_WAIT TO PUBLIC;
