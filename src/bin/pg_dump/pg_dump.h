@@ -241,7 +241,7 @@ typedef struct _shellTypeInfo
 typedef struct _pkgInfo
 {
 	DumpableObject dobj;
-	char		*rolname;		/* name of owner, or empty string */
+	const char *rolname;	/* name of owner, or empty string */
 	char		*pkgacl;
 	char		*rpkgacl;
 	char		*initpkgacl;
