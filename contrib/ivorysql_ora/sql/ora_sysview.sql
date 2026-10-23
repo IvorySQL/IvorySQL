@@ -270,3 +270,46 @@ SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'TEST_ALL_TAB_
 \set ON_ERROR_STOP on
 
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+
+-- V$OBJECT_USAGE reports index usage the way Oracle's monitoring view does:
+-- an index is USED once it has been scanned since the statistics were reset
+CREATE TABLE t_obj_usage (a INT);
+CREATE INDEX idx_obj_usage ON t_obj_usage (a);
+INSERT INTO t_obj_usage VALUES (1), (2);
+ANALYZE t_obj_usage;
+SELECT INDEX_NAME, TABLE_NAME, MONITORING, USED, END_MONITORING IS NULL AS monitoring_open
+FROM SYS.V$OBJECT_USAGE
+WHERE INDEX_NAME = 'IDX_OBJ_USAGE';
+SET enable_seqscan = off;
+SELECT count(*) AS scanned FROM t_obj_usage WHERE a = 1;
+RESET enable_seqscan;
+SELECT pg_stat_force_next_flush();
+SELECT INDEX_NAME, USED
+FROM SYS.V$OBJECT_USAGE
+WHERE INDEX_NAME = 'IDX_OBJ_USAGE';
+DROP TABLE t_obj_usage;
+
+-- USER_OBJECT_USAGE lists only the current user's indexes, DBA_OBJECT_USAGE all
+-- of them; both expose the same columns as V$OBJECT_USAGE
+DROP ROLE IF EXISTS ora_idx_other;
+CREATE ROLE ora_idx_other;
+CREATE TABLE t_idx_usage (a INT);
+CREATE INDEX idx_usage_probe ON t_idx_usage (a);
+GRANT SELECT ON t_idx_usage TO ora_idx_other;
+
+SELECT COUNT(*) = 1 AS owner_sees_own
+FROM SYS.USER_OBJECT_USAGE WHERE INDEX_NAME = 'IDX_USAGE_PROBE';
+
+SET ROLE ora_idx_other;
+SELECT COUNT(*) = 0 AS other_user_hidden
+FROM SYS.USER_OBJECT_USAGE WHERE INDEX_NAME = 'IDX_USAGE_PROBE';
+SELECT COUNT(*) = 1 AS other_sees_dba
+FROM SYS.DBA_OBJECT_USAGE WHERE INDEX_NAME = 'IDX_USAGE_PROBE';
+SET ROLE NONE;
+
+SELECT COUNT(*) = 1 AS dba_sees_all
+FROM SYS.DBA_OBJECT_USAGE WHERE INDEX_NAME = 'IDX_USAGE_PROBE';
+
+DROP INDEX idx_usage_probe;
+DROP TABLE t_idx_usage;
+DROP ROLE ora_idx_other;
