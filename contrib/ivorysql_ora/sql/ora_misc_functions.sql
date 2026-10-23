@@ -2494,6 +2494,12 @@ SELECT sys.greatest(CAST('1.5' AS number), CAST('2.5' AS number)) FROM DUAL;
 -- dates and timestamps
 SELECT sys.greatest(DATE '2024-01-01', DATE '2023-07-15') FROM DUAL;
 SELECT sys.least(DATE '2024-01-01', DATE '2023-07-15') FROM DUAL;
+-- oracle mode stores the date overload's values as oradate, an 8-byte
+-- microsecond count, so ordering must survive across the 2000-01-01
+-- epoch, where the day offset goes negative
+SELECT sys.greatest(DATE '1970-01-01', DATE '2024-01-01') FROM DUAL;
+SELECT sys.least(DATE '1970-01-01', DATE '2024-01-01') FROM DUAL;
+SELECT sys.least(DATE '2023-07-15', DATE '2024-01-01', DATE '1999-12-31') FROM DUAL;
 SELECT sys.greatest(TIMESTAMP '2024-01-01 08:30:00', TIMESTAMP '2024-01-01 09:15:00') FROM DUAL;
 SELECT sys.least(TIMESTAMP '2024-06-01 12:00:00', TIMESTAMP '2024-06-01 12:00:00') FROM DUAL;
 -- pin the zone so the timestamptz spelling of the result is stable

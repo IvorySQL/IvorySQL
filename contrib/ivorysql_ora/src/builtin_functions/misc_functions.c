@@ -352,10 +352,22 @@ ora_least_number(PG_FUNCTION_ARGS)
 
 /* ---- DATE ---- */
 
+/*
+ * In oracle mode the type name date resolves to sys.oradate, which keeps
+ * its value as a Timestamp (microseconds since 2000-01-01, because the
+ * Oracle DATE carries a time-of-day), not as pg_catalog.date's 4-byte
+ * day count.  Compare through oradate's own ordering -- the same
+ * timestamp_cmp_internal() call its operators and the oradate_larger()
+ * /oradate_smaller() support functions in oradate.c use -- and hand the
+ * winning Datum back unchanged: reading the value as a DateADT would
+ * truncate the 8-byte microsecond count to 32 bits and corrupt both the
+ * comparison and the answer.  Whole-day values order as calendar days.
+ */
 static int
 ora_date_cmp(Datum a, Datum b)
 {
-	return DatumGetInt32(DirectFunctionCall2(date_cmp, a, b));
+	return timestamp_cmp_internal(DatumGetTimestamp(a),
+								  DatumGetTimestamp(b));
 }
 
 static Datum
@@ -367,7 +379,7 @@ ora_extremum_date(FunctionCallInfo fcinfo, bool greatest)
 	if (!ora_extremum_common(fcinfo, &best, rest, ora_date_cmp, greatest))
 		PG_RETURN_NULL();
 
-	PG_RETURN_DATEADT(DatumGetDateADT(best));
+	PG_RETURN_TIMESTAMP(DatumGetTimestamp(best));
 }
 
 Datum
