@@ -2464,3 +2464,33 @@ reset default_text_search_config;
 -- should throw errors, because dummy_config is not a valid configuration name
 set ivorysql.dummy_config to dummy;
 reset ivorysql.dummy_config;
+
+-- DBMS_XMLGEN.GETXML renders a query as Oracle's ROWSET document, upper-cases
+-- the column names, escapes character data and emits NULL columns as empty
+-- elements
+SELECT dbms_xmlgen.getxml('SELECT 1 AS a, ''x'' AS b FROM dual') AS doc FROM dual;
+SELECT dbms_xmlgen.getxml('SELECT 1 AS a FROM dual WHERE 1 = 0') AS empty_doc FROM dual;
+SELECT dbms_xmlgen.getxml(NULL) IS NULL AS null_query FROM dual;
+SELECT dbms_xmlgen.getxml('SELECT ''<a&b>'' AS escaped, NULL::text AS missing FROM dual') AS special_doc FROM dual;
+
+-- The context-handle API: skip rows, cap rows, custom tags, row counter, and
+-- an invalid handle after CLOSECONTEXT
+DECLARE
+    ctx NUMBER;
+BEGIN
+    ctx := dbms_xmlgen.newcontext('SELECT 1 AS a FROM dual UNION ALL SELECT 2 AS a FROM dual UNION ALL SELECT 3 AS a FROM dual');
+    dbms_xmlgen.setskiprows(ctx, 1);
+    dbms_xmlgen.setmaxrows(ctx, 1);
+    dbms_xmlgen.setrowsettag(ctx, 'RESULTS');
+    dbms_xmlgen.setrowtag(ctx, 'ITEM');
+    RAISE NOTICE 'doc=%', dbms_xmlgen.getxml(ctx);
+    RAISE NOTICE 'processed=%', dbms_xmlgen.getnumrowsprocessed(ctx);
+    dbms_xmlgen.closecontext(ctx);
+    BEGIN
+        PERFORM dbms_xmlgen.getxml(ctx);
+        RAISE NOTICE 'closed handle still worked';
+    EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE 'closed handle rejected';
+    END;
+END;
+/
