@@ -1557,3 +1557,18 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+/* Public grants that were missed.
+ *
+ * Oracle makes the data dictionary and the V$ performance views readable by
+ * every user, and every other view in this file is granted to PUBLIC, but
+ * these six were not, so a plain role got "permission denied for view"
+ * instead of the rows.  (The DBA_SCHEDULER_* views stay restricted: the
+ * scheduler tests rely on that.)
+ */
+GRANT SELECT ON SYS.ALL_SEQUENCES TO PUBLIC;
+GRANT SELECT ON SYS.DBA_SEQUENCES TO PUBLIC;
+GRANT SELECT ON SYS.USER_SEQUENCES TO PUBLIC;
+GRANT SELECT ON SYS.V$PARAMETER TO PUBLIC;
+GRANT SELECT ON SYS.V$PROCESS TO PUBLIC;
+GRANT SELECT ON SYS.V$SESSION TO PUBLIC;
