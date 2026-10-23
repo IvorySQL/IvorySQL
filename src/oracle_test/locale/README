@@ -8,4 +8,9 @@ program test-ctype.c to test CTYPE support in libc and the installed
 locale data.  Then there are test-sort.pl and test-sort.py that test
 collating.
 
+Run an individual locale test with `make oracle-check-<locale>` from this
+directory, for example `make oracle-check-de_DE.ISO8859-1`.  These targets
+use an installed server, so configure the usual connection environment
+variables first.
+
 For more detailed instructions, refer to the "README" file in the "src/test/locale" directory.
