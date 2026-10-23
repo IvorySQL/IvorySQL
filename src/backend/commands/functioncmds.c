@@ -2943,6 +2943,19 @@ ExecuteDoStmt(ParseState *pstate, DoStmt *stmt, bool atomic,
 			language = "plpgsql";
 	}
 
+	/*
+	 * An inline code handler is invoked with one argument slot per USING
+	 * parameter, and handlers such as plisql_inline_handler() allocate those
+	 * slots on their stack (sized for FUNC_MAX_ARGS).  Reject an oversized
+	 * list here, so that no handler can overflow its stack frame.
+	 */
+	if (stmt->paramsmode != NIL &&
+		list_length(stmt->paramsmode) > FUNC_MAX_ARGS)
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("DO statement has too many parameters: %d, the maximum is %d",
+						list_length(stmt->paramsmode), FUNC_MAX_ARGS)));
+
 	/* Look up the language and validate permissions */
 	languageTuple = SearchSysCache1(LANGNAME, PointerGetDatum(language));
 	if (!HeapTupleIsValid(languageTuple))
