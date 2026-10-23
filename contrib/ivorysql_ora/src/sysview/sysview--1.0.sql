@@ -1557,3 +1557,15 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- V$THREAD: PostgreSQL has a single redo stream, so the view reports the one
+-- thread that Oracle would also report for a single-instance database.
+CREATE OR REPLACE VIEW SYS.V$THREAD AS
+SELECT
+    1::NUMBER                                                      AS THREAD_NO,
+    'OPEN'::VARCHAR2(8)                                            AS STATUS,
+    'PUBLIC'::VARCHAR2(8)                                          AS ENABLED,
+    1::NUMBER                                                      AS GROUPS,
+    1::NUMBER                                                      AS INSTANCE,
+    0::NUMBER                                                      AS CON_ID;
+GRANT SELECT ON SYS.V$THREAD TO PUBLIC;
