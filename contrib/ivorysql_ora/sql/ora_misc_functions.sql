@@ -2464,3 +2464,13 @@ reset default_text_search_config;
 -- should throw errors, because dummy_config is not a valid configuration name
 set ivorysql.dummy_config to dummy;
 reset ivorysql.dummy_config;
+
+-- Oracle-compatible VALIDATE_CONVERSION
+SELECT SYS.VALIDATE_CONVERSION('123', 'NUMBER') AS number_ok;
+SELECT SYS.VALIDATE_CONVERSION('abc', 'NUMBER') AS number_bad;
+SELECT SYS.VALIDATE_CONVERSION('2020-01-02', 'DATE') AS date_ok;
+SELECT SYS.VALIDATE_CONVERSION('2020-99-99', 'DATE') AS date_bad;
+SELECT SYS.VALIDATE_CONVERSION('12.5', 'BINARY_DOUBLE') AS binary_double_ok;
+SELECT SYS.VALIDATE_CONVERSION('abc', 'VARCHAR2') AS text_ok;
+SELECT SYS.VALIDATE_CONVERSION(NULL, 'NUMBER') AS null_ok;
+SELECT SYS.VALIDATE_CONVERSION('x', 'NO_SUCH_TYPE') AS unknown_bad;

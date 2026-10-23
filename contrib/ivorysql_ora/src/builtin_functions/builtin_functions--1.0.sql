@@ -1931,3 +1931,50 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 /* End - VSIZE */
+
+/* Oracle-compatible VALIDATE_CONVERSION(expr, type, fmt): 1 when expr can be
+ * converted to type, 0 when it cannot.  The type name is matched against a
+ * fixed list and never interpolated into SQL, so the function cannot be used
+ * to run arbitrary type names; an unknown type answers 0.  A NULL expr is
+ * convertible, as in Oracle.  DATE/TIMESTAMP use the NLS formats (or fmt when
+ * given), which is what makes the check match what TO_DATE/TO_TIMESTAMP would
+ * do in the same session. */
+CREATE OR REPLACE FUNCTION sys.validate_conversion(text, text, text DEFAULT NULL)
+RETURNS number
+AS $$
+DECLARE
+    t text := pg_catalog.upper(pg_catalog.btrim($2));
+BEGIN
+    IF $1 IS NULL OR $2 IS NULL THEN
+        RETURN 1;
+    END IF;
+    BEGIN
+        IF t = 'NUMBER' THEN
+            PERFORM $1::sys.number;
+        ELSIF t = 'INTEGER' THEN
+            PERFORM $1::pg_catalog.int4;
+        ELSIF t = 'BINARY_FLOAT' THEN
+            PERFORM $1::sys.binary_float;
+        ELSIF t = 'BINARY_DOUBLE' THEN
+            PERFORM $1::sys.binary_double;
+        ELSIF t = 'DATE' THEN
+            PERFORM sys.to_date($1, COALESCE($3, pg_catalog.current_setting('nls_date_format')));
+        ELSIF t = 'TIMESTAMP' THEN
+            PERFORM sys.to_timestamp($1, COALESCE($3, pg_catalog.current_setting('nls_timestamp_format')));
+        ELSIF t = 'TIMESTAMP WITH TIME ZONE' THEN
+            PERFORM sys.to_timestamp_tz($1, COALESCE($3, pg_catalog.current_setting('nls_timestamp_tz_format')));
+        ELSIF t IN ('VARCHAR2', 'CHAR', 'VARCHAR') THEN
+            PERFORM $1;
+        ELSE
+            RETURN 0;
+        END IF;
+        RETURN 1;
+    EXCEPTION WHEN others THEN
+        RETURN 0;
+    END;
+END;
+$$
+LANGUAGE plpgsql
+STABLE;
+
+GRANT EXECUTE ON FUNCTION sys.validate_conversion(text, text, text) TO PUBLIC;
