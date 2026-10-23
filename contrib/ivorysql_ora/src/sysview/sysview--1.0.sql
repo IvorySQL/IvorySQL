@@ -1557,3 +1557,41 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- V$SESSION_LONGOPS: long-running operations with progress.  Oracle fills it
+-- while a long operation runs; PostgreSQL exposes the same information in the
+-- pg_stat_progress_* views, so this one unions the operations that report
+-- progress per block.  It is empty when nothing long is running, exactly like
+-- Oracle's view between operations.
+CREATE OR REPLACE VIEW SYS.V$SESSION_LONGOPS AS
+SELECT
+    P.PID::NUMBER                                                  AS SID,
+    NULL::NUMBER                                                   AS SERIAL,
+    P.OPNAME::VARCHAR2(64)                                         AS OPNAME,
+    P.TARGET::VARCHAR2(128)                                        AS TARGET,
+    NULL::TIMESTAMPTZ                                              AS START_TIME,
+    NULL::TIMESTAMPTZ                                              AS LAST_UPDATE_TIME,
+    NULL::NUMBER                                                   AS ELAPSED_SECONDS,
+    NULL::NUMBER                                                   AS TIME_REMAINING,
+    P.SOFAR::NUMBER                                                AS SOFAR,
+    P.TOTALWORK::NUMBER                                            AS TOTALWORK,
+    P.UNITS::VARCHAR2(32)                                          AS UNITS,
+    0::NUMBER                                                      AS CON_ID
+FROM (
+    SELECT PID,
+           'Vacuum'::VARCHAR2(64) AS OPNAME,
+           RELID::REGCLASS::TEXT::VARCHAR2(128) AS TARGET,
+           HEAP_BLKS_SCANNED AS SOFAR,
+           HEAP_BLKS_TOTAL AS TOTALWORK,
+           'blocks'::VARCHAR2(32) AS UNITS
+    FROM PG_CATALOG.PG_STAT_PROGRESS_VACUUM
+    UNION ALL
+    SELECT PID,
+           'Create Index'::VARCHAR2(64),
+           RELID::REGCLASS::TEXT::VARCHAR2(128),
+           BLOCKS_DONE,
+           BLOCKS_TOTAL,
+           'blocks'::VARCHAR2(32)
+    FROM PG_CATALOG.PG_STAT_PROGRESS_CREATE_INDEX
+) P;
+GRANT SELECT ON SYS.V$SESSION_LONGOPS TO PUBLIC;
