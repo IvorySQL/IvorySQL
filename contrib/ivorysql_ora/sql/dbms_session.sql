@@ -156,3 +156,15 @@ call dbms_session.reset_package();
 select sys_context('rp_ns', 'key') as ctx_after_reset;
 
 DROP PACKAGE rp_pkg;
+
+-- Oracle-compatible DBMS_SESSION.SET_NLS / IS_SESSION_ALIVE
+BEGIN
+  dbms_session.set_nls('nls_date_format', 'YYYY/MM/DD');
+END;
+/
+SELECT current_setting('nls_date_format') AS nls_after_set;
+RESET nls_date_format;
+
+SELECT dbms_session.is_session_alive(pg_backend_pid()) AS self_alive,
+       dbms_session.is_session_alive(999999) AS ghost_dead
+FROM DUAL;
