@@ -815,3 +815,25 @@ DROP PROCEDURE sched_reg_proc;
 DELETE FROM sys.scheduler_job_run_details;
 DROP ROLE regress_dbms_scheduler;
 RESET timezone;
+
+-- Oracle-compatible DBMS_SCHEDULER.SET_ATTRIBUTE
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_attr_job', job_type => 'PLSQL_BLOCK',
+      job_action => 'BEGIN NULL; END;');
+END;
+/
+SELECT repeat_interval FROM user_scheduler_jobs WHERE job_name = 'REG_ATTR_JOB';
+BEGIN
+  dbms_scheduler.set_attribute('reg_attr_job', 'repeat_interval', 'FREQ=HOURLY;INTERVAL=1');
+END;
+/
+SELECT repeat_interval FROM user_scheduler_jobs WHERE job_name = 'REG_ATTR_JOB';
+BEGIN
+  dbms_scheduler.set_attribute('reg_attr_job', 'comments', 'set by test');
+END;
+/
+SELECT comments FROM user_scheduler_jobs WHERE job_name = 'REG_ATTR_JOB';
+BEGIN
+  dbms_scheduler.drop_job('reg_attr_job');
+END;
+/
