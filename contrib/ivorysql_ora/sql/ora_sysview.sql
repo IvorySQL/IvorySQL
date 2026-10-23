@@ -270,3 +270,46 @@ SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'TEST_ALL_TAB_
 \set ON_ERROR_STOP on
 
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+
+-- Oracle-compatible TAB_COLS views (hidden and virtual columns)
+DROP TABLE IF EXISTS t_tab_cols;
+CREATE TABLE t_tab_cols (
+    id    INT,
+    gone  TEXT,
+    base  INT,
+    calc  INT GENERATED ALWAYS AS (base * 2) STORED
+);
+ALTER TABLE t_tab_cols DROP COLUMN gone;
+
+SELECT COLUMN_NAME, HIDDEN_COLUMN, VIRTUAL_COLUMN
+FROM SYS.USER_TAB_COLS
+WHERE TABLE_NAME = 'T_TAB_COLS'
+ORDER BY COLUMN_ID;
+
+SELECT COUNT(*) = 1 AS hidden_found
+FROM SYS.USER_TAB_COLS
+WHERE TABLE_NAME = 'T_TAB_COLS' AND HIDDEN_COLUMN = 'YES';
+
+SELECT COUNT(*) = 1 AS virtual_found
+FROM SYS.DBA_TAB_COLS
+WHERE TABLE_NAME = 'T_TAB_COLS' AND VIRTUAL_COLUMN = 'YES';
+
+SELECT COUNT(*) = 4 AS all_has
+FROM SYS.ALL_TAB_COLS
+WHERE TABLE_NAME = 'T_TAB_COLS';
+
+DROP TABLE t_tab_cols;
+
+-- A dropped column stays visible as HIDDEN_COLUMN = YES, but PostgreSQL's
+-- internal placeholder name must not leak into the dictionary
+CREATE TABLE t_hidden_probe (a INT, b INT);
+ALTER TABLE t_hidden_probe DROP COLUMN b;
+
+SELECT COUNT(*) = 1 AS dropped_is_hidden
+FROM SYS.ALL_TAB_COLS WHERE TABLE_NAME = 'T_HIDDEN_PROBE' AND HIDDEN_COLUMN = 'YES';
+
+SELECT COUNT(*) = 0 AS placeholder_hidden
+FROM SYS.ALL_TAB_COLS
+WHERE TABLE_NAME = 'T_HIDDEN_PROBE' AND COLUMN_NAME LIKE '%PG%DROPPED%';
+
+DROP TABLE t_hidden_probe;

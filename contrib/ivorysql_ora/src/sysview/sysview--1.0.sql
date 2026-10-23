@@ -1557,3 +1557,131 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- USER_/ALL_/DBA_TAB_COLS: the column inventory including columns dropped with
+-- ALTER TABLE (HIDDEN_COLUMN = YES) and generated columns
+-- (VIRTUAL_COLUMN = YES).  That is the difference between Oracle's TAB_COLS
+-- and TAB_COLUMNS; the rest of the metadata is the same.
+CREATE OR REPLACE VIEW SYS.USER_TAB_COLS AS
+SELECT TABLE_NAME, COLUMN_NAME, COLUMN_ID, DATA_TYPE, NULLABLE, HIDDEN_COLUMN, VIRTUAL_COLUMN, SEGMENT_COLUMN_ID
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)     AS TABLE_NAME,
+    CASE WHEN A.ATTISDROPPED
+         THEN 'SYS_C' || lpad(A.ATTNUM::text, 8, '0')
+         ELSE SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(128)
+    END::VARCHAR2(128)                                    AS COLUMN_NAME,
+    A.ATTNUM::NUMBER                                           AS COLUMN_ID,
+        CASE
+        WHEN PG_TYPE.TYPNAME IN ('int2', 'int4', 'int8', 'numeric') THEN 'NUMBER'
+        WHEN PG_TYPE.TYPNAME IN ('float4', 'float8') THEN 'FLOAT'
+        WHEN PG_TYPE.TYPNAME IN ('varchar', 'oravarcharbyte') THEN 'VARCHAR2'
+        WHEN PG_TYPE.TYPNAME IN ('bpchar', 'oracharbyte') THEN 'CHAR'
+        WHEN PG_TYPE.TYPNAME IN ('text', 'clob') THEN 'CLOB'
+        WHEN PG_TYPE.TYPNAME IN ('bytea', 'blob') THEN 'BLOB'
+        WHEN PG_TYPE.TYPNAME IN ('date', 'oradate') THEN 'DATE'
+        WHEN PG_TYPE.TYPNAME IN ('timestamp', 'timestamptz', 'oratimestamp', 'oratimestamptz') THEN 'TIMESTAMP'
+        ELSE SYS.ORA_CASE_TRANS(PG_TYPE.TYPNAME::VARCHAR2)
+    END::VARCHAR2(128)                                        AS DATA_TYPE,
+    CASE WHEN A.ATTNOTNULL THEN 'N' ELSE 'Y' END::VARCHAR2(1)  AS NULLABLE,
+    CASE WHEN A.ATTISDROPPED THEN 'YES' ELSE 'NO' END::VARCHAR2(3) AS HIDDEN_COLUMN,
+    CASE WHEN A.ATTGENERATED IN ('s', 'v') THEN 'YES' ELSE 'NO' END::VARCHAR2(3) AS VIRTUAL_COLUMN,
+    A.ATTNUM::NUMBER                                           AS SEGMENT_COLUMN_ID,
+    C.RELOWNER                                                 AS OWNER_OID,
+    C.OID                                                      AS REL_OID
+FROM PG_CATALOG.PG_ATTRIBUTE A
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = A.ATTRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+LEFT JOIN PG_CATALOG.PG_TYPE PG_TYPE ON PG_TYPE.OID = A.ATTTYPID
+WHERE A.ATTNUM > 0
+  AND C.RELKIND IN ('r', 'p', 'm')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+WHERE S.OWNER_OID = (SELECT OID FROM PG_CATALOG.PG_ROLES WHERE ROLNAME = CURRENT_USER)
+ORDER BY S.TABLE_NAME, S.COLUMN_ID;
+GRANT SELECT ON SYS.USER_TAB_COLS TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.ALL_TAB_COLS AS
+SELECT SYS.ORA_CASE_TRANS(PG_GET_USERBYID(S.OWNER_OID)::VARCHAR2)::VARCHAR2(128) AS OWNER,
+       TABLE_NAME, COLUMN_NAME, COLUMN_ID, DATA_TYPE, NULLABLE, HIDDEN_COLUMN, VIRTUAL_COLUMN, SEGMENT_COLUMN_ID
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)     AS TABLE_NAME,
+    CASE WHEN A.ATTISDROPPED
+         THEN 'SYS_C' || lpad(A.ATTNUM::text, 8, '0')
+         ELSE SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(128)
+    END::VARCHAR2(128)                                    AS COLUMN_NAME,
+    A.ATTNUM::NUMBER                                           AS COLUMN_ID,
+        CASE
+        WHEN PG_TYPE.TYPNAME IN ('int2', 'int4', 'int8', 'numeric') THEN 'NUMBER'
+        WHEN PG_TYPE.TYPNAME IN ('float4', 'float8') THEN 'FLOAT'
+        WHEN PG_TYPE.TYPNAME IN ('varchar', 'oravarcharbyte') THEN 'VARCHAR2'
+        WHEN PG_TYPE.TYPNAME IN ('bpchar', 'oracharbyte') THEN 'CHAR'
+        WHEN PG_TYPE.TYPNAME IN ('text', 'clob') THEN 'CLOB'
+        WHEN PG_TYPE.TYPNAME IN ('bytea', 'blob') THEN 'BLOB'
+        WHEN PG_TYPE.TYPNAME IN ('date', 'oradate') THEN 'DATE'
+        WHEN PG_TYPE.TYPNAME IN ('timestamp', 'timestamptz', 'oratimestamp', 'oratimestamptz') THEN 'TIMESTAMP'
+        ELSE SYS.ORA_CASE_TRANS(PG_TYPE.TYPNAME::VARCHAR2)
+    END::VARCHAR2(128)                                        AS DATA_TYPE,
+    CASE WHEN A.ATTNOTNULL THEN 'N' ELSE 'Y' END::VARCHAR2(1)  AS NULLABLE,
+    CASE WHEN A.ATTISDROPPED THEN 'YES' ELSE 'NO' END::VARCHAR2(3) AS HIDDEN_COLUMN,
+    CASE WHEN A.ATTGENERATED IN ('s', 'v') THEN 'YES' ELSE 'NO' END::VARCHAR2(3) AS VIRTUAL_COLUMN,
+    A.ATTNUM::NUMBER                                           AS SEGMENT_COLUMN_ID,
+    C.RELOWNER                                                 AS OWNER_OID,
+    C.OID                                                      AS REL_OID
+FROM PG_CATALOG.PG_ATTRIBUTE A
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = A.ATTRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+LEFT JOIN PG_CATALOG.PG_TYPE PG_TYPE ON PG_TYPE.OID = A.ATTTYPID
+WHERE A.ATTNUM > 0
+  AND C.RELKIND IN ('r', 'p', 'm')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+WHERE HAS_TABLE_PRIVILEGE(S.REL_OID, 'SELECT')
+ORDER BY S.OWNER_OID, S.TABLE_NAME, S.COLUMN_ID;
+GRANT SELECT ON SYS.ALL_TAB_COLS TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.DBA_TAB_COLS AS
+SELECT SYS.ORA_CASE_TRANS(PG_GET_USERBYID(S.OWNER_OID)::VARCHAR2)::VARCHAR2(128) AS OWNER,
+       TABLE_NAME, COLUMN_NAME, COLUMN_ID, DATA_TYPE, NULLABLE, HIDDEN_COLUMN, VIRTUAL_COLUMN, SEGMENT_COLUMN_ID
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)     AS TABLE_NAME,
+    CASE WHEN A.ATTISDROPPED
+         THEN 'SYS_C' || lpad(A.ATTNUM::text, 8, '0')
+         ELSE SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(128)
+    END::VARCHAR2(128)                                    AS COLUMN_NAME,
+    A.ATTNUM::NUMBER                                           AS COLUMN_ID,
+        CASE
+        WHEN PG_TYPE.TYPNAME IN ('int2', 'int4', 'int8', 'numeric') THEN 'NUMBER'
+        WHEN PG_TYPE.TYPNAME IN ('float4', 'float8') THEN 'FLOAT'
+        WHEN PG_TYPE.TYPNAME IN ('varchar', 'oravarcharbyte') THEN 'VARCHAR2'
+        WHEN PG_TYPE.TYPNAME IN ('bpchar', 'oracharbyte') THEN 'CHAR'
+        WHEN PG_TYPE.TYPNAME IN ('text', 'clob') THEN 'CLOB'
+        WHEN PG_TYPE.TYPNAME IN ('bytea', 'blob') THEN 'BLOB'
+        WHEN PG_TYPE.TYPNAME IN ('date', 'oradate') THEN 'DATE'
+        WHEN PG_TYPE.TYPNAME IN ('timestamp', 'timestamptz', 'oratimestamp', 'oratimestamptz') THEN 'TIMESTAMP'
+        ELSE SYS.ORA_CASE_TRANS(PG_TYPE.TYPNAME::VARCHAR2)
+    END::VARCHAR2(128)                                        AS DATA_TYPE,
+    CASE WHEN A.ATTNOTNULL THEN 'N' ELSE 'Y' END::VARCHAR2(1)  AS NULLABLE,
+    CASE WHEN A.ATTISDROPPED THEN 'YES' ELSE 'NO' END::VARCHAR2(3) AS HIDDEN_COLUMN,
+    CASE WHEN A.ATTGENERATED IN ('s', 'v') THEN 'YES' ELSE 'NO' END::VARCHAR2(3) AS VIRTUAL_COLUMN,
+    A.ATTNUM::NUMBER                                           AS SEGMENT_COLUMN_ID,
+    C.RELOWNER                                                 AS OWNER_OID,
+    C.OID                                                      AS REL_OID
+FROM PG_CATALOG.PG_ATTRIBUTE A
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = A.ATTRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+LEFT JOIN PG_CATALOG.PG_TYPE PG_TYPE ON PG_TYPE.OID = A.ATTTYPID
+WHERE A.ATTNUM > 0
+  AND C.RELKIND IN ('r', 'p', 'm')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+ORDER BY S.OWNER_OID, S.TABLE_NAME, S.COLUMN_ID;
+GRANT SELECT ON SYS.DBA_TAB_COLS TO PUBLIC;
