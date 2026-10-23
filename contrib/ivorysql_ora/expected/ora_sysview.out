@@ -493,3 +493,34 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- V$TIMEZONE_NAMES lists the server's time zones with Oracle-shaped offsets
+SELECT COUNT(*) > 100 AS has_zones FROM SYS.V$TIMEZONE_NAMES;
+ has_zones 
+-----------
+ t
+(1 row)
+
+SELECT TIMEZONE_ID, TZ_ABBREV, TZ_OFFSET
+FROM SYS.V$TIMEZONE_NAMES
+WHERE TIMEZONE_ID = 'UTC';
+ timezone_id | tz_abbrev | tz_offset 
+-------------+-----------+-----------
+ UTC         | UTC       | +00:00
+(1 row)
+
+SELECT COUNT(*) = 0 AS offsets_well_formed
+FROM SYS.V$TIMEZONE_NAMES
+WHERE TZ_OFFSET NOT LIKE '+__:__' AND TZ_OFFSET NOT LIKE '-__:__';
+ offsets_well_formed 
+---------------------
+ t
+(1 row)
+
+SELECT COUNT(*) > 0 AS has_nonzero_offsets
+FROM SYS.V$TIMEZONE_NAMES
+WHERE TZ_OFFSET <> '+00:00';
+ has_nonzero_offsets 
+---------------------
+ t
+(1 row)
+
