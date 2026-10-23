@@ -4521,3 +4521,22 @@ DETAIL:  "ivorysql" is a reserved prefix.
 reset ivorysql.dummy_config;
 ERROR:  invalid configuration parameter name "ivorysql.dummy_config"
 DETAIL:  "ivorysql" is a reserved prefix.
+-- Oracle-compatible ROWIDTOCHAR and CHARTOROWID
+SELECT SYS.ROWIDTOCHAR('(0,1)'::SYS.ROWID) AS rowid_text;
+ rowid_text 
+------------
+ (0,1)
+(1 row)
+
+SELECT SYS.CHARTOROWID(SYS.ROWIDTOCHAR('(0,1)'::SYS.ROWID)) = '(0,1)'::SYS.ROWID AS roundtrip;
+ roundtrip 
+-----------
+ t
+(1 row)
+
+SELECT SYS.ROWIDTOCHAR(NULL::SYS.ROWID) IS NULL AS strict_null;
+ strict_null 
+-------------
+ t
+(1 row)
+

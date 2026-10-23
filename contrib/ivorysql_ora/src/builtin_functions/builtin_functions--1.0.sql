@@ -1931,3 +1931,24 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 /* End - VSIZE */
+
+/* Oracle-compatible ROWIDTOCHAR: the external (character) form of a ROWID.
+ * The rowid type already prints its external form through its output
+ * function, so the conversion is the type's text representation. */
+CREATE OR REPLACE FUNCTION sys.rowidtochar(sys.rowid)
+RETURNS varchar2
+AS $$ SELECT $1::pg_catalog.text::varchar2; $$
+LANGUAGE SQL
+IMMUTABLE STRICT PARALLEL SAFE;
+
+/* Oracle-compatible CHARTOROWID: parse an external ROWID string back into the
+ * rowid type, using the type's own input function so that exactly the strings
+ * the output function produces round-trip. */
+CREATE OR REPLACE FUNCTION sys.chartorowid(text)
+RETURNS sys.rowid
+AS $$ SELECT $1::pg_catalog.text::sys.rowid; $$
+LANGUAGE SQL
+IMMUTABLE STRICT PARALLEL SAFE;
+
+GRANT EXECUTE ON FUNCTION sys.rowidtochar(sys.rowid) TO PUBLIC;
+GRANT EXECUTE ON FUNCTION sys.chartorowid(text) TO PUBLIC;
