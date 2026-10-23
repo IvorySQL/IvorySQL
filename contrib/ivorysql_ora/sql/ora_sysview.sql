@@ -270,3 +270,27 @@ SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'TEST_ALL_TAB_
 \set ON_ERROR_STOP on
 
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+
+-- Oracle-compatible instance and database runtime views
+SELECT NAME = CURRENT_DATABASE() AS is_current,
+       OPEN_MODE, DATABASE_ROLE,
+       LOG_MODE IN ('ARCHIVELOG', 'NOARCHIVELOG') AS log_mode_ok,
+       CURRENT_SCN > 0 AS scn_positive
+FROM SYS.V$DATABASE;
+
+SELECT COUNT(*) = 5 AS five_rows FROM SYS.V$SGA;
+
+SELECT VALUE = PG_SIZE_BYTES(CURRENT_SETTING('shared_buffers')) AS buffers_match
+FROM SYS.V$SGA WHERE NAME = 'Database Buffers';
+
+SELECT A.VALUE = SUM(B.VALUE) AS total_matches
+FROM SYS.V$SGA A, SYS.V$SGA B
+WHERE A.NAME = 'Total System Global Area'
+  AND B.NAME <> 'Total System Global Area'
+GROUP BY A.VALUE;
+
+SELECT COUNT(*) = (SELECT COUNT(*) FROM PG_STAT_ACTIVITY
+                    WHERE BACKEND_TYPE <> 'client backend') AS all_bg
+FROM SYS.V$BGPROCESS;
+
+SELECT COUNT(*) > 0 AS has_bg FROM SYS.V$BGPROCESS;
