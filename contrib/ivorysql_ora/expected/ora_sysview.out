@@ -493,3 +493,10 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- Oracle-compatible V$TIMER
+SELECT COUNT(*) = 1 AS one_row, MIN(HMSECS) > 0 AS positive FROM SYS.V$TIMER;
+ one_row | positive 
+---------+----------
+ t       | t
+(1 row)
+

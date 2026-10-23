@@ -1557,3 +1557,12 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- V$TIMER: one row with the current time in hundredths of a second, which is
+-- what Oracle's wait loops read to measure elapsed time without a round trip
+-- to a table.
+CREATE OR REPLACE VIEW SYS.V$TIMER AS
+SELECT
+    (pg_catalog.date_part('epoch', pg_catalog.clock_timestamp()) * 100)::int8::NUMBER AS HMSECS,
+    0::NUMBER                                                       AS CON_ID;
+GRANT SELECT ON SYS.V$TIMER TO PUBLIC;
