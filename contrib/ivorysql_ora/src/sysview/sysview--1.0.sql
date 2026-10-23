@@ -1557,3 +1557,22 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- V$TRANSACTION: one row per backend that currently holds a transaction id.
+-- PostgreSQL exposes exactly that in pg_locks (a granted transactionid lock)
+-- and the start time in pg_stat_activity, so the view reports those instead of
+-- inventing undo-segment numbers.
+CREATE OR REPLACE VIEW SYS.V$TRANSACTION AS
+SELECT
+    A.PID::NUMBER                                                  AS SID,
+    L.TRANSACTIONID::TEXT::VARCHAR2(32)                            AS XID,
+    'ACTIVE'::VARCHAR2(16)                                         AS STATUS,
+    A.XACT_START                                                   AS START_TIME,
+    NULL::NUMBER                                                   AS USED_UBLK,
+    NULL::NUMBER                                                   AS USED_UREC,
+    0::NUMBER                                                      AS CON_ID
+FROM PG_CATALOG.PG_LOCKS L
+JOIN PG_CATALOG.PG_STAT_ACTIVITY A ON A.PID = L.PID
+WHERE L.LOCKTYPE = 'transactionid'
+  AND L.GRANTED;
+GRANT SELECT ON SYS.V$TRANSACTION TO PUBLIC;
