@@ -270,3 +270,23 @@ SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'TEST_ALL_TAB_
 \set ON_ERROR_STOP on
 
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+
+-- V$PARAMETER must expose Oracle's documented column list and order
+\d SYS.V$PARAMETER
+
+-- NUM and ORDINAL are a dense 1..N numbering in name order
+SELECT COUNT(*) = COUNT(DISTINCT NUM) AS num_dense,
+       COUNT(*) = COUNT(DISTINCT ORDINAL) AS ordinal_dense,
+       MIN(NUM) = 1 AS num_starts_at_one
+FROM SYS.V$PARAMETER;
+
+-- DISPLAY_VALUE renders booleans the Oracle way and passes other values
+-- through unchanged; the unsupported columns stay NULL/FALSE
+SELECT NAME, DISPLAY_VALUE, ISPDB_MODIFIABLE, ISADJUSTED, ISBASIC,
+       HASH IS NULL AS hash_null, UPDATE_COMMENT IS NULL AS comment_null
+FROM SYS.V$PARAMETER
+WHERE NAME = 'enable_seqscan';
+
+SELECT NAME, DISPLAY_VALUE = VALUE AS display_matches_value
+FROM SYS.V$PARAMETER
+WHERE NAME = 'max_connections';
