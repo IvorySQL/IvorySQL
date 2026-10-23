@@ -1557,3 +1557,51 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- USER_/ALL_/DBA_UPDATABLE_COLUMNS: which columns of a table or view can be
+-- updated, inserted and deleted, in Oracle's shape.  PostgreSQL answers that
+-- with pg_relation_is_updatable() (bit 4 = UPDATE, 8 = INSERT, 16 = DELETE),
+-- which already accounts for automatically updatable views, so the view maps
+-- the bitmask instead of re-deriving the rules.  INSERTABLE is NO for
+-- GENERATED ALWAYS identity columns and for generated columns, because
+-- PostgreSQL rejects those on INSERT; a generated column is not UPDATABLE
+-- either, as in Oracle.
+CREATE OR REPLACE VIEW SYS.DBA_UPDATABLE_COLUMNS AS
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128) AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)     AS TABLE_NAME,
+    SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(128)     AS COLUMN_NAME,
+    CASE WHEN (PG_RELATION_IS_UPDATABLE(C.OID, TRUE) & 4) = 4
+              AND A.ATTGENERATED NOT IN ('s', 'v')
+         THEN 'YES' ELSE 'NO'
+    END::VARCHAR2(3)                                           AS UPDATABLE,
+    CASE WHEN (PG_RELATION_IS_UPDATABLE(C.OID, TRUE) & 8) = 8
+              AND A.ATTGENERATED NOT IN ('s', 'v')
+              AND A.ATTIDENTITY NOT IN ('a', 'i')
+         THEN 'YES' ELSE 'NO'
+    END::VARCHAR2(3)                                           AS INSERTABLE,
+    CASE WHEN (PG_RELATION_IS_UPDATABLE(C.OID, TRUE) & 16) = 16
+         THEN 'YES' ELSE 'NO'
+    END::VARCHAR2(3)                                           AS DELETABLE,
+    C.RELOWNER                                                 AS OWNER_OID,
+    C.OID                                                      AS REL_OID
+FROM PG_CATALOG.PG_ATTRIBUTE A
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = A.ATTRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+WHERE A.ATTNUM > 0
+  AND NOT A.ATTISDROPPED
+  AND C.RELKIND IN ('r', 'p', 'v', 'm', 'f')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast');
+GRANT SELECT ON SYS.DBA_UPDATABLE_COLUMNS TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.USER_UPDATABLE_COLUMNS AS
+SELECT TABLE_NAME, COLUMN_NAME, UPDATABLE, INSERTABLE, DELETABLE
+FROM SYS.DBA_UPDATABLE_COLUMNS
+WHERE OWNER_OID = (SELECT OID FROM PG_CATALOG.PG_ROLES WHERE ROLNAME = CURRENT_USER);
+GRANT SELECT ON SYS.USER_UPDATABLE_COLUMNS TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.ALL_UPDATABLE_COLUMNS AS
+SELECT OWNER, TABLE_NAME, COLUMN_NAME, UPDATABLE, INSERTABLE, DELETABLE
+FROM SYS.DBA_UPDATABLE_COLUMNS
+WHERE HAS_TABLE_PRIVILEGE(REL_OID, 'SELECT');
+GRANT SELECT ON SYS.ALL_UPDATABLE_COLUMNS TO PUBLIC;
