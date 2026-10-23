@@ -493,3 +493,33 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- Oracle-compatible partition key column dictionary views
+DROP TABLE IF EXISTS t_part_key;
+NOTICE:  table "t_part_key" does not exist, skipping
+CREATE TABLE t_part_key (id INT, region TEXT, created DATE)
+    PARTITION BY LIST (region);
+SELECT NAME, OBJECT_TYPE, COLUMN_NAME, COLUMN_POSITION
+FROM SYS.USER_PART_KEY_COLUMNS
+WHERE NAME = 'T_PART_KEY';
+    name    | object_type | column_name | column_position 
+------------+-------------+-------------+-----------------
+ T_PART_KEY | TABLE       | REGION      | 1
+(1 row)
+
+SELECT COUNT(*) = 1 AS all_has
+FROM SYS.ALL_PART_KEY_COLUMNS
+WHERE NAME = 'T_PART_KEY';
+ all_has 
+---------
+ t
+(1 row)
+
+SELECT COUNT(*) = 1 AS dba_has
+FROM SYS.DBA_PART_KEY_COLUMNS
+WHERE NAME = 'T_PART_KEY';
+ dba_has 
+---------
+ t
+(1 row)
+
+DROP TABLE t_part_key;
