@@ -165,3 +165,5 @@ test: emptystring_to_null
 test: ora_package
 
 test: ora_force_view
+
+test: ora_listagg
