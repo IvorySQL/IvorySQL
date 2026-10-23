@@ -493,3 +493,126 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- USER_TAB_COLUMNS
+-- Same shape as ALL_TAB_COLUMNS, but only the relations owned by the current
+-- user, like the other USER_ views (USER_SEQUENCES / USER_VIEWS /
+-- USER_CONS_COLUMNS).
+DROP TABLE IF EXISTS TEST_USER_TAB_COLUMNS;
+NOTICE:  table "test_user_tab_columns" does not exist, skipping
+CREATE TABLE TEST_USER_TAB_COLUMNS (
+    ID INT PRIMARY KEY,
+    NAME VARCHAR2(50) NOT NULL,
+    CREATE_TIME DATE
+);
+ANALYZE TEST_USER_TAB_COLUMNS;
+SELECT
+    TABLE_NAME,
+    COLUMN_NAME,
+    COLUMN_ID,
+    DATA_TYPE,
+    DATA_LENGTH,
+    DATA_PRECISION,
+    DATA_SCALE,
+    NULLABLE,
+    DEFAULT_LENGTH
+FROM SYS.USER_TAB_COLUMNS
+WHERE TABLE_NAME = 'TEST_USER_TAB_COLUMNS'
+ORDER BY COLUMN_ID;
+      table_name       | column_name | column_id | data_type | data_length | data_precision | data_scale | nullable | default_length 
+-----------------------+-------------+-----------+-----------+-------------+----------------+------------+----------+----------------
+ TEST_USER_TAB_COLUMNS | ID          |         1 | NUMBER    |           4 |             10 |          0 | N        |               
+ TEST_USER_TAB_COLUMNS | NAME        |         2 | VARCHAR2  |          50 |                |            | N        |               
+ TEST_USER_TAB_COLUMNS | CREATE_TIME |         3 | DATE      |           7 |                |            | Y        |               
+(3 rows)
+
+-- a relation owned by a different role is visible in ALL_TAB_COLUMNS but not
+-- in USER_TAB_COLUMNS
+DROP ROLE IF EXISTS user_tab_cols_owner;
+NOTICE:  role "user_tab_cols_owner" does not exist, skipping
+CREATE ROLE user_tab_cols_owner;
+CREATE TABLE TEST_USER_TAB_COLUMNS_OTHER (ID INT);
+ALTER TABLE TEST_USER_TAB_COLUMNS_OTHER OWNER TO user_tab_cols_owner;
+SELECT count(*) AS rows_in_all_tab_columns
+FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'TEST_USER_TAB_COLUMNS_OTHER';
+ rows_in_all_tab_columns 
+-------------------------
+                       1
+(1 row)
+
+SELECT count(*) AS rows_in_user_tab_columns
+FROM SYS.USER_TAB_COLUMNS WHERE TABLE_NAME = 'TEST_USER_TAB_COLUMNS_OTHER';
+ rows_in_user_tab_columns 
+--------------------------
+                        0
+(1 row)
+
+-- A relation owned by the current user stays visible in USER_TAB_COLUMNS even
+-- when its owner has revoked all of its own privileges on it: the view
+-- describes ownership, not privileges (like USER_VIEWS).
+CREATE TABLE TEST_USER_TAB_COLUMNS_PRIV (ID INT, NAME VARCHAR2(10));
+ALTER TABLE TEST_USER_TAB_COLUMNS_PRIV OWNER TO user_tab_cols_owner;
+SET ROLE user_tab_cols_owner;
+REVOKE ALL ON TEST_USER_TAB_COLUMNS_PRIV FROM user_tab_cols_owner;
+SELECT count(*) AS rows_in_user_tab_columns
+FROM SYS.USER_TAB_COLUMNS WHERE TABLE_NAME = 'TEST_USER_TAB_COLUMNS_PRIV';
+ rows_in_user_tab_columns 
+--------------------------
+                        2
+(1 row)
+
+-- ALL_TAB_COLUMNS still filters on privileges, so it hides the relation again
+SELECT count(*) AS rows_in_all_tab_columns
+FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'TEST_USER_TAB_COLUMNS_PRIV';
+ rows_in_all_tab_columns 
+-------------------------
+                       0
+(1 row)
+
+RESET ROLE;
+DROP TABLE TEST_USER_TAB_COLUMNS_PRIV;
+-- A relation with inheritance children has two pg_stats rows per column (its
+-- own statistics and the inherited ones); every column must be reported once,
+-- with COLUMN_ID numbered in attribute order.
+CREATE TABLE TEST_USER_TAB_COLUMNS_PARENT (A INT, B INT);
+CREATE TABLE TEST_USER_TAB_COLUMNS_CHILD (C INT) INHERITS (TEST_USER_TAB_COLUMNS_PARENT);
+INSERT INTO TEST_USER_TAB_COLUMNS_PARENT VALUES (1, 2);
+INSERT INTO TEST_USER_TAB_COLUMNS_CHILD VALUES (3, 4, 5);
+ANALYZE TEST_USER_TAB_COLUMNS_PARENT;
+ANALYZE TEST_USER_TAB_COLUMNS_CHILD;
+SELECT COLUMN_NAME, COLUMN_ID FROM SYS.USER_TAB_COLUMNS
+WHERE TABLE_NAME = 'TEST_USER_TAB_COLUMNS_PARENT' ORDER BY COLUMN_ID;
+ column_name | column_id 
+-------------+-----------
+ A           |         1
+ B           |         2
+(2 rows)
+
+SELECT count(*) AS rows_in_all_tab_columns
+FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'TEST_USER_TAB_COLUMNS_PARENT';
+ rows_in_all_tab_columns 
+-------------------------
+                       2
+(1 row)
+
+DROP TABLE TEST_USER_TAB_COLUMNS_CHILD;
+DROP TABLE TEST_USER_TAB_COLUMNS_PARENT;
+-- A partitioned table keeps the statistics gathered over its partitions
+-- (inherited = true); the relation-kind match must not hide them.
+CREATE TABLE TEST_USER_TAB_COLUMNS_PART (ID INT, VAL VARCHAR2(10)) PARTITION BY RANGE (ID);
+CREATE TABLE TEST_USER_TAB_COLUMNS_PART_1 PARTITION OF TEST_USER_TAB_COLUMNS_PART
+    FOR VALUES FROM (1) TO (100);
+INSERT INTO TEST_USER_TAB_COLUMNS_PART VALUES (1, 'X');
+ANALYZE TEST_USER_TAB_COLUMNS_PART;
+SELECT COLUMN_NAME, COLUMN_ID, AVG_COL_LEN IS NOT NULL AS has_stats
+FROM SYS.USER_TAB_COLUMNS
+WHERE TABLE_NAME = 'TEST_USER_TAB_COLUMNS_PART' ORDER BY COLUMN_ID;
+ column_name | column_id | has_stats 
+-------------+-----------+-----------
+ ID          |         1 | t
+ VAL         |         2 | t
+(2 rows)
+
+DROP TABLE TEST_USER_TAB_COLUMNS_PART;
+DROP TABLE TEST_USER_TAB_COLUMNS_OTHER;
+DROP ROLE user_tab_cols_owner;
+DROP TABLE IF EXISTS TEST_USER_TAB_COLUMNS;
