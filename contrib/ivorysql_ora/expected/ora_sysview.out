@@ -493,3 +493,23 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- Oracle-compatible V$DIAG_INFO view
+SELECT COUNT(*) = 5 AS five_rows FROM SYS.V$DIAG_INFO;
+ five_rows 
+-----------
+ t
+(1 row)
+
+SELECT VALUE = CURRENT_SETTING('data_directory') AS data_dir_matches
+FROM SYS.V$DIAG_INFO WHERE NAME = 'Data Directory';
+ data_dir_matches 
+------------------
+ t
+(1 row)
+
+SELECT COUNT(*) = COUNT(DISTINCT NAME) AS names_unique FROM SYS.V$DIAG_INFO;
+ names_unique 
+--------------
+ t
+(1 row)
+
