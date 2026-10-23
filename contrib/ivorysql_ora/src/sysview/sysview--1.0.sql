@@ -1557,3 +1557,163 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- USER_TYPE_ATTRS: the attributes of the current user's composite types, in
+-- declaration order.  LENGTH/PRECISION/SCALE are not part of the attribute
+-- record in PostgreSQL and are reported by ALL_TAB_COLUMNS when the type is
+-- read as a table.
+CREATE OR REPLACE VIEW SYS.USER_TYPE_ATTRS AS
+SELECT TYPE_NAME, ATTR_NAME, ATTR_TYPE_MOD, ATTR_TYPE_OWNER, ATTR_TYPE_NAME, ATTR_NO, INHERITED, CHAR_USED
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(T.TYPOWNER)::VARCHAR2)::VARCHAR2(128)   AS OWNER,
+    SYS.ORA_CASE_TRANS(T.TYPNAME::VARCHAR2)::VARCHAR2(128)                     AS TYPE_NAME,
+    SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(128)                     AS ATTR_NAME,
+    NULL::VARCHAR2(3)                                                          AS ATTR_TYPE_MOD,
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(PG_TYPE.TYPOWNER)::VARCHAR2)::VARCHAR2(128) AS ATTR_TYPE_OWNER,
+    CASE
+        WHEN PG_TYPE.TYPNAME IN ('int2', 'int4', 'int8', 'numeric') THEN 'NUMBER'
+        WHEN PG_TYPE.TYPNAME IN ('float4', 'float8') THEN 'FLOAT'
+        WHEN PG_TYPE.TYPNAME IN ('varchar', 'oravarcharbyte', 'oravarcharchar') THEN 'VARCHAR2'
+        WHEN PG_TYPE.TYPNAME IN ('bpchar', 'oracharbyte', 'oracharchar') THEN 'CHAR'
+        WHEN PG_TYPE.TYPNAME IN ('text', 'clob') THEN 'CLOB'
+        WHEN PG_TYPE.TYPNAME IN ('bytea', 'blob') THEN 'BLOB'
+        WHEN PG_TYPE.TYPNAME = 'nclob' THEN 'NCLOB'
+        WHEN PG_TYPE.TYPNAME IN ('date', 'oradate') THEN 'DATE'
+        WHEN PG_TYPE.TYPNAME IN ('timestamp', 'timestamptz', 'oratimestamp') THEN 'TIMESTAMP'
+        WHEN PG_TYPE.TYPNAME = 'oratimestamptz' THEN 'TIMESTAMP WITH TIME ZONE'
+        WHEN PG_TYPE.TYPNAME = 'oratimestampltz' THEN 'TIMESTAMP WITH LOCAL TIME ZONE'
+        WHEN PG_TYPE.TYPNAME = 'long' THEN 'LONG'
+        WHEN PG_TYPE.TYPNAME = 'long_raw' THEN 'LONG RAW'
+        WHEN PG_TYPE.TYPNAME = 'bool' THEN 'BOOLEAN'
+        ELSE SYS.ORA_CASE_TRANS(PG_TYPE.TYPNAME::VARCHAR2)::VARCHAR2(128)
+    END::VARCHAR2(128)                                                         AS ATTR_TYPE_NAME,
+    A.ATTNUM::NUMBER                                                           AS ATTR_NO,
+    'NO'::VARCHAR2(3)                                                          AS INHERITED,
+    CASE
+        WHEN PG_TYPE.TYPNAME IN ('oravarcharbyte', 'oracharbyte') THEN 'B'
+        WHEN PG_TYPE.TYPNAME IN ('oravarcharchar', 'oracharchar') THEN 'C'
+        ELSE NULL
+    END::VARCHAR2(1)                                                           AS CHAR_USED,
+    T.TYPOWNER                                                                 AS OWNER_OID
+FROM PG_CATALOG.PG_TYPE T
+JOIN PG_CATALOG.PG_ATTRIBUTE A ON A.ATTRELID = T.TYPRELID
+JOIN PG_CATALOG.PG_TYPE PG_TYPE ON PG_TYPE.OID = A.ATTTYPID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = T.TYPNAMESPACE
+WHERE T.TYPTYPE = 'c'
+  AND NOT EXISTS (SELECT 1 FROM PG_CATALOG.PG_CLASS C
+                  WHERE C.RELTYPE = T.OID
+                    AND C.RELKIND IN ('r', 'p', 'v', 'm', 'f'))
+  AND A.ATTNUM > 0
+  AND NOT A.ATTISDROPPED
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+WHERE S.OWNER_OID = (SELECT OID FROM PG_CATALOG.PG_ROLES WHERE ROLNAME = CURRENT_USER)
+ORDER BY S.TYPE_NAME, S.ATTR_NO;
+GRANT SELECT ON SYS.USER_TYPE_ATTRS TO PUBLIC;
+
+-- ALL_TYPE_ATTRS: the same rows for types in any schema.
+CREATE OR REPLACE VIEW SYS.ALL_TYPE_ATTRS AS
+SELECT OWNER, TYPE_NAME, ATTR_NAME, ATTR_TYPE_MOD, ATTR_TYPE_OWNER, ATTR_TYPE_NAME, ATTR_NO, INHERITED, CHAR_USED
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(T.TYPOWNER)::VARCHAR2)::VARCHAR2(128)   AS OWNER,
+    SYS.ORA_CASE_TRANS(T.TYPNAME::VARCHAR2)::VARCHAR2(128)                     AS TYPE_NAME,
+    SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(128)                     AS ATTR_NAME,
+    NULL::VARCHAR2(3)                                                          AS ATTR_TYPE_MOD,
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(PG_TYPE.TYPOWNER)::VARCHAR2)::VARCHAR2(128) AS ATTR_TYPE_OWNER,
+    CASE
+        WHEN PG_TYPE.TYPNAME IN ('int2', 'int4', 'int8', 'numeric') THEN 'NUMBER'
+        WHEN PG_TYPE.TYPNAME IN ('float4', 'float8') THEN 'FLOAT'
+        WHEN PG_TYPE.TYPNAME IN ('varchar', 'oravarcharbyte', 'oravarcharchar') THEN 'VARCHAR2'
+        WHEN PG_TYPE.TYPNAME IN ('bpchar', 'oracharbyte', 'oracharchar') THEN 'CHAR'
+        WHEN PG_TYPE.TYPNAME IN ('text', 'clob') THEN 'CLOB'
+        WHEN PG_TYPE.TYPNAME IN ('bytea', 'blob') THEN 'BLOB'
+        WHEN PG_TYPE.TYPNAME = 'nclob' THEN 'NCLOB'
+        WHEN PG_TYPE.TYPNAME IN ('date', 'oradate') THEN 'DATE'
+        WHEN PG_TYPE.TYPNAME IN ('timestamp', 'timestamptz', 'oratimestamp') THEN 'TIMESTAMP'
+        WHEN PG_TYPE.TYPNAME = 'oratimestamptz' THEN 'TIMESTAMP WITH TIME ZONE'
+        WHEN PG_TYPE.TYPNAME = 'oratimestampltz' THEN 'TIMESTAMP WITH LOCAL TIME ZONE'
+        WHEN PG_TYPE.TYPNAME = 'long' THEN 'LONG'
+        WHEN PG_TYPE.TYPNAME = 'long_raw' THEN 'LONG RAW'
+        WHEN PG_TYPE.TYPNAME = 'bool' THEN 'BOOLEAN'
+        ELSE SYS.ORA_CASE_TRANS(PG_TYPE.TYPNAME::VARCHAR2)::VARCHAR2(128)
+    END::VARCHAR2(128)                                                         AS ATTR_TYPE_NAME,
+    A.ATTNUM::NUMBER                                                           AS ATTR_NO,
+    'NO'::VARCHAR2(3)                                                          AS INHERITED,
+    CASE
+        WHEN PG_TYPE.TYPNAME IN ('oravarcharbyte', 'oracharbyte') THEN 'B'
+        WHEN PG_TYPE.TYPNAME IN ('oravarcharchar', 'oracharchar') THEN 'C'
+        ELSE NULL
+    END::VARCHAR2(1)                                                           AS CHAR_USED,
+    T.TYPOWNER                                                                 AS OWNER_OID
+FROM PG_CATALOG.PG_TYPE T
+JOIN PG_CATALOG.PG_ATTRIBUTE A ON A.ATTRELID = T.TYPRELID
+JOIN PG_CATALOG.PG_TYPE PG_TYPE ON PG_TYPE.OID = A.ATTTYPID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = T.TYPNAMESPACE
+WHERE T.TYPTYPE = 'c'
+  AND NOT EXISTS (SELECT 1 FROM PG_CATALOG.PG_CLASS C
+                  WHERE C.RELTYPE = T.OID
+                    AND C.RELKIND IN ('r', 'p', 'v', 'm', 'f'))
+  AND A.ATTNUM > 0
+  AND NOT A.ATTISDROPPED
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+ORDER BY S.OWNER, S.TYPE_NAME, S.ATTR_NO;
+GRANT SELECT ON SYS.ALL_TYPE_ATTRS TO PUBLIC;
+
+-- DBA_TYPE_ATTRS: same column set as ALL_TYPE_ATTRS.
+CREATE OR REPLACE VIEW SYS.DBA_TYPE_ATTRS AS
+SELECT OWNER, TYPE_NAME, ATTR_NAME, ATTR_TYPE_MOD, ATTR_TYPE_OWNER, ATTR_TYPE_NAME, ATTR_NO, INHERITED, CHAR_USED
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(T.TYPOWNER)::VARCHAR2)::VARCHAR2(128)   AS OWNER,
+    SYS.ORA_CASE_TRANS(T.TYPNAME::VARCHAR2)::VARCHAR2(128)                     AS TYPE_NAME,
+    SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(128)                     AS ATTR_NAME,
+    NULL::VARCHAR2(3)                                                          AS ATTR_TYPE_MOD,
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(PG_TYPE.TYPOWNER)::VARCHAR2)::VARCHAR2(128) AS ATTR_TYPE_OWNER,
+    CASE
+        WHEN PG_TYPE.TYPNAME IN ('int2', 'int4', 'int8', 'numeric') THEN 'NUMBER'
+        WHEN PG_TYPE.TYPNAME IN ('float4', 'float8') THEN 'FLOAT'
+        WHEN PG_TYPE.TYPNAME IN ('varchar', 'oravarcharbyte', 'oravarcharchar') THEN 'VARCHAR2'
+        WHEN PG_TYPE.TYPNAME IN ('bpchar', 'oracharbyte', 'oracharchar') THEN 'CHAR'
+        WHEN PG_TYPE.TYPNAME IN ('text', 'clob') THEN 'CLOB'
+        WHEN PG_TYPE.TYPNAME IN ('bytea', 'blob') THEN 'BLOB'
+        WHEN PG_TYPE.TYPNAME = 'nclob' THEN 'NCLOB'
+        WHEN PG_TYPE.TYPNAME IN ('date', 'oradate') THEN 'DATE'
+        WHEN PG_TYPE.TYPNAME IN ('timestamp', 'timestamptz', 'oratimestamp') THEN 'TIMESTAMP'
+        WHEN PG_TYPE.TYPNAME = 'oratimestamptz' THEN 'TIMESTAMP WITH TIME ZONE'
+        WHEN PG_TYPE.TYPNAME = 'oratimestampltz' THEN 'TIMESTAMP WITH LOCAL TIME ZONE'
+        WHEN PG_TYPE.TYPNAME = 'long' THEN 'LONG'
+        WHEN PG_TYPE.TYPNAME = 'long_raw' THEN 'LONG RAW'
+        WHEN PG_TYPE.TYPNAME = 'bool' THEN 'BOOLEAN'
+        ELSE SYS.ORA_CASE_TRANS(PG_TYPE.TYPNAME::VARCHAR2)::VARCHAR2(128)
+    END::VARCHAR2(128)                                                         AS ATTR_TYPE_NAME,
+    A.ATTNUM::NUMBER                                                           AS ATTR_NO,
+    'NO'::VARCHAR2(3)                                                          AS INHERITED,
+    CASE
+        WHEN PG_TYPE.TYPNAME IN ('oravarcharbyte', 'oracharbyte') THEN 'B'
+        WHEN PG_TYPE.TYPNAME IN ('oravarcharchar', 'oracharchar') THEN 'C'
+        ELSE NULL
+    END::VARCHAR2(1)                                                           AS CHAR_USED,
+    T.TYPOWNER                                                                 AS OWNER_OID
+FROM PG_CATALOG.PG_TYPE T
+JOIN PG_CATALOG.PG_ATTRIBUTE A ON A.ATTRELID = T.TYPRELID
+JOIN PG_CATALOG.PG_TYPE PG_TYPE ON PG_TYPE.OID = A.ATTTYPID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = T.TYPNAMESPACE
+WHERE T.TYPTYPE = 'c'
+  AND NOT EXISTS (SELECT 1 FROM PG_CATALOG.PG_CLASS C
+                  WHERE C.RELTYPE = T.OID
+                    AND C.RELKIND IN ('r', 'p', 'v', 'm', 'f'))
+  AND A.ATTNUM > 0
+  AND NOT A.ATTISDROPPED
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+ORDER BY S.OWNER, S.TYPE_NAME, S.ATTR_NO;
+GRANT SELECT ON SYS.DBA_TYPE_ATTRS TO PUBLIC;
