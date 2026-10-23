@@ -270,3 +270,40 @@ SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'TEST_ALL_TAB_
 \set ON_ERROR_STOP on
 
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+
+-- Oracle-compatible type dictionary views
+DROP TYPE IF EXISTS t_obj_type;
+CREATE TYPE t_obj_type AS (a INT, b TEXT);
+
+SELECT TYPE_NAME, TYPECODE, ATTRIBUTES, PREDEFINED, FINAL
+FROM SYS.USER_TYPES
+WHERE TYPE_NAME = 'T_OBJ_TYPE';
+
+SELECT COUNT(*) = 1 AS all_has
+FROM SYS.ALL_TYPES
+WHERE TYPE_NAME = 'T_OBJ_TYPE';
+
+SELECT COUNT(*) = 1 AS dba_has
+FROM SYS.DBA_TYPES
+WHERE TYPE_NAME = 'T_OBJ_TYPE';
+
+DROP TYPE t_obj_type;
+
+-- USER_TYPES must return the types the current user owns; it used to compare
+-- the type's OID with the role OID, so it was always empty
+CREATE TYPE p_user_type_probe AS OBJECT (x INT);
+DROP ROLE IF EXISTS ora_type_other;
+CREATE ROLE ora_type_other;
+
+SELECT COUNT(*) = 1 AS owner_sees_type
+FROM SYS.USER_TYPES WHERE TYPE_NAME = 'P_USER_TYPE_PROBE';
+
+SET ROLE ora_type_other;
+SELECT COUNT(*) = 0 AS other_user_hidden
+FROM SYS.USER_TYPES WHERE TYPE_NAME = 'P_USER_TYPE_PROBE';
+SELECT COUNT(*) = 1 AS other_sees_all_types
+FROM SYS.ALL_TYPES WHERE TYPE_NAME = 'P_USER_TYPE_PROBE';
+SET ROLE NONE;
+
+DROP TYPE p_user_type_probe;
+DROP ROLE ora_type_other;
