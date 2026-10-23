@@ -2464,3 +2464,8 @@ reset default_text_search_config;
 -- should throw errors, because dummy_config is not a valid configuration name
 set ivorysql.dummy_config to dummy;
 reset ivorysql.dummy_config;
+
+-- Oracle-compatible SYS_GUID
+SELECT pg_catalog.octet_length(SYS.SYS_GUID()) = 16 AS guid_16_bytes;
+SELECT SYS.RAWTOHEX(SYS.SYS_GUID()) ~ '^[0-9A-F]{32}$' AS guid_hex_shape;
+SELECT SYS.SYS_GUID() <> SYS.SYS_GUID() AS guid_unique;

@@ -1931,3 +1931,14 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 /* End - VSIZE */
+
+/* Oracle-compatible SYS_GUID: a 16-byte RAW value that is unique per call.
+ * gen_random_uuid() is already a version 4 UUID, so stripping the dashes and
+ * decoding the hex gives Oracle's RAW(16) shape. */
+CREATE OR REPLACE FUNCTION sys.sys_guid()
+RETURNS bytea
+AS $$ SELECT pg_catalog.decode(pg_catalog.replace(pg_catalog.gen_random_uuid()::text, '-', ''), 'hex'); $$
+LANGUAGE SQL
+VOLATILE
+PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION sys.sys_guid() TO PUBLIC;
