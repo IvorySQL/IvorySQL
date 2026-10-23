@@ -123,6 +123,7 @@ static void cleanup_ws(xpath_ws *ws);
 static xmlXPathObjectPtr ivy_xml_xpath(xpath_ws *ws, text *xpath_expr_text, xmltype *data, char *namespace);
 static xmlXPathObjectPtr ivy_xml_xpath2(xpath_ws *ws, text *xpath_expr_text, xmlDocPtr doc, char *namespace);
 static void init_ws_doc(xpath_ws *ws, xmltype *data);
+static text *ivy_extractvalue_internal(FunctionCallInfo fcinfo, bool has_namespace);
 static void register_ns_from_csting(xmlXPathContextPtr xpathCtx, char* nsList);
 static int ivy_xpathobjnode_nr(xmlXPathObjectPtr xpathobj);
 static char *ivy_xmlnode_getcontent(xmlNodePtr cur);
@@ -612,35 +613,42 @@ ivy_xmlnode_getcontent(xmlNodePtr cur)
 	return result;
 }
 
+/*
+ * ivy_xml_xpathobjtostring
+ *	concatenate the text content of the nodes selected by an XPath expression
+ *
+ * The routine always hands back a valid, palloc'd C string.  Only an
+ * XPATH_NODESET carries node content to concatenate; scalar XPath expressions
+ * such as count(/a), string(/a) or true() evaluate to objects of another type
+ * whose nodesetval is NULL.  Returning NULL for those lets a caller pass a
+ * null pointer to appendStringInfoString(), whose strlen() call then crashes
+ * the whole backend, so an empty node set yields an empty string here.
+ */
 static char *
 ivy_xml_xpathobjtostring(xmlXPathObjectPtr xpathobj)
 {
 	int			num = 0;
 	char	   *res = NULL;
-	char	   *res_str = NULL;
 	int			i;
 	StringInfoData buf;
 
-	if (xpathobj->type == XPATH_NODESET)
-	{
-		if (xpathobj->nodesetval != NULL)
-		{
-			num = xpathobj->nodesetval->nodeNr;
-			initStringInfo(&buf);
+	initStringInfo(&buf);
 
-			for (i = 0; i < num; i++)
-			{
-				res = ivy_xmlnode_getcontent(xpathobj->nodesetval->nodeTab[i]);
-				if (res)
-					appendStringInfoString(&buf, res);
-				else
-					appendStringInfoString(&buf, "");
-			}
-			res_str = buf.data;
+	if (xpathobj->type == XPATH_NODESET && xpathobj->nodesetval != NULL)
+	{
+		num = xpathobj->nodesetval->nodeNr;
+
+		for (i = 0; i < num; i++)
+		{
+			res = ivy_xmlnode_getcontent(xpathobj->nodesetval->nodeTab[i]);
+			if (res)
+				appendStringInfoString(&buf, res);
+			else
+				appendStringInfoString(&buf, "");
 		}
 	}
 
-	return res_str;
+	return buf.data;
 }
 
 static text *
@@ -1063,98 +1071,64 @@ ivy_existsnode2(PG_FUNCTION_ARGS)
 //---------------------------------------
 // extractvalue
 //---------------------------------------
-Datum
-ivy_extractvalue(PG_FUNCTION_ARGS)
-{
 #ifdef USE_LIBXML
+/*
+ * ivy_extractvalue_internal
+ *	shared implementation of the two EXTRACTVALUE overloads
+ *
+ * EXTRACTVALUE is only meaningful when the XPath expression selects a single
+ * leaf node, so the plain and the namespace-aware SQL functions have to apply
+ * exactly the same rules.  Keeping the body in one place stops the two copies
+ * from drifting apart, which is how the crash guarded against below ended up
+ * present twice in the first place.
+ *
+ * Returns NULL when the XML or the XPath argument is NULL, otherwise a
+ * palloc'd text value.  Anything EXTRACTVALUE cannot represent as a scalar is
+ * reported as an error.
+ */
+static text *
+ivy_extractvalue_internal(FunctionCallInfo fcinfo, bool has_namespace)
+{
 	xmltype    *data = NULL;
 	text	   *xpath_expr_text = NULL;
 	text	   *rval = NULL;
 	char	   *ret = NULL;
-	xpath_ws	ws;
-	xmlXPathObjectPtr res;
-
-	StringInfoData result;
-
-	if (fcinfo->args[0].isnull)
-		PG_RETURN_NULL();
-	else
-		data = PG_GETARG_XML_P(0);
-
-	if (fcinfo->args[1].isnull)
-		PG_RETURN_NULL();
-	else
-		xpath_expr_text = PG_GETARG_TEXT_PP(1);
-
-	initStringInfo(&result);
-
-	res = ivy_xml_xpath(&ws, xpath_expr_text, data, NULL);
-
-	if (res->nodesetval && res->nodesetval->nodeNr > 1)
-	{
-		cleanup_ws(&ws);
-		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
-				errmsg("EXTRACTVALUE returns value of only one node")));
-	}
-
-	if (res->nodesetval && res->nodesetval->nodeNr > 0 && 
-	    res->nodesetval->nodeTab &&
-	    ivy_xml_has_element_child(res->nodesetval->nodeTab[0]))
-	{
-		cleanup_ws(&ws);
-		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
-				errmsg("EXTRACTVALUE can only retrieve value of leaf node")));
-	}
-
-	ret = ivy_xml_xpathobjtostring(res);
-
-	appendStringInfoString(&result, ret);
-	rval = cstring_to_text_with_len(result.data, result.len);
-	pfree(result.data);
-
-	cleanup_ws(&ws);
-
-	PG_RETURN_TEXT_P(rval);
-#else
-	NO_XML_SUPPORT();
-	return 0;
-#endif
-}
-
-Datum
-ivy_extractvalue2(PG_FUNCTION_ARGS)
-{
-#ifdef USE_LIBXML
-	xmltype    *data = NULL;
-	text	   *xpath_expr_text = NULL;
-	text	   *rval = NULL;
-	text	   *ns = NULL;
 	char	   *cns = NULL;
-	char	   *ret = NULL;
+	char	   *xpath_str = NULL;
 	xpath_ws	ws;
 	xmlXPathObjectPtr res;
 
-	StringInfoData result;
-
 	if (fcinfo->args[0].isnull)
-		PG_RETURN_NULL();
-	else
-		data = PG_GETARG_XML_P(0);
+		return NULL;
+	data = PG_GETARG_XML_P(0);
 
 	if (fcinfo->args[1].isnull)
-		PG_RETURN_NULL();
-	else
-		xpath_expr_text = PG_GETARG_TEXT_PP(1);
+		return NULL;
+	xpath_expr_text = PG_GETARG_TEXT_PP(1);
 
-	if (!fcinfo->args[2].isnull)
-	{
-		ns = PG_GETARG_TEXT_PP(2);
-		cns = text_to_cstring(ns);
-	}
-
-	initStringInfo(&result);
+	if (has_namespace && !fcinfo->args[2].isnull)
+		cns = text_to_cstring(PG_GETARG_TEXT_PP(2));
 
 	res = ivy_xml_xpath(&ws, xpath_expr_text, data, cns);
+
+	/*
+	 * A scalar XPath such as count(/a), string(/a), true() or 1+1 evaluates
+	 * to an xmlXPathObject whose type is not XPATH_NODESET and whose
+	 * nodesetval is NULL.  Oracle rejects such an expression for EXTRACTVALUE
+	 * and so must we.  The node-count and leaf-node guards below only inspect
+	 * nodesetval, so without this check the NULL node set would reach
+	 * ivy_xml_xpathobjtostring() and crash the backend in stringinfo's
+	 * strlen() call.
+	 */
+	if (res->type != XPATH_NODESET)
+	{
+		xpath_str = text_to_cstring(xpath_expr_text);
+
+		cleanup_ws(&ws);
+		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
+				errmsg("EXTRACTVALUE requires an XPath that selects a node"),
+				errdetail("XPath expression \"%s\" does not evaluate to a node set.", xpath_str)));
+	}
 
 	if (res->nodesetval && res->nodesetval->nodeNr > 1)
 	{
@@ -1172,13 +1146,46 @@ ivy_extractvalue2(PG_FUNCTION_ARGS)
 				errmsg("EXTRACTVALUE can only retrieve value of leaf node")));
 	}
 
+	/*
+	 * ivy_xml_xpathobjtostring() hands back a valid C string even for an empty
+	 * node set, so the no-matching-node cases keep yielding an empty value
+	 * instead of a crash.
+	 */
 	ret = ivy_xml_xpathobjtostring(res);
-
-	appendStringInfoString(&result, ret);
-	rval = cstring_to_text_with_len(result.data, result.len);
-	pfree(result.data);
+	rval = cstring_to_text(ret);
 
 	cleanup_ws(&ws);
+
+	return rval;
+}
+#endif
+
+Datum
+ivy_extractvalue(PG_FUNCTION_ARGS)
+{
+#ifdef USE_LIBXML
+	text	   *rval;
+
+	rval = ivy_extractvalue_internal(fcinfo, false);
+	if (rval == NULL)
+		PG_RETURN_NULL();
+
+	PG_RETURN_TEXT_P(rval);
+#else
+	NO_XML_SUPPORT();
+	return 0;
+#endif
+}
+
+Datum
+ivy_extractvalue2(PG_FUNCTION_ARGS)
+{
+#ifdef USE_LIBXML
+	text	   *rval;
+
+	rval = ivy_extractvalue_internal(fcinfo, true);
+	if (rval == NULL)
+		PG_RETURN_NULL();
 
 	PG_RETURN_TEXT_P(rval);
 #else
