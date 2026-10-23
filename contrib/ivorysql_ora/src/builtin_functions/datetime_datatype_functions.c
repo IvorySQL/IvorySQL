@@ -295,6 +295,12 @@ ora_current_timestamp(PG_FUNCTION_ARGS)
 	{
 		int			n = PG_GETARG_INT32(0);
 
+		if (n < 0 || n > ORACLE_MAX_TIMESTAMP_PRECISION)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("timestamp precision must be between %d and %d",
+							0, ORACLE_MAX_TIMESTAMP_PRECISION)));
+
 		if (n > MAX_TIMESTAMP_PRECISION && n <= ORACLE_MAX_TIMESTAMP_PRECISION)
 		{
 			ereport(WARNING,
@@ -338,6 +344,12 @@ ora_local_timestamp(PG_FUNCTION_ARGS)
 	if (argsnum == 1)
 	{
 		int			n = PG_GETARG_INT32(0);
+
+		if (n < 0 || n > ORACLE_MAX_TIMESTAMP_PRECISION)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("timestamp precision must be between %d and %d",
+							0, ORACLE_MAX_TIMESTAMP_PRECISION)));
 
 		if (n > MAX_TIMESTAMP_PRECISION && n <= ORACLE_MAX_TIMESTAMP_PRECISION)
 		{
