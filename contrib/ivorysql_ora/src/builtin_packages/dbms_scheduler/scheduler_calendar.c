@@ -570,15 +570,22 @@ bydate_matches(const CalendarRule *rule, int year, int mon, int mday)
 	return false;
 }
 
+#define SCHED_MAX_OFFSETS 8
+
 /*
+ * Collect distinct session-zone offsets near probe into offsets[], which
+ * must hold SCHED_MAX_OFFSETS entries.  Offsets are seconds west of UTC, as
+ * expected by tm2timestamp; unit and the output spread are microseconds.
+ * Return the offset count and set spread to the largest offset difference,
+ * or return zero if timezone lookup fails or the array cannot hold them all.
+ * On failure, offsets may be partly filled and spread is not set.
+ *
  * A subdaily candidate shares its base's wall hour or minute.  PostgreSQL's
  * timezone resolver assumes UTC offsets smaller than 24 hours, so every
  * mapping is within 48 hours plus that unit of the absolute base.  Collect
  * all offsets in that neighborhood, including the one at its left edge.
  * The same neighborhood around "after" or a candidate bounds period overlap.
  */
-#define SCHED_MAX_OFFSETS 8
-
 static int
 calendar_offsets(TimestampTz probe, int64 unit, int *offsets, int64 *spread)
 {
@@ -636,7 +643,14 @@ calendar_offsets(TimestampTz probe, int64 unit, int *offsets, int64 *spread)
 	return n;
 }
 
-/* Convert a local calendar time to TimestampTz in the session time zone. */
+/*
+ * Convert a local calendar time to TimestampTz in the session time zone.
+ * A null tz_override uses the normal session-zone ambiguity resolution.
+ * Otherwise, use that offset (seconds west of UTC) only if the resulting
+ * instant maps back to the same local components and offset in that zone.
+ * Return false on conversion failure or a mismatched mapping, leaving result
+ * unchanged; on success, store the instant in result and return true.
+ */
 static bool
 local_time_to_timestamptz(int year, int mon, int mday,
 						  int hour, int min, int sec, const int *tz_override,
@@ -976,6 +990,17 @@ scan_times_on_date(const CalendarRule *rule, int year, int mon, int mday,
 	}
 }
 
+/*
+ * Find the next occurrence of rule anchored at start, strictly later than after
+ * and no earlier than start.  On success, store the earliest eligible
+ * candidate in next and return true.  Return false without changing next
+ * if the bounded search finds none or a required timezone neighborhood
+ * cannot be represented; an out-of-range start raises an error.
+ *
+ * The forward budget counts visited periods or skipped coarse-filter blocks,
+ * not every excluded period.  Extra fold lookback is uncharged, and a found
+ * candidate receives bounded ordering lookahead even after budget exhaustion.
+ */
 static bool
 eval_calendar(const CalendarRule *rule, TimestampTz start, TimestampTz after,
 			  TimestampTz *next)
