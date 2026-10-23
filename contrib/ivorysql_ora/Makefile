@@ -103,6 +103,7 @@ ORA_REGRESS = \
 	utl_url \
 	dbms_session \
 	dbms_transaction \
+	dbms_lob \
 	dbms_random \
 	utl_match \
 	dbms_scheduler
