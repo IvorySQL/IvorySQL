@@ -493,3 +493,34 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- Oracle-compatible trigger column dictionary views
+DROP TABLE IF EXISTS t_trg_cols;
+NOTICE:  table "t_trg_cols" does not exist, skipping
+CREATE TABLE t_trg_cols (id INT, a TEXT, b TEXT);
+CREATE OR REPLACE TRIGGER trg_a_b
+  BEFORE UPDATE OF a, b ON t_trg_cols
+  FOR EACH ROW EXECUTE FUNCTION suppress_redundant_updates_trigger();
+SELECT TABLE_NAME, TRIGGER_NAME, COLUMN_NAME, COLUMN_POSITION
+FROM SYS.USER_TRIGGER_COLS
+WHERE TABLE_NAME = 'T_TRG_COLS'
+ORDER BY COLUMN_POSITION;
+ table_name | trigger_name | column_name | column_position 
+------------+--------------+-------------+-----------------
+ T_TRG_COLS | TRG_A_B      | A           | 1
+ T_TRG_COLS | TRG_A_B      | B           | 2
+(2 rows)
+
+SELECT COUNT(*) = 2 AS all_has FROM SYS.ALL_TRIGGER_COLS WHERE TABLE_NAME = 'T_TRG_COLS';
+ all_has 
+---------
+ t
+(1 row)
+
+SELECT COUNT(*) = 2 AS dba_has FROM SYS.DBA_TRIGGER_COLS WHERE TABLE_NAME = 'T_TRG_COLS';
+ dba_has 
+---------
+ t
+(1 row)
+
+DROP TRIGGER trg_a_b ON t_trg_cols;
+DROP TABLE t_trg_cols;
