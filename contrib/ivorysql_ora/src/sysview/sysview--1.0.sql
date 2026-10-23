@@ -1557,3 +1557,76 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- PRODUCT_COMPONENT_VERSION: the single row Oracle clients use to learn the
+-- database banner.  IvorySQL reports itself rather than pretending to be
+-- Oracle, so the parsed VERSION is the PostgreSQL compatibility level the
+-- fork is based on.
+CREATE OR REPLACE VIEW SYS.PRODUCT_COMPONENT_VERSION AS
+SELECT
+    'IvorySQL'::VARCHAR2(80)                                        AS PRODUCT,
+    SPLIT_PART(VERSION(), ' ', 2)::VARCHAR2(80)                     AS VERSION,
+    CASE WHEN VERSION() LIKE '%beta%' THEN 'Beta'
+         ELSE 'Production'
+    END::VARCHAR2(80)                                               AS STATUS,
+    VERSION()::VARCHAR2(4000)                                       AS VERSION_FULL;
+GRANT SELECT ON SYS.PRODUCT_COMPONENT_VERSION TO PUBLIC;
+
+-- DATABASE_PROPERTIES: Oracle exposes session-independent database attributes
+-- here.  Only properties that have a real PostgreSQL source are listed; the
+-- value is never invented.
+CREATE OR REPLACE VIEW SYS.DATABASE_PROPERTIES AS
+SELECT
+    'DEFAULT_PERMANENT_TABLESPACE'::VARCHAR2(128)                   AS PROPERTY_NAME,
+    SYS.ORA_CASE_TRANS(TS.SPCNAME::VARCHAR2)::VARCHAR2(4000)        AS PROPERTY_VALUE,
+    'Name of the default permanent tablespace'::VARCHAR2(4000)      AS DESCRIPTION
+FROM PG_TABLESPACE TS
+WHERE TS.OID = (SELECT DATTABLESPACE FROM PG_DATABASE
+                 WHERE DATNAME = CURRENT_DATABASE())
+UNION ALL
+SELECT
+    'NLS_CHARACTERSET'::VARCHAR2(128),
+    PG_ENCODING_TO_CHAR((SELECT ENCODING FROM PG_DATABASE
+                          WHERE DATNAME = CURRENT_DATABASE()))::VARCHAR2(4000),
+    'Database character set'::VARCHAR2(4000)
+UNION ALL
+SELECT
+    'GLOBAL_DB_NAME'::VARCHAR2(128),
+    CURRENT_DATABASE()::VARCHAR2(4000),
+    'Global database name'::VARCHAR2(4000)
+UNION ALL
+SELECT
+    'DICT.BASE'::VARCHAR2(128),
+    '2'::VARCHAR2(4000),
+    'Internal data dictionary version'::VARCHAR2(4000);
+GRANT SELECT ON SYS.DATABASE_PROPERTIES TO PUBLIC;
+
+-- DICTIONARY: every data dictionary view, with its comment.  Oracle restricts
+-- this to the dictionary itself, so only views owned by SYS are listed.
+CREATE OR REPLACE VIEW SYS.DICTIONARY AS
+SELECT
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)         AS TABLE_NAME,
+    COALESCE(SYS.ORA_CASE_TRANS(OBJ_DESCRIPTION(C.OID)::VARCHAR2),
+             ' ')::VARCHAR2(4000)                                   AS COMMENTS
+FROM PG_CLASS C
+JOIN PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+WHERE N.NSPNAME = 'sys'
+  AND C.RELKIND IN ('v', 'm');
+GRANT SELECT ON SYS.DICTIONARY TO PUBLIC;
+
+-- DICT_COLUMNS: the columns of every data dictionary view, with their
+-- comment, mirroring DICTIONARY.
+CREATE OR REPLACE VIEW SYS.DICT_COLUMNS AS
+SELECT
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)         AS TABLE_NAME,
+    SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(128)         AS COLUMN_NAME,
+    COALESCE(COL_DESCRIPTION(C.OID, A.ATTNUM)::VARCHAR2,
+             ' ')::VARCHAR2(4000)                                   AS COMMENTS
+FROM PG_CLASS C
+JOIN PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+JOIN PG_ATTRIBUTE A ON A.ATTRELID = C.OID
+WHERE N.NSPNAME = 'sys'
+  AND C.RELKIND = 'v'
+  AND A.ATTNUM > 0
+  AND NOT A.ATTISDROPPED;
+GRANT SELECT ON SYS.DICT_COLUMNS TO PUBLIC;
