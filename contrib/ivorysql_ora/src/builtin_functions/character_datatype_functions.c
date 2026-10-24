@@ -28,10 +28,12 @@
  */
 
 #include "postgres.h"
+#include <math.h>
 #include "fmgr.h"
 #include "varatt.h"
 
 #include "access/detoast.h"
+#include "common/int.h"
 #include "common/unicode_norm.h"
 #include "lib/stringinfo.h"
 #include "mb/pg_wchar.h"
@@ -80,6 +82,10 @@ PG_FUNCTION_INFO_V1(ora_to_multi_byte);
 PG_FUNCTION_INFO_V1(ora_to_single_byte);
 PG_FUNCTION_INFO_V1(ora_ascii);
 PG_FUNCTION_INFO_V1(ora_listagg_check);
+PG_FUNCTION_INFO_V1(ora_text_substr);
+PG_FUNCTION_INFO_V1(ora_text_substr_no_len);
+PG_FUNCTION_INFO_V1(ora_text_substr_no_len_int);
+PG_FUNCTION_INFO_V1(ora_text_substr_int);
 
 #define PG_STR_GET_TEXT(str_) \
 	DatumGetTextP(DirectFunctionCall1(textin, CStringGetDatum(str_)))
@@ -2645,3 +2651,149 @@ ora_listagg_check (PG_FUNCTION_ARGS)
 
 }
 
+static text *
+ora_text_substring(Datum str, int32 start, int32 length, bool length_not_specified)
+{
+	int32		eml = pg_database_encoding_max_length();
+	int32		S1;
+	Datum		work;
+	Datum		result;
+	text	   *detoasted = NULL;
+
+	if (!length_not_specified && length < 1)
+		return NULL;
+
+	if (start == 0)
+	{
+		S1 = 1;
+		work = str;
+	}
+	else if (start > 0)
+	{
+		S1 = start;
+		work = str;
+	}
+	else
+	{
+		/*
+		 * start < 0 counts backward from the end of the string, which is
+		 * the only case that needs the complete character count.  
+		 */
+		int32		len;
+
+		if (eml != 1) {
+			/*
+		 	* Detoast the value once and count it; the extraction below is then a
+		 	* single text_substr call on the already-detoasted datum
+			*/
+			detoasted = DatumGetTextPP(str);
+			len = (int32) pg_mbstrlen_with_len(VARDATA_ANY(detoasted), VARSIZE_ANY_EXHDR(detoasted));
+			work = PointerGetDatum(detoasted);
+		}
+		else {
+			// eml == 1, no need to detoast
+			len = (int32) (toast_raw_datum_size(str) - VARHDRSZ);
+			work = str;
+		}			
+
+		if (pg_add_s32_overflow(start + 1, len, &S1)) {
+			if (detoasted != NULL && detoasted != (text *) DatumGetPointer(str)) {
+				pfree(detoasted);
+			}
+			return NULL;
+		}
+
+		if (S1 < 1)
+		{
+			if (detoasted != NULL && detoasted != (text *) DatumGetPointer(str))
+				pfree(detoasted);
+			return NULL;
+		}
+	}
+
+	if (length_not_specified)
+		result = DirectFunctionCall2(text_substr_no_len, work, Int32GetDatum(S1));
+	else
+		result = DirectFunctionCall3(text_substr, work, Int32GetDatum(S1), Int32GetDatum(length));
+
+	/*
+	 * only start < 0 and eml != 1 need to free detoasted
+	 */
+	if (detoasted != NULL && detoasted != (text *) DatumGetPointer(str))
+		pfree(detoasted);
+
+	if (VARSIZE_ANY_EXHDR(DatumGetPointer(result)) == 0)
+		return NULL;
+
+	return DatumGetTextPP(result);
+}
+
+Datum
+ora_text_substr(PG_FUNCTION_ARGS)
+{
+	text* 		res;
+	float8		start = DatumGetFloat8(DirectFunctionCall1(numeric_float8, PG_GETARG_DATUM(1)));
+	float8		length = DatumGetFloat8(DirectFunctionCall1(numeric_float8, PG_GETARG_DATUM(2)));
+
+	if (isnan(start) || !FLOAT8_FITS_IN_INT32(start))
+		PG_RETURN_NULL();
+
+	if (isnan(length) || length < 1.0)
+		PG_RETURN_NULL();
+
+	if (length > (float8)PG_INT32_MAX) {
+		res = ora_text_substring(PG_GETARG_DATUM(0), (int32)start, -1, true);
+	} else {
+		res = ora_text_substring(PG_GETARG_DATUM(0), (int32)start, (int32)length, false);
+	}
+
+	if (res == NULL)
+		PG_RETURN_NULL();
+
+	PG_RETURN_TEXT_P(res);
+}
+
+Datum
+ora_text_substr_no_len(PG_FUNCTION_ARGS)
+{
+	text* 		res;
+	float8		start = DatumGetFloat8(DirectFunctionCall1(numeric_float8, PG_GETARG_DATUM(1)));
+
+	if (isnan(start) || !FLOAT8_FITS_IN_INT32(start))
+		PG_RETURN_NULL();
+
+	res = ora_text_substring(PG_GETARG_DATUM(0), (int32)start, -1, true);
+
+	if (res == NULL)
+		PG_RETURN_NULL();
+
+	PG_RETURN_TEXT_P(res);
+}
+
+Datum
+ora_text_substr_no_len_int(PG_FUNCTION_ARGS)
+{
+	text* 		res;
+	int32		start = PG_GETARG_INT32(1);
+
+	res = ora_text_substring(PG_GETARG_DATUM(0), start, -1, true);
+
+	if (res == NULL)
+		PG_RETURN_NULL();
+
+	PG_RETURN_TEXT_P(res);
+}
+
+Datum
+ora_text_substr_int(PG_FUNCTION_ARGS)
+{
+	text* 		res;
+	int32		start = PG_GETARG_INT32(1);
+	int32		length = PG_GETARG_INT32(2);
+
+	res = ora_text_substring(PG_GETARG_DATUM(0), start, length, false);
+	if (res == NULL)
+		PG_RETURN_NULL();
+
+	PG_RETURN_TEXT_P(res);
+}
