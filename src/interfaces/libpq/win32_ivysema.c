@@ -73,7 +73,7 @@ PGSemaphoreLock(PGSemaphore sema)
 	 * reported when multiple events are set.  We want to guarantee that
 	 * pending signals are serviced.
 	 */
-	//wh[0] = pgwin32_signal_event;
+	/* wh[0] = pgwin32_signal_event; */
 	wh[0] = *sema;
 
 	/*
@@ -87,7 +87,7 @@ PGSemaphoreLock(PGSemaphore sema)
 		DWORD		rc;
 
 		/* ignore server signals */
-		//CHECK_FOR_INTERRUPTS();
+		/* CHECK_FOR_INTERRUPTS(); */
 
 		rc = WaitForMultipleObjectsEx(1, wh, FALSE, INFINITE, TRUE);
 		switch (rc)
@@ -108,11 +108,12 @@ PGSemaphoreLock(PGSemaphore sema)
 				break;
 			case WAIT_FAILED:
 				fprintf(stderr, "could not lock semaphore");
-				exit(-1);
+				/* libpq must not call exit(); abort() instead. */
+				abort();
 				break;
 			default:
 				fprintf(stderr, "unexpected return code from WaitForMultipleObjectsEx(): %lu", rc);
-				exit(-1);
+				abort();
 				break;
 		}
 	}
@@ -129,6 +130,6 @@ PGSemaphoreUnlock(PGSemaphore sema)
 	if (!ReleaseSemaphore(*sema, 1, NULL))
 	{
 		fprintf(stderr, "could not unlock semaphore");
-		exit(-1);
+		abort();
 	}
 }
