@@ -1,0 +1,267 @@
+--
+-- DUMP
+--
+-- Oracle-compatible DUMP: returns internal data type code, byte length,
+-- optional character set, and byte values of internal representation.
+--
+-- Character data (Typ=1 for varchar2/text, Typ=96 for char/bpchar)
+SELECT dump('abc');
+       dump
+------------------
+ Typ=1 Len=3: 97,98,99
+(1 row)
+
+SELECT dump(CAST('abc' AS VARCHAR2));
+       dump
+------------------
+ Typ=1 Len=3: 97,98,99
+(1 row)
+
+SELECT dump('abc'::varchar);
+       dump
+------------------
+ Typ=1 Len=3: 97,98,99
+(1 row)
+
+SELECT dump('abc'::char(5));
+          dump
+------------------------
+ Typ=96 Len=5: 97,98,99,32,32
+(1 row)
+
+-- Multibyte character data
+SELECT dump('你好'::text);
+              dump
+---------------------------------
+ Typ=1 Len=6: 228,189,160,229,165,189
+(1 row)
+
+-- Return formats: 8 (Octal), 10 (Decimal), 16 (Hex), 17 (ASCII/Char)
+SELECT dump('abc', 10);
+       dump
+------------------
+ Typ=1 Len=3: 97,98,99
+(1 row)
+
+SELECT dump('abc', 8);
+       dump
+------------------
+ Typ=1 Len=3: 141,142,143
+(1 row)
+
+SELECT dump('abc', 16);
+      dump
+----------------
+ Typ=1 Len=3: 61,62,63
+(1 row)
+
+SELECT dump('abc', 17);
+     dump
+--------------
+ Typ=1 Len=3: a,b,c
+(1 row)
+
+-- Start position and length arguments
+SELECT dump('abcdef', 10, 1, 3);
+       dump
+------------------
+ Typ=1 Len=6: 97,98,99
+(1 row)
+
+SELECT dump('abcdef', 10, 3, 2);
+      dump
+----------------
+ Typ=1 Len=6: 99,100
+(1 row)
+
+SELECT dump('abcdef', 16, 4, 2);
+      dump
+----------------
+ Typ=1 Len=6: 64,65
+(1 row)
+
+SELECT dump('abcdef', 17, 2, 4);
+     dump
+--------------
+ Typ=1 Len=6: b,c,d,e
+(1 row)
+
+-- Format + 1000: CharacterSet inclusion (e.g., 1010, 1016, 1017)
+SELECT dump('abc', 1010) LIKE 'Typ=% Len=3 CharacterSet=%: 97,98,99' AS dump_1010_has_charset;
+ dump_1010_has_charset
+-----------------------
+ t
+(1 row)
+
+SELECT dump('abc', 1016) LIKE 'Typ=% Len=3 CharacterSet=%: 61,62,63' AS dump_1016_has_charset;
+ dump_1016_has_charset
+-----------------------
+ t
+(1 row)
+
+SELECT dump('abc', 1017) LIKE 'Typ=% Len=3 CharacterSet=%: a,b,c' AS dump_1017_has_charset;
+ dump_1017_has_charset
+-----------------------
+ t
+(1 row)
+
+-- Numeric data types (Typ=2 for number/numeric/integer)
+SELECT dump(0::number);
+     dump
+--------------
+ Typ=2 Len=2: 0,0
+(1 row)
+
+SELECT dump(123::number);
+           dump
+--------------------------
+ Typ=2 Len=4: 0,1,0,123
+(1 row)
+
+SELECT dump(123::int4);
+          dump
+------------------------
+ Typ=2 Len=4: 123,0,0,0
+(1 row)
+
+SELECT dump(123::int8);
+             dump
+------------------------------
+ Typ=2 Len=8: 123,0,0,0,0,0,0,0
+(1 row)
+
+-- Floating point types (Typ=100 for binary_float, Typ=101 for binary_double)
+SELECT dump(1.25::float4);
+         dump
+-----------------------
+ Typ=100 Len=4: 0,0,160,63
+(1 row)
+
+SELECT dump(1.25::float8);
+             dump
+------------------------------
+ Typ=101 Len=8: 0,0,0,0,0,0,244,63
+(1 row)
+
+-- Date and datetime types (Typ=12 for date/oradate, Typ=180 for timestamp)
+SELECT dump('2024-01-01'::date);
+       dump
+-------------------
+ Typ=12 Len=4: 21,34,0,0
+(1 row)
+
+SELECT dump('2024-01-01 12:00:00'::timestamp);
+                dump
+-------------------------------------
+ Typ=180 Len=8: 0,140,24,196,163,248,2,0
+(1 row)
+
+-- Raw / bytea types (Typ=23)
+SELECT dump(E'\\x010203'::bytea, 16);
+     dump
+--------------
+ Typ=23 Len=3: 1,2,3
+(1 row)
+
+-- Format 17 with control characters
+SELECT dump(E'a\nb', 17);
+     dump
+--------------
+ Typ=1 Len=3: a,^J,b
+(1 row)
+
+SELECT dump(E'x\ty', 17);
+     dump
+--------------
+ Typ=1 Len=3: x,^I,y
+(1 row)
+
+-- NULL input yields NULL (Oracle semantics)
+SELECT dump(NULL::text);
+ dump
+------
+
+(1 row)
+
+SELECT dump(NULL::number);
+ dump
+------
+
+(1 row)
+
+SELECT dump(NULL::int4, 16);
+ dump
+------
+
+(1 row)
+
+-- Boundary edge cases: start_position beyond length, length exceeds remaining bytes
+SELECT dump('abc', 10, 5, 2);
+    dump
+-------------
+ Typ=1 Len=3:
+(1 row)
+
+SELECT dump('abc', 10, 2, 10);
+      dump
+----------------
+ Typ=1 Len=3: 98,99
+(1 row)
+
+SELECT dump('abc', 10, 0, 2);
+      dump
+----------------
+ Typ=1 Len=3: 97,98
+(1 row)
+
+-- Uncaught invalid format error verification (assert client ERROR output)
+SELECT dump('abc', 99);
+ERROR:  invalid return_fmt 99 for dump(); expected 8, 10, 16, 17, or 1000+format
+SELECT dump('abc', -1);
+ERROR:  invalid return_fmt -1 for dump(); expected 8, 10, 16, 17, or 1000+format
+
+-- Table storage and expressions with DUMP
+CREATE TABLE dump_test_tab (
+    id int4,
+    v_char char(10),
+    v_varchar2 varchar2(20),
+    v_num number,
+    v_raw raw(10)
+);
+CREATE TABLE
+INSERT INTO dump_test_tab VALUES (1, 'hello', 'world', 123.45, E'\\xdeadbeef'::bytea);
+INSERT 0 1
+INSERT INTO dump_test_tab VALUES (2, NULL, NULL, NULL, NULL);
+INSERT 0 1
+SELECT id,
+       dump(v_char, 10, 1, 5) AS dump_char,
+       dump(v_varchar2) AS dump_varchar2,
+       dump(v_num) AS dump_num,
+       dump(v_raw, 16) AS dump_raw
+  FROM dump_test_tab
+ ORDER BY id;
+ id |          dump_char           |     dump_varchar2     |            dump_num            |     dump_raw
+----+------------------------------+-----------------------+--------------------------------+------------------
+  1 | Typ=96 Len=10: 104,101,108,108,111 | Typ=1 Len=5: 119,111,114,108,100 | Typ=2 Len=6: 0,2,0,1,0,123     | Typ=23 Len=4: de,ad,be,ef
+  2 |                              |                       |                                |
+(2 rows)
+
+DROP TABLE dump_test_tab;
+DROP TABLE
+
+-- Catalog contract verification for sys.dump overloads
+SELECT p.proname, p.pronargs, p.prorettype::regtype, p.provolatile, p.proparallel
+  FROM pg_catalog.pg_proc p
+  JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+ WHERE n.nspname = 'sys'
+   AND p.proname = 'dump'
+ ORDER BY p.pronargs;
+ proname | pronargs | prorettype | provolatile | proparallel
+---------+----------+------------+-------------+-------------
+ dump    |        1 | text       | i           | s
+ dump    |        2 | text       | i           | s
+ dump    |        3 | text       | i           | s
+ dump    |        4 | text       | i           | s
+(4 rows)
+
+
