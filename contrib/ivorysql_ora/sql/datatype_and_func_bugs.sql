@@ -17,6 +17,13 @@ END;
 
 alter session set NLS_DATE_FORMAT='yyyy-mm-dd hh24:mi:ss';
 select add_months('2022-08-23',3) from dual;
+select add_months(date '2020-01-31', 1.5) from dual;
+select add_months(date '2020-01-31', 1.9) from dual;
+select add_months(date '2020-03-31', -1.5) from dual;
+select add_months(date '2020-03-31', -0.5) from dual;
+select add_months(date '2020-03-31', 0.5) from dual;
+select add_months(date '2020-03-31', -12.5) from dual;
+select add_months(date '2020-03-31', 2.0) from dual;
 alter session set NLS_LENGTH_SEMANTICS='BYTE';
 create table char_tb(char_clo char(3));
 insert into char_tb values('测试');
