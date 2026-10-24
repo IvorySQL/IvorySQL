@@ -274,6 +274,9 @@ insert into datetest values (NUMTODSINTERVAL(678,'second'));
 select * from datetest;
 drop table datetest;
 
+-- The invalid-unit error must identify NUMTODSINTERVAL, not NUMTOYMINTERVAL.
+select numtodsinterval(1, 'xxx');
+
 --NUMTOYMINTERVAL
 create table datetest (aa interval year(3) to month);
 

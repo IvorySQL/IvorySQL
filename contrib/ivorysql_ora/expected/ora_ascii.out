@@ -32,6 +32,13 @@ select ascii('xyz') from dual;
    120
 (1 row)
 
+-- UTF-8 multibyte characters return their Unicode code point, not the first byte.
+select ascii('日') from dual;
+ ascii 
+-------
+ 26085
+(1 row)
+
 select ascii(to_char('2026-01-01'::date,'DD-MON-YYYY HH24:MI:SS')) from dual;
  ascii 
 -------
@@ -55,4 +62,3 @@ select ascii('') is null from dual;
 ----------
  t
 (1 row)
-

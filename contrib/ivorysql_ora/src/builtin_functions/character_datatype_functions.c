@@ -2519,6 +2519,7 @@ ora_to_single_byte(PG_FUNCTION_ARGS)
  */
 extern Datum binary_float_out(PG_FUNCTION_ARGS);
 extern Datum binary_double_out(PG_FUNCTION_ARGS);
+extern Datum ascii(PG_FUNCTION_ARGS);
 
 Datum
 ora_ascii(PG_FUNCTION_ARGS)
@@ -2554,10 +2555,16 @@ ora_ascii(PG_FUNCTION_ARGS)
         }
 		case  ORACHARCHAROID: 
 		case  ORAVARCHARCHAROID : {
-			/* char, varchar, varchar2 */
+			/* char, varchar, varchar2: empty string is NULL (Oracle), else
+			 * return the code point of the first character */
 			text *txt = PG_GETARG_TEXT_PP(0);
-            str = text_to_cstring(txt);
-            break;
+
+			if (VARSIZE_ANY_EXHDR(txt) == 0)
+			{
+				fcinfo->isnull = true;
+				PG_RETURN_VOID();
+			}
+			PG_RETURN_DATUM(DirectFunctionCall1(ascii, PG_GETARG_DATUM(0)));
 		}
 		case ORADATEOID: {
 			Timestamp	timestamp = PG_GETARG_TIMESTAMP(0);
