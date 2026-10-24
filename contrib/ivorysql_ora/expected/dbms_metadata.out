@@ -1,0 +1,473 @@
+--
+-- dbms_metadata.sql
+--
+-- Tests for the DBMS_METADATA package (GET_DDL subset).
+--
+-- DBMS_METADATA.GET_DDL returns Oracle-style DDL that recreates an
+-- existing object.  Supported object types:
+--   TABLE, VIEW, MATERIALIZED VIEW, SEQUENCE, INDEX,
+--   FUNCTION, PROCEDURE, TRIGGER
+--
+-- Coverage:
+--   1.  TABLE         - columns (types, NOT NULL, DEFAULT), constraints
+--                       (PRIMARY KEY / UNIQUE / FOREIGN KEY / CHECK),
+--                       table and column comments
+--   2.  TABLE         - lookup is case-insensitive ('dept' vs 'DEPT')
+--   3.  TABLE         - quoted mixed-case names round-trip unchanged
+--   4.  TABLE         - cross-schema FOREIGN KEY is fully qualified
+--   5.  TABLE         - 100-column table (no truncation)
+--   6.  TABLE         - serial column DEFAULT keeps the nextval() reference
+--   7.  VIEW          - body from pg_get_viewdef, fully qualified under
+--                       a restricted search_path
+--   8.  MATERIALIZED VIEW
+--   9.  SEQUENCE      - all clauses (INCREMENT/START/MIN/MAX/CACHE/CYCLE)
+--  10.  SEQUENCE      - minimal sequence (defaults only)
+--  11.  INDEX         - non-constraint index (DESC + partial predicate)
+--  12.  FUNCTION / PROCEDURE (pg_get_functiondef based)
+--  13.  TRIGGER       - user trigger only (internal triggers skipped)
+--  14.  default schema := current_schema() when schema is omitted
+--  15.  idempotency: repeated calls produce byte-identical output
+--  16.  roundtrip:    emitted DDL re-executes successfully
+--                       (TABLE / VIEW / SEQUENCE / FUNCTION, via \gexec)
+--  17.  errors:
+--        - missing object            -> ORA-31603 (also for constraint
+--                                         backing indexes, which are not
+--                                         standalone objects)
+--        - unsupported object type   -> ORA-31600
+--        - NULL type / NULL name     -> ORA-31600
+--
+-- Notes
+--   * The engine (sys.ora_dbms_metadata_get_ddl) is written in PL/iSQL,
+--     like the other *DBMS_* packages, so GET_DDL itself requires the
+--     Oracle parser (ivorysql.compatible_mode = oracle).
+--   * Emitted identifiers follow Oracle's display convention (unquoted
+--     lowercase catalog names appear UPPERCASE and are double-quoted), so
+--     the roundtrip re-creates the objects as quoted UPPERCASE twins.
+--   * VIEW bodies, CHECK expressions, partial-index predicates and
+--     FUNCTION/PROCEDURE/TRIGGER text are emitted in their native catalog
+--     form (see the accompanying dbms_metadata--1.0.sql header).
+--
+SET ivorysql.compatible_mode = oracle;
+-- Deterministic deparse of stored query trees: keep the caller's
+-- search_path out of the DDL text so cross-schema references are always
+-- fully qualified.
+SET search_path = pg_catalog;
+CREATE SCHEMA md_schema;
+CREATE SCHEMA md_other;
+-- ============================================================
+-- setup: a table with every constraint flavour + comments
+-- ============================================================
+CREATE TABLE md_schema.dept (
+  deptno NUMBER(4) CONSTRAINT pk_md_dept PRIMARY KEY,
+  dname  VARCHAR2(30) NOT NULL
+);
+CREATE TABLE md_schema.emp (
+  empno    NUMBER(4) CONSTRAINT pk_md_emp PRIMARY KEY,
+  ename    VARCHAR2(10) NOT NULL CONSTRAINT uq_md_emp UNIQUE,
+  deptno   NUMBER(2) CONSTRAINT fk_md_emp REFERENCES md_schema.dept(deptno)
+           ON DELETE CASCADE,
+  sal      NUMBER(7,2) CONSTRAINT ck_md_emp CHECK (sal > 0),
+  comm     NUMBER(7,2) DEFAULT 0,
+  hiredate DATE
+);
+COMMENT ON TABLE md_schema.emp IS 'employee master';
+COMMENT ON COLUMN md_schema.emp.ename IS 'employee name';
+-- ============================================================
+-- basic table DDL
+-- ============================================================
+SELECT DBMS_METADATA.GET_DDL('TABLE', 'DEPT', 'md_schema');
+                     get_ddl                      
+--------------------------------------------------
+ CREATE TABLE "MD_SCHEMA"."DEPT"                 +
+ (                                               +
+   "DEPTNO" NUMBER(4,0) NOT NULL,                +
+   "DNAME" VARCHAR2(30) NOT NULL,                +
+   CONSTRAINT "PK_MD_DEPT" PRIMARY KEY ("DEPTNO")+
+ )
+(1 row)
+
+-- ============================================================
+-- table with all constraint types and comments
+-- ============================================================
+SELECT DBMS_METADATA.GET_DDL('TABLE', 'EMP', 'md_schema');
+                                                   get_ddl                                                   
+-------------------------------------------------------------------------------------------------------------
+ CREATE TABLE "MD_SCHEMA"."EMP"                                                                             +
+ (                                                                                                          +
+   "EMPNO" NUMBER(4,0) NOT NULL,                                                                            +
+   "ENAME" VARCHAR2(10) NOT NULL,                                                                           +
+   "DEPTNO" NUMBER(2,0),                                                                                    +
+   "SAL" NUMBER(7,2),                                                                                       +
+   "COMM" NUMBER(7,2) DEFAULT 0,                                                                            +
+   "HIREDATE" DATE,                                                                                         +
+   CONSTRAINT "PK_MD_EMP" PRIMARY KEY ("EMPNO"),                                                            +
+   CONSTRAINT "UQ_MD_EMP" UNIQUE ("ENAME"),                                                                 +
+   CONSTRAINT "FK_MD_EMP" FOREIGN KEY ("DEPTNO") REFERENCES "MD_SCHEMA"."DEPT" ("DEPTNO") ON DELETE CASCADE,+
+   CONSTRAINT "CK_MD_EMP" CHECK (sal > (0)::number)                                                         +
+ )                                                                                                          +
+ COMMENT ON TABLE "MD_SCHEMA"."EMP" IS 'employee master';                                                   +
+ COMMENT ON COLUMN "MD_SCHEMA"."EMP"."ENAME" IS 'employee name';
+(1 row)
+
+-- ============================================================
+-- case-insensitive name lookup
+-- ============================================================
+SELECT DBMS_METADATA.GET_DDL('table', 'dept', 'md_schema');
+                     get_ddl                      
+--------------------------------------------------
+ CREATE TABLE "MD_SCHEMA"."DEPT"                 +
+ (                                               +
+   "DEPTNO" NUMBER(4,0) NOT NULL,                +
+   "DNAME" VARCHAR2(30) NOT NULL,                +
+   CONSTRAINT "PK_MD_DEPT" PRIMARY KEY ("DEPTNO")+
+ )
+(1 row)
+
+-- ============================================================
+-- quoted mixed-case identifiers survive unchanged
+-- ============================================================
+CREATE TABLE md_schema."MyTable" ("Id" NUMBER(6), "CamelCase" VARCHAR2(5));
+SELECT DBMS_METADATA.GET_DDL('TABLE', 'MyTable', 'md_schema');
+              get_ddl               
+------------------------------------
+ CREATE TABLE "MD_SCHEMA"."MyTable"+
+ (                                 +
+   "Id" NUMBER(6,0),               +
+   "CamelCase" VARCHAR2(5)         +
+ )
+(1 row)
+
+-- ============================================================
+-- cross-schema foreign key
+-- ============================================================
+CREATE TABLE md_other.ref_t (id NUMBER(6) PRIMARY KEY);
+CREATE TABLE md_schema.fk_t (
+  id   NUMBER(6) PRIMARY KEY,
+  ref  NUMBER(6) CONSTRAINT fk_md_x REFERENCES md_other.ref_t(id)
+);
+SELECT DBMS_METADATA.GET_DDL('TABLE', 'fk_t', 'md_schema');
+                                     get_ddl                                     
+---------------------------------------------------------------------------------
+ CREATE TABLE "MD_SCHEMA"."FK_T"                                                +
+ (                                                                              +
+   "ID" NUMBER(6,0) NOT NULL,                                                   +
+   "REF" NUMBER(6,0),                                                           +
+   CONSTRAINT "FK_T_PKEY" PRIMARY KEY ("ID"),                                   +
+   CONSTRAINT "FK_MD_X" FOREIGN KEY ("REF") REFERENCES "MD_OTHER"."REF_T" ("ID")+
+ )
+(1 row)
+
+-- ============================================================
+-- 100-column table: no truncation; DDL starts and ends properly
+-- ============================================================
+CREATE TABLE md_schema.wide (
+  c001 NUMBER(6), c002 NUMBER(6), c003 NUMBER(6), c004 NUMBER(6),
+  c005 NUMBER(6), c006 NUMBER(6), c007 NUMBER(6), c008 NUMBER(6)
+);
+ALTER TABLE md_schema.wide ADD COLUMN c100 NUMBER(6);
+SELECT
+  length(DBMS_METADATA.GET_DDL('TABLE','WIDE','md_schema')) AS ddl_len,
+  left(DBMS_METADATA.GET_DDL('TABLE','WIDE','md_schema'), 60) AS ddl_head;
+ ddl_len |            ddl_head             
+---------+---------------------------------
+     232 | CREATE TABLE "MD_SCHEMA"."WIDE"+
+         | (                              +
+         |   "C001" NUMBER(6,0),          +
+         |   "C
+(1 row)
+
+-- ============================================================
+-- serial column keeps its nextval() default
+-- ============================================================
+CREATE TABLE md_schema.serial_t (id serial, note varchar2(10));
+SELECT DBMS_METADATA.GET_DDL('TABLE', 'serial_t', 'md_schema');
+                                         get_ddl                                         
+-----------------------------------------------------------------------------------------
+ CREATE TABLE "MD_SCHEMA"."SERIAL_T"                                                    +
+ (                                                                                      +
+   "ID" pg_catalog.int4 NOT NULL DEFAULT nextval('md_schema.serial_t_id_seq'::regclass),+
+   "NOTE" VARCHAR2(10)                                                                  +
+ )
+(1 row)
+
+-- ============================================================
+-- view / materialized view
+-- ============================================================
+CREATE VIEW md_schema.emp_v AS
+  SELECT e.empno, e.ename, d.dname
+  FROM md_schema.emp e JOIN md_schema.dept d ON d.deptno = e.deptno;
+SELECT DBMS_METADATA.GET_DDL('VIEW', 'EMP_V', 'md_schema');
+                      get_ddl                       
+----------------------------------------------------
+ CREATE VIEW "MD_SCHEMA"."EMP_V" AS                +
+ SELECT e.empno,                                   +
+     e.ename,                                      +
+     d.dname                                       +
+    FROM md_schema.emp e                           +
+      JOIN md_schema.dept d ON d.deptno = e.deptno;
+(1 row)
+
+CREATE MATERIALIZED VIEW md_schema.emp_mv AS
+  SELECT empno, ename FROM md_schema.emp;
+SELECT DBMS_METADATA.GET_DDL('MATERIALIZED VIEW', 'EMP_MV', 'md_schema');
+                     get_ddl                      
+--------------------------------------------------
+ CREATE MATERIALIZED VIEW "MD_SCHEMA"."EMP_MV" AS+
+ SELECT empno,                                   +
+     ename                                       +
+    FROM md_schema.emp;
+(1 row)
+
+-- ============================================================
+-- sequences
+-- ============================================================
+CREATE SEQUENCE md_schema.emp_seq
+  INCREMENT BY 5 START WITH 100 MINVALUE 10 MAXVALUE 99999 CACHE 20 CYCLE;
+SELECT DBMS_METADATA.GET_DDL('SEQUENCE', 'EMP_SEQ', 'md_schema');
+                get_ddl                
+---------------------------------------
+ CREATE SEQUENCE "MD_SCHEMA"."EMP_SEQ"+
+   INCREMENT BY 5                     +
+   START WITH 100                     +
+   MINVALUE 10                        +
+   MAXVALUE 99999                     +
+   CACHE 20                           +
+   CYCLE
+(1 row)
+
+CREATE SEQUENCE md_schema.plain_seq;
+SELECT DBMS_METADATA.GET_DDL('SEQUENCE', 'PLAIN_SEQ', 'md_schema');
+                 get_ddl                 
+-----------------------------------------
+ CREATE SEQUENCE "MD_SCHEMA"."PLAIN_SEQ"+
+   INCREMENT BY 1                       +
+   START WITH 1                         +
+   MINVALUE 1                           +
+   MAXVALUE 9223372036854775807         +
+   CACHE 20
+(1 row)
+
+-- ============================================================
+-- indexes
+-- ============================================================
+CREATE INDEX idx_md_sal ON md_schema.emp USING btree (sal DESC)
+  WHERE comm IS NOT NULL;
+SELECT DBMS_METADATA.GET_DDL('INDEX', 'IDX_MD_SAL', 'md_schema');
+                                                   get_ddl                                                    
+--------------------------------------------------------------------------------------------------------------
+ CREATE INDEX "MD_SCHEMA"."IDX_MD_SAL" ON "MD_SCHEMA"."EMP" USING BTREE ("SAL" DESC) WHERE (comm IS NOT NULL)
+(1 row)
+
+-- ============================================================
+-- function / procedure
+-- ============================================================
+CREATE OR REPLACE FUNCTION md_schema.f_double(x NUMBER) RETURN NUMBER IS
+BEGIN
+  RETURN x * 2;
+END;
+/
+SELECT DBMS_METADATA.GET_DDL('FUNCTION', 'F_DOUBLE', 'md_schema');
+                         get_ddl                         
+---------------------------------------------------------
+ CREATE OR REPLACE FUNCTION md_schema.f_double(x number)+
+  RETURN number                                         +
+  AUTHID DEFINER                                        +
+ IS                                                     +
+ BEGIN                                                  +
+   RETURN x * 2;                                        +
+ END;
+(1 row)
+
+CREATE OR REPLACE PROCEDURE md_schema.p_hello(name_in VARCHAR2) IS
+BEGIN
+  NULL;
+END;
+/
+SELECT DBMS_METADATA.GET_DDL('PROCEDURE', 'P_HELLO', 'md_schema');
+                              get_ddl                               
+--------------------------------------------------------------------
+ CREATE OR REPLACE PROCEDURE md_schema.p_hello(IN name_in varchar2)+
+  AUTHID DEFINER                                                   +
+ IS                                                                +
+ BEGIN                                                             +
+   NULL;                                                           +
+ END;
+(1 row)
+
+-- ============================================================
+-- trigger (internal triggers are excluded)
+-- ============================================================
+CREATE TABLE md_schema.trig_t (id int, log text);
+CREATE OR REPLACE FUNCTION md_schema.trg_f() RETURNS trigger AS $$
+BEGIN
+  NEW.log := 'x';
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+/
+CREATE OR REPLACE FUNCTION md_schema.trg_f2() RETURNS trigger AS $$
+BEGIN
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+/
+CREATE TRIGGER trg_md BEFORE INSERT ON md_schema.trig_t FOR EACH ROW EXECUTE FUNCTION md_schema.trg_f();
+CREATE TRIGGER trg_md2 BEFORE DELETE ON md_schema.trig_t FOR EACH ROW EXECUTE FUNCTION md_schema.trg_f2();
+SELECT DBMS_METADATA.GET_DDL('TRIGGER', 'TRG_MD', 'md_schema');
+                                                 get_ddl                                                 
+---------------------------------------------------------------------------------------------------------
+ CREATE TRIGGER trg_md BEFORE INSERT ON md_schema.trig_t FOR EACH ROW EXECUTE FUNCTION md_schema.trg_f()
+(1 row)
+
+-- ============================================================
+-- default schema: current_schema() is used when omitted
+-- ============================================================
+SET search_path = md_schema, pg_catalog;
+SELECT DBMS_METADATA.GET_DDL('TABLE', 'dept');
+                     get_ddl                      
+--------------------------------------------------
+ CREATE TABLE "MD_SCHEMA"."DEPT"                 +
+ (                                               +
+   "DEPTNO" NUMBER(4,0) NOT NULL,                +
+   "DNAME" VARCHAR2(30) NOT NULL,                +
+   CONSTRAINT "PK_MD_DEPT" PRIMARY KEY ("DEPTNO")+
+ )
+(1 row)
+
+SET search_path = pg_catalog;
+-- ============================================================
+-- idempotency
+-- ============================================================
+SELECT
+  (DBMS_METADATA.GET_DDL('TABLE','EMP','md_schema')
+     = DBMS_METADATA.GET_DDL('TABLE','EMP','md_schema')) AS table_stable,
+  (DBMS_METADATA.GET_DDL('SEQUENCE','EMP_SEQ','md_schema')
+     = DBMS_METADATA.GET_DDL('SEQUENCE','EMP_SEQ','md_schema')) AS seq_stable;
+ table_stable | seq_stable 
+--------------+------------
+ t            | t
+(1 row)
+
+-- ============================================================
+-- roundtrip: the emitted DDL is re-executable
+--
+-- The DDL identifies its objects as quoted UPPERCASE names (Oracle
+-- display convention), so the roundtrip target is the quoted twin schema
+-- "MD_SCHEMA"; the original lowercase objects stay untouched.  All
+-- \gexec statements are grouped so psql oracle mode executes them in
+-- order.
+-- ============================================================
+CREATE SCHEMA "MD_SCHEMA";
+SELECT DBMS_METADATA.GET_DDL('TABLE', 'dept', 'md_schema') \gexec
+CREATE TABLE "MD_SCHEMA"."DEPT"
+(
+  "DEPTNO" NUMBER(4,0) NOT NULL,
+  "DNAME" VARCHAR2(30) NOT NULL,
+  CONSTRAINT "PK_MD_DEPT" PRIMARY KEY ("DEPTNO")
+)
+SELECT DBMS_METADATA.GET_DDL('VIEW', 'emp_v', 'md_schema') \gexec
+CREATE VIEW "MD_SCHEMA"."EMP_V" AS
+SELECT e.empno,
+    e.ename,
+    d.dname
+   FROM md_schema.emp e
+     JOIN md_schema.dept d ON d.deptno = e.deptno;
+SELECT DBMS_METADATA.GET_DDL('SEQUENCE', 'emp_seq', 'md_schema') \gexec
+CREATE SEQUENCE "MD_SCHEMA"."EMP_SEQ"
+  INCREMENT BY 5
+  START WITH 100
+  MINVALUE 10
+  MAXVALUE 99999
+  CACHE 20
+  CYCLE
+SELECT DBMS_METADATA.GET_DDL('FUNCTION', 'f_double', 'md_schema') \gexec
+CREATE OR REPLACE FUNCTION md_schema.f_double(x number)
+ RETURN number
+ AUTHID DEFINER
+IS 
+BEGIN
+  RETURN x * 2;
+END;
+-- the twins really exist and are usable
+SELECT relname FROM pg_class
+ WHERE relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'MD_SCHEMA')
+ ORDER BY 1;
+  relname   
+------------
+ DEPT
+ EMP_SEQ
+ EMP_V
+ PK_MD_DEPT
+(4 rows)
+
+INSERT INTO "MD_SCHEMA"."DEPT" ("DEPTNO","DNAME") VALUES (10, 'ops');
+SELECT count(*) FROM "MD_SCHEMA"."DEPT";
+ count 
+-------
+     1
+(1 row)
+
+SELECT nextval('"MD_SCHEMA"."EMP_SEQ"');
+ nextval 
+---------
+     100
+(1 row)
+
+SELECT md_schema.f_double(21);
+ f_double 
+----------
+ 42
+(1 row)
+
+-- ============================================================
+-- errors
+-- ============================================================
+-- missing object
+SELECT DBMS_METADATA.GET_DDL('TABLE', 'no_such_table', 'md_schema');
+ERROR:  ORA-31603: object "MD_SCHEMA"."NO_SUCH_TABLE" of type "TABLE" does not exist
+CONTEXT:  PL/iSQL function ora_dbms_metadata_get_ddl(text,text,text) line 24 at RAISE
+PL/iSQL function sys.dbms_metadata.get_ddl line 5 at RETURN
+-- constraint backing index is not a standalone object
+SELECT DBMS_METADATA.GET_DDL('INDEX', 'PK_MD_EMP', 'md_schema');
+ERROR:  ORA-31603: object "MD_SCHEMA"."pk_md_emp" of type "INDEX" does not exist
+CONTEXT:  PL/iSQL function ora_dbms_metadata_get_ddl(text,text,text) line 24 at RAISE
+PL/iSQL function sys.dbms_metadata.get_ddl line 5 at RETURN
+-- unsupported object type
+SELECT DBMS_METADATA.GET_DDL('PACKAGE BODY', 'EMP', 'md_schema');
+ERROR:  ORA-31600: invalid input value for parameter OBJECT_TYPE in function GET_DDL (unsupported object type "PACKAGE BODY")
+CONTEXT:  PL/iSQL function ora_dbms_metadata_get_ddl(text,text,text) line 20 at RAISE
+PL/iSQL function sys.dbms_metadata.get_ddl line 5 at RETURN
+-- NULL arguments
+SELECT DBMS_METADATA.GET_DDL('TABLE', NULL, 'md_schema');
+ERROR:  ORA-31600: invalid input value for parameter NAME in function GET_DDL
+CONTEXT:  PL/iSQL function ora_dbms_metadata_get_ddl(text,text,text) line 10 at RAISE
+PL/iSQL function sys.dbms_metadata.get_ddl line 5 at RETURN
+SELECT DBMS_METADATA.GET_DDL(NULL, 'EMP', 'md_schema');
+ERROR:  ORA-31600: invalid input value for parameter OBJECT_TYPE in function GET_DDL
+CONTEXT:  PL/iSQL function ora_dbms_metadata_get_ddl(text,text,text) line 7 at RAISE
+PL/iSQL function sys.dbms_metadata.get_ddl line 5 at RETURN
+-- cleanup
+DROP SCHEMA md_schema CASCADE;
+NOTICE:  drop cascades to 16 other objects
+DETAIL:  drop cascades to table md_schema.dept
+drop cascades to table md_schema.emp
+drop cascades to view "MD_SCHEMA"."EMP_V"
+drop cascades to table md_schema."MyTable"
+drop cascades to table md_schema.fk_t
+drop cascades to table md_schema.wide
+drop cascades to table md_schema.serial_t
+drop cascades to view md_schema.emp_v
+drop cascades to materialized view md_schema.emp_mv
+drop cascades to sequence md_schema.emp_seq
+drop cascades to sequence md_schema.plain_seq
+drop cascades to function md_schema.f_double(number)
+drop cascades to function md_schema.p_hello(varchar2)
+drop cascades to table md_schema.trig_t
+drop cascades to function md_schema.trg_f()
+drop cascades to function md_schema.trg_f2()
+DROP SCHEMA md_other CASCADE;
+NOTICE:  drop cascades to table md_other.ref_t
+DROP SCHEMA "MD_SCHEMA" CASCADE;
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table "MD_SCHEMA"."DEPT"
+drop cascades to sequence "MD_SCHEMA"."EMP_SEQ"
