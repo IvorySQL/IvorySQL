@@ -2288,7 +2288,7 @@ plisql_parse_package_entry(const char *refname, int lineno,
 	plisql_push_compile_global_proper();
 	/*
 	 *
-	 * when errors happend, we should recover
+	 * when errors happened, we should recover
 	 * some global variables
 	 */
 	PG_TRY();
