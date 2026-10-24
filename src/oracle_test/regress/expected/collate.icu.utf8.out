@@ -1315,7 +1315,7 @@ SELECT 'abc' LIKE 'abc' COLLATE ctest_det;
 SELECT 'abc' LIKE 'a\bc' COLLATE ctest_det;
  ?column? 
 ----------
- t
+ f
 (1 row)
 
 SELECT 'abc' LIKE 'abc' COLLATE ctest_nondet;
@@ -1327,7 +1327,7 @@ SELECT 'abc' LIKE 'abc' COLLATE ctest_nondet;
 SELECT 'abc' LIKE 'a\bc' COLLATE ctest_nondet;
  ?column? 
 ----------
- t
+ f
 (1 row)
 
 CREATE TABLE test6 (a int, b text);
@@ -1486,19 +1486,19 @@ SELECT 'AB' LIKE 'ab' COLLATE case_insensitive AS t;
 SELECT 'AB' LIKE 'a\b' COLLATE case_insensitive AS t;
  t 
 ---
- t
+ f
 (1 row)
 
 SELECT 'AB' LIKE '\ab' COLLATE case_insensitive AS t;
  t 
 ---
- t
+ f
 (1 row)
 
 SELECT 'AB' LIKE '\a%' COLLATE case_insensitive AS t;
  t 
 ---
- t
+ f
 (1 row)
 
 SELECT 'AB' LIKE '\a\%' COLLATE case_insensitive AS f;
@@ -3035,7 +3035,11 @@ SELECT U&'\0061\0308bc' LIKE U&'_\00e4bc' COLLATE ignore_accents;
 
 -- escape character at end of pattern
 SELECT 'foox' LIKE 'foo\' COLLATE ignore_accents;
-ERROR:  LIKE pattern must not end with escape character
+ ?column? 
+----------
+ f
+(1 row)
+
 -- literal backslash with nondeterministic collation (bug #19474)
 SELECT 'back\slash' COLLATE ignore_accents LIKE 'back\slash%' ESCAPE '#';
  ?column? 
@@ -3044,11 +3048,7 @@ SELECT 'back\slash' COLLATE ignore_accents LIKE 'back\slash%' ESCAPE '#';
 (1 row)
 
 SELECT 'aäb' COLLATE ignore_accents LIKE 'a#äb' ESCAPE '#' AS multibyte_escape;
- multibyte_escape 
-------------------
- t
-(1 row)
-
+ERROR:  missing or illegal character following the escape character
 SELECT 'a\äb' COLLATE ignore_accents LIKE 'a\äb%' ESCAPE '#' AS backslash_multibyte;
  backslash_multibyte 
 ---------------------
@@ -3056,11 +3056,7 @@ SELECT 'a\äb' COLLATE ignore_accents LIKE 'a\äb%' ESCAPE '#' AS backslash_mult
 (1 row)
 
 SELECT 'a\b%c' COLLATE ignore_accents LIKE 'a#\b#%%c' ESCAPE '#' AS mixed_escapes;
- mixed_escapes 
----------------
- t
-(1 row)
-
+ERROR:  missing or illegal character following the escape character
 SELECT 'backslash' COLLATE ignore_accents LIKE 'back\\slash%';
  ?column? 
 ----------

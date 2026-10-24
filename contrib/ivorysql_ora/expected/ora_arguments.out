@@ -289,6 +289,21 @@ SELECT count(*) AS typed_rows FROM all_arguments WHERE package_name = 'ARGS_TYPE
           5
 (1 row)
 
+-- Repeated cache resets must not reuse discarded compiler state.
+DISCARD PACKAGE;
+SELECT count(*) AS typed_rows FROM all_arguments WHERE package_name = 'ARGS_TYPES_PKG';
+ typed_rows 
+------------
+          5
+(1 row)
+
+SELECT current_user = 'regress_args_reader'
+       AND current_setting('search_path') = 'public, sys' AS context_restored;
+ context_restored 
+------------------
+ t
+(1 row)
+
 SELECT package_name, object_name, count(*) AS argument_rows
 FROM all_arguments WHERE package_name = 'ARGS_PKG' OR object_name = 'ARGS_MIXED'
 GROUP BY package_name, object_name ORDER BY package_name NULLS FIRST, object_name;

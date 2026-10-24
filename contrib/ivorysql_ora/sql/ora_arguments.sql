@@ -157,6 +157,11 @@ SET SEARCH_PATH = public, sys;
 DISCARD PACKAGE;
 -- Compile %TYPE references in the package schema, independent of caller path.
 SELECT count(*) AS typed_rows FROM all_arguments WHERE package_name = 'ARGS_TYPES_PKG';
+-- Repeated cache resets must not reuse discarded compiler state.
+DISCARD PACKAGE;
+SELECT count(*) AS typed_rows FROM all_arguments WHERE package_name = 'ARGS_TYPES_PKG';
+SELECT current_user = 'regress_args_reader'
+       AND current_setting('search_path') = 'public, sys' AS context_restored;
 SELECT package_name, object_name, count(*) AS argument_rows
 FROM all_arguments WHERE package_name = 'ARGS_PKG' OR object_name = 'ARGS_MIXED'
 GROUP BY package_name, object_name ORDER BY package_name NULLS FIRST, object_name;

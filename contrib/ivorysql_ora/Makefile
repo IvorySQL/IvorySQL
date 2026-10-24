@@ -73,6 +73,7 @@ ORA_REGRESS = \
 	ora_sysview \
 	ora_arguments \
 	ora_like_operator \
+	ora_like_bigint \
 	ora_xml_functions \
 	ora_dbms_output
 

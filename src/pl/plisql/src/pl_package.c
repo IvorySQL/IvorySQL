@@ -2137,6 +2137,7 @@ plisql_push_compile_global_proper(void)
 
 	/* come from pl_funcs.c */
 	plisql_saved_compile_proper[plisql_curr_global_proper_level].ns_top = plisql_ns_top();
+	plisql_saved_compile_proper[plisql_curr_global_proper_level].metadata_frame = false;
 
 	/* maybe add pl_udttype.h in further */
 	plisql_curr_global_proper_level++;
@@ -2759,8 +2760,11 @@ get_current_compile_package(PackageCacheKey key)
 	int			pkg_ndatums;
 	int			pkg_nsubprocfuncs;
 
+	/* Dictionary reads can save an empty or already discarded compiler. */
 	for (i = 0; i < plisql_curr_global_proper_level; i++)
-		if (plisql_saved_compile_proper[i].plisql_saved_compile[0]->item != NULL &&
+		if (!plisql_saved_compile_proper[i].metadata_frame &&
+			plisql_saved_compile_proper[i].plisql_saved_compile[0] != NULL &&
+			plisql_saved_compile_proper[i].plisql_saved_compile[0]->item != NULL &&
 			plisql_saved_compile_proper[i].plisql_saved_compile[0]->item->pkey == key)
 			break;
 
@@ -3302,6 +3306,8 @@ plisql_package_compile_for_metadata(Oid pkgoid)
 	ReleaseSysCache(tup);
 
 	plisql_push_compile_global_proper();
+	/* Preserve caller globals without treating them as an active compiler. */
+	plisql_saved_compile_proper[plisql_curr_global_proper_level - 1].metadata_frame = true;
 	BeginInternalSubTransaction(NULL);
 	PG_TRY();
 	{

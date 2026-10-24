@@ -4851,10 +4851,9 @@ select * from test2 where t like '%bcd%';
 (1 row)
 
 select * from test2 where t like E'%\\bcd%';
-   t    
---------
- abcdef
-(1 row)
+ t 
+---
+(0 rows)
 
 select * from test2 where t ilike '%BCD%';
    t    
@@ -5143,10 +5142,9 @@ select * from test2 where t like '%bcd%';
 (1 row)
 
 select * from test2 where t like E'%\\bcd%';
-   t    
---------
- abcdef
-(1 row)
+ t 
+---
+(0 rows)
 
 select * from test2 where t ilike '%BCD%';
    t    

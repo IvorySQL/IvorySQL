@@ -477,17 +477,17 @@ SELECT 'a_c'::bytea LIKE 'a$__'::bytea ESCAPE '$'::bytea AS "true";
 SELECT 'a_c'::bytea NOT LIKE 'a$__'::bytea ESCAPE '$'::bytea AS "false";
 
 -- escape character same as pattern character
-SELECT 'maca' LIKE 'm%aca' ESCAPE '%' AS "true";
-SELECT 'maca' NOT LIKE 'm%aca' ESCAPE '%' AS "false";
+SELECT 'maca' LIKE 'm%aca' ESCAPE '%' AS "error";
+SELECT 'maca' NOT LIKE 'm%aca' ESCAPE '%' AS "error";
 
-SELECT 'ma%a' LIKE 'm%a%%a' ESCAPE '%' AS "true";
-SELECT 'ma%a' NOT LIKE 'm%a%%a' ESCAPE '%' AS "false";
+SELECT 'ma%a' LIKE 'm%a%%a' ESCAPE '%' AS "error";
+SELECT 'ma%a' NOT LIKE 'm%a%%a' ESCAPE '%' AS "error";
 
-SELECT 'bear' LIKE 'b_ear' ESCAPE '_' AS "true";
-SELECT 'bear' NOT LIKE 'b_ear' ESCAPE '_' AS "false";
+SELECT 'bear' LIKE 'b_ear' ESCAPE '_' AS "error";
+SELECT 'bear' NOT LIKE 'b_ear' ESCAPE '_' AS "error";
 
-SELECT 'be_r' LIKE 'b_e__r' ESCAPE '_' AS "true";
-SELECT 'be_r' NOT LIKE 'b_e__r' ESCAPE '_' AS "false";
+SELECT 'be_r' LIKE 'b_e__r' ESCAPE '_' AS "error";
+SELECT 'be_r' NOT LIKE 'b_e__r' ESCAPE '_' AS "error";
 
 SELECT 'be_r' LIKE '__e__r' ESCAPE '_' AS "false";
 SELECT 'be_r' NOT LIKE '__e__r' ESCAPE '_' AS "true";

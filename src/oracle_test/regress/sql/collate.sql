@@ -312,7 +312,7 @@ CREATE COLLATION coll_dup_chk (FROM = "C", VERSION = "1");
 EXPLAIN (COSTS OFF)
 SELECT * FROM pg_class WHERE relname ~ '^pg_class$' COLLATE "POSIX";
 EXPLAIN (COSTS OFF)
-SELECT * FROM pg_class WHERE relname LIKE 'pg\_class' COLLATE "POSIX";
+SELECT * FROM pg_class WHERE relname LIKE 'pg\_class' COLLATE "POSIX" ESCAPE '\';
 
 --
 -- Clean up.  Many of these table names will be re-used if the user is
