@@ -20,6 +20,7 @@ backend_sources += files(
   'parse_relation.c',
   'parse_target.c',
   'parse_type.c',
+  'parse_unpivot.c',
   'parse_utilcmd.c',
   'scansup.c',
   'parse_package.c',

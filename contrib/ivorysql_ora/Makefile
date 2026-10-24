@@ -46,7 +46,7 @@ OBJS = \
 EXTENSION = ivorysql_ora
 
 # SQL(s) which need to be generated only if which is specified here.
-DATA_built = ivorysql_ora--1.0.sql
+DATA_built = ivorysql_ora--1.0.sql ivorysql_ora--1.0--1.1.sql ivorysql_ora--1.1.sql
 
 install: install-data
 
@@ -124,4 +124,3 @@ endif
 ifeq ($(with_libxml),yes)
 SHLIB_LINK += -lxml2
 endif
-

@@ -42,6 +42,29 @@ my $first_arg = $ARGV[0];
 
 sql_merge();
 
+sub version_key
+{
+	my ($version) = @_;
+
+	return join('', map { sprintf("%09d", $_) } split(/\./, $version));
+}
+
+sub find_base_version
+{
+	my ($set, $target) = @_;
+	my @versions;
+
+	foreach my $file (glob("$set--*.sql"))
+	{
+		my ($version) = $file =~ /^\Q$set\E--([0-9]+\.[0-9]+)\.sql$/;
+		push @versions, $version
+			if defined($version) &&
+				version_key($version) le version_key($target);
+	}
+
+	return (sort { version_key($b) cmp version_key($a) } @versions)[0];
+}
+
 # The subroutine which does sql merge.
 #
 # usage example : 
@@ -112,20 +135,38 @@ sub sql_merge
 			croak "Invalid argument.\n";
 		}
 
-		# Write the contents of sql files
-		#     (src/subdirectory/filename--<version>.sql)
-		#     specified in ivorysql_ora_merge_sqls,
-		#     into ivorysql_ora--<version>.sql.
+		# Write the contents of SQL files specified by
+		# ivorysql_ora_merge_sqls.  A clean-install script without an exact
+		# source file is built from the latest base script plus its upgrade
+		# script, allowing later versions to reuse unchanged component SQL.
 		foreach my $set (@sql_set)
 		{
+			my @sources;
+
 			if (-e "$set--$v.sql")
+			{
+				push @sources, "$set--$v.sql";
+			}
+			elsif ($v =~ /^(\d+\.\d+)$/)
+			{
+				my $base = find_base_version($set, $v);
+
+				croak "No base SQL can be used to generate $set--$v.sql\n"
+					if !defined($base);
+				push @sources, "$set--$base.sql";
+				push @sources, "$set--$base--$v.sql"
+					if -e "$set--$base--$v.sql";
+			}
+
+			foreach my $source (@sources)
 			{
 				# Add a newline.
 				my $fh = ($first_arg eq 'meson') ? *STDOUT : *OUTFILE;
 				print $fh "\n";
 
 				# Open a sql file.
-				open(INFILE, "<", File::Spec->rel2abs("$set--$v.sql"));
+				open(INFILE, "<", File::Spec->rel2abs($source))
+					|| croak "Could not open file $source : $!";
 				while (my $line = <INFILE>)
 				{
 					# Delete the last tailing "\n" of this line.

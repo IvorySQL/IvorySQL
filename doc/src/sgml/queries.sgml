@@ -938,6 +938,97 @@ WHERE pname IS NULL;
 </programlisting>
     </para>
    </sect3>
+
+   <sect3 id="queries-unpivot">
+    <title>Oracle-compatible <literal>UNPIVOT</literal></title>
+
+    <indexterm zone="queries-unpivot">
+     <primary>UNPIVOT</primary>
+     <secondary>in the FROM clause</secondary>
+    </indexterm>
+
+    <para>
+     In Oracle compatibility mode, an <literal>UNPIVOT</literal> clause
+     converts columns of a table expression into rows.  Its syntax is:
+<synopsis>
+<replaceable>table_reference</replaceable>
+UNPIVOT <optional>{ INCLUDE | EXCLUDE } NULLS</optional>
+    ( <replaceable>measure_column</replaceable>
+      FOR <replaceable>descriptor_column</replaceable>
+      IN ( <replaceable>input_column</replaceable>
+           <optional>AS <replaceable>label</replaceable></optional>
+           <optional>, ...</optional> ) )
+</synopsis>
+     Multiple measure columns and multiple descriptor columns can be written
+     as parenthesized lists.  A row is generated for each input item, with
+     the input value assigned to the measure column and its label assigned to
+     the descriptor column.
+    </para>
+
+    <para>
+     The default is <literal>EXCLUDE NULLS</literal>, which omits an output
+     row when all measure values for that item are null.
+     <literal>INCLUDE NULLS</literal> retains such rows.  Without an
+     <literal>AS</literal> label, the descriptor value is derived from the
+     input column name.  Unquoted names are converted to uppercase, while
+     quoted names preserve their case.
+    </para>
+
+    <para>
+     For example:
+<programlisting>
+SELECT id, quarter, amount
+FROM quarterly_sales
+UNPIVOT (
+    amount FOR quarter IN (
+        q1 AS 'Q1',
+        q2 AS 'Q2',
+        q3 AS 'Q3'
+    )
+)
+ORDER BY id, quarter;
+</programlisting>
+     If <structname>quarterly_sales</structname> contains
+     <structfield>id</structfield>, <structfield>q1</structfield>,
+     <structfield>q2</structfield>, and <structfield>q3</structfield>, the
+     result contains <structfield>id</structfield>,
+     <structfield>quarter</structfield>, and <structfield>amount</structfield>.
+    </para>
+
+    <para>
+     An alias before <literal>UNPIVOT</literal> names the input relation and
+     is not visible outside the clause.  An alias after the closing
+     parenthesis names the unpivoted result.  Multiple
+     <literal>UNPIVOT</literal> clauses can be chained; each clause consumes
+     the output of the preceding one, and only the final alias is visible to
+     the surrounding query.
+    </para>
+
+    <para>
+     Oracle type grouping rules are applied to measure columns.  Numeric
+     values use <type>NUMBER</type>, <type>BINARY_FLOAT</type>, or
+     <type>BINARY_DOUBLE</type> according to their input families.  Character
+     values use character-length metadata from their inputs.  NCHAR and
+     NVARCHAR2 columns form a separate character-set family and cannot be
+     combined with CHAR, VARCHAR2, CLOB, or NCLOB columns.  CLOB values remain
+     CLOB and cannot be combined with bounded character columns such as
+     <type>VARCHAR2</type>.  Datetime values preserve their time-zone family
+     and the largest fractional-second precision from their inputs.  RAW
+     values retain their maximum byte length.  Year-to-month and day-to-second
+     intervals remain distinct type families and use the largest precision
+     from their inputs.  Incompatible groups are rejected during parse
+     analysis.
+    </para>
+
+    <note>
+     <para>
+      This syntax is available only when
+      <varname>ivorysql.compatible_mode</varname> is set to
+      <literal>oracle</literal>.  A <literal>LATERAL</literal> inline view
+      cannot be used directly as the input to <literal>UNPIVOT</literal>.
+     </para>
+    </note>
+   </sect3>
   </sect2>
 
   <sect2 id="queries-where">
