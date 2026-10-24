@@ -4680,6 +4680,28 @@ raw_expression_tree_walker_impl(Node *node,
 					return true;
 			}
 			break;
+		case T_RangeUnpivot:
+			{
+				RangeUnpivot *ru = (RangeUnpivot *) node;
+
+				if (WALK(ru->source))
+					return true;
+				if (WALK(ru->items))
+					return true;
+				if (WALK(ru->alias))
+					return true;
+			}
+			break;
+		case T_RangeUnpivotInItem:
+			{
+				RangeUnpivotInItem *item = (RangeUnpivotInItem *) node;
+
+				if (WALK(item->value_columns))
+					return true;
+				if (WALK(item->labels))
+					return true;
+			}
+			break;
 		case T_RangeFunction:
 			{
 				RangeFunction *rf = (RangeFunction *) node;

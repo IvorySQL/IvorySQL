@@ -217,6 +217,8 @@ static AlterTableCmd *makeModifyColumnTypeOrVisibilityCmd(char *colname,
 												  TypeName *typeName,
 												  int location);
 static bool oracleJoinOpExists(const Node *expr);
+static Node *makeRangeUnpivotChain(Node *source, List *clauses);
+static const char *normalizeNcharTypeName(const char *type, bool *nchar);
 
 %}
 
@@ -568,6 +570,11 @@ static bool oracleJoinOpExists(const Node *expr);
 %type <ielem>	index_elem index_elem_options
 %type <selem>	stats_param
 %type <node>	table_ref
+%type <node>	unpivot_clause unpivot_in_item
+%type <list>	unpivot_clause_list unpivot_in_item_list
+%type <list>	unpivot_name_list unpivot_value_column_list
+%type <list>	unpivot_value_column_ref_list
+%type <boolean>	opt_unpivot_include_nulls
 %type <jexpr>	joined_table
 %type <range>	relation_expr
 %type <range>	extended_relation_expr
@@ -861,7 +868,7 @@ static bool oracleJoinOpExists(const Node *expr);
 	TREAT TRIGGER TRIM TRUE_P
 	TRUNCATE TRUSTED TYPE_P TYPES_P
 
-	UESCAPE UNBOUNDED UNCONDITIONAL UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN
+	UESCAPE UNBOUNDED UNCONDITIONAL UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN UNPIVOT
 	UNLISTEN UNLOGGED UNTIL UNUSABLE UPDATE UPDATEXML USER USERENV USING
 
 	VACUUM VALID VALIDATE VALIDATOR VALUE_P VALUES VARCHAR VARCHAR2 VARIADIC VARYING
@@ -938,11 +945,11 @@ static bool oracleJoinOpExists(const Node *expr);
  * NOT_LA exists so that productions such as NOT LIKE can be given the same
  * precedence as LIKE; otherwise they'd effectively have the same precedence
  * as NOT, at least with respect to their left-hand subexpression.
- * FORMAT_LA, NULLS_LA, WITH_LA, and WITHOUT_LA are needed to make the grammar
- * LALR(1).
+ * FORMAT_LA, NULLS_LA, WITH_LA, WITHOUT_LA, and UNPIVOT_LA are needed to make
+ * the grammar LALR(1).
  */
 %token		CONSTRUCTOR_LA FORMAT_LA MEMBER_LA NOT_LA NULLS_LA REF_LA
-			STATIC_LA WITH_LA WITHOUT_LA PACKAGE_BODY TYPE_BODY
+			STATIC_LA UNPIVOT_LA WITH_LA WITHOUT_LA PACKAGE_BODY TYPE_BODY
 
 /*
  * The grammar likewise thinks these tokens are keywords, but they are never
@@ -1059,6 +1066,14 @@ static bool oracleJoinOpExists(const Node *expr);
  */
 %nonassoc	DELETE_P INSERT UPDATE MERGE
 %nonassoc	PLSQL_DEFS_END
+
+/*
+ * A completed table reference can either end or continue with another
+ * UNPIVOT clause.  Give UNPIVOT_LA higher precedence so the parser shifts
+ * into the continuation instead of reducing a table reference too early.
+ */
+%nonassoc	UNPIVOT_TABLE_REF_END
+%nonassoc	UNPIVOT_LA
 
 %%
 
@@ -16112,6 +16127,15 @@ table_ref:	relation_expr opt_alias_clause
 					$1->alias = $2;
 					$$ = (Node *) $1;
 				}
+			| relation_expr unpivot_clause_list %prec UNPIVOT_TABLE_REF_END
+				{
+					$$ = makeRangeUnpivotChain((Node *) $1, $2);
+				}
+			| relation_expr ColId unpivot_clause_list %prec UNPIVOT_TABLE_REF_END
+				{
+					$1->alias = makeAlias($2, NIL);
+					$$ = makeRangeUnpivotChain((Node *) $1, $3);
+				}
 			| relation_expr opt_alias_clause tablesample_clause
 				{
 					RangeTableSample *n = (RangeTableSample *) $3;
@@ -16173,6 +16197,24 @@ table_ref:	relation_expr opt_alias_clause
 					n->alias = $2;
 					$$ = (Node *) n;
 				}
+			| select_with_parens unpivot_clause_list %prec UNPIVOT_TABLE_REF_END
+				{
+					RangeSubselect *source = makeNode(RangeSubselect);
+
+					source->lateral = false;
+					source->subquery = $1;
+					source->alias = NULL;
+					$$ = makeRangeUnpivotChain((Node *) source, $2);
+				}
+			| select_with_parens ColId unpivot_clause_list %prec UNPIVOT_TABLE_REF_END
+				{
+					RangeSubselect *source = makeNode(RangeSubselect);
+
+					source->lateral = false;
+					source->subquery = $1;
+					source->alias = makeAlias($2, NIL);
+					$$ = makeRangeUnpivotChain((Node *) source, $3);
+				}
 			| LATERAL_P select_with_parens opt_alias_clause
 				{
 					RangeSubselect *n = makeNode(RangeSubselect);
@@ -16182,9 +16224,22 @@ table_ref:	relation_expr opt_alias_clause
 					n->alias = $3;
 					$$ = (Node *) n;
 				}
-			| joined_table
+			| joined_table %prec UNPIVOT_TABLE_REF_END
 				{
 					$$ = (Node *) $1;
+				}
+			| joined_table unpivot_clause_list %prec UNPIVOT_TABLE_REF_END
+				{
+					$$ = makeRangeUnpivotChain((Node *) $1, $2);
+				}
+			| '(' joined_table ')' unpivot_clause_list %prec UNPIVOT_TABLE_REF_END
+				{
+					$$ = makeRangeUnpivotChain((Node *) $2, $4);
+				}
+			| '(' joined_table ')' ColId unpivot_clause_list %prec UNPIVOT_TABLE_REF_END
+				{
+					$2->alias = makeAlias($4, NIL);
+					$$ = makeRangeUnpivotChain((Node *) $2, $5);
 				}
 			| '(' joined_table ')' alias_clause
 				{
@@ -16335,7 +16390,7 @@ alias_clause:
 					$$->aliasname = $1;
 					$$->colnames = $3;
 				}
-			| ColId
+			| ColId %prec UNPIVOT_TABLE_REF_END
 				{
 					$$ = makeNode(Alias);
 					$$->aliasname = $1;
@@ -16343,7 +16398,7 @@ alias_clause:
 		;
 
 opt_alias_clause: alias_clause						{ $$ = $1; }
-			| /*EMPTY*/								{ $$ = NULL; }
+			| /*EMPTY*/ %prec UNPIVOT_TABLE_REF_END	{ $$ = NULL; }
 		;
 
 /*
@@ -17572,6 +17627,10 @@ ConstCharacter:  CharacterWithLength
 
 CharacterWithLength:  character '(' Iconst ')'
 				{
+					bool		nchar;
+
+					$1 = (char *) normalizeNcharTypeName($1, &nchar);
+
 					if (ORA_PARSER == compatible_db)
 					{
 						if (strcmp($1, "bpchar"))
@@ -17598,18 +17657,24 @@ CharacterWithLength:  character '(' Iconst ')'
 						$$ = OracleSystemTypeName($1);
 						$$->typmods = list_make1(makeIntConst($3, @3));
 						$$->location = @1;
+						$$->nchar = nchar;
 					}
 					else
 					{
 						$$ = SystemTypeName($1);
 						$$->typmods = list_make1(makeIntConst($3, @3));
 						$$->location = @1;
+						$$->nchar = nchar;
 					}
 				}
 		;
 
 CharacterWithoutLength:	 character
 				{
+					bool		nchar;
+
+					$1 = (char *) normalizeNcharTypeName($1, &nchar);
+
 					if (ORA_PARSER == compatible_db)
 					{
 						if (!strcmp($1, "bpchar"))
@@ -17635,6 +17700,7 @@ CharacterWithoutLength:	 character
 							$$->typmods = list_make1(makeIntConst(4000, -1));
 
 						$$->location = @1;
+						$$->nchar = nchar;
 					}
 					else
 					{
@@ -17643,6 +17709,7 @@ CharacterWithoutLength:	 character
 						if (strcmp($1, "bpchar") == 0)
 							$$->typmods = list_make1(makeIntConst(1, -1));
 						$$->location = @1;
+						$$->nchar = nchar;
 					}
 				}
 		;
@@ -17656,11 +17723,17 @@ character:	CHARACTER opt_varying
 			| VARCHAR2
 										{ $$ = "varchar"; }
 			| NATIONAL CHARACTER opt_varying
-										{ $$ = $3 ? "varchar": "bpchar"; }
+										{ $$ = ORA_PARSER == compatible_db ?
+											($3 ? "nvarchar" : "nchar") :
+											($3 ? "varchar": "bpchar"); }
 			| NATIONAL CHAR_P opt_varying
-										{ $$ = $3 ? "varchar": "bpchar"; }
+										{ $$ = ORA_PARSER == compatible_db ?
+											($3 ? "nvarchar" : "nchar") :
+											($3 ? "varchar": "bpchar"); }
 			| NCHAR opt_varying
-										{ $$ = $2 ? "varchar": "bpchar"; }
+										{ $$ = ORA_PARSER == compatible_db ?
+											($2 ? "nvarchar" : "nchar") :
+											($2 ? "varchar": "bpchar"); }
 		;
 
 opt_varying:
@@ -17670,6 +17743,10 @@ opt_varying:
 
 OracleCharacter: character '(' Iconst CHAR_P ')'
 					{
+						bool		nchar;
+
+						$1 = (char *) normalizeNcharTypeName($1, &nchar);
+
 						if (strcmp($1, "bpchar"))
 							$1 = "oravarcharchar";
 						else
@@ -17678,9 +17755,14 @@ OracleCharacter: character '(' Iconst CHAR_P ')'
 						$$ = OracleSystemTypeName($1);
 						$$->typmods = list_make1(makeIntConst($3, @3));
 						$$->location = @1;
+						$$->nchar = nchar;
 					}
 				| character '(' Iconst BYTE_P ')'
 					{
+						bool		nchar;
+
+						$1 = (char *) normalizeNcharTypeName($1, &nchar);
+
 						if (strcmp($1, "bpchar"))
 							$1 = "oravarcharbyte";
 						else
@@ -17689,6 +17771,7 @@ OracleCharacter: character '(' Iconst CHAR_P ')'
 						$$ = OracleSystemTypeName($1);
 						$$->typmods = list_make1(makeIntConst($3, @3));
 						$$->location = @1;
+						$$->nchar = nchar;
 					}
 
 		;
@@ -20036,6 +20119,122 @@ func_expr_common_subexpr:
 				}
 			;
 
+unpivot_clause:
+			UNPIVOT_LA opt_unpivot_include_nulls '(' unpivot_name_list FOR unpivot_name_list IN_P '(' unpivot_in_item_list ')' ')'
+				{
+					RangeUnpivot *n = makeNode(RangeUnpivot);
+
+					n->include_nulls = $2;
+					n->measure_names = $4;
+					n->descriptor_names = $6;
+					n->items = $9;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+		;
+
+unpivot_clause_list:
+			unpivot_clause
+				{
+					$$ = list_make1($1);
+				}
+			| unpivot_clause ColId
+				{
+					castNode(RangeUnpivot, $1)->alias = makeAlias($2, NIL);
+					$$ = list_make1($1);
+				}
+			| unpivot_clause_list unpivot_clause
+				{
+					$$ = lappend($1, $2);
+				}
+			| unpivot_clause_list unpivot_clause ColId
+				{
+					castNode(RangeUnpivot, $2)->alias = makeAlias($3, NIL);
+					$$ = lappend($1, $2);
+				}
+		;
+
+opt_unpivot_include_nulls:
+			INCLUDE NULLS_P
+				{
+					$$ = true;
+				}
+			| EXCLUDE NULLS_P
+				{
+					$$ = false;
+				}
+			| /*EMPTY*/
+				{
+					$$ = false;
+				}
+		;
+
+unpivot_in_item_list:
+			unpivot_in_item
+				{
+					$$ = list_make1($1);
+				}
+			| unpivot_in_item_list ',' unpivot_in_item
+				{
+					$$ = lappend($1, $3);
+				}
+		;
+
+unpivot_in_item:
+			unpivot_value_column_list
+				{
+					RangeUnpivotInItem *n = makeNode(RangeUnpivotInItem);
+
+					n->value_columns = $1;
+					n->labels = NIL;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| unpivot_value_column_list AS a_expr
+				{
+					RangeUnpivotInItem *n = makeNode(RangeUnpivotInItem);
+
+					n->value_columns = $1;
+					n->labels = list_make1($3);
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+		;
+
+unpivot_name_list:
+			ColId
+				{
+					$$ = list_make1(makeString(pstrdup($1)));
+				}
+			| '(' name_list ')'
+				{
+					$$ = $2;
+				}
+		;
+
+unpivot_value_column_list:
+			ColId
+				{
+					$$ = list_make1(makeColumnRef($1, NIL, @1, yyscanner));
+				}
+			| '(' unpivot_value_column_ref_list ')'
+				{
+					$$ = $2;
+				}
+		;
+
+unpivot_value_column_ref_list:
+			ColId
+				{
+					$$ = list_make1(makeColumnRef($1, NIL, @1, yyscanner));
+				}
+			| unpivot_value_column_ref_list ',' ColId
+				{
+					$$ = lappend($1,
+								 makeColumnRef($3, NIL, @3, yyscanner));
+				}
+		;
+
 
 /* Begin - ReqID:SRS-SQL-XML */
 xmlf_expr_list:	a_expr
@@ -21925,6 +22124,7 @@ ColId:		IDENT									{ $$ = $1; }
 type_function_name:	IDENT							{ $$ = $1; }
 			| unreserved_keyword					{ $$ = pstrdup($1); }
 			| type_func_name_keyword				{ $$ = pstrdup($1); }
+			| UNPIVOT_LA							{ $$ = "unpivot"; }
 		;
 
 /* Any not-fully-reserved word --- these names can be, eg, role names.
@@ -21940,6 +22140,7 @@ NonReservedWord:	IDENT							{ $$ = $1; }
  */
 ColLabel:	IDENT									{ $$ = $1; }
 			| unreserved_keyword					{ $$ = pstrdup($1); }
+			| UNPIVOT_LA							{ $$ = "unpivot"; }
 			| col_name_keyword						{ $$ = pstrdup($1); }
 			| type_func_name_keyword				{ $$ = pstrdup($1); }
 			| reserved_keyword						{ $$ = pstrdup($1); }
@@ -22344,6 +22545,7 @@ unreserved_keyword:
 			| UNKNOWN
 			| UNLISTEN
 			| UNLOGGED
+			| UNPIVOT
 			| UNTIL
 			| UNUSABLE
 			| UPDATE
@@ -23105,6 +23307,7 @@ bare_label_keyword:
 			| UNKNOWN
 			| UNLISTEN
 			| UNLOGGED
+			| UNPIVOT
 			| UNTIL
 			| UNUSABLE
 			| UPDATE
@@ -23653,6 +23856,41 @@ makeSetOp(SetOperation op, bool all, Node *larg, Node *rarg)
 	n->larg = (SelectStmt *) larg;
 	n->rarg = (SelectStmt *) rarg;
 	return (Node *) n;
+}
+
+/*
+ * Convert the NATIONAL character productions to their ordinary base types
+ * while recording that the original type used the NCHAR character set.
+ */
+static const char *
+normalizeNcharTypeName(const char *type, bool *nchar)
+{
+	*nchar = strcmp(type, "nchar") == 0 || strcmp(type, "nvarchar") == 0;
+	if (!*nchar)
+		return type;
+
+	return strcmp(type, "nvarchar") == 0 ? "varchar" : "bpchar";
+}
+
+/*
+ * Link a sequence of UNPIVOT clauses into nested table references.
+ */
+static Node *
+makeRangeUnpivotChain(Node *source, List *clauses)
+{
+	Node	   *result = source;
+	ListCell   *lc;
+
+	foreach(lc, clauses)
+	{
+		RangeUnpivot *last = castNode(RangeUnpivot, lfirst(lc));
+
+		last->source = result;
+		result = (Node *) last;
+	}
+
+	Assert(result != source);
+	return result;
 }
 
 /* SystemFuncName()
