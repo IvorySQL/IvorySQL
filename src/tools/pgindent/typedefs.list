@@ -2996,6 +2996,9 @@ SplitPartitionContext
 SplitPoint
 SplitTextOutputData
 SplitVar
+SqlBind
+SqlCursor
+SqlDefine
 StackElem
 StakindFlags
 StartBufferIOResult
