@@ -261,7 +261,7 @@ Datum
 ora_current_date(PG_FUNCTION_ARGS)
 {
 
-	TimestampTz timestamp = GetCurrentTimestamp();
+	TimestampTz timestamp = GetCurrentTransactionStartTimestamp();
 	Timestamp	result;
 	struct pg_tm tt,
 			   *tm = &tt;
