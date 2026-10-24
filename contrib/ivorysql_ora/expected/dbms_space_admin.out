@@ -1,0 +1,93 @@
+--
+-- DBMS_SPACE_ADMIN
+--
+-- Regression tests for Oracle-compatible DBMS_SPACE_ADMIN package:
+--   - Package constants
+--   - TABLESPACE_VERIFY
+--   - SEGMENT_VERIFY
+--   - TABLESPACE_FIX_SEGMENT_STATES
+--   - Error handling (non-existent tablespace, missing segment, NULL parameters)
+--   - Internal function execute privilege revoked from PUBLIC (CWE-862)
+--
+-- Package constants
+SELECT dbms_space_admin.segment_verify_basic;
+ segment_verify_basic
+----------------------
+                    1
+(1 row)
+
+SELECT dbms_space_admin.segment_verify_deep;
+ segment_verify_deep
+---------------------
+                   2
+(1 row)
+
+SELECT dbms_space_admin.tablespace_verify_basic;
+ tablespace_verify_basic
+-------------------------
+                       1
+(1 row)
+
+SELECT dbms_space_admin.tablespace_verify_extents;
+ tablespace_verify_extents
+---------------------------
+                         2
+(1 row)
+
+-- Setup test segment
+CREATE TABLE space_admin_tab (
+    id int,
+    data text
+);
+CREATE TABLE
+INSERT INTO space_admin_tab VALUES (1, 'space admin test data');
+INSERT 0 1
+-- TABLESPACE_VERIFY on default tablespace
+CALL dbms_space_admin.tablespace_verify('pg_default');
+CALL dbms_space_admin.tablespace_verify('pg_default', dbms_space_admin.tablespace_verify_extents);
+-- SEGMENT_VERIFY on test table
+CALL dbms_space_admin.segment_verify(
+    schema_name  => 'public',
+    segment_name => 'space_admin_tab',
+    segment_type => 'TABLE',
+    verify_mode  => dbms_space_admin.segment_verify_basic
+);
+CALL dbms_space_admin.segment_verify(
+    segment_name => 'space_admin_tab'
+);
+-- TABLESPACE_FIX_SEGMENT_STATES
+CALL dbms_space_admin.tablespace_fix_segment_states('pg_default');
+-- Error handling: non-existent tablespace
+SELECT sys.dbms_space_admin_tablespace_verify_internal('non_existent_tablespace_xyz', 1);
+ERROR:  DBMS_SPACE_ADMIN: tablespace "non_existent_tablespace_xyz" does not exist
+SELECT sys.dbms_space_admin_tablespace_fix_segment_states_internal('non_existent_tablespace_xyz');
+ERROR:  DBMS_SPACE_ADMIN: tablespace "non_existent_tablespace_xyz" does not exist
+-- Error handling: non-existent segment
+SELECT sys.dbms_space_admin_segment_verify_internal('public', 'non_existent_table_xyz', 'TABLE', 1);
+ERROR:  DBMS_SPACE_ADMIN: segment "non_existent_table_xyz" does not exist
+-- Error handling: NULL parameter checks
+SELECT sys.dbms_space_admin_tablespace_verify_internal(NULL, 1);
+ERROR:  DBMS_SPACE_ADMIN.TABLESPACE_VERIFY: tablespace_name must not be NULL
+SELECT sys.dbms_space_admin_segment_verify_internal('public', NULL, 'TABLE', 1);
+ERROR:  DBMS_SPACE_ADMIN.SEGMENT_VERIFY: segment_name must not be NULL
+SELECT sys.dbms_space_admin_tablespace_fix_segment_states_internal(NULL);
+ERROR:  DBMS_SPACE_ADMIN.TABLESPACE_FIX_SEGMENT_STATES: tablespace_name must not be NULL
+-- Verify internal functions execute privilege revoked from PUBLIC (CWE-862)
+SELECT p.proname, has_function_privilege('public', p.oid, 'EXECUTE') AS public_can_execute
+  FROM pg_catalog.pg_proc p
+  JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+ WHERE n.nspname = 'sys'
+   AND p.proname IN ('dbms_space_admin_tablespace_verify_internal',
+                     'dbms_space_admin_segment_verify_internal',
+                     'dbms_space_admin_tablespace_fix_segment_states_internal')
+ ORDER BY p.proname;
+                         proname                          | public_can_execute
+----------------------------------------------------------+--------------------
+ dbms_space_admin_segment_verify_internal                 | f
+ dbms_space_admin_tablespace_fix_segment_states_internal  | f
+ dbms_space_admin_tablespace_verify_internal              | f
+(3 rows)
+
+-- Clean up
+DROP TABLE space_admin_tab;
+DROP TABLE
