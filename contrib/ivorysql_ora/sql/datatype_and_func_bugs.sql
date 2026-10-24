@@ -81,3 +81,33 @@ drop function s1.f_alter(arg1 number, arg2 number);
 drop function s1.f_alter(arg1 OUT int);
 drop function s1.f_alter(arg1 text);
 drop function s1.f_alter(arg1 number, arg2 number, arg3 number);
+
+-- VARCHAR2 equality and hashing must honor nondeterministic collations.
+DO $$
+DECLARE
+  equal_result boolean;
+  not_equal_result boolean;
+  hash_result boolean;
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_collation WHERE collprovider = 'i') THEN
+    EXECUTE 'CREATE COLLATION ora_varchar_nondet '
+            '(provider = icu, locale = ''und-u-ks-level1'', deterministic = false)';
+    EXECUTE 'SELECT ''A''::sys.oravarcharchar COLLATE ora_varchar_nondet = '
+            '''a''::sys.oravarcharchar COLLATE ora_varchar_nondet'
+      INTO equal_result;
+    EXECUTE 'SELECT ''A''::sys.oravarcharchar COLLATE ora_varchar_nondet <> '
+            '''a''::sys.oravarcharchar COLLATE ora_varchar_nondet'
+      INTO not_equal_result;
+    EXECUTE 'SELECT sys.hashoravarchar('
+            '''A''::sys.oravarcharchar COLLATE ora_varchar_nondet) = '
+            'sys.hashoravarchar('
+            '''a''::sys.oravarcharchar COLLATE ora_varchar_nondet)'
+      INTO hash_result;
+    IF equal_result IS NOT TRUE OR not_equal_result IS NOT FALSE OR
+       hash_result IS NOT TRUE THEN
+      RAISE EXCEPTION 'VARCHAR2 nondeterministic collation mismatch';
+    END IF;
+    EXECUTE 'DROP COLLATION ora_varchar_nondet';
+  END IF;
+END
+$$;
