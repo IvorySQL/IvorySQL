@@ -43,7 +43,7 @@
 #include "commands/dbcommands.h"
 #include "miscadmin.h"
 
-/* usefull functions */
+/* useful functions */
 static bool package_resolve_names(List *names, PackageCacheKey *pkey,
 									int *pkgname_startloc);
 static PkgType *parse_package_type(List *names, PackageCacheKey *pkey,
