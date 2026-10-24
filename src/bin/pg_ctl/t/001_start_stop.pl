@@ -16,6 +16,17 @@ program_help_ok('pg_ctl');
 program_version_ok('pg_ctl');
 program_options_handling_ok('pg_ctl');
 
+foreach my $program ('postgres', 'pg_ctl')
+{
+	foreach my $option ('--version', '-V')
+	{
+		command_like(
+			[ $program, $option ],
+			qr/^\Q$program\E \(PostgreSQL\) \S+ \(IvorySQL \S+\)\r?\n$/,
+			"$program $option identifies PostgreSQL and IvorySQL");
+	}
+}
+
 command_exit_is([ 'pg_ctl', 'start', '--pgdata' => "$tempdir/nonexistent" ],
 	1, 'pg_ctl start with nonexistent directory');
 
