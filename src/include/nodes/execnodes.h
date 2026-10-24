@@ -400,7 +400,11 @@ typedef struct ProjectionInfo
 	ExprState	pi_state;
 	/* expression context in which to evaluate expression */
 	ExprContext *pi_exprContext;
-	/* true if projection contains volatile exprs like ROWNUM that need materialization */
+
+	/*
+	 * true if projection contains volatile exprs like ROWNUM that need
+	 * materialization
+	 */
 	bool		pi_needsMaterialization;
 } ProjectionInfo;
 
@@ -797,9 +801,9 @@ typedef struct EState
 	struct dsa_area *es_query_dsa;
 
 	/*
-	 * Oracle ROWNUM support: current row number counter.
-	 * This is incremented for each row emitted during query execution.
-	 * Only used when compatible_db == ORA_PARSER.
+	 * Oracle ROWNUM support: current row number counter. This is incremented
+	 * for each row emitted during query execution. Only used when
+	 * compatible_db == ORA_PARSER.
 	 */
 	int64		es_rownum;
 
@@ -1574,7 +1578,7 @@ struct AppendState
 	Bitmapset  *as_valid_subplans;
 	Bitmapset  *as_valid_asyncplans;	/* valid asynchronous plans indexes */
 	bool		(*choose_next_subplan) (AppendState *);
-	bool		as_is_union;	/* true if UNION, reset ROWNUM on branch switch */
+	bool		as_reset_rownum;	/* reset ROWNUM on branch switch? */
 };
 
 /* ----------------
@@ -1604,7 +1608,7 @@ typedef struct MergeAppendState
 	bool		ms_initialized; /* are subplans started? */
 	struct PartitionPruneState *ms_prune_state;
 	Bitmapset  *ms_valid_subplans;
-	bool		ms_is_union;	/* true if UNION, reset ROWNUM per branch */
+	bool		ms_reset_rownum;	/* reset ROWNUM per branch? */
 } MergeAppendState;
 
 /* ----------------
