@@ -246,14 +246,20 @@ ivy_xml_xpath(xpath_ws *ws, text *xpath_expr_text, xmltype *data, char *namespac
 			if (namespace)
 				register_ns_from_csting(ws->xpathctx, namespace);
 
-			ws->xpathcomp = xmlXPathCompile(xpath_expr);
+			/*
+			 * Note: like core (src/backend/utils/adt/xml.c), use
+			 * xmlXPathCtxtCompile not xmlXPathCompile.  In libxml2 2.13.3 and
+			 * older, the latter function fails to defend itself against
+			 * recursion-to-stack-overflow.  See libxml2 issue 799.
+			 */
+			ws->xpathcomp = xmlXPathCtxtCompile(ws->xpathctx, xpath_expr);
 			if (ws->xpathcomp == NULL)
-				ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+				ereport(ERROR, (errcode(ERRCODE_INVALID_ARGUMENT_FOR_XQUERY),
 						errmsg("invalid XPath expression")));
 
 			ws->xpathobj = xmlXPathCompiledEval(ws->xpathcomp, ws->xpathctx);
 			if (ws->xpathobj == NULL)
-				ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+				ereport(ERROR, (errcode(ERRCODE_INVALID_ARGUMENT_FOR_XQUERY),
 						errmsg("could not create XPath object")));
 		}
 		else
@@ -340,14 +346,20 @@ ivy_xml_xpath2(xpath_ws *ws, text *xpath_expr_text, xmlDocPtr doc, char *namespa
 		if (namespace)
 			register_ns_from_csting(ws->xpathctx, namespace);
 
-		ws->xpathcomp = xmlXPathCompile(xpath_expr);
+		/*
+		 * Note: like core (src/backend/utils/adt/xml.c), use
+		 * xmlXPathCtxtCompile not xmlXPathCompile.  In libxml2 2.13.3 and
+		 * older, the latter function fails to defend itself against
+		 * recursion-to-stack-overflow.  See libxml2 issue 799.
+		 */
+		ws->xpathcomp = xmlXPathCtxtCompile(ws->xpathctx, xpath_expr);
 		if (ws->xpathcomp == NULL)
-			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+			ereport(ERROR, (errcode(ERRCODE_INVALID_ARGUMENT_FOR_XQUERY),
 					errmsg("invalid XPath expression")));
 
 		ws->xpathobj = xmlXPathCompiledEval(ws->xpathcomp, ws->xpathctx);
 		if (ws->xpathobj == NULL)
-			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+			ereport(ERROR, (errcode(ERRCODE_INVALID_ARGUMENT_FOR_XQUERY),
 					errmsg("could not create XPath object")));
 	}
 	PG_CATCH();
