@@ -117,6 +117,79 @@ SELECT extractvalue(data, 'soapenv:Envelope/soapenv:Body/web:BBB/typ:EEE', 'xmln
  41
 (1 row)
 
+-- Namespace registration must grow the prefix and URI buffers independently.
+-- Check both sides of the initial 1024-byte StringInfo allocation, including
+-- room for the terminating NUL, and a value requiring further growth.
+SELECT n AS prefix_bytes,
+       extractvalue(xmltype('<r xmlns="urn:test">prefix</r>'),
+                    '/' || repeat('p', n) || ':r',
+                    'xmlns:' || repeat('p', n) || '="urn:test"') AS value
+FROM (VALUES (1023), (1024), (1025), (4096)) AS lengths(n)
+ORDER BY n;
+ prefix_bytes | value  
+--------------+--------
+         1023 | prefix
+         1024 | prefix
+         1025 | prefix
+         4096 | prefix
+(4 rows)
+
+WITH namespaces AS (
+    SELECT n, 'urn:' || repeat('u', n - 4) AS uri
+    FROM (VALUES (1023), (1024), (1025), (4096)) AS lengths(n)
+)
+SELECT n AS uri_bytes,
+       extractvalue(xmltype('<r xmlns="' || uri || '">uri</r>'),
+                    '/p:r', 'xmlns:p="' || uri || '"') AS value
+FROM namespaces
+ORDER BY n;
+ uri_bytes | value 
+-----------+-------
+      1023 | uri
+      1024 | uri
+      1025 | uri
+      4096 | uri
+(4 rows)
+
+-- Reuse the buffers for differently sized declarations in the same call.
+-- Both namespaces must resolve, regardless of their registration order.
+WITH namespaces AS (
+    SELECT repeat('p', 4096) AS prefix, 'urn:' || repeat('u', 4092) AS uri
+), inputs AS (
+    SELECT xmltype('<r xmlns="' || uri ||
+                   '"><s:v xmlns:s="urn:short">both</s:v></r>') AS doc,
+           '/' || prefix || ':r/s:v' AS path,
+           'xmlns:' || prefix || '="' || uri || '"' AS ns
+    FROM namespaces
+)
+SELECT extractvalue(doc, path, ns || ' xmlns:s="urn:short"') AS long_then_short,
+       extractvalue(doc, path, 'xmlns:s="urn:short" ' || ns) AS short_then_long
+FROM inputs;
+ long_then_short | short_then_long 
+-----------------+-----------------
+ both            | both
+(1 row)
+
+-- Malformed declarations must raise an error instead of accessing invalid
+-- delimiter positions, including an error after registering a valid prefix.
+SELECT extractvalue(xmltype('<r/>'), '/p:r', 'xmlns:p');
+ERROR:  Invalid namespace
+SELECT extractvalue(xmltype('<r/>'), '/p:r', 'xmlns="urn:test"');
+ERROR:  Invalid namespace
+SELECT extractvalue(xmltype('<r/>'), '/p:r', 'xmlns:p=urn:test');
+ERROR:  Invalid namespace
+SELECT extractvalue(xmltype('<r/>'), '/p:r', 'xmlns:p="');
+ERROR:  Invalid namespace
+SELECT extractvalue(xmltype('<r/>'), '/p:r', 'xmlns:p="urn:test" xmlns:q');
+ERROR:  Invalid namespace
+-- Namespace registration still works in the same session after the errors.
+SELECT extractvalue(xmltype('<r xmlns="urn:test">recovered</r>'),
+                    '/p:r', 'xmlns:p="urn:test"') AS after_errors;
+ after_errors 
+--------------
+ recovered
+(1 row)
+
 --
 -- existsnode
 --
