@@ -1,0 +1,89 @@
+--
+-- UTL_LMS
+--
+-- Regression tests for Oracle-compatible UTL_LMS package:
+--   - FORMAT_MESSAGE with strings and numeric substitutions
+--   - FORMAT_MESSAGE with extended 8 parameters
+--   - FORMAT_MESSAGE with escaped percent signs ('%%')
+--   - FORMAT_MESSAGE with partial and NULL arguments
+--   - GET_MESSAGE procedure call
+--   - Internal function execute privilege revoked from PUBLIC (CWE-862)
+--
+-- Basic string format substitution
+SELECT utl_lms.format_message('User %s performed %s on table %s', 'SCOTT', 'INSERT', 'EMP');
+               format_message
+---------------------------------------------
+ User SCOTT performed INSERT on table EMP
+(1 row)
+
+-- Mixed format with %s and %d
+SELECT utl_lms.format_message('Processed %d records in %s mode', '150', 'BATCH');
+          format_message
+----------------------------------
+ Processed 150 records in BATCH mode
+(1 row)
+
+-- Extended 8-parameter format substitution
+SELECT utl_lms.format_message('Col1: %s, Col2: %s, Col3: %s, Col4: %s, Col5: %s, Col6: %s',
+                              'A', 'B', 'C', 'D', 'E', 'F');
+                   format_message
+-----------------------------------------------------
+ Col1: A, Col2: B, Col3: C, Col4: D, Col5: E, Col6: F
+(1 row)
+
+-- Escaped percent signs ('%%')
+SELECT utl_lms.format_message('Disk usage at %s%% capacity', '85');
+      format_message
+---------------------------
+ Disk usage at 85% capacity
+(1 row)
+
+-- Fewer arguments provided than format specifiers
+SELECT utl_lms.format_message('Param1: %s, Param2: %s', 'first_value');
+      format_message
+---------------------------
+ Param1: first_value, Param2:
+(1 row)
+
+-- Format with NULL arguments
+SELECT utl_lms.format_message('Value: %s', NULL);
+ format_message
+----------------
+ Value:
+(1 row)
+
+-- GET_MESSAGE procedure call
+DO $$
+DECLARE
+    msg VARCHAR2(500);
+BEGIN
+    utl_lms.get_message(1403, 'rdbms', 'ora', 'american', msg);
+    RAISE NOTICE 'GET_MESSAGE result: %', msg;
+END;
+$$;
+NOTICE:  GET_MESSAGE result: ORA-01403: error message occurred for code 1403
+DO
+-- Direct internal function tests
+SELECT sys.utl_lms_get_message_extended_internal(1403, 'rdbms', 'ora', 'american');
+             utl_lms_get_message_extended_internal
+----------------------------------------------------------------
+ ORA-01403: error occurred in rdbms.ora [lang: american]
+(1 row)
+
+-- Verify internal functions execute privilege revoked from PUBLIC (CWE-862)
+SELECT p.proname, has_function_privilege('public', p.oid, 'EXECUTE') AS public_can_execute
+  FROM pg_catalog.pg_proc p
+  JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+ WHERE n.nspname = 'sys'
+   AND p.proname IN ('utl_lms_format_message_internal',
+                     'utl_lms_format_message_extended_internal',
+                     'utl_lms_get_message_internal',
+                     'utl_lms_get_message_extended_internal')
+ ORDER BY p.proname;
+                 proname                  | public_can_execute
+------------------------------------------+--------------------
+ utl_lms_format_message_extended_internal | f
+ utl_lms_format_message_internal          | f
+ utl_lms_get_message_extended_internal    | f
+ utl_lms_get_message_internal             | f
+(4 rows)
