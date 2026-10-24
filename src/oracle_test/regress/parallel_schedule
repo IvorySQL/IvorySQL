@@ -26,6 +26,9 @@ test: boolean char name varchar text int2 int4 int8 oid float4 float8 bit numeri
 # ----------
 test: strings md5 numerology point lseg line box path polygon circle date time timetz timestamp timestamptz interval inet macaddr macaddr8 multirangetypes
 
+# interval_oracle covers bare INTERVAL handling in Oracle parser mode.
+test: interval_oracle
+
 # ----------
 # Another group of parallel tests
 # geometry depends on point, lseg, line, box, path, polygon, circle

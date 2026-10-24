@@ -393,7 +393,7 @@ select * from generate_series('2020-01-01 00:00'::timestamp,
 -- the LIMIT should allow this to terminate in a reasonable amount of time
 -- (but that unfortunately doesn't work yet for SELECT * FROM ...)
 select generate_series('2022-01-01 00:00'::timestamp,
-                       'infinity'::timestamp,
+                       'infinity'::pg_catalog.timestamp,
                        '1 month'::interval) limit 10;
 -- errors
 select * from generate_series('2020-01-01 00:00'::timestamp,
