@@ -71,3 +71,13 @@ SELECT * FROM VARCHAR_TBL;
 SELECT pg_input_is_valid('abcd  ', 'varchar(4)');
 SELECT pg_input_is_valid('abcde', 'varchar(4)');
 SELECT * FROM pg_input_error_info('abcde', 'varchar(4)');
+
+--
+-- Length overflow on INSERT/UPDATE should name the column
+--
+CREATE TEMP TABLE varchartbl_colname(f1 varchar(4), f2 varchar(4));
+INSERT INTO varchartbl_colname (f1) VALUES ('abcde');
+INSERT INTO varchartbl_colname (f2) VALUES ('abcde');
+UPDATE varchartbl_colname SET f1 = 'abcde';
+INSERT INTO varchartbl_colname (f1) VALUES ('abcd  '); -- trailing spaces ok
+DROP TABLE varchartbl_colname;

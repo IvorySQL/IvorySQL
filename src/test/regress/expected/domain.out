@@ -97,7 +97,7 @@ create table basictest
            );
 INSERT INTO basictest values ('88', 'haha', 'short', '123.12');      -- Good
 INSERT INTO basictest values ('88', 'haha', 'short text', '123.12'); -- Bad varchar
-ERROR:  value too long for type character varying(5)
+ERROR:  value too long for column "testvarchar" (type character varying(5))
 INSERT INTO basictest values ('88', 'haha', 'short', '123.1212');    -- Truncate numeric
 -- Test copy
 COPY basictest (testvarchar) FROM stdin; -- fail
@@ -996,9 +996,9 @@ ERROR:  value for domain dtop violates check constraint "dtop_check"
 create temp table dtest(f1 dtop);
 insert into dtest values('x123');
 insert into dtest values('x1234'); -- fail, implicit coercion
-ERROR:  value too long for type character varying(4)
+ERROR:  value too long for column "f1" (type character varying(4))
 insert into dtest values('y1234'); -- fail, implicit coercion
-ERROR:  value too long for type character varying(4)
+ERROR:  value too long for column "f1" (type character varying(4))
 insert into dtest values('y123'); -- fail
 ERROR:  value for domain dtop violates check constraint "dinter_check"
 insert into dtest values('yz23'); -- fail
