@@ -328,6 +328,7 @@ drop table datetest;
 
 --from_tz
 SELECT FROM_TZ(TIMESTAMP '2000-03-28 08:00:00', '3:00') FROM DUAL;
+SELECT FROM_TZ(TIMESTAMP '294276-12-31 23:00:00', '-12:00') FROM DUAL;
   
 --sessiontimezone
 set timezone = 'Asia/Hong_Kong';

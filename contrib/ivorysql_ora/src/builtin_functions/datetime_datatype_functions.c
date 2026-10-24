@@ -631,7 +631,17 @@ ora_new_time(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("timestamp out of range")));
 	tz1 = tz1 - tz2;
-	tm2timestamp(tm, fsec, &tz1, &result);
+	/*
+	 * Reached only if the offset pushes the value past the timestamp range.
+	 * Every NEW_TIME input is a date, so the largest zone-pair difference this
+	 * function supports still lands far below the year at which tm2timestamp()
+	 * starts failing; the branch is kept because the result would otherwise be
+	 * returned uninitialised, which is how FROM_TZ used to fabricate a value.
+	 */
+	if (tm2timestamp(tm, fsec, &tz1, &result) != 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("timestamp out of range")));
 
 	PG_RETURN_TIMESTAMP(result);
 }
@@ -769,7 +779,10 @@ ora_from_tz(PG_FUNCTION_ARGS)
 				 errmsg("timestamp out of range")));
 
 	tz = DetermineTimeZoneOffset(tm, timezonedat);
-	tm2timestamp(tm, fsec, &tz, &result);
+	if (tm2timestamp(tm, fsec, &tz, &result) != 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("timestamp out of range")));
 
 	PG_RETURN_TIMESTAMPTZ(result);
 }
