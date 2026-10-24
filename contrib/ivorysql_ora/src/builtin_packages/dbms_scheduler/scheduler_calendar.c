@@ -1050,7 +1050,7 @@ eval_calendar(const CalendarRule *rule, TimestampTz start, TimestampTz after,
 							continue;
 
 						j2date(jd, &year, &mon, &mday);
-						if (rule->has_bymonth && !rule->bymonth[mon])
+						if (!date_matches(rule, year, mon, mday))
 							continue;
 						scan_times_on_date(rule, year, mon, mday,
 										   -1, -1, -1, &tm_start,
