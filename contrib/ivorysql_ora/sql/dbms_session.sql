@@ -9,6 +9,35 @@
 --
 -- SET_CONTEXT + SYS_CONTEXT read-back
 --
+-- CLIENT_IDENTIFIER is case-sensitive, backend-local session state.
+select sys_context('USERENV', 'CLIENT_IDENTIFIER') is null as id_initially_null;
+call dbms_session.set_identifier('MixedCase');
+select sys_context('userenv', 'client_identifier') as client_id;
+call dbms_session.set_identifier('second');
+select sys_context('USERENV', 'CLIENT_IDENTIFIER') as client_id;
+call dbms_session.set_identifier(null);
+select sys_context('USERENV', 'CLIENT_IDENTIFIER') is null as id_null_clears;
+call dbms_session.set_identifier('');
+select sys_context('USERENV', 'CLIENT_IDENTIFIER') is null as id_empty_clears;
+
+call dbms_session.set_identifier(repeat('x', 64));
+select octet_length(sys_context('USERENV', 'CLIENT_IDENTIFIER')) as id_bytes;
+call dbms_session.set_identifier(repeat('x', 65));
+select sys_context('USERENV', 'CLIENT_IDENTIFIER') = repeat('x', 64) as id_truncated;
+call dbms_session.set_identifier(repeat('x', 63) || chr(233));
+select octet_length(sys_context('USERENV', 'CLIENT_IDENTIFIER')) as clipped_bytes;
+select sys_context('USERENV', 'CLIENT_IDENTIFIER') = repeat('x', 63) as clipped_content;
+call dbms_session.set_identifier(repeat('x', 62) || chr(233));
+select octet_length(sys_context('USERENV', 'CLIENT_IDENTIFIER')) as exact_bytes;
+select sys_context('USERENV', 'CLIENT_IDENTIFIER') = repeat('x', 62) || chr(233) as exact_content;
+
+begin;
+call dbms_session.set_identifier('after rollback');
+rollback;
+select sys_context('USERENV', 'CLIENT_IDENTIFIER') as id_after_rollback;
+call dbms_session.clear_identifier();
+select sys_context('USERENV', 'CLIENT_IDENTIFIER') is null as id_cleared;
+
 call dbms_session.set_context('app_ctx', 'user_id', '42');
 call dbms_session.set_context('app_ctx', 'role', 'manager');
 select sys_context('app_ctx', 'user_id') as user_id,
@@ -108,9 +137,15 @@ reset role;
 -- DISCARD ALL clears session context (connection-pool safety)
 --
 call dbms_session.set_context('app', 'usr', 'carol');
+call dbms_session.set_identifier('discard packages');
+discard package;
+select sys_context('USERENV', 'CLIENT_IDENTIFIER') is null as id_after_packages;
+call dbms_session.set_context('app', 'usr', 'carol');
+call dbms_session.set_identifier('discard all');
 select sys_context('app', 'usr') as before_discard;
 discard all;
 select sys_context('app', 'usr') is null as after_discard;
+select sys_context('USERENV', 'CLIENT_IDENTIFIER') is null as id_after_discard;
 
 drop table docs;
 drop role dbms_sess_rls;
@@ -152,7 +187,9 @@ SELECT rp_pkg.get_n;
 
 -- reset_package must not touch application-context values (non-package session state)
 call dbms_session.set_context('rp_ns', 'key', 'preserved');
+call dbms_session.set_identifier('preserved ID');
 call dbms_session.reset_package();
 select sys_context('rp_ns', 'key') as ctx_after_reset;
+select sys_context('USERENV', 'CLIENT_IDENTIFIER') as id_after_reset;
 
 DROP PACKAGE rp_pkg;
