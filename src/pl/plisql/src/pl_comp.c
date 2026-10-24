@@ -1354,7 +1354,9 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams, bool fromcall,
 		function->fn_retset = false;
 		function->fn_retistuple = false;
 		function->fn_retisdomain = false;
-		function->fn_prokind = initial_is_proc ? PROKIND_PROCEDURE : PROKIND_FUNCTION;
+		function->fn_prokind = initial_is_proc ? PROKIND_PROCEDURE :
+			(initial_rettype == VOIDOID ? PROKIND_ANONYMOUS_BLOCK :
+			 PROKIND_FUNCTION);
 		/* a bit of hardwired knowledge about type VOID here */
 		function->fn_retbyval = true;
 		function->fn_rettyplen = sizeof(int32);
@@ -1442,10 +1444,6 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams, bool fromcall,
 			add_parameter_name(argitemtype, argvariable->dno, buf);
 			function->fn_argvarnos[i] = argvariable->dno;
 		}
-
-		if (inparams->numParams > 0 &&
-			initial_rettype == VOIDOID && !initial_is_proc)
-			function->fn_prokind = PROKIND_ANONYMOUS_BLOCK;
 	}
 
 	/*
