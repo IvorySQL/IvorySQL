@@ -949,6 +949,39 @@ decl_statement	: K_TYPE decl_varname K_IS K_RECORD '('
 							new->cursor_explicit_argrow = $5->dno;
 						new->cursor_options = CURSOR_OPT_FAST_PLAN | $2;
 					}
+				/*
+				 * Oracle's canonical keyword-first spelling:
+				 *		CURSOR name [(arg [, ...])] IS | FOR query
+				 *
+				 * "cursor" is deliberately absent from unreserved_keyword
+				 * (see the comment in pl_unreserved_kwlist.h) so that it can
+				 * start this production; the name-first spelling above keeps
+				 * working because K_CURSOR is still a keyword token.
+				 */
+				| K_CURSOR decl_varname
+					{ plisql_ns_push($2.name, PLISQL_LABEL_OTHER); }
+				  decl_cursor_args decl_is_for decl_cursor_query
+					{
+						PLiSQL_var *new;
+
+						/* pop local namespace for cursor args */
+						plisql_ns_pop();
+
+						new = (PLiSQL_var *)
+							plisql_build_variable($2.name, $2.lineno,
+												   plisql_build_datatype(REFCURSOROID,
+																		  -1,
+																		  InvalidOid,
+																		  NULL),
+												   true);
+
+						new->cursor_explicit_expr = $6;
+						if ($4 == NULL)
+							new->cursor_explicit_argrow = -1;
+						else
+							new->cursor_explicit_argrow = $4->dno;
+						new->cursor_options = CURSOR_OPT_FAST_PLAN;
+					}
 				| decl_varname K_EXCEPTION ';'
 					{
 						/* PLiSQL_exception_var *exc;
@@ -3555,7 +3588,10 @@ unreserved_keyword	:
 				| K_CONTINUE
 				| K_CURRENT
 				| K_CURRENT_USER
-				| K_CURSOR
+				/* K_CURSOR is deliberately absent here: it must stay a
+				 * dedicated token so it can start an Oracle-style
+				 * "CURSOR name [(args)] IS query" declaration; see the
+				 * comment in pl_unreserved_kwlist.h */
 				| K_DATATYPE
 				| K_DEBUG
 				| K_DEFAULT
