@@ -452,6 +452,212 @@ CALL test_pkg.pkg_test_with_params(76, 'package procedure test');
 SELECT id, msg FROM autonomous_test WHERE id = 76;
 
 --
+-- Test 22: Package member isolation (write side)
+-- The member's COMMIT must not commit the caller's transaction: the outer
+-- rows are discarded by ROLLBACK while the member's row survives.
+-- (PRAGMA AUTONOMOUS_TRANSACTION used to be silently ignored in package
+-- members: they ran in the caller's transaction, and a COMMIT inside the
+-- member terminated the caller's transaction instead.)
+--
+CREATE OR REPLACE PACKAGE test_pkg_iso AS
+  PROCEDURE pkg_auto_insert(p_id INT);
+END;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_pkg_iso AS
+  PROCEDURE pkg_auto_insert(p_id INT) AS
+    PRAGMA AUTONOMOUS_TRANSACTION;
+  BEGIN
+    INSERT INTO autonomous_test VALUES (p_id, 'pkg-autonomous', 'committed');
+  END pkg_auto_insert;
+END test_pkg_iso;
+/
+
+COMMIT;
+
+BEGIN;
+    INSERT INTO autonomous_test VALUES (101, 'outer-before-pkg', 'rolled back');
+    CALL test_pkg_iso.pkg_auto_insert(201);
+    INSERT INTO autonomous_test VALUES (301, 'outer-after-pkg', 'rolled back');
+ROLLBACK;
+
+-- Verify: of this transaction's rows only id=201 survives the caller's
+-- rollback (ids 160 and 2000 in the same range come from earlier tests).
+SELECT id, msg, tx_state FROM autonomous_test WHERE id >= 100 ORDER BY id;
+
+--
+-- Test 23: Package member isolation (read side)
+-- The member must not see the caller's uncommitted changes.
+--
+CREATE OR REPLACE PACKAGE test_pkg_isoread AS
+  PROCEDURE pkg_auto_count(p_id INT);
+END;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_pkg_isoread AS
+  PROCEDURE pkg_auto_count(p_id INT) AS
+    PRAGMA AUTONOMOUS_TRANSACTION;
+  BEGIN
+    INSERT INTO autonomous_test
+      VALUES (p_id, (SELECT count(*)::text FROM autonomous_test), 'committed');
+  END pkg_auto_count;
+END test_pkg_isoread;
+/
+
+COMMIT;
+
+BEGIN;
+    INSERT INTO autonomous_test VALUES (999, 'uncommitted-outer', 'rolled back');
+    CALL test_pkg_isoread.pkg_auto_count(202);
+ROLLBACK;
+
+-- Verify: id=202 records the count of committed rows only — the member
+-- does not see the caller's uncommitted id=999, and that row is rolled
+-- back afterwards as well.
+SELECT id, msg, tx_state FROM autonomous_test WHERE id >= 200 ORDER BY id;
+
+--
+-- Test 24: Autonomous package function returns its value
+--
+CREATE OR REPLACE PACKAGE test_pkg_func AS
+  FUNCTION pkg_auto_func(p_id INT) RETURN INT;
+  FUNCTION pkg_auto_func(p_id VARCHAR2) RETURN VARCHAR2;
+END;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_pkg_func AS
+  FUNCTION pkg_auto_func(p_id INT) RETURN INT AS
+    PRAGMA AUTONOMOUS_TRANSACTION;
+  BEGIN
+    INSERT INTO autonomous_test VALUES (4242, 'pkg-function', 'committed');
+    RETURN p_id * 2;
+  END pkg_auto_func;
+  FUNCTION pkg_auto_func(p_id VARCHAR2) RETURN VARCHAR2 AS
+    PRAGMA AUTONOMOUS_TRANSACTION;
+  BEGIN
+    RETURN COALESCE(p_id, 'varchar2 overload');
+  END pkg_auto_func;
+END test_pkg_func;
+/
+
+COMMIT;
+
+-- The function must run autonomously: its insert survives the caller's
+-- rollback even though the call itself was made inside the transaction.
+BEGIN;
+SELECT test_pkg_func.pkg_auto_func(21) AS pkg_func_result;
+ROLLBACK;
+SELECT id, msg, tx_state FROM autonomous_test WHERE id = 4242;
+-- A typed NULL must resolve to the INT overload through the autonomous
+-- call builder (with the VARCHAR2 overload present, a bare NULL would be
+-- ambiguous).
+SELECT test_pkg_func.pkg_auto_func(NULL::INT) AS pkg_func_null_result;
+-- Oracle-typed arguments must render with a type name the far session's
+-- parser resolves (sys.oravarcharchar, not the "varchar2" display name).
+SELECT test_pkg_func.pkg_auto_func(NULL::VARCHAR2) AS pkg_func_varchar2_null_result;
+SELECT test_pkg_func.pkg_auto_func('autonomous') AS pkg_func_varchar2_result;
+
+--
+-- Test 25: A member that is only defined in the package body cannot be
+-- re-invoked in an autonomous session: fail clearly instead of silently
+-- running in the caller's transaction.
+--
+CREATE OR REPLACE PACKAGE test_pkg_bodyonly AS
+  PROCEDURE spec_entry;
+END;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_pkg_bodyonly AS
+  PROCEDURE body_only_auto AS
+    PRAGMA AUTONOMOUS_TRANSACTION;
+  BEGIN
+    INSERT INTO autonomous_test VALUES (500, 'must not run', 'no');
+  END body_only_auto;
+
+  PROCEDURE spec_entry AS
+  BEGIN
+    body_only_auto();
+  END spec_entry;
+END test_pkg_bodyonly;
+/
+
+COMMIT;
+
+CALL test_pkg_bodyonly.spec_entry();
+SELECT id, msg FROM autonomous_test WHERE id = 500;
+
+--
+-- Test 26: A polymorphic member (anyelement/anyarray parameters) must run
+-- autonomously: the declared pseudotypes are resolved to the concrete types
+-- of the actual arguments when the autonomous call is built, so the far
+-- session never sees a cast to a pseudotype (which its parser rejects).
+--
+CREATE OR REPLACE PACKAGE test_pkg_poly AS
+  FUNCTION poly_ident(x anyelement) RETURN anyelement;
+  FUNCTION poly_pick(x anyarray) RETURN anyelement;
+END;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_pkg_poly AS
+  FUNCTION poly_ident(x anyelement) RETURN anyelement AS
+    PRAGMA AUTONOMOUS_TRANSACTION;
+  BEGIN
+    RETURN x;
+  END poly_ident;
+
+  FUNCTION poly_pick(x anyarray) RETURN anyelement AS
+    PRAGMA AUTONOMOUS_TRANSACTION;
+  BEGIN
+    RETURN x[1];
+  END poly_pick;
+END test_pkg_poly;
+/
+
+COMMIT;
+
+SELECT test_pkg_poly.poly_ident(42) AS poly_int_result;
+SELECT test_pkg_poly.poly_ident('hello'::TEXT) AS poly_text_result;
+SELECT test_pkg_poly.poly_ident(NULL::INT) AS poly_null_result;
+SELECT test_pkg_poly.poly_pick(ARRAY[7,8,9]) AS poly_array_result;
+
+--
+-- Test 27: Numeric argument values whose unquoted rendering would not
+-- survive the far parser: float special values (NaN, Infinity — an
+-- unquoted NaN would be read as a column reference) and the negative
+-- int2 minimum (-32768 — unquoted, the cast would bind before the unary
+-- minus and overflow).  Every value is rendered quoted with its cast, so
+-- the far call sees the exact local value.
+--
+CREATE OR REPLACE PACKAGE test_pkg_num AS
+  FUNCTION num_echo(x FLOAT8) RETURN FLOAT8;
+  FUNCTION int2_echo(x INT2) RETURN INT2;
+END;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_pkg_num AS
+  FUNCTION num_echo(x FLOAT8) RETURN FLOAT8 AS
+    PRAGMA AUTONOMOUS_TRANSACTION;
+  BEGIN
+    RETURN x;
+  END num_echo;
+
+  FUNCTION int2_echo(x INT2) RETURN INT2 AS
+    PRAGMA AUTONOMOUS_TRANSACTION;
+  BEGIN
+    RETURN x;
+  END int2_echo;
+END test_pkg_num;
+/
+
+COMMIT;
+
+SELECT test_pkg_num.num_echo('NaN'::FLOAT8) AS nan_result;
+SELECT test_pkg_num.num_echo('Infinity'::FLOAT8) AS infinity_result;
+SELECT test_pkg_num.num_echo('-Infinity'::FLOAT8) AS neg_infinity_result;
+SELECT test_pkg_num.int2_echo((-32768)::INT2) AS int2_min_result;
+SELECT test_pkg_num.int2_echo(32767::INT2) AS int2_max_result;
+
+--
 -- Summary: Show all test results
 --
 SELECT 'All autonomous transaction tests completed' AS status;
@@ -476,4 +682,16 @@ DROP FUNCTION test_function_date(DATE, INT);
 DROP FUNCTION test_function_boolean(INT);
 DROP PACKAGE BODY test_pkg;
 DROP PACKAGE test_pkg;
+DROP PACKAGE BODY test_pkg_iso;
+DROP PACKAGE test_pkg_iso;
+DROP PACKAGE BODY test_pkg_isoread;
+DROP PACKAGE test_pkg_isoread;
+DROP PACKAGE BODY test_pkg_func;
+DROP PACKAGE test_pkg_func;
+DROP PACKAGE BODY test_pkg_bodyonly;
+DROP PACKAGE test_pkg_bodyonly;
+DROP PACKAGE BODY test_pkg_poly;
+DROP PACKAGE test_pkg_poly;
+DROP PACKAGE BODY test_pkg_num;
+DROP PACKAGE test_pkg_num;
 DROP TABLE autonomous_test;
