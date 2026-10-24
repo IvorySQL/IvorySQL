@@ -352,7 +352,22 @@ select dbtimezone() from dual;
 alter database :cur_db set ivorysql.dbtimezone = 'not_a_zone';
 alter database :cur_db set ivorysql.dbtimezone = '+15:00';
 alter database :cur_db set ivorysql.dbtimezone = '-13:00';
+/* offsets that only look numeric are rejected too: pg_tzset() would accept
+ * them as POSIX-style TZ specs, violating the documented +/-HH:MI format
+ * and the range checks above */
+alter database :cur_db set ivorysql.dbtimezone = '+15:00:00';
+alter database :cur_db set ivorysql.dbtimezone = '+015:00';
+alter database :cur_db set ivorysql.dbtimezone = '+14:00:00';
+alter database :cur_db set ivorysql.dbtimezone = '00:00';
+/* leading whitespace must not smuggle a numeric offset past the format
+ * check either: pg_tzset() would treat the space as part of a POSIX
+ * abbreviation and accept " +15:00" */
+alter database :cur_db set ivorysql.dbtimezone = ' +15:00';
 alter database :cur_db set ivorysql.dbtimezone = '+00:00';
+\c -
+select dbtimezone() from dual;
+/* a time zone region name is still accepted and reported verbatim */
+alter database :cur_db set ivorysql.dbtimezone = 'Asia/Shanghai';
 \c -
 select dbtimezone() from dual;
 /* contrib_regression is shared by the rest of this schedule (and reused
