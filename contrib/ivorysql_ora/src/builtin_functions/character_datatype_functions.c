@@ -788,8 +788,14 @@ ora_regexp_like(PG_FUNCTION_ARGS)
 	in_flag_p = VARDATA(in_flag);
 	in_flag_len = (VARSIZE(in_flag) - VARHDRSZ);
 
-	/* parse flag options */
-	out_flag = REG_ADVANCED;
+	/*
+	 * Parse the match_parameter options.  These letters have to mean here what
+	 * they mean in the other REGEXP_* functions, which all call
+	 * ora_parse_re_flags(): 'n' is what lets "." match a newline and 'm' is what
+	 * enables the multiline anchors.  Without 'n' a newline is not matched by
+	 * ".", which is Oracle's default.
+	 */
+	out_flag = REG_ADVANCED | REG_NLDOT;
 	for (i = 0; i <in_flag_len; i++)
 	{
 		switch (in_flag_p[i])
@@ -798,7 +804,10 @@ ora_regexp_like(PG_FUNCTION_ARGS)
 				out_flag  |=  REG_ICASE;
 				break;
 			case 'n':
-				out_flag |= REG_NEWLINE;
+				out_flag &= ~REG_NLDOT;
+				break;
+			case 'm':
+				out_flag |= REG_NLANCH;
 				break;
 			case 'c':
 				out_flag  &=  ~REG_ICASE;
@@ -853,8 +862,8 @@ ora_regexp_like_no_flags(PG_FUNCTION_ARGS)
 	{
 		PG_RETURN_BOOL(false);
 	}
-	/* parse flag options */
-	out_flag = REG_ADVANCED;
+	/* No match_parameter: the Oracle default, "." excludes a newline */
+	out_flag = REG_ADVANCED | REG_NLDOT;
 
 	/*
 	 * We pass two regmatch_t structs to get info about the overall match and
