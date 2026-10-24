@@ -1558,3 +1558,12 @@ select to_single_byte('１．２');
 select to_single_byte(１．２);
 select to_single_byte(3.4);
 select to_single_byte(NULL);
+
+
+-- Verify sys.lengthb(bytea) metadata.
+SELECT count(*) = 1 AS lengthb_bytea_metadata_ok
+FROM pg_catalog.pg_proc
+WHERE oid = 'sys.lengthb(bytea)'::regprocedure
+  AND provolatile = 'i'
+  AND proisstrict = true
+  AND proparallel = 's';
