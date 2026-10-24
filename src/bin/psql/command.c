@@ -2788,6 +2788,25 @@ exec_command_quit(PsqlScanState scan_state, bool active_branch)
 }
 
 /*
+ * reset_scan_state - reset the lexer state of the parser in use
+ *
+ * psql_scan_reset() only clears the state shared by both lexers.  The
+ * Oracle lexer tracks additional per-statement state (anonymous-block
+ * detection flags, the statement token counter and so on), which must be
+ * discarded too when the query buffer is thrown away; otherwise the
+ * lexer stays in the middle of a statement it will never see the end of,
+ * and subsequent statements stop being executed at their semicolons.
+ */
+static void
+reset_scan_state(PsqlScanState scan_state)
+{
+	if (db_mode == DB_ORACLE)
+		ora_psql_scan_reset(scan_state);
+	else
+		psql_scan_reset(scan_state);
+}
+
+/*
  * \r -- reset (clear) the query buffer
  */
 static backslashResult
@@ -2797,7 +2816,7 @@ exec_command_reset(PsqlScanState scan_state, bool active_branch,
 	if (active_branch)
 	{
 		resetPQExpBuffer(query_buf);
-		psql_scan_reset(scan_state);
+		reset_scan_state(scan_state);
 		if (!pset.quiet)
 			puts(_("Query buffer reset (cleared)."));
 	}
@@ -3535,7 +3554,7 @@ exec_command_watch(PsqlScanState scan_state, bool active_branch,
 
 		/* Reset the query buffer as though for \r */
 		resetPQExpBuffer(query_buf);
-		psql_scan_reset(scan_state);
+		reset_scan_state(scan_state);
 	}
 	else
 		ignore_slash_options(scan_state);
