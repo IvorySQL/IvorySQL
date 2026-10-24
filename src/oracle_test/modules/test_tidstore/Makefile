@@ -11,6 +11,8 @@ DATA = test_tidstore--1.0.sql
 
 REGRESS = test_tidstore
 
+ORA_REGRESS = $(REGRESS)
+
 ifdef USE_PGXS
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
