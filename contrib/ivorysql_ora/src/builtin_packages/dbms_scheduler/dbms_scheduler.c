@@ -383,6 +383,80 @@ sched_parse_name(const char *raw, const char *what, SchedName *result)
 }
 
 /*
+ * Parse a comma-separated list of scheduler object names.  A comma inside a
+ * quoted identifier is data, and doubled quotes inside that identifier do not
+ * end it.  Parse and authorize every element before returning so callers can
+ * perform their work only after the whole list has been validated.
+ *
+ * Duplicate normalized names are harmless and are folded to one entry.
+ */
+static List *
+sched_parse_name_list(const char *raw, const char *what)
+{
+	List	   *result = NIL;
+	const char *item_start = raw;
+	const char *p = raw;
+	bool		in_quotes = false;
+
+	for (;;)
+	{
+		if (*p == '"')
+		{
+			if (in_quotes && p[1] == '"')
+			{
+				p += 2;
+				continue;
+			}
+			in_quotes = !in_quotes;
+		}
+		else if (*p == '\0' && in_quotes)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_NAME),
+					 errmsg("invalid %s name list \"%s\"", what, raw),
+					 errdetail("Unterminated quoted identifier.")));
+		else if (*p == ',' || *p == '\0')
+		{
+			char	   *item;
+			SchedName  *name;
+			ListCell   *lc;
+			bool		duplicate = false;
+
+			if (p == item_start)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_NAME),
+						 errmsg("invalid %s name list \"%s\"", what, raw),
+						 errdetail("List elements must not be empty.")));
+
+			item = pnstrdup(item_start, p - item_start);
+			name = palloc(sizeof(SchedName));
+			sched_parse_name(item, what, name);
+
+			foreach(lc, result)
+			{
+				SchedName  *prior = lfirst(lc);
+
+				if (strcmp(prior->owner, name->owner) == 0 &&
+					strcmp(prior->name, name->name) == 0)
+				{
+					duplicate = true;
+					break;
+				}
+			}
+			if (!duplicate)
+				result = lappend(result, name);
+
+			if (*p == '\0')
+				break;
+			item_start = ++p;
+			continue;
+		}
+		p++;
+	}
+
+	return result;
+}
+
+/*
  * What kind of scheduler object does (owner, name) denote?
  * Jobs, programs and schedules share one namespace, matching Oracle.
  */
@@ -2474,8 +2548,8 @@ sched_purge_log(TimestampTz cutoff, const char *owner, const char *job_name,
  * purge is confined to their own jobs, the way the USER_SCHEDULER_* views
  * show only their own rows: the call succeeds, it just cannot reach another
  * user's history.  That is a filter rather than a check, and it applies only
- * when no job is named - a job named as someone else's is refused outright by
- * sched_parse_name().
+ * when no job is named - a list naming anyone else's job is refused outright
+ * by sched_parse_name_list().
  */
 Datum
 ora_dbms_scheduler_purge_log(PG_FUNCTION_ARGS)
@@ -2485,7 +2559,7 @@ ora_dbms_scheduler_purge_log(PG_FUNCTION_ARGS)
 	char	   *raw_name = text_arg_or_null(fcinfo, 2);
 	char	   *which_log;
 	char	   *owner = NULL;
-	char	   *job_name = NULL;
+	List	   *jobs = NIL;
 	TimestampTz cutoff;
 
 	/*
@@ -2515,42 +2589,25 @@ ora_dbms_scheduler_purge_log(PG_FUNCTION_ARGS)
 				 errmsg("log_history %d is out of range (0 .. %d)",
 						log_history, SCHED_MAX_LOG_HISTORY)));
 
-	/*
-	 * Oracle takes a comma-separated list of job or job class names here, as
-	 * in PURGE_LOG(log_history => 10, job_name => 'job1, sys.class2').  Only
-	 * a single job name is supported, and the list has to be turned away
-	 * explicitly: sched_parse_name() reads an unquoted part up to the next
-	 * '.' or the end of the string, so 'a,b' would come back as the one name
-	 * A,B and the purge would match nothing at all.  A quoted name that
-	 * really does contain a comma is refused along with it, which is the
-	 * price of testing before parsing.
-	 */
-	if (raw_name != NULL && strchr(raw_name, ',') != NULL)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("purging the log of a list of jobs is not supported"),
-				 errhint("Call PURGE_LOG once per job, or leave job_name out to purge every job's log.")));
-
 	SPI_connect();
 
 	which_log = sched_check_which_log(raw_which_log);
 
 	if (raw_name != NULL)
 	{
-		SchedName	job;
-
 		/*
-		 * Resolves an unqualified name against the invoking user and refuses
-		 * another user's name unless the caller is a superuser.  There is no
-		 * check that the job still exists: the log has no foreign key to it
-		 * precisely because history outlives its job, so the rows a purge is
-		 * most often aimed at are those whose job is already gone.  A name
-		 * that matches nothing deletes nothing, which also leaves a cleanup
-		 * script safe to run twice.
+		 * Parse the entire list before deleting anything.  Besides making
+		 * malformed and unauthorized lists fail atomically, this resolves
+		 * every unqualified name against the invoking user and refuses any
+		 * other user's name unless the caller is a superuser.
+		 *
+		 * There is no check that a job still exists: the log has no foreign
+		 * key to it precisely because history outlives its job, so the rows
+		 * a purge is most often aimed at are those whose job is already gone.
+		 * A name that matches nothing deletes nothing, which also leaves a
+		 * cleanup script safe to run twice.
 		 */
-		sched_parse_name(raw_name, "job", &job);
-		owner = job.owner;
-		job_name = job.name;
+		jobs = sched_parse_name_list(raw_name, "job");
 	}
 	else if (!superuser())
 	{
@@ -2574,8 +2631,19 @@ ora_dbms_scheduler_purge_log(PG_FUNCTION_ARGS)
 		ereport(WARNING,
 				(errmsg("there is no window log to purge"),
 				 errhint("Use JOB_LOG or JOB_AND_WINDOW_LOG to purge the job run log.")));
+	else if (jobs != NIL)
+	{
+		ListCell   *lc;
+
+		foreach(lc, jobs)
+		{
+			SchedName  *job = lfirst(lc);
+
+			(void) sched_purge_log(cutoff, job->owner, job->name, 0);
+		}
+	}
 	else
-		(void) sched_purge_log(cutoff, owner, job_name, 0);
+		(void) sched_purge_log(cutoff, owner, NULL, 0);
 
 	SPI_finish();
 	PG_RETURN_VOID();
