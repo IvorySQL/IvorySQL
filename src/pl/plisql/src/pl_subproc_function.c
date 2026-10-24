@@ -987,7 +987,7 @@ plisql_add_subproc_function(PLiSQL_subproc_function * new)
 
 
 /*
- * register some usefull functions
+ * register some useful functions
  * for SQL to used
  */
 void
@@ -1019,7 +1019,7 @@ plisql_register_internal_func(void)
 
 
 /*
- * unrgister some usefull functions from SQL
+ * unregister some useful functions from SQL
  */
 void
 plisql_unregister_internal_func(void)
