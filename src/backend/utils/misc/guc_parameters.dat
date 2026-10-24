@@ -2403,6 +2403,13 @@
   boot_val => '"YYYY-MM-DD"',
 },
 
+{ name => 'nls_date_language', type => 'string', context => 'PGC_USERSET', group => 'COMPAT_ORACLE_OPTIONS',
+  short_desc => 'Compatible Oracle NLS parameter for NLS_DATE_LANGUAGE.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'nls_date_language',
+  boot_val => '"AMERICAN"',
+},
+
 { name => 'nls_iso_currency', type => 'string', context => 'PGC_USERSET', group => 'COMPAT_ORACLE_OPTIONS',
   short_desc => 'Compatible Oracle NLS parameter for NLS_ISO_CURRENCY.',
   flags => 'GUC_NOT_IN_SAMPLE',
