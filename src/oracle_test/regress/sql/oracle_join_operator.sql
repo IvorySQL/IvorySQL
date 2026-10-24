@@ -549,6 +549,37 @@ DROP TABLE oj_e;
 DROP TABLE oj_d;
 DROP TABLE oj_l;
 
+-- Preserve ONLY and TABLESAMPLE when rebuilding relation operands.
+CREATE TABLE oj_parent (id integer);
+CREATE TABLE oj_child () INHERITS (oj_parent);
+CREATE TABLE oj_probe (id integer);
+INSERT INTO oj_parent VALUES (1);
+INSERT INTO oj_child VALUES (2);
+INSERT INTO oj_probe VALUES (1), (2);
+
+SELECT p.id, q.id AS matched
+FROM ONLY oj_parent p, oj_probe q
+WHERE p.id = q.id(+) ORDER BY p.id;
+SELECT p.id, q.id AS matched
+FROM oj_probe p, ONLY oj_parent q
+WHERE p.id = q.id(+) ORDER BY p.id;
+
+-- Zero-percent samples make the expected result deterministic on both sides.
+SELECT p.id, q.id AS matched
+FROM oj_probe p TABLESAMPLE SYSTEM (0), oj_parent q
+WHERE p.id = q.id(+) ORDER BY p.id;
+SELECT p.id, q.id AS matched
+FROM oj_probe p, oj_parent q TABLESAMPLE SYSTEM (0) REPEATABLE (1)
+WHERE p.id = q.id(+) ORDER BY p.id;
+
+-- A sampled operand must still be recognized inside a shared join subtree.
+SELECT p.id, q.id AS matched, r.id AS chained
+FROM oj_parent p TABLESAMPLE SYSTEM (100), oj_probe q, oj_probe r
+WHERE p.id = q.id(+) AND q.id = r.id(+) AND p.id = r.id(+)
+ORDER BY p.id;
+
+DROP TABLE oj_child, oj_parent, oj_probe;
+
 -- Clean up
 DROP FUNCTION t1_rows();
 
