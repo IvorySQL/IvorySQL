@@ -1931,3 +1931,24 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 /* End - VSIZE */
+
+
+/* STANDARD_HASH */
+/*
+ * STANDARD_HASH: Oracle-compatible function computing a message digest of
+ * its argument and returning RAW.  The optional method argument is a
+ * case-sensitive algorithm name ('MD5', 'SHA1', 'SHA256', 'SHA384' or
+ * 'SHA512') and defaults to 'SHA1', like in Oracle.
+ *
+ * Must NOT be declared STRICT: Oracle digests a zero-byte input for a NULL
+ * argument (STANDARD_HASH(NULL, 'MD5') = STANDARD_HASH('', 'MD5')), so NULL
+ * must reach the C function to be handled explicitly.  An invalid or NULL
+ * method name raises an error matching Oracle's ORA-03052.
+ */
+CREATE FUNCTION sys.standard_hash(text, text DEFAULT 'SHA1')
+RETURNS sys.raw
+AS 'MODULE_PATHNAME', 'ora_standard_hash'
+LANGUAGE C
+IMMUTABLE
+PARALLEL SAFE;
+/* End - STANDARD_HASH */
