@@ -58,6 +58,7 @@ int	datums_alloc;
 int	plisql_nDatums;
 PLiSQL_datum **plisql_Datums;
 int			datums_last;
+int			plisql_level0_datum_boundary = -1;
 
 char	   *plisql_error_funcname;
 bool		plisql_DumpExecTree = false;
@@ -3408,6 +3409,7 @@ plisql_start_datums(void)
 						sizeof(PLiSQL_datum *) * datums_alloc);
 	/* datums_last tracks what's been seen by plisql_add_initdatums() */
 	datums_last = 0;
+	plisql_level0_datum_boundary = -1;
 }
 
 /* ----------
