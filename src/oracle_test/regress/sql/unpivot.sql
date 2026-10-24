@@ -86,6 +86,15 @@ SELECT unpivot((
     LIMIT 1
 ));
 SELECT unpivot(unpivot(unpivot(unpivot(1))));
+
+-- Replayed probe tokens still recognize the Oracle outer-join operator.
+CREATE TABLE unpivot_outer_join (value int);
+INSERT INTO unpivot_outer_join VALUES (10), (20);
+SELECT count(*)
+FROM unpivot_t u, unpivot_outer_join o
+WHERE o.value = unpivot(u.q1(+));
+DROP TABLE unpivot_outer_join;
+
 DROP FUNCTION unpivot(anyelement);
 
 WITH unpivot(x) AS (SELECT 1)
@@ -389,13 +398,50 @@ SELECT id, v
 FROM unpivot_types
 UNPIVOT (v FOR k IN (n1, s1));
 
+-- An unbounded timestamp from PostgreSQL mode keeps full precision.
+SET ivorysql.compatible_mode = pg;
+SET datestyle = ISO;
+CREATE TABLE unpivot_pg_datetime_types (
+    ts_default timestamp,
+    ts_zero timestamp(0),
+    d date
+);
+INSERT INTO unpivot_pg_datetime_types VALUES (
+    TIMESTAMP '2024-01-02 03:04:05.678901',
+    TIMESTAMP '2024-02-03 04:05:06.789012',
+    DATE '2024-04-05'
+);
+SET ivorysql.compatible_mode = oracle;
+CREATE TABLE unpivot_pg_timestamp_ctas AS
+SELECT v
+FROM unpivot_pg_datetime_types
+UNPIVOT (v FOR k IN (ts_default, ts_zero));
+SELECT format_type(atttypid, atttypmod)
+FROM pg_attribute
+WHERE attrelid = 'unpivot_pg_timestamp_ctas'::regclass AND attnum = 1;
+SELECT v
+FROM unpivot_pg_timestamp_ctas
+ORDER BY v;
+CREATE TABLE unpivot_pg_date_ctas AS
+SELECT v
+FROM unpivot_pg_datetime_types
+UNPIVOT (v FOR k IN (d, ts_zero));
+SELECT format_type(atttypid, atttypmod)
+FROM pg_attribute
+WHERE attrelid = 'unpivot_pg_date_ctas'::regclass AND attnum = 1;
+SELECT v
+FROM unpivot_pg_date_ctas
+ORDER BY v;
+RESET datestyle;
+
 -- Datetime measures preserve LOCAL TIME ZONE and the largest precision.
 CREATE TABLE unpivot_datetime_types (
     id int,
     tl1 timestamp with local time zone,
     tl2 timestamp with local time zone,
     ts1 timestamp(3),
-    ts2 timestamp(0)
+    ts2 timestamp(0),
+    ts_default timestamp
 );
 
 INSERT INTO unpivot_datetime_types VALUES (
@@ -403,7 +449,8 @@ INSERT INTO unpivot_datetime_types VALUES (
     TIMESTAMP '2024-01-02 03:04:05.678901',
     TIMESTAMP '2024-02-03 04:05:06.789012',
     TIMESTAMP '2024-01-02 03:04:05.678',
-    TIMESTAMP '2024-02-03 04:05:06'
+    TIMESTAMP '2024-02-03 04:05:06',
+    TIMESTAMP '2024-03-04 05:06:07.890123'
 );
 
 SELECT pg_typeof(v), v, k
@@ -419,6 +466,17 @@ SELECT attname, format_type(atttypid, atttypmod)
 FROM pg_attribute
 WHERE attrelid = 'unpivot_timestamp_ctas'::regclass AND attnum > 0
 ORDER BY attnum;
+
+CREATE TABLE unpivot_timestamp_default_ctas AS
+SELECT v
+FROM unpivot_datetime_types
+UNPIVOT (v FOR k IN (ts_default, ts2));
+SELECT format_type(atttypid, atttypmod)
+FROM pg_attribute
+WHERE attrelid = 'unpivot_timestamp_default_ctas'::regclass AND attnum = 1;
+SELECT v
+FROM unpivot_timestamp_default_ctas
+ORDER BY v;
 
 -- LOB and bounded character values belong to different UNPIVOT type groups.
 CREATE TABLE unpivot_lobs (
@@ -451,6 +509,17 @@ SELECT pg_typeof(v), pg_collation_for(v), v, k
 FROM unpivot_nchar_types
 UNPIVOT (v FOR k IN (n1, nv1))
 ORDER BY k;
+
+-- The NCHAR marker composes with the database-default character family.
+SELECT c1 = n1 AS values_differ
+FROM unpivot_nchar_types;
+SELECT pg_collation_for(v)
+FROM (
+    SELECT c1 AS v FROM unpivot_nchar_types
+    UNION
+    SELECT n1 FROM unpivot_nchar_types
+) s
+LIMIT 1;
 
 SELECT id, v
 FROM unpivot_nchar_types
@@ -576,6 +645,29 @@ FROM pg_attribute
 WHERE attrelid = 'unpivot_nls_char_ctas'::regclass AND attnum = 1;
 RESET nls_length_semantics;
 
+-- A byte-semantic result uses a conservative bound for character inputs.
+SET nls_length_semantics = byte;
+CREATE TABLE unpivot_length_semantics (
+    c char(10 char),
+    b varchar2(20 byte)
+);
+INSERT INTO unpivot_length_semantics VALUES ('你好', 'Oracle');
+CREATE TABLE unpivot_mixed_length_ctas AS
+SELECT v
+FROM unpivot_length_semantics
+UNPIVOT (v FOR k IN (c, b));
+SELECT atttypmod =
+       4 + 10 * pg_encoding_max_length(
+           pg_char_to_encoding(current_setting('server_encoding')))
+       AS byte_bound_is_conservative
+FROM pg_attribute
+WHERE attrelid = 'unpivot_mixed_length_ctas'::regclass AND attnum = 1;
+SELECT k, length(v), octet_length(v)
+FROM unpivot_length_semantics
+UNPIVOT (v FOR k IN (c, b))
+ORDER BY k;
+RESET nls_length_semantics;
+
 -- Chained UNPIVOT clauses use the previous output and expose only the final alias.
 SELECT *
 FROM unpivot_t
@@ -689,8 +781,14 @@ DROP DOMAIN unpivot_blob_domain;
 DROP DOMAIN unpivot_ym_domain;
 DROP TABLE unpivot_binary;
 DROP TABLE unpivot_time;
+DROP TABLE unpivot_length_semantics;
+DROP TABLE unpivot_mixed_length_ctas;
 DROP TABLE unpivot_nchar_types;
+DROP TABLE unpivot_timestamp_default_ctas;
 DROP TABLE unpivot_timestamp_ctas;
+DROP TABLE unpivot_pg_timestamp_ctas;
+DROP TABLE unpivot_pg_date_ctas;
+DROP TABLE unpivot_pg_datetime_types;
 DROP TABLE unpivot_datetime_types;
 DROP TABLE unpivot_types;
 DROP TABLE unpivot_lobs;

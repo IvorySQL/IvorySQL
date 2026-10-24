@@ -1908,23 +1908,20 @@ transformColumnRefOrFunCall(ParseState *pstate, ColumnRefOrFuncCall * cref_func)
 		}
 		PG_CATCH();
 		{
-			char		str[264] = {'\0'};
+			StringInfoData str;
 			ListCell   *lc;
-			int			i = 1;
 
-			strcpy(str, "\"");
+			initStringInfo(&str);
 			foreach(lc, cref_func->cref->fields)
 			{
-				if (i > 1)
-					strcat(str, "\".\"");
-				strcat(str, ((String *) lfirst(lc))->sval);
-				i++;
+				if (lc != list_head(cref_func->cref->fields))
+					appendStringInfoChar(&str, '.');
+				appendStringInfo(&str, "\"%s\"", strVal(lfirst(lc)));
 			}
-			strcat(str, "\"");
 
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_NAME),
-					 errmsg("%s: invalid identifier", str),
+					 errmsg("%s: invalid identifier", str.data),
 					 parser_errposition(pstate, cref_func->cref->location)));
 		}
 		PG_END_TRY();

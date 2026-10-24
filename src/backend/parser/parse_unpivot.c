@@ -65,6 +65,9 @@ typedef enum UnpivotStringFamily
 #define UNPIVOT_DSINTERVAL_RANGE_MASK		0x7FFF
 #define UNPIVOT_DSINTERVAL_PRECISION_MASK	0xFF
 
+/* Maximum declared length for Oracle CHAR and VARCHAR2 types. */
+#define UNPIVOT_MAX_CHAR_LENGTH				32767
+
 static SelectStmt *makeUnpivotSourceSelect(Node *source);
 static SelectStmt *makeUnpivotBranch(RangeUnpivot *ru,
 									 UnpivotItemInfo *item,
@@ -1220,7 +1223,15 @@ selectUnpivotCommonTypmod(Oid common_type, List *types, List *typmods)
 			if (lfirst_oid(type_lc) == InvalidOid)
 				continue;
 			typmod = lfirst_int(typmod_lc);
-			if (typmod >= 0 && typmod > result)
+			if (typmod < 0)
+			{
+				Oid			base_type = getBaseType(lfirst_oid(type_lc));
+
+				if (base_type != DATEOID && base_type != ORADATEOID)
+					return -1;
+				continue;
+			}
+			if (typmod > result)
 				result = typmod;
 		}
 		return result;
@@ -1231,13 +1242,32 @@ selectUnpivotCommonTypmod(Oid common_type, List *types, List *typmods)
 
 	forboth(type_lc, types, typmod_lc, typmods)
 	{
+		Oid			type;
 		int32		typmod;
 
-		if (lfirst_oid(type_lc) == InvalidOid)
+		type = lfirst_oid(type_lc);
+		if (type == InvalidOid)
 			continue;
 		typmod = lfirst_int(typmod_lc);
 		if (typmod < 0)
 			return -1;
+
+		/*
+		 * CHAR-semantic and BYTE-semantic Oracle types share a typmod
+		 * representation but count different units.  Convert a character
+		 * bound to a conservative byte bound when the common type is BYTE
+		 * based.
+		 */
+		if (common_type == ORAVARCHARBYTEOID &&
+			type != ORACHARBYTEOID && type != ORAVARCHARBYTEOID)
+		{
+			int			maxlen = pg_database_encoding_max_length();
+			int32		charlen = typmod - VARHDRSZ;
+
+			if (charlen > UNPIVOT_MAX_CHAR_LENGTH / maxlen)
+				return -1;
+			typmod = VARHDRSZ + charlen * maxlen;
+		}
 		if (typmod > result)
 			result = typmod;
 	}

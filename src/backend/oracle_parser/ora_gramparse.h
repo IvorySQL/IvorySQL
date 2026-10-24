@@ -50,6 +50,7 @@ typedef struct
 	YYSTYPE		lval;			/* semantic information */
 	YYLTYPE		lloc;			/* offset in scanbuf */
 	int			leng;			/* length in bytes */
+	bool		replayed;		/* token was cached by UNPIVOT probing */
 } TokenAuxData;
 
 /* Token pushback stack */
