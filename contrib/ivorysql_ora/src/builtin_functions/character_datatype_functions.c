@@ -1354,7 +1354,8 @@ text_substring_byte(Datum str, int32 start, int32 length, bool length_not_specif
 		}
 
 		subStrEnd = subStrBegin;
-		while (subStrEnd + pg_mblen(subStrEnd) <= sliceBegin + E1 - 1)
+		while (subStrEnd < sliceBegin + E1 - 1 &&
+			   subStrEnd + pg_mblen(subStrEnd) <= sliceBegin + E1 - 1)
 			subStrEnd += pg_mblen(subStrEnd);
 
 		if (subStrEnd < sliceBegin + E1 - 1)
