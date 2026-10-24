@@ -11,6 +11,9 @@ DATA = test_lwlock_tranches--1.0.sql
 
 REGRESS_OPTS = --temp-config $(top_srcdir)/src/oracle_test/modules/test_lwlock_tranches/test_lwlock_tranches.conf
 REGRESS = test_lwlock_tranches
+
+ORACLE_REGRESS_OPTS = --temp-config $(top_srcdir)/src/oracle_test/modules/test_lwlock_tranches/test_lwlock_tranches.conf
+ORA_REGRESS = $(REGRESS)
 NO_INSTALLCHECK = 1
 
 ifdef USE_PGXS
