@@ -1816,6 +1816,9 @@ drop table test1;
 create table test1(col1 bytea,col2  int);
 insert into test1 values(E'\\001',1);
 SELECT decode (col1,NULL,0,E'\\001',7000) from test1;
+SET nls_length_semantics = 'CHAR';
+SELECT decode (col1,NULL,0,E'\\001',7000) from test1; 
+RESET nls_length_semantics;
 drop table test1;
 
 --日期/时间类型:
