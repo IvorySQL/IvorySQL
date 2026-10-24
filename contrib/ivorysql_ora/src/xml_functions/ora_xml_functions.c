@@ -752,6 +752,8 @@ static void
 ivy_xml_setnodecontent(xmlXPathObjectPtr xpathobj, xmlChar *var)
 {
 	xmlNodePtr	cur = NULL;
+	xmlNodePtr	child = NULL;
+	xmlNodePtr	next = NULL;
 	int			num = 0;
 	int			i;
 
@@ -765,8 +767,18 @@ ivy_xml_setnodecontent(xmlXPathObjectPtr xpathobj, xmlChar *var)
 				cur = xpathobj->nodesetval->nodeTab[i];
 				if (strcmp((char *)var, "") == 0 && cur->type == XML_ELEMENT_NODE)
 				{
-					xmlUnlinkNode(cur->children);
-					xmlFreeNode(cur->children);
+					/*
+					 * An empty value empties the element.  Save the next
+					 * sibling before unlinking: xmlUnlinkNode() clears
+					 * child->next, and freeing a node that is still linked
+					 * would corrupt the document.
+					 */
+					for (child = cur->children; child != NULL; child = next)
+					{
+						next = child->next;
+						xmlUnlinkNode(child);
+						xmlFreeNode(child);
+					}
 				}
 				else
 				{
@@ -891,6 +903,8 @@ ivy_xml_replacenode(xmlXPathObjectPtr xpathobj, const xmlChar* new_node)
 	int			i;
 	xmlDocPtr	n_node = NULL;
 	xmlNodePtr	cur = NULL;
+	xmlNodePtr	child = NULL;
+	xmlNodePtr	next = NULL;
 
 	if (xpathobj->type == XPATH_NODESET)
 	{
@@ -902,8 +916,18 @@ ivy_xml_replacenode(xmlXPathObjectPtr xpathobj, const xmlChar* new_node)
 				cur = xpathobj->nodesetval->nodeTab[i];
 				if (strcmp((char *)new_node, "") == 0)
 				{
-						xmlUnlinkNode(cur->children);
-						xmlFreeNode(cur->children);
+					/*
+					 * An empty value empties the target node.  Save the
+					 * next sibling before unlinking: xmlUnlinkNode()
+					 * clears child->next, and freeing a node that is
+					 * still linked would corrupt the document.
+					 */
+					for (child = cur->children; child != NULL; child = next)
+					{
+						next = child->next;
+						xmlUnlinkNode(child);
+						xmlFreeNode(child);
+					}
 				}
 				else
 				{
