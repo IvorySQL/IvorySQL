@@ -215,6 +215,21 @@ oratimestampltz_in(PG_FUNCTION_ARGS)
 	}
 	else
 	{
+		/*
+		 * Keep PostgreSQL special datetime keywords (epoch, now, infinity, ...)
+		 * working in Oracle mode: they are not valid under the NLS format mask.
+		 * Delegating to timestamp_in gives exactly the PostgreSQL semantics
+		 * for them, while ordinary strings continue through the NLS-format
+		 * parser below.
+		 */
+		if (is_pg_special_datetime_string(str))
+		{
+			Datum		datum;
+
+			datum = DirectFunctionCall3(timestamp_in, CStringGetDatum(str), ObjectIdGetDatum(InvalidOid), Int32GetDatum(typmod));
+			PG_RETURN_TIMESTAMPTZ(timestamp2timestamptz(DatumGetTimestamp(datum)));
+		}
+
 		ora_do_to_timestamp(cstring_to_text(str), cstring_to_text(nls_timestamp_format), collid, false, &tm, &fsec, NULL, NULL, NULL, false);
 
 		tz = DetermineTimeZoneOffset(&tm, session_timezone);
@@ -239,6 +254,13 @@ oratimestampltz_out(PG_FUNCTION_ARGS)
 	TimestampTz timestamp = PG_GETARG_TIMESTAMPTZ(0);
 	char	   *result;
 	text	   *date_str;
+
+	/*
+	 * The NLS format mask (to_char) cannot represent non-finite values
+	 * such as infinity; fall back to the PostgreSQL output for them.
+	 */
+	if (TIMESTAMP_NOT_FINITE(timestamp))
+		return DirectFunctionCall1(timestamptz_out, TimestampTzGetDatum(timestamp));
 
 	date_str = DatumGetTextP(DirectFunctionCall2(timestamptz_to_char,
 												 TimestampTzGetDatum(timestamp),

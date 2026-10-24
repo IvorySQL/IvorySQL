@@ -389,15 +389,29 @@ select to_jsonb(date '2014-05-28');
 (1 row)
 
 select to_jsonb(date 'Infinity');
-ERROR:  invalid value "Infi" for "YYYY"
-DETAIL:  Value must be an integer.
+  to_jsonb  
+------------
+ "infinity"
+(1 row)
+
 select to_jsonb(date '-Infinity');
-ERROR:  invalid value "-Inf" for "YYYY"
-DETAIL:  Value must be an integer.
+  to_jsonb   
+-------------
+ "-infinity"
+(1 row)
+
 select to_jsonb(timestamp 'Infinity');
-ERROR:  datetime string and format model does not match
+  to_jsonb  
+------------
+ "infinity"
+(1 row)
+
 select to_jsonb(timestamp '-Infinity');
-ERROR:  datetime string and format model does not match
+  to_jsonb   
+-------------
+ "-infinity"
+(1 row)
+
 select to_jsonb(timestamptz 'Infinity');
   to_jsonb  
 ------------
