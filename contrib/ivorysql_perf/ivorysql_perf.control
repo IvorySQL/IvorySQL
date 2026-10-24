@@ -1,0 +1,5 @@
+comment = 'Bounded active-session sampling and interval performance reports'
+default_version = '1.0'
+module_pathname = '$libdir/ivorysql_perf'
+relocatable = false
+schema = 'ivorysql_perf'
