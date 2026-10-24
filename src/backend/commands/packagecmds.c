@@ -1152,7 +1152,7 @@ AlterPackage(AlterPackageStmt *stmt)
 			}
 			break;
 		case alter_compile_parameter:
-			/* do nothing, only support grammer */
+			/* do nothing, only support grammar */
 			break;
 		default:
 			elog(ERROR, "doesn't recognise alter flag:%d", stmt->alter_flag);
