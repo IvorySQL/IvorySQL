@@ -653,7 +653,7 @@ static bool oracleJoinOpExists(const Node *expr);
 %type <target>	xml_namespace_el
 
 %type <node>	func_application func_expr_common_subexpr exec_func_application
-%type <node>	func_expr func_expr_windowless
+%type <node>	func_expr func_expr_windowless ora_special_func_expr
 %type <node>	common_table_expr
 %type <node>	plsql_declaration
 %type <list>	plsql_declarations
@@ -19470,6 +19470,7 @@ func_expr_windowless:
 			func_application						{ $$ = $1; }
 			| func_expr_common_subexpr				{ $$ = $1; }
 			| json_aggregate_func					{ $$ = $1; }
+			| ora_special_func_expr					{ $$ = $1; }
 		;
 
 /*
@@ -20718,7 +20719,23 @@ case_expr:	CASE case_arg when_clause_list case_default END_P
 					c->is_decode = false;
 					$$ = (Node *) c;
 				}
-			| DECODE '(' expr_list ')'
+			| ora_special_func_expr
+				{
+					$$ = $1;
+				}
+		;
+
+/*
+ * Oracle conditional functions NVL, NVL2 and DECODE.
+ *
+ * These are col_name keywords with dedicated productions, so ordinary
+ * function-call syntax cannot parse them.  Keeping the productions in their
+ * own nonterminal lets func_expr_windowless accept them as well; otherwise
+ * index expressions such as CREATE INDEX ... (decode(...)) are rejected even
+ * though the same call is accepted in a SELECT list.
+ */
+ora_special_func_expr:
+			DECODE '(' expr_list ')'
 				{
 					List *pars_list = $3;
 					int len1 = list_length(pars_list);
