@@ -1190,6 +1190,50 @@ LANGUAGE C
 IMMUTABLE
 PARALLEL SAFE;
 
+/* BIT_AND_AGG */
+/*
+ * BIT_AND_AGG: Oracle-compatible bitwise AND aggregate.
+ *
+ * The transition and combine functions are not STRICT: the int8 state is
+ * not binary compatible with the number input, so a strict transition
+ * function would need an INITCOND whose value an empty or all-NULL group
+ * would wrongly return instead of NULL.  Handling a NULL state explicitly
+ * keeps such groups NULL, as in Oracle.  Fractional inputs are truncated
+ * toward zero before contributing, and any numeric-family input (integer,
+ * numeric, binary_double, ...) reaches the NUMBER parameter through an
+ * implicit cast.  Values that do not fit in bigint raise an error, while
+ * Oracle aggregates the wider 128-bit range.
+ */
+CREATE FUNCTION sys.bit_and_agg_transfn(int8, number)
+RETURNS int8
+AS 'MODULE_PATHNAME','ora_bit_and_agg_transfn'
+LANGUAGE C
+IMMUTABLE
+PARALLEL SAFE;
+
+CREATE FUNCTION sys.bit_and_agg_combinefn(int8, int8)
+RETURNS int8
+AS 'MODULE_PATHNAME','ora_bit_and_agg_combinefn'
+LANGUAGE C
+IMMUTABLE
+PARALLEL SAFE;
+
+CREATE FUNCTION sys.bit_and_agg_finalfn(int8)
+RETURNS number
+AS 'MODULE_PATHNAME','ora_bit_and_agg_finalfn'
+LANGUAGE C
+IMMUTABLE
+PARALLEL SAFE;
+
+CREATE AGGREGATE sys.bit_and_agg(number) (
+    SFUNC = sys.bit_and_agg_transfn,
+    STYPE = int8,
+    COMBINEFUNC = sys.bit_and_agg_combinefn,
+    FINALFUNC = sys.bit_and_agg_finalfn,
+    PARALLEL = SAFE
+);
+/* End - BIT_AND_AGG */
+
 CREATE FUNCTION sys.nanvl(sys.binary_float, sys.binary_float)
 RETURNS sys.binary_float
 AS 'MODULE_PATHNAME','binary_float_nanvl'
