@@ -344,5 +344,23 @@ end;
 /
 
 -- clean up
+-- FFLUSH is a write-side operation and must reject read-only handles.
+declare
+    f UTL_FILE.FILE_TYPE;
+    rejected boolean := false;
+begin
+    f := utl_file.fopen('data_directory', 'regress.txt', 'r');
+    begin
+        utl_file.fflush(f);
+    exception when others then
+        rejected := true;
+    end;
+    utl_file.fclose(f);
+    if not rejected then
+        raise exception 'FFLUSH unexpectedly accepted a read-only handle';
+    end if;
+end;
+/
+
 delete from sys.utl_file_directory where dirname = 'data_directory';
 /
