@@ -1496,3 +1496,53 @@ END;
 -- Cleanup (may fail if function wasn't created)
 DROP FUNCTION IF EXISTS test_rownum_param;
 
+--
+-- ROWID variable assignment
+--
+-- Only a genuine ROWID/UROWID datum may be decomposed into a ROWID variable.
+-- A source column that merely happens to be named "rowid", a NULL source
+-- value, and an absent source row must not be dereferenced as a tuple header,
+-- which used to crash the backend.
+--
+CREATE TABLE ora_plisql_rowid (a int, b int) WITH ROWID;
+INSERT INTO ora_plisql_rowid VALUES (20, 3);
+
+DECLARE
+    rr ROWID;
+BEGIN
+    SELECT (rowid) FROM ora_plisql_rowid INTO rr;
+    RAISE NOTICE 'rowid assignment: rowno = %', (rr).rowno;
+END;
+/
+
+DECLARE
+    rr ROWID;
+BEGIN
+    SELECT *
+      FROM json_to_record('{"rowid":42}') AS x(rowid int)
+     INTO rr;
+    RAISE NOTICE 'plain rowid column: rowoid = %, rowno is null = %',
+                 (rr).rowoid, (rr).rowno IS NULL;
+END;
+/
+
+DECLARE
+    rr ROWID;
+BEGIN
+    SELECT t2.rowid
+      FROM ora_plisql_rowid t1 LEFT JOIN ora_plisql_rowid t2 ON false
+     INTO rr;
+    RAISE NOTICE 'null rowid value: %', rr IS NULL;
+END;
+/
+
+DECLARE
+    rr ROWID;
+BEGIN
+    rr := NULL;
+    RAISE NOTICE 'null rowid record: %', rr IS NULL;
+END;
+/
+
+DROP TABLE ora_plisql_rowid;
+

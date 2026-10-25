@@ -8166,15 +8166,34 @@ exec_move_row_from_fields(PLiSQL_execstate * estate,
 
 		var_tupdesc = expanded_record_get_tupdesc(newerh);
 
-		if (compatible_db == ORA_PARSER && (rec->datatype->typoid == ROWIDOID ||
-											rec->datatype->typoid == UROWIDOID))
+		/*
+		 * In Oracle mode a ROWID variable is assigned from the composite value
+		 * of a source column named "rowid".  Only a genuine ROWID/UROWID datum
+		 * may be decomposed that way: a column that merely happens to carry
+		 * that name, such as one created by a function's record type, has to
+		 * go through the normal field coercion, and a NULL or absent source
+		 * has no datum to decompose.  Without these checks the datum would be
+		 * dereferenced as a HeapTupleHeader, crashing the backend.
+		 */
+		if (compatible_db == ORA_PARSER && tupdesc != NULL &&
+			(rec->datatype->typoid == ROWIDOID ||
+			 rec->datatype->typoid == UROWIDOID))
 		{
-			is_rowid_var = true;
-
 			for (int i = 0; i < tupdesc->natts; i++)
 			{
-				if (strcmp(NameStr(TupleDescAttr(tupdesc, i)->attname), "rowid") == 0)
+				Form_pg_attribute srcattr = TupleDescAttr(tupdesc, i);
+
+				if (strcmp(NameStr(srcattr->attname), "rowid") != 0)
+					continue;
+
+				if (!nulls[i] &&
+					(srcattr->atttypid == ROWIDOID ||
+					 srcattr->atttypid == UROWIDOID))
+				{
 					tuphd = DatumGetHeapTupleHeader(values[i]);
+					is_rowid_var = true;
+				}
+				break;
 			}
 
 			if (tuphd)
