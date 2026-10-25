@@ -62,4 +62,13 @@ select * from t_ora_like where num like '123%';
 select * from t_ora_like where str2 like 'test%';
 drop table t_ora_like;
 
+create table t_ora_like_escape (id bigint);
+insert into t_ora_like_escape values (-428), (4), (17);
+select * from t_ora_like_escape where id not like '1#%' escape '#';
+select * from t_ora_like_escape where id not like '1%';
+drop table t_ora_like_escape;
+
+select 'a\b' like 'a\b' from dual;
+select 'a\b' not like 'a\b' from dual;
+
 set ivorysql.compatible_mode to pg;

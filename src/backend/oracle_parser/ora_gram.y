@@ -18613,8 +18613,12 @@ a_expr:		c_expr									{ $$ = $1; }
 
 			| a_expr LIKE a_expr
 				{
+					FuncCall   *n = makeFuncCall(SystemFuncName("like_escape"),
+												 list_make2($3, makeStringConst("", @3)),
+												 COERCE_EXPLICIT_CALL,
+												 @2);
 					$$ = (Node *) makeSimpleA_Expr(AEXPR_LIKE, "~~",
-												   $1, $3, @2);
+												   $1, (Node *) n, @2);
 				}
 			| a_expr LIKE a_expr ESCAPE a_expr					%prec LIKE
 				{
@@ -18627,8 +18631,12 @@ a_expr:		c_expr									{ $$ = $1; }
 				}
 			| a_expr NOT_LA LIKE a_expr							%prec NOT_LA
 				{
+					FuncCall   *n = makeFuncCall(SystemFuncName("like_escape"),
+												 list_make2($4, makeStringConst("", @4)),
+												 COERCE_EXPLICIT_CALL,
+												 @2);
 					$$ = (Node *) makeSimpleA_Expr(AEXPR_LIKE, "!~~",
-												   $1, $4, @2);
+												   $1, (Node *) n, @2);
 				}
 			| a_expr NOT_LA LIKE a_expr ESCAPE a_expr			%prec NOT_LA
 				{
