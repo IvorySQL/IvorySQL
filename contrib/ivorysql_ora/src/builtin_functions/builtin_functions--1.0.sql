@@ -1341,6 +1341,23 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
+/* Oracle-compatible character set ID and name conversion functions. */
+CREATE FUNCTION sys.nls_charset_id(varchar2)
+RETURNS number
+AS 'MODULE_PATHNAME','ora_nls_charset_id'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.nls_charset_name(number)
+RETURNS varchar2
+AS 'MODULE_PATHNAME','ora_nls_charset_name'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
 /*
  * Oracle USERENV support
  */
