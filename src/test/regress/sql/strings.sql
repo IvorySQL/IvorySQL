@@ -299,6 +299,8 @@ SELECT regexp_instr('1234567890', '(123)(4(56)(78))', 1, 1, 1, 'i', 4);
 SELECT regexp_instr('1234567890', '(123)(4(56)(78))', 1, 1, 1, 'i', 5);
 -- Check case where we have a match, but not a subexpression match
 SELECT regexp_instr('foo', 'foo(bar)?', 1, 1, 0, '', 1);
+SELECT regexp_instr('b', '(a*)b', 1, 1, 1, '', 1);
+SELECT regexp_instr('foo', 'foo(bar)?', 1, 1, 1, '', 1);
 -- errors
 SELECT regexp_instr('abcabcabc', 'a.c', 0, 1);
 SELECT regexp_instr('abcabcabc', 'a.c', 1, 0);

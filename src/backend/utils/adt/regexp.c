@@ -1701,6 +1701,8 @@ ora_build_regexp_instr_matches_result(regexp_matches_ctx *matchctx ,int ret_opt,
 		}
 		else
 		{
+			/* rm_eo is exclusive, but Oracle positions are one-based. */
+			eo--;
 			if (ret_opt == 0)
 			{
 				sprintf(ret_str_val,"%d",so + 1);
