@@ -46,14 +46,21 @@ initdb: $(OBJS) | submake-libpq submake-libpgport submake-libpgfeutils
 localtime.c: % : $(top_srcdir)/src/timezone/%
 	rm -f $@ && $(LN_S) $< .
 
-install: all installdirs
+install: all installdirs install-gb18030-2022
 	$(INSTALL_PROGRAM) initdb$(X) '$(DESTDIR)$(bindir)/initdb$(X)'
+
+# initdb creates and preloads gb18030_2022 for every supported cluster.
+install-gb18030-2022:
+	$(MAKE) -C $(top_builddir)/contrib/gb18030_2022 install
 
 installdirs:
 	$(MKDIR_P) '$(DESTDIR)$(bindir)'
 
-uninstall:
+uninstall: uninstall-gb18030-2022
 	rm -f '$(DESTDIR)$(bindir)/initdb$(X)'
+
+uninstall-gb18030-2022:
+	$(MAKE) -C $(top_builddir)/contrib/gb18030_2022 uninstall
 
 clean distclean:
 	rm -f initdb$(X) $(OBJS) localtime.c
