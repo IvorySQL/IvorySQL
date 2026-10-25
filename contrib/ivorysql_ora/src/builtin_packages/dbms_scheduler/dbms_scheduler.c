@@ -1655,12 +1655,15 @@ Datum
 ora_dbms_scheduler_drop_job(PG_FUNCTION_ARGS)
 {
 	char	   *raw_name = text_arg_or_null(fcinfo, 0);
+	bool		force = PG_ARGISNULL(1) ? false : PG_GETARG_BOOL(1);
+	bool		defer = PG_ARGISNULL(2) ? false : PG_GETARG_BOOL(2);
 	char	   *commit_semantics = text_arg_or_null(fcinfo, 3);
 	SchedName	job;
 	Oid			argtypes[2] = {TEXTOID, TEXTOID};
 	Datum		values[2];
+	uint64		running;
 
-	/* "force" and "defer" are accepted for Oracle compatibility, ignored */
+	/* A running job needs an explicit force or defer request before removal. */
 
 	SPI_connect();
 
@@ -1669,6 +1672,19 @@ ora_dbms_scheduler_drop_job(PG_FUNCTION_ARGS)
 
 	values[0] = CStringGetTextDatum(job.owner);
 	values[1] = CStringGetTextDatum(job.name);
+	if (!force && !defer)
+	{
+		running = sched_meta_select("SELECT 1 FROM sys.scheduler_job_run_details"
+								 " WHERE job_owner = $1 AND job_name = $2"
+								 "   AND status = 'r' LIMIT 1",
+								 2, argtypes, values, NULL);
+		if (running > 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+					 errmsg("job \"%s\".\"%s\" is running",
+							job.owner, job.name),
+					 errhint("Use force => true or defer => true to drop a running job.")));
+	}
 	if (sched_meta_dml("DELETE FROM sys.scheduler_jobs"
 				  " WHERE job_owner = $1 AND job_name = $2",
 				  2, argtypes, values, NULL) == 0)
