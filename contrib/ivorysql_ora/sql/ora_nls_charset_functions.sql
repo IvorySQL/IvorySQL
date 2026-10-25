@@ -12,9 +12,9 @@ SELECT sys.nls_charset_id('US7ASCII') AS us7ascii_id,
 
 SELECT sys.nls_charset_name(1) AS us7ascii_name,
        sys.nls_charset_name(31) AS we8iso8859p1_name,
-       sys.nls_charset_name(37) AS we8dec_name,
+       sys.nls_charset_name(2) AS we8dec_name,
        sys.nls_charset_name(178) AS we8mswin1252_name,
-       sys.nls_charset_name(850) AS zhs16gbk_name,
+       sys.nls_charset_name(852) AS zhs16gbk_name,
        sys.nls_charset_name(871) AS utf8_name,
        sys.nls_charset_name(872) AS utfe_name,
        sys.nls_charset_name(873) AS al32utf8_name,
@@ -23,7 +23,11 @@ SELECT sys.nls_charset_name(1) AS us7ascii_name,
 
 -- Name matching is case-insensitive.
 SELECT sys.nls_charset_id('al32utf8') AS lowercase_id,
-       sys.nls_charset_name(850) AS canonical_name;
+       sys.nls_charset_name(852) AS canonical_name;
+
+-- NUMBER inputs preserve fractional precision for the fixed ID lookup.
+SELECT sys.nls_charset_name(1.0) AS us7ascii_from_number,
+       sys.nls_charset_name(873.0) AS al32utf8_from_number;
 
 -- NULL is passed through by both functions.
 SELECT sys.nls_charset_id(NULL) IS NULL AS null_id,

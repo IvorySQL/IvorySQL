@@ -58,9 +58,9 @@ static const struct
 {
 	{1, "US7ASCII"},
 	{31, "WE8ISO8859P1"},
-	{37, "WE8DEC"},
+	{2, "WE8DEC"},
 	{178, "WE8MSWIN1252"},
-	{850, "ZHS16GBK"},
+	{852, "ZHS16GBK"},
 	{871, "UTF8"},
 	{872, "UTFE"},
 	{873, "AL32UTF8"},
