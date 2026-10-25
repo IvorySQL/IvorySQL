@@ -1890,4 +1890,12 @@ BEGIN
 END;
 /
 NOTICE:  null rowid record: t
+DECLARE
+    ur UROWID;
+BEGIN
+    SELECT rowid::UROWID FROM ora_plisql_rowid INTO ur;
+    RAISE NOTICE 'urowid assignment: rowno = %', (ur).rowno;
+END;
+/
+NOTICE:  urowid assignment: rowno = 1
 DROP TABLE ora_plisql_rowid;

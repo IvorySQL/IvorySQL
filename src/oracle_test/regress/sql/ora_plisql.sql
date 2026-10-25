@@ -1544,5 +1544,13 @@ BEGIN
 END;
 /
 
+DECLARE
+    ur UROWID;
+BEGIN
+    SELECT rowid::UROWID FROM ora_plisql_rowid INTO ur;
+    RAISE NOTICE 'urowid assignment: rowno = %', (ur).rowno;
+END;
+/
+
 DROP TABLE ora_plisql_rowid;
 
