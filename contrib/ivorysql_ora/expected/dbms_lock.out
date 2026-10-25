@@ -120,3 +120,23 @@ end
 $$;
 NOTICE:  mode=not found
 commit;
+--
+-- timeout values above Oracle MAXWAIT are rejected
+--
+declare
+ v_handle text;
+ v_rc int;
+begin
+ dbms_lock.allocate_unique('ivorysql_timeout_limit', v_handle);
+ v_rc := dbms_lock.request(v_handle, 4, 32768);
+ raise notice 'timeout above MAXWAIT rc=%', v_rc;
+ assert v_rc = 3, format('DBMS_LOCK.request should reject timeout above MAXWAIT: rc=%s', v_rc);
+ v_rc := dbms_lock.request(v_handle, 4, 32767);
+ raise notice 'timeout at MAXWAIT rc=%', v_rc;
+ assert v_rc = 0, format('DBMS_LOCK.request failed at MAXWAIT: rc=%s', v_rc);
+ v_rc := dbms_lock.release(v_handle);
+ assert v_rc = 0, format('DBMS_LOCK.release failed: rc=%s', v_rc);
+end;
+/
+NOTICE:  timeout above MAXWAIT rc=3
+NOTICE:  timeout at MAXWAIT rc=0
