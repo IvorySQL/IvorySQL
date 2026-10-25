@@ -1514,6 +1514,8 @@ ora_build_regexp_substr_matches_result(regexp_matches_ctx *matchctx ,int subexpr
 		{
 			so = matchctx->match_locs[loc + 2 *(subexpr_pos - 1)];
 			eo = matchctx->match_locs[loc + 2 * subexpr_pos - 1];
+			/* rm_eo is exclusive, but Oracle positions are one-based. */
+			eo--;
 		}
 		else if (matchctx->npatterns == 1 && !matchctx->use_subpatterns && subexpr_pos > 0)
 		{
@@ -1701,8 +1703,6 @@ ora_build_regexp_instr_matches_result(regexp_matches_ctx *matchctx ,int ret_opt,
 		}
 		else
 		{
-			/* rm_eo is exclusive, but Oracle positions are one-based. */
-			eo--;
 			if (ret_opt == 0)
 			{
 				sprintf(ret_str_val,"%d",so + 1);
