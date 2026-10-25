@@ -60,6 +60,18 @@ ORDER BY package_name NULLS FIRST, object_name, sequence;
  P                 | ARGS_TEST_PKG | P_NAME        | 2        | 2        | OUT
 (5 rows)
 
+-- Package procedure argument types use the zero-based argtypes vector.
+SELECT argument_name, data_type
+FROM sys.all_arguments
+WHERE package_name = 'ARGS_TEST_PKG'
+  AND object_name = 'P'
+ORDER BY position;
+ argument_name | data_type 
+---------------+-----------
+ P_ID          | NUMBER
+ P_NAME        | VARCHAR2
+(2 rows)
+
 DROP FUNCTION IF EXISTS args_test_empty_f;
 DROP PROCEDURE IF EXISTS args_test_empty;
 DROP PACKAGE args_test_pkg;

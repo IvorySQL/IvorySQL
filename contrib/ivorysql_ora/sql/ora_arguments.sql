@@ -40,6 +40,13 @@ WHERE package_name = 'ARGS_TEST_PKG'
    OR object_name IN ('ARGS_TEST_EMPTY', 'ARGS_TEST_EMPTY_F')
 ORDER BY package_name NULLS FIRST, object_name, sequence;
 
+-- Package procedure argument types use the zero-based argtypes vector.
+SELECT argument_name, data_type
+FROM sys.all_arguments
+WHERE package_name = 'ARGS_TEST_PKG'
+  AND object_name = 'P'
+ORDER BY position;
+
 DROP FUNCTION IF EXISTS args_test_empty_f;
 DROP PROCEDURE IF EXISTS args_test_empty;
 DROP PACKAGE args_test_pkg;
