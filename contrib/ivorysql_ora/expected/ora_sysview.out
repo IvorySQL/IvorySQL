@@ -486,6 +486,20 @@ ORDER BY COLUMN_ID;
  TEST_ALL_TAB_COLUMNS | CREATE_TIME |         4 | DATE      |               |           7 |                |            | Y        |              |              |           |            |         |           |             |             |                    |                      | YES          | NO         |             |             |           | NO            | NO            |           |                |           | NO              | NO
 (4 rows)
 
+-- ALL_TAB_COLUMNS should not duplicate columns for inheritance parents
+CREATE TABLE P_INH_TAB_COLUMNS (A INT, B TEXT);
+CREATE TABLE C_INH_TAB_COLUMNS () INHERITS (P_INH_TAB_COLUMNS);
+ANALYZE P_INH_TAB_COLUMNS;
+SELECT COUNT(*) AS parent_column_count
+FROM SYS.ALL_TAB_COLUMNS
+WHERE TABLE_NAME = 'P_INH_TAB_COLUMNS';
+ parent_column_count 
+---------------------
+                   2
+(1 row)
+
+DROP TABLE C_INH_TAB_COLUMNS;
+DROP TABLE P_INH_TAB_COLUMNS;
 \set ON_ERROR_STOP off
 SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'TEST_ALL_TAB_COLUMNS';
 ERROR:  "collation_name": invalid identifier
