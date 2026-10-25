@@ -631,8 +631,6 @@ ora_regexp_substr(PG_FUNCTION_ARGS)
 				ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					errmsg("argument '%d' is out of range", subexpr_pos)));
-			else if(subexpr_pos > 9)
-				PG_RETURN_NULL();
 		}
 		else
 			PG_RETURN_NULL();
@@ -748,8 +746,6 @@ ora_regexp_instr(PG_FUNCTION_ARGS)
 				ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					errmsg("argument '%d' is out of range", subexpr_pos)));
-			else if (subexpr_pos >= 10)
-				return PointerGetDatum(cstring_to_text("0"));
 		}
 		else
 			PG_RETURN_NULL();
