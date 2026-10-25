@@ -1,0 +1,56 @@
+-- Oracle-compatible NLS_CHARSET_ID and NLS_CHARSET_NAME
+SELECT sys.nls_charset_id('US7ASCII') AS us7ascii_id,
+       sys.nls_charset_id('WE8ISO8859P1') AS we8iso8859p1_id,
+       sys.nls_charset_id('WE8DEC') AS we8dec_id,
+       sys.nls_charset_id('WE8MSWIN1252') AS we8mswin1252_id,
+       sys.nls_charset_id('ZHS16GBK') AS zhs16gbk_id,
+       sys.nls_charset_id('UTF8') AS utf8_id,
+       sys.nls_charset_id('UTFE') AS utfe_id,
+       sys.nls_charset_id('AL32UTF8') AS al32utf8_id,
+       sys.nls_charset_id('AL16UTF16') AS al16utf16_id,
+       sys.nls_charset_id('AL16UTF16LE') AS al16utf16le_id;
+ us7ascii_id | we8iso8859p1_id | we8dec_id | we8mswin1252_id | zhs16gbk_id | utf8_id | utfe_id | al32utf8_id | al16utf16_id | al16utf16le_id 
+-------------+-----------------+-----------+-----------------+-------------+---------+---------+-------------+--------------+----------------
+ 1           | 31              | 37        | 178             | 850         | 871     | 872     | 873         | 2000         | 2002
+(1 row)
+
+SELECT sys.nls_charset_name(1) AS us7ascii_name,
+       sys.nls_charset_name(31) AS we8iso8859p1_name,
+       sys.nls_charset_name(37) AS we8dec_name,
+       sys.nls_charset_name(178) AS we8mswin1252_name,
+       sys.nls_charset_name(850) AS zhs16gbk_name,
+       sys.nls_charset_name(871) AS utf8_name,
+       sys.nls_charset_name(872) AS utfe_name,
+       sys.nls_charset_name(873) AS al32utf8_name,
+       sys.nls_charset_name(2000) AS al16utf16_name,
+       sys.nls_charset_name(2002) AS al16utf16le_name;
+ us7ascii_name | we8iso8859p1_name | we8dec_name | we8mswin1252_name | zhs16gbk_name | utf8_name | utfe_name | al32utf8_name | al16utf16_name | al16utf16le_name 
+---------------+-------------------+-------------+-------------------+---------------+-----------+-----------+---------------+----------------+------------------
+ US7ASCII      | WE8ISO8859P1      | WE8DEC      | WE8MSWIN1252      | ZHS16GBK      | UTF8      | UTFE      | AL32UTF8      | AL16UTF16      | AL16UTF16LE
+(1 row)
+
+-- Name matching is case-insensitive.
+SELECT sys.nls_charset_id('al32utf8') AS lowercase_id,
+       sys.nls_charset_name(850) AS canonical_name;
+ lowercase_id | canonical_name 
+--------------+----------------
+ 873          | ZHS16GBK
+(1 row)
+
+-- NULL is passed through by both functions.
+SELECT sys.nls_charset_id(NULL) IS NULL AS null_id,
+       sys.nls_charset_name(NULL) IS NULL AS null_name;
+ null_id | null_name 
+---------+-----------
+ t       | t
+(1 row)
+
+-- Unknown IDs are NULL; unknown names are errors.
+SELECT sys.nls_charset_name(99999) AS unknown_id;
+ unknown_id 
+------------
+ 
+(1 row)
+
+SELECT sys.nls_charset_id('NOT_A_CHARSET');
+ERROR:  invalid character set name: NOT_A_CHARSET

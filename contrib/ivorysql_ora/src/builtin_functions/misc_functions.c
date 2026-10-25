@@ -34,6 +34,7 @@
 #include "utils/formatting.h"
 #include "utils/lsyscache.h"
 #include "utils/numeric.h"
+#include "utils/varlena.h"
 #include "varatt.h"
 #include "lib/stringinfo.h"
 #include "utils/builtins.h"
@@ -41,6 +42,31 @@
 PG_FUNCTION_INFO_V1(uid);
 PG_FUNCTION_INFO_V1(stragg_transfn);
 PG_FUNCTION_INFO_V1(ora_vsize);
+PG_FUNCTION_INFO_V1(ora_nls_charset_id);
+PG_FUNCTION_INFO_V1(ora_nls_charset_name);
+
+/*
+ * Oracle assigns these numeric IDs to character set names.  Keep this table
+ * focused on encodings IvorySQL can represent plus Oracle's universal and
+ * national Unicode character sets.
+ */
+static const struct
+{
+	int32		id;
+	const char *name;
+}			ora_nls_charsets[] =
+{
+	{1, "US7ASCII"},
+	{31, "WE8ISO8859P1"},
+	{37, "WE8DEC"},
+	{178, "WE8MSWIN1252"},
+	{850, "ZHS16GBK"},
+	{871, "UTF8"},
+	{872, "UTFE"},
+	{873, "AL32UTF8"},
+	{2000, "AL16UTF16"},
+	{2002, "AL16UTF16LE"}
+};
 
 
 /*
@@ -109,6 +135,68 @@ Datum
 uid(PG_FUNCTION_ARGS)
 {
 	PG_RETURN_UINT32(GetUserId());
+}
+
+/*
+ * ora_nls_charset_id
+ *
+ * Returns Oracle's fixed numeric ID for the given character set name.  Name
+ * comparisons are case-insensitive, matching Oracle.  Unknown names are an
+ * error; NULL input is handled by the STRICT declaration.
+ */
+Datum
+ora_nls_charset_id(PG_FUNCTION_ARGS)
+{
+	text	   *arg = PG_GETARG_TEXT_PP(0);
+	char	   *name = text_to_cstring(arg);
+	int32		result = 0;
+	bool		found = false;
+
+	for (int i = 0; i < lengthof(ora_nls_charsets); i++)
+	{
+		if (pg_strcasecmp(name, ora_nls_charsets[i].name) == 0)
+		{
+			result = ora_nls_charsets[i].id;
+			found = true;
+			break;
+		}
+	}
+
+	if (!found)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("invalid character set name: %s", name)));
+
+	pfree(name);
+
+	PG_RETURN_DATUM(DirectFunctionCall1(int8_numeric, Int64GetDatum(result)));
+}
+
+/*
+ * ora_nls_charset_name
+ *
+ * Returns the canonical character set name for Oracle's fixed numeric ID.
+ * Unknown IDs return NULL.  The input is NUMERIC, so compare it numerically
+ * rather than rounding it: Oracle's signature takes NUMBER, not INTEGER.
+ */
+Datum
+ora_nls_charset_name(PG_FUNCTION_ARGS)
+{
+	Numeric		id = PG_GETARG_NUMERIC(0);
+
+	for (int i = 0; i < lengthof(ora_nls_charsets); i++)
+	{
+		Datum		expected_id;
+
+		expected_id = DirectFunctionCall1(int8_numeric,
+										  Int64GetDatum(ora_nls_charsets[i].id));
+		if (DatumGetBool(DirectFunctionCall2(numeric_eq,
+											 NumericGetDatum(id),
+											 expected_id)))
+			PG_RETURN_VARCHAR_P((VarChar *) cstring_to_text(ora_nls_charsets[i].name));
+	}
+
+	PG_RETURN_NULL();
 }
 
 /*
