@@ -505,5 +505,35 @@ END;
 CALL bug_schema.schema_caller();
 DROP SCHEMA bug_schema CASCADE;
 
+-- Test 21: FORMAT_ERROR_STACK - constraint violations carry Oracle error codes
+-- Regression: before fix, both unique and check violations reported ORA-06502.
+CREATE TEMP TABLE constraint_probe (
+  id INTEGER PRIMARY KEY,
+  positive_value INTEGER CHECK (positive_value > 0)
+);
+
+DO $$
+BEGIN
+  INSERT INTO constraint_probe VALUES (1, 1);
+  INSERT INTO constraint_probe VALUES (1, 2);
+EXCEPTION
+  WHEN unique_violation THEN
+    RAISE INFO 'Unique constraint error code: %',
+      split_part(DBMS_UTILITY.FORMAT_ERROR_STACK, ':', 1);
+END;
+$$;
+
+DO $$
+BEGIN
+  INSERT INTO constraint_probe VALUES (2, -1);
+EXCEPTION
+  WHEN check_violation THEN
+    RAISE INFO 'Check constraint error code: %',
+      split_part(DBMS_UTILITY.FORMAT_ERROR_STACK, ':', 1);
+END;
+$$;
+
+DROP TABLE constraint_probe;
+
 RESET ivorysql.identifier_case_switch;
 RESET ivorysql.enable_case_switch;
