@@ -796,6 +796,27 @@ END;
 SELECT order_object_type(4, 'z') > order_object_type(2, 'a') AS order_greater,
        order_object_type(7, 'x') = order_object_type(7, 'y') AS order_equal
 FROM dual;
+-- Calling the method may return NULL, but using it for comparison must fail.
+SELECT order_object_type.compare(order_object_type(NULL, 'null'),
+                                 order_object_type(1, 'one')) IS NULL AS null_result
+FROM dual;
+SELECT order_object_type(NULL, 'null') = order_object_type(1, 'one') FROM dual;
+SELECT order_object_type(1, 'one') < order_object_type(NULL, 'null') FROM dual;
+SELECT order_object_type(NULL, 'left') <> order_object_type(NULL, 'right') FROM dual;
+-- The rule also applies in PG mode, and errors must restore the caller's mode.
+SET ivorysql.compatible_mode = pg;
+SELECT ROW(NULL, 'null')::order_object_type = ROW(1, 'one')::order_object_type;
+SHOW ivorysql.compatible_mode;
+SET ivorysql.compatible_mode = oracle;
+-- Index builds and inserts must reject an invalid ORDER result as well.
+CREATE TABLE order_object_null_index_test (value order_object_type);
+INSERT INTO order_object_null_index_test VALUES (order_object_type(1, 'one'));
+CREATE INDEX order_object_null_idx ON order_object_null_index_test (value);
+INSERT INTO order_object_null_index_test VALUES (order_object_type(NULL, 'null'));
+DROP INDEX order_object_null_idx;
+INSERT INTO order_object_null_index_test VALUES (order_object_type(NULL, 'null'));
+CREATE INDEX order_object_null_idx ON order_object_null_index_test (value);
+DROP TABLE order_object_null_index_test;
 CREATE TABLE order_object_index_test
 (
     id integer,
