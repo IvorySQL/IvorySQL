@@ -1,0 +1,5 @@
+# test_plisql_collection extension
+comment = 'Test harness for the plisql sparse collection runtime'
+default_version = '1.0'
+module_pathname = '$libdir/test_plisql_collection'
+relocatable = true
