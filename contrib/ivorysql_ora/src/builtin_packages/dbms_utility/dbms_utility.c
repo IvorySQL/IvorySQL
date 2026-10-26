@@ -442,7 +442,7 @@ ora_format_call_stack(PG_FUNCTION_ARGS)
 
 	/*
 	 * Parse the raw stack returned by plisql_get_call_stack.
-	 * Format from plisql: "handle\tlineno\tsignature" per line
+	 * Format from plisql: "handle\tlineno\tkind\tsignature" per line
 	 *
 	 * Skip the first frame which is the FORMAT_CALL_STACK package function.
 	 */
@@ -453,9 +453,11 @@ ora_format_call_stack(PG_FUNCTION_ARGS)
 	{
 		char *handle_str;
 		char *lineno_str;
+		char *kind_str;
 		char *signature;
 		char *tab1;
 		char *tab2;
+		char *tab3;
 		char *func_cased;
 
 		frame_count++;
@@ -467,7 +469,7 @@ ora_format_call_stack(PG_FUNCTION_ARGS)
 			continue;
 		}
 
-		/* Parse: handle\tlineno\tsignature */
+		/* Parse: handle\tlineno\tkind\tsignature */
 		tab1 = strchr(line, '\t');
 		if (!tab1)
 		{
@@ -485,17 +487,28 @@ ora_format_call_stack(PG_FUNCTION_ARGS)
 		}
 
 		lineno_str = pnstrdup(tab1 + 1, tab2 - tab1 - 1);
-		signature = tab2 + 1;
+		tab3 = strchr(tab2 + 1, '\t');
+		if (!tab3)
+		{
+			pfree(handle_str);
+			pfree(lineno_str);
+			line = strtok_r(NULL, "\n", &saveptr);
+			continue;
+		}
+
+		kind_str = pnstrdup(tab2 + 1, tab3 - tab2 - 1);
+		signature = tab3 + 1;
 
 		func_cased = apply_identifier_case_switch(signature);
 
 		/* Format each stack frame */
-		appendStringInfo(&result, "%s  %5s  function %s\n",
-						 handle_str, lineno_str, func_cased);
+		appendStringInfo(&result, "%s  %5s  %s %s\n",
+						 handle_str, lineno_str, kind_str, func_cased);
 		found_any = true;
 
 		pfree(handle_str);
 		pfree(lineno_str);
+		pfree(kind_str);
 		pfree(func_cased);
 
 		line = strtok_r(NULL, "\n", &saveptr);
