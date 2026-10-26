@@ -93,6 +93,7 @@ ORA_REGRESS = \
 	ora_dbms_output \
 	ora_ascii \
 	ora_stragg \
+	ora_stats_mode \
 	dbms_lock \
 	utl_file \
 	utl_file_putf \
