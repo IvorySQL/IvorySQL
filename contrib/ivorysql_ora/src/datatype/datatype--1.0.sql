@@ -10657,9 +10657,26 @@ PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
+/* Convert Oracle LIKE patterns to the shared matcher's escape convention. */
+CREATE FUNCTION sys.like_escape(text)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_like_escape_noescape'
+LANGUAGE C
+PARALLEL SAFE
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION sys.like_escape(text, text)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_like_escape'
+LANGUAGE C
+PARALLEL SAFE
+STRICT
+IMMUTABLE;
+
 CREATE  OR REPLACE FUNCTION sys.varchar2like(varchar2, varchar2)
 RETURNS bool AS $$
-SELECT $1::text like $2::text;
+SELECT pg_catalog.textlike($1::text, $2::text);
 $$ LANGUAGE SQL IMMUTABLE STRICT;
 
 CREATE OPERATOR ~~ (
