@@ -337,6 +337,7 @@ typedef struct _tableInfo
 	bool		forcerowsec;	/* is row security forced? */
 	bool		hasoids;		/* does it have OIDs? */
 	bool		relhasrowid;
+	char		forceview_case; /* identifier case of invalid FORCE VIEW, or zero */
 	uint32		frozenxid;		/* table's relfrozenxid */
 	uint32		minmxid;		/* table's relminmxid */
 	Oid			toast_oid;		/* toast table's OID, or 0 if none */
