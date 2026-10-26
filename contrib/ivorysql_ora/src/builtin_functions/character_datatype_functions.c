@@ -38,6 +38,7 @@
 #include "miscadmin.h"
 #include "regex/regex.h"
 #include "utils/builtins.h"
+#include "utils/fmgrprotos.h"
 #include "utils/memutils.h"
 #include "utils/numeric.h"
 
@@ -82,6 +83,8 @@ PG_FUNCTION_INFO_V1(ora_to_multi_byte);
 PG_FUNCTION_INFO_V1(ora_to_single_byte);
 PG_FUNCTION_INFO_V1(ora_ascii);
 PG_FUNCTION_INFO_V1(ora_listagg_check);
+PG_FUNCTION_INFO_V1(ora_like_escape_noescape);
+PG_FUNCTION_INFO_V1(ora_like_escape);
 
 #define PG_STR_GET_TEXT(str_) \
 	DatumGetTextP(DirectFunctionCall1(textin, CStringGetDatum(str_)))
@@ -109,6 +112,65 @@ static int text_instring(text *str, text *search_str, int32 position, int32 occu
 static int	text_position_prev(int start_pos, TextPositionState *state);
 static void appendStringInfoText(StringInfo str, const text *t);
 static int getindex(const char **map, char *mbchar, int mblen);
+
+/*
+ * Oracle LIKE has no default escape character.  Let the PostgreSQL pattern
+ * converter quote backslashes for the shared matcher.  Construct the empty
+ * escape string here so Oracle's empty-string-to-NULL conversion cannot
+ * turn an omitted ESCAPE clause into a NULL result.
+ */
+Datum
+ora_like_escape_noescape(PG_FUNCTION_ARGS)
+{
+	text	   *esc = cstring_to_text("");
+	Datum		result;
+
+	result = DirectFunctionCall2(like_escape,
+								 PG_GETARG_DATUM(0), PointerGetDatum(esc));
+	pfree(esc);
+
+	PG_RETURN_DATUM(result);
+}
+
+/* Validate Oracle escape sequences before converting the pattern. */
+Datum
+ora_like_escape(PG_FUNCTION_ARGS)
+{
+	text	   *pat = PG_GETARG_TEXT_PP(0);
+	text	   *esc = PG_GETARG_TEXT_PP(1);
+	const char *p = VARDATA_ANY(pat);
+	const char *e = VARDATA_ANY(esc);
+	int			plen = VARSIZE_ANY_EXHDR(pat);
+	int			elen = VARSIZE_ANY_EXHDR(esc);
+
+	if (elen == 0 || pg_mblen_with_len(e, elen) != elen)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_ESCAPE_SEQUENCE),
+				 errmsg("escape character must be a character string of length 1")));
+
+	while (plen > 0)
+	{
+		int			clen = pg_mblen_with_len(p, plen);
+
+		if (clen == elen && memcmp(p, e, elen) == 0)
+		{
+			p += clen;
+			plen -= clen;
+			if (plen == 0 ||
+				!(*p == '%' || *p == '_' ||
+				  (plen >= elen && memcmp(p, e, elen) == 0)))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_ESCAPE_SEQUENCE),
+						 errmsg("missing or illegal character following the escape character")));
+			clen = pg_mblen_with_len(p, plen);
+		}
+		p += clen;
+		plen -= clen;
+	}
+
+	PG_RETURN_DATUM(DirectFunctionCall2(like_escape,
+										  PointerGetDatum(pat), PointerGetDatum(esc)));
+}
 
 /*
  * length/lengthb function for 'oracharchar' and 'oracharbyte' type.
