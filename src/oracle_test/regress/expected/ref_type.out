@@ -86,3 +86,46 @@ DROP TABLE ref_reg_people;
 DROP TABLE ref_reg_others;
 DROP TYPE ref_reg_person;
 DROP TYPE ref_reg_other;
+-- Transferring an object type must also transfer its generated REF type.
+CREATE ROLE regress_ref_owner_old;
+CREATE ROLE regress_ref_owner_new;
+CREATE SCHEMA ref_owner_schema;
+GRANT USAGE, CREATE ON SCHEMA ref_owner_schema
+    TO regress_ref_owner_old, regress_ref_owner_new;
+SET search_path = ref_owner_schema, sys, public;
+SET ROLE regress_ref_owner_old;
+CREATE TYPE ref_owned_object AS OBJECT (id integer);
+RESET ROLE;
+SET ivorysql.compatible_mode = pg;
+ALTER TYPE ref_owner_schema.ref_owned_object OWNER TO regress_ref_owner_new;
+SELECT pg_get_userbyid(t.typowner) AS ref_owner,
+       pg_get_userbyid(a.typowner) AS ref_array_owner
+FROM pg_type t JOIN pg_type a ON a.oid = t.typarray
+WHERE t.typrefbase = 'ref_owner_schema.ref_owned_object'::regtype;
+       ref_owner       |    ref_array_owner    
+-----------------------+-----------------------
+ regress_ref_owner_new | regress_ref_owner_new
+(1 row)
+
+-- Cleaning up the former owner's objects must not remove the REF domain.
+DROP OWNED BY regress_ref_owner_old;
+SET ivorysql.compatible_mode = oracle;
+SET ROLE regress_ref_owner_new;
+CREATE TABLE ref_owned_people OF ref_owned_object;
+CREATE TABLE ref_owned_holder (value REF ref_owned_object);
+INSERT INTO ref_owned_people VALUES (1);
+INSERT INTO ref_owned_holder SELECT REF(p) FROM ref_owned_people p;
+SELECT (DEREF(h.value)).id AS retained_ref_target FROM ref_owned_holder h;
+ retained_ref_target 
+---------------------
+                   1
+(1 row)
+
+RESET ROLE;
+DROP TABLE ref_owned_holder;
+DROP TABLE ref_owned_people;
+DROP TYPE ref_owned_object;
+RESET search_path;
+DROP SCHEMA ref_owner_schema;
+DROP ROLE regress_ref_owner_old;
+DROP ROLE regress_ref_owner_new;
