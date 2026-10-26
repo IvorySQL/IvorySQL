@@ -92,6 +92,7 @@ ORA_REGRESS = \
 	datatype_and_func_bugs \
 	ora_sysview \
 	ora_like_operator \
+	ora_like_bigint \
 	ora_xml_functions \
 	dbms_utility \
 	ora_dbms_output \

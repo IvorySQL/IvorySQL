@@ -509,7 +509,7 @@ create table p1_c3() inherits(p1, p1_c1);
 create table p1_fail(f1 int constraint inh_check_constraint6 check (f1 < 10) not enforced) inherits(p1, p1_c1);
 
 select conrelid::regclass::text as relname, conname, conislocal, coninhcount, conenforced, convalidated
-from pg_constraint where conname like 'inh\_check\_constraint%'
+from pg_constraint where conname like 'inh\_check\_constraint%' ESCAPE '\'
 order by 1, 2;
 
 --
@@ -681,7 +681,7 @@ insert into invalid_check_con_child values(0); -- fail
 
 select conrelid::regclass::text as relname, conname,
        convalidated, conislocal, coninhcount, connoinherit
-from pg_constraint where conname like 'inh\_check\_constraint%'
+from pg_constraint where conname like 'inh\_check\_constraint%' ESCAPE '\'
 order by 1, 2;
 
 -- We don't drop the invalid_check_con* tables, to test dump/reload with
@@ -1037,7 +1037,7 @@ select conrelid::regclass, conname, contype, conkey,
  (select attname from pg_attribute where attrelid = conrelid and attnum = conkey[1]),
  coninhcount, conislocal, connoinherit
  from pg_constraint where contype = 'n' and
- conrelid::regclass::text like 'inh\_nn\_%'
+ conrelid::regclass::text like 'inh\_nn\_%' ESCAPE '\'
  order by 2, 1;
 \d+ inh_nn*
 drop table inh_nn_parent, inh_nn_child, inh_nn_child2;
