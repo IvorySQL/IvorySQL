@@ -134,6 +134,9 @@ typedef struct PLiSQL_compile_global_proper
 
 	/* pl_funcs.c */
 	PLiSQL_nsitem *ns_top;
+
+	/* Saved for dictionary-read restoration, not an active compiler. */
+	bool metadata_frame;
 } PLiSQL_compile_global_proper;
 
 
