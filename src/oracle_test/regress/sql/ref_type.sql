@@ -91,3 +91,17 @@ RESET search_path;
 DROP SCHEMA ref_owner_schema;
 DROP ROLE regress_ref_owner_old;
 DROP ROLE regress_ref_owner_new;
+
+-- An unused generated REF domain can be dropped independently of its type.
+CREATE ROLE regress_ref_missing_owner;
+CREATE TYPE ref_owner_missing_domain AS OBJECT (id integer);
+SET ivorysql.compatible_mode = pg;
+SELECT format('DROP DOMAIN %s', oid::regtype)
+FROM pg_type WHERE typrefbase = 'ref_owner_missing_domain'::regtype
+\gexec
+ALTER TYPE ref_owner_missing_domain OWNER TO regress_ref_missing_owner;
+SELECT typowner = 'regress_ref_missing_owner'::regrole AS owner_transferred
+FROM pg_type WHERE oid = 'ref_owner_missing_domain'::regtype;
+DROP TYPE ref_owner_missing_domain;
+DROP ROLE regress_ref_missing_owner;
+SET ivorysql.compatible_mode = oracle;

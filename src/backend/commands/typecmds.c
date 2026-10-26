@@ -4427,7 +4427,7 @@ AlterTypeOwner_oid(Oid typeOid, Oid newOwnerId, bool hasDependEntry)
 	if (typTup->typisobject)
 	{
 		objectPackageOid = GetObjectTypePackageOid(typeOid, false);
-		objectRefOid = get_object_ref_domain_oid(typeOid, false);
+		objectRefOid = get_object_ref_domain_oid(typeOid, true);
 	}
 
 	/*
