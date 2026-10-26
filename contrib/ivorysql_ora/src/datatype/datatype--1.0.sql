@@ -10674,13 +10674,39 @@ PARALLEL SAFE
 STRICT
 IMMUTABLE;
 
+/* bytea is a PostgreSQL extension; retain its binary LIKE escape rules. */
+CREATE FUNCTION sys.like_escape(bytea)
+RETURNS bytea AS $$ SELECT $1; $$
+LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
+
+CREATE FUNCTION sys.like_escape(bytea, bytea)
+RETURNS bytea
+AS 'like_escape_bytea'
+LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE;
+
+/*
+ * Use the operator form so inlining preserves index support.  OPERATOR also
+ * bypasses Oracle LIKE syntax: the parser has already normalized the pattern.
+ */
 CREATE  OR REPLACE FUNCTION sys.varchar2like(varchar2, varchar2)
 RETURNS bool AS $$
-SELECT pg_catalog.textlike($1::text, $2::text);
+SELECT $1::text OPERATOR(pg_catalog.~~) $2::text;
 $$ LANGUAGE SQL IMMUTABLE STRICT;
 
 CREATE OPERATOR ~~ (
 PROCEDURE = sys.varchar2like,
+LEFTARG   = varchar2,
+RIGHTARG  = varchar2
+);
+
+/* Match LIKE's Oracle implicit conversions for NOT LIKE as well. */
+CREATE FUNCTION sys.varchar2notlike(varchar2, varchar2)
+RETURNS bool AS $$
+SELECT $1::text OPERATOR(pg_catalog.!~~) $2::text;
+$$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
+
+CREATE OPERATOR !~~ (
+PROCEDURE = sys.varchar2notlike,
 LEFTARG   = varchar2,
 RIGHTARG  = varchar2
 );

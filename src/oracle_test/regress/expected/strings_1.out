@@ -1655,54 +1655,22 @@ SELECT 'a_c'::bytea NOT LIKE 'a$__'::bytea ESCAPE '$'::bytea AS "false";
 (1 row)
 
 -- escape character same as pattern character
-SELECT 'maca' LIKE 'm%aca' ESCAPE '%' AS "true";
- true 
-------
- t
-(1 row)
-
-SELECT 'maca' NOT LIKE 'm%aca' ESCAPE '%' AS "false";
- false 
--------
- f
-(1 row)
-
-SELECT 'ma%a' LIKE 'm%a%%a' ESCAPE '%' AS "true";
- true 
-------
- t
-(1 row)
-
-SELECT 'ma%a' NOT LIKE 'm%a%%a' ESCAPE '%' AS "false";
- false 
--------
- f
-(1 row)
-
-SELECT 'bear' LIKE 'b_ear' ESCAPE '_' AS "true";
- true 
-------
- t
-(1 row)
-
-SELECT 'bear' NOT LIKE 'b_ear' ESCAPE '_' AS "false";
- false 
--------
- f
-(1 row)
-
-SELECT 'be_r' LIKE 'b_e__r' ESCAPE '_' AS "true";
- true 
-------
- t
-(1 row)
-
-SELECT 'be_r' NOT LIKE 'b_e__r' ESCAPE '_' AS "false";
- false 
--------
- f
-(1 row)
-
+SELECT 'maca' LIKE 'm%aca' ESCAPE '%' AS "error";
+ERROR:  missing or illegal character following the escape character
+SELECT 'maca' NOT LIKE 'm%aca' ESCAPE '%' AS "error";
+ERROR:  missing or illegal character following the escape character
+SELECT 'ma%a' LIKE 'm%a%%a' ESCAPE '%' AS "error";
+ERROR:  missing or illegal character following the escape character
+SELECT 'ma%a' NOT LIKE 'm%a%%a' ESCAPE '%' AS "error";
+ERROR:  missing or illegal character following the escape character
+SELECT 'bear' LIKE 'b_ear' ESCAPE '_' AS "error";
+ERROR:  missing or illegal character following the escape character
+SELECT 'bear' NOT LIKE 'b_ear' ESCAPE '_' AS "error";
+ERROR:  missing or illegal character following the escape character
+SELECT 'be_r' LIKE 'b_e__r' ESCAPE '_' AS "error";
+ERROR:  missing or illegal character following the escape character
+SELECT 'be_r' NOT LIKE 'b_e__r' ESCAPE '_' AS "error";
+ERROR:  missing or illegal character following the escape character
 SELECT 'be_r' LIKE '__e__r' ESCAPE '_' AS "false";
  false 
 -------
