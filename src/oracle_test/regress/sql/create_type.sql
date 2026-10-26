@@ -801,6 +801,7 @@ SELECT order_object_type.compare(order_object_type(NULL, 'null'),
                                  order_object_type(1, 'one')) IS NULL AS null_result
 FROM dual;
 SELECT order_object_type(NULL, 'null') = order_object_type(1, 'one') FROM dual;
+\echo SQLSTATE: :SQLSTATE
 SELECT order_object_type(1, 'one') < order_object_type(NULL, 'null') FROM dual;
 SELECT order_object_type(NULL, 'left') <> order_object_type(NULL, 'right') FROM dual;
 -- The rule also applies in PG mode, and errors must restore the caller's mode.
