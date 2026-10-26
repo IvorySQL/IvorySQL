@@ -148,3 +148,46 @@ FROM pg_type WHERE oid = 'ref_owner_missing_domain'::regtype;
 DROP TYPE ref_owner_missing_domain;
 DROP ROLE regress_ref_missing_owner;
 SET ivorysql.compatible_mode = oracle;
+-- Self-referencing types must retain their REF domain after owner cleanup.
+CREATE ROLE regress_ref_recursive_old;
+CREATE ROLE regress_ref_recursive_new;
+CREATE SCHEMA ref_recursive_owner_schema;
+GRANT USAGE, CREATE ON SCHEMA ref_recursive_owner_schema
+    TO regress_ref_recursive_old, regress_ref_recursive_new;
+SET search_path = ref_recursive_owner_schema, sys, public;
+SET ROLE regress_ref_recursive_old;
+CREATE TYPE ref_recursive_owned AS OBJECT
+    (id integer, parent REF ref_recursive_owned);
+RESET ROLE;
+SET ivorysql.compatible_mode = pg;
+ALTER TYPE ref_recursive_owned OWNER TO regress_ref_recursive_new;
+SELECT t.typowner = 'regress_ref_recursive_new'::regrole AS ref_owner_transferred,
+       a.typowner = 'regress_ref_recursive_new'::regrole AS array_owner_transferred
+FROM pg_type t JOIN pg_type a ON a.oid = t.typarray
+WHERE t.typrefbase = 'ref_recursive_owned'::regtype;
+ ref_owner_transferred | array_owner_transferred 
+-----------------------+-------------------------
+ t                     | t
+(1 row)
+
+DROP OWNED BY regress_ref_recursive_old;
+SET ivorysql.compatible_mode = oracle;
+SET ROLE regress_ref_recursive_new;
+CREATE TABLE ref_recursive_people OF ref_recursive_owned;
+INSERT INTO ref_recursive_people (id) VALUES (1), (2);
+UPDATE ref_recursive_people p SET parent =
+    (SELECT REF(r) FROM ref_recursive_people r WHERE r.id = 1) WHERE p.id = 2;
+SELECT (DEREF(p.parent)).id AS retained_parent
+FROM ref_recursive_people p WHERE p.id = 2;
+ retained_parent 
+-----------------
+               1
+(1 row)
+
+RESET ROLE;
+DROP TABLE ref_recursive_people;
+DROP TYPE ref_recursive_owned;
+RESET search_path;
+DROP SCHEMA ref_recursive_owner_schema;
+DROP ROLE regress_ref_recursive_old;
+DROP ROLE regress_ref_recursive_new;
