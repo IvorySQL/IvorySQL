@@ -2464,3 +2464,13 @@ reset default_text_search_config;
 -- should throw errors, because dummy_config is not a valid configuration name
 set ivorysql.dummy_config to dummy;
 reset ivorysql.dummy_config;
+
+-- Match the server platform, not merely either possible delimiter.
+-- Use the same Windows build markers as collate.windows.win1252.sql.
+SELECT sys.sys_context('USERENV', 'PLATFORM_SLASH') =
+       CASE WHEN version() ~ 'Visual C\+\+|mingw32|windows'
+            THEN chr(92) ELSE '/' END AS platform_slash;
+SELECT sys.sys_context('userenv', 'platform_slash') =
+       sys.sys_context('USERENV', 'PLATFORM_SLASH') AS case_insensitive;
+SELECT sys.sys_context('USERENV', 'PLATFORM_SLASH', 1) =
+       sys.sys_context('USERENV', 'PLATFORM_SLASH') AS one_character;
