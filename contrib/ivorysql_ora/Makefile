@@ -53,7 +53,7 @@ install: install-data
 clean: cleansql
 
 # SQL(s) merge using perl
-$(DATA_built): gensql.pl
+$(DATA_built): gensql.pl ivorysql_ora_merge_sqls
 	$(PERL) $< gcc_build $(patsubst ivorysql_ora--%.sql, %,$@)
 
 # Preload the compatible oracle misc sql script
@@ -125,3 +125,14 @@ ifeq ($(with_libxml),yes)
 SHLIB_LINK += -lxml2
 endif
 
+# gensql.pl concatenates one <module>--<version>.sql file for every module
+# named in ivorysql_ora_merge_sqls, so those files are inputs of the
+# generated script as well.  Without them an incremental build keeps a stale
+# $(DATA_built) after a source edit and then installs an extension script
+# that does not match the sources; only a clean build hides the problem.
+# Declared here, after the includes above, so that $(srcdir) is available.
+ORA_SQL_VERSION = $(patsubst ivorysql_ora--%.sql,%,$(DATA_built))
+ORA_SQL_SRCS = $(wildcard $(addprefix $(srcdir)/, \
+	$(addsuffix --$(ORA_SQL_VERSION).sql, \
+		$(shell cat $(srcdir)/ivorysql_ora_merge_sqls))))
+$(DATA_built): $(ORA_SQL_SRCS)
