@@ -2465,8 +2465,11 @@ reset default_text_search_config;
 set ivorysql.dummy_config to dummy;
 reset ivorysql.dummy_config;
 
--- PLATFORM_SLASH returns a path delimiter, never an operating system name.
-SELECT sys.sys_context('USERENV', 'PLATFORM_SLASH') IN ('/', chr(92)) AS platform_slash;
+-- Match the server platform, not merely either possible delimiter.
+-- Use the same Windows build markers as collate.windows.win1252.sql.
+SELECT sys.sys_context('USERENV', 'PLATFORM_SLASH') =
+       CASE WHEN version() ~ 'Visual C\+\+|mingw32|windows'
+            THEN chr(92) ELSE '/' END AS platform_slash;
 SELECT sys.sys_context('userenv', 'platform_slash') =
        sys.sys_context('USERENV', 'PLATFORM_SLASH') AS case_insensitive;
 SELECT sys.sys_context('USERENV', 'PLATFORM_SLASH', 1) =
