@@ -42,6 +42,14 @@ call dbms_session.set_context('Ns2', 'a', '1');
 call dbms_session.clear_context('NS2');
 select sys_context('ns2', 'a') is null as ns2_cleared;
 
+-- Multibyte attribute names must follow the same case-insensitive rules.
+call dbms_session.set_context('app_ctx', 'é', 'accented');
+select sys_context('APP_CTX', 'É') as multibyte_read;
+call dbms_session.set_context('app_ctx', 'É', 'updated');
+select sys_context('app_ctx', 'é') as multibyte_overwrite;
+call dbms_session.clear_context('app_ctx', 'É');
+select sys_context('app_ctx', 'é') is null as multibyte_cleared;
+
 -- read path: an over-long name (>= 256 bytes) cannot match any stored key,
 -- so SYS_CONTEXT returns NULL instead of raising an error (usable in predicates)
 select sys_context(repeat('x', 300), 'attr') is null as overlong_ns_is_null;
