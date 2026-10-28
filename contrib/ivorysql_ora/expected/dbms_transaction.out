@@ -527,3 +527,20 @@ reset session authorization;
 drop table regress_dbms_tx_other_user_t;
 drop role regress_dbms_tx_other_user;
 drop table dbms_tx_t;
+
+-- the savepoint C bridge functions must refuse to be invoked directly as
+-- plain SQL functions; only the package procedure reached from a top-level
+-- CALL may drive them, otherwise the transaction-state placeholder leaks
+-- into the executor and a second call in the same statement kills the backend
+BEGIN;
+SELECT sys.ora_dbms_transaction_savepoint('sp_direct_sql');
+ERROR:  DBMS_TRANSACTION.SAVEPOINT can only be called through the package procedure as a top-level CALL
+DETAIL:  It must be the direct result of a top-level CALL, the same way a bare SQL SAVEPOINT/ROLLBACK TO SAVEPOINT statement must be its own complete statement.
+HINT:  Use CALL DBMS_TRANSACTION.SAVEPOINT(...) as its own top-level statement.
+ROLLBACK;
+BEGIN;
+SELECT sys.ora_dbms_transaction_rollback_savepoint('sp_direct_sql');
+ERROR:  DBMS_TRANSACTION.ROLLBACK_SAVEPOINT can only be called through the package procedure as a top-level CALL
+DETAIL:  It must be the direct result of a top-level CALL, the same way a bare SQL SAVEPOINT/ROLLBACK TO SAVEPOINT statement must be its own complete statement.
+HINT:  Use CALL DBMS_TRANSACTION.ROLLBACK_SAVEPOINT(...) as its own top-level statement.
+ROLLBACK;

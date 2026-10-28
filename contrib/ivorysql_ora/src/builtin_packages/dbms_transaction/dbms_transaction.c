@@ -62,10 +62,10 @@
  * discarded: doing so from mid-command, underneath an already-open SPI
  * connection, desyncs resource-owner bookkeeping ("snapshot reference ...
  * is not owned by resource owner SubTransaction") instead of fixing
- * anything. check_not_nested_in_pl_call() below just refuses the
+ * anything. check_reached_via_package_procedure() below just refuses the
  * combination up front with an ordinary ERROR instead.)
  *
- * check_not_nested_in_pl_call() applies unconditionally, with no exemption
+ * check_reached_via_package_procedure() applies unconditionally, with no exemption
  * for PRAGMA AUTONOMOUS_TRANSACTION.  An earlier version tried to carve one
  * out by reading the plisql.inside_autonomous_transaction GUC (set by the
  * autonomous-transaction machinery, see pl_autonomous.c/pl_handler.c) and
@@ -83,7 +83,7 @@
  * connection (dblink_exec()/dblink() with no connection name always open-
  * execute-close a brand new session) that never has an explicit transaction
  * block open, so RequireTransactionBlock(true, ...) -- which runs *before*
- * check_not_nested_in_pl_call() in both entry points below -- already
+ * check_reached_via_package_procedure() in both entry points below -- already
  * rejects it with "SAVEPOINT can only be used in transaction blocks" every
  * time, regardless of this check.  Removing the exemption changes nothing
  * for that legitimate case and closes the bypass for every other one.
@@ -132,34 +132,45 @@ get_savepoint_name(FunctionCallInfo fcinfo)
 }
 
 /*
- * check_not_nested_in_pl_call
+ * check_reached_via_package_procedure
  *
- * Reject SAVEPOINT/ROLLBACK_SAVEPOINT when this call is nested inside
- * another already-executing PL/iSQL routine, rather than being the direct
- * result of a top-level CALL to DBMS_TRANSACTION.SAVEPOINT/
- * ROLLBACK_SAVEPOINT itself.  See the file header comment for why, and for
- * why this has no exemption for PRAGMA AUTONOMOUS_TRANSACTION.
+ * Reject SAVEPOINT/ROLLBACK_SAVEPOINT unless this call is the direct result
+ * of a top-level CALL to DBMS_TRANSACTION.SAVEPOINT/ROLLBACK_SAVEPOINT
+ * itself.  Two situations must be refused:
+ *
+ * - a negative SPI_get_connected(): no SPI connection is active at all, so
+ *   the C bridge function was invoked directly as a plain SQL function
+ *   (e.g. "SELECT sys.ora_dbms_transaction_savepoint('a')").  DefineSavepoint()
+ *   only marks the transaction state (TBLOCK_SUBBEGIN placeholder) and relies
+ *   on CommitTransactionCommand() running once the top-level command finishes;
+ *   inside an executor-driven statement nothing guarantees that handoff before
+ *   more executor work happens, and a second invocation in the same statement
+ *   hits elog(FATAL, "unexpected state TBLOCK_SUBBEGIN") in xact.c, killing
+ *   the backend.
+ *
+ * - a positive SPI_get_connected(): the call is nested inside another
+ *   already-executing PL/iSQL routine, which leaves the placeholder state
+ *   exposed to catalog/relcache lookups performed by that routine.  See the
+ *   file header comment for why, and for why this has no exemption for
+ *   PRAGMA AUTONOMOUS_TRANSACTION.
  *
  * plisql_call_handler() (and every other PL/iSQL entry point) calls
  * SPI_connect_ext() once per invocation, so SPI_get_connected() reports 0
  * only when the routine currently running -- here, DBMS_TRANSACTION's own
  * SAVEPOINT/ROLLBACK_SAVEPOINT wrapper procedure -- is itself the outermost
- * SPI-connected call, i.e. was reached directly from a top-level CALL.  Any
- * higher value means one or more PL/iSQL routines are already running
- * underneath us, and control will return to them (not to
- * CommitTransactionCommand()) once we're done.
+ * SPI-connected call, i.e. was reached directly from a top-level CALL.
  */
 static void
-check_not_nested_in_pl_call(const char *stmtType)
+check_reached_via_package_procedure(const char *stmtType)
 {
-	if (SPI_get_connected() > 0)
+	if (SPI_get_connected() != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TRANSACTION_STATE),
-				 errmsg("DBMS_TRANSACTION.%s cannot be called from within another PL/iSQL routine",
+				 errmsg("DBMS_TRANSACTION.%s can only be called through the package procedure as a top-level CALL",
 						stmtType),
 				 errdetail("It must be the direct result of a top-level CALL, the same way a bare SQL "
 						   "SAVEPOINT/ROLLBACK TO SAVEPOINT statement must be its own complete statement."),
-				 errhint("Move the call to DBMS_TRANSACTION.%s out to its own top-level CALL statement.",
+				 errhint("Use CALL DBMS_TRANSACTION.%s(...) as its own top-level statement.",
 						 stmtType)));
 }
 
@@ -177,7 +188,7 @@ ora_dbms_transaction_savepoint(PG_FUNCTION_ARGS)
 	char	   *name = get_savepoint_name(fcinfo);
 
 	RequireTransactionBlock(true, "SAVEPOINT");
-	check_not_nested_in_pl_call("SAVEPOINT");
+	check_reached_via_package_procedure("SAVEPOINT");
 	DefineSavepoint(name);
 
 	PG_RETURN_VOID();
@@ -202,7 +213,7 @@ ora_dbms_transaction_rollback_savepoint(PG_FUNCTION_ARGS)
 	char	   *name = get_savepoint_name(fcinfo);
 
 	RequireTransactionBlock(true, "ROLLBACK TO SAVEPOINT");
-	check_not_nested_in_pl_call("ROLLBACK_SAVEPOINT");
+	check_reached_via_package_procedure("ROLLBACK_SAVEPOINT");
 	RollbackToSavepoint(name);
 
 	PG_RETURN_VOID();

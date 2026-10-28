@@ -436,3 +436,14 @@ drop table regress_dbms_tx_other_user_t;
 drop role regress_dbms_tx_other_user;
 
 drop table dbms_tx_t;
+
+-- the savepoint C bridge functions must refuse to be invoked directly as
+-- plain SQL functions; only the package procedure reached from a top-level
+-- CALL may drive them, otherwise the transaction-state placeholder leaks
+-- into the executor and a second call in the same statement kills the backend
+BEGIN;
+SELECT sys.ora_dbms_transaction_savepoint('sp_direct_sql');
+ROLLBACK;
+BEGIN;
+SELECT sys.ora_dbms_transaction_rollback_savepoint('sp_direct_sql');
+ROLLBACK;
