@@ -414,7 +414,7 @@ sched_parse_name_list(const char *raw, const char *what)
 					(errcode(ERRCODE_INVALID_NAME),
 					 errmsg("invalid %s name list \"%s\"", what, raw),
 					 errdetail("Unterminated quoted identifier.")));
-		else if (*p == ',' || *p == '\0')
+		else if ((*p == ',' && !in_quotes) || *p == '\0')
 		{
 			char	   *item;
 			SchedName  *name;
