@@ -421,6 +421,9 @@ check: temp-install
 #IvorySQL:BEGIN - SQL oracle_test
 oracle-check: oracle-temp-install
 oracle-pg-check: oracle-temp-install
+# Run the PostgreSQL test scripts against an Oracle-initialized cluster using
+# their PostgreSQL extension fixtures, rather than the Oracle script variants.
+oracle-pg-check oracle-pg-check-world: ORACLE_CHECKPREP = checkprep
 #IvorySQL:END - SQL oracle_test
 
 .PHONY: temp-install oracle-temp-install
@@ -465,7 +468,7 @@ ifeq ($(MAKELEVEL),0)
 	rm -rf '$(abs_top_builddir)'/tmp_install
 	$(MKDIR_P) '$(abs_top_builddir)'/tmp_install/log
 	$(MAKE) -C '$(top_builddir)' DESTDIR='$(abs_top_builddir)'/tmp_install install >'$(abs_top_builddir)'/tmp_install/log/install.log 2>&1
-	$(MAKE) -j1 $(if $(CHECKPREP_TOP),-C $(CHECKPREP_TOP),) oracle-checkprep >>'$(abs_top_builddir)'/tmp_install/log/install.log 2>&1
+	$(MAKE) -j1 $(if $(CHECKPREP_TOP),-C $(CHECKPREP_TOP),) $(if $(ORACLE_CHECKPREP),$(ORACLE_CHECKPREP),oracle-checkprep) >>'$(abs_top_builddir)'/tmp_install/log/install.log 2>&1
 
 	$(with_temp_install) initdb --auth trust --no-sync -m oracle -C normal --no-instructions --lc-messages=C --no-clean '$(abs_top_builddir)'/tmp_install/initdb-template >>'$(abs_top_builddir)'/tmp_install/log/initdb-template.log 2>&1
 endif

@@ -57,11 +57,9 @@ DO $$BEGIN EXECUTE format(
 \set VERBOSITY terse
 DO $$BEGIN EXECUTE format(
 	'ALTER DATABASE %I SET bogus = 0', current_catalog); END$$;
-/
 
 DO $$BEGIN EXECUTE format(
 	'ALTER DATABASE %I RESET bogus', current_catalog); END$$;
-/
 
 ALTER USER regress_authenticated_user_db_ssa RESET bogus;
 \set VERBOSITY default

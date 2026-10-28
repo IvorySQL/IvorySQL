@@ -13,8 +13,11 @@ jobs:
       matrix:
         os: [ubuntu-latest]
       
+    env:
+      PG_TEST_EXTRA: oauth
+
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: dependency - linux
       run: |
         sudo apt-get update
@@ -23,7 +26,10 @@ jobs:
               tcl-dev libperl-dev gettext libxml2-dev libxslt-dev \
               libreadline-dev libedit-dev uuid-dev libossp-uuid-dev \
               libipc-run-perl libtime-hires-perl libtest-simple-perl \
-              libgssapi-krb5-2 libicu-dev
+              libgssapi-krb5-2 libicu-dev libnuma-dev \
+              pkg-config llvm-dev clang liblz4-dev libzstd-dev lz4 zstd \
+              libsystemd-dev libselinux1-dev tzdata systemtap-sdt-dev \
+              libcurl4-openssl-dev liburing-dev
         curl -L "https://github.com/mesonbuild/meson/releases/download/1.0.1/meson-1.0.1.tar.gz" -o meson-1.0.1.tar.gz
         curl -L "https://github.com/ninja-build/ninja/releases/download/v1.10.1/ninja-linux.zip" -o ninja-linux.zip
         unzip -o ninja-linux.zip
@@ -37,11 +43,23 @@ jobs:
       run: |
         meson setup build \
             -Dcassert=true \
-            -Dbuildtype=debug
+            -Dbuildtype=debug \
+            -Dllvm=enabled -Dlz4=enabled -Dzstd=enabled \
+            -Dsystemd=enabled -Dselinux=enabled \
+            -Dsystem_tzdata=/usr/share/zoneinfo \
+            -Dtap_tests=enabled -Ddtrace=enabled \
+            -Dlibcurl=enabled -Dliburing=enabled \
+            -Dlibnuma=enabled -Dnls=enabled -Dinjection_points=true \
+            -Dextra_version=-ci
 
     - name: compile
       run: |
         cd build && ninja
+
+    - name: report build configuration
+      run: |
+        ./build/src/bin/pg_config/pg_config --version
+        meson configure build
 
     - name: run postgres test
       id: test_postgres

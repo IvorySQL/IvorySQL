@@ -141,7 +141,6 @@ ALTER TYPE comptype ALTER ATTRIBUTE r TYPE bigint;
 NOTICE:  DDL test: type alter table, tag ALTER TYPE
 NOTICE:    subcommand: type ALTER COLUMN SET TYPE desc column r of composite type comptype
 NOTICE:    subcommand: type (re) ADD DOMAIN CONSTRAINT desc type dcomptype
-
 --
 -- IvorySQL-specific ALTER command labels
 --
