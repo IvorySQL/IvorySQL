@@ -172,3 +172,8 @@ CREATE INDEX test_dsinterval_brin on TEST_DSINTERVAL USING brin (a);
 DROP TABLE TEST_YMINTERVAL;
 
 DROP TABLE TEST_DSINTERVAL;
+
+-- folding day and time products beyond the int32 day range must raise an
+-- error instead of silently wrapping into a negative day count
+SELECT INTERVAL '21 23:59:59.999999' DAY TO SECOND * 102261126;
+SELECT INTERVAL '21 23:59:59.999999' DAY TO SECOND / 0.00000001;
