@@ -549,6 +549,12 @@ ora_dbms_output_get_lines(PG_FUNCTION_ARGS)
 	bool		nulls[2] = {false, false};
 	HeapTuple	tuple;
 
+	if (PG_ARGISNULL(0))
+		ereport(ERROR,
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				 errmsg("null value not allowed"),
+				 errhint("1th argument is NULL.")));
+
 	requested_lines = PG_GETARG_INT32(0);
 
 	/* Normalize negative values to 0 (Oracle behavior) */
