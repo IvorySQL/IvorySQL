@@ -655,6 +655,76 @@ END;
 /
 DROP TYPE explicit_self_type;
 
+-- Formal parameters shadow object attributes, while SELF remains explicit.
+CREATE TYPE parameter_shadow_type AS OBJECT
+(
+    value integer,
+    label varchar2(20),
+    CONSTRUCTOR FUNCTION parameter_shadow_type(value integer)
+        RETURN SELF AS RESULT,
+    MEMBER FUNCTION add_value(value integer) RETURN integer,
+    MEMBER PROCEDURE set_value(value integer),
+    MEMBER FUNCTION nested_value(value integer) RETURN integer
+);
+/
+CREATE TYPE BODY parameter_shadow_type AS
+    CONSTRUCTOR FUNCTION parameter_shadow_type(value integer)
+        RETURN SELF AS RESULT IS
+    BEGIN
+        self.value := value;
+        label := 'constructed';
+        RETURN;
+    END;
+    MEMBER FUNCTION add_value(value integer) RETURN integer IS
+    BEGIN
+        RETURN self.value + value;
+    END;
+    MEMBER PROCEDURE set_value(value integer) IS
+    BEGIN
+        self.value := value;
+    END;
+    MEMBER FUNCTION nested_value(value integer) RETURN integer IS
+        result integer;
+    BEGIN
+        DECLARE
+            value integer := 100;
+        BEGIN
+            result := self.value + value;
+        END;
+        RETURN result + value;
+    END;
+END;
+/
+SELECT parameter_shadow_type(10) FROM dual;
+SELECT objects.v.add_value(2), objects.v.nested_value(2)
+FROM (SELECT parameter_shadow_type(10) v FROM dual) objects;
+DECLARE
+    v parameter_shadow_type := parameter_shadow_type(10);
+BEGIN
+    v.set_value(42);
+    IF v.value <> 42 OR v.label <> 'constructed' THEN
+        RAISE EXCEPTION 'unexpected shadowed parameter result: %', v;
+    END IF;
+END;
+/
+DROP TYPE parameter_shadow_type;
+
+-- Two real formals with the same name must still be rejected.
+CREATE TYPE duplicate_parameter_type AS OBJECT
+(
+    value integer,
+    MEMBER FUNCTION add_value(value integer, value integer) RETURN integer
+);
+/
+CREATE TYPE BODY duplicate_parameter_type AS
+    MEMBER FUNCTION add_value(value integer, value integer) RETURN integer IS
+    BEGIN
+        RETURN value;
+    END;
+END;
+/
+DROP TYPE duplicate_parameter_type;
+
 -- Object methods use TYPE privileges, not the hidden package ACL.
 CREATE ROLE object_type_user;
 REVOKE ALL ON TYPE feature_object_type FROM PUBLIC;
