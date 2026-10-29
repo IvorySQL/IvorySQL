@@ -23,14 +23,14 @@ sourcetree=`cd $1 && pwd`
 buildtree=`cd ${2:-'.'} && pwd`
 
 for item in `find "$sourcetree"/config "$sourcetree"/contrib "$sourcetree"/doc "$sourcetree"/src -type d -print`; do
-    subdir=`expr "$item" : "$sourcetree\(.*\)"`
+    subdir=${item#"$sourcetree"}
     if test ! -d "$buildtree/$subdir"; then
         mkdir -p "$buildtree/$subdir" || exit 1
     fi
 done
 
 for item in "$sourcetree"/Makefile `find "$sourcetree"/config "$sourcetree"/contrib "$sourcetree"/doc "$sourcetree"/src -name Makefile -print -o -name GNUmakefile -print`; do
-    filename=`expr "$item" : "$sourcetree\(.*\)"`
+    filename=${item#"$sourcetree"}
     if test ! -f "${item}.in"; then
         if cmp "$item" "$buildtree/$filename" >/dev/null 2>&1; then : ; else
             ln -fs "$item" "$buildtree/$filename" || exit 1
