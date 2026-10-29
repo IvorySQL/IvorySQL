@@ -135,4 +135,13 @@ ORA_SQL_VERSION = $(patsubst ivorysql_ora--%.sql,%,$(DATA_built))
 ORA_SQL_SRCS = $(wildcard $(addprefix $(srcdir)/, \
 	$(addsuffix --$(ORA_SQL_VERSION).sql, \
 		$(shell cat $(srcdir)/ivorysql_ora_merge_sqls))))
-$(DATA_built): $(ORA_SQL_SRCS)
+
+# Adding or deleting a merged script modifies no existing file, so $(wildcard)
+# above would silently drop it from the prerequisites and leave the generated
+# script stale.  Depending on the module directories as well covers that case:
+# a directory's timestamp changes whenever an entry inside it is created or
+# removed, which makes the merge run again with the new set of inputs.
+ORA_SQL_DIRS = $(sort $(patsubst %/,%,$(dir $(addprefix $(srcdir)/, \
+	$(shell cat $(srcdir)/ivorysql_ora_merge_sqls)))))
+
+$(DATA_built): $(ORA_SQL_SRCS) $(ORA_SQL_DIRS)
