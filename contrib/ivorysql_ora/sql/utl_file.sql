@@ -88,11 +88,11 @@ declare
     fr UTL_FILE.FILE_TYPE;
     line text;
 begin
-    fw := utl_file.fopen('data_directory', 'regress_multibyte.txt', 'w', 1024, 'UTF8');
+    fw := utl_file.fopen('data_directory', 'regress_multibyte.txt', 'w', 1024);
     utl_file.put_line(fw, 'aaa中bbb');
     utl_file.fclose(fw);
 
-    fr := utl_file.fopen('data_directory', 'regress_multibyte.txt', 'r', 4, 'UTF8');
+    fr := utl_file.fopen('data_directory', 'regress_multibyte.txt', 'r', 4);
     utl_file.get_line(fr, line, 4);
     raise notice 'multibyte line 1 = >>%<<', line;
     utl_file.get_line(fr, line, 4);

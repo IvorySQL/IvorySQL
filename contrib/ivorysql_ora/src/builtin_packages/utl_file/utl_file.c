@@ -1368,7 +1368,7 @@ get_line(FILE *fd, size_t max_linesize, int encoding, bool *iseof)
 	text *result = NULL;
 	bool eof = true;
 
-	buffer = palloc(max_linesize + 2);
+	buffer = palloc(max_linesize + pg_encoding_max_length(encoding));
 	bpt = buffer;
 
 	errno = 0;
@@ -1399,24 +1399,55 @@ get_line(FILE *fd, size_t max_linesize, int encoding, bool *iseof)
 	{
 		char   *decoded;
 		size_t		len;
-		size_t		valid_size;
+		size_t		valid_size = csize;
 
 		/*
-		 * max_linesize is a byte limit.  If it cuts through a multibyte
-		 * character, discard the remaining bytes of that character before
-		 * validating the returned chunk.  Otherwise pg_verify_mbstr() would
-		 * report an encoding error, and the next read would start in the
-		 * middle of the same character.
+		 * max_linesize is a byte limit.  Only adjust the buffer when the
+		 * limit, rather than a newline or EOF, stopped the read.  If the
+		 * limit cuts through a multibyte character, read and validate the
+		 * complete character before discarding it so the next read starts at
+		 * a character boundary.
 		 */
-		valid_size = pg_mbcliplen(buffer, size2int(csize), size2int(csize));
-		if (valid_size < csize)
+		if (csize == max_linesize)
 		{
-			int		char_len = pg_encoding_mblen(encoding, buffer + valid_size);
-			int		already_read = size2int(csize - valid_size);
+			if (memchr(buffer, '\0', csize) != NULL)
+				report_invalid_encoding(encoding, buffer, size2int(csize));
 
-			while (already_read < char_len && fgetc(fd) != EOF)
-				already_read++;
-			csize = valid_size;
+			valid_size = pg_encoding_mbcliplen(encoding, buffer,
+												  size2int(csize), size2int(csize));
+			if (valid_size < csize)
+			{
+				size_t	char_bytes = csize - valid_size;
+				int		char_len;
+
+				/* Two bytes are needed to identify GB18030 characters. */
+				while (char_bytes < 2)
+				{
+					c = fgetc(fd);
+					if (c == EOF)
+						break;
+					buffer[csize++] = c;
+					char_bytes++;
+				}
+
+				char_len = pg_encoding_mblen(encoding, buffer + valid_size);
+				while (char_bytes < (size_t) char_len)
+				{
+					c = fgetc(fd);
+					if (c == EOF)
+						break;
+					buffer[csize++] = c;
+					char_bytes++;
+				}
+
+				if (char_bytes < (size_t) char_len ||
+					memchr(buffer + valid_size, '\0', char_bytes) != NULL)
+					report_invalid_encoding(encoding, buffer + valid_size,
+											 size2int(char_bytes));
+
+				pg_verify_mbstr(encoding, buffer + valid_size, char_len, false);
+				csize = valid_size;
+			}
 		}
 
 		pg_verify_mbstr(encoding, buffer, size2int(csize), false);
