@@ -97,9 +97,10 @@ static int copy_text_file(FILE *srcfile, FILE *dstfile,
 						  int start_line, int end_line);
 static void put_lines(FILE *fd, int lines);
 static FILE *do_put(PG_FUNCTION_ARGS);
+static void putf_putc(int c, FILE *fd, size_t max_linesize, size_t *cur_len);
 static size_t
 do_write(PG_FUNCTION_ARGS, int n, FILE *fd,
-	size_t max_linesize, int encoding);
+	size_t max_linesize, int encoding, size_t *cur_len);
 static FILE *
 get_file_handle_from_slot(uint32 sid, size_t *max_linesize, int *encoding);
 static void do_flush(FILE *fd);
@@ -814,6 +815,24 @@ ora_utl_file_put(PG_FUNCTION_ARGS)
 }
 
 /*
+ * Write one byte of a PUTF format and charge it to the current line.
+ *
+ * max_linesize bounds a single line, the terminating newline included, not the
+ * total output of one call: the newline is charged to the line it terminates
+ * and the budget then restarts for the next line, as in Oracle.
+ */
+static void
+putf_putc(int c, FILE *fd, size_t max_linesize, size_t *cur_len)
+{
+	if (++(*cur_len) > max_linesize)
+		CUSTOM_EXCEPTION(VALUE_ERROR, "buffer is too short");
+	if (fputc(c, fd) == EOF)
+		CHECK_ERRNO_PUT();
+	if (c == '\n')
+		*cur_len = 0;
+}
+
+/*
  * FUNCTION UTL_FILE.PUTF(file UTL_FILE.FILE_TYPE,
  *			format text,
  *			arg1 text,
@@ -855,9 +874,7 @@ ora_utl_file_putf(PG_FUNCTION_ARGS)
 		if (format_length == 1)
 		{
 			/* last char */
-			CHECK_LENGTH(++cur_len);
-			if (fputc(*fpt, fd) == EOF)
-				CHECK_ERRNO_PUT();
+			putf_putc((unsigned char) *fpt, fd, max_linesize, &cur_len);
 			continue;
 		}
 		/*
@@ -885,9 +902,7 @@ ora_utl_file_putf(PG_FUNCTION_ARGS)
 		/* ASCII format directives */
 		if (fpt[0] == '\\' && fpt[1] == 'n')
 		{
-			CHECK_LENGTH(++cur_len);
-			if (fputc('\n', fd) == EOF)
-				CHECK_ERRNO_PUT();
+			putf_putc('\n', fd, max_linesize, &cur_len);
 			fpt++; format_length--;
 			continue;
 		}
@@ -902,14 +917,13 @@ ora_utl_file_putf(PG_FUNCTION_ARGS)
 			}
 			else if (fpt[1] == 's' && ++cur_par <= 5 && !PG_ARGISNULL(cur_par + 1))
 			{
-				cur_len += do_write(fcinfo, cur_par + 1, fd, max_linesize - cur_len, encoding);
+				(void) do_write(fcinfo, cur_par + 1, fd, max_linesize, encoding,
+								&cur_len);
 			}
 			fpt++; format_length--;
 			continue;
 		}
-		CHECK_LENGTH(++cur_len);
-		if (fputc(fpt[0], fd) == EOF)
-			CHECK_ERRNO_PUT();
+		putf_putc((unsigned char) fpt[0], fd, max_linesize, &cur_len);
 	}
 
 	PG_RETURN_BOOL(true);
@@ -1275,20 +1289,48 @@ do_put(PG_FUNCTION_ARGS)
 	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), &max_linesize, &encoding);
 
 	NOT_NULL_ARG(1);
-	do_write(fcinfo, 1, fd, max_linesize, encoding);
+	do_write(fcinfo, 1, fd, max_linesize, encoding, NULL);
 	return fd;
 }
 
-/* fwrite(encode(args[n], encoding), fd) */
+/*
+ * fwrite(encode(args[n], encoding), fd)
+ *
+ * cur_len is NULL for PUT, where the whole value is a single line.  For PUTF it
+ * points at the running length of the line being written: the value can itself
+ * contain newlines, so each of its lines is charged against max_linesize the
+ * same way the format string is, and the caller's counter is advanced past the
+ * last one.
+ */
 static size_t
-do_write(PG_FUNCTION_ARGS, int n, FILE *fd, size_t max_linesize, int encoding)
+do_write(PG_FUNCTION_ARGS, int n, FILE *fd, size_t max_linesize, int encoding,
+		 size_t *cur_len)
 {
 	text	*arg = PG_GETARG_TEXT_P(n);
 	char	*str;
 	size_t	len;
 
 	str = encode_text(encoding, arg, &len);
-	CHECK_LENGTH(len);
+
+	if (cur_len == NULL)
+	{
+		/* PUT: the whole value is a single line */
+		CHECK_LENGTH(len);
+	}
+	else
+	{
+		size_t	used = *cur_len;
+		size_t	i;
+
+		for (i = 0; i < len; i++)
+		{
+			if (++used > max_linesize)
+				CUSTOM_EXCEPTION(VALUE_ERROR, "buffer is too short");
+			if (str[i] == '\n')
+				used = 0;
+		}
+		*cur_len = used;
+	}
 
 	if (fwrite(str, 1, len, fd) != len)
 		CHECK_ERRNO_PUT();
