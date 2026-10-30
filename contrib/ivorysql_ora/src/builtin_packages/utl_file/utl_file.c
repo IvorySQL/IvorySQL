@@ -1399,6 +1399,25 @@ get_line(FILE *fd, size_t max_linesize, int encoding, bool *iseof)
 	{
 		char   *decoded;
 		size_t		len;
+		size_t		valid_size;
+
+		/*
+		 * max_linesize is a byte limit.  If it cuts through a multibyte
+		 * character, discard the remaining bytes of that character before
+		 * validating the returned chunk.  Otherwise pg_verify_mbstr() would
+		 * report an encoding error, and the next read would start in the
+		 * middle of the same character.
+		 */
+		valid_size = pg_mbcliplen(buffer, size2int(csize), size2int(csize));
+		if (valid_size < csize)
+		{
+			int		char_len = pg_encoding_mblen(encoding, buffer + valid_size);
+			int		already_read = size2int(csize - valid_size);
+
+			while (already_read < char_len && fgetc(fd) != EOF)
+				already_read++;
+			csize = valid_size;
+		}
 
 		pg_verify_mbstr(encoding, buffer, size2int(csize), false);
 		decoded = (char *) pg_do_encoding_conversion((unsigned char *) buffer,
