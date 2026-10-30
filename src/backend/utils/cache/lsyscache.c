@@ -19,6 +19,7 @@
 #include "access/hash.h"
 #include "access/htup_details.h"
 #include "bootstrap/bootstrap.h"
+#include "catalog/dependency.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_amop.h"
@@ -40,6 +41,7 @@
 #include "catalog/pg_subscription.h"
 #include "catalog/pg_transform.h"
 #include "catalog/pg_type.h"
+#include "commands/extension.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "utils/array.h"
@@ -2367,6 +2369,71 @@ func_volatile(Oid funcid)
 		elog(ERROR, "cache lookup failed for function %u", funcid);
 
 	result = ((Form_pg_proc) GETSTRUCT(tp))->provolatile;
+	ReleaseSysCache(tp);
+	return result;
+}
+
+/*
+ * is_ora_builtin_expr_function
+ *
+ * Recognize reviewed Oracle functions that are safe in publication row filters
+ * and virtual generation expressions.  Unlike PostgreSQL's pinned functions,
+ * ivorysql_ora functions have dynamically assigned OIDs, which can exceed
+ * FirstNormalObjectId even when they are installed by initdb.
+ *
+ * For now, only length(text) is supported.  Extension membership alone is not
+ * sufficient: an extension can contain arbitrary SQL and mutable functions,
+ * and CREATE OR REPLACE can change a member's implementation.  Check the exact
+ * signature and C implementation as well.  Do not cache the result, since the
+ * definition and extension membership can change within the same transaction.
+ * This permission does not make the function pinned or exempt it from normal
+ * dependency tracking and plan invalidation.
+ */
+bool
+is_ora_builtin_expr_function(Oid funcid)
+{
+	HeapTuple	tp;
+	Form_pg_proc procform;
+	Oid			extoid;
+	char	   *prosrc;
+	char	   *probin;
+	bool		result = false;
+
+	if (compatible_db != ORA_PARSER)
+		return false;
+
+	tp = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
+	if (!HeapTupleIsValid(tp))
+		elog(ERROR, "cache lookup failed for function %u", funcid);
+	procform = (Form_pg_proc) GETSTRUCT(tp);
+
+	if (procform->pronamespace == PG_SYS_NAMESPACE &&
+		strcmp(NameStr(procform->proname), "length") == 0 &&
+		procform->pronargs == 1 &&
+		procform->proargtypes.values[0] == TEXTOID &&
+		procform->prorettype == INT4OID &&
+		procform->prokind == PROKIND_FUNCTION &&
+		procform->prolang == ClanguageId &&
+		procform->provolatile == PROVOLATILE_IMMUTABLE &&
+		procform->proisstrict && !procform->proretset &&
+		!procform->prosecdef &&
+		!OidIsValid(procform->prosupport))
+	{
+		prosrc = TextDatumGetCString(SysCacheGetAttrNotNull(PROCOID, tp,
+														 Anum_pg_proc_prosrc));
+		probin = TextDatumGetCString(SysCacheGetAttrNotNull(PROCOID, tp,
+														 Anum_pg_proc_probin));
+		if (strcmp(prosrc, "oracharlen") == 0 &&
+			strcmp(probin, "$libdir/ivorysql_ora") == 0)
+		{
+			extoid = get_extension_oid("ivorysql_ora", true);
+			result = OidIsValid(extoid) &&
+				getExtensionOfObject(ProcedureRelationId, funcid) == extoid;
+		}
+		pfree(prosrc);
+		pfree(probin);
+	}
+
 	ReleaseSysCache(tp);
 	return result;
 }

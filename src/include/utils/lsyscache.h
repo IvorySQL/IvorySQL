@@ -144,6 +144,7 @@ extern Oid	get_func_variadictype(Oid funcid);
 extern bool get_func_retset(Oid funcid);
 extern bool func_strict(Oid funcid);
 extern char func_volatile(Oid funcid);
+extern bool is_ora_builtin_expr_function(Oid funcid);
 extern char func_parallel(Oid funcid);
 extern char get_func_prokind(Oid funcid);
 extern bool get_func_leakproof(Oid funcid);
