@@ -24,7 +24,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: dependancy
+    - name: dependency
       if: ${{ matrix.os == 'ubuntu-latest' }}
       run: |
         sudo apt-get update
