@@ -59,65 +59,44 @@ PGSemaphoreCreate(PGSemaphore sema)
  * Lock a semaphore (decrement count), blocking if count would be < 0.
  * Serve the interrupt if interruptOK is true.
  */
-void
+int
 PGSemaphoreLock(PGSemaphore sema)
 {
-	/*
-	 * during libpq use, we should ignore server signals
-	 */
-	HANDLE		wh[1];
-	bool		done = false;
+        HANDLE          wh[1];
+        bool            done = false;
 
-	/*
-	 * Note: pgwin32_signal_event should be first to ensure that it will be
-	 * reported when multiple events are set.  We want to guarantee that
-	 * pending signals are serviced.
-	 */
-	//wh[0] = pgwin32_signal_event;
-	wh[0] = *sema;
+        wh[0] = *sema;
 
-	/*
-	 * As in other implementations of PGSemaphoreLock, we need to check for
-	 * cancel/die interrupts each time through the loop.  But here, there is
-	 * no hidden magic about whether the syscall will internally service a
-	 * signal --- we do that ourselves.
-	 */
-	while (!done)
-	{
-		DWORD		rc;
+        while (!done)
+        {
+                DWORD           rc;
 
-		/* ignore server signals */
-		//CHECK_FOR_INTERRUPTS();
+                rc = WaitForMultipleObjectsEx(1, wh, FALSE, INFINITE, TRUE);
+                switch (rc)
+                {
+                        case WAIT_OBJECT_0:
+                                done = true;
+                                break;
 
-		rc = WaitForMultipleObjectsEx(1, wh, FALSE, INFINITE, TRUE);
-		switch (rc)
-		{
-			case WAIT_OBJECT_0:
-				/* We got it! */
-				done = true;
-				break;
-			case WAIT_IO_COMPLETION:
+                        case WAIT_IO_COMPLETION:
+                                break;
 
-				/*
-				 * The system interrupted the wait to execute an I/O
-				 * completion routine or asynchronous procedure call in this
-				 * thread.  PostgreSQL does not provoke either of these, but
-				 * atypical loaded DLLs or even other processes might do so.
-				 * Now, resume waiting.
-				 */
-				break;
-			case WAIT_FAILED:
-				fprintf(stderr, "could not lock semaphore");
-				exit(-1);
-				break;
-			default:
-				fprintf(stderr, "unexpected return code from WaitForMultipleObjectsEx(): %lu", rc);
-				exit(-1);
-				break;
-		}
-	}
+                        case WAIT_FAILED:
+                                fprintf(stderr,
+                                                "could not lock semaphore: error %lu\n",
+                                                (unsigned long) GetLastError());
+                                return 0;
+
+                        default:
+                                fprintf(stderr,
+                                                "unexpected return code from WaitForMultipleObjectsEx(): %lu\n",
+                                                (unsigned long) rc);
+                                return 0;
+                }
+        }
+
+        return 1;
 }
-
 /*
  * PGSemaphoreUnlock
  *
@@ -126,9 +105,11 @@ PGSemaphoreLock(PGSemaphore sema)
 void
 PGSemaphoreUnlock(PGSemaphore sema)
 {
-	if (!ReleaseSemaphore(*sema, 1, NULL))
-	{
-		fprintf(stderr, "could not unlock semaphore");
-		exit(-1);
-	}
+        if (!ReleaseSemaphore(*sema, 1, NULL))
+        {
+                fprintf(stderr,
+                                "could not unlock semaphore: error %lu\n",
+                                (unsigned long) GetLastError());
+                return;
+        }
 }
