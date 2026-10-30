@@ -162,15 +162,15 @@ drop extension test_ext8;
 -- check handling of types as extension members
 create extension test_ext9;
 \dx+ test_ext9
-          Objects in extension "test_ext9"
-                 Object description                 
-----------------------------------------------------
+                Objects in extension "test_ext9"
+                       Object description                       
+----------------------------------------------------------------
  cast from varbitrange to varbitmultirange
  function varbitmultirange()
  function varbitmultirange(varbitrange)
  function varbitmultirange(varbitrange[])
- function varbitrange(bit varying,bit varying)
- function varbitrange(bit varying,bit varying,text)
+ function varbitrange(pg_catalog.varbit,pg_catalog.varbit)
+ function varbitrange(pg_catalog.varbit,pg_catalog.varbit,text)
  table sometable
  type somecomposite
  type somecomposite[]
@@ -184,15 +184,15 @@ create extension test_ext9;
 
 alter extension test_ext9 drop type varbitrange;
 \dx+ test_ext9
-          Objects in extension "test_ext9"
-                 Object description                 
-----------------------------------------------------
+                Objects in extension "test_ext9"
+                       Object description                       
+----------------------------------------------------------------
  cast from varbitrange to varbitmultirange
  function varbitmultirange()
  function varbitmultirange(varbitrange)
  function varbitmultirange(varbitrange[])
- function varbitrange(bit varying,bit varying)
- function varbitrange(bit varying,bit varying,text)
+ function varbitrange(pg_catalog.varbit,pg_catalog.varbit)
+ function varbitrange(pg_catalog.varbit,pg_catalog.varbit,text)
  table sometable
  type somecomposite
  type somecomposite[]
@@ -202,15 +202,15 @@ alter extension test_ext9 drop type varbitrange;
 
 alter extension test_ext9 add type varbitrange;
 \dx+ test_ext9
-          Objects in extension "test_ext9"
-                 Object description                 
-----------------------------------------------------
+                Objects in extension "test_ext9"
+                       Object description                       
+----------------------------------------------------------------
  cast from varbitrange to varbitmultirange
  function varbitmultirange()
  function varbitmultirange(varbitrange)
  function varbitmultirange(varbitrange[])
- function varbitrange(bit varying,bit varying)
- function varbitrange(bit varying,bit varying,text)
+ function varbitrange(pg_catalog.varbit,pg_catalog.varbit)
+ function varbitrange(pg_catalog.varbit,pg_catalog.varbit,text)
  table sometable
  type somecomposite
  type somecomposite[]
@@ -224,15 +224,15 @@ alter extension test_ext9 add type varbitrange;
 
 alter extension test_ext9 drop table sometable;
 \dx+ test_ext9
-          Objects in extension "test_ext9"
-                 Object description                 
-----------------------------------------------------
+                Objects in extension "test_ext9"
+                       Object description                       
+----------------------------------------------------------------
  cast from varbitrange to varbitmultirange
  function varbitmultirange()
  function varbitmultirange(varbitrange)
  function varbitmultirange(varbitrange[])
- function varbitrange(bit varying,bit varying)
- function varbitrange(bit varying,bit varying,text)
+ function varbitrange(pg_catalog.varbit,pg_catalog.varbit)
+ function varbitrange(pg_catalog.varbit,pg_catalog.varbit,text)
  type somecomposite
  type somecomposite[]
  type varbitmultirange
@@ -243,15 +243,15 @@ alter extension test_ext9 drop table sometable;
 
 alter extension test_ext9 add table sometable;
 \dx+ test_ext9
-          Objects in extension "test_ext9"
-                 Object description                 
-----------------------------------------------------
+                Objects in extension "test_ext9"
+                       Object description                       
+----------------------------------------------------------------
  cast from varbitrange to varbitmultirange
  function varbitmultirange()
  function varbitmultirange(varbitrange)
  function varbitmultirange(varbitrange[])
- function varbitrange(bit varying,bit varying)
- function varbitrange(bit varying,bit varying,text)
+ function varbitrange(pg_catalog.varbit,pg_catalog.varbit)
+ function varbitrange(pg_catalog.varbit,pg_catalog.varbit,text)
  table sometable
  type somecomposite
  type somecomposite[]
@@ -283,6 +283,7 @@ CREATE OR REPLACE FUNCTION create_extension_with_temp_schema()
     RAISE NOTICE 'query %', query;
     EXECUTE query;
   END; $$ LANGUAGE plpgsql;
+/
 BEGIN;
 SELECT create_extension_with_temp_schema();
  create_extension_with_temp_schema 
@@ -308,6 +309,7 @@ DROP EXTENSION test_ext_evttrig;
 -- check that too.
 CREATE FUNCTION ext_cor_func() RETURNS text
   AS $$ SELECT 'ext_cor_func: original'::text $$ LANGUAGE sql;
+/
 CREATE EXTENSION test_ext_cor;  -- fail
 ERROR:  function ext_cor_func() is not a member of extension "test_ext_cor"
 DETAIL:  An extension is not allowed to replace an object that it does not own.
@@ -333,7 +335,7 @@ SELECT ext_cor_func();
 ERROR:  function ext_cor_func() does not exist
 LINE 1: SELECT ext_cor_func();
                ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  There is no function of that name.
 SELECT * FROM ext_cor_view;
           col           
 ------------------------
@@ -517,7 +519,7 @@ ALTER EXTENSION test_ext_set_schema SET SCHEMA s2;
                   Object description                   
 -------------------------------------------------------
  cast from s2.ess_range_type to s2.ess_multirange_type
- function s2.ess_func(integer)
+ function s2.ess_func(pg_catalog.int4)
  function s2.ess_multirange_type()
  function s2.ess_multirange_type(s2.ess_range_type)
  function s2.ess_multirange_type(s2.ess_range_type[])
@@ -535,7 +537,7 @@ ALTER EXTENSION test_ext_set_schema SET SCHEMA s2;
 (16 rows)
 
 \sf s2.ess_func(int)
-CREATE OR REPLACE FUNCTION s2.ess_func(integer)
+CREATE OR REPLACE FUNCTION s2.ess_func(pg_catalog.int4)
  RETURNS text
  LANGUAGE sql
 BEGIN ATOMIC
@@ -649,7 +651,6 @@ SELECT dep_req3b();  -- fails
 ERROR:  function public.dep_req2() does not exist
 LINE 1:  SELECT public.dep_req2() || ' req3b' 
                 ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 QUERY:   SELECT public.dep_req2() || ' req3b' 
 CONTEXT:  SQL function "dep_req3b" statement 1
 DROP EXTENSION test_ext_req_schema3;

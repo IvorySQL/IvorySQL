@@ -542,7 +542,8 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 	}
 
 	else if ((yyextra->body_style == OraBody_PACKAGE ||
-		yyextra->body_style == OraBody_PACKAGEBODY) &&
+		yyextra->body_style == OraBody_PACKAGEBODY ||
+		yyextra->body_style == OraBody_TYPEBODY) &&
 			cur_token != SCONST)
 	{
 		int beginpos = yyextra->body_start;
@@ -555,7 +556,8 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 			if (beginpos < 0)
 				beginpos = *llocp;
 
-			if (yyextra->body_style == OraBody_PACKAGEBODY &&
+			if ((yyextra->body_style == OraBody_PACKAGEBODY ||
+				yyextra->body_style == OraBody_TYPEBODY) &&
 				(cur_token == FUNCTION || cur_token == PROCEDURE))
 			{
 				while(true)
@@ -607,7 +609,8 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 					/*
 					 * package body may have init block
 					 */
-					if (yyextra->body_style == OraBody_PACKAGEBODY &&
+					if ((yyextra->body_style == OraBody_PACKAGEBODY ||
+						yyextra->body_style == OraBody_TYPEBODY) &&
 						blocklevel == 0)
 					{
 						if (sub_proc_level > 0)
@@ -681,6 +684,24 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 			break;
 		case PACKAGE:
 			cur_token_length = 7;
+			break;
+		case TYPE_P:
+			cur_token_length = 4;
+			break;
+		case REF_P:
+			cur_token_length = 3;
+			break;
+		case MEMBER:
+			cur_token_length = 6;
+			break;
+		case CONSTRUCTOR:
+			cur_token_length = 11;
+			break;
+		case STATIC_P:
+			cur_token_length = 6;
+			break;
+		case '(':
+			cur_token_length = 1;
 			break;
 		default:
 			return cur_token;
@@ -758,6 +779,34 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 			/* Replace PACKAGE by PACKAGE_BODY if it's followed by BODY */
 			if (next_token == BODY)
 				cur_token = PACKAGE_BODY;
+			break;
+
+		case TYPE_P:
+			/* Replace TYPE by TYPE_BODY if it's followed by BODY. */
+			if (next_token == BODY)
+				cur_token = TYPE_BODY;
+			break;
+
+		case REF_P:
+			/* A REF declaration starts with a (possibly quoted) type name. */
+			if (next_token == IDENT)
+				cur_token = REF_LA;
+			break;
+
+		case MEMBER:
+			/* Distinguish an object method prefix from an identifier. */
+			if (next_token == FUNCTION || next_token == PROCEDURE)
+				cur_token = MEMBER_LA;
+			break;
+
+		case CONSTRUCTOR:
+			if (next_token == FUNCTION)
+				cur_token = CONSTRUCTOR_LA;
+			break;
+
+		case STATIC_P:
+			if (next_token == FUNCTION || next_token == PROCEDURE)
+				cur_token = STATIC_LA;
 			break;
 
 		case WITH:
@@ -863,6 +912,46 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 			else if (cur_token == USCONST)
 			{
 				cur_token = SCONST;
+			}
+			break;
+
+		case '(':
+			/*
+			 * Combine the three tokens "(" "+" ")" into one ORAJOINOPR token
+			 * (the Oracle outer join operator).  Whitespace and comments may
+			 * appear between them, which is why this is done here with
+			 * lookahead rather than as a scanner rule.
+			 */
+			if (next_token == '+')
+			{
+				/* fetch the third token directly (not via the cache) */
+				next_token = ora_internal_yylex(yyscanner, llocp, &aux1);
+				if (next_token == ')')
+				{
+					cur_token = ORAJOINOPR;
+					/*
+					 * Consume the cached '+'; the ')' just fetched is
+					 * simply dropped.  lookahead_end / lookahead_hold_char
+					 * were already set up for '(' by the common lookahead
+					 * code above and still point one past '(' with the real
+					 * character saved, so leave them alone -- recomputing
+					 * lookahead_hold_char here would capture the scanner's
+					 * temporary '\0' after ')' instead of the real byte.
+					 */
+					yyextra->loc_pushback++;
+				}
+				else
+				{
+					/* not "(+)": keep '(', replay the cached '+' then this token */
+					push_back_token(yyscanner, next_token, &aux1);
+				}
+
+				/*
+				 * ora_internal_yylex() above moved *llocp to the third
+				 * token; restore it to '(' so this token is reported at the
+				 * right position (matching the matched and unmatched cases).
+				 */
+				*llocp = cur_yylloc;
 			}
 			break;
 	}

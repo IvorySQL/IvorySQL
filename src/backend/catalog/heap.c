@@ -102,7 +102,8 @@ static ObjectAddress AddNewRelationType(const char *typeName,
 										char new_rel_kind,
 										Oid ownerid,
 										Oid new_row_type,
-										Oid new_array_type);
+										Oid new_array_type,
+										bool is_object);
 static void RelationRemoveInheritance(Oid relid);
 static Oid	StoreRelCheck(Relation rel, const char *ccname, Node *expr,
 						  bool is_enforced, bool is_validated, bool is_local,
@@ -1089,7 +1090,8 @@ AddNewRelationType(const char *typeName,
 				   char new_rel_kind,
 				   Oid ownerid,
 				   Oid new_row_type,
-				   Oid new_array_type)
+				   Oid new_array_type,
+				   bool is_object)
 {
 	return
 		TypeCreate(new_row_type,	/* optional predetermined OID */
@@ -1123,7 +1125,8 @@ AddNewRelationType(const char *typeName,
 				   -1,			/* typmod */
 				   0,			/* array dimensions for typBaseType */
 				   false,		/* Type NOT NULL */
-				   InvalidOid); /* rowtypes never have a collation */
+				   InvalidOid, /* rowtypes never have a collation */
+				   is_object); /* Oracle object type */
 }
 
 /* --------------------------------
@@ -1153,6 +1156,7 @@ AddNewRelationType(const char *typeName,
  *	allow_system_table_mods: true to allow creation in system namespaces
  *	is_internal: is this a system-generated catalog?
  *	relrewrite: link to original relation during a table rewrite
+ *	is_object: should the relation's row type be an Oracle object type?
  *
  * Output parameters:
  *	typaddress: if not null, gets the object address of the new pg_type entry
@@ -1182,6 +1186,7 @@ heap_create_with_catalog(const char *relname,
 						 bool allow_system_table_mods,
 						 bool is_internal,
 						 Oid relrewrite,
+						 bool is_object,
 						 ObjectAddress *typaddress)
 {
 	Relation	pg_class_desc;
@@ -1202,6 +1207,7 @@ heap_create_with_catalog(const char *relname,
 	 * sanity checks
 	 */
 	Assert(IsNormalProcessingMode() || IsBootstrapProcessingMode());
+	Assert(!is_object || relkind == RELKIND_COMPOSITE_TYPE);
 
 	/*
 	 * Validate proposed tupdesc for the desired relkind.  If
@@ -1416,7 +1422,8 @@ heap_create_with_catalog(const char *relname,
 										   relkind,
 										   ownerid,
 										   reltypeid,
-										   new_array_oid);
+										   new_array_oid,
+										   is_object);
 		new_type_oid = new_type_addr.objectId;
 		if (typaddress)
 			*typaddress = new_type_addr;
@@ -1455,7 +1462,8 @@ heap_create_with_catalog(const char *relname,
 				   -1,			/* typmod */
 				   0,			/* array dimensions for typBaseType */
 				   false,		/* Type NOT NULL */
-				   InvalidOid); /* rowtypes never have a collation */
+				   InvalidOid, /* rowtypes never have a collation */
+				   false);     /* array is not an object type */
 
 		pfree(relarrayname);
 	}

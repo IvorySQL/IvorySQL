@@ -188,7 +188,10 @@ $(top_builddir)/src/include/storage/lwlocknames.h: storage/lmgr/lwlocknames.h
 	  cd '$(dir $@)' && rm -f $(notdir $@) && \
 	  $(LN_S) "$$prereqdir/$(notdir $<)" .
 
+# SystemTap compiles generated C; use the configured compiler and omit the
+# declaration warning for its semaphore definitions.
 utils/probes.o: utils/probes.d $(SUBDIROBJS)
+	CC="$(CC)" CFLAGS="$(filter-out -Wmissing-variable-declarations -Werror=missing-variable-declarations,$(CFLAGS))" \
 	$(DTRACE) $(DTRACEFLAGS) -C -G -s $(call expand_subsys,$^) -o $@
 
 

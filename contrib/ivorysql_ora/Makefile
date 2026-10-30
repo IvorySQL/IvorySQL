@@ -36,22 +36,25 @@ OBJS = \
 	src/builtin_packages/utl_url/utl_url.o \
 	src/builtin_packages/dbms_session/dbms_session.o \
 	src/builtin_packages/dbms_transaction/dbms_transaction.o \
-	src/builtin_packages/dbms_random/dbms_random.o
+	src/builtin_packages/dbms_random/dbms_random.o \
+	src/builtin_packages/utl_match/utl_match.o \
+	src/builtin_packages/dbms_scheduler/dbms_scheduler.o \
+	src/builtin_packages/dbms_scheduler/scheduler_calendar.o \
+	src/builtin_packages/dbms_scheduler/scheduler_launcher.o \
+	src/builtin_packages/dbms_scheduler/scheduler_worker.o
 
 EXTENSION = ivorysql_ora
 
 # SQL(s) which need to be generated only if which is specified here.
-DATA = ivorysql_ora--1.0.sql
-
-all: gensql
+DATA_built = ivorysql_ora--1.0.sql
 
 install: install-data
 
 clean: cleansql
 
 # SQL(s) merge using perl
-gensql: gensql.pl
-	$(PERL) $< gcc_build $(patsubst ivorysql_ora--%.sql, %, $(DATA))
+$(DATA_built): gensql.pl
+	$(PERL) $< gcc_build $(patsubst ivorysql_ora--%.sql, %,$@)
 
 # Preload the compatible oracle misc sql script
 install-data:
@@ -59,7 +62,7 @@ install-data:
 
 # Clean the generated SQL(s).
 cleansql:
-	rm -f $(DATA)
+	rm -f $(DATA_built)
 
 # REGRESS_OPTS mainly used for installcheck or debug.
 #REGRESS_OPTS = --port=1521
@@ -92,12 +95,17 @@ ORA_REGRESS = \
 	ora_stragg \
 	dbms_lock \
 	utl_file \
+	utl_file_putf \
 	utl_raw \
 	utl_encode \
 	utl_url \
 	dbms_session \
 	dbms_transaction \
-	dbms_random
+	dbms_random \
+	utl_match \
+	dbms_scheduler
+
+TAP_TESTS = 1
 
 # Include path for plisql.h (needed by dbms_utility)
 PG_CPPFLAGS += -I$(top_srcdir)/src/pl/plisql/src
@@ -116,6 +124,4 @@ endif
 ifeq ($(with_libxml),yes)
 SHLIB_LINK += -lxml2
 endif
-
-
 

@@ -84,6 +84,7 @@ extern Oid	heap_create_with_catalog(const char *relname,
 									 bool allow_system_table_mods,
 									 bool is_internal,
 									 Oid relrewrite,
+									 bool is_object,
 									 ObjectAddress *typaddress);
 
 extern void heap_drop_with_catalog(Oid relid);

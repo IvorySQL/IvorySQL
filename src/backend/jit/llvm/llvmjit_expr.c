@@ -1725,6 +1725,11 @@ llvm_compile_expr(ExprState *state)
 				LLVMBuildBr(b, opblocks[opno + 1]);
 				break;
 
+			case EEOP_ROWNUM:
+				build_EvalXFunc(b, mod, "ExecEvalRownum", v_state, op);
+				LLVMBuildBr(b, opblocks[opno + 1]);
+				break;
+
 			case EEOP_RETURNINGEXPR:
 				{
 					LLVMBasicBlockRef b_isnull;
@@ -2942,6 +2947,27 @@ llvm_compile_expr(ExprState *state)
 								v_state, op, v_econtext);
 				LLVMBuildBr(b, opblocks[opno + 1]);
 				break;
+
+			case EEOP_OUT_PARAM_CALLBACK:
+				{
+					LLVMValueRef v_func;
+					LLVMValueRef v_params[2];
+					LLVMTypeRef param_types[2];
+					LLVMTypeRef func_type;
+
+					v_params[0] = v_state;
+					v_params[1] = l_ptr_const(op, l_ptr(StructExprEvalStep));
+					param_types[0] = LLVMTypeOf(v_params[0]);
+					param_types[1] = LLVMTypeOf(v_params[1]);
+					func_type = LLVMFunctionType(LLVMVoidTypeInContext(lc),
+												param_types, lengthof(param_types), false);
+					v_func = l_ptr_const(op->d.out_params.outparam_func,
+										 l_ptr(func_type));
+					l_call(b, func_type, v_func, v_params, lengthof(v_params), "");
+
+					LLVMBuildBr(b, opblocks[opno + 1]);
+					break;
+				}
 
 			case EEOP_LAST:
 				Assert(false);

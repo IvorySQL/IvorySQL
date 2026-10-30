@@ -1,3 +1,10 @@
+-- Compare against the initial state, since Oracle clusters already contain
+-- extension privileges for built-in compatibility objects.
+CREATE TEMP TABLE test_pg_dump_init_privs_before AS SELECT * FROM pg_init_privs;
+CREATE TEMP VIEW test_pg_dump_init_privs AS
+  SELECT * FROM pg_init_privs
+  EXCEPT SELECT * FROM test_pg_dump_init_privs_before;
+
 CREATE ROLE regress_dump_test_role;
 CREATE EXTENSION test_pg_dump;
 
@@ -87,7 +94,7 @@ SELECT s.obj,
   a.privilege_type, a.is_grantable
 FROM
   (SELECT pg_describe_object(classoid,objoid,objsubid) COLLATE "C" AS obj, initprivs
-   FROM pg_init_privs WHERE privtype = 'e' ORDER BY 1) s,
+   FROM test_pg_dump_init_privs WHERE privtype = 'e' ORDER BY 1) s,
   aclexplode(s.initprivs) a;
 SELECT pg_describe_object(classid,objid,objsubid) COLLATE "C" AS obj,
   pg_describe_object(refclassid,refobjid,0) AS refobj,
@@ -139,7 +146,7 @@ SELECT s.obj,
   a.privilege_type, a.is_grantable
 FROM
   (SELECT pg_describe_object(classoid,objoid,objsubid) COLLATE "C" AS obj, initprivs
-   FROM pg_init_privs WHERE privtype = 'e' ORDER BY 1) s,
+   FROM test_pg_dump_init_privs WHERE privtype = 'e' ORDER BY 1) s,
   aclexplode(s.initprivs) a;
 SELECT pg_describe_object(classid,objid,objsubid) COLLATE "C" AS obj,
   pg_describe_object(refclassid,refobjid,0) AS refobj,
@@ -152,8 +159,8 @@ DROP ROLE regress_dump_test_role;
 
 DROP EXTENSION test_pg_dump;
 
--- shouldn't be anything left in pg_init_privs
-SELECT * FROM pg_init_privs WHERE privtype = 'e';
+-- The extension should leave no new entries in pg_init_privs.
+SELECT * FROM test_pg_dump_init_privs WHERE privtype = 'e';
 
 CREATE ROLE regress_dump_test_role;
 CREATE ROLE regress_dump_test_super SUPERUSER;
@@ -173,7 +180,7 @@ SELECT s.obj,
   a.privilege_type, a.is_grantable
 FROM
   (SELECT pg_describe_object(classoid,objoid,objsubid) COLLATE "C" AS obj, initprivs
-   FROM pg_init_privs WHERE privtype = 'e' ORDER BY 1) s,
+   FROM test_pg_dump_init_privs WHERE privtype = 'e' ORDER BY 1) s,
   aclexplode(s.initprivs) a;
 SELECT pg_describe_object(classid,objid,objsubid) COLLATE "C" AS obj,
   pg_describe_object(refclassid,refobjid,0) AS refobj,
@@ -193,7 +200,7 @@ SELECT s.obj,
   a.privilege_type, a.is_grantable
 FROM
   (SELECT pg_describe_object(classoid,objoid,objsubid) COLLATE "C" AS obj, initprivs
-   FROM pg_init_privs WHERE privtype = 'e' ORDER BY 1) s,
+   FROM test_pg_dump_init_privs WHERE privtype = 'e' ORDER BY 1) s,
   aclexplode(s.initprivs) a;
 SELECT pg_describe_object(classid,objid,objsubid) COLLATE "C" AS obj,
   pg_describe_object(refclassid,refobjid,0) AS refobj,
@@ -213,7 +220,7 @@ SELECT s.obj,
   a.privilege_type, a.is_grantable
 FROM
   (SELECT pg_describe_object(classoid,objoid,objsubid) COLLATE "C" AS obj, initprivs
-   FROM pg_init_privs WHERE privtype = 'e' ORDER BY 1) s,
+   FROM test_pg_dump_init_privs WHERE privtype = 'e' ORDER BY 1) s,
   aclexplode(s.initprivs) a;
 SELECT pg_describe_object(classid,objid,objsubid) COLLATE "C" AS obj,
   pg_describe_object(refclassid,refobjid,0) AS refobj,

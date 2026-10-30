@@ -17,7 +17,10 @@
 #include "postgres.h"
 
 #include "access/hash.h"
+#include "access/heapam.h"
 #include "access/htup_details.h"
+#include "access/table.h"
+#include "access/tableam.h"
 #include "bootstrap/bootstrap.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_am.h"
@@ -43,6 +46,7 @@
 #include "catalog/pg_subscription.h"
 #include "catalog/pg_transform.h"
 #include "catalog/pg_type.h"
+#include "common/md5.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "utils/array.h"
@@ -2770,6 +2774,107 @@ get_typisdefined(Oid typid)
 	}
 	else
 		return false;
+}
+
+/*
+ * get_typisobject
+ *
+ *		Given the type OID, determine whether it is an Oracle object type.
+ */
+bool
+get_typisobject(Oid typid)
+{
+	HeapTuple	tp;
+
+	tp = SearchSysCache1(TYPEOID, ObjectIdGetDatum(typid));
+	if (HeapTupleIsValid(tp))
+	{
+		Form_pg_type typtup = (Form_pg_type) GETSTRUCT(tp);
+		bool		result;
+
+		result = typtup->typisobject;
+		ReleaseSysCache(tp);
+		return result;
+	}
+	else
+		return false;
+}
+
+Oid
+get_typrefbase(Oid typid)
+{
+	HeapTuple	tup = SearchSysCache1(TYPEOID, ObjectIdGetDatum(typid));
+	Oid		result;
+
+	if (!HeapTupleIsValid(tup))
+		return InvalidOid;
+	result = ((Form_pg_type) GETSTRUCT(tup))->typrefbase;
+	ReleaseSysCache(tup);
+	return result;
+}
+
+/* Keep the generated domain name independent of the current database OIDs. */
+char *
+get_object_ref_domain_name(const char *object_name)
+{
+	char		digest[MD5_PASSWD_LEN];
+	const char *errstr;
+
+	if (!pg_md5_hash(object_name, strlen(object_name), digest, &errstr))
+		ereport(ERROR, (errmsg("could not name object reference type: %s", errstr)));
+	return psprintf("__ivorysql_ref_%s", digest);
+}
+
+Oid
+get_object_ref_domain_oid(Oid object_type, bool missing_ok)
+{
+	HeapTuple	tup = SearchSysCache1(TYPEOID, ObjectIdGetDatum(object_type));
+	Form_pg_type typeform;
+	char	   *domain_name;
+	Oid		result;
+
+	if (!HeapTupleIsValid(tup))
+		elog(ERROR, "cache lookup failed for type %u", object_type);
+	typeform = (Form_pg_type) GETSTRUCT(tup);
+	if (!typeform->typisobject)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("type %s is not an Oracle object type", format_type_be(object_type))));
+	domain_name = get_object_ref_domain_name(NameStr(typeform->typname));
+	result = GetSysCacheOid2(TYPENAMENSP, Anum_pg_type_oid,
+						 CStringGetDatum(domain_name),
+						 ObjectIdGetDatum(typeform->typnamespace));
+	ReleaseSysCache(tup);
+	/* A renamed or schema-moved object retains its generated REF domain. */
+	if (!OidIsValid(result))
+	{
+		Relation	rel = table_open(TypeRelationId, AccessShareLock);
+		TableScanDesc scan = table_beginscan_catalog(rel, 0, NULL);
+		HeapTuple	row;
+
+		while ((row = heap_getnext(scan, ForwardScanDirection)) != NULL)
+		{
+			Form_pg_type candidate = (Form_pg_type) GETSTRUCT(row);
+
+			if (candidate->typrefbase == object_type)
+			{
+				result = candidate->oid;
+				break;
+			}
+		}
+		table_endscan(scan);
+		table_close(rel, AccessShareLock);
+	}
+	if (!OidIsValid(result) && !missing_ok)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("reference type for object type %u does not exist", object_type)));
+	if (OidIsValid(result) && get_typrefbase(result) != object_type)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("reference type for object type %u is invalid", object_type)));
+	pfree(domain_name);
+	return result;
 }
 
 /*

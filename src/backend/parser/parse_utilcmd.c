@@ -265,7 +265,33 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	Assert(!stmt->ofTypename || !stmt->inhRelations);	/* grammar enforces */
 
 	if (stmt->ofTypename)
+	{
 		transformOfType(&cxt, stmt->ofTypename);
+		if (get_typisobject(stmt->ofTypename->typeOid))
+		{
+			ListCell   *option;
+
+			if (stmt->partspec != NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("partitioned object tables are not supported")));
+			foreach(option, stmt->options)
+			{
+				DefElem    *def = lfirst_node(DefElem, option);
+
+				if (def->defnamespace == NULL &&
+					strcmp(def->defname, "rowid") == 0 &&
+					!defGetBoolean(def))
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("object tables cannot be created WITHOUT ROWID")));
+			}
+			cxt.hasrowid = true;
+			stmt->options = lcons(makeDefElem("rowid",
+											 (Node *) makeInteger(true), -1),
+									 stmt->options);
+		}
+	}
 
 	if (stmt->partspec)
 	{
@@ -640,8 +666,17 @@ generateSerialExtraStmts(CreateStmtContext *cxt, ColumnDef *column,
 	seqstmt->sequence->relpersistence = seqpersistence;
 	seqstmt->options = seqoptions;
 
-	if (compatible_db == ORA_PARSER)
+	if (compatible_db == ORA_PARSER && !for_identity)
+	{
+		/*
+		 * In Oracle-compatible mode, sequences created implicitly for
+		 * non-identity columns (SERIAL, etc.) default to NOCACHE.  Don't
+		 * synthesize NOCACHE for identity columns: doing so would mask an
+		 * explicit NOCACHE, and init_params() already picks the appropriate
+		 * default for an identity sequence that has no CACHE/NOCACHE option.
+		 */
 		seqstmt->options = lcons(makeDefElem("nocache", NULL, -1), seqstmt->options);
+	}
 
 	if (seq_type)
 		seqstmt->seq_type = seq_type;
