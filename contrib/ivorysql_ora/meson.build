@@ -49,9 +49,35 @@ if host_system == 'windows'
     '--FILEDESC', 'ivorysql_ora - Oracle Compatible extension on Postgres Database',])
 endif
 
+# SQL sources merged by gensql.pl into ivorysql_ora--1.0.sql.
+# NOTE: keep this file list in sync with ivorysql_ora_merge_sqls,
+# so that changes to any merged SQL source trigger regeneration.
+ivorysql_ora_merged_sqls = files(
+  'src/datatype/datatype--1.0.sql',
+  'src/builtin_functions/builtin_functions--1.0.sql',
+  'src/builtin_packages/dbms_output/dbms_output--1.0.sql',
+  'src/builtin_packages/utl_file/utl_file--1.0.sql',
+  'src/sysview/sysview--1.0.sql',
+  'src/xml_functions/xml_functions--1.0.sql',
+  'src/builtin_packages/dbms_utility/dbms_utility--1.0.sql',
+  'src/builtin_packages/dbms_lock/dbms_lock--1.0.sql',
+  'src/builtin_packages/utl_raw/utl_raw--1.0.sql',
+  'src/builtin_packages/utl_encode/utl_encode--1.0.sql',
+  'src/builtin_packages/utl_url/utl_url--1.0.sql',
+  'src/builtin_packages/dbms_session/dbms_session--1.0.sql',
+  'src/builtin_packages/dbms_transaction/dbms_transaction--1.0.sql',
+  'src/builtin_packages/dbms_random/dbms_random--1.0.sql',
+  'src/builtin_packages/utl_match/utl_match--1.0.sql',
+  'src/builtin_packages/dbms_scheduler/dbms_scheduler--1.0.sql',
+)
+
 custom_target('ivorysql_ora--1.0.sql',
   output: 'ivorysql_ora--1.0.sql',
-  command: [perl, '../contrib/ivorysql_ora/gensql.pl', 'meson', '1.0'],
+  # Pass gensql.pl as a File object so Meson tracks it as a dependency;
+  # a plain string path would not retrigger the build when the generator
+  # itself changes.
+  command: [perl, files('gensql.pl'), 'meson', '1.0'],
+  depend_files: ivorysql_ora_merged_sqls + files('ivorysql_ora_merge_sqls'),
   capture: true,
   install: true,
   install_dir: contrib_data_args['install_dir'],
