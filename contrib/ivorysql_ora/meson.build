@@ -73,7 +73,10 @@ ivorysql_ora_merged_sqls = files(
 
 custom_target('ivorysql_ora--1.0.sql',
   output: 'ivorysql_ora--1.0.sql',
-  command: [perl, '../contrib/ivorysql_ora/gensql.pl', 'meson', '1.0'],
+  # Pass gensql.pl as a File object so Meson tracks it as a dependency;
+  # a plain string path would not retrigger the build when the generator
+  # itself changes.
+  command: [perl, files('gensql.pl'), 'meson', '1.0'],
   depend_files: ivorysql_ora_merged_sqls + files('ivorysql_ora_merge_sqls'),
   capture: true,
   install: true,
