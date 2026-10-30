@@ -115,14 +115,14 @@ SELECT sys.ora_utl_file_fremove('putf_multibyte', 'utl_file_putf_partial.dat') A
 SELECT sys.ora_utl_file_fopen('putf_multibyte', 'utl_file_putf_line_reset.dat', 'w', 4, 'UTF8') AS fd \gset
 SELECT sys.ora_utl_file_putf(:fd, 'a\nb\nc\n') AS wrote \gset
 SELECT sys.ora_utl_file_fclose(:fd) AS closed \gset
-SELECT 'line_reset=' || encode(pg_read_binary_file('utl_file_putf_line_reset.dat'), 'hex');
+SELECT 'line_reset=' || replace(encode(pg_read_binary_file('utl_file_putf_line_reset.dat'), 'hex'), '0d0a', '0a');
 SELECT sys.ora_utl_file_fremove('putf_multibyte', 'utl_file_putf_line_reset.dat') AS removed \gset
 
 -- A line that fills the budget exactly, newline included, is legal.
 SELECT sys.ora_utl_file_fopen('putf_multibyte', 'utl_file_putf_line_exact.dat', 'w', 4, 'UTF8') AS fd \gset
 SELECT sys.ora_utl_file_putf(:fd, 'abc\nabc\n') AS wrote \gset
 SELECT sys.ora_utl_file_fclose(:fd) AS closed \gset
-SELECT 'line_exact=' || encode(pg_read_binary_file('utl_file_putf_line_exact.dat'), 'hex');
+SELECT 'line_exact=' || replace(encode(pg_read_binary_file('utl_file_putf_line_exact.dat'), 'hex'), '0d0a', '0a');
 SELECT sys.ora_utl_file_fremove('putf_multibyte', 'utl_file_putf_line_exact.dat') AS removed \gset
 
 -- The newline character itself is charged to the line it terminates,
@@ -135,6 +135,26 @@ SELECT sys.ora_utl_file_fremove('putf_multibyte', 'utl_file_putf_line_newline_ov
 SELECT sys.ora_utl_file_fopen('putf_multibyte', 'utl_file_putf_line_second_over.dat', 'w', 4, 'UTF8') AS fd \gset
 SELECT sys.ora_utl_file_putf(:fd, 'ab\nabcde');
 SELECT sys.ora_utl_file_fremove('putf_multibyte', 'utl_file_putf_line_second_over.dat') AS removed \gset
+
+-- A %s argument can carry newlines of its own; each of its lines gets its
+-- own budget.
+SELECT sys.ora_utl_file_fopen('putf_multibyte', 'utl_file_putf_argument_lines.dat', 'w', 4, 'UTF8') AS fd \gset
+SELECT sys.ora_utl_file_putf(:fd, '%s', 'a' || chr(10) || 'b' || chr(10) || 'c' || chr(10)) AS wrote \gset
+SELECT sys.ora_utl_file_fclose(:fd) AS closed \gset
+SELECT 'argument_lines=' || replace(encode(pg_read_binary_file('utl_file_putf_argument_lines.dat'), 'hex'), '0d0a', '0a');
+SELECT sys.ora_utl_file_fremove('putf_multibyte', 'utl_file_putf_argument_lines.dat') AS removed \gset
+
+-- A literal newline embedded in the format behaves like the \n escape.
+SELECT sys.ora_utl_file_fopen('putf_multibyte', 'utl_file_putf_literal_newline.dat', 'w', 4, 'UTF8') AS fd \gset
+SELECT sys.ora_utl_file_putf(:fd, 'abc' || chr(10) || 'abc') AS wrote \gset
+SELECT sys.ora_utl_file_fclose(:fd) AS closed \gset
+SELECT 'literal_newline=' || replace(encode(pg_read_binary_file('utl_file_putf_literal_newline.dat'), 'hex'), '0d0a', '0a');
+SELECT sys.ora_utl_file_fremove('putf_multibyte', 'utl_file_putf_literal_newline.dat') AS removed \gset
+
+-- The per-line check still applies inside a %s argument.
+SELECT sys.ora_utl_file_fopen('putf_multibyte', 'utl_file_putf_argument_over.dat', 'w', 4, 'UTF8') AS fd \gset
+SELECT sys.ora_utl_file_putf(:fd, '%s', 'abcd' || chr(10));
+SELECT sys.ora_utl_file_fremove('putf_multibyte', 'utl_file_putf_argument_over.dat') AS removed \gset
 
 DELETE FROM sys.utl_file_directory WHERE dirname = 'putf_multibyte';
 \pset tuples_only off
