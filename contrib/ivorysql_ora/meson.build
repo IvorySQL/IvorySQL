@@ -35,7 +35,12 @@ ivorysql_ora_sources = files(
   'src/builtin_packages/utl_url/utl_url.c',
   'src/builtin_packages/dbms_session/dbms_session.c',
   'src/builtin_packages/dbms_transaction/dbms_transaction.c',
-  'src/builtin_packages/dbms_random/dbms_random.c'
+  'src/builtin_packages/dbms_random/dbms_random.c',
+  'src/builtin_packages/utl_match/utl_match.c',
+  'src/builtin_packages/dbms_scheduler/dbms_scheduler.c',
+  'src/builtin_packages/dbms_scheduler/scheduler_calendar.c',
+  'src/builtin_packages/dbms_scheduler/scheduler_launcher.c',
+  'src/builtin_packages/dbms_scheduler/scheduler_worker.c'
 )
 
 if host_system == 'windows'

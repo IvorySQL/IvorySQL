@@ -58,7 +58,7 @@ case $testhost in
 		;;
 esac
 
-POSTMASTER_OPTS="-F -c listen_addresses=$LISTEN_ADDRESSES -k \"$PGHOST\""
+POSTMASTER_OPTS="-F -c listen_addresses=$LISTEN_ADDRESSES -c ivorysql.listen_addresses=$LISTEN_ADDRESSES -k \"$PGHOST\""
 export PGHOST
 
 # don't rely on $PWD here, as old shells don't set it
@@ -131,6 +131,26 @@ do
 	PGPORT=`expr $PGPORT + 1`
 	export PGPORT
 done
+
+# PostgreSQL and Oracle connections use separate listeners. Reserve the
+# selected port for PostgreSQL, then connect the tests to the Oracle port.
+POSTMASTER_OPTS="$POSTMASTER_OPTS -p $PGPORT"
+PGPORT=`expr $PGPORT + 1`
+export PGPORT
+
+i=0
+while psql -X postgres </dev/null 2>/dev/null
+do
+	i=`expr $i + 1`
+	if [ $i -eq 16 ]
+	then
+		echo port $PGPORT apparently in use
+		exit 1
+	fi
+	PGPORT=`expr $PGPORT + 1`
+	export PGPORT
+done
+POSTMASTER_OPTS="$POSTMASTER_OPTS -o $PGPORT"
 
 # buildfarm may try to override port via EXTRA_REGRESS_OPTS ...
 EXTRA_REGRESS_OPTS="$EXTRA_REGRESS_OPTS --port=$PGPORT"

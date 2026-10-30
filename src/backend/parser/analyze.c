@@ -1813,6 +1813,10 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt,
 	/* process the FROM clause */
 	transformFromClause(pstate, stmt->fromClause);
 
+	/* process Oracle Join (+) Operator */
+	if (stmt->ora_join_op_exists)
+		transformOraJoinClause(pstate, stmt);
+
 	/* transform targetlist */
 	qry->targetList = transformTargetList(pstate, stmt->targetList,
 										  EXPR_KIND_SELECT_TARGET);
@@ -3043,7 +3047,17 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist, ForPortionOfExpr 
 		{
 			if (origTarget->indirection)
 			{
-				colname_temp = strVal(lfirst(list_head(origTarget->indirection)));
+				Node	   *ind0 = linitial(origTarget->indirection);
+
+				if (!IsA(ind0, String))
+					ereport(ERROR,
+							(errcode(ERRCODE_UNDEFINED_COLUMN),
+							 errmsg("column \"%s\" of relation \"%s\" does not exist",
+									origTarget->name,
+									RelationGetRelationName(pstate->p_target_relation)),
+							 parser_errposition(pstate, origTarget->location)));
+
+				colname_temp = strVal(ind0);
 				alias_temp = lfirst(list_head(pstate->p_rtable));
 
 				if (alias_temp->alias)
@@ -3128,7 +3142,7 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist, ForPortionOfExpr 
 		{
 			updateTargetListEntry(pstate, tle, colname_temp,
 								  attrno,
-								  NULL,
+								  list_copy_tail(origTarget->indirection, 1),
 								  origTarget->location);
 		}
 		else

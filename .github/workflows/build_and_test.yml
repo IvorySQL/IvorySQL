@@ -73,7 +73,7 @@ jobs:
       run: |
         docker exec -u ivorysql \
                     iv-${{ matrix.container-os }}-container bash -c "
-                      cd /home/ivorysql/IvorySQL && make
+                      cd /home/ivorysql/IvorySQL && make -j$(nproc)
                     "
     - name: regression
       run: |

@@ -187,7 +187,10 @@ main()
 {
 	Ivyconn    *conn;
 	Ivyresult   *res;
-	const char *conninfo="user=system dbname=postgres port=1521";
+	const char *pgport = getenv("PGPORT");
+	const char *conninfo = (pgport && pgport[0]) ?
+		"user=system dbname=postgres" :
+		"user=system dbname=postgres port=1521";
 
 	/* make a connection to the database */
 	conn = Ivyconnectdb(conninfo);

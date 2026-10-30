@@ -334,6 +334,76 @@ CREATE TABLE like_constraint_rename_cache
 DROP TABLE constraint_rename_cache;
 DROP TABLE like_constraint_rename_cache;
 
+-- ALTER TABLE ... ADD ( constraint [, constraint ...] )
+-- Oracle allows a parenthesized, comma-separated list of table constraints.
+CREATE TABLE regress_multi_add (a integer, b integer);
+ALTER TABLE regress_multi_add ADD (
+    CONSTRAINT regress_multi_a_ck CHECK (a > 0),
+    CONSTRAINT regress_multi_b_uk UNIQUE (b)
+);
+SELECT conname, contype FROM pg_constraint
+  WHERE conrelid = 'regress_multi_add'::regclass
+    AND conname IN ('regress_multi_a_ck', 'regress_multi_b_uk')
+  ORDER BY conname;
+INSERT INTO regress_multi_add VALUES (1, 1); -- succeeds
+INSERT INTO regress_multi_add VALUES (0, 2); -- CHECK violation
+INSERT INTO regress_multi_add VALUES (2, 1); -- UNIQUE violation
+-- two constraints of the same kind
+ALTER TABLE regress_multi_add ADD (
+    CONSTRAINT regress_multi_a_lt_ck CHECK (a < 100),
+    CONSTRAINT regress_multi_b_lt_ck CHECK (b < 100)
+);
+INSERT INTO regress_multi_add VALUES (100, 2); -- CHECK violation
+INSERT INTO regress_multi_add VALUES (2, 100); -- CHECK violation
+-- commas nested inside a constraint are not list separators
+ALTER TABLE regress_multi_add ADD (
+    CONSTRAINT regress_multi_ab_uk UNIQUE (a, b),
+    CONSTRAINT regress_multi_b_in_ck CHECK (b NOT IN (98, 99))
+);
+INSERT INTO regress_multi_add VALUES (2, 99); -- CHECK violation
+INSERT INTO regress_multi_add VALUES (2, 2); -- succeeds
+-- unnamed constraints
+ALTER TABLE regress_multi_add ADD (CHECK (a <> 42), UNIQUE (a));
+INSERT INTO regress_multi_add VALUES (42, 3); -- CHECK violation
+INSERT INTO regress_multi_add VALUES (1, 3); -- UNIQUE violation
+-- the existing single-item forms still work
+ALTER TABLE regress_multi_add ADD CONSTRAINT regress_multi_a_ne_ck CHECK (a <> 7);
+ALTER TABLE regress_multi_add ADD (CONSTRAINT regress_multi_b_ne_ck CHECK (b <> 7));
+ALTER TABLE regress_multi_add ADD (c integer);
+INSERT INTO regress_multi_add VALUES (7, 3, 1); -- CHECK violation
+INSERT INTO regress_multi_add VALUES (3, 7, 1); -- CHECK violation
+-- a list expands to ordinary commands and combines with other commands
+ALTER TABLE regress_multi_add
+  ADD (CONSTRAINT regress_multi_c_ck CHECK (c > 0), CONSTRAINT regress_multi_c_uk UNIQUE (c)),
+  ADD (d integer);
+SELECT conname, contype FROM pg_constraint
+  WHERE conrelid = 'regress_multi_add'::regclass
+    AND conname IN ('regress_multi_c_ck', 'regress_multi_c_uk')
+  ORDER BY conname;
+INSERT INTO regress_multi_add VALUES (3, 3, 0, 1); -- CHECK violation
+INSERT INTO regress_multi_add VALUES (3, 3, 1, 1); -- succeeds
+INSERT INTO regress_multi_add VALUES (4, 4, 1, 2); -- UNIQUE violation
+-- empty list, trailing comma and mixed column/constraint lists are rejected
+ALTER TABLE regress_multi_add ADD ();
+ALTER TABLE regress_multi_add ADD (CHECK (a > 0),);
+ALTER TABLE regress_multi_add ADD (e int, CHECK (a > 0));
+ALTER TABLE regress_multi_add ADD (CHECK (a > 0), e int);
+SELECT contype, count(*) FROM pg_constraint
+  WHERE conrelid = 'regress_multi_add'::regclass
+  GROUP BY contype ORDER BY contype;
+DROP TABLE regress_multi_add;
+-- a constraint that fails validation rolls back the whole list
+CREATE TABLE regress_multi_atomic (a integer, b integer);
+INSERT INTO regress_multi_atomic VALUES (-1, 1);
+ALTER TABLE regress_multi_atomic ADD (
+    CONSTRAINT regress_atomic_b_ck CHECK (b > 0),
+    CONSTRAINT regress_atomic_a_ck CHECK (a > 0)
+);
+SELECT conname FROM pg_constraint
+  WHERE conrelid = 'regress_multi_atomic'::regclass
+  ORDER BY conname;
+DROP TABLE regress_multi_atomic;
+
 -- FOREIGN KEY CONSTRAINT adding TEST
 
 CREATE TABLE attmp2 (a int primary key);
@@ -3153,3 +3223,36 @@ alter table alter1.t1 set schema alter2;
 drop publication pub1;
 drop schema alter1 cascade;
 drop schema alter2 cascade;
+
+--
+-- Oracle-compatible ALTER TABLE ... MODIFY
+--
+create table modify_test (a varchar2(10), b varchar2(10), c number);
+insert into modify_test values (null, 'x', 1);
+
+-- type change plus NOT NULL, parenthesized form
+alter table modify_test modify (a varchar2(20) not null); -- error, a contains nulls
+update modify_test set a = 'y';
+alter table modify_test modify (a varchar2(20) not null);
+
+-- same thing without the parentheses
+alter table modify_test modify b varchar2(30) not null;
+
+-- nullability only
+alter table modify_test modify (a null);
+alter table modify_test modify b null;
+
+-- several columns in one command
+alter table modify_test modify (a varchar2(40) not null, c number not null);
+\d modify_test
+
+-- existing data is preserved and the widened types are usable
+insert into modify_test values ('012345678901234567890123456789', '0123456789012345', 2);
+select a, b, c from modify_test order by c;
+
+-- bare type changes preserve the current nullability
+alter table modify_test modify (c number(10));
+alter table modify_test modify b varchar2(40);
+\d modify_test
+
+drop table modify_test;

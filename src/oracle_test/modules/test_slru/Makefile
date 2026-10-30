@@ -7,6 +7,11 @@ OBJS = \
 	test_multixact.o
 PGFILEDESC = "test_slru - test module for SLRUs"
 
+EXTRA_INSTALL = src/oracle_test/modules/injection_points
+export enable_injection_points
+
+TAP_TESTS = 1
+
 EXTENSION = test_slru
 DATA = test_slru--1.0.sql
 
