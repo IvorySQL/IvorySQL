@@ -751,6 +751,10 @@ BEGIN
 END;
 /
 BEGIN
+  dbms_scheduler.purge_log(job_name => 'purge_old"bad",purge_new');
+END;
+/
+BEGIN
   dbms_scheduler.purge_log(job_name => 'purge_old,no_such_owner.purge_new');
 END;
 /

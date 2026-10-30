@@ -262,6 +262,10 @@ sched_parse_name_part(const char **pp, const char *raw, const char *what)
 	{
 		while (*p != '\0' && *p != '.')
 		{
+			if (*p == '"')
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_NAME),
+						 errmsg("invalid %s name \"%s\"", what, raw)));
 			appendStringInfoChar(&buf, pg_toupper((unsigned char) *p));
 			p++;
 		}

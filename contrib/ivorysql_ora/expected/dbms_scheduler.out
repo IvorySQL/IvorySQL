@@ -1299,6 +1299,16 @@ PL/iSQL function sys.dbms_scheduler.purge_log line 170 at PERFORM
 SQL statement "CALL dbms_scheduler.purge_log(job_name => '"purge_old,purge_new')"
 PL/iSQL function inline_code_block line 2 at CALL
 BEGIN
+  dbms_scheduler.purge_log(job_name => 'purge_old"bad",purge_new');
+END;
+/
+ERROR:  invalid job name "purge_old"bad"
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_purge_log(log_history, which_log,
+			job_name)"
+PL/iSQL function sys.dbms_scheduler.purge_log line 170 at PERFORM
+SQL statement "CALL dbms_scheduler.purge_log(job_name => 'purge_old"bad",purge_new')"
+PL/iSQL function inline_code_block line 2 at CALL
+BEGIN
   dbms_scheduler.purge_log(job_name => 'purge_old,no_such_owner.purge_new');
 END;
 /
