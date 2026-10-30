@@ -7357,10 +7357,6 @@ getPackages(Archive *fout, int *numPkgs)
 					"p.pkgacl,"
 					"acldefault('P', p.pkgowner) AS acldefault "
 					"FROM pg_package p "
-					"LEFT JOIN pg_init_privs pip ON "
-					"(p.oid = pip.objoid "
-					"AND pip.classoid = 'pg_package'::regclass "
-					"AND pip.objsubid = 0) "
 					" where  p.pkgnamespace != "
 					"(SELECT oid FROM pg_namespace "
 					"WHERE nspname = 'pg_catalog')"
@@ -7389,16 +7385,17 @@ getPackages(Archive *fout, int *numPkgs)
 		pkginfo[i].dobj.namespace =
 			findNamespace(atooid(PQgetvalue(res, i, i_pkgnamespace)));
 		pkginfo[i].rolname = getRoleName(PQgetvalue(res, i, i_rolname));
-		pkginfo[i].pkgacl = pg_strdup(PQgetvalue(res, i, i_pkgacl));
+		pkginfo[i].dacl.acl = pg_strdup(PQgetvalue(res, i, i_pkgacl));
 		pkginfo[i].dacl.acldefault = pg_strdup(PQgetvalue(res, i, i_acldefault));
 		pkginfo[i].dacl.privtype = 0;
 		pkginfo[i].dacl.initprivs = NULL;
 
 		/* Decide whether we want to dump it */
 		selectDumpableObject(&(pkginfo[i].dobj), fout);
-		/* Do not try to dump ACL if no ACL exists. */
+
+		/* Mark whether package has an ACL */
 		if (!PQgetisnull(res, i, i_pkgacl))
-			pkginfo[i].dobj.dump &= ~DUMP_COMPONENT_ACL;
+			pkginfo[i].dobj.components |= DUMP_COMPONENT_ACL;
 		if (strlen(pkginfo[i].rolname) == 0)
 			pg_log_warning("WARNING: owner of package \"%s\" appears to be invalid\n",
 					  pkginfo[i].dobj.name);
@@ -11254,7 +11251,8 @@ getAdditionalACLs(Archive *fout)
 					dobj->objType == DO_TABLE ||
 					dobj->objType == DO_PROCLANG ||
 					dobj->objType == DO_FDW ||
-					dobj->objType == DO_FOREIGN_SERVER)
+					dobj->objType == DO_FOREIGN_SERVER ||
+					dobj->objType == DO_PACKAGE)
 				{
 					DumpableObjectWithAcl *daobj = (DumpableObjectWithAcl *) dobj;
 
@@ -14207,7 +14205,12 @@ dumpPackage(Archive *fout, const PkgInfo *pkginfo)
 		dumpSecLabel(fout, "PACKAGE", pkgname->data,
 				 pkginfo->dobj.namespace->dobj.name, pkginfo->rolname,
 				 pkginfo->dobj.catId, 0, pkginfo->dobj.dumpId);
-	if (pkginfo->dobj.dump & DUMP_COMPONENT_ACL)
+	/*
+	 * GRANT and REVOKE ... ON PACKAGE are Oracle-mode syntax, so a dump
+	 * taken through the PostgreSQL port, which is restored through that
+	 * port, cannot carry them.
+	 */
+	if ((pkginfo->dobj.dump & DUMP_COMPONENT_ACL) && db_mode == DB_ORACLE)
 		dumpACL(fout, pkginfo->dobj.dumpId, InvalidDumpId, "PACKAGE",
 				pkgname->data, NULL,
 				pkginfo->dobj.namespace->dobj.name,

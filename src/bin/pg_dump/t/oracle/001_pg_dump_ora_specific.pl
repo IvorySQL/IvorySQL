@@ -292,6 +292,32 @@ my %tests = (
 		like   => { clean_if_exists => 1, oracle_port => 1, },
 	},
 
+	# A privilege granted on a package is dumped, and only that one: the
+	# built-in packages' initial privileges are not.  GRANT ... ON PACKAGE
+	# is Oracle-mode syntax, so only the dump through the Oracle-mode port
+	# carries it.
+	'GRANT EXECUTE ON PACKAGE test_pkg' => {
+		create_order => 14,
+		create_sql   => 'CREATE ROLE regress_pkg_grantee;
+			GRANT EXECUTE ON PACKAGE test_pkg TO regress_pkg_grantee;',
+		regexp => qr/^GRANT ALL ON PACKAGE public\.test_pkg TO regress_pkg_grantee;/m,
+		like   => { oracle_port => 1, },
+	},
+
+	# A privilege revoked from a built-in package is dumped as a REVOKE, so
+	# the restore does not hand it back.
+	'REVOKE ALL ON PACKAGE sys.dbms_random' => {
+		create_order => 15,
+		create_sql   => 'REVOKE ALL ON PACKAGE sys.dbms_random FROM PUBLIC;',
+		regexp => qr/^REVOKE ALL ON PACKAGE sys\.dbms_random FROM PUBLIC;/m,
+		like   => { oracle_port => 1, },
+	},
+
+	'GRANT ON PACKAGE sys' => {
+		regexp => qr/^GRANT .* ON PACKAGE sys\./m,
+		like   => {},
+	},
+
 	'DROP PACKAGE IF EXISTS public.test_pkg;' => {
 		regexp => qr/^DROP PACKAGE IF EXISTS public.test_pkg;/m,
 		like   => { clean_if_exists => 1, },
@@ -560,6 +586,11 @@ my $owner_sql =
 is( $node->safe_psql('restoredb', $owner_sql, connect_to_oraport => 1),
 	$node->safe_psql('testdb', $owner_sql, connect_to_oraport => 1),
 	'oracle_port: package owner identical after the restore');
+
+my $acl_sql = 'SELECT pkgname, pkgacl FROM pg_package ORDER BY 1';
+is( $node->safe_psql('restoredb', $acl_sql, connect_to_oraport => 1),
+	$node->safe_psql('testdb', $acl_sql, connect_to_oraport => 1),
+	'oracle_port: package privileges identical after the restore');
 
 #########################################
 # Stop the database instance, which will be removed at the end of the tests.
