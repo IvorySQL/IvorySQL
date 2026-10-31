@@ -493,3 +493,41 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- Oracle-compatible lock and wait runtime views
+DROP TABLE IF EXISTS t_lock_test;
+NOTICE:  table "t_lock_test" does not exist, skipping
+CREATE TABLE t_lock_test (id INT);
+INSERT INTO t_lock_test VALUES (1);
+BEGIN;
+SELECT id FROM t_lock_test WHERE id = 1 FOR UPDATE;
+ id 
+----
+  1
+(1 row)
+
+-- The session's own relation lock has to show up as a TM lock in mode 2
+SELECT COUNT(*) > 0 AS has_tm_lock
+FROM SYS.V$LOCK
+WHERE SID = PG_BACKEND_PID() AND TYPE = 'TM' AND LMODE = 2;
+ has_tm_lock 
+-------------
+ t
+(1 row)
+
+SELECT MIN(LOCKED_MODE) AS locked_mode
+FROM SYS.V$LOCKED_OBJECT
+WHERE SESSION_ID = PG_BACKEND_PID();
+ locked_mode 
+-------------
+ 2
+(1 row)
+
+COMMIT;
+SELECT COUNT(*) = (SELECT COUNT(*) FROM PG_STAT_ACTIVITY) AS all_sessions
+FROM SYS.V$SESSION_WAIT;
+ all_sessions 
+--------------
+ t
+(1 row)
+
+DROP TABLE t_lock_test;
