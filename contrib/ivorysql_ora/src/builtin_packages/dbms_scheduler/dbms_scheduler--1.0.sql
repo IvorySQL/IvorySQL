@@ -715,3 +715,38 @@ CREATE OR REPLACE PACKAGE BODY dbms_scheduler IS
 END dbms_scheduler;
 
 GRANT EXECUTE ON PACKAGE dbms_scheduler TO PUBLIC;
+
+
+-- USER_/DBA_SCHEDULER_JOB_LOG: Oracle's job log is the per-run history of a
+-- scheduler job.  IvorySQL keeps that history in sys.scheduler_job_run_details;
+-- these views expose it under the JOB_LOG column names so that both Oracle
+-- view names resolve.  They live here, next to the table they read, because the
+-- table is created by this script.
+CREATE OR REPLACE VIEW sys.dba_scheduler_job_log AS
+SELECT
+    log_id::numeric                                                AS log_id,
+    log_date,
+    sys.ora_case_trans(job_owner::varchar2)::varchar2(128)         AS owner,
+    sys.ora_case_trans(job_name::varchar2)::varchar2(128)          AS job_name,
+    NULL::varchar2(128)                                            AS job_subname,
+    CASE status
+        WHEN 's' THEN 'SUCCEEDED'::varchar2(32)
+        WHEN 'f' THEN 'FAILED'::varchar2(32)
+        WHEN 'r' THEN 'RUNNING'::varchar2(32)
+        ELSE status::varchar2(32)
+    END                                                            AS status,
+    error_no::numeric                                              AS error_num,
+    req_start_date,
+    actual_start_date,
+    run_duration,
+    error_message::varchar2(4000)                                  AS additional_info
+FROM sys.scheduler_job_run_details;
+
+CREATE OR REPLACE VIEW sys.user_scheduler_job_log AS
+SELECT log_id, log_date, job_name, job_subname, status, error_num,
+       req_start_date, actual_start_date, run_duration, additional_info
+FROM sys.dba_scheduler_job_log
+WHERE lower(owner) = lower(current_user);
+
+GRANT SELECT ON sys.dba_scheduler_job_log TO PUBLIC;
+GRANT SELECT ON sys.user_scheduler_job_log TO PUBLIC;
