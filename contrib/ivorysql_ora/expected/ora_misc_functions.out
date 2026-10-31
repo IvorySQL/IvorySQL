@@ -4521,3 +4521,16 @@ DETAIL:  "ivorysql" is a reserved prefix.
 reset ivorysql.dummy_config;
 ERROR:  invalid configuration parameter name "ivorysql.dummy_config"
 DETAIL:  "ivorysql" is a reserved prefix.
+-- Oracle-compatible NLS_INITCAP
+SELECT SYS.NLS_INITCAP('hello world') = 'Hello World' AS initcap_ok;
+ initcap_ok 
+------------
+ t
+(1 row)
+
+SELECT SYS.NLS_INITCAP('hello world', 'NLS_SORT=XGERMAN') = 'Hello World' AS locale_arg_ok;
+ locale_arg_ok 
+---------------
+ t
+(1 row)
+

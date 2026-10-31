@@ -2464,3 +2464,7 @@ reset default_text_search_config;
 -- should throw errors, because dummy_config is not a valid configuration name
 set ivorysql.dummy_config to dummy;
 reset ivorysql.dummy_config;
+
+-- Oracle-compatible NLS_INITCAP
+SELECT SYS.NLS_INITCAP('hello world') = 'Hello World' AS initcap_ok;
+SELECT SYS.NLS_INITCAP('hello world', 'NLS_SORT=XGERMAN') = 'Hello World' AS locale_arg_ok;
