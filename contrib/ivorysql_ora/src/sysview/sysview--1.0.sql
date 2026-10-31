@@ -1246,6 +1246,21 @@ SELECT
     END::VARCHAR2(1) AS BACKGROUND
 FROM PG_STAT_ACTIVITY;
 
+-- V$TIMEZONE_NAMES: Oracle's list of time zone names, abbreviations and UTC
+-- offsets, taken from the server's own tzdata.
+CREATE OR REPLACE VIEW SYS.V$TIMEZONE_NAMES AS
+SELECT
+    NAME::VARCHAR2(64) AS TIMEZONE_ID,
+    ABBREV::VARCHAR2(40) AS TZ_ABBREV,
+    (CASE
+         WHEN pg_catalog.date_part('epoch', UTC_OFFSET) < 0 THEN '-'
+         ELSE '+'
+     END
+     || TO_CHAR(ABS(pg_catalog.date_part('hour', UTC_OFFSET)), 'FM00')
+     || ':' ||
+     TO_CHAR(ABS(pg_catalog.date_part('minute', UTC_OFFSET)), 'FM00'))::VARCHAR2(7) AS TZ_OFFSET
+FROM PG_TIMEZONE_NAMES;
+
 CREATE OR REPLACE VIEW SYS.V$PARAMETER AS
 SELECT
     NAME::VARCHAR2(80) AS NAME,
