@@ -493,3 +493,52 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- USER_CONSTRAINTS / ALL_CONSTRAINTS / DBA_CONSTRAINTS
+DROP TABLE IF EXISTS TEST_CONS_PARENT;
+NOTICE:  table "test_cons_parent" does not exist, skipping
+DROP TABLE IF EXISTS TEST_CONS;
+NOTICE:  table "test_cons" does not exist, skipping
+CREATE TABLE TEST_CONS_PARENT (PID INT PRIMARY KEY);
+CREATE TABLE TEST_CONS (ID INT PRIMARY KEY, NAME VARCHAR2(10) UNIQUE,
+                        PID INT REFERENCES TEST_CONS_PARENT (PID) ON DELETE CASCADE,
+                        AGE INT CHECK (AGE > 0));
+SELECT CONSTRAINT_NAME, CONSTRAINT_TYPE, TABLE_NAME, SEARCH_CONDITION, DELETE_RULE, STATUS
+FROM SYS.USER_CONSTRAINTS WHERE TABLE_NAME = 'TEST_CONS' ORDER BY CONSTRAINT_TYPE, CONSTRAINT_NAME;
+   constraint_name   | constraint_type | table_name | search_condition  | delete_rule | status  
+---------------------+-----------------+------------+-------------------+-------------+---------
+ TEST_CONS_AGE_CHECK | C               | TEST_CONS  | CHECK ((age > 0)) |             | ENABLED
+ TEST_CONS_PKEY      | P               | TEST_CONS  |                   |             | ENABLED
+ TEST_CONS_PID_FKEY  | R               | TEST_CONS  |                   | CASCADE     | ENABLED
+ TEST_CONS_NAME_KEY  | U               | TEST_CONS  |                   |             | ENABLED
+(4 rows)
+
+SELECT count(*) = (SELECT count(*) FROM SYS.ALL_CONSTRAINTS WHERE TABLE_NAME = 'TEST_CONS')
+       AS all_matches_user FROM SYS.DBA_CONSTRAINTS WHERE TABLE_NAME = 'TEST_CONS';
+ all_matches_user 
+------------------
+ t
+(1 row)
+
+DROP TABLE TEST_CONS;
+DROP TABLE TEST_CONS_PARENT;
+-- USER_TRIGGERS
+DROP TABLE IF EXISTS TEST_TRG;
+NOTICE:  table "test_trg" does not exist, skipping
+CREATE TABLE TEST_TRG (ID INT, NAME VARCHAR2(10));
+CREATE OR REPLACE FUNCTION TEST_TRG_FN() RETURN trigger AS
+BEGIN
+    RETURN new;
+END;
+/
+CREATE TRIGGER TEST_TRG_BEFORE BEFORE INSERT OR UPDATE ON TEST_TRG
+    FOR EACH ROW EXECUTE FUNCTION TEST_TRG_FN();
+SELECT TRIGGER_NAME, TABLE_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, STATUS
+FROM SYS.USER_TRIGGERS WHERE TABLE_NAME = 'TEST_TRG';
+  trigger_name   | table_name |  trigger_type   | triggering_event | status  
+-----------------+------------+-----------------+------------------+---------
+ TEST_TRG_BEFORE | TEST_TRG   | BEFORE EACH ROW | INSERT UPDATE    | ENABLED
+(1 row)
+
+DROP TRIGGER TEST_TRG_BEFORE ON TEST_TRG;
+DROP FUNCTION TEST_TRG_FN;
+DROP TABLE TEST_TRG;
