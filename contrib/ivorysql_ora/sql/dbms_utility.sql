@@ -507,3 +507,19 @@ DROP SCHEMA bug_schema CASCADE;
 
 RESET ivorysql.identifier_case_switch;
 RESET ivorysql.enable_case_switch;
+
+-- Oracle-compatible DBMS_UTILITY.GET_TIME / GET_HASH_VALUE / NAME_TOKENIZE
+SELECT DBMS_UTILITY.GET_TIME() > 0 AS time_positive;
+SELECT DBMS_UTILITY.GET_HASH_VALUE('abc', 1, 100) BETWEEN 1 AND 100 AS hash_in_range;
+SELECT DBMS_UTILITY.GET_HASH_VALUE('abc', 1, 100) = DBMS_UTILITY.GET_HASH_VALUE('abc', 1, 100) AS hash_stable;
+SELECT DBMS_UTILITY.GET_HASH_VALUE(NULL, 1, 100) IS NULL AS hash_null;
+
+declare
+  a text; b text; c text; d text; e text;
+begin
+  dbms_utility.name_tokenize('scott.emp@hr', a, b, c, d, e);
+  raise notice 'owner=% name=% link=%', a, b, c;
+  dbms_utility.name_tokenize('emp', a, b, c, d, e);
+  raise notice 'owner=% name=% link=%', a, b, c;
+end;
+/
