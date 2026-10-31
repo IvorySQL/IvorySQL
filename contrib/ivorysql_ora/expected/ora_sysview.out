@@ -493,3 +493,33 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- Oracle-compatible unused column dictionary views
+DROP TABLE IF EXISTS t_unused_cols;
+NOTICE:  table "t_unused_cols" does not exist, skipping
+CREATE TABLE t_unused_cols (a INT, b TEXT, c INT);
+ALTER TABLE t_unused_cols DROP COLUMN b;
+SELECT TABLE_NAME, COUNT
+FROM SYS.USER_UNUSED_COL_TABS
+WHERE TABLE_NAME = 'T_UNUSED_COLS';
+  table_name   | count 
+---------------+-------
+ T_UNUSED_COLS | 1
+(1 row)
+
+SELECT COUNT(*) = 1 AS all_has
+FROM SYS.ALL_UNUSED_COL_TABS
+WHERE TABLE_NAME = 'T_UNUSED_COLS';
+ all_has 
+---------
+ t
+(1 row)
+
+SELECT COUNT(*) = 1 AS dba_has
+FROM SYS.DBA_UNUSED_COL_TABS
+WHERE TABLE_NAME = 'T_UNUSED_COLS';
+ dba_has 
+---------
+ t
+(1 row)
+
+DROP TABLE t_unused_cols;
