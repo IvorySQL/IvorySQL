@@ -493,3 +493,34 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- USER_TABLES
+DROP TABLE IF EXISTS TEST_USER_TABLES;
+NOTICE:  table "test_user_tables" does not exist, skipping
+CREATE TABLE TEST_USER_TABLES (ID INT);
+INSERT INTO TEST_USER_TABLES VALUES (1), (2), (3);
+ANALYZE TEST_USER_TABLES;
+SELECT TABLE_NAME, STATUS, TEMPORARY, PARTITIONED,
+       (NUM_ROWS IS NOT NULL) AS has_num_rows,
+       (LAST_ANALYZED IS NOT NULL) AS analyzed
+FROM SYS.USER_TABLES WHERE TABLE_NAME = 'TEST_USER_TABLES';
+    table_name    | status | temporary | partitioned | has_num_rows | analyzed 
+------------------+--------+-----------+-------------+--------------+----------
+ TEST_USER_TABLES | VALID  | N         | NO          | t            | t
+(1 row)
+
+-- a relation owned by another role is not listed here
+DROP ROLE IF EXISTS user_tables_owner;
+NOTICE:  role "user_tables_owner" does not exist, skipping
+CREATE ROLE user_tables_owner;
+CREATE TABLE TEST_USER_TABLES_OTHER (ID INT);
+ALTER TABLE TEST_USER_TABLES_OTHER OWNER TO user_tables_owner;
+SELECT count(*) AS rows_for_other_owner FROM SYS.USER_TABLES
+WHERE TABLE_NAME = 'TEST_USER_TABLES_OTHER';
+ rows_for_other_owner 
+----------------------
+                    0
+(1 row)
+
+DROP TABLE TEST_USER_TABLES_OTHER;
+DROP ROLE user_tables_owner;
+DROP TABLE IF EXISTS TEST_USER_TABLES;
