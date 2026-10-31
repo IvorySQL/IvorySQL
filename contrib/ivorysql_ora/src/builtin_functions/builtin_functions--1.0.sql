@@ -1931,3 +1931,39 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 /* End - VSIZE */
+
+
+/* Start - BIN_TO_NUM */
+/*
+ * BIN_TO_NUM(bit, bit, ...) converts a list of bits into the number they
+ * spell; the first argument is the most significant bit:
+ *
+ *     SELECT BIN_TO_NUM(1, 0, 1, 0) FROM DUAL;   -- 10
+ *
+ * Like Oracle, every argument must be 0 or 1, otherwise an error is raised.
+ */
+CREATE FUNCTION sys.bin_to_num(VARIADIC bits number[])
+RETURNS number
+AS
+$$
+declare
+	result number := 0;
+	bit_value number;
+begin
+	if array_length(bits, 1) is null then
+		raise exception 'BIN_TO_NUM: at least one bit is required';
+	end if;
+
+	foreach bit_value in array bits loop
+		if bit_value is null or bit_value not in (0, 1) then
+			raise exception 'BIN_TO_NUM: each bit must be 0 or 1';
+		end if;
+		result := result * 2 + bit_value;
+	end loop;
+
+	return result;
+end;
+$$
+LANGUAGE plpgsql
+IMMUTABLE;
+/* End - BIN_TO_NUM */
