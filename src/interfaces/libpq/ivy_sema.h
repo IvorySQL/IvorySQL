@@ -67,7 +67,7 @@ typedef PGSemaphoreData *PGSemaphore;
 extern int PGSemaphoreCreate(PGSemaphore sema);
 
 /* Lock a semaphore (decrement count), blocking if count would be < 0 */
-extern void PGSemaphoreLock(PGSemaphore sema);
+extern int PGSemaphoreLock(PGSemaphore sema);
 
 /* Unlock a semaphore (increment count) */
 extern void PGSemaphoreUnlock(PGSemaphore sema);
