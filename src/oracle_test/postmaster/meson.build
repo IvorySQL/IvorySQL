@@ -10,6 +10,7 @@ tests += {
       't/002_connection_limits.pl',
       't/003_start_stop.pl',
       't/004_negotiate.pl',
+      't/005_case_mode.pl',
     ],
   },
 }
