@@ -122,3 +122,16 @@ BEGIN
 END;
 /
 NOTICE:  round_trip_match=t
+-- Oracle-compatible UTL_ENCODE.MIME_HEADER_ENCODE / DECODE
+SELECT UTL_ENCODE.MIME_HEADER_DECODE(UTL_ENCODE.MIME_HEADER_ENCODE('hello'::BYTEA)) = 'hello'::BYTEA AS roundtrip;
+ roundtrip 
+-----------
+ 
+(1 row)
+
+SELECT UTL_ENCODE.MIME_HEADER_ENCODE('hi'::BYTEA) LIKE '=%?B?%?=%' AS encoded_word_shape;
+ encoded_word_shape 
+--------------------
+ t
+(1 row)
+
