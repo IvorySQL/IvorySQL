@@ -493,3 +493,16 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- Oracle-compatible V$LOCK_TYPE
+SELECT COUNT(*) = 7 AS seven_types FROM SYS.V$LOCK_TYPE;
+ seven_types 
+-------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 1 AS tm_present FROM SYS.V$LOCK_TYPE WHERE TYPE = 'TM';
+ tm_present 
+------------
+ t
+(1 row)
+
