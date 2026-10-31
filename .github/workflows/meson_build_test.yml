@@ -11,7 +11,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-24.04]
       
     env:
       PG_TEST_EXTRA: oauth
@@ -39,7 +39,7 @@ jobs:
         sudo python3 setup.py install
     
     - name: configure - linux
-      if: ${{ matrix.os == 'ubuntu-latest' }}
+      if: ${{ matrix.os == 'ubuntu-24.04' }}
       run: |
         meson setup build \
             -Dcassert=true \
