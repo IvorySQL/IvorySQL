@@ -270,3 +270,24 @@ SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'TEST_ALL_TAB_
 \set ON_ERROR_STOP on
 
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+
+-- ALL_TAB_COLUMNS must list every column once, even for a table that has
+-- inheritance children: pg_stats holds two statistics rows per column there,
+-- and joining both produced COLUMN_ID 1..4 for a two-column table
+CREATE TABLE p_inh_probe (a INT, b TEXT);
+INSERT INTO p_inh_probe VALUES (1, 'x');
+CREATE TABLE c_inh_probe () INHERITS (p_inh_probe);
+INSERT INTO c_inh_probe VALUES (2, 'y');
+ANALYZE p_inh_probe;
+
+SELECT COUNT(*) = 2 AS one_row_per_column
+FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'P_INH_PROBE';
+
+SELECT COUNT(*) = COUNT(DISTINCT COLUMN_NAME) AS no_duplicates
+FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'P_INH_PROBE';
+
+SELECT COLUMN_ID, COLUMN_NAME, AVG_COL_LEN IS NOT NULL AS has_stats
+FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'P_INH_PROBE' ORDER BY COLUMN_ID;
+
+DROP TABLE c_inh_probe;
+DROP TABLE p_inh_probe;
