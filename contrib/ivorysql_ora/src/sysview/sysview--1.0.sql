@@ -1557,3 +1557,27 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- V$DIAG_INFO: Oracle's diagnostic locations.  PostgreSQL reports the same
+-- paths through read-only settings, so a tool that looks up "where are the
+-- logs/configuration" gets a real answer instead of "relation does not exist".
+CREATE OR REPLACE VIEW SYS.V$DIAG_INFO AS
+SELECT X.NAME, X.VALUE
+FROM (
+    SELECT 'Data Directory'::VARCHAR2(64) AS NAME,
+           CURRENT_SETTING('data_directory')::VARCHAR2(4000) AS VALUE
+    UNION ALL
+    SELECT 'Log Directory'::VARCHAR2(64),
+           CURRENT_SETTING('log_directory')::VARCHAR2(4000)
+    UNION ALL
+    SELECT 'Config File'::VARCHAR2(64),
+           CURRENT_SETTING('config_file')::VARCHAR2(4000)
+    UNION ALL
+    SELECT 'HBA File'::VARCHAR2(64),
+           CURRENT_SETTING('hba_file')::VARCHAR2(4000)
+    UNION ALL
+    SELECT 'Ident File'::VARCHAR2(64),
+           CURRENT_SETTING('ident_file')::VARCHAR2(4000)
+) X
+ORDER BY X.NAME;
+GRANT SELECT ON SYS.V$DIAG_INFO TO PUBLIC;
