@@ -1557,3 +1557,55 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+--
+-- USER_TABLESPACES / ALL_TABLESPACES / DBA_TABLESPACES: the tablespaces,
+-- like Oracle's views of the same name.  PostgreSQL exposes them through
+-- pg_tablespace, so STATUS is always ONLINE, CONTENTS maps the temporary
+-- flag and LOGGING is always LOGGING.
+--
+CREATE OR REPLACE VIEW SYS.USER_TABLESPACES AS
+SELECT
+    sys.ora_case_trans(t.spcname::varchar2)::varchar2(30) AS tablespace_name,
+    'ONLINE'::varchar2(9) AS status,
+    (CASE WHEN t.spcname ~ '^pg_temp' THEN 'TEMPORARY' ELSE 'PERMANENT' END)::varchar2(9) AS contents,
+    'LOGGING'::varchar2(9) AS logging
+FROM pg_tablespace t
+WHERE pg_catalog.pg_get_userbyid(t.spcowner) = current_user;
+
+GRANT SELECT ON SYS.USER_TABLESPACES TO PUBLIC;
+
+--
+-- ALL_TABLESPACES: the same rows with the OWNER column the ALL_ views carry.
+-- PostgreSQL exposes them through
+-- pg_tablespace, so STATUS is always ONLINE, CONTENTS maps the temporary
+-- flag and LOGGING is always LOGGING.
+--
+CREATE OR REPLACE VIEW SYS.ALL_TABLESPACES AS
+SELECT
+    pg_catalog.pg_get_userbyid(t.spcowner)::varchar2(128) AS owner,
+    sys.ora_case_trans(t.spcname::varchar2)::varchar2(30) AS tablespace_name,
+    'ONLINE'::varchar2(9) AS status,
+    (CASE WHEN t.spcname ~ '^pg_temp' THEN 'TEMPORARY' ELSE 'PERMANENT' END)::varchar2(9) AS contents,
+    'LOGGING'::varchar2(9) AS logging
+FROM pg_tablespace t;
+
+GRANT SELECT ON SYS.ALL_TABLESPACES TO PUBLIC;
+
+--
+-- DBA_TABLESPACES: the same rows without the owner filter, like the other DBA_ views.
+-- PostgreSQL exposes them through
+-- pg_tablespace, so STATUS is always ONLINE, CONTENTS maps the temporary
+-- flag and LOGGING is always LOGGING.
+--
+CREATE OR REPLACE VIEW SYS.DBA_TABLESPACES AS
+SELECT
+    pg_catalog.pg_get_userbyid(t.spcowner)::varchar2(128) AS owner,
+    sys.ora_case_trans(t.spcname::varchar2)::varchar2(30) AS tablespace_name,
+    'ONLINE'::varchar2(9) AS status,
+    (CASE WHEN t.spcname ~ '^pg_temp' THEN 'TEMPORARY' ELSE 'PERMANENT' END)::varchar2(9) AS contents,
+    'LOGGING'::varchar2(9) AS logging
+FROM pg_tablespace t;
+
+
+GRANT SELECT ON SYS.DBA_TABLESPACES TO PUBLIC;
