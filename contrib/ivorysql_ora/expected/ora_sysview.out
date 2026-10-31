@@ -493,3 +493,38 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- ALL_INDEXES / DBA_INDEXES
+DROP TABLE IF EXISTS TEST_ALL_INDEXES;
+NOTICE:  table "test_all_indexes" does not exist, skipping
+CREATE TABLE TEST_ALL_INDEXES (ID INT, NAME VARCHAR2(10));
+CREATE UNIQUE INDEX TEST_ALL_INDEXES_UK ON TEST_ALL_INDEXES (ID);
+SELECT OWNER IS NOT NULL AS has_owner, INDEX_NAME, TABLE_NAME, UNIQUENESS, STATUS
+FROM SYS.ALL_INDEXES WHERE TABLE_NAME = 'TEST_ALL_INDEXES';
+ has_owner |     index_name      |    table_name    | uniqueness | status 
+-----------+---------------------+------------------+------------+--------
+ t         | TEST_ALL_INDEXES_UK | TEST_ALL_INDEXES | UNIQUE     | VALID
+(1 row)
+
+-- an owner that revoked all of its own privileges still owns the index, so
+-- it stays in the DBA_ view while the ALL_ one hides it again
+DROP ROLE IF EXISTS all_indexes_owner;
+NOTICE:  role "all_indexes_owner" does not exist, skipping
+CREATE ROLE all_indexes_owner;
+CREATE TABLE TEST_ALL_INDEXES_OTHER (ID INT);
+CREATE INDEX TEST_ALL_INDEXES_OTHER_IDX ON TEST_ALL_INDEXES_OTHER (ID);
+ALTER TABLE TEST_ALL_INDEXES_OTHER OWNER TO all_indexes_owner;
+SET ROLE all_indexes_owner;
+REVOKE ALL ON TEST_ALL_INDEXES_OTHER FROM all_indexes_owner;
+SELECT (SELECT count(*) FROM SYS.DBA_INDEXES
+        WHERE TABLE_NAME = 'TEST_ALL_INDEXES_OTHER') AS dba_rows,
+       (SELECT count(*) FROM SYS.ALL_INDEXES
+        WHERE TABLE_NAME = 'TEST_ALL_INDEXES_OTHER') AS all_rows;
+ dba_rows | all_rows 
+----------+----------
+        1 |        0
+(1 row)
+
+RESET ROLE;
+DROP TABLE TEST_ALL_INDEXES_OTHER;
+DROP ROLE all_indexes_owner;
+DROP TABLE IF EXISTS TEST_ALL_INDEXES;
