@@ -507,3 +507,18 @@ DROP SCHEMA bug_schema CASCADE;
 
 RESET ivorysql.identifier_case_switch;
 RESET ivorysql.enable_case_switch;
+
+-- Oracle-compatible DBMS_UTILITY.COMMA_TO_TABLE / TABLE_TO_COMMA
+DECLARE
+  n int;
+  t text[];
+  l text;
+BEGIN
+  dbms_utility.comma_to_table('a, b ,c', n, t);
+  RAISE NOTICE 'count=% values=%', n, t;
+  dbms_utility.table_to_comma(t, n, l);
+  RAISE NOTICE 'count=% list=%', n, l;
+  dbms_utility.comma_to_table(NULL, n, t);
+  RAISE NOTICE 'null count=%', n;
+END;
+/
