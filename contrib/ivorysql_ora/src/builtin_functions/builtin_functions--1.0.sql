@@ -1931,3 +1931,92 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 /* End - VSIZE */
+
+/* Oracle-compatible TO_NCHAR.  IvorySQL has one database character set, so
+ * the national character set is the database character set and TO_NCHAR is
+ * the identity for text; for the other types it produces the same text that
+ * TO_CHAR produces, which is what Oracle does for an explicit conversion. */
+CREATE OR REPLACE FUNCTION sys.to_nchar(text)
+RETURNS text
+AS $$ SELECT $1; $$
+LANGUAGE SQL
+IMMUTABLE STRICT PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION sys.to_nchar(number)
+RETURNS text
+AS $$ SELECT sys.to_char($1); $$
+LANGUAGE SQL
+STABLE STRICT PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION sys.to_nchar(sys.oradate)
+RETURNS text
+AS $$ SELECT sys.to_char($1); $$
+LANGUAGE SQL
+STABLE STRICT PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION sys.to_nchar(sys.oratimestamp)
+RETURNS text
+AS $$ SELECT sys.to_char($1); $$
+LANGUAGE SQL
+STABLE STRICT PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION sys.to_nchar(sys.oratimestamptz)
+RETURNS text
+AS $$ SELECT sys.to_char($1); $$
+LANGUAGE SQL
+STABLE STRICT PARALLEL SAFE;
+
+GRANT EXECUTE ON FUNCTION sys.to_nchar(text) TO PUBLIC;
+GRANT EXECUTE ON FUNCTION sys.to_nchar(number) TO PUBLIC;
+GRANT EXECUTE ON FUNCTION sys.to_nchar(sys.oradate) TO PUBLIC;
+GRANT EXECUTE ON FUNCTION sys.to_nchar(sys.oratimestamp) TO PUBLIC;
+GRANT EXECUTE ON FUNCTION sys.to_nchar(sys.oratimestamptz) TO PUBLIC;
+
+/* Oracle-compatible UNISTR: interprets \XXXX escapes as Unicode code
+ * points, including a surrogate pair written as two escapes.  A backslash
+ * that is not followed by four hex digits is kept literally, which is how
+ * Oracle treats it. */
+CREATE OR REPLACE FUNCTION sys.unistr(text)
+RETURNS text
+AS $$
+DECLARE
+    src  text := $1;
+    res  text := '';
+    i    int  := 1;
+    n    int  := pg_catalog.length($1);
+    ch   text;
+    hex4 text;
+    code int;
+    low  int;
+BEGIN
+    WHILE i <= n LOOP
+        ch := pg_catalog.substr(src, i, 1);
+        IF ch = '\' THEN
+            hex4 := pg_catalog.substr(src, i + 1, 4);
+            IF hex4 ~ '^[0-9A-Fa-f]{4}$' THEN
+                code := ('x' || hex4)::bit(16)::int;
+                i := i + 5;
+                IF code BETWEEN 55296 AND 56319 THEN
+                    IF pg_catalog.substr(src, i, 1) = '\' AND
+                       pg_catalog.substr(src, i + 1, 4) ~ '^[0-9A-Fa-f]{4}$' THEN
+                        low := ('x' || pg_catalog.substr(src, i + 1, 4))::bit(16)::int;
+                        IF low BETWEEN 56320 AND 57343 THEN
+                            code := 65536 + ((code - 55296) << 10) + (low - 56320);
+                            i := i + 5;
+                        END IF;
+                    END IF;
+                END IF;
+                res := res || pg_catalog.chr(code);
+                CONTINUE;
+            END IF;
+        END IF;
+        res := res || ch;
+        i := i + 1;
+    END LOOP;
+    RETURN res;
+END;
+$$
+LANGUAGE plpgsql
+IMMUTABLE STRICT PARALLEL SAFE;
+
+GRANT EXECUTE ON FUNCTION sys.unistr(text) TO PUBLIC;
