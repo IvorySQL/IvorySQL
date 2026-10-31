@@ -51,10 +51,10 @@ SELECT NAME, LINE, TEXT FROM ALL_SOURCE WHERE NAME = 'func_quotes_lower';
  func_quotes_lower | 1    | FUNCTION public."FUNC_QUOTES_LOWER"(id pg_catalog.int4)
  func_quotes_lower | 2    |  RETURN varchar2
  func_quotes_lower | 3    |  AUTHID DEFINER
- func_quotes_lower |      | IS 
- func_quotes_lower |      | BEGIN
- func_quotes_lower |      |         RETURN 'func_quotes_lower'::VARCHAR2;
- func_quotes_lower |      | END;
+ func_quotes_lower | 4    | IS 
+ func_quotes_lower | 5    | BEGIN
+ func_quotes_lower | 6    |         RETURN 'func_quotes_lower'::VARCHAR2;
+ func_quotes_lower | 7    | END;
 (7 rows)
 
 -- data_type and pls_type in all_arguments
@@ -493,3 +493,95 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- The three *_SOURCE views must expose the same text for the same routine, with
+-- one row per line and no padding rows carrying NULL line numbers or text.
+CREATE OR REPLACE FUNCTION src_probe_fn(x INT) RETURN INT AS $$
+BEGIN
+    RETURN x + 1;
+END;
+$$ LANGUAGE plisql;
+SELECT COUNT(*) = 0 AS all_source_no_gaps
+FROM SYS.ALL_SOURCE
+WHERE NAME = 'SRC_PROBE_FN' AND (LINE IS NULL OR TEXT IS NULL);
+SELECT COUNT(*) = 0 AS dba_source_no_gaps
+FROM SYS.DBA_SOURCE
+WHERE NAME = 'SRC_PROBE_FN' AND (LINE IS NULL OR TEXT IS NULL);
+SELECT (SELECT COUNT(*) FROM SYS.ALL_SOURCE WHERE NAME = 'SRC_PROBE_FN')
+     = (SELECT COUNT(*) FROM SYS.DBA_SOURCE WHERE NAME = 'SRC_PROBE_FN')
+   AND (SELECT COUNT(*) FROM SYS.USER_SOURCE WHERE NAME = 'SRC_PROBE_FN')
+     = (SELECT COUNT(*) FROM SYS.DBA_SOURCE WHERE NAME = 'SRC_PROBE_FN') AS same_line_count;
+SELECT LINE, TEXT
+FROM SYS.USER_SOURCE
+WHERE NAME = 'SRC_PROBE_FN'
+ORDER BY LINE;
+DROP FUNCTION src_probe_fn(INT);
+-- A PL/iSQL package must show up in the source dictionary, the way Oracle
+-- lists PACKAGE and PACKAGE BODY, with one row per source line
+CREATE OR REPLACE PACKAGE p_src_probe AS
+    FUNCTION f RETURN INT;
+END;
+/
+ all_source_no_gaps 
+--------------------
+ t
+(1 row)
+
+ dba_source_no_gaps 
+--------------------
+ t
+(1 row)
+
+ same_line_count 
+-----------------
+ t
+(1 row)
+
+ line |                      text                       
+------+-------------------------------------------------
+ 1    | FUNCTION public.src_probe_fn(x pg_catalog.int4)
+ 2    |  RETURN pg_catalog.int4
+ 3    |  AUTHID DEFINER
+ 4    | IS 
+ 5    | 
+ 6    | BEGIN
+ 7    |     RETURN x + 1;
+ 8    | END;
+ 9    | ;
+(9 rows)
+
+CREATE OR REPLACE PACKAGE BODY p_src_probe AS
+    FUNCTION f RETURN INT IS
+    BEGIN
+        RETURN 1;
+    END;
+END;
+/
+SELECT COUNT(*) > 0 AS spec_visible
+FROM SYS.ALL_SOURCE WHERE NAME = 'P_SRC_PROBE' AND TYPE = 'PACKAGE';
+ spec_visible 
+--------------
+ t
+(1 row)
+
+SELECT COUNT(*) > 0 AS body_visible
+FROM SYS.ALL_SOURCE WHERE NAME = 'P_SRC_PROBE' AND TYPE = 'PACKAGE BODY';
+ body_visible 
+--------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 0 AS no_gaps
+FROM SYS.ALL_SOURCE WHERE NAME = 'P_SRC_PROBE' AND (LINE IS NULL OR TEXT IS NULL);
+ no_gaps 
+---------
+ t
+(1 row)
+
+SELECT COUNT(*) > 0 AS user_source_visible
+FROM SYS.USER_SOURCE WHERE NAME = 'P_SRC_PROBE';
+ user_source_visible 
+---------------------
+ t
+(1 row)
+
+DROP PACKAGE p_src_probe;
