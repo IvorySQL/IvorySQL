@@ -87,3 +87,9 @@ BEGIN
     RAISE NOTICE '%', line;
 END;
 /
+
+-- Oracle-compatible UTL_ENCODE.TEXT_ENCODE / TEXT_DECODE
+SELECT UTL_ENCODE.TEXT_DECODE(UTL_ENCODE.TEXT_ENCODE('hello'::BYTEA, 'UTF8', 1), 'UTF8', 1)
+       = 'hello'::BYTEA AS roundtrip;
+SELECT UTL_ENCODE.TEXT_DECODE(UTL_ENCODE.TEXT_ENCODE('中文'::BYTEA, 'UTF8', 1), 'UTF8', 1)
+       = '中文'::BYTEA AS multibyte_roundtrip;
