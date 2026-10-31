@@ -2464,3 +2464,21 @@ reset default_text_search_config;
 -- should throw errors, because dummy_config is not a valid configuration name
 set ivorysql.dummy_config to dummy;
 reset ivorysql.dummy_config;
+
+-- Oracle-compatible SUBSTR2 and INSTR2 (USC2 code units)
+SELECT SYS.SUBSTR2('abcdef', 2, 3) = 'bcd' AS basic;
+SELECT SYS.SUBSTR2('abcdef', -2, 2) = 'ef' AS negative_position;
+SELECT SYS.SUBSTR2('abcdef', 3) = 'cdef' AS no_length;
+SELECT SYS.SUBSTR2('abcdef', 2, 0) IS NULL AS zero_length;
+
+-- A supplementary character occupies two units: 'b' starts at unit 4
+SELECT SYS.SUBSTR2('😀ab', 3, 1) = 'a' AS astral_offset;
+SELECT SYS.SUBSTR2('😀ab', 1, 2) = '😀' AS astral_two_units;
+SELECT SYS.SUBSTR2('😀ab', 4, 1) = 'b' AS astral_last;
+
+SELECT SYS.INSTR2('abcdef', 'cd') = 3 AS instr_basic;
+SELECT SYS.INSTR2('abcdef', 'cd') = SYS.INSTR('abcdef', 'cd') AS instr_same_for_ascii;
+SELECT SYS.INSTR2('😀ab', 'b') = 4 AS instr_astral;
+SELECT SYS.INSTR2('abcabc', 'bc', 1, 2) = 5 AS instr_occurrence;
+SELECT SYS.INSTR2('abcdef', 'cd', -1) = SYS.INSTR('abcdef', 'cd', -1) AS instr_negative;
+SELECT SYS.INSTR2('abcdef', 'zz') = 0 AS instr_missing;

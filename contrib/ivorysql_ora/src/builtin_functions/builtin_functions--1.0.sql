@@ -1931,3 +1931,138 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 /* End - VSIZE */
+
+/* Oracle-compatible SUBSTR2: substring by USC2 code units.  A character
+ * outside the BMP occupies two units, so counting (and slicing) differs from
+ * SUBSTR for supplementary characters.  PostgreSQL cannot represent half of a
+ * surrogate pair in UTF-8, so a range boundary that falls inside one keeps
+ * that whole character rather than returning an invalid string; positions
+ * after it are still counted in units, which is the part callers rely on. */
+CREATE OR REPLACE FUNCTION sys.substr2(text, integer, integer DEFAULT NULL)
+RETURNS text
+AS $$
+DECLARE
+    src     text := $1;
+    pos     int  := $2;
+    slen    int  := $3;
+    n       int  := pg_catalog.length($1);
+    i       int  := 1;
+    units   int  := 0;
+    total   int  := 0;
+    ustart  int;
+    start_u int;
+    end_u   int;
+    ch      text;
+    cp      int;
+    res     text := '';
+BEGIN
+    IF n IS NULL OR pos IS NULL THEN
+        RETURN NULL;
+    END IF;
+    IF slen IS NOT NULL AND slen < 1 THEN
+        RETURN NULL;
+    END IF;
+
+    FOR i IN 1..n LOOP
+        cp := pg_catalog.ascii(pg_catalog.substr(src, i, 1));
+        total := total + CASE WHEN cp >= 65536 THEN 2 ELSE 1 END;
+    END LOOP;
+
+    IF pos > 0 THEN
+        start_u := CASE WHEN pos <= total THEN pos ELSE total + 1 END;
+    ELSIF pos < 0 THEN
+        start_u := total + pos + 1;
+    ELSE
+        start_u := 1;
+    END IF;
+    IF start_u < 1 THEN
+        start_u := 1;
+    END IF;
+    end_u := CASE WHEN slen IS NULL THEN total ELSE start_u + slen - 1 END;
+
+    FOR i IN 1..n LOOP
+        ch := pg_catalog.substr(src, i, 1);
+        cp := pg_catalog.ascii(ch);
+        ustart := units + 1;
+        units := units + CASE WHEN cp >= 65536 THEN 2 ELSE 1 END;
+        IF units >= start_u AND ustart <= end_u THEN
+            res := res || ch;
+        END IF;
+    END LOOP;
+    RETURN res;
+END;
+$$
+LANGUAGE plpgsql
+IMMUTABLE STRICT PARALLEL SAFE;
+
+/* Oracle-compatible INSTR2: the position is counted in USC2 code units.  The
+ * search itself is delegated to sys.instr, so position/occurrence semantics
+ * stay identical; only the character index is translated to a unit index, and
+ * a negative position is mapped back to the equivalent negative character
+ * position so that sys.instr still searches backwards. */
+CREATE OR REPLACE FUNCTION sys.instr2(text, text, integer DEFAULT 1, integer DEFAULT 1)
+RETURNS integer
+AS $$
+DECLARE
+    src        text := $1;
+    sub        text := $2;
+    pos        int  := $3;
+    occ        int  := $4;
+    n          int  := pg_catalog.length($1);
+    i          int  := 1;
+    units      int  := 0;
+    total      int  := 0;
+    start_u    int;
+    start_char int  := 1;
+    res_char   int;
+    cp         int;
+BEGIN
+    IF n IS NULL OR sub IS NULL OR pos IS NULL OR occ IS NULL THEN
+        RETURN NULL;
+    END IF;
+
+    FOR i IN 1..n LOOP
+        cp := pg_catalog.ascii(pg_catalog.substr(src, i, 1));
+        total := total + CASE WHEN cp >= 65536 THEN 2 ELSE 1 END;
+    END LOOP;
+
+    IF pos > 0 THEN
+        start_u := pos;
+    ELSIF pos < 0 THEN
+        start_u := total + pos + 1;
+    ELSE
+        start_u := 1;
+    END IF;
+
+    FOR i IN 1..n LOOP
+        cp := pg_catalog.ascii(pg_catalog.substr(src, i, 1));
+        units := units + CASE WHEN cp >= 65536 THEN 2 ELSE 1 END;
+        IF units >= start_u THEN
+            start_char := i;
+            EXIT;
+        END IF;
+    END LOOP;
+
+    IF pos < 0 THEN
+        /* keep the backward-searching semantics of sys.instr */
+        res_char := sys.instr(src, sub, -(n - start_char + 1), occ);
+    ELSE
+        res_char := sys.instr(src, sub, start_char, occ);
+    END IF;
+    IF res_char IS NULL OR res_char = 0 THEN
+        RETURN 0;
+    END IF;
+
+    units := 0;
+    FOR i IN 1..(res_char - 1) LOOP
+        cp := pg_catalog.ascii(pg_catalog.substr(src, i, 1));
+        units := units + CASE WHEN cp >= 65536 THEN 2 ELSE 1 END;
+    END LOOP;
+    RETURN units + 1;
+END;
+$$
+LANGUAGE plpgsql
+IMMUTABLE STRICT PARALLEL SAFE;
+
+GRANT EXECUTE ON FUNCTION sys.substr2(text, integer, integer) TO PUBLIC;
+GRANT EXECUTE ON FUNCTION sys.instr2(text, text, integer, integer) TO PUBLIC;
