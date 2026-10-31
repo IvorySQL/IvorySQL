@@ -1557,3 +1557,40 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- V$TABLESPACE: one row per tablespace.  PostgreSQL identifies a tablespace by
+-- its OID, which is what TS_NO reports; Oracle's TS# is a numeric identifier.
+CREATE OR REPLACE VIEW SYS.V$TABLESPACE AS
+SELECT
+    TS.OID::INT8::NUMBER                                              AS TS_NO,
+    SYS.ORA_CASE_TRANS(TS.SPCNAME::VARCHAR2)::VARCHAR2(30)            AS NAME,
+    0::NUMBER                                                         AS CON_ID
+FROM PG_CATALOG.PG_TABLESPACE TS
+ORDER BY NAME;
+GRANT SELECT ON SYS.V$TABLESPACE TO PUBLIC;
+
+-- DBA_DATA_FILES: PostgreSQL keeps each tablespace as a directory rather than
+-- as individually sized data files, so one row per tablespace is reported with
+-- the tablespace size.  FILE_NAME is the directory PostgreSQL reports, which is
+-- empty for the default tablespace because its location is implied.
+CREATE OR REPLACE VIEW SYS.DBA_DATA_FILES AS
+SELECT
+    COALESCE(PG_TABLESPACE_LOCATION(TS.OID), '')::VARCHAR2(4000)      AS FILE_NAME,
+    TS.OID::INT8::NUMBER                                              AS FILE_ID,
+    SYS.ORA_CASE_TRANS(TS.SPCNAME::VARCHAR2)::VARCHAR2(30)            AS TABLESPACE_NAME,
+    PG_TABLESPACE_SIZE(TS.OID)::NUMBER                                AS BYTES,
+    (PG_TABLESPACE_SIZE(TS.OID) /
+     CURRENT_SETTING('block_size')::INT)::NUMBER                      AS BLOCKS,
+    'AVAILABLE'::VARCHAR2(9)                                          AS STATUS,
+    TS.OID::INT8::NUMBER                                              AS RELATIVE_FNO,
+    'NO'::VARCHAR2(3)                                                 AS AUTOEXTENSIBLE,
+    NULL::NUMBER                                                      AS MAXBYTES,
+    NULL::NUMBER                                                      AS MAXBLOCKS,
+    NULL::NUMBER                                                      AS INCREMENT_BY,
+    PG_TABLESPACE_SIZE(TS.OID)::NUMBER                                AS USER_BYTES,
+    (PG_TABLESPACE_SIZE(TS.OID) /
+     CURRENT_SETTING('block_size')::INT)::NUMBER                      AS USER_BLOCKS,
+    'ONLINE'::VARCHAR2(7)                                             AS ONLINE_STATUS
+FROM PG_CATALOG.PG_TABLESPACE TS
+ORDER BY TABLESPACE_NAME;
+GRANT SELECT ON SYS.DBA_DATA_FILES TO PUBLIC;
