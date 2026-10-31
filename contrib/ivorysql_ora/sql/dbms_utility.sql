@@ -507,3 +507,28 @@ DROP SCHEMA bug_schema CASCADE;
 
 RESET ivorysql.identifier_case_switch;
 RESET ivorysql.enable_case_switch;
+
+-- Oracle-compatible DBMS_UTILITY.ANALYZE_SCHEMA / COMPILE_SCHEMA
+DROP TABLE IF EXISTS t_analyze_schema_test;
+CREATE TABLE t_analyze_schema_test (id INT);
+INSERT INTO t_analyze_schema_test SELECT GENERATE_SERIES(1, 10);
+
+BEGIN
+  dbms_utility.analyze_schema('public');
+END;
+/
+SELECT reltuples = 10 AS analyzed
+FROM pg_class WHERE oid = 't_analyze_schema_test'::regclass;
+
+BEGIN
+  dbms_utility.compile_schema('public');
+END;
+/
+BEGIN
+  dbms_utility.compile_schema('no_such_schema_xyz');
+  RAISE NOTICE 'compile_schema accepted an unknown schema';
+EXCEPTION WHEN others THEN
+  RAISE NOTICE 'unknown schema rejected';
+END;
+/
+DROP TABLE t_analyze_schema_test;
