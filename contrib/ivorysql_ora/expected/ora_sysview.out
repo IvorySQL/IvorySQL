@@ -356,12 +356,10 @@ FROM SYS.USER_CONS_COLUMNS
 WHERE TABLE_NAME = 'TEST_USER_CONS_COLUMNS'
 AND CONSTRAINT_NAME LIKE '%NOT_NULL%'
 ORDER BY CONSTRAINT_NAME, COLUMN_NAME;
-       table_name       |           constraint_name            | column_name | position 
-------------------------+--------------------------------------+-------------+----------
- TEST_USER_CONS_COLUMNS | TEST_USER_CONS_COLUMNS_AGE_NOT_NULL  | AGE         | 1
- TEST_USER_CONS_COLUMNS | TEST_USER_CONS_COLUMNS_ID_NOT_NULL   | ID          | 1
- TEST_USER_CONS_COLUMNS | TEST_USER_CONS_COLUMNS_NAME_NOT_NULL | NAME        | 1
-(3 rows)
+       table_name       |           constraint_name           | column_name | position 
+------------------------+-------------------------------------+-------------+----------
+ TEST_USER_CONS_COLUMNS | test_user_cons_columns_age_NOT_NULL | AGE         | 1
+(1 row)
 
 SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, POSITION
 FROM SYS.USER_CONS_COLUMNS
@@ -493,3 +491,63 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- The three *_CONS_COLUMNS views must describe the same constraints: one row
+-- per constraint column, one name, no system columns, and no extra NOT NULL row
+-- for a column a primary key already covers.
+CREATE TABLE t_cons_agree (
+    id INT PRIMARY KEY,
+    name VARCHAR2(10) NOT NULL,
+    note VARCHAR2(10)
+);
+SELECT (SELECT COUNT(*) FROM SYS.USER_CONS_COLUMNS
+        WHERE TABLE_NAME = 'T_CONS_AGREE') = (
+       SELECT COUNT(*) FROM SYS.ALL_CONS_COLUMNS
+        WHERE TABLE_NAME = 'T_CONS_AGREE'
+          AND OWNER = SYS.ORA_CASE_TRANS(CURRENT_USER::VARCHAR2)) AS user_matches_all;
+ user_matches_all 
+------------------
+ t
+(1 row)
+
+SELECT (SELECT COUNT(*) FROM SYS.DBA_CONS_COLUMNS
+        WHERE TABLE_NAME = 'T_CONS_AGREE') = (
+       SELECT COUNT(*) FROM SYS.ALL_CONS_COLUMNS
+        WHERE TABLE_NAME = 'T_CONS_AGREE') AS dba_matches_all;
+ dba_matches_all 
+-----------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 0 AS no_system_columns
+FROM SYS.DBA_CONS_COLUMNS
+WHERE TABLE_NAME = 'T_CONS_AGREE'
+  AND COLUMN_NAME IN ('CTID', 'CMIN', 'CMAX', 'XMIN', 'XMAX', 'TABLEOID');
+ no_system_columns 
+-------------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 0 AS no_duplicate_rows
+FROM (
+    SELECT TABLE_NAME, COLUMN_NAME, POSITION
+    FROM SYS.DBA_CONS_COLUMNS
+    WHERE TABLE_NAME = 'T_CONS_AGREE'
+    GROUP BY TABLE_NAME, COLUMN_NAME, POSITION
+    HAVING COUNT(*) > 1
+) D;
+ no_duplicate_rows 
+-------------------
+ t
+(1 row)
+
+SELECT CONSTRAINT_NAME, COLUMN_NAME, POSITION
+FROM SYS.USER_CONS_COLUMNS
+WHERE TABLE_NAME = 'T_CONS_AGREE'
+ORDER BY CONSTRAINT_NAME, COLUMN_NAME;
+      constraint_name       | column_name | position 
+----------------------------+-------------+----------
+ T_CONS_AGREE_PKEY          | ID          | 1
+ t_cons_agree_name_NOT_NULL | NAME        | 1
+(2 rows)
+
+DROP TABLE t_cons_agree;
