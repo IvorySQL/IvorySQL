@@ -507,3 +507,14 @@ DROP SCHEMA bug_schema CASCADE;
 
 RESET ivorysql.identifier_case_switch;
 RESET ivorysql.enable_case_switch;
+
+-- Oracle-compatible DBMS_UTILITY.ANALYZE_DATABASE
+DROP TABLE IF EXISTS t_analyze_db_test;
+CREATE TABLE t_analyze_db_test (id INT);
+INSERT INTO t_analyze_db_test SELECT GENERATE_SERIES(1, 5);
+BEGIN
+  dbms_utility.analyze_database();
+END;
+/
+SELECT reltuples = 5 AS analyzed FROM pg_class WHERE oid = 't_analyze_db_test'::regclass;
+DROP TABLE t_analyze_db_test;
