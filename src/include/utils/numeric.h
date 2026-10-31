@@ -104,6 +104,8 @@ extern int32 numeric_int4_safe(Numeric num, Node *escontext);
 extern int64 numeric_int8_safe(Numeric num, Node *escontext);
 
 extern Numeric numeric_bitand(Numeric arg1, Numeric arg2);
+extern Numeric numeric_bitor(Numeric arg1, Numeric arg2);
+extern Numeric numeric_bitxor(Numeric arg1, Numeric arg2);
 extern Numeric random_numeric(pg_prng_state *state,
 							  Numeric rmin, Numeric rmax);
 
