@@ -621,3 +621,59 @@ SELECT 123.456 * interval'365 11:11:11' day(3) to second;
 -- The operator "<=" supports a comparison between the "number" type and the "varchar2" type.
 SET NLS_DATE_FORMAT = 'YYYY-MM-DD';
 select 25::number <= to_char('1990-01-01'::oradate, 'yyyy');
+
+--
+-- PostgreSQL timestamp with time zone -> Oracle datetime types
+--
+-- sys.oratimestamp, sys.oradate and sys.oratimestampltz had no cast from
+-- PostgreSQL's timestamp with time zone, so such values were rejected with
+-- "cannot cast type ..." even for a plain assignment or INSERT.
+--
+SET timezone = 'UTC';
+
+SELECT CAST(CAST('2026-01-01 12:34:56+00' AS pg_catalog.timestamptz) AS sys.oratimestamp) AS ts_to_oratimestamp;
+SELECT CAST(CAST('2026-01-01 12:34:56+00' AS pg_catalog.timestamptz) AS sys.oradate) AS ts_to_oradate;
+SELECT CAST(CAST('2026-01-01 12:34:56+00' AS pg_catalog.timestamptz) AS sys.oratimestampltz) AS ts_to_oratimestampltz;
+
+-- implicit assignment keeps the local wall-clock time of the session
+CREATE TABLE TZ_CAST_TEST (a sys.oratimestamp, b sys.oradate, c sys.oratimestampltz);
+INSERT INTO TZ_CAST_TEST VALUES (CAST('2026-01-01 12:34:56+00' AS pg_catalog.timestamptz),
+                                 CAST('2026-01-01 12:34:56+00' AS pg_catalog.timestamptz),
+                                 CAST('2026-01-01 12:34:56+00' AS pg_catalog.timestamptz));
+SELECT * FROM TZ_CAST_TEST;
+DROP TABLE TZ_CAST_TEST;
+
+-- PL/iSQL variable assignment
+DO $$
+DECLARE
+  t sys.oratimestamp;
+BEGIN
+  t := CAST('2026-01-01 12:34:56+00' AS pg_catalog.timestamptz);
+  RAISE NOTICE 'assigned: %', t;
+END;
+$$;
+
+-- a non-UTC session zone must be honoured: 12:34:56+00 is 07:34:56 in
+-- America/New_York, and the conversion has to keep that local wall-clock time
+SET timezone = 'America/New_York';
+
+SELECT CAST(CAST('2026-01-01 12:34:56+00' AS pg_catalog.timestamptz) AS sys.oratimestamp) AS nonutc_oratimestamp;
+SELECT CAST(CAST('2026-01-01 12:34:56+00' AS pg_catalog.timestamptz) AS sys.oradate) AS nonutc_oradate;
+SELECT CAST(CAST('2026-01-01 12:34:56+00' AS pg_catalog.timestamptz) AS sys.oratimestampltz) AS nonutc_oratimestampltz;
+
+CREATE TABLE TZ_CAST_NONUTC (a sys.oratimestamp, b sys.oradate);
+INSERT INTO TZ_CAST_NONUTC VALUES (CAST('2026-01-01 12:34:56+00' AS pg_catalog.timestamptz),
+                                   CAST('2026-01-01 12:34:56+00' AS pg_catalog.timestamptz));
+SELECT * FROM TZ_CAST_NONUTC;
+DROP TABLE TZ_CAST_NONUTC;
+
+DO $$
+DECLARE
+  t sys.oratimestamp;
+BEGIN
+  t := CAST('2026-01-01 12:34:56+00' AS pg_catalog.timestamptz);
+  RAISE NOTICE 'non-utc assigned: %', t;
+END;
+$$;
+
+RESET timezone;
