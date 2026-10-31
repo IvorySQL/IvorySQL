@@ -493,3 +493,41 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- ALL_TAB_COMMENTS / ALL_COL_COMMENTS
+DROP TABLE IF EXISTS TEST_ALL_TAB_COMMENTS;
+NOTICE:  table "test_all_tab_comments" does not exist, skipping
+CREATE TABLE TEST_ALL_TAB_COMMENTS (ID INT, NAME VARCHAR2(10));
+COMMENT ON TABLE TEST_ALL_TAB_COMMENTS IS 'an all_ table comment';
+COMMENT ON COLUMN TEST_ALL_TAB_COMMENTS.ID IS 'an all_ column comment';
+SELECT OWNER IS NOT NULL AS has_owner, TABLE_NAME, TABLE_TYPE, COMMENTS
+FROM SYS.ALL_TAB_COMMENTS WHERE TABLE_NAME = 'TEST_ALL_TAB_COMMENTS';
+ has_owner |      table_name       | table_type |       comments        
+-----------+-----------------------+------------+-----------------------
+ t         | TEST_ALL_TAB_COMMENTS | TABLE      | an all_ table comment
+(1 row)
+
+SELECT COLUMN_NAME, COMMENTS FROM SYS.ALL_COL_COMMENTS
+WHERE TABLE_NAME = 'TEST_ALL_TAB_COMMENTS' ORDER BY COLUMN_NAME;
+ column_name |        comments        
+-------------+------------------------
+ ID          | an all_ column comment
+ NAME        | 
+(2 rows)
+
+-- unlike the USER_ views, a relation owned by another role is visible here
+DROP ROLE IF EXISTS all_tab_comments_owner;
+NOTICE:  role "all_tab_comments_owner" does not exist, skipping
+CREATE ROLE all_tab_comments_owner;
+CREATE TABLE TEST_ALL_TAB_COMMENTS_OTHER (ID INT);
+ALTER TABLE TEST_ALL_TAB_COMMENTS_OTHER OWNER TO all_tab_comments_owner;
+COMMENT ON TABLE TEST_ALL_TAB_COMMENTS_OTHER IS 'another owner';
+SELECT count(*) AS rows_in_all_tab_comments FROM SYS.ALL_TAB_COMMENTS
+WHERE TABLE_NAME = 'TEST_ALL_TAB_COMMENTS_OTHER';
+ rows_in_all_tab_comments 
+--------------------------
+                        1
+(1 row)
+
+DROP TABLE TEST_ALL_TAB_COMMENTS_OTHER;
+DROP ROLE all_tab_comments_owner;
+DROP TABLE IF EXISTS TEST_ALL_TAB_COMMENTS;
