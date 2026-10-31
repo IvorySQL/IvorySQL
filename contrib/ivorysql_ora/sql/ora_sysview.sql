@@ -270,3 +270,44 @@ SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'TEST_ALL_TAB_
 \set ON_ERROR_STOP on
 
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+
+-- Oracle-compatible type attribute dictionary views
+DROP TYPE IF EXISTS t_obj_type;
+CREATE TYPE t_obj_type AS (a INT, b TEXT);
+
+SELECT TYPE_NAME, ATTR_NAME, ATTR_TYPE_NAME, ATTR_NO
+FROM SYS.USER_TYPE_ATTRS
+WHERE TYPE_NAME = 'T_OBJ_TYPE'
+ORDER BY ATTR_NO;
+
+SELECT COUNT(*) = 2 AS all_has
+FROM SYS.ALL_TYPE_ATTRS
+WHERE TYPE_NAME = 'T_OBJ_TYPE';
+
+SELECT COUNT(*) = 2 AS dba_has
+FROM SYS.DBA_TYPE_ATTRS
+WHERE TYPE_NAME = 'T_OBJ_TYPE';
+
+DROP TYPE t_obj_type;
+
+-- TYPE_ATTRS describes CREATE TYPE objects only: a table's row type is not a
+-- type, the attribute type names are Oracle's, and CHAR_USED says whether the
+-- length is in bytes or characters
+CREATE TABLE p_plain_table (a INT, b TEXT);
+CREATE TYPE p_attr_probe AS OBJECT (s VARCHAR2(50 CHAR), n NUMBER(5), d DATE);
+
+SELECT COUNT(*) = 0 AS table_not_listed
+FROM SYS.ALL_TYPE_ATTRS WHERE TYPE_NAME = 'P_PLAIN_TABLE';
+
+SELECT COUNT(*) = 3 AS attrs_listed
+FROM SYS.ALL_TYPE_ATTRS WHERE TYPE_NAME = 'P_ATTR_PROBE';
+
+SELECT COUNT(*) = 3 AS attrs_match
+FROM SYS.ALL_TYPE_ATTRS
+WHERE TYPE_NAME = 'P_ATTR_PROBE'
+  AND (   (ATTR_NAME = 'S' AND ATTR_TYPE_NAME = 'VARCHAR2' AND CHAR_USED = 'C')
+       OR (ATTR_NAME = 'N' AND ATTR_TYPE_NAME = 'NUMBER')
+       OR (ATTR_NAME = 'D' AND ATTR_TYPE_NAME = 'DATE'));
+
+DROP TYPE p_attr_probe;
+DROP TABLE p_plain_table;
