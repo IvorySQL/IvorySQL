@@ -815,3 +815,18 @@ DROP PROCEDURE sched_reg_proc;
 DELETE FROM sys.scheduler_job_run_details;
 DROP ROLE regress_dbms_scheduler;
 RESET timezone;
+
+-- Oracle-compatible ALL_SCHEDULER_* views
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_all_sched', job_type => 'PLSQL_BLOCK',
+      job_action => 'BEGIN NULL; END;');
+END;
+/
+SELECT COUNT(*) = 1 AS all_jobs
+FROM all_scheduler_jobs WHERE job_name = 'REG_ALL_SCHED';
+SELECT COUNT(*) = 1 AS user_jobs_match
+FROM user_scheduler_jobs WHERE job_name = 'REG_ALL_SCHED';
+BEGIN
+  dbms_scheduler.drop_job('reg_all_sched');
+END;
+/
