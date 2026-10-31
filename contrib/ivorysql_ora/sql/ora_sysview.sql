@@ -270,3 +270,43 @@ SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'TEST_ALL_TAB_
 \set ON_ERROR_STOP on
 
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+
+-- Oracle-compatible TAB_HISTOGRAMS views (numeric columns)
+DROP TABLE IF EXISTS t_hist_test;
+CREATE TABLE t_hist_test (v INT);
+INSERT INTO t_hist_test SELECT GENERATE_SERIES(1, 100);
+ANALYZE t_hist_test;
+
+SELECT COUNT(*) > 1 AS has_buckets
+FROM SYS.USER_TAB_HISTOGRAMS
+WHERE TABLE_NAME = 'T_HIST_TEST';
+
+SELECT COUNT(*) = 1 AS first_bucket
+FROM SYS.USER_TAB_HISTOGRAMS
+WHERE TABLE_NAME = 'T_HIST_TEST' AND ENDPOINT_NUMBER = 1 AND ENDPOINT_VALUE IS NOT NULL;
+
+SELECT COUNT(*) > 1 AS all_has
+FROM SYS.ALL_TAB_HISTOGRAMS WHERE TABLE_NAME = 'T_HIST_TEST';
+
+SELECT COUNT(*) > 1 AS dba_has
+FROM SYS.DBA_TAB_HISTOGRAMS WHERE TABLE_NAME = 'T_HIST_TEST';
+
+DROP TABLE t_hist_test;
+
+-- Histogram endpoints must be reported for Oracle-typed columns too: a NUMBER
+-- column used to produce no rows at all because the view only accepted the
+-- PostgreSQL numeric types
+CREATE TABLE t_hist_rows (n NUMBER);
+INSERT INTO t_hist_rows SELECT g FROM generate_series(1, 1000) g;
+ANALYZE t_hist_rows;
+
+SELECT COUNT(*) > 0 AS has_rows
+FROM SYS.ALL_TAB_HISTOGRAMS WHERE TABLE_NAME = 'T_HIST_ROWS';
+
+SELECT MIN(ENDPOINT_NUMBER) = 1 AS starts_at_one,
+       COUNT(*) = COUNT(DISTINCT ENDPOINT_NUMBER) AS endpoints_unique,
+       COUNT(*) = COUNT(ENDPOINT_ACTUAL_VALUE) AS actual_values_set,
+       COUNT(*) = COUNT(ENDPOINT_VALUE) AS numeric_values_set
+FROM SYS.ALL_TAB_HISTOGRAMS WHERE TABLE_NAME = 'T_HIST_ROWS';
+
+DROP TABLE t_hist_rows;
