@@ -1931,3 +1931,91 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 /* End - VSIZE */
+
+/* Start - LENGTH2 / LENGTH4 */
+/*
+ * Oracle's LENGTH4 counts UCS4 code points and LENGTH2 counts UCS2 code
+ * units, so a supplementary character counts twice for LENGTH2 but once
+ * for LENGTH4.  The argument types mirror sys.lengthc().
+ */
+
+CREATE FUNCTION sys.length2(text)
+RETURNS integer
+AS 'MODULE_PATHNAME','ora_length2'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.length2(sys.oracharchar)
+RETURNS integer
+AS 'MODULE_PATHNAME','ora_length2'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.length2(sys.oracharbyte)
+RETURNS integer
+AS 'MODULE_PATHNAME','ora_length2'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.length2(sys.oravarcharchar)
+RETURNS integer
+AS 'MODULE_PATHNAME','ora_length2'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.length2(sys.oravarcharbyte)
+RETURNS integer
+AS 'MODULE_PATHNAME','ora_length2'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.length4(text)
+RETURNS integer
+AS 'MODULE_PATHNAME','ora_length4'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.length4(sys.oracharchar)
+RETURNS integer
+AS 'MODULE_PATHNAME','ora_length4'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.length4(sys.oracharbyte)
+RETURNS integer
+AS 'MODULE_PATHNAME','ora_length4'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.length4(sys.oravarcharchar)
+RETURNS integer
+AS 'MODULE_PATHNAME','ora_length4'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.length4(sys.oravarcharbyte)
+RETURNS integer
+AS 'MODULE_PATHNAME','ora_length4'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+/* End - LENGTH2 / LENGTH4 */
