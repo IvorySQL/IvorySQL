@@ -10762,3 +10762,65 @@ AS IMPLICIT;
 CREATE CAST (text AS text)
 WITH FUNCTION sys.orachar_to_long_with_typmod(text, integer, boolean)
 AS IMPLICIT;
+
+
+/* Casts from the Oracle datetime types to the PostgreSQL timestamp types.
+ * The Oracle types already convert to each other and the PostgreSQL types
+ * convert into the Oracle ones, but the other direction was missing, so a
+ * query that mixes SYSDATE/SYSTIMESTAMP with a PostgreSQL timestamp function
+ * had to spell out an explicit intermediate cast.  AS ASSIGNMENT keeps the
+ * existing operator resolution untouched while making explicit casts and
+ * assignments work. */
+CREATE CAST (sys.oradate AS pg_catalog.timestamp)
+WITHOUT FUNCTION
+AS ASSIGNMENT;
+
+CREATE OR REPLACE FUNCTION sys.oratimestamp_timestamptz(sys.oratimestamp)
+RETURNS pg_catalog.timestamptz
+AS $$ SELECT $1::pg_catalog.timestamp::pg_catalog.timestamptz; $$
+LANGUAGE SQL
+STABLE STRICT PARALLEL SAFE;
+
+CREATE CAST (sys.oratimestamp AS pg_catalog.timestamptz)
+WITH FUNCTION sys.oratimestamp_timestamptz(sys.oratimestamp)
+AS ASSIGNMENT;
+
+CREATE OR REPLACE FUNCTION sys.oradate_timestamptz(sys.oradate)
+RETURNS pg_catalog.timestamptz
+AS $$ SELECT $1::pg_catalog.timestamp::pg_catalog.timestamptz; $$
+LANGUAGE SQL
+STABLE STRICT PARALLEL SAFE;
+
+CREATE CAST (sys.oradate AS pg_catalog.timestamptz)
+WITH FUNCTION sys.oradate_timestamptz(sys.oradate)
+AS ASSIGNMENT;
+
+CREATE OR REPLACE FUNCTION sys.oratimestamptz_timestamp(sys.oratimestamptz)
+RETURNS pg_catalog.timestamp
+AS $$ SELECT $1::pg_catalog.timestamptz::pg_catalog.timestamp; $$
+LANGUAGE SQL
+STABLE STRICT PARALLEL SAFE;
+
+CREATE CAST (sys.oratimestamptz AS pg_catalog.timestamp)
+WITH FUNCTION sys.oratimestamptz_timestamp(sys.oratimestamptz)
+AS ASSIGNMENT;
+
+CREATE OR REPLACE FUNCTION sys.oratimestampltz_timestamptz(sys.oratimestampltz)
+RETURNS pg_catalog.timestamptz
+AS $$ SELECT $1::sys.oratimestamptz::pg_catalog.timestamptz; $$
+LANGUAGE SQL
+STABLE STRICT PARALLEL SAFE;
+
+CREATE CAST (sys.oratimestampltz AS pg_catalog.timestamptz)
+WITH FUNCTION sys.oratimestampltz_timestamptz(sys.oratimestampltz)
+AS ASSIGNMENT;
+
+CREATE OR REPLACE FUNCTION sys.oratimestampltz_timestamp(sys.oratimestampltz)
+RETURNS pg_catalog.timestamp
+AS $$ SELECT $1::sys.oratimestamptz::pg_catalog.timestamptz::pg_catalog.timestamp; $$
+LANGUAGE SQL
+STABLE STRICT PARALLEL SAFE;
+
+CREATE CAST (sys.oratimestampltz AS pg_catalog.timestamp)
+WITH FUNCTION sys.oratimestampltz_timestamp(sys.oratimestampltz)
+AS ASSIGNMENT;
