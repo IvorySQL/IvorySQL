@@ -1557,3 +1557,50 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- USER_/ALL_/DBA_POLICIES: Oracle's view of VPD policies, mapped onto
+-- PostgreSQL row-level security policies (pg_policy).  SEL/INS/UPD/CHK say
+-- which command the policy applies to: Oracle has no separate DELETE flag, so
+-- a DELETE policy is reported in CHK, which is the column Oracle uses for the
+-- check side.
+CREATE OR REPLACE VIEW SYS.DBA_POLICIES AS
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128) AS OBJECT_OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)        AS OBJECT_NAME,
+    NULL::VARCHAR2(128)                                           AS POLICY_GROUP,
+    SYS.ORA_CASE_TRANS(P.POLNAME::VARCHAR2)::VARCHAR2(128)        AS POLICY_NAME,
+    NULL::VARCHAR2(128)                                           AS PF_OWNER,
+    NULL::VARCHAR2(128)                                           AS PACKAGE,
+    PG_GET_EXPR(P.POLQUAL, C.OID)::VARCHAR2(4000)                 AS FUNCTION,
+    CASE WHEN P.POLCMD IN ('r', '*') THEN 'YES' ELSE 'NO' END::VARCHAR2(3) AS SEL,
+    CASE WHEN P.POLCMD IN ('a', '*') THEN 'YES' ELSE 'NO' END::VARCHAR2(3) AS INS,
+    CASE WHEN P.POLCMD IN ('w', '*') THEN 'YES' ELSE 'NO' END::VARCHAR2(3) AS UPD,
+    'NO'::VARCHAR2(3)                                             AS IDX,
+    CASE WHEN P.POLCMD IN ('d', '*') THEN 'YES' ELSE 'NO' END::VARCHAR2(3) AS CHK,
+    'YES'::VARCHAR2(3)                                            AS ENABLE,
+    'NO'::VARCHAR2(3)                                             AS STATIC_POLICY,
+    'STATIC'::VARCHAR2(10)                                        AS POLICY_TYPE,
+    'NO'::VARCHAR2(3)                                             AS LONG_PREDICATE,
+    C.RELOWNER                                                    AS OWNER_OID,
+    C.OID                                                         AS REL_OID
+FROM PG_CATALOG.PG_POLICY P
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = P.POLRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+WHERE N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast');
+GRANT SELECT ON SYS.DBA_POLICIES TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.ALL_POLICIES AS
+SELECT OBJECT_OWNER, OBJECT_NAME, POLICY_GROUP, POLICY_NAME, PF_OWNER, PACKAGE,
+       FUNCTION, SEL, INS, UPD, IDX, CHK, ENABLE, STATIC_POLICY, POLICY_TYPE,
+       LONG_PREDICATE
+FROM SYS.DBA_POLICIES
+WHERE HAS_TABLE_PRIVILEGE(REL_OID, 'SELECT');
+GRANT SELECT ON SYS.ALL_POLICIES TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.USER_POLICIES AS
+SELECT OBJECT_NAME, POLICY_GROUP, POLICY_NAME, PF_OWNER, PACKAGE, FUNCTION,
+       SEL, INS, UPD, IDX, CHK, ENABLE, STATIC_POLICY, POLICY_TYPE,
+       LONG_PREDICATE
+FROM SYS.DBA_POLICIES
+WHERE OWNER_OID = (SELECT OID FROM PG_CATALOG.PG_ROLES WHERE ROLNAME = CURRENT_USER);
+GRANT SELECT ON SYS.USER_POLICIES TO PUBLIC;
