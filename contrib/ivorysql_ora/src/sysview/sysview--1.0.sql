@@ -1246,8 +1246,16 @@ SELECT
     END::VARCHAR2(1) AS BACKGROUND
 FROM PG_STAT_ACTIVITY;
 
+-- V$PARAMETER: the documented Oracle column list, in Oracle's order.
+-- NUM/ORDINAL are the parameter's position in name order, DISPLAY_VALUE
+-- renders booleans the way Oracle prints them, and ISPDB_MODIFIABLE,
+-- ISADJUSTED, ISBASIC, UPDATE_COMMENT and HASH have no PostgreSQL
+-- counterpart: there are no per-PDB parameters, the server never adjusts a
+-- value behind the user's back, and PostgreSQL neither classifies "basic"
+-- parameters nor exposes a parameter hash.
 CREATE OR REPLACE VIEW SYS.V$PARAMETER AS
 SELECT
+    ROW_NUMBER() OVER (ORDER BY NAME)::NUMBER AS NUM,
     NAME::VARCHAR2(80) AS NAME,
     CASE
         WHEN VARTYPE = 'bool'    THEN 1
@@ -1255,6 +1263,12 @@ SELECT
         ELSE 2
     END::NUMBER AS TYPE,
     SETTING::VARCHAR2(4000) AS VALUE,
+    CASE
+        WHEN VARTYPE = 'bool' THEN
+            CASE WHEN SETTING = 'on' THEN 'TRUE' ELSE 'FALSE' END
+        ELSE
+            SETTING
+    END::VARCHAR2(4000) AS DISPLAY_VALUE,
     BOOT_VAL::VARCHAR2(255) AS DEFAULT_VALUE,
     -- Mapping update levels
     CASE
@@ -1270,7 +1284,13 @@ SELECT
         WHEN CONTEXT IN ('postmaster','internal') THEN 'FALSE'
         ELSE 'DEFERRED'
     END::VARCHAR2(9) AS ISSYS_MODIFIABLE,
-    SHORT_DESC::VARCHAR2(255) AS DESCRIPTION
+    'FALSE'::VARCHAR2(5) AS ISPDB_MODIFIABLE,
+    ROW_NUMBER() OVER (ORDER BY NAME)::NUMBER AS ORDINAL,
+    'FALSE'::VARCHAR2(5) AS ISADJUSTED,
+    'FALSE'::VARCHAR2(5) AS ISBASIC,
+    SHORT_DESC::VARCHAR2(255) AS DESCRIPTION,
+    NULL::VARCHAR2(255) AS UPDATE_COMMENT,
+    NULL::NUMBER AS HASH
 FROM PG_SETTINGS;
 
 CREATE OR REPLACE VIEW SYS.all_cons_columns AS

@@ -172,13 +172,13 @@ SELECT *
 FROM SYS.V$PARAMETER 
 WHERE NAME IN ('listen_addresses','application_name','archive_command','archive_mode','block_size')
 ORDER BY NAME;
-       name       | type |         value          | default_value | isdefault | isses_modifiable | issys_modifiable |                            description                            
-------------------+------+------------------------+---------------+-----------+------------------+------------------+-------------------------------------------------------------------
- application_name | 2    | pg_regress/ora_sysview |               | FALSE     | TRUE             | IMMEDIATE        | Sets the application name to be reported in statistics and logs.
- archive_command  | 2    | (disabled)             |               | FALSE     | FALSE            | IMMEDIATE        | Sets the shell command that will be called to archive a WAL file.
- archive_mode     | 2    | off                    | off           | TRUE      | FALSE            | FALSE            | Allows archiving of WAL files using "archive_command".
- block_size       | 3    | 8192                   | 8192          | TRUE      | FALSE            | FALSE            | Shows the size of a disk block.
- listen_addresses | 2    |                        | localhost     | FALSE     | FALSE            | FALSE            | Sets the host name or IP address(es) to listen to.
+ num |       name       | type |         value          |     display_value      | default_value | isdefault | isses_modifiable | issys_modifiable | ispdb_modifiable | ordinal | isadjusted | isbasic |                            description                            | update_comment | hash 
+-----+------------------+------+------------------------+------------------------+---------------+-----------+------------------+------------------+------------------+---------+------------+---------+-------------------------------------------------------------------+----------------+------
+ 7   | application_name | 2    | pg_regress/ora_sysview | pg_regress/ora_sysview |               | FALSE     | TRUE             | IMMEDIATE        | FALSE            | 7       | FALSE      | FALSE   | Sets the application name to be reported in statistics and logs.  |                | 
+ 9   | archive_command  | 2    | (disabled)             | (disabled)             |               | FALSE     | FALSE            | IMMEDIATE        | FALSE            | 9       | FALSE      | FALSE   | Sets the shell command that will be called to archive a WAL file. |                | 
+ 11  | archive_mode     | 2    | off                    | off                    | off           | TRUE      | FALSE            | FALSE            | FALSE            | 11      | FALSE      | FALSE   | Allows archiving of WAL files using "archive_command".            |                | 
+ 44  | block_size       | 3    | 8192                   | 8192                   | 8192          | TRUE      | FALSE            | FALSE            | FALSE            | 44      | FALSE      | FALSE   | Shows the size of a disk block.                                   |                | 
+ 206 | listen_addresses | 2    |                        |                        | localhost     | FALSE     | FALSE            | FALSE            | FALSE            | 206     | FALSE      | FALSE   | Sets the host name or IP address(es) to listen to.                |                | 
 (5 rows)
 
 CREATE TABLE t_pk_single (id NUMBER PRIMARY KEY, name VARCHAR2(50));
@@ -493,3 +493,54 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- V$PARAMETER must expose Oracle's documented column list and order
+\d SYS.V$PARAMETER
+                       View "sys.v$parameter"
+      Column      |      Type      | Collation | Nullable | Default 
+------------------+----------------+-----------+----------+---------
+ num              | number         |           |          | 
+ name             | varchar2(80)   |           |          | 
+ type             | number         |           |          | 
+ value            | varchar2(4000) |           |          | 
+ display_value    | varchar2(4000) |           |          | 
+ default_value    | varchar2(255)  |           |          | 
+ isdefault        | varchar2(5)    |           |          | 
+ isses_modifiable | varchar2(5)    |           |          | 
+ issys_modifiable | varchar2(9)    |           |          | 
+ ispdb_modifiable | varchar2(5)    |           |          | 
+ ordinal          | number         |           |          | 
+ isadjusted       | varchar2(5)    |           |          | 
+ isbasic          | varchar2(5)    |           |          | 
+ description      | varchar2(255)  |           |          | 
+ update_comment   | varchar2(255)  |           |          | 
+ hash             | number         |           |          | 
+
+-- NUM and ORDINAL are a dense 1..N numbering in name order
+SELECT COUNT(*) = COUNT(DISTINCT NUM) AS num_dense,
+       COUNT(*) = COUNT(DISTINCT ORDINAL) AS ordinal_dense,
+       MIN(NUM) = 1 AS num_starts_at_one
+FROM SYS.V$PARAMETER;
+ num_dense | ordinal_dense | num_starts_at_one 
+-----------+---------------+-------------------
+ t         | t             | t
+(1 row)
+
+-- DISPLAY_VALUE renders booleans the Oracle way and passes other values
+-- through unchanged; the unsupported columns stay NULL/FALSE
+SELECT NAME, DISPLAY_VALUE, ISPDB_MODIFIABLE, ISADJUSTED, ISBASIC,
+       HASH IS NULL AS hash_null, UPDATE_COMMENT IS NULL AS comment_null
+FROM SYS.V$PARAMETER
+WHERE NAME = 'enable_seqscan';
+      name      | display_value | ispdb_modifiable | isadjusted | isbasic | hash_null | comment_null 
+----------------+---------------+------------------+------------+---------+-----------+--------------
+ enable_seqscan | TRUE          | FALSE            | FALSE      | FALSE   | t         | t
+(1 row)
+
+SELECT NAME, DISPLAY_VALUE = VALUE AS display_matches_value
+FROM SYS.V$PARAMETER
+WHERE NAME = 'max_connections';
+      name       | display_matches_value 
+-----------------+-----------------------
+ max_connections | t
+(1 row)
+
