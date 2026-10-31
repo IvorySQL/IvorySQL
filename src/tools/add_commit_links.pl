@@ -68,9 +68,19 @@ sub process_file
 			&& m{^\s*<ulink url="&commit_baseurl;[[:xdigit:]]+">&sect;</ulink>\s*$}
 		  );
 
-		if ($in_comment && m/\[([[:xdigit:]]+)\]/)
+		# Commit messages may contain array subscripts or numeric citations.
+		# Read hashes only from git_changelog's annotation lines.
+		if ($in_comment
+			&& m{
+				^(?:
+					\d{4}-\d{2}-\d{2}\s+\[([[:xdigit:]]+)\]
+					|
+					(?:Branch:\s+\S+\s+)?(?:Release:\s+\S+\s+)?
+					\[([[:xdigit:]]+)\]\s+\d{4}-\d{2}-\d{2}\s
+				)
+			}x)
 		{
-			my $hash = $1;
+			my $hash = $1 // $2;
 
 			# major release item
 			(!m/^Branch:/) && push(@hashes, $hash);

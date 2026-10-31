@@ -1,0 +1,14 @@
+{
+  "array": {
+    "source": "https://github.com/IvorySQL/IvorySQL/commit/82f8107b92c9104ec9d9465f3f6a4c6dab4c124a",
+    "sha": "82f8107b92c9104ec9d9465f3f6a4c6dab4c124a",
+    "message": "Fix handling of empty arrays in array_fill().\n\narray_fill(..., array[0]) produced an empty array, which is probably\nwhat users expect, but it was a one-dimensional zero-length array\nwhich is not our standard representation of empty arrays.  Also, for\nno very good reason, it rejected empty input arrays; that case should\nbe allowed and produce an empty output array.\n\nIn passing, remove the restriction that the input array(s) have lower\nbound 1.  That seems rather pointless, and it would have needed extra\ncomplexity to make the check deal with empty input arrays.\n\nPer bug #14487 from Andrew Gierth.  It's been broken all along, so\nback-patch to all supported branches.\n\nDiscussion: https://postgr.es/m/20170105152156.10135.64195@wrigleys.postgresql.org",
+    "date": "2017-01-05T16:33:51Z"
+  },
+  "plain": {
+    "source": "https://github.com/IvorySQL/IvorySQL/commit/2c5e8dd6676c443571549b801543e6590a260246",
+    "sha": "2c5e8dd6676c443571549b801543e6590a260246",
+    "message": "Merge pull request #1483 from 123123213weqw/wangyue/issue-1326-as-object\n\noracle: support AS OBJECT in CREATE TYPE",
+    "date": "2026-10-23T09:53:19Z"
+  }
+}
