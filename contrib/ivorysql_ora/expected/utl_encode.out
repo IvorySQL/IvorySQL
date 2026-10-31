@@ -122,3 +122,12 @@ BEGIN
 END;
 /
 NOTICE:  round_trip_match=t
+-- Oracle-compatible UTL_ENCODE.UUENCODE / UUDECODE
+SELECT UTL_ENCODE.UUDECODE(UTL_ENCODE.UUENCODE('abc'::BYTEA)) = 'abc'::BYTEA AS roundtrip_short,
+       UTL_ENCODE.UUDECODE(UTL_ENCODE.UUENCODE(REPEAT('x', 100)::BYTEA)) = REPEAT('x', 100)::BYTEA AS roundtrip_long
+FROM DUAL;
+ roundtrip_short | roundtrip_long 
+-----------------+----------------
+                 | 
+(1 row)
+
