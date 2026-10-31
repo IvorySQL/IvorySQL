@@ -330,11 +330,13 @@ sub ParseData
 		if (/^\/\*BEGIN\sOracle\sCompatibility\sMetadatas\*\//)
 		{
 			$match_oracle_regex_begin++;
+			push @$data, $_ if $preserve_comments;
 			next;
 		}
 		if (/^\/\*END\sOracle\sCompatibility\sMetadatas\*\//)
 		{
 			$match_oracle_regex_end++;
+			push @$data, $_ if $preserve_comments;
 			next;
 		}
 
