@@ -4521,3 +4521,52 @@ DETAIL:  "ivorysql" is a reserved prefix.
 reset ivorysql.dummy_config;
 ERROR:  invalid configuration parameter name "ivorysql.dummy_config"
 DETAIL:  "ivorysql" is a reserved prefix.
+-- Oracle-compatible VALIDATE_CONVERSION
+SELECT SYS.VALIDATE_CONVERSION('123', 'NUMBER') AS number_ok;
+ number_ok 
+-----------
+ 1
+(1 row)
+
+SELECT SYS.VALIDATE_CONVERSION('abc', 'NUMBER') AS number_bad;
+ number_bad 
+------------
+ 0
+(1 row)
+
+SELECT SYS.VALIDATE_CONVERSION('2020-01-02', 'DATE') AS date_ok;
+ date_ok 
+---------
+ 1
+(1 row)
+
+SELECT SYS.VALIDATE_CONVERSION('2020-99-99', 'DATE') AS date_bad;
+ date_bad 
+----------
+ 0
+(1 row)
+
+SELECT SYS.VALIDATE_CONVERSION('12.5', 'BINARY_DOUBLE') AS binary_double_ok;
+ binary_double_ok 
+------------------
+ 1
+(1 row)
+
+SELECT SYS.VALIDATE_CONVERSION('abc', 'VARCHAR2') AS text_ok;
+ text_ok 
+---------
+ 1
+(1 row)
+
+SELECT SYS.VALIDATE_CONVERSION(NULL, 'NUMBER') AS null_ok;
+ null_ok 
+---------
+ 1
+(1 row)
+
+SELECT SYS.VALIDATE_CONVERSION('x', 'NO_SUCH_TYPE') AS unknown_bad;
+ unknown_bad 
+-------------
+ 0
+(1 row)
+
