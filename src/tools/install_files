@@ -36,7 +36,7 @@ def create_target_dir(prefix: str, destdir: str, targetdir: str):
     if not os.path.isabs(targetdir):
         targetdir = os.path.join(prefix, targetdir)
 
-    if destdir is not None:
+    if destdir:
         # copy of meson's logic for joining destdir and install paths
         targetdir = str(PurePath(destdir, *PurePath(targetdir).parts[1:]))
 
