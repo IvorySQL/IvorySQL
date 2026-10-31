@@ -493,3 +493,12 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- Oracle-compatible V$CONTROLFILE view
+SELECT NAME = CURRENT_SETTING('data_directory') || '/global/pg_control' AS matches_data_dir,
+       STATUS
+FROM SYS.V$CONTROLFILE;
+ matches_data_dir | status 
+------------------+--------
+ t                | VALID
+(1 row)
+
