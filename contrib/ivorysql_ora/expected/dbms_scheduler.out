@@ -1399,3 +1399,23 @@ DROP PROCEDURE sched_reg_proc;
 DELETE FROM sys.scheduler_job_run_details;
 DROP ROLE regress_dbms_scheduler;
 RESET timezone;
+-- Oracle-compatible DBMS_JOB.SUBMIT / RUN / REMOVE
+DECLARE
+  v_job number;
+  v_cnt int;
+BEGIN
+  dbms_job.submit(v_job, 'BEGIN NULL; END;');
+  SELECT count(*) INTO v_cnt FROM sys.scheduler_jobs WHERE job_id = v_job;
+  RAISE NOTICE 'submitted job exists=%', (v_cnt = 1);
+  dbms_job.run(v_job);
+  dbms_job.remove(v_job);
+END;
+/
+NOTICE:  submitted job exists=t
+SELECT COUNT(*) = 0 AS cleaned
+FROM sys.scheduler_jobs WHERE job_name LIKE 'JOB$%' AND job_owner = UPPER(CURRENT_USER);
+ cleaned 
+---------
+ t
+(1 row)
+
