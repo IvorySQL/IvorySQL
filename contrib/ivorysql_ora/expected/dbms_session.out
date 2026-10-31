@@ -265,3 +265,28 @@ select sys_context('rp_ns', 'key') as ctx_after_reset;
 (1 row)
 
 DROP PACKAGE rp_pkg;
+-- Oracle-compatible DBMS_SESSION.SET_ROLE
+DROP ROLE IF EXISTS reg_session_role;
+NOTICE:  role "reg_session_role" does not exist, skipping
+CREATE ROLE reg_session_role;
+GRANT reg_session_role TO CURRENT_USER;
+BEGIN
+  dbms_session.set_role('reg_session_role');
+END;
+/
+SELECT CURRENT_USER = 'reg_session_role' AS role_active;
+ role_active 
+-------------
+ t
+(1 row)
+
+-- The role has no EXECUTE on the package, so reset through SQL.
+SET ROLE NONE;
+SELECT CURRENT_USER <> 'reg_session_role' AS role_reset;
+ role_reset 
+------------
+ t
+(1 row)
+
+REVOKE reg_session_role FROM CURRENT_USER;
+DROP ROLE reg_session_role;
