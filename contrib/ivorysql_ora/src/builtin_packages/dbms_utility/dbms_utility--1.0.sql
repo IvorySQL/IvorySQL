@@ -28,6 +28,9 @@ CREATE OR REPLACE PACKAGE dbms_utility IS
   FUNCTION FORMAT_ERROR_BACKTRACE RETURN TEXT;
   FUNCTION FORMAT_ERROR_STACK RETURN TEXT;
   FUNCTION FORMAT_CALL_STACK RETURN TEXT;
+  PROCEDURE EXEC_DDL_STATEMENT(parse_string IN VARCHAR2);
+  FUNCTION PORT_STRING RETURN VARCHAR2;
+  FUNCTION IS_PARALLEL_SERVER RETURN BOOLEAN;
 END dbms_utility;
 
 CREATE OR REPLACE PACKAGE BODY dbms_utility IS
@@ -44,5 +47,26 @@ CREATE OR REPLACE PACKAGE BODY dbms_utility IS
   FUNCTION FORMAT_CALL_STACK RETURN TEXT IS
   BEGIN
     RETURN sys.ora_format_call_stack();
+  END;
+
+  -- Runs a DDL statement given as a string, the way Oracle applications use it
+  -- to issue CREATE/ALTER/DROP from a procedure.
+  PROCEDURE EXEC_DDL_STATEMENT(parse_string IN VARCHAR2) IS
+  BEGIN
+    EXECUTE parse_string;
+  END;
+
+  -- Oracle returns the operating system and database version string; the
+  -- server's version() carries the same two pieces of information.
+  FUNCTION PORT_STRING RETURN VARCHAR2 IS
+  BEGIN
+    RETURN pg_catalog.version();
+  END;
+
+  -- Oracle is FALSE outside an Oracle Real Application Clusters instance;
+  -- PostgreSQL has no parallel server mode, so it is always FALSE here.
+  FUNCTION IS_PARALLEL_SERVER RETURN BOOLEAN IS
+  BEGIN
+    RETURN FALSE;
   END;
 END dbms_utility;
