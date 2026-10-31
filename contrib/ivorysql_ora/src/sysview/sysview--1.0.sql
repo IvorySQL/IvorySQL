@@ -1557,3 +1557,95 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- DBA_ROLES: one row per role.  PostgreSQL has no per-role password
+-- requirement flag visible to unprivileged users, so PASSWORD_REQUIRED is
+-- reported as NO rather than guessed.
+CREATE OR REPLACE VIEW SYS.DBA_ROLES AS
+SELECT
+    SYS.ORA_CASE_TRANS(R.ROLNAME::VARCHAR2)::VARCHAR2(128)        AS ROLE,
+    R.OID::INT8::NUMBER                                           AS ROLE_ID,
+    'NO'::VARCHAR2(3)                                             AS PASSWORD_REQUIRED,
+    'NONE'::VARCHAR2(8)                                           AS AUTHENTICATION_TYPE,
+    'NO'::VARCHAR2(3)                                             AS COMMON,
+    'N'::VARCHAR2(1)                                               AS ORACLE_MAINTAINED
+FROM PG_CATALOG.PG_ROLES R;
+GRANT SELECT ON SYS.DBA_ROLES TO PUBLIC;
+
+-- DBA_USERS: every role that can own objects, in Oracle's shape.  A role
+-- without LOGIN has no Oracle account status, hence NONE; ACCOUNT_STATUS is
+-- OPEN for login roles because PostgreSQL has no lock/expiry concept.
+CREATE OR REPLACE VIEW SYS.DBA_USERS AS
+SELECT
+    SYS.ORA_CASE_TRANS(R.ROLNAME::VARCHAR2)::VARCHAR2(128)        AS USERNAME,
+    R.OID::INT8::NUMBER                                           AS USER_ID,
+    NULL::VARCHAR2(4000)                                          AS PASSWORD,
+    CASE WHEN R.ROLCANLOGIN THEN 'OPEN'
+         ELSE 'NONE'
+    END::VARCHAR2(32)                                             AS ACCOUNT_STATUS,
+    NULL::TIMESTAMPTZ                                             AS LOCK_DATE,
+    NULL::TIMESTAMPTZ                                             AS EXPIRY_DATE,
+    TS.SPCNAME::VARCHAR2(30)                                      AS DEFAULT_TABLESPACE,
+    TS.SPCNAME::VARCHAR2(30)                                      AS TEMPORARY_TABLESPACE,
+    NULL::TIMESTAMPTZ                                             AS CREATED,
+    'DEFAULT'::VARCHAR2(128)                                      AS PROFILE,
+    NULL::VARCHAR2(128)                                           AS INITIAL_RSRC_CONSUMER_GROUP,
+    NULL::VARCHAR2(4000)                                          AS EXTERNAL_NAME,
+    'PASSWORD'::VARCHAR2(8)                                       AS AUTHENTICATION_TYPE,
+    'NO'::VARCHAR2(3)                                             AS COMMON,
+    'N'::VARCHAR2(1)                                              AS ORACLE_MAINTAINED
+FROM PG_CATALOG.PG_ROLES R
+CROSS JOIN LATERAL (
+    SELECT SYS.ORA_CASE_TRANS(T.SPCNAME::VARCHAR2)::VARCHAR2(30) AS SPCNAME
+    FROM PG_TABLESPACE T
+    WHERE T.OID = (SELECT DATTABLESPACE FROM PG_DATABASE
+                    WHERE DATNAME = CURRENT_DATABASE())
+) TS;
+GRANT SELECT ON SYS.DBA_USERS TO PUBLIC;
+
+-- ALL_USERS: name and id of every role that can own objects.
+CREATE OR REPLACE VIEW SYS.ALL_USERS AS
+SELECT
+    SYS.ORA_CASE_TRANS(R.ROLNAME::VARCHAR2)::VARCHAR2(128)        AS USERNAME,
+    R.OID::INT8::NUMBER                                           AS USER_ID,
+    NULL::TIMESTAMPTZ                                             AS CREATED,
+    'NO'::VARCHAR2(3)                                             AS COMMON,
+    'N'::VARCHAR2(1)                                              AS ORACLE_MAINTAINED
+FROM PG_CATALOG.PG_ROLES R;
+GRANT SELECT ON SYS.ALL_USERS TO PUBLIC;
+
+-- USER_USERS: the same row as DBA_USERS, for the current user only.
+CREATE OR REPLACE VIEW SYS.USER_USERS AS
+SELECT
+    SYS.ORA_CASE_TRANS(R.ROLNAME::VARCHAR2)::VARCHAR2(128)        AS USERNAME,
+    R.OID::INT8::NUMBER                                           AS USER_ID,
+    CASE WHEN R.ROLCANLOGIN THEN 'OPEN'
+         ELSE 'NONE'
+    END::VARCHAR2(32)                                             AS ACCOUNT_STATUS,
+    NULL::TIMESTAMPTZ                                             AS LOCK_DATE,
+    NULL::TIMESTAMPTZ                                             AS EXPIRY_DATE,
+    TS.SPCNAME::VARCHAR2(30)                                      AS DEFAULT_TABLESPACE,
+    TS.SPCNAME::VARCHAR2(30)                                      AS TEMPORARY_TABLESPACE,
+    NULL::TIMESTAMPTZ                                             AS CREATED,
+    NULL::VARCHAR2(128)                                           AS INITIAL_RSRC_CONSUMER_GROUP,
+    NULL::VARCHAR2(4000)                                          AS EXTERNAL_NAME
+FROM PG_CATALOG.PG_ROLES R
+CROSS JOIN LATERAL (
+    SELECT SYS.ORA_CASE_TRANS(T.SPCNAME::VARCHAR2)::VARCHAR2(30) AS SPCNAME
+    FROM PG_TABLESPACE T
+    WHERE T.OID = (SELECT DATTABLESPACE FROM PG_DATABASE
+                    WHERE DATNAME = CURRENT_DATABASE())
+) TS
+WHERE R.ROLNAME = CURRENT_USER;
+GRANT SELECT ON SYS.USER_USERS TO PUBLIC;
+
+-- SESSION_ROLES: the roles the current user can act as, which is Oracle's
+-- list of enabled roles for the session.  A role is never its own member, so
+-- the current user is excluded.
+CREATE OR REPLACE VIEW SYS.SESSION_ROLES AS
+SELECT
+    SYS.ORA_CASE_TRANS(R.ROLNAME::VARCHAR2)::VARCHAR2(128)        AS ROLE
+FROM PG_CATALOG.PG_ROLES R
+WHERE R.ROLNAME <> CURRENT_USER
+  AND PG_HAS_ROLE(CURRENT_USER, R.OID, 'MEMBER');
+GRANT SELECT ON SYS.SESSION_ROLES TO PUBLIC;
