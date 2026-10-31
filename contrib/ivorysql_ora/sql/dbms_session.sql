@@ -156,3 +156,12 @@ call dbms_session.reset_package();
 select sys_context('rp_ns', 'key') as ctx_after_reset;
 
 DROP PACKAGE rp_pkg;
+
+-- Oracle-compatible DBMS_SESSION.UNIQUE_SESSION_ID / IS_ROLE_ENABLED
+SELECT DBMS_SESSION.UNIQUE_SESSION_ID() = DBMS_SESSION.UNIQUE_SESSION_ID() AS stable_id,
+       LENGTH(DBMS_SESSION.UNIQUE_SESSION_ID()) > 0 AS non_empty
+FROM DUAL;
+
+SELECT DBMS_SESSION.IS_ROLE_ENABLED(CURRENT_USER::TEXT) AS own_role_enabled,
+       DBMS_SESSION.IS_ROLE_ENABLED('no_such_role_xyz') AS missing_role_disabled
+FROM DUAL;
