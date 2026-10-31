@@ -60,7 +60,7 @@ PG_FUNCTION_INFO_V1(oracharchargt);
 PG_FUNCTION_INFO_V1(oracharcharge);
 PG_FUNCTION_INFO_V1(oracharcharlt);
 PG_FUNCTION_INFO_V1(oracharcharle);
-PG_FUNCTION_INFO_V1(rtrim);
+PG_FUNCTION_INFO_V1(orachar_rtrim);
 PG_FUNCTION_INFO_V1(char_orachar);
 PG_FUNCTION_INFO_V1(orachar_char);
 PG_FUNCTION_INFO_V1(name_orachar);
@@ -432,7 +432,7 @@ oracharchar(PG_FUNCTION_ARGS)
 
 /* Convert orachar(byte/char) to text */
 Datum
-rtrim(PG_FUNCTION_ARGS)
+orachar_rtrim(PG_FUNCTION_ARGS)
 {
 	text	   *string = PG_GETARG_TEXT_PP(0);
 	text	   *ret;
