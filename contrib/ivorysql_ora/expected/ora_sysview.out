@@ -493,3 +493,40 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- DBA_TAB_COLUMNS
+-- Same column list as ALL_TAB_COLUMNS, without the privilege filter: the
+-- DBA_ views describe every object in the database.
+DROP TABLE IF EXISTS TEST_DBA_TAB_COLUMNS;
+NOTICE:  table "test_dba_tab_columns" does not exist, skipping
+CREATE TABLE TEST_DBA_TAB_COLUMNS (ID INT, NAME VARCHAR2(10));
+ANALYZE TEST_DBA_TAB_COLUMNS;
+SELECT COLUMN_NAME, COLUMN_ID, DATA_TYPE FROM SYS.DBA_TAB_COLUMNS
+WHERE TABLE_NAME = 'TEST_DBA_TAB_COLUMNS' ORDER BY COLUMN_ID;
+ column_name | column_id | data_type 
+-------------+-----------+-----------
+ ID          |         1 | NUMBER
+ NAME        |         2 | VARCHAR2
+(2 rows)
+
+-- an owner that revoked all of its own privileges still sees its relation
+-- here, while ALL_TAB_COLUMNS hides it again
+DROP ROLE IF EXISTS dba_tab_cols_owner;
+NOTICE:  role "dba_tab_cols_owner" does not exist, skipping
+CREATE ROLE dba_tab_cols_owner;
+CREATE TABLE TEST_DBA_TAB_COLUMNS_OTHER (ID INT, NAME VARCHAR2(10));
+ALTER TABLE TEST_DBA_TAB_COLUMNS_OTHER OWNER TO dba_tab_cols_owner;
+SET ROLE dba_tab_cols_owner;
+REVOKE ALL ON TEST_DBA_TAB_COLUMNS_OTHER FROM dba_tab_cols_owner;
+SELECT (SELECT count(*) FROM SYS.DBA_TAB_COLUMNS
+        WHERE TABLE_NAME = 'TEST_DBA_TAB_COLUMNS_OTHER') AS dba_rows,
+       (SELECT count(*) FROM SYS.ALL_TAB_COLUMNS
+        WHERE TABLE_NAME = 'TEST_DBA_TAB_COLUMNS_OTHER') AS all_rows;
+ dba_rows | all_rows 
+----------+----------
+        2 |        0
+(1 row)
+
+RESET ROLE;
+DROP TABLE TEST_DBA_TAB_COLUMNS_OTHER;
+DROP ROLE dba_tab_cols_owner;
+DROP TABLE IF EXISTS TEST_DBA_TAB_COLUMNS;
