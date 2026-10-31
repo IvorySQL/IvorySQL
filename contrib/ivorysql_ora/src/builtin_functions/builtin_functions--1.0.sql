@@ -1931,3 +1931,36 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 /* End - VSIZE */
+
+
+/* Start - ORA_HASH */
+/*
+ * ORA_HASH(expr [, max_bucket [, seed]]) returns a hash value for expr in
+ * the range 0 .. max_bucket (4294967295 by default), like Oracle.
+ *
+ * As in Oracle, the hash values themselves are implementation-defined; the
+ * contract of the function is that the same expression, max_bucket and seed
+ * produce the same value, inside the requested range.
+ */
+CREATE FUNCTION sys.ora_hash(value anycompatible,
+                             max_bucket int8 DEFAULT 4294967295,
+                             seed int8 DEFAULT 0)
+RETURNS number
+AS
+$$
+begin
+	if max_bucket is null or max_bucket < 0 then
+		raise exception 'ORA_HASH: max_bucket must be a non-negative integer';
+	end if;
+
+	if value is null then
+		return null;
+	end if;
+
+	return (abs(pg_catalog.hashtextextended(value::text, seed)::numeric)
+		% (max_bucket + 1));
+end;
+$$
+LANGUAGE plpgsql
+IMMUTABLE;
+/* End - ORA_HASH */
