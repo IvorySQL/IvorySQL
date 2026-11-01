@@ -105,6 +105,7 @@ void		assign_compatible_mode(int newval, void *extra);
 static void nls_case_conversion(char **param, char type);
 static bool nls_length_check(char **newval, void **extra, GucSource source);
 static bool nls_territory_check(char **newval, void **extra, GucSource source);
+static bool nls_numeric_characters_check(char **newval, void **extra, GucSource source);
 #endif
 
 
@@ -276,6 +277,24 @@ nls_length_check(char **newval, void **extra, GucSource source)
 		}
 		else if (identifier_case_switch == INTERCHANGE)
 			nls_case_conversion(newval, 'b');
+	}
+
+	return true;
+}
+
+static bool
+nls_numeric_characters_check(char **newval, void **extra, GucSource source)
+{
+	if (strlen(*newval) != 2 ||
+		(unsigned char) (*newval)[0] >= 0x80 ||
+		(unsigned char) (*newval)[1] >= 0x80 ||
+		(*newval)[0] == (*newval)[1] ||
+		strchr("0123456789+-<>", (*newval)[0]) != NULL ||
+		strchr("0123456789+-<>", (*newval)[1]) != NULL)
+	{
+		GUC_check_errcode(ERRCODE_INVALID_PARAMETER_VALUE);
+		GUC_check_errmsg("NLS_NUMERIC_CHARACTERS must contain two distinct single-byte characters that are not numeric syntax characters");
+		return false;
 	}
 
 	return true;
