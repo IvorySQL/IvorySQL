@@ -53,7 +53,7 @@ install: install-data
 clean: cleansql
 
 # SQL(s) merge using perl
-$(DATA_built): gensql.pl
+$(DATA_built): gensql.pl ivorysql_ora_merge_sqls
 	$(PERL) $< gcc_build $(patsubst ivorysql_ora--%.sql, %,$@)
 
 # Preload the compatible oracle misc sql script
@@ -125,3 +125,23 @@ ifeq ($(with_libxml),yes)
 SHLIB_LINK += -lxml2
 endif
 
+# gensql.pl concatenates one <module>--<version>.sql file for every module
+# named in ivorysql_ora_merge_sqls, so those files are inputs of the
+# generated script as well.  Without them an incremental build keeps a stale
+# $(DATA_built) after a source edit and then installs an extension script
+# that does not match the sources; only a clean build hides the problem.
+# Declared here, after the includes above, so that $(srcdir) is available.
+ORA_SQL_VERSION = $(patsubst ivorysql_ora--%.sql,%,$(DATA_built))
+ORA_SQL_SRCS = $(wildcard $(addprefix $(srcdir)/, \
+	$(addsuffix --$(ORA_SQL_VERSION).sql, \
+		$(shell cat $(srcdir)/ivorysql_ora_merge_sqls))))
+
+# Adding or deleting a merged script modifies no existing file, so $(wildcard)
+# above would silently drop it from the prerequisites and leave the generated
+# script stale.  Depending on the module directories as well covers that case:
+# a directory's timestamp changes whenever an entry inside it is created or
+# removed, which makes the merge run again with the new set of inputs.
+ORA_SQL_DIRS = $(sort $(patsubst %/,%,$(dir $(addprefix $(srcdir)/, \
+	$(shell cat $(srcdir)/ivorysql_ora_merge_sqls)))))
+
+$(DATA_built): $(ORA_SQL_SRCS) $(ORA_SQL_DIRS)
