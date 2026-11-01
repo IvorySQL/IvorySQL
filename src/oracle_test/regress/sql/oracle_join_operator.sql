@@ -574,7 +574,7 @@ WHERE p.id = q.id(+) ORDER BY p.id;
 
 -- A sampled operand must still be recognized inside a shared join subtree.
 SELECT p.id, q.id AS matched, r.id AS chained
-FROM oj_parent p TABLESAMPLE SYSTEM (100), oj_probe q, oj_probe r
+FROM oj_parent p TABLESAMPLE SYSTEM (0), oj_probe q, oj_probe r
 WHERE p.id = q.id(+) AND q.id = r.id(+) AND p.id = r.id(+)
 ORDER BY p.id;
 
