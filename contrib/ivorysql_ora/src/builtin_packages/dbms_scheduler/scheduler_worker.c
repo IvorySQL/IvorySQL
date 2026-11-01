@@ -190,6 +190,25 @@ worker_finish_log(SchedWorkerArgs *args, bool success, int error_no,
 	sched_log_finish(args->log_id, success, error_no, error_message, start_ts);
 	if (def != NULL)
 		sched_update_job_stats(def, success, start_ts, true);
+	else
+	{
+		Oid			argtypes[1] = {INT8OID};
+		Datum		values[1] = {Int64GetDatum(args->job_id)};
+
+		/*
+		 * Loading the definition can fail before the action starts, for
+		 * example if its program was disabled after the job was enabled.
+		 * Closing the log alone would leave the job RUNNING forever: stopped
+		 * worker reconciliation only handles runs with an unclosed log.
+		 * Preserve the scheduling decision made at dispatch, but release the
+		 * running state.  Match the stable ID in case the job was replaced.
+		 */
+		sched_meta_dml("UPDATE sys.scheduler_jobs SET"
+					   " state = CASE WHEN enabled THEN 'SCHEDULED'"
+					   " ELSE 'FAILED' END"
+					   " WHERE job_id = $1 AND state = 'RUNNING'",
+					   1, argtypes, values, NULL);
+	}
 
 	SPI_finish();
 	PopActiveSnapshot();
