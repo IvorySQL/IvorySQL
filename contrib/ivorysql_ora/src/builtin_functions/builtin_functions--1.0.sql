@@ -679,6 +679,23 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
+/* NLS_CHARSET */
+CREATE FUNCTION sys.nls_charset_id(varchar2)
+RETURNS number
+AS 'MODULE_PATHNAME','ora_nls_charset_id'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.nls_charset_name(number)
+RETURNS varchar2
+AS 'MODULE_PATHNAME','ora_nls_charset_name'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
 CREATE FUNCTION sys.replace(varchar, varchar, varchar default NULL)
 RETURNS text
 AS 'MODULE_PATHNAME','ora_replace'
@@ -1931,3 +1948,136 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 /* End - VSIZE */
+
+/* GREATEST / LEAST */
+/*
+ * greatest / least --- Oracle's GREATEST and LEAST.
+ *
+ * Oracle semantics differ from the pg_catalog.greatest()/least()
+ * builtins in two ways, and both are the reason these overloads exist:
+ *
+ *   - Oracle answers NULL as soon as ANY argument is NULL, while the
+ *     PostgreSQL builtins ignore NULL inputs and answer the extreme of
+ *     the remaining ones;
+ *   - Oracle compares using the datatype of the first argument and
+ *     returns that datatype, while the PostgreSQL builtins fold every
+ *     argument into one common type.
+ *
+ * The first argument is pinned to a concrete type and the remainder is
+ * variadic, so the return type follows the first argument and the
+ * overload set doubles as the "compare by the first argument's type"
+ * rule.  The overload set is deliberately kept free of a varchar2
+ * wrapper: oracle mode defines implicit casts from the integer and
+ * NUMBER types to the Oracle string types, so a varchar2 first
+ * argument would make the plain GREATEST(1, 2) shape ambiguous
+ * between a wrapper and the numeric overload.  VARCHAR2 arguments
+ * reach the text overloads through varchar2's implicit cast to text.
+ * VARCHAR2 comparison is Oracle's non-padded BINARY comparison (bytes,
+ * no collation); NUMBER/date/timestamp reuse the type's own
+ * comparison.  The functions are STRICT, which answers NULL for a NULL
+ * first argument; a NULL sitting inside the variadic list is caught in
+ * the C code, because STRICT only sees the array argument, not its
+ * elements.
+ *
+ * In oracle mode an *unqualified* GREATEST/LEAST call is turned into a
+ * MinMaxExpr by the grammar itself (ora_gram.y builds IS_GREATEST /
+ * IS_LEAST), so these functions are reached through the schema
+ * qualified spelling sys.greatest()/sys.least(), like sys.substrc()
+ * and friends.  pg_catalog.greatest()/least() stay reachable when
+ * explicitly qualified.
+ */
+CREATE FUNCTION sys.greatest(str text, VARIADIC rest text[])
+RETURNS text
+AS 'MODULE_PATHNAME','ora_greatest_varchar'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.least(str text, VARIADIC rest text[])
+RETURNS text
+AS 'MODULE_PATHNAME','ora_least_varchar'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+COMMENT ON FUNCTION sys.greatest(text, text[]) IS 'Return the largest argument, comparing as the first argument''s type; NULL if any argument is NULL';
+COMMENT ON FUNCTION sys.least(text, text[]) IS 'Return the smallest argument, comparing as the first argument''s type; NULL if any argument is NULL';
+
+CREATE FUNCTION sys.greatest(num numeric, VARIADIC rest numeric[])
+RETURNS numeric
+AS 'MODULE_PATHNAME','ora_greatest_number'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.least(num numeric, VARIADIC rest numeric[])
+RETURNS numeric
+AS 'MODULE_PATHNAME','ora_least_number'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+COMMENT ON FUNCTION sys.greatest(numeric, numeric[]) IS 'Return the largest argument, comparing as the first argument''s type; NULL if any argument is NULL';
+COMMENT ON FUNCTION sys.least(numeric, numeric[]) IS 'Return the smallest argument, comparing as the first argument''s type; NULL if any argument is NULL';
+
+CREATE FUNCTION sys.greatest(d date, VARIADIC rest date[])
+RETURNS date
+AS 'MODULE_PATHNAME','ora_greatest_date'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.least(d date, VARIADIC rest date[])
+RETURNS date
+AS 'MODULE_PATHNAME','ora_least_date'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+COMMENT ON FUNCTION sys.greatest(date, date[]) IS 'Return the largest argument, comparing as the first argument''s type; NULL if any argument is NULL';
+COMMENT ON FUNCTION sys.least(date, date[]) IS 'Return the smallest argument, comparing as the first argument''s type; NULL if any argument is NULL';
+
+CREATE FUNCTION sys.greatest(ts timestamp, VARIADIC rest timestamp[])
+RETURNS timestamp
+AS 'MODULE_PATHNAME','ora_greatest_timestamp'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.least(ts timestamp, VARIADIC rest timestamp[])
+RETURNS timestamp
+AS 'MODULE_PATHNAME','ora_least_timestamp'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+COMMENT ON FUNCTION sys.greatest(timestamp, timestamp[]) IS 'Return the largest argument, comparing as the first argument''s type; NULL if any argument is NULL';
+COMMENT ON FUNCTION sys.least(timestamp, timestamp[]) IS 'Return the smallest argument, comparing as the first argument''s type; NULL if any argument is NULL';
+
+CREATE FUNCTION sys.greatest(ts timestamptz, VARIADIC rest timestamptz[])
+RETURNS timestamptz
+AS 'MODULE_PATHNAME','ora_greatest_timestamptz'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.least(ts timestamptz, VARIADIC rest timestamptz[])
+RETURNS timestamptz
+AS 'MODULE_PATHNAME','ora_least_timestamptz'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+COMMENT ON FUNCTION sys.greatest(timestamptz, timestamptz[]) IS 'Return the largest argument, comparing as the first argument''s type; NULL if any argument is NULL';
+COMMENT ON FUNCTION sys.least(timestamptz, timestamptz[]) IS 'Return the smallest argument, comparing as the first argument''s type; NULL if any argument is NULL';
+/* End - GREATEST / LEAST */

@@ -70,6 +70,8 @@ PG_FUNCTION_INFO_V1(ora_regexp_like_no_flags);
 PG_FUNCTION_INFO_V1(ora_regexp_count);
 PG_FUNCTION_INFO_V1(ora_substrb_no_length);
 PG_FUNCTION_INFO_V1(ora_substrb);
+PG_FUNCTION_INFO_V1(ora_nls_charset_id);
+PG_FUNCTION_INFO_V1(ora_nls_charset_name);
 PG_FUNCTION_INFO_V1(ora_replace);
 PG_FUNCTION_INFO_V1(ora_instrb);
 PG_FUNCTION_INFO_V1(oracle_instr_2);
@@ -2645,3 +2647,81 @@ ora_listagg_check (PG_FUNCTION_ARGS)
 
 }
 
+
+
+/***********************************************************************
+ * nls_charset_id / nls_charset_name
+ *
+ * Purpose:
+ *	 Oracle's NLS_CHARSET_ID(charset_name) and
+ *	 NLS_CHARSET_NAME(character_set_id): map between Oracle character
+ *	 set names and their numeric ids.
+ *
+ *	 Oracle assigns a fixed numeric id to every character set name
+ *	 (the SQL reference examples pin AL32UTF8 to 873 and ZHS16GBK to
+ *	 850, and the two national character set ids AL16UTF16/AL16UTF16LE
+ *	 are equally fixed).  The table below carries the Oracle character
+ *	 sets that correspond to server encodings IvorySQL can represent,
+ *	 plus Oracle's universal Unicode and national character sets; it
+ *	 can grow alongside the encodings IvorySQL supports.
+ *
+ *	 NLS_CHARSET_ID answers an error for an unknown name and
+ *	 NLS_CHARSET_NAME answers NULL for an unknown id, which is how the
+ *	 two functions are documented to differ.  Both answer NULL for a
+ *	 NULL input through STRICT.  Name matching is case-insensitive.
+ ***********************************************************************/
+
+struct ora_nls_charset
+{
+	const char *name;
+	int32		id;
+};
+
+static const struct ora_nls_charset ora_nls_charsets[] = {
+	{"US7ASCII", 1},
+	{"WE8DEC", 2},
+	{"WE8ISO8859P1", 31},
+	{"WE8MSWIN1252", 178},
+	{"ZHS16GBK", 850},
+	{"UTF8", 871},
+	{"UTFE", 872},
+	{"AL32UTF8", 873},
+	{"AL16UTF16", 2000},
+	{"AL16UTF16LE", 2002}
+};
+
+Datum
+ora_nls_charset_id(PG_FUNCTION_ARGS)
+{
+	const char *name = text_to_cstring(PG_GETARG_TEXT_PP(0));
+	int			i;
+
+	for (i = 0; i < lengthof(ora_nls_charsets); i++)
+	{
+		if (pg_strcasecmp(name, ora_nls_charsets[i].name) == 0)
+			PG_RETURN_DATUM(DirectFunctionCall1(int4_numeric,
+												Int32GetDatum(ora_nls_charsets[i].id)));
+	}
+
+	ereport(ERROR,
+			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			 errmsg("invalid character set name: \"%s\"", name)));
+
+	PG_RETURN_NULL();			/* keep the compiler quiet */
+}
+
+Datum
+ora_nls_charset_name(PG_FUNCTION_ARGS)
+{
+	int32		id = DatumGetInt32(DirectFunctionCall1(numeric_int4,
+													   PG_GETARG_DATUM(0)));
+	int			i;
+
+	for (i = 0; i < lengthof(ora_nls_charsets); i++)
+	{
+		if (id == ora_nls_charsets[i].id)
+			PG_RETURN_TEXT_P(cstring_to_text(ora_nls_charsets[i].name));
+	}
+
+	PG_RETURN_NULL();
+}
