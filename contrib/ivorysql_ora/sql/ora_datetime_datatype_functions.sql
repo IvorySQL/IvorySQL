@@ -818,3 +818,21 @@ drop table ds_tb;
 reset NLS_TIMESTAMP_FORMAT;
 reset NLS_TIMESTAMP_TZ_FORMAT;
 reset NLS_DATE_FORMAT;
+
+-- A year ending in 00 is the last year of its century, not the first.
+SELECT to_char(d, 'YYYY-MM-DD') AS input,
+       to_char(trunc(d, 'CC'), 'YYYY-MM-DD HH24:MI:SS') AS cc,
+       to_char(trunc(d, 'SCC'), 'YYYY-MM-DD HH24:MI:SS') AS scc
+FROM (VALUES (date '0001-01-01'), (date '0100-12-31'),
+             (date '0101-01-01'), (date '1899-12-31'),
+             (date '1900-12-31'), (date '1901-01-01'),
+             (date '2000-06-15'), (date '2001-01-01'),
+             (date '2100-12-31')) AS t(d)
+ORDER BY d;
+-- Truncation must not move a date forwards or change its century number.
+SELECT count(*) AS bad_centuries
+FROM (SELECT to_date(y::text || '-12-31 23:59:59',
+                     'YYYY-MM-DD HH24:MI:SS') AS d
+      FROM generate_series(1, 9999) AS g(y)) AS t
+WHERE trunc(d, 'CC') > d
+   OR to_char(trunc(d, 'CC'), 'CC') <> to_char(d, 'CC');
