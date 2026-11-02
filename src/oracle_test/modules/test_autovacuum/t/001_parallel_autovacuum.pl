@@ -169,6 +169,7 @@ $node->safe_psql(
 	ALTER SYSTEM SET vacuum_cost_page_miss = 10;
 	ALTER SYSTEM SET vacuum_cost_page_dirty = 10;
 	ALTER SYSTEM SET vacuum_cost_page_hit = 10;
+	ALTER SYSTEM SET track_cost_delay_timing = on;
 	SELECT pg_reload_conf();
 });
 
@@ -183,7 +184,7 @@ $node->safe_psql(
 # Check whether parallel worker successfully updated all parameters during
 # index processing.
 $node->wait_for_log(
-	qr/parallel autovacuum worker updated cost params: cost_limit=500, cost_delay=5, cost_page_miss=10, cost_page_dirty=10, cost_page_hit=10/,
+	qr/parallel autovacuum worker updated cost params: cost_limit=500, cost_delay=5, cost_page_miss=10, cost_page_dirty=10, cost_page_hit=10, track_cost_delay_timing=yes/,
 	$log_offset);
 
 wait_for_autovacuum_complete($node, $av_count);
