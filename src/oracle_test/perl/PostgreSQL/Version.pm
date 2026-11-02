@@ -84,6 +84,7 @@ sub new
 	($arg, $devel) = ($1, $2)
 	  if (
 		$arg =~ m!^                             # beginning of line
+          (?:[A-Za-z_][\w.-]*\s+)?        # ignore program name, e.g. "psql"
           (?:\(?PostgreSQL\)?\s)?         # ignore PostgreSQL marker
           (\d+(?:\.\d+)*)                 # version number, dotted notation
           (devel|(?:alpha|beta|rc)\d+)?   # dev marker - see version_stamp.pl
