@@ -101,10 +101,10 @@ drop table tmp_decode;
 create table tmp_decode as
   select decode(123, 123, timestamp'2018-8-1 00:00:00', '456', date'2018-08-1') as b from dual;
 \d tmp_decode
-               Table "public.tmp_decode"
- Column |     Type     | Collation | Nullable | Default 
---------+--------------+-----------+----------+---------
- b      | timestamp(6) |           |          | 
+              Table "public.tmp_decode"
+ Column |   Type    | Collation | Nullable | Default 
+--------+-----------+-----------+----------+---------
+ b      | timestamp |           |          | 
 
 drop table tmp_decode;
 --return type is interval
@@ -556,9 +556,9 @@ drop table test1;
 create table test1(col1 interval year to month,col2  int);
 insert into test1 values('1-2',1);
 SELECT NVL (col1, NULL) from test1;
-  nvl   
---------
- +01-02
+      nvl      
+---------------
+ +000000001-02
 (1 row)
 
 drop table test1;
@@ -969,9 +969,9 @@ drop table test1;
 create table test1(col1 interval year to month,col2  int);
 insert into test1 values('1-2',1);
 SELECT NVL (NULL, col1) from test1;
-  nvl   
---------
- +01-02
+      nvl      
+---------------
+ +000000001-02
 (1 row)
 
 drop table test1;
@@ -4256,9 +4256,9 @@ drop table test1;
 create table test1(col1 interval year to month,col2  int);
 insert into test1 values('1-2',1);
 SELECT decode (23, 20,NULL,23,col1,col1) from test1;
- decode 
---------
- +01-02
+    decode     
+---------------
+ +000000001-02
 (1 row)
 
 drop table test1;
