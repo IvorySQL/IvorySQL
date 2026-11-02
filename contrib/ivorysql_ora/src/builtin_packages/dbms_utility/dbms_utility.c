@@ -345,6 +345,10 @@ sqlstate_to_ora_errnum(int sqlerrcode)
 			return "ORA-06502";		/* PL/SQL: numeric or value error */
 		case ERRCODE_INVALID_CURSOR_STATE:
 			return "ORA-01001";		/* invalid cursor */
+		case ERRCODE_UNIQUE_VIOLATION:
+			return "ORA-00001";		/* unique constraint violated */
+		case ERRCODE_CHECK_VIOLATION:
+			return "ORA-02290";		/* check constraint violated */
 		case ERRCODE_RAISE_EXCEPTION:
 			return "ORA-06510";		/* PL/SQL: unhandled user-defined exception */
 		default:
