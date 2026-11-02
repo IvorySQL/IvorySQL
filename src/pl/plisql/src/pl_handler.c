@@ -777,6 +777,14 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 	func = plisql_compile_inline(codeblock->source_text, codeblock->params, codeblock->do_from_call,
 								VOIDOID, false);
 
+	/*
+	 * plisql_compile_inline() only tags blocks that carry parameters as
+	 * PROKIND_ANONYMOUS_BLOCK.  A DO block is an anonymous block whether or
+	 * not it has parameters; tag it here so FORMAT_CALL_STACK labels the
+	 * frame correctly (issue #2317).
+	 */
+	func->fn_prokind = PROKIND_ANONYMOUS_BLOCK;
+
 	/* Record the active function for this SPI level. */
 	SPI_remember_func(func);
 
