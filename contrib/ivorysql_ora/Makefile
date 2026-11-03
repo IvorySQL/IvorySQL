@@ -76,18 +76,22 @@ ORA_REGRESS = \
 	ora_datetime \
 	ora_interval \
 	ora_number \
+	ora_to_number_hex \
 	ora_binary_float \
 	ora_binary_double \
 	ora_nanvl \
 	ora_raw_long \
 	ora_character_datatype_functions \
+	ora_substr \
 	ora_datetime_datatype_functions \
 	ora_misc_functions \
 	ora_vsize \
 	ora_merge \
 	datatype_and_func_bugs \
 	ora_sysview \
+	ora_arguments \
 	ora_like_operator \
+	ora_like_bigint \
 	ora_xml_functions \
 	dbms_utility \
 	ora_dbms_output \

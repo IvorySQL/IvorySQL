@@ -46,6 +46,8 @@
 #include "access/genam.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
+#include "utils/guc.h"
+#include "utils/resowner.h"
 #include "utils/tuplestore.h"
 
 
@@ -2169,6 +2171,7 @@ plisql_push_compile_global_proper(void)
 
 	/* come from pl_funcs.c */
 	plisql_saved_compile_proper[plisql_curr_global_proper_level].ns_top = plisql_ns_top();
+	plisql_saved_compile_proper[plisql_curr_global_proper_level].metadata_frame = false;
 
 	/* maybe add pl_udttype.h in further */
 	plisql_curr_global_proper_level++;
@@ -2791,8 +2794,11 @@ get_current_compile_package(PackageCacheKey key)
 	int			pkg_ndatums;
 	int			pkg_nsubprocfuncs;
 
+	/* Dictionary reads can save an empty or already discarded compiler. */
 	for (i = 0; i < plisql_curr_global_proper_level; i++)
-		if (plisql_saved_compile_proper[i].plisql_saved_compile[0]->item != NULL &&
+		if (!plisql_saved_compile_proper[i].metadata_frame &&
+			plisql_saved_compile_proper[i].plisql_saved_compile[0] != NULL &&
+			plisql_saved_compile_proper[i].plisql_saved_compile[0]->item != NULL &&
 			plisql_saved_compile_proper[i].plisql_saved_compile[0]->item->pkey == key)
 			break;
 
@@ -3321,7 +3327,74 @@ is_compile_standard_package(void)
 }
 
 /*
- * get package specification subprocs
+ * Compile only the specification for dictionary reads.  An invalid package
+ * must not prevent arguments of unrelated routines from being inspected.
+ * Keep compiler state and search_path local to this operation, including when
+ * a referenced relation or type no longer exists.
+ */
+static PackageCacheItem *
+plisql_package_compile_for_metadata(Oid pkgoid)
+{
+	MemoryContext oldcontext = CurrentMemoryContext;
+	ResourceOwner oldowner = CurrentResourceOwner;
+	PackageCacheItem *volatile item = NULL;
+	HeapTuple tup;
+	char *namespace;
+	char *path;
+	int nestlevel;
+
+	tup = SearchSysCache1(PKGOID, ObjectIdGetDatum(pkgoid));
+	if (!HeapTupleIsValid(tup))
+		return NULL;
+	namespace = get_namespace_name(((Form_pg_package) GETSTRUCT(tup))->pkgnamespace);
+	path = psprintf("%s, sys, pg_catalog", quote_identifier(namespace));
+	ReleaseSysCache(tup);
+
+	plisql_push_compile_global_proper();
+	/* Preserve caller globals without treating them as an active compiler. */
+	plisql_saved_compile_proper[plisql_curr_global_proper_level - 1].metadata_frame = true;
+	BeginInternalSubTransaction(NULL);
+	PG_TRY();
+	{
+		nestlevel = NewGUCNestLevel();
+		set_config_option("search_path", path, PGC_USERSET, PGC_S_SESSION,
+						  GUC_ACTION_SAVE, true, 0, false);
+		item = plisql_package_compile(pkgoid, false, false);
+		AtEOXact_GUC(true, nestlevel);
+		ReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldcontext);
+		CurrentResourceOwner = oldowner;
+	}
+	PG_CATCH();
+	{
+		ErrorData *edata;
+
+		MemoryContextSwitchTo(oldcontext);
+		edata = CopyErrorData();
+		FlushErrorState();
+		RollbackAndReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldcontext);
+		CurrentResourceOwner = oldowner;
+
+		/* Do not hide cancellation, resource exhaustion, or internal errors. */
+		if (ERRCODE_TO_CATEGORY(edata->sqlerrcode) !=
+			ERRCODE_SYNTAX_ERROR_OR_ACCESS_RULE_VIOLATION)
+		{
+			plisql_pop_compile_global_proper();
+			ReThrowError(edata);
+		}
+		FreeErrorData(edata);
+		item = NULL;
+	}
+	PG_END_TRY();
+	plisql_pop_compile_global_proper();
+	pfree(namespace);
+	pfree(path);
+	return item;
+}
+
+/*
+ * Get package specification subprograms.
  */
 void
 plisql_get_subprocs_from_package(Oid pkgoid,
@@ -3340,8 +3413,8 @@ plisql_get_subprocs_from_package(Oid pkgoid,
 
 	item = PackageCacheLookup(&pkgoid);
 
-	if (item == NULL)
-		item = plisql_package_compile(pkgoid, false, false);
+	if (item == NULL || PACKAGE_SPECIFICATION_IS_UPDATED(item->cachestatus))
+		item = plisql_package_compile_for_metadata(pkgoid);
 	if (item == NULL)
 		return;
 
@@ -3468,9 +3541,19 @@ plisql_get_subprocs_from_package(Oid pkgoid,
 				paramObjectTypes[i] = CStringGetTextDatum("_NULL_");
 				paramDataLengths[i] = Int32GetDatum(0);
 
-				/* precision (i.e. max number of digits) is in upper bits of typmod */
-				paramDataPrecisions[i] = Int32GetDatum(((typmode - VARHDRSZ) >> 16) & 0xffff);
-				paramDataScales[i] = Int32GetDatum((typmode - VARHDRSZ) & 0xffff);
+				/* Unconstrained numeric has no precision or scale. */
+				if (typmode >= VARHDRSZ)
+				{
+					paramDataPrecisions[i] = Int32GetDatum(((typmode - VARHDRSZ) >> 16) & 0xffff);
+					/* Scale is stored as an 11-bit signed integer. */
+					paramDataScales[i] = Int32GetDatum(
+						(((typmode - VARHDRSZ) & 0x7ff) ^ 1024) - 1024);
+				}
+				else
+				{
+					paramDataPrecisions[i] = Int32GetDatum(0);
+					paramDataScales[i] = Int32GetDatum(0);
+				}
 			}
 			else
 			{
@@ -3544,9 +3627,19 @@ plisql_get_subprocs_from_package(Oid pkgoid,
 				paramObjectTypes[i] = CStringGetTextDatum("_NULL_");
 				paramDataLengths[i] = Int32GetDatum(0);
 
-				/* precision (i.e. max number of digits) is in upper bits of typmod */
-				paramDataPrecisions[i] = Int32GetDatum(((typmode - VARHDRSZ) >> 16) & 0xffff);
-				paramDataScales[i] = Int32GetDatum((typmode - VARHDRSZ) & 0xffff);
+				/* Unconstrained numeric has no precision or scale. */
+				if (typmode >= VARHDRSZ)
+				{
+					paramDataPrecisions[i] = Int32GetDatum(((typmode - VARHDRSZ) >> 16) & 0xffff);
+					/* Scale is stored as an 11-bit signed integer. */
+					paramDataScales[i] = Int32GetDatum(
+						(((typmode - VARHDRSZ) & 0x7ff) ^ 1024) - 1024);
+				}
+				else
+				{
+					paramDataPrecisions[i] = Int32GetDatum(0);
+					paramDataScales[i] = Int32GetDatum(0);
+				}
 			}
 			else
 			{
