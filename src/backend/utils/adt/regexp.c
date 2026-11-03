@@ -1563,7 +1563,8 @@ ora_setup_regexp_substr_matches(text *src_text,
 	int			array_idx;
 	int			prev_match_end = 0;
 	int			src_text_len = VARSIZE_ANY_EXHDR(src_text);
-	regmatch_t		pmatch[10];
+	regmatch_t *pmatch;
+	int			pmatch_len;
 	pg_wchar		*data;
 	size_t			data_len;
 	int			search_start;
@@ -1578,13 +1579,26 @@ ora_setup_regexp_substr_matches(text *src_text,
 		use_subpatterns = true;
 		matchctx->use_subpatterns = true;
 		matchctx->npatterns = re->re_nsub;
+
+		/*
+		 * RE_wchar_execute() reports the whole match plus one regmatch_t per
+		 * parenthesized group, and the loop below copies up to npatterns of
+		 * them, so the array must hold re_nsub + 1 entries.  A fixed-size
+		 * array is overrun by any pattern with ten or more capture groups.
+		 * setup_regexp_matches() sizes its array the same way.
+		 */
+		pmatch_len = re->re_nsub + 1;
 	}
 	else
 	{
 		use_subpatterns = false;
 		matchctx->use_subpatterns = false;
 		matchctx->npatterns = 1;
+		pmatch_len = 1;
 	}
+
+	/* temporary space for RE_wchar_execute() to return match locations */
+	pmatch = palloc_array(regmatch_t, pmatch_len);
 
 	/* the real output space (grown dynamically if needed) */
 	array_len = re_flags.glob ? 256 : 32;
@@ -1601,7 +1615,7 @@ ora_setup_regexp_substr_matches(text *src_text,
 	if(start_posn > 1)
 		search_start = start_posn - 1;
 	while (RE_wchar_execute(re, data, data_len, search_start,
-							10, pmatch))
+							pmatch_len, pmatch))
 	{
 		matchctx->nmatches++;
 
@@ -1658,9 +1672,13 @@ ora_setup_regexp_substr_matches(text *src_text,
 	 */
 	if (array_idx > 0 &&
 		ora_build_regexp_substr_matches_result(matchctx,subexpr_pos,substr))
+	{
+		pfree(pmatch);
 		return true;
-	else
-		return false;
+	}
+
+	pfree(pmatch);
+	return false;
 }
 
 static bool
@@ -1735,7 +1753,8 @@ ora_setup_regexp_instr_matches(text *src_text,
 	int			array_idx;
 	int			prev_match_end = 0;
 	int			src_text_len = VARSIZE_ANY_EXHDR(src_text);
-	regmatch_t	pmatch[10];
+	regmatch_t *pmatch;
+	int			pmatch_len;
 	pg_wchar   *data;
 	size_t		data_len;
 	int			search_start;
@@ -1750,13 +1769,26 @@ ora_setup_regexp_instr_matches(text *src_text,
 		use_subpatterns = true;
 		matchctx->use_subpatterns = true;
 		matchctx->npatterns = re->re_nsub;
+
+		/*
+		 * RE_wchar_execute() reports the whole match plus one regmatch_t per
+		 * parenthesized group, and the loop below copies up to npatterns of
+		 * them, so the array must hold re_nsub + 1 entries.  A fixed-size
+		 * array is overrun by any pattern with ten or more capture groups.
+		 * setup_regexp_matches() sizes its array the same way.
+		 */
+		pmatch_len = re->re_nsub + 1;
 	}
 	else
 	{
 		use_subpatterns = false;
 		matchctx->use_subpatterns = false;
 		matchctx->npatterns = 1;
+		pmatch_len = 1;
 	}
+
+	/* temporary space for RE_wchar_execute() to return match locations */
+	pmatch = palloc_array(regmatch_t, pmatch_len);
 
 	/* the real output space (grown dynamically if needed) */
 	array_len = re_flags.glob ? 256 : 32;
@@ -1773,7 +1805,7 @@ ora_setup_regexp_instr_matches(text *src_text,
 	if(start_posn > 1)
 		search_start = start_posn - 1;
 	while (RE_wchar_execute(re, data, data_len, search_start,
-							10, pmatch))
+							pmatch_len, pmatch))
 	{
 		matchctx->nmatches++;
 
@@ -1824,7 +1856,10 @@ ora_setup_regexp_instr_matches(text *src_text,
 	}
 
 	if (occur_posn > matchctx->nmatches)
+	{
+		pfree(pmatch);
 		return false;
+	}
 
 	/*
 	 * If the substring position of the regular expression is not specified,
@@ -1832,9 +1867,13 @@ ora_setup_regexp_instr_matches(text *src_text,
 	 * the entire string that matches is directly returned.
 	 */
 	if (ora_build_regexp_instr_matches_result(matchctx,ret_opt,subexpr_pos,substr))
+	{
+		pfree(pmatch);
 		return true;
-	else
-		return false;
+	}
+
+	pfree(pmatch);
+	return false;
 }
 
 
