@@ -1558,3 +1558,19 @@ select to_single_byte('１．２');
 select to_single_byte(１．２);
 select to_single_byte(3.4);
 select to_single_byte(NULL);
+
+/*
+ * REPLACE - the bare name must resolve to sys.replace, whose C body already
+ * implements Oracle's NULL rules: a NULL (or empty, which oracle mode makes
+ * NULL) replacement removes the search string, and a NULL search returns the
+ * subject unchanged.  pg_catalog.replace is strict and returns NULL for the
+ * first group; it wins the unknown-literal bid whenever sys.replace is
+ * declared over varchar.  Expected values measured on Oracle Database 21c.
+ */
+select replace('abcabc', 'b', 'X') from dual;
+select replace('abcabc', 'b') from dual;
+select replace('abc', 'b', '') from dual;
+select replace('abc', 'b', NULL) from dual;
+select replace('abc', '', 'X') from dual;
+select replace('abc', NULL, 'X') from dual;
+select replace(NULL, 'a', 'b') from dual;
