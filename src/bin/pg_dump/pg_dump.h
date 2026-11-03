@@ -243,12 +243,8 @@ typedef struct _shellTypeInfo
 typedef struct _pkgInfo
 {
 	DumpableObject dobj;
-	char		*rolname;		/* name of owner, or empty string */
-	char		*pkgacl;
-	char		*rpkgacl;
-	char		*initpkgacl;
-	char		*initrpkgacl;
-	DumpableAcl	dacl;
+	DumpableAcl dacl;
+	const char *rolname;	/* name of owner, or empty string */
 } PkgInfo;
 
 typedef struct _funcInfo
