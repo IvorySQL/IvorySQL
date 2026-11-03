@@ -322,12 +322,14 @@ insert into datetest values (tz_offset('Asia/Shanghai'));
 insert into datetest values (tz_offset('GMT'));
 select tz_offset('-12:59') from dual; /* BUG:0000444 */
 select tz_offset('+14:05') from dual; /* BUG:0000444 */
+select tz_offset('+08:00garbage') from dual; /* reject trailing characters */
 	
 select * from datetest;
 drop table datetest;
 
 --from_tz
 SELECT FROM_TZ(TIMESTAMP '2000-03-28 08:00:00', '3:00') FROM DUAL;
+SELECT FROM_TZ(TIMESTAMP '2000-03-28 08:00:00', '-05:00junk') FROM DUAL;
   
 --sessiontimezone
 set timezone = 'Asia/Hong_Kong';
