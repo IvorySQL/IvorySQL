@@ -2384,11 +2384,22 @@ heap_insert_for_repack(HeapTuple tuple, Relation OldHeap, Relation NewHeap,
 					   Datum *values, bool *isnull, BulkInsertState bistate)
 {
 	HeapTuple	newtuple;
+	uint32		options = HEAP_INSERT_NO_LOGICAL;
 
 	newtuple = reform_tuple(tuple, OldHeap, NewHeap, values, isnull);
 
+	/*
+	 * reform_tuple() has carried the source ROWID over if the relation has
+	 * one; tell heap_insert() to keep it instead of handing out a new
+	 * sequence value.  Otherwise the ROWIDs of a concurrently repacked table
+	 * would change, just as they used to for VACUUM FULL and CLUSTER.
+	 */
+	if (NewHeap->rd_rel->relhasrowid &&
+		(tuple->t_data->t_infomask & HEAP_HASROWID))
+		options |= HEAP_INSERT_KEEP_ROWID;
+
 	heap_insert(NewHeap, newtuple, GetCurrentCommandId(true),
-				HEAP_INSERT_NO_LOGICAL, bistate);
+				options, bistate);
 
 	heap_freetuple(newtuple);
 }
@@ -2410,6 +2421,7 @@ reform_tuple(HeapTuple tuple, Relation OldHeap, Relation NewHeap,
 	TupleDesc	oldTupDesc = RelationGetDescr(OldHeap);
 	TupleDesc	newTupDesc = RelationGetDescr(NewHeap);
 	bool		needs_reform = false;
+	HeapTuple	newtuple;
 
 	/*
 	 * A short tuple might require values from attmissing val, so activate the
@@ -2439,17 +2451,32 @@ reform_tuple(HeapTuple tuple, Relation OldHeap, Relation NewHeap,
 
 	/* Skip work if no changes are needed */
 	if (!needs_reform)
-		return heap_copytuple(tuple);
-
-	heap_deform_tuple(tuple, oldTupDesc, values, isnull);
-
-	for (int i = 0; i < newTupDesc->natts; i++)
+		newtuple = heap_copytuple(tuple);
+	else
 	{
-		if (TupleDescCompactAttr(newTupDesc, i)->attisdropped)
-			isnull[i] = true;
+		heap_deform_tuple(tuple, oldTupDesc, values, isnull);
+
+		for (int i = 0; i < newTupDesc->natts; i++)
+		{
+			if (TupleDescCompactAttr(newTupDesc, i)->attisdropped)
+				isnull[i] = true;
+		}
+
+		newtuple = heap_form_tuple(newTupDesc, values, isnull);
 	}
 
-	return heap_form_tuple(newTupDesc, values, isnull);
+	/*
+	 * heap_form_tuple() reserves space for the Oracle-compatible ROWID but
+	 * leaves it zeroed.  Carry the original ROWID over so that a table
+	 * rewrite (VACUUM FULL, CLUSTER, ALTER TABLE, ...) neither invalidates
+	 * the ROWIDs that applications may have cached nor collapses every row
+	 * to the degenerate (tableoid, 0) ROWID.
+	 */
+	if (newTupDesc->tdhasrowid &&
+		(tuple->t_data->t_infomask & HEAP_HASROWID))
+		HeapTupleSetRowId(newtuple, HeapTupleGetRowId(tuple));
+
+	return newtuple;
 }
 
 /*

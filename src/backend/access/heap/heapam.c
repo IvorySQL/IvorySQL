@@ -2282,6 +2282,13 @@ heap_prepare_insert(Relation relation, HeapTuple tup, TransactionId xid,
 		/* this is redundant with an Assert in HeapTupleSetRowId */
 		Assert(tup->t_data->t_infomask & HEAP_HASROWID);
 #endif
+		/*
+		 * The table-rewrite paths carry the source tuple's ROWID over and
+		 * pass HEAP_INSERT_KEEP_ROWID, so that ROWIDs cached by applications
+		 * keep locating the same rows.  Only assign a fresh sequence value
+		 * when the caller did not supply one through either KEEP_ROWID or
+		 * the pg_dump restore override.
+		 */
 		/* Never let a skipped/redirected insert affect a subsequent command. */
 		if (OidIsValid(ora_restore_relid) &&
 			(ora_restore_cid != cid ||
@@ -2295,11 +2302,17 @@ heap_prepare_insert(Relation relation, HeapTuple tup, TransactionId xid,
 			 */
 			seqnum = ora_restore_rowno;
 			ora_reset_restore_rowid();
+			/* Set the HeapTupleHeader */
+			HeapTupleSetRowId(tup, seqnum);
 		}
-		else
+		else if (!(options & HEAP_INSERT_KEEP_ROWID) ||
+				 !(tup->t_data->t_infomask & HEAP_HASROWID))
+		{
+			/* Get the sequence next value */
 			seqnum = nextval_internal(relation->rd_rowdSeqid, true);
-		/* Set the HeapTupleHeader */
-		HeapTupleSetRowId(tup, seqnum);
+			/* Set the HeapTupleHeader */
+			HeapTupleSetRowId(tup, seqnum);
+		}
 	}
 
 	tup->t_data->t_infomask &= ~(HEAP_XACT_MASK);
