@@ -118,3 +118,65 @@ begin
 end
 $$;
 commit;
+--
+-- test DBMS_LOCK cross-mode reacquisition (S then X)
+--
+begin;
+declare
+ v_lockname varchar2(10) = 'LOCKSX';
+ v_handle text;
+ v_rc int;
+ v_lockcount int;
+begin
+ dbms_lock.allocate_unique(v_lockname, v_handle);
+ v_rc := dbms_lock.request(v_handle, dbms_lock.s_mode, 0);
+ raise notice 'request rc=%', v_rc;
+ assert v_rc = 0, format('DBMS_LOCK.request failed: rc=%s', v_rc);
+ v_rc := dbms_lock.request(v_handle, dbms_lock.x_mode, 0);
+ raise notice 'cross-mode request rc=%', v_rc;
+ assert v_rc = 4, format('DBMS_LOCK.request should report already owned: rc=%s', v_rc);
+ select count(*) into v_lockcount from pg_locks
+  where pid = pg_backend_pid() and locktype = 'advisory';
+ raise notice 'advisory locks held=%', v_lockcount;
+ assert v_lockcount = 1, format('expected exactly one advisory lock: %s', v_lockcount);
+ v_rc := dbms_lock.release(v_handle);
+ raise notice 'release rc=%', v_rc;
+ assert v_rc = 0, format('DBMS_LOCK.release failed: rc=%s', v_rc);
+ select count(*) into v_lockcount from pg_locks
+  where pid = pg_backend_pid() and locktype = 'advisory';
+ raise notice 'advisory locks held=%', v_lockcount;
+ assert v_lockcount = 0, format('release must leave no advisory locks: %s', v_lockcount);
+end;
+/
+commit;
+--
+-- test DBMS_LOCK cross-mode reacquisition (X then S)
+--
+begin;
+declare
+ v_lockname varchar2(10) = 'LOCKXS';
+ v_handle text;
+ v_rc int;
+ v_lockcount int;
+begin
+ dbms_lock.allocate_unique(v_lockname, v_handle);
+ v_rc := dbms_lock.request(v_handle, dbms_lock.x_mode, 0);
+ raise notice 'request rc=%', v_rc;
+ assert v_rc = 0, format('DBMS_LOCK.request failed: rc=%s', v_rc);
+ v_rc := dbms_lock.request(v_handle, dbms_lock.s_mode, 0);
+ raise notice 'cross-mode request rc=%', v_rc;
+ assert v_rc = 4, format('DBMS_LOCK.request should report already owned: rc=%s', v_rc);
+ select count(*) into v_lockcount from pg_locks
+  where pid = pg_backend_pid() and locktype = 'advisory';
+ raise notice 'advisory locks held=%', v_lockcount;
+ assert v_lockcount = 1, format('expected exactly one advisory lock: %s', v_lockcount);
+ v_rc := dbms_lock.release(v_handle);
+ raise notice 'release rc=%', v_rc;
+ assert v_rc = 0, format('DBMS_LOCK.release failed: rc=%s', v_rc);
+ select count(*) into v_lockcount from pg_locks
+  where pid = pg_backend_pid() and locktype = 'advisory';
+ raise notice 'advisory locks held=%', v_lockcount;
+ assert v_lockcount = 0, format('release must leave no advisory locks: %s', v_lockcount);
+end;
+/
+commit;
