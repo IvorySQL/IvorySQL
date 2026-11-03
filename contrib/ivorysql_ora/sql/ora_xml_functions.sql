@@ -39,6 +39,12 @@ SELECT extract(XMLType('<a><b>b1</b><b>b2</b></a>'),'') from dual;
 
 SELECT extract(XMLType('<a><b>b1</b><b>b2</b></a>'),null) from dual;
 
+-- Exercise text node conversion and element output in both EXTRACT overloads.
+select sys.extract('<a><b>100</b></a>'::sys.xmltype, '/a/b/text()');
+select sys.extract('<a><b>b1</b><b>b2</b></a>'::sys.xmltype, '/a/b/text()');
+select sys.extract('<a><b>100</b></a>'::sys.xmltype, '/a/b');
+select sys.extract('<a xmlns="urn:extract"><b>100</b></a>'::sys.xmltype, '/x:a/x:b/text()', 'xmlns:x="urn:extract"');
+
 SELECT extract(data, 'soapenv:Envelope/soapenv:Body/web:BBB/typ:EEE', 'xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"') from xmlnstest where id = 1;
 
 --
