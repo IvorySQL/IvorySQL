@@ -1,0 +1,88 @@
+--
+-- Oracle-compatible SUBSTR character semantics
+--
+SET ivorysql.compatible_mode = oracle;
+SELECT substr('abcdef', 2, 2) AS normal_positive;
+ normal_positive 
+-----------------
+ bc
+(1 row)
+
+SELECT substr('abcdef', 0, 2) AS zero_position;
+ zero_position 
+---------------
+ ab
+(1 row)
+
+SELECT substr('abcdef', -2, 2) AS negative_position;
+ negative_position 
+-------------------
+ ef
+(1 row)
+
+SELECT substr('abcdef', -2) AS negative_without_length;
+ negative_without_length 
+-------------------------
+ ef
+(1 row)
+
+SELECT substr('abcdef', 2, 0) IS NULL AS zero_length_is_null;
+ zero_length_is_null 
+---------------------
+ t
+(1 row)
+
+SELECT substr('abcdef', 2, -1) IS NULL AS negative_length_is_null;
+ negative_length_is_null 
+-------------------------
+ t
+(1 row)
+
+SELECT substr('abcdef', 20) IS NULL AS past_end_is_null;
+ past_end_is_null 
+------------------
+ t
+(1 row)
+
+-- Positions count characters rather than bytes.
+SELECT substr('你好吗', -2, 1) AS multibyte_negative;
+ multibyte_negative 
+--------------------
+ 好
+(1 row)
+
+SELECT substr('你好吗', 0, 2) AS multibyte_zero;
+ multibyte_zero 
+----------------
+ 你好
+(1 row)
+
+-- Numeric positions and lengths retain the existing Oracle coercion path.
+SELECT substr('abcdef', 2.4::number, 2.4::number) AS numeric_arguments;
+ numeric_arguments 
+-------------------
+ bc
+(1 row)
+
+-- The byte-semantic variant remains unchanged.
+SELECT substrb('abcdef', -2, 2) AS substrb_control;
+ substrb_control 
+-----------------
+ ef
+(1 row)
+
+-- PostgreSQL mode must continue using pg_catalog.substr semantics.
+SET ivorysql.compatible_mode = pg;
+SELECT substr('abcdef', 0, 2) AS pg_zero_position;
+ pg_zero_position 
+------------------
+ a
+(1 row)
+
+SELECT substr('abcdef', 2, 0) IS NULL AS pg_zero_length_is_null;
+ pg_zero_length_is_null 
+------------------------
+ f
+(1 row)
+
+RESET ivorysql.compatible_mode;
