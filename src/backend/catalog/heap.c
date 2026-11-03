@@ -3329,7 +3329,8 @@ contains_user_functions_checker(Oid func_id, void *context)
 	if (compatible_db != ORA_PARSER)
 		return (func_id >= FirstUnpinnedObjectId);
 	else
-		return (func_id >= FirstNormalObjectId);
+		return (func_id >= FirstNormalObjectId &&
+				!is_ora_builtin_expr_function(func_id));
 }
 
 /*

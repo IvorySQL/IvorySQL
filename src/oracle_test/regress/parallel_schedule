@@ -14,6 +14,10 @@ test: case_conversion
 # required setup steps
 test: test_setup
 
+# Changes to extension objects must not overlap other tests.  All changes made
+# by this test are rolled back before the parallel groups start.
+test: oracle_builtin_oid
+
 # ----------
 # The first group of parallel tests
 # ----------
