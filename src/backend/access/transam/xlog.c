@@ -5889,6 +5889,12 @@ int GetCaseSwitchModeFromControl(char* path)
 /*
  * Get the database compatibility mode, and set up in the system
  *
+ * The value comes from the control file, so it is a default computed at
+ * startup, not the compiled-in one: with PGC_S_DYNAMIC_DEFAULT the
+ * postmaster writes it to the non-default variables file, and a child
+ * process started under EXEC_BACKEND (Windows) reads it back.  With
+ * PGC_S_DEFAULT the children ran with the compiled default, interchange,
+ * whatever initdb -C had said.
  */
 void SetCaseGucOption(char* path)
 {
@@ -5905,17 +5911,17 @@ void SetCaseGucOption(char* path)
 		if (casemode == NORMAL)
 		{
 			SetConfigOption("ivorysql.identifier_case_switch", "normal",
-				PGC_USERSET, PGC_S_DEFAULT);
+				PGC_USERSET, PGC_S_DYNAMIC_DEFAULT);
 		}
 		else if (casemode == INTERCHANGE)
 		{
 			SetConfigOption("ivorysql.identifier_case_switch", "interchange",
-				PGC_USERSET, PGC_S_DEFAULT);
+				PGC_USERSET, PGC_S_DYNAMIC_DEFAULT);
 		}
 		else if (casemode == LOWERCASE)
 		{
 			SetConfigOption("ivorysql.identifier_case_switch", "lowercase",
-				PGC_USERSET, PGC_S_DEFAULT);
+				PGC_USERSET, PGC_S_DYNAMIC_DEFAULT);
 		}
 		else
 			ereport(FATAL,
