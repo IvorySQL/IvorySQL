@@ -23,6 +23,16 @@
 
 /* ScanKeywordList lookup data for SQL keywords */
 
+
+/*
+ * The generated header declares the keyword list PGDLLIMPORT, for the
+ * benefit of -Wmissing-variable-declarations, and then defines it. This
+ * file is part of the Oracle parser module, not the backend proper, so
+ * under MSVC that declaration would make the definition a redefinition
+ * with a different storage class (C2370); the list is this module's own.
+ */
+#undef PGDLLIMPORT
+#define PGDLLIMPORT
 #include "ora_kwlist_d.h"
 
 /* Keyword categories for SQL keywords */

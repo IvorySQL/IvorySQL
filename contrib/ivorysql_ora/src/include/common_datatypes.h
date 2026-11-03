@@ -69,8 +69,8 @@ extern PGDLLEXPORT Datum oratimestamptz_cmp(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum oratimestampltz_cmp(PG_FUNCTION_ARGS);
 
 /* dsinterval.c */
-extern Datum dsinterval_out(PG_FUNCTION_ARGS);
-extern Datum dsinterval_in(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dsinterval_out(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dsinterval_in(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum dsinterval_mi(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum dsinterval_eq(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum dsinterval_lt(PG_FUNCTION_ARGS);
@@ -80,8 +80,8 @@ extern PGDLLEXPORT Datum dsinterval_ge(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum dsinterval_cmp(PG_FUNCTION_ARGS);
 
 /* yminterval.c */
-extern Datum yminterval_out(PG_FUNCTION_ARGS);
-extern Datum yminterval_in(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum yminterval_out(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum yminterval_in(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum yminterval_mi(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum yminterval_eq(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum yminterval_lt(PG_FUNCTION_ARGS);

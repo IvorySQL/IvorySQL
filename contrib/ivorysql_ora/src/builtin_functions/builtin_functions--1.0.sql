@@ -336,7 +336,7 @@ PARALLEL SAFE;
 /* trim/ltrim/rtrim functions */
 CREATE FUNCTION sys.rtrim(sys.oravarcharchar)
 RETURNS oravarcharchar
-AS 'MODULE_PATHNAME','rtrim1'
+AS 'MODULE_PATHNAME','ora_rtrim1'
 LANGUAGE C
 PARALLEL SAFE
 STRICT
@@ -352,7 +352,7 @@ IMMUTABLE;
 
 CREATE FUNCTION sys.ltrim(sys.oravarcharchar)
 RETURNS oravarcharchar
-AS 'MODULE_PATHNAME','ltrim1'
+AS 'MODULE_PATHNAME','ora_ltrim1'
 LANGUAGE C
 PARALLEL SAFE
 STRICT

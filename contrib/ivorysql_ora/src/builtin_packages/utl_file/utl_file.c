@@ -49,6 +49,16 @@
 #include "utils/memutils.h"
 #include "utils/numeric.h"
 
+/*
+ * FGETATTR reports the file's block size. st_blksize is POSIX; the Windows
+ * struct stat has no such member, so a conventional size stands in there.
+ */
+#ifdef WIN32
+#define UTL_FILE_BLKSIZE(expr) 4096
+#else
+#define UTL_FILE_BLKSIZE(expr) (expr)
+#endif
+
 #define int2size(v)			v
 #define size2int(v)			v
 
@@ -592,7 +602,7 @@ ora_utl_file_fgetattr(PG_FUNCTION_ARGS)
 	{
 		values[0] = BoolGetDatum(true);
 		values[1] = NumericGetDatum(int64_to_numeric(st.st_size));
-		values[2] = Int32GetDatum(st.st_blksize);
+		values[2] = Int32GetDatum(UTL_FILE_BLKSIZE(st.st_blksize));
 	}
 	else
 	{
