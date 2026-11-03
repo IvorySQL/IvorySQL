@@ -1,0 +1,36 @@
+-- Oracle dictionary flags are single-character Y/N values, not booleans.
+SET IVORYSQL.COMPATIBLE_MODE TO ORACLE;
+SET IVORYSQL.IDENTIFIER_CASE_SWITCH = NORMAL;
+
+CREATE SEQUENCE iv_cycle_yes MAXVALUE 5 CYCLE;
+CREATE SEQUENCE iv_cycle_no MAXVALUE 5 NOCYCLE;
+
+SELECT 'ALL' AS dictionary, sequence_name, cycle_flag
+FROM sys.all_sequences WHERE sequence_name IN ('iv_cycle_yes', 'iv_cycle_no')
+UNION ALL
+SELECT 'DBA', sequence_name, cycle_flag
+FROM sys.dba_sequences WHERE sequence_name IN ('iv_cycle_yes', 'iv_cycle_no')
+UNION ALL
+SELECT 'USER', sequence_name, cycle_flag
+FROM sys.user_sequences WHERE sequence_name IN ('iv_cycle_yes', 'iv_cycle_no')
+ORDER BY 1, 2;
+
+-- Check the declared view column type, including its one-character limit.
+SELECT c.relname,
+       a.atttypid = pg_typeof('Y'::varchar2)::oid AS varchar2_type,
+       a.atttypmod = 5 AS single_character
+FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid
+WHERE a.attrelid IN ('sys.all_sequences'::regclass,
+                    'sys.dba_sequences'::regclass,
+                    'sys.user_sequences'::regclass)
+  AND a.attname = 'cycle_flag'
+ORDER BY c.relname;
+
+ALTER SEQUENCE iv_cycle_yes NOCYCLE;
+ALTER SEQUENCE iv_cycle_no CYCLE;
+SELECT sequence_name, cycle_flag
+FROM sys.user_sequences WHERE sequence_name IN ('iv_cycle_yes', 'iv_cycle_no')
+ORDER BY sequence_name;
+
+DROP SEQUENCE iv_cycle_yes;
+DROP SEQUENCE iv_cycle_no;
