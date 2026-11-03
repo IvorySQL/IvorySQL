@@ -1557,3 +1557,426 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- USER_/ALL_/DBA_LIBRARIES: Oracle's library objects are external code
+-- libraries.  In PostgreSQL a C function names its shared library in
+-- pg_proc.probin, so one row per (owner, library) is the same concept.
+CREATE OR REPLACE VIEW SYS.DBA_LIBRARIES AS
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(P.PROOWNER)::VARCHAR2)::VARCHAR2(128) AS OWNER,
+    SYS.ORA_CASE_TRANS(REGEXP_REPLACE(P.PROBIN, '^.*/', '')::VARCHAR2)::VARCHAR2(128) AS LIBRARY_NAME,
+    P.PROBIN::VARCHAR2(4000)                                       AS FILE_SPEC,
+    'YES'::VARCHAR2(3)                                             AS DYNAMIC,
+    'VALID'::VARCHAR2(7)                                           AS STATUS,
+    P.PROOWNER                                                     AS OWNER_OID
+FROM PG_CATALOG.PG_PROC P
+WHERE P.PROBIN IS NOT NULL
+GROUP BY P.PROOWNER, P.PROBIN;
+GRANT SELECT ON SYS.DBA_LIBRARIES TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.USER_LIBRARIES AS
+SELECT LIBRARY_NAME, FILE_SPEC, DYNAMIC, STATUS
+FROM SYS.DBA_LIBRARIES
+WHERE OWNER_OID = (SELECT OID FROM PG_CATALOG.PG_ROLES WHERE ROLNAME = CURRENT_USER);
+GRANT SELECT ON SYS.USER_LIBRARIES TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.ALL_LIBRARIES AS
+SELECT OWNER, LIBRARY_NAME, FILE_SPEC, DYNAMIC, STATUS
+FROM SYS.DBA_LIBRARIES;
+GRANT SELECT ON SYS.ALL_LIBRARIES TO PUBLIC;
+
+-- DBA_DIRECTORIES: the directory objects UTL_FILE uses, which PostgreSQL keeps
+-- in sys.utl_file_directory.  Oracle reports the creating schema as OWNER;
+-- IvorySQL keeps the objects in the SYS schema, so that is what is reported.
+CREATE OR REPLACE VIEW SYS.DBA_DIRECTORIES AS
+SELECT
+    'SYS'::VARCHAR2(128)                                           AS OWNER,
+    PG_CATALOG.UPPER(D.DIRNAME::TEXT)::VARCHAR2(128)                AS DIRECTORY_NAME,
+    D.DIR::VARCHAR2(4000)                                           AS DIRECTORY_PATH
+FROM SYS.UTL_FILE_DIRECTORY D
+ORDER BY DIRECTORY_NAME;
+GRANT SELECT ON SYS.DBA_DIRECTORIES TO PUBLIC;
+
+-- ALL_DIRECTORIES: the directories the current user can read.  The table is
+-- world-readable (UTL_FILE needs it), so in practice this is the same list as
+-- DBA_DIRECTORIES; it exists because Oracle clients query it by that name.
+CREATE OR REPLACE VIEW SYS.ALL_DIRECTORIES AS
+SELECT OWNER, DIRECTORY_NAME, DIRECTORY_PATH
+FROM SYS.DBA_DIRECTORIES;
+GRANT SELECT ON SYS.ALL_DIRECTORIES TO PUBLIC;
+
+-- USER_DEPENDENCIES: which relations each view of the current user reads.
+-- PostgreSQL records view references in pg_rewrite/pg_depend; functions are
+-- not covered here, matching Oracle's object types that have an equivalent.
+CREATE OR REPLACE VIEW SYS.USER_DEPENDENCIES AS
+
+SELECT DISTINCT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(V.RELOWNER)::VARCHAR2)::VARCHAR2(128)   AS OWNER,
+    SYS.ORA_CASE_TRANS(V.RELNAME::VARCHAR2)::VARCHAR2(128)                     AS NAME,
+    'VIEW'::VARCHAR2(18)                                                       AS TYPE,
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(T.RELOWNER)::VARCHAR2)::VARCHAR2(128)   AS REFERENCED_OWNER,
+    SYS.ORA_CASE_TRANS(T.RELNAME::VARCHAR2)::VARCHAR2(128)                     AS REFERENCED_NAME,
+    CASE T.RELKIND
+        WHEN 'v' THEN 'VIEW'
+        WHEN 'm' THEN 'MATERIALIZED VIEW'
+        ELSE 'TABLE'
+    END::VARCHAR2(18)                                                          AS REFERENCED_TYPE,
+    NULL::VARCHAR2(128)                                                        AS REFERENCED_LINK_NAME,
+    'HARD'::VARCHAR2(4)                                                        AS DEPENDENCY_TYPE
+FROM PG_CATALOG.PG_REWRITE R
+JOIN PG_CATALOG.PG_CLASS V ON V.OID = R.EV_CLASS
+JOIN PG_CATALOG.PG_DEPEND D
+  ON D.CLASSID = 'pg_rewrite'::REGCLASS
+ AND D.OBJID = R.OID
+ AND D.REFCLASSID = 'pg_class'::REGCLASS
+JOIN PG_CATALOG.PG_CLASS T ON T.OID = D.REFOBJID
+WHERE V.RELKIND = 'v'
+  AND V.OID <> T.OID
+  AND T.RELKIND IN ('r', 'p', 'v', 'm', 'f')
+
+  AND V.RELOWNER = (SELECT OID FROM PG_CATALOG.PG_ROLES WHERE ROLNAME = CURRENT_USER);
+GRANT SELECT ON SYS.USER_DEPENDENCIES TO PUBLIC;
+
+-- ALL_DEPENDENCIES: the same rows for every view the current user can read.
+CREATE OR REPLACE VIEW SYS.ALL_DEPENDENCIES AS
+
+SELECT DISTINCT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(V.RELOWNER)::VARCHAR2)::VARCHAR2(128)   AS OWNER,
+    SYS.ORA_CASE_TRANS(V.RELNAME::VARCHAR2)::VARCHAR2(128)                     AS NAME,
+    'VIEW'::VARCHAR2(18)                                                       AS TYPE,
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(T.RELOWNER)::VARCHAR2)::VARCHAR2(128)   AS REFERENCED_OWNER,
+    SYS.ORA_CASE_TRANS(T.RELNAME::VARCHAR2)::VARCHAR2(128)                     AS REFERENCED_NAME,
+    CASE T.RELKIND
+        WHEN 'v' THEN 'VIEW'
+        WHEN 'm' THEN 'MATERIALIZED VIEW'
+        ELSE 'TABLE'
+    END::VARCHAR2(18)                                                          AS REFERENCED_TYPE,
+    NULL::VARCHAR2(128)                                                        AS REFERENCED_LINK_NAME,
+    'HARD'::VARCHAR2(4)                                                        AS DEPENDENCY_TYPE
+FROM PG_CATALOG.PG_REWRITE R
+JOIN PG_CATALOG.PG_CLASS V ON V.OID = R.EV_CLASS
+JOIN PG_CATALOG.PG_DEPEND D
+  ON D.CLASSID = 'pg_rewrite'::REGCLASS
+ AND D.OBJID = R.OID
+ AND D.REFCLASSID = 'pg_class'::REGCLASS
+JOIN PG_CATALOG.PG_CLASS T ON T.OID = D.REFOBJID
+WHERE V.RELKIND = 'v'
+  AND V.OID <> T.OID
+  AND T.RELKIND IN ('r', 'p', 'v', 'm', 'f')
+
+  AND HAS_TABLE_PRIVILEGE(V.OID, 'SELECT');
+GRANT SELECT ON SYS.ALL_DEPENDENCIES TO PUBLIC;
+
+-- DBA_DEPENDENCIES: unrestricted.
+CREATE OR REPLACE VIEW SYS.DBA_DEPENDENCIES AS
+
+SELECT DISTINCT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(V.RELOWNER)::VARCHAR2)::VARCHAR2(128)   AS OWNER,
+    SYS.ORA_CASE_TRANS(V.RELNAME::VARCHAR2)::VARCHAR2(128)                     AS NAME,
+    'VIEW'::VARCHAR2(18)                                                       AS TYPE,
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(T.RELOWNER)::VARCHAR2)::VARCHAR2(128)   AS REFERENCED_OWNER,
+    SYS.ORA_CASE_TRANS(T.RELNAME::VARCHAR2)::VARCHAR2(128)                     AS REFERENCED_NAME,
+    CASE T.RELKIND
+        WHEN 'v' THEN 'VIEW'
+        WHEN 'm' THEN 'MATERIALIZED VIEW'
+        ELSE 'TABLE'
+    END::VARCHAR2(18)                                                          AS REFERENCED_TYPE,
+    NULL::VARCHAR2(128)                                                        AS REFERENCED_LINK_NAME,
+    'HARD'::VARCHAR2(4)                                                        AS DEPENDENCY_TYPE
+FROM PG_CATALOG.PG_REWRITE R
+JOIN PG_CATALOG.PG_CLASS V ON V.OID = R.EV_CLASS
+JOIN PG_CATALOG.PG_DEPEND D
+  ON D.CLASSID = 'pg_rewrite'::REGCLASS
+ AND D.OBJID = R.OID
+ AND D.REFCLASSID = 'pg_class'::REGCLASS
+JOIN PG_CATALOG.PG_CLASS T ON T.OID = D.REFOBJID
+WHERE V.RELKIND = 'v'
+  AND V.OID <> T.OID
+  AND T.RELKIND IN ('r', 'p', 'v', 'm', 'f')
+;
+GRANT SELECT ON SYS.DBA_DEPENDENCIES TO PUBLIC;
+
+--
+-- USER_CATALOG / ALL_CATALOG / DBA_CATALOG: the tables, views,
+-- materialized views and sequences, like Oracle's views of the same name.
+-- TABLE_TYPE tells the relation kind apart.
+--
+CREATE OR REPLACE VIEW SYS.USER_CATALOG AS
+SELECT
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE c.relkind
+        WHEN 'v' THEN 'VIEW'
+        WHEN 'm' THEN 'MATERIALIZED VIEW'
+        WHEN 'S' THEN 'SEQUENCE'
+        ELSE 'TABLE'
+    END)::varchar2(18) AS table_type
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND c.relkind IN ('r','p','v','m','S')
+    AND NOT c.relispartition
+    AND pg_catalog.pg_get_userbyid(c.relowner) = current_user;
+
+GRANT SELECT ON SYS.USER_CATALOG TO PUBLIC;
+
+--
+-- ALL_CATALOG: the same rows for every relation the current user may
+-- read, with the privilege filter the ALL_ views carry.
+-- TABLE_TYPE tells the relation kind apart.
+--
+CREATE OR REPLACE VIEW SYS.ALL_CATALOG AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE c.relkind
+        WHEN 'v' THEN 'VIEW'
+        WHEN 'm' THEN 'MATERIALIZED VIEW'
+        WHEN 'S' THEN 'SEQUENCE'
+        ELSE 'TABLE'
+    END)::varchar2(18) AS table_type
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND c.relkind IN ('r','p','v','m','S')
+    AND NOT c.relispartition
+    AND pg_catalog.has_table_privilege(current_user, c.oid, 'SELECT');
+
+GRANT SELECT ON SYS.ALL_CATALOG TO PUBLIC;
+
+--
+-- DBA_CATALOG: the same rows without the privilege filter, like the other
+-- DBA_ views.
+-- TABLE_TYPE tells the relation kind apart.
+--
+CREATE OR REPLACE VIEW SYS.DBA_CATALOG AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE c.relkind
+        WHEN 'v' THEN 'VIEW'
+        WHEN 'm' THEN 'MATERIALIZED VIEW'
+        WHEN 'S' THEN 'SEQUENCE'
+        ELSE 'TABLE'
+    END)::varchar2(18) AS table_type
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND c.relkind IN ('r','p','v','m','S')
+    AND NOT c.relispartition;
+
+
+GRANT SELECT ON SYS.DBA_CATALOG TO PUBLIC;
+
+--
+-- ALL_OBJECTS: the same object inventory as USER_OBJECTS, but for every
+-- object the current user may access, with the OWNER column the ALL_ views
+-- carry.  CREATED and LAST_DDL_TIME stay NULL because PostgreSQL does not
+-- track those timestamps and STATUS is always VALID because the catalogs
+-- have no invalid objects.
+--
+CREATE OR REPLACE VIEW SYS.ALL_OBJECTS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS object_name,
+    NULL::varchar2(128) AS subobject_name,
+    c.oid::int8::NUMBER AS object_id,
+    c.oid::int8::NUMBER AS data_object_id,
+    (CASE c.relkind
+        WHEN 'r' THEN 'TABLE'
+        WHEN 'p' THEN 'TABLE'
+        WHEN 'f' THEN 'FOREIGN TABLE'
+        WHEN 'v' THEN 'VIEW'
+        WHEN 'm' THEN 'MATERIALIZED VIEW'
+        WHEN 'i' THEN 'INDEX'
+        WHEN 'I' THEN 'INDEX'
+        WHEN 'S' THEN 'SEQUENCE'
+        WHEN 't' THEN 'TOAST TABLE'
+        ELSE 'TABLE'
+    END)::varchar2(20) AS object_type,
+    NULL::timestamp AS created,
+    NULL::timestamp AS last_ddl_time,
+    'VALID'::varchar2(7) AS status
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+WHERE
+    c.relkind IN ('r','p','f','v','m','i','I','S','t')
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND pg_catalog.has_table_privilege(current_user, c.oid,
+         'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+    AND NOT c.relispartition
+UNION ALL
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(p.proname::varchar2)::varchar2(128) AS object_name,
+    NULL::varchar2(128) AS subobject_name,
+    p.oid::int8::NUMBER AS object_id,
+    p.oid::int8::NUMBER AS data_object_id,
+    (CASE p.prokind
+        WHEN 'p' THEN 'PROCEDURE'
+        WHEN 'a' THEN 'AGGREGATE'
+        WHEN 'w' THEN 'WINDOW FUNCTION'
+        ELSE 'FUNCTION'
+    END)::varchar2(20) AS object_type,
+    NULL::timestamp AS created,
+    NULL::timestamp AS last_ddl_time,
+    'VALID'::varchar2(7) AS status
+FROM pg_proc p
+JOIN pg_namespace n ON p.pronamespace = n.oid
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND pg_catalog.has_function_privilege(current_user, p.oid, 'EXECUTE')
+UNION ALL
+SELECT
+    sys.ora_case_trans(pg_get_userbyid(pk.pkgowner)::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(pk.pkgname::varchar2)::varchar2(128) AS object_name,
+    NULL::varchar2(128) AS subobject_name,
+    pk.oid::int8::NUMBER AS object_id,
+    pk.oid::int8::NUMBER AS data_object_id,
+    'PACKAGE'::varchar2(20) AS object_type,
+    NULL::timestamp AS created,
+    NULL::timestamp AS last_ddl_time,
+    'VALID'::varchar2(7) AS status
+FROM pg_catalog.pg_package pk
+WHERE
+    pk.pkgnamespace NOT IN ('pg_catalog'::regnamespace, 'pg_toast'::regnamespace,
+                            'information_schema'::regnamespace)
+    AND pg_catalog.has_schema_privilege(pk.pkgnamespace, 'USAGE')
+UNION ALL
+SELECT
+    sys.ora_case_trans(pg_get_userbyid(pk.pkgowner)::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(pk.pkgname::varchar2)::varchar2(128) AS object_name,
+    NULL::varchar2(128) AS subobject_name,
+    pb.oid::int8::NUMBER AS object_id,
+    pb.oid::int8::NUMBER AS data_object_id,
+    'PACKAGE BODY'::varchar2(20) AS object_type,
+    NULL::timestamp AS created,
+    NULL::timestamp AS last_ddl_time,
+    'VALID'::varchar2(7) AS status
+FROM pg_catalog.pg_package_body pb
+JOIN pg_catalog.pg_package pk ON pk.oid = pb.pkgoid
+WHERE
+    pk.pkgnamespace NOT IN ('pg_catalog'::regnamespace, 'pg_toast'::regnamespace,
+                            'information_schema'::regnamespace)
+    AND pg_catalog.has_schema_privilege(pk.pkgnamespace, 'USAGE')
+UNION ALL
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(t.typname::varchar2)::varchar2(128) AS object_name,
+    NULL::varchar2(128) AS subobject_name,
+    t.oid::int8::NUMBER AS object_id,
+    t.oid::int8::NUMBER AS data_object_id,
+    'TYPE'::varchar2(20) AS object_type,
+    NULL::timestamp AS created,
+    NULL::timestamp AS last_ddl_time,
+    'VALID'::varchar2(7) AS status
+FROM pg_catalog.pg_type t
+JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+  AND (t.typtype IN ('d', 'e')
+       OR (t.typtype = 'c'
+           AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_class c
+                           WHERE c.reltype = t.oid
+                             AND c.relkind IN ('r', 'p', 'v', 'm', 'f'))))
+  AND pg_catalog.has_type_privilege(t.oid, 'USAGE');
+
+GRANT SELECT ON SYS.ALL_OBJECTS TO PUBLIC;
+
+--
+-- USER_OBJECTS: the objects owned by the current user, like Oracle's
+-- USER_OBJECTS view.  OBJECT_TYPE maps the PostgreSQL catalog entries to
+-- Oracle's object names; CREATED and LAST_DDL_TIME stay NULL because
+-- PostgreSQL does not track those timestamps, and STATUS is always VALID
+-- because the catalogs have no invalid objects.
+--
+CREATE OR REPLACE VIEW SYS.USER_OBJECTS AS
+SELECT
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS object_name,
+    c.oid::int8::NUMBER AS object_id,
+    c.oid::int8::NUMBER AS data_object_id,
+    (CASE c.relkind
+        WHEN 'r' THEN 'TABLE'
+        WHEN 'p' THEN 'TABLE'
+        WHEN 'f' THEN 'FOREIGN TABLE'
+        WHEN 'v' THEN 'VIEW'
+        WHEN 'm' THEN 'MATERIALIZED VIEW'
+        WHEN 'i' THEN 'INDEX'
+        WHEN 'I' THEN 'INDEX'
+        WHEN 'S' THEN 'SEQUENCE'
+        WHEN 't' THEN 'TOAST TABLE'
+        ELSE 'TABLE'
+    END)::varchar2(20) AS object_type,
+    NULL::timestamp AS created,
+    NULL::timestamp AS last_ddl_time,
+    'VALID'::varchar2(7) AS status
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+WHERE
+    pg_catalog.pg_get_userbyid(c.relowner) = current_user
+    AND c.relkind IN ('r','p','f','v','m','i','I','S','t')
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND NOT c.relispartition
+UNION ALL
+SELECT
+    sys.ora_case_trans(p.proname::varchar2)::varchar2(128) AS object_name,
+    p.oid::int8::NUMBER AS object_id,
+    p.oid::int8::NUMBER AS data_object_id,
+    (CASE p.prokind
+        WHEN 'p' THEN 'PROCEDURE'
+        WHEN 'a' THEN 'AGGREGATE'
+        WHEN 'w' THEN 'WINDOW FUNCTION'
+        ELSE 'FUNCTION'
+    END)::varchar2(20) AS object_type,
+    NULL::timestamp AS created,
+    NULL::timestamp AS last_ddl_time,
+    'VALID'::varchar2(7) AS status
+FROM pg_proc p
+JOIN pg_namespace n ON p.pronamespace = n.oid
+WHERE
+    pg_catalog.pg_get_userbyid(p.proowner) = current_user
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+UNION ALL
+SELECT
+    sys.ora_case_trans(pk.pkgname::varchar2)::varchar2(128) AS object_name,
+    pk.oid::int8::NUMBER AS object_id,
+    pk.oid::int8::NUMBER AS data_object_id,
+    'PACKAGE'::varchar2(20) AS object_type,
+    NULL::timestamp AS created,
+    NULL::timestamp AS last_ddl_time,
+    'VALID'::varchar2(7) AS status
+FROM pg_catalog.pg_package pk
+WHERE pk.pkgowner = current_user::regrole
+UNION ALL
+SELECT
+    sys.ora_case_trans(pk.pkgname::varchar2)::varchar2(128) AS object_name,
+    pb.oid::int8::NUMBER AS object_id,
+    pb.oid::int8::NUMBER AS data_object_id,
+    'PACKAGE BODY'::varchar2(20) AS object_type,
+    NULL::timestamp AS created,
+    NULL::timestamp AS last_ddl_time,
+    'VALID'::varchar2(7) AS status
+FROM pg_catalog.pg_package_body pb
+JOIN pg_catalog.pg_package pk ON pk.oid = pb.pkgoid
+WHERE pk.pkgowner = current_user::regrole
+UNION ALL
+SELECT
+    sys.ora_case_trans(t.typname::varchar2)::varchar2(128) AS object_name,
+    t.oid::int8::NUMBER AS object_id,
+    t.oid::int8::NUMBER AS data_object_id,
+    'TYPE'::varchar2(20) AS object_type,
+    NULL::timestamp AS created,
+    NULL::timestamp AS last_ddl_time,
+    'VALID'::varchar2(7) AS status
+FROM pg_catalog.pg_type t
+JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+  AND (t.typtype IN ('d', 'e')
+       OR (t.typtype = 'c'
+           AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_class c
+                           WHERE c.reltype = t.oid
+                             AND c.relkind IN ('r', 'p', 'v', 'm', 'f'))))
+  AND pg_catalog.pg_get_userbyid(t.typowner) = current_user;
+
+GRANT SELECT ON SYS.USER_OBJECTS TO PUBLIC;
