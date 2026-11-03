@@ -1557,3 +1557,498 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+--
+-- USER_TABLESPACES / ALL_TABLESPACES / DBA_TABLESPACES: the tablespaces,
+-- like Oracle's views of the same name.  PostgreSQL exposes them through
+-- pg_tablespace, so STATUS is always ONLINE, CONTENTS maps the temporary
+-- flag and LOGGING is always LOGGING.
+--
+CREATE OR REPLACE VIEW SYS.USER_TABLESPACES AS
+SELECT
+    sys.ora_case_trans(t.spcname::varchar2)::varchar2(30) AS tablespace_name,
+    'ONLINE'::varchar2(9) AS status,
+    (CASE WHEN t.spcname ~ '^pg_temp' THEN 'TEMPORARY' ELSE 'PERMANENT' END)::varchar2(9) AS contents,
+    'LOGGING'::varchar2(9) AS logging
+FROM pg_tablespace t
+WHERE pg_catalog.pg_get_userbyid(t.spcowner) = current_user;
+
+GRANT SELECT ON SYS.USER_TABLESPACES TO PUBLIC;
+
+--
+-- ALL_TABLESPACES: the same rows with the OWNER column the ALL_ views carry.
+-- PostgreSQL exposes them through
+-- pg_tablespace, so STATUS is always ONLINE, CONTENTS maps the temporary
+-- flag and LOGGING is always LOGGING.
+--
+CREATE OR REPLACE VIEW SYS.ALL_TABLESPACES AS
+SELECT
+    pg_catalog.pg_get_userbyid(t.spcowner)::varchar2(128) AS owner,
+    sys.ora_case_trans(t.spcname::varchar2)::varchar2(30) AS tablespace_name,
+    'ONLINE'::varchar2(9) AS status,
+    (CASE WHEN t.spcname ~ '^pg_temp' THEN 'TEMPORARY' ELSE 'PERMANENT' END)::varchar2(9) AS contents,
+    'LOGGING'::varchar2(9) AS logging
+FROM pg_tablespace t;
+
+GRANT SELECT ON SYS.ALL_TABLESPACES TO PUBLIC;
+
+--
+-- DBA_TABLESPACES: the same rows without the owner filter, like the other DBA_ views.
+-- PostgreSQL exposes them through
+-- pg_tablespace, so STATUS is always ONLINE, CONTENTS maps the temporary
+-- flag and LOGGING is always LOGGING.
+--
+CREATE OR REPLACE VIEW SYS.DBA_TABLESPACES AS
+SELECT
+    pg_catalog.pg_get_userbyid(t.spcowner)::varchar2(128) AS owner,
+    sys.ora_case_trans(t.spcname::varchar2)::varchar2(30) AS tablespace_name,
+    'ONLINE'::varchar2(9) AS status,
+    (CASE WHEN t.spcname ~ '^pg_temp' THEN 'TEMPORARY' ELSE 'PERMANENT' END)::varchar2(9) AS contents,
+    'LOGGING'::varchar2(9) AS logging
+FROM pg_tablespace t;
+
+
+GRANT SELECT ON SYS.DBA_TABLESPACES TO PUBLIC;
+
+-- USER_SEGMENTS: storage of the current user's relations.  PostgreSQL has no
+-- extent bookkeeping exposed in SQL, so a relation below one block reports
+-- zero extents and everything above reports one; BYTES/BLOCKS are the real
+-- relation size.  Fields with no PostgreSQL source are NULL.
+CREATE OR REPLACE VIEW SYS.USER_SEGMENTS AS
+SELECT SEGMENT_NAME, PARTITION_NAME, SEGMENT_TYPE, SEGMENT_SUBTYPE,
+       TABLESPACE_NAME, BYTES, BLOCKS, EXTENTS, INITIAL_EXTENT, NEXT_EXTENT,
+       MIN_EXTENTS, MAX_EXTENTS, MAX_SIZE, RETENTION, MINRETENTION,
+       PCT_INCREASE, FREELISTS, FREELIST_GROUPS, BUFFER_POOL
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS SEGMENT_NAME,
+    NULL::VARCHAR2(128)                                                        AS PARTITION_NAME,
+    CASE C.RELKIND
+        WHEN 'r' THEN 'TABLE'
+        WHEN 'p' THEN 'TABLE PARTITION'
+        WHEN 'm' THEN 'MATERIALIZED VIEW'
+        WHEN 'i' THEN 'INDEX'
+        WHEN 'I' THEN 'INDEX PARTITION'
+        WHEN 'S' THEN 'SEQUENCE'
+        WHEN 'f' THEN 'TABLE'
+        ELSE 'TABLE'
+    END::VARCHAR2(18)                                                          AS SEGMENT_TYPE,
+    NULL::VARCHAR2(7)                                                          AS SEGMENT_SUBTYPE,
+    SYS.ORA_CASE_TRANS(TS.SPCNAME::VARCHAR2)::VARCHAR2(30)                     AS TABLESPACE_NAME,
+    PG_TABLE_SIZE(C.OID)::NUMBER                                               AS BYTES,
+    (PG_TABLE_SIZE(C.OID) / CURRENT_SETTING('block_size')::INT)::NUMBER        AS BLOCKS,
+    CASE WHEN PG_TABLE_SIZE(C.OID) = 0 THEN 0 ELSE 1 END::NUMBER               AS EXTENTS,
+    NULL::NUMBER                                                               AS INITIAL_EXTENT,
+    NULL::NUMBER                                                               AS NEXT_EXTENT,
+    NULL::NUMBER                                                               AS MIN_EXTENTS,
+    NULL::NUMBER                                                               AS MAX_EXTENTS,
+    NULL::NUMBER                                                               AS MAX_SIZE,
+    NULL::VARCHAR2(7)                                                          AS RETENTION,
+    NULL::NUMBER                                                               AS MINRETENTION,
+    NULL::NUMBER                                                               AS PCT_INCREASE,
+    NULL::NUMBER                                                               AS FREELISTS,
+    NULL::NUMBER                                                               AS FREELIST_GROUPS,
+    NULL::VARCHAR2(7)                                                          AS BUFFER_POOL,
+    C.OID                                                                      AS REL_OID
+FROM PG_CATALOG.PG_CLASS C
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+JOIN PG_CATALOG.PG_TABLESPACE TS
+  ON TS.OID = (CASE WHEN C.RELTABLESPACE = 0
+                    THEN (SELECT DATTABLESPACE FROM PG_CATALOG.PG_DATABASE
+                           WHERE DATNAME = CURRENT_DATABASE())
+                    ELSE C.RELTABLESPACE
+               END)
+WHERE C.RELKIND IN ('r', 'p', 'm', 'i', 'I', 'S', 'f')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+WHERE S.OWNER = SYS.ORA_CASE_TRANS(CURRENT_USER::VARCHAR2);
+GRANT SELECT ON SYS.USER_SEGMENTS TO PUBLIC;
+
+-- ALL_SEGMENTS: the same rows for relations the current user can read.
+CREATE OR REPLACE VIEW SYS.ALL_SEGMENTS AS
+SELECT OWNER, SEGMENT_NAME, PARTITION_NAME, SEGMENT_TYPE, SEGMENT_SUBTYPE,
+       TABLESPACE_NAME, BYTES, BLOCKS, EXTENTS, INITIAL_EXTENT, NEXT_EXTENT,
+       MIN_EXTENTS, MAX_EXTENTS, MAX_SIZE, RETENTION, MINRETENTION,
+       PCT_INCREASE, FREELISTS, FREELIST_GROUPS, BUFFER_POOL
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS SEGMENT_NAME,
+    NULL::VARCHAR2(128)                                                        AS PARTITION_NAME,
+    CASE C.RELKIND
+        WHEN 'r' THEN 'TABLE'
+        WHEN 'p' THEN 'TABLE PARTITION'
+        WHEN 'm' THEN 'MATERIALIZED VIEW'
+        WHEN 'i' THEN 'INDEX'
+        WHEN 'I' THEN 'INDEX PARTITION'
+        WHEN 'S' THEN 'SEQUENCE'
+        WHEN 'f' THEN 'TABLE'
+        ELSE 'TABLE'
+    END::VARCHAR2(18)                                                          AS SEGMENT_TYPE,
+    NULL::VARCHAR2(7)                                                          AS SEGMENT_SUBTYPE,
+    SYS.ORA_CASE_TRANS(TS.SPCNAME::VARCHAR2)::VARCHAR2(30)                     AS TABLESPACE_NAME,
+    PG_TABLE_SIZE(C.OID)::NUMBER                                               AS BYTES,
+    (PG_TABLE_SIZE(C.OID) / CURRENT_SETTING('block_size')::INT)::NUMBER        AS BLOCKS,
+    CASE WHEN PG_TABLE_SIZE(C.OID) = 0 THEN 0 ELSE 1 END::NUMBER               AS EXTENTS,
+    NULL::NUMBER                                                               AS INITIAL_EXTENT,
+    NULL::NUMBER                                                               AS NEXT_EXTENT,
+    NULL::NUMBER                                                               AS MIN_EXTENTS,
+    NULL::NUMBER                                                               AS MAX_EXTENTS,
+    NULL::NUMBER                                                               AS MAX_SIZE,
+    NULL::VARCHAR2(7)                                                          AS RETENTION,
+    NULL::NUMBER                                                               AS MINRETENTION,
+    NULL::NUMBER                                                               AS PCT_INCREASE,
+    NULL::NUMBER                                                               AS FREELISTS,
+    NULL::NUMBER                                                               AS FREELIST_GROUPS,
+    NULL::VARCHAR2(7)                                                          AS BUFFER_POOL,
+    C.OID                                                                      AS REL_OID
+FROM PG_CATALOG.PG_CLASS C
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+JOIN PG_CATALOG.PG_TABLESPACE TS
+  ON TS.OID = (CASE WHEN C.RELTABLESPACE = 0
+                    THEN (SELECT DATTABLESPACE FROM PG_CATALOG.PG_DATABASE
+                           WHERE DATNAME = CURRENT_DATABASE())
+                    ELSE C.RELTABLESPACE
+               END)
+WHERE C.RELKIND IN ('r', 'p', 'm', 'i', 'I', 'S', 'f')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+WHERE HAS_TABLE_PRIVILEGE(S.REL_OID, 'SELECT');
+GRANT SELECT ON SYS.ALL_SEGMENTS TO PUBLIC;
+
+-- DBA_SEGMENTS: unrestricted.
+CREATE OR REPLACE VIEW SYS.DBA_SEGMENTS AS
+SELECT OWNER, SEGMENT_NAME, PARTITION_NAME, SEGMENT_TYPE, SEGMENT_SUBTYPE,
+       TABLESPACE_NAME, BYTES, BLOCKS, EXTENTS, INITIAL_EXTENT, NEXT_EXTENT,
+       MIN_EXTENTS, MAX_EXTENTS, MAX_SIZE, RETENTION, MINRETENTION,
+       PCT_INCREASE, FREELISTS, FREELIST_GROUPS, BUFFER_POOL
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS SEGMENT_NAME,
+    NULL::VARCHAR2(128)                                                        AS PARTITION_NAME,
+    CASE C.RELKIND
+        WHEN 'r' THEN 'TABLE'
+        WHEN 'p' THEN 'TABLE PARTITION'
+        WHEN 'm' THEN 'MATERIALIZED VIEW'
+        WHEN 'i' THEN 'INDEX'
+        WHEN 'I' THEN 'INDEX PARTITION'
+        WHEN 'S' THEN 'SEQUENCE'
+        WHEN 'f' THEN 'TABLE'
+        ELSE 'TABLE'
+    END::VARCHAR2(18)                                                          AS SEGMENT_TYPE,
+    NULL::VARCHAR2(7)                                                          AS SEGMENT_SUBTYPE,
+    SYS.ORA_CASE_TRANS(TS.SPCNAME::VARCHAR2)::VARCHAR2(30)                     AS TABLESPACE_NAME,
+    PG_TABLE_SIZE(C.OID)::NUMBER                                               AS BYTES,
+    (PG_TABLE_SIZE(C.OID) / CURRENT_SETTING('block_size')::INT)::NUMBER        AS BLOCKS,
+    CASE WHEN PG_TABLE_SIZE(C.OID) = 0 THEN 0 ELSE 1 END::NUMBER               AS EXTENTS,
+    NULL::NUMBER                                                               AS INITIAL_EXTENT,
+    NULL::NUMBER                                                               AS NEXT_EXTENT,
+    NULL::NUMBER                                                               AS MIN_EXTENTS,
+    NULL::NUMBER                                                               AS MAX_EXTENTS,
+    NULL::NUMBER                                                               AS MAX_SIZE,
+    NULL::VARCHAR2(7)                                                          AS RETENTION,
+    NULL::NUMBER                                                               AS MINRETENTION,
+    NULL::NUMBER                                                               AS PCT_INCREASE,
+    NULL::NUMBER                                                               AS FREELISTS,
+    NULL::NUMBER                                                               AS FREELIST_GROUPS,
+    NULL::VARCHAR2(7)                                                          AS BUFFER_POOL,
+    C.OID                                                                      AS REL_OID
+FROM PG_CATALOG.PG_CLASS C
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+JOIN PG_CATALOG.PG_TABLESPACE TS
+  ON TS.OID = (CASE WHEN C.RELTABLESPACE = 0
+                    THEN (SELECT DATTABLESPACE FROM PG_CATALOG.PG_DATABASE
+                           WHERE DATNAME = CURRENT_DATABASE())
+                    ELSE C.RELTABLESPACE
+               END)
+WHERE C.RELKIND IN ('r', 'p', 'm', 'i', 'I', 'S', 'f')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S;
+GRANT SELECT ON SYS.DBA_SEGMENTS TO PUBLIC;
+
+-- V$TABLESPACE: one row per tablespace.  PostgreSQL identifies a tablespace by
+-- its OID, which is what TS_NO reports; Oracle's TS# is a numeric identifier.
+CREATE OR REPLACE VIEW SYS.V$TABLESPACE AS
+SELECT
+    TS.OID::INT8::NUMBER                                              AS TS_NO,
+    SYS.ORA_CASE_TRANS(TS.SPCNAME::VARCHAR2)::VARCHAR2(30)            AS NAME,
+    0::NUMBER                                                         AS CON_ID
+FROM PG_CATALOG.PG_TABLESPACE TS
+ORDER BY NAME;
+GRANT SELECT ON SYS.V$TABLESPACE TO PUBLIC;
+
+-- DBA_DATA_FILES: PostgreSQL keeps each tablespace as a directory rather than
+-- as individually sized data files, so one row per tablespace is reported with
+-- the tablespace size.  FILE_NAME is the directory PostgreSQL reports, which is
+-- empty for the default tablespace because its location is implied.
+CREATE OR REPLACE VIEW SYS.DBA_DATA_FILES AS
+SELECT
+    COALESCE(PG_TABLESPACE_LOCATION(TS.OID), '')::VARCHAR2(4000)      AS FILE_NAME,
+    TS.OID::INT8::NUMBER                                              AS FILE_ID,
+    SYS.ORA_CASE_TRANS(TS.SPCNAME::VARCHAR2)::VARCHAR2(30)            AS TABLESPACE_NAME,
+    PG_TABLESPACE_SIZE(TS.OID)::NUMBER                                AS BYTES,
+    (PG_TABLESPACE_SIZE(TS.OID) /
+     CURRENT_SETTING('block_size')::INT)::NUMBER                      AS BLOCKS,
+    'AVAILABLE'::VARCHAR2(9)                                          AS STATUS,
+    TS.OID::INT8::NUMBER                                              AS RELATIVE_FNO,
+    'NO'::VARCHAR2(3)                                                 AS AUTOEXTENSIBLE,
+    NULL::NUMBER                                                      AS MAXBYTES,
+    NULL::NUMBER                                                      AS MAXBLOCKS,
+    NULL::NUMBER                                                      AS INCREMENT_BY,
+    PG_TABLESPACE_SIZE(TS.OID)::NUMBER                                AS USER_BYTES,
+    (PG_TABLESPACE_SIZE(TS.OID) /
+     CURRENT_SETTING('block_size')::INT)::NUMBER                      AS USER_BLOCKS,
+    'ONLINE'::VARCHAR2(7)                                             AS ONLINE_STATUS
+FROM PG_CATALOG.PG_TABLESPACE TS
+ORDER BY TABLESPACE_NAME;
+GRANT SELECT ON SYS.DBA_DATA_FILES TO PUBLIC;
+
+-- USER_LOBS: the large-object columns of the current user's tables.  A LOB in
+-- PostgreSQL is a text/bytea column stored through the table's TOAST relation,
+-- so there is no per-LOB segment or index to report and those columns are
+-- NULL; TABLE_NAME/COLUMN_NAME/TABLESPACE_NAME are the parts an application
+-- actually queries.
+CREATE OR REPLACE VIEW SYS.USER_LOBS AS
+SELECT TABLE_NAME, COLUMN_NAME, TABLESPACE_NAME, SEGMENT_NAME, INDEX_NAME, CHUNK
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS TABLE_NAME,
+    SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(128)                    AS COLUMN_NAME,
+    SYS.ORA_CASE_TRANS(TS.SPCNAME::VARCHAR2)::VARCHAR2(30)                    AS TABLESPACE_NAME,
+    NULL::VARCHAR2(128)                                                        AS SEGMENT_NAME,
+    NULL::VARCHAR2(128)                                                        AS INDEX_NAME,
+    NULL::NUMBER                                                               AS CHUNK,
+    C.RELOWNER                                                                 AS OWNER_OID,
+    C.OID                                                                      AS REL_OID
+FROM PG_CATALOG.PG_ATTRIBUTE A
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = A.ATTRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+JOIN PG_CATALOG.PG_TABLESPACE TS
+  ON TS.OID = (CASE WHEN C.RELTABLESPACE = 0
+                    THEN (SELECT DATTABLESPACE FROM PG_CATALOG.PG_DATABASE
+                           WHERE DATNAME = CURRENT_DATABASE())
+                    ELSE C.RELTABLESPACE
+               END)
+WHERE A.ATTNUM > 0
+  AND NOT A.ATTISDROPPED
+  AND C.RELKIND IN ('r', 'p', 'm')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+  AND EXISTS (
+      SELECT 1 FROM PG_CATALOG.PG_TYPE T
+       WHERE T.OID = A.ATTTYPID
+         AND T.TYPNAME IN ('text', 'bytea', 'clob', 'blob', 'long', 'raw'))
+
+) S
+WHERE S.OWNER_OID = (SELECT OID FROM PG_CATALOG.PG_ROLES WHERE ROLNAME = CURRENT_USER)
+ORDER BY S.TABLE_NAME, S.COLUMN_NAME;
+GRANT SELECT ON SYS.USER_LOBS TO PUBLIC;
+
+-- ALL_LOBS: the same rows for tables the current user can read.
+CREATE OR REPLACE VIEW SYS.ALL_LOBS AS
+SELECT TABLE_NAME, COLUMN_NAME, TABLESPACE_NAME, SEGMENT_NAME, INDEX_NAME, CHUNK
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS TABLE_NAME,
+    SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(128)                    AS COLUMN_NAME,
+    SYS.ORA_CASE_TRANS(TS.SPCNAME::VARCHAR2)::VARCHAR2(30)                    AS TABLESPACE_NAME,
+    NULL::VARCHAR2(128)                                                        AS SEGMENT_NAME,
+    NULL::VARCHAR2(128)                                                        AS INDEX_NAME,
+    NULL::NUMBER                                                               AS CHUNK,
+    C.RELOWNER                                                                 AS OWNER_OID,
+    C.OID                                                                      AS REL_OID
+FROM PG_CATALOG.PG_ATTRIBUTE A
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = A.ATTRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+JOIN PG_CATALOG.PG_TABLESPACE TS
+  ON TS.OID = (CASE WHEN C.RELTABLESPACE = 0
+                    THEN (SELECT DATTABLESPACE FROM PG_CATALOG.PG_DATABASE
+                           WHERE DATNAME = CURRENT_DATABASE())
+                    ELSE C.RELTABLESPACE
+               END)
+WHERE A.ATTNUM > 0
+  AND NOT A.ATTISDROPPED
+  AND C.RELKIND IN ('r', 'p', 'm')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+  AND EXISTS (
+      SELECT 1 FROM PG_CATALOG.PG_TYPE T
+       WHERE T.OID = A.ATTTYPID
+         AND T.TYPNAME IN ('text', 'bytea', 'clob', 'blob', 'long', 'raw'))
+
+) S
+WHERE HAS_TABLE_PRIVILEGE(S.REL_OID, 'SELECT')
+ORDER BY S.OWNER, S.TABLE_NAME, S.COLUMN_NAME;
+GRANT SELECT ON SYS.ALL_LOBS TO PUBLIC;
+
+-- DBA_LOBS: unrestricted.
+CREATE OR REPLACE VIEW SYS.DBA_LOBS AS
+SELECT OWNER, TABLE_NAME, COLUMN_NAME, TABLESPACE_NAME, SEGMENT_NAME, INDEX_NAME, CHUNK
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS TABLE_NAME,
+    SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(128)                    AS COLUMN_NAME,
+    SYS.ORA_CASE_TRANS(TS.SPCNAME::VARCHAR2)::VARCHAR2(30)                    AS TABLESPACE_NAME,
+    NULL::VARCHAR2(128)                                                        AS SEGMENT_NAME,
+    NULL::VARCHAR2(128)                                                        AS INDEX_NAME,
+    NULL::NUMBER                                                               AS CHUNK,
+    C.RELOWNER                                                                 AS OWNER_OID,
+    C.OID                                                                      AS REL_OID
+FROM PG_CATALOG.PG_ATTRIBUTE A
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = A.ATTRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+JOIN PG_CATALOG.PG_TABLESPACE TS
+  ON TS.OID = (CASE WHEN C.RELTABLESPACE = 0
+                    THEN (SELECT DATTABLESPACE FROM PG_CATALOG.PG_DATABASE
+                           WHERE DATNAME = CURRENT_DATABASE())
+                    ELSE C.RELTABLESPACE
+               END)
+WHERE A.ATTNUM > 0
+  AND NOT A.ATTISDROPPED
+  AND C.RELKIND IN ('r', 'p', 'm')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+  AND EXISTS (
+      SELECT 1 FROM PG_CATALOG.PG_TYPE T
+       WHERE T.OID = A.ATTTYPID
+         AND T.TYPNAME IN ('text', 'bytea', 'clob', 'blob', 'long', 'raw'))
+
+) S
+ORDER BY S.OWNER, S.TABLE_NAME, S.COLUMN_NAME;
+GRANT SELECT ON SYS.DBA_LOBS TO PUBLIC;
+
+-- V$TABLESPACE_USAGE_METRICS: how much of each tablespace is in use.  Oracle
+-- reports blocks; PostgreSQL reports bytes, so USED_SPACE/TABLESPACE_SIZE are
+-- block counts and the division keeps Oracle's meaning.
+CREATE OR REPLACE VIEW SYS.V$TABLESPACE_USAGE_METRICS AS
+SELECT
+    SYS.ORA_CASE_TRANS(TS.SPCNAME::VARCHAR2)::VARCHAR2(30)     AS TABLESPACE_NAME,
+    (COALESCE(USED.BYTES, 0) / CURRENT_SETTING('block_size')::INT)::NUMBER AS USED_SPACE,
+    (PG_TABLESPACE_SIZE(TS.OID) / CURRENT_SETTING('block_size')::INT)::NUMBER AS TABLESPACE_SIZE,
+    CASE WHEN PG_TABLESPACE_SIZE(TS.OID) = 0 THEN 0
+         ELSE ROUND(100.0 * COALESCE(USED.BYTES, 0) / PG_TABLESPACE_SIZE(TS.OID), 2)
+    END::NUMBER                                                AS USED_PERCENT,
+    0::NUMBER                                                  AS CON_ID
+FROM PG_CATALOG.PG_TABLESPACE TS
+LEFT JOIN LATERAL (
+    SELECT SUM(PG_TOTAL_RELATION_SIZE(C.OID))::NUMERIC AS BYTES
+    FROM PG_CATALOG.PG_CLASS C
+    WHERE C.RELKIND IN ('r', 'i', 'm', 't')
+      AND C.RELNAMESPACE <> 'pg_toast'::REGNAMESPACE
+      AND (CASE WHEN C.RELTABLESPACE = 0
+                THEN (SELECT DATTABLESPACE FROM PG_CATALOG.PG_DATABASE
+                       WHERE DATNAME = CURRENT_DATABASE())
+                ELSE C.RELTABLESPACE
+           END) = TS.OID
+) USED ON TRUE
+ORDER BY TABLESPACE_NAME;
+GRANT SELECT ON SYS.V$TABLESPACE_USAGE_METRICS TO PUBLIC;
+
+-- DBA_TABLESPACE_USAGE_METRICS: byte counts and allocation for the same data.
+CREATE OR REPLACE VIEW SYS.DBA_TABLESPACE_USAGE_METRICS AS
+SELECT
+    SYS.ORA_CASE_TRANS(TS.SPCNAME::VARCHAR2)::VARCHAR2(30)     AS TABLESPACE_NAME,
+    (COALESCE(USED.BYTES, 0) / CURRENT_SETTING('block_size')::INT)::NUMBER AS USED_BLOCKS,
+    COALESCE(USED.BYTES, 0)::NUMBER                            AS USED_BYTES,
+    (PG_TABLESPACE_SIZE(TS.OID) / CURRENT_SETTING('block_size')::INT)::NUMBER AS ALLOCATED_BLOCKS,
+    PG_TABLESPACE_SIZE(TS.OID)::NUMBER                         AS ALLOCATED_BYTES,
+    CASE WHEN TS.SPCNAME = 'pg_global' THEN 'YES' ELSE 'NO' END::VARCHAR2(3) AS READ_ONLY,
+    NULL::NUMBER                                               AS MAX_BYTES
+FROM PG_CATALOG.PG_TABLESPACE TS
+LEFT JOIN LATERAL (
+    SELECT SUM(PG_TOTAL_RELATION_SIZE(C.OID))::NUMERIC AS BYTES
+    FROM PG_CATALOG.PG_CLASS C
+    WHERE C.RELKIND IN ('r', 'i', 'm', 't')
+      AND C.RELNAMESPACE <> 'pg_toast'::REGNAMESPACE
+      AND (CASE WHEN C.RELTABLESPACE = 0
+                THEN (SELECT DATTABLESPACE FROM PG_CATALOG.PG_DATABASE
+                       WHERE DATNAME = CURRENT_DATABASE())
+                ELSE C.RELTABLESPACE
+           END) = TS.OID
+) USED ON TRUE
+ORDER BY TABLESPACE_NAME;
+GRANT SELECT ON SYS.DBA_TABLESPACE_USAGE_METRICS TO PUBLIC;
+
+-- USER_/ALL_/DBA_EXTENTS: Oracle reports the extent map of a segment.
+-- PostgreSQL does not expose its block map through SQL, so the views report
+-- one extent per relation (EXTENT_ID 0) with the relation's real size in
+-- bytes and blocks.  That is the granularity the catalog actually knows; the
+-- comment says so instead of inventing a multi-extent map.
+CREATE OR REPLACE VIEW SYS.DBA_EXTENTS AS
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128) AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)         AS SEGMENT_NAME,
+    NULL::VARCHAR2(128)                                            AS PARTITION_NAME,
+    CASE C.RELKIND
+        WHEN 'r' THEN 'TABLE'
+        WHEN 'p' THEN 'TABLE PARTITION'
+        WHEN 'm' THEN 'MATERIALIZED VIEW'
+        WHEN 'i' THEN 'INDEX'
+        WHEN 'I' THEN 'INDEX PARTITION'
+        WHEN 'S' THEN 'SEQUENCE'
+        ELSE 'TABLE'
+    END::VARCHAR2(18)                                              AS SEGMENT_TYPE,
+    SYS.ORA_CASE_TRANS(TS.SPCNAME::VARCHAR2)::VARCHAR2(30)         AS TABLESPACE_NAME,
+    0::NUMBER                                                      AS EXTENT_ID,
+    TS.OID::INT8::NUMBER                                           AS FILE_ID,
+    0::NUMBER                                                      AS BLOCK_ID,
+    PG_TOTAL_RELATION_SIZE(C.OID)::NUMBER                          AS BYTES,
+    (PG_TOTAL_RELATION_SIZE(C.OID) / CURRENT_SETTING('block_size')::INT)::NUMBER AS BLOCKS,
+    TS.OID::INT8::NUMBER                                           AS RELATIVE_FNO,
+    C.RELOWNER                                                     AS OWNER_OID,
+    C.OID                                                          AS REL_OID
+FROM PG_CATALOG.PG_CLASS C
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+JOIN PG_CATALOG.PG_TABLESPACE TS
+  ON TS.OID = (CASE WHEN C.RELTABLESPACE = 0
+                    THEN (SELECT DATTABLESPACE FROM PG_CATALOG.PG_DATABASE
+                           WHERE DATNAME = CURRENT_DATABASE())
+                    ELSE C.RELTABLESPACE
+               END)
+WHERE C.RELKIND IN ('r', 'p', 'm', 'i', 'I', 'S', 'f')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast');
+GRANT SELECT ON SYS.DBA_EXTENTS TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.USER_EXTENTS AS
+SELECT SEGMENT_NAME, PARTITION_NAME, SEGMENT_TYPE, TABLESPACE_NAME, EXTENT_ID,
+       FILE_ID, BLOCK_ID, BYTES, BLOCKS, RELATIVE_FNO
+FROM SYS.DBA_EXTENTS
+WHERE OWNER_OID = (SELECT OID FROM PG_CATALOG.PG_ROLES WHERE ROLNAME = CURRENT_USER);
+GRANT SELECT ON SYS.USER_EXTENTS TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.ALL_EXTENTS AS
+SELECT OWNER, SEGMENT_NAME, PARTITION_NAME, SEGMENT_TYPE, TABLESPACE_NAME,
+       EXTENT_ID, FILE_ID, BLOCK_ID, BYTES, BLOCKS, RELATIVE_FNO
+FROM SYS.DBA_EXTENTS
+WHERE HAS_TABLE_PRIVILEGE(REL_OID, 'SELECT');
+GRANT SELECT ON SYS.ALL_EXTENTS TO PUBLIC;
+
+-- V$DATAFILE: Oracle lists data files.  PostgreSQL stores each tablespace as a
+-- directory rather than as individually sized files, so one row per tablespace
+-- is reported, with the directory as NAME and the tablespace size as BYTES.
+-- "FILE#" and "TS#" keep Oracle's column spelling; both carry the tablespace
+-- identifier because there is no separate file id to report.
+CREATE OR REPLACE VIEW SYS.V$DATAFILE AS
+SELECT
+    TS.OID::INT8::NUMBER                                           AS "FILE#",
+    'AVAILABLE'::VARCHAR2(9)                                       AS STATUS,
+    'READ WRITE'::VARCHAR2(16)                                     AS ENABLED,
+    PG_TABLESPACE_SIZE(TS.OID)::NUMBER                             AS BYTES,
+    (PG_TABLESPACE_SIZE(TS.OID) / CURRENT_SETTING('block_size')::INT)::NUMBER AS BLOCKS,
+    COALESCE(PG_TABLESPACE_LOCATION(TS.OID), '')::VARCHAR2(4000)   AS NAME,
+    TS.OID::INT8::NUMBER                                           AS "TS#",
+    0::NUMBER                                                      AS CON_ID
+FROM PG_CATALOG.PG_TABLESPACE TS
+ORDER BY NAME;
+GRANT SELECT ON SYS.V$DATAFILE TO PUBLIC;

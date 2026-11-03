@@ -493,3 +493,176 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- USER_TABLESPACES / ALL_TABLESPACES / DBA_TABLESPACES
+SELECT TABLESPACE_NAME, STATUS, CONTENTS, LOGGING FROM SYS.DBA_TABLESPACES
+WHERE TABLESPACE_NAME = 'PG_DEFAULT';
+ tablespace_name | status | contents  | logging 
+-----------------+--------+-----------+---------
+ PG_DEFAULT      | ONLINE | PERMANENT | LOGGING
+(1 row)
+
+SELECT count(*) > 0 AS user_sees_default FROM SYS.USER_TABLESPACES
+WHERE TABLESPACE_NAME = 'PG_DEFAULT';
+ user_sees_default 
+-------------------
+ t
+(1 row)
+
+SELECT count(*) = (SELECT count(*) FROM SYS.DBA_TABLESPACES) AS dba_matches FROM SYS.ALL_TABLESPACES;
+ dba_matches 
+-------------
+ t
+(1 row)
+
+-- Oracle-compatible segment dictionary views
+DROP TABLE IF EXISTS t_seg_test;
+NOTICE:  table "t_seg_test" does not exist, skipping
+CREATE TABLE t_seg_test (id INT);
+INSERT INTO t_seg_test VALUES (1);
+SELECT SEGMENT_TYPE, TABLESPACE_NAME, BYTES >= 8192 AS has_bytes, BLOCKS >= 1 AS has_blocks
+FROM SYS.USER_SEGMENTS
+WHERE SEGMENT_NAME = 'T_SEG_TEST';
+ segment_type | tablespace_name | has_bytes | has_blocks 
+--------------+-----------------+-----------+------------
+ TABLE        | PG_DEFAULT      | t         | t
+(1 row)
+
+SELECT COUNT(*) = 1 AS all_has
+FROM SYS.ALL_SEGMENTS
+WHERE SEGMENT_NAME = 'T_SEG_TEST';
+ all_has 
+---------
+ t
+(1 row)
+
+SELECT COUNT(*) = 1 AS dba_has
+FROM SYS.DBA_SEGMENTS
+WHERE SEGMENT_NAME = 'T_SEG_TEST';
+ dba_has 
+---------
+ t
+(1 row)
+
+DROP TABLE t_seg_test;
+-- Oracle-compatible tablespace storage views
+SELECT COUNT(*) = (SELECT COUNT(*) FROM PG_TABLESPACE) AS all_tablespaces
+FROM SYS.V$TABLESPACE;
+ all_tablespaces 
+-----------------
+ t
+(1 row)
+
+SELECT TABLESPACE_NAME, BYTES > 0 AS has_bytes, BLOCKS > 0 AS has_blocks, STATUS, ONLINE_STATUS
+FROM SYS.DBA_DATA_FILES
+WHERE TABLESPACE_NAME = 'PG_DEFAULT';
+ tablespace_name | has_bytes | has_blocks |  status   | online_status 
+-----------------+-----------+------------+-----------+---------------
+ PG_DEFAULT      | t         | t          | AVAILABLE | ONLINE
+(1 row)
+
+-- Oracle-compatible LOB column dictionary views
+DROP TABLE IF EXISTS t_lob_test;
+NOTICE:  table "t_lob_test" does not exist, skipping
+CREATE TABLE t_lob_test (id INT, doc TEXT, bin BYTEA, note VARCHAR2(10));
+SELECT TABLE_NAME, COLUMN_NAME, TABLESPACE_NAME
+FROM SYS.USER_LOBS
+WHERE TABLE_NAME = 'T_LOB_TEST'
+ORDER BY COLUMN_NAME;
+ table_name | column_name | tablespace_name 
+------------+-------------+-----------------
+ T_LOB_TEST | BIN         | PG_DEFAULT
+ T_LOB_TEST | DOC         | PG_DEFAULT
+(2 rows)
+
+SELECT COUNT(*) = 2 AS all_has
+FROM SYS.ALL_LOBS
+WHERE TABLE_NAME = 'T_LOB_TEST';
+ all_has 
+---------
+ t
+(1 row)
+
+SELECT COUNT(*) = 2 AS dba_has
+FROM SYS.DBA_LOBS
+WHERE TABLE_NAME = 'T_LOB_TEST';
+ dba_has 
+---------
+ t
+(1 row)
+
+DROP TABLE t_lob_test;
+-- Oracle-compatible tablespace usage metrics views
+SELECT TABLESPACE_NAME,
+       USED_SPACE >= 0 AS used_ok,
+       TABLESPACE_SIZE > 0 AS size_ok,
+       USED_PERCENT BETWEEN 0 AND 100 AS percent_ok
+FROM SYS.V$TABLESPACE_USAGE_METRICS
+WHERE TABLESPACE_NAME = 'PG_DEFAULT';
+ tablespace_name | used_ok | size_ok | percent_ok 
+-----------------+---------+---------+------------
+ PG_DEFAULT      | t       | t       | t
+(1 row)
+
+SELECT TABLESPACE_NAME,
+       USED_BLOCKS = USED_BYTES / CURRENT_SETTING('block_size')::INT AS blocks_match,
+       ALLOCATED_BYTES > 0 AS allocated_ok,
+       READ_ONLY
+FROM SYS.DBA_TABLESPACE_USAGE_METRICS
+WHERE TABLESPACE_NAME = 'PG_DEFAULT';
+ tablespace_name | blocks_match | allocated_ok | read_only 
+-----------------+--------------+--------------+-----------
+ PG_DEFAULT      | t            | t            | NO
+(1 row)
+
+SELECT COUNT(*) = (SELECT COUNT(*) FROM PG_TABLESPACE) AS all_tablespaces
+FROM SYS.V$TABLESPACE_USAGE_METRICS;
+ all_tablespaces 
+-----------------
+ t
+(1 row)
+
+-- Oracle-compatible extent dictionary views
+DROP TABLE IF EXISTS t_extent_test;
+NOTICE:  table "t_extent_test" does not exist, skipping
+CREATE TABLE t_extent_test (id INT);
+INSERT INTO t_extent_test VALUES (1);
+SELECT SEGMENT_TYPE, EXTENT_ID, BLOCKS >= 1 AS has_blocks
+FROM SYS.USER_EXTENTS
+WHERE SEGMENT_NAME = 'T_EXTENT_TEST';
+ segment_type | extent_id | has_blocks 
+--------------+-----------+------------
+ TABLE        | 0         | t
+(1 row)
+
+SELECT COUNT(*) = 1 AS all_has
+FROM SYS.ALL_EXTENTS
+WHERE SEGMENT_NAME = 'T_EXTENT_TEST';
+ all_has 
+---------
+ t
+(1 row)
+
+SELECT COUNT(*) = 1 AS dba_has
+FROM SYS.DBA_EXTENTS
+WHERE SEGMENT_NAME = 'T_EXTENT_TEST';
+ dba_has 
+---------
+ t
+(1 row)
+
+DROP TABLE t_extent_test;
+-- Oracle-compatible V$DATAFILE view
+SELECT COUNT(*) = (SELECT COUNT(*) FROM PG_TABLESPACE) AS one_row_per_tablespace
+FROM SYS.V$DATAFILE;
+ one_row_per_tablespace 
+------------------------
+ t
+(1 row)
+
+SELECT "TS#" > 0 AS ts_positive, BLOCKS > 0 AS blocks_positive
+FROM SYS.V$DATAFILE
+WHERE NAME IS NULL OR NAME LIKE '%pg_default%' OR NAME LIKE '%pg_global%';
+ ts_positive | blocks_positive 
+-------------+-----------------
+(0 rows)
+
