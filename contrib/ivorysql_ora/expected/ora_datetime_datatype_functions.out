@@ -563,6 +563,8 @@ select tz_offset('-12:59') from dual; /* BUG:0000444 */
 
 select tz_offset('+14:05') from dual; /* BUG:0000444 */
 ERROR:  timezone minute between 0 and 59
+select tz_offset('+08:00garbage') from dual; /* reject trailing characters */
+ERROR:  timezone type is error
 	
 select * from datetest;
    aa   
@@ -579,6 +581,8 @@ SELECT FROM_TZ(TIMESTAMP '2000-03-28 08:00:00', '3:00') FROM DUAL;
  03-27-2000 21:00:00.000000000 -08:00
 (1 row)
 
+SELECT FROM_TZ(TIMESTAMP '2000-03-28 08:00:00', '-05:00junk') FROM DUAL;
+ERROR:  timezone type is error
   
 --sessiontimezone
 set timezone = 'Asia/Hong_Kong';

@@ -1540,12 +1540,15 @@ ora_make_timezone(char **newval)
 	int			hours = 0;
 	int			minu = 0;
 	int			res = 0;
+	int			parsed_len = 0;
 
 	/*
 	 * Try it as a numeric number of hours (possibly fractional).
+	 * Require the complete input to match so that an otherwise valid offset
+	 * cannot hide an invalid suffix.
 	 */
-	res = sscanf(*newval, "%d:%d", &hours, &minu);
-	if (res == 2)
+	res = sscanf(*newval, "%d:%d%n", &hours, &minu, &parsed_len);
+	if (res == 2 && (*newval)[parsed_len] == '\0')
 	{
 		if (hours < -12 || hours > 14)
 			ereport(ERROR,
