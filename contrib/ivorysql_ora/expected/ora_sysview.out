@@ -493,3 +493,552 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- Oracle-compatible TAB_MODIFICATIONS views
+DROP TABLE IF EXISTS t_tab_mods;
+NOTICE:  table "t_tab_mods" does not exist, skipping
+CREATE TABLE t_tab_mods (id INT);
+INSERT INTO t_tab_mods VALUES (1), (2), (3);
+-- statistics for the current backend become visible after a flush
+SELECT PG_STAT_FORCE_NEXT_FLUSH();
+ pg_stat_force_next_flush 
+--------------------------
+ 
+(1 row)
+
+SELECT INSERTS = 3 AS inserts_counted
+FROM SYS.USER_TAB_MODIFICATIONS WHERE TABLE_NAME = 'T_TAB_MODS';
+ inserts_counted 
+-----------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 1 AS all_has
+FROM SYS.ALL_TAB_MODIFICATIONS WHERE TABLE_NAME = 'T_TAB_MODS';
+ all_has 
+---------
+ t
+(1 row)
+
+SELECT COUNT(*) = 1 AS dba_has
+FROM SYS.DBA_TAB_MODIFICATIONS WHERE TABLE_NAME = 'T_TAB_MODS';
+ dba_has 
+---------
+ t
+(1 row)
+
+DROP TABLE t_tab_mods;
+-- Oracle-compatible V$SESSION_LONGOPS view
+-- No long operation runs inside a regression session, so the view is empty;
+-- the query also proves the column list resolves.
+SELECT COUNT(*) = 0 AS no_longops,
+       COUNT(*) FILTER (WHERE SOFAR > TOTALWORK) = 0 AS progress_consistent
+FROM SYS.V$SESSION_LONGOPS;
+ no_longops | progress_consistent 
+------------+---------------------
+ t          | t
+(1 row)
+
+-- Oracle-compatible policy dictionary views
+DROP TABLE IF EXISTS t_policy_test;
+NOTICE:  table "t_policy_test" does not exist, skipping
+CREATE TABLE t_policy_test (id INT, owner_name TEXT);
+ALTER TABLE t_policy_test ENABLE ROW LEVEL SECURITY;
+CREATE POLICY p_sel ON t_policy_test FOR SELECT USING (true);
+CREATE POLICY p_del ON t_policy_test FOR DELETE USING (true);
+SELECT POLICY_NAME, SEL, INS, UPD, CHK, ENABLE
+FROM SYS.USER_POLICIES
+WHERE OBJECT_NAME = 'T_POLICY_TEST'
+ORDER BY POLICY_NAME;
+ policy_name | sel | ins | upd | chk | enable 
+-------------+-----+-----+-----+-----+--------
+ P_DEL       | NO  | NO  | NO  | YES | YES
+ P_SEL       | YES | NO  | NO  | NO  | YES
+(2 rows)
+
+SELECT COUNT(*) = 2 AS all_has
+FROM SYS.ALL_POLICIES
+WHERE OBJECT_NAME = 'T_POLICY_TEST';
+ all_has 
+---------
+ t
+(1 row)
+
+SELECT COUNT(*) = 2 AS dba_has
+FROM SYS.DBA_POLICIES
+WHERE OBJECT_NAME = 'T_POLICY_TEST';
+ dba_has 
+---------
+ t
+(1 row)
+
+DROP TABLE t_policy_test;
+-- Oracle-compatible index statistics dictionary views
+DROP TABLE IF EXISTS t_ind_stat;
+NOTICE:  table "t_ind_stat" does not exist, skipping
+CREATE TABLE t_ind_stat (id INT, code TEXT);
+CREATE INDEX idx_ind_stat ON t_ind_stat (code);
+INSERT INTO t_ind_stat SELECT g, 'c' || g FROM GENERATE_SERIES(1, 3) AS g;
+ANALYZE t_ind_stat;
+SELECT NUM_ROWS, DISTINCT_KEYS, LEAF_BLOCKS > 0 AS has_blocks, STATUS, STALE_STATS
+FROM SYS.USER_IND_STATISTICS
+WHERE INDEX_NAME = 'IDX_IND_STAT';
+ num_rows | distinct_keys | has_blocks | status | stale_stats 
+----------+---------------+------------+--------+-------------
+ 3        |               | t          | VALID  | NO
+(1 row)
+
+SELECT COUNT(*) = 1 AS all_has
+FROM SYS.ALL_IND_STATISTICS
+WHERE INDEX_NAME = 'IDX_IND_STAT';
+ all_has 
+---------
+ t
+(1 row)
+
+SELECT COUNT(*) = 1 AS dba_has
+FROM SYS.DBA_IND_STATISTICS
+WHERE INDEX_NAME = 'IDX_IND_STAT';
+ dba_has 
+---------
+ t
+(1 row)
+
+DROP TABLE t_ind_stat;
+-- USER_TAB_PRIVS / ALL_TAB_PRIVS / DBA_TAB_PRIVS
+DROP TABLE IF EXISTS TEST_TAB_PRIVS;
+NOTICE:  table "test_tab_privs" does not exist, skipping
+CREATE TABLE TEST_TAB_PRIVS (ID INT);
+DROP ROLE IF EXISTS tab_privs_grantee;
+NOTICE:  role "tab_privs_grantee" does not exist, skipping
+CREATE ROLE tab_privs_grantee;
+GRANT SELECT, UPDATE ON TEST_TAB_PRIVS TO tab_privs_grantee WITH GRANT OPTION;
+SELECT GRANTEE, TABLE_NAME, PRIVILEGE, GRANTABLE FROM SYS.USER_TAB_PRIVS
+WHERE TABLE_NAME = 'TEST_TAB_PRIVS' ORDER BY PRIVILEGE;
+      grantee      |   table_name   | privilege  | grantable 
+-------------------+----------------+------------+-----------
+ theresia          | TEST_TAB_PRIVS | DELETE     | NO
+ theresia          | TEST_TAB_PRIVS | INSERT     | NO
+ theresia          | TEST_TAB_PRIVS | MAINTAIN   | NO
+ theresia          | TEST_TAB_PRIVS | REFERENCES | NO
+ theresia          | TEST_TAB_PRIVS | SELECT     | NO
+ tab_privs_grantee | TEST_TAB_PRIVS | SELECT     | YES
+ theresia          | TEST_TAB_PRIVS | TRIGGER    | NO
+ theresia          | TEST_TAB_PRIVS | TRUNCATE   | NO
+ theresia          | TEST_TAB_PRIVS | UPDATE     | NO
+ tab_privs_grantee | TEST_TAB_PRIVS | UPDATE     | YES
+(10 rows)
+
+SELECT count(*) AS granted_rows FROM SYS.DBA_TAB_PRIVS
+WHERE TABLE_NAME = 'TEST_TAB_PRIVS' AND GRANTEE = 'tab_privs_grantee';
+ granted_rows 
+--------------
+            2
+(1 row)
+
+DROP TABLE TEST_TAB_PRIVS;
+DROP ROLE tab_privs_grantee;
+-- USER_IND_PARTITIONS / ALL_IND_PARTITIONS / DBA_IND_PARTITIONS
+DROP TABLE IF EXISTS TEST_IND_PART;
+NOTICE:  table "test_ind_part" does not exist, skipping
+CREATE TABLE TEST_IND_PART (ID INT) PARTITION BY RANGE (ID);
+CREATE TABLE TEST_IND_PART_1 PARTITION OF TEST_IND_PART FOR VALUES FROM (1) TO (10);
+CREATE INDEX TEST_IND_PART_IDX ON TEST_IND_PART (ID);
+SELECT INDEX_NAME, (PARTITION_NAME IS NOT NULL) AS has_partition, TABLE_NAME, UNIQUENESS, STATUS
+FROM SYS.USER_IND_PARTITIONS WHERE INDEX_NAME = 'TEST_IND_PART_IDX';
+    index_name     | has_partition |  table_name   | uniqueness | status 
+-------------------+---------------+---------------+------------+--------
+ TEST_IND_PART_IDX | t             | TEST_IND_PART | NONUNIQUE  | VALID
+(1 row)
+
+SELECT count(*) = (SELECT count(*) FROM SYS.DBA_IND_PARTITIONS WHERE INDEX_NAME = 'TEST_IND_PART_IDX')
+       AS dba_matches FROM SYS.ALL_IND_PARTITIONS WHERE INDEX_NAME = 'TEST_IND_PART_IDX';
+ dba_matches 
+-------------
+ t
+(1 row)
+
+DROP TABLE TEST_IND_PART;
+-- USER_PART_TABLES / ALL_PART_TABLES / DBA_PART_TABLES
+DROP TABLE IF EXISTS TEST_PART;
+NOTICE:  table "test_part" does not exist, skipping
+CREATE TABLE TEST_PART (ID INT) PARTITION BY RANGE (ID);
+CREATE TABLE TEST_PART_1 PARTITION OF TEST_PART FOR VALUES FROM (1) TO (10);
+CREATE TABLE TEST_PART_2 PARTITION OF TEST_PART FOR VALUES FROM (10) TO (20);
+SELECT TABLE_NAME, PARTITIONING_TYPE, STATUS, PARTITIONED FROM SYS.USER_PART_TABLES
+WHERE TABLE_NAME = 'TEST_PART';
+ table_name | partitioning_type | status | partitioned 
+------------+-------------------+--------+-------------
+ TEST_PART  | RANGE             | VALID  | YES
+(1 row)
+
+SELECT count(*) = (SELECT count(*) FROM SYS.DBA_PART_TABLES WHERE TABLE_NAME = 'TEST_PART') AS dba_matches
+FROM SYS.ALL_PART_TABLES WHERE TABLE_NAME = 'TEST_PART';
+ dba_matches 
+-------------
+ t
+(1 row)
+
+-- USER_TAB_PARTITIONS / ALL_TAB_PARTITIONS / DBA_TAB_PARTITIONS
+SELECT TABLE_NAME, PARTITION_NAME, PARTITION_POSITION, (HIGH_VALUE IS NOT NULL) AS has_high_value, STATUS
+FROM SYS.USER_TAB_PARTITIONS WHERE TABLE_NAME = 'TEST_PART' ORDER BY PARTITION_POSITION;
+ table_name | partition_name | partition_position | has_high_value | status 
+------------+----------------+--------------------+----------------+--------
+ TEST_PART  | TEST_PART_1    |                  1 | t              | VALID
+ TEST_PART  | TEST_PART_2    |                  2 | t              | VALID
+(2 rows)
+
+SELECT count(*) = (SELECT count(*) FROM SYS.DBA_TAB_PARTITIONS WHERE TABLE_NAME = 'TEST_PART') AS dba_matches
+FROM SYS.ALL_TAB_PARTITIONS WHERE TABLE_NAME = 'TEST_PART';
+ dba_matches 
+-------------
+ t
+(1 row)
+
+DROP TABLE TEST_PART;
+-- USER_IND_EXPRESSIONS / ALL_IND_EXPRESSIONS / DBA_IND_EXPRESSIONS
+DROP TABLE IF EXISTS TEST_IND_EXPR;
+NOTICE:  table "test_ind_expr" does not exist, skipping
+CREATE TABLE TEST_IND_EXPR (ID INT, NAME VARCHAR2(10));
+CREATE INDEX TEST_IND_EXPR_IDX ON TEST_IND_EXPR (lower(NAME));
+SELECT INDEX_NAME, TABLE_NAME, COLUMN_EXPRESSION, COLUMN_POSITION FROM SYS.USER_IND_EXPRESSIONS
+WHERE INDEX_NAME = 'TEST_IND_EXPR_IDX' ORDER BY COLUMN_POSITION;
+    index_name     |  table_name   | column_expression | column_position 
+-------------------+---------------+-------------------+-----------------
+ TEST_IND_EXPR_IDX | TEST_IND_EXPR | lower(name::text) |               1
+(1 row)
+
+SELECT count(*) = (SELECT count(*) FROM SYS.DBA_IND_EXPRESSIONS WHERE INDEX_NAME = 'TEST_IND_EXPR_IDX')
+       AS dba_matches FROM SYS.ALL_IND_EXPRESSIONS WHERE INDEX_NAME = 'TEST_IND_EXPR_IDX';
+ dba_matches 
+-------------
+ t
+(1 row)
+
+DROP TABLE TEST_IND_EXPR;
+-- USER_MVIEWS / ALL_MVIEWS / DBA_MVIEWS
+DROP MATERIALIZED VIEW IF EXISTS TEST_MVIEW;
+NOTICE:  materialized view "test_mview" does not exist, skipping
+CREATE MATERIALIZED VIEW TEST_MVIEW AS SELECT 1 AS ID;
+SELECT MVIEW_NAME, LAST_REFRESH_TYPE, STATUS, LAST_REFRESH_DATE IS NULL AS refresh_date_null,
+       (QUERY IS NOT NULL) AS has_query
+FROM SYS.USER_MVIEWS WHERE MVIEW_NAME = 'TEST_MVIEW';
+ mview_name | last_refresh_type | status | refresh_date_null | has_query 
+------------+-------------------+--------+-------------------+-----------
+ TEST_MVIEW | COMPLETE          | VALID  | t                 | t
+(1 row)
+
+SELECT count(*) = (SELECT count(*) FROM SYS.DBA_MVIEWS WHERE MVIEW_NAME = 'TEST_MVIEW') AS dba_matches
+FROM SYS.ALL_MVIEWS WHERE MVIEW_NAME = 'TEST_MVIEW';
+ dba_matches 
+-------------
+ t
+(1 row)
+
+DROP MATERIALIZED VIEW TEST_MVIEW;
+-- USER_IND_COLUMNS / ALL_IND_COLUMNS / DBA_IND_COLUMNS
+DROP TABLE IF EXISTS TEST_IND_COLS;
+NOTICE:  table "test_ind_cols" does not exist, skipping
+CREATE TABLE TEST_IND_COLS (A INT, B INT, C INT);
+CREATE INDEX TEST_IND_COLS_IDX ON TEST_IND_COLS (C, A);
+SELECT INDEX_NAME, TABLE_NAME, COLUMN_NAME, COLUMN_POSITION FROM SYS.USER_IND_COLUMNS
+WHERE INDEX_NAME = 'TEST_IND_COLS_IDX' ORDER BY COLUMN_POSITION;
+    index_name     |  table_name   | column_name | column_position 
+-------------------+---------------+-------------+-----------------
+ TEST_IND_COLS_IDX | TEST_IND_COLS | C           |               1
+ TEST_IND_COLS_IDX | TEST_IND_COLS | A           |               2
+(2 rows)
+
+SELECT count(*) = (SELECT count(*) FROM SYS.ALL_IND_COLUMNS WHERE INDEX_NAME = 'TEST_IND_COLS_IDX')
+       AS all_matches FROM SYS.DBA_IND_COLUMNS WHERE INDEX_NAME = 'TEST_IND_COLS_IDX';
+ all_matches 
+-------------
+ t
+(1 row)
+
+DROP TABLE TEST_IND_COLS;
+-- USER_CONSTRAINTS / ALL_CONSTRAINTS / DBA_CONSTRAINTS
+DROP TABLE IF EXISTS TEST_CONS_PARENT;
+NOTICE:  table "test_cons_parent" does not exist, skipping
+DROP TABLE IF EXISTS TEST_CONS;
+NOTICE:  table "test_cons" does not exist, skipping
+CREATE TABLE TEST_CONS_PARENT (PID INT PRIMARY KEY);
+CREATE TABLE TEST_CONS (ID INT PRIMARY KEY, NAME VARCHAR2(10) UNIQUE,
+                        PID INT REFERENCES TEST_CONS_PARENT (PID) ON DELETE CASCADE,
+                        AGE INT CHECK (AGE > 0));
+SELECT CONSTRAINT_NAME, CONSTRAINT_TYPE, TABLE_NAME, SEARCH_CONDITION, DELETE_RULE, STATUS
+FROM SYS.USER_CONSTRAINTS WHERE TABLE_NAME = 'TEST_CONS' ORDER BY CONSTRAINT_TYPE, CONSTRAINT_NAME;
+   constraint_name   | constraint_type | table_name | search_condition  | delete_rule | status  
+---------------------+-----------------+------------+-------------------+-------------+---------
+ TEST_CONS_AGE_CHECK | C               | TEST_CONS  | CHECK ((age > 0)) |             | ENABLED
+ TEST_CONS_PKEY      | P               | TEST_CONS  |                   |             | ENABLED
+ TEST_CONS_PID_FKEY  | R               | TEST_CONS  |                   | CASCADE     | ENABLED
+ TEST_CONS_NAME_KEY  | U               | TEST_CONS  |                   |             | ENABLED
+(4 rows)
+
+SELECT count(*) = (SELECT count(*) FROM SYS.ALL_CONSTRAINTS WHERE TABLE_NAME = 'TEST_CONS')
+       AS all_matches_user FROM SYS.DBA_CONSTRAINTS WHERE TABLE_NAME = 'TEST_CONS';
+ all_matches_user 
+------------------
+ t
+(1 row)
+
+DROP TABLE TEST_CONS;
+DROP TABLE TEST_CONS_PARENT;
+-- USER_TRIGGERS
+DROP TABLE IF EXISTS TEST_TRG;
+NOTICE:  table "test_trg" does not exist, skipping
+CREATE TABLE TEST_TRG (ID INT, NAME VARCHAR2(10));
+CREATE OR REPLACE FUNCTION TEST_TRG_FN() RETURN trigger AS
+BEGIN
+    RETURN new;
+END;
+/
+CREATE TRIGGER TEST_TRG_BEFORE BEFORE INSERT OR UPDATE ON TEST_TRG
+    FOR EACH ROW EXECUTE FUNCTION TEST_TRG_FN();
+SELECT TRIGGER_NAME, TABLE_NAME, TRIGGER_TYPE, TRIGGERING_EVENT, STATUS
+FROM SYS.USER_TRIGGERS WHERE TABLE_NAME = 'TEST_TRG';
+  trigger_name   | table_name |  trigger_type   | triggering_event | status  
+-----------------+------------+-----------------+------------------+---------
+ TEST_TRG_BEFORE | TEST_TRG   | BEFORE EACH ROW | INSERT UPDATE    | ENABLED
+(1 row)
+
+DROP TRIGGER TEST_TRG_BEFORE ON TEST_TRG;
+DROP FUNCTION TEST_TRG_FN;
+DROP TABLE TEST_TRG;
+-- ALL_INDEXES / DBA_INDEXES
+DROP TABLE IF EXISTS TEST_ALL_INDEXES;
+NOTICE:  table "test_all_indexes" does not exist, skipping
+CREATE TABLE TEST_ALL_INDEXES (ID INT, NAME VARCHAR2(10));
+CREATE UNIQUE INDEX TEST_ALL_INDEXES_UK ON TEST_ALL_INDEXES (ID);
+SELECT OWNER IS NOT NULL AS has_owner, INDEX_NAME, TABLE_NAME, UNIQUENESS, STATUS
+FROM SYS.ALL_INDEXES WHERE TABLE_NAME = 'TEST_ALL_INDEXES';
+ has_owner |     index_name      |    table_name    | uniqueness | status 
+-----------+---------------------+------------------+------------+--------
+ t         | TEST_ALL_INDEXES_UK | TEST_ALL_INDEXES | UNIQUE     | VALID
+(1 row)
+
+-- an owner that revoked all of its own privileges still owns the index, so
+-- it stays in the DBA_ view while the ALL_ one hides it again
+DROP ROLE IF EXISTS all_indexes_owner;
+NOTICE:  role "all_indexes_owner" does not exist, skipping
+CREATE ROLE all_indexes_owner;
+CREATE TABLE TEST_ALL_INDEXES_OTHER (ID INT);
+CREATE INDEX TEST_ALL_INDEXES_OTHER_IDX ON TEST_ALL_INDEXES_OTHER (ID);
+ALTER TABLE TEST_ALL_INDEXES_OTHER OWNER TO all_indexes_owner;
+SET ROLE all_indexes_owner;
+REVOKE ALL ON TEST_ALL_INDEXES_OTHER FROM all_indexes_owner;
+SELECT (SELECT count(*) FROM SYS.DBA_INDEXES
+        WHERE TABLE_NAME = 'TEST_ALL_INDEXES_OTHER') AS dba_rows,
+       (SELECT count(*) FROM SYS.ALL_INDEXES
+        WHERE TABLE_NAME = 'TEST_ALL_INDEXES_OTHER') AS all_rows;
+ dba_rows | all_rows 
+----------+----------
+        1 |        0
+(1 row)
+
+RESET ROLE;
+DROP TABLE TEST_ALL_INDEXES_OTHER;
+DROP ROLE all_indexes_owner;
+DROP TABLE IF EXISTS TEST_ALL_INDEXES;
+-- USER_INDEXES
+DROP TABLE IF EXISTS TEST_USER_INDEXES;
+NOTICE:  table "test_user_indexes" does not exist, skipping
+CREATE TABLE TEST_USER_INDEXES (ID INT, NAME VARCHAR2(10));
+CREATE UNIQUE INDEX TEST_USER_INDEXES_UK ON TEST_USER_INDEXES (ID);
+CREATE INDEX TEST_USER_INDEXES_IDX ON TEST_USER_INDEXES (NAME);
+SELECT INDEX_NAME, TABLE_NAME, UNIQUENESS, STATUS FROM SYS.USER_INDEXES
+WHERE TABLE_NAME = 'TEST_USER_INDEXES' ORDER BY INDEX_NAME;
+      index_name       |    table_name     | uniqueness | status 
+-----------------------+-------------------+------------+--------
+ TEST_USER_INDEXES_IDX | TEST_USER_INDEXES | NONUNIQUE  | VALID
+ TEST_USER_INDEXES_UK  | TEST_USER_INDEXES | UNIQUE     | VALID
+(2 rows)
+
+-- a relation owned by another role is not listed here
+DROP ROLE IF EXISTS user_indexes_owner;
+NOTICE:  role "user_indexes_owner" does not exist, skipping
+CREATE ROLE user_indexes_owner;
+CREATE TABLE TEST_USER_INDEXES_OTHER (ID INT);
+CREATE INDEX TEST_USER_INDEXES_OTHER_IDX ON TEST_USER_INDEXES_OTHER (ID);
+ALTER TABLE TEST_USER_INDEXES_OTHER OWNER TO user_indexes_owner;
+SELECT count(*) AS rows_for_other_owner FROM SYS.USER_INDEXES
+WHERE TABLE_NAME = 'TEST_USER_INDEXES_OTHER';
+ rows_for_other_owner 
+----------------------
+                    0
+(1 row)
+
+DROP TABLE TEST_USER_INDEXES_OTHER;
+DROP ROLE user_indexes_owner;
+DROP TABLE IF EXISTS TEST_USER_INDEXES;
+-- DBA_TABLES
+DROP TABLE IF EXISTS TEST_DBA_TABLES;
+NOTICE:  table "test_dba_tables" does not exist, skipping
+CREATE TABLE TEST_DBA_TABLES (ID INT);
+INSERT INTO TEST_DBA_TABLES VALUES (1);
+ANALYZE TEST_DBA_TABLES;
+SELECT TABLE_NAME, STATUS, TEMPORARY, PARTITIONED FROM SYS.DBA_TABLES
+WHERE TABLE_NAME = 'TEST_DBA_TABLES';
+   table_name    | status | temporary | partitioned 
+-----------------+--------+-----------+-------------
+ TEST_DBA_TABLES | VALID  | N         | NO
+(1 row)
+
+-- an owner that revoked all of its own privileges still owns the table, so
+-- it stays in the DBA_ view
+DROP ROLE IF EXISTS dba_tables_owner;
+NOTICE:  role "dba_tables_owner" does not exist, skipping
+CREATE ROLE dba_tables_owner;
+CREATE TABLE TEST_DBA_TABLES_OTHER (ID INT);
+ALTER TABLE TEST_DBA_TABLES_OTHER OWNER TO dba_tables_owner;
+SET ROLE dba_tables_owner;
+REVOKE ALL ON TEST_DBA_TABLES_OTHER FROM dba_tables_owner;
+SELECT (SELECT count(*) FROM SYS.DBA_TABLES
+        WHERE TABLE_NAME = 'TEST_DBA_TABLES_OTHER') AS dba_rows;
+ dba_rows 
+----------
+        1
+(1 row)
+
+RESET ROLE;
+DROP TABLE TEST_DBA_TABLES_OTHER;
+DROP ROLE dba_tables_owner;
+DROP TABLE IF EXISTS TEST_DBA_TABLES;
+-- ALL_TABLES
+DROP TABLE IF EXISTS TEST_ALL_TABLES;
+NOTICE:  table "test_all_tables" does not exist, skipping
+CREATE TABLE TEST_ALL_TABLES (ID INT);
+INSERT INTO TEST_ALL_TABLES VALUES (1), (2);
+ANALYZE TEST_ALL_TABLES;
+SELECT OWNER IS NOT NULL AS has_owner, TABLE_NAME, STATUS, TEMPORARY, PARTITIONED,
+       (NUM_ROWS IS NOT NULL) AS has_num_rows,
+       (LAST_ANALYZED IS NOT NULL) AS analyzed
+FROM SYS.ALL_TABLES WHERE TABLE_NAME = 'TEST_ALL_TABLES';
+ has_owner |   table_name    | status | temporary | partitioned | has_num_rows | analyzed 
+-----------+-----------------+--------+-----------+-------------+--------------+----------
+ t         | TEST_ALL_TABLES | VALID  | N         | NO          | t            | t
+(1 row)
+
+-- a table owned by another role is visible here
+DROP ROLE IF EXISTS all_tables_owner;
+NOTICE:  role "all_tables_owner" does not exist, skipping
+CREATE ROLE all_tables_owner;
+CREATE TABLE TEST_ALL_TABLES_OTHER (ID INT);
+ALTER TABLE TEST_ALL_TABLES_OTHER OWNER TO all_tables_owner;
+SELECT count(*) AS rows_for_other_owner FROM SYS.ALL_TABLES
+WHERE TABLE_NAME = 'TEST_ALL_TABLES_OTHER';
+ rows_for_other_owner 
+----------------------
+                    1
+(1 row)
+
+DROP TABLE TEST_ALL_TABLES_OTHER;
+DROP ROLE all_tables_owner;
+DROP TABLE IF EXISTS TEST_ALL_TABLES;
+-- USER_TABLES
+DROP TABLE IF EXISTS TEST_USER_TABLES;
+NOTICE:  table "test_user_tables" does not exist, skipping
+CREATE TABLE TEST_USER_TABLES (ID INT);
+INSERT INTO TEST_USER_TABLES VALUES (1), (2), (3);
+ANALYZE TEST_USER_TABLES;
+SELECT TABLE_NAME, STATUS, TEMPORARY, PARTITIONED,
+       (NUM_ROWS IS NOT NULL) AS has_num_rows,
+       (LAST_ANALYZED IS NOT NULL) AS analyzed
+FROM SYS.USER_TABLES WHERE TABLE_NAME = 'TEST_USER_TABLES';
+    table_name    | status | temporary | partitioned | has_num_rows | analyzed 
+------------------+--------+-----------+-------------+--------------+----------
+ TEST_USER_TABLES | VALID  | N         | NO          | t            | t
+(1 row)
+
+-- a relation owned by another role is not listed here
+DROP ROLE IF EXISTS user_tables_owner;
+NOTICE:  role "user_tables_owner" does not exist, skipping
+CREATE ROLE user_tables_owner;
+CREATE TABLE TEST_USER_TABLES_OTHER (ID INT);
+ALTER TABLE TEST_USER_TABLES_OTHER OWNER TO user_tables_owner;
+SELECT count(*) AS rows_for_other_owner FROM SYS.USER_TABLES
+WHERE TABLE_NAME = 'TEST_USER_TABLES_OTHER';
+ rows_for_other_owner 
+----------------------
+                    0
+(1 row)
+
+DROP TABLE TEST_USER_TABLES_OTHER;
+DROP ROLE user_tables_owner;
+DROP TABLE IF EXISTS TEST_USER_TABLES;
+-- ALL_TAB_COMMENTS / ALL_COL_COMMENTS
+DROP TABLE IF EXISTS TEST_ALL_TAB_COMMENTS;
+NOTICE:  table "test_all_tab_comments" does not exist, skipping
+CREATE TABLE TEST_ALL_TAB_COMMENTS (ID INT, NAME VARCHAR2(10));
+COMMENT ON TABLE TEST_ALL_TAB_COMMENTS IS 'an all_ table comment';
+COMMENT ON COLUMN TEST_ALL_TAB_COMMENTS.ID IS 'an all_ column comment';
+SELECT OWNER IS NOT NULL AS has_owner, TABLE_NAME, TABLE_TYPE, COMMENTS
+FROM SYS.ALL_TAB_COMMENTS WHERE TABLE_NAME = 'TEST_ALL_TAB_COMMENTS';
+ has_owner |      table_name       | table_type |       comments        
+-----------+-----------------------+------------+-----------------------
+ t         | TEST_ALL_TAB_COMMENTS | TABLE      | an all_ table comment
+(1 row)
+
+SELECT COLUMN_NAME, COMMENTS FROM SYS.ALL_COL_COMMENTS
+WHERE TABLE_NAME = 'TEST_ALL_TAB_COMMENTS' ORDER BY COLUMN_NAME;
+ column_name |        comments        
+-------------+------------------------
+ ID          | an all_ column comment
+ NAME        | 
+(2 rows)
+
+-- unlike the USER_ views, a relation owned by another role is visible here
+DROP ROLE IF EXISTS all_tab_comments_owner;
+NOTICE:  role "all_tab_comments_owner" does not exist, skipping
+CREATE ROLE all_tab_comments_owner;
+CREATE TABLE TEST_ALL_TAB_COMMENTS_OTHER (ID INT);
+ALTER TABLE TEST_ALL_TAB_COMMENTS_OTHER OWNER TO all_tab_comments_owner;
+COMMENT ON TABLE TEST_ALL_TAB_COMMENTS_OTHER IS 'another owner';
+SELECT count(*) AS rows_in_all_tab_comments FROM SYS.ALL_TAB_COMMENTS
+WHERE TABLE_NAME = 'TEST_ALL_TAB_COMMENTS_OTHER';
+ rows_in_all_tab_comments 
+--------------------------
+                        1
+(1 row)
+
+DROP TABLE TEST_ALL_TAB_COMMENTS_OTHER;
+DROP ROLE all_tab_comments_owner;
+DROP TABLE IF EXISTS TEST_ALL_TAB_COMMENTS;
+-- USER_TAB_COMMENTS / USER_COL_COMMENTS
+DROP TABLE IF EXISTS TEST_TAB_COMMENTS;
+NOTICE:  table "test_tab_comments" does not exist, skipping
+CREATE TABLE TEST_TAB_COMMENTS (ID INT, NAME VARCHAR2(10));
+COMMENT ON TABLE TEST_TAB_COMMENTS IS 'a table comment';
+COMMENT ON COLUMN TEST_TAB_COMMENTS.NAME IS 'a column comment';
+SELECT TABLE_NAME, TABLE_TYPE, COMMENTS FROM SYS.USER_TAB_COMMENTS
+WHERE TABLE_NAME = 'TEST_TAB_COMMENTS';
+    table_name     | table_type |    comments     
+-------------------+------------+-----------------
+ TEST_TAB_COMMENTS | TABLE      | a table comment
+(1 row)
+
+SELECT COLUMN_NAME, COMMENTS FROM SYS.USER_COL_COMMENTS
+WHERE TABLE_NAME = 'TEST_TAB_COMMENTS' ORDER BY COLUMN_NAME;
+ column_name |     comments     
+-------------+------------------
+ ID          | 
+ NAME        | a column comment
+(2 rows)
+
+-- a relation owned by another role is not listed here
+DROP ROLE IF EXISTS tab_comments_owner;
+NOTICE:  role "tab_comments_owner" does not exist, skipping
+CREATE ROLE tab_comments_owner;
+CREATE TABLE TEST_TAB_COMMENTS_OTHER (ID INT);
+ALTER TABLE TEST_TAB_COMMENTS_OTHER OWNER TO tab_comments_owner;
+COMMENT ON TABLE TEST_TAB_COMMENTS_OTHER IS 'another owner';
+SELECT count(*) AS rows_for_other_owner FROM SYS.USER_TAB_COMMENTS
+WHERE TABLE_NAME = 'TEST_TAB_COMMENTS_OTHER';
+ rows_for_other_owner 
+----------------------
+                    0
+(1 row)
+
+DROP TABLE TEST_TAB_COMMENTS_OTHER;
+DROP ROLE tab_comments_owner;
+DROP TABLE IF EXISTS TEST_TAB_COMMENTS;
