@@ -11,7 +11,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-24.04]
 
     env:
       LLVM_CONFIG: /usr/bin/llvm-config
@@ -20,7 +20,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: dependancy - linux
-      if: ${{ matrix.os == 'ubuntu-latest' }}
+      if: ${{ matrix.os == 'ubuntu-24.04' }}
       run: |
         sudo apt-get update
         sudo apt-get install -y gcc-14 g++-14
@@ -36,7 +36,7 @@ jobs:
               libsystemd-dev libselinux1-dev tzdata systemtap-sdt-dev \
               libcurl4-openssl-dev liburing-dev
     - name: configure - linux
-      if: ${{ matrix.os == 'ubuntu-latest' }}
+      if: ${{ matrix.os == 'ubuntu-24.04' }}
       run: |
         ./configure \
             --enable-cassert --enable-debug --enable-rpath --with-tcl \
