@@ -122,3 +122,50 @@ BEGIN
 END;
 /
 NOTICE:  round_trip_match=t
+-- Oracle-compatible UTL_ENCODE.TEXT_ENCODE / TEXT_DECODE
+SELECT UTL_ENCODE.TEXT_DECODE(UTL_ENCODE.TEXT_ENCODE('hello'::BYTEA, 'UTF8', 1), 'UTF8', 1)
+       = 'hello'::BYTEA AS roundtrip;
+ roundtrip 
+-----------
+ t
+(1 row)
+
+SELECT UTL_ENCODE.TEXT_DECODE(UTL_ENCODE.TEXT_ENCODE('中文'::BYTEA, 'UTF8', 1), 'UTF8', 1)
+       = '中文'::BYTEA AS multibyte_roundtrip;
+ multibyte_roundtrip 
+---------------------
+ t
+(1 row)
+
+-- Oracle-compatible UTL_ENCODE.MIME_HEADER_ENCODE / DECODE
+SELECT UTL_ENCODE.MIME_HEADER_DECODE(UTL_ENCODE.MIME_HEADER_ENCODE('hello'::BYTEA)) = 'hello'::BYTEA AS roundtrip;
+ roundtrip 
+-----------
+ t
+(1 row)
+
+SELECT UTL_ENCODE.MIME_HEADER_ENCODE('hi'::BYTEA) LIKE '=%?B?%?=%' AS encoded_word_shape;
+ encoded_word_shape 
+--------------------
+ t
+(1 row)
+
+-- Oracle-compatible UTL_ENCODE.QUOTED_PRINTABLE_ENCODE / DECODE
+SELECT UTL_ENCODE.QUOTED_PRINTABLE_DECODE(UTL_ENCODE.QUOTED_PRINTABLE_ENCODE('abc=def'::BYTEA))
+       = 'abc=def'::BYTEA AS roundtrip_eq,
+       UTL_ENCODE.QUOTED_PRINTABLE_ENCODE('A B'::BYTEA) = 'A=20B'::BYTEA AS encodes_space
+FROM DUAL;
+ roundtrip_eq | encodes_space 
+--------------+---------------
+ t            | t
+(1 row)
+
+-- Oracle-compatible UTL_ENCODE.UUENCODE / UUDECODE
+SELECT UTL_ENCODE.UUDECODE(UTL_ENCODE.UUENCODE('abc'::BYTEA)) = 'abc'::BYTEA AS roundtrip_short,
+       UTL_ENCODE.UUDECODE(UTL_ENCODE.UUENCODE(REPEAT('x', 100)::BYTEA)) = REPEAT('x', 100)::BYTEA AS roundtrip_long
+FROM DUAL;
+ roundtrip_short | roundtrip_long 
+-----------------+----------------
+ t               | t
+(1 row)
+
