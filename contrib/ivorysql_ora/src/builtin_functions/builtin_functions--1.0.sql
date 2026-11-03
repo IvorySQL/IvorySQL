@@ -1341,6 +1341,11 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
+CREATE FUNCTION sys.get_platform_slash()
+RETURNS varchar2
+AS 'MODULE_PATHNAME', 'ora_platform_slash'
+LANGUAGE C IMMUTABLE PARALLEL SAFE;
+
 /*
  * Oracle USERENV support
  */
@@ -1673,11 +1678,7 @@ BEGIN
 		  WHEN 'ORACLE_HOME' THEN
 			SELECT current_setting('data_directory') INTO res;
 		  WHEN 'PLATFORM_SLASH' THEN
-			SELECT
-				CASE
-					WHEN substring((SELECT setting FROM pg_settings WHERE name = 'data_directory') FROM 1 for 1) = '/' THEN 'LINUX'
-					ELSE 'WINDOWS'
-				END INTO res;
+			SELECT sys.get_platform_slash() INTO res;
 		  WHEN 'DB_NAME' THEN
 			SELECT current_database() INTO res;
 		  WHEN 'SESSION_DEFAULT_COLLATION' THEN

@@ -4521,3 +4521,27 @@ DETAIL:  "ivorysql" is a reserved prefix.
 reset ivorysql.dummy_config;
 ERROR:  invalid configuration parameter name "ivorysql.dummy_config"
 DETAIL:  "ivorysql" is a reserved prefix.
+-- Match the server platform, not merely either possible delimiter.
+-- Use the same Windows build markers as collate.windows.win1252.sql.
+SELECT sys.sys_context('USERENV', 'PLATFORM_SLASH') =
+       CASE WHEN version() ~ 'Visual C\+\+|mingw32|windows'
+            THEN chr(92) ELSE '/' END AS platform_slash;
+ platform_slash 
+----------------
+ t
+(1 row)
+
+SELECT sys.sys_context('userenv', 'platform_slash') =
+       sys.sys_context('USERENV', 'PLATFORM_SLASH') AS case_insensitive;
+ case_insensitive 
+------------------
+ t
+(1 row)
+
+SELECT sys.sys_context('USERENV', 'PLATFORM_SLASH', 1) =
+       sys.sys_context('USERENV', 'PLATFORM_SLASH') AS one_character;
+ one_character 
+---------------
+ t
+(1 row)
+
