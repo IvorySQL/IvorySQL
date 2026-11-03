@@ -8,7 +8,7 @@ on:
 
 jobs:
   contrib_regression:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     env:
       LLVM_CONFIG: /usr/bin/llvm-config
