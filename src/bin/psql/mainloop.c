@@ -549,6 +549,7 @@ MainLoop(FILE *source)
 						{
 							psqlplus_cmd_execute *exec = (psqlplus_cmd_execute *) pstate->psqlpluscmd;
 							char *tmpline = exec->plisqlstmts;
+							size_t		stmtlen;
 							PQExpBuffer newline_buf;
 
 							if (pset.execute_run_prepare)
@@ -569,8 +570,24 @@ MainLoop(FILE *source)
 								exit(EXIT_FAILURE);
 							}
 
+							/*
+							 * SQL*Plus runs "exec proc;" as it runs
+							 * "exec proc", also with white space after the
+							 * terminator: drop that white space before
+							 * deciding whether the call still needs a
+							 * terminator inside the block.  The bytes are
+							 * those the Oracle lexer takes as white space
+							 * (ora_scan.l), ASCII only: no client encoding
+							 * uses them inside a multibyte character, and
+							 * isspace() depends on the locale.
+							 */
+							stmtlen = strlen(tmpline);
+							while (stmtlen > 0 &&
+								   strchr(" \t\n\r\f", tmpline[stmtlen - 1]) != NULL)
+								tmpline[--stmtlen] = '\0';
+
 							appendPQExpBufferStr(newline_buf, "BEGIN ");
-							appendPQExpBuffer(newline_buf, "%s", tmpline);
+							appendPQExpBufferStr(newline_buf, tmpline);
 							if (newline_buf->data[newline_buf->len - 1] != ';')
 								appendPQExpBufferChar(newline_buf, ';');
 							appendPQExpBufferStr(newline_buf, " END;");
