@@ -270,3 +270,34 @@ SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'TEST_ALL_TAB_
 \set ON_ERROR_STOP on
 
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+
+-- ALL_ARGUMENTS must list packaged routine arguments (#2878)
+SET IVORYSQL.COMPATIBLE_MODE TO ORACLE;
+CREATE OR REPLACE PACKAGE sysview_args_pkg AS
+  FUNCTION f(p_id IN NUMBER) RETURN NUMBER;
+  PROCEDURE p(p_id IN NUMBER, p_name OUT VARCHAR2);
+  PROCEDURE no_args;
+  PROCEDURE q(a IN NUMBER(10,2), b IN OUT VARCHAR2(100));
+  FUNCTION g RETURN VARCHAR2;
+  FUNCTION g(p_id IN NUMBER) RETURN NUMBER;
+  PROCEDURE d(x IN INTEGER DEFAULT 7);
+END;
+/
+
+CREATE OR REPLACE PROCEDURE sysview_args_empty IS
+BEGIN
+  NULL;
+END;
+/
+
+SELECT object_name, package_name, argument_name, position, sequence, in_out, data_type, overload
+FROM SYS.ALL_ARGUMENTS
+WHERE package_name = 'SYSVIEW_ARGS_PKG'
+   OR object_name = 'SYSVIEW_ARGS_EMPTY'
+ORDER BY package_name NULLS LAST, object_name, overload NULLS FIRST, sequence;
+
+SELECT count(*) AS dba_pkg_rows FROM SYS.DBA_ARGUMENTS WHERE package_name = 'SYSVIEW_ARGS_PKG';
+SELECT count(*) AS user_pkg_rows FROM SYS.USER_ARGUMENTS WHERE package_name = 'SYSVIEW_ARGS_PKG';
+
+DROP PACKAGE sysview_args_pkg;
+DROP PROCEDURE sysview_args_empty;

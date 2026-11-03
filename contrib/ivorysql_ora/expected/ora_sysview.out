@@ -129,10 +129,10 @@ WHERE OBJECT_NAME = 'FUNC_WITH_DEFAULT';
  argument_name | in_out | position | defaulted 
 ---------------+--------+----------+-----------
                | OUT    | 0        | N
- ARG1          | IN     | 1        | Y
+ ARG1          | IN     | 1        | N
  ARG2          | OUT    | 2        | N
- ARG3          | IN/OUT | 3        | Y
- ARG4          | IN     | 4        | Y
+ ARG3          | IN/OUT | 3        | N
+ ARG4          | IN     | 4        | N
 (5 rows)
 
 -- clean data
@@ -493,3 +493,53 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- ALL_ARGUMENTS must list packaged routine arguments (#2878)
+SET IVORYSQL.COMPATIBLE_MODE TO ORACLE;
+CREATE OR REPLACE PACKAGE sysview_args_pkg AS
+  FUNCTION f(p_id IN NUMBER) RETURN NUMBER;
+  PROCEDURE p(p_id IN NUMBER, p_name OUT VARCHAR2);
+  PROCEDURE no_args;
+  PROCEDURE q(a IN NUMBER(10,2), b IN OUT VARCHAR2(100));
+  FUNCTION g RETURN VARCHAR2;
+  FUNCTION g(p_id IN NUMBER) RETURN NUMBER;
+  PROCEDURE d(x IN INTEGER DEFAULT 7);
+END;
+/
+CREATE OR REPLACE PROCEDURE sysview_args_empty IS
+BEGIN
+  NULL;
+END;
+/
+SELECT object_name, package_name, argument_name, position, sequence, in_out, data_type, overload
+FROM SYS.ALL_ARGUMENTS
+WHERE package_name = 'SYSVIEW_ARGS_PKG'
+   OR object_name = 'SYSVIEW_ARGS_EMPTY'
+ORDER BY package_name NULLS LAST, object_name, overload NULLS FIRST, sequence;
+ object_name |   package_name   | argument_name | position | sequence | in_out | data_type | overload 
+-------------+------------------+---------------+----------+----------+--------+-----------+----------
+ D           | SYSVIEW_ARGS_PKG | X             | 1        | 1        | IN     | NUMBER    | 
+ F           | SYSVIEW_ARGS_PKG |               | 0        | 1        | OUT    | NUMBER    | 
+ F           | SYSVIEW_ARGS_PKG | P_ID          | 1        | 2        | IN     | NUMBER    | 
+ G           | SYSVIEW_ARGS_PKG |               | 0        | 1        | OUT    | VARCHAR2  | 1
+ G           | SYSVIEW_ARGS_PKG |               | 0        | 1        | OUT    | NUMBER    | 2
+ G           | SYSVIEW_ARGS_PKG | P_ID          | 1        | 2        | IN     | NUMBER    | 2
+ P           | SYSVIEW_ARGS_PKG | P_ID          | 1        | 1        | IN     | NUMBER    | 
+ P           | SYSVIEW_ARGS_PKG | P_NAME        | 2        | 2        | OUT    | VARCHAR2  | 
+ Q           | SYSVIEW_ARGS_PKG | A             | 1        | 1        | IN     | NUMBER    | 
+ Q           | SYSVIEW_ARGS_PKG | B             | 2        | 2        | IN/OUT | VARCHAR2  | 
+(10 rows)
+
+SELECT count(*) AS dba_pkg_rows FROM SYS.DBA_ARGUMENTS WHERE package_name = 'SYSVIEW_ARGS_PKG';
+ dba_pkg_rows 
+--------------
+           10
+(1 row)
+
+SELECT count(*) AS user_pkg_rows FROM SYS.USER_ARGUMENTS WHERE package_name = 'SYSVIEW_ARGS_PKG';
+ user_pkg_rows 
+---------------
+            10
+(1 row)
+
+DROP PACKAGE sysview_args_pkg;
+DROP PROCEDURE sysview_args_empty;
