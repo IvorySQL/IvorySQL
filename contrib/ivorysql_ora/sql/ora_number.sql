@@ -1002,3 +1002,15 @@ SELECT to_number('1e0') AS exp_zero;
 SELECT to_number('1e+0') AS exp_plus_zero;
 SELECT to_number('1e-0') AS exp_minus_zero;
 /* End - to_number scientific notation */
+
+/* Start - BITOR / BITXOR */
+/* Oracle 21c: the bitwise OR and exclusive OR of two numbers */
+SELECT bitor(6, 3) AS or_6_3, bitxor(6, 3) AS xor_6_3;
+SELECT bitor(8, 1) AS or_8_1, bitxor(8, 1) AS xor_8_1;
+SELECT bitor(0, 0) AS or_0_0, bitxor(5, 5) AS xor_5_5;
+SELECT bitor(1, 2) AS or_1_2, bitxor(1, 2) AS xor_1_2, bitor(15, 240) AS or_15_240;
+/* arguments may be given as strings, like with BITAND */
+SELECT bitor('6', '3') AS or_text, bitxor('6', '3') AS xor_text;
+/* NULL propagates */
+SELECT bitor(NULL, 3) IS NULL AS or_null, bitxor(6, NULL) IS NULL AS xor_null;
+/* End - BITOR / BITXOR */

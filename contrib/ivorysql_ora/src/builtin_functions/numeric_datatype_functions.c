@@ -42,6 +42,8 @@ extern Datum number_binary_float(PG_FUNCTION_ARGS);
 extern Datum number_binary_double(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(number_bitand);
+PG_FUNCTION_INFO_V1(number_bitor);
+PG_FUNCTION_INFO_V1(number_bitxor);
 PG_FUNCTION_INFO_V1(ora_to_number);
 PG_FUNCTION_INFO_V1(number_nanvl);
 PG_FUNCTION_INFO_V1(binary_float_nanvl);
@@ -142,6 +144,29 @@ number_bitand(PG_FUNCTION_ARGS)
 	Numeric		arg2 = PG_GETARG_NUMERIC(1);
 
 	PG_RETURN_NUMERIC(numeric_bitand(arg1, arg2));
+}
+
+/*
+ * number_bitor / number_bitxor
+ *	Oracle 21c compatible BITOR() and BITXOR(), the bitwise OR and
+ *	exclusive OR of two NUMBER values.
+ */
+Datum
+number_bitor(PG_FUNCTION_ARGS)
+{
+	Numeric		arg1 = PG_GETARG_NUMERIC(0);
+	Numeric		arg2 = PG_GETARG_NUMERIC(1);
+
+	PG_RETURN_NUMERIC(numeric_bitor(arg1, arg2));
+}
+
+Datum
+number_bitxor(PG_FUNCTION_ARGS)
+{
+	Numeric		arg1 = PG_GETARG_NUMERIC(0);
+	Numeric		arg2 = PG_GETARG_NUMERIC(1);
+
+	PG_RETURN_NUMERIC(numeric_bitxor(arg1, arg2));
 }
 
 /*
