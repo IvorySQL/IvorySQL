@@ -2801,7 +2801,7 @@ get_current_compile_package(PackageCacheKey key)
 		return NULL;
 
 	/*
-	 * init some usefull message
+	 * init some useful message
 	 * which plisql_package_parse
 	 * will use
 	 */
