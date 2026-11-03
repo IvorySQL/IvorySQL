@@ -90,7 +90,7 @@ Getopt::Long::GetOptions(
 	'since=s'         => \$since) || usage();
 usage() if @ARGV;
 
-my @git = qw(git log --format=fuller --date=iso);
+my @git = qw(git log --no-color --format=fuller --date=iso);
 push @git, '--since=' . $since if defined $since;
 
 # Collect the release tag data
