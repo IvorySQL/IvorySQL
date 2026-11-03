@@ -82,6 +82,14 @@ CREATE OR REPLACE PACKAGE dbms_session IS
     PROCEDURE clear_context(namespace VARCHAR2, attribute VARCHAR2 DEFAULT NULL);
     PROCEDURE clear_all_context(namespace VARCHAR2);
     PROCEDURE reset_package;
+    -- Session identity and role control
+    FUNCTION unique_session_id RETURN VARCHAR2;
+    FUNCTION is_role_enabled(role_name VARCHAR2) RETURN BOOLEAN;
+    PROCEDURE set_role(role_name VARCHAR2);
+
+    PROCEDURE set_nls(name VARCHAR2, value VARCHAR2);
+    FUNCTION is_session_alive(sid NUMBER) RETURN BOOLEAN;
+
 END dbms_session;
 
 CREATE OR REPLACE PACKAGE BODY dbms_session IS
@@ -104,6 +112,61 @@ CREATE OR REPLACE PACKAGE BODY dbms_session IS
     PROCEDURE reset_package IS
     BEGIN
         PERFORM sys.ora_dbms_session_reset_package();
+    END;
+
+    /*
+     * UNIQUE_SESSION_ID: Oracle returns a string that is unique for the
+     * session.  The backend pid plus the postmaster start time identifies a
+     * session even across a restart that recycles pids.
+     */
+    FUNCTION unique_session_id RETURN VARCHAR2 IS
+        id TEXT;
+    BEGIN
+        id := pg_catalog.to_hex(pg_catalog.pg_backend_pid()::BIGINT)
+              || '-'
+              || pg_catalog.to_hex(
+                     pg_catalog.date_part('epoch',
+                         pg_catalog.pg_postmaster_start_time())::BIGINT);
+        RETURN id::VARCHAR2;
+    END;
+
+    /*
+     * IS_ROLE_ENABLED: true when the current user can use the role.  A role
+     * that does not exist is reported as not enabled rather than raising,
+     * which matches Oracle.
+     */
+    FUNCTION is_role_enabled(role_name VARCHAR2) RETURN BOOLEAN IS
+        enabled BOOLEAN;
+    BEGIN
+        SELECT coalesce(
+                   (SELECT pg_catalog.pg_has_role(CURRENT_USER, r.oid, 'USAGE')
+                      FROM pg_catalog.pg_roles r
+                     WHERE r.rolname = role_name::TEXT), false)
+          INTO enabled;
+        RETURN enabled;
+    END;
+
+    /* SET_ROLE: SET ROLE cannot be prepared, so set the GUC directly. */
+    PROCEDURE set_role(role_name VARCHAR2) IS
+    BEGIN
+        PERFORM pg_catalog.set_config('role', role_name::TEXT, false);
+    END;
+
+    /* SET_NLS: Oracle sets a session NLS parameter; here it is the GUC. */
+    PROCEDURE set_nls(name VARCHAR2, value VARCHAR2) IS
+    BEGIN
+        PERFORM pg_catalog.set_config(name::TEXT, value::TEXT, false);
+    END;
+
+    /* IS_SESSION_ALIVE: true while a backend with that pid is connected. */
+    FUNCTION is_session_alive(sid NUMBER) RETURN BOOLEAN IS
+        alive BOOLEAN;
+    BEGIN
+        SELECT pg_catalog.count(*) > 0
+          INTO alive
+          FROM pg_catalog.pg_stat_activity
+         WHERE pid = sid::INT8;
+        RETURN alive;
     END;
 
 END dbms_session;
