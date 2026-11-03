@@ -264,3 +264,58 @@ select * from t_ora_like where str2 like 'test%';
 
 drop table t_ora_like;
 set ivorysql.compatible_mode to pg;
+-- NOT LIKE must resolve for numeric columns the same way LIKE does,
+-- including with an explicit ESCAPE clause (the sys !~~ operator was missing)
+set ivorysql.compatible_mode to oracle;
+create table like_num_cols(col bigint, a int, b numeric, c float8, d number(210,10));
+insert into like_num_cols values (-428, 17, 3.9, 2.5, 123.45);
+select col from like_num_cols where col not like '%\%%';
+ col  
+------
+ -428
+(1 row)
+
+select col from like_num_cols where col not like '%\%%' escape '\';
+ col  
+------
+ -428
+(1 row)
+
+select count(*) as notlike_dash from like_num_cols where col not like '%\-%';
+ notlike_dash 
+--------------
+            0
+(1 row)
+
+select count(*) as int_notlike from like_num_cols where a not like '1%';
+ int_notlike 
+-------------
+           0
+(1 row)
+
+select count(*) as numeric_notlike from like_num_cols where b not like '3%';
+ numeric_notlike 
+-----------------
+               0
+(1 row)
+
+select count(*) as float8_notlike from like_num_cols where c not like '2%';
+ float8_notlike 
+----------------
+              0
+(1 row)
+
+select count(*) as number_notlike from like_num_cols where d not like '1%';
+ number_notlike 
+----------------
+              0
+(1 row)
+
+select count(*) as text_pattern from like_num_cols where col not like 123::text;
+ text_pattern 
+--------------
+            1
+(1 row)
+
+drop table like_num_cols;
+set ivorysql.compatible_mode to pg;
