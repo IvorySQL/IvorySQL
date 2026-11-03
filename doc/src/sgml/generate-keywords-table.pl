@@ -6,6 +6,7 @@
 
 use strict;
 use warnings FATAL => 'all';
+use File::Glob qw(bsd_glob);
 
 my @sql_versions = reverse sort ('1992', '2016', '2023');
 
@@ -20,7 +21,7 @@ foreach my $ver (@sql_versions)
 {
 	foreach my $res ('reserved', 'nonreserved')
 	{
-		foreach my $file (glob "$srcdir/keywords/sql${ver}*-${res}.txt")
+		foreach my $file (bsd_glob "$srcdir/keywords/sql${ver}*-${res}.txt")
 		{
 			open my $fh, '<', $file or die;
 
