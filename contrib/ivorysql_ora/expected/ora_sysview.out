@@ -356,12 +356,10 @@ FROM SYS.USER_CONS_COLUMNS
 WHERE TABLE_NAME = 'TEST_USER_CONS_COLUMNS'
 AND CONSTRAINT_NAME LIKE '%NOT_NULL%'
 ORDER BY CONSTRAINT_NAME, COLUMN_NAME;
-       table_name       |           constraint_name            | column_name | position 
-------------------------+--------------------------------------+-------------+----------
- TEST_USER_CONS_COLUMNS | TEST_USER_CONS_COLUMNS_AGE_NOT_NULL  | AGE         | 1
- TEST_USER_CONS_COLUMNS | TEST_USER_CONS_COLUMNS_ID_NOT_NULL   | ID          | 1
- TEST_USER_CONS_COLUMNS | TEST_USER_CONS_COLUMNS_NAME_NOT_NULL | NAME        | 1
-(3 rows)
+       table_name       |           constraint_name           | column_name | position 
+------------------------+-------------------------------------+-------------+----------
+ TEST_USER_CONS_COLUMNS | test_user_cons_columns_age_NOT_NULL | AGE         | 1
+(1 row)
 
 SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, POSITION
 FROM SYS.USER_CONS_COLUMNS
@@ -493,3 +491,883 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- USER_TAB_COLUMNS
+-- Same shape as ALL_TAB_COLUMNS, but only the relations owned by the current
+-- user, like the other USER_ views (USER_SEQUENCES / USER_VIEWS /
+-- USER_CONS_COLUMNS).
+DROP TABLE IF EXISTS TEST_USER_TAB_COLUMNS;
+NOTICE:  table "test_user_tab_columns" does not exist, skipping
+CREATE TABLE TEST_USER_TAB_COLUMNS (
+    ID INT PRIMARY KEY,
+    NAME VARCHAR2(50) NOT NULL,
+    CREATE_TIME DATE
+);
+ANALYZE TEST_USER_TAB_COLUMNS;
+SELECT
+    TABLE_NAME,
+    COLUMN_NAME,
+    COLUMN_ID,
+    DATA_TYPE,
+    DATA_LENGTH,
+    DATA_PRECISION,
+    DATA_SCALE,
+    NULLABLE,
+    DEFAULT_LENGTH
+FROM SYS.USER_TAB_COLUMNS
+WHERE TABLE_NAME = 'TEST_USER_TAB_COLUMNS'
+ORDER BY COLUMN_ID;
+      table_name       | column_name | column_id | data_type | data_length | data_precision | data_scale | nullable | default_length 
+-----------------------+-------------+-----------+-----------+-------------+----------------+------------+----------+----------------
+ TEST_USER_TAB_COLUMNS | ID          |         1 | NUMBER    |           4 |             10 |          0 | N        |               
+ TEST_USER_TAB_COLUMNS | NAME        |         2 | VARCHAR2  |          50 |                |            | N        |               
+ TEST_USER_TAB_COLUMNS | CREATE_TIME |         3 | DATE      |           7 |                |            | Y        |               
+(3 rows)
+
+-- a relation owned by a different role is visible in ALL_TAB_COLUMNS but not
+-- in USER_TAB_COLUMNS
+DROP ROLE IF EXISTS user_tab_cols_owner;
+NOTICE:  role "user_tab_cols_owner" does not exist, skipping
+CREATE ROLE user_tab_cols_owner;
+CREATE TABLE TEST_USER_TAB_COLUMNS_OTHER (ID INT);
+ALTER TABLE TEST_USER_TAB_COLUMNS_OTHER OWNER TO user_tab_cols_owner;
+SELECT count(*) AS rows_in_all_tab_columns
+FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'TEST_USER_TAB_COLUMNS_OTHER';
+ rows_in_all_tab_columns 
+-------------------------
+                       1
+(1 row)
+
+SELECT count(*) AS rows_in_user_tab_columns
+FROM SYS.USER_TAB_COLUMNS WHERE TABLE_NAME = 'TEST_USER_TAB_COLUMNS_OTHER';
+ rows_in_user_tab_columns 
+--------------------------
+                        0
+(1 row)
+
+-- A relation owned by the current user stays visible in USER_TAB_COLUMNS even
+-- when its owner has revoked all of its own privileges on it: the view
+-- describes ownership, not privileges (like USER_VIEWS).
+CREATE TABLE TEST_USER_TAB_COLUMNS_PRIV (ID INT, NAME VARCHAR2(10));
+ALTER TABLE TEST_USER_TAB_COLUMNS_PRIV OWNER TO user_tab_cols_owner;
+SET ROLE user_tab_cols_owner;
+REVOKE ALL ON TEST_USER_TAB_COLUMNS_PRIV FROM user_tab_cols_owner;
+SELECT count(*) AS rows_in_user_tab_columns
+FROM SYS.USER_TAB_COLUMNS WHERE TABLE_NAME = 'TEST_USER_TAB_COLUMNS_PRIV';
+ rows_in_user_tab_columns 
+--------------------------
+                        2
+(1 row)
+
+-- ALL_TAB_COLUMNS still filters on privileges, so it hides the relation again
+SELECT count(*) AS rows_in_all_tab_columns
+FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'TEST_USER_TAB_COLUMNS_PRIV';
+ rows_in_all_tab_columns 
+-------------------------
+                       0
+(1 row)
+
+RESET ROLE;
+DROP TABLE TEST_USER_TAB_COLUMNS_PRIV;
+-- A relation with inheritance children has two pg_stats rows per column (its
+-- own statistics and the inherited ones); every column must be reported once,
+-- with COLUMN_ID numbered in attribute order.
+CREATE TABLE TEST_USER_TAB_COLUMNS_PARENT (A INT, B INT);
+CREATE TABLE TEST_USER_TAB_COLUMNS_CHILD (C INT) INHERITS (TEST_USER_TAB_COLUMNS_PARENT);
+INSERT INTO TEST_USER_TAB_COLUMNS_PARENT VALUES (1, 2);
+INSERT INTO TEST_USER_TAB_COLUMNS_CHILD VALUES (3, 4, 5);
+ANALYZE TEST_USER_TAB_COLUMNS_PARENT;
+ANALYZE TEST_USER_TAB_COLUMNS_CHILD;
+SELECT COLUMN_NAME, COLUMN_ID FROM SYS.USER_TAB_COLUMNS
+WHERE TABLE_NAME = 'TEST_USER_TAB_COLUMNS_PARENT' ORDER BY COLUMN_ID;
+ column_name | column_id 
+-------------+-----------
+ A           |         1
+ B           |         2
+(2 rows)
+
+SELECT count(*) AS rows_in_all_tab_columns
+FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'TEST_USER_TAB_COLUMNS_PARENT';
+ rows_in_all_tab_columns 
+-------------------------
+                       2
+(1 row)
+
+DROP TABLE TEST_USER_TAB_COLUMNS_CHILD;
+DROP TABLE TEST_USER_TAB_COLUMNS_PARENT;
+-- A partitioned table keeps the statistics gathered over its partitions
+-- (inherited = true); the relation-kind match must not hide them.
+CREATE TABLE TEST_USER_TAB_COLUMNS_PART (ID INT, VAL VARCHAR2(10)) PARTITION BY RANGE (ID);
+CREATE TABLE TEST_USER_TAB_COLUMNS_PART_1 PARTITION OF TEST_USER_TAB_COLUMNS_PART
+    FOR VALUES FROM (1) TO (100);
+INSERT INTO TEST_USER_TAB_COLUMNS_PART VALUES (1, 'X');
+ANALYZE TEST_USER_TAB_COLUMNS_PART;
+SELECT COLUMN_NAME, COLUMN_ID, AVG_COL_LEN IS NOT NULL AS has_stats
+FROM SYS.USER_TAB_COLUMNS
+WHERE TABLE_NAME = 'TEST_USER_TAB_COLUMNS_PART' ORDER BY COLUMN_ID;
+ column_name | column_id | has_stats 
+-------------+-----------+-----------
+ ID          |         1 | t
+ VAL         |         2 | t
+(2 rows)
+
+DROP TABLE TEST_USER_TAB_COLUMNS_PART;
+DROP TABLE TEST_USER_TAB_COLUMNS_OTHER;
+DROP ROLE user_tab_cols_owner;
+DROP TABLE IF EXISTS TEST_USER_TAB_COLUMNS;
+-- DBA_TAB_COLUMNS
+-- Same column list as ALL_TAB_COLUMNS, without the privilege filter: the
+-- DBA_ views describe every object in the database.
+DROP TABLE IF EXISTS TEST_DBA_TAB_COLUMNS;
+NOTICE:  table "test_dba_tab_columns" does not exist, skipping
+CREATE TABLE TEST_DBA_TAB_COLUMNS (ID INT, NAME VARCHAR2(10));
+ANALYZE TEST_DBA_TAB_COLUMNS;
+SELECT COLUMN_NAME, COLUMN_ID, DATA_TYPE FROM SYS.DBA_TAB_COLUMNS
+WHERE TABLE_NAME = 'TEST_DBA_TAB_COLUMNS' ORDER BY COLUMN_ID;
+ column_name | column_id | data_type 
+-------------+-----------+-----------
+ ID          |         1 | NUMBER
+ NAME        |         2 | VARCHAR2
+(2 rows)
+
+-- an owner that revoked all of its own privileges still sees its relation
+-- here, while ALL_TAB_COLUMNS hides it again
+DROP ROLE IF EXISTS dba_tab_cols_owner;
+NOTICE:  role "dba_tab_cols_owner" does not exist, skipping
+CREATE ROLE dba_tab_cols_owner;
+CREATE TABLE TEST_DBA_TAB_COLUMNS_OTHER (ID INT, NAME VARCHAR2(10));
+ALTER TABLE TEST_DBA_TAB_COLUMNS_OTHER OWNER TO dba_tab_cols_owner;
+SET ROLE dba_tab_cols_owner;
+REVOKE ALL ON TEST_DBA_TAB_COLUMNS_OTHER FROM dba_tab_cols_owner;
+SELECT (SELECT count(*) FROM SYS.DBA_TAB_COLUMNS
+        WHERE TABLE_NAME = 'TEST_DBA_TAB_COLUMNS_OTHER') AS dba_rows,
+       (SELECT count(*) FROM SYS.ALL_TAB_COLUMNS
+        WHERE TABLE_NAME = 'TEST_DBA_TAB_COLUMNS_OTHER') AS all_rows;
+ dba_rows | all_rows 
+----------+----------
+        2 |        0
+(1 row)
+
+RESET ROLE;
+DROP TABLE TEST_DBA_TAB_COLUMNS_OTHER;
+DROP ROLE dba_tab_cols_owner;
+DROP TABLE IF EXISTS TEST_DBA_TAB_COLUMNS;
+-- Oracle-compatible identity column dictionary views
+-- A table can have only one identity column, so two tables are needed.
+DROP TABLE IF EXISTS t_ident_test;
+NOTICE:  table "t_ident_test" does not exist, skipping
+CREATE TABLE t_ident_test (id INT GENERATED ALWAYS AS IDENTITY, v TEXT);
+DROP TABLE IF EXISTS t_ident_test2;
+NOTICE:  table "t_ident_test2" does not exist, skipping
+CREATE TABLE t_ident_test2 (id INT GENERATED BY DEFAULT AS IDENTITY);
+SELECT TABLE_NAME, COLUMN_NAME, GENERATION_TYPE, SEQUENCE_NAME
+FROM SYS.USER_TAB_IDENTITY_COLS
+WHERE TABLE_NAME IN ('T_IDENT_TEST', 'T_IDENT_TEST2')
+ORDER BY TABLE_NAME;
+  table_name   | column_name | generation_type |    sequence_name     
+---------------+-------------+-----------------+----------------------
+ T_IDENT_TEST  | ID          | ALWAYS          | T_IDENT_TEST_ID_SEQ
+ T_IDENT_TEST2 | ID          | BY DEFAULT      | T_IDENT_TEST2_ID_SEQ
+(2 rows)
+
+SELECT IDENTITY_OPTIONS
+FROM SYS.USER_TAB_IDENTITY_COLS
+WHERE TABLE_NAME = 'T_IDENT_TEST' AND COLUMN_NAME = 'ID';
+                                                      identity_options                                                      
+----------------------------------------------------------------------------------------------------------------------------
+ START WITH: 1, INCREMENT BY: 1, MAX_VALUE: 9223372036854775807, MIN_VALUE: 1, CYCLE_FLAG: N, CACHE_SIZE: 20, ORDER_FLAG: N
+(1 row)
+
+SELECT COUNT(*) = 2 AS all_has
+FROM SYS.ALL_TAB_IDENTITY_COLS
+WHERE TABLE_NAME IN ('T_IDENT_TEST', 'T_IDENT_TEST2');
+ all_has 
+---------
+ t
+(1 row)
+
+SELECT COUNT(*) = 2 AS dba_has
+FROM SYS.DBA_TAB_IDENTITY_COLS
+WHERE TABLE_NAME IN ('T_IDENT_TEST', 'T_IDENT_TEST2');
+ dba_has 
+---------
+ t
+(1 row)
+
+DROP TABLE t_ident_test;
+DROP TABLE t_ident_test2;
+-- Oracle-compatible partition key column dictionary views
+DROP TABLE IF EXISTS t_part_key;
+NOTICE:  table "t_part_key" does not exist, skipping
+CREATE TABLE t_part_key (id INT, region TEXT, created DATE)
+    PARTITION BY LIST (region);
+SELECT NAME, OBJECT_TYPE, COLUMN_NAME, COLUMN_POSITION
+FROM SYS.USER_PART_KEY_COLUMNS
+WHERE NAME = 'T_PART_KEY';
+    name    | object_type | column_name | column_position 
+------------+-------------+-------------+-----------------
+ T_PART_KEY | TABLE       | REGION      | 1
+(1 row)
+
+SELECT COUNT(*) = 1 AS all_has
+FROM SYS.ALL_PART_KEY_COLUMNS
+WHERE NAME = 'T_PART_KEY';
+ all_has 
+---------
+ t
+(1 row)
+
+SELECT COUNT(*) = 1 AS dba_has
+FROM SYS.DBA_PART_KEY_COLUMNS
+WHERE NAME = 'T_PART_KEY';
+ dba_has 
+---------
+ t
+(1 row)
+
+DROP TABLE t_part_key;
+-- Oracle-compatible type attribute dictionary views
+DROP TYPE IF EXISTS t_obj_type;
+NOTICE:  type "t_obj_type" does not exist, skipping
+CREATE TYPE t_obj_type AS (a INT, b TEXT);
+SELECT TYPE_NAME, ATTR_NAME, ATTR_TYPE_NAME, ATTR_NO
+FROM SYS.USER_TYPE_ATTRS
+WHERE TYPE_NAME = 'T_OBJ_TYPE'
+ORDER BY ATTR_NO;
+ type_name  | attr_name | attr_type_name | attr_no 
+------------+-----------+----------------+---------
+ T_OBJ_TYPE | A         | NUMBER         | 1
+ T_OBJ_TYPE | B         | CLOB           | 2
+(2 rows)
+
+SELECT COUNT(*) = 2 AS all_has
+FROM SYS.ALL_TYPE_ATTRS
+WHERE TYPE_NAME = 'T_OBJ_TYPE';
+ all_has 
+---------
+ t
+(1 row)
+
+SELECT COUNT(*) = 2 AS dba_has
+FROM SYS.DBA_TYPE_ATTRS
+WHERE TYPE_NAME = 'T_OBJ_TYPE';
+ dba_has 
+---------
+ t
+(1 row)
+
+DROP TYPE t_obj_type;
+-- TYPE_ATTRS describes CREATE TYPE objects only: a table's row type is not a
+-- type, the attribute type names are Oracle's, and CHAR_USED says whether the
+-- length is in bytes or characters
+CREATE TABLE p_plain_table (a INT, b TEXT);
+CREATE TYPE p_attr_probe AS OBJECT (s VARCHAR2(50 CHAR), n NUMBER(5), d DATE);
+SELECT COUNT(*) = 0 AS table_not_listed
+FROM SYS.ALL_TYPE_ATTRS WHERE TYPE_NAME = 'P_PLAIN_TABLE';
+ table_not_listed 
+------------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 3 AS attrs_listed
+FROM SYS.ALL_TYPE_ATTRS WHERE TYPE_NAME = 'P_ATTR_PROBE';
+ attrs_listed 
+--------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 3 AS attrs_match
+FROM SYS.ALL_TYPE_ATTRS
+WHERE TYPE_NAME = 'P_ATTR_PROBE'
+  AND (   (ATTR_NAME = 'S' AND ATTR_TYPE_NAME = 'VARCHAR2' AND CHAR_USED = 'C')
+       OR (ATTR_NAME = 'N' AND ATTR_TYPE_NAME = 'NUMBER')
+       OR (ATTR_NAME = 'D' AND ATTR_TYPE_NAME = 'DATE'));
+ attrs_match 
+-------------
+ t
+(1 row)
+
+DROP TYPE p_attr_probe;
+DROP TABLE p_plain_table;
+-- Oracle-compatible unused column dictionary views
+DROP TABLE IF EXISTS t_unused_cols;
+NOTICE:  table "t_unused_cols" does not exist, skipping
+CREATE TABLE t_unused_cols (a INT, b TEXT, c INT);
+ALTER TABLE t_unused_cols DROP COLUMN b;
+SELECT TABLE_NAME, COUNT
+FROM SYS.USER_UNUSED_COL_TABS
+WHERE TABLE_NAME = 'T_UNUSED_COLS';
+  table_name   | count 
+---------------+-------
+ T_UNUSED_COLS | 1
+(1 row)
+
+SELECT COUNT(*) = 1 AS all_has
+FROM SYS.ALL_UNUSED_COL_TABS
+WHERE TABLE_NAME = 'T_UNUSED_COLS';
+ all_has 
+---------
+ t
+(1 row)
+
+SELECT COUNT(*) = 1 AS dba_has
+FROM SYS.DBA_UNUSED_COL_TABS
+WHERE TABLE_NAME = 'T_UNUSED_COLS';
+ dba_has 
+---------
+ t
+(1 row)
+
+DROP TABLE t_unused_cols;
+-- Oracle-compatible type dictionary views
+DROP TYPE IF EXISTS t_obj_type;
+NOTICE:  type "t_obj_type" does not exist, skipping
+CREATE TYPE t_obj_type AS (a INT, b TEXT);
+SELECT TYPE_NAME, TYPECODE, ATTRIBUTES, PREDEFINED, FINAL
+FROM SYS.USER_TYPES
+WHERE TYPE_NAME = 'T_OBJ_TYPE';
+ type_name  | typecode | attributes | predefined | final 
+------------+----------+------------+------------+-------
+ T_OBJ_TYPE | OBJECT   | 2          | NO         | YES
+(1 row)
+
+SELECT COUNT(*) = 1 AS all_has
+FROM SYS.ALL_TYPES
+WHERE TYPE_NAME = 'T_OBJ_TYPE';
+ all_has 
+---------
+ t
+(1 row)
+
+SELECT COUNT(*) = 1 AS dba_has
+FROM SYS.DBA_TYPES
+WHERE TYPE_NAME = 'T_OBJ_TYPE';
+ dba_has 
+---------
+ t
+(1 row)
+
+DROP TYPE t_obj_type;
+-- USER_TYPES must return the types the current user owns; it used to compare
+-- the type's OID with the role OID, so it was always empty
+CREATE TYPE p_user_type_probe AS OBJECT (x INT);
+DROP ROLE IF EXISTS ora_type_other;
+NOTICE:  role "ora_type_other" does not exist, skipping
+CREATE ROLE ora_type_other;
+SELECT COUNT(*) = 1 AS owner_sees_type
+FROM SYS.USER_TYPES WHERE TYPE_NAME = 'P_USER_TYPE_PROBE';
+ owner_sees_type 
+-----------------
+ t
+(1 row)
+
+SET ROLE ora_type_other;
+SELECT COUNT(*) = 0 AS other_user_hidden
+FROM SYS.USER_TYPES WHERE TYPE_NAME = 'P_USER_TYPE_PROBE';
+ other_user_hidden 
+-------------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 1 AS other_sees_all_types
+FROM SYS.ALL_TYPES WHERE TYPE_NAME = 'P_USER_TYPE_PROBE';
+ other_sees_all_types 
+----------------------
+ t
+(1 row)
+
+SET ROLE NONE;
+DROP TYPE p_user_type_probe;
+DROP ROLE ora_type_other;
+-- Oracle-compatible updatable column dictionary views
+DROP VIEW IF EXISTS v_upd_no;
+NOTICE:  view "v_upd_no" does not exist, skipping
+DROP VIEW IF EXISTS v_upd;
+NOTICE:  view "v_upd" does not exist, skipping
+DROP TABLE IF EXISTS t_upd;
+NOTICE:  table "t_upd" does not exist, skipping
+CREATE TABLE t_upd (id INT GENERATED ALWAYS AS IDENTITY, v TEXT);
+CREATE VIEW v_upd AS SELECT v FROM t_upd;
+CREATE VIEW v_upd_no AS SELECT DISTINCT v FROM t_upd;
+SELECT COLUMN_NAME, UPDATABLE, INSERTABLE, DELETABLE
+FROM SYS.USER_UPDATABLE_COLUMNS
+WHERE TABLE_NAME = 'T_UPD'
+ORDER BY COLUMN_NAME;
+ column_name | updatable | insertable | deletable 
+-------------+-----------+------------+-----------
+ ID          | YES       | NO         | YES
+ V           | YES       | YES        | YES
+(2 rows)
+
+SELECT UPDATABLE FROM SYS.USER_UPDATABLE_COLUMNS WHERE TABLE_NAME = 'V_UPD';
+ updatable 
+-----------
+ YES
+(1 row)
+
+SELECT UPDATABLE FROM SYS.USER_UPDATABLE_COLUMNS WHERE TABLE_NAME = 'V_UPD_NO';
+ updatable 
+-----------
+ NO
+(1 row)
+
+-- T_UPD has two columns, each view one: four rows in total
+SELECT COUNT(*) = 4 AS all_has
+FROM SYS.ALL_UPDATABLE_COLUMNS
+WHERE TABLE_NAME IN ('T_UPD', 'V_UPD', 'V_UPD_NO');
+ all_has 
+---------
+ t
+(1 row)
+
+SELECT COUNT(*) = 4 AS dba_has
+FROM SYS.DBA_UPDATABLE_COLUMNS
+WHERE TABLE_NAME IN ('T_UPD', 'V_UPD', 'V_UPD_NO');
+ dba_has 
+---------
+ t
+(1 row)
+
+DROP VIEW v_upd_no;
+DROP VIEW v_upd;
+DROP TABLE t_upd;
+-- Oracle-compatible trigger column dictionary views
+DROP TABLE IF EXISTS t_trg_cols;
+NOTICE:  table "t_trg_cols" does not exist, skipping
+CREATE TABLE t_trg_cols (id INT, a TEXT, b TEXT);
+CREATE OR REPLACE TRIGGER trg_a_b
+  BEFORE UPDATE OF a, b ON t_trg_cols
+  FOR EACH ROW EXECUTE FUNCTION suppress_redundant_updates_trigger();
+SELECT TABLE_NAME, TRIGGER_NAME, COLUMN_NAME, COLUMN_POSITION
+FROM SYS.USER_TRIGGER_COLS
+WHERE TABLE_NAME = 'T_TRG_COLS'
+ORDER BY COLUMN_POSITION;
+ table_name | trigger_name | column_name | column_position 
+------------+--------------+-------------+-----------------
+ T_TRG_COLS | TRG_A_B      | A           | 1
+ T_TRG_COLS | TRG_A_B      | B           | 2
+(2 rows)
+
+SELECT COUNT(*) = 2 AS all_has FROM SYS.ALL_TRIGGER_COLS WHERE TABLE_NAME = 'T_TRG_COLS';
+ all_has 
+---------
+ t
+(1 row)
+
+SELECT COUNT(*) = 2 AS dba_has FROM SYS.DBA_TRIGGER_COLS WHERE TABLE_NAME = 'T_TRG_COLS';
+ dba_has 
+---------
+ t
+(1 row)
+
+DROP TRIGGER trg_a_b ON t_trg_cols;
+DROP TABLE t_trg_cols;
+-- Oracle-compatible TAB_COLS views (hidden and virtual columns)
+DROP TABLE IF EXISTS t_tab_cols;
+NOTICE:  table "t_tab_cols" does not exist, skipping
+CREATE TABLE t_tab_cols (
+    id    INT,
+    gone  TEXT,
+    base  INT,
+    calc  INT GENERATED ALWAYS AS (base * 2) STORED
+);
+ALTER TABLE t_tab_cols DROP COLUMN gone;
+SELECT COLUMN_NAME, HIDDEN_COLUMN, VIRTUAL_COLUMN
+FROM SYS.USER_TAB_COLS
+WHERE TABLE_NAME = 'T_TAB_COLS'
+ORDER BY COLUMN_ID;
+  column_name  | hidden_column | virtual_column 
+---------------+---------------+----------------
+ ID            | NO            | NO
+ SYS_C00000002 | YES           | NO
+ BASE          | NO            | NO
+ CALC          | NO            | YES
+(4 rows)
+
+SELECT COUNT(*) = 1 AS hidden_found
+FROM SYS.USER_TAB_COLS
+WHERE TABLE_NAME = 'T_TAB_COLS' AND HIDDEN_COLUMN = 'YES';
+ hidden_found 
+--------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 1 AS virtual_found
+FROM SYS.DBA_TAB_COLS
+WHERE TABLE_NAME = 'T_TAB_COLS' AND VIRTUAL_COLUMN = 'YES';
+ virtual_found 
+---------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 4 AS all_has
+FROM SYS.ALL_TAB_COLS
+WHERE TABLE_NAME = 'T_TAB_COLS';
+ all_has 
+---------
+ t
+(1 row)
+
+DROP TABLE t_tab_cols;
+-- A dropped column stays visible as HIDDEN_COLUMN = YES, but PostgreSQL's
+-- internal placeholder name must not leak into the dictionary
+CREATE TABLE t_hidden_probe (a INT, b INT);
+ALTER TABLE t_hidden_probe DROP COLUMN b;
+SELECT COUNT(*) = 1 AS dropped_is_hidden
+FROM SYS.ALL_TAB_COLS WHERE TABLE_NAME = 'T_HIDDEN_PROBE' AND HIDDEN_COLUMN = 'YES';
+ dropped_is_hidden 
+-------------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 0 AS placeholder_hidden
+FROM SYS.ALL_TAB_COLS
+WHERE TABLE_NAME = 'T_HIDDEN_PROBE' AND COLUMN_NAME LIKE '%PG%DROPPED%';
+ placeholder_hidden 
+--------------------
+ t
+(1 row)
+
+DROP TABLE t_hidden_probe;
+-- Oracle-compatible TAB_HISTOGRAMS views (numeric columns)
+DROP TABLE IF EXISTS t_hist_test;
+NOTICE:  table "t_hist_test" does not exist, skipping
+CREATE TABLE t_hist_test (v INT);
+INSERT INTO t_hist_test SELECT GENERATE_SERIES(1, 100);
+ANALYZE t_hist_test;
+SELECT COUNT(*) > 1 AS has_buckets
+FROM SYS.USER_TAB_HISTOGRAMS
+WHERE TABLE_NAME = 'T_HIST_TEST';
+ has_buckets 
+-------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 1 AS first_bucket
+FROM SYS.USER_TAB_HISTOGRAMS
+WHERE TABLE_NAME = 'T_HIST_TEST' AND ENDPOINT_NUMBER = 1 AND ENDPOINT_VALUE IS NOT NULL;
+ first_bucket 
+--------------
+ t
+(1 row)
+
+SELECT COUNT(*) > 1 AS all_has
+FROM SYS.ALL_TAB_HISTOGRAMS WHERE TABLE_NAME = 'T_HIST_TEST';
+ all_has 
+---------
+ t
+(1 row)
+
+SELECT COUNT(*) > 1 AS dba_has
+FROM SYS.DBA_TAB_HISTOGRAMS WHERE TABLE_NAME = 'T_HIST_TEST';
+ dba_has 
+---------
+ t
+(1 row)
+
+DROP TABLE t_hist_test;
+-- Histogram endpoints must be reported for Oracle-typed columns too: a NUMBER
+-- column used to produce no rows at all because the view only accepted the
+-- PostgreSQL numeric types
+CREATE TABLE t_hist_rows (n NUMBER);
+INSERT INTO t_hist_rows SELECT g FROM generate_series(1, 1000) g;
+ANALYZE t_hist_rows;
+SELECT COUNT(*) > 0 AS has_rows
+FROM SYS.ALL_TAB_HISTOGRAMS WHERE TABLE_NAME = 'T_HIST_ROWS';
+ has_rows 
+----------
+ t
+(1 row)
+
+SELECT MIN(ENDPOINT_NUMBER) = 1 AS starts_at_one,
+       COUNT(*) = COUNT(DISTINCT ENDPOINT_NUMBER) AS endpoints_unique,
+       COUNT(*) = COUNT(ENDPOINT_ACTUAL_VALUE) AS actual_values_set,
+       COUNT(*) = COUNT(ENDPOINT_VALUE) AS numeric_values_set
+FROM SYS.ALL_TAB_HISTOGRAMS WHERE TABLE_NAME = 'T_HIST_ROWS';
+ starts_at_one | endpoints_unique | actual_values_set | numeric_values_set 
+---------------+------------------+-------------------+--------------------
+ t             | t                | t                 | t
+(1 row)
+
+DROP TABLE t_hist_rows;
+-- USER_TAB_STATISTICS / ALL_TAB_STATISTICS / DBA_TAB_STATISTICS
+DROP TABLE IF EXISTS TEST_TAB_STATS;
+NOTICE:  table "test_tab_stats" does not exist, skipping
+CREATE TABLE TEST_TAB_STATS (ID INT, NAME VARCHAR2(10));
+INSERT INTO TEST_TAB_STATS VALUES (1, 'a'), (2, 'b'), (3, 'a');
+ANALYZE TEST_TAB_STATS;
+SELECT TABLE_NAME, (NUM_ROWS IS NOT NULL) AS has_num_rows,
+       (LAST_ANALYZED IS NOT NULL) AS analyzed, STALE_STATS
+FROM SYS.USER_TAB_STATISTICS WHERE TABLE_NAME = 'TEST_TAB_STATS';
+   table_name   | has_num_rows | analyzed | stale_stats 
+----------------+--------------+----------+-------------
+ TEST_TAB_STATS | t            | t        | NO
+(1 row)
+
+SELECT count(*) = (SELECT count(*) FROM SYS.DBA_TAB_STATISTICS WHERE TABLE_NAME = 'TEST_TAB_STATS')
+       AS dba_matches FROM SYS.ALL_TAB_STATISTICS WHERE TABLE_NAME = 'TEST_TAB_STATS';
+ dba_matches 
+-------------
+ t
+(1 row)
+
+-- USER_TAB_COL_STATISTICS / ALL_TAB_COL_STATISTICS / DBA_TAB_COL_STATISTICS
+SELECT COLUMN_NAME, (NUM_DISTINCT IS NOT NULL) AS has_num_distinct,
+       NUM_BUCKETS IS NULL AS buckets_null
+FROM SYS.USER_TAB_COL_STATISTICS WHERE TABLE_NAME = 'TEST_TAB_STATS' ORDER BY COLUMN_NAME;
+ column_name | has_num_distinct | buckets_null 
+-------------+------------------+--------------
+ ID          | t                | t
+ NAME        | t                | t
+(2 rows)
+
+SELECT count(*) = (SELECT count(*) FROM SYS.DBA_TAB_COL_STATISTICS WHERE TABLE_NAME = 'TEST_TAB_STATS')
+       AS dba_matches FROM SYS.ALL_TAB_COL_STATISTICS WHERE TABLE_NAME = 'TEST_TAB_STATS';
+ dba_matches 
+-------------
+ t
+(1 row)
+
+DROP TABLE TEST_TAB_STATS;
+-- Oracle-compatible product / data dictionary metadata views
+SELECT PRODUCT, VERSION, STATUS FROM SYS.PRODUCT_COMPONENT_VERSION;
+ product  | version | status 
+----------+---------+--------
+ IvorySQL | 19beta1 | Beta
+(1 row)
+
+SELECT PROPERTY_NAME, PROPERTY_VALUE
+FROM SYS.DATABASE_PROPERTIES
+WHERE PROPERTY_NAME IN ('DICT.BASE', 'NLS_CHARACTERSET',
+                        'DEFAULT_PERMANENT_TABLESPACE', 'GLOBAL_DB_NAME')
+ORDER BY PROPERTY_NAME;
+        property_name         |   property_value   
+------------------------------+--------------------
+ DEFAULT_PERMANENT_TABLESPACE | PG_DEFAULT
+ DICT.BASE                    | 2
+ GLOBAL_DB_NAME               | contrib_regression
+ NLS_CHARACTERSET             | UTF8
+(4 rows)
+
+-- DICTIONARY lists the dictionary views themselves
+SELECT TABLE_NAME
+FROM SYS.DICTIONARY
+WHERE TABLE_NAME IN ('DICTIONARY', 'DICT_COLUMNS', 'USER_VIEWS')
+ORDER BY TABLE_NAME;
+  table_name  
+--------------
+ DICTIONARY
+ DICT_COLUMNS
+ USER_VIEWS
+(3 rows)
+
+-- DICT_COLUMNS describes those views, so DICT_COLUMNS must describe itself
+SELECT COLUMN_NAME
+FROM SYS.DICT_COLUMNS
+WHERE TABLE_NAME = 'DICT_COLUMNS'
+ORDER BY COLUMN_NAME;
+ column_name 
+-------------
+ COLUMN_NAME
+ COMMENTS
+ TABLE_NAME
+(3 rows)
+
+SELECT COUNT(*) > 0 AS has_rows FROM SYS.DICTIONARY;
+ has_rows 
+----------
+ t
+(1 row)
+
+-- The three *_CONS_COLUMNS views must describe the same constraints: one row
+-- per constraint column, one name, no system columns, and no extra NOT NULL row
+-- for a column a primary key already covers.
+CREATE TABLE t_cons_agree (
+    id INT PRIMARY KEY,
+    name VARCHAR2(10) NOT NULL,
+    note VARCHAR2(10)
+);
+SELECT (SELECT COUNT(*) FROM SYS.USER_CONS_COLUMNS
+        WHERE TABLE_NAME = 'T_CONS_AGREE') = (
+       SELECT COUNT(*) FROM SYS.ALL_CONS_COLUMNS
+        WHERE TABLE_NAME = 'T_CONS_AGREE'
+          AND OWNER = SYS.ORA_CASE_TRANS(CURRENT_USER::VARCHAR2)) AS user_matches_all;
+ user_matches_all 
+------------------
+ t
+(1 row)
+
+SELECT (SELECT COUNT(*) FROM SYS.DBA_CONS_COLUMNS
+        WHERE TABLE_NAME = 'T_CONS_AGREE') = (
+       SELECT COUNT(*) FROM SYS.ALL_CONS_COLUMNS
+        WHERE TABLE_NAME = 'T_CONS_AGREE') AS dba_matches_all;
+ dba_matches_all 
+-----------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 0 AS no_system_columns
+FROM SYS.DBA_CONS_COLUMNS
+WHERE TABLE_NAME = 'T_CONS_AGREE'
+  AND COLUMN_NAME IN ('CTID', 'CMIN', 'CMAX', 'XMIN', 'XMAX', 'TABLEOID');
+ no_system_columns 
+-------------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 0 AS no_duplicate_rows
+FROM (
+    SELECT TABLE_NAME, COLUMN_NAME, POSITION
+    FROM SYS.DBA_CONS_COLUMNS
+    WHERE TABLE_NAME = 'T_CONS_AGREE'
+    GROUP BY TABLE_NAME, COLUMN_NAME, POSITION
+    HAVING COUNT(*) > 1
+) D;
+ no_duplicate_rows 
+-------------------
+ t
+(1 row)
+
+SELECT CONSTRAINT_NAME, COLUMN_NAME, POSITION
+FROM SYS.USER_CONS_COLUMNS
+WHERE TABLE_NAME = 'T_CONS_AGREE'
+ORDER BY CONSTRAINT_NAME, COLUMN_NAME;
+      constraint_name       | column_name | position 
+----------------------------+-------------+----------
+ T_CONS_AGREE_PKEY          | ID          | 1
+ t_cons_agree_name_NOT_NULL | NAME        | 1
+(2 rows)
+
+DROP TABLE t_cons_agree;
+-- ALL_TAB_COLUMNS must name every Oracle type the way Oracle does; the
+-- character-semantics variants and the zoned timestamps used to leak the
+-- internal type name (ORAVARCHARCHAR, ORATIMESTAMPLTZ) or lose the qualifier
+CREATE TABLE t_all_data_types (
+    a VARCHAR2(10 CHAR),
+    b CHAR(5 CHAR),
+    c TIMESTAMP WITH TIME ZONE,
+    d TIMESTAMP WITH LOCAL TIME ZONE,
+    e LONG RAW,
+    f BOOLEAN,
+    g NCLOB
+);
+SELECT COUNT(*) = 7 AS all_types_listed
+FROM SYS.ALL_TAB_COLUMNS
+WHERE TABLE_NAME = 'T_ALL_DATA_TYPES';
+ all_types_listed 
+------------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 7 AS data_types_match
+FROM SYS.ALL_TAB_COLUMNS
+WHERE TABLE_NAME = 'T_ALL_DATA_TYPES'
+  AND (   (COLUMN_NAME = 'A' AND DATA_TYPE = 'VARCHAR2' AND CHAR_USED = 'C')
+       OR (COLUMN_NAME = 'B' AND DATA_TYPE = 'CHAR' AND CHAR_USED = 'C')
+       OR (COLUMN_NAME = 'C' AND DATA_TYPE = 'TIMESTAMP WITH TIME ZONE')
+       OR (COLUMN_NAME = 'D' AND DATA_TYPE = 'TIMESTAMP WITH LOCAL TIME ZONE')
+       OR (COLUMN_NAME = 'E' AND DATA_TYPE = 'LONG RAW')
+       OR (COLUMN_NAME = 'F' AND DATA_TYPE = 'BOOLEAN')
+       OR (COLUMN_NAME = 'G' AND DATA_TYPE = 'NCLOB'));
+ data_types_match 
+------------------
+ t
+(1 row)
+
+DROP TABLE t_all_data_types;
+-- Timestamp columns report their fractional-seconds precision in DATA_SCALE,
+-- and NCLOB reports the same DATA_LENGTH as CLOB and BLOB
+CREATE TABLE t_ts_meta (
+    a TIMESTAMP,
+    b TIMESTAMP(3),
+    c TIMESTAMP(0),
+    d TIMESTAMP(3) WITH TIME ZONE,
+    e NCLOB
+);
+SELECT COUNT(*) = 5 AS five_columns
+FROM SYS.ALL_TAB_COLUMNS
+WHERE TABLE_NAME = 'T_TS_META';
+ five_columns 
+--------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 5 AS meta_matches
+FROM SYS.ALL_TAB_COLUMNS
+WHERE TABLE_NAME = 'T_TS_META'
+  AND (   (COLUMN_NAME = 'A' AND DATA_SCALE = 6 AND DATA_LENGTH = 11)
+       OR (COLUMN_NAME = 'B' AND DATA_SCALE = 3 AND DATA_LENGTH = 11)
+       OR (COLUMN_NAME = 'C' AND DATA_SCALE = 0 AND DATA_LENGTH = 7)
+       OR (COLUMN_NAME = 'D' AND DATA_SCALE = 3 AND DATA_LENGTH = 13)
+       OR (COLUMN_NAME = 'E' AND DATA_LENGTH = 4000 AND DATA_SCALE IS NULL));
+ meta_matches 
+--------------
+ t
+(1 row)
+
+DROP TABLE t_ts_meta;
+-- ALL_TAB_COLUMNS must list every column once, even for a table that has
+-- inheritance children: pg_stats holds two statistics rows per column there,
+-- and joining both produced COLUMN_ID 1..4 for a two-column table
+CREATE TABLE p_inh_probe (a INT, b TEXT);
+INSERT INTO p_inh_probe VALUES (1, 'x');
+CREATE TABLE c_inh_probe () INHERITS (p_inh_probe);
+INSERT INTO c_inh_probe VALUES (2, 'y');
+ANALYZE p_inh_probe;
+SELECT COUNT(*) = 2 AS one_row_per_column
+FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'P_INH_PROBE';
+ one_row_per_column 
+--------------------
+ t
+(1 row)
+
+SELECT COUNT(*) = COUNT(DISTINCT COLUMN_NAME) AS no_duplicates
+FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'P_INH_PROBE';
+ no_duplicates 
+---------------
+ t
+(1 row)
+
+SELECT COLUMN_ID, COLUMN_NAME, AVG_COL_LEN IS NOT NULL AS has_stats
+FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'P_INH_PROBE' ORDER BY COLUMN_ID;
+ column_id | column_name | has_stats 
+-----------+-------------+-----------
+         1 | A           | t
+         2 | B           | t
+(2 rows)
+
+DROP TABLE c_inh_probe;
+DROP TABLE p_inh_probe;
+-- NUM_DISTINCT comes from the column statistics, like Oracle's, and stays NULL
+-- while the column has never been analyzed
+CREATE TABLE t_ndist_probe (a INT, b INT);
+INSERT INTO t_ndist_probe SELECT g, 1 FROM generate_series(1, 100) g;
+ANALYZE t_ndist_probe;
+SELECT COUNT(*) = 2 AS both_known
+FROM SYS.ALL_TAB_COLUMNS
+WHERE TABLE_NAME = 'T_NDIST_PROBE' AND NUM_DISTINCT IS NOT NULL;
+ both_known 
+------------
+ t
+(1 row)
+
+SELECT COLUMN_NAME, NUM_DISTINCT
+FROM SYS.ALL_TAB_COLUMNS
+WHERE TABLE_NAME = 'T_NDIST_PROBE'
+ORDER BY COLUMN_ID;
+ column_name | num_distinct 
+-------------+--------------
+ A           |          100
+ B           |            1
+(2 rows)
+
+CREATE TABLE t_ndist_probe2 (a INT);
+SELECT NUM_DISTINCT IS NULL AS unknown_before_analyze
+FROM SYS.ALL_TAB_COLUMNS
+WHERE TABLE_NAME = 'T_NDIST_PROBE2';
+ unknown_before_analyze 
+------------------------
+ t
+(1 row)
+
+DROP TABLE t_ndist_probe;
+DROP TABLE t_ndist_probe2;

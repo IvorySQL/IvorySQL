@@ -1327,64 +1327,78 @@ ORDER BY
     owner, table_name, constraint_name, position;
 GRANT SELECT ON SYS.all_cons_columns TO PUBLIC;
 /* USER_CONS_COLUMNS */
+-- USER_CONS_COLUMNS is the current user's slice of ALL_CONS_COLUMNS.  Both
+-- views have to come from the same source: reading pg_constraint here made the
+-- same NOT NULL constraint carry PostgreSQL's own name in this view and a
+-- synthesised name in ALL_CONS_COLUMNS, and listed a NOT NULL row for a column
+-- that ALL_CONS_COLUMNS skips because a primary key already covers it.
+-- Oracle's USER_ views do not carry OWNER, so it is not exposed here either.
 CREATE OR REPLACE VIEW SYS.USER_CONS_COLUMNS AS
 	SELECT
-		SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128) AS OWNER,
-		SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128) AS TABLE_NAME,
-		SYS.ORA_CASE_TRANS(CON.CONNAME::VARCHAR2)::VARCHAR2(128) AS CONSTRAINT_NAME,
-		SYS.ORA_CASE_TRANS(ATT.ATTNAME::VARCHAR2)::VARCHAR2(128) AS COLUMN_NAME,
-		ARRAY_POSITION(CON.CONKEY, ATT.ATTNUM)::NUMBER AS POSITION
-	FROM
-		PG_CONSTRAINT AS CON
-	JOIN PG_CLASS AS C
-		ON CON.CONRELID = C.OID
-	JOIN PG_ATTRIBUTE AS ATT
-		ON ATT.ATTRELID = C.OID
-		AND ATT.ATTNUM = ANY(CON.CONKEY)
-	WHERE
-		C.RELOWNER::REGROLE = CURRENT_USER::REGROLE
-		AND C.RELNAMESPACE != 'PG_CATALOG'::REGNAMESPACE::OID
-		AND C.RELNAMESPACE != 'PG_TOAST'::REGNAMESPACE::OID
-		AND C.RELNAMESPACE != 'INFORMATION_SCHEMA'::REGNAMESPACE::OID
-ORDER BY
-	TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME
+		TABLE_NAME,
+		CONSTRAINT_NAME,
+		COLUMN_NAME,
+		POSITION
+	FROM SYS.ALL_CONS_COLUMNS
+	WHERE OWNER = SYS.ORA_CASE_TRANS(CURRENT_USER::VARCHAR2)
 ; 
 GRANT SELECT ON SYS.USER_CONS_COLUMNS TO PUBLIC;
 
 
--- DBA_CONS_COLUMNS (including NOT NULL constraints)
-CREATE OR REPLACE VIEW sys.dba_cons_columns AS
--- Regular constraints (PRIMARY KEY, UNIQUE, FOREIGN KEY, CHECK, etc.)
+-- DBA_CONS_COLUMNS: the same rows as ALL_CONS_COLUMNS without the privilege
+-- filters.  It used to read pg_constraint and pg_attribute side by side, which
+-- returned every NOT NULL constraint twice (PostgreSQL's own name plus a
+-- synthesised one), exposed system columns such as CTID/CMAX as NOT NULL
+-- constraints, and added a NOT NULL row for columns a primary key covers.
+CREATE OR REPLACE VIEW SYS.DBA_CONS_COLUMNS AS
 SELECT
-    SYS.ORA_CASE_TRANS(pg_get_userbyid(cl.relowner)::varchar2(128)) AS owner,
-    SYS.ORA_CASE_TRANS(c.conname::varchar2(128)) AS constraint_name,
-    SYS.ORA_CASE_TRANS(cl.relname::varchar2(128)) AS table_name,
-    SYS.ORA_CASE_TRANS(a.attname::varchar2(128)) AS column_name,
-    array_position(c.conkey, a.attnum)::number AS position
-FROM pg_constraint c
-JOIN pg_class cl ON c.conrelid = cl.oid
-JOIN pg_namespace n ON cl.relnamespace = n.oid
-JOIN pg_attribute a ON a.attrelid = cl.oid AND a.attnum = ANY(c.conkey)
-WHERE cl.relkind = 'r'
-  AND a.attisdropped = false
-  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+    SYS.ORA_CASE_TRANS(pg_authid.rolname::VARCHAR2(128))    AS owner,
+    SYS.ORA_CASE_TRANS(con.conname::VARCHAR2(128))          AS constraint_name,
+    SYS.ORA_CASE_TRANS(cls.relname::VARCHAR2(128))          AS table_name,
+    SYS.ORA_CASE_TRANS(attr.attname::VARCHAR2(4000))        AS column_name,
+    pos.pos::NUMBER                                         AS position
+FROM
+    pg_catalog.pg_constraint con
+    JOIN pg_catalog.pg_class cls       ON con.conrelid = cls.oid
+    JOIN pg_catalog.pg_authid          ON cls.relowner = pg_authid.oid
+    JOIN pg_catalog.pg_namespace nsp   ON cls.relnamespace = nsp.oid
+    CROSS JOIN LATERAL unnest(con.conkey) WITH ORDINALITY AS pos(attnum, pos)
+    JOIN pg_catalog.pg_attribute attr  ON attr.attrelid = cls.oid
+                                      AND attr.attnum = pos.attnum
+WHERE
+    con.contype IN ('p', 'u', 'f', 'c')
+    AND nsp.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+    AND cls.relkind IN ('r', 'v', 'm', 'p')
+    AND attr.attnum > 0
+    AND NOT attr.attisdropped
 
 UNION ALL
 
--- NOT NULL constraints from pg_attribute
 SELECT
-    SYS.ORA_CASE_TRANS(pg_get_userbyid(cl.relowner)::varchar2(128)) AS owner,
-    SYS.ORA_CASE_TRANS(cl.relname::varchar2(128) || '_' || a.attname || '_NOT_NULL') AS constraint_name,
-    SYS.ORA_CASE_TRANS(cl.relname::varchar2(128)) AS table_name,
-    SYS.ORA_CASE_TRANS(a.attname::varchar2(128)) AS column_name,
-    1::number AS position
-FROM pg_class cl
-JOIN pg_namespace n ON cl.relnamespace = n.oid
-JOIN pg_attribute a ON a.attrelid = cl.oid
-WHERE cl.relkind = 'r'
-  AND a.attnotnull = true
-  AND a.attisdropped = false
-  AND n.nspname NOT IN ('pg_catalog', 'information_schema');
+    SYS.ORA_CASE_TRANS(pg_authid.rolname::VARCHAR2(128)),
+    SYS.ORA_CASE_TRANS((cls.relname || '_' || attr.attname || '_NOT_NULL')::VARCHAR2(128)),
+    SYS.ORA_CASE_TRANS(cls.relname::VARCHAR2(128)),
+    SYS.ORA_CASE_TRANS(attr.attname::VARCHAR2(4000)),
+    1::NUMBER
+FROM
+    pg_catalog.pg_class cls
+    JOIN pg_catalog.pg_authid          ON cls.relowner = pg_authid.oid
+    JOIN pg_catalog.pg_namespace nsp   ON cls.relnamespace = nsp.oid
+    JOIN pg_catalog.pg_attribute attr  ON attr.attrelid = cls.oid
+WHERE
+    attr.attnotnull
+    AND attr.attnum > 0
+    AND NOT attr.attisdropped
+    AND nsp.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+    AND cls.relkind IN ('r', 'v', 'm', 'p')
+    AND NOT EXISTS (
+        SELECT 1 FROM pg_catalog.pg_constraint con
+        WHERE con.conrelid = cls.oid
+          AND con.contype = 'p'
+          AND con.conkey && ARRAY[attr.attnum]
+    )
+ORDER BY
+    owner, table_name, constraint_name, position;
 
 GRANT SELECT ON sys.dba_cons_columns TO PUBLIC;
 
@@ -1403,12 +1417,18 @@ SELECT
     WHEN pg_type.typname IN ('int2', 'int4', 'int8') THEN 'NUMBER'
     WHEN pg_type.typname IN ('float4', 'float8') THEN 'FLOAT'
     WHEN pg_type.typname = 'numeric' THEN 'NUMBER'
-    WHEN pg_type.typname IN ('varchar', 'oravarcharbyte') THEN 'VARCHAR2'
-    WHEN pg_type.typname IN ('bpchar', 'oracharbyte') THEN 'CHAR'
+    WHEN pg_type.typname IN ('varchar', 'oravarcharbyte', 'oravarcharchar') THEN 'VARCHAR2'
+    WHEN pg_type.typname IN ('bpchar', 'oracharbyte', 'oracharchar') THEN 'CHAR'
     WHEN pg_type.typname IN ('text', 'clob') THEN 'CLOB'
+    WHEN pg_type.typname = 'nclob' THEN 'NCLOB'
     WHEN pg_type.typname IN ('bytea', 'blob') THEN 'BLOB'
     WHEN pg_type.typname IN ('date', 'oradate') THEN 'DATE'
-    WHEN pg_type.typname IN ('timestamp', 'timestamptz', 'oratimestamp', 'oratimestamptz') THEN 'TIMESTAMP'
+    WHEN pg_type.typname IN ('timestamp', 'timestamptz', 'oratimestamp') THEN 'TIMESTAMP'
+    WHEN pg_type.typname = 'oratimestamptz' THEN 'TIMESTAMP WITH TIME ZONE'
+    WHEN pg_type.typname = 'oratimestampltz' THEN 'TIMESTAMP WITH LOCAL TIME ZONE'
+    WHEN pg_type.typname = 'long' THEN 'LONG'
+    WHEN pg_type.typname = 'long_raw' THEN 'LONG RAW'
+    WHEN pg_type.typname = 'bool' THEN 'BOOLEAN'
     WHEN pg_type.typname = 'raw' THEN 'RAW'
     WHEN pg_type.typname = 'rowid' THEN 'ROWID'
     ELSE sys.ora_case_trans(pg_type.typname::varchar2)::varchar2(128)
@@ -1436,7 +1456,7 @@ SELECT
     WHEN pg_type.typname IN ('oravarcharchar','oracharchar','varchar','bpchar') AND pg_attribute.atttypmod > 4
       THEN (pg_attribute.atttypmod - 4) * pg_catalog.pg_encoding_max_length(
             (SELECT d.encoding FROM pg_catalog.pg_database d WHERE d.datname = current_database()))
-    WHEN pg_type.typname IN ('clob','blob') THEN 4000
+    WHEN pg_type.typname IN ('clob','blob','nclob') THEN 4000
     WHEN pg_type.typname = 'rowid' THEN 10
     WHEN pg_attribute.atttypid = 'PG_CATALOG.INT2'::regtype THEN 2
     WHEN pg_attribute.atttypid = 'PG_CATALOG.INT4'::regtype THEN 4
@@ -1464,12 +1484,412 @@ SELECT
     WHEN pg_type.typname IN ('number','numeric') AND pg_attribute.atttypmod > 4
       THEN (((pg_attribute.atttypmod - 4) & 2047) # 1024) - 1024
     WHEN pg_type.typname IN ('int2','int4','int8') THEN 0
+    WHEN pg_type.typname IN ('oratimestamp','oratimestamptz','oratimestampltz')
+      THEN greatest(pg_attribute.atttypmod, 0)
     ELSE NULL
   END::numeric AS data_scale,
 
   CASE WHEN pg_attribute.attnotnull THEN 'N' ELSE 'Y' END::varchar2(1) AS nullable,
   def.adbin_text::varchar2(4000) AS data_default,
-  NULL::numeric AS num_distinct,
+  CASE
+    WHEN pg_stats.n_distinct IS NULL THEN NULL
+    WHEN pg_stats.n_distinct < 0
+      THEN round(-pg_stats.n_distinct * greatest(pg_class.reltuples, 0))
+    ELSE round(pg_stats.n_distinct)
+  END::numeric AS num_distinct,
+  NULL::raw AS low_value,
+  NULL::raw AS high_value,
+  NULL::numeric AS density,
+
+  CASE WHEN pg_class.reltuples >= 0
+    THEN (pg_stats.null_frac * pg_class.reltuples)::numeric
+    ELSE NULL
+  END AS num_nulls,
+
+  NULL::numeric AS num_buckets,
+  pg_stat_get_last_analyze_time(pg_class.oid) AS last_analyzed,
+  NULL::numeric AS sample_size,
+
+  CASE
+    WHEN pg_type.typname IN (
+      'bpchar', 'varchar', 'text', 'clob',
+      'oracharbyte', 'oravarcharbyte',
+      'oracharchar', 'oravarcharchar'
+    ) THEN 'CHAR_CS'
+    ELSE NULL
+  END::varchar2(44) AS character_set_name,
+
+  CASE
+    WHEN pg_type.typname IN ('oracharbyte','oravarcharbyte','raw') AND pg_attribute.atttypmod > 4
+      THEN pg_attribute.atttypmod - 4
+    WHEN pg_type.typname IN ('oracharchar','oravarcharchar','bpchar','varchar') AND pg_attribute.atttypmod > 4
+      THEN pg_attribute.atttypmod - 4 
+    ELSE NULL
+  END::numeric AS char_col_decl_length,
+
+  'YES'::varchar2(3) AS global_stats,
+  'NO'::varchar2(3) AS user_stats,
+
+  pg_stats.avg_width::numeric AS avg_col_len,
+
+  CASE
+    WHEN pg_type.typname IN ('bpchar','varchar','oracharchar','oracharbyte','oravarcharchar','oravarcharbyte')
+         AND pg_attribute.atttypmod > 4
+      THEN pg_attribute.atttypmod - 4
+    ELSE NULL
+  END::numeric AS char_length,
+
+  CASE
+    WHEN pg_type.typname IN ('oravarcharbyte','oracharbyte') THEN 'B'
+    WHEN pg_type.typname IN ('oravarcharchar','oracharchar') THEN 'C'
+    ELSE NULL
+  END::varchar2(1) AS char_used,
+
+  'NO'::varchar2(10) AS v80_fmt_image,
+  'NO'::varchar2(10) AS data_upgraded,
+  NULL::varchar2(10) AS histogram,
+
+  def.adbin_blen::numeric AS default_length,
+  NULL::varchar2(128) AS collation,
+
+  CASE WHEN pg_attribute.attidentity <> '' THEN 'YES' ELSE 'NO' END::varchar2(10) AS identity_column,
+  'NO'::varchar2(3) AS default_on_null
+
+FROM pg_class
+JOIN pg_namespace ON pg_class.relnamespace = pg_namespace.oid
+JOIN pg_attribute ON pg_class.oid = pg_attribute.attrelid
+JOIN pg_type ON pg_type.oid = pg_attribute.atttypid
+
+LEFT JOIN pg_stats ON
+  pg_stats.schemaname = pg_namespace.nspname
+  AND pg_stats.tablename = pg_class.relname
+  AND pg_stats.attname = pg_attribute.attname
+  -- a table with inheritance children has two statistics rows per column:
+  -- its own (inherited = false) and the whole tree (inherited = true).
+  -- Keep exactly one, the same way the DBA_/USER_ variants do.
+  AND pg_stats.inherited = (pg_class.relkind = 'p')
+
+LEFT JOIN LATERAL (
+  SELECT
+    pg_get_expr(adbin, adrelid) AS adbin_text,
+    octet_length(pg_get_expr(adbin, adrelid)) AS adbin_blen
+  FROM pg_attrdef
+  WHERE adrelid = pg_attribute.attrelid
+    AND adnum = pg_attribute.attnum
+) def ON true
+
+WHERE
+  pg_class.relkind IN ('r','v','m','p','f')
+  AND pg_attribute.attnum > 0
+  AND NOT pg_attribute.attisdropped
+  AND pg_namespace.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+  AND has_table_privilege(current_user, pg_class.oid,
+       'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+  AND NOT pg_class.relispartition;
+
+GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+--
+-- USER_TAB_COLUMNS: same as ALL_TAB_COLUMNS, restricted to the relations
+-- owned by the current user (Oracle's USER_ views describe the caller's
+-- own objects, cf. USER_SEQUENCES / USER_VIEWS / USER_CONS_COLUMNS).
+-- Ownership replaces the privilege check of ALL_TAB_COLUMNS: an owner keeps
+-- seeing its own relation even after revoking all of its own privileges.
+--
+CREATE OR REPLACE VIEW SYS.USER_TAB_COLUMNS AS
+SELECT
+  sys.ora_case_trans(pg_namespace.nspname::varchar2)::varchar2(128) AS owner,
+  sys.ora_case_trans(pg_class.relname::varchar2)::varchar2(128) AS table_name,
+  sys.ora_case_trans(pg_attribute.attname::varchar2)::varchar2(128) AS column_name,
+  ROW_NUMBER() OVER (
+    PARTITION BY pg_class.oid
+    ORDER BY pg_attribute.attnum
+  )::numeric AS column_id,
+
+  CASE
+    WHEN pg_type.typname IN ('int2', 'int4', 'int8') THEN 'NUMBER'
+    WHEN pg_type.typname IN ('float4', 'float8') THEN 'FLOAT'
+    WHEN pg_type.typname = 'numeric' THEN 'NUMBER'
+    WHEN pg_type.typname IN ('varchar', 'oravarcharbyte', 'oravarcharchar') THEN 'VARCHAR2'
+    WHEN pg_type.typname IN ('bpchar', 'oracharbyte', 'oracharchar') THEN 'CHAR'
+    WHEN pg_type.typname IN ('text', 'clob') THEN 'CLOB'
+    WHEN pg_type.typname = 'nclob' THEN 'NCLOB'
+    WHEN pg_type.typname IN ('bytea', 'blob') THEN 'BLOB'
+    WHEN pg_type.typname IN ('date', 'oradate') THEN 'DATE'
+    WHEN pg_type.typname IN ('timestamp', 'timestamptz', 'oratimestamp') THEN 'TIMESTAMP'
+    WHEN pg_type.typname = 'oratimestamptz' THEN 'TIMESTAMP WITH TIME ZONE'
+    WHEN pg_type.typname = 'oratimestampltz' THEN 'TIMESTAMP WITH LOCAL TIME ZONE'
+    WHEN pg_type.typname = 'long' THEN 'LONG'
+    WHEN pg_type.typname = 'long_raw' THEN 'LONG RAW'
+    WHEN pg_type.typname = 'bool' THEN 'BOOLEAN'
+    WHEN pg_type.typname = 'raw' THEN 'RAW'
+    WHEN pg_type.typname = 'rowid' THEN 'ROWID'
+    ELSE sys.ora_case_trans(pg_type.typname::varchar2)::varchar2(128)
+  END::varchar2(128) AS data_type,
+
+  NULL::varchar2(3) AS data_type_mod,
+
+  CASE
+    WHEN pg_type.typnamespace NOT IN ('pg_catalog'::regnamespace, 'sys'::regnamespace)
+    THEN sys.ora_case_trans(pg_get_userbyid(pg_type.typowner)::varchar2)::varchar2(128)
+    ELSE NULL
+  END AS data_type_owner,
+
+  CASE
+    WHEN pg_type.typnamespace = 'SYS'::regnamespace AND pg_type.typname = 'number' THEN 22
+    WHEN pg_type.typnamespace = 'SYS'::regnamespace AND pg_type.typname = 'oradate' THEN 7
+    WHEN pg_type.typnamespace = 'SYS'::regnamespace AND pg_type.typname = 'oratimestamp' THEN
+      CASE WHEN pg_attribute.atttypmod = 0 THEN 7 ELSE 11 END
+    WHEN pg_type.typnamespace = 'SYS'::regnamespace AND pg_type.typname = 'oratimestamptz' THEN 13
+    WHEN pg_type.typnamespace = 'SYS'::regnamespace AND pg_type.typname = 'oratimestampltz' THEN 11
+    WHEN pg_type.typname = 'binary_float' THEN 4
+    WHEN pg_type.typname = 'binary_double' THEN 8
+    WHEN pg_type.typname IN ('oravarcharbyte','oracharbyte','raw') AND pg_attribute.atttypmod > 4
+      THEN pg_attribute.atttypmod - 4
+    WHEN pg_type.typname IN ('oravarcharchar','oracharchar','varchar','bpchar') AND pg_attribute.atttypmod > 4
+      THEN (pg_attribute.atttypmod - 4) * pg_catalog.pg_encoding_max_length(
+            (SELECT d.encoding FROM pg_catalog.pg_database d WHERE d.datname = current_database()))
+    WHEN pg_type.typname IN ('clob','blob','nclob') THEN 4000
+    WHEN pg_type.typname = 'rowid' THEN 10
+    WHEN pg_attribute.atttypid = 'PG_CATALOG.INT2'::regtype THEN 2
+    WHEN pg_attribute.atttypid = 'PG_CATALOG.INT4'::regtype THEN 4
+    WHEN pg_attribute.atttypid = 'PG_CATALOG.INT8'::regtype THEN 8
+    WHEN pg_attribute.atttypid = 'PG_CATALOG.FLOAT4'::regtype THEN 4
+    WHEN pg_attribute.atttypid = 'PG_CATALOG.FLOAT8'::regtype THEN 8
+    WHEN pg_attribute.atttypid = 'PG_CATALOG.NUMERIC'::regtype THEN 22
+    WHEN pg_type.typname IN ('text','xml','json','jsonb') THEN 4000
+    WHEN pg_attribute.attlen > 0 THEN pg_attribute.attlen
+    ELSE 0
+  END::numeric AS data_length,
+
+  CASE
+    WHEN pg_type.typname IN ('number','numeric') AND pg_attribute.atttypmod > 4
+      THEN nullif(((pg_attribute.atttypmod - 4) >> 16) & 65535, 0)
+    WHEN pg_type.typname = 'int2' THEN 5
+    WHEN pg_type.typname = 'int4' THEN 10
+    WHEN pg_type.typname = 'int8' THEN 19
+    WHEN pg_type.typname IN ('float4','binary_float') THEN 63
+    WHEN pg_type.typname IN ('float8','binary_double') THEN 126
+    ELSE NULL
+  END::numeric AS data_precision,
+
+  CASE
+    WHEN pg_type.typname IN ('number','numeric') AND pg_attribute.atttypmod > 4
+      THEN (((pg_attribute.atttypmod - 4) & 2047) # 1024) - 1024
+    WHEN pg_type.typname IN ('int2','int4','int8') THEN 0
+    WHEN pg_type.typname IN ('oratimestamp','oratimestamptz','oratimestampltz')
+      THEN greatest(pg_attribute.atttypmod, 0)
+    ELSE NULL
+  END::numeric AS data_scale,
+
+  CASE WHEN pg_attribute.attnotnull THEN 'N' ELSE 'Y' END::varchar2(1) AS nullable,
+  def.adbin_text::varchar2(4000) AS data_default,
+  -- Oracle reports the number of distinct values once the column has been
+  -- analyzed; pg_stats.n_distinct is negative when it is a fraction of the
+  -- row count, so multiply it back.
+  CASE
+    WHEN pg_stats.n_distinct IS NULL THEN NULL
+    WHEN pg_stats.n_distinct < 0
+      THEN round(-pg_stats.n_distinct * greatest(pg_class.reltuples, 0))
+    ELSE round(pg_stats.n_distinct)
+  END::numeric AS num_distinct,
+  NULL::raw AS low_value,
+  NULL::raw AS high_value,
+  NULL::numeric AS density,
+
+  CASE WHEN pg_class.reltuples >= 0
+    THEN (pg_stats.null_frac * pg_class.reltuples)::numeric
+    ELSE NULL
+  END AS num_nulls,
+
+  NULL::numeric AS num_buckets,
+  pg_stat_get_last_analyze_time(pg_class.oid) AS last_analyzed,
+  NULL::numeric AS sample_size,
+
+  CASE
+    WHEN pg_type.typname IN (
+      'bpchar', 'varchar', 'text', 'clob',
+      'oracharbyte', 'oravarcharbyte',
+      'oracharchar', 'oravarcharchar'
+    ) THEN 'CHAR_CS'
+    ELSE NULL
+  END::varchar2(44) AS character_set_name,
+
+  CASE
+    WHEN pg_type.typname IN ('oracharbyte','oravarcharbyte','raw') AND pg_attribute.atttypmod > 4
+      THEN pg_attribute.atttypmod - 4
+    WHEN pg_type.typname IN ('oracharchar','oravarcharchar','bpchar','varchar') AND pg_attribute.atttypmod > 4
+      THEN pg_attribute.atttypmod - 4 
+    ELSE NULL
+  END::numeric AS char_col_decl_length,
+
+  'YES'::varchar2(3) AS global_stats,
+  'NO'::varchar2(3) AS user_stats,
+
+  pg_stats.avg_width::numeric AS avg_col_len,
+
+  CASE
+    WHEN pg_type.typname IN ('bpchar','varchar','oracharchar','oracharbyte','oravarcharchar','oravarcharbyte')
+         AND pg_attribute.atttypmod > 4
+      THEN pg_attribute.atttypmod - 4
+    ELSE NULL
+  END::numeric AS char_length,
+
+  CASE
+    WHEN pg_type.typname IN ('oravarcharbyte','oracharbyte') THEN 'B'
+    WHEN pg_type.typname IN ('oravarcharchar','oracharchar') THEN 'C'
+    ELSE NULL
+  END::varchar2(1) AS char_used,
+
+  'NO'::varchar2(10) AS v80_fmt_image,
+  'NO'::varchar2(10) AS data_upgraded,
+  NULL::varchar2(10) AS histogram,
+
+  def.adbin_blen::numeric AS default_length,
+  NULL::varchar2(128) AS collation,
+
+  CASE WHEN pg_attribute.attidentity <> '' THEN 'YES' ELSE 'NO' END::varchar2(10) AS identity_column,
+  'NO'::varchar2(3) AS default_on_null
+
+FROM pg_class
+JOIN pg_namespace ON pg_class.relnamespace = pg_namespace.oid
+JOIN pg_attribute ON pg_class.oid = pg_attribute.attrelid
+JOIN pg_type ON pg_type.oid = pg_attribute.atttypid
+
+-- A relation with inheritance children has two rows per column in pg_stats:
+-- the statistics of the relation itself (inherited = false) and the ones that
+-- also cover the children (inherited = true).  A partitioned table has only
+-- the latter, because its rows live in the partitions.  Matching the relation
+-- kind keeps one row per column, so COLUMN_ID stays a plain 1..N sequence.
+LEFT JOIN pg_stats ON
+  pg_stats.schemaname = pg_namespace.nspname
+  AND pg_stats.tablename = pg_class.relname
+  AND pg_stats.attname = pg_attribute.attname
+  AND pg_stats.inherited = (pg_class.relkind = 'p')
+
+LEFT JOIN LATERAL (
+  SELECT
+    pg_get_expr(adbin, adrelid) AS adbin_text,
+    octet_length(pg_get_expr(adbin, adrelid)) AS adbin_blen
+  FROM pg_attrdef
+  WHERE adrelid = pg_attribute.attrelid
+    AND adnum = pg_attribute.attnum
+) def ON true
+
+WHERE
+  pg_get_userbyid(pg_class.relowner) = current_user
+  AND pg_class.relkind IN ('r','v','m','p','f')
+  AND pg_attribute.attnum > 0
+  AND NOT pg_attribute.attisdropped
+  AND pg_namespace.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+  AND NOT pg_class.relispartition;
+GRANT SELECT ON SYS.USER_TAB_COLUMNS TO PUBLIC;
+
+-- ALL_TAB_COLUMNS
+--
+-- DBA_TAB_COLUMNS: the same column list as ALL_TAB_COLUMNS, but without the
+-- privilege filter - the DBA_ views describe every object in the database
+-- (Oracle keeps them for users with the DBA role), like DBA_SOURCE,
+-- DBA_VIEWS and friends.
+--
+CREATE OR REPLACE VIEW SYS.DBA_TAB_COLUMNS AS
+SELECT
+  sys.ora_case_trans(pg_namespace.nspname::varchar2)::varchar2(128) AS owner,
+  sys.ora_case_trans(pg_class.relname::varchar2)::varchar2(128) AS table_name,
+  sys.ora_case_trans(pg_attribute.attname::varchar2)::varchar2(128) AS column_name,
+  ROW_NUMBER() OVER (
+    PARTITION BY pg_class.oid
+    ORDER BY pg_attribute.attnum
+  )::numeric AS column_id,
+
+  CASE
+    WHEN pg_type.typname IN ('int2', 'int4', 'int8') THEN 'NUMBER'
+    WHEN pg_type.typname IN ('float4', 'float8') THEN 'FLOAT'
+    WHEN pg_type.typname = 'numeric' THEN 'NUMBER'
+    WHEN pg_type.typname IN ('varchar', 'oravarcharbyte', 'oravarcharchar') THEN 'VARCHAR2'
+    WHEN pg_type.typname IN ('bpchar', 'oracharbyte', 'oracharchar') THEN 'CHAR'
+    WHEN pg_type.typname IN ('text', 'clob') THEN 'CLOB'
+    WHEN pg_type.typname = 'nclob' THEN 'NCLOB'
+    WHEN pg_type.typname IN ('bytea', 'blob') THEN 'BLOB'
+    WHEN pg_type.typname = 'nclob' THEN 'NCLOB'
+    WHEN pg_type.typname IN ('date', 'oradate') THEN 'DATE'
+    WHEN pg_type.typname IN ('timestamp', 'timestamptz', 'oratimestamp') THEN 'TIMESTAMP'
+    WHEN pg_type.typname = 'oratimestamptz' THEN 'TIMESTAMP WITH TIME ZONE'
+    WHEN pg_type.typname = 'oratimestampltz' THEN 'TIMESTAMP WITH LOCAL TIME ZONE'
+    WHEN pg_type.typname = 'long' THEN 'LONG'
+    WHEN pg_type.typname = 'long_raw' THEN 'LONG RAW'
+    WHEN pg_type.typname = 'bool' THEN 'BOOLEAN'
+    WHEN pg_type.typname = 'raw' THEN 'RAW'
+    WHEN pg_type.typname = 'rowid' THEN 'ROWID'
+    ELSE sys.ora_case_trans(pg_type.typname::varchar2)::varchar2(128)
+  END::varchar2(128) AS data_type,
+
+  NULL::varchar2(3) AS data_type_mod,
+
+  CASE
+    WHEN pg_type.typnamespace NOT IN ('pg_catalog'::regnamespace, 'sys'::regnamespace)
+    THEN sys.ora_case_trans(pg_get_userbyid(pg_type.typowner)::varchar2)::varchar2(128)
+    ELSE NULL
+  END AS data_type_owner,
+
+  CASE
+    WHEN pg_type.typnamespace = 'SYS'::regnamespace AND pg_type.typname = 'number' THEN 22
+    WHEN pg_type.typnamespace = 'SYS'::regnamespace AND pg_type.typname = 'oradate' THEN 7
+    WHEN pg_type.typnamespace = 'SYS'::regnamespace AND pg_type.typname = 'oratimestamp' THEN
+      CASE WHEN pg_attribute.atttypmod = 0 THEN 7 ELSE 11 END
+    WHEN pg_type.typnamespace = 'SYS'::regnamespace AND pg_type.typname = 'oratimestamptz' THEN 13
+    WHEN pg_type.typnamespace = 'SYS'::regnamespace AND pg_type.typname = 'oratimestampltz' THEN 11
+    WHEN pg_type.typname = 'binary_float' THEN 4
+    WHEN pg_type.typname = 'binary_double' THEN 8
+    WHEN pg_type.typname IN ('oravarcharbyte','oracharbyte','raw') AND pg_attribute.atttypmod > 4
+      THEN pg_attribute.atttypmod - 4
+    WHEN pg_type.typname IN ('oravarcharchar','oracharchar','varchar','bpchar') AND pg_attribute.atttypmod > 4
+      THEN (pg_attribute.atttypmod - 4) * pg_catalog.pg_encoding_max_length(
+            (SELECT d.encoding FROM pg_catalog.pg_database d WHERE d.datname = current_database()))
+    WHEN pg_type.typname IN ('clob','blob','nclob') THEN 4000
+    WHEN pg_type.typname = 'rowid' THEN 10
+    WHEN pg_attribute.atttypid = 'PG_CATALOG.INT2'::regtype THEN 2
+    WHEN pg_attribute.atttypid = 'PG_CATALOG.INT4'::regtype THEN 4
+    WHEN pg_attribute.atttypid = 'PG_CATALOG.INT8'::regtype THEN 8
+    WHEN pg_attribute.atttypid = 'PG_CATALOG.FLOAT4'::regtype THEN 4
+    WHEN pg_attribute.atttypid = 'PG_CATALOG.FLOAT8'::regtype THEN 8
+    WHEN pg_attribute.atttypid = 'PG_CATALOG.NUMERIC'::regtype THEN 22
+    WHEN pg_type.typname IN ('text','xml','json','jsonb') THEN 4000
+    WHEN pg_attribute.attlen > 0 THEN pg_attribute.attlen
+    ELSE 0
+  END::numeric AS data_length,
+
+  CASE
+    WHEN pg_type.typname IN ('number','numeric') AND pg_attribute.atttypmod > 4
+      THEN nullif(((pg_attribute.atttypmod - 4) >> 16) & 65535, 0)
+    WHEN pg_type.typname = 'int2' THEN 5
+    WHEN pg_type.typname = 'int4' THEN 10
+    WHEN pg_type.typname = 'int8' THEN 19
+    WHEN pg_type.typname IN ('float4','binary_float') THEN 63
+    WHEN pg_type.typname IN ('float8','binary_double') THEN 126
+    ELSE NULL
+  END::numeric AS data_precision,
+
+  CASE
+    WHEN pg_type.typname IN ('number','numeric') AND pg_attribute.atttypmod > 4
+      THEN (((pg_attribute.atttypmod - 4) & 2047) # 1024) - 1024
+    WHEN pg_type.typname IN ('int2','int4','int8') THEN 0
+    WHEN pg_type.typname IN ('oratimestamp','oratimestamptz','oratimestampltz')
+      THEN greatest(pg_attribute.atttypmod, 0)
+    ELSE NULL
+  END::numeric AS data_scale,
+
+  CASE WHEN pg_attribute.attnotnull THEN 'N' ELSE 'Y' END::varchar2(1) AS nullable,
+  def.adbin_text::varchar2(4000) AS data_default,
+  -- Oracle reports the number of distinct values once the column has been
+  -- analyzed; pg_stats.n_distinct is negative when it is a fraction of the
+  -- row count, so multiply it back.
+  CASE
+    WHEN pg_stats.n_distinct IS NULL THEN NULL
+    WHEN pg_stats.n_distinct < 0
+      THEN round(-pg_stats.n_distinct * greatest(pg_class.reltuples, 0))
+    ELSE round(pg_stats.n_distinct)
+  END::numeric AS num_distinct,
   NULL::raw AS low_value,
   NULL::raw AS high_value,
   NULL::numeric AS density,
@@ -1552,8 +1972,1146 @@ WHERE
   AND pg_attribute.attnum > 0
   AND NOT pg_attribute.attisdropped
   AND pg_namespace.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
-  AND has_table_privilege(current_user, pg_class.oid,
-       'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
   AND NOT pg_class.relispartition;
+GRANT SELECT ON SYS.DBA_TAB_COLUMNS TO PUBLIC;
 
-GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+-- USER_TAB_IDENTITY_COLS: identity columns of the current user's tables, with
+-- the options of the sequence PostgreSQL created for them.
+CREATE OR REPLACE VIEW SYS.USER_TAB_IDENTITY_COLS AS
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS TABLE_NAME,
+    SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(128)                    AS COLUMN_NAME,
+    CASE WHEN A.ATTIDENTITY IN ('a', 'i') THEN 'ALWAYS'
+         ELSE 'BY DEFAULT'
+    END::VARCHAR2(12)                                                         AS GENERATION_TYPE,
+    ('START WITH: ' || PS.SEQSTART ||
+     ', INCREMENT BY: ' || PS.SEQINCREMENT ||
+     ', MAX_VALUE: ' || PS.SEQMAX ||
+     ', MIN_VALUE: ' || PS.SEQMIN ||
+     ', CYCLE_FLAG: ' || CASE WHEN PS.SEQCYCLE THEN 'Y' ELSE 'N' END ||
+     ', CACHE_SIZE: ' || PS.SEQCACHE ||
+     ', ORDER_FLAG: N')::VARCHAR2(4000)                                       AS IDENTITY_OPTIONS,
+    SYS.ORA_CASE_TRANS(S.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS SEQUENCE_NAME
+FROM PG_CATALOG.PG_ATTRIBUTE A
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = A.ATTRELID
+JOIN PG_CATALOG.PG_DEPEND D
+  ON D.REFCLASSID = 'pg_class'::REGCLASS
+ AND D.REFOBJID = A.ATTRELID
+ AND D.REFOBJSUBID = A.ATTNUM
+ AND D.CLASSID = 'pg_class'::REGCLASS
+ AND D.DEPTYPE IN ('i', 'a')
+JOIN PG_CATALOG.PG_CLASS S ON S.OID = D.OBJID AND S.RELKIND = 'S'
+JOIN PG_CATALOG.PG_SEQUENCE PS ON PS.SEQRELID = S.OID
+WHERE A.ATTIDENTITY IN ('a', 'd', 'i', 'o')
+  AND A.ATTNUM > 0
+  AND NOT A.ATTISDROPPED
+
+  AND C.RELOWNER = (SELECT OID FROM PG_CATALOG.PG_ROLES WHERE ROLNAME = CURRENT_USER);
+GRANT SELECT ON SYS.USER_TAB_IDENTITY_COLS TO PUBLIC;
+
+-- ALL_TAB_IDENTITY_COLS: the same rows for every table the current user can read.
+CREATE OR REPLACE VIEW SYS.ALL_TAB_IDENTITY_COLS AS
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS TABLE_NAME,
+    SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(128)                    AS COLUMN_NAME,
+    CASE WHEN A.ATTIDENTITY IN ('a', 'i') THEN 'ALWAYS'
+         ELSE 'BY DEFAULT'
+    END::VARCHAR2(12)                                                         AS GENERATION_TYPE,
+    ('START WITH: ' || PS.SEQSTART ||
+     ', INCREMENT BY: ' || PS.SEQINCREMENT ||
+     ', MAX_VALUE: ' || PS.SEQMAX ||
+     ', MIN_VALUE: ' || PS.SEQMIN ||
+     ', CYCLE_FLAG: ' || CASE WHEN PS.SEQCYCLE THEN 'Y' ELSE 'N' END ||
+     ', CACHE_SIZE: ' || PS.SEQCACHE ||
+     ', ORDER_FLAG: N')::VARCHAR2(4000)                                       AS IDENTITY_OPTIONS,
+    SYS.ORA_CASE_TRANS(S.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS SEQUENCE_NAME
+FROM PG_CATALOG.PG_ATTRIBUTE A
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = A.ATTRELID
+JOIN PG_CATALOG.PG_DEPEND D
+  ON D.REFCLASSID = 'pg_class'::REGCLASS
+ AND D.REFOBJID = A.ATTRELID
+ AND D.REFOBJSUBID = A.ATTNUM
+ AND D.CLASSID = 'pg_class'::REGCLASS
+ AND D.DEPTYPE IN ('i', 'a')
+JOIN PG_CATALOG.PG_CLASS S ON S.OID = D.OBJID AND S.RELKIND = 'S'
+JOIN PG_CATALOG.PG_SEQUENCE PS ON PS.SEQRELID = S.OID
+WHERE A.ATTIDENTITY IN ('a', 'd', 'i', 'o')
+  AND A.ATTNUM > 0
+  AND NOT A.ATTISDROPPED
+
+  AND HAS_TABLE_PRIVILEGE(C.OID, 'SELECT');
+GRANT SELECT ON SYS.ALL_TAB_IDENTITY_COLS TO PUBLIC;
+
+-- DBA_TAB_IDENTITY_COLS: unrestricted.
+CREATE OR REPLACE VIEW SYS.DBA_TAB_IDENTITY_COLS AS
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS TABLE_NAME,
+    SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(128)                    AS COLUMN_NAME,
+    CASE WHEN A.ATTIDENTITY IN ('a', 'i') THEN 'ALWAYS'
+         ELSE 'BY DEFAULT'
+    END::VARCHAR2(12)                                                         AS GENERATION_TYPE,
+    ('START WITH: ' || PS.SEQSTART ||
+     ', INCREMENT BY: ' || PS.SEQINCREMENT ||
+     ', MAX_VALUE: ' || PS.SEQMAX ||
+     ', MIN_VALUE: ' || PS.SEQMIN ||
+     ', CYCLE_FLAG: ' || CASE WHEN PS.SEQCYCLE THEN 'Y' ELSE 'N' END ||
+     ', CACHE_SIZE: ' || PS.SEQCACHE ||
+     ', ORDER_FLAG: N')::VARCHAR2(4000)                                       AS IDENTITY_OPTIONS,
+    SYS.ORA_CASE_TRANS(S.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS SEQUENCE_NAME
+FROM PG_CATALOG.PG_ATTRIBUTE A
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = A.ATTRELID
+JOIN PG_CATALOG.PG_DEPEND D
+  ON D.REFCLASSID = 'pg_class'::REGCLASS
+ AND D.REFOBJID = A.ATTRELID
+ AND D.REFOBJSUBID = A.ATTNUM
+ AND D.CLASSID = 'pg_class'::REGCLASS
+ AND D.DEPTYPE IN ('i', 'a')
+JOIN PG_CATALOG.PG_CLASS S ON S.OID = D.OBJID AND S.RELKIND = 'S'
+JOIN PG_CATALOG.PG_SEQUENCE PS ON PS.SEQRELID = S.OID
+WHERE A.ATTIDENTITY IN ('a', 'd', 'i', 'o')
+  AND A.ATTNUM > 0
+  AND NOT A.ATTISDROPPED;
+GRANT SELECT ON SYS.DBA_TAB_IDENTITY_COLS TO PUBLIC;
+
+-- USER_PART_KEY_COLUMNS: the partition key columns of the current user's
+-- partitioned tables.  PostgreSQL does not support subpartitions, so there is
+-- no subpartition counterpart to add.  Expression keys have no column name in
+-- pg_attribute and are reported with COLUMN_NAME NULL.
+CREATE OR REPLACE VIEW SYS.USER_PART_KEY_COLUMNS AS
+SELECT NAME, OBJECT_TYPE, COLUMN_NAME, COLUMN_POSITION
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS NAME,
+    'TABLE'::VARCHAR2(13)                                                      AS OBJECT_TYPE,
+    SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(4000)                   AS COLUMN_NAME,
+    (G.I + 1)::NUMBER                                                          AS COLUMN_POSITION,
+    C.RELOWNER                                                                 AS OWNER_OID,
+    C.OID                                                                      AS REL_OID
+FROM PG_CATALOG.PG_PARTITIONED_TABLE PT
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = PT.PARTRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+CROSS JOIN LATERAL PG_CATALOG.GENERATE_SERIES(0, PT.PARTNATTS - 1) AS G(I)
+LEFT JOIN PG_CATALOG.PG_ATTRIBUTE A
+  ON A.ATTRELID = C.OID AND A.ATTNUM = PT.PARTATTRS[G.I]
+WHERE N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+WHERE S.OWNER_OID = (SELECT OID FROM PG_CATALOG.PG_ROLES WHERE ROLNAME = CURRENT_USER)
+ORDER BY S.COLUMN_POSITION;
+GRANT SELECT ON SYS.USER_PART_KEY_COLUMNS TO PUBLIC;
+
+-- ALL_PART_KEY_COLUMNS: the same rows for partitioned tables the current user
+-- can read.
+CREATE OR REPLACE VIEW SYS.ALL_PART_KEY_COLUMNS AS
+SELECT NAME, OBJECT_TYPE, COLUMN_NAME, COLUMN_POSITION
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS NAME,
+    'TABLE'::VARCHAR2(13)                                                      AS OBJECT_TYPE,
+    SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(4000)                   AS COLUMN_NAME,
+    (G.I + 1)::NUMBER                                                          AS COLUMN_POSITION,
+    C.RELOWNER                                                                 AS OWNER_OID,
+    C.OID                                                                      AS REL_OID
+FROM PG_CATALOG.PG_PARTITIONED_TABLE PT
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = PT.PARTRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+CROSS JOIN LATERAL PG_CATALOG.GENERATE_SERIES(0, PT.PARTNATTS - 1) AS G(I)
+LEFT JOIN PG_CATALOG.PG_ATTRIBUTE A
+  ON A.ATTRELID = C.OID AND A.ATTNUM = PT.PARTATTRS[G.I]
+WHERE N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+WHERE HAS_TABLE_PRIVILEGE(S.REL_OID, 'SELECT')
+ORDER BY S.OWNER, S.NAME, S.COLUMN_POSITION;
+GRANT SELECT ON SYS.ALL_PART_KEY_COLUMNS TO PUBLIC;
+
+-- DBA_PART_KEY_COLUMNS: unrestricted.
+CREATE OR REPLACE VIEW SYS.DBA_PART_KEY_COLUMNS AS
+SELECT OWNER, NAME, OBJECT_TYPE, COLUMN_NAME, COLUMN_POSITION
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS NAME,
+    'TABLE'::VARCHAR2(13)                                                      AS OBJECT_TYPE,
+    SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(4000)                   AS COLUMN_NAME,
+    (G.I + 1)::NUMBER                                                          AS COLUMN_POSITION,
+    C.RELOWNER                                                                 AS OWNER_OID,
+    C.OID                                                                      AS REL_OID
+FROM PG_CATALOG.PG_PARTITIONED_TABLE PT
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = PT.PARTRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+CROSS JOIN LATERAL PG_CATALOG.GENERATE_SERIES(0, PT.PARTNATTS - 1) AS G(I)
+LEFT JOIN PG_CATALOG.PG_ATTRIBUTE A
+  ON A.ATTRELID = C.OID AND A.ATTNUM = PT.PARTATTRS[G.I]
+WHERE N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+ORDER BY S.OWNER, S.NAME, S.COLUMN_POSITION;
+GRANT SELECT ON SYS.DBA_PART_KEY_COLUMNS TO PUBLIC;
+
+-- USER_TYPE_ATTRS: the attributes of the current user's composite types, in
+-- declaration order.  LENGTH/PRECISION/SCALE are not part of the attribute
+-- record in PostgreSQL and are reported by ALL_TAB_COLUMNS when the type is
+-- read as a table.
+CREATE OR REPLACE VIEW SYS.USER_TYPE_ATTRS AS
+SELECT TYPE_NAME, ATTR_NAME, ATTR_TYPE_MOD, ATTR_TYPE_OWNER, ATTR_TYPE_NAME, ATTR_NO, INHERITED, CHAR_USED
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(T.TYPOWNER)::VARCHAR2)::VARCHAR2(128)   AS OWNER,
+    SYS.ORA_CASE_TRANS(T.TYPNAME::VARCHAR2)::VARCHAR2(128)                     AS TYPE_NAME,
+    SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(128)                     AS ATTR_NAME,
+    NULL::VARCHAR2(3)                                                          AS ATTR_TYPE_MOD,
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(PG_TYPE.TYPOWNER)::VARCHAR2)::VARCHAR2(128) AS ATTR_TYPE_OWNER,
+    CASE
+        WHEN PG_TYPE.TYPNAME IN ('int2', 'int4', 'int8', 'numeric') THEN 'NUMBER'
+        WHEN PG_TYPE.TYPNAME IN ('float4', 'float8') THEN 'FLOAT'
+        WHEN PG_TYPE.TYPNAME IN ('varchar', 'oravarcharbyte', 'oravarcharchar') THEN 'VARCHAR2'
+        WHEN PG_TYPE.TYPNAME IN ('bpchar', 'oracharbyte', 'oracharchar') THEN 'CHAR'
+        WHEN PG_TYPE.TYPNAME IN ('text', 'clob') THEN 'CLOB'
+        WHEN PG_TYPE.TYPNAME IN ('bytea', 'blob') THEN 'BLOB'
+        WHEN PG_TYPE.TYPNAME = 'nclob' THEN 'NCLOB'
+        WHEN PG_TYPE.TYPNAME IN ('date', 'oradate') THEN 'DATE'
+        WHEN PG_TYPE.TYPNAME IN ('timestamp', 'timestamptz', 'oratimestamp') THEN 'TIMESTAMP'
+        WHEN PG_TYPE.TYPNAME = 'oratimestamptz' THEN 'TIMESTAMP WITH TIME ZONE'
+        WHEN PG_TYPE.TYPNAME = 'oratimestampltz' THEN 'TIMESTAMP WITH LOCAL TIME ZONE'
+        WHEN PG_TYPE.TYPNAME = 'long' THEN 'LONG'
+        WHEN PG_TYPE.TYPNAME = 'long_raw' THEN 'LONG RAW'
+        WHEN PG_TYPE.TYPNAME = 'bool' THEN 'BOOLEAN'
+        ELSE SYS.ORA_CASE_TRANS(PG_TYPE.TYPNAME::VARCHAR2)::VARCHAR2(128)
+    END::VARCHAR2(128)                                                         AS ATTR_TYPE_NAME,
+    A.ATTNUM::NUMBER                                                           AS ATTR_NO,
+    'NO'::VARCHAR2(3)                                                          AS INHERITED,
+    CASE
+        WHEN PG_TYPE.TYPNAME IN ('oravarcharbyte', 'oracharbyte') THEN 'B'
+        WHEN PG_TYPE.TYPNAME IN ('oravarcharchar', 'oracharchar') THEN 'C'
+        ELSE NULL
+    END::VARCHAR2(1)                                                           AS CHAR_USED,
+    T.TYPOWNER                                                                 AS OWNER_OID
+FROM PG_CATALOG.PG_TYPE T
+JOIN PG_CATALOG.PG_ATTRIBUTE A ON A.ATTRELID = T.TYPRELID
+JOIN PG_CATALOG.PG_TYPE PG_TYPE ON PG_TYPE.OID = A.ATTTYPID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = T.TYPNAMESPACE
+WHERE T.TYPTYPE = 'c'
+  AND NOT EXISTS (SELECT 1 FROM PG_CATALOG.PG_CLASS C
+                  WHERE C.RELTYPE = T.OID
+                    AND C.RELKIND IN ('r', 'p', 'v', 'm', 'f'))
+  AND A.ATTNUM > 0
+  AND NOT A.ATTISDROPPED
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+WHERE S.OWNER_OID = (SELECT OID FROM PG_CATALOG.PG_ROLES WHERE ROLNAME = CURRENT_USER)
+ORDER BY S.TYPE_NAME, S.ATTR_NO;
+GRANT SELECT ON SYS.USER_TYPE_ATTRS TO PUBLIC;
+
+-- ALL_TYPE_ATTRS: the same rows for types in any schema.
+CREATE OR REPLACE VIEW SYS.ALL_TYPE_ATTRS AS
+SELECT OWNER, TYPE_NAME, ATTR_NAME, ATTR_TYPE_MOD, ATTR_TYPE_OWNER, ATTR_TYPE_NAME, ATTR_NO, INHERITED, CHAR_USED
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(T.TYPOWNER)::VARCHAR2)::VARCHAR2(128)   AS OWNER,
+    SYS.ORA_CASE_TRANS(T.TYPNAME::VARCHAR2)::VARCHAR2(128)                     AS TYPE_NAME,
+    SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(128)                     AS ATTR_NAME,
+    NULL::VARCHAR2(3)                                                          AS ATTR_TYPE_MOD,
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(PG_TYPE.TYPOWNER)::VARCHAR2)::VARCHAR2(128) AS ATTR_TYPE_OWNER,
+    CASE
+        WHEN PG_TYPE.TYPNAME IN ('int2', 'int4', 'int8', 'numeric') THEN 'NUMBER'
+        WHEN PG_TYPE.TYPNAME IN ('float4', 'float8') THEN 'FLOAT'
+        WHEN PG_TYPE.TYPNAME IN ('varchar', 'oravarcharbyte', 'oravarcharchar') THEN 'VARCHAR2'
+        WHEN PG_TYPE.TYPNAME IN ('bpchar', 'oracharbyte', 'oracharchar') THEN 'CHAR'
+        WHEN PG_TYPE.TYPNAME IN ('text', 'clob') THEN 'CLOB'
+        WHEN PG_TYPE.TYPNAME IN ('bytea', 'blob') THEN 'BLOB'
+        WHEN PG_TYPE.TYPNAME = 'nclob' THEN 'NCLOB'
+        WHEN PG_TYPE.TYPNAME IN ('date', 'oradate') THEN 'DATE'
+        WHEN PG_TYPE.TYPNAME IN ('timestamp', 'timestamptz', 'oratimestamp') THEN 'TIMESTAMP'
+        WHEN PG_TYPE.TYPNAME = 'oratimestamptz' THEN 'TIMESTAMP WITH TIME ZONE'
+        WHEN PG_TYPE.TYPNAME = 'oratimestampltz' THEN 'TIMESTAMP WITH LOCAL TIME ZONE'
+        WHEN PG_TYPE.TYPNAME = 'long' THEN 'LONG'
+        WHEN PG_TYPE.TYPNAME = 'long_raw' THEN 'LONG RAW'
+        WHEN PG_TYPE.TYPNAME = 'bool' THEN 'BOOLEAN'
+        ELSE SYS.ORA_CASE_TRANS(PG_TYPE.TYPNAME::VARCHAR2)::VARCHAR2(128)
+    END::VARCHAR2(128)                                                         AS ATTR_TYPE_NAME,
+    A.ATTNUM::NUMBER                                                           AS ATTR_NO,
+    'NO'::VARCHAR2(3)                                                          AS INHERITED,
+    CASE
+        WHEN PG_TYPE.TYPNAME IN ('oravarcharbyte', 'oracharbyte') THEN 'B'
+        WHEN PG_TYPE.TYPNAME IN ('oravarcharchar', 'oracharchar') THEN 'C'
+        ELSE NULL
+    END::VARCHAR2(1)                                                           AS CHAR_USED,
+    T.TYPOWNER                                                                 AS OWNER_OID
+FROM PG_CATALOG.PG_TYPE T
+JOIN PG_CATALOG.PG_ATTRIBUTE A ON A.ATTRELID = T.TYPRELID
+JOIN PG_CATALOG.PG_TYPE PG_TYPE ON PG_TYPE.OID = A.ATTTYPID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = T.TYPNAMESPACE
+WHERE T.TYPTYPE = 'c'
+  AND NOT EXISTS (SELECT 1 FROM PG_CATALOG.PG_CLASS C
+                  WHERE C.RELTYPE = T.OID
+                    AND C.RELKIND IN ('r', 'p', 'v', 'm', 'f'))
+  AND A.ATTNUM > 0
+  AND NOT A.ATTISDROPPED
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+ORDER BY S.OWNER, S.TYPE_NAME, S.ATTR_NO;
+GRANT SELECT ON SYS.ALL_TYPE_ATTRS TO PUBLIC;
+
+-- DBA_TYPE_ATTRS: same column set as ALL_TYPE_ATTRS.
+CREATE OR REPLACE VIEW SYS.DBA_TYPE_ATTRS AS
+SELECT OWNER, TYPE_NAME, ATTR_NAME, ATTR_TYPE_MOD, ATTR_TYPE_OWNER, ATTR_TYPE_NAME, ATTR_NO, INHERITED, CHAR_USED
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(T.TYPOWNER)::VARCHAR2)::VARCHAR2(128)   AS OWNER,
+    SYS.ORA_CASE_TRANS(T.TYPNAME::VARCHAR2)::VARCHAR2(128)                     AS TYPE_NAME,
+    SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(128)                     AS ATTR_NAME,
+    NULL::VARCHAR2(3)                                                          AS ATTR_TYPE_MOD,
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(PG_TYPE.TYPOWNER)::VARCHAR2)::VARCHAR2(128) AS ATTR_TYPE_OWNER,
+    CASE
+        WHEN PG_TYPE.TYPNAME IN ('int2', 'int4', 'int8', 'numeric') THEN 'NUMBER'
+        WHEN PG_TYPE.TYPNAME IN ('float4', 'float8') THEN 'FLOAT'
+        WHEN PG_TYPE.TYPNAME IN ('varchar', 'oravarcharbyte', 'oravarcharchar') THEN 'VARCHAR2'
+        WHEN PG_TYPE.TYPNAME IN ('bpchar', 'oracharbyte', 'oracharchar') THEN 'CHAR'
+        WHEN PG_TYPE.TYPNAME IN ('text', 'clob') THEN 'CLOB'
+        WHEN PG_TYPE.TYPNAME IN ('bytea', 'blob') THEN 'BLOB'
+        WHEN PG_TYPE.TYPNAME = 'nclob' THEN 'NCLOB'
+        WHEN PG_TYPE.TYPNAME IN ('date', 'oradate') THEN 'DATE'
+        WHEN PG_TYPE.TYPNAME IN ('timestamp', 'timestamptz', 'oratimestamp') THEN 'TIMESTAMP'
+        WHEN PG_TYPE.TYPNAME = 'oratimestamptz' THEN 'TIMESTAMP WITH TIME ZONE'
+        WHEN PG_TYPE.TYPNAME = 'oratimestampltz' THEN 'TIMESTAMP WITH LOCAL TIME ZONE'
+        WHEN PG_TYPE.TYPNAME = 'long' THEN 'LONG'
+        WHEN PG_TYPE.TYPNAME = 'long_raw' THEN 'LONG RAW'
+        WHEN PG_TYPE.TYPNAME = 'bool' THEN 'BOOLEAN'
+        ELSE SYS.ORA_CASE_TRANS(PG_TYPE.TYPNAME::VARCHAR2)::VARCHAR2(128)
+    END::VARCHAR2(128)                                                         AS ATTR_TYPE_NAME,
+    A.ATTNUM::NUMBER                                                           AS ATTR_NO,
+    'NO'::VARCHAR2(3)                                                          AS INHERITED,
+    CASE
+        WHEN PG_TYPE.TYPNAME IN ('oravarcharbyte', 'oracharbyte') THEN 'B'
+        WHEN PG_TYPE.TYPNAME IN ('oravarcharchar', 'oracharchar') THEN 'C'
+        ELSE NULL
+    END::VARCHAR2(1)                                                           AS CHAR_USED,
+    T.TYPOWNER                                                                 AS OWNER_OID
+FROM PG_CATALOG.PG_TYPE T
+JOIN PG_CATALOG.PG_ATTRIBUTE A ON A.ATTRELID = T.TYPRELID
+JOIN PG_CATALOG.PG_TYPE PG_TYPE ON PG_TYPE.OID = A.ATTTYPID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = T.TYPNAMESPACE
+WHERE T.TYPTYPE = 'c'
+  AND NOT EXISTS (SELECT 1 FROM PG_CATALOG.PG_CLASS C
+                  WHERE C.RELTYPE = T.OID
+                    AND C.RELKIND IN ('r', 'p', 'v', 'm', 'f'))
+  AND A.ATTNUM > 0
+  AND NOT A.ATTISDROPPED
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+ORDER BY S.OWNER, S.TYPE_NAME, S.ATTR_NO;
+GRANT SELECT ON SYS.DBA_TYPE_ATTRS TO PUBLIC;
+
+-- USER_UNUSED_COL_TABS: tables of the current user that still carry columns
+-- dropped with ALTER TABLE ... DROP COLUMN.  PostgreSQL marks those columns
+-- attisdropped and keeps the space until the table is rewritten, which is
+-- exactly what this Oracle view reports.
+CREATE OR REPLACE VIEW SYS.USER_UNUSED_COL_TABS AS
+SELECT TABLE_NAME, UNUSED_COLUMNS AS COUNT
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128)   AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)                     AS TABLE_NAME,
+    COUNT(*)::NUMBER                                                           AS UNUSED_COLUMNS,
+    C.RELOWNER                                                                 AS OWNER_OID,
+    C.OID                                                                      AS REL_OID
+FROM PG_CATALOG.PG_ATTRIBUTE A
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = A.ATTRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+WHERE A.ATTISDROPPED
+  AND C.RELKIND IN ('r', 'p', 'm')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+GROUP BY C.RELOWNER, C.RELNAME, C.OID
+
+) S
+WHERE S.OWNER_OID = (SELECT OID FROM PG_CATALOG.PG_ROLES WHERE ROLNAME = CURRENT_USER)
+ORDER BY S.TABLE_NAME;
+GRANT SELECT ON SYS.USER_UNUSED_COL_TABS TO PUBLIC;
+
+-- ALL_UNUSED_COL_TABS: the same rows for tables the current user can read.
+CREATE OR REPLACE VIEW SYS.ALL_UNUSED_COL_TABS AS
+SELECT OWNER, TABLE_NAME, UNUSED_COLUMNS AS COUNT
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128)   AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)                     AS TABLE_NAME,
+    COUNT(*)::NUMBER                                                           AS UNUSED_COLUMNS,
+    C.RELOWNER                                                                 AS OWNER_OID,
+    C.OID                                                                      AS REL_OID
+FROM PG_CATALOG.PG_ATTRIBUTE A
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = A.ATTRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+WHERE A.ATTISDROPPED
+  AND C.RELKIND IN ('r', 'p', 'm')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+GROUP BY C.RELOWNER, C.RELNAME, C.OID
+
+) S
+WHERE HAS_TABLE_PRIVILEGE(S.REL_OID, 'SELECT')
+ORDER BY S.OWNER, S.TABLE_NAME;
+GRANT SELECT ON SYS.ALL_UNUSED_COL_TABS TO PUBLIC;
+
+-- DBA_UNUSED_COL_TABS: unrestricted.
+CREATE OR REPLACE VIEW SYS.DBA_UNUSED_COL_TABS AS
+SELECT OWNER, TABLE_NAME, UNUSED_COLUMNS AS COUNT
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128)   AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)                     AS TABLE_NAME,
+    COUNT(*)::NUMBER                                                           AS UNUSED_COLUMNS,
+    C.RELOWNER                                                                 AS OWNER_OID,
+    C.OID                                                                      AS REL_OID
+FROM PG_CATALOG.PG_ATTRIBUTE A
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = A.ATTRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+WHERE A.ATTISDROPPED
+  AND C.RELKIND IN ('r', 'p', 'm')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+GROUP BY C.RELOWNER, C.RELNAME, C.OID
+
+) S
+ORDER BY S.OWNER, S.TABLE_NAME;
+GRANT SELECT ON SYS.DBA_UNUSED_COL_TABS TO PUBLIC;
+
+-- USER_TYPES: the user-defined types of the current user, in Oracle's shape.
+-- A composite type is an OBJECT, a domain a DOMAIN, an enum an ENUM and a
+-- range type a RANGE.  METHODS is 0 because PostgreSQL types carry no methods.
+CREATE OR REPLACE VIEW SYS.USER_TYPES AS
+SELECT TYPE_NAME, TYPE_OID, TYPECODE, ATTRIBUTES, METHODS, PREDEFINED,
+       INCOMPLETE, FINAL, INSTANTIABLE, SUPERTYPE_OWNER, SUPERTYPE_NAME,
+       LOCAL_ATTRIBUTES, LOCAL_METHODS
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(T.TYPOWNER)::VARCHAR2)::VARCHAR2(128)   AS OWNER,
+    SYS.ORA_CASE_TRANS(T.TYPNAME::VARCHAR2)::VARCHAR2(128)                     AS TYPE_NAME,
+    T.OID::INT8::NUMBER                                                        AS TYPE_OID,
+    CASE T.TYPTYPE
+        WHEN 'c' THEN 'OBJECT'
+        WHEN 'd' THEN 'DOMAIN'
+        WHEN 'e' THEN 'ENUM'
+        WHEN 'r' THEN 'RANGE'
+        ELSE 'OBJECT'
+    END::VARCHAR2(11)                                                          AS TYPECODE,
+    (SELECT COUNT(*) FROM PG_CATALOG.PG_ATTRIBUTE A
+      WHERE A.ATTRELID = T.TYPRELID AND A.ATTNUM > 0 AND NOT A.ATTISDROPPED)::NUMBER AS ATTRIBUTES,
+    0::NUMBER                                                                  AS METHODS,
+    'NO'::VARCHAR2(3)                                                          AS PREDEFINED,
+    'NO'::VARCHAR2(3)                                                          AS INCOMPLETE,
+    'YES'::VARCHAR2(3)                                                         AS FINAL,
+    'YES'::VARCHAR2(3)                                                         AS INSTANTIABLE,
+    NULL::VARCHAR2(128)                                                        AS SUPERTYPE_OWNER,
+    NULL::VARCHAR2(128)                                                        AS SUPERTYPE_NAME,
+    (SELECT COUNT(*) FROM PG_CATALOG.PG_ATTRIBUTE A
+      WHERE A.ATTRELID = T.TYPRELID AND A.ATTNUM > 0 AND NOT A.ATTISDROPPED)::NUMBER AS LOCAL_ATTRIBUTES,
+    0::NUMBER                                                                  AS LOCAL_METHODS,
+    T.TYPOWNER                                                                 AS OWNER_OID
+FROM PG_CATALOG.PG_TYPE T
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = T.TYPNAMESPACE
+WHERE T.TYPTYPE IN ('c', 'd', 'e', 'r')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+WHERE S.OWNER_OID = CURRENT_USER::REGROLE;
+GRANT SELECT ON SYS.USER_TYPES TO PUBLIC;
+
+-- ALL_TYPES: the same rows for types in any schema.
+CREATE OR REPLACE VIEW SYS.ALL_TYPES AS
+SELECT OWNER, TYPE_NAME, TYPE_OID, TYPECODE, ATTRIBUTES, METHODS, PREDEFINED,
+       INCOMPLETE, FINAL, INSTANTIABLE, SUPERTYPE_OWNER, SUPERTYPE_NAME,
+       LOCAL_ATTRIBUTES, LOCAL_METHODS
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(T.TYPOWNER)::VARCHAR2)::VARCHAR2(128)   AS OWNER,
+    SYS.ORA_CASE_TRANS(T.TYPNAME::VARCHAR2)::VARCHAR2(128)                     AS TYPE_NAME,
+    T.OID::INT8::NUMBER                                                        AS TYPE_OID,
+    CASE T.TYPTYPE
+        WHEN 'c' THEN 'OBJECT'
+        WHEN 'd' THEN 'DOMAIN'
+        WHEN 'e' THEN 'ENUM'
+        WHEN 'r' THEN 'RANGE'
+        ELSE 'OBJECT'
+    END::VARCHAR2(11)                                                          AS TYPECODE,
+    (SELECT COUNT(*) FROM PG_CATALOG.PG_ATTRIBUTE A
+      WHERE A.ATTRELID = T.TYPRELID AND A.ATTNUM > 0 AND NOT A.ATTISDROPPED)::NUMBER AS ATTRIBUTES,
+    0::NUMBER                                                                  AS METHODS,
+    'NO'::VARCHAR2(3)                                                          AS PREDEFINED,
+    'NO'::VARCHAR2(3)                                                          AS INCOMPLETE,
+    'YES'::VARCHAR2(3)                                                         AS FINAL,
+    'YES'::VARCHAR2(3)                                                         AS INSTANTIABLE,
+    NULL::VARCHAR2(128)                                                        AS SUPERTYPE_OWNER,
+    NULL::VARCHAR2(128)                                                        AS SUPERTYPE_NAME,
+    (SELECT COUNT(*) FROM PG_CATALOG.PG_ATTRIBUTE A
+      WHERE A.ATTRELID = T.TYPRELID AND A.ATTNUM > 0 AND NOT A.ATTISDROPPED)::NUMBER AS LOCAL_ATTRIBUTES,
+    0::NUMBER                                                                  AS LOCAL_METHODS,
+    T.OID                                                                      AS OWNER_OID
+FROM PG_CATALOG.PG_TYPE T
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = T.TYPNAMESPACE
+WHERE T.TYPTYPE IN ('c', 'd', 'e', 'r')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S;
+GRANT SELECT ON SYS.ALL_TYPES TO PUBLIC;
+
+-- DBA_TYPES: same column set as ALL_TYPES; PostgreSQL exposes type owners to
+-- every user, so there is no extra restriction to apply here.
+CREATE OR REPLACE VIEW SYS.DBA_TYPES AS
+SELECT OWNER, TYPE_NAME, TYPE_OID, TYPECODE, ATTRIBUTES, METHODS, PREDEFINED,
+       INCOMPLETE, FINAL, INSTANTIABLE, SUPERTYPE_OWNER, SUPERTYPE_NAME,
+       LOCAL_ATTRIBUTES, LOCAL_METHODS
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(T.TYPOWNER)::VARCHAR2)::VARCHAR2(128)   AS OWNER,
+    SYS.ORA_CASE_TRANS(T.TYPNAME::VARCHAR2)::VARCHAR2(128)                     AS TYPE_NAME,
+    T.OID::INT8::NUMBER                                                        AS TYPE_OID,
+    CASE T.TYPTYPE
+        WHEN 'c' THEN 'OBJECT'
+        WHEN 'd' THEN 'DOMAIN'
+        WHEN 'e' THEN 'ENUM'
+        WHEN 'r' THEN 'RANGE'
+        ELSE 'OBJECT'
+    END::VARCHAR2(11)                                                          AS TYPECODE,
+    (SELECT COUNT(*) FROM PG_CATALOG.PG_ATTRIBUTE A
+      WHERE A.ATTRELID = T.TYPRELID AND A.ATTNUM > 0 AND NOT A.ATTISDROPPED)::NUMBER AS ATTRIBUTES,
+    0::NUMBER                                                                  AS METHODS,
+    'NO'::VARCHAR2(3)                                                          AS PREDEFINED,
+    'NO'::VARCHAR2(3)                                                          AS INCOMPLETE,
+    'YES'::VARCHAR2(3)                                                         AS FINAL,
+    'YES'::VARCHAR2(3)                                                         AS INSTANTIABLE,
+    NULL::VARCHAR2(128)                                                        AS SUPERTYPE_OWNER,
+    NULL::VARCHAR2(128)                                                        AS SUPERTYPE_NAME,
+    (SELECT COUNT(*) FROM PG_CATALOG.PG_ATTRIBUTE A
+      WHERE A.ATTRELID = T.TYPRELID AND A.ATTNUM > 0 AND NOT A.ATTISDROPPED)::NUMBER AS LOCAL_ATTRIBUTES,
+    0::NUMBER                                                                  AS LOCAL_METHODS,
+    T.OID                                                                      AS OWNER_OID
+FROM PG_CATALOG.PG_TYPE T
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = T.TYPNAMESPACE
+WHERE T.TYPTYPE IN ('c', 'd', 'e', 'r')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S;
+GRANT SELECT ON SYS.DBA_TYPES TO PUBLIC;
+
+-- USER_/ALL_/DBA_UPDATABLE_COLUMNS: which columns of a table or view can be
+-- updated, inserted and deleted, in Oracle's shape.  PostgreSQL answers that
+-- with pg_relation_is_updatable() (bit 4 = UPDATE, 8 = INSERT, 16 = DELETE),
+-- which already accounts for automatically updatable views, so the view maps
+-- the bitmask instead of re-deriving the rules.  INSERTABLE is NO for
+-- GENERATED ALWAYS identity columns and for generated columns, because
+-- PostgreSQL rejects those on INSERT; a generated column is not UPDATABLE
+-- either, as in Oracle.
+CREATE OR REPLACE VIEW SYS.DBA_UPDATABLE_COLUMNS AS
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128) AS OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)     AS TABLE_NAME,
+    SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(128)     AS COLUMN_NAME,
+    CASE WHEN (PG_RELATION_IS_UPDATABLE(C.OID, TRUE) & 4) = 4
+              AND A.ATTGENERATED NOT IN ('s', 'v')
+         THEN 'YES' ELSE 'NO'
+    END::VARCHAR2(3)                                           AS UPDATABLE,
+    CASE WHEN (PG_RELATION_IS_UPDATABLE(C.OID, TRUE) & 8) = 8
+              AND A.ATTGENERATED NOT IN ('s', 'v')
+              AND A.ATTIDENTITY NOT IN ('a', 'i')
+         THEN 'YES' ELSE 'NO'
+    END::VARCHAR2(3)                                           AS INSERTABLE,
+    CASE WHEN (PG_RELATION_IS_UPDATABLE(C.OID, TRUE) & 16) = 16
+         THEN 'YES' ELSE 'NO'
+    END::VARCHAR2(3)                                           AS DELETABLE,
+    C.RELOWNER                                                 AS OWNER_OID,
+    C.OID                                                      AS REL_OID
+FROM PG_CATALOG.PG_ATTRIBUTE A
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = A.ATTRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+WHERE A.ATTNUM > 0
+  AND NOT A.ATTISDROPPED
+  AND C.RELKIND IN ('r', 'p', 'v', 'm', 'f')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast');
+GRANT SELECT ON SYS.DBA_UPDATABLE_COLUMNS TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.USER_UPDATABLE_COLUMNS AS
+SELECT TABLE_NAME, COLUMN_NAME, UPDATABLE, INSERTABLE, DELETABLE
+FROM SYS.DBA_UPDATABLE_COLUMNS
+WHERE OWNER_OID = (SELECT OID FROM PG_CATALOG.PG_ROLES WHERE ROLNAME = CURRENT_USER);
+GRANT SELECT ON SYS.USER_UPDATABLE_COLUMNS TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.ALL_UPDATABLE_COLUMNS AS
+SELECT OWNER, TABLE_NAME, COLUMN_NAME, UPDATABLE, INSERTABLE, DELETABLE
+FROM SYS.DBA_UPDATABLE_COLUMNS
+WHERE HAS_TABLE_PRIVILEGE(REL_OID, 'SELECT');
+GRANT SELECT ON SYS.ALL_UPDATABLE_COLUMNS TO PUBLIC;
+
+-- USER_/ALL_/DBA_TRIGGER_COLS: the columns a trigger is defined on.  PostgreSQL
+-- records only the UPDATE OF column list (pg_trigger.tgattr), so a trigger
+-- without UPDATE OF has no rows here, exactly like Oracle's view for a trigger
+-- that is not column-specific.
+CREATE OR REPLACE VIEW SYS.USER_TRIGGER_COLS AS
+SELECT TABLE_NAME, TRIGGER_NAME, COLUMN_NAME, COLUMN_POSITION
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)     AS TABLE_NAME,
+    SYS.ORA_CASE_TRANS(TG.TGNAME::VARCHAR2)::VARCHAR2(128)     AS TRIGGER_NAME,
+    SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(128)     AS COLUMN_NAME,
+    (G.I + 1)::NUMBER                                          AS COLUMN_POSITION,
+    C.RELOWNER                                                 AS OWNER_OID,
+    C.OID                                                      AS REL_OID
+FROM PG_CATALOG.PG_TRIGGER TG
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = TG.TGRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+CROSS JOIN LATERAL PG_CATALOG.GENERATE_SERIES(
+        0,
+        COALESCE(PG_CATALOG.ARRAY_LENGTH(
+            PG_CATALOG.STRING_TO_ARRAY(TG.TGATTR::TEXT, ' '), 1), 0) - 1) AS G(I)
+JOIN PG_CATALOG.PG_ATTRIBUTE A
+  ON A.ATTRELID = C.OID AND A.ATTNUM = TG.TGATTR[G.I]
+WHERE PG_CATALOG.ARRAY_LENGTH(
+        PG_CATALOG.STRING_TO_ARRAY(TG.TGATTR::TEXT, ' '), 1) > 0
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+WHERE S.OWNER_OID = (SELECT OID FROM PG_CATALOG.PG_ROLES WHERE ROLNAME = CURRENT_USER)
+ORDER BY S.TABLE_NAME, S.TRIGGER_NAME, S.COLUMN_POSITION;
+GRANT SELECT ON SYS.USER_TRIGGER_COLS TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.ALL_TRIGGER_COLS AS
+SELECT SYS.ORA_CASE_TRANS(PG_GET_USERBYID(S.OWNER_OID)::VARCHAR2)::VARCHAR2(128) AS OWNER,
+       TABLE_NAME, TRIGGER_NAME, COLUMN_NAME, COLUMN_POSITION
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)     AS TABLE_NAME,
+    SYS.ORA_CASE_TRANS(TG.TGNAME::VARCHAR2)::VARCHAR2(128)     AS TRIGGER_NAME,
+    SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(128)     AS COLUMN_NAME,
+    (G.I + 1)::NUMBER                                          AS COLUMN_POSITION,
+    C.RELOWNER                                                 AS OWNER_OID,
+    C.OID                                                      AS REL_OID
+FROM PG_CATALOG.PG_TRIGGER TG
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = TG.TGRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+CROSS JOIN LATERAL PG_CATALOG.GENERATE_SERIES(
+        0,
+        COALESCE(PG_CATALOG.ARRAY_LENGTH(
+            PG_CATALOG.STRING_TO_ARRAY(TG.TGATTR::TEXT, ' '), 1), 0) - 1) AS G(I)
+JOIN PG_CATALOG.PG_ATTRIBUTE A
+  ON A.ATTRELID = C.OID AND A.ATTNUM = TG.TGATTR[G.I]
+WHERE PG_CATALOG.ARRAY_LENGTH(
+        PG_CATALOG.STRING_TO_ARRAY(TG.TGATTR::TEXT, ' '), 1) > 0
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+WHERE HAS_TABLE_PRIVILEGE(S.REL_OID, 'SELECT')
+ORDER BY S.OWNER_OID, S.TABLE_NAME, S.TRIGGER_NAME, S.COLUMN_POSITION;
+GRANT SELECT ON SYS.ALL_TRIGGER_COLS TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.DBA_TRIGGER_COLS AS
+SELECT SYS.ORA_CASE_TRANS(PG_GET_USERBYID(S.OWNER_OID)::VARCHAR2)::VARCHAR2(128) AS OWNER,
+       TABLE_NAME, TRIGGER_NAME, COLUMN_NAME, COLUMN_POSITION
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)     AS TABLE_NAME,
+    SYS.ORA_CASE_TRANS(TG.TGNAME::VARCHAR2)::VARCHAR2(128)     AS TRIGGER_NAME,
+    SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(128)     AS COLUMN_NAME,
+    (G.I + 1)::NUMBER                                          AS COLUMN_POSITION,
+    C.RELOWNER                                                 AS OWNER_OID,
+    C.OID                                                      AS REL_OID
+FROM PG_CATALOG.PG_TRIGGER TG
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = TG.TGRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+CROSS JOIN LATERAL PG_CATALOG.GENERATE_SERIES(
+        0,
+        COALESCE(PG_CATALOG.ARRAY_LENGTH(
+            PG_CATALOG.STRING_TO_ARRAY(TG.TGATTR::TEXT, ' '), 1), 0) - 1) AS G(I)
+JOIN PG_CATALOG.PG_ATTRIBUTE A
+  ON A.ATTRELID = C.OID AND A.ATTNUM = TG.TGATTR[G.I]
+WHERE PG_CATALOG.ARRAY_LENGTH(
+        PG_CATALOG.STRING_TO_ARRAY(TG.TGATTR::TEXT, ' '), 1) > 0
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+ORDER BY S.OWNER_OID, S.TABLE_NAME, S.TRIGGER_NAME, S.COLUMN_POSITION;
+GRANT SELECT ON SYS.DBA_TRIGGER_COLS TO PUBLIC;
+
+-- USER_/ALL_/DBA_TAB_COLS: the column inventory including columns dropped with
+-- ALTER TABLE (HIDDEN_COLUMN = YES) and generated columns
+-- (VIRTUAL_COLUMN = YES).  That is the difference between Oracle's TAB_COLS
+-- and TAB_COLUMNS; the rest of the metadata is the same.
+CREATE OR REPLACE VIEW SYS.USER_TAB_COLS AS
+SELECT TABLE_NAME, COLUMN_NAME, COLUMN_ID, DATA_TYPE, NULLABLE, HIDDEN_COLUMN, VIRTUAL_COLUMN, SEGMENT_COLUMN_ID
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)     AS TABLE_NAME,
+    CASE WHEN A.ATTISDROPPED
+         THEN 'SYS_C' || lpad(A.ATTNUM::text, 8, '0')
+         ELSE SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(128)
+    END::VARCHAR2(128)                                    AS COLUMN_NAME,
+    A.ATTNUM::NUMBER                                           AS COLUMN_ID,
+        CASE
+        WHEN PG_TYPE.TYPNAME IN ('int2', 'int4', 'int8', 'numeric') THEN 'NUMBER'
+        WHEN PG_TYPE.TYPNAME IN ('float4', 'float8') THEN 'FLOAT'
+        WHEN PG_TYPE.TYPNAME IN ('varchar', 'oravarcharbyte') THEN 'VARCHAR2'
+        WHEN PG_TYPE.TYPNAME IN ('bpchar', 'oracharbyte') THEN 'CHAR'
+        WHEN PG_TYPE.TYPNAME IN ('text', 'clob') THEN 'CLOB'
+        WHEN PG_TYPE.TYPNAME IN ('bytea', 'blob') THEN 'BLOB'
+        WHEN PG_TYPE.TYPNAME IN ('date', 'oradate') THEN 'DATE'
+        WHEN PG_TYPE.TYPNAME IN ('timestamp', 'timestamptz', 'oratimestamp', 'oratimestamptz') THEN 'TIMESTAMP'
+        ELSE SYS.ORA_CASE_TRANS(PG_TYPE.TYPNAME::VARCHAR2)
+    END::VARCHAR2(128)                                        AS DATA_TYPE,
+    CASE WHEN A.ATTNOTNULL THEN 'N' ELSE 'Y' END::VARCHAR2(1)  AS NULLABLE,
+    CASE WHEN A.ATTISDROPPED THEN 'YES' ELSE 'NO' END::VARCHAR2(3) AS HIDDEN_COLUMN,
+    CASE WHEN A.ATTGENERATED IN ('s', 'v') THEN 'YES' ELSE 'NO' END::VARCHAR2(3) AS VIRTUAL_COLUMN,
+    A.ATTNUM::NUMBER                                           AS SEGMENT_COLUMN_ID,
+    C.RELOWNER                                                 AS OWNER_OID,
+    C.OID                                                      AS REL_OID
+FROM PG_CATALOG.PG_ATTRIBUTE A
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = A.ATTRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+LEFT JOIN PG_CATALOG.PG_TYPE PG_TYPE ON PG_TYPE.OID = A.ATTTYPID
+WHERE A.ATTNUM > 0
+  AND C.RELKIND IN ('r', 'p', 'm')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+WHERE S.OWNER_OID = (SELECT OID FROM PG_CATALOG.PG_ROLES WHERE ROLNAME = CURRENT_USER)
+ORDER BY S.TABLE_NAME, S.COLUMN_ID;
+GRANT SELECT ON SYS.USER_TAB_COLS TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.ALL_TAB_COLS AS
+SELECT SYS.ORA_CASE_TRANS(PG_GET_USERBYID(S.OWNER_OID)::VARCHAR2)::VARCHAR2(128) AS OWNER,
+       TABLE_NAME, COLUMN_NAME, COLUMN_ID, DATA_TYPE, NULLABLE, HIDDEN_COLUMN, VIRTUAL_COLUMN, SEGMENT_COLUMN_ID
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)     AS TABLE_NAME,
+    CASE WHEN A.ATTISDROPPED
+         THEN 'SYS_C' || lpad(A.ATTNUM::text, 8, '0')
+         ELSE SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(128)
+    END::VARCHAR2(128)                                    AS COLUMN_NAME,
+    A.ATTNUM::NUMBER                                           AS COLUMN_ID,
+        CASE
+        WHEN PG_TYPE.TYPNAME IN ('int2', 'int4', 'int8', 'numeric') THEN 'NUMBER'
+        WHEN PG_TYPE.TYPNAME IN ('float4', 'float8') THEN 'FLOAT'
+        WHEN PG_TYPE.TYPNAME IN ('varchar', 'oravarcharbyte') THEN 'VARCHAR2'
+        WHEN PG_TYPE.TYPNAME IN ('bpchar', 'oracharbyte') THEN 'CHAR'
+        WHEN PG_TYPE.TYPNAME IN ('text', 'clob') THEN 'CLOB'
+        WHEN PG_TYPE.TYPNAME IN ('bytea', 'blob') THEN 'BLOB'
+        WHEN PG_TYPE.TYPNAME IN ('date', 'oradate') THEN 'DATE'
+        WHEN PG_TYPE.TYPNAME IN ('timestamp', 'timestamptz', 'oratimestamp', 'oratimestamptz') THEN 'TIMESTAMP'
+        ELSE SYS.ORA_CASE_TRANS(PG_TYPE.TYPNAME::VARCHAR2)
+    END::VARCHAR2(128)                                        AS DATA_TYPE,
+    CASE WHEN A.ATTNOTNULL THEN 'N' ELSE 'Y' END::VARCHAR2(1)  AS NULLABLE,
+    CASE WHEN A.ATTISDROPPED THEN 'YES' ELSE 'NO' END::VARCHAR2(3) AS HIDDEN_COLUMN,
+    CASE WHEN A.ATTGENERATED IN ('s', 'v') THEN 'YES' ELSE 'NO' END::VARCHAR2(3) AS VIRTUAL_COLUMN,
+    A.ATTNUM::NUMBER                                           AS SEGMENT_COLUMN_ID,
+    C.RELOWNER                                                 AS OWNER_OID,
+    C.OID                                                      AS REL_OID
+FROM PG_CATALOG.PG_ATTRIBUTE A
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = A.ATTRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+LEFT JOIN PG_CATALOG.PG_TYPE PG_TYPE ON PG_TYPE.OID = A.ATTTYPID
+WHERE A.ATTNUM > 0
+  AND C.RELKIND IN ('r', 'p', 'm')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+WHERE HAS_TABLE_PRIVILEGE(S.REL_OID, 'SELECT')
+ORDER BY S.OWNER_OID, S.TABLE_NAME, S.COLUMN_ID;
+GRANT SELECT ON SYS.ALL_TAB_COLS TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.DBA_TAB_COLS AS
+SELECT SYS.ORA_CASE_TRANS(PG_GET_USERBYID(S.OWNER_OID)::VARCHAR2)::VARCHAR2(128) AS OWNER,
+       TABLE_NAME, COLUMN_NAME, COLUMN_ID, DATA_TYPE, NULLABLE, HIDDEN_COLUMN, VIRTUAL_COLUMN, SEGMENT_COLUMN_ID
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)     AS TABLE_NAME,
+    CASE WHEN A.ATTISDROPPED
+         THEN 'SYS_C' || lpad(A.ATTNUM::text, 8, '0')
+         ELSE SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(128)
+    END::VARCHAR2(128)                                    AS COLUMN_NAME,
+    A.ATTNUM::NUMBER                                           AS COLUMN_ID,
+        CASE
+        WHEN PG_TYPE.TYPNAME IN ('int2', 'int4', 'int8', 'numeric') THEN 'NUMBER'
+        WHEN PG_TYPE.TYPNAME IN ('float4', 'float8') THEN 'FLOAT'
+        WHEN PG_TYPE.TYPNAME IN ('varchar', 'oravarcharbyte') THEN 'VARCHAR2'
+        WHEN PG_TYPE.TYPNAME IN ('bpchar', 'oracharbyte') THEN 'CHAR'
+        WHEN PG_TYPE.TYPNAME IN ('text', 'clob') THEN 'CLOB'
+        WHEN PG_TYPE.TYPNAME IN ('bytea', 'blob') THEN 'BLOB'
+        WHEN PG_TYPE.TYPNAME IN ('date', 'oradate') THEN 'DATE'
+        WHEN PG_TYPE.TYPNAME IN ('timestamp', 'timestamptz', 'oratimestamp', 'oratimestamptz') THEN 'TIMESTAMP'
+        ELSE SYS.ORA_CASE_TRANS(PG_TYPE.TYPNAME::VARCHAR2)
+    END::VARCHAR2(128)                                        AS DATA_TYPE,
+    CASE WHEN A.ATTNOTNULL THEN 'N' ELSE 'Y' END::VARCHAR2(1)  AS NULLABLE,
+    CASE WHEN A.ATTISDROPPED THEN 'YES' ELSE 'NO' END::VARCHAR2(3) AS HIDDEN_COLUMN,
+    CASE WHEN A.ATTGENERATED IN ('s', 'v') THEN 'YES' ELSE 'NO' END::VARCHAR2(3) AS VIRTUAL_COLUMN,
+    A.ATTNUM::NUMBER                                           AS SEGMENT_COLUMN_ID,
+    C.RELOWNER                                                 AS OWNER_OID,
+    C.OID                                                      AS REL_OID
+FROM PG_CATALOG.PG_ATTRIBUTE A
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = A.ATTRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+LEFT JOIN PG_CATALOG.PG_TYPE PG_TYPE ON PG_TYPE.OID = A.ATTTYPID
+WHERE A.ATTNUM > 0
+  AND C.RELKIND IN ('r', 'p', 'm')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+ORDER BY S.OWNER_OID, S.TABLE_NAME, S.COLUMN_ID;
+GRANT SELECT ON SYS.DBA_TAB_COLS TO PUBLIC;
+
+-- USER_/ALL_/DBA_TAB_HISTOGRAMS: the histogram of a column, in Oracle's shape.
+-- PostgreSQL keeps the bucket boundaries in pg_stats.histogram_bounds; the
+-- views expose them for numeric columns, where the boundaries can be turned
+-- into both the numeric ENDPOINT_VALUE and the text
+-- ENDPOINT_ACTUAL_VALUE.  A bucket boundary is reported with its 1-based
+-- position as ENDPOINT_NUMBER, matching Oracle's cumulative-frequency column
+-- closely enough for the usual "what does the histogram look like" query; the
+-- exact cumulative frequency is not stored by PostgreSQL and is not guessed.
+CREATE OR REPLACE VIEW SYS.DBA_TAB_HISTOGRAMS AS
+SELECT OWNER, TABLE_NAME, COLUMN_NAME, ENDPOINT_NUMBER, ENDPOINT_VALUE,
+       ENDPOINT_ACTUAL_VALUE
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128) AS OWNER,
+    SYS.ORA_CASE_TRANS(S.TABLENAME::VARCHAR2)::VARCHAR2(128)      AS TABLE_NAME,
+    SYS.ORA_CASE_TRANS(S.ATTNAME::VARCHAR2)::VARCHAR2(128)        AS COLUMN_NAME,
+    H.ORD::NUMBER                                                  AS ENDPOINT_NUMBER,
+    CASE WHEN H.VAL ~ '^-?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$'
+         THEN H.VAL::NUMERIC END                                   AS ENDPOINT_VALUE,
+    H.VAL::VARCHAR2(4000)                                          AS ENDPOINT_ACTUAL_VALUE,
+    C.RELOWNER                                                     AS OWNER_OID,
+    C.OID                                                          AS REL_OID
+FROM PG_CATALOG.PG_STATS S
+JOIN PG_CATALOG.PG_CLASS C
+  ON C.RELNAME = S.TABLENAME AND C.RELNAMESPACE = S.SCHEMANAME::REGNAMESPACE
+CROSS JOIN LATERAL (
+    SELECT T.ORD, PG_CATALOG.BTRIM(T.X, '"') AS VAL
+    FROM PG_CATALOG.UNNEST(
+             PG_CATALOG.STRING_TO_ARRAY(
+                 PG_CATALOG.BTRIM(S.HISTOGRAM_BOUNDS::TEXT, '{}'), ','))
+         WITH ORDINALITY AS T(X, ORD)
+) H
+WHERE S.HISTOGRAM_BOUNDS IS NOT NULL
+  AND EXISTS (
+      SELECT 1 FROM PG_CATALOG.PG_ATTRIBUTE A
+       WHERE A.ATTRELID = C.OID AND A.ATTNAME = S.ATTNAME)
+
+) S;
+GRANT SELECT ON SYS.DBA_TAB_HISTOGRAMS TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.USER_TAB_HISTOGRAMS AS
+SELECT TABLE_NAME, COLUMN_NAME, ENDPOINT_NUMBER, ENDPOINT_VALUE, ENDPOINT_ACTUAL_VALUE
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128) AS OWNER,
+    SYS.ORA_CASE_TRANS(S.TABLENAME::VARCHAR2)::VARCHAR2(128)      AS TABLE_NAME,
+    SYS.ORA_CASE_TRANS(S.ATTNAME::VARCHAR2)::VARCHAR2(128)        AS COLUMN_NAME,
+    H.ORD::NUMBER                                                  AS ENDPOINT_NUMBER,
+    CASE WHEN H.VAL ~ '^-?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$'
+         THEN H.VAL::NUMERIC END                                   AS ENDPOINT_VALUE,
+    H.VAL::VARCHAR2(4000)                                          AS ENDPOINT_ACTUAL_VALUE,
+    C.RELOWNER                                                     AS OWNER_OID,
+    C.OID                                                          AS REL_OID
+FROM PG_CATALOG.PG_STATS S
+JOIN PG_CATALOG.PG_CLASS C
+  ON C.RELNAME = S.TABLENAME AND C.RELNAMESPACE = S.SCHEMANAME::REGNAMESPACE
+CROSS JOIN LATERAL (
+    SELECT T.ORD, PG_CATALOG.BTRIM(T.X, '"') AS VAL
+    FROM PG_CATALOG.UNNEST(
+             PG_CATALOG.STRING_TO_ARRAY(
+                 PG_CATALOG.BTRIM(S.HISTOGRAM_BOUNDS::TEXT, '{}'), ','))
+         WITH ORDINALITY AS T(X, ORD)
+) H
+WHERE S.HISTOGRAM_BOUNDS IS NOT NULL
+  AND EXISTS (
+      SELECT 1 FROM PG_CATALOG.PG_ATTRIBUTE A
+       WHERE A.ATTRELID = C.OID AND A.ATTNAME = S.ATTNAME)
+
+) S
+WHERE S.OWNER_OID = (SELECT OID FROM PG_CATALOG.PG_ROLES WHERE ROLNAME = CURRENT_USER);
+GRANT SELECT ON SYS.USER_TAB_HISTOGRAMS TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.ALL_TAB_HISTOGRAMS AS
+SELECT OWNER, TABLE_NAME, COLUMN_NAME, ENDPOINT_NUMBER, ENDPOINT_VALUE, ENDPOINT_ACTUAL_VALUE
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128) AS OWNER,
+    SYS.ORA_CASE_TRANS(S.TABLENAME::VARCHAR2)::VARCHAR2(128)      AS TABLE_NAME,
+    SYS.ORA_CASE_TRANS(S.ATTNAME::VARCHAR2)::VARCHAR2(128)        AS COLUMN_NAME,
+    H.ORD::NUMBER                                                  AS ENDPOINT_NUMBER,
+    CASE WHEN H.VAL ~ '^-?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$'
+         THEN H.VAL::NUMERIC END                                   AS ENDPOINT_VALUE,
+    H.VAL::VARCHAR2(4000)                                          AS ENDPOINT_ACTUAL_VALUE,
+    C.RELOWNER                                                     AS OWNER_OID,
+    C.OID                                                          AS REL_OID
+FROM PG_CATALOG.PG_STATS S
+JOIN PG_CATALOG.PG_CLASS C
+  ON C.RELNAME = S.TABLENAME AND C.RELNAMESPACE = S.SCHEMANAME::REGNAMESPACE
+CROSS JOIN LATERAL (
+    SELECT T.ORD, PG_CATALOG.BTRIM(T.X, '"') AS VAL
+    FROM PG_CATALOG.UNNEST(
+             PG_CATALOG.STRING_TO_ARRAY(
+                 PG_CATALOG.BTRIM(S.HISTOGRAM_BOUNDS::TEXT, '{}'), ','))
+         WITH ORDINALITY AS T(X, ORD)
+) H
+WHERE S.HISTOGRAM_BOUNDS IS NOT NULL
+  AND EXISTS (
+      SELECT 1 FROM PG_CATALOG.PG_ATTRIBUTE A
+       WHERE A.ATTRELID = C.OID AND A.ATTNAME = S.ATTNAME)
+
+) S
+WHERE HAS_TABLE_PRIVILEGE(S.REL_OID, 'SELECT');
+GRANT SELECT ON SYS.ALL_TAB_HISTOGRAMS TO PUBLIC;
+
+--
+-- USER_TAB_STATISTICS / ALL_TAB_STATISTICS / DBA_TAB_STATISTICS: the
+-- optimizer statistics of the tables, like Oracle's views of the same
+-- name.  NUM_ROWS comes from reltuples and LAST_ANALYZED from the analyze
+-- timestamp (both NULL until the relation has been analyzed), and
+-- STALE_STATS reports whether rows were modified since the last analyze.
+--
+CREATE OR REPLACE VIEW SYS.USER_TAB_STATISTICS AS
+SELECT
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE WHEN c.reltuples < 0 THEN NULL ELSE c.reltuples::numeric END) AS num_rows,
+    pg_catalog.pg_stat_get_last_analyze_time(c.oid) AS last_analyzed,
+    (CASE WHEN COALESCE(s.n_mod_since_analyze, 0) > 0 THEN 'YES' ELSE 'NO' END)::varchar2(3) AS stale_stats
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+LEFT JOIN pg_catalog.pg_stat_all_tables s ON s.relid = c.oid
+WHERE
+    c.relkind IN ('r','p')
+    AND pg_catalog.pg_get_userbyid(c.relowner) = current_user
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND NOT c.relispartition;
+GRANT SELECT ON SYS.USER_TAB_STATISTICS TO PUBLIC;
+
+--
+-- ALL_TAB_STATISTICS: the same rows for every table the current user
+-- may read, with the privilege filter the ALL_ views carry.
+-- name.  NUM_ROWS comes from reltuples and LAST_ANALYZED from the analyze
+-- timestamp (both NULL until the relation has been analyzed), and
+-- STALE_STATS reports whether rows were modified since the last analyze.
+--
+CREATE OR REPLACE VIEW SYS.ALL_TAB_STATISTICS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE WHEN c.reltuples < 0 THEN NULL ELSE c.reltuples::numeric END) AS num_rows,
+    pg_catalog.pg_stat_get_last_analyze_time(c.oid) AS last_analyzed,
+    (CASE WHEN COALESCE(s.n_mod_since_analyze, 0) > 0 THEN 'YES' ELSE 'NO' END)::varchar2(3) AS stale_stats
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+LEFT JOIN pg_catalog.pg_stat_all_tables s ON s.relid = c.oid
+WHERE
+    c.relkind IN ('r','p')
+    AND pg_catalog.has_table_privilege(current_user, c.oid, 'SELECT')
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND NOT c.relispartition;
+GRANT SELECT ON SYS.ALL_TAB_STATISTICS TO PUBLIC;
+
+--
+-- DBA_TAB_STATISTICS: the same rows without the privilege filter, like the
+-- other DBA_ views.
+-- name.  NUM_ROWS comes from reltuples and LAST_ANALYZED from the analyze
+-- timestamp (both NULL until the relation has been analyzed), and
+-- STALE_STATS reports whether rows were modified since the last analyze.
+--
+CREATE OR REPLACE VIEW SYS.DBA_TAB_STATISTICS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE WHEN c.reltuples < 0 THEN NULL ELSE c.reltuples::numeric END) AS num_rows,
+    pg_catalog.pg_stat_get_last_analyze_time(c.oid) AS last_analyzed,
+    (CASE WHEN COALESCE(s.n_mod_since_analyze, 0) > 0 THEN 'YES' ELSE 'NO' END)::varchar2(3) AS stale_stats
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+LEFT JOIN pg_catalog.pg_stat_all_tables s ON s.relid = c.oid
+WHERE
+    c.relkind IN ('r','p')
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND NOT c.relispartition;
+GRANT SELECT ON SYS.DBA_TAB_STATISTICS TO PUBLIC;
+
+--
+-- USER_TAB_COL_STATISTICS / ALL_TAB_COL_STATISTICS /
+-- DBA_TAB_COL_STATISTICS: the per column statistics, like Oracle's views
+-- of the same name.  NUM_DISTINCT resolves PostgreSQL's negative "fraction
+-- of the rows" convention against reltuples, NUM_BUCKETS stays NULL
+-- because the histogram size is not exposed and LAST_ANALYZED is the
+-- analyze timestamp of the relation.
+--
+CREATE OR REPLACE VIEW SYS.USER_TAB_COL_STATISTICS AS
+SELECT
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    sys.ora_case_trans(st.attname::varchar2)::varchar2(128) AS column_name,
+    (CASE WHEN st.n_distinct < 0
+          THEN (-st.n_distinct * greatest(c.reltuples, 0))::numeric
+          ELSE st.n_distinct::numeric
+     END) AS num_distinct,
+    NULL::numeric AS num_buckets,
+    pg_catalog.pg_stat_get_last_analyze_time(c.oid) AS last_analyzed
+FROM pg_stats st
+JOIN pg_class c ON c.relname = st.tablename
+JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = st.schemaname
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND pg_catalog.pg_get_userbyid(c.relowner) = current_user
+    AND st.inherited = (c.relkind = 'p');
+GRANT SELECT ON SYS.USER_TAB_COL_STATISTICS TO PUBLIC;
+
+--
+-- ALL_TAB_COL_STATISTICS: the same rows for every table the current user
+-- may read, with the privilege filter the ALL_ views carry.  NUM_DISTINCT
+-- resolves PostgreSQL's negative "fraction
+-- of the rows" convention against reltuples, NUM_BUCKETS stays NULL
+-- because the histogram size is not exposed and LAST_ANALYZED is the
+-- analyze timestamp of the relation.
+--
+CREATE OR REPLACE VIEW SYS.ALL_TAB_COL_STATISTICS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    sys.ora_case_trans(st.attname::varchar2)::varchar2(128) AS column_name,
+    (CASE WHEN st.n_distinct < 0
+          THEN (-st.n_distinct * greatest(c.reltuples, 0))::numeric
+          ELSE st.n_distinct::numeric
+     END) AS num_distinct,
+    NULL::numeric AS num_buckets,
+    pg_catalog.pg_stat_get_last_analyze_time(c.oid) AS last_analyzed
+FROM pg_stats st
+JOIN pg_class c ON c.relname = st.tablename
+JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = st.schemaname
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND pg_catalog.pg_get_userbyid(c.relowner) = current_user
+    AND st.inherited = (c.relkind = 'p');
+GRANT SELECT ON SYS.ALL_TAB_COL_STATISTICS TO PUBLIC;
+
+--
+-- DBA_TAB_COL_STATISTICS: the same rows without the privilege filter, like the
+-- other DBA_ views.  NUM_DISTINCT
+-- resolves PostgreSQL's negative "fraction
+-- of the rows" convention against reltuples, NUM_BUCKETS stays NULL
+-- because the histogram size is not exposed and LAST_ANALYZED is the
+-- analyze timestamp of the relation.
+--
+CREATE OR REPLACE VIEW SYS.DBA_TAB_COL_STATISTICS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    sys.ora_case_trans(st.attname::varchar2)::varchar2(128) AS column_name,
+    (CASE WHEN st.n_distinct < 0
+          THEN (-st.n_distinct * greatest(c.reltuples, 0))::numeric
+          ELSE st.n_distinct::numeric
+     END) AS num_distinct,
+    NULL::numeric AS num_buckets,
+    pg_catalog.pg_stat_get_last_analyze_time(c.oid) AS last_analyzed
+FROM pg_stats st
+JOIN pg_class c ON c.relname = st.tablename
+JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = st.schemaname
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND pg_catalog.pg_get_userbyid(c.relowner) = current_user
+    AND st.inherited = (c.relkind = 'p');
+GRANT SELECT ON SYS.DBA_TAB_COL_STATISTICS TO PUBLIC;
+
+-- PRODUCT_COMPONENT_VERSION: the single row Oracle clients use to learn the
+-- database banner.  IvorySQL reports itself rather than pretending to be
+-- Oracle, so the parsed VERSION is the PostgreSQL compatibility level the
+-- fork is based on.
+CREATE OR REPLACE VIEW SYS.PRODUCT_COMPONENT_VERSION AS
+SELECT
+    'IvorySQL'::VARCHAR2(80)                                        AS PRODUCT,
+    SPLIT_PART(VERSION(), ' ', 2)::VARCHAR2(80)                     AS VERSION,
+    CASE WHEN VERSION() LIKE '%beta%' THEN 'Beta'
+         ELSE 'Production'
+    END::VARCHAR2(80)                                               AS STATUS,
+    VERSION()::VARCHAR2(4000)                                       AS VERSION_FULL;
+GRANT SELECT ON SYS.PRODUCT_COMPONENT_VERSION TO PUBLIC;
+
+-- DATABASE_PROPERTIES: Oracle exposes session-independent database attributes
+-- here.  Only properties that have a real PostgreSQL source are listed; the
+-- value is never invented.
+CREATE OR REPLACE VIEW SYS.DATABASE_PROPERTIES AS
+SELECT
+    'DEFAULT_PERMANENT_TABLESPACE'::VARCHAR2(128)                   AS PROPERTY_NAME,
+    SYS.ORA_CASE_TRANS(TS.SPCNAME::VARCHAR2)::VARCHAR2(4000)        AS PROPERTY_VALUE,
+    'Name of the default permanent tablespace'::VARCHAR2(4000)      AS DESCRIPTION
+FROM PG_TABLESPACE TS
+WHERE TS.OID = (SELECT DATTABLESPACE FROM PG_DATABASE
+                 WHERE DATNAME = CURRENT_DATABASE())
+UNION ALL
+SELECT
+    'NLS_CHARACTERSET'::VARCHAR2(128),
+    PG_ENCODING_TO_CHAR((SELECT ENCODING FROM PG_DATABASE
+                          WHERE DATNAME = CURRENT_DATABASE()))::VARCHAR2(4000),
+    'Database character set'::VARCHAR2(4000)
+UNION ALL
+SELECT
+    'GLOBAL_DB_NAME'::VARCHAR2(128),
+    CURRENT_DATABASE()::VARCHAR2(4000),
+    'Global database name'::VARCHAR2(4000)
+UNION ALL
+SELECT
+    'DICT.BASE'::VARCHAR2(128),
+    '2'::VARCHAR2(4000),
+    'Internal data dictionary version'::VARCHAR2(4000);
+GRANT SELECT ON SYS.DATABASE_PROPERTIES TO PUBLIC;
+
+-- DICTIONARY: every data dictionary view, with its comment.  Oracle restricts
+-- this to the dictionary itself, so only views owned by SYS are listed.
+CREATE OR REPLACE VIEW SYS.DICTIONARY AS
+SELECT
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)         AS TABLE_NAME,
+    COALESCE(SYS.ORA_CASE_TRANS(OBJ_DESCRIPTION(C.OID)::VARCHAR2),
+             ' ')::VARCHAR2(4000)                                   AS COMMENTS
+FROM PG_CLASS C
+JOIN PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+WHERE N.NSPNAME = 'sys'
+  AND C.RELKIND IN ('v', 'm');
+GRANT SELECT ON SYS.DICTIONARY TO PUBLIC;
+
+-- DICT_COLUMNS: the columns of every data dictionary view, with their
+-- comment, mirroring DICTIONARY.
+CREATE OR REPLACE VIEW SYS.DICT_COLUMNS AS
+SELECT
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)         AS TABLE_NAME,
+    SYS.ORA_CASE_TRANS(A.ATTNAME::VARCHAR2)::VARCHAR2(128)         AS COLUMN_NAME,
+    COALESCE(COL_DESCRIPTION(C.OID, A.ATTNUM)::VARCHAR2,
+             ' ')::VARCHAR2(4000)                                   AS COMMENTS
+FROM PG_CLASS C
+JOIN PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+JOIN PG_ATTRIBUTE A ON A.ATTRELID = C.OID
+WHERE N.NSPNAME = 'sys'
+  AND C.RELKIND = 'v'
+  AND A.ATTNUM > 0
+  AND NOT A.ATTISDROPPED;
+GRANT SELECT ON SYS.DICT_COLUMNS TO PUBLIC;
