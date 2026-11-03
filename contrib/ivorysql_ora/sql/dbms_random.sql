@@ -60,6 +60,15 @@ call dbms_random.seed(cast(99 as number));
 select scale(dbms_random.value(10000000000000001, 10000000000000002)) = 38
        as large_range_has_38_places;
 
+-- digits beyond the float8 rounding limit really vary: the low 21 fraction
+-- digits are not all zeros under two different seeds
+call dbms_random.seed(cast(7 as number));
+select ((dbms_random.value() * 1e38)::numeric % 1000000000000000000000) <> 0
+       as tail_digits_vary_seed7;
+call dbms_random.seed(cast(11 as number));
+select ((dbms_random.value() * 1e38)::numeric % 1000000000000000000000) <> 0
+       as tail_digits_vary_seed11;
+
 --
 -- STRING: deterministic with a seed, honors the character class
 --
