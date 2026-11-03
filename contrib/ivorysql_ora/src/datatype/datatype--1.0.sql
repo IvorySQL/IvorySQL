@@ -3589,6 +3589,18 @@ CREATE CAST (pg_catalog.date AS sys.oradate)
 WITH FUNCTION sys.date_oradate(pg_catalog.date)
 AS IMPLICIT;
 
+CREATE FUNCTION sys.timestamptz_oradate(pg_catalog.timestamptz)
+RETURNS sys.oradate
+AS 'SELECT CAST(CAST(CAST($1 AS pg_catalog.timestamp) AS sys.oratimestamp) AS sys.oradate)'
+LANGUAGE SQL
+STABLE
+PARALLEL SAFE
+STRICT;
+
+CREATE CAST (pg_catalog.timestamptz AS sys.oradate)
+WITH FUNCTION sys.timestamptz_oradate(pg_catalog.timestamptz)
+AS IMPLICIT;
+
 ---------- Compatible Oracle Cast ----------
 CREATE CAST (sys.oradate AS sys.oracharchar)
 WITH INOUT
@@ -4330,6 +4342,18 @@ AS IMPLICIT;
 
 CREATE CAST (pg_catalog.timestamp AS sys.oratimestamp)
 WITHOUT FUNCTION
+AS IMPLICIT;
+
+CREATE FUNCTION sys.timestamptz_oratimestamp(pg_catalog.timestamptz)
+RETURNS sys.oratimestamp
+AS 'SELECT CAST(CAST($1 AS pg_catalog.timestamp) AS sys.oratimestamp)'
+LANGUAGE SQL
+STABLE
+PARALLEL SAFE
+STRICT;
+
+CREATE CAST (pg_catalog.timestamptz AS sys.oratimestamp)
+WITH FUNCTION sys.timestamptz_oratimestamp(pg_catalog.timestamptz)
 AS IMPLICIT;
 
 ---------- Compatible Oracle Cast ----------
@@ -5873,6 +5897,18 @@ AS IMPLICIT;
 
 CREATE CAST (sys.oratimestampltz AS sys.oratimestamptz)
 WITHOUT FUNCTION 
+AS IMPLICIT;
+
+CREATE FUNCTION sys.timestamptz_oratimestampltz(pg_catalog.timestamptz)
+RETURNS sys.oratimestampltz
+AS 'SELECT CAST(CAST($1 AS sys.oratimestamptz) AS sys.oratimestampltz)'
+LANGUAGE SQL
+STABLE
+PARALLEL SAFE
+STRICT;
+
+CREATE CAST (pg_catalog.timestamptz AS sys.oratimestampltz)
+WITH FUNCTION sys.timestamptz_oratimestampltz(pg_catalog.timestamptz)
 AS IMPLICIT;
 
 /* CREATE OPERATOR */

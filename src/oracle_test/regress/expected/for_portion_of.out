@@ -581,9 +581,7 @@ UPDATE for_portion_of_test
   FOR PORTION OF valid_at FROM clock_timestamp()::date TO null
   SET name = 'baz'
   WHERE id = '[99,100)';
-ERROR:  cannot cast type pg_catalog.timestamptz to date
-LINE 2:   FOR PORTION OF valid_at FROM clock_timestamp()::date TO nu...
-                                                        ^
+ERROR:  FOR PORTION OF bounds cannot contain volatile functions
 -- clean up:
 DELETE FROM for_portion_of_test WHERE id = '[99,100)';
 -- Not visible to UPDATE:
@@ -973,9 +971,7 @@ HINT:  You might need to add explicit type casts.
 DELETE FROM for_portion_of_test
   FOR PORTION OF valid_at FROM clock_timestamp()::date TO null
   WHERE id = '[99,100)';
-ERROR:  cannot cast type pg_catalog.timestamptz to date
-LINE 2:   FOR PORTION OF valid_at FROM clock_timestamp()::date TO nu...
-                                                        ^
+ERROR:  FOR PORTION OF bounds cannot contain volatile functions
 -- clean up:
 DELETE FROM for_portion_of_test WHERE id = '[99,100)';
 -- DELETE ... RETURNING returns the deleted values, regardless of bounds
