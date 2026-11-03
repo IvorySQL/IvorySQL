@@ -259,8 +259,13 @@ ivorysql_dbms_lock_request(PG_FUNCTION_ARGS)
     if (dbms_lock_hash_table == NULL)
 	    dbms_lock_init_hash_table();
 
-    if (timeout < 0)
-        PG_RETURN_INT32(DBMS_LOCK_PARAM_ERROR);
+	if (timeout < 0)
+		PG_RETURN_INT32(DBMS_LOCK_PARAM_ERROR);
+
+	/* ownership in either supported mode blocks acquiring a second lock */
+	if (dbms_lock_check(key, DBMS_LOCK_S_MODE) ||
+		dbms_lock_check(key, DBMS_LOCK_X_MODE))
+		PG_RETURN_INT32(DBMS_LOCK_ALREADY_OWNED);
 
     while (true)
     {
