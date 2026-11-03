@@ -621,3 +621,15 @@ SELECT 123.456 * interval'365 11:11:11' day(3) to second;
 -- The operator "<=" supports a comparison between the "number" type and the "varchar2" type.
 SET NLS_DATE_FORMAT = 'YYYY-MM-DD';
 select 25::number <= to_char('1990-01-01'::oradate, 'yyyy');
+
+-- pre-year-one dates keep their era instead of picking up the current year
+-- (date2j used to treat internal year 0 = 1 BC as an unset SYSDATE default)
+SELECT to_char(to_date('0001-01-15 BC', 'YYYY-MM-DD BC'), 'SYYYY-MM-DD') AS bc_marker_input;
+SELECT to_char(to_date('-0001-06-15', 'SYYYY-MM-DD'), 'SYYYY-MM-DD') AS signed_year_input;
+SELECT to_char('0001-01-15 BC'::pg_catalog.timestamp, 'SYYYY-MM-DD') AS bc_timestamp_render;
+SELECT to_char(add_months(oradate '2024-01-15', -24288), 'SYYYY-MM-DD') AS add_months_before_year_one;
+SELECT to_char(to_date('-4712-01-01', 'SYYYY-MM-DD'), 'SYYYY-MM-DD') AS oracle_earliest_date;
+SELECT to_date('-4713-01-01', 'SYYYY-MM-DD') AS before_ora_earliest;
+
+-- a format without a year still defaults to the current year
+SELECT extract(year from to_date('01-15', 'MM-DD')) = extract(year from sysdate) AS missing_year_defaults_to_current;
