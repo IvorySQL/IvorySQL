@@ -38,6 +38,13 @@
 #include "utils/memutils.h"
 #include "utils/varlena.h"
 
+/*
+ * Oracle's REGEXP_SUBSTR and REGEXP_INSTR take a subexpression number from 0
+ * to 9; a higher one answers as a subexpression the pattern does not have
+ * (NULL, or position 0).
+ */
+#define ORA_REGEXP_MAX_SUBEXPR	9
+
 #define PG_GETARG_TEXT_PP_IF_EXISTS(_n) \
 	(PG_NARGS() > (_n) ? PG_GETARG_TEXT_PP(_n) : NULL)
 
@@ -1505,7 +1512,7 @@ ora_build_regexp_substr_matches_result(regexp_matches_ctx *matchctx ,int subexpr
 
 	/* Extract matching substrings from the original string */
 	loc = matchctx->next_match * matchctx->npatterns * 2;
-	if (subexpr_pos <= matchctx->npatterns)
+	if (subexpr_pos <= ORA_REGEXP_MAX_SUBEXPR && subexpr_pos <= matchctx->npatterns)
 	{
 		int	so = 0;
 		int	eo = 0;
@@ -1563,7 +1570,8 @@ ora_setup_regexp_substr_matches(text *src_text,
 	int			array_idx;
 	int			prev_match_end = 0;
 	int			src_text_len = VARSIZE_ANY_EXHDR(src_text);
-	regmatch_t		pmatch[10];
+	regmatch_t   *pmatch;
+	int			nmatch;
 	pg_wchar		*data;
 	size_t			data_len;
 	int			search_start;
@@ -1600,8 +1608,15 @@ ora_setup_regexp_substr_matches(text *src_text,
 
 	if(start_posn > 1)
 		search_start = start_posn - 1;
+	/*
+	 * One match slot for the whole pattern and one per subexpression: the
+	 * loop reads pmatch[1..npatterns], so a fixed ten overran it for a
+	 * pattern with more groups (AddressSanitizer, the extension suite).
+	 */
+	nmatch = re->re_nsub + 1;
+	pmatch = (regmatch_t *) palloc(nmatch * sizeof(regmatch_t));
 	while (RE_wchar_execute(re, data, data_len, search_start,
-							10, pmatch))
+							nmatch, pmatch))
 	{
 		matchctx->nmatches++;
 
@@ -1671,7 +1686,7 @@ ora_build_regexp_instr_matches_result(regexp_matches_ctx *matchctx ,int ret_opt,
 
 	/* Extract matching substrings from the original string */
 	loc = matchctx->next_match * matchctx->npatterns * 2;
-	if (subexpr_pos <= matchctx->npatterns)
+	if (subexpr_pos <= ORA_REGEXP_MAX_SUBEXPR && subexpr_pos <= matchctx->npatterns)
 	{
 		int	so = 0;
 		int	eo = 0;
@@ -1735,7 +1750,8 @@ ora_setup_regexp_instr_matches(text *src_text,
 	int			array_idx;
 	int			prev_match_end = 0;
 	int			src_text_len = VARSIZE_ANY_EXHDR(src_text);
-	regmatch_t	pmatch[10];
+	regmatch_t   *pmatch;
+	int			nmatch;
 	pg_wchar   *data;
 	size_t		data_len;
 	int			search_start;
@@ -1772,8 +1788,15 @@ ora_setup_regexp_instr_matches(text *src_text,
 
 	if(start_posn > 1)
 		search_start = start_posn - 1;
+	/*
+	 * One match slot for the whole pattern and one per subexpression: the
+	 * loop reads pmatch[1..npatterns], so a fixed ten overran it for a
+	 * pattern with more groups (AddressSanitizer, the extension suite).
+	 */
+	nmatch = re->re_nsub + 1;
+	pmatch = (regmatch_t *) palloc(nmatch * sizeof(regmatch_t));
 	while (RE_wchar_execute(re, data, data_len, search_start,
-							10, pmatch))
+							nmatch, pmatch))
 	{
 		matchctx->nmatches++;
 

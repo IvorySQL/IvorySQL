@@ -1558,3 +1558,15 @@ select to_single_byte('１．２');
 select to_single_byte(１．２);
 select to_single_byte(3.4);
 select to_single_byte(NULL);
+
+/*
+ * a pattern with eleven capture groups: the match array is sized to the
+ * pattern, and a subexpression number above 9 answers as one the pattern does
+ * not have (Oracle 21c: 'i' and 9 for 9, NULL and 0 for 10 and 11)
+ */
+select regexp_substr('abcdefghijk', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)', 1, 1, 'c', 9) from dual;
+select regexp_substr('abcdefghijk', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)', 1, 1, 'c', 10) from dual;
+select regexp_substr('abcdefghijk', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)', 1, 1, 'c', 11) from dual;
+select regexp_instr('abcdefghijk', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)', 1, 1, 0, 'c', 9) from dual;
+select regexp_instr('abcdefghijk', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)', 1, 1, 0, 'c', 10) from dual;
+select regexp_instr('abcdefghijk', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)', 1, 1, 0, 'c', 11) from dual;
