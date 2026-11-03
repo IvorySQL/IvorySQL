@@ -541,17 +541,35 @@ SELECT * FROM test_recfield_plain.make_rec(1, 'Alice', 50000);
 DROP PACKAGE test_recfield_plain;
 
 --
--- "TYPE ... IS TABLE OF" is parsed but not implemented; it must raise a
--- clear "not supported" error (naming the type) rather than a confusing
--- generic syntax error, and the session/package cache must stay fully
--- usable afterward.
+-- "TYPE ... IS RECORD" and "TYPE ... IS TABLE OF" can be declared side by
+-- side in one package; each is namespaced separately (PLISQL_NSTYPE_ROWTYPE
+-- vs PLISQL_NSTYPE_TBLTYPE) so neither shadows the other.  (The collection
+-- type itself has its own dedicated suite, plisql_package_type_table.)
 --
-CREATE OR REPLACE PACKAGE test_tableof_stub AS
-    TYPE t IS TABLE OF NUMBER;
-END test_tableof_stub;
+CREATE OR REPLACE PACKAGE test_rec_and_tableof AS
+    TYPE rec_t IS RECORD(a NUMBER, b NUMBER);
+    TYPE tab_t IS TABLE OF NUMBER;
+
+    FUNCTION combine(x NUMBER, y NUMBER) RETURN NUMBER;
+END test_rec_and_tableof;
 /
 
-SELECT 1 AS session_still_usable_after_tableof_error;
+CREATE OR REPLACE PACKAGE BODY test_rec_and_tableof AS
+    FUNCTION combine(x NUMBER, y NUMBER) RETURN NUMBER IS
+        r rec_t;
+        t tab_t;
+    BEGIN
+        r.a := x;
+        r.b := y;
+        t := ARRAY[r.a, r.b]::NUMBER[];
+        RETURN t[1] + t[2];
+    END;
+END test_rec_and_tableof;
+/
+
+SELECT test_rec_and_tableof.combine(4, 5);
+
+DROP PACKAGE test_rec_and_tableof;
 
 --
 -- Field names inside "TYPE ... IS RECORD(...)" must be scoped to the

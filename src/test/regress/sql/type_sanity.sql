@@ -58,7 +58,9 @@ WHERE (t1.typtype = 'c' AND t1.typrelid = 0) OR
 
 -- Look for types that should have an array type but don't.
 -- Generally anything that's not a pseudotype should have an array type.
--- However, we do have a small number of exceptions.
+-- However, we do have a small number of exceptions.  plisql_collection is
+-- one: it is an internal implementation type for PL/iSQL collections, never
+-- named in user-visible signatures, so an array of it would be meaningless.
 
 SELECT t1.oid, t1.typname
 FROM pg_type as t1
@@ -617,12 +619,13 @@ SELECT oid, typname, typtype, typelem, typarray
                      'regoperator', 'regconfig', 'regdictionary',
                      'regnamespace', 'regcollation']::regtype[]) AND
     -- Discard types that do not accept input values as these cannot be
-    -- tested easily.
+    -- tested easily.  plisql_collection is PL/iSQL-internal, like pg_node_tree.
     -- Note: XML might be disabled at compile-time.
     oid != ALL(ARRAY['gtsvector', 'pg_node_tree',
                      'pg_ndistinct', 'pg_dependencies', 'pg_mcv_list',
                      'pg_brin_bloom_summary',
-                     'pg_brin_minmax_multi_summary', 'xml']::regtype[]) AND
+                     'pg_brin_minmax_multi_summary', 'xml',
+                     'plisql_collection']::regtype[]) AND
     -- Discard arrays.
     NOT EXISTS (SELECT 1 FROM pg_type u WHERE u.typarray = t.oid)
     -- Exclude everything from the table created above.  This checks

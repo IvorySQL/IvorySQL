@@ -12678,6 +12678,71 @@
   prosrc => 'plisql_validator', probin => '$libdir/plisql' },
 /*END Oracle Compatibility Metadatas*/
 
+/*BEGIN Oracle Collection Method Support*/
+{ oid => '9126', descr => 'Oracle collection type_name(...) constructor',
+  proname => 'plisql_coll_construct', prolang => 'c', proisstrict => 'f',
+  provariadic => 'anyelement', provolatile => 'i', prorettype => 'anyarray',
+  proargtypes => 'anyarray', proallargtypes => '{anyarray}', proargmodes => '{v}',
+  prosrc => 'plisql_coll_construct', probin => '$libdir/plisql' },
+{ oid => '9130', descr => 'Oracle collection zero-argument type_name() constructor',
+  proname => 'plisql_coll_construct_empty', prolang => 'c', proisstrict => 'f',
+  provolatile => 'i', prorettype => 'anyarray', proargtypes => 'anyelement',
+  prosrc => 'plisql_coll_construct_empty', probin => '$libdir/plisql' },
+{ oid => '9135', descr => 'I/O',
+  proname => 'plisql_collection_in', prolang => 'c', provolatile => 'i',
+  prorettype => 'plisql_collection', proargtypes => 'cstring',
+  prosrc => 'plisql_collection_in', probin => '$libdir/plisql' },
+{ oid => '9136', descr => 'I/O',
+  proname => 'plisql_collection_out', prolang => 'c', provolatile => 'i',
+  prorettype => 'cstring', proargtypes => 'plisql_collection',
+  prosrc => 'plisql_collection_out', probin => '$libdir/plisql' },
+
+# Internal-type adapters: compiler-only support, not public API.  Their argument is
+# the internal plisql_collection type (never anyarray), which no ordinary SQL
+# expression can produce -- there is no input function and no cast yielding
+# one -- and every compiler-generated call is schema-qualified to pg_catalog.
+{ oid => '9137', descr => 'Oracle collection coll(i), internal type',
+  proname => 'plisql_coll_get_internal', prolang => 'c', proisstrict => 'f',
+  provolatile => 'i', prorettype => 'anyelement',
+  proargtypes => 'plisql_collection int4 anyelement',
+  prosrc => 'plisql_coll_get_internal', probin => '$libdir/plisql' },
+{ oid => '9138', descr => 'Oracle collection coll.EXISTS(i), internal type',
+  proname => 'plisql_coll_exists_internal', prolang => 'c', proisstrict => 'f',
+  provolatile => 'i', prorettype => 'bool',
+  proargtypes => 'plisql_collection int4',
+  prosrc => 'plisql_coll_exists_internal', probin => '$libdir/plisql' },
+{ oid => '9139', descr => 'Oracle collection coll.COUNT, internal type',
+  proname => 'plisql_coll_count_internal', prolang => 'c', proisstrict => 'f',
+  provolatile => 'i', prorettype => 'int4', proargtypes => 'plisql_collection',
+  prosrc => 'plisql_coll_count_internal', probin => '$libdir/plisql' },
+{ oid => '9140', descr => 'Oracle collection coll.FIRST, internal type',
+  proname => 'plisql_coll_first_internal', prolang => 'c', proisstrict => 'f',
+  provolatile => 'i', prorettype => 'int4', proargtypes => 'plisql_collection',
+  prosrc => 'plisql_coll_first_internal', probin => '$libdir/plisql' },
+{ oid => '9141', descr => 'Oracle collection coll.LAST, internal type',
+  proname => 'plisql_coll_last_internal', prolang => 'c', proisstrict => 'f',
+  provolatile => 'i', prorettype => 'int4', proargtypes => 'plisql_collection',
+  prosrc => 'plisql_coll_last_internal', probin => '$libdir/plisql' },
+{ oid => '9142', descr => 'Oracle collection coll.NEXT, internal type',
+  proname => 'plisql_coll_next_internal', prolang => 'c', proisstrict => 'f',
+  provolatile => 'i', prorettype => 'int4',
+  proargtypes => 'plisql_collection int4',
+  prosrc => 'plisql_coll_next_internal', probin => '$libdir/plisql' },
+{ oid => '9143', descr => 'Oracle collection coll.PRIOR, internal type',
+  proname => 'plisql_coll_prior_internal', prolang => 'c', proisstrict => 'f',
+  provolatile => 'i', prorettype => 'int4',
+  proargtypes => 'plisql_collection int4',
+  prosrc => 'plisql_coll_prior_internal', probin => '$libdir/plisql' },
+/*END Oracle Collection Method Support*/
+
+/*BEGIN Oracle Composite Type Constructor Support*/
+{ oid => '9144', descr => 'Oracle implicit composite type_name(...) constructor',
+  proname => 'plisql_row_construct_internal', prolang => 'c', proisstrict => 'f',
+  provariadic => 'any', provolatile => 'i', prorettype => 'record',
+  proargtypes => 'oid any', proallargtypes => '{oid,any}', proargmodes => '{i,v}',
+  prosrc => 'plisql_row_construct_internal', probin => '$libdir/plisql' },
+/*END Oracle Composite Type Constructor Support*/
+
 # GiST stratnum implementations
 { oid => '6347', descr => 'GiST support',
   proname => 'gist_translate_cmptype_common', prorettype => 'int2',
