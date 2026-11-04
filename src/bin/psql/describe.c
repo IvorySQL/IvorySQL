@@ -1249,7 +1249,8 @@ listDefaultACLs(const char *pattern)
 					  "  n.nspname AS \"%s\",\n"
 					  "  CASE d.defaclobjtype "
 					  "    WHEN '%c' THEN '%s' WHEN '%c' THEN '%s' WHEN '%c' THEN '%s'"
-					  "    WHEN '%c' THEN '%s' WHEN '%c' THEN '%s' WHEN '%c' THEN '%s' END AS \"%s\",\n"
+					  "    WHEN '%c' THEN '%s' WHEN '%c' THEN '%s' WHEN '%c' THEN '%s'"
+					  "    WHEN '%c' THEN '%s' END AS \"%s\",\n"
 					  "  ",
 					  gettext_noop("Owner"),
 					  gettext_noop("Schema"),
@@ -1265,6 +1266,8 @@ listDefaultACLs(const char *pattern)
 					  gettext_noop("schema"),
 					  DEFACLOBJ_LARGEOBJECT,
 					  gettext_noop("large object"),
+					  DEFACLOBJ_PACKAGE,
+					  gettext_noop("package"),
 					  gettext_noop("Type"));
 
 	printACLColumn(&buf, "d.defaclacl");
