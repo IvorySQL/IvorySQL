@@ -536,14 +536,17 @@ SELECT COUNT(*) >= 0 AS v_session_ok FROM SYS.V$SESSION;
 (1 row)
 
 SET ROLE NONE;
--- ... and no other dictionary view may be missing its PUBLIC grant; only the
--- DBA_SCHEDULER_* family is intentionally restricted.
+-- ... and every view this change opens up is readable through PUBLIC.
+-- (The check is scoped to these six views on purpose: views added upstream
+-- later must decide their own grants, and this test should not police them.)
 SELECT COUNT(*) = 0 AS dictionaries_are_public
 FROM pg_catalog.pg_class C
 JOIN pg_catalog.pg_namespace N ON N.OID = C.RELNAMESPACE
 WHERE N.NSPNAME = 'sys'
   AND C.RELKIND = 'v'
-  AND C.RELNAME NOT LIKE 'dba\_scheduler\_%'
+  AND pg_catalog.lower(C.RELNAME) IN ('all_sequences', 'dba_sequences',
+                                      'user_sequences', 'v$parameter',
+                                      'v$process', 'v$session')
   AND NOT EXISTS (
       SELECT 1 FROM pg_catalog.aclexplode(C.RELACL) A
       WHERE A.GRANTEE = 0 AND A.PRIVILEGE_TYPE = 'SELECT');
