@@ -1655,10 +1655,12 @@ BEGIN
 			SELECT session_user INTO res;
 		  WHEN 'SESSION_USERID' THEN
 			SELECT session_user::regrole::oid INTO res;
+		  /* IvorySQL has no proxy-authenticated session state.  Do not expose
+		   * SESSION_USER as a proxy identity in ordinary sessions. */
 		  WHEN 'PROXY_USER' THEN
-			SELECT session_user INTO res;
+			SELECT NULL INTO res;
 		  WHEN 'PROXY_USERID' THEN
-			SELECT session_user::regrole::oid INTO res;
+			SELECT NULL INTO res;
 		  WHEN 'CURRENT_USER' THEN
 		    SELECT current_user INTO res;
 		  WHEN 'CURRENT_USERID' THEN
