@@ -102,7 +102,7 @@ typedef struct CalendarRule
 	bool		has_bysecond;
 } CalendarRule;
 
-/* Search this many periods past the fast-forward point before giving up. */
+/* Limit forward search iterations, including one per skipped block. */
 #define SCHED_MAX_PERIODS	4000
 
 static void parse_calendar(const char *calendar, CalendarRule *rule);
@@ -570,10 +570,91 @@ bydate_matches(const CalendarRule *rule, int year, int mon, int mday)
 	return false;
 }
 
-/* Convert a local calendar time to TimestampTz in the session time zone. */
+#define SCHED_MAX_OFFSETS 8
+
+/*
+ * Collect distinct session-zone offsets near probe into offsets[], which
+ * must hold SCHED_MAX_OFFSETS entries.  Offsets are seconds west of UTC, as
+ * expected by tm2timestamp; unit and the output spread are microseconds.
+ * Return the offset count and set spread to the largest offset difference,
+ * or return zero if timezone lookup fails or the array cannot hold them all.
+ * On failure, offsets may be partly filled and spread is not set.
+ *
+ * A subdaily candidate shares its base's wall hour or minute.  PostgreSQL's
+ * timezone resolver assumes UTC offsets smaller than 24 hours, so every
+ * mapping is within 48 hours plus that unit of the absolute base.  Collect
+ * all offsets in that neighborhood, including the one at its left edge.
+ * The same neighborhood around "after" or a candidate bounds period overlap.
+ */
+static int
+calendar_offsets(TimestampTz probe, int64 unit, int *offsets, int64 *spread)
+{
+	pg_time_t	center = timestamptz_to_time_t(probe);
+	pg_time_t	radius = 2 * SECS_PER_DAY + unit / USECS_PER_SEC;
+	pg_time_t	lower,
+				upper,
+				transition;
+	long int	before_offset,
+				after_offset;
+	long int	min_offset = 0,
+				max_offset = 0;
+	int			before_dst,
+				after_dst;
+	int			n = 0;
+
+	/* timestamptz_to_time_t truncates; include a fractional negative second. */
+	if (probe < 0 && probe % USECS_PER_SEC != 0)
+		center--;
+	lower = center - radius;
+	upper = center + radius + 1;
+
+	for (;;)
+	{
+		int			status;
+		long int	offset;
+		int			i;
+
+		CHECK_FOR_INTERRUPTS();
+		status = pg_next_dst_boundary(&lower, &before_offset, &before_dst,
+									  &transition, &after_offset, &after_dst,
+									  session_timezone);
+		if (status < 0)
+			return 0;
+		offset = before_offset;
+		for (i = 0; i < n; i++)
+			if (offsets[i] == -offset)
+				break;
+		if (i == n)
+		{
+			/* Existing timezone code assumes transitions at least 48h apart. */
+			if (n == SCHED_MAX_OFFSETS)
+				return 0;
+			offsets[n++] = -offset;
+			if (n == 1 || offset < min_offset)
+				min_offset = offset;
+			if (n == 1 || offset > max_offset)
+				max_offset = offset;
+		}
+		if (status == 0 || transition > upper)
+			break;
+		lower = transition;
+	}
+	*spread = (max_offset - min_offset) * USECS_PER_SEC;
+	return n;
+}
+
+/*
+ * Convert a local calendar time to TimestampTz in the session time zone.
+ * A null tz_override uses the normal session-zone ambiguity resolution.
+ * Otherwise, use that offset (seconds west of UTC) only if the resulting
+ * instant maps back to the same local components and offset in that zone.
+ * Return false on conversion failure or a mismatched mapping, leaving result
+ * unchanged; on success, store the instant in result and return true.
+ */
 static bool
 local_time_to_timestamptz(int year, int mon, int mday,
-						  int hour, int min, int sec, TimestampTz *result)
+						  int hour, int min, int sec, const int *tz_override,
+						  TimestampTz *result)
 {
 	struct pg_tm tm;
 	int			tz;
@@ -588,9 +669,30 @@ local_time_to_timestamptz(int year, int mon, int mday,
 	tm.tm_sec = sec;
 	tm.tm_isdst = -1;
 
-	tz = DetermineTimeZoneOffset(&tm, session_timezone);
+	tz = tz_override ? *tz_override : DetermineTimeZoneOffset(&tm, session_timezone);
 	if (tm2timestamp(&tm, 0, &tz, &ts) != 0)
 		return false;
+
+	if (tz_override != NULL)
+	{
+		struct pg_tm check_tm;
+		fsec_t		check_fsec;
+		int			check_tz;
+
+		/*
+		 * A nearby offset need not be valid for this wall time (for example,
+		 * during Lord Howe Island's half-hour spring-forward).  Reject
+		 * mappings that actually have different local calendar components.
+		 */
+		if (timestamp2tm(ts, &check_tz, &check_tm, &check_fsec, NULL,
+						 session_timezone) != 0 ||
+			check_tz != tz ||
+			check_tm.tm_year != year || check_tm.tm_mon != mon ||
+			check_tm.tm_mday != mday || check_tm.tm_hour != hour ||
+			check_tm.tm_min != min || check_tm.tm_sec != sec)
+			return false;
+	}
+
 	*result = ts;
 	return true;
 }
@@ -823,11 +925,14 @@ consider_candidate(TimestampTz cand, TimestampTz start, TimestampTz after,
  * Enumerate candidates on one calendar date, honoring the time-of-day rules,
  * and fold them into best/found.  hour_fixed/min_fixed of -1 mean "use the
  * BYHOUR/BYMINUTE lists (or the start_date component)".
+ * A non-null tz_override selects one fixed-offset mapping of a subdaily
+ * period.  Its ascending list can stop at the first eligible mapping; the
+ * caller compares these minima across offsets and overlapping periods.
  */
 static void
 scan_times_on_date(const CalendarRule *rule, int year, int mon, int mday,
 				   int hour_fixed, int min_fixed, int sec_fixed,
-				   const struct pg_tm *tm_start,
+				   const struct pg_tm *tm_start, const int *tz_override,
 				   TimestampTz start, TimestampTz after,
 				   TimestampTz *best, bool *found)
 {
@@ -874,7 +979,7 @@ scan_times_on_date(const CalendarRule *rule, int year, int mon, int mday,
 				TimestampTz cand;
 
 				if (local_time_to_timestamptz(year, mon, mday,
-											  hours[hi], minutes[mi], seconds[si],
+											  hours[hi], minutes[mi], seconds[si], tz_override,
 											  &cand))
 				{
 					if (consider_candidate(cand, start, after, best, found))
@@ -885,6 +990,17 @@ scan_times_on_date(const CalendarRule *rule, int year, int mon, int mday,
 	}
 }
 
+/*
+ * Find the next occurrence of rule anchored at start, strictly later than after
+ * and no earlier than start.  On success, store the earliest eligible
+ * candidate in next and return true.  Return false without changing next
+ * if the bounded search finds none or a required timezone neighborhood
+ * cannot be represented; an out-of-range start raises an error.
+ *
+ * The forward budget counts visited periods or skipped coarse-filter blocks,
+ * not every excluded period.  Extra fold lookback is uncharged, and a found
+ * candidate receives bounded ordering lookahead even after budget exhaustion.
+ */
 static bool
 eval_calendar(const CalendarRule *rule, TimestampTz start, TimestampTz after,
 			  TimestampTz *next)
@@ -897,6 +1013,15 @@ eval_calendar(const CalendarRule *rule, TimestampTz start, TimestampTz after,
 				k0 = 0;
 	TimestampTz best = 0;
 	bool		found = false;
+	bool		subdaily = rule->freq == FREQ_HOURLY || rule->freq == FREQ_MINUTELY;
+	int64		unit = rule->freq == FREQ_HOURLY ? USECS_PER_HOUR : USECS_PER_MINUTE;
+	int64		subdaily_step = unit * rule->interval;
+	int64		forward_start;
+	int			attempts = 0;
+	TimestampTz order_best = 0;
+	int64		order_overlap = 0;
+	bool		order_cached = false;
+	bool		order_constant = false;
 
 	if (timestamp2tm(start, &tzoff, &tm_start, &fsec, &tzn, session_timezone) != 0)
 		ereport(ERROR,
@@ -906,8 +1031,8 @@ eval_calendar(const CalendarRule *rule, TimestampTz start, TimestampTz after,
 	/*
 	 * Fast-forward: estimate the first period that could contain a candidate
 	 * greater than "after", so that e.g. FREQ=SECONDLY anchored years in the
-	 * past does not step through billions of periods.  Back off one period
-	 * to stay safe against boundary effects.
+	 * past does not step through billions of periods.  Back off one period to
+	 * stay safe against boundary effects.
 	 */
 	if (after > start)
 	{
@@ -941,9 +1066,35 @@ eval_calendar(const CalendarRule *rule, TimestampTz start, TimestampTz after,
 		k0 = periods > 2 ? periods - 2 : 0;
 	}
 
-	for (k = k0; k < k0 + SCHED_MAX_PERIODS; k++)
+	/* Extra fold lookback must not consume the forward search budget. */
+	forward_start = k0;
+	if (subdaily && after > start)
+	{
+		int			offsets[SCHED_MAX_OFFSETS];
+		int64		spread;
+		int64		periods = (after - start) / subdaily_step;
+		int64		back;
+		int64		first;
+
+		if (calendar_offsets(after, unit, offsets, &spread) == 0)
+			return false;
+		back = (unit + spread + subdaily_step - 1) / subdaily_step + 1;
+		first = periods > back ? periods - back : 0;
+		k0 = Min(k0, first);
+	}
+
+	/*
+	 * Count visits, not period indexes: a rejected block consumes one attempt
+	 * regardless of its size.  Lookback before forward_start is bounded by
+	 * the local offset spread and is not charged to the forward budget. Once
+	 * a result is found, finish its bounded ordering lookahead even if the
+	 * budget is exhausted.
+	 */
+	for (k = k0; attempts < SCHED_MAX_PERIODS || found; k++)
 	{
 		CHECK_FOR_INTERRUPTS();
+		if (k >= forward_start)
+			attempts++;
 
 		switch (rule->freq)
 		{
@@ -986,7 +1137,7 @@ eval_calendar(const CalendarRule *rule, TimestampTz start, TimestampTz after,
 											tm_start.tm_mday, days);
 						for (di = 0; di < nd && !found; di++)
 							scan_times_on_date(rule, year, months[mi], days[di],
-											   -1, -1, -1, &tm_start,
+											   -1, -1, -1, &tm_start, NULL,
 											   start, after, &best, &found);
 						if (found)
 							break;
@@ -1010,7 +1161,7 @@ eval_calendar(const CalendarRule *rule, TimestampTz start, TimestampTz after,
 					nd = month_day_list(rule, year, mon, tm_start.tm_mday, days);
 					for (di = 0; di < nd && !found; di++)
 						scan_times_on_date(rule, year, mon, days[di],
-										   -1, -1, -1, &tm_start,
+										   -1, -1, -1, &tm_start, NULL,
 										   start, after, &best, &found);
 					break;
 				}
@@ -1053,7 +1204,7 @@ eval_calendar(const CalendarRule *rule, TimestampTz start, TimestampTz after,
 						if (rule->has_bymonth && !rule->bymonth[mon])
 							continue;
 						scan_times_on_date(rule, year, mon, mday,
-										   -1, -1, -1, &tm_start,
+										   -1, -1, -1, &tm_start, NULL,
 										   start, after, &best, &found);
 					}
 					break;
@@ -1072,7 +1223,7 @@ eval_calendar(const CalendarRule *rule, TimestampTz start, TimestampTz after,
 					if (!date_matches(rule, year, mon, mday))
 						break;
 					scan_times_on_date(rule, year, mon, mday,
-									   -1, -1, -1, &tm_start,
+									   -1, -1, -1, &tm_start, NULL,
 									   start, after, &best, &found);
 					break;
 				}
@@ -1092,6 +1243,10 @@ eval_calendar(const CalendarRule *rule, TimestampTz start, TimestampTz after,
 					struct pg_tm tm;
 					fsec_t		f2;
 					int			tz2;
+					int			offsets[SCHED_MAX_OFFSETS];
+					int			n_offsets = 0;
+					int			oi;
+					int64		spread;
 
 					if (rule->freq == FREQ_HOURLY)
 						step_usec = rule->interval * USECS_PER_HOUR;
@@ -1104,16 +1259,91 @@ eval_calendar(const CalendarRule *rule, TimestampTz start, TimestampTz after,
 					if (timestamp2tm(base, &tz2, &tm, &f2, NULL, session_timezone) != 0)
 						break;
 
-					if (!date_matches(rule, tm.tm_year, tm.tm_mon, tm.tm_mday))
-						break;
+					/*
+					 * A coarse filter can exclude thousands of fine-grained
+					 * periods.  Charge one attempt for the whole block,
+					 * retaining the original interval's absolute-time
+					 * alignment.
+					 */
+					{
+						TimestampTz boundary = base;
+
+						if (!date_matches(rule, tm.tm_year, tm.tm_mon, tm.tm_mday))
+							boundary = base - tm.tm_hour * USECS_PER_HOUR -
+								tm.tm_min * USECS_PER_MINUTE -
+								tm.tm_sec * USECS_PER_SEC - f2 + USECS_PER_DAY;
+						else if (rule->has_byhour && !rule->byhour[tm.tm_hour])
+							boundary = base - tm.tm_min * USECS_PER_MINUTE -
+								tm.tm_sec * USECS_PER_SEC - f2 + USECS_PER_HOUR;
+						else if (rule->freq != FREQ_HOURLY &&
+								 rule->has_byminute && !rule->byminute[tm.tm_min])
+							boundary = base - tm.tm_sec * USECS_PER_SEC - f2 +
+								USECS_PER_MINUTE;
+
+						if (boundary > base)
+						{
+							pg_time_t	now = timestamptz_to_time_t(base);
+							pg_time_t	transition;
+							long int	before_offset,
+										after_offset;
+							int			before_dst,
+										after_dst;
+							int			status;
+							int64		skip;
+
+							/*
+							 * The boundary uses the current UTC offset.  Do
+							 * not skip across a transition, which can change
+							 * the filtered local date/hour/minute sooner.
+							 * Resolving midnight as a local time could
+							 * instead select its second occurrence during a
+							 * fall-back transition.
+							 */
+
+							/*
+							 * Include a transition within a negative
+							 * fractional second.
+							 */
+							if (base < 0 && base % USECS_PER_SEC != 0)
+								now--;
+							status = pg_next_dst_boundary(&now, &before_offset,
+														  &before_dst, &transition,
+														  &after_offset, &after_dst,
+														  session_timezone);
+							if (status < 0)
+								break;	/* cannot safely skip this period */
+							if (status > 0 &&
+								transition < timestamptz_to_time_t(boundary))
+								boundary = time_t_to_timestamptz(transition);
+
+							skip = (boundary - base + step_usec - 1) / step_usec;
+							k += skip - 1;	/* the loop advances once more */
+							break;
+						}
+					}
+
+					if (subdaily)
+					{
+						n_offsets = calendar_offsets(base, unit, offsets, &spread);
+						if (n_offsets == 0)
+							return false;
+					}
 
 					if (rule->freq == FREQ_HOURLY)
 					{
 						if (rule->has_byhour && !rule->byhour[tm.tm_hour])
 							break;
-						scan_times_on_date(rule, tm.tm_year, tm.tm_mon, tm.tm_mday,
-										   tm.tm_hour, -1, -1, &tm_start,
-										   start, after, &best, &found);
+
+						/*
+						 * Each fixed-offset list ascends; compare its first
+						 * hit. A constant-offset neighborhood has no gap or
+						 * fold, so retain the original conversion fast path
+						 * there.
+						 */
+						for (oi = 0; oi < n_offsets; oi++)
+							scan_times_on_date(rule, tm.tm_year, tm.tm_mon, tm.tm_mday,
+											   tm.tm_hour, -1, -1, &tm_start, n_offsets == 1 ? NULL : &offsets[oi],
+											   start, after, &best, &found);
 					}
 					else if (rule->freq == FREQ_MINUTELY)
 					{
@@ -1121,9 +1351,10 @@ eval_calendar(const CalendarRule *rule, TimestampTz start, TimestampTz after,
 							break;
 						if (rule->has_byminute && !rule->byminute[tm.tm_min])
 							break;
-						scan_times_on_date(rule, tm.tm_year, tm.tm_mon, tm.tm_mday,
-										   tm.tm_hour, tm.tm_min, -1, &tm_start,
-										   start, after, &best, &found);
+						for (oi = 0; oi < n_offsets; oi++)
+							scan_times_on_date(rule, tm.tm_year, tm.tm_mon, tm.tm_mday,
+											   tm.tm_hour, tm.tm_min, -1, &tm_start, n_offsets == 1 ? NULL : &offsets[oi],
+											   start, after, &best, &found);
 					}
 					else
 					{
@@ -1141,6 +1372,32 @@ eval_calendar(const CalendarRule *rule, TimestampTz start, TimestampTz after,
 
 		if (found)
 		{
+			if (subdaily)
+			{
+				if (!order_cached || order_best != best)
+				{
+					int			offsets[SCHED_MAX_OFFSETS];
+					int64		spread;
+					int			n_offsets = calendar_offsets(best, unit, offsets, &spread);
+
+					if (n_offsets == 0)
+						return false;
+					order_best = best;
+					order_overlap = unit + spread;
+					order_constant = n_offsets == 1;
+					order_cached = true;
+				}
+
+				/*
+				 * Constant-offset wall cells are ordered already.  Near a
+				 * transition, later bases can map back before this candidate.
+				 * Both endpoints of any such mapping lie within best +/- G,
+				 * so their separation is bounded by unit + offset spread.
+				 */
+				if (!order_constant &&
+					start + (k + 1) * subdaily_step - best <= order_overlap)
+					continue;
+			}
 			*next = best;
 			return true;
 		}
