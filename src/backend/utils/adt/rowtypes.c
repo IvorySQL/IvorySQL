@@ -44,7 +44,7 @@
 #include "commands/packagecmds.h"
 #include "executor/spi.h"
 
-Datum ora_deref_internal(PG_FUNCTION_ARGS);
+Datum		ora_deref_internal(PG_FUNCTION_ARGS);
 
 /*
  * DEREF returns the current value of the referenced object-table row, or
@@ -61,13 +61,13 @@ ora_deref_internal(PG_FUNCTION_ARGS)
 	Datum		rowDatum;
 	Oid			refType;
 	Oid			baseRefType;
-	Oid		targetType;
-	Oid		tableId;
+	Oid			targetType;
+	Oid			tableId;
 	int64		rowNo;
 	bool		isnull;
 	Relation	relation;
 	StringInfoData sql;
-	Oid		argtypes[1] = {INT8OID};
+	Oid			argtypes[1] = {INT8OID};
 	Datum		values[1];
 	int			spiResult;
 	Datum		result;
@@ -75,16 +75,17 @@ ora_deref_internal(PG_FUNCTION_ARGS)
 	Size		outputSize;
 
 	/*
-	 * This helper is callable directly as well as through DEREF.  Validate the
-	 * SQL argument type before interpreting its Datum as a varlena pointer;
-	 * anyelement also accepts pass-by-value scalars and domains over them.
-	 * Direct calls with a genuine object_ref are intentionally supported and
-	 * run the SPI query with the caller's ordinary SELECT privileges.
+	 * This helper is callable directly as well as through DEREF.  Validate
+	 * the SQL argument type before interpreting its Datum as a varlena
+	 * pointer; anyelement also accepts pass-by-value scalars and domains over
+	 * them. Direct calls with a genuine object_ref are intentionally
+	 * supported and run the SPI query with the caller's ordinary SELECT
+	 * privileges.
 	 */
 	refType = get_fn_expr_argtype(fcinfo->flinfo, 0);
 	baseRefType = GetSysCacheOid2(TYPENAMENSP, Anum_pg_type_oid,
-								CStringGetDatum("object_ref"),
-								ObjectIdGetDatum(get_namespace_oid("sys", false)));
+								  CStringGetDatum("object_ref"),
+								  ObjectIdGetDatum(get_namespace_oid("sys", false)));
 	if (!OidIsValid(refType) || !OidIsValid(baseRefType) ||
 		getBaseType(refType) != baseRefType)
 		ereport(ERROR,
@@ -100,7 +101,7 @@ ora_deref_internal(PG_FUNCTION_ARGS)
 
 	ref = PG_GETARG_HEAPTUPLEHEADER(0);
 	desc = lookup_rowtype_tupdesc(HeapTupleHeaderGetTypeId(ref),
-									 HeapTupleHeaderGetTypMod(ref));
+								  HeapTupleHeaderGetTypMod(ref));
 	if (desc->natts != 2 ||
 		TupleDescAttr(desc, 0)->atttypid != REGCLASSOID ||
 		TupleDescAttr(desc, 1)->atttypid != INT8OID)
@@ -142,13 +143,13 @@ ora_deref_internal(PG_FUNCTION_ARGS)
 					 "WHERE (t.rowid).rowno = $1",
 					 format_type_be_qualified(targetType),
 					 quote_qualified_identifier(
-						 get_namespace_name(RelationGetNamespace(relation)),
-						 RelationGetRelationName(relation)));
+												get_namespace_name(RelationGetNamespace(relation)),
+												RelationGetRelationName(relation)));
 	values[0] = Int64GetDatum(rowNo);
 	if (SPI_connect() != SPI_OK_CONNECT)
 		elog(ERROR, "SPI_connect failed while dereferencing object");
 	spiResult = SPI_execute_with_args(sql.data, 1, argtypes, values,
-									 NULL, true, 1);
+									  NULL, true, 1);
 	if (spiResult != SPI_OK_SELECT)
 		elog(ERROR, "could not query object table while dereferencing");
 	if (SPI_processed == 0)
@@ -214,23 +215,23 @@ typedef struct RecordCompareData
 
 typedef struct OraParamLink
 {
-	int	next_params;
-	int	total_params;
-	char	**paramnames;
-} OraParamLink;
+	int			next_params;
+	int			total_params;
+	char	  **paramnames;
+}			OraParamLink;
 
 typedef struct ObjectComparePlanKey
 {
 	Oid			typeOid;
 	bool		isOrder;
 	NameData	method;
-} ObjectComparePlanKey;
+}			ObjectComparePlanKey;
 
 typedef struct ObjectComparePlanEntry
 {
 	ObjectComparePlanKey key;
 	SPIPlanPtr	plan;
-} ObjectComparePlanEntry;
+}			ObjectComparePlanEntry;
 
 static HTAB *objectComparePlanCache = NULL;
 
@@ -291,25 +292,26 @@ compare_oracle_object_records(Oid typeOid, HeapTupleHeader record1,
 	initStringInfo(&sql);
 	if (isOrder)
 		appendStringInfo(&sql,
-			"SELECT CASE WHEN comparison < 0 THEN -1 "
-			"WHEN comparison > 0 THEN 1 ELSE 0 END "
-			"FROM (SELECT %s.%s.%s($1, $2) AS comparison OFFSET 0) s",
-			quote_identifier(schemaName),
-			quote_identifier(NameStr(typeForm->typname)),
-			quote_identifier(method));
+						 "SELECT CASE WHEN comparison IS NULL THEN NULL "
+						 "WHEN comparison < 0 THEN -1 "
+						 "WHEN comparison > 0 THEN 1 ELSE 0 END "
+						 "FROM (SELECT %s.%s.%s($1, $2) AS comparison OFFSET 0) s",
+						 quote_identifier(schemaName),
+						 quote_identifier(NameStr(typeForm->typname)),
+						 quote_identifier(method));
 	else
 		appendStringInfo(&sql,
-			"WITH keys AS MATERIALIZED "
-			"(SELECT %s.%s.%s($1) AS left_key, "
-			"%s.%s.%s($2) AS right_key) "
-			"SELECT CASE WHEN left_key < right_key THEN -1 "
-			"WHEN left_key > right_key THEN 1 ELSE 0 END FROM keys",
-			quote_identifier(schemaName),
-			quote_identifier(NameStr(typeForm->typname)),
-			quote_identifier(method),
-			quote_identifier(schemaName),
-			quote_identifier(NameStr(typeForm->typname)),
-			quote_identifier(method));
+						 "WITH keys AS MATERIALIZED "
+						 "(SELECT %s.%s.%s($1) AS left_key, "
+						 "%s.%s.%s($2) AS right_key) "
+						 "SELECT CASE WHEN left_key < right_key THEN -1 "
+						 "WHEN left_key > right_key THEN 1 ELSE 0 END FROM keys",
+						 quote_identifier(schemaName),
+						 quote_identifier(NameStr(typeForm->typname)),
+						 quote_identifier(method),
+						 quote_identifier(schemaName),
+						 quote_identifier(NameStr(typeForm->typname)),
+						 quote_identifier(method));
 
 	ReleaseSysCache(typeTuple);
 	argtypes[0] = typeOid;
@@ -330,11 +332,11 @@ compare_oracle_object_records(Oid typeOid, HeapTupleHeader record1,
 		ctl.entrysize = sizeof(ObjectComparePlanEntry);
 		ctl.hcxt = CacheMemoryContext;
 		objectComparePlanCache = hash_create("Oracle object comparison plans",
-										  16, &ctl,
-										  HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+											 16, &ctl,
+											 HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
 	}
 	planEntry = hash_search(objectComparePlanCache, &planKey, HASH_ENTER,
-						&found);
+							&found);
 
 	if (SPI_connect() != SPI_OK_CONNECT)
 		elog(ERROR, "SPI_connect failed while comparing object type %u", typeOid);
@@ -351,6 +353,11 @@ compare_oracle_object_records(Oid typeOid, HeapTupleHeader record1,
 			 typeOid);
 	value = SPI_getbinval(SPI_tuptable->vals[0], SPI_tuptable->tupdesc,
 						  1, &isnull);
+	/* An ORDER method must return a comparison result, not NULL. */
+	if (isOrder && isnull)
+		ereport(ERROR,
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				 errmsg("NULL returned by ORDER method")));
 	*result = isnull ? 0 : DatumGetInt32(value);
 	SPI_finish();
 
@@ -727,6 +734,7 @@ record_out(PG_FUNCTION_ARGS)
 		}
 
 		attr = values[i];
+
 		/*
 		 * Compatible oracle , pass typmod to output function
 		 */
@@ -2389,26 +2397,26 @@ get_parameter_description(PG_FUNCTION_ARGS)
 {
 	typedef struct
 	{
-		OraParamLink			*extral;
-		const char			*cmdtag;
-		char				*callintoexpr;
-	} outparam_fctx;
+		OraParamLink *extral;
+		const char *cmdtag;
+		char	   *callintoexpr;
+	}			outparam_fctx;
 
 	FuncCallContext *funcctx = NULL;
-	outparam_fctx	*user_fctx;
-	bool	dostmt = false;
+	outparam_fctx *user_fctx;
+	bool		dostmt = false;
 
 	if (SRF_IS_FIRSTCALL())
 	{
-		int oraparam_top_level;
-		int oraparam_cur_level;
+		int			oraparam_top_level;
+		int			oraparam_cur_level;
 		TupleDesc	tupdesc;
 		Datum		txt = PG_GETARG_DATUM(0);
-		char		*sql = TextDatumGetCString(txt);
-		List		*parsetree = NULL;
-		char		**paramnames = NULL;
-		MemoryContext	oldcxt;
-		int		nparams = 0;
+		char	   *sql = TextDatumGetCString(txt);
+		List	   *parsetree = NULL;
+		char	  **paramnames = NULL;
+		MemoryContext oldcxt;
+		int			nparams = 0;
 
 		funcctx = SRF_FIRSTCALL_INIT();
 		oldcxt = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
@@ -2446,14 +2454,14 @@ get_parameter_description(PG_FUNCTION_ARGS)
 		user_fctx->cmdtag = CreateCommandName(linitial(parsetree));
 
 		if (nodeTag(linitial(parsetree)) == T_RawStmt &&
-			nodeTag(((RawStmt *)linitial(parsetree))->stmt) == T_DoStmt)
+			nodeTag(((RawStmt *) linitial(parsetree))->stmt) == T_DoStmt)
 		{
-			DoStmt		*stmt = (DoStmt *)(((RawStmt *)linitial(parsetree))->stmt);
-			ListCell	*arg;
-			DefElem		*as_item = NULL;
-			DefElem		*language_item = NULL;
-			char		*language = NULL;
-			char		*source_text = NULL;
+			DoStmt	   *stmt = (DoStmt *) (((RawStmt *) linitial(parsetree))->stmt);
+			ListCell   *arg;
+			DefElem    *as_item = NULL;
+			DefElem    *language_item = NULL;
+			char	   *language = NULL;
+			char	   *source_text = NULL;
 
 			foreach(arg, stmt->args)
 			{
@@ -2476,11 +2484,12 @@ get_parameter_description(PG_FUNCTION_ARGS)
 			dostmt = true;
 
 			/*
-			 * Currently, only Oracle-compatible anonymous blocks support placeholders
-			 * for OUT parameters. For anonymous blocks in other PL languages, we only
-			 * return a {true, 0} tuple instead of reporting an error,Because interfaces
-			 * of libpq may implicitly call this function, if an error is reported, the
-			 * transaction block state of the display transaction will be destroyed.
+			 * Currently, only Oracle-compatible anonymous blocks support
+			 * placeholders for OUT parameters. For anonymous blocks in other
+			 * PL languages, we only return a {true, 0} tuple instead of
+			 * reporting an error,Because interfaces of libpq may implicitly
+			 * call this function, if an error is reported, the transaction
+			 * block state of the display transaction will be destroyed.
 			 */
 			if (language &&
 				strcmp(language, "plisql") == 0 &&
@@ -2493,7 +2502,7 @@ get_parameter_description(PG_FUNCTION_ARGS)
 						FmgrInfo	flinfo;
 						HeapTuple	languageTuple;
 						Form_pg_language languageStruct;
-						Oid 		laninline;
+						Oid			laninline;
 
 						/* Look up the language and validate permissions */
 						languageTuple = SearchSysCache1(LANGOID, ObjectIdGetDatum(LANG_PLISQL_OID));
@@ -2517,7 +2526,7 @@ get_parameter_description(PG_FUNCTION_ARGS)
 						ReleaseSysCache(languageTuple);
 						fmgr_info(laninline, &flinfo);
 					}
-					//plisql_internal_funcs.compile_inline_internal(sql);
+					/* plisql_internal_funcs.compile_inline_internal(sql); */
 					plisql_internal_funcs.compile_inline_internal(source_text);
 					nparams = calculate_oraparamname(&paramnames);
 				}
@@ -2533,9 +2542,10 @@ get_parameter_description(PG_FUNCTION_ARGS)
 		}
 
 		else if (nodeTag(linitial(parsetree)) == T_RawStmt &&
-				nodeTag(((RawStmt *)linitial(parsetree))->stmt) == T_CallStmt)
+				 nodeTag(((RawStmt *) linitial(parsetree))->stmt) == T_CallStmt)
 		{
-			CallStmt	*stmt = (CallStmt *)(((RawStmt *)linitial(parsetree))->stmt);
+			CallStmt   *stmt = (CallStmt *) (((RawStmt *) linitial(parsetree))->stmt);
+
 			user_fctx->callintoexpr = stmt->callinto ? pstrdup(stmt->callinto) : NULL;
 		}
 
@@ -2549,25 +2559,25 @@ get_parameter_description(PG_FUNCTION_ARGS)
 		}
 
 		/*
-		 * build tupdesc for result tuples 
+		 * build tupdesc for result tuples
 		 */
 		tupdesc = CreateTemplateTupleDesc(3);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "name",
-					   TEXTOID, -1, 0);
+						   TEXTOID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "position",
-					   INT4OID, -1, 0);
+						   INT4OID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "hint",
-					   TEXTOID, -1, 0);
+						   TEXTOID, -1, 0);
 
 		TupleDescFinalize(tupdesc);
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
-		user_fctx->extral = (OraParamLink*) palloc(sizeof(OraParamLink));
+		user_fctx->extral = (OraParamLink *) palloc(sizeof(OraParamLink));
 		user_fctx->extral->next_params = 0;
 		user_fctx->extral->total_params = nparams;
 		user_fctx->extral->paramnames = paramnames;
 
 		MemoryContextSwitchTo(oldcxt);
-		funcctx->user_fctx  = (void *) user_fctx;
+		funcctx->user_fctx = (void *) user_fctx;
 	}
 
 	funcctx = SRF_PERCALL_SETUP();
