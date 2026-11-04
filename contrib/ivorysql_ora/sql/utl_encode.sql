@@ -12,8 +12,8 @@
 SELECT utl_encode.base64_encode(NULL) IS NULL;
 
 -- Basic encoding: hextoraw('48656C6C6F') = 'Hello' bytes
--- Expected: 'SGVsbG8=\n' = hextoraw('534756736247383D0A')
-SELECT rawtohex(utl_encode.base64_encode(hextoraw('48656C6C6F'))) = '534756736247383D0A';
+-- Expected: 'SGVsbG8=\r\n' = hextoraw('534756736247383D0D0A')
+SELECT rawtohex(utl_encode.base64_encode(hextoraw('48656C6C6F'))) = '534756736247383D0D0A';
 
 -- Round-trip at line-break boundary: 48 bytes (exactly 1 line of 64 base64 chars)
 -- hextoraw(rpad('0',96,'0')) produces 48 zero bytes
@@ -48,9 +48,9 @@ END;
 -- NULL input returns NULL (STRICT modifier)
 SELECT utl_encode.base64_decode(NULL) IS NULL;
 
--- Decode known base64 string: 'SGVsbG8=\n' -> 'Hello' bytes
--- hextoraw('534756736247383D0A') = 'SGVsbG8=\n', hextoraw('48656C6C6F') = 'Hello'
-SELECT rawtohex(utl_encode.base64_decode(hextoraw('534756736247383D0A'))) = '48656C6C6F';
+-- Decode known base64 string: 'SGVsbG8=\r\n' -> 'Hello' bytes
+-- hextoraw('534756736247383D0D0A') = 'SGVsbG8=\r\n', hextoraw('48656C6C6F') = 'Hello'
+SELECT rawtohex(utl_encode.base64_decode(hextoraw('534756736247383D0D0A'))) = '48656C6C6F';
 
 -- Round-trip: base64_decode(base64_encode(x)) = x for 'Hello'
 SELECT utl_encode.base64_decode(utl_encode.base64_encode(
