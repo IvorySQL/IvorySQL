@@ -71,6 +71,33 @@ alter function s1.f_alter(arg1 OUT int) compile;
 alter function s1.f_alter(arg1 text) compile;
 alter function s1.f_alter(arg1 number, arg2 number, arg3 number default 10) compile;
 alter function s1.f_alter(arg1 number, arg2 number, arg3 number) compile;
+
+-- OID comparisons ignore leading zeroes, including the all-zero value.
+select 0::oid = cast('000' as char(3 char));
+select cast('000' as char(3 char)) = 0::oid;
+select not (0::oid <> cast('000' as char(3 char)));
+select not (cast('000' as char(3 char)) <> 0::oid);
+
+-- Blank-only CHAR values remain distinct from OID zero.
+select not (0::oid = cast('   ' as char(3 char)));
+select not (cast('   ' as char(3 char)) = 0::oid);
+select 0::oid <> cast('   ' as char(3 char));
+select cast('   ' as char(3 char)) <> 0::oid;
+
+-- Nonzero values still ignore only their leading zeroes.
+select 42::oid = cast('042' as char(3 char));
+select not (0::oid = cast('007' as char(3 char)));
+
+-- The comparison helpers are deterministic and safe for planner use.
+select count(*) = 4 as oid_char_comparisons_are_immutable
+from pg_catalog.pg_proc
+where oid = any (array['sys.oid_cc_eq(oid,sys.oracharchar)'::regprocedure,
+                       'sys.cc_oid_eq(sys.oracharchar,oid)'::regprocedure,
+                       'sys.oid_cc_ne(oid,sys.oracharchar)'::regprocedure,
+                       'sys.cc_oid_ne(sys.oracharchar,oid)'::regprocedure])
+  and provolatile = 'i'
+  and proisstrict
+  and proparallel = 's';
 -- clean
 drop table dtos_tb1tidid004134318;
 drop table char_tb2;

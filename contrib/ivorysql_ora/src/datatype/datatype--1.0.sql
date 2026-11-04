@@ -10599,10 +10599,38 @@ WITH INOUT
 AS IMPLICIT;
 
 /* will move to oracharchar partition */
-create or replace function sys.oid_cc_eq(oid_l pg_catalog.oid, cc_r sys.oracharchar) RETURNS BOOLEAN AS $$ SELECT $1::sys.oracharchar=trim(leading '0' from $2) $$ LANGUAGE SQL;
-create or replace function sys.cc_oid_eq(cc_l sys.oracharchar, oid_r pg_catalog.oid) RETURNS BOOLEAN AS $$ SELECT trim(leading '0' from $1)=$2::sys.oracharchar $$ LANGUAGE SQL;
-create or replace function sys.oid_cc_ne(oid_l pg_catalog.oid, cc_r sys.oracharchar) RETURNS BOOLEAN AS $$ SELECT not sys.oid_cc_eq(oid_l, cc_r) $$ LANGUAGE SQL;
-create or replace function sys.cc_oid_ne(cc_l sys.oracharchar, oid_r pg_catalog.oid) RETURNS BOOLEAN AS $$ SELECT not sys.cc_oid_eq(cc_l, oid_r) $$ LANGUAGE SQL;
+-- NOTE: an all-blank oracharchar holds no digits, so it must not compare equal
+-- to OID zero, while '000' must.  The two are told apart by the length of the
+-- value: trimming every leading zero leaves the empty string in both cases.
+-- '' is not used as a literal here, because in Oracle mode it is NULL.
+create or replace function sys.oid_cc_eq(oid_l pg_catalog.oid, cc_r sys.oracharchar)
+RETURNS BOOLEAN AS $$
+SELECT length($2::pg_catalog.text) > 0 AND
+	   $1::sys.oracharchar =
+	   CASE WHEN length(trim(leading '0' from $2)) = 0
+			THEN '0'
+			ELSE trim(leading '0' from $2)
+	   END
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+create or replace function sys.cc_oid_eq(cc_l sys.oracharchar, oid_r pg_catalog.oid)
+RETURNS BOOLEAN AS $$
+SELECT length($1::pg_catalog.text) > 0 AND
+	   CASE WHEN length(trim(leading '0' from $1)) = 0
+			THEN '0'
+			ELSE trim(leading '0' from $1)
+	   END = $2::sys.oracharchar
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+create or replace function sys.oid_cc_ne(oid_l pg_catalog.oid, cc_r sys.oracharchar)
+RETURNS BOOLEAN AS $$
+SELECT not sys.oid_cc_eq(oid_l, cc_r)
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+create or replace function sys.cc_oid_ne(cc_l sys.oracharchar, oid_r pg_catalog.oid)
+RETURNS BOOLEAN AS $$
+SELECT not sys.cc_oid_eq(cc_l, oid_r)
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
 create operator = (procedure=sys.oid_cc_eq, LEFTARG=pg_catalog.oid, RIGHTARG=sys.oracharchar);
 create operator = (procedure=sys.cc_oid_eq, LEFTARG=sys.oracharchar, RIGHTARG=pg_catalog.oid);
 create operator <> (procedure=sys.oid_cc_ne, LEFTARG=pg_catalog.oid, RIGHTARG=sys.oracharchar);
