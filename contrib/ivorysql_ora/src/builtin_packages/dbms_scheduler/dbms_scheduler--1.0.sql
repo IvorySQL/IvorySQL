@@ -535,6 +535,11 @@ CREATE OR REPLACE PACKAGE dbms_scheduler IS
 		argument_name VARCHAR2,
 		argument_value VARCHAR2);
 
+	/* Change one attribute of an existing job.  The attributes implemented
+	 * here are the ones the job table stores directly: repeat_interval,
+	 * comments, job_action and enabled. */
+	PROCEDURE set_attribute(job_name VARCHAR2, attribute VARCHAR2, value VARCHAR2);
+
 END dbms_scheduler;
 
 CREATE OR REPLACE PACKAGE BODY dbms_scheduler IS
@@ -710,6 +715,34 @@ CREATE OR REPLACE PACKAGE BODY dbms_scheduler IS
 	BEGIN
 		PERFORM sys.ora_dbms_scheduler_purge_log(log_history, which_log,
 			job_name);
+	END;
+
+	PROCEDURE set_attribute(job_name VARCHAR2, attribute VARCHAR2, value VARCHAR2) IS
+		a text := pg_catalog.lower(attribute);
+	BEGIN
+		IF a = 'repeat_interval' THEN
+			UPDATE sys.scheduler_jobs SET repeat_interval = value
+			 WHERE lower(sys.scheduler_jobs.job_name) = lower(set_attribute.job_name)
+			   AND job_owner = current_user::text;
+		ELSIF a = 'comments' THEN
+			UPDATE sys.scheduler_jobs SET comments = value
+			 WHERE lower(sys.scheduler_jobs.job_name) = lower(set_attribute.job_name)
+			   AND job_owner = current_user::text;
+		ELSIF a = 'job_action' THEN
+			UPDATE sys.scheduler_jobs SET job_action = value
+			 WHERE lower(sys.scheduler_jobs.job_name) = lower(set_attribute.job_name)
+			   AND job_owner = current_user::text;
+		ELSIF a = 'enabled' THEN
+			UPDATE sys.scheduler_jobs
+			   SET enabled = (pg_catalog.upper(value) = 'TRUE')
+			 WHERE lower(sys.scheduler_jobs.job_name) = lower(set_attribute.job_name)
+			   AND job_owner = current_user::text;
+		ELSE
+			RAISE EXCEPTION 'unsupported job attribute: %', attribute;
+		END IF;
+		IF NOT FOUND THEN
+			RAISE EXCEPTION 'job % does not exist', set_attribute.job_name;
+		END IF;
 	END;
 
 END dbms_scheduler;
