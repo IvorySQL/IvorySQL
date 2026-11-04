@@ -23,6 +23,12 @@ select dbms_random.random() as r1_replayed,
 call dbms_random.seed('hello world');
 select dbms_random.random() as from_text_seed;
 
+-- SEED accepts at most 2000 characters, including multibyte characters
+call dbms_random.seed(repeat(chr(120), 2000));
+call dbms_random.seed(repeat(chr(120), 2001));
+call dbms_random.seed(repeat(chr(233), 2000));
+call dbms_random.seed(repeat(chr(233), 2001));
+
 --
 -- VALUE: [0, 1)
 --
