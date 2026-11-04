@@ -2743,7 +2743,26 @@ ora_ascii(PG_FUNCTION_ARGS)
 		PG_RETURN_VOID();
 	}
 
-    PG_RETURN_INT32((unsigned char) str[0]);
+    /*
+     * Oracle's ASCII() returns the decimal representation of the first
+     * character in the database character set.  For multi-byte characters
+     * this means all bytes of the character packed big-endian (e.g. for
+     * UTF-8, ASCII('é') = 0xC3A9 = 50089), not just the first byte.
+     */
+    {
+        int32		result = (unsigned char) str[0];
+
+        if (result > 127)
+        {
+            int			len = pg_mblen(str);
+            int			i;
+
+            for (i = 1; i < len; i++)
+                result = (result << 8) | (unsigned char) str[i];
+        }
+
+        PG_RETURN_INT32(result);
+    }
 }
 
 
