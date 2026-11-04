@@ -1053,3 +1053,43 @@ select insertchildxml(XMLtype('<a>A<b>B</b></a>'), '/', 'c', XMLType('<c>C</c>')
  <a>A<b>B</b><c>C</c></a>
 (1 row)
 
+--
+-- xmlisvalid() must return the same answer for the same value whether it
+-- is passed as a literal (4-byte header varlena) or read from a table
+-- column (stored as a short 1-byte header varlena) -- issue #2269
+--
+SELECT sys.xmlisvalid('<a/>');
+ xmlisvalid 
+------------
+          1
+(1 row)
+
+SELECT sys.xmlisvalid('<a');
+ xmlisvalid 
+------------
+          0
+(1 row)
+
+create table xt(id int, v sys.xmltype);
+insert into xt values(1, '<a/>');
+insert into xt values(2, '<a');
+SELECT id, v, sys.xmlisvalid(v) FROM xt ORDER BY id;
+ id |  v   | xmlisvalid 
+----+------+------------
+  1 | <a/> |          1
+  2 | <a   |          0
+(2 rows)
+
+SELECT sys.xmlisvalid(v) = sys.xmlisvalid('<a/>') AS column_matches_literal FROM xt WHERE id = 1;
+ column_matches_literal 
+------------------------
+ t
+(1 row)
+
+SELECT sys.xmlisvalid(v) = sys.xmlisvalid('<a') AS column_matches_literal FROM xt WHERE id = 2;
+ column_matches_literal 
+------------------------
+ t
+(1 row)
+
+drop table xt;
