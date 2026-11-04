@@ -57,6 +57,9 @@ static int	func_lookup_failure_details(int fgc_flags, List *argnames,
 static void unify_hypothetical_args(ParseState *pstate,
 									List *fargs, int numAggregatedArgs,
 									Oid *actual_arg_types, Oid *declared_arg_types);
+static void make_fn_arguments_context(ParseState *pstate, List *fargs,
+									Oid *actual_arg_types, Oid *declared_arg_types,
+									CoercionContext ccontext);
 static Oid	FuncNameAsType(List *funcname);
 static Oid	FuncNameAsObjectType(List *funcname);
 static Node *BuildObjectConstructorSelf(ParseState *pstate, Oid typeOid,
@@ -1180,7 +1183,12 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 											   false);
 
 	/* perform the necessary typecasting of arguments */
-	make_fn_arguments(pstate, fargs, actual_arg_types, declared_arg_types);
+	if (function_from == FUNC_FROM_PACKAGE ||
+		function_from == FUNC_FROM_SUBPROCFUNC)
+		make_fn_arguments_context(pstate, fargs, actual_arg_types,
+								  declared_arg_types, COERCION_ASSIGNMENT);
+	else
+		make_fn_arguments(pstate, fargs, actual_arg_types, declared_arg_types);
 
 	/*
 	 * If the function isn't actually variadic, forget any VARIADIC decoration
@@ -2585,6 +2593,17 @@ make_fn_arguments(ParseState *pstate,
 				  Oid *actual_arg_types,
 				  Oid *declared_arg_types)
 {
+	make_fn_arguments_context(pstate, fargs, actual_arg_types,
+							  declared_arg_types, COERCION_IMPLICIT);
+}
+
+static void
+make_fn_arguments_context(ParseState *pstate,
+						  List *fargs,
+						  Oid *actual_arg_types,
+						  Oid *declared_arg_types,
+						  CoercionContext ccontext)
+{
 	ListCell   *current_fargs;
 	int			i = 0;
 
@@ -2607,7 +2626,7 @@ make_fn_arguments(ParseState *pstate,
 								   (Node *) na->arg,
 								   actual_arg_types[i],
 								   declared_arg_types[i], -1,
-								   COERCION_IMPLICIT,
+								   ccontext,
 								   COERCE_IMPLICIT_CAST,
 								   -1);
 				na->arg = (Expr *) node;
@@ -2618,7 +2637,7 @@ make_fn_arguments(ParseState *pstate,
 								   node,
 								   actual_arg_types[i],
 								   declared_arg_types[i], -1,
-								   COERCION_IMPLICIT,
+								   ccontext,
 								   COERCE_IMPLICIT_CAST,
 								   -1);
 				lfirst(current_fargs) = node;

@@ -1,0 +1,124 @@
+--
+-- PL/iSQL package/nested-subprogram argument coercion
+--
+
+CREATE OR REPLACE PACKAGE pkg_arg_coercion IS
+  FUNCTION int_echo(p IN INTEGER) RETURN INTEGER;
+  FUNCTION pick(p IN INTEGER) RETURN VARCHAR2;
+  FUNCTION pick(p IN NUMBER) RETURN VARCHAR2;
+  FUNCTION precedence_pick(p IN SMALLINT) RETURN VARCHAR2;
+  FUNCTION precedence_pick(p IN BIGINT) RETURN VARCHAR2;
+  FUNCTION ambiguous_pick(p IN INTEGER) RETURN VARCHAR2;
+  FUNCTION ambiguous_pick(p IN BIGINT) RETURN VARCHAR2;
+  FUNCTION poly_assignment(p_int IN INTEGER, p_any IN ANYELEMENT) RETURN INTEGER;
+  PROCEDURE int_proc(p IN INTEGER);
+  PROCEDURE mixed_proc(p_in IN INTEGER, p_io IN OUT NUMBER);
+  PROCEDURE poly_inout(p_in IN INTEGER, p_io IN OUT ANYELEMENT);
+END pkg_arg_coercion;
+/
+
+CREATE OR REPLACE PACKAGE BODY pkg_arg_coercion IS
+  FUNCTION int_echo(p IN INTEGER) RETURN INTEGER IS
+  BEGIN
+    RETURN p;
+  END;
+
+  FUNCTION pick(p IN INTEGER) RETURN VARCHAR2 IS
+  BEGIN
+    RETURN 'integer';
+  END;
+
+  FUNCTION pick(p IN NUMBER) RETURN VARCHAR2 IS
+  BEGIN
+    RETURN 'number';
+  END;
+
+  FUNCTION precedence_pick(p IN SMALLINT) RETURN VARCHAR2 IS
+  BEGIN
+    RETURN 'smallint';
+  END;
+
+  FUNCTION precedence_pick(p IN BIGINT) RETURN VARCHAR2 IS
+  BEGIN
+    RETURN 'bigint';
+  END;
+
+  FUNCTION ambiguous_pick(p IN INTEGER) RETURN VARCHAR2 IS
+  BEGIN
+    RETURN 'integer';
+  END;
+
+  FUNCTION ambiguous_pick(p IN BIGINT) RETURN VARCHAR2 IS
+  BEGIN
+    RETURN 'bigint';
+  END;
+
+  FUNCTION poly_assignment(p_int IN INTEGER, p_any IN ANYELEMENT) RETURN INTEGER IS
+  BEGIN
+    RETURN p_int;
+  END;
+
+  PROCEDURE int_proc(p IN INTEGER) IS
+  BEGIN
+    RAISE NOTICE 'procedure=%', p;
+  END;
+
+  PROCEDURE mixed_proc(p_in IN INTEGER, p_io IN OUT NUMBER) IS
+  BEGIN
+    p_io := p_io + p_in;
+  END;
+
+  PROCEDURE poly_inout(p_in IN INTEGER, p_io IN OUT ANYELEMENT) IS
+  BEGIN
+    NULL;
+  END;
+END pkg_arg_coercion;
+/
+
+SELECT pkg_arg_coercion.int_echo(1.5) AS number_to_integer;
+SELECT pkg_arg_coercion.int_echo(p => 2.5) AS named_number_to_integer;
+SELECT pkg_arg_coercion.pick(1) AS exact_integer;
+SELECT pkg_arg_coercion.pick(1.5) AS exact_number;
+-- INTEGER -> BIGINT is implicit, while INTEGER -> SMALLINT is assignment-only.
+-- The implicit candidate must win before the assignment fallback is considered.
+SELECT pkg_arg_coercion.precedence_pick(1::INTEGER) AS implicit_precedence;
+CALL pkg_arg_coercion.int_proc(3.5);
+SELECT pkg_arg_coercion.poly_assignment(4.5, 42) AS generic_assignment;
+
+DO $$
+DECLARE
+  v NUMBER := 10;
+  v_poly INTEGER := 7;
+BEGIN
+  pkg_arg_coercion.mixed_proc(1.5, v);
+  RAISE NOTICE 'mixed=%', v;
+  pkg_arg_coercion.poly_inout(2.5, v_poly);
+  RAISE NOTICE 'poly_inout=%', v_poly;
+END;
+$$;
+
+-- Multiple assignment-only candidates must remain ambiguous.
+SELECT pkg_arg_coercion.ambiguous_pick(1.5) AS ambiguous_assignment;
+
+DROP PACKAGE pkg_arg_coercion;
+
+DO $$
+DECLARE
+  FUNCTION local_int_echo(p IN INTEGER) RETURN INTEGER IS
+  BEGIN
+    RETURN p;
+  END;
+  FUNCTION local_poly(p_int IN INTEGER, p_any IN ANYELEMENT) RETURN INTEGER IS
+  BEGIN
+    RETURN p_int;
+  END;
+  v_assignment INTEGER := 1.5;
+  v_argument INTEGER;
+  v_poly INTEGER;
+BEGIN
+  v_argument := local_int_echo(1.5);
+  v_poly := local_poly(2.5, 'x'::TEXT);
+  RAISE NOTICE 'assignment=%, argument=%, poly=%',
+               v_assignment, v_argument, v_poly;
+END;
+$$;
