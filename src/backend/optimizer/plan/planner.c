@@ -7715,9 +7715,26 @@ plan_cluster_use_sort(Oid tableOid, Oid indexOid)
  *
  * Note: caller had better already hold some type of lock on the table and
  * index.
+ *
+ * This keeps PostgreSQL's signature: extensions with their own parallel
+ * index builds (pgvector, for example) call it.  Oracle REBUILD PARALLEL
+ * uses plan_create_index_workers_override().
  */
 int
-plan_create_index_workers(Oid tableOid, Oid indexOid, int override_workers)
+plan_create_index_workers(Oid tableOid, Oid indexOid)
+{
+	return plan_create_index_workers_override(tableOid, indexOid, 0);
+}
+
+/*
+ * plan_create_index_workers_override
+ *		As plan_create_index_workers(), but override_workers > 0 requests an
+ *		explicit number of workers (Oracle REBUILD PARALLEL N); 0 lets the
+ *		planner decide.
+ */
+int
+plan_create_index_workers_override(Oid tableOid, Oid indexOid,
+								   int override_workers)
 {
 	PlannerInfo *root;
 	Query	   *query;
