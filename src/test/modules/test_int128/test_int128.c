@@ -80,6 +80,27 @@ int
 main(int argc, char **argv)
 {
 	long		count;
+	const int64 high_parts[] = {PG_INT64_MIN, -1, 0, 1, PG_INT64_MAX};
+	const uint64 low_parts[] = {0, 1, PG_UINT64_MAX};
+	int			i;
+	int			j;
+
+	/* Exercise signed endpoints and both halves of the constructor. */
+	for (i = 0; i < lengthof(high_parts); i++)
+	{
+		for (j = 0; j < lengthof(low_parts); j++)
+		{
+			INT128		val = make_int128(high_parts[i], low_parts[j]);
+
+			if (PG_INT128_HI_INT64(val) != high_parts[i] ||
+				PG_INT128_LO_UINT64(val) != low_parts[j])
+			{
+				printf("make_int128 failed for " INT128_HEX_FORMAT "\n",
+					   (uint64) high_parts[i], low_parts[j]);
+				return 1;
+			}
+		}
+	}
 
 	pg_prng_seed(&pg_global_prng_state, (uint64) time(NULL));
 

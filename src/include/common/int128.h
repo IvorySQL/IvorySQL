@@ -75,7 +75,11 @@ static inline INT128
 make_int128(int64 hi, uint64 lo)
 {
 #if USE_NATIVE_INT128
-	return (((int128) hi) << 64) + lo;
+	/*
+	 * Assemble the bits unsigned: shifting a negative signed value is
+	 * undefined.
+	 */
+	return (int128) (((uint128) (uint64) hi << 64) | (uint128) lo);
 #else
 	INT128		val;
 
