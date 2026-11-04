@@ -1,3 +1,7 @@
+-- Quoted result aliases below use their literal case. Pin the session mode
+-- so installcheck also works in clusters initialized with the default mode.
+SET ivorysql.identifier_case_switch = normal;
+
 /*
  * length/lengthb
  */
@@ -1558,3 +1562,5 @@ select to_single_byte('１．２');
 select to_single_byte(１．２);
 select to_single_byte(3.4);
 select to_single_byte(NULL);
+
+RESET ivorysql.identifier_case_switch;
