@@ -120,3 +120,10 @@ end
 $$;
 NOTICE:  mode=not found
 commit;
+-- Long sleeps must remain interruptible even on platforms with 32-bit long.
+SET statement_timeout = '100ms';
+SELECT sys.dbms_lock_sleep(2200);
+ERROR:  canceling statement due to statement timeout
+RESET statement_timeout;
+SELECT sys.dbms_lock_sleep('NaN'::float8);
+ERROR:  DBMS_LOCK.SLEEP: seconds must not be NaN
