@@ -130,6 +130,60 @@ is( $node->safe_psql(
 	'failed job records state, failure count and error message');
 
 # ---------------------------------------------------------------------
+# a failure while loading a job must release its RUNNING state too
+# ---------------------------------------------------------------------
+# Commit both jobs and the disabled program together, so no worker can load
+# the program before it is disabled.  The job actions have not started when
+# the definition load fails, so their execution counts remain unchanged.
+ora_sql(q{
+BEGIN
+  dbms_scheduler.create_program(program_name => 'tap_load_prog',
+    program_type => 'PLSQL_BLOCK',
+    program_action => 'BEGIN INSERT INTO sched_tap_t VALUES (12, ''load recovered''); END;',
+    enabled => TRUE);
+  dbms_scheduler.create_schedule(schedule_name => 'tap_load_repeat_sched',
+    repeat_interval => 'FREQ=SECONDLY;INTERVAL=2');
+  dbms_scheduler.create_schedule(schedule_name => 'tap_load_once_sched',
+    start_date => clock_timestamp());
+  dbms_scheduler.create_job(job_name => 'tap_load_repeat',
+    program_name => 'tap_load_prog', schedule_name => 'tap_load_repeat_sched',
+    enabled => TRUE, auto_drop => FALSE);
+  dbms_scheduler.create_job(job_name => 'tap_load_once',
+    program_name => 'tap_load_prog', schedule_name => 'tap_load_once_sched',
+    enabled => TRUE, auto_drop => FALSE);
+  dbms_scheduler.disable('tap_load_prog');
+END;});
+
+$node->poll_query_until($db, q{
+SELECT count(DISTINCT job_name) = 2 FROM sys.scheduler_job_run_details
+ WHERE job_name IN ('TAP_LOAD_REPEAT', 'TAP_LOAD_ONCE')
+   AND status = 'f' AND error_message LIKE '%is disabled%'
+}) or die "definition load failures were not recorded";
+
+is( $node->safe_psql($db, q{
+SELECT enabled, state, run_count, failure_count, next_run_date IS NULL
+  FROM sys.scheduler_jobs WHERE job_name = 'TAP_LOAD_ONCE'}),
+	'f|FAILED|0|0|t',
+	'one-shot definition load failure leaves a terminal state');
+
+is( $node->safe_psql($db, q{
+SELECT enabled, run_count, failure_count
+  FROM sys.scheduler_jobs WHERE job_name = 'TAP_LOAD_REPEAT'}),
+	't|0|0',
+	'failed definition load leaves execution counters unchanged');
+
+# Repair only the program.  The repeating job must resume automatically,
+# without an ENABLE call or a scheduler restart to repair its state.
+ora_sql(q{BEGIN dbms_scheduler.enable('tap_load_prog'); END;});
+
+$node->poll_query_until($db, q{
+SELECT count(*) > 0 FROM sys.scheduler_job_run_details
+ WHERE job_name = 'TAP_LOAD_REPEAT' AND status = 's'
+}) or die "job did not recover after its program was enabled";
+ok(1, 'repeating job resumes execution after its program is enabled');
+ora_sql(q{BEGIN dbms_scheduler.disable('tap_load_repeat'); END;});
+
+# ---------------------------------------------------------------------
 # a job running past scheduler_job_timeout is cancelled
 # ---------------------------------------------------------------------
 ora_sql(q{
