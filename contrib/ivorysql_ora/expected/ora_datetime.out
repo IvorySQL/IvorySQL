@@ -1102,6 +1102,64 @@ SELECT timestamp '2016-12-12 14:41:11.123456'::timestamp with local time zone + 
  2016-12-23 17:19:35
 (1 row)
 
+--
+-- Oracle clamps the day to the last day of the resulting month, the same
+-- rule ADD_MONTHS follows.
+--
+SELECT date'2020-01-31' + interval'1' month;
+      ?column?       
+---------------------
+ 2020-02-29 00:00:00
+(1 row)
+
+SELECT date'2020-03-31' - interval'1' month;
+      ?column?       
+---------------------
+ 2020-02-29 00:00:00
+(1 row)
+
+SELECT date'2020-02-29' + interval'1' year;
+      ?column?       
+---------------------
+ 2021-02-28 00:00:00
+(1 row)
+
+SELECT date'2020-01-31' + interval'1' year;
+      ?column?       
+---------------------
+ 2021-01-31 00:00:00
+(1 row)
+
+SELECT timestamp'2020-01-31 23:30:59.123456' + interval'1' month;
+           ?column?            
+-------------------------------
+ 2020-02-29 23:30:59.123456000
+(1 row)
+
+SELECT timestamp'2020-03-31 23:30:59.123456' - interval'1' month;
+           ?column?            
+-------------------------------
+ 2020-02-29 23:30:59.123456000
+(1 row)
+
+SELECT timestamp'2020-02-29 23:30:59.123456' + interval'1' year;
+           ?column?            
+-------------------------------
+ 2021-02-28 23:30:59.123456000
+(1 row)
+
+SELECT timestamp'2020-01-31 23:30:59.123456 +06:30' + interval'1' month;
+           ?column?            
+-------------------------------
+ 2020-02-29 09:00:59.123456000
+(1 row)
+
+SELECT timestamp '2020-01-31 23:30:59.123456'::timestamp with local time zone + interval'1' month;
+           ?column?            
+-------------------------------
+ 2020-02-29 23:30:59.123456000
+(1 row)
+
 -- interval year to month + oradate
 SELECT interval'10-11' year to month + date'2016-11-26';
       ?column?       

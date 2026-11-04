@@ -1042,11 +1042,9 @@ oradate_pl_interval(PG_FUNCTION_ARGS)
 				tm->tm_mon = tm->tm_mon % MONTHS_PER_YEAR + MONTHS_PER_YEAR;
 			}
 
-			/* Compatible oracle, the result must be an actual datetime value */
+			/* Compatible oracle: the day is clamped to the end of the month */
 			if (tm->tm_mday > day_tab[isleap(tm->tm_year)][tm->tm_mon - 1])
-				ereport(ERROR,
-						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("datetime not valid for month specified")));
+				tm->tm_mday = (day_tab[isleap(tm->tm_year)][tm->tm_mon - 1]);
 
 			/* Compatible oracle oradate dont have fsec */
 			fsec = 0;
@@ -1156,9 +1154,7 @@ oratimestamp_pl_interval(PG_FUNCTION_ARGS)
 
 			/* adjust for end of month boundary problems... */
 			if (tm->tm_mday > day_tab[isleap(tm->tm_year)][tm->tm_mon - 1])
-				ereport(ERROR,
-						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("datetime not valid for month specified")));
+				tm->tm_mday = (day_tab[isleap(tm->tm_year)][tm->tm_mon - 1]);
 
 			if (tm2timestamp(tm, fsec, NULL, &timestamp) != 0)
 				ereport(ERROR,
@@ -1263,9 +1259,7 @@ oratimestamptz_pl_interval(PG_FUNCTION_ARGS)
 
 			/* adjust for end of month boundary problems... */
 			if (tm->tm_mday > day_tab[isleap(tm->tm_year)][tm->tm_mon - 1])
-				ereport(ERROR,
-						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("datetime not valid for month specified")));
+				tm->tm_mday = (day_tab[isleap(tm->tm_year)][tm->tm_mon - 1]);
 
 			tz = DetermineTimeZoneOffset(tm, session_timezone);
 
