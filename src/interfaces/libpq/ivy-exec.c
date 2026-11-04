@@ -48,8 +48,8 @@ static void IvyreplaceParamTypeByOutParameter(IvyBindOutInfo *bindinfo, int nPar
 static void IvyaddRelationStmtHandleandConn(Ivyconn *tconn, IvyPreparedStatement *stmtHandle);
 static Ivylist *IvyaddValueToList(Ivylist *list, void *value);
 static Ivylist *IvyremoveValueFromList(Ivylist *list, void *value);
-static void IvyremoveStmtHandleRelation(IvyPreparedStatement *stmtHandle);
-static void IvyremoveConnRelation(Ivyconn *tconn);
+static bool IvyremoveStmtHandleRelation(IvyPreparedStatement *stmtHandle);
+static bool IvyremoveConnRelation(Ivyconn *tconn);
 static void Ivyfreelist(Ivylist *list);
 
 typedef enum IVY_VALUE_TYPE
@@ -210,29 +210,32 @@ Ivyconnectdb2(PGconn *conn)
 void
 Ivyfinish2(Ivyconn *tconn)
 {
-	if (tconn == NULL || tconn->conn == NULL)
+	if (tconn == NULL)
 		return;
 
 	/* add lock */
-	PGSemaphoreLock(&tconn->self_lock);
-	if (tconn->conn == NULL)
-	{
-		PGSemaphoreUnlock(&tconn->self_lock);
+	if (!PGSemaphoreLock(&tconn->self_lock))
 		return;
-	}
-
 	tconn->conn = NULL;
 	PGSemaphoreUnlock(&tconn->self_lock);
-	ReleaseSemaphores(&tconn->self_lock);
 
 	/* remove handle about its stmthandle */
-	PGSemaphoreLock(&tconn->lock);
-	IvyremoveConnRelation(tconn);
+	if (!PGSemaphoreLock(&tconn->lock))
+	{
+		fprintf(stderr, "failed to lock connection semaphore while finishing connection\n");
+		return;
+	}
+	if (!IvyremoveConnRelation(tconn))
+	{
+		PGSemaphoreUnlock(&tconn->lock);
+		return;
+	}
 
 	/*free stmt list */
 	Ivyfreelist(tconn->IvystmtHandleList);
 	PGSemaphoreUnlock(&tconn->lock);
 	ReleaseSemaphores(&tconn->lock);
+	ReleaseSemaphores(&tconn->self_lock);
 
 	free(tconn);
 	tconn = NULL;
@@ -353,7 +356,13 @@ IvyexecPreparedStatement(Ivyconn *tconn,
 
 	/* send prepare stmt */
 	/* first lock ivyconn and stmt */
-	PGSemaphoreLock(&stmtHandle->lock);
+	if (!PGSemaphoreLock(&stmtHandle->lock))
+	{
+		snprintf(errmsg, size_error_buf, "%s",
+				 "failed to lock statement semaphore");
+		free(tresult);
+		return NULL;
+	}
 	if (stmtHandle->query == NULL)
 	{
 		/* stmtHandle has already be freed */
@@ -429,7 +438,14 @@ IvyexecPreparedStatement(Ivyconn *tconn,
 		return NULL;
 	}
 
-	PGSemaphoreLock(&tconn->self_lock);
+	if (!PGSemaphoreLock(&tconn->self_lock))
+	{
+		PGSemaphoreUnlock(&stmtHandle->lock);
+		snprintf(errmsg, size_error_buf, "%s",
+				 "failed to lock connection semaphore");
+		free(tresult);
+		return NULL;
+	}
 	conn = tconn->conn;
 
 	if (!PQexecStart(conn))
@@ -441,7 +457,15 @@ IvyexecPreparedStatement(Ivyconn *tconn,
 		return NULL;
 	}
 
-	PGSemaphoreLock(&tconn->lock);
+	if (!PGSemaphoreLock(&tconn->lock))
+	{
+		PGSemaphoreUnlock(&tconn->self_lock);
+		PGSemaphoreUnlock(&stmtHandle->lock);
+		snprintf(errmsg, size_error_buf, "%s",
+				 "failed to lock connection statement-list semaphore");
+		free(tresult);
+		return NULL;
+	}
 	if (tconn->IvystmtHandleList != NULL)
 	{
 		Ivylist *tmp;
@@ -593,7 +617,13 @@ IvyexecPreparedStatement2(Ivyconn *tconn,
 
 	/* send prepare stmt */
 	/* lock ivyconn and stmt */
-	PGSemaphoreLock(&stmtHandle->lock);
+	if (!PGSemaphoreLock(&stmtHandle->lock))
+	{
+		snprintf(errmsg, size_error_buf, "%s",
+				 "failed to lock statement semaphore");
+		free(tresult);
+		return NULL;
+	}
 	if (stmtHandle->query == NULL)
 	{
 		/* stmtHandle has already been freed */
@@ -709,7 +739,14 @@ IvyexecPreparedStatement2(Ivyconn *tconn,
 	}
 
 
-	PGSemaphoreLock(&tconn->self_lock);
+	if (!PGSemaphoreLock(&tconn->self_lock))
+	{
+		PGSemaphoreUnlock(&stmtHandle->lock);
+		snprintf(errmsg, size_error_buf, "%s",
+				 "failed to lock connection semaphore");
+		free(tresult);
+		return NULL;
+	}
 	conn = tconn->conn;
 
 	if (!PQexecStart(conn))
@@ -722,7 +759,15 @@ IvyexecPreparedStatement2(Ivyconn *tconn,
 	}
 
 	/* find out if this stmt has sent prepare in connection */
-	PGSemaphoreLock(&tconn->lock);
+	if (!PGSemaphoreLock(&tconn->lock))
+	{
+		PGSemaphoreUnlock(&tconn->self_lock);
+		PGSemaphoreUnlock(&stmtHandle->lock);
+		snprintf(errmsg, size_error_buf, "%s",
+				 "failed to lock connection statement-list semaphore");
+		free(tresult);
+		return NULL;
+	}
 	if (tconn->IvystmtHandleList != NULL)
 	{
 		Ivylist *tmp;
@@ -841,7 +886,11 @@ IvyFreePreparedStatement(IvyPreparedStatement *stmtHandle)
 		return;
 
 	/* get the lock */
-	PGSemaphoreLock(&stmtHandle->lock);
+	if (!PGSemaphoreLock(&stmtHandle->lock))
+	{
+		fprintf(stderr, "failed to lock statement semaphore while freeing statement\n");
+		return;
+	}
 
 	/* already free */
 	if (stmtHandle->query == NULL)
@@ -849,6 +898,14 @@ IvyFreePreparedStatement(IvyPreparedStatement *stmtHandle)
 		PGSemaphoreUnlock(&stmtHandle->lock);
 		return;
 	}
+
+	/* remove relationship */
+	if (!IvyremoveStmtHandleRelation(stmtHandle))
+	{
+		PGSemaphoreUnlock(&stmtHandle->lock);
+		return;
+	}
+
 
 	/* free bind info of out parameter */
 	if (stmtHandle->outbind != NULL)
@@ -891,8 +948,6 @@ IvyFreePreparedStatement(IvyPreparedStatement *stmtHandle)
 		stmtHandle->paramNames = NULL;
 	}
 
-	/* remove relationship */
-	IvyremoveStmtHandleRelation(stmtHandle);
 
 	/* remove connlist */
 	Ivyfreelist(stmtHandle->IvyconnList);
@@ -943,29 +998,38 @@ Ivyclear(Ivyresult *tres)
 void
 Ivyfinish(Ivyconn *tconn)
 {
-	if (tconn == NULL || tconn->conn == NULL)
+	if (tconn == NULL)
 		return;
 
 	/* add lock */
-	PGSemaphoreLock(&tconn->self_lock);
-	if (tconn->conn == NULL)
+	if (!PGSemaphoreLock(&tconn->self_lock))
 	{
-		PGSemaphoreUnlock(&tconn->self_lock);
+		fprintf(stderr, "failed to lock connection semaphore while finishing connection\n");
 		return;
 	}
-
-	PQfinish(tconn->conn);
-	tconn->conn = NULL;
+	if (tconn->conn != NULL)
+	{
+		PQfinish(tconn->conn);
+		tconn->conn = NULL;
+	}
 	PGSemaphoreUnlock(&tconn->self_lock);
-	ReleaseSemaphores(&tconn->self_lock);
 
-	PGSemaphoreLock(&tconn->lock);
-	IvyremoveConnRelation(tconn);
+	if (!PGSemaphoreLock(&tconn->lock))
+	{
+		fprintf(stderr, "failed to lock connection semaphore while finishing connection\n");
+		return;
+	}
+	if (!IvyremoveConnRelation(tconn))
+	{
+		PGSemaphoreUnlock(&tconn->lock);
+		return;
+	}
 
 	/* free stmt list */
 	Ivyfreelist(tconn->IvystmtHandleList);
 	PGSemaphoreUnlock(&tconn->lock);
 	ReleaseSemaphores(&tconn->lock);
+	ReleaseSemaphores(&tconn->self_lock);
 
 	free(tconn);
 	tconn = NULL;
@@ -999,7 +1063,11 @@ Ivyexec(Ivyconn *tconn, const char *query)
 	if (tresult == NULL)
 		return NULL;
 
-	PGSemaphoreLock(&tconn->self_lock);
+	if (!PGSemaphoreLock(&tconn->self_lock))
+	{
+		free(tresult);
+		return NULL;
+	}
 
 	if (!tconn->conn || !PQexecStart(tconn->conn))
 	{
@@ -1257,7 +1325,12 @@ IvyStmtPrepare(IvyPreparedStatement *stmthandle,
 		return 0;
 	}
 
-	PGSemaphoreLock(&stmthandle->lock);
+	if (!PGSemaphoreLock(&stmthandle->lock))
+	{
+		snprintf(errhp->error_msg, errhp->err_buf_size, "%s",
+					"failed to lock statement semaphore");
+		return 0;
+	}
 
 	if (stmthandle->query != NULL)
 	{
@@ -1323,15 +1396,26 @@ IvybindOutParameterByPosInternel(IvyPreparedStatement *stmthandle,
 		free_bind = true;
 	}
 
+
+	/* lock the stmt, to avoid binding in two threads at the same time */
+	if (need_lock && !PGSemaphoreLock(&stmthandle->lock))
+	{
+		if (free_bind)
+		{
+			free(*bindinfo);
+			*bindinfo = NULL;
+		}
+
+		snprintf(errormsg, size_error_buf, "%s",
+				 "failed to lock statement semaphore");
+		return 0;
+	}
+
 	(*bindinfo)->next = NULL;
 	(*bindinfo)->indp = indp;
 	(*bindinfo)->val_size = val_size;
 	(*bindinfo)->position = position;
 	(*bindinfo)->var = var;
-
-	/* lock the stmt, to avoid binding in two threads at the same time */
-	if (need_lock)
-		PGSemaphoreLock(&stmthandle->lock);
 
 	/* check position again */
 	if (position > stmthandle->nParams)
@@ -1469,6 +1553,19 @@ IvyBindByPosInternel(IvyPreparedStatement *stmtHandle,
 		free_bind = true;
 	}
 
+	/* lock the stmt, to avoid binding in two threads at the same time */
+	if (need_lock && !PGSemaphoreLock(&stmtHandle->lock))
+	{
+		if (free_bind)
+		{
+			free(*bindinfo);
+			*bindinfo = NULL;
+		}
+		snprintf(errhp->error_msg, errhp->err_buf_size, "%s",
+				 "failed to lock statement semaphore");
+		return 0;
+	}
+
 	(*bindinfo)->next = NULL;
 	(*bindinfo)->indp = indp;
 	(*bindinfo)->val_size = value_sz;
@@ -1480,10 +1577,6 @@ IvyBindByPosInternel(IvyPreparedStatement *stmtHandle,
 	(*bindinfo)->maxarr_len = maxarr_len;
 	(*bindinfo)->mode = mode;
 	(*bindinfo)->curelep = curelep;
-
-	/* lock the stmt, to avoid binding in two threads at the same time */
-	if (need_lock)
-		PGSemaphoreLock(&stmtHandle->lock);
 
 	/* check position again */
 	if (position > stmtHandle->nParams && stmtHandle->nParams != -1)
@@ -2109,7 +2202,13 @@ IvyBindByName(IvyPreparedStatement *stmtHandle,
 	bindname->curelep = curelep;
 
 	/* lock the stmt, to avoid binding in two threads at the same time */
-	PGSemaphoreLock(&stmtHandle->lock);
+	if (!PGSemaphoreLock(&stmtHandle->lock))
+	{
+		free(bindname);
+		snprintf(errhp->error_msg, errhp->err_buf_size, "%s",
+				 "failed to lock statement semaphore");
+		return 0;
+	}
 
 	if (stmtHandle->namebind== NULL)
 	{
@@ -2204,7 +2303,13 @@ IvyStmtExecute(Ivyconn *tconn,
 	/* send prepare stmt */
 
 	/* first lock ivyconn and stmt */
-	PGSemaphoreLock(&stmtHandle->lock);
+	if (!PGSemaphoreLock(&stmtHandle->lock))
+	{
+		snprintf(errhp->error_msg, errhp->err_buf_size, "%s",
+				 "failed to lock statement semaphore");
+		free(tresult);
+		return NULL;
+	}
 	if (stmtHandle->query == NULL)
 	{
 		/* stmtHandle has already been freed */
@@ -2245,7 +2350,14 @@ IvyStmtExecute(Ivyconn *tconn,
 		return NULL;
 	}
 
-	PGSemaphoreLock(&tconn->self_lock);
+	if (!PGSemaphoreLock(&tconn->self_lock))
+	{
+		PGSemaphoreUnlock(&stmtHandle->lock);
+		snprintf(errhp->error_msg, errhp->err_buf_size, "%s",
+				 "failed to lock connection semaphore");
+		free(tresult);
+		return NULL;
+	}
 	conn = tconn->conn;
 
 	if (!PQexecStart(conn))
@@ -2260,7 +2372,15 @@ IvyStmtExecute(Ivyconn *tconn,
 	}
 
 	/* find the stmt that has prepare in this connection */
-	PGSemaphoreLock(&tconn->lock);
+	if (!PGSemaphoreLock(&tconn->lock))
+	{
+		PGSemaphoreUnlock(&tconn->self_lock);
+		PGSemaphoreUnlock(&stmtHandle->lock);
+		snprintf(errhp->error_msg, errhp->err_buf_size, "%s",
+				 "failed to lock connection statement-list semaphore");
+		free(tresult);
+		return NULL;
+	}
 	if (tconn->IvystmtHandleList != NULL)
 	{
 		Ivylist *tmp;
@@ -2504,7 +2624,13 @@ IvyStmtExecute2(Ivyconn *tconn,
 
 	/* send prepare stmt */
 	/* first lock ivyconn and stmt */
-	PGSemaphoreLock(&stmtHandle->lock);
+	if (!PGSemaphoreLock(&stmtHandle->lock))
+	{
+		snprintf(errhp->error_msg, errhp->err_buf_size, "%s",
+				 "failed to lock statement semaphore");
+		free(tresult);
+		return NULL;
+	}
 	if (stmtHandle->query == NULL)
 	{
 		/* stmtHandle has already be freed */
@@ -2541,7 +2667,14 @@ IvyStmtExecute2(Ivyconn *tconn,
 		return NULL;
 	}
 
-	PGSemaphoreLock(&tconn->self_lock);
+	if (!PGSemaphoreLock(&tconn->self_lock))
+	{
+		PGSemaphoreUnlock(&stmtHandle->lock);
+		snprintf(errhp->error_msg, errhp->err_buf_size, "%s",
+				 "failed to lock connection semaphore");
+		free(tresult);
+		return NULL;
+	}
 	conn = tconn->conn;
 
 	if (!PQexecStart(conn))
@@ -2554,7 +2687,15 @@ IvyStmtExecute2(Ivyconn *tconn,
 	}
 
 	/* find this stmt has prepare in this connection */
-	PGSemaphoreLock(&tconn->lock);
+	if (!PGSemaphoreLock(&tconn->lock))
+	{
+		PGSemaphoreUnlock(&tconn->self_lock);
+		PGSemaphoreUnlock(&stmtHandle->lock);
+		snprintf(errhp->error_msg, errhp->err_buf_size, "%s",
+				 "failed to lock connection statement-list semaphore");
+		free(tresult);
+		return NULL;
+	}
 	if (tconn->IvystmtHandleList != NULL)
 	{
 		Ivylist *tmp;
@@ -2811,7 +2952,13 @@ IvybindOutParameterByName(IvyPreparedStatement *stmthandle,
 	bindname->val_size = val_size;
 
 	/* lock the stmt, to avoid bind in two threads at the same time */
-	PGSemaphoreLock(&stmthandle->lock);
+	if (!PGSemaphoreLock(&stmthandle->lock))
+	{
+		free(bindname);
+		snprintf(errormsg, size_error_buf, "%s",
+				 "failed to lock statement semaphore");
+		return 0;
+	}
 
 	if (stmthandle->namebind== NULL)
 	{
@@ -3115,13 +3262,13 @@ IvyaddRelationStmtHandleandConn(Ivyconn *tconn, IvyPreparedStatement *stmtHandle
 /*
  * remove relationship of stmthandle in connection
  */
-static void
+static bool
 IvyremoveStmtHandleRelation(IvyPreparedStatement *stmtHandle)
 {
 	Ivylist *tmp = NULL;
 
 	if (stmtHandle->IvyconnList == NULL)
-		return;
+		return true;
 
 	for (tmp = stmtHandle->IvyconnList; tmp != NULL; tmp = tmp->next)
 	{
@@ -3151,25 +3298,29 @@ IvyremoveStmtHandleRelation(IvyPreparedStatement *stmtHandle)
 		/* conn may be null due to other threads call Ivyclean() */
 		if (tconn->conn != NULL)
 		{
-			PGSemaphoreLock(&tconn->lock);
+			if (!PGSemaphoreLock(&tconn->lock))
+			{
+				fprintf(stderr, "failed to lock connection semaphore while removing statement relation\n");
+				return false;
+			}
 			tconn->IvystmtHandleList = IvyremoveValueFromList(tconn->IvystmtHandleList, (void *) stmtHandle);
 			PGSemaphoreUnlock(&tconn->lock);
 		}
 	}
 
-	return;
+	return true;
 }
 
 /*
  * remove relationship of connection in stmt
  */
-static void
+static bool
 IvyremoveConnRelation(Ivyconn *tconn)
 {
 	Ivylist *tmp = NULL;
 
 	if (tconn->IvystmtHandleList == NULL)
-		return;
+		return true;
 
 	for (tmp = tconn->IvystmtHandleList; tmp != NULL; tmp = tmp->next)
 	{
@@ -3177,13 +3328,17 @@ IvyremoveConnRelation(Ivyconn *tconn)
 
 		if (tprepare->query != NULL)
 		{
-			PGSemaphoreLock(&tprepare->lock);
+			if (!PGSemaphoreLock(&tprepare->lock))
+			{
+				fprintf(stderr, "failed to lock statement semaphore while removing connection relation\n");
+				return false;
+			}
 			tprepare->IvyconnList = IvyremoveValueFromList(tprepare->IvyconnList, (void *) tconn);
 			PGSemaphoreUnlock(&tprepare->lock);
 		}
 	}
 
-	return;
+	return true;
 }
 
 /*

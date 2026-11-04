@@ -47,7 +47,7 @@ static IpcSemaphoreKey nextSemaKey;		/* next key to try */
 
 static IpcSemaphoreId InternalIpcSemaphoreCreate(IpcSemaphoreKey semKey,
 						   int numSems);
-static void IpcSemaphoreInitialize(IpcSemaphoreId semId, int semNum,
+static int IpcSemaphoreInitialize(IpcSemaphoreId semId, int semNum,
 					   int value);
 static void IpcSemaphoreKill(IpcSemaphoreId semId);
 static int	IpcSemaphoreGetValue(IpcSemaphoreId semId, int semNum);
@@ -107,22 +107,26 @@ InternalIpcSemaphoreCreate(IpcSemaphoreKey semKey, int numSems)
 /*
  * Initialize a semaphore to the specified value.
  */
-static void
+static int
 IpcSemaphoreInitialize(IpcSemaphoreId semId, int semNum, int value)
 {
-	union semun semun;
+        union semun semun;
 
-	semun.val = value;
-	if (semctl(semId, semNum, SETVAL, semun) < 0)
-	{
-		int			saved_errno = errno;
+        semun.val = value;
+        if (semctl(semId, semNum, SETVAL, semun) < 0)
+        {
+                int                     saved_errno = errno;
 
-		fprintf(stderr, "semctl(%d, %d, SETVAL, %d) failed: %m", semId, semNum, value);
-		if (saved_errno == ERANGE)
-			fprintf(stderr, "You possibly need to raise your kernel's SEMVMX value to be at least %d "
-					"Look into the PostgreSQL documentation for details.", value);
-		exit(-1);
-	}
+                fprintf(stderr, "semctl(%d, %d, SETVAL, %d) failed: %m", semId, semNum, value);
+                if (saved_errno == ERANGE)
+                        fprintf(stderr, "You possibly need to raise your kernel's SEMVMX value to be at least %d "
+                                        "Look into the PostgreSQL documentation for details.", value);
+
+                errno = saved_errno;
+                return 0;
+        }
+
+        return 1;
 }
 
 /*
@@ -241,7 +245,12 @@ IpcSemaphoreCreate(int numSems)
 	 * incrementing it with semop().  That leaves it with value PGSemaMagic
 	 * and sempid referencing this process.
 	 */
-	IpcSemaphoreInitialize(semId, numSems, PGSemaMagic - 1);
+	if (!IpcSemaphoreInitialize(semId, numSems, PGSemaMagic - 1))
+	{
+        	IpcSemaphoreKill(semId);
+        	return -1;
+	}
+
 	mysema.semId = semId;
 	mysema.semNum = numSems;
 	PGSemaphoreUnlock(&mysema);
@@ -277,11 +286,17 @@ PGSemaphoreCreate(PGSemaphore sema)
 	if (id < 0)
 		return 0;
 
-	/* Assign the next free semaphore in the current set */
+	/* Initialize the semaphore to count 1 */
+	if (!IpcSemaphoreInitialize(id, 1, 1))
+	{
+        	IpcSemaphoreKill(id);
+        	return 0;
+	}
+
+	/* Assign the semaphore */
 	sema->semId = id;
 	sema->semNum = 1;
-	/* Initialize it to count 1 */
-	IpcSemaphoreInitialize(sema->semId, sema->semNum, 1);
+
 	return 1;
 }
 
@@ -291,41 +306,33 @@ PGSemaphoreCreate(PGSemaphore sema)
  *
  * Lock a semaphore (decrement count), blocking if count would be < 0
  */
-void
+int
 PGSemaphoreLock(PGSemaphore sema)
 {
-	int			errStatus;
-	struct sembuf sops;
+        int                     errStatus;
+        struct sembuf sops;
 
-	sops.sem_op = -1;			/* decrement */
-	sops.sem_flg = 0;
-	sops.sem_num = sema->semNum;
+        sops.sem_op = -1;
+        sops.sem_flg = 0;
+        sops.sem_num = sema->semNum;
 
-	/*
-	 * Note: if errStatus is -1 and errno == EINTR then it means we returned
-	 * from the operation prematurely because we were sent a signal.  So we
-	 * try and lock the semaphore again.
-	 *
-	 * We used to check interrupts here, but that required servicing
-	 * interrupts directly from signal handlers. Which is hard to do safely
-	 * and portably.
-	 */
-	do
-	{
-		errStatus = semop(sema->semId, &sops, 1);
-	} while (errStatus < 0 && errno == EINTR);
+        /*
+         * Retry if interrupted by a signal.
+         */
+        do
+        {
+                errStatus = semop(sema->semId, &sops, 1);
+        } while (errStatus < 0 && errno == EINTR);
 
-	if (errStatus < 0)
-	{
-		fprintf(stderr, "semop(id=%d) failed: %m", sema->semId);
-		exit(-1);
-	}
+        if (errStatus < 0)
+        {
+                fprintf(stderr, "semop(id=%d) failed: %m", sema->semId);
+                return 0;
+        }
+
+        return 1;
 }
-
-
 /*
- * PGSemaphoreUnlock
- *
  * Unlock a semaphore (increment count)
  */
 void
