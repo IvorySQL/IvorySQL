@@ -1,0 +1,81 @@
+--
+-- DBMS_DESCRIBE
+--
+-- Regression tests for Oracle-compatible DBMS_DESCRIBE package:
+--   - Set-returning function sys.dbms_describe_procedure
+--   - Describe built-in functions
+--   - Describe user-defined PL/iSQL procedure with multiple arguments
+--   - DESCRIBE_PROCEDURE package procedure call
+--   - Error handling (non-existent procedure, NULL object name)
+--   - Internal function execute privilege revoked from PUBLIC (CWE-862)
+--
+
+-- Setup test functions and procedures
+CREATE OR REPLACE FUNCTION test_calc_bonus(emp_id int, salary numeric, ratio float8)
+RETURNS numeric AS $$
+BEGIN
+    RETURN salary * ratio;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE PROCEDURE test_proc_update(cust_code varchar2, new_status varchar2) AS $$
+BEGIN
+    NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Introspect function test_calc_bonus
+SELECT position, argument_name, datatype, in_out, length
+  FROM sys.dbms_describe_procedure('test_calc_bonus')
+ ORDER BY position;
+
+-- Introspect procedure test_proc_update
+SELECT position, argument_name, datatype, in_out, length
+  FROM sys.dbms_describe_procedure('test_proc_update')
+ ORDER BY position;
+
+-- Introspect schema-qualified procedure
+SELECT position, argument_name, datatype, in_out, length
+  FROM sys.dbms_describe_procedure('public.test_proc_update')
+ ORDER BY position;
+
+-- Describe via package procedure
+DO $$
+DECLARE
+    ovl NUMBER;
+    pos NUMBER;
+    lvl NUMBER;
+    arg_name VARCHAR2(100);
+    dtype NUMBER;
+    defval NUMBER;
+    io NUMBER;
+    len NUMBER;
+    prec NUMBER;
+    scale NUMBER;
+    radix NUMBER;
+    spare NUMBER;
+BEGIN
+    dbms_describe.describe_procedure('test_calc_bonus', NULL, NULL,
+                                     ovl, pos, lvl, arg_name, dtype,
+                                     defval, io, len, prec, scale, radix, spare);
+    RAISE NOTICE 'DESCRIBE_PROCEDURE first arg: name=%, pos=%, in_out=%', arg_name, pos, io;
+END;
+$$;
+
+-- Error handling: non-existent function
+SELECT * FROM sys.dbms_describe_procedure('non_existent_proc_xyz');
+
+-- Error handling: NULL parameter
+SELECT * FROM sys.dbms_describe_describe_procedure_internal(NULL);
+
+-- Verify internal functions execute privilege revoked from PUBLIC (CWE-862)
+SELECT p.proname, has_function_privilege('public', p.oid, 'EXECUTE') AS public_can_execute
+  FROM pg_catalog.pg_proc p
+  JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+ WHERE n.nspname = 'sys'
+   AND p.proname IN ('dbms_describe_describe_procedure_internal')
+ ORDER BY p.proname;
+
+-- Clean up
+DROP FUNCTION test_calc_bonus(int, numeric, float8);
+DROP PROCEDURE test_proc_update(varchar2, varchar2);
