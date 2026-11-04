@@ -107,7 +107,8 @@ ORA_REGRESS = \
 	dbms_transaction \
 	dbms_random \
 	utl_match \
-	dbms_scheduler
+	dbms_scheduler \
+	dbms_scheduler_bysetpos
 
 TAP_TESTS = 1
 

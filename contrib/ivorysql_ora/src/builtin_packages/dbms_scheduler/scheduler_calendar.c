@@ -28,6 +28,7 @@
  *   BYHOUR=0..23
  *   BYMINUTE=0..59
  *   BYSECOND=0..59
+ *   BYSETPOS=-9999..-1 | 1..9999    (MONTHLY/YEARLY, applied last)
  *
  * Evaluation follows Oracle semantics: the repeat pattern is anchored at
  * start_date and date/time components not constrained by a BY clause are
@@ -42,10 +43,13 @@
 
 #include <limits.h>
 
+#include "lib/binaryheap.h"
 #include "miscadmin.h"
+#include "nodes/bitmapset.h"
 #include "pgtime.h"
 #include "utils/builtins.h"
 #include "utils/datetime.h"
+#include "utils/hsearch.h"
 #include "utils/timestamp.h"
 
 #include "dbms_scheduler.h"
@@ -100,6 +104,11 @@ typedef struct CalendarRule
 
 	bool		bysecond[60];
 	bool		has_bysecond;
+
+	/* Even bitmap members encode positive positions, odd members negative. */
+	Bitmapset  *bysetpos;
+	int			first_positions;
+	int			last_positions;
 } CalendarRule;
 
 /* Search this many periods past the fast-forward point before giving up. */
@@ -119,6 +128,7 @@ sched_calendar_validate(const char *calendar)
 	CalendarRule rule;
 
 	parse_calendar(calendar, &rule);
+	bms_free(rule.bysetpos);
 }
 
 /*
@@ -130,9 +140,12 @@ sched_calendar_next(const char *calendar, TimestampTz start_date,
 					TimestampTz after, TimestampTz *next)
 {
 	CalendarRule rule;
+	bool		found;
 
 	parse_calendar(calendar, &rule);
-	return eval_calendar(&rule, start_date, after, next);
+	found = eval_calendar(&rule, start_date, after, next);
+	bms_free(rule.bysetpos);
+	return found;
 }
 
 /* ------------------------------------------------------------------
@@ -394,12 +407,33 @@ bysecond_cb(const char *calendar, const char *item, int len, CalendarRule *rule)
 }
 
 static void
+bysetpos_cb(const char *calendar, const char *item, int len, CalendarRule *rule)
+{
+	int			val;
+	int			member;
+
+	if (!parse_int(item, len, &val) || val == 0 || val < -9999 || val > 9999)
+		calendar_error(calendar, "BYSETPOS values must be -9999 through -1 or 1 through 9999.");
+	if (val > 0)
+	{
+		member = 2 * (val - 1);
+		rule->first_positions = Max(rule->first_positions, val);
+	}
+	else
+	{
+		member = 2 * (-val - 1) + 1;
+		rule->last_positions = Max(rule->last_positions, -val);
+	}
+	rule->bysetpos = bms_add_member(rule->bysetpos, member);
+}
+
+static void
 parse_calendar(const char *calendar, CalendarRule *rule)
 {
 	char	   *norm;
 	char	   *clause;
 	bool		has_freq = false;
-	bool		seen[9] = {false};
+	bool		seen[10] = {false};
 
 	if (calendar == NULL || *calendar == '\0')
 		ereport(ERROR,
@@ -518,6 +552,15 @@ parse_calendar(const char *calendar, CalendarRule *rule)
 			rule->has_bysecond = true;
 			parse_list(calendar, value, rule, bysecond_cb);
 		}
+		else if (strcmp(clause, "BYSETPOS") == 0)
+		{
+			if (seen[9])
+				calendar_error(calendar, "duplicate BYSETPOS clause.");
+			seen[9] = true;
+			if (*value && value[strlen(value) - 1] == ',')
+				calendar_error(calendar, "empty element in value list.");
+			parse_list(calendar, value, rule, bysetpos_cb);
+		}
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -529,6 +572,8 @@ parse_calendar(const char *calendar, CalendarRule *rule)
 
 	if (!has_freq)
 		calendar_error(calendar, "FREQ clause is required.");
+	if (rule->bysetpos && rule->freq != FREQ_YEARLY && rule->freq != FREQ_MONTHLY)
+		calendar_error(calendar, "BYSETPOS is only supported with FREQ=YEARLY or FREQ=MONTHLY.");
 
 	/* Ordinal BYDAY (e.g. 2FRI) only makes sense within a month window. */
 	if (rule->byday_has_ord &&
@@ -885,6 +930,248 @@ scan_times_on_date(const CalendarRule *rule, int year, int mon, int mday,
 	}
 }
 
+/*
+ * On periods with a time-zone transition, local times need not map to distinct,
+ * ascending timestamps.  Retain only the requested prefix and suffix of the
+ * timestamp set.  Hash membership prevents a gap's duplicate timestamps from
+ * consuming positions; the heap root is the worst timestamp still retained.
+ */
+typedef struct SetposHeap
+{
+	binaryheap *heap;
+	HTAB	   *members;
+	bool		last;
+} SetposHeap;
+
+static int
+setpos_heap_compare(Datum a, Datum b, void *arg)
+{
+	TimestampTz ta = *((TimestampTz *) DatumGetPointer(a));
+	TimestampTz tb = *((TimestampTz *) DatumGetPointer(b));
+	bool		last = *((bool *) arg);
+	int			cmp = (ta > tb) - (ta < tb);
+
+	return last ? -cmp : cmp;
+}
+
+static void
+setpos_heap_init(SetposHeap *set, int limit, bool last)
+{
+	HASHCTL		ctl;
+
+	set->last = last;
+	set->heap = binaryheap_allocate(limit, setpos_heap_compare, &set->last);
+	MemSet(&ctl, 0, sizeof(ctl));
+	ctl.keysize = sizeof(TimestampTz);
+	ctl.entrysize = sizeof(TimestampTz);
+	set->members = hash_create("scheduler BYSETPOS", Max(limit, 1), &ctl,
+							   HASH_ELEM | HASH_BLOBS);
+}
+
+static void
+setpos_heap_add(SetposHeap *set, TimestampTz cand)
+{
+	TimestampTz *entry;
+	bool		exists;
+
+	if (set->heap->bh_space == 0)
+		return;
+	if (binaryheap_size(set->heap) == set->heap->bh_space)
+	{
+		TimestampTz worst = *((TimestampTz *) DatumGetPointer(binaryheap_first(set->heap)));
+
+		if (set->last ? cand <= worst : cand >= worst)
+			return;
+		if (hash_search(set->members, &cand, HASH_FIND, NULL) != NULL)
+			return;
+		binaryheap_remove_first(set->heap);
+		hash_search(set->members, &worst, HASH_REMOVE, NULL);
+	}
+	entry = hash_search(set->members, &cand, HASH_ENTER, &exists);
+	if (!exists)
+		binaryheap_add(set->heap, PointerGetDatum(entry));
+}
+
+static int
+setpos_timestamp_compare(const void *a, const void *b)
+{
+	TimestampTz ta = *((const TimestampTz *) a);
+	TimestampTz tb = *((const TimestampTz *) b);
+
+	return (ta > tb) - (ta < tb);
+}
+
+static TimestampTz *
+setpos_heap_sorted(SetposHeap *set)
+{
+	int			n = binaryheap_size(set->heap);
+	TimestampTz *values = palloc(sizeof(TimestampTz) * Max(n, 1));
+	int			i;
+
+	for (i = 0; i < n; i++)
+		values[i] = *((TimestampTz *) DatumGetPointer(binaryheap_get_node(set->heap, i)));
+	qsort(values, n, sizeof(TimestampTz), setpos_timestamp_compare);
+	return values;
+}
+
+/* Certify that the Cartesian product is ordered and has no UTC duplicates. */
+static bool
+setpos_constant_offset(int year, int first_mon, int last_mon)
+{
+	TimestampTz begin,
+				end;
+	pg_time_t	lower,
+				upper,
+				boundary;
+	long int	before_offset,
+				after_offset;
+	int			before_dst,
+				after_dst;
+	int			end_year = year + (last_mon == 12);
+	int			end_mon = last_mon == 12 ? 1 : last_mon + 1;
+	int			res;
+
+	if (pg_get_timezone_offset(session_timezone, &before_offset))
+		return true;
+	if (!local_time_to_timestamptz(year, first_mon, 1, 0, 0, 0, &begin) ||
+		!local_time_to_timestamptz(end_year, end_mon, 1, 0, 0, 0, &end))
+		return false;
+
+	/* Include boundary days, also covering time zones that skip a whole day. */
+	lower = timestamptz_to_time_t(begin) - 2 * SECS_PER_DAY;
+	upper = timestamptz_to_time_t(end) + 2 * SECS_PER_DAY;
+	res = pg_next_dst_boundary(&lower, &before_offset, &before_dst,
+							   &boundary, &after_offset, &after_dst, session_timezone);
+	return res == 0 || (res > 0 && boundary > upper);
+}
+
+/*
+ * Apply positions to a COMPLETE month or year, before considering start/after.
+ * With a constant offset, use mixed-radix indexing into the date/time product:
+ * even a yearly every-second calendar needs only 366 dates and the requested
+ * positions, rather than materializing more than 31 million timestamps.
+ * Transition periods use bounded heaps to sort/deduplicate absolute timestamps
+ * using the same local-time conversion as the existing calendar evaluator.
+ */
+static void
+scan_setpos_period(const CalendarRule *rule, int year, const int *months, int nmon,
+				   const struct pg_tm *tm_start, TimestampTz start, TimestampTz after,
+				   TimestampTz *best, bool *found)
+{
+	int			dates[366];
+	int			ndates = 0;
+	int			hours[24],
+				minutes[60],
+				seconds[60];
+	int			nh,
+				nm,
+				ns,
+				per_day,
+				mi,
+				member;
+
+	for (mi = 0; mi < nmon; mi++)
+	{
+		int			days[31];
+		int			nd = month_day_list(rule, year, months[mi], tm_start->tm_mday, days);
+		int			di;
+
+		for (di = 0; di < nd; di++)
+			dates[ndates++] = date2j(year, months[mi], days[di]);
+	}
+	if (ndates == 0)
+		return;
+	nh = set_to_list(rule->byhour, 24, rule->has_byhour, tm_start->tm_hour, hours);
+	nm = set_to_list(rule->byminute, 60, rule->has_byminute, tm_start->tm_min, minutes);
+	ns = set_to_list(rule->bysecond, 60, rule->has_bysecond, tm_start->tm_sec, seconds);
+	per_day = nh * nm * ns;
+
+	if (setpos_constant_offset(year, months[0], months[nmon - 1]))
+	{
+		int			total = ndates * per_day;
+
+		member = -1;
+		while ((member = bms_next_member(rule->bysetpos, member)) >= 0)
+		{
+			int			pos = member / 2 + 1;
+			int			index = (member % 2) ? total - pos : pos - 1;
+			int			y,
+						mon,
+						day,
+						time_index;
+			TimestampTz cand;
+
+			CHECK_FOR_INTERRUPTS();
+			if (index < 0 || index >= total)
+				continue;
+			j2date(dates[index / per_day], &y, &mon, &day);
+			time_index = index % per_day;
+			if (local_time_to_timestamptz(y, mon, day,
+										  hours[time_index / (nm * ns)],
+										  minutes[(time_index / ns) % nm],
+										  seconds[time_index % ns], &cand))
+				consider_candidate(cand, start, after, best, found);
+		}
+	}
+	else
+	{
+		SetposHeap	first,
+					last;
+		TimestampTz *first_values,
+				   *last_values;
+		int			di;
+
+		setpos_heap_init(&first, rule->first_positions, false);
+		setpos_heap_init(&last, rule->last_positions, true);
+		for (di = 0; di < ndates; di++)
+		{
+			int			y,
+						mon,
+						day,
+						hi,
+						mini,
+						si;
+
+			j2date(dates[di], &y, &mon, &day);
+			for (hi = 0; hi < nh; hi++)
+				for (mini = 0; mini < nm; mini++)
+				{
+					CHECK_FOR_INTERRUPTS();
+					for (si = 0; si < ns; si++)
+					{
+						TimestampTz cand;
+
+						if (local_time_to_timestamptz(y, mon, day, hours[hi],
+													  minutes[mini], seconds[si], &cand))
+						{
+							setpos_heap_add(&first, cand);
+							setpos_heap_add(&last, cand);
+						}
+					}
+				}
+		}
+		first_values = setpos_heap_sorted(&first);
+		last_values = setpos_heap_sorted(&last);
+		member = -1;
+		while ((member = bms_next_member(rule->bysetpos, member)) >= 0)
+		{
+			int			pos = member / 2 + 1;
+			bool		from_end = member % 2;
+			int			n = binaryheap_size(from_end ? last.heap : first.heap);
+
+			if (pos <= n)
+				consider_candidate(from_end ? last_values[n - pos] : first_values[pos - 1],
+								   start, after, best, found);
+		}
+		pfree(first_values);
+		pfree(last_values);
+		binaryheap_free(first.heap);
+		binaryheap_free(last.heap);
+		hash_destroy(first.members);
+		hash_destroy(last.members);
+	}
+}
+
 static bool
 eval_calendar(const CalendarRule *rule, TimestampTz start, TimestampTz after,
 			  TimestampTz *next)
@@ -906,8 +1193,8 @@ eval_calendar(const CalendarRule *rule, TimestampTz start, TimestampTz after,
 	/*
 	 * Fast-forward: estimate the first period that could contain a candidate
 	 * greater than "after", so that e.g. FREQ=SECONDLY anchored years in the
-	 * past does not step through billions of periods.  Back off one period
-	 * to stay safe against boundary effects.
+	 * past does not step through billions of periods.  Back off one period to
+	 * stay safe against boundary effects.
 	 */
 	if (after > start)
 	{
@@ -976,6 +1263,13 @@ eval_calendar(const CalendarRule *rule, TimestampTz start, TimestampTz after,
 						months[0] = tm_start.tm_mon;
 					}
 
+					if (rule->bysetpos)
+					{
+						scan_setpos_period(rule, year, months, nmon, &tm_start,
+										   start, after, &best, &found);
+						break;
+					}
+
 					for (mi = 0; mi < nmon; mi++)
 					{
 						int			days[31];
@@ -1006,6 +1300,13 @@ eval_calendar(const CalendarRule *rule, TimestampTz start, TimestampTz after,
 
 					if (rule->has_bymonth && !rule->bymonth[mon])
 						break;
+
+					if (rule->bysetpos)
+					{
+						scan_setpos_period(rule, year, &mon, 1, &tm_start,
+										   start, after, &best, &found);
+						break;
+					}
 
 					nd = month_day_list(rule, year, mon, tm_start.tm_mday, days);
 					for (di = 0; di < nd && !found; di++)
