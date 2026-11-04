@@ -13,10 +13,10 @@ subdir = src/oracle_test/postmaster
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
-check:
+oracle-check:
 	$(oracle_prove_check)
 
-installcheck:
+oracle-installcheck:
 	$(oracle_prove_installcheck)
 
 clean distclean:
