@@ -1,0 +1,175 @@
+-- NUMBER's precision and scale do not fix the default output width.
+SELECT CAST(5 AS NUMBER(5,2)) AS n1,
+       CAST(123.5 AS NUMBER(5,2)) AS n2,
+       CAST(0 AS NUMBER(5,2)) AS n3,
+       CAST(6.89 AS NUMBER(5,2)) AS n4;
+ n1 |  n2   | n3 |  n4  
+----+-------+----+------
+ 5  | 123.5 | 0  | 6.89
+(1 row)
+
+SELECT CAST(5 AS NUMBER(5,3)), CAST(1.230 AS NUMBER(5,3)),
+       CAST(-1.230 AS NUMBER(5,3)), CAST(100 AS NUMBER(5,2));
+ number | number | number | number 
+--------+--------+--------+--------
+ 5      | 1.23   | -1.23  | 100
+(1 row)
+
+SELECT '1.2300'::sys.number, '-0.0000'::sys.number,
+       '0.00000100'::sys.number;
+ number | number |  number  
+--------+--------+----------
+ 1.23   | 0      | 0.000001
+(1 row)
+
+SELECT CAST(12345 AS NUMBER(5,-2)), CAST(0.00120 AS NUMBER(3,5));
+ number | number 
+--------+--------
+ 12300  | 0.0012
+(1 row)
+
+SELECT CAST('9999999999999999999999999999.1200000000' AS NUMBER(38,10));
+             number              
+---------------------------------
+ 9999999999999999999999999999.12
+(1 row)
+
+SELECT ARRAY[CAST(5 AS NUMBER(5,2)), CAST(1.20 AS NUMBER(5,2)),
+             CAST(0 AS NUMBER(5,2)), NULL::sys.number];
+     array      
+----------------
+ {5,1.2,0,NULL}
+(1 row)
+
+-- Retain the existing support for special values and NULLs.
+SELECT 'NaN'::sys.number, 'Infinity'::sys.number, '-Infinity'::sys.number,
+       NULL::sys.number;
+ number |  number  |  number   | number 
+--------+----------+-----------+--------
+ NaN    | Infinity | -Infinity | 
+(1 row)
+
+CREATE TABLE number_output_test (id integer, val NUMBER(5,2));
+INSERT INTO number_output_test VALUES (1, -1.23), (2, 5), (3, 6.89), (4, 123.5);
+SELECT * FROM number_output_test ORDER BY id;
+ id |  val  
+----+-------
+  1 | -1.23
+  2 | 5
+  3 | 6.89
+  4 | 123.5
+(4 rows)
+
+-- Explicit and implicit conversions share the default representation.
+SELECT id, '[' || TO_CHAR(val) || ']' AS default_char,
+       '[' || val || ']' AS implicit_char,
+       '[' || CAST(val AS VARCHAR2(20)) || ']' AS varchar_char,
+       '[' || TO_CHAR(val, 'FM9990.00') || ']' AS fixed_char
+FROM number_output_test ORDER BY id;
+ id | default_char | implicit_char | varchar_char | fixed_char 
+----+--------------+---------------+--------------+------------
+  1 | [-1.23]      | [-1.23]       | [-1.23]      | [-1.23]
+  2 | [5]          | [5]           | [5]          | [5.00]
+  3 | [6.89]       | [6.89]        | [6.89]       | [6.89]
+  4 | [123.5]      | [123.5]       | [123.5]      | [123.50]
+(4 rows)
+
+-- LIKE must match the same representation that is displayed.
+SELECT val FROM number_output_test WHERE val LIKE '1%' ORDER BY id;
+  val  
+-------
+ 123.5
+(1 row)
+
+SELECT val FROM number_output_test WHERE val LIKE '_' ORDER BY id;
+ val 
+-----
+ 5
+(1 row)
+
+SELECT val FROM number_output_test WHERE val NOT LIKE '_' ORDER BY id;
+  val  
+-------
+ -1.23
+ 6.89
+ 123.5
+(3 rows)
+
+SELECT val FROM number_output_test WHERE val LIKE '%0' ORDER BY id;
+ val 
+-----
+(0 rows)
+
+SELECT val FROM number_output_test WHERE val LIKE '%.%' ORDER BY id;
+  val  
+-------
+ -1.23
+ 6.89
+ 123.5
+(3 rows)
+
+SELECT val FROM number_output_test WHERE val NOT LIKE '%.%' ORDER BY id;
+ val 
+-----
+ 5
+(1 row)
+
+-- Output must not alter the stored scale or the binary representation.
+SELECT id, val::pg_catalog.numeric AS numeric_value,
+       pg_catalog.scale(val::pg_catalog.numeric) AS stored_scale,
+       sys.number_send(val) = pg_catalog.numeric_send(val::pg_catalog.numeric)
+         AS same_binary
+FROM number_output_test ORDER BY id;
+ id | numeric_value | stored_scale | same_binary 
+----+---------------+--------------+-------------
+  1 |         -1.23 |            2 | t
+  2 |          5.00 |            2 | t
+  3 |          6.89 |            2 | t
+  4 |        123.50 |            2 | t
+(4 rows)
+
+COPY number_output_test TO STDOUT;
+1	-1.23
+2	5
+3	6.89
+4	123.5
+-- Typmod rounding and overflow checks must still apply before output.
+SELECT CAST(1.236 AS NUMBER(5,2)), CAST(-1.236 AS NUMBER(5,2));
+ number | number 
+--------+--------
+ 1.24   | -1.24
+(1 row)
+
+SELECT CAST(999.994 AS NUMBER(5,2));
+ number 
+--------
+ 999.99
+(1 row)
+
+SELECT CAST(999.995 AS NUMBER(5,2));
+ERROR:  numeric field overflow
+DETAIL:  A field with precision 5, scale 2 must round to an absolute value less than 10^3.
+SELECT CAST(-999.995 AS NUMBER(5,2));
+ERROR:  numeric field overflow
+DETAIL:  A field with precision 5, scale 2 must round to an absolute value less than 10^3.
+INSERT INTO number_output_test VALUES (5, 1.236), (6, 999.994);
+INSERT INTO number_output_test VALUES (7, 999.995);
+ERROR:  numeric field overflow
+DETAIL:  A field with precision 5, scale 2 must round to an absolute value less than 10^3.
+SELECT * FROM number_output_test WHERE id >= 5 ORDER BY id;
+ id |  val   
+----+--------
+  5 | 1.24
+  6 | 999.99
+(2 rows)
+
+-- PostgreSQL numeric retains its own scale, even in Oracle mode.
+SELECT CAST(5 AS pg_catalog.numeric(5,2)),
+       CAST(123.5 AS pg_catalog.numeric(5,2)),
+       CAST(0 AS pg_catalog.numeric(5,2));
+ numeric | numeric | numeric 
+---------+---------+---------
+    5.00 |  123.50 |    0.00
+(1 row)
+
+DROP TABLE number_output_test;

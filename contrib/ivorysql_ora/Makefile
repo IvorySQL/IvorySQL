@@ -18,6 +18,7 @@ OBJS = \
 	src/datatype/dsinterval.o \
 	src/datatype/compatible_oracle_precedence.o \
 	src/datatype/common_datatypes.o \
+	src/datatype/number.o \
 	src/datatype/raw_long.o \
 	src/datatype/binary_float.o \
 	src/datatype/binary_double.o \
@@ -46,7 +47,7 @@ OBJS = \
 EXTENSION = ivorysql_ora
 
 # SQL(s) which need to be generated only if which is specified here.
-DATA_built = ivorysql_ora--1.0.sql
+DATA_built = ivorysql_ora--1.0.sql ivorysql_ora--1.0--1.1.sql
 
 install: install-data
 
@@ -76,6 +77,7 @@ ORA_REGRESS = \
 	ora_datetime \
 	ora_interval \
 	ora_number \
+	ora_number_output \
 	ora_to_number_hex \
 	ora_binary_float \
 	ora_binary_double \
