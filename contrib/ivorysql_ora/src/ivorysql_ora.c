@@ -54,6 +54,16 @@ extern char *utl_file_umask_str;
 extern void utl_file_umask_assign_hook(const char *newvalue, void *extra);
 extern bool utl_file_umask_check_hook(char **newval, void **extra, GucSource source);
 
+/* UTL_MAIL GUC variables (defined in builtin_packages/utl_mail/utl_mail.c) */
+extern char *utl_mail_smtp_out_server;
+extern char *utl_mail_smtp_out_domain;
+extern char *utl_mail_smtp_out_whitelist;
+extern char *utl_mail_client_id;
+extern int utl_mail_timeout;
+extern bool utl_mail_smtp_out_server_check_hook(char **newval, void **extra, GucSource source);
+extern bool utl_mail_smtp_out_whitelist_check_hook(char **newval, void **extra, GucSource source);
+extern bool utl_mail_timeout_check_hook(int *newval, void **extra, GucSource source);
+
 /* Saved hook value in case of unload */
 static oracle_datatype_precedence_hook_type pre_oracle_datatype_precedence_hook = NULL;
 
@@ -129,6 +139,60 @@ _PG_init(void)
 								0,
 								utl_file_umask_check_hook,
 								utl_file_umask_assign_hook, NULL);
+
+	/*
+	 * UTL_MAIL network configuration.  smtp_out_server and the outbound
+	 * whitelist are superuser-only (their check hooks enforce that), see
+	 * src/builtin_packages/utl_mail/utl_mail.c for the security model.
+	 */
+	DefineCustomStringVariable("utl_mail.smtp_out_server",
+								"SMTP server (host[:port]) used by UTL_MAIL; empty disables UTL_MAIL.",
+								NULL,
+								&utl_mail_smtp_out_server,
+								"",
+								PGC_USERSET,
+								0,
+								utl_mail_smtp_out_server_check_hook,
+								NULL, NULL);
+
+	DefineCustomStringVariable("utl_mail.smtp_out_domain",
+								"Domain name advertised in the HELO/EHLO command by UTL_MAIL.",
+								NULL,
+								&utl_mail_smtp_out_domain,
+								"",
+								PGC_USERSET,
+								0,
+								NULL, NULL, NULL);
+
+	DefineCustomStringVariable("utl_mail.smtp_out_whitelist",
+								"Comma-separated hosts/domains/IPs allowed as UTL_MAIL SMTP targets; empty denies all outbound mail.",
+								NULL,
+								&utl_mail_smtp_out_whitelist,
+								"",
+								PGC_USERSET,
+								0,
+								utl_mail_smtp_out_whitelist_check_hook,
+								NULL, NULL);
+
+	DefineCustomIntVariable("utl_mail.timeout",
+							 "Timeout (milliseconds) for UTL_MAIL SMTP connect and socket I/O.",
+							 NULL,
+							 &utl_mail_timeout,
+							 10000,
+							 1, 3600000,
+							 PGC_USERSET,
+							 0,
+							 utl_mail_timeout_check_hook,
+							 NULL, NULL);
+
+	DefineCustomStringVariable("utl_mail.client_id",
+								"Optional client identity sent in the EHLO command by UTL_MAIL.",
+								NULL,
+								&utl_mail_client_id,
+								"",
+								PGC_USERSET,
+								0,
+								NULL, NULL, NULL);
 
 	MarkGUCPrefixReserved("ivorysql");
 }
