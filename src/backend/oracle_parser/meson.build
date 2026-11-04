@@ -22,6 +22,7 @@ ora_parser_sources = files(
 ora_parser_kwlist = custom_target('ora_kwlist',
   input: files('../../include/oracle_parser/ora_kwlist.h'),
   output: 'ora_kwlist_d.h',
+  depend_files: gen_kwlist_deps,
   command: [perl, '-I', '@SOURCE_ROOT@/src/tools', files('../../tools/ora_gen_keywordlist.pl'),
       '--extern', '--output', '@OUTDIR@', '@INPUT@'])
 generated_sources += ora_parser_kwlist
