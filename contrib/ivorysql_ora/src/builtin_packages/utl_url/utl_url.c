@@ -32,6 +32,7 @@
 #include "lib/stringinfo.h"
 #include "mb/pg_wchar.h"
 #include "utils/builtins.h"
+#include "varatt.h"
 
 /*
  * RFC 2396 / Oracle UTL_URL character classes.
@@ -180,12 +181,43 @@ ivorysql_utl_url_escape(PG_FUNCTION_ARGS)
 		utl_url_charset_to_encoding(PG_GETARG_TEXT_PP(2));
 
 	/*
-	 * Work on a NUL-terminated copy: pg_server_to_any() may hand the input
-	 * pointer straight back, and the conversion helpers expect C strings.
+	 * Determine the real byte length of the input text.  Using strlen()
+	 * here would silently truncate the data at the first embedded NUL
+	 * byte, causing data loss; PostgreSQL's text type permits embedded
+	 * NULs via the binary protocol, so we must honour VARSIZE_ANY_EXHDR.
+	 */
+	len = VARSIZE_ANY_EXHDR(url);
+
+	/*
+	 * Work on a NUL-terminated copy: pg_server_to_any() may hand the
+	 * input pointer straight back, and the conversion helpers expect
+	 * C strings.
 	 */
 	src = text_to_cstring(url);
-	converted = pg_server_to_any(src, strlen(src), target_encoding);
-	len = strlen(converted);
+
+	/*
+	 * When a real encoding conversion is required, the underlying
+	 * conversion routines operate with C-string semantics and cannot
+	 * preserve embedded NUL bytes.  Reject such input explicitly rather
+	 * than silently truncating it.
+	 */
+	if (target_encoding != GetDatabaseEncoding() &&
+		target_encoding != PG_SQL_ASCII &&
+		memchr(src, '\0', len) != NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("UTL_URL.ESCAPE: input string contains embedded NUL bytes, which cannot be converted to a different URL character set")));
+
+	converted = pg_server_to_any(src, len, target_encoding);
+
+	/*
+	 * When no conversion is performed, pg_server_to_any() returns the
+	 * input pointer and the length is unchanged (and may include embedded
+	 * NULs, which will be escaped as %00 below).  When a conversion is
+	 * performed, the result is a proper C string and strlen() is safe.
+	 */
+	if (converted != src)
+		len = strlen(converted);
 
 	initStringInfo(&buf);
 	for (i = 0; i < len; i++)
