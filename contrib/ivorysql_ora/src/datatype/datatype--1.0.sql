@@ -155,6 +155,7 @@ RETURNS sys.oracharchar
 AS 'MODULE_PATHNAME','bool_orachar'
 LANGUAGE C
 STRICT
+PARALLEL SAFE
 IMMUTABLE;
 
 -- Convert oracharchar to xml
@@ -410,6 +411,7 @@ RETURNS sys.oravarcharchar
 AS 'MODULE_PATHNAME','rtrim'
 LANGUAGE C
 STRICT
+PARALLEL SAFE
 IMMUTABLE;
 
 CREATE CAST (sys.oracharchar AS sys.oravarcharchar)
@@ -422,6 +424,7 @@ RETURNS sys.oravarcharbyte
 AS 'MODULE_PATHNAME','rtrim'
 LANGUAGE C
 STRICT
+PARALLEL SAFE
 IMMUTABLE;
 
 CREATE CAST (sys.oracharchar AS sys.oravarcharbyte)
@@ -834,6 +837,7 @@ RETURNS sys.oravarcharchar
 AS 'MODULE_PATHNAME','rtrim'
 LANGUAGE C
 STRICT
+PARALLEL SAFE
 IMMUTABLE;
 
 CREATE CAST (sys.oracharbyte AS sys.oravarcharchar)
@@ -846,6 +850,7 @@ RETURNS sys.oravarcharbyte
 AS 'MODULE_PATHNAME','rtrim'
 LANGUAGE C
 STRICT
+PARALLEL SAFE
 IMMUTABLE;
 
 CREATE CAST (sys.oracharbyte AS sys.oravarcharbyte)
@@ -3498,6 +3503,7 @@ CREATE FUNCTION sys.oravarcharcat(sys.oravarcharchar, sys.oravarcharchar)
 RETURNS sys.oravarcharchar
 AS 'MODULE_PATHNAME','oravarcharcat'
 LANGUAGE C
+PARALLEL SAFE
 IMMUTABLE;
 
 CREATE OPERATOR ||  (
@@ -3510,6 +3516,7 @@ CREATE FUNCTION sys.concat(sys.oravarcharchar, sys.oravarcharchar)
 RETURNS sys.oravarcharchar
 AS 'MODULE_PATHNAME','oravarcharcat'
 LANGUAGE C
+PARALLEL SAFE
 IMMUTABLE;
 /***************************************************************
  *
@@ -3572,6 +3579,7 @@ RETURNS pg_catalog.date
 AS 'MODULE_PATHNAME','oradate_date'
 LANGUAGE C
 STRICT
+PARALLEL SAFE
 IMMUTABLE;
 
 CREATE CAST (sys.oradate AS pg_catalog.date)
@@ -3583,6 +3591,7 @@ RETURNS sys.oradate
 AS 'MODULE_PATHNAME','date_oradate'
 LANGUAGE C
 STRICT
+PARALLEL SAFE
 IMMUTABLE;
 
 CREATE CAST (pg_catalog.date AS sys.oradate)
@@ -9573,6 +9582,7 @@ RETURNS sys.binary_double
 AS 'MODULE_PATHNAME','number_binary_double'
 LANGUAGE C
 STRICT
+PARALLEL SAFE
 IMMUTABLE
 LEAKPROOF;
 
@@ -10583,16 +10593,16 @@ AS IMPLICIT;
 
 --create function for sgrdb
 -- add immutable
-create or replace function sys.to_char(text) RETURNS text AS $$ SELECT $1 $$ LANGUAGE SQL IMMUTABLE;
+create or replace function sys.to_char(text) RETURNS text AS $$ SELECT $1 $$ LANGUAGE SQL PARALLEL SAFE IMMUTABLE;
 
 -- generate_series support int2,int4,int8 but number has more choices will result error
 CREATE FUNCTION sys.generate_series(number, number) returns setof numeric AS $$
 SELECT PG_CATALOG.generate_series($1::numeric,$2::numeric)
-$$ LANGUAGE SQL IMMUTABLE;
+$$ LANGUAGE SQL PARALLEL SAFE IMMUTABLE;
 
 CREATE FUNCTION sys.generate_series(number, number, number) returns setof numeric AS $$
 SELECT PG_CATALOG.generate_series($1::numeric,$2::numeric, $3::numeric)
-$$ LANGUAGE SQL IMMUTABLE;
+$$ LANGUAGE SQL PARALLEL SAFE IMMUTABLE;
 
 CREATE CAST (sys.oravarcharchar AS pg_catalog.int4)
 WITH INOUT
@@ -10614,6 +10624,7 @@ RETURNS numeric
 AS $$SELECT pg_catalog.round($1,$2);$$
 LANGUAGE SQL
 STRICT
+PARALLEL SAFE
 IMMUTABLE;
 
 CREATE CAST (sys.oravarcharchar AS float8)
