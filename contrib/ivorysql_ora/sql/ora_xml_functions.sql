@@ -130,6 +130,14 @@ SELECT appendchildxml(XMLType('<a><b>666</b></a>'), '/a/b', XMLtype('<name>1000<
 
 SELECT appendchildxml(XMLType('<ers:OPS xmlns:ers="http://www.test.com/schema/ers/v3"></ers:OPS>'), '/ers:OPS', XMLType('<ers:LOG xmlns:ers="http://www.test.com/schema/ers/v3" IVY="666"></ers:LOG>'),'xmlns:ers="http://www.test.com/schema/ers/v3"') from dual;
 
+-- documents with a comment or processing instruction before the root
+-- element used to crash the backend (double free)
+SELECT appendchildxml(XMLType('<!-- c --><a><b/></a>'), '/a', XMLtype('<c/>')) from dual;
+
+SELECT appendchildxml(XMLType('<?pi data?><a><b/></a>'), '/a', XMLtype('<c/>')) from dual;
+
+SELECT appendchildxml(XMLType('<!-- c --><ers:OPS xmlns:ers="http://www.test.com/schema/ers/v3"></ers:OPS>'), '/ers:OPS', XMLType('<ers:LOG xmlns:ers="http://www.test.com/schema/ers/v3"></ers:LOG>'),'xmlns:ers="http://www.test.com/schema/ers/v3"') from dual;
+
 --
 -- updatexml
 --
