@@ -155,6 +155,19 @@ select * from xmltest;
 
 SELECT updatexml(data, 'soapenv:Envelope/soapenv:Body/web:BBB/typ:EEE/text()',123, 'xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"') from xmlnstest where id = 1;
 
+-- an empty (NULL) value empties the target; it used to free a node that
+-- was still linked in the document and crash the backend when the target
+-- had more than one child
+SELECT updatexml(XMLType('<a><b/><c/></a>'), '/a', '') FROM dual;
+
+SELECT updatexml(XMLType('<a><b>1<u/>2</b></a>'), '//*[text()]', '') FROM dual;
+
+SELECT updatexml(XMLType('<a><b>1</b><c>2</c></a>'), '//*[text()]', '') FROM dual;
+
+SELECT updatexml(XMLType('<a/>'), '/a', '') FROM dual;
+
+SELECT updatexml(XMLType('<a><b>666</b></a>'), '/a/b', '') FROM dual;
+
 --
 -- insertxmlbefore
 --
