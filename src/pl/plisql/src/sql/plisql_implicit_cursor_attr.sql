@@ -574,6 +574,21 @@ BEGIN
 END;
 $$;
 
+-- Prepare the attribute expressions after changing the mode inside a routine.
+-- This also rejects a rewrite that merely compensates for the mode at compile time.
+CREATE FUNCTION cursor_case_late_plan() RETURNS void AS $$
+BEGIN
+    PERFORM set_config('ivorysql.identifier_case_switch', 'interchange', true);
+    RAISE NOTICE 'late initial: % % % %',
+        SQL%ROWCOUNT, sql%found, Sql%NotFound, sQl % IsOpen;
+    UPDATE cursor_case_test SET id = id;
+    RAISE NOTICE 'late update: % % % %',
+        SQL%ROWCOUNT, sql%found, Sql%NotFound, sQl % IsOpen;
+END;
+$$ LANGUAGE plisql;
+/
+DO $$ BEGIN PERFORM cursor_case_late_plan(); END $$;
+DROP FUNCTION cursor_case_late_plan();
 RESET ivorysql.identifier_case_switch;
 DROP PACKAGE cursor_case_pkg;
 DROP PROCEDURE cursor_case_proc;
