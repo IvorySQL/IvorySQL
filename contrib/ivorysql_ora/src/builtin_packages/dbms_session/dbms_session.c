@@ -33,6 +33,7 @@
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "access/hash.h"
+#include "mb/pg_wchar.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
 #include "utils/packagecache.h"
@@ -48,6 +49,7 @@
  */
 #define DBMS_SESSION_NAME_LEN		256
 #define DBMS_SESSION_MAX_VALUE_LEN	4000
+#define DBMS_SESSION_CLIENT_ID_LEN	64
 #define DBMS_SESSION_HASH_INIT_SIZE	64
 
 /*
@@ -70,6 +72,7 @@ typedef struct CtxEntry
 /* Per-backend session state */
 static HTAB *DbmsSessionHash = NULL;
 static MemoryContext DbmsSessionContext = NULL;
+static char *DbmsSessionClientId = NULL;
 
 /* Internal helpers */
 static void dbms_session_init(void);
@@ -83,6 +86,57 @@ PG_FUNCTION_INFO_V1(ora_dbms_session_clear_all_context);
 PG_FUNCTION_INFO_V1(ora_dbms_session_get_context);
 PG_FUNCTION_INFO_V1(ora_dbms_session_list_context);
 PG_FUNCTION_INFO_V1(ora_dbms_session_reset_package);
+PG_FUNCTION_INFO_V1(ora_dbms_session_set_identifier);
+PG_FUNCTION_INFO_V1(ora_dbms_session_clear_identifier);
+PG_FUNCTION_INFO_V1(ora_dbms_session_get_identifier);
+
+/* Client identifier is session state, not a package variable or context key. */
+Datum
+ora_dbms_session_set_identifier(PG_FUNCTION_ARGS)
+{
+	text	   *value;
+	int			length;
+	char	   *identifier = NULL;
+
+	if (!PG_ARGISNULL(0))
+	{
+		value = PG_GETARG_TEXT_PP(0);
+		length = VARSIZE_ANY_EXHDR(value);
+		if (length > DBMS_SESSION_CLIENT_ID_LEN)
+			length = pg_mbcliplen(VARDATA_ANY(value), length,
+								  DBMS_SESSION_CLIENT_ID_LEN);
+
+		if (length > 0)
+		{
+			MemoryContext oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+
+			identifier = pnstrdup(VARDATA_ANY(value), length);
+			MemoryContextSwitchTo(oldcontext);
+		}
+	}
+
+	if (DbmsSessionClientId != NULL)
+		pfree(DbmsSessionClientId);
+	DbmsSessionClientId = identifier;
+	PG_RETURN_VOID();
+}
+
+Datum
+ora_dbms_session_clear_identifier(PG_FUNCTION_ARGS)
+{
+	if (DbmsSessionClientId != NULL)
+		pfree(DbmsSessionClientId);
+	DbmsSessionClientId = NULL;
+	PG_RETURN_VOID();
+}
+
+Datum
+ora_dbms_session_get_identifier(PG_FUNCTION_ARGS)
+{
+	if (DbmsSessionClientId == NULL)
+		PG_RETURN_NULL();
+	PG_RETURN_TEXT_P(cstring_to_text(DbmsSessionClientId));
+}
 
 /*
  * dbms_session_init
@@ -455,6 +509,10 @@ ora_dbms_session_reset_package(PG_FUNCTION_ARGS)
 void
 ora_dbms_session_reset(void)
 {
+	if (DbmsSessionClientId != NULL)
+		pfree(DbmsSessionClientId);
+	DbmsSessionClientId = NULL;
+
 	if (DbmsSessionContext != NULL)
 	{
 		MemoryContextDelete(DbmsSessionContext);
