@@ -20,7 +20,9 @@
 #include "miscadmin.h"
 #include "utils/builtins.h"
 #include "utils/formatting.h"
+#include "utils/guc.h"
 #include "utils/memutils.h"
+#include "utils/ora_compatible.h"
 #include "varatt.h"
 
 
@@ -29,6 +31,17 @@ static text *dotrim(const char *string, int stringlen,
 					bool doltrim, bool dortrim);
 static bytea *dobyteatrim(bytea *string, bytea *set,
 						  bool doltrim, bool dortrim);
+static bool ora_trim_result_is_empty(text *result);
+
+/*
+ * Oracle has no distinct empty string, so its TRIM/LTRIM/RTRIM return NULL
+ * once the whole input is trimmed away.  PostgreSQL keeps the empty string.
+ */
+static bool
+ora_trim_result_is_empty(text *result)
+{
+	return ORA_PARSER == compatible_db && VARSIZE_ANY_EXHDR(result) == 0;
+}
 
 
 /********************************************************************
@@ -366,6 +379,9 @@ btrim(PG_FUNCTION_ARGS)
 				 VARDATA_ANY(set), VARSIZE_ANY_EXHDR(set),
 				 true, true);
 
+	if (ora_trim_result_is_empty(ret))
+		PG_RETURN_NULL();
+
 	PG_RETURN_TEXT_P(ret);
 }
 
@@ -384,6 +400,9 @@ btrim1(PG_FUNCTION_ARGS)
 	ret = dotrim(VARDATA_ANY(string), VARSIZE_ANY_EXHDR(string),
 				 " ", 1,
 				 true, true);
+
+	if (ora_trim_result_is_empty(ret))
+		PG_RETURN_NULL();
 
 	PG_RETURN_TEXT_P(ret);
 }
@@ -726,6 +745,9 @@ ltrim(PG_FUNCTION_ARGS)
 				 VARDATA_ANY(set), VARSIZE_ANY_EXHDR(set),
 				 true, false);
 
+	if (ora_trim_result_is_empty(ret))
+		PG_RETURN_NULL();
+
 	PG_RETURN_TEXT_P(ret);
 }
 
@@ -744,6 +766,9 @@ ltrim1(PG_FUNCTION_ARGS)
 	ret = dotrim(VARDATA_ANY(string), VARSIZE_ANY_EXHDR(string),
 				 " ", 1,
 				 true, false);
+
+	if (ora_trim_result_is_empty(ret))
+		PG_RETURN_NULL();
 
 	PG_RETURN_TEXT_P(ret);
 }
@@ -774,6 +799,9 @@ rtrim(PG_FUNCTION_ARGS)
 				 VARDATA_ANY(set), VARSIZE_ANY_EXHDR(set),
 				 false, true);
 
+	if (ora_trim_result_is_empty(ret))
+		PG_RETURN_NULL();
+
 	PG_RETURN_TEXT_P(ret);
 }
 
@@ -792,6 +820,9 @@ rtrim1(PG_FUNCTION_ARGS)
 	ret = dotrim(VARDATA_ANY(string), VARSIZE_ANY_EXHDR(string),
 				 " ", 1,
 				 false, true);
+
+	if (ora_trim_result_is_empty(ret))
+		PG_RETURN_NULL();
 
 	PG_RETURN_TEXT_P(ret);
 }
