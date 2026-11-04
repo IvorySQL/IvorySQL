@@ -337,7 +337,16 @@ ora_dbms_random_value_range(PG_FUNCTION_ARGS)
 	if (DatumGetInt32(DirectFunctionCall2(numeric_cmp,
 													NumericGetDatum(low),
 													NumericGetDatum(high))) == 0)
-		PG_RETURN_NUMERIC(low);
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("DBMS_RANDOM.VALUE low must be less than high")));
+
+	if (DatumGetInt32(DirectFunctionCall2(numeric_cmp,
+												 NumericGetDatum(low),
+												 NumericGetDatum(high))) > 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("DBMS_RANDOM.VALUE low must be less than high")));
 
 	ensure_seeded();
 	fraction = DatumGetNumeric(DirectFunctionCall1(float8_numeric,
