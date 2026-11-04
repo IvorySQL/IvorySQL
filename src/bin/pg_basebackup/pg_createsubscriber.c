@@ -416,7 +416,11 @@ get_exec_path(const char *argv0, const char *progname)
 	char	   *exec_path;
 	int			ret;
 
-	versionstr = psprintf("%s (PostgreSQL) %s\n", progname, PG_VERSION);
+	if (strcmp(progname, "pg_ctl") == 0)
+		versionstr = psprintf("%s (PostgreSQL) %s (IvorySQL %s)\n",
+							  progname, PG_VERSION, PACKAGE_IVORYSQL_VERSION);
+	else
+		versionstr = psprintf("%s (PostgreSQL) %s\n", progname, PG_VERSION);
 	exec_path = pg_malloc(MAXPGPATH);
 	ret = find_other_exec(argv0, progname, versionstr, exec_path);
 
@@ -2201,7 +2205,7 @@ get_publisher_databases(struct CreateSubscriberOptions *opt,
 		conninfo = concat_conninfo_dbname(opt->pub_conninfo_str, "postgres");
 		conn = connect_database(conninfo, false);
 		pg_free(conninfo);
-		
+
 		if (!conn)
 		{
 			conninfo = concat_conninfo_dbname(opt->pub_conninfo_str, "ivorysql");
