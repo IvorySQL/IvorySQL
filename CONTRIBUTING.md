@@ -47,5 +47,7 @@ A peer review converges when it receives at least one +1 and no -1s votes from t
 
 At any time during the patch review, you may experience delays based on the availability of reviewers and core team members. Please be patient. That being said, don't get discouraged either. If you're not getting expected feedback for a few days add a comment asking for updates on the pull request itself or send an email to the mailing list.
 
+Additionally, to maintain project activity and review efficiency, the community has set a response time limit: If the author of a PR fails to respond to review comments for more than two weeks or 10 business days, the PR may be considered inactive and closed.
+
 # Direct commits to the repository
 On occasion, you will see core team members committing directly to the repository without going through the pull request workflow. This is reserved for small changes only and the rule of thumb we use is this: if the change touches any functionality that may result in a test failure, then it has to go through a pull request workflow. If, on the other hand, the change is in the non-functional part of the codebase (such as fixing a typo inside of a comment block) core team members can decide to just commit to the repository directly.
