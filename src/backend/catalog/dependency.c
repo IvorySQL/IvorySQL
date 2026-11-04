@@ -1785,7 +1785,13 @@ doDeletion(const ObjectAddress *object, int flags)
 				if (relKind == RELKIND_SEQUENCE)
 					DeleteSequenceTuple(object->objectId);
 
-				if (ORA_PARSER == compatible_db && relKind == RELKIND_VIEW)
+				/*
+				 * A view dropped while the session happens to run in PG mode must not
+				 * leave its pg_force_view metadata behind, so this cleanup is not gated
+				 * on the session's compatible mode.  DeleteForceView() is a no-op when
+				 * the relation has no such entry, as in a plain PG-mode cluster.
+				 */
+				if (relKind == RELKIND_VIEW)
 					DeleteForceView(object->objectId);
 
 				break;
