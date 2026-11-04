@@ -4203,6 +4203,13 @@ foreach test_dir : tests
           '-I', meson.project_source_root() / 'src/oracle_test/perl',
         ]
       endif
+
+      # A suite can provide its own Perl library directory, which must take
+      # precedence over the default src/test/perl modules.
+      foreach inc : t.get('perl_incs', [])
+        test_command += ['-I', inc]
+      endforeach
+
       test_command += [
         '-I', meson.project_source_root() / 'src/test/perl',
         '-I', test_dir['sd'],
