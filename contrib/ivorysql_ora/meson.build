@@ -40,7 +40,8 @@ ivorysql_ora_sources = files(
   'src/builtin_packages/dbms_scheduler/dbms_scheduler.c',
   'src/builtin_packages/dbms_scheduler/scheduler_calendar.c',
   'src/builtin_packages/dbms_scheduler/scheduler_launcher.c',
-  'src/builtin_packages/dbms_scheduler/scheduler_worker.c'
+  'src/builtin_packages/dbms_scheduler/scheduler_worker.c',
+  'src/builtin_packages/utl_call_stack/utl_call_stack.c'
 )
 
 if host_system == 'windows'
