@@ -25,6 +25,7 @@ SUBDIRS = \
 		intagg		\
 		intarray	\
 		isn		\
+		ivorysql_perf	\
 		lo		\
 		ltree		\
 		oid2name	\
