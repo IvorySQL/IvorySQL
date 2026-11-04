@@ -16,9 +16,9 @@ use File::Find;
 use File::Basename;
 use Tie::File;
 
-my $pgdg      = 'IvorySQL Global Development Team';
-my $cc        = 'Copyright \(c\)';
-my $ccliteral = 'Copyright (c)';
+my $pgdg = 'IvorySQL Global Development Team';
+# Apache-style notices omit both "(c)" and the comma before the owner.
+my $cc = 'Copyright(?: \(c\))?';
 
 # year-1900 is what localtime(time) puts in element 5
 my $year = 1900 + ${ [ localtime(time) ] }[5];
@@ -56,15 +56,15 @@ sub wanted
 
 		# Skip line if it already matches the current year; if not
 		# we get $year-$year, e.g. 2012-2012.
-		next if $line =~ m/$cc $year, $pgdg/i;
+		next if $line =~ m/$cc $year,? $pgdg/i;
 
 		# Skip already-updated lines too, to avoid unnecessary
 		# file updates.
-		next if $line =~ m/$cc \d{4}-$year, $pgdg/i;
+		next if $line =~ m/$cc \d{4}-$year,? $pgdg/i;
 
 		# Apply the update, relying on Tie::File to write the file.
-		$line =~ s/$cc (\d{4})-\d{4}, $pgdg/$ccliteral $1-$year, $pgdg/i;
-		$line =~ s/$cc (\d{4}), $pgdg/$ccliteral $1-$year, $pgdg/i;
+		$line =~ s/($cc )(\d{4})-\d{4}(,? $pgdg)/$1$2-$year$3/i;
+		$line =~ s/($cc )(\d{4})(,? $pgdg)/$1$2-$year$3/i;
 	}
 	untie @lines;
 	return;
