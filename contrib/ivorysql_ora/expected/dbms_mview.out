@@ -1,0 +1,113 @@
+--
+-- DBMS_MVIEW
+--
+-- Regression tests for Oracle-compatible DBMS_MVIEW package:
+--   - REFRESH on a single materialized view
+--   - REFRESH on multiple comma-separated materialized views
+--   - REFRESH_ALL_MVIEWS procedure
+--   - PURGE_MVIEW_FROM_LOG procedure
+--   - Error handling (NULL parameter, non-existent view)
+--   - Internal function execute privilege revoked from PUBLIC (CWE-862)
+--
+-- Setup base tables and materialized views
+CREATE TABLE mview_base_tab1 (
+    id int,
+    val text
+);
+CREATE TABLE
+CREATE TABLE mview_base_tab2 (
+    id int,
+    num_val numeric
+);
+CREATE TABLE
+INSERT INTO mview_base_tab1 VALUES (1, 'initial val');
+INSERT 0 1
+INSERT INTO mview_base_tab2 VALUES (10, 100.50);
+INSERT 0 1
+CREATE MATERIALIZED VIEW mv_test_view1 AS SELECT * FROM mview_base_tab1;
+SELECT 1
+CREATE MATERIALIZED VIEW mv_test_view2 AS SELECT * FROM mview_base_tab2;
+SELECT 1
+-- Verify initial data in materialized views
+SELECT * FROM mv_test_view1;
+ id |     val
+----+-------------
+  1 | initial val
+(1 row)
+
+SELECT * FROM mv_test_view2;
+ id | num_val
+----+---------
+ 10 |  100.50
+(1 row)
+
+-- Update base tables
+INSERT INTO mview_base_tab1 VALUES (2, 'second val');
+INSERT 0 1
+INSERT INTO mview_base_tab2 VALUES (20, 200.75);
+INSERT 0 1
+-- REFRESH single materialized view
+CALL dbms_mview.refresh('mv_test_view1');
+SELECT COUNT(*) FROM mv_test_view1;
+ count
+-------
+     2
+(1 row)
+
+-- REFRESH multiple comma-separated views
+CALL dbms_mview.refresh('mv_test_view1, mv_test_view2');
+SELECT COUNT(*) FROM mv_test_view1;
+ count
+-------
+     2
+(1 row)
+
+SELECT COUNT(*) FROM mv_test_view2;
+ count
+-------
+     2
+(1 row)
+
+-- REFRESH_ALL_MVIEWS
+DO $$
+DECLARE
+    fails NUMBER;
+BEGIN
+    dbms_mview.refresh_all_mviews(fails);
+    RAISE NOTICE 'REFRESH_ALL_MVIEWS: failures=%', fails;
+END;
+$$;
+NOTICE:  REFRESH_ALL_MVIEWS: failures=0
+DO
+-- PURGE_MVIEW_FROM_LOG
+CALL dbms_mview.purge_mview_from_log('mv_test_view1');
+-- Error handling: NULL parameter
+SELECT sys.dbms_mview_refresh_internal(NULL, '?', NULL, true, false, true, 0, false, true);
+ERROR:  DBMS_MVIEW.REFRESH: list must not be NULL
+SELECT sys.dbms_mview_purge_mview_from_log_internal(NULL);
+ERROR:  DBMS_MVIEW.PURGE_MVIEW_FROM_LOG: mview_id must not be NULL
+-- Verify internal functions execute privilege revoked from PUBLIC (CWE-862)
+SELECT p.proname, has_function_privilege('public', p.oid, 'EXECUTE') AS public_can_execute
+  FROM pg_catalog.pg_proc p
+  JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+ WHERE n.nspname = 'sys'
+   AND p.proname IN ('dbms_mview_refresh_internal',
+                     'dbms_mview_refresh_all_mviews_internal',
+                     'dbms_mview_purge_mview_from_log_internal')
+ ORDER BY p.proname;
+                proname                 | public_can_execute
+----------------------------------------+--------------------
+ dbms_mview_purge_mview_from_log_internal | f
+ dbms_mview_refresh_all_mviews_internal | f
+ dbms_mview_refresh_internal            | f
+(3 rows)
+
+-- Clean up
+DROP MATERIALIZED VIEW mv_test_view1;
+DROP MATERIALIZED VIEW
+DROP MATERIALIZED VIEW mv_test_view2;
+DROP MATERIALIZED VIEW
+DROP TABLE mview_base_tab1;
+DROP TABLE
+DROP TABLE mview_base_tab2;
+DROP TABLE
