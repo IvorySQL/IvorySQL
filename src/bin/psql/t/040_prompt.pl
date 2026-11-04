@@ -110,6 +110,21 @@ like(
 	qr/BEFORE\[ORA\]AFTER/,
 	"%o expands to [ORA] when compatible_mode is oracle");
 
+# The Oracle prompt renderer must not let the service-name escape fall
+# through to the backend-PID escape when a connection is active.
+$h->query_until(
+	qr/^ok3\r?$/m,
+	"\\set SERVICE oracle_service\n"
+	  . "\\set PROMPT1 'BEFORE%sAFTER'\n"
+	  . "select 'p6' as p;\nselect 'ok3' as r;\n");
+$out = $h->query_until(
+	qr/^res4\r?$/m,
+	"select 'p7' as p;\nselect 'res4' as r;\n");
+like(
+	$out,
+	qr/BEFOREoracle_serviceAFTER/,
+	"%s expands to the service name in an oracle-mode session");
+
 # Confirm the value %o keys off of.
 my $mode = $h->query_until(qr/^oracle\r?$/m, "show ivorysql.compatible_mode;\n");
 like($mode, qr/^oracle\r?$/m,
