@@ -346,3 +346,7 @@ end;
 -- clean up
 delete from sys.utl_file_directory where dirname = 'data_directory';
 /
+
+-- NULL handles are rejected instead of reading an undefined slot id
+SELECT sys.ora_utl_file_is_open(NULL);
+SELECT sys.ora_utl_file_fclose(NULL);
