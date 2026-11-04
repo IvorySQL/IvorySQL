@@ -24,7 +24,7 @@ INSERT INTO CHAR_TBL (f1) VALUES ('3');
 INSERT INTO CHAR_TBL (f1) VALUES ('');
 -- try char's of greater than 1 length
 INSERT INTO CHAR_TBL (f1) VALUES ('cd');
-ERROR:  value too long for type character(1)
+ERROR:  value too long for column "f1" (type character(1))
 INSERT INTO CHAR_TBL (f1) VALUES ('c     ');
 SELECT * FROM CHAR_TBL;
  f1 
@@ -109,7 +109,7 @@ DROP TABLE CHAR_TBL;
 -- Here we just try to insert bad values.
 --
 INSERT INTO CHAR_TBL (f1) VALUES ('abcde');
-ERROR:  value too long for type character(4)
+ERROR:  value too long for column "f1" (type character(4))
 SELECT * FROM CHAR_TBL;
   f1  
 ------
@@ -137,6 +137,19 @@ SELECT * FROM pg_input_error_info('abcde', 'char(4)');
 --------------------------------------+--------+------+----------------
  value too long for type character(4) |        |      | 22001
 (1 row)
+
+--
+-- Length overflow on INSERT/UPDATE should name the column
+--
+CREATE TEMP TABLE chartbl_colname(f1 char(4), f2 char(4));
+INSERT INTO chartbl_colname (f1) VALUES ('abcde');
+ERROR:  value too long for column "f1" (type character(4))
+INSERT INTO chartbl_colname (f2) VALUES ('abcde');
+ERROR:  value too long for column "f2" (type character(4))
+UPDATE chartbl_colname SET f1 = 'abcde';
+ERROR:  value too long for column "f1" (type character(4))
+INSERT INTO chartbl_colname (f1) VALUES ('abcd  '); -- trailing spaces ok
+DROP TABLE chartbl_colname;
 
 --
 -- Also test "char", which is an ad-hoc one-byte type.  It can only
