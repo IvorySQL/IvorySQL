@@ -2137,6 +2137,25 @@ btrecordimagecmp(PG_FUNCTION_ARGS)
  * Row type hash functions
  */
 
+/*
+ * Object MAP/ORDER equality need not compare the stored attributes, so the
+ * field-by-field hash below is not compatible with it.  The type cache
+ * already excludes these types from hash-based plans, but hash indexes and
+ * direct calls to the support functions can bypass that check.
+ */
+static void
+check_record_hashable(Oid typeOid)
+{
+	bool		isOrder;
+
+	if (get_typisobject(typeOid) &&
+		GetObjectTypeComparisonMethod(typeOid, &isOrder) != NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot hash Oracle object type %s with a MAP or ORDER method",
+						format_type_be(typeOid))));
+}
+
 Datum
 hash_record(PG_FUNCTION_ARGS)
 {
@@ -2155,6 +2174,7 @@ hash_record(PG_FUNCTION_ARGS)
 
 	/* Extract type info from tuple */
 	tupType = HeapTupleHeaderGetTypeId(record);
+	check_record_hashable(tupType);
 	tupTypmod = HeapTupleHeaderGetTypMod(record);
 	tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
 	ncolumns = tupdesc->natts;
@@ -2276,6 +2296,7 @@ hash_record_extended(PG_FUNCTION_ARGS)
 
 	/* Extract type info from tuple */
 	tupType = HeapTupleHeaderGetTypeId(record);
+	check_record_hashable(tupType);
 	tupTypmod = HeapTupleHeaderGetTypMod(record);
 	tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
 	ncolumns = tupdesc->natts;
