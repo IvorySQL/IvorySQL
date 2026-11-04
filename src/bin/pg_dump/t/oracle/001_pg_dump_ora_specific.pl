@@ -427,7 +427,8 @@ foreach my $run (sort keys %pgdump_runs)
 
 #########################################
 # Restore the schema dump to catch output that looks plausible but does not
-# parse, and exercise one restored object method.
+# parse, exercise one restored object method, and check a restored default
+# privilege on packages.
 
 $node->safe_psql('postgres', 'create database restoredb;',
 	connect_to_oraport => 1);
@@ -455,6 +456,17 @@ is(
 		connect_to_oraport => 1),
 	't',
 	'restored MAP method drives comparison');
+is(
+	$node->safe_psql(
+		'restoredb',
+		q{SELECT count(*)
+		  FROM pg_default_acl d, aclexplode(d.defaclacl) a
+		  WHERE d.defaclobjtype = 'P'
+		    AND a.grantee = 'regress_pkg_grantee'::regrole
+		    AND a.privilege_type = 'EXECUTE'},
+		connect_to_oraport => 1),
+	'1',
+	'restored default privilege on packages');
 
 #########################################
 # Stop the database instance, which will be removed at the end of the tests.
