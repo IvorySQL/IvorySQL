@@ -256,10 +256,11 @@ IvyCreatePreparedStatement(const char *stmtName,
 {
 	IvyPreparedStatement *result;
 
-	if (stmtName == NULL || query == NULL || nParams == 0)
+	if (stmtName == NULL || query == NULL || nParams < 0 ||
+		nParams > PQ_QUERY_PARAM_MAX_LIMIT || (nParams > 0 && paramTypes == NULL))
 		return NULL;
 
-	result = (IvyPreparedStatement *) malloc(sizeof(IvyPreparedStatement));
+	result = (IvyPreparedStatement *) calloc(1, sizeof(IvyPreparedStatement));
 	if (result == NULL)
 		return NULL;
 
@@ -273,13 +274,16 @@ IvyCreatePreparedStatement(const char *stmtName,
 	result->query = strdup(query);
 	result->stmtName = strdup(stmtName);
 	result->nParams = nParams;
-	result->paramTypes = (Oid *) malloc (sizeof(Oid) * nParams);
+	if (nParams > 0)
+		result->paramTypes = (Oid *) malloc(sizeof(Oid) * nParams);
 	result->query_len = strlen(query);
 
-	if (result->paramTypes == NULL)
+	if (result->query == NULL || result->stmtName == NULL ||
+		(nParams > 0 && result->paramTypes == NULL))
 	{
 		free(result->query);
 		free(result->stmtName);
+		free(result->paramTypes);
 		ReleaseSemaphores(&result->lock);
 		free(result);
 		return NULL;
@@ -1670,7 +1674,9 @@ IvyAssignParameterTypes(IvyError *errhp, IvyPreparedStatement *stmtHandle)
 		stmtHandle->paramTypes = NULL;
 	}
 
-	if (stmtHandle->nParams <= 0)
+	if (stmtHandle->nParams == 0)
+		return 1;
+	if (stmtHandle->nParams < 0)
 		return 0;
 
 	stmtHandle->paramTypes = malloc(sizeof(Oid) * stmtHandle->nParams);
@@ -3558,7 +3564,12 @@ IvyhandleParamsValues(IvyPreparedStatement *stmtHandle,
 	int i;
 
 	if (stmtHandle->nParams == 0)
-		return 0;
+	{
+		*paramValuesp = NULL;
+		*paramLengthsp = NULL;
+		*paramFormatsp = NULL;
+		return 1;
+	}
 
 	*paramValuesp = malloc(sizeof(char *) * stmtHandle->nParams);
 	if (*paramValuesp == NULL)
@@ -4245,10 +4256,16 @@ Ivyreplacenamebindtoposition2(Ivyconn *tconn,
 		stmtHandle->stmttype = IVY_STMT_OTHERS;
 		if (n_tuples == 1)
 		{
-			snprintf(errhp->error_msg, errhp->err_buf_size, "%s", 
-				"get_parameter_description return failed");
 			Ivyclear(res);
-			return 0;
+			if (stmtHandle->namebind != NULL || stmtHandle->outbind != NULL)
+			{
+				snprintf(errhp->error_msg, errhp->err_buf_size, "%s",
+						 "get_parameter_description return failed");
+				return 0;
+			}
+			stmtHandle->nParams = 0;
+			stmtHandle->name_replace = 1;
+			return 1;
 		}
 
 		stmtHandle->paramNames = (char **) malloc(sizeof(char *) * (n_tuples - 1));
@@ -4353,6 +4370,14 @@ Ivyreplacenamebindtoposition3(Ivyconn *tconn,
 
 	if (stmtHandle->paramNames == NULL)
 	{
+		if (host && host->length == 0 && !host->isdostmt && !host->iscallstmt &&
+			stmtHandle->namebind == NULL && stmtHandle->outbind == NULL)
+		{
+			stmtHandle->stmttype = IVY_STMT_OTHERS;
+			stmtHandle->nParams = 0;
+			stmtHandle->name_replace = 1;
+			return 1;
+		}
 		if (!host || host->length == 0)
 		{
 			snprintf(errhp->error_msg, errhp->err_buf_size, "%s", "No placeholder variables specified");
