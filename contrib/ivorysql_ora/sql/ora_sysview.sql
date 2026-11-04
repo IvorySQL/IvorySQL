@@ -270,3 +270,18 @@ SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'TEST_ALL_TAB_
 \set ON_ERROR_STOP on
 
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+
+-- A regular view is not read-only, not an editioning view and not a
+-- container-data view; the three dictionary views must say so instead of NULL
+CREATE VIEW v_flag_probe AS SELECT 1 AS a;
+SELECT COUNT(*) = 1 AS all_views_flags
+FROM SYS.ALL_VIEWS
+WHERE VIEW_NAME = 'V_FLAG_PROBE'
+  AND READ_ONLY = 'N' AND EDITIONING_VIEW = 'N' AND CONTAINER_DATA = 'N';
+
+SELECT (SELECT COUNT(*) FROM SYS.DBA_VIEWS  WHERE VIEW_NAME = 'V_FLAG_PROBE'
+          AND READ_ONLY = 'N' AND EDITIONING_VIEW = 'N' AND CONTAINER_DATA = 'N')
+     + (SELECT COUNT(*) FROM SYS.USER_VIEWS WHERE VIEW_NAME = 'V_FLAG_PROBE'
+          AND READ_ONLY = 'N' AND EDITIONING_VIEW = 'N' AND CONTAINER_DATA = 'N')
+     AS other_views_agree;
+DROP VIEW v_flag_probe;
