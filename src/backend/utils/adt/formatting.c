@@ -7072,21 +7072,45 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 			 * can't put it at the head or the tail
 			 */
 			case NUM_G:
-				if (*input_tem != ',')
+				if (ntem == node || (ntem + 1)->type == NODE_TYPE_END)
 				{
 					ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							errmsg("invalid number format model")));
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("invalid number format model")));
 				}
-				if (isrigth == true)
-					isrigth = false;
 
-				if (ntem == node || (ntem+1)->type == NODE_TYPE_END)
+				if (*input_tem == ',')
+				{
+					if (isrigth == true)
+						isrigth = false;
+				}
+				else if (isdigit((unsigned char) *input_tem))
+				{
+					/*
+					 * Oracle's TO_NUMBER accepts an input value that omits
+					 * the group separator even when the format model contains
+					 * one. Leave the digit to be matched by the adjacent 9
+					 * node instead of rejecting the value.
+					 */
+					input_tem++;
+				}
+				else
 				{
 					ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							errmsg("invalid number format model")));
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("invalid number format model")));
 				}
+				break;
+
+				/*
+				 * As with NUM_G, the group separator specified by a comma in
+				 * the format model is optional in the input.  When it is
+				 * missing the input character is a digit that belongs to the
+				 * adjacent 9 node, so do not consume it here.
+				 */
+			case NUM_COMMA:
+				if (isdigit((unsigned char) *input_tem))
+					input_tem++;
 				break;
 
 			case NUM_PR:
@@ -7214,6 +7238,14 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 					}
 					else
 					{
+						/*
+						 * The group separator is optional in the input.  If
+						 * it is missing, leave the digit for the adjacent 9
+						 * node instead of skipping it (which would silently
+						 * corrupt the value).
+						 */
+						if (isdigit((unsigned char) *Np->inout_p))
+							continue;
 						if (!Np->num_in)
 						{
 							if (IS_FILLMODE(Np->Num))
@@ -7245,6 +7277,13 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 					}
 					else
 					{
+						/*
+						 * As with NUM_COMMA, the group separator may be
+						 * absent from the input.  Do not consume the digit
+						 * that takes its place.
+						 */
+						if (isdigit((unsigned char) *Np->inout_p))
+							continue;
 						if (!Np->num_in)
 						{
 							if (IS_FILLMODE(Np->Num))
