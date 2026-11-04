@@ -1340,7 +1340,7 @@ PortalRunMulti(Portal portal,
 {
 	bool		active_snapshot_set = false;
 	ListCell   *stmtlist_item;
-	bool		anonymous_has_outparamter = false;
+	bool		anonymous_has_outparameter = false;
 
 	/* check if anonymous block has OUT parameters */
 	if (portal->stmts != NIL &&
@@ -1354,14 +1354,14 @@ PortalRunMulti(Portal portal,
 			portal->portalParams != NULL &&
 			portal->portalParams->haveout)
 		{
-			anonymous_has_outparamter = true;
+			anonymous_has_outparameter = true;
 		}
 		else if (nodeTag(node) == T_RawStmt &&
 			nodeTag(((RawStmt *)node)->stmt) == T_DoStmt &&
 			portal->portalParams != NULL &&
 			portal->portalParams->haveout)
 		{
-			anonymous_has_outparamter = true;
+			anonymous_has_outparameter = true;
 		}
 	}
 
@@ -1376,9 +1376,9 @@ PortalRunMulti(Portal portal,
 	 * but the results will be discarded unless you use "simple Query"
 	 * protocol.
 	 */
-	if (dest->mydest == DestRemoteExecute && !anonymous_has_outparamter)
+	if (dest->mydest == DestRemoteExecute && !anonymous_has_outparameter)
 		dest = None_Receiver;
-	if (altdest->mydest == DestRemoteExecute && !anonymous_has_outparamter)
+	if (altdest->mydest == DestRemoteExecute && !anonymous_has_outparameter)
 		altdest = None_Receiver;
 
 	/*
