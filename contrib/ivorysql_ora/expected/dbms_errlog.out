@@ -1,0 +1,126 @@
+--
+-- DBMS_ERRLOG
+--
+-- Regression tests for Oracle-compatible DBMS_ERRLOG package:
+--   - CREATE_ERROR_LOG with default error log table name (ERR$_<table_name>)
+--   - CREATE_ERROR_LOG with explicit custom error log table name
+--   - Verify schema and column structure of created error log tables
+--   - Verify sys.errlog_tables registry
+--   - PURGE_ERROR_LOG procedure
+--   - DROP_ERROR_LOG procedure
+--   - Error handling (non-existent table, NULL parameter)
+--   - Internal function execute privilege revoked from PUBLIC (CWE-862)
+--
+-- Setup sample base tables
+CREATE TABLE base_customer (
+    cust_id int,
+    cust_name varchar2(100),
+    balance numeric(10,2)
+);
+CREATE TABLE
+CREATE TABLE base_orders (
+    order_id int,
+    order_date date,
+    amount numeric(12,2)
+);
+CREATE TABLE
+-- CREATE_ERROR_LOG with default name (ERR$_base_customer)
+CALL dbms_errlog.create_error_log(
+    dml_table_name => 'base_customer'
+);
+-- Verify ERR$_base_customer columns
+SELECT column_name, data_type
+  FROM information_schema.columns
+ WHERE table_name = 'err$_base_customer'
+ ORDER BY ordinal_position;
+   column_name   |     data_type
+-----------------+-------------------
+ ora_err_number$ | bigint
+ ora_err_mesg$   | character varying
+ ora_err_rowid$  | text
+ ora_err_optyp$  | character varying
+ ora_err_tag$    | character varying
+ cust_id         | character varying
+ cust_name       | character varying
+ balance         | character varying
+(8 rows)
+
+-- Verify registry in sys.errlog_tables
+SELECT dml_table_name, err_log_table_name, err_log_owner
+  FROM sys.errlog_tables
+ WHERE dml_table_name = 'base_customer';
+ dml_table_name | err_log_table_name | err_log_owner
+----------------+--------------------+---------------
+ base_customer  | ERR$_base_customer | public
+(1 row)
+
+-- CREATE_ERROR_LOG with explicit name
+CALL dbms_errlog.create_error_log(
+    dml_table_name     => 'base_orders',
+    err_log_table_name => 'custom_orders_errlog'
+);
+-- Verify custom_orders_errlog columns
+SELECT column_name, data_type
+  FROM information_schema.columns
+ WHERE table_name = 'custom_orders_errlog'
+ ORDER BY ordinal_position;
+   column_name   |     data_type
+-----------------+-------------------
+ ora_err_number$ | bigint
+ ora_err_mesg$   | character varying
+ ora_err_rowid$  | text
+ ora_err_optyp$  | character varying
+ ora_err_tag$    | character varying
+ order_id        | character varying
+ order_date      | character varying
+ amount          | character varying
+(8 rows)
+
+-- PURGE_ERROR_LOG
+CALL dbms_errlog.purge_error_log('base_customer');
+-- DROP_ERROR_LOG
+CALL dbms_errlog.drop_error_log('base_customer');
+SELECT COUNT(*) FROM sys.errlog_tables WHERE dml_table_name = 'base_customer';
+ count
+-------
+     0
+(1 row)
+
+CALL dbms_errlog.drop_error_log('base_orders', 'custom_orders_errlog');
+SELECT COUNT(*) FROM sys.errlog_tables WHERE dml_table_name = 'base_orders';
+ count
+-------
+     0
+(1 row)
+
+-- Error handling: non-existent table
+SELECT sys.dbms_errlog_create_error_log_internal('non_existent_table_xyz', NULL, NULL, false);
+ERROR:  DBMS_ERRLOG: table "non_existent_table_xyz" does not exist
+SELECT sys.dbms_errlog_drop_error_log_internal(NULL, NULL);
+ERROR:  DBMS_ERRLOG.DROP_ERROR_LOG: dml_table_name must not be NULL
+SELECT sys.dbms_errlog_purge_error_log_internal(NULL, NULL);
+ERROR:  DBMS_ERRLOG.PURGE_ERROR_LOG: dml_table_name must not be NULL
+-- Error handling: NULL parameter
+SELECT sys.dbms_errlog_create_error_log_internal(NULL, NULL, NULL, false);
+ERROR:  DBMS_ERRLOG.CREATE_ERROR_LOG: dml_table_name must not be NULL
+-- Verify internal functions execute privilege revoked from PUBLIC (CWE-862)
+SELECT p.proname, has_function_privilege('public', p.oid, 'EXECUTE') AS public_can_execute
+  FROM pg_catalog.pg_proc p
+  JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+ WHERE n.nspname = 'sys'
+   AND p.proname IN ('dbms_errlog_create_error_log_internal',
+                     'dbms_errlog_drop_error_log_internal',
+                     'dbms_errlog_purge_error_log_internal')
+ ORDER BY p.proname;
+                proname                | public_can_execute
+---------------------------------------+--------------------
+ dbms_errlog_create_error_log_internal | f
+ dbms_errlog_drop_error_log_internal   | f
+ dbms_errlog_purge_error_log_internal  | f
+(3 rows)
+
+-- Clean up
+DROP TABLE base_orders;
+DROP TABLE
+DROP TABLE base_customer;
+DROP TABLE
