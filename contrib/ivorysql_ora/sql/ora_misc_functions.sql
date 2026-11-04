@@ -2464,3 +2464,34 @@ reset default_text_search_config;
 -- should throw errors, because dummy_config is not a valid configuration name
 set ivorysql.dummy_config to dummy;
 reset ivorysql.dummy_config;
+
+-- Oracle grants these packages to PUBLIC, so a plain role can call them without
+-- a DBA issuing a per-role grant.
+DROP ROLE IF EXISTS ora_pkg_caller;
+CREATE ROLE ora_pkg_caller;
+
+SET ROLE ora_pkg_caller;
+BEGIN
+  dbms_output.put_line('grant probe');
+END;
+/
+BEGIN
+  dbms_lock.sleep(0);
+END;
+/
+BEGIN
+  dbms_session.reset_package();
+END;
+/
+BEGIN
+  utl_file.fclose_all();
+END;
+/
+SELECT dbms_utility.format_error_stack() IS NULL AS dbms_utility_callable;
+SELECT utl_encode.base64_encode(sys.hextoraw('78')::sys.raw) IS NOT NULL AS utl_encode_ok;
+SELECT utl_match.edit_distance('ab', 'ba') AS utl_match_ok;
+SELECT utl_raw.cast_to_raw('x') IS NOT NULL AS utl_raw_ok;
+SELECT utl_url.escape('a b') IS NOT NULL AS utl_url_ok;
+SET ROLE NONE;
+
+DROP ROLE ora_pkg_caller;

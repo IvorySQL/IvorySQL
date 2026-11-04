@@ -80,3 +80,9 @@ CREATE PACKAGE BODY dbms_lock AS
     END;
 
 END;
+
+/* Oracle grants this package to PUBLIC, so every user may call it; what the
+ * routines themselves reach stays restricted (for UTL_FILE, the directory
+ * objects).  Without the grant a plain role got "permission denied for
+ * package". */
+GRANT EXECUTE ON PACKAGE dbms_lock TO PUBLIC;

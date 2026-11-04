@@ -25,3 +25,9 @@ CREATE OR REPLACE PACKAGE BODY UTL_RAW IS
         RETURN pg_catalog.convert_to(c::text, pg_catalog.getdatabaseencoding());
     END;
 END;
+
+/* Oracle grants this package to PUBLIC, so every user may call it; what the
+ * routines themselves reach stays restricted (for UTL_FILE, the directory
+ * objects).  Without the grant a plain role got "permission denied for
+ * package". */
+GRANT EXECUTE ON PACKAGE utl_raw TO PUBLIC;
