@@ -23,6 +23,7 @@
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
 #include "catalog/objectaccess.h"
+#include "catalog/pg_class.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_proc.h"
@@ -62,6 +63,20 @@ static int	match_prosrc_to_query(const char *prosrc, const char *queryText,
 static bool match_prosrc_to_literal(const char *prosrc, const char *literal,
 									int cursorpos, int *newcursorpos);
 
+
+/*
+ * is_relation_rowtype
+ *		True if typid is the rowtype of a relation (table, view, ...), as
+ *		opposed to a standalone composite type created by CREATE TYPE ... AS.
+ */
+static bool
+is_relation_rowtype(Oid typid)
+{
+	Oid			typrelid = get_typ_typrelid(typid);
+
+	return OidIsValid(typrelid) &&
+		get_rel_relkind(typrelid) != RELKIND_COMPOSITE_TYPE;
+}
 
 /* ----------------------------------------------------------------
  *		ProcedureCreate
@@ -712,9 +727,21 @@ ProcedureCreate(const char *procedureName,
 	ObjectAddressSet(referenced, LanguageRelationId, languageObjectId);
 	add_exact_object_address(&referenced, addrs);
 
+	/*
+	 * A PL/iSQL signature may name a table's rowtype (%ROWTYPE).  In Oracle
+	 * mode such a function is invalidated, rather than dropped, when the table
+	 * goes away: the PL/iSQL compiler records that with its own dependency
+	 * type, so the ordinary dependency on the rowtype is deliberately not
+	 * recorded here and DROP TABLE stays allowed.  A standalone composite type
+	 * (CREATE TYPE ... AS) has no such invalidation path, and Oracle itself
+	 * refuses to drop a type that a stored program depends on, so record the
+	 * dependency for it; without it DROP TYPE would leave this pg_proc row
+	 * pointing at a type that no longer exists.
+	 */
 	if (!(ORA_PARSER == compatible_db &&
 		LANG_PLISQL_OID == languageObjectId &&
-		get_typtype(returnType) == TYPTYPE_COMPOSITE))
+		get_typtype(returnType) == TYPTYPE_COMPOSITE &&
+		is_relation_rowtype(returnType)))
 	{
 		/* dependency on return type */
 		ObjectAddressSet(referenced, TypeRelationId, returnType);
@@ -724,9 +751,11 @@ ProcedureCreate(const char *procedureName,
 	/* dependency on parameter types */
 	for (i = 0; i < allParamCount; i++)
 	{
+		/* see the comment on the return type above */
 		if (!(ORA_PARSER == compatible_db &&
 			LANG_PLISQL_OID == languageObjectId &&
-			get_typtype(allParams[i]) == TYPTYPE_COMPOSITE))
+			get_typtype(allParams[i]) == TYPTYPE_COMPOSITE &&
+			is_relation_rowtype(allParams[i])))
 		{
 			ObjectAddressSet(referenced, TypeRelationId, allParams[i]);
 			add_exact_object_address(&referenced, addrs);
