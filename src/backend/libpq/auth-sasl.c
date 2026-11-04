@@ -195,7 +195,7 @@ CheckSASLAuth(const pg_be_sasl_mech *mech, Port *port, char *shadow_pass,
 		if (!abandoned)
 		{
 			/*
-			 * Programmer error: caller needs to track the abandoned state for
+			 * Programmar error: caller needs to track the abandoned state for
 			 * this mechanism.
 			 */
 			elog(ERROR, "SASL exchange was abandoned, but CheckSASLAuth isn't tracking it");
