@@ -9,6 +9,8 @@ PGFILEDESC = "PL/Sample - template for procedural language"
 
 REGRESS = plsample
 
+ORA_REGRESS = $(REGRESS)
+
 ifdef USE_PGXS
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
