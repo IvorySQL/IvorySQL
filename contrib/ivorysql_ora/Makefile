@@ -53,7 +53,28 @@ install: install-data
 clean: cleansql
 
 # SQL(s) merge using perl
-$(DATA_built): gensql.pl
+# NOTE: keep this file list in sync with ivorysql_ora_merge_sqls,
+# so that an incremental build regenerates $(DATA_built) when any
+# of the merged SQL sources changes.
+MERGE_SQL_SRCS = \
+	src/datatype/datatype--1.0.sql \
+	src/builtin_functions/builtin_functions--1.0.sql \
+	src/builtin_packages/dbms_output/dbms_output--1.0.sql \
+	src/builtin_packages/utl_file/utl_file--1.0.sql \
+	src/sysview/sysview--1.0.sql \
+	src/xml_functions/xml_functions--1.0.sql \
+	src/builtin_packages/dbms_utility/dbms_utility--1.0.sql \
+	src/builtin_packages/dbms_lock/dbms_lock--1.0.sql \
+	src/builtin_packages/utl_raw/utl_raw--1.0.sql \
+	src/builtin_packages/utl_encode/utl_encode--1.0.sql \
+	src/builtin_packages/utl_url/utl_url--1.0.sql \
+	src/builtin_packages/dbms_session/dbms_session--1.0.sql \
+	src/builtin_packages/dbms_transaction/dbms_transaction--1.0.sql \
+	src/builtin_packages/dbms_random/dbms_random--1.0.sql \
+	src/builtin_packages/utl_match/utl_match--1.0.sql \
+	src/builtin_packages/dbms_scheduler/dbms_scheduler--1.0.sql
+
+$(DATA_built): gensql.pl ivorysql_ora_merge_sqls $(MERGE_SQL_SRCS)
 	$(PERL) $< gcc_build $(patsubst ivorysql_ora--%.sql, %,$@)
 
 # Preload the compatible oracle misc sql script
