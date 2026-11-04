@@ -1410,7 +1410,9 @@ SELECT indexrelid::regclass, indrelid::regclass, attname, atttypid::regtype, opc
 FROM (SELECT indexrelid, indrelid, unnest(indkey) as ikey,
              unnest(indclass) as iclass, unnest(indcollation) as icoll
       FROM pg_index
-      WHERE indrelid < 16384) ss,
+      JOIN pg_class c ON c.oid = indrelid
+      WHERE c.relnamespace IN ('pg_catalog'::regnamespace,
+                               'pg_toast'::regnamespace)) ss,
       pg_attribute a,
       pg_opclass opc
 WHERE a.attrelid = indrelid AND a.attnum = ikey AND opc.oid = iclass AND
@@ -1425,7 +1427,8 @@ ORDER BY 1;
 
 SELECT relname, attname, attcollation
 FROM pg_class c, pg_attribute a
-WHERE c.oid = attrelid AND c.oid < 16384 AND
+WHERE c.oid = attrelid AND
+    c.relnamespace IN ('pg_catalog'::regnamespace, 'pg_toast'::regnamespace) AND
     c.relkind != 'v' AND  -- we don't care about columns in views
     attcollation != 0 AND
     attcollation != (SELECT oid FROM pg_collation WHERE collname = 'C');
@@ -1436,6 +1439,19 @@ SELECT indexrelid::regclass, indrelid::regclass, iclass, icoll
 FROM (SELECT indexrelid, indrelid,
              unnest(indclass) as iclass, unnest(indcollation) as icoll
       FROM pg_index
-      WHERE indrelid < 16384) ss
+      JOIN pg_class c ON c.oid = indrelid
+      WHERE c.relnamespace IN ('pg_catalog'::regnamespace,
+                               'pg_toast'::regnamespace)) ss
 WHERE icoll != 0 AND
     icoll != (SELECT oid FROM pg_collation WHERE collname = 'C');
+
+-- Oracle extension relations are not system catalogs.  Check their column
+-- types and default collations separately, irrespective of their OIDs.
+SELECT c.relname, a.attname, a.atttypid::regtype,
+       a.attcollation = t.typcollation AS default_collation
+FROM pg_class c JOIN pg_attribute a ON a.attrelid = c.oid
+     JOIN pg_type t ON t.oid = a.atttypid
+WHERE c.relnamespace = 'sys'::regnamespace AND
+      c.relname IN ('dual', 'dbms_output_line', 'dbms_output_lines') AND
+      a.attnum > 0 AND NOT a.attisdropped
+ORDER BY c.relname, a.attnum;
