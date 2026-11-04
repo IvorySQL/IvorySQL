@@ -98,7 +98,7 @@ typedef struct ObjectTypeAttribute
 	Oid			typeOid;
 	int32		typmod;
 	Oid			collation;
-} ObjectTypeAttribute;
+}			ObjectTypeAttribute;
 
 /* parameter structure for AlterTypeRecurse() */
 typedef struct
@@ -758,7 +758,7 @@ DefineDomain(ParseState *pstate, CreateDomainStmt *stmt)
 
 	/* Check we have creation rights in target namespace */
 	aclresult = object_aclcheck(NamespaceRelationId, domainNamespace, GetUserId(),
-									  ACL_CREATE);
+								ACL_CREATE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, OBJECT_SCHEMA,
 					   get_namespace_name(domainNamespace));
@@ -822,6 +822,8 @@ DefineDomain(ParseState *pstate, CreateDomainStmt *stmt)
 	baseColl = baseType->typcollation;
 	if (stmt->collClause)
 		domaincoll = get_collation_oid(stmt->collClause->collname, false);
+	else if (stmt->typeName->nchar)
+		domaincoll = get_oracle_nchar_collation_oid(false);
 	else
 		domaincoll = baseColl;
 
@@ -1106,7 +1108,7 @@ DefineDomain(ParseState *pstate, CreateDomainStmt *stmt)
 				   basetypeMod, /* typeMod value */
 				   typNDims,	/* Array dimensions for base type */
 				   typNotNull,	/* Type NOT NULL */
-				   domaincoll, /* type's collation */
+				   domaincoll,	/* type's collation */
 				   false);		/* not an object type */
 
 	/*
@@ -1271,7 +1273,7 @@ DefineEnum(CreateEnumStmt *stmt)
 				   -1,			/* typMod (Domains only) */
 				   0,			/* Array dimensions of typbasetype */
 				   false,		/* Type NOT NULL */
-				   InvalidOid, /* type's collation */
+				   InvalidOid,	/* type's collation */
 				   false);		/* not an object type */
 
 	/* Enter the enum's values into pg_enum */
@@ -1627,7 +1629,7 @@ DefineRange(ParseState *pstate, CreateRangeStmt *stmt)
 				   -1,			/* typMod (Domains only) */
 				   0,			/* Array dimensions of typbasetype */
 				   false,		/* Type NOT NULL */
-				   InvalidOid, /* type's collation (ranges never have one) */
+				   InvalidOid,	/* type's collation (ranges never have one) */
 				   false);		/* not an object type */
 	Assert(typoid == InvalidOid || typoid == address.objectId);
 	typoid = address.objectId;
@@ -1695,7 +1697,7 @@ DefineRange(ParseState *pstate, CreateRangeStmt *stmt)
 				   -1,			/* typMod (Domains only) */
 				   0,			/* Array dimensions of typbasetype */
 				   false,		/* Type NOT NULL */
-				   InvalidOid, /* type's collation (ranges never have one) */
+				   InvalidOid,	/* type's collation (ranges never have one) */
 				   false);		/* not an object type */
 	Assert(multirangeOid == mltrngaddress.objectId);
 
@@ -1874,8 +1876,8 @@ makeRangeConstructors(const char *name, Oid namespace,
 								 InvalidOid,	/* prosupport */
 								 1.0,	/* procost */
 								 0.0,	/* prorows */
-								 PointerGetDatum(NULL), 
-								 NULL); 
+								 PointerGetDatum(NULL),
+								 NULL);
 
 
 		/*
@@ -2637,7 +2639,7 @@ check_object_type_namespace_conflicts(Oid namespaceId, const char *typeName)
 						   "namespace and cannot reuse an existing package's name.")));
 
 	proclist = SearchSysCacheList1(PROCNAMEARGSNSP,
-								 CStringGetDatum(typeName));
+								   CStringGetDatum(typeName));
 	for (int i = 0; i < proclist->n_members; i++)
 	{
 		HeapTuple	procTuple = &proclist->members[i]->tuple;
@@ -2789,7 +2791,7 @@ replace_object_type_attributes(Oid typeOid, List *coldeflist)
 			renameStmt->renameType = OBJECT_ATTRIBUTE;
 			renameStmt->relationType = OBJECT_TYPE;
 			renameStmt->relation = makeRangeVar(get_namespace_name(typeNamespace),
-												 relationName, -1);
+												relationName, -1);
 			renameStmt->subname = oldAttribute->name;
 			renameStmt->newname = temporaryName;
 			renameStmt->behavior = DROP_RESTRICT;
@@ -2808,7 +2810,7 @@ replace_object_type_attributes(Oid typeOid, List *coldeflist)
 			renameStmt->renameType = OBJECT_ATTRIBUTE;
 			renameStmt->relationType = OBJECT_TYPE;
 			renameStmt->relation = makeRangeVar(get_namespace_name(typeNamespace),
-												 relationName, -1);
+												relationName, -1);
 			renameStmt->subname = strVal(list_nth(temporaryNames, attno));
 			renameStmt->newname = newAttribute->name;
 			renameStmt->behavior = DROP_RESTRICT;
@@ -2862,7 +2864,7 @@ replace_object_type_attributes(Oid typeOid, List *coldeflist)
 
 		command->subtype = AT_AddColumn;
 		command->def = (Node *) copyObject(list_nth_node(ColumnDef,
-													 coldeflist, attno));
+														 coldeflist, attno));
 		command->behavior = DROP_RESTRICT;
 		alterCommands = lappend(alterCommands, command);
 	}
@@ -2874,7 +2876,7 @@ replace_object_type_attributes(Oid typeOid, List *coldeflist)
 		LOCKMODE	lockmode;
 
 		alterStmt->relation = makeRangeVar(get_namespace_name(typeNamespace),
-										 relationName, -1);
+										   relationName, -1);
 		alterStmt->cmds = alterCommands;
 		alterStmt->objtype = OBJECT_TYPE;
 		lockmode = AlterTableGetLockLevel(alterCommands);
@@ -2942,7 +2944,7 @@ DefineCompositeType(RangeVar *typevar, List *coldeflist, bool is_object,
 	}
 	else if (is_object)
 		check_object_type_namespace_conflicts(typeNamespace,
-									  createStmt->relation->relname);
+											  createStmt->relation->relname);
 
 	if (is_object)
 	{
@@ -2960,10 +2962,10 @@ DefineCompositeType(RangeVar *typevar, List *coldeflist, bool is_object,
 			int			spiResult;
 
 			domain->domainname = list_make2(makeString(schemaName),
-										makeString(domainName));
+											makeString(domainName));
 			domain->typeName = makeTypeNameFromNameList(list_make2(
-										makeString("sys"),
-										makeString("object_ref")));
+																   makeString("sys"),
+																   makeString("object_ref")));
 			domainAddress = DefineDomain(NULL, domain);
 			refDomainOid = domainAddress.objectId;
 			CommandCounterIncrement();
@@ -2971,10 +2973,10 @@ DefineCompositeType(RangeVar *typevar, List *coldeflist, bool is_object,
 			/* Add the check before the object type depends on this domain. */
 			initStringInfo(&sql);
 			appendStringInfo(&sql,
-						 "ALTER DOMAIN %s ADD CONSTRAINT ref_target "
-						 "CHECK (sys.object_ref_matches_domain(VALUE, %u::oid))",
-						 quote_qualified_identifier(schemaName, domainName),
-						 refDomainOid);
+							 "ALTER DOMAIN %s ADD CONSTRAINT ref_target "
+							 "CHECK (sys.object_ref_matches_domain(VALUE, %u::oid))",
+							 quote_qualified_identifier(schemaName, domainName),
+							 refDomainOid);
 			if (SPI_connect() != SPI_OK_CONNECT)
 				elog(ERROR, "SPI_connect failed while defining REF type");
 			spiResult = SPI_execute(sql.data, false, 0);
@@ -2997,13 +2999,13 @@ DefineCompositeType(RangeVar *typevar, List *coldeflist, bool is_object,
 				strcmp(strVal(linitial(refTarget->names)), typevar->relname) == 0)
 				columnRefOid = refDomainOid;
 			else if (list_length(refTarget->names) == 2 &&
-				strcmp(strVal(linitial(refTarget->names)),
-					   get_namespace_name(typeNamespace)) == 0 &&
-				strcmp(strVal(lsecond(refTarget->names)), typevar->relname) == 0)
+					 strcmp(strVal(linitial(refTarget->names)),
+							get_namespace_name(typeNamespace)) == 0 &&
+					 strcmp(strVal(lsecond(refTarget->names)), typevar->relname) == 0)
 				columnRefOid = refDomainOid;
 			else
 				columnRefOid = get_object_ref_domain_oid(
-					typenameTypeId(NULL, refTarget), false);
+														 typenameTypeId(NULL, refTarget), false);
 
 			column->typeName = makeTypeNameFromOid(columnRefOid, -1);
 		}
@@ -4256,8 +4258,8 @@ RenameType(RenameStmt *stmt)
 	/*
 	 * The method specification and constructor names are stored in the
 	 * package-shaped implementation namespace.  Renaming only pg_type would
-	 * leave that compiled contract inconsistent, so reject the PostgreSQL-only
-	 * operation instead of silently breaking method dispatch.
+	 * leave that compiled contract inconsistent, so reject the
+	 * PostgreSQL-only operation instead of silently breaking method dispatch.
 	 */
 	if (typTup->typisobject)
 		ereport(ERROR,
@@ -4380,8 +4382,8 @@ AlterTypeOwner(List *names, Oid newOwnerId, ObjectType objecttype)
 
 			/* New owner must have CREATE privilege on namespace */
 			aclresult = object_aclcheck(NamespaceRelationId, typTup->typnamespace,
-											  newOwnerId,
-											  ACL_CREATE);
+										newOwnerId,
+										ACL_CREATE);
 			if (aclresult != ACLCHECK_OK)
 				aclcheck_error(aclresult, OBJECT_SCHEMA,
 							   get_namespace_name(typTup->typnamespace));

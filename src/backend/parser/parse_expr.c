@@ -55,7 +55,7 @@ bool		Transform_null_equals = false;
 
 static Node *transformExprRecurse(ParseState *pstate, Node *expr);
 static Node *transformParamRef(ParseState *pstate, ParamRef *pref);
-static Node *transformOraParamRef(ParseState *pstate, OraParamRef *pref);
+static Node *transformOraParamRef(ParseState *pstate, OraParamRef * pref);
 static Node *transformAExprOp(ParseState *pstate, A_Expr *a);
 static Node *transformAExprOpAny(ParseState *pstate, A_Expr *a);
 static Node *transformAExprOpAll(ParseState *pstate, A_Expr *a);
@@ -118,7 +118,7 @@ static Expr *make_distinct_op(ParseState *pstate, List *opname,
 							  Node *ltree, Node *rtree, int location);
 static Node *make_nulltest_from_distinct(ParseState *pstate,
 										 A_Expr *distincta, Node *arg);
-static Node *transformColumnRefOrFunCall(ParseState *pstate, ColumnRefOrFuncCall *cref_func);
+static Node *transformColumnRefOrFunCall(ParseState *pstate, ColumnRefOrFuncCall * cref_func);
 
 /*
  * record_orajoin_operand
@@ -160,19 +160,19 @@ record_orajoin_operand(ParseState *pstate, Node *node, ColumnRef *cref)
 	if (cref->ora_join_op_exists && pstate->p_orajoin_state == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				  errmsg("outer join operator (+) is not allowed here"),
-				  errdetail("*Cause: An attempt was made to reference (+) in either the select-list, "
-							"CONNECT BY clause, START WITH clause, or ORDER BY clause. "
-							"*Action: Do not use the operator in the select-list, CONNECT BY clause, "
-							"START WITH clause, or ORDER BY clause.")));
+				 errmsg("outer join operator (+) is not allowed here"),
+				 errdetail("*Cause: An attempt was made to reference (+) in either the select-list, "
+						   "CONNECT BY clause, START WITH clause, or ORDER BY clause. "
+						   "*Action: Do not use the operator in the select-list, CONNECT BY clause, "
+						   "START WITH clause, or ORDER BY clause.")));
 
 	if (pstate->p_orajoin_state != NULL && node != NULL && IsA(node, Var))
 	{
 		OraJoinState *ojs = (OraJoinState *) pstate->p_orajoin_state;
 
 		/*
-		 * If a marked (+) column was already recorded for this operand,
-		 * an unmarked column in the same expression must not overwrite it.
+		 * If a marked (+) column was already recorded for this operand, an
+		 * unmarked column in the same expression must not overwrite it.
 		 * Conversely, a marked (+) column always takes precedence over an
 		 * earlier unmarked column.
 		 */
@@ -260,7 +260,7 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 			break;
 
 		case T_OraParamRef:
-			result = transformOraParamRef(pstate, (OraParamRef *)expr);
+			result = transformOraParamRef(pstate, (OraParamRef *) expr);
 			break;
 
 		case T_A_Indirection:
@@ -334,7 +334,7 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 			break;
 
 		case T_ColumnRefOrFuncCall:
-			result = transformColumnRefOrFunCall(pstate, ((ColumnRefOrFuncCall *)expr));
+			result = transformColumnRefOrFunCall(pstate, ((ColumnRefOrFuncCall *) expr));
 			break;
 
 		case T_MultiAssignRef:
@@ -365,7 +365,7 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 
 		case T_CaseExpr:
 			{
-				CaseExpr *n = (CaseExpr *) expr;
+				CaseExpr   *n = (CaseExpr *) expr;
 
 				if (!n->is_decode)
 					result = transformCaseExpr(pstate, n);
@@ -474,7 +474,7 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 			break;
 
 		case T_ResTarget:
-			result = transformExprRecurse(pstate, ((ResTarget *)expr)->val);
+			result = transformExprRecurse(pstate, ((ResTarget *) expr)->val);
 			break;
 
 		case T_JsonParseExpr:
@@ -779,11 +779,11 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 				set_merge_on_attrno(pstate, colname);
 
 				/*
-				 * Check for ROWNUM pseudocolumn in Oracle mode.
-				 * ROWNUM is only recognized as a pseudocolumn when:
-				 * 1. Session is in Oracle compatible_mode
-				 * 2. The identifier is exactly "rownum" (case-insensitive)
-				 * 3. It's unqualified (no table/schema prefix)
+				 * Check for ROWNUM pseudocolumn in Oracle mode. ROWNUM is
+				 * only recognized as a pseudocolumn when: 1. Session is in
+				 * Oracle compatible_mode 2. The identifier is exactly
+				 * "rownum" (case-insensitive) 3. It's unqualified (no
+				 * table/schema prefix)
 				 */
 				if (compatible_db == ORA_PARSER && pg_strcasecmp(colname, "rownum") == 0)
 				{
@@ -835,12 +835,12 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 											  &levels_up);
 				if (nsitem == NULL)
 				{
-					if(IsA(field2, String) && (!pg_strcasecmp(strVal(field2), "nextval") ||
-							!pg_strcasecmp(strVal(field2), "currval")))
+					if (IsA(field2, String) && (!pg_strcasecmp(strVal(field2), "nextval") ||
+												!pg_strcasecmp(strVal(field2), "currval")))
 					{
-						TypeCast *castnode = NULL;
-						FuncCall *seq_func = NULL;
-						A_Const *n = makeNode(A_Const);
+						TypeCast   *castnode = NULL;
+						FuncCall   *seq_func = NULL;
+						A_Const    *n = makeNode(A_Const);
 
 						n->val.node.type = T_String;
 						n->val.sval.sval = strVal(field1);
@@ -851,7 +851,7 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 						castnode->location = cref->location;
 
 						seq_func = makeFuncCall(list_make2(makeString("pg_catalog"),
-							makeString(strVal(field2))), list_make1(castnode), COERCE_EXPLICIT_CALL, cref->location);
+														   makeString(strVal(field2))), list_make1(castnode), COERCE_EXPLICIT_CALL, cref->location);
 						return transformFuncCall(pstate, seq_func);
 					}
 
@@ -906,12 +906,12 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 											  &levels_up);
 				if (nsitem == NULL)
 				{
-					if(IsA(field3, String) && (!pg_strcasecmp(strVal(field3), "nextval") ||
-							!pg_strcasecmp(strVal(field3), "currval")))
+					if (IsA(field3, String) && (!pg_strcasecmp(strVal(field3), "nextval") ||
+												!pg_strcasecmp(strVal(field3), "currval")))
 					{
-						TypeCast *castnode = NULL;
-						FuncCall *seq_func = NULL;
-						A_Const *n = makeNode(A_Const);
+						TypeCast   *castnode = NULL;
+						FuncCall   *seq_func = NULL;
+						A_Const    *n = makeNode(A_Const);
 
 						n->val.node.type = T_String;
 						n->val.sval.sval = strVal(field1);
@@ -922,7 +922,7 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 						castnode->location = cref->location;
 
 						seq_func = makeFuncCall(list_make2(makeString("pg_catalog"),
-							makeString(strVal(field3))), list_make1(castnode), COERCE_EXPLICIT_CALL, cref->location);
+														   makeString(strVal(field3))), list_make1(castnode), COERCE_EXPLICIT_CALL, cref->location);
 						return transformFuncCall(pstate, seq_func);
 					}
 
@@ -989,12 +989,12 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 											  &levels_up);
 				if (nsitem == NULL)
 				{
-					if(IsA(field4, String) && (!pg_strcasecmp(strVal(field4), "nextval") ||
-							!pg_strcasecmp(strVal(field4), "currval")))
+					if (IsA(field4, String) && (!pg_strcasecmp(strVal(field4), "nextval") ||
+												!pg_strcasecmp(strVal(field4), "currval")))
 					{
-						TypeCast *castnode = NULL;
-						FuncCall *seq_func = NULL;
-						A_Const *n = makeNode(A_Const);
+						TypeCast   *castnode = NULL;
+						FuncCall   *seq_func = NULL;
+						A_Const    *n = makeNode(A_Const);
 
 						n->val.node.type = T_String;
 						n->val.sval.sval = strVal(field1);
@@ -1005,7 +1005,7 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 						castnode->location = cref->location;
 
 						seq_func = makeFuncCall(list_make2(makeString("pg_catalog"),
-							makeString(strVal(field4))), list_make1(castnode), COERCE_EXPLICIT_CALL, cref->location);
+														   makeString(strVal(field4))), list_make1(castnode), COERCE_EXPLICIT_CALL, cref->location);
 						return transformFuncCall(pstate, seq_func);
 					}
 
@@ -1077,7 +1077,7 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 	/*
 	 * Throw error if no translation found.
 	 */
-	 if ((compatible_db == ORA_PARSER && !missing_ok) ||
+	if ((compatible_db == ORA_PARSER && !missing_ok) ||
 		compatible_db == PG_PARSER)
 	{
 		if (node == NULL)
@@ -1167,25 +1167,25 @@ transformParamRef(ParseState *pstate, ParamRef *pref)
 }
 
 static Node *
-transformOraParamRef(ParseState *pstate, OraParamRef *pref)
+transformOraParamRef(ParseState *pstate, OraParamRef * pref)
 {
 	Node	   *result = NULL;
 
 	/*
-	* If a hook is supplied, invoke it. If no hook or hook returns NULL,.
-	* throw a generic error.
-	*/
+	 * If a hook is supplied, invoke it. If no hook or hook returns NULL,.
+	 * throw a generic error.
+	 */
 	if (pstate->p_paramref_hook != NULL)
-		result = (*pstate->p_paramref_hook) (pstate, (ParamRef *)pref);
+		result = (*pstate->p_paramref_hook) (pstate, (ParamRef *) pref);
 	else
 		result = NULL;
 
 	if (result == NULL)
 	{
 		ereport(ERROR,
-			(errcode(ERRCODE_UNDEFINED_PARAMETER),
-			errmsg("no parameter %s", pref->name),
-				parser_errposition(pstate, pref->location)));
+				(errcode(ERRCODE_UNDEFINED_PARAMETER),
+				 errmsg("no parameter %s", pref->name),
+				 parser_errposition(pstate, pref->location)));
 	}
 
 	return result;
@@ -1272,7 +1272,7 @@ transformAExprOp(ParseState *pstate, A_Expr *a)
 	{
 		/* Ordinary scalar operator */
 		Node	   *last_srf = pstate->p_last_srf;
-		Oid 	   ltypeId = InvalidOid;
+		Oid			ltypeId = InvalidOid;
 
 		lexpr = transformExprRecurse(pstate, lexpr);
 		ltypeId = exprType(lexpr);
@@ -1280,11 +1280,12 @@ transformAExprOp(ParseState *pstate, A_Expr *a)
 		if (compatible_db == ORA_PARSER && ltypeId == ROWIDOID && nodeTag(rexpr) != T_TypeCast)
 		{
 			TypeCast   *castnode = makeNode(TypeCast);
+
 			castnode->typeName = makeTypeNameFromNameList(list_make2(makeString("sys"), makeString("rowid")));
 			castnode->arg = rexpr;
 			castnode->location = -1;
 
-			rexpr = transformExprRecurse(pstate, (Node *)castnode);
+			rexpr = transformExprRecurse(pstate, (Node *) castnode);
 		}
 		else
 			rexpr = transformExprRecurse(pstate, rexpr);
@@ -1783,7 +1784,7 @@ transformFuncCall(ParseState *pstate, FuncCall *fn)
 		arg = castNode(ColumnRef, rawArg);
 		alias = strVal(linitial(arg->fields));
 		nsitem = refnameNamespaceItem(pstate, NULL, alias,
-									fn->location, &levels_up);
+									  fn->location, &levels_up);
 		if (nsitem == NULL || nsitem->p_rte->rtekind != RTE_RELATION)
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
@@ -1814,13 +1815,13 @@ transformFuncCall(ParseState *pstate, FuncCall *fn)
 		rowidExpr = transformExprRecurse(pstate, (Node *) rowid);
 		baseRef = ParseFuncOrColumn(pstate,
 									list_make2(makeString("sys"),
-												makeString("make_object_ref")),
+											   makeString("make_object_ref")),
 									list_make1(rowidExpr), last_srf,
 									fn, false, fn->location);
 		typedRef = coerce_to_target_type(pstate, baseRef,
-										exprType(baseRef), refDomain, -1,
-										COERCION_EXPLICIT, COERCE_EXPLICIT_CAST,
-										fn->location);
+										 exprType(baseRef), refDomain, -1,
+										 COERCION_EXPLICIT, COERCE_EXPLICIT_CAST,
+										 fn->location);
 		if (typedRef == NULL)
 			elog(ERROR, "could not coerce object reference to its REF type");
 		return typedRef;
@@ -1853,11 +1854,11 @@ transformFuncCall(ParseState *pstate, FuncCall *fn)
 					 errmsg("DEREF requires a typed REF value"),
 					 parser_errposition(pstate, fn->location)));
 		return ParseFuncOrColumn(pstate,
-									list_make2(makeString("sys"),
-												makeString("ora_deref_internal")),
-									list_make2(ref, makeNullConst(objectType, -1,
-															 InvalidOid)),
-									last_srf, fn, false, fn->location);
+								 list_make2(makeString("sys"),
+											makeString("ora_deref_internal")),
+								 list_make2(ref, makeNullConst(objectType, -1,
+															   InvalidOid)),
+								 last_srf, fn, false, fn->location);
 	}
 
 	/*
@@ -1895,9 +1896,9 @@ transformFuncCall(ParseState *pstate, FuncCall *fn)
  * we assume it's a FuncCall, still not, report an error.
  */
 Node *
-transformColumnRefOrFunCall(ParseState *pstate, ColumnRefOrFuncCall *cref_func)
+transformColumnRefOrFunCall(ParseState *pstate, ColumnRefOrFuncCall * cref_func)
 {
-	Node *node = transformColumnRefInternal(pstate, cref_func->cref, true);
+	Node	   *node = transformColumnRefInternal(pstate, cref_func->cref, true);
 
 	if (node == NULL)
 	{
@@ -1907,23 +1908,20 @@ transformColumnRefOrFunCall(ParseState *pstate, ColumnRefOrFuncCall *cref_func)
 		}
 		PG_CATCH();
 		{
-			char str[264] = {'\0'};
-			ListCell	*lc;
-			int			i = 1;
+			StringInfoData str;
+			ListCell   *lc;
 
-			strcpy(str, "\"");
+			initStringInfo(&str);
 			foreach(lc, cref_func->cref->fields)
 			{
-				if (i > 1)
-					strcat(str, "\".\"");
-				strcat(str, ((String *)lfirst(lc))->sval);
-				i++;
+				if (lc != list_head(cref_func->cref->fields))
+					appendStringInfoChar(&str, '.');
+				appendStringInfo(&str, "\"%s\"", strVal(lfirst(lc)));
 			}
-			strcat(str, "\"");
 
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_NAME),
-					 errmsg("%s: invalid identifier", str),
+					 errmsg("%s: invalid identifier", str.data),
 					 parser_errposition(pstate, cref_func->cref->location)));
 		}
 		PG_END_TRY();
@@ -2260,7 +2258,7 @@ transformdecodeexpr(ParseState *pstate, CaseExpr *c)
 		l = lnext(whenexprs, list_head(whenexprs));
 		while (l)
 		{
-			Expr   *w = (Expr *) lfirst(l);
+			Expr	   *w = (Expr *) lfirst(l);
 			Oid			ntype = exprType((Node *) w);
 
 			if (!can_coerce_type(1, &ntype, &ptype, COERCION_IMPLICIT))
@@ -2302,9 +2300,9 @@ transformdecodeexpr(ParseState *pstate, CaseExpr *c)
 
 		if (OidIsValid(ptype))
 			arg = coerce_to_common_type(pstate,
-									  (Node *) arg,
-									  ptype,
-									  "DECODE");
+										(Node *) arg,
+										ptype,
+										"DECODE");
 
 		/*
 		 * Run collation assignment on the test expression so that we know
@@ -2355,36 +2353,32 @@ transformdecodeexpr(ParseState *pstate, CaseExpr *c)
 		}
 		else
 		{
-			CaseExpr	*innernewexpr;
-			CaseWhen	*innerneww;
-			NullTest	*innernulltest;
-			List		*blist = NIL;
-			List		*blist1 = NIL;
-			A_Expr 		*aexpr = NULL;
-				
+			CaseExpr   *innernewexpr;
+			CaseWhen   *innerneww;
+			NullTest   *innernulltest;
+			List	   *blist = NIL;
+			List	   *blist1 = NIL;
+			A_Expr	   *aexpr = NULL;
+
 			if (placeholder)
 			{
-				/* decode(a, b, c) ==>> 
-						case when
-							case when a is null and b is null then true  --first step
-								 when a is not null and b is not null and a = b then true --second step
-								 else false
-							end
-							then c
-						end;
+				/*
+				 * decode(a, b, c) ==>> case when case when a is null and b is
+				 * null then true  --first step when a is not null and b is
+				 * not null and a = b then true --second step else false end
+				 * then c end;
 				 */
-				A_Const *ac = makeNode(A_Const);
-				A_Const *ac1 = makeNode(A_Const);
-				TypeCast *tc = makeNode(TypeCast);
-				TypeCast *tc1 = makeNode(TypeCast);
-				
+				A_Const    *ac = makeNode(A_Const);
+				A_Const    *ac1 = makeNode(A_Const);
+				TypeCast   *tc = makeNode(TypeCast);
+				TypeCast   *tc1 = makeNode(TypeCast);
+
 				innernewexpr = makeNode(CaseExpr);
 				innerneww = makeNode(CaseWhen);
-					
-				/* 
-				 * first step: 
-				 *  case when a is null and b is null then true
-				 *  current step: a is null
+
+				/*
+				 * first step: case when a is null and b is null then true
+				 * current step: a is null
 				 */
 				innernulltest = makeNode(NullTest);
 				innernulltest->arg = copyObject(c->arg);
@@ -2392,51 +2386,46 @@ transformdecodeexpr(ParseState *pstate, CaseExpr *c)
 				innernulltest->location = -1;
 				blist = lappend(blist, innernulltest);
 
-				/* 
-				 * first step: 
-				 *  case when a is null and b is null then true
-				 *  current step: b is null
+				/*
+				 * first step: case when a is null and b is null then true
+				 * current step: b is null
 				 */
 				innernulltest = makeNode(NullTest);
 				innernulltest->arg = copyObject(w->expr);
 				innernulltest->nulltesttype = IS_NULL;
 				innernulltest->location = -1;
-				blist = lappend(blist, innernulltest);				
+				blist = lappend(blist, innernulltest);
 
-				/* 
-				 * first step: 
-				 *  case when a is null and b is null then true
-				 *  current step: a is null and b is null 
+				/*
+				 * first step: case when a is null and b is null then true
+				 * current step: a is null and b is null
 				 */
-				innerneww->expr =  makeBoolExpr(AND_EXPR, blist, -1);
+				innerneww->expr = makeBoolExpr(AND_EXPR, blist, -1);
 
-				/* 
-				 * first step: 
-				 *  case when a is null and b is null then true
-				 *  current step: then true
+				/*
+				 * first step: case when a is null and b is null then true
+				 * current step: then true
 				 */
 				ac->val.node.type = T_String;
 				ac->val.sval.sval = "t";
 				ac->location = -1;
-				tc->arg = (Node*)ac;
-				tc->typeName = makeTypeNameFromNameList(list_make2(makeString("pg_catalog"), 
-											makeString("bool")));
+				tc->arg = (Node *) ac;
+				tc->typeName = makeTypeNameFromNameList(list_make2(makeString("pg_catalog"),
+																   makeString("bool")));
 				tc->location = -1;
-				
-				innerneww->result = (Expr *)tc;
+
+				innerneww->result = (Expr *) tc;
 				innerneww->location = -1;
 
-				/* 
-				 * first step: 
-				 *  case when a is null and b is null then true
-				 *  current step: case when a is null and b is null then true
+				/*
+				 * first step: case when a is null and b is null then true
+				 * current step: case when a is null and b is null then true
 				 */
 				innernewexpr->args = lappend(innernewexpr->args, innerneww);
-				
-				/* 
-				 * second step: 
-				 *  case when a is not null and b is not null and a = b then true
-				 *  current step: a is not null
+
+				/*
+				 * second step: case when a is not null and b is not null and
+				 * a = b then true current step: a is not null
 				 */
 				innernulltest = makeNode(NullTest);
 				innernulltest->arg = copyObject(c->arg);
@@ -2444,71 +2433,67 @@ transformdecodeexpr(ParseState *pstate, CaseExpr *c)
 				innernulltest->location = -1;
 				blist1 = lappend(blist1, innernulltest);
 
-				/* 
-				 * second step: 
-				 *  case when a is not null and b is not null and a = b then true
-				 *  current step: b is not null
+				/*
+				 * second step: case when a is not null and b is not null and
+				 * a = b then true current step: b is not null
 				 */
 				innernulltest = makeNode(NullTest);
 				innernulltest->arg = copyObject(w->expr);
 				innernulltest->nulltesttype = IS_NOT_NULL;
 				innernulltest->location = -1;
-				blist1 = lappend(blist1, innernulltest);			
+				blist1 = lappend(blist1, innernulltest);
 
-				/* 
-				 * second step: 
-				 *  case when a is not null and b is not null and a = b then true
-				 *  current step: a = b
+				/*
+				 * second step: case when a is not null and b is not null and
+				 * a = b then true current step: a = b
 				 */
 				aexpr = makeSimpleA_Expr(AEXPR_OP, "=",
-												 (Node *) c->arg,
-												 warg,
-												 w->location);
+										 (Node *) c->arg,
+										 warg,
+										 w->location);
 				blist1 = lappend(blist1, aexpr);
 
-				/* 
-				 * second step: 
-				 *  case when a is not null and b is not null and a = b then true
-				 *  current step: a is not null and b is not null and a = b
+				/*
+				 * second step: case when a is not null and b is not null and
+				 * a = b then true current step: a is not null and b is not
+				 * null and a = b
 				 */
 				innerneww = makeNode(CaseWhen);
-				innerneww->expr =  makeBoolExpr(AND_EXPR, blist1, -1);
+				innerneww->expr = makeBoolExpr(AND_EXPR, blist1, -1);
 
-				/* 
-				 * second step: 
-				 *  case when a is not null and b is not null and a = b then true
-				 *  current step: then true
+				/*
+				 * second step: case when a is not null and b is not null and
+				 * a = b then true current step: then true
 				 */
-				innerneww->result = (Expr *)tc;
+				innerneww->result = (Expr *) tc;
 				innerneww->location = -1;
 
-				/* 
-				 * second step: 
-				 *  case when a is not null and b is not null and a = b then true
-				 *  current step: case when a is not null and b is not null and a = b then true
+				/*
+				 * second step: case when a is not null and b is not null and
+				 * a = b then true current step: case when a is not null and b
+				 * is not null and a = b then true
 				 */
 				innernewexpr->args = lappend(innernewexpr->args, innerneww);
-			
-				/* 
-				 * third step: 
-				 *  else false, default value (true of false)
-				 *  current step: else false
+
+				/*
+				 * third step: else false, default value (true of false)
+				 * current step: else false
 				 */
 				ac1->val.node.type = T_String;
 				ac1->val.sval.sval = "f";
 				ac1->location = -1;
-				tc1->arg = (Node*)ac1;
-				tc1->typeName = makeTypeNameFromNameList(list_make2(makeString("pg_catalog"), 
-											makeString("bool")));
+				tc1->arg = (Node *) ac1;
+				tc1->typeName = makeTypeNameFromNameList(list_make2(makeString("pg_catalog"),
+																	makeString("bool")));
 				tc1->location = -1;
 
-				/* 
+				/*
 				 * last step: new case expr
 				 */
-				innernewexpr->defresult = (Expr *)tc1;					
+				innernewexpr->defresult = (Expr *) tc1;
 				innernewexpr->location = -1;
-				
-				warg = (Node *)innernewexpr;
+
+				warg = (Node *) innernewexpr;
 			}
 			neww->expr = (Expr *) transformExprRecurse(pstate, warg);
 
@@ -2520,9 +2505,9 @@ transformdecodeexpr(ParseState *pstate, CaseExpr *c)
 			neww->orig_expr = (Expr *) transformExprRecurse(pstate, warg);
 			if (OidIsValid(ptype))
 				neww->orig_expr = (Expr *) coerce_to_common_type(pstate,
-													(Node *) neww->orig_expr,
-													ptype,
-													"DECODE");
+																 (Node *) neww->orig_expr,
+																 ptype,
+																 "DECODE");
 		}
 
 		warg = (Node *) w->result;
@@ -3305,12 +3290,12 @@ transformXmlExpr(ParseState *pstate, XmlExpr *x)
 				newe = coerce_to_specific_type(pstate, newe, XMLOID,
 											   "IS DOCUMENT");
 				break;
-			/* Begin - ReqID:SRS-SQL-XML */
+				/* Begin - ReqID:SRS-SQL-XML */
 			case IS_UPDATEXML:
 				newe = coerce_to_specific_type(pstate, newe, TEXTOID,
-												"UPDATEXML");
+											   "UPDATEXML");
 				break;
-			/* End - ReqID:SRS-SQL-XML */
+				/* End - ReqID:SRS-SQL-XML */
 		}
 		newx->args = lappend(newx->args, newe);
 		i++;
@@ -3612,6 +3597,21 @@ transformTypeCast(ParseState *pstate, TypeCast *tc)
 						format_type_be(inputType),
 						format_type_be(targetType)),
 				 parser_coercion_errposition(pstate, location, expr)));
+
+	/*
+	 * Preserve the Oracle NATIONAL character-set family on casts.  NCHAR and
+	 * NVARCHAR2 share their base type OIDs with CHAR and VARCHAR2, so the
+	 * marker collation carries the distinction through later parse analysis.
+	 */
+	if (tc->typeName->nchar)
+	{
+		CollateExpr *collate = makeNode(CollateExpr);
+
+		collate->arg = (Expr *) result;
+		collate->collOid = get_oracle_nchar_collation_oid(false);
+		collate->location = location;
+		result = (Node *) collate;
+	}
 
 	return result;
 }
@@ -4324,7 +4324,7 @@ checkJsonOutputFormat(ParseState *pstate, const JsonFormat *format,
 	if (format->format_type == JS_FORMAT_JSON)
 	{
 		JsonEncoding enc = format->encoding != JS_ENC_DEFAULT ?
-		format->encoding : JS_ENC_UTF8;
+			format->encoding : JS_ENC_UTF8;
 
 		if (targettype != BYTEAOID &&
 			format->encoding != JS_ENC_DEFAULT)

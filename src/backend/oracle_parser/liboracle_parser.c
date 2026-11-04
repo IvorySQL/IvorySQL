@@ -51,15 +51,27 @@ static get_keywords_hook_type prev_pg_get_keywords = NULL;
 static fill_in_constant_lengths_hook_type prev_fill_in_contant_lengths = NULL;
 static quote_identifier_hook_type prev_quote_identifier = NULL;
 
-void _PG_init(void);
-void _PG_fini(void);
+typedef struct UnpivotLookaheadEntry
+{
+	int			location;		/* hash key */
+	bool		is_clause;
+} UnpivotLookaheadEntry;
+
+typedef struct UnpivotProbeFrame
+{
+	int			location;		/* UNPIVOT token location, or -1 */
+	bool		found_for;
+} UnpivotProbeFrame;
+
+void		_PG_init(void);
+void		_PG_fini(void);
 
 static int	oracle_comp_location(const void *a, const void *b);
 
-static List * oracle_raw_parser(const char *str, RawParseMode mode);
+static List *oracle_raw_parser(const char *str, RawParseMode mode);
 static Datum oracle_pg_get_keywords(PG_FUNCTION_ARGS);
 static void oracle_fill_in_constant_lengths(void *jjstate, const char *query, int query_loc);
-static const char * oracle_quote_identifier(const char *ident);
+static const char *oracle_quote_identifier(const char *ident);
 
 /*
  * Module load callback
@@ -67,15 +79,15 @@ static const char * oracle_quote_identifier(const char *ident);
 void
 _PG_init(void)
 {
-	prev_raw_parser 			  = ora_raw_parser;
-	prev_pg_get_keywords 		  = get_keywords_hook;
-	prev_fill_in_contant_lengths  = fill_in_constant_lengths_hook;
-	prev_quote_identifier 		  = quote_identifier_hook;
+	prev_raw_parser = ora_raw_parser;
+	prev_pg_get_keywords = get_keywords_hook;
+	prev_fill_in_contant_lengths = fill_in_constant_lengths_hook;
+	prev_quote_identifier = quote_identifier_hook;
 
-	ora_raw_parser 			  	  = oracle_raw_parser;
-	get_keywords_hook 			  = oracle_pg_get_keywords;
+	ora_raw_parser = oracle_raw_parser;
+	get_keywords_hook = oracle_pg_get_keywords;
 	fill_in_constant_lengths_hook = oracle_fill_in_constant_lengths;
-	quote_identifier_hook		  = oracle_quote_identifier;
+	quote_identifier_hook = oracle_quote_identifier;
 }
 
 /*
@@ -84,10 +96,10 @@ _PG_init(void)
 void
 _PG_fini(void)
 {
-	ora_raw_parser 			  = prev_raw_parser;
-	get_keywords_hook 			  = prev_pg_get_keywords;
+	ora_raw_parser = prev_raw_parser;
+	get_keywords_hook = prev_pg_get_keywords;
 	fill_in_constant_lengths_hook = prev_fill_in_contant_lengths;
-	quote_identifier_hook		  = prev_quote_identifier;
+	quote_identifier_hook = prev_quote_identifier;
 }
 
 /*
@@ -129,14 +141,15 @@ oracle_raw_parser(const char *str, RawParseMode mode)
 
 	/* initialize the flex scanner */
 	yyscanner = ora_scanner_init(str, &yyextra.core_yy_extra,
-							 &OraScanKeywords, OraScanKeywordTokens);
+								 &OraScanKeywords, OraScanKeywordTokens);
 
 	yyextra.max_pushbacks = MAX_PUSHBACKS;
-	yyextra.pushback_token = palloc(sizeof(int)* MAX_PUSHBACKS);
-	yyextra.pushback_auxdata = palloc(sizeof(TokenAuxData)* MAX_PUSHBACKS);
+	yyextra.pushback_token = palloc(sizeof(int) * MAX_PUSHBACKS);
+	yyextra.pushback_auxdata = palloc(sizeof(TokenAuxData) * MAX_PUSHBACKS);
 	yyextra.num_pushbacks = 0;
 	yyextra.loc_pushback = 0;
 	yyextra.lookahead_end = NULL;
+	yyextra.unpivot_lookahead_cache = NULL;
 
 	set_oracle_plsql_body(yyscanner, OraBody_UNKOWN);
 
@@ -160,9 +173,11 @@ oracle_raw_parser(const char *str, RawParseMode mode)
 
 		TokenAuxData auxdata;
 
-		auxdata.lval.core_yystype.str = " ";	/* token value doesn't matter, no one uses it */
+		auxdata.lval.core_yystype.str = " ";	/* token value doesn't matter,
+												 * no one uses it */
 		auxdata.lloc = 0;
 		auxdata.leng = 1;
+		auxdata.replayed = false;
 		yyextra.pushback_token[yyextra.num_pushbacks] = mode_token[mode];
 		yyextra.pushback_auxdata[yyextra.num_pushbacks] = auxdata;
 		yyextra.num_pushbacks++;
@@ -176,6 +191,8 @@ oracle_raw_parser(const char *str, RawParseMode mode)
 
 	/* Clean up (release memory) */
 	ora_scanner_finish(yyscanner);
+	if (yyextra.unpivot_lookahead_cache)
+		hash_destroy(yyextra.unpivot_lookahead_cache);
 
 	pfree(yyextra.pushback_token);
 	pfree(yyextra.pushback_auxdata);
@@ -188,22 +205,36 @@ oracle_raw_parser(const char *str, RawParseMode mode)
 	return yyextra.parsetree;
 }
 
+/* Ensure that the pushback arrays can hold the requested number of tokens. */
+static void
+ensure_pushback_capacity(ora_core_yyscan_t yyscanner, int needed)
+{
+	ora_base_yy_extra_type *yyextra = pg_yyget_extra(yyscanner);
+
+	if (needed <= yyextra->max_pushbacks)
+		return;
+
+	while (yyextra->max_pushbacks < needed)
+		yyextra->max_pushbacks *= 2;
+
+	yyextra->pushback_token =
+		repalloc(yyextra->pushback_token,
+				 sizeof(int) * yyextra->max_pushbacks);
+	yyextra->pushback_auxdata =
+		repalloc(yyextra->pushback_auxdata,
+				 sizeof(TokenAuxData) * yyextra->max_pushbacks);
+}
+
 /*
  * Push a token into cache arrays using the token number and TokenAuxData.
  */
 static void
-push_back_token(ora_core_yyscan_t yyscanner,  int token, TokenAuxData *auxdata)
+push_back_token(ora_core_yyscan_t yyscanner, int token, TokenAuxData *auxdata)
 {
 	ora_base_yy_extra_type *yyextra = pg_yyget_extra(yyscanner);
 
 	/* ensure enough space */
-	if (yyextra->num_pushbacks >= yyextra->max_pushbacks)
-	{
-		yyextra->max_pushbacks = yyextra->max_pushbacks * 2;
-		yyextra->pushback_token = repalloc(yyextra->pushback_token, sizeof(int) * yyextra->max_pushbacks);
-		yyextra->pushback_auxdata = repalloc(yyextra->pushback_auxdata, sizeof(TokenAuxData)* yyextra->max_pushbacks);
-
-	}
+	ensure_pushback_capacity(yyscanner, yyextra->num_pushbacks + 1);
 
 	yyextra->pushback_token[yyextra->num_pushbacks] = token;
 	yyextra->pushback_auxdata[yyextra->num_pushbacks] = *auxdata;
@@ -221,6 +252,7 @@ ora_push_back_token(ora_core_yyscan_t yyscanner, int token, ora_core_YYSTYPE lva
 	auxdata.lval.core_yystype = lval;
 	auxdata.lloc = lloc;
 	auxdata.leng = length;
+	auxdata.replayed = false;
 	push_back_token(yyscanner, token, &auxdata);
 }
 
@@ -237,8 +269,8 @@ forward_token(ora_core_yyscan_t yyscanner, int token, TokenAuxData *auxdata)
 	{
 		Assert(yyextra->loc_pushback > 0);
 
-		yyextra->pushback_token[yyextra->loc_pushback-1] = token;
-		yyextra->pushback_auxdata[yyextra->loc_pushback-1] = *auxdata;
+		yyextra->pushback_token[yyextra->loc_pushback - 1] = token;
+		yyextra->pushback_auxdata[yyextra->loc_pushback - 1] = *auxdata;
 		yyextra->loc_pushback--;
 	}
 }
@@ -253,9 +285,10 @@ ora_internal_yylex(ora_core_yyscan_t yyscanner, YYLTYPE *llocp, TokenAuxData *au
 	const char *yytext;
 
 	token = ora_core_yylex(&auxdata->lval.core_yystype,
-		llocp,
-		yyscanner);
+						   llocp,
+						   yyscanner);
 	auxdata->lloc = *llocp;
+	auxdata->replayed = false;
 
 	/* remember the length of yytext before it gets changed */
 	yytext = yyextra->core_yy_extra.scanbuf + auxdata->lloc;
@@ -264,44 +297,333 @@ ora_internal_yylex(ora_core_yyscan_t yyscanner, YYLTYPE *llocp, TokenAuxData *au
 	return token;
 }
 
+static void
+consume_pushback_tokens(ora_base_yy_extra_type *yyextra, int count)
+{
+	Assert(count > 0);
+	Assert(yyextra->loc_pushback + count <= yyextra->num_pushbacks);
+
+	yyextra->loc_pushback += count;
+	if (yyextra->loc_pushback >= yyextra->num_pushbacks)
+	{
+		yyextra->loc_pushback = 0;
+		yyextra->num_pushbacks = 0;
+	}
+}
+
 /*
  * Get next token directly from the cache when cache array
  * in yyextra is available, otherwise call ora_core_yylex()
  * to get the next token.
  */
 static int
-internal_yylex(ora_core_yyscan_t yyscanner, YYLTYPE *llocp, TokenAuxData *auxdata)
+internal_yylex(ora_core_yyscan_t yyscanner, YYLTYPE *llocp,
+			   TokenAuxData *auxdata)
 {
 	ora_base_yy_extra_type *yyextra = pg_yyget_extra(yyscanner);
-	int token;
+	int			token;
 
 	/* get token from cache arrays */
 	if (yyextra->loc_pushback < yyextra->num_pushbacks)
 	{
 		token = yyextra->pushback_token[yyextra->loc_pushback];
 		*auxdata = yyextra->pushback_auxdata[yyextra->loc_pushback];
-		yyextra->loc_pushback++;
 		*llocp = auxdata->lloc;
-
-		/* If this is the last token in the cache array, reset it */
-		if (yyextra->loc_pushback >= yyextra->num_pushbacks)
-		{
-			yyextra->loc_pushback = 0;
-			yyextra->num_pushbacks = 0;
-		}
+		consume_pushback_tokens(yyextra, 1);
 	}
 	else
-	{
 		token = ora_internal_yylex(yyscanner, llocp, auxdata);
-	}
 
 	return token;
+}
+
+/*
+ * Read and save one token while probing for an UNPIVOT clause.  Existing
+ * lookahead tokens must be consumed before reading from the scanner, and all
+ * tokens read here are replayed after the probe.
+ */
+static int
+read_unpivot_lookahead(ora_core_yyscan_t yyscanner, YYLTYPE *llocp,
+					   int *next_pos, int old_num_pushbacks,
+					   int *num_tokens, int *max_tokens,
+					   int **tokens, TokenAuxData **auxdata)
+{
+	ora_base_yy_extra_type *yyextra = pg_yyget_extra(yyscanner);
+	TokenAuxData token_auxdata;
+	int			token;
+
+	if (*next_pos < old_num_pushbacks)
+	{
+		token = yyextra->pushback_token[*next_pos];
+		token_auxdata = yyextra->pushback_auxdata[*next_pos];
+	}
+	else
+		token = ora_internal_yylex(yyscanner, llocp, &token_auxdata);
+	(*next_pos)++;
+	token_auxdata.replayed = true;
+
+	if (*num_tokens >= *max_tokens)
+	{
+		*max_tokens *= 2;
+		*tokens = repalloc(*tokens, sizeof(int) * *max_tokens);
+		*auxdata = repalloc(*auxdata,
+							sizeof(TokenAuxData) * *max_tokens);
+	}
+	(*tokens)[*num_tokens] = token;
+	(*auxdata)[*num_tokens] = token_auxdata;
+	(*num_tokens)++;
+
+	return token;
+}
+
+/*
+ * Restore all probed tokens before any tokens that were not consumed from the
+ * existing cache.
+ */
+static void
+restore_unpivot_lookahead(ora_core_yyscan_t yyscanner,
+						  int next_pos, int old_num_pushbacks,
+						  int num_tokens, int *tokens,
+						  TokenAuxData *auxdata)
+{
+	ora_base_yy_extra_type *yyextra = pg_yyget_extra(yyscanner);
+	int			tail_start = next_pos;
+	int			tail_count = 0;
+	int			total_tokens;
+	int		   *tail_tokens = NULL;
+	TokenAuxData *tail_auxdata = NULL;
+
+	if (tail_start < old_num_pushbacks)
+	{
+		tail_count = old_num_pushbacks - tail_start;
+		tail_tokens = palloc(sizeof(int) * tail_count);
+		tail_auxdata = palloc(sizeof(TokenAuxData) * tail_count);
+		memcpy(tail_tokens, &yyextra->pushback_token[tail_start],
+			   sizeof(int) * tail_count);
+		memcpy(tail_auxdata, &yyextra->pushback_auxdata[tail_start],
+			   sizeof(TokenAuxData) * tail_count);
+	}
+
+	total_tokens = num_tokens + tail_count;
+	ensure_pushback_capacity(yyscanner, total_tokens);
+	memcpy(yyextra->pushback_token, tokens, sizeof(int) * num_tokens);
+	memcpy(yyextra->pushback_auxdata, auxdata,
+		   sizeof(TokenAuxData) * num_tokens);
+	if (tail_count > 0)
+	{
+		memcpy(&yyextra->pushback_token[num_tokens], tail_tokens,
+			   sizeof(int) * tail_count);
+		memcpy(&yyextra->pushback_auxdata[num_tokens], tail_auxdata,
+			   sizeof(TokenAuxData) * tail_count);
+	}
+
+	yyextra->num_pushbacks = total_tokens;
+	yyextra->loc_pushback = 0;
+
+	pfree(tokens);
+	pfree(auxdata);
+	if (tail_tokens)
+		pfree(tail_tokens);
+	if (tail_auxdata)
+		pfree(tail_auxdata);
+}
+
+static bool
+find_unpivot_lookahead(ora_base_yy_extra_type *yyextra, int location,
+					   bool *found)
+{
+	UnpivotLookaheadEntry *entry;
+
+	*found = false;
+	if (yyextra->unpivot_lookahead_cache == NULL)
+		return false;
+
+	entry = hash_search(yyextra->unpivot_lookahead_cache, &location,
+						HASH_FIND, NULL);
+	if (entry == NULL)
+		return false;
+
+	*found = true;
+	return entry->is_clause;
+}
+
+static void
+cache_unpivot_lookahead(ora_base_yy_extra_type *yyextra, int location,
+						bool is_clause)
+{
+	HASHCTL		hash_ctl;
+	UnpivotLookaheadEntry *entry;
+	bool		found;
+
+	if (yyextra->unpivot_lookahead_cache == NULL)
+	{
+		MemSet(&hash_ctl, 0, sizeof(hash_ctl));
+		hash_ctl.keysize = sizeof(int);
+		hash_ctl.entrysize = sizeof(UnpivotLookaheadEntry);
+		hash_ctl.hcxt = CurrentMemoryContext;
+		yyextra->unpivot_lookahead_cache =
+			hash_create("Oracle UNPIVOT lookahead cache", 16, &hash_ctl,
+						HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+	}
+
+	entry = hash_search(yyextra->unpivot_lookahead_cache, &location,
+						HASH_ENTER, &found);
+	if (!found)
+		entry->is_clause = is_clause;
+}
+
+/*
+ * Return the location of an UNPIVOT token immediately preceding the opening
+ * parenthesis at open_index, accounting for the optional INCLUDE/EXCLUDE
+ * NULLS prefix.  Return -1 when this is an uninteresting parenthesis.
+ */
+static int
+preceding_unpivot_location(int *tokens, TokenAuxData *auxdata, int open_index)
+{
+	if (open_index >= 1 && tokens[open_index - 1] == UNPIVOT)
+		return auxdata[open_index - 1].lloc;
+	if (open_index >= 3 &&
+		tokens[open_index - 3] == UNPIVOT &&
+		(tokens[open_index - 2] == INCLUDE ||
+		 tokens[open_index - 2] == EXCLUDE) &&
+		tokens[open_index - 1] == NULLS_P)
+		return auxdata[open_index - 3].lloc;
+	return -1;
+}
+
+/*
+ * Check whether a parenthesized identifier use of UNPIVOT is actually an
+ * UNPIVOT clause.  The grammar cannot distinguish "name (...)" from
+ * "UNPIVOT (...)" with only one token of lookahead, so inspect the first
+ * parenthesis level for the required FOR keyword.
+ *
+ * A probe for a non-clause function call scans its complete outer
+ * parenthesis and caches every nested UNPIVOT encountered along the way.
+ * Nested calls such as "unpivot(unpivot(...))" therefore do not repeatedly
+ * scan the same text.  A real clause can stop as soon as its FOR is found.
+ */
+static bool
+unpivot_clause_follows(ora_core_yyscan_t yyscanner, YYLTYPE *llocp,
+					   bool nulls_option, int unpivot_location)
+{
+	ora_base_yy_extra_type *yyextra = pg_yyget_extra(yyscanner);
+	int			old_num_pushbacks = yyextra->num_pushbacks;
+	int			next_pos = yyextra->loc_pushback;
+	int			max_tokens = 16;
+	int			num_tokens = 0;
+	int		   *tokens;
+	TokenAuxData *auxdata;
+	int			max_frames = 16;
+	int			num_frames = 0;
+	UnpivotProbeFrame *frames;
+	bool		resolved = false;
+	bool		is_clause = false;
+	bool		found;
+	int			token;
+
+	is_clause = find_unpivot_lookahead(yyextra, unpivot_location, &found);
+	if (found)
+		return is_clause;
+
+	tokens = palloc(sizeof(int) * max_tokens);
+	auxdata = palloc(sizeof(TokenAuxData) * max_tokens);
+	frames = palloc(sizeof(UnpivotProbeFrame) * max_frames);
+
+	if (nulls_option)
+	{
+		token = read_unpivot_lookahead(yyscanner, llocp, &next_pos,
+									   old_num_pushbacks, &num_tokens,
+									   &max_tokens, &tokens, &auxdata);
+		if (token != INCLUDE && token != EXCLUDE)
+		{
+			resolved = true;
+			goto done;
+		}
+		token = read_unpivot_lookahead(yyscanner, llocp, &next_pos,
+									   old_num_pushbacks, &num_tokens,
+									   &max_tokens, &tokens, &auxdata);
+		if (token != NULLS_P)
+		{
+			resolved = true;
+			goto done;
+		}
+	}
+
+	token = read_unpivot_lookahead(yyscanner, llocp, &next_pos,
+								   old_num_pushbacks, &num_tokens,
+								   &max_tokens, &tokens, &auxdata);
+	if (token != '(')
+	{
+		resolved = true;
+		goto done;
+	}
+
+	frames[num_frames].location = unpivot_location;
+	frames[num_frames].found_for = false;
+	num_frames++;
+
+	while (num_frames > 0)
+	{
+		UnpivotProbeFrame frame;
+		int			nested_location;
+
+		token = read_unpivot_lookahead(yyscanner, llocp, &next_pos,
+									   old_num_pushbacks, &num_tokens,
+									   &max_tokens, &tokens, &auxdata);
+		if (token == 0 || token == ';')
+			break;
+
+		if (token == '(')
+		{
+			if (num_frames >= max_frames)
+			{
+				max_frames *= 2;
+				frames = repalloc(frames,
+								  sizeof(UnpivotProbeFrame) * max_frames);
+			}
+			nested_location =
+				preceding_unpivot_location(tokens, auxdata, num_tokens - 1);
+			frames[num_frames].location = nested_location;
+			frames[num_frames].found_for = false;
+			num_frames++;
+		}
+		else if (token == FOR)
+		{
+			frames[num_frames - 1].found_for = true;
+			if (num_frames == 1)
+			{
+				is_clause = true;
+				resolved = true;
+				break;
+			}
+		}
+		else if (token == ')')
+		{
+			frame = frames[--num_frames];
+			if (frame.location >= 0)
+				cache_unpivot_lookahead(yyextra, frame.location,
+										frame.found_for);
+			if (num_frames == 0)
+			{
+				is_clause = frame.found_for;
+				resolved = true;
+			}
+		}
+	}
+
+done:
+	if (resolved)
+		cache_unpivot_lookahead(yyextra, unpivot_location, is_clause);
+	restore_unpivot_lookahead(yyscanner, next_pos, old_num_pushbacks,
+							  num_tokens, tokens, auxdata);
+	pfree(frames);
+	return is_clause;
 }
 
 static bool
 token_is_col_id(int token)
 {
-	int	i = 0;
+	int			i = 0;
 
 	if (token == IDENT)
 		return true;
@@ -314,8 +636,8 @@ token_is_col_id(int token)
 	}
 
 	if (i < OraScanKeywords.num_keywords &&
-		(OraScanKeywordCategories[i]== UNRESERVED_KEYWORD ||
-		OraScanKeywordCategories[i]== COL_NAME_KEYWORD))
+		(OraScanKeywordCategories[i] == UNRESERVED_KEYWORD ||
+		 OraScanKeywordCategories[i] == COL_NAME_KEYWORD))
 		return true;
 	return false;
 }
@@ -350,11 +672,13 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 	int			next_token;
 	int			cur_token_length;
 	YYLTYPE		cur_yylloc;
+	bool		cur_token_is_replay;
 
 	TokenAuxData aux1;
 
 	/* Get next token --- we might already have it */
 	cur_token = internal_yylex(yyscanner, llocp, &aux1);
+	cur_token_is_replay = aux1.replayed;
 
 	lvalp->core_yystype = aux1.lval.core_yystype;
 
@@ -366,7 +690,10 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 
 	if (yyextra->body_style == OraBody_MAYBE_ANONYMOUS_BLOCK_BEGIN)
 	{
-		/* If it is the beginning of BEGIN, maybe it is a Transaction or routine_body of function */
+		/*
+		 * If it is the beginning of BEGIN, maybe it is a Transaction or
+		 * routine_body of function
+		 */
 		if (cur_token != WORK &&
 			cur_token != TRANSACTION &&
 			cur_token != ATOMIC &&
@@ -383,13 +710,16 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 
 	else if (yyextra->body_style == OraBody_MAYBE_ANONYMOUS_BLOCK_DECLARE)
 	{
-		/* If it is the beginning of DECLARE, maybe the transaction defines a cursor */
-		int	token = cur_token;
-		bool is_def_cursor_stmt = false;
+		/*
+		 * If it is the beginning of DECLARE, maybe the transaction defines a
+		 * cursor
+		 */
+		int			token = cur_token;
+		bool		is_def_cursor_stmt = false;
 
 		if (token_is_col_id(cur_token))
 		{
-			bool has_cursor = false;
+			bool		has_cursor = false;
 
 			token = ora_internal_yylex(yyscanner, llocp, &aux1);
 			push_back_token(yyscanner, token, &aux1);
@@ -398,18 +728,16 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 			while (token != 0 && token != ';')
 			{
 				/*
-				 * support anonymous block.
-				 * In the PLSQL, the cursor declare must be 'CURSOR ...',
-				 * not '... CURSOR ...'.
+				 * support anonymous block. In the PLSQL, the cursor declare
+				 * must be 'CURSOR ...', not '... CURSOR ...'.
 				 *
-				 * PLSQL supports "type xxx is ref cursor" grammer
-				 * so we check the last token is ref or not.
-				 * declare cursor doesn't support ref for the cursor name.
+				 * PLSQL supports "type xxx is ref cursor" grammer so we check
+				 * the last token is ref or not. declare cursor doesn't
+				 * support ref for the cursor name.
 				 *
-				 * Inline function supports cursor
-				 * we know it is the cursor of SQL, if the next token
-				 * is WITH or FOR or WITHOUT. see details for ora_gram.y about
-				 * declare cursor stmt.
+				 * Inline function supports cursor we know it is the cursor of
+				 * SQL, if the next token is WITH or FOR or WITHOUT. see
+				 * details for ora_gram.y about declare cursor stmt.
 				 */
 				if (token == CURSOR)
 					has_cursor = true;
@@ -419,8 +747,8 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 
 				if (has_cursor &&
 					(token == WITH ||
-					token == FOR ||
-					token == WITHOUT))
+					 token == FOR ||
+					 token == WITHOUT))
 				{
 					is_def_cursor_stmt = true;
 					break;
@@ -439,11 +767,11 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 	if ((yyextra->body_style == OraBody_FUNC && cur_token != SCONST) ||
 		(yyextra->body_style == OraBody_ANONYMOUS_BLOCK))
 	{
-		int beginpos = yyextra->body_start;
-		int blocklevel = yyextra->body_level;
-		bool found_begin = false;
-		bool found_foreign_begin = false;
-		int subproc_define_level = 0;
+		int			beginpos = yyextra->body_start;
+		int			blocklevel = yyextra->body_level;
+		bool		found_begin = false;
+		bool		found_foreign_begin = false;
+		int			subproc_define_level = 0;
 
 		if (blocklevel > 0)
 		{
@@ -507,10 +835,10 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 						{
 							blocklevel--;
 						}
-				}
+					}
 
-				if (blocklevel == 0)
-				{
+					if (blocklevel == 0)
+					{
 						if (found_foreign_begin && subproc_define_level == 0)
 							break;
 						else if (subproc_define_level > 0)
@@ -523,7 +851,7 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 		}
 
 		if ((cur_token == ';' && blocklevel == 0 &&
-			subproc_define_level == 0) ||
+			 subproc_define_level == 0) ||
 			(cur_token == 0 && blocklevel > 0))
 		{
 			aux1.lval.str = ";";
@@ -542,14 +870,14 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 	}
 
 	else if ((yyextra->body_style == OraBody_PACKAGE ||
-		yyextra->body_style == OraBody_PACKAGEBODY ||
-		yyextra->body_style == OraBody_TYPEBODY) &&
-			cur_token != SCONST)
+			  yyextra->body_style == OraBody_PACKAGEBODY ||
+			  yyextra->body_style == OraBody_TYPEBODY) &&
+			 cur_token != SCONST)
 	{
-		int beginpos = yyextra->body_start;
-		int blocklevel = yyextra->body_level;
-		bool found_end = false;
-		int sub_proc_level = 0;
+		int			beginpos = yyextra->body_start;
+		int			blocklevel = yyextra->body_level;
+		bool		found_end = false;
+		int			sub_proc_level = 0;
 
 		while (cur_token != 0)
 		{
@@ -557,10 +885,10 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 				beginpos = *llocp;
 
 			if ((yyextra->body_style == OraBody_PACKAGEBODY ||
-				yyextra->body_style == OraBody_TYPEBODY) &&
+				 yyextra->body_style == OraBody_TYPEBODY) &&
 				(cur_token == FUNCTION || cur_token == PROCEDURE))
 			{
-				while(true)
+				while (true)
 				{
 					cur_token = internal_yylex(yyscanner, llocp, &aux1);
 
@@ -610,7 +938,7 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 					 * package body may have init block
 					 */
 					if ((yyextra->body_style == OraBody_PACKAGEBODY ||
-						yyextra->body_style == OraBody_TYPEBODY) &&
+						 yyextra->body_style == OraBody_TYPEBODY) &&
 						blocklevel == 0)
 					{
 						if (sub_proc_level > 0)
@@ -630,12 +958,12 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 			cur_token = internal_yylex(yyscanner, llocp, &aux1);
 		}
 
-		if ((cur_token == ';'  && blocklevel == 0) ||
-			(cur_token == 0    && blocklevel > 0))
+		if ((cur_token == ';' && blocklevel == 0) ||
+			(cur_token == 0 && blocklevel > 0))
 		{
 			aux1.lval.str = ";";
 			ora_push_back_token(yyscanner, ';', aux1.lval.core_yystype,
-				aux1.lloc, 1);
+								aux1.lloc, 1);
 
 
 			/* Now revert the un-truncation of the current token */
@@ -700,6 +1028,9 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 		case STATIC_P:
 			cur_token_length = 6;
 			break;
+		case UNPIVOT:
+			cur_token_length = 7;
+			break;
 		case '(':
 			cur_token_length = 1;
 			break;
@@ -707,14 +1038,20 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 			return cur_token;
 	}
 
-	/*
-	 * Identify end+1 of current token.  core_yylex() has temporarily stored a
-	 * '\0' here, and will undo that when we call it again.  We need to redo
-	 * it to fully revert the lookahead call for error reporting purposes.
-	 */
-	yyextra->lookahead_end = yyextra->core_yy_extra.scanbuf +
-		*llocp + cur_token_length;
-	Assert(*(yyextra->lookahead_end) == '\0');
+	if (!cur_token_is_replay)
+	{
+		/*
+		 * Identify end+1 of current token.  core_yylex() has temporarily
+		 * stored a '\0' here, and will undo that when we call it again.  We
+		 * need to redo it to fully revert the lookahead call for error
+		 * reporting purposes.
+		 */
+		yyextra->lookahead_end = yyextra->core_yy_extra.scanbuf +
+			*llocp + cur_token_length;
+		Assert(*(yyextra->lookahead_end) == '\0');
+	}
+	else
+		Assert(yyextra->lookahead_end == NULL);
 
 	/*
 	 * Save and restore *llocp around the call.  It might look like we could
@@ -732,8 +1069,11 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 	*llocp = cur_yylloc;
 
 	/* Now revert the un-truncation of the current token */
-	yyextra->lookahead_hold_char = *(yyextra->lookahead_end);
-	*(yyextra->lookahead_end) = '\0';
+	if (!cur_token_is_replay)
+	{
+		yyextra->lookahead_hold_char = *(yyextra->lookahead_end);
+		*(yyextra->lookahead_end) = '\0';
+	}
 
 	yyextra->have_lookahead = true;
 
@@ -809,6 +1149,22 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 				cur_token = STATIC_LA;
 			break;
 
+		case UNPIVOT:
+
+			/*
+			 * Distinguish the UNPIVOT clause from a normal identifier used as
+			 * a column/table/function name.  The clause is followed by an
+			 * optional NULLS option and then its parenthesized body.
+			 */
+			if ((next_token == INCLUDE || next_token == EXCLUDE ||
+				 next_token == '(') &&
+				unpivot_clause_follows(yyscanner, llocp,
+									   next_token != '(',
+									   cur_yylloc))
+				cur_token = UNPIVOT_LA;
+			*llocp = cur_yylloc;
+			break;
+
 		case WITH:
 			/* Replace WITH by WITH_LA if it's followed by TIME or ORDINALITY */
 			switch (next_token)
@@ -817,14 +1173,33 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 				case ORDINALITY:
 					cur_token = WITH_LA;
 					break;
-				case LOCAL:	
+				case LOCAL:
 					{
 						/*
 						 * Get third token, if it is TIME return WITH_LA
 						 * otherwise return WITH.
 						 */
-						next_token = ora_internal_yylex(yyscanner, llocp, &aux1);
-						push_back_token(yyscanner, next_token, &aux1);
+						if (cur_token_is_replay)
+						{
+							Assert(yyextra->loc_pushback + 1 <
+								   yyextra->num_pushbacks);
+							Assert(yyextra->pushback_token[
+														   yyextra->loc_pushback] == LOCAL);
+							aux1 = yyextra->pushback_auxdata[
+															 yyextra->loc_pushback + 1];
+							next_token =
+								yyextra->pushback_token[
+														yyextra->loc_pushback + 1];
+							*llocp = aux1.lloc;
+							if (next_token == TIME)
+								consume_pushback_tokens(yyextra, 2);
+						}
+						else
+						{
+							next_token =
+								ora_internal_yylex(yyscanner, llocp, &aux1);
+							push_back_token(yyscanner, next_token, &aux1);
+						}
 
 						if (next_token == TIME)
 							cur_token = WITH_LA;
@@ -845,12 +1220,12 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 
 		case LONG_P:
 			switch (next_token)
-				{
+			{
 				case RAW_P:
 					yyextra->loc_pushback++;	/* eat RAW_P token */
 					cur_token = LONG_RAW;
 					break;
-				}
+			}
 			break;
 
 		case UIDENT:
@@ -862,20 +1237,40 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 				const char *escstr;
 
 				/* Un-truncate current token so errors point to third token */
-				*(yyextra->lookahead_end) = yyextra->lookahead_hold_char;
+				if (!cur_token_is_replay)
+					*(yyextra->lookahead_end) =
+						yyextra->lookahead_hold_char;
 
-				/* Get third token using ora_core_yylex() and don't push it into cache arrays */
-				next_token = ora_internal_yylex(yyscanner, llocp, &aux1);
+				/*
+				 * Get third token using ora_core_yylex() and don't push it
+				 * into cache arrays
+				 */
+				if (cur_token_is_replay)
+				{
+					Assert(yyextra->loc_pushback + 1 <
+						   yyextra->num_pushbacks);
+					Assert(yyextra->pushback_token[
+												   yyextra->loc_pushback] == UESCAPE);
+					aux1 = yyextra->pushback_auxdata[
+													 yyextra->loc_pushback + 1];
+					next_token = yyextra->pushback_token[
+														 yyextra->loc_pushback + 1];
+					*llocp = aux1.lloc;
+					consume_pushback_tokens(yyextra, 2);
+				}
+				else
+					next_token =
+						ora_internal_yylex(yyscanner, llocp, &aux1);
 
 				/* If we throw error here, it will point to third token */
 				if (next_token != SCONST)
 					ora_scanner_yyerror("UESCAPE must be followed by a simple string literal",
-									yyscanner);
+										yyscanner);
 
 				escstr = aux1.lval.str;
 				if (strlen(escstr) != 1 || !check_uescapechar(escstr[0]))
 					ora_scanner_yyerror("invalid Unicode escape character",
-									yyscanner);
+										yyscanner);
 
 				/* Apply Unicode conversion */
 				lvalp->core_yystype.str =
@@ -886,10 +1281,11 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 
 				/*
 				 * We don't need to revert the un-truncation of UESCAPE.  What
-				 * we do want to do is  eat one-token within cache array, thereby
-				 * consuming all three tokens.
+				 * we do want to do is  eat one-token within cache array,
+				 * thereby consuming all three tokens.
 				 */
-				yyextra->loc_pushback++;
+				if (!cur_token_is_replay)
+					yyextra->loc_pushback++;
 			}
 			else
 			{
@@ -916,6 +1312,7 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 			break;
 
 		case '(':
+
 			/*
 			 * Combine the three tokens "(" "+" ")" into one ORAJOINOPR token
 			 * (the Oracle outer join operator).  Whitespace and comments may
@@ -924,32 +1321,56 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 			 */
 			if (next_token == '+')
 			{
-				/* fetch the third token directly (not via the cache) */
-				next_token = ora_internal_yylex(yyscanner, llocp, &aux1);
+				if (cur_token_is_replay)
+				{
+					/*
+					 * Inspect the cached '+' and closing parenthesis without
+					 * leaving the replay buffer.  A non-match leaves both
+					 * tokens in place for the next ora_base_yylex() call.
+					 */
+					Assert(yyextra->loc_pushback + 1 <
+						   yyextra->num_pushbacks);
+					Assert(yyextra->pushback_token[
+												   yyextra->loc_pushback] == '+');
+					next_token = yyextra->pushback_token[
+														 yyextra->loc_pushback + 1];
+				}
+				else
+					next_token =
+						ora_internal_yylex(yyscanner, llocp, &aux1);
+
 				if (next_token == ')')
 				{
 					cur_token = ORAJOINOPR;
+
 					/*
-					 * Consume the cached '+'; the ')' just fetched is
-					 * simply dropped.  lookahead_end / lookahead_hold_char
-					 * were already set up for '(' by the common lookahead
-					 * code above and still point one past '(' with the real
+					 * Consume the cached '+'; the ')' just fetched is simply
+					 * dropped.  lookahead_end / lookahead_hold_char were
+					 * already set up for '(' by the common lookahead code
+					 * above and still point one past '(' with the real
 					 * character saved, so leave them alone -- recomputing
 					 * lookahead_hold_char here would capture the scanner's
 					 * temporary '\0' after ')' instead of the real byte.
 					 */
-					yyextra->loc_pushback++;
+					if (cur_token_is_replay)
+						consume_pushback_tokens(yyextra, 2);
+					else
+						yyextra->loc_pushback++;
 				}
 				else
 				{
-					/* not "(+)": keep '(', replay the cached '+' then this token */
-					push_back_token(yyscanner, next_token, &aux1);
+					/*
+					 * not "(+)": keep '(', replay the cached '+' then this
+					 * token
+					 */
+					if (!cur_token_is_replay)
+						push_back_token(yyscanner, next_token, &aux1);
 				}
 
 				/*
-				 * ora_internal_yylex() above moved *llocp to the third
-				 * token; restore it to '(' so this token is reported at the
-				 * right position (matching the matched and unmatched cases).
+				 * ora_internal_yylex() above moved *llocp to the third token;
+				 * restore it to '(' so this token is reported at the right
+				 * position (matching the matched and unmatched cases).
 				 */
 				*llocp = cur_yylloc;
 			}
@@ -962,10 +1383,12 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 /*
  * Sets the current syntax type.
  */
-void set_oracle_plsql_body(ora_core_yyscan_t yyscanner, OraBodyStyle body_style)
+void
+set_oracle_plsql_body(ora_core_yyscan_t yyscanner, OraBodyStyle body_style)
 {
 
 	ora_base_yy_extra_type *yyextra = pg_yyget_extra(yyscanner);
+
 	yyextra->body_style = body_style;
 
 	set_oracle_plsql_bodystart(yyscanner, -1, 0);
@@ -974,10 +1397,12 @@ void set_oracle_plsql_body(ora_core_yyscan_t yyscanner, OraBodyStyle body_style)
 /*
  * Sets the current syntax position.
  */
-void set_oracle_plsql_bodystart(ora_core_yyscan_t yyscanner, int body_start, int body_level)
+void
+set_oracle_plsql_bodystart(ora_core_yyscan_t yyscanner, int body_start, int body_level)
 {
 
 	ora_base_yy_extra_type *yyextra = pg_yyget_extra(yyscanner);
+
 	yyextra->body_start = body_start;
 	yyextra->body_level = body_level;
 }
@@ -1066,7 +1491,7 @@ str_udeescape(const char *str, char escape,
 			 * have an error cursor pointing at the escape.
 			 */
 			ora_setup_scanner_errposition_callback(&scbstate, yyscanner,
-											   in - str + position + 3);	/* 3 for U&" */
+												   in - str + position + 3);	/* 3 for U&" */
 			if (in[1] == escape)
 			{
 				if (pair_first)
@@ -1181,7 +1606,7 @@ invalid_pair:
 			(errcode(ERRCODE_SYNTAX_ERROR),
 			 errmsg("invalid Unicode surrogate pair"),
 			 ora_scanner_errposition(in - str + position + 3,	/* 3 for U&" */
-								 yyscanner)));
+									 yyscanner)));
 	return NULL;				/* keep compiler quiet */
 }
 
@@ -1258,9 +1683,9 @@ oracle_pg_get_keywords(PG_FUNCTION_ARGS)
 
 static void
 oracle_fill_in_constant_lengths(void *jjstate, const char *query,
-						 int query_loc)
+								int query_loc)
 {
-	JumbleState	*jstate;
+	JumbleState *jstate;
 	LocationLen *locs;
 	ora_core_yyscan_t yyscanner;
 	ora_core_yy_extra_type yyextra;
@@ -1273,7 +1698,7 @@ oracle_fill_in_constant_lengths(void *jjstate, const char *query,
 	 * Sort the records by location so that we can process them in order while
 	 * scanning the query text.
 	 */
-	jstate = (JumbleState *)jjstate;
+	jstate = (JumbleState *) jjstate;
 	if (jstate->clocations_count > 1)
 		qsort(jstate->clocations, jstate->clocations_count,
 			  sizeof(LocationLen), oracle_comp_location);
@@ -1281,9 +1706,9 @@ oracle_fill_in_constant_lengths(void *jjstate, const char *query,
 
 	/* initialize the flex scanner --- should match oracle_raw_parser() */
 	yyscanner = ora_scanner_init(query,
-							 &yyextra,
-							 &OraScanKeywords,
-							 OraScanKeywordTokens);
+								 &yyextra,
+								 &OraScanKeywords,
+								 OraScanKeywordTokens);
 
 	/* we don't want to re-emit any escape string warnings */
 	yyextra.escape_string_warning = false;
@@ -1301,7 +1726,7 @@ oracle_fill_in_constant_lengths(void *jjstate, const char *query,
 
 		if (locs[i].squashed)
 			continue;			/* squashable list, ignore */
-		
+
 		if (loc <= last_loc)
 			continue;			/* Duplicate constant, ignore */
 

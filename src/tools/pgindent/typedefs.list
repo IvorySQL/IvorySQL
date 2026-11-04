@@ -1903,6 +1903,8 @@ OnConflictAction
 OnConflictActionState
 OnConflictClause
 OnConflictExpr
+OraBodyStyle
+ora_base_yy_extra_type
 OpClassCacheEnt
 OpExpr
 OpFamilyMember
@@ -2543,6 +2545,8 @@ RangeTblEntry
 RangeTblFunction
 RangeTblRef
 RangeType
+RangeUnpivot
+RangeUnpivotInItem
 RangeVar
 RangeVarGetRelidCallback
 Ranges
@@ -3329,6 +3333,10 @@ UniquePath
 UniqueRelInfo
 UniqueState
 UnlistenStmt
+UnpivotItemInfo
+UnpivotLookaheadEntry
+UnpivotProbeFrame
+UnpivotStringFamily
 UnresolvedTup
 UnresolvedTupData
 IvyUpdateContext
