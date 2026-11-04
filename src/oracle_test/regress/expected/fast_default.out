@@ -117,15 +117,12 @@ ALTER TABLE T ADD COLUMN c_time TIME DEFAULT '12:00:00',
 INSERT INTO T VALUES (19), (20);
 ALTER TABLE T ADD COLUMN c_interval INTERVAL DEFAULT '1 day',
               ALTER COLUMN c_time SET DEFAULT '23:59:59';
-ERROR:  missing or invalid datetime field.
 INSERT INTO T VALUES (21), (22);
 ALTER TABLE T ADD COLUMN c_hugetext TEXT DEFAULT repeat('abcdefg',1000),
               ALTER COLUMN c_interval SET DEFAULT '3 hours';
-ERROR:  column "c_interval" of relation "t" does not exist
 INSERT INTO T VALUES (23), (24);
 ALTER TABLE T ALTER COLUMN c_interval DROP DEFAULT,
               ALTER COLUMN c_hugetext SET DEFAULT repeat('poiuyt', 1000);
-ERROR:  column "c_interval" of relation "t" does not exist
 INSERT INTO T VALUES (25), (26);
 ALTER TABLE T ALTER COLUMN c_bpchar    DROP DEFAULT,
               ALTER COLUMN c_date      DROP DEFAULT,
@@ -137,7 +134,6 @@ ALTER TABLE T ALTER COLUMN c_bpchar    DROP DEFAULT,
               ALTER COLUMN c_num       DROP DEFAULT,
               ALTER COLUMN c_time      DROP DEFAULT,
               ALTER COLUMN c_hugetext  DROP DEFAULT;
-ERROR:  column "c_hugetext" of relation "t" does not exist
 INSERT INTO T VALUES (27), (28);
 SELECT pk, c_int, c_bpchar, c_text, c_date, c_timestamp,
        c_timestamp_null, c_array, c_small, c_small_null,
@@ -145,9 +141,38 @@ SELECT pk, c_int, c_bpchar, c_text, c_date, c_timestamp,
        c_hugetext = repeat('abcdefg',1000) as c_hugetext_origdef,
        c_hugetext = repeat('poiuyt', 1000) as c_hugetext_newdef
 FROM T ORDER BY pk;
-ERROR:  "c_interval": invalid identifier
-LINE 3:        c_big, c_num, c_time, c_interval,
-                                     ^
+ pk | c_int | c_bpchar | c_text |   c_date   |        c_timestamp         |      c_timestamp_null      |         c_array          | c_small | c_small_null |       c_big       |       c_num       |  c_time  | c_interval | c_hugetext_origdef | c_hugetext_newdef 
+----+-------+----------+--------+------------+----------------------------+----------------------------+--------------------------+---------+--------------+-------------------+-------------------+----------+------------+--------------------+-------------------
+  1 |     1 | hello    | world  | 2016-06-02 | 2016-09-01 12:00:00.000000 |                            | {This,is,the,real,world} |      -5 |              |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
+  2 |     1 | hello    | world  | 2016-06-02 | 2016-09-01 12:00:00.000000 |                            | {This,is,the,real,world} |      -5 |              |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
+  3 |     2 | hello    | world  | 2016-06-02 | 2016-09-01 12:00:00.000000 |                            | {This,is,the,real,world} |      -5 |              |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
+  4 |     2 | hello    | world  | 2016-06-02 | 2016-09-01 12:00:00.000000 |                            | {This,is,the,real,world} |      -5 |              |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
+  5 |     2 | dog      | world  | 2016-06-02 | 2016-09-01 12:00:00.000000 |                            | {This,is,the,real,world} |      -5 |              |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
+  6 |     2 | dog      | world  | 2016-06-02 | 2016-09-01 12:00:00.000000 |                            | {This,is,the,real,world} |      -5 |              |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
+  7 |     2 | dog      | cat    | 2016-06-02 | 2016-09-01 12:00:00.000000 |                            | {This,is,the,real,world} |      -5 |              |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
+  8 |     2 | dog      | cat    | 2016-06-02 | 2016-09-01 12:00:00.000000 |                            | {This,is,the,real,world} |      -5 |              |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
+  9 |     2 | dog      | cat    | 2010-01-01 | 2016-09-01 12:00:00.000000 |                            | {This,is,the,real,world} |      -5 |              |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
+ 10 |     2 | dog      | cat    | 2010-01-01 | 2016-09-01 12:00:00.000000 |                            | {This,is,the,real,world} |      -5 |              |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
+ 11 |     2 | dog      | cat    | 2010-01-01 | 1970-12-31 11:12:13.000000 | 2016-09-29 12:00:00.000000 | {This,is,the,real,world} |      -5 |              |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
+ 12 |     2 | dog      | cat    | 2010-01-01 | 1970-12-31 11:12:13.000000 | 2016-09-29 12:00:00.000000 | {This,is,the,real,world} |      -5 |              |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
+ 13 |     2 | dog      | cat    | 2010-01-01 | 1970-12-31 11:12:13.000000 | 2016-09-29 12:00:00.000000 | {This,is,no,fantasy}     |      -5 |              |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
+ 14 |     2 | dog      | cat    | 2010-01-01 | 1970-12-31 11:12:13.000000 | 2016-09-29 12:00:00.000000 | {This,is,no,fantasy}     |      -5 |              |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
+ 15 |     2 | dog      | cat    | 2010-01-01 | 1970-12-31 11:12:13.000000 | 2016-09-29 12:00:00.000000 | {This,is,no,fantasy}     |       9 |           13 |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
+ 16 |     2 | dog      | cat    | 2010-01-01 | 1970-12-31 11:12:13.000000 | 2016-09-29 12:00:00.000000 | {This,is,no,fantasy}     |       9 |           13 |   180000000000018 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
+ 17 |     2 | dog      | cat    | 2010-01-01 | 1970-12-31 11:12:13.000000 | 2016-09-29 12:00:00.000000 | {This,is,no,fantasy}     |       9 |           13 | -9999999999999999 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
+ 18 |     2 | dog      | cat    | 2010-01-01 | 1970-12-31 11:12:13.000000 | 2016-09-29 12:00:00.000000 | {This,is,no,fantasy}     |       9 |           13 | -9999999999999999 |     1.00000000001 | 12:00:00 | @ 1 day    | t                  | f
+ 19 |     2 | dog      | cat    | 2010-01-01 | 1970-12-31 11:12:13.000000 | 2016-09-29 12:00:00.000000 | {This,is,no,fantasy}     |       9 |           13 | -9999999999999999 | 2.000000000000002 | 12:00:00 | @ 1 day    | t                  | f
+ 20 |     2 | dog      | cat    | 2010-01-01 | 1970-12-31 11:12:13.000000 | 2016-09-29 12:00:00.000000 | {This,is,no,fantasy}     |       9 |           13 | -9999999999999999 | 2.000000000000002 | 12:00:00 | @ 1 day    | t                  | f
+ 21 |     2 | dog      | cat    | 2010-01-01 | 1970-12-31 11:12:13.000000 | 2016-09-29 12:00:00.000000 | {This,is,no,fantasy}     |       9 |           13 | -9999999999999999 | 2.000000000000002 | 23:59:59 | @ 1 day    | t                  | f
+ 22 |     2 | dog      | cat    | 2010-01-01 | 1970-12-31 11:12:13.000000 | 2016-09-29 12:00:00.000000 | {This,is,no,fantasy}     |       9 |           13 | -9999999999999999 | 2.000000000000002 | 23:59:59 | @ 1 day    | t                  | f
+ 23 |     2 | dog      | cat    | 2010-01-01 | 1970-12-31 11:12:13.000000 | 2016-09-29 12:00:00.000000 | {This,is,no,fantasy}     |       9 |           13 | -9999999999999999 | 2.000000000000002 | 23:59:59 | @ 3 hours  | t                  | f
+ 24 |     2 | dog      | cat    | 2010-01-01 | 1970-12-31 11:12:13.000000 | 2016-09-29 12:00:00.000000 | {This,is,no,fantasy}     |       9 |           13 | -9999999999999999 | 2.000000000000002 | 23:59:59 | @ 3 hours  | t                  | f
+ 25 |     2 | dog      | cat    | 2010-01-01 | 1970-12-31 11:12:13.000000 | 2016-09-29 12:00:00.000000 | {This,is,no,fantasy}     |       9 |           13 | -9999999999999999 | 2.000000000000002 | 23:59:59 |            | f                  | t
+ 26 |     2 | dog      | cat    | 2010-01-01 | 1970-12-31 11:12:13.000000 | 2016-09-29 12:00:00.000000 | {This,is,no,fantasy}     |       9 |           13 | -9999999999999999 | 2.000000000000002 | 23:59:59 |            | f                  | t
+ 27 |     2 |          |        |            |                            | 2016-09-29 12:00:00.000000 |                          |         |           13 |                   |                   |          |            |                    | 
+ 28 |     2 |          |        |            |                            | 2016-09-29 12:00:00.000000 |                          |         |           13 |                   |                   |          |            |                    | 
+(28 rows)
+
 SELECT comp();
    comp    
 -----------

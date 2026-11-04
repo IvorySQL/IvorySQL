@@ -236,7 +236,10 @@ FROM   (VALUES (NULL::interval),
         ('17 year 11 month 7 day 9 hours 46 minutes 5 seconds')) x(v)
 WHERE  interval_hash(v)::bit(32) != interval_hash_extended(v, 0)::bit(32)
        OR interval_hash(v)::bit(32) = interval_hash_extended(v, 1)::bit(32);
-ERROR:  missing or invalid datetime field.
+ value | standard | extended0 | extended1 
+-------+----------+-----------+-----------
+(0 rows)
+
 SELECT v as value, timestamp_hash(v)::bit(32) as standard,
        timestamp_hash_extended(v, 0)::bit(32) as extended0,
        timestamp_hash_extended(v, 1)::bit(32) as extended1
