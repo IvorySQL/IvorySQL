@@ -715,3 +715,26 @@ CREATE OR REPLACE PACKAGE BODY dbms_scheduler IS
 END dbms_scheduler;
 
 GRANT EXECUTE ON PACKAGE dbms_scheduler TO PUBLIC;
+
+
+-- USER_/DBA_SCHEDULER_RUNNING_JOBS: the jobs the scheduler is executing right
+-- now.  state = RUNNING is exactly what the scheduler sets while a worker runs
+-- a job, so the views read that and report the worker as SESSION_ID/SLAVE_PID.
+CREATE OR REPLACE VIEW sys.dba_scheduler_running_jobs AS
+	SELECT job_owner AS owner, job_name, NULL::varchar2(128) AS job_subname,
+		   /* the pid is recorded in the run history, not in the job row */
+		   NULL::numeric AS session_id, NULL::numeric AS slave_pid,
+		   NULL::numeric AS slave_os_process_id, 1::numeric AS running_instance,
+		   last_start_date AS start_date,
+		   (pg_catalog.now() - last_start_date) AS elapsed_time
+	FROM sys.scheduler_jobs
+	WHERE state = 'RUNNING';
+
+CREATE OR REPLACE VIEW sys.user_scheduler_running_jobs AS
+	SELECT job_name, job_subname, session_id, slave_pid, slave_os_process_id,
+		   running_instance, start_date, elapsed_time
+	FROM sys.dba_scheduler_running_jobs
+	WHERE lower(owner) = lower(current_user);
+
+GRANT SELECT ON sys.dba_scheduler_running_jobs TO PUBLIC;
+GRANT SELECT ON sys.user_scheduler_running_jobs TO PUBLIC;
