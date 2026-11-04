@@ -172,7 +172,15 @@ fmgr_subproc_info_cxt(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt)
 	finfo->fn_addr = plfinfo.fn_addr;
 
 	ReleaseSysCache(languageTuple);
-	finfo->fn_stats = TRACK_FUNC_OFF;	/* ie, track if not OFF */
+
+	/*
+	 * Never track these calls in pgstat: functionId is not a pg_proc OID but
+	 * the index of a nested or package subprogram, so function statistics
+	 * cannot be keyed on it.  With track_functions = pl or all,
+	 * pgstat_init_function_usage() would find no pg_proc entry for it and
+	 * fail the call with "function call to dropped function".
+	 */
+	finfo->fn_stats = TRACK_FUNC_ALL;	/* ie, never track */
 
 	finfo->fn_oid = functionId;
 }
