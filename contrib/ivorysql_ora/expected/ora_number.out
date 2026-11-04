@@ -1279,6 +1279,22 @@ SELECT '' AS to_number_21, to_number('1234.56', '9G999D99');
               | 1234.56
 (1 row)
 
+-- A present group separator must still be consumed in fill mode.
+SELECT '' AS to_number_22, to_number('1234,567', 'FM9G999G999');
+ to_number_22 | to_number 
+--------------+-----------
+              | 1234567
+(1 row)
+
+SELECT '' AS to_number_23, to_number('1234,567', 'FM9,999,999');
+ to_number_23 | to_number 
+--------------+-----------
+              | 1234567
+(1 row)
+
+-- A group separator is never allowed to the right of the decimal point.
+SELECT '' AS to_number_24, to_number('1.234', '9.9G99');
+ERROR:  invalid number format model
 -- Without a format model, trailing spaces are accepted in the integer part.
 SELECT '' AS to_number_18, to_number('123 ');
  to_number_18 | to_number 

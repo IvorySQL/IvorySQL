@@ -7091,7 +7091,14 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 					 * the group separator even when the format model contains
 					 * one. Leave the digit to be matched by the adjacent 9
 					 * node instead of rejecting the value.
+					 *
+					 * As when an actual separator is matched, a group
+					 * separator may not appear to the right of the decimal
+					 * point.  Clearing isrigth here keeps the decimal node
+					 * from accepting such a format model.
 					 */
+					if (isrigth == true)
+						isrigth = false;
 					input_tem++;
 				}
 				else
@@ -7248,7 +7255,8 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 							continue;
 						if (!Np->num_in)
 						{
-							if (IS_FILLMODE(Np->Num))
+							if (IS_FILLMODE(Np->Num) &&
+								*Np->inout_p != ',')
 								continue;
 						}
 					}
@@ -7286,7 +7294,8 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 							continue;
 						if (!Np->num_in)
 						{
-							if (IS_FILLMODE(Np->Num))
+							if (IS_FILLMODE(Np->Num) &&
+								*Np->inout_p != ',')
 								continue;
 						}
 						Np->inout_p += strlen(Np->L_thousands_sep) - 1;
