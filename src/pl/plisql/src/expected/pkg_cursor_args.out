@@ -1,0 +1,158 @@
+--
+-- Parameterized cursors declared at package level: the query's parameter
+-- references and the argument row live in the package's datum array, so
+-- opening the cursor from a subprogram of the package, from outside the
+-- package, or via a cursor FOR loop must resolve them through the package
+-- rather than through the executing estate.  These combinations used to
+-- crash the backend or fail with "unsupported target type: 0".
+--
+CREATE TABLE pkg_cursor_args_t(id integer, t text);
+INSERT INTO pkg_cursor_args_t VALUES (1, 'one'), (2, 'two');
+-- cursor declared in the package body, opened by a body subprogram
+-- (used to segfault the backend)
+CREATE OR REPLACE PACKAGE pkg_cursor_args1 AS
+  PROCEDURE open_body_cursor;
+END;
+/
+CREATE OR REPLACE PACKAGE BODY pkg_cursor_args1 AS
+  c1 CURSOR (key integer) IS SELECT t FROM pkg_cursor_args_t WHERE id = key;
+  s text;
+  PROCEDURE open_body_cursor IS
+  BEGIN
+    OPEN c1(2);
+    FETCH c1 INTO s;
+    raise notice 'body cursor: %', s;
+    CLOSE c1;
+  END;
+END;
+/
+CALL pkg_cursor_args1.open_body_cursor();
+NOTICE:  body cursor: two
+-- cursor declared in the package spec, opened from outside the package
+-- (used to fail with "unsupported target type: 0")
+CREATE OR REPLACE PACKAGE pkg_cursor_args2 AS
+  pub_c CURSOR (key integer) IS SELECT t FROM pkg_cursor_args_t WHERE id = key;
+END;
+/
+DECLARE
+  s text;
+BEGIN
+  OPEN pkg_cursor_args2.pub_c(1);
+  FETCH pkg_cursor_args2.pub_c INTO s;
+  raise notice 'spec cursor from outside: %', s;
+  CLOSE pkg_cursor_args2.pub_c;
+END;
+/
+NOTICE:  spec cursor from outside: one
+-- cursor declared in the package spec, driven by a cursor FOR loop inside
+-- the body (the FOR path shares the argument-row machinery with OPEN)
+CREATE OR REPLACE PACKAGE pkg_cursor_args2b AS
+  pub_c CURSOR (key integer) IS SELECT t FROM pkg_cursor_args_t WHERE id = key;
+  PROCEDURE loop_spec_cursor;
+END;
+/
+CREATE OR REPLACE PACKAGE BODY pkg_cursor_args2b AS
+  PROCEDURE loop_spec_cursor IS
+  BEGIN
+    FOR r IN pub_c(2) LOOP
+      raise notice 'spec cursor in FOR loop: %', r.t;
+    END LOOP;
+  END;
+END;
+/
+CALL pkg_cursor_args2b.loop_spec_cursor();
+NOTICE:  spec cursor in FOR loop: two
+-- cursor declared in the package spec, opened by a body subprogram
+CREATE OR REPLACE PACKAGE pkg_cursor_args3 AS
+  pub_c CURSOR (key integer) IS SELECT t FROM pkg_cursor_args_t WHERE id = key;
+  PROCEDURE open_spec_cursor;
+END;
+/
+CREATE OR REPLACE PACKAGE BODY pkg_cursor_args3 AS
+  s text;
+  PROCEDURE open_spec_cursor IS
+  BEGIN
+    OPEN pub_c(1);
+    FETCH pub_c INTO s;
+    raise notice 'spec cursor from body: %', s;
+    CLOSE pub_c;
+  END;
+END;
+/
+CALL pkg_cursor_args3.open_spec_cursor();
+NOTICE:  spec cursor from body: one
+-- a parameterized cursor declared inside a package subprogram stays in the
+-- subprogram's local datum space and keeps working
+CREATE OR REPLACE PACKAGE pkg_cursor_args4 AS
+  PROCEDURE open_local_cursor;
+END;
+/
+CREATE OR REPLACE PACKAGE BODY pkg_cursor_args4 AS
+  PROCEDURE open_local_cursor IS
+    c CURSOR (key integer) IS SELECT t FROM pkg_cursor_args_t WHERE id = key;
+    s text;
+  BEGIN
+    OPEN c(2);
+    FETCH c INTO s;
+    raise notice 'local cursor: %', s;
+    CLOSE c;
+  END;
+END;
+/
+CALL pkg_cursor_args4.open_local_cursor();
+NOTICE:  local cursor: two
+-- a parameterized cursor outside any package keeps working
+DECLARE
+  c CURSOR (key integer) IS SELECT t FROM pkg_cursor_args_t WHERE id = key;
+  s text;
+BEGIN
+  OPEN c(1);
+  FETCH c INTO s;
+  raise notice 'non-package cursor: %', s;
+  CLOSE c;
+END;
+/
+NOTICE:  non-package cursor: one
+-- a package with enough members that the cursor's argument datums number
+-- beyond any small outside caller's estate: the argument row is a
+-- package-owned row whose dno exceeds the caller's ndatums, and the cursor
+-- query's parameter dno does so as well (used to crash the backend in the
+-- simple-expression INTO path, and, once past that, the cursor portal's
+-- parameter copy dropped the argument)
+CREATE OR REPLACE PACKAGE pkg_cursor_args5 AS
+  v01 integer; v02 integer; v03 integer; v04 integer; v05 integer;
+  v06 integer; v07 integer; v08 integer; v09 integer; v10 integer;
+  v11 integer; v12 integer; v13 integer; v14 integer; v15 integer;
+  v16 integer; v17 integer; v18 integer; v19 integer; v20 integer;
+  pub_c CURSOR (key integer) IS SELECT t FROM pkg_cursor_args_t WHERE id = key;
+  PROCEDURE loop_spec_cursor;
+END;
+/
+CREATE OR REPLACE PACKAGE BODY pkg_cursor_args5 AS
+  PROCEDURE loop_spec_cursor IS
+  BEGIN
+    FOR r IN pub_c(2) LOOP
+      raise notice 'big spec cursor in FOR loop: %', r.t;
+    END LOOP;
+  END;
+END;
+/
+CALL pkg_cursor_args5.loop_spec_cursor();
+NOTICE:  big spec cursor in FOR loop: two
+DECLARE
+  s text;
+BEGIN
+  OPEN pkg_cursor_args5.pub_c(1);
+  FETCH pkg_cursor_args5.pub_c INTO s;
+  raise notice 'big spec cursor from outside: %', s;
+  CLOSE pkg_cursor_args5.pub_c;
+END;
+/
+NOTICE:  big spec cursor from outside: one
+DROP PACKAGE pkg_cursor_args1;
+DROP PACKAGE pkg_cursor_args2;
+DROP PACKAGE pkg_cursor_args2b;
+DROP PACKAGE pkg_cursor_args3;
+DROP PACKAGE pkg_cursor_args4;
+DROP PACKAGE pkg_cursor_args5;
+DROP TABLE pkg_cursor_args_t;
