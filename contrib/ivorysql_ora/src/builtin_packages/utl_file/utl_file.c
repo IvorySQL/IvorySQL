@@ -525,8 +525,22 @@ ora_utl_file_fcopy(PG_FUNCTION_ARGS)
 
 	copy_result = copy_text_file(srcfile, dstfile, start_line, end_line);
 
+	/*
+	 * Close the destination file first and check the result: the copied
+	 * data sits in stdio's buffer until now, so a full disk or a quota
+	 * error only surfaces in this fclose.  Closing the source file
+	 * afterwards must not clobber the errno to be reported.
+	 */
+	if (fclose(dstfile) != 0)
+	{
+		int			save_errno = errno;
+
+		fclose(srcfile);
+		errno = save_errno;
+		STRERROR_EXCEPTION(WRITE_ERROR);
+	}
+
 	fclose(srcfile);
-	fclose(dstfile);
 
 	if (copy_result)
 	{
