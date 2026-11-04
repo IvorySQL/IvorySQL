@@ -1064,6 +1064,25 @@ select replace(regexp_replace('x' || chr(10) || 'b' || chr(10) || 'y',
                chr(10), '|') as m_mode
 from dual;
 
+-- REGEXP_LIKE takes the same match_parameter letters as the other REGEXP_*
+-- functions: only n lets "." match a newline, and only m enables the
+-- multiline anchors.
+select sys.regexp_like('X' || chr(10), 'X.')::int as default_mode,
+       sys.regexp_like('X' || chr(10), 'X.', 'c')::int as c_mode,
+       sys.regexp_like('X' || chr(10), 'X.', 'n')::int as n_mode,
+       sys.regexp_like('X' || chr(10), 'X.', 'm')::int as m_mode
+from dual;
+
+select sys.regexp_like('x' || chr(10) || 'b' || chr(10) || 'y', '^b$')::int
+       as default_mode,
+       sys.regexp_like('x' || chr(10) || 'b' || chr(10) || 'y', '^b$', 'c')::int
+       as c_mode,
+       sys.regexp_like('x' || chr(10) || 'b' || chr(10) || 'y', '^b$', 'n')::int
+       as n_mode,
+       sys.regexp_like('x' || chr(10) || 'b' || chr(10) || 'y', '^b$', 'm')::int
+       as m_mode
+from dual;
+
 /*
  * length
  */
