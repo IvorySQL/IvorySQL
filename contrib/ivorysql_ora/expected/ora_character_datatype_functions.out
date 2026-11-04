@@ -1019,11 +1019,23 @@ select regexp_substr('123456789010', '(1(2)3)(4(5(6))(7(8))(9(0)(10)))', 1, 1, '
  0
 (1 row)
 
---The number of submodes is more than 9 and returns empty
+--Subexpressions beyond nine are supported
 select regexp_substr('123456789010', '(1(2)3)(4(5(6))(7(8))(9(0)(10)))', 1, 1, 'i',10) from dual;
  regexp_substr 
 ---------------
- 
+ 10
+(1 row)
+
+select regexp_substr('abcdefghijk','(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)',1,1,'i',10) from dual;
+ regexp_substr 
+---------------
+ j
+(1 row)
+
+select regexp_substr('abcdefghijk','(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)',1,1,'i',11) from dual;
+ regexp_substr 
+---------------
+ k
 (1 row)
 
 --Too many parameters
@@ -1346,11 +1358,11 @@ select regexp_instr('515.123.4444 515.123.4888','([[:digit:]]{3})\.([[:digit:]]{
  14
 (1 row)
 
---If the number of subexpression is more than 9, then returns zero
+--Subexpressions beyond nine are supported
 select regexp_instr('123456789010', '(1(2)3)(4(5(6))(7(8))(9(0)(10)))', 1, 1, 0, 'i',10) from dual;
  regexp_instr 
 --------------
- 0
+ 11
 (1 row)
 
 --Use the subexpr argument to return a specific subexpression of pattern
@@ -1400,6 +1412,18 @@ select regexp_instr('123456789010', '(1(2)3)(4(5(6))(7(8))(9(0)(10)))', 1, 1, 0,
  regexp_instr 
 --------------
  10
+(1 row)
+
+select regexp_instr('abcdefghijk','(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)',1,1,0,'i',10) from dual;
+ regexp_instr 
+--------------
+ 10
+(1 row)
+
+select regexp_instr('abcdefghijk','(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)',1,1,0,'i',11) from dual;
+ regexp_instr 
+--------------
+ 11
 (1 row)
 
 /*

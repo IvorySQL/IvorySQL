@@ -1031,6 +1031,18 @@ SELECT regexp_instr('foo', 'foo(bar)?', 1, 1, 0, '', 1);
             0
 (1 row)
 
+SELECT regexp_instr('b', '(a*)b', 1, 1, 1, '', 1);
+ regexp_instr 
+--------------
+            1
+(1 row)
+
+SELECT regexp_instr('foo', 'foo(bar)?', 1, 1, 1, '', 1);
+ regexp_instr 
+--------------
+            0
+(1 row)
+
 -- errors
 SELECT regexp_instr('abcabcabc', 'a.c', 0, 1);
 ERROR:  invalid value for parameter "start": 0

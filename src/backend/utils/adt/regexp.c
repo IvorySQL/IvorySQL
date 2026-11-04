@@ -1514,6 +1514,8 @@ ora_build_regexp_substr_matches_result(regexp_matches_ctx *matchctx ,int subexpr
 		{
 			so = matchctx->match_locs[loc + 2 *(subexpr_pos - 1)];
 			eo = matchctx->match_locs[loc + 2 * subexpr_pos - 1];
+			/* rm_eo is exclusive, but Oracle positions are one-based. */
+			eo--;
 		}
 		else if (matchctx->npatterns == 1 && !matchctx->use_subpatterns && subexpr_pos > 0)
 		{
@@ -1563,7 +1565,8 @@ ora_setup_regexp_substr_matches(text *src_text,
 	int			array_idx;
 	int			prev_match_end = 0;
 	int			src_text_len = VARSIZE_ANY_EXHDR(src_text);
-	regmatch_t		pmatch[10];
+	regmatch_t *pmatch;
+	int			pmatch_len;
 	pg_wchar		*data;
 	size_t			data_len;
 	int			search_start;
@@ -1586,6 +1589,9 @@ ora_setup_regexp_substr_matches(text *src_text,
 		matchctx->npatterns = 1;
 	}
 
+	pmatch_len = use_subpatterns ? re->re_nsub + 1 : 1;
+	pmatch = palloc_array(regmatch_t, pmatch_len);
+
 	/* the real output space (grown dynamically if needed) */
 	array_len = re_flags.glob ? 256 : 32;
 	matchctx->match_locs = (int *) palloc(sizeof(int) * array_len);
@@ -1601,7 +1607,7 @@ ora_setup_regexp_substr_matches(text *src_text,
 	if(start_posn > 1)
 		search_start = start_posn - 1;
 	while (RE_wchar_execute(re, data, data_len, search_start,
-							10, pmatch))
+							pmatch_len, pmatch))
 	{
 		matchctx->nmatches++;
 
@@ -1735,7 +1741,8 @@ ora_setup_regexp_instr_matches(text *src_text,
 	int			array_idx;
 	int			prev_match_end = 0;
 	int			src_text_len = VARSIZE_ANY_EXHDR(src_text);
-	regmatch_t	pmatch[10];
+	regmatch_t *pmatch;
+	int			pmatch_len;
 	pg_wchar   *data;
 	size_t		data_len;
 	int			search_start;
@@ -1758,6 +1765,9 @@ ora_setup_regexp_instr_matches(text *src_text,
 		matchctx->npatterns = 1;
 	}
 
+	pmatch_len = use_subpatterns ? re->re_nsub + 1 : 1;
+	pmatch = palloc_array(regmatch_t, pmatch_len);
+
 	/* the real output space (grown dynamically if needed) */
 	array_len = re_flags.glob ? 256 : 32;
 	matchctx->match_locs = (int *) palloc(sizeof(int) * array_len);
@@ -1773,7 +1783,7 @@ ora_setup_regexp_instr_matches(text *src_text,
 	if(start_posn > 1)
 		search_start = start_posn - 1;
 	while (RE_wchar_execute(re, data, data_len, search_start,
-							10, pmatch))
+							pmatch_len, pmatch))
 	{
 		matchctx->nmatches++;
 

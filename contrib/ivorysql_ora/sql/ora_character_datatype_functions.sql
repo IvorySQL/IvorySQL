@@ -561,9 +561,13 @@ select regexp_substr('123456789010', '(1(2)3)(4(5(6))(7(8))(9(0)(10)))', 1, 1, '
 
 select regexp_substr('123456789010', '(1(2)3)(4(5(6))(7(8))(9(0)(10)))', 1, 1, 'i',9) from dual;
 
---The number of submodes is more than 9 and returns empty
+--Subexpressions beyond nine are supported
 
 select regexp_substr('123456789010', '(1(2)3)(4(5(6))(7(8))(9(0)(10)))', 1, 1, 'i',10) from dual;
+
+select regexp_substr('abcdefghijk','(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)',1,1,'i',10) from dual;
+
+select regexp_substr('abcdefghijk','(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)',1,1,'i',11) from dual;
 
 --Too many parameters
 
@@ -729,7 +733,7 @@ select regexp_instr('http://www.example.com/products','/([[:alnum:]]+\.?){3,4}/?
 select regexp_instr('515.123.4444 515.123.4888','([[:digit:]]{3})\.([[:digit:]]{3})', 1, 2, 0) from dual;
 
 
---If the number of subexpression is more than 9, then returns zero
+--Subexpressions beyond nine are supported
 select regexp_instr('123456789010', '(1(2)3)(4(5(6))(7(8))(9(0)(10)))', 1, 1, 0, 'i',10) from dual;
 
 
@@ -749,6 +753,10 @@ select regexp_instr('345 REGEXP_instr 789', '[A-Z]+', 1, 1, 0, 'ic')  from dual;
 select regexp_instr('123456789010', '(1(2)3)(4(5(6))(7(8))(9(0)(10)))', 1, 1, 0, 'i',8) from dual;
 
 select regexp_instr('123456789010', '(1(2)3)(4(5(6))(7(8))(9(0)(10)))', 1, 1, 0, 'i',9) from dual;
+
+select regexp_instr('abcdefghijk','(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)',1,1,0,'i',10) from dual;
+
+select regexp_instr('abcdefghijk','(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)',1,1,0,'i',11) from dual;
 
 /*
  * regexp_like
