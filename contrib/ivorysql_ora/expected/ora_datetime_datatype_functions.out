@@ -2098,3 +2098,28 @@ drop table ds_tb;
 reset NLS_TIMESTAMP_FORMAT;
 reset NLS_TIMESTAMP_TZ_FORMAT;
 reset NLS_DATE_FORMAT;
+-- PostgreSQL interval values now cast to the Oracle interval types
+SELECT MAKE_INTERVAL(months => 14)::sys.yminterval::TEXT AS ym_positive;
+  ym_positive  
+---------------
+ +000000001-02
+(1 row)
+
+SELECT MAKE_INTERVAL(days => 1)::sys.dsinterval::TEXT AS ds_positive;
+          ds_positive          
+-------------------------------
+ +000000001 00:00:00.000000000
+(1 row)
+
+SELECT MAKE_INTERVAL(hours => -2)::sys.dsinterval::TEXT AS ds_negative;
+          ds_negative          
+-------------------------------
+ +000000000 02:00:00.000000000
+(1 row)
+
+SELECT MAKE_INTERVAL(months => -14)::sys.yminterval::TEXT AS ym_negative;
+  ym_negative  
+---------------
+ -000000001-02
+(1 row)
+
