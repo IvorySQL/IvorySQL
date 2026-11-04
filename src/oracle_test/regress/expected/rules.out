@@ -1037,15 +1037,12 @@ SELECT * FROM shoe_ready WHERE total_avail >= 2 ORDER BY 1;
                                         'Al Bundy',
                                         'epoch'
                                     );
-ERROR:  invalid value "epoc" for "YYYY"
-LINE 7:                                         'epoch'
-                                                ^
-DETAIL:  Value must be an integer.
 UPDATE shoelace_data SET sl_avail = 6 WHERE  sl_name = 'sl7';
 SELECT * FROM shoelace_log;
- sl_name | sl_avail | log_who | log_when 
----------+----------+---------+----------
-(0 rows)
+  sl_name   | sl_avail | log_who  |          log_when          
+------------+----------+----------+----------------------------
+ sl7        |        6 | Al Bundy | 1970-01-01 00:00:00.000000
+(1 row)
 
     CREATE RULE shoelace_ins AS ON INSERT TO shoelace
         DO INSTEAD
@@ -1112,9 +1109,13 @@ SELECT * FROM shoelace ORDER BY sl_name;
 (8 rows)
 
 SELECT * FROM shoelace_log ORDER BY sl_name;
- sl_name | sl_avail | log_who | log_when 
----------+----------+---------+----------
-(0 rows)
+  sl_name   | sl_avail | log_who  |          log_when          
+------------+----------+----------+----------------------------
+ sl3        |       10 | Al Bundy | 1970-01-01 00:00:00.000000
+ sl6        |       20 | Al Bundy | 1970-01-01 00:00:00.000000
+ sl7        |        6 | Al Bundy | 1970-01-01 00:00:00.000000
+ sl8        |       21 | Al Bundy | 1970-01-01 00:00:00.000000
+(4 rows)
 
     CREATE VIEW shoelace_obsolete AS
 	SELECT * FROM shoelace WHERE NOT EXISTS

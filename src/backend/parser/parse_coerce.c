@@ -327,7 +327,42 @@ coerce_type(ParseState *pstate, Node *node,
 		 * TODO:
 		 *	Perhaps we should add a field to the Const struct instead of relying on -2.
 		 */
-		if (ORA_PARSER == compatible_db && con->location == (-2))
+		if (ORA_PARSER == compatible_db && con->location == (-2) &&
+			is_pg_special_datetime_string(DatumGetCString(con->constvalue)) &&
+			(baseTypeId == ORADATEOID || baseTypeId == ORATIMESTAMPOID))
+		{
+			/*
+			 * In Oracle mode the grammar marks typed datetime literals such as
+			 * timestamp '...' / date '...' with the sentinel location -2, and
+			 * the folding below insists on full date and time field sequences
+			 * (see the "nf < 2 || nf > 3" checks).  PostgreSQL's special
+			 * datetime keywords (epoch, now, today, ...) produce only a single
+			 * field and are not valid Oracle typed-literal input formats, so
+			 * fold them with the PostgreSQL input functions instead.
+			 *
+			 * This is the same fast path used by the Oracle-compatible input
+			 * functions (oratimestamp_in, oradate_in, ...), so typed literals
+			 * and casts behave identically.  Ordinary date/time strings still
+			 * fall through to the Oracle folding logic below.
+			 */
+			if (baseTypeId == ORADATEOID)
+			{
+				Datum		date_datum;
+
+				date_datum = DirectFunctionCall1(date_in,
+												 CStringGetDatum(DatumGetCString(con->constvalue)));
+				newcon->constvalue = DirectFunctionCall1(date_timestamp, date_datum);
+			}
+			else
+			{
+				newcon->constvalue =
+					DirectFunctionCall3(timestamp_in,
+										CStringGetDatum(DatumGetCString(con->constvalue)),
+										ObjectIdGetDatum(InvalidOid),
+										Int32GetDatum(inputTypeMod));
+			}
+		}
+		else if (ORA_PARSER == compatible_db && con->location == (-2))
 		{
 			/* date'1990-1-1' input format */
 			if (baseTypeId == ORADATEOID)

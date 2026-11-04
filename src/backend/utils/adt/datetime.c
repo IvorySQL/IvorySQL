@@ -3335,6 +3335,66 @@ DecodeSpecial(int field, const char *lowtoken, int *val)
 	return type;
 }
 
+/*
+ * is_pg_special_datetime_string
+ *
+ * Check whether the whole input string (modulo surrounding whitespace,
+ * case-insensitively) is one of the special datetime keywords accepted by
+ * the PostgreSQL datetime input functions:
+ *
+ *	Epoch, Now, Today, Yesterday, Tomorrow, Infinity, +Infinity, -Infinity
+ *
+ * (see datetktbl in datetime.c for the canonical list).  These keywords
+ * yield well-defined datetime values (epoch = 1970-01-01 00:00:00 UTC,
+ * relative keywords resolve against the current time, infinite values map
+ * to the special non-finite timestamp representations), so they are part
+ * of the PostgreSQL SQL surface and must keep working in Oracle mode too.
+ *
+ * Oracle-compatible datetime handling cannot parse them with the NLS
+ * format mask, so the Oracle-compatible datetime input functions and the
+ * Oracle typed-literal folding path in parse_coerce() route strings
+ * matching this check back to the PostgreSQL input functions.  This keeps
+ * the keywords working exactly as in PostgreSQL mode without affecting the
+ * parsing of ordinary date/time strings through the NLS format mask.
+ *
+ * Only whole-string keywords are recognized on purpose: combinations such
+ * as "epoch 01:01:01" or "tomorrow EST" must still go through the normal
+ * parsing paths, and time-only tokens such as "allballs" are not included
+ * because they are not accepted for date/timestamp input.  Keep this list
+ * in sync with the special tokens in datetktbl.
+ */
+bool
+is_pg_special_datetime_string(const char *str)
+{
+	static const char *const keywords[] = {
+		"epoch", "now", "today", "yesterday", "tomorrow",
+		"infinity", "+infinity", "-infinity", NULL
+	};
+	const char *end;
+	size_t		len;
+	int			i;
+
+	/* skip leading whitespace */
+	while (isspace((unsigned char) *str))
+		str++;
+
+	/* skip trailing whitespace */
+	end = str + strlen(str);
+	while (end > str && isspace((unsigned char) end[-1]))
+		end--;
+
+	len = end - str;
+
+	for (i = 0; keywords[i] != NULL; i++)
+	{
+		if (strlen(keywords[i]) == len &&
+			pg_strncasecmp(str, keywords[i], len) == 0)
+			return true;
+	}
+
+	return false;
+}
+
 
 /*
  * DecodeTimezoneName()
