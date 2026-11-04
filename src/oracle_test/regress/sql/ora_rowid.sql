@@ -261,3 +261,26 @@ select * from v1;
 
 drop view v1;
 drop table t2;
+
+--
+--11, ROWID sequence identity survives metadata changes
+--
+create sequence rowid_collision_rowid_seq start with 1000;
+create table rowid_collision(id int) with rowid;
+insert into rowid_collision values(1);
+select (rowid).rowno from rowid_collision;
+alter table rowid_collision set without rowid;
+select count(*) from pg_class where relkind = 'S'
+  and relname like 'rowid_collision_rowid_seq%';
+drop sequence rowid_collision_rowid_seq;
+drop table rowid_collision;
+
+create table rowid_before_rename(id int) with rowid;
+insert into rowid_before_rename values(1);
+alter table rowid_before_rename rename to rowid_after_rename;
+insert into rowid_after_rename values(2), (3);
+select id, (rowid).rowno from rowid_after_rename order by id;
+alter table rowid_after_rename set without rowid;
+select count(*) from pg_class where relkind = 'S'
+  and relname like 'rowid_before_rename_rowid_seq%';
+drop table rowid_after_rename;
