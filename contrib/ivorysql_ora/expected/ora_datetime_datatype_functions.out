@@ -2098,3 +2098,31 @@ drop table ds_tb;
 reset NLS_TIMESTAMP_FORMAT;
 reset NLS_TIMESTAMP_TZ_FORMAT;
 reset NLS_DATE_FORMAT;
+-- Oracle interval types now cast to the PostgreSQL interval type
+-- The unqualified ::INTERVAL spelling is the Oracle interval grammar in this
+-- mode, so the test exercises the assignment path and the qualified cast.
+DROP TABLE IF EXISTS t_interval_cast;
+NOTICE:  table "t_interval_cast" does not exist, skipping
+CREATE TABLE t_interval_cast (v pg_catalog.interval);
+INSERT INTO t_interval_cast VALUES (TO_YMINTERVAL('1-2'));
+INSERT INTO t_interval_cast VALUES (NUMTODSINTERVAL(1, 'DAY'));
+INSERT INTO t_interval_cast VALUES (NUMTODSINTERVAL(-1, 'HOUR'));
+INSERT INTO t_interval_cast VALUES (TO_YMINTERVAL('2-0'));
+SELECT COUNT(*) = 4 AS all_inserted,
+       COUNT(*) FILTER (WHERE v = MAKE_INTERVAL(months => 14)) = 1 AS ym_positive,
+       COUNT(*) FILTER (WHERE v = MAKE_INTERVAL(days => 1)) = 1 AS ds_positive,
+       COUNT(*) FILTER (WHERE v = MAKE_INTERVAL(hours => -1)) = 1 AS ds_negative,
+       COUNT(*) FILTER (WHERE v = MAKE_INTERVAL(months => 24)) = 1 AS ym_years
+FROM t_interval_cast;
+ all_inserted | ym_positive | ds_positive | ds_negative | ym_years 
+--------------+-------------+-------------+-------------+----------
+ t            | t           | t           | t           | t
+(1 row)
+
+SELECT TO_YMINTERVAL('1-2')::pg_catalog.interval = MAKE_INTERVAL(months => 14) AS qualified_cast;
+ qualified_cast 
+----------------
+ t
+(1 row)
+
+DROP TABLE t_interval_cast;
