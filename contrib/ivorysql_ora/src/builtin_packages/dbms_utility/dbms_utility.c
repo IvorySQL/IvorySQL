@@ -27,6 +27,7 @@
  */
 
 #include "postgres.h"
+#include "catalog/pg_proc.h"
 #include "fmgr.h"
 #include "utils/builtins.h"
 #include "utils/errcodes.h"
@@ -442,7 +443,7 @@ ora_format_call_stack(PG_FUNCTION_ARGS)
 
 	/*
 	 * Parse the raw stack returned by plisql_get_call_stack.
-	 * Format from plisql: "handle\tlineno\tsignature" per line
+	 * Format from plisql: "handle\tlineno\tprokind\tsignature" per line
 	 *
 	 * Skip the first frame which is the FORMAT_CALL_STACK package function.
 	 */
@@ -456,7 +457,10 @@ ora_format_call_stack(PG_FUNCTION_ARGS)
 		char *signature;
 		char *tab1;
 		char *tab2;
+		char *tab3;
 		char *func_cased;
+		char prokind;
+		const char *kind;
 
 		frame_count++;
 
@@ -467,7 +471,7 @@ ora_format_call_stack(PG_FUNCTION_ARGS)
 			continue;
 		}
 
-		/* Parse: handle\tlineno\tsignature */
+		/* Parse: handle\tlineno\tprokind\tsignature */
 		tab1 = strchr(line, '\t');
 		if (!tab1)
 		{
@@ -485,13 +489,29 @@ ora_format_call_stack(PG_FUNCTION_ARGS)
 		}
 
 		lineno_str = pnstrdup(tab1 + 1, tab2 - tab1 - 1);
-		signature = tab2 + 1;
+		tab3 = strchr(tab2 + 1, '\t');
+		if (tab3 == NULL || tab3 != tab2 + 2)
+		{
+			pfree(handle_str);
+			pfree(lineno_str);
+			line = strtok_r(NULL, "\n", &saveptr);
+			continue;
+		}
+		prokind = tab2[1];
+		signature = tab3 + 1;
 
 		func_cased = apply_identifier_case_switch(signature);
 
 		/* Format each stack frame */
-		appendStringInfo(&result, "%s  %5s  function %s\n",
-						 handle_str, lineno_str, func_cased);
+		if (prokind == PROKIND_ANONYMOUS_BLOCK)
+			appendStringInfo(&result, "%s  %5s  anonymous block\n",
+							 handle_str, lineno_str);
+		else
+		{
+			kind = prokind == PROKIND_PROCEDURE ? "procedure" : "function";
+			appendStringInfo(&result, "%s  %5s  %s %s\n",
+							 handle_str, lineno_str, kind, func_cased);
+		}
 		found_any = true;
 
 		pfree(handle_str);
