@@ -62,6 +62,8 @@ ora_dotrim(const char *string, int stringlen, const char *set, int setlen, bool 
 			int			resultndx;
 			int			resultnchars;
 			const char *p;
+			const char *pend;
+			const char *setend;
 			int			len;
 			int			mblen;
 			const char *str_pos;
@@ -72,10 +74,17 @@ ora_dotrim(const char *string, int stringlen, const char *set, int setlen, bool 
 			stringnchars = 0;
 			p = string;
 			len = stringlen;
+			pend = p + len;
 			while (len > 0)
 			{
 				stringchars[stringnchars] = p;
-				stringmblen[stringnchars] = mblen = pg_mblen(p);
+				/*
+				 * Use the bounds-checked helper: a byte-length CHAR cast can
+				 * leave the datum ending in a truncated multibyte sequence,
+				 * and pg_mblen() would then report a width that runs past the
+				 * end of the input.
+				 */
+				stringmblen[stringnchars] = mblen = pg_mblen_range(p, pend);
 				stringnchars++;
 				p += mblen;
 				len -= mblen;
@@ -86,10 +95,11 @@ ora_dotrim(const char *string, int stringlen, const char *set, int setlen, bool 
 			setnchars = 0;
 			p = set;
 			len = setlen;
+			setend = p + len;
 			while (len > 0)
 			{
 				setchars[setnchars] = p;
-				setmblen[setnchars] = mblen = pg_mblen(p);
+				setmblen[setnchars] = mblen = pg_mblen_range(p, setend);
 				setnchars++;
 				p += mblen;
 				len -= mblen;
