@@ -702,12 +702,16 @@ plisql_exec_function(PLiSQL_function * func, FunctionCallInfo fcinfo,
 	 * If this is an autonomous transaction function, delegate to dblink.
 	 * Skip if we're already inside an autonomous transaction (prevents recursion).
 	 * Also skip if we're being called during procedure compilation/validation.
+	 * A package member is dispatched with a synthesized FmgrInfo (its fn_oid
+	 * is the member's index within the package, not a pg_proc OID), so it is
+	 * recognized through the dispatch FuncExpr instead.
 	 */
 	if (func->fn_is_autonomous &&
 		!plisql_inside_autonomous_transaction &&
 		fcinfo != NULL &&
 		fcinfo->flinfo != NULL &&
-		fcinfo->flinfo->fn_oid == func->fn_oid)  /* Real call, not validation */
+		(fcinfo->flinfo->fn_oid == func->fn_oid ||	/* Real call, not validation */
+		 plisql_pkg_member_autonomous_call(func, fcinfo)))
 	{
 		Datum result;
 
