@@ -818,3 +818,40 @@ drop table ds_tb;
 reset NLS_TIMESTAMP_FORMAT;
 reset NLS_TIMESTAMP_TZ_FORMAT;
 reset NLS_DATE_FORMAT;
+
+-- Explicit clock-function precision must be in the Oracle range 0..9.
+SELECT CURRENT_TIMESTAMP(10) IS NOT NULL;
+SELECT LOCALTIMESTAMP(10) IS NOT NULL;
+SELECT sys.current_timestamp(-1) IS NOT NULL;
+SELECT sys.localtimestamp(-1) IS NOT NULL;
+SELECT sys.current_timestamp(2147483647) IS NOT NULL;
+SELECT sys.localtimestamp(2147483647) IS NOT NULL;
+SELECT sys.current_timestamp(0) IS NOT NULL AS current_zero,
+       sys.localtimestamp(0) IS NOT NULL AS local_zero,
+       sys.current_timestamp(6) IS NOT NULL AS current_six,
+       sys.localtimestamp(6) IS NOT NULL AS local_six;
+SELECT sys.current_timestamp(7) IS NOT NULL AS current_seven,
+       sys.localtimestamp(7) IS NOT NULL AS local_seven;
+SELECT sys.current_timestamp(9) IS NOT NULL AS current_nine,
+       sys.localtimestamp(9) IS NOT NULL AS local_nine;
+SELECT sys.current_timestamp() IS NOT NULL AS current_default,
+       sys.localtimestamp() IS NOT NULL AS local_default;
+
+
+-- Check precision behavior, not only successful non-NULL results.
+SELECT sys.current_timestamp(0) = sys.current_timestamp(6)::sys.oratimestamptz(0)
+         AS current_zero_rounds,
+       sys.localtimestamp(0) = sys.localtimestamp(6)::sys.oratimestamp(0)
+         AS local_zero_rounds;
+SELECT sys.to_char(sys.current_timestamp(0), 'FF6') = '000000' AS current_whole_second,
+       sys.to_char(sys.localtimestamp(0), 'FF6') = '000000' AS local_whole_second;
+SELECT sys.current_timestamp(7) = sys.current_timestamp(6) AS current_seven_clamped,
+       sys.localtimestamp(7) = sys.localtimestamp(6) AS local_seven_clamped;
+SELECT sys.current_timestamp(8) = sys.current_timestamp(6) AS current_eight_clamped,
+       sys.localtimestamp(8) = sys.localtimestamp(6) AS local_eight_clamped;
+SELECT sys.current_timestamp(9) = sys.current_timestamp(6) AS current_nine_clamped,
+       sys.localtimestamp(9) = sys.localtimestamp(6) AS local_nine_clamped;
+SELECT sys.current_timestamp() = sys.current_timestamp(6) AS current_default_six,
+       sys.localtimestamp() = sys.localtimestamp(6) AS local_default_six;
+SELECT sys.current_timestamp(NULL) IS NULL AS current_strict,
+       sys.localtimestamp(NULL) IS NULL AS local_strict;
