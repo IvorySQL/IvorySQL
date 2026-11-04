@@ -203,6 +203,15 @@ select dbms_random.string('Z', 4) ~ '^[A-Z]{4}$' as unknown_class_is_upper from 
  t
 (1 row)
 
+select dbms_random.string('é', 4) ~ '^[A-Z]{4}$' as multibyte_class_is_upper from dual;
+ multibyte_class_is_upper 
+--------------------------
+ t
+(1 row)
+
+select dbms_random.string('éé', 4) from dual;
+ERROR:  the character class must be a single character: u, l, a, x or p
+CONTEXT:  PL/iSQL function sys.dbms_random.string line 33 at RETURN
 select dbms_random.string('UU', 4) from dual;
 ERROR:  the character class must be a single character: u, l, a, x or p
 CONTEXT:  PL/iSQL function sys.dbms_random.string line 33 at RETURN
