@@ -800,6 +800,8 @@ ora_utl_file_new_line(PG_FUNCTION_ARGS)
 	CHECK_FILE_HANDLE();
 	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL);
 	lines = PG_GETARG_IF_EXISTS(1, INT32, 1);
+	if (lines < 0)
+		CUSTOM_EXCEPTION(VALUE_ERROR, "lines must not be negative");
 
 	put_lines(fd, lines);
 
