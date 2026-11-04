@@ -20,7 +20,9 @@ override CPPFLAGS := -I$(libpq_srcdir) -DFRONTEND $(CPPFLAGS)
 LDFLAGS_INTERNAL += -L$(top_builddir)/src/fe_utils -lpgfeutils $(libpq_pgport)
 
 OBJS = \
+	$(RMGRDESCOBJS) \
 	$(WIN32RES) \
+	compat.o \
 	datapagemap.o \
 	file_ops.o \
 	filemap.o \
@@ -31,7 +33,10 @@ OBJS = \
 	timeline.o \
 	xlogreader.o
 
-EXTRA_CLEAN = xlogreader.c
+EXTRA_CLEAN = xlogreader.c compat.c
+
+RMGRDESCSOURCES = xactdesc.c standbydesc.c
+RMGRDESCOBJS = $(patsubst %.c,%.o,$(RMGRDESCSOURCES))
 
 all: pg_rewind
 
@@ -39,6 +44,12 @@ pg_rewind: $(OBJS) | submake-libpq submake-libpgport
 	$(CC) $(CFLAGS) $^ $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) -o $@$(X)
 
 xlogreader.c: % : $(top_srcdir)/src/backend/access/transam/%
+	rm -f $@ && $(LN_S) $< .
+
+compat.c: % : $(top_srcdir)/src/bin/pg_waldump/%
+	rm -f $@ && $(LN_S) $< .
+
+$(RMGRDESCSOURCES): % : $(top_srcdir)/src/backend/access/rmgrdesc/%
 	rm -f $@ && $(LN_S) $< .
 
 install: all installdirs
@@ -51,7 +62,7 @@ uninstall:
 	rm -f '$(DESTDIR)$(bindir)/pg_rewind$(X)'
 
 clean distclean:
-	rm -f pg_rewind$(X) $(OBJS) xlogreader.c
+	rm -f pg_rewind$(X) $(OBJS) $(RMGRDESCSOURCES) xlogreader.c compat.c
 	rm -rf tmp_check
 
 check:
