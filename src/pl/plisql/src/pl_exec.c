@@ -24,6 +24,7 @@
 #include "access/htup_details.h"
 #include "access/transam.h"
 #include "access/tupconvert.h"
+#include "access/xact.h"
 #include "catalog/pg_package.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
@@ -1936,20 +1937,40 @@ static int
 exec_toplevel_block(PLiSQL_execstate * estate, PLiSQL_stmt_block * block)
 {
 	int			rc;
+	TimestampTz save_timestamp;
 
 	estate->err_stmt = (PLiSQL_stmt *) block;
 
-	/* Let the plugin know that we are about to execute this statement */
-	if (*plisql_plugin_ptr && (*plisql_plugin_ptr)->stmt_beg)
-		((*plisql_plugin_ptr)->stmt_beg) (estate, (PLiSQL_stmt *) block);
+	/*
+	 * exec_stmts() refreshes the per-statement Oracle timestamp (used by
+	 * SYSDATE/CURRENT_DATE) before each PL/iSQL statement so that these
+	 * values advance from one statement to the next, matching Oracle's
+	 * PL/SQL behavior.  Save the enclosing SQL statement's timestamp here
+	 * and restore it once the top-level block finishes (also on error), so
+	 * that later reads of SYSDATE/CURRENT_DATE within the same enclosing
+	 * statement still see that statement's own timestamp.
+	 */
+	save_timestamp = GetOracleStatementStartTimestampInternal();
 
-	CHECK_FOR_INTERRUPTS();
+	PG_TRY();
+	{
+		/* Let the plugin know that we are about to execute this statement */
+		if (*plisql_plugin_ptr && (*plisql_plugin_ptr)->stmt_beg)
+			((*plisql_plugin_ptr)->stmt_beg) (estate, (PLiSQL_stmt *) block);
 
-	rc = exec_stmt_block(estate, block);
+		CHECK_FOR_INTERRUPTS();
 
-	/* Let the plugin know that we have finished executing this statement */
-	if (*plisql_plugin_ptr && (*plisql_plugin_ptr)->stmt_end)
-		((*plisql_plugin_ptr)->stmt_end) (estate, (PLiSQL_stmt *) block);
+		rc = exec_stmt_block(estate, block);
+
+		/* Let the plugin know that we have finished executing this statement */
+		if (*plisql_plugin_ptr && (*plisql_plugin_ptr)->stmt_end)
+			((*plisql_plugin_ptr)->stmt_end) (estate, (PLiSQL_stmt *) block);
+	}
+	PG_FINALLY();
+	{
+		SetOracleStatementStartTimestampTo(save_timestamp);
+	}
+	PG_END_TRY();
 
 	estate->err_stmt = NULL;
 
@@ -2346,6 +2367,15 @@ exec_stmts(PLiSQL_execstate * estate, List *stmts)
 		int			rc;
 
 		estate->err_stmt = stmt;
+
+		/*
+		 * Refresh the per-statement Oracle timestamp (used by SYSDATE/
+		 * CURRENT_DATE) for each statement, so that statement-scoped values
+		 * advance between PL/iSQL statements while staying fixed within a
+		 * single one, matching Oracle's PL/SQL behavior.  This deliberately
+		 * leaves stmtStartTimestamp (statement_timestamp()) untouched.
+		 */
+		SetOracleStatementStartTimestamp();
 
 		/* Let the plugin know that we are about to execute this statement */
 		if (*plisql_plugin_ptr && (*plisql_plugin_ptr)->stmt_beg)
