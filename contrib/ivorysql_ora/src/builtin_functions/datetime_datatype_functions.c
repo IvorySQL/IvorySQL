@@ -30,6 +30,7 @@
 #include <time.h>
 
 #include "postgres.h"
+#include "common/int.h"
 #include "datatype/timestamp.h"
 #include "mb/pg_wchar.h"
 #include "pgtime.h"
@@ -207,6 +208,7 @@ static const char *const date_timezone[] =
 
 static int64 sys_time_zone(void);
 static int	days_of_month(int y, int m);
+static Timestamp date_time_to_timestamp(int64 date, int64 time);
 static void tm_round(struct pg_tm *tm, text *fmt);
 static Timestamp iso_year(int y, int m, int d);
 static pg_tz *ora_make_timezone(char **newval);
@@ -352,6 +354,22 @@ ora_local_timestamp(PG_FUNCTION_ARGS)
 	PG_RETURN_TIMESTAMP(timestamp);
 }
 
+/* Recombine a day count and time of day without returning invalid dates. */
+static Timestamp
+date_time_to_timestamp(int64 date, int64 time)
+{
+	Timestamp	result;
+
+	if (pg_mul_s64_overflow(date, USECS_PER_DAY, &result) ||
+		pg_add_s64_overflow(result, time, &result) ||
+		!IS_VALID_TIMESTAMP(result))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("date out of range")));
+
+	return result;
+}
+
 /*
  * Returns the date of the last day of the month that contains date.
  * The return type is always DATE, regardless of the data type of date.
@@ -367,6 +385,9 @@ last_day(PG_FUNCTION_ARGS)
 	int			last_day = 0;
 	Timestamp	result;
 
+	if (TIMESTAMP_NOT_FINITE(time))
+		PG_RETURN_TIMESTAMP(time);
+
 	TMODULO(time, date, USECS_PER_DAY);
 	if (time < INT64CONST(0))
 	{
@@ -380,7 +401,7 @@ last_day(PG_FUNCTION_ARGS)
 
 	result = date2j(y, m, last_day) - POSTGRES_EPOCH_JDATE;
 
-	result = result * USECS_PER_DAY + time;
+	result = date_time_to_timestamp(result, time);
 
 	PG_RETURN_TIMESTAMP(result);
 }
@@ -525,6 +546,9 @@ next_day_by_index(PG_FUNCTION_ARGS)
 	Timestamp	result;
 
 	CHECK_SEQ_SEARCH((idx < 1 || 7 < idx) ? -1 : 0, "DAY/Day/day");
+	if (TIMESTAMP_NOT_FINITE(day))
+		PG_RETURN_TIMESTAMP(day);
+
 	TMODULO(day, date, USECS_PER_DAY);
 	if (day < INT64CONST(0))
 	{
@@ -538,7 +562,7 @@ next_day_by_index(PG_FUNCTION_ARGS)
 	date = (off <= 0) ? date + off + 7 : date + off;
 
 	result = date - POSTGRES_EPOCH_JDATE;
-	result = result * USECS_PER_DAY + day;
+	result = date_time_to_timestamp(result, day);
 
 	PG_RETURN_TIMESTAMP(result);
 }
@@ -573,6 +597,9 @@ next_day(PG_FUNCTION_ARGS)
 	CHECK_SEQ_SEARCH(-1, "DAY/Day/day");
 
 found:
+	if (TIMESTAMP_NOT_FINITE(day))
+		PG_RETURN_TIMESTAMP(day);
+
 	TMODULO(day, date, USECS_PER_DAY);
 	if (day < INT64CONST(0))
 	{
@@ -586,7 +613,7 @@ found:
 	date = (off <= 0) ? date + off + 7 : date + off;
 
 	result = date - POSTGRES_EPOCH_JDATE;
-	result = result * USECS_PER_DAY + day;
+	result = date_time_to_timestamp(result, day);
 
 	PG_RETURN_TIMESTAMP(result);
 }
