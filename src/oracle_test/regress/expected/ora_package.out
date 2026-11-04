@@ -806,7 +806,7 @@ end;
 /
 ERROR:  Cursor Variables cannot be declared as part of a package
 CONTEXT:  compilation of PL/iSQL package "pkg" near line 2
---test sucess
+--test success
 create or replace package pkg is
  function test(id integer) return integer;
 end;
@@ -825,7 +825,7 @@ end;
 /
 ERROR:  Cursor Variables cannot be declared as part of a package
 CONTEXT:  compilation of PL/iSQL package "pkg" near line 9
---test sucess
+--test success
 create or replace package body pkg is
   var2 integer;
   function test(id integer) return integer is
