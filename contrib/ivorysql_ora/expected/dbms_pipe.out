@@ -1,0 +1,154 @@
+--
+-- DBMS_PIPE
+--
+-- Regression tests for Oracle-compatible DBMS_PIPE package:
+--   - Package constants
+--   - CREATE_PIPE
+--   - PACK_MESSAGE / SEND_MESSAGE
+--   - RECEIVE_MESSAGE / UNPACK_MESSAGE
+--   - PURGE procedure
+--   - RESET_BUFFER procedure
+--   - REMOVE_PIPE function
+--   - Error handling (NULL parameter checks, buffer underflow)
+--   - Internal function execute privilege revoked from PUBLIC (CWE-862)
+--
+-- Package constants
+SELECT dbms_pipe.success;
+ success
+---------
+       0
+(1 row)
+
+SELECT dbms_pipe.timeout;
+ timeout
+---------
+       1
+(1 row)
+
+SELECT dbms_pipe.overflow;
+ overflow
+----------
+        2
+(1 row)
+
+SELECT dbms_pipe.interrupt;
+ interrupt
+-----------
+         3
+(1 row)
+
+-- Create pipe
+SELECT dbms_pipe.create_pipe('test_pipe_1', 8192, false);
+ create_pipe
+-------------
+           0
+(1 row)
+
+-- Verify definition in catalog
+SELECT pipename, maxsize, is_private FROM sys.pipe_definitions WHERE pipename = 'test_pipe_1';
+  pipename   | maxsize | is_private
+-------------+---------+------------
+ test_pipe_1 |    8192 | f
+(1 row)
+
+-- Pack and send message
+CALL dbms_pipe.pack_message('first_pipe_message');
+CALL dbms_pipe.pack_message('second_pipe_message');
+SELECT dbms_pipe.send_message('test_pipe_1');
+ send_message
+--------------
+            0
+(1 row)
+
+-- Receive and unpack message
+SELECT dbms_pipe.receive_message('test_pipe_1');
+ receive_message
+-----------------
+               0
+(1 row)
+
+DO $$
+DECLARE
+    msg1 VARCHAR2(100);
+    msg2 VARCHAR2(100);
+BEGIN
+    dbms_pipe.unpack_message(msg1);
+    dbms_pipe.unpack_message(msg2);
+    RAISE NOTICE 'Unpacked items: % and %', msg1, msg2;
+END;
+$$;
+NOTICE:  Unpacked items: first_pipe_message and second_pipe_message
+DO
+-- Receive on empty pipe returns timeout (1)
+SELECT dbms_pipe.receive_message('test_pipe_1', 0);
+ receive_message
+-----------------
+               1
+(1 row)
+
+-- Reset buffer
+CALL dbms_pipe.reset_buffer();
+-- Purge pipe
+CALL dbms_pipe.pack_message('to_be_purged');
+SELECT dbms_pipe.send_message('test_pipe_1');
+ send_message
+--------------
+            0
+(1 row)
+
+CALL dbms_pipe.purge('test_pipe_1');
+SELECT COUNT(*) FROM sys.pipe_messages WHERE pipename = 'test_pipe_1';
+ count
+-------
+     0
+(1 row)
+
+-- Remove pipe
+SELECT dbms_pipe.remove_pipe('test_pipe_1');
+ remove_pipe
+-------------
+           0
+(1 row)
+
+SELECT COUNT(*) FROM sys.pipe_definitions WHERE pipename = 'test_pipe_1';
+ count
+-------
+     0
+(1 row)
+
+-- Error handling: NULL parameter checks
+SELECT sys.dbms_pipe_create_pipe_internal(NULL, 4096, false);
+ERROR:  DBMS_PIPE.CREATE_PIPE: pipename must not be NULL
+SELECT sys.dbms_pipe_send_message_internal(NULL, 100, 4096);
+ERROR:  DBMS_PIPE.SEND_MESSAGE: pipename must not be NULL
+SELECT sys.dbms_pipe_receive_message_internal(NULL, 100);
+ERROR:  DBMS_PIPE.RECEIVE_MESSAGE: pipename must not be NULL
+SELECT sys.dbms_pipe_purge_internal(NULL);
+ERROR:  DBMS_PIPE.PURGE: pipename must not be NULL
+SELECT sys.dbms_pipe_remove_pipe_internal(NULL);
+ERROR:  DBMS_PIPE.REMOVE_PIPE: pipename must not be NULL
+-- Verify internal functions execute privilege revoked from PUBLIC (CWE-862)
+SELECT p.proname, has_function_privilege('public', p.oid, 'EXECUTE') AS public_can_execute
+  FROM pg_catalog.pg_proc p
+  JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+ WHERE n.nspname = 'sys'
+   AND p.proname IN ('dbms_pipe_create_pipe_internal',
+                     'dbms_pipe_pack_message_text_internal',
+                     'dbms_pipe_unpack_message_text_internal',
+                     'dbms_pipe_send_message_internal',
+                     'dbms_pipe_receive_message_internal',
+                     'dbms_pipe_reset_buffer_internal',
+                     'dbms_pipe_purge_internal',
+                     'dbms_pipe_remove_pipe_internal')
+ ORDER BY p.proname;
+                proname                 | public_can_execute
+----------------------------------------+--------------------
+ dbms_pipe_create_pipe_internal         | f
+ dbms_pipe_pack_message_text_internal   | f
+ dbms_pipe_purge_internal               | f
+ dbms_pipe_receive_message_internal     | f
+ dbms_pipe_remove_pipe_internal         | f
+ dbms_pipe_reset_buffer_internal        | f
+ dbms_pipe_send_message_internal        | f
+ dbms_pipe_unpack_message_text_internal | f
+(8 rows)
