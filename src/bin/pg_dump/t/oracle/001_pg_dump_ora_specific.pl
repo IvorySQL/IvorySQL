@@ -206,6 +206,15 @@ my %tests = (
 		like   => { %full_runs, },
 	},
 
+	'ALTER DEFAULT PRIVILEGES ... ON PACKAGES' => {
+		create_order => 7,
+		create_sql   => 'CREATE ROLE regress_pkg_grantee;
+			ALTER DEFAULT PRIVILEGES
+			GRANT EXECUTE ON PACKAGES TO regress_pkg_grantee;',
+		regexp => qr/^ALTER DEFAULT PRIVILEGES FOR ROLE .+? GRANT ALL ON PACKAGES TO regress_pkg_grantee;/m,
+		like   => { %full_runs, },
+	},
+
 	'object method standard literal keeps a trailing backslash' => {
 		regexp => qr/member function trailing_slash\(p_text varchar2 default 'a\\'\) return varchar2/im,
 		like   => { %full_runs, },
