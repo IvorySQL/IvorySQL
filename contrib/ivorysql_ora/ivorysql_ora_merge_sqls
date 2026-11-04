@@ -14,3 +14,4 @@ src/builtin_packages/dbms_transaction/dbms_transaction
 src/builtin_packages/dbms_random/dbms_random
 src/builtin_packages/utl_match/utl_match
 src/builtin_packages/dbms_scheduler/dbms_scheduler
+src/builtin_packages/dbms_metadata/dbms_metadata
