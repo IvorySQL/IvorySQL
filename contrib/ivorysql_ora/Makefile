@@ -79,6 +79,7 @@ ORA_REGRESS = \
 	ora_to_number_hex \
 	ora_binary_float \
 	ora_binary_double \
+	ora_nls_charset_functions \
 	ora_nanvl \
 	ora_raw_long \
 	ora_character_datatype_functions \
