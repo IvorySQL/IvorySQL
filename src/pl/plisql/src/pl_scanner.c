@@ -114,7 +114,7 @@ static const char *scanorig;
 
 /*
  * Pending rewrites of implicit SQL cursor attributes (SQL%ROWCOUNT and
- * friends) to double-quoted references of their hidden backing variables.
+ * friends) to Unicode-quoted references of their hidden backing variables.
  * plisql_yylex() records one entry each time it recognizes the sequence
  * IDENT(sql) '%' IDENT(attr); plisql_append_source_text() splices the
  * replacement into the SQL text it captures, so the core parser never sees
@@ -472,7 +472,7 @@ plisql_yylex(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
  * If the tokens just read are Oracle's implicit SQL cursor attribute —
  * that is, IDENT(sql) '%' IDENT(attr) where attr is rowcount, found,
  * notfound or isopen, case-insensitively and unquoted on both sides —
- * record a substitution rewriting those bytes to a double-quoted reference
+ * record a substitution rewriting those bytes to a Unicode-quoted reference
  * of the attribute's hidden backing variable (see
  * plisql_append_source_text), and return true.  Otherwise return false,
  * leaving the tokens for normal processing.
@@ -486,16 +486,22 @@ static bool
 recognize_sql_cursor_attr(int tok1, TokenAuxData *aux1, int tok3,
 						  TokenAuxData *aux3, yyscan_t yyscanner)
 {
+	/*
+	 * Unicode-quoted identifiers preserve the hidden variable names without
+	 * Oracle's identifier_case_switch conversion.  Ordinary double quotes
+	 * would turn them into upper case in interchange mode.  The references
+	 * must also work if the mode changes between compilation and execution.
+	 */
 	static const struct
 	{
 		const char *attr;
 		const char *varname;
 	}			attr_tab[] =
 	{
-		{"rowcount", "\"sql%rowcount\""},
-		{"found", "\"sql%found\""},
-		{"notfound", "\"sql%notfound\""},
-		{"isopen", "\"sql%isopen\""}
+		{"rowcount", "U&\"sql%rowcount\""},
+		{"found", "U&\"sql%found\""},
+		{"notfound", "U&\"sql%notfound\""},
+		{"isopen", "U&\"sql%isopen\""}
 	};
 	const char *scanbuf = yyextra->core_yy_extra.scanbuf;
 	PLiSQLSqlattrSub *sub;

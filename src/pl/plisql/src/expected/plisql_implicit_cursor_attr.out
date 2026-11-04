@@ -502,3 +502,122 @@ LINE 1: v := SQL%BULK_ROWCOUNT(1)
              ^
 QUERY:  v := SQL%BULK_ROWCOUNT(1)
 CONTEXT:  PL/iSQL function inline_code_block line 5 at assignment
+-- Hidden cursor-attribute references must keep their spelling in every case mode.
+-- oracle-check initializes its cluster with -C normal, unlike initdb -m oracle.
+-- Create the stored routines in normal mode and first execute them in interchange
+-- mode, so a fix cannot depend on the mode at the time of CREATE FUNCTION.
+SET ivorysql.identifier_case_switch = normal;
+CREATE TABLE cursor_case_test (id integer);
+INSERT INTO cursor_case_test VALUES (1);
+CREATE FUNCTION cursor_case_func() RETURNS bigint AS $$
+BEGIN
+    UPDATE cursor_case_test SET id = id;
+    RAISE NOTICE 'function: % % % %',
+        SQL%ROWCOUNT, sql%found, Sql%NotFound, sQl % IsOpen;
+    RETURN SQL%ROWCOUNT;
+END;
+$$ LANGUAGE plisql;
+/
+CREATE PROCEDURE cursor_case_proc IS
+BEGIN
+    UPDATE cursor_case_test SET id = id WHERE id < 0;
+    RAISE NOTICE 'procedure: % % % %',
+        SQL%ROWCOUNT, sql%found, Sql%NotFound, sQl % IsOpen;
+END;
+/
+CREATE PACKAGE cursor_case_pkg AS
+    PROCEDURE check_attrs;
+END cursor_case_pkg;
+/
+CREATE PACKAGE BODY cursor_case_pkg AS
+    PROCEDURE check_attrs IS
+    BEGIN
+        UPDATE cursor_case_test SET id = id;
+        RAISE NOTICE 'package: % % % %',
+            SQL%ROWCOUNT, sql%found, Sql%NotFound, sQl % IsOpen;
+    END;
+END cursor_case_pkg;
+/
+SET ivorysql.identifier_case_switch = interchange;
+DO $$
+DECLARE
+    n bigint;
+    f boolean;
+    nf boolean;
+    io boolean;
+BEGIN
+    RAISE NOTICE 'initial: % % % %',
+        sql%rowcount, SQL%FOUND, Sql%NotFound, sQl % IsOpen;
+    UPDATE cursor_case_test SET id = id;
+    SELECT SQL%ROWCOUNT, sql%found, Sql%NotFound, sQl % IsOpen
+        INTO n, f, nf, io;
+    RAISE NOTICE 'SQL expression: % % % %', n, f, nf, io;
+    n := cursor_case_func();
+    RAISE NOTICE 'function result: %', n;
+    CALL cursor_case_proc();
+    cursor_case_pkg.check_attrs();
+END;
+$$;
+NOTICE:  initial: <NULL> <NULL> <NULL> f
+NOTICE:  SQL expression: 1 t f f
+NOTICE:  function: 1 t f f
+NOTICE:  function result: 1
+NOTICE:  procedure: 0 f t f
+NOTICE:  package: 1 t f f
+SET ivorysql.identifier_case_switch = lowercase;
+DO $$
+DECLARE
+    n bigint;
+    f boolean;
+    nf boolean;
+    io boolean;
+BEGIN
+    RAISE NOTICE 'initial: % % % %',
+        sql%rowcount, SQL%FOUND, Sql%NotFound, sQl % IsOpen;
+    UPDATE cursor_case_test SET id = id;
+    SELECT SQL%ROWCOUNT, sql%found, Sql%NotFound, sQl % IsOpen
+        INTO n, f, nf, io;
+    RAISE NOTICE 'SQL expression: % % % %', n, f, nf, io;
+    n := cursor_case_func();
+    RAISE NOTICE 'function result: %', n;
+    CALL cursor_case_proc();
+    cursor_case_pkg.check_attrs();
+END;
+$$;
+NOTICE:  initial: <NULL> <NULL> <NULL> f
+NOTICE:  SQL expression: 1 t f f
+NOTICE:  function: 1 t f f
+NOTICE:  function result: 1
+NOTICE:  procedure: 0 f t f
+NOTICE:  package: 1 t f f
+SET ivorysql.identifier_case_switch = normal;
+DO $$
+DECLARE
+    n bigint;
+    f boolean;
+    nf boolean;
+    io boolean;
+BEGIN
+    RAISE NOTICE 'initial: % % % %',
+        sql%rowcount, SQL%FOUND, Sql%NotFound, sQl % IsOpen;
+    UPDATE cursor_case_test SET id = id;
+    SELECT SQL%ROWCOUNT, sql%found, Sql%NotFound, sQl % IsOpen
+        INTO n, f, nf, io;
+    RAISE NOTICE 'SQL expression: % % % %', n, f, nf, io;
+    n := cursor_case_func();
+    RAISE NOTICE 'function result: %', n;
+    CALL cursor_case_proc();
+    cursor_case_pkg.check_attrs();
+END;
+$$;
+NOTICE:  initial: <NULL> <NULL> <NULL> f
+NOTICE:  SQL expression: 1 t f f
+NOTICE:  function: 1 t f f
+NOTICE:  function result: 1
+NOTICE:  procedure: 0 f t f
+NOTICE:  package: 1 t f f
+RESET ivorysql.identifier_case_switch;
+DROP PACKAGE cursor_case_pkg;
+DROP PROCEDURE cursor_case_proc;
+DROP FUNCTION cursor_case_func();
+DROP TABLE cursor_case_test;
