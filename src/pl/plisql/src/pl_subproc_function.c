@@ -81,6 +81,7 @@ int			cur_compile_func_level;
  */
 PLiSQL_function *plisql_saved_compile[FUNC_MAX_NEST_LEVEL];
 int			plisql_saved_datums_last[FUNC_MAX_NEST_LEVEL];
+int			plisql_frame_datum_boundary[FUNC_MAX_NEST_LEVEL];
 char	   *plisql_saved_error_funcname[FUNC_MAX_NEST_LEVEL];
 int			plisql_saved_nsubprocfuncs[FUNC_MAX_NEST_LEVEL];
 int			plisql_saved_subprocfunc_alloc[FUNC_MAX_NEST_LEVEL];
@@ -214,6 +215,14 @@ plisql_push_subproc_func(void)
 	plisql_saved_subprocfunc_alloc[cur_compile_func_level] = subprocFuncs_alloc;
 	plisql_saved_subprocfuncs[cur_compile_func_level] = plisql_subprocFuncs;
 	plisql_saved_datums_last[cur_compile_func_level] = datums_last;
+	/*
+	 * The true datum-array boundary of this frame: everything declared
+	 * from now on belongs to the subprogram being entered, everything
+	 * below it belongs to the package or to an enclosing frame.  Recorded
+	 * separately from datums_last, which tracks initialization scans and
+	 * can lag behind the datum array between block-BEGIN scans.
+	 */
+	plisql_frame_datum_boundary[cur_compile_func_level] = plisql_nDatums;
 
 	cur_compile_func_level++;
 }
@@ -3117,6 +3126,15 @@ plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
 	/* Initialize subproc compile state */
 	plisql_init_subprocfunc_compile(subprocfunc);
 	plisql_DumpExecTree = false;
+
+	/*
+	 * init_subprocfunc_compile seeded the datum array with everything
+	 * shared with the outer scope (the package globals); anything declared
+	 * from now on (the member's arguments and locals) is local to this
+	 * frame.  for_variable_is_outer_datum() uses this boundary when the
+	 * member compiles at level 0.
+	 */
+	plisql_level0_datum_boundary = plisql_nDatums;
 
 	/* Replace template function with compiled instance */
 	subprocfunc->function = function;
