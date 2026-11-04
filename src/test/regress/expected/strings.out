@@ -3075,6 +3075,18 @@ SELECT lpad('hi', -5, 'xy');
  
 (1 row)
 
+SELECT lpad('hi', 0, 'xy');
+ lpad 
+------
+ 
+(1 row)
+
+SELECT lpad('hi', 0);
+ lpad 
+------
+ 
+(1 row)
+
 SELECT lpad('hello', 2);
  lpad 
 ------
@@ -3100,6 +3112,18 @@ SELECT rpad('hi', 5);
 (1 row)
 
 SELECT rpad('hi', -5, 'xy');
+ rpad 
+------
+ 
+(1 row)
+
+SELECT rpad('hi', 0, 'xy');
+ rpad 
+------
+ 
+(1 row)
+
+SELECT rpad('hi', 0);
  rpad 
 ------
  

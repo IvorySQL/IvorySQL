@@ -994,12 +994,16 @@ SELECT initcap('hi THOMAS');
 SELECT lpad('hi', 5, 'xy');
 SELECT lpad('hi', 5);
 SELECT lpad('hi', -5, 'xy');
+SELECT lpad('hi', 0, 'xy');
+SELECT lpad('hi', 0);
 SELECT lpad('hello', 2);
 SELECT lpad('hi', 5, '');
 
 SELECT rpad('hi', 5, 'xy');
 SELECT rpad('hi', 5);
 SELECT rpad('hi', -5, 'xy');
+SELECT rpad('hi', 0, 'xy');
+SELECT rpad('hi', 0);
 SELECT rpad('hello', 2);
 SELECT rpad('hi', 5, '');
 
