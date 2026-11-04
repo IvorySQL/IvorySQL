@@ -11,14 +11,61 @@ fi
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
 
-# Process only staged C/C++ files (exclude pg_bsd_indent sources)
-mapfile -t files < <(\
-  git diff --cached --name-only --diff-filter=ACMR | \
-  grep -E '\.(c|h|cpp|hpp)$' | \
-  grep -vE '^src/tools/pg_bsd_indent/' || true)
+# Process only staged C/C++ files (exclude pg_bsd_indent sources).
+# Read NUL-separated names in a while loop: mapfile requires Bash 4+, but
+# macOS ships Bash 3.2, and the NUL separator keeps names with spaces or
+# other special characters intact. Filtering happens in the loop so we do
+# not depend on GNU grep behavior.
+files=()
+list_failed=0
+while IFS= read -r -d '' f; do
+  # Empty records can only come from the failure sentinel below: git never
+  # lists empty filenames. A failed process substitution does not propagate
+  # its exit status to this loop, so without the sentinel the hook would
+  # silently skip formatting when git diff itself fails.
+  if [[ -z $f ]]; then
+    list_failed=1
+    continue
+  fi
+  if [[ $f != *.c && $f != *.h && $f != *.cpp && $f != *.hpp ]]; then
+    continue
+  fi
+  if [[ $f == src/tools/pg_bsd_indent/* ]]; then
+    continue
+  fi
+  files+=("$f")
+done < <(git diff --cached --name-only --diff-filter=ACMR -z || printf '\0')
+
+if [[ $list_failed -eq 1 ]]; then
+  echo "[pre-commit] Failed to read the staged file list from Git." >&2
+  exit 1
+fi
 
 if [[ ${#files[@]} -eq 0 ]]; then
   exit 0
+fi
+
+# Refuse to format files that also have unstaged working tree changes.
+# pgindent runs on the working tree and its result is re-added wholesale,
+# so continuing here would silently pull edits the user deliberately left
+# unstaged into the commit. Stop with the index and working tree untouched.
+partial=()
+for f in "${files[@]}"; do
+  if ! git diff --quiet -- "$f"; then
+    partial+=("$f")
+  fi
+done
+
+if [[ ${#partial[@]} -gt 0 ]]; then
+  echo "[pre-commit] Staged files with unstaged changes (not formatted):" >&2
+  for f in "${partial[@]}"; do
+    echo "[pre-commit]   $f" >&2
+  done
+  echo "[pre-commit] Formatting would add the unstaged changes to this commit." >&2
+  echo "[pre-commit] Stage the full files (git add), set the unstaged changes" >&2
+  echo "[pre-commit] aside yourself (e.g. git stash), or skip formatting with:" >&2
+  echo "[pre-commit]   PG_NO_FORMAT=1 git commit ..." >&2
+  exit 1
 fi
 
 echo "[pre-commit] Ensuring pg_bsd_indent is built..."
