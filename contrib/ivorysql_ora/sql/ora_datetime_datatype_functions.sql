@@ -818,3 +818,11 @@ drop table ds_tb;
 reset NLS_TIMESTAMP_FORMAT;
 reset NLS_TIMESTAMP_TZ_FORMAT;
 reset NLS_DATE_FORMAT;
+
+-- Oracle datetime types now cast to the PostgreSQL timestamp types
+SELECT SYSDATE::TIMESTAMP::DATE = SYSDATE::DATE AS date_to_timestamp;
+SELECT SYSDATE::TIMESTAMPTZ IS NOT NULL AS date_to_timestamptz;
+SELECT SYSTIMESTAMP::TIMESTAMP IS NOT NULL AS oratimestamptz_to_timestamp;
+SELECT SYSTIMESTAMP::TIMESTAMPTZ IS NOT NULL AS oratimestamptz_to_timestamptz;
+SELECT CAST(TIMESTAMP '2020-01-02 03:04:05' AS sys.oratimestamp)::TIMESTAMPTZ::TIMESTAMP
+       = TIMESTAMP '2020-01-02 03:04:05' AS oratimestamp_to_timestamptz;
