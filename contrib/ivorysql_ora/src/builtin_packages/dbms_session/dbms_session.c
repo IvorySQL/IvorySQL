@@ -81,6 +81,7 @@ PG_FUNCTION_INFO_V1(ora_dbms_session_set_context);
 PG_FUNCTION_INFO_V1(ora_dbms_session_clear_context);
 PG_FUNCTION_INFO_V1(ora_dbms_session_clear_all_context);
 PG_FUNCTION_INFO_V1(ora_dbms_session_get_context);
+PG_FUNCTION_INFO_V1(ora_dbms_session_context_exists);
 PG_FUNCTION_INFO_V1(ora_dbms_session_list_context);
 PG_FUNCTION_INFO_V1(ora_dbms_session_reset_package);
 
@@ -364,6 +365,30 @@ ora_dbms_session_get_context(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 
 	PG_RETURN_TEXT_P(cstring_to_text(entry->value));
+}
+
+/*
+ * Distinguish an absent attribute from an explicitly stored NULL for
+ * SYS_CONTEXT's GUC fallback.  Match the getter's read-path validation.
+ */
+Datum
+ora_dbms_session_context_exists(PG_FUNCTION_ARGS)
+{
+	char	   *ns;
+	char	   *attr;
+	CtxKey		key;
+
+	if (PG_ARGISNULL(0) || PG_ARGISNULL(1) || DbmsSessionHash == NULL)
+		PG_RETURN_BOOL(false);
+
+	ns = text_to_cstring(PG_GETARG_TEXT_PP(0));
+	attr = text_to_cstring(PG_GETARG_TEXT_PP(1));
+
+	if (strlen(ns) >= DBMS_SESSION_NAME_LEN || strlen(attr) >= DBMS_SESSION_NAME_LEN)
+		PG_RETURN_BOOL(false);
+
+	make_key(&key, ns, attr);
+	PG_RETURN_BOOL(hash_search(DbmsSessionHash, &key, HASH_FIND, NULL) != NULL);
 }
 
 /*
