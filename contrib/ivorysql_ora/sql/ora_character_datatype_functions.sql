@@ -1558,3 +1558,13 @@ select to_single_byte('１．２');
 select to_single_byte(１．２);
 select to_single_byte(3.4);
 select to_single_byte(NULL);
+select to_single_byte('Hello １２３ World ａｂｃ');
+select to_single_byte('中文测试123');
+select sys.to_single_byte(convert_from('\xE4BDA0'::bytea,'UTF8')::sys.oracharbyte(1));
+-- Additional to_single_byte boundary cases: truncated 2-byte and 4-byte
+-- characters, an ASCII byte before a truncated character, and a cut aligned
+-- to a character boundary
+select sys.to_single_byte(convert_from('\xC3A9'::bytea,'UTF8')::sys.oracharbyte(1));
+select sys.to_single_byte(convert_from('\xF09F9880'::bytea,'UTF8')::sys.oracharbyte(1));
+select sys.to_single_byte(convert_from('\x41E4BDA0'::bytea,'UTF8')::sys.oracharbyte(2));
+select sys.to_single_byte(convert_from('\xE4BDA0'::bytea,'UTF8')::sys.oracharbyte(3));
