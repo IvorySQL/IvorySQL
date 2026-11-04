@@ -4074,3 +4074,215 @@ select to_single_byte(NULL);
  
 (1 row)
 
+/*
+ * instrc / substrc
+ *
+ * The Unicode-complete-character ("*C") variants of INSTR and SUBSTR.
+ * Their counting unit is the one lengthc() counts: the code points of the
+ * NFC-normalized string, so a base character plus combining marks and a
+ * 4-byte supplementary character each count as one complete character.
+ */
+SELECT INSTRC('CORPORATE FLOOR','OR',5,2) "Instring in chars" FROM DUAL;
+ Instring in chars 
+-------------------
+                14
+(1 row)
+
+SELECT INSTRC('CORPORATE FLOOR','OR',5) "Instring in chars" FROM DUAL;
+ Instring in chars 
+-------------------
+                 5
+(1 row)
+
+SELECT INSTRC('CORPORATE FLOOR','OR') "Instring in chars" FROM DUAL;
+ Instring in chars 
+-------------------
+                 2
+(1 row)
+
+-- multibyte: 'å' is one complete character, two bytes
+SELECT INSTRC('åbcd','c'), INSTRB('åbcd','c') FROM DUAL;
+ instrc | instrb 
+--------+--------
+      3 |      4
+(1 row)
+
+SELECT SUBSTRC('åbcd',2), SUBSTRB('åbcd',2) FROM DUAL;
+ substrc | substrb 
+---------+---------
+ bcd     |  bcd
+(1 row)
+
+SELECT SUBSTRC('åbcd',2,2) FROM DUAL;
+ substrc 
+---------
+ bc
+(1 row)
+
+-- Chinese: three UTF-8 bytes per character, one complete character each
+SELECT INSTRC('今天明天','天') FROM DUAL;
+ instrc 
+--------
+      2
+(1 row)
+
+SELECT INSTRC('今天明天','天',3) FROM DUAL;
+ instrc 
+--------
+      4
+(1 row)
+
+SELECT INSTRC('今天明天','明天') FROM DUAL;
+ instrc 
+--------
+      3
+(1 row)
+
+SELECT SUBSTRC('今天明天',2,2) FROM DUAL;
+ substrc 
+---------
+ 天明
+(1 row)
+
+SELECT SUBSTRC('今天明天',-2) FROM DUAL;
+ substrc 
+---------
+ 明天
+(1 row)
+
+SELECT SUBSTRC('今天明天',-2,1) FROM DUAL;
+ substrc 
+---------
+ 明
+(1 row)
+
+-- combining marks: NFC folds 'e'+U+0301 into one complete character
+SELECT INSTRC('cafe'||chr(769), 'e'||chr(769)) FROM DUAL;
+ instrc 
+--------
+      4
+(1 row)
+
+SELECT lengthc('cafe'||chr(769)) FROM DUAL;
+ lengthc 
+---------
+       4
+(1 row)
+
+SELECT SUBSTRC('cafe'||chr(769),4,1) FROM DUAL;
+ substrc 
+---------
+ é
+(1 row)
+
+SELECT SUBSTRC('café',4,1) FROM DUAL;
+ substrc 
+---------
+ é
+(1 row)
+
+-- supplementary plane: a 4-byte UTF-8 character is still one complete character
+SELECT INSTRC(chr(119070)||'xy','y') FROM DUAL;
+ instrc 
+--------
+      3
+(1 row)
+
+SELECT INSTRB(chr(119070)||'xy','y') FROM DUAL;
+ instrb 
+--------
+      6
+(1 row)
+
+SELECT SUBSTRC(chr(119070)||'xy',1,1) FROM DUAL;
+ substrc 
+---------
+ 𝄞
+(1 row)
+
+SELECT SUBSTRC(chr(119070)||'xy',2,2) FROM DUAL;
+ substrc 
+---------
+ xy
+(1 row)
+
+-- position and length edges; Oracle's empty string is null
+SELECT SUBSTRC('abcdef',0,3) FROM DUAL;
+ substrc 
+---------
+ abc
+(1 row)
+
+SELECT SUBSTRC('abcdef',2) FROM DUAL;
+ substrc 
+---------
+ bcdef
+(1 row)
+
+SELECT SUBSTRC('abcdef',-3,2) FROM DUAL;
+ substrc 
+---------
+ de
+(1 row)
+
+SELECT SUBSTRC('abcdef',-10,2) FROM DUAL;
+ substrc 
+---------
+ ab
+(1 row)
+
+SELECT SUBSTRC('abcdef',2,0) FROM DUAL;
+ substrc 
+---------
+ 
+(1 row)
+
+SELECT SUBSTRC('abcdef',2,-1) FROM DUAL;
+ substrc 
+---------
+ 
+(1 row)
+
+SELECT SUBSTRC('abcdef',10) FROM DUAL;
+ substrc 
+---------
+ 
+(1 row)
+
+SELECT INSTRC('abc','z') FROM DUAL;
+ instrc 
+--------
+      0
+(1 row)
+
+SELECT INSTRC(NULL,'a') FROM DUAL;
+ instrc 
+--------
+       
+(1 row)
+
+SELECT SUBSTRC(NULL,1) FROM DUAL;
+ substrc 
+---------
+ 
+(1 row)
+
+-- the varchar2/number wrappers: numeric arguments resolve onto them
+SELECT sys.instrc('CORPORATE FLOOR', 'OR', 5, 2) FROM DUAL;
+ instrc 
+--------
+     14
+(1 row)
+
+SELECT sys.instrc('今天明天', '天', 1.9) FROM DUAL;
+ instrc 
+--------
+      2
+(1 row)
+
+SELECT sys.substrc('今天明天', 2.4, 2.9) FROM DUAL;
+ substrc 
+---------
+ 天明天
+(1 row)
+

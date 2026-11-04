@@ -1558,3 +1558,57 @@ select to_single_byte('１．２');
 select to_single_byte(１．２);
 select to_single_byte(3.4);
 select to_single_byte(NULL);
+
+/*
+ * instrc / substrc
+ *
+ * The Unicode-complete-character ("*C") variants of INSTR and SUBSTR.
+ * Their counting unit is the one lengthc() counts: the code points of the
+ * NFC-normalized string, so a base character plus combining marks and a
+ * 4-byte supplementary character each count as one complete character.
+ */
+SELECT INSTRC('CORPORATE FLOOR','OR',5,2) "Instring in chars" FROM DUAL;
+SELECT INSTRC('CORPORATE FLOOR','OR',5) "Instring in chars" FROM DUAL;
+SELECT INSTRC('CORPORATE FLOOR','OR') "Instring in chars" FROM DUAL;
+
+-- multibyte: 'å' is one complete character, two bytes
+SELECT INSTRC('åbcd','c'), INSTRB('åbcd','c') FROM DUAL;
+SELECT SUBSTRC('åbcd',2), SUBSTRB('åbcd',2) FROM DUAL;
+SELECT SUBSTRC('åbcd',2,2) FROM DUAL;
+
+-- Chinese: three UTF-8 bytes per character, one complete character each
+SELECT INSTRC('今天明天','天') FROM DUAL;
+SELECT INSTRC('今天明天','天',3) FROM DUAL;
+SELECT INSTRC('今天明天','明天') FROM DUAL;
+SELECT SUBSTRC('今天明天',2,2) FROM DUAL;
+SELECT SUBSTRC('今天明天',-2) FROM DUAL;
+SELECT SUBSTRC('今天明天',-2,1) FROM DUAL;
+
+-- combining marks: NFC folds 'e'+U+0301 into one complete character
+SELECT INSTRC('cafe'||chr(769), 'e'||chr(769)) FROM DUAL;
+SELECT lengthc('cafe'||chr(769)) FROM DUAL;
+SELECT SUBSTRC('cafe'||chr(769),4,1) FROM DUAL;
+SELECT SUBSTRC('café',4,1) FROM DUAL;
+
+-- supplementary plane: a 4-byte UTF-8 character is still one complete character
+SELECT INSTRC(chr(119070)||'xy','y') FROM DUAL;
+SELECT INSTRB(chr(119070)||'xy','y') FROM DUAL;
+SELECT SUBSTRC(chr(119070)||'xy',1,1) FROM DUAL;
+SELECT SUBSTRC(chr(119070)||'xy',2,2) FROM DUAL;
+
+-- position and length edges; Oracle's empty string is null
+SELECT SUBSTRC('abcdef',0,3) FROM DUAL;
+SELECT SUBSTRC('abcdef',2) FROM DUAL;
+SELECT SUBSTRC('abcdef',-3,2) FROM DUAL;
+SELECT SUBSTRC('abcdef',-10,2) FROM DUAL;
+SELECT SUBSTRC('abcdef',2,0) FROM DUAL;
+SELECT SUBSTRC('abcdef',2,-1) FROM DUAL;
+SELECT SUBSTRC('abcdef',10) FROM DUAL;
+SELECT INSTRC('abc','z') FROM DUAL;
+SELECT INSTRC(NULL,'a') FROM DUAL;
+SELECT SUBSTRC(NULL,1) FROM DUAL;
+
+-- the varchar2/number wrappers: numeric arguments resolve onto them
+SELECT sys.instrc('CORPORATE FLOOR', 'OR', 5, 2) FROM DUAL;
+SELECT sys.instrc('今天明天', '天', 1.9) FROM DUAL;
+SELECT sys.substrc('今天明天', 2.4, 2.9) FROM DUAL;
