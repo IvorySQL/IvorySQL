@@ -105,9 +105,7 @@ EXCEPTION
         RAISE NOTICE 'ORA-01489: result of string concatenation is too long (expected)';
 END;
 $$;
-ERROR:  result of aggregation exceeds 4000 bytes
-CONTEXT:  SQL statement "SELECT sys.ora_listagg_check(repeat('x', 4001))"
-PL/iSQL function inline_code_block line 3 at PERFORM
+NOTICE:  ORA-01489: result of string concatenation is too long (expected)
 -- Test 11: exactly 4000 bytes is allowed
 SELECT length(sys.ora_listagg_check(repeat('x', 4000)));
  length 
