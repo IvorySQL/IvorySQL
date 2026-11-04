@@ -103,7 +103,7 @@ get_precedence(Oid datatype)
  * The function is used to compatible with the Oracle data type precedence ,
  * It is the caller's responsibility to ensure that opname_p is not NULL.
  *
- * If the data type are in Postgresql, then return false. otherwise sucess return true;
+ * If the data type are in Postgresql, then return false. otherwise success return true;
  */
 bool
 pg_compatible_oracle_precedence(Oid arg1, Oid arg2, char *opname_p, Oid *result_arg1, Oid *result_arg2)

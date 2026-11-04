@@ -76,11 +76,11 @@ static OraParamNumbers *CurrentOraParamNode = NULL;
 
 /*
  * dynamic sql stmt parse information
- * IsParseDynSql: grammer is parsing dynamic sql.
- * IsParseDynDoStmt: grammer is parsing dynamic sql that is DoStmt.
- * HasPgParam: grammer found pg model variables like $1...$n.
- * DoStmtCheckVar: wether should check bound var matching.
- * Should not check var bound match for grammer:
+ * IsParseDynSql: grammar is parsing dynamic sql.
+ * IsParseDynDoStmt: grammar is parsing dynamic sql that is DoStmt.
+ * HasPgParam: grammar found pg model variables like $1...$n.
+ * DoStmtCheckVar: whether should check bound var matching.
+ * Should not check var bound match for grammar:
  *     'select xxx; begin xxx end;begin xxx end;'
  * IsBindByName: the paramter is bound by name.
  * When compile DoStmt, DoStmt always gets compiled after other stmt.
