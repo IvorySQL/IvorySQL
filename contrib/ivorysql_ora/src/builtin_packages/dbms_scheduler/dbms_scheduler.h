@@ -150,9 +150,9 @@ extern char *scheduler_purge_schedule;
 extern void SchedulerLauncherRegister(void);
 
 /* bgworker entry points, looked up by name in the shared library */
-extern PGDLLEXPORT pg_noreturn void SchedulerLauncherMain(Datum main_arg);
-extern PGDLLEXPORT pg_noreturn void SchedulerDatabaseWorkerMain(Datum main_arg);
-extern PGDLLEXPORT pg_noreturn void SchedulerJobWorkerMain(Datum main_arg);
+pg_noreturn extern PGDLLEXPORT void SchedulerLauncherMain(Datum main_arg);
+pg_noreturn extern PGDLLEXPORT void SchedulerDatabaseWorkerMain(Datum main_arg);
+pg_noreturn extern PGDLLEXPORT void SchedulerJobWorkerMain(Datum main_arg);
 
 /* Set when the launcher was registered at shared_preload time */
 extern bool scheduler_launcher_registered;
