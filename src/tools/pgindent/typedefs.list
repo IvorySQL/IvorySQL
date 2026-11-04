@@ -400,6 +400,7 @@ CURL
 CURLM
 CURLMcode
 CURLMsg
+CURLU
 CURLcode
 CURLoption
 CV
@@ -1279,6 +1280,7 @@ HostCacheEntry
 HostsFileLoadResult
 HostsLine
 HotStandbyState
+HttpRequest
 I32
 ICU_Convert_Func
 ID
@@ -3706,6 +3708,7 @@ createdb_failure_params
 crosstab_HashEnt
 crosstab_cat_desc
 curl_infotype
+curl_off_t
 curl_socket_t
 curl_version_info_data
 datapagemap_iterator_t

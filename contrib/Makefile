@@ -75,6 +75,13 @@ else
 ALWAYS_SUBDIRS += xml2
 endif
 
+# The optional HTTP package uses libcurl's URL and protocol-restriction APIs.
+ifneq ($(shell $(PKG_CONFIG) --exists 'libcurl >= 7.85' && $(PKG_CONFIG) --modversion libcurl),)
+SUBDIRS += ivorysql_http
+else
+ALWAYS_SUBDIRS += ivorysql_http
+endif
+
 ifeq ($(with_selinux),yes)
 SUBDIRS += sepgsql
 else
