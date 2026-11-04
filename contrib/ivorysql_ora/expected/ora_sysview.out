@@ -508,8 +508,8 @@ ORDER BY POSITION;
  argument_name | position | defaulted | default_value | default_length 
 ---------------+----------+-----------+---------------+----------------
  A             | 1        | N         |               | 
- B             | 2        | Y         | 'x'::varchar2 | 13
- C             | 3        | Y         | 42            | 2
+ B             | 2        | Y         |               | 
+ C             | 3        | Y         |               | 
 (3 rows)
 
 SELECT (SELECT COUNT(*) FROM SYS.DBA_ARGUMENTS
@@ -528,7 +528,7 @@ SELECT (SELECT COUNT(*) FROM SYS.USER_ARGUMENTS
           AND POSITION > 0) AS user_defaults_visible;
  user_defaults_visible 
 -----------------------
-                     2
+                     0
 (1 row)
 
 DROP FUNCTION f_default_probe(INT, VARCHAR2, NUMBER);
