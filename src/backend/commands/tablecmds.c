@@ -705,9 +705,9 @@ static bool ATColumnChangeRequiresRewrite(Node *expr, AttrNumber varattno);
 static ObjectAddress ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 										   AlterTableCmd *cmd, LOCKMODE lockmode);
 static void RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
-						Relation rel, AttrNumber attnum, const char *colName,
-						int *numDependentFuncPkgOids, int *maxDependentFuncPkgOids,
-						ObjectFunOrPkg **dependentFuncPkg);
+											  Relation rel, AttrNumber attnum, const char *colName,
+											  int *numDependentFuncPkgOids, int *maxDependentFuncPkgOids,
+											  ObjectFunOrPkg * *dependentFuncPkg);
 static void RememberConstraintForRebuilding(Oid conoid, AlteredTableInfo *tab);
 static void RememberIndexForRebuilding(Oid indoid, AlteredTableInfo *tab);
 static void RememberStatisticsForRebuilding(Oid stxoid, AlteredTableInfo *tab);
@@ -798,12 +798,12 @@ static void verifyPartitionIndexNotNull(IndexInfo *iinfo, Relation partition);
 static List *GetParentedForeignKeyRefs(Relation partition);
 static void ATDetachCheckNoForeignKeyRefs(Relation partition);
 static char GetAttributeCompression(Oid atttypid, const char *compression);
-static void check_function_dependency_internal(Relation	depRel, SysScanDesc scan);
+static void check_function_dependency_internal(Relation depRel, SysScanDesc scan);
 static char GetAttributeStorage(Oid atttypid, const char *storagemode);
 static ObjectAddress ATExecDropInvisible(Relation rel, const char *colName,
-									  LOCKMODE lockmode);
+										 LOCKMODE lockmode);
 static ObjectAddress ATExecSetInvisible(Relation rel, const char *colName,
-									  LOCKMODE lockmode);
+										LOCKMODE lockmode);
 
 static void ATExecMergePartitions(List **wqueue, AlteredTableInfo *tab, Relation rel,
 								  PartitionCmd *cmd, AlterTableUtilityContext *context);
@@ -846,8 +846,8 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	List	   *inheritOids;
 	List	   *old_constraints;
 	bool		loclHasRowid;
-	int		parentRowIdCount;
-	IndexStmt	*rowid_index;
+	int			parentRowIdCount;
+	IndexStmt  *rowid_index;
 	List	   *old_notnulls;
 	List	   *rawDefaults;
 	List	   *cookedDefaults;
@@ -862,7 +862,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	ObjectAddress address;
 	LOCKMODE	parentLockmode;
 	Oid			accessMethodId = InvalidOid;
-	bool	   has_visible_col = false;
+	bool		has_visible_col = false;
 
 	/*
 	 * Truncate relname to appropriate length (probably a waste of time, as
@@ -988,7 +988,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 		AclResult	aclresult;
 
 		aclresult = object_aclcheck(TableSpaceRelationId, tablespaceId, GetUserId(),
-										   ACL_CREATE);
+									ACL_CREATE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, OBJECT_TABLESPACE,
 						   get_tablespace_name(tablespaceId));
@@ -1056,7 +1056,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	descriptor = BuildDescForRelation(stmt->tableElts);
 
 	loclHasRowid = interpretRowidOption(stmt->options, (relkind == RELKIND_RELATION ||
-										relkind == RELKIND_PARTITIONED_TABLE));
+														relkind == RELKIND_PARTITIONED_TABLE));
 	if (OidIsValid(ofTypeId) && get_typisobject(ofTypeId))
 	{
 		ListCell   *option;
@@ -1133,20 +1133,20 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 			cooked->is_no_inherit = false;
 			cookedDefaults = lappend(cookedDefaults, cooked);
 		}
-		
+
 		if (colDef->is_invisible)
 			attr->attisinvisible = true;
 		else
 			has_visible_col = true;
 
 		/*
-		* Verify that we have at least one visible column
-		* when there is invisible ones
-		*/
+		 * Verify that we have at least one visible column when there is
+		 * invisible ones
+		 */
 		if (attnum > 1 && !has_visible_col)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					errmsg("a table must have at least one visible column")));
+					 errmsg("a table must have at least one visible column")));
 
 		populate_compact_attribute(descriptor, attnum - 1);
 	}
@@ -1462,7 +1462,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	 */
 	if (rel->rd_rel->relhasrowid && rel->rd_rel->relkind == RELKIND_RELATION && !rel->rd_rel->relispartition)
 	{
-		IndexElem   *iparam;
+		IndexElem  *iparam;
 		const FormData_pg_attribute *from;
 		StringInfoData rowid_seq_name;
 
@@ -1489,7 +1489,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 					InvalidOid,
 					InvalidOid,
 					InvalidOid,
-					-1, 
+					-1,
 					true, true, false, false, false);
 		pfree(rowid_seq_name.data);
 	}
@@ -2305,7 +2305,7 @@ ExecuteTruncateGuts(List *explicit_rels,
 	resultRelInfo = resultRelInfos;
 	foreach(cell, rels)
 	{
-		UserContext	ucxt;
+		UserContext ucxt;
 
 		if (run_as_table_owner)
 			SwitchToUntrustedUser(resultRelInfo->ri_RelationDesc->rd_rel->relowner,
@@ -2514,7 +2514,7 @@ ExecuteTruncateGuts(List *explicit_rels,
 	resultRelInfo = resultRelInfos;
 	foreach(cell, rels)
 	{
-		UserContext	ucxt;
+		UserContext ucxt;
 
 		if (run_as_table_owner)
 			SwitchToUntrustedUser(resultRelInfo->ri_RelationDesc->rd_rel->relowner,
@@ -2727,13 +2727,13 @@ storage_name(char c)
  */
 static List *
 MergeAttributes(List *columns, const List *supers, char relpersistence,
-				bool is_partition, List **supconstr, 
+				bool is_partition, List **supconstr,
 				int *supRowIdCount, List **supnotnulls)
 {
 	List	   *inh_columns = NIL;
 	List	   *constraints = NIL;
 	List	   *nnconstraints = NIL;
-	int		parentsWithRowId = 0;
+	int			parentsWithRowId = 0;
 	bool		have_bogus_defaults = false;
 	int			child_attno;
 	static Node bogus_marker = {0}; /* marks conflicting defaults */
@@ -3526,8 +3526,8 @@ MergeChildAttribute(List *inh_columns, int exist_attno, int newcol_attno, const 
 	inhdef->is_not_null |= newdef->is_not_null;
 
 	/*
-	 * Merge of INVISIBLE attribute = OR 'em together 
-	*/
+	 * Merge of INVISIBLE attribute = OR 'em together
+	 */
 	inhdef->is_invisible |= newdef->is_invisible;
 
 	/*
@@ -3695,9 +3695,9 @@ MergeInheritedAttribute(List *inh_columns,
 				 errmsg("inherited column \"%s\" has a generation conflict",
 						attributeName)));
 
-	/* 
-	 * Merge of INVISIBLE attribute = OR 'em together 
-	*/
+	/*
+	 * Merge of INVISIBLE attribute = OR 'em together
+	 */
 	prevdef->is_invisible |= newdef->is_invisible;
 
 	/*
@@ -4182,9 +4182,9 @@ renameatt_internal(Oid myrelid,
 	relation_close(targetrelation, NoLock); /* close rel but keep lock */
 
 	/*
-	 * if there is any functions(procedures, packages) that depend on
-	 * the relation and attnum, invalidate functions(procedures, packages),
-	 * but don't delete the dependency.
+	 * if there is any functions(procedures, packages) that depend on the
+	 * relation and attnum, invalidate functions(procedures, packages), but
+	 * don't delete the dependency.
 	 */
 	check_function_depend_on_relation_column(myrelid, attnum);
 
@@ -4470,9 +4470,9 @@ RenameRelation(RenameStmt *stmt)
 	ObjectAddressSet(address, RelationRelationId, relid);
 
 	/*
-	 * if there is any functions(procedures, packages) that depend on
-	 * the relation and attnum, invalidate functions(procedures, packages),
-	 * but don't delete the dependency.
+	 * if there is any functions(procedures, packages) that depend on the
+	 * relation and attnum, invalidate functions(procedures, packages), but
+	 * don't delete the dependency.
 	 */
 	check_function_depend_on_relation(relid);
 
@@ -5701,10 +5701,10 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab,
 		case AT_DropIdentity:
 			address = ATExecDropIdentity(rel, cmd->name, cmd->missing_ok, lockmode, cmd->recurse, false);
 			break;
-		case AT_SetInvisible:		/* ALTER COLUMN SET INVISIBLE  */
+		case AT_SetInvisible:	/* ALTER COLUMN SET INVISIBLE  */
 			address = ATExecSetInvisible(rel, cmd->name, lockmode);
 			break;
-		case AT_DropInvisible:		/* ALTER COLUMN DROP INVISIBLE  */
+		case AT_DropInvisible:	/* ALTER COLUMN DROP INVISIBLE  */
 			address = ATExecDropInvisible(rel, cmd->name, lockmode);
 			break;
 		case AT_DropNotNull:	/* ALTER COLUMN DROP NOT NULL */
@@ -5842,6 +5842,7 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab,
 			}
 			break;
 		case AT_DropRowids:
+
 			/*
 			 * Nothing to do here; we'll have generated a DropColumn
 			 * subcommand to do the real work
@@ -7348,11 +7349,13 @@ find_composite_type_dependencies(Oid typeOid, Relation origRelation,
 		{
 			/*
 			 * A generated REF domain stores an identifier, not an embedded
-			 * object value.  In particular, a self-REF would form a dependency
-			 * cycle here and recurse forever during CREATE OR REPLACE TYPE.
+			 * object value.  In particular, a self-REF would form a
+			 * dependency cycle here and recurse forever during CREATE OR
+			 * REPLACE TYPE.
 			 */
 			if (get_typrefbase(pg_depend->objid) == typeOid)
 				continue;
+
 			/*
 			 * This must be an array, domain, or range containing the given
 			 * type, so recursively check for uses of this type.  Note that
@@ -7588,7 +7591,7 @@ ATPrepAddColumn(List **wqueue, Relation rel, bool recurse, bool recursing,
 		cmd->recurse = true;
 
 		if (cmd->is_rowid)
-			cmd->subtype = AT_AddRowidsRecurse; 
+			cmd->subtype = AT_AddRowidsRecurse;
 	}
 }
 
@@ -7758,14 +7761,14 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 
 	/* Determine the new attribute's number */
 	if (is_rowid)
-		newattnum = RowIdAttributeNumber; 
+		newattnum = RowIdAttributeNumber;
 	else
 	{
 		newattnum = relform->relnatts + 1;
 		if (newattnum > MaxHeapAttributeNumber)
 			ereport(ERROR,
 					(errcode(ERRCODE_TOO_MANY_COLUMNS),
-					errmsg("tables can have at most %d columns",
+					 errmsg("tables can have at most %d columns",
 							MaxHeapAttributeNumber)));
 
 	}
@@ -7793,7 +7796,7 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	 * Update pg_class tuple as appropriate
 	 */
 	if (is_rowid)
-		relform->relhasrowid = true; 
+		relform->relhasrowid = true;
 	else
 		relform->relnatts = newattnum;
 
@@ -7983,11 +7986,11 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	}
 
 	/*
-	 * If we are adding an ROWID column, we have to tell Phase 3 to rewrite the
-	 * table to fix that.
+	 * If we are adding an ROWID column, we have to tell Phase 3 to rewrite
+	 * the table to fix that.
 	 */
 	if (is_rowid)
-		tab->rewrite |= AT_REWRITE_ALTER_ROWID; 
+		tab->rewrite |= AT_REWRITE_ALTER_ROWID;
 
 	/*
 	 * Add needed dependency entries for the new column.
@@ -8037,7 +8040,7 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		childtab = ATGetQueueEntry(wqueue, childrel);
 
 		if (is_rowid)
-			childcmd->is_rowid = true; 
+			childcmd->is_rowid = true;
 
 		/* Recurse to child; return value is ignored */
 		ATExecAddColumn(wqueue, childtab, childrel,
@@ -8145,7 +8148,7 @@ add_column_collation_dependency(Oid relid, int32 attnum, Oid collid)
 	}
 }
 
- 
+
 /*
  * Return the address of the modified column.  If the column was already
  * part of star expansion, InvalidObjectAddress is returned.
@@ -8183,7 +8186,7 @@ ATExecDropInvisible(Relation rel, const char *colName, LOCKMODE lockmode)
 	/* If rel is partition, shouldn't drop INVISIBLE if parent has the same */
 	if (rel->rd_rel->relispartition)
 	{
-		Oid		parentId = get_partition_parent(RelationGetRelid(rel), false);
+		Oid			parentId = get_partition_parent(RelationGetRelid(rel), false);
 		Relation	parent = table_open(parentId, AccessShareLock);
 		TupleDesc	tupDesc = RelationGetDescr(parent);
 		AttrNumber	parent_attnum;
@@ -8230,8 +8233,8 @@ ATExecSetInvisible(Relation rel, const char *colName, LOCKMODE lockmode)
 	HeapTuple	tuple;
 	AttrNumber	attnum;
 	Relation	attr_rel;
-	ObjectAddress   address;
-	SysScanDesc     scan;
+	ObjectAddress address;
+	SysScanDesc scan;
 
 	if (rel->rd_rel->reloftype)
 		ereport(ERROR,
@@ -8265,15 +8268,15 @@ ATExecSetInvisible(Relation rel, const char *colName, LOCKMODE lockmode)
 	 */
 	if (!((Form_pg_attribute) GETSTRUCT(tuple))->attisinvisible)
 	{
-		bool            has_visible_cols = false;
+		bool		has_visible_cols = false;
 		HeapTuple	chk_tuple;
-		ScanKeyData     key[1];
+		ScanKeyData key[1];
+
 		((Form_pg_attribute) GETSTRUCT(tuple))->attisinvisible = true;
 
 		/*
-		 * Look if we will have at least one other column that is
-		 * visible, we do not allow all columns of a relation to
-		 * be invisible.
+		 * Look if we will have at least one other column that is visible, we
+		 * do not allow all columns of a relation to be invisible.
 		 */
 		ScanKeyInit(&key[0],
 					Anum_pg_attribute_attrelid,
@@ -8286,6 +8289,7 @@ ATExecSetInvisible(Relation rel, const char *colName, LOCKMODE lockmode)
 		while ((chk_tuple = systable_getnext(scan)) != NULL)
 		{
 			Form_pg_attribute attr = (Form_pg_attribute) GETSTRUCT(chk_tuple);
+
 			if (attr->attnum <= 0 || attr->attisdropped || attr->attnum == attnum)
 				continue;
 			if (!attr->attisinvisible)
@@ -8316,7 +8320,7 @@ ATExecSetInvisible(Relation rel, const char *colName, LOCKMODE lockmode)
 		address = InvalidObjectAddress;
 
 	InvokeObjectPostAlterHook(RelationRelationId,
-							RelationGetRelid(rel), attnum);
+							  RelationGetRelid(rel), attnum);
 
 	table_close(attr_rel, RowExclusiveLock);
 
@@ -10054,8 +10058,8 @@ ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
 	}
 
 	/*
-	 * If we dropped the ROWID column, must adjust pg_class.relhasrowid and tell
-	 * Phase 3 to physically get rid of the column.
+	 * If we dropped the ROWID column, must adjust pg_class.relhasrowid and
+	 * tell Phase 3 to physically get rid of the column.
 	 */
 	if (attnum == RowIdAttributeNumber)
 	{
@@ -14457,8 +14461,8 @@ transformFkeyGetPrimaryKey(Relation pkrel, Oid *indexOid,
 			/*
 			 * Refuse to use a primary key manually disabled via the
 			 * Oracle-compatible ALTER INDEX ... UNUSABLE: it is no longer
-			 * maintained by DML, so its uniqueness can't be trusted to
-			 * back a new foreign key.
+			 * maintained by DML, so its uniqueness can't be trusted to back a
+			 * new foreign key.
 			 */
 			if (indexStruct->indisunusable)
 				ereport(ERROR,
@@ -15807,7 +15811,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 	SysScanDesc scan;
 	HeapTuple	depTup;
 	ObjectAddress address;
-	ObjectFunOrPkg		*dependentFuncPkgOids;
+	ObjectFunOrPkg *dependentFuncPkgOids;
 	int			numDependentFuncPkgOids;
 	int			maxDependentFuncPkgOids;
 
@@ -15911,7 +15915,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 	 * get confused.
 	 */
 	RememberAllDependentForRebuilding(tab, AT_AlterColumnType, rel, attnum, colName,
-		&numDependentFuncPkgOids, &maxDependentFuncPkgOids, &dependentFuncPkgOids);
+									  &numDependentFuncPkgOids, &maxDependentFuncPkgOids, &dependentFuncPkgOids);
 
 	/*
 	 * Now scan for dependencies of this column on other things.  The only
@@ -15968,17 +15972,17 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 		pg_qsort(dependentFuncPkgOids, numDependentFuncPkgOids,
 				 sizeof(ObjectFunOrPkg), object_funpkgoid_comparator);
 
-		numDependentFuncPkgOids = qunique((void *)dependentFuncPkgOids, numDependentFuncPkgOids,
-						sizeof(ObjectFunOrPkg), object_funpkgoid_comparator);
+		numDependentFuncPkgOids = qunique((void *) dependentFuncPkgOids, numDependentFuncPkgOids,
+										  sizeof(ObjectFunOrPkg), object_funpkgoid_comparator);
 	}
 
 	/*
-	 * Now find out the dependent funciton which parameters datatype
-	 * or return datatype reference %TYPE or %ROWTYPE.
+	 * Now find out the dependent funciton which parameters datatype or return
+	 * datatype reference %TYPE or %ROWTYPE.
 	 */
 	for (int i = 0; i < numDependentFuncPkgOids; i++)
 	{
-		Oid objectId = dependentFuncPkgOids[i].objectId;
+		Oid			objectId = dependentFuncPkgOids[i].objectId;
 
 		switch (dependentFuncPkgOids[i].flags)
 		{
@@ -16012,7 +16016,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 				{
 					PackageCacheKey pkey;
 					PackageCacheItem *item;
-					HeapTuple pkgbodyTup;
+					HeapTuple	pkgbodyTup;
 					Form_pg_package_body pkgbodyStruct;
 
 					/*
@@ -16196,9 +16200,9 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
  */
 static void
 RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
-				  Relation rel, AttrNumber attnum, const char *colName,
-				  int *numDependentFuncPkgOids, int *maxDependentFuncPkgOids,
-				  ObjectFunOrPkg **dependentFuncPkg)
+								  Relation rel, AttrNumber attnum, const char *colName,
+								  int *numDependentFuncPkgOids, int *maxDependentFuncPkgOids,
+								  ObjectFunOrPkg * *dependentFuncPkg)
 {
 	Relation	depRel;
 	ScanKeyData key[3];
@@ -16207,11 +16211,11 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 	ObjectFunOrPkg *dependentFuncPkgOids = NULL;
 	bool		FuncPkgDepend = false;
 
-	if(NULL != numDependentFuncPkgOids  &&
-	   NULL != maxDependentFuncPkgOids  &&
-	   NULL != dependentFuncPkg)
+	if (NULL != numDependentFuncPkgOids &&
+		NULL != maxDependentFuncPkgOids &&
+		NULL != dependentFuncPkg)
 	{
-		 FuncPkgDepend = true;
+		FuncPkgDepend = true;
 		dependentFuncPkgOids = *dependentFuncPkg;
 	}
 
@@ -16280,29 +16284,29 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 				break;
 
 			case ProcedureRelationId:
-				if(ORA_PARSER != compatible_db)
+				if (ORA_PARSER != compatible_db)
 				{
 					/*
-					 * A new-style SQL function can depend on a column, if that
-					 * column is referenced in the parsed function body.  Ideally
-					 * we'd automatically update the function by deparsing and
-					 * reparsing it, but that's risky and might well fail anyhow.
-					 * FIXME someday.
+					 * A new-style SQL function can depend on a column, if
+					 * that column is referenced in the parsed function body.
+					 * Ideally we'd automatically update the function by
+					 * deparsing and reparsing it, but that's risky and might
+					 * well fail anyhow. FIXME someday.
 					 *
 					 * This is only a problem for AT_AlterColumnType, not
 					 * AT_SetExpression.
 					 */
 					if (subtype == AT_AlterColumnType)
 						ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("cannot alter type of a column used by a function or procedure"),
-							 errdetail("%s depends on column \"%s\"",
-									   getObjectDescription(&foundObject, false),
-									   colName)));
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("cannot alter type of a column used by a function or procedure"),
+								 errdetail("%s depends on column \"%s\"",
+										   getObjectDescription(&foundObject, false),
+										   colName)));
 				}
-				else if(FuncPkgDepend == true)
+				else if (FuncPkgDepend == true)
 				{
-					if(foundDep->deptype == DEPENDENCY_TYPE)
+					if (foundDep->deptype == DEPENDENCY_TYPE)
 					{
 						/* Add function Oid to the pending-oids list */
 						if (*numDependentFuncPkgOids >= *maxDependentFuncPkgOids)
@@ -16311,7 +16315,7 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 							(*maxDependentFuncPkgOids) *= 2;
 							dependentFuncPkgOids = (ObjectFunOrPkg *)
 								repalloc(dependentFuncPkgOids,
-									 (*maxDependentFuncPkgOids) * sizeof(ObjectFunOrPkg));
+										 (*maxDependentFuncPkgOids) * sizeof(ObjectFunOrPkg));
 						}
 
 						dependentFuncPkgOids[*numDependentFuncPkgOids].objectId = foundDep->objid;
@@ -16379,16 +16383,16 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 				else
 				{
 					/*
-					* View/rule bodies have pretty much the same issues as
-					* function bodies.  FIXME someday.
-					*/
+					 * View/rule bodies have pretty much the same issues as
+					 * function bodies.  FIXME someday.
+					 */
 					if (subtype == AT_AlterColumnType)
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								errmsg("cannot alter type of a column used by a view or rule"),
-								errdetail("%s depends on column \"%s\"",
-										getObjectDescription(&foundObject, false),
-										colName)));
+								 errmsg("cannot alter type of a column used by a view or rule"),
+								 errdetail("%s depends on column \"%s\"",
+										   getObjectDescription(&foundObject, false),
+										   colName)));
 				}
 				break;
 
@@ -16492,8 +16496,8 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 
 			case PackageRelationId:
 				if (ORA_PARSER == compatible_db &&
-				    foundDep->deptype == DEPENDENCY_TYPE &&
-				    FuncPkgDepend == true)
+					foundDep->deptype == DEPENDENCY_TYPE &&
+					FuncPkgDepend == true)
 				{
 					/* Add package Oid to the pending-oids list */
 					if (*numDependentFuncPkgOids >= *maxDependentFuncPkgOids)
@@ -16512,8 +16516,8 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 				else
 				{
 					/*
-					 * We don't expect any of these sorts of objects to depend on
-					 * a column.
+					 * We don't expect any of these sorts of objects to depend
+					 * on a column.
 					 */
 					elog(ERROR, "unexpected object depending on column: %s",
 						 getObjectDescription(&foundObject, false));
@@ -16522,8 +16526,8 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 
 			case PackageBodyRelationId:
 				if (ORA_PARSER == compatible_db &&
-				    foundDep->deptype == DEPENDENCY_TYPE &&
-				    FuncPkgDepend == true)
+					foundDep->deptype == DEPENDENCY_TYPE &&
+					FuncPkgDepend == true)
 				{
 					/* Add package body Oid to the pending-oids list */
 					if (*numDependentFuncPkgOids >= *maxDependentFuncPkgOids)
@@ -16542,8 +16546,8 @@ RememberAllDependentForRebuilding(AlteredTableInfo *tab, AlterTableType subtype,
 				else
 				{
 					/*
-					 * We don't expect any of these sorts of objects to depend on
-					 * a column.
+					 * We don't expect any of these sorts of objects to depend
+					 * on a column.
 					 */
 					elog(ERROR, "unexpected object depending on column: %s",
 						 getObjectDescription(&foundObject, false));
@@ -17510,7 +17514,7 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing, LOCKMODE lock
 
 				/* New owner must have CREATE privilege on namespace */
 				aclresult = object_aclcheck(NamespaceRelationId, namespaceOid, newOwnerId,
-												  ACL_CREATE);
+											ACL_CREATE);
 				if (aclresult != ACLCHECK_OK)
 					aclcheck_error(aclresult, OBJECT_SCHEMA,
 								   get_namespace_name(namespaceOid));
@@ -18048,7 +18052,7 @@ ATExecSetRelOptions(Relation rel, List *defList, AlterTableType operation,
 		if (check_option)
 		{
 			const char *view_updatable_error =
-			view_query_is_auto_updatable(view_query, true);
+				view_query_is_auto_updatable(view_query, true);
 
 			if (view_updatable_error)
 				ereport(ERROR,
@@ -18330,7 +18334,7 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 		AclResult	aclresult;
 
 		aclresult = object_aclcheck(TableSpaceRelationId, new_tablespaceoid, GetUserId(),
-										   ACL_CREATE);
+									ACL_CREATE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, OBJECT_TABLESPACE,
 						   get_tablespace_name(new_tablespaceoid));
@@ -19539,6 +19543,11 @@ ATExecAddOf(Relation rel, const TypeName *ofTypename, LOCKMODE lockmode)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("partitioned object tables are not supported")));
+	if (typeform->typisobject && !rel->rd_rel->relhasrowid)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot convert a table without ROWID to an object table"),
+				 errhint("Use ALTER TABLE ... SET WITH ROWID in Oracle compatibility mode first.")));
 
 	/* Fail if the table has any inheritance parents. */
 	inheritsRelation = table_open(InheritsRelationId, AccessShareLock);
@@ -20922,7 +20931,7 @@ RangeVarCallbackForAlterRelation(const RangeVar *rv, Oid relid, Oid oldrelid,
 	if (IsA(stmt, RenameStmt))
 	{
 		aclresult = object_aclcheck(NamespaceRelationId, classform->relnamespace,
-										  GetUserId(), ACL_CREATE);
+									GetUserId(), ACL_CREATE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, OBJECT_SCHEMA,
 						   get_namespace_name(classform->relnamespace));
@@ -23174,16 +23183,16 @@ validatePartitionedIndex(Relation partedIdx, Relation partedTbl)
 		/*
 		 * Don't count a child index that's been manually disabled via the
 		 * Oracle-compatible ALTER INDEX ... UNUSABLE.  Such an index is
-		 * unmaintained (see BuildIndexInfo()) and may be missing entries
-		 * for rows changed since it was disabled, so counting it here could
-		 * let the parent index end up marked indisvalid=true while one
+		 * unmaintained (see BuildIndexInfo()) and may be missing entries for
+		 * rows changed since it was disabled, so counting it here could let
+		 * the parent index end up marked indisvalid=true while one
 		 * partition's leaf is actually stale.  That flag is not just
 		 * cosmetic: get_relation_info() builds a real IndexOptInfo for the
 		 * parent partitioned index, which relation_has_unique_index_for()
 		 * (indxpath.c) and rel_supports_distinctness() (analyzejoins.c)
-		 * consult for join-removal and uniqueness-proof optimizations --
-		 * a false positive there can make the planner silently return
-		 * wrong rows.
+		 * consult for join-removal and uniqueness-proof optimizations -- a
+		 * false positive there can make the planner silently return wrong
+		 * rows.
 		 */
 		if (indexForm->indisvalid && !indexForm->indisunusable)
 			tuples += 1;
@@ -24999,7 +25008,8 @@ check_function_depend_on_relation(Oid relid)
 		return;
 
 	/*
-	 * Find the functions(procedures, ora packages) that depends on the relation
+	 * Find the functions(procedures, ora packages) that depends on the
+	 * relation
 	 */
 	depRel = table_open(DependRelationId, RowExclusiveLock);
 
@@ -25039,7 +25049,8 @@ check_function_depend_on_relation_column(Oid relid, AttrNumber attnum)
 		return;
 
 	/*
-	 * Find the functions(procedures, ora packages) that depends on the relation,
+	 * Find the functions(procedures, ora packages) that depends on the
+	 * relation,
 	 */
 	depRel = table_open(DependRelationId, RowExclusiveLock);
 
@@ -25074,8 +25085,8 @@ check_function_depend_on_relation_column(Oid relid, AttrNumber attnum)
 static void
 check_function_dependency_internal(Relation depRel, SysScanDesc scan)
 {
-	HeapTuple		depTup;
-	ObjectFunOrPkg		*dependentFuncPkgOids;
+	HeapTuple	depTup;
+	ObjectFunOrPkg *dependentFuncPkgOids;
 	int			numDependentFuncPkgOids;
 	int			maxDependentFuncPkgOids;
 
@@ -25172,17 +25183,17 @@ check_function_dependency_internal(Relation depRel, SysScanDesc scan)
 		pg_qsort(dependentFuncPkgOids, numDependentFuncPkgOids,
 				 sizeof(ObjectFunOrPkg), object_funpkgoid_comparator);
 
-		numDependentFuncPkgOids = qunique((void *)dependentFuncPkgOids, numDependentFuncPkgOids,
-						sizeof(ObjectFunOrPkg), object_funpkgoid_comparator);
+		numDependentFuncPkgOids = qunique((void *) dependentFuncPkgOids, numDependentFuncPkgOids,
+										  sizeof(ObjectFunOrPkg), object_funpkgoid_comparator);
 	}
 
 	/*
-	 * Now find out the dependent funciton which parameters datatype
-	 * or return datatype reference %TYPE or %ROWTYPE.
+	 * Now find out the dependent funciton which parameters datatype or return
+	 * datatype reference %TYPE or %ROWTYPE.
 	 */
 	for (int i = 0; i < numDependentFuncPkgOids; i++)
 	{
-		Oid objectId = dependentFuncPkgOids[i].objectId;
+		Oid			objectId = dependentFuncPkgOids[i].objectId;
 
 		switch (dependentFuncPkgOids[i].flags)
 		{
@@ -25216,7 +25227,7 @@ check_function_dependency_internal(Relation depRel, SysScanDesc scan)
 				{
 					PackageCacheKey pkey;
 					PackageCacheItem *item;
-					HeapTuple pkgbodyTup;
+					HeapTuple	pkgbodyTup;
 					Form_pg_package_body pkgbodyStruct;
 
 					/*
@@ -25240,7 +25251,7 @@ check_function_dependency_internal(Relation depRel, SysScanDesc scan)
 
 					ReleaseSysCache(pkgbodyTup);
 				}
-					break;
+				break;
 			default:
 				break;
 		}
