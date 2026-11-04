@@ -1,0 +1,193 @@
+--
+-- DBMS_REPAIR
+--
+-- Regression tests for Oracle-compatible DBMS_REPAIR package:
+--   - Package constants (table types, admin actions, skip flags)
+--   - ADMIN_TABLES (CREATE, PURGE, DROP) for repair and orphan tables
+--   - CHECK_OBJECT procedure (detects corrupt blocks)
+--   - FIX_CORRUPT_BLOCKS procedure
+--   - SKIP_CORRUPT_BLOCKS procedure
+--   - Error handling (non-existent object, NULL parameters)
+--   - Internal function execute privilege revoked from PUBLIC (CWE-862)
+--
+-- Package constants
+SELECT dbms_repair.repair_table;
+ repair_table
+--------------
+            1
+(1 row)
+
+SELECT dbms_repair.orphan_table;
+ orphan_table
+--------------
+            2
+(1 row)
+
+SELECT dbms_repair.create_action;
+ create_action
+---------------
+             1
+(1 row)
+
+SELECT dbms_repair.purge_action;
+ purge_action
+--------------
+            2
+(1 row)
+
+SELECT dbms_repair.drop_action;
+ drop_action
+-------------
+           3
+(1 row)
+
+SELECT dbms_repair.skip_flag;
+ skip_flag
+-----------
+         1
+(1 row)
+
+SELECT dbms_repair.noskip_flag;
+ noskip_flag
+-------------
+           2
+(1 row)
+
+-- Setup test table
+CREATE TABLE repair_test_tab (
+    id int,
+    val varchar2(200)
+);
+CREATE TABLE
+INSERT INTO repair_test_tab VALUES (1, 'repair test data'), (2, 'repair test row 2');
+INSERT 0 2
+-- ADMIN_TABLES: create repair table
+CALL dbms_repair.admin_tables(
+    table_name => 'my_repair_table',
+    table_type => dbms_repair.repair_table,
+    action     => dbms_repair.create_action
+);
+-- Verify repair table structure
+SELECT column_name, data_type
+  FROM information_schema.columns
+ WHERE table_name = 'my_repair_table'
+ ORDER BY ordinal_position;
+     column_name      |        data_type
+----------------------+--------------------------
+ object_id            | bigint
+ relative_file_id     | bigint
+ block_id             | bigint
+ corrupt_type         | integer
+ schema_name          | character varying
+ object_name          | character varying
+ repair_description   | character varying
+ marked_corrupt_time  | timestamp with time zone
+ marked_corrupt_user  | character varying
+(9 rows)
+
+-- ADMIN_TABLES: create orphan table
+CALL dbms_repair.admin_tables(
+    table_name => 'my_orphan_table',
+    table_type => dbms_repair.orphan_table,
+    action     => dbms_repair.create_action
+);
+SELECT column_name, data_type
+  FROM information_schema.columns
+ WHERE table_name = 'my_orphan_table'
+ ORDER BY ordinal_position;
+ column_name |     data_type
+-------------+-------------------
+ schema_name | character varying
+ index_name  | character varying
+ ipkey_id    | bigint
+ index_rowid | text
+ object_id   | bigint
+(5 rows)
+
+-- CHECK_OBJECT
+DO $$
+DECLARE
+    cc NUMBER;
+BEGIN
+    dbms_repair.check_object(
+        schema_name       => 'public',
+        object_name       => 'repair_test_tab',
+        corrupt_count     => cc,
+        repair_table_name => 'my_repair_table'
+    );
+    RAISE NOTICE 'CHECK_OBJECT: corrupt_count: %', cc;
+END;
+$$;
+NOTICE:  CHECK_OBJECT: corrupt_count: 0
+DO
+-- FIX_CORRUPT_BLOCKS
+DO $$
+DECLARE
+    fc NUMBER;
+BEGIN
+    dbms_repair.fix_corrupt_blocks(
+        schema_name => 'public',
+        object_name => 'repair_test_tab',
+        fix_count   => fc
+    );
+    RAISE NOTICE 'FIX_CORRUPT_BLOCKS: fix_count: %', fc;
+END;
+$$;
+NOTICE:  FIX_CORRUPT_BLOCKS: fix_count: 0
+DO
+-- SKIP_CORRUPT_BLOCKS
+CALL dbms_repair.skip_corrupt_blocks(
+    schema_name => 'public',
+    object_name => 'repair_test_tab',
+    flags       => dbms_repair.skip_flag
+);
+-- ADMIN_TABLES: purge repair table
+CALL dbms_repair.admin_tables(
+    table_name => 'my_repair_table',
+    table_type => dbms_repair.repair_table,
+    action     => dbms_repair.purge_action
+);
+-- ADMIN_TABLES: drop tables
+CALL dbms_repair.admin_tables(
+    table_name => 'my_repair_table',
+    table_type => dbms_repair.repair_table,
+    action     => dbms_repair.drop_action
+);
+CALL dbms_repair.admin_tables(
+    table_name => 'my_orphan_table',
+    table_type => dbms_repair.orphan_table,
+    action     => dbms_repair.drop_action
+);
+-- Error handling: non-existent object
+SELECT sys.dbms_repair_check_object_internal('public', 'non_existent_table_xyz', 'my_repair_table');
+ERROR:  DBMS_REPAIR: object "non_existent_table_xyz" does not exist
+-- Error handling: NULL parameter checks
+SELECT sys.dbms_repair_admin_tables_internal(NULL, 1, 1, NULL);
+ERROR:  DBMS_REPAIR.ADMIN_TABLES: table_name must not be NULL
+SELECT sys.dbms_repair_check_object_internal('public', NULL, 'my_repair_table');
+ERROR:  DBMS_REPAIR.CHECK_OBJECT: object_name must not be NULL
+SELECT sys.dbms_repair_fix_corrupt_blocks_internal('public', NULL);
+ERROR:  DBMS_REPAIR.FIX_CORRUPT_BLOCKS: object_name must not be NULL
+SELECT sys.dbms_repair_skip_corrupt_blocks_internal('public', NULL, 1);
+ERROR:  DBMS_REPAIR.SKIP_CORRUPT_BLOCKS: object_name must not be NULL
+-- Verify internal functions execute privilege revoked from PUBLIC (CWE-862)
+SELECT p.proname, has_function_privilege('public', p.oid, 'EXECUTE') AS public_can_execute
+  FROM pg_catalog.pg_proc p
+  JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+ WHERE n.nspname = 'sys'
+   AND p.proname IN ('dbms_repair_admin_tables_internal',
+                     'dbms_repair_check_object_internal',
+                     'dbms_repair_fix_corrupt_blocks_internal',
+                     'dbms_repair_skip_corrupt_blocks_internal')
+ ORDER BY p.proname;
+                 proname                 | public_can_execute
+-----------------------------------------+--------------------
+ dbms_repair_admin_tables_internal       | f
+ dbms_repair_check_object_internal       | f
+ dbms_repair_fix_corrupt_blocks_internal | f
+ dbms_repair_skip_corrupt_blocks_internal| f
+(4 rows)
+
+-- Clean up
+DROP TABLE repair_test_tab;
+DROP TABLE
