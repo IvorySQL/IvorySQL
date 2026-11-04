@@ -1249,22 +1249,22 @@ interval2tm(Interval span, struct pg_tm *tm, fsec_t *fsec)
  * Compatible oracle
  * For INTERVAL YEAR TO MONTH type the field of "day" and "time" is invalid.
  * Only calculate the value of "interval->month".
+ *
+ * A month is 30 days, so the linear representation of a valid YEAR TO MONTH
+ * interval does not always fit into an int64; compute it in 128 bits so that
+ * large values keep their ordering instead of wrapping around.
  */
-static inline TimeOffset
+static inline INT128
 yminterval_cmp_value(const Interval *interval)
 {
-	TimeOffset	span;
+	INT128		span;
 
-/* 	span = interval->time; */
-	span = 0;
+	/* the day and time fields are not meaningful for YEAR TO MONTH */
+	span = int64_to_int128(0);
 
-#ifdef HAVE_INT64_TIMESTAMP
-	span += interval->month * INT64CONST(30) * USECS_PER_DAY;
-/* 	span += interval->day * INT64CONST(24) * USECS_PER_HOUR; */
-#else
-	span += interval->month * ((double) DAYS_PER_MONTH * SECS_PER_DAY);
-/* 	span += interval->day * ((double) HOURS_PER_DAY * SECS_PER_HOUR); */
-#endif
+	/* Scale the month field up to microseconds, forming a 128-bit product */
+	int128_add_int64_mul_int64(&span, interval->month,
+							   INT64CONST(30) * USECS_PER_DAY);
 
 	return span;
 }
@@ -1272,10 +1272,10 @@ yminterval_cmp_value(const Interval *interval)
 static int
 yminterval_cmp_internal(Interval *interval1, Interval *interval2)
 {
-	TimeOffset	span1 = yminterval_cmp_value(interval1);
-	TimeOffset	span2 = yminterval_cmp_value(interval2);
+	INT128		span1 = yminterval_cmp_value(interval1);
+	INT128		span2 = yminterval_cmp_value(interval2);
 
-	return ((span1 < span2) ? -1 : (span1 > span2) ? 1 : 0);
+	return int128_compare(span1, span2);
 }
 
 /* yminterval_in()
@@ -1972,7 +1972,7 @@ in_range_yminterval_yminterval(PG_FUNCTION_ARGS)
 	bool		less = PG_GETARG_BOOL(4);
 	Interval   *sum;
 
-	if (int128_compare(int64_to_int128(yminterval_cmp_value(offset)), int64_to_int128(0)) < 0)
+	if (int128_compare(yminterval_cmp_value(offset), int64_to_int128(0)) < 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PRECEDING_OR_FOLLOWING_SIZE),
 				 errmsg("invalid preceding or following size in window function")));
@@ -2008,7 +2008,7 @@ Datum
 yminterval_hash(PG_FUNCTION_ARGS)
 {
 	Interval   *interval = PG_GETARG_INTERVAL_P(0);
-	TimeOffset	span = yminterval_cmp_value(interval);
+	int64		span = int128_to_int64(yminterval_cmp_value(interval));
 
 	return DirectFunctionCall1(hashint8, Int64GetDatumFast(span));
 }
@@ -2017,11 +2017,10 @@ Datum
 yminterval_hash_extended(PG_FUNCTION_ARGS)
 {
 	Interval   *interval = PG_GETARG_INTERVAL_P(0);
-	INT128		span = int64_to_int128(yminterval_cmp_value(interval));
 	int64		span64;
 
-	/* Same approach as interval_hash */
-	span64 = int128_to_int64(span);
+	/* Same approach as interval_hash: hash the low 64 bits of the span */
+	span64 = int128_to_int64(yminterval_cmp_value(interval));
 
 	return DirectFunctionCall2(hashint8extended, Int64GetDatumFast(span64),
 							   PG_GETARG_DATUM(1));
