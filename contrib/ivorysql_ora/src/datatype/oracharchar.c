@@ -381,6 +381,23 @@ oracharchar(PG_FUNCTION_ARGS)
 		PG_RETURN_BPCHAR_P(source);
 
 	/*
+	 * Only the blank padding char(n) itself adds may be dropped:
+	 * if the significant length still fits, the characters
+	 * beyond maxlen are spaces and truncation loses no data.
+	 */
+	if (charlen > maxlen)
+	{
+		int			truelen = bcTruelen(source);
+		int			truecharlen = pg_mbstrlen_with_len(s, truelen);
+
+		if (truecharlen <= maxlen)
+		{
+			len = truelen;
+			charlen = truecharlen;
+		}
+	}
+
+	/*
 	 * Report error for implicit conversion
 	 * Truncate string for exlicit conversion
 	 */
