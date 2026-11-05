@@ -328,6 +328,19 @@ oracharbyte(PG_FUNCTION_ARGS)
 		PG_RETURN_BPCHAR_P(source);
 
 	/*
+	 * Only the blank padding char(n) itself adds may be dropped:
+	 * if the significant length still fits, the bytes beyond
+	 * maxlen are spaces and truncation loses no data.
+	 */
+	if (len > maxlen)
+	{
+		int			truelen = bcTruelen(source);
+
+		if (truelen <= maxlen)
+			len = truelen;
+	}
+
+	/*
 	 * Report error for implicit conversion 
 	 * Truncate string for exlicit conversion 
 	 */
