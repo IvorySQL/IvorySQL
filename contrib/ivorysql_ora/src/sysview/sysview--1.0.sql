@@ -1621,8 +1621,10 @@ WHERE A.ATTACL IS NOT NULL
   AND C.RELKIND IN ('r', 'p', 'v', 'm', 'f');
 GRANT SELECT ON SYS.DBA_COL_PRIVS TO PUBLIC;
 
--- ALL_COL_PRIVS: column grants on tables the current user has a table
--- privilege on, which is the Oracle rule for the ALL_ prefix.
+-- ALL_COL_PRIVS: column grants on tables the current user can reach, either
+-- through a table privilege or through the column privilege itself.  PostgreSQL
+-- does not make a column grant imply the table privilege, so the ALL_ filter
+-- has to test both.
 CREATE OR REPLACE VIEW SYS.ALL_COL_PRIVS AS
 SELECT
     CASE WHEN G.GRANTEE = 0 THEN 'PUBLIC'
@@ -1643,8 +1645,10 @@ WHERE A.ATTACL IS NOT NULL
   AND A.ATTNUM > 0
   AND NOT A.ATTISDROPPED
   AND C.RELKIND IN ('r', 'p', 'v', 'm', 'f')
-  AND pg_catalog.has_table_privilege(current_user, C.OID,
-        'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER');
+  AND (pg_catalog.has_table_privilege(current_user, C.OID,
+        'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+       OR pg_catalog.has_column_privilege(current_user, C.OID, A.ATTNAME,
+        'SELECT,INSERT,UPDATE,REFERENCES'));
 GRANT SELECT ON SYS.ALL_COL_PRIVS TO PUBLIC;
 
 -- USER_COL_PRIVS: the column grants the current user holds or has made.
@@ -1656,23 +1660,44 @@ WHERE GRANTEE = SYS.ORA_CASE_TRANS(CURRENT_USER::VARCHAR2)
 GRANT SELECT ON SYS.USER_COL_PRIVS TO PUBLIC;
 
 -- ROLE_TAB_PRIVS: object privileges held by roles.  Oracle lists, for every
--- role, what it may do on which table; PostgreSQL keeps that in pg_class.relacl
--- with a grantee that is a role, so grants to users and to PUBLIC are not
--- listed here (they are in DBA_TAB_PRIVS).
+-- role, what it may do on which table, and a column grant carries the column
+-- name; PostgreSQL keeps table grants in pg_class.relacl and column grants in
+-- pg_attribute.attacl, both with a grantee that is a role.  Grants to users and
+-- to PUBLIC are not listed here (they are in DBA_TAB_PRIVS).
 CREATE OR REPLACE VIEW SYS.ROLE_TAB_PRIVS AS
-SELECT
-    SYS.ORA_CASE_TRANS(G.ROLNAME::VARCHAR2)::VARCHAR2(128)        AS ROLE,
-    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128) AS OWNER,
-    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)        AS TABLE_NAME,
-    NULL::VARCHAR2(128)                                           AS COLUMN_NAME,
-    UPPER(A.PRIVILEGE_TYPE)::VARCHAR2(40)                         AS PRIVILEGE,
-    CASE WHEN A.IS_GRANTABLE THEN 'YES' ELSE 'NO' END::VARCHAR2(3) AS GRANTABLE
-FROM PG_CATALOG.PG_CLASS C
-CROSS JOIN LATERAL PG_CATALOG.ACLEXPLODE(C.RELACL) A
-JOIN PG_CATALOG.PG_ROLES G ON G.OID = A.GRANTEE
-WHERE C.RELACL IS NOT NULL
-  AND C.RELKIND IN ('r', 'p', 'v', 'm', 'f')
-  AND NOT G.ROLCANLOGIN;
+SELECT ROLE, OWNER, TABLE_NAME, COLUMN_NAME, PRIVILEGE, GRANTABLE
+FROM (
+    SELECT
+        SYS.ORA_CASE_TRANS(G.ROLNAME::VARCHAR2)::VARCHAR2(128)    AS ROLE,
+        SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128) AS OWNER,
+        SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)    AS TABLE_NAME,
+        NULL::VARCHAR2(128)                                       AS COLUMN_NAME,
+        UPPER(A.PRIVILEGE_TYPE)::VARCHAR2(40)                     AS PRIVILEGE,
+        CASE WHEN A.IS_GRANTABLE THEN 'YES' ELSE 'NO' END::VARCHAR2(3) AS GRANTABLE
+    FROM PG_CATALOG.PG_CLASS C
+    CROSS JOIN LATERAL PG_CATALOG.ACLEXPLODE(C.RELACL) A
+    JOIN PG_CATALOG.PG_ROLES G ON G.OID = A.GRANTEE
+    WHERE C.RELACL IS NOT NULL
+      AND C.RELKIND IN ('r', 'p', 'v', 'm', 'f')
+      AND NOT G.ROLCANLOGIN
+    UNION ALL
+    SELECT
+        SYS.ORA_CASE_TRANS(G.ROLNAME::VARCHAR2)::VARCHAR2(128),
+        SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128),
+        SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128),
+        SYS.ORA_CASE_TRANS(ATT.ATTNAME::VARCHAR2)::VARCHAR2(128),
+        UPPER(A.PRIVILEGE_TYPE)::VARCHAR2(40),
+        CASE WHEN A.IS_GRANTABLE THEN 'YES' ELSE 'NO' END::VARCHAR2(3)
+    FROM PG_CATALOG.PG_ATTRIBUTE ATT
+    JOIN PG_CATALOG.PG_CLASS C ON C.OID = ATT.ATTRELID
+    CROSS JOIN LATERAL PG_CATALOG.ACLEXPLODE(ATT.ATTACL) A
+    JOIN PG_CATALOG.PG_ROLES G ON G.OID = A.GRANTEE
+    WHERE ATT.ATTACL IS NOT NULL
+      AND ATT.ATTNUM > 0
+      AND NOT ATT.ATTISDROPPED
+      AND C.RELKIND IN ('r', 'p', 'v', 'm', 'f')
+      AND NOT G.ROLCANLOGIN
+) P;
 GRANT SELECT ON SYS.ROLE_TAB_PRIVS TO PUBLIC;
 
 -- ROLE_SYS_PRIVS: system privileges held by roles, mapped from the role

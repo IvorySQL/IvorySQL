@@ -302,6 +302,20 @@ SELECT COUNT(*) = 1 AS user_col_privs_has_row
 FROM SYS.USER_COL_PRIVS
 WHERE TABLE_NAME = 'TEST_COL_PRIVS';
 
+-- A column-only grant does not imply the table privilege in PostgreSQL, so the
+-- grantee must still see its own column grant in the ALL_ view.
+DROP ROLE IF EXISTS col_priv_grantee;
+CREATE ROLE col_priv_grantee LOGIN;
+GRANT USAGE ON SCHEMA sys TO col_priv_grantee;
+GRANT SELECT (id) ON test_col_privs TO col_priv_grantee;
+SET ROLE col_priv_grantee;
+SELECT COUNT(*) = 1 AS column_grant_visible
+FROM SYS.ALL_COL_PRIVS
+WHERE TABLE_NAME = 'TEST_COL_PRIVS'
+  AND GRANTEE = 'COL_PRIV_GRANTEE'
+  AND COLUMN_NAME = 'ID';
+RESET ROLE;
+
 -- A table-wide grant is not a column grant, so the row set stays empty.
 GRANT SELECT ON test_col_privs TO PUBLIC;
 SELECT COUNT(*) AS public_col_privs
@@ -310,6 +324,9 @@ WHERE TABLE_NAME = 'TEST_COL_PRIVS'
   AND GRANTEE = 'PUBLIC';
 
 DROP TABLE test_col_privs;
+-- The role still holds USAGE on schema sys, so revoke its dependencies first.
+DROP OWNED BY col_priv_grantee;
+DROP ROLE col_priv_grantee;
 DROP ROLE ora_priv_role_test;
 
 -- Oracle-compatible role privilege views
@@ -326,6 +343,13 @@ SELECT ROLE, TABLE_NAME, PRIVILEGE, GRANTABLE
 FROM SYS.ROLE_TAB_PRIVS
 WHERE TABLE_NAME = 'T_ROLE_PRIVS'
 ORDER BY ROLE;
+
+-- A column grant held by a role carries the column name.
+GRANT SELECT (id) ON t_role_privs TO rtab_role;
+SELECT ROLE, TABLE_NAME, COLUMN_NAME, PRIVILEGE, GRANTABLE
+FROM SYS.ROLE_TAB_PRIVS
+WHERE TABLE_NAME = 'T_ROLE_PRIVS'
+ORDER BY ROLE, COLUMN_NAME;
 
 SELECT ROLE, PRIVILEGE
 FROM SYS.ROLE_SYS_PRIVS
