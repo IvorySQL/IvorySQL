@@ -37,6 +37,7 @@ OBJS = \
 	src/builtin_packages/dbms_session/dbms_session.o \
 	src/builtin_packages/dbms_transaction/dbms_transaction.o \
 	src/builtin_packages/dbms_random/dbms_random.o \
+	src/builtin_packages/dbms_xmlgen/dbms_xmlgen.o \
 	src/builtin_packages/utl_match/utl_match.o \
 	src/builtin_packages/dbms_scheduler/dbms_scheduler.o \
 	src/builtin_packages/dbms_scheduler/scheduler_calendar.o \
