@@ -3140,7 +3140,7 @@ transformOraJoinClause(ParseState *pstate, SelectStmt *stmt)
 	pstate->p_rteperminfos = NIL;
 
 	stmt->ora_join_op_exists = false;
-	transformFromClause(pstate, stmt->fromClause);
+	transformFromClause(pstate, (List *) copyObject(stmt->fromClause));
 }
 
 /*
