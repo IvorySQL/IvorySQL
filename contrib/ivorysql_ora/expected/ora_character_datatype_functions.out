@@ -4074,3 +4074,169 @@ select to_single_byte(NULL);
  
 (1 row)
 
+/* Start - INSTR4 */
+/* positions count UCS4 code points; the -1 position searches backwards */
+SELECT instr4('abcabcabc', 'c') AS first;
+ first 
+-------
+     3
+(1 row)
+
+SELECT instr4('abcabcabc', 'c', 4) AS from_four;
+ from_four 
+-----------
+         6
+(1 row)
+
+SELECT instr4('abcabcabc', 'c', 1, 3) AS third;
+ third 
+-------
+     9
+(1 row)
+
+SELECT instr4('abcabcabc', 'c', -1) AS last;
+ last 
+------
+    9
+(1 row)
+
+SELECT instr4('abcabcabc', 'c', -4) AS backwards_four;
+ backwards_four 
+----------------
+              6
+(1 row)
+
+SELECT instr4('abcabcabc', 'c', -1, 2) AS second_from_end;
+ second_from_end 
+-----------------
+               6
+(1 row)
+
+SELECT instr4('abcabcabc', 'z') AS not_found;
+ not_found 
+-----------
+         0
+(1 row)
+
+SELECT instr4('中文字', '字') AS cjk;
+ cjk 
+-----
+   3
+(1 row)
+
+SELECT instr4(NULL, 'a') IS NULL AS null_input;
+ null_input 
+------------
+ t
+(1 row)
+
+SELECT instr4('abcabcabc', 'c', 2, 2) AS second_from_two;
+ second_from_two 
+-----------------
+               6
+(1 row)
+
+/* End - INSTR4 */
+/* Start - SUBSTR4 */
+/* positions and lengths count UCS4 code points, like character semantics */
+SELECT substr4('abcdef', 2, 3) AS middle;
+ middle 
+--------
+ bcd
+(1 row)
+
+SELECT substr4('abcdef', 3) AS from_three;
+ from_three 
+------------
+ cdef
+(1 row)
+
+SELECT substr4('abcdef', -2, 2) AS from_end;
+ from_end 
+----------
+ 
+(1 row)
+
+/* a supplementary character is one code point, so it is never split */
+SELECT substr4('a😀b', 2, 1) AS one_code_point;
+ one_code_point 
+----------------
+ 😀
+(1 row)
+
+SELECT substr4('a😀b', 2) AS rest;
+ rest 
+------
+ 😀b
+(1 row)
+
+/* a length below one returns NULL, like Oracle */
+SELECT substr4('abcdef', 2, 0) IS NULL AS zero_length_is_null;
+ zero_length_is_null 
+---------------------
+ t
+(1 row)
+
+SELECT substr4('abcdef', 2, -1) IS NULL AS negative_length_is_null;
+ negative_length_is_null 
+-------------------------
+ t
+(1 row)
+
+/* NULL propagates */
+SELECT substr4(NULL, 1, 2) IS NULL AS null_input;
+ null_input 
+------------
+ t
+(1 row)
+
+/* End - SUBSTR4 */
+/* Start - LENGTH2 / LENGTH4 */
+/* for single-byte and BMP characters both are the character count */
+SELECT length2('abc') AS l2_abc, length4('abc') AS l4_abc;
+ l2_abc | l4_abc 
+--------+--------
+      3 |      3
+(1 row)
+
+SELECT length2('中文字') AS l2_cjk, length4('中文字') AS l4_cjk;
+ l2_cjk | l4_cjk 
+--------+--------
+      3 |      3
+(1 row)
+
+/* a supplementary character is one code point (LENGTH4) but two UCS2 units (LENGTH2) */
+SELECT length2('😀') AS l2_astral, length4('😀') AS l4_astral;
+ l2_astral | l4_astral 
+-----------+-----------
+         2 |         1
+(1 row)
+
+SELECT length2('a😀中') AS l2_mixed, length4('a😀中') AS l4_mixed;
+ l2_mixed | l4_mixed 
+----------+----------
+        4 |        3
+(1 row)
+
+/* LENGTHB keeps counting bytes, so the supplementary character has four */
+SELECT lengthb('😀') AS lb_astral;
+ lb_astral 
+-----------
+         4
+(1 row)
+
+/* NULL propagates */
+SELECT length2(NULL) IS NULL AS l2_null, length4(NULL) IS NULL AS l4_null;
+ l2_null | l4_null 
+---------+---------
+ t       | t
+(1 row)
+
+/* the oracle character types are accepted as well */
+SELECT length2(cast('abc' as varchar2(10))) AS l2_varchar2, length4(cast('abc' as char(10))) AS l4_char;
+ l2_varchar2 | l4_char 
+-------------+---------
+           3 |      10
+(1 row)
+
+/* End - LENGTH2 / LENGTH4 */

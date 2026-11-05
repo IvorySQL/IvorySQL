@@ -1002,3 +1002,15 @@ SELECT to_number('1e0') AS exp_zero;
 SELECT to_number('1e+0') AS exp_plus_zero;
 SELECT to_number('1e-0') AS exp_minus_zero;
 /* End - to_number scientific notation */
+
+/* Start - BIN_TO_NUM */
+/* Oracle reads the bit list left to right, the first bit is the most significant */
+SELECT bin_to_num(1, 0, 1, 0) AS bin_1010;
+SELECT bin_to_num(1, 1, 1, 1, 1) AS bin_11111;
+SELECT bin_to_num(0) AS bin_0;
+SELECT bin_to_num(0, 0, 0, 0, 1) AS bin_1;
+SELECT bin_to_num(1, 0) AS two, bin_to_num(0, 1) AS one;
+/* a value that is not a bit raises an error, like Oracle */
+SELECT bin_to_num(1, 2) AS invalid_bit;
+SELECT bin_to_num(1, NULL) AS null_bit;
+/* End - BIN_TO_NUM */

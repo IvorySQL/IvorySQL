@@ -1948,3 +1948,707 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 /* End - VSIZE */
+
+
+/* RAISE_APPLICATION_ERROR */
+/*
+ * RAISE_APPLICATION_ERROR: Oracle's way for application code to raise a
+ * user-defined error.  Oracle code calls it as a statement, so this has to be
+ * a procedure rather than a function.
+ *
+ * Oracle documents the error number as a negative integer in the range
+ * -20999 .. -20000 and prefixes the message with "ORA-<number>: "; anything
+ * outside that range is itself an ORA-21000 error.  The third argument,
+ * keep_errors, only matters for Oracle's error stack, which PostgreSQL does
+ * not have, so it is accepted and ignored.
+ */
+CREATE OR REPLACE PROCEDURE sys.raise_application_error(
+    error_number sys.number,
+    message pg_catalog.text,
+    keep_errors pg_catalog.bool DEFAULT false)
+AS $$
+BEGIN
+    IF error_number IS NULL OR message IS NULL THEN
+        RAISE EXCEPTION 'ORA-06531: null argument to raise_application_error';
+    END IF;
+    IF error_number > -20000 OR error_number < -20999 THEN
+        RAISE EXCEPTION 'ORA-21000: error number argument to raise_application_error of % is out of range',
+            error_number;
+    END IF;
+    RAISE EXCEPTION 'ORA-%: %', -error_number, message;
+END;
+$$ LANGUAGE plisql;
+/* End - RAISE_APPLICATION_ERROR */
+
+/* Oracle-compatible ORA_INVOKING_USER: the database user whose privileges the
+ * current statement runs with, which is CURRENT_USER in PostgreSQL. */
+CREATE OR REPLACE FUNCTION sys.ora_invoking_user()
+RETURNS varchar2
+AS $$ SELECT pg_catalog.current_user::varchar2; $$
+LANGUAGE SQL
+STABLE;
+
+/* Oracle-compatible NLS_INITCAP: INITCAP performed under the given collation.
+ * IvorySQL has one database collation, so the locale argument is accepted for
+ * compatibility and the result is INITCAP, which is what Oracle returns when
+ * the session collation already matches the requested one. */
+CREATE OR REPLACE FUNCTION sys.nls_initcap(text)
+RETURNS text
+AS $$ SELECT pg_catalog.initcap($1); $$
+LANGUAGE SQL
+IMMUTABLE STRICT PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION sys.nls_initcap(text, text)
+RETURNS text
+AS $$ SELECT pg_catalog.initcap($1); $$
+LANGUAGE SQL
+IMMUTABLE STRICT PARALLEL SAFE;
+
+/* Oracle-compatible VALIDATE_CONVERSION(expr, type, fmt): 1 when expr can be
+ * converted to type, 0 when it cannot.  The type name is matched against a
+ * fixed list and never interpolated into SQL, so the function cannot be used
+ * to run arbitrary type names; an unknown type answers 0.  A NULL expr is
+ * convertible, as in Oracle.  DATE/TIMESTAMP use the NLS formats (or fmt when
+ * given), which is what makes the check match what TO_DATE/TO_TIMESTAMP would
+ * do in the same session. */
+CREATE OR REPLACE FUNCTION sys.validate_conversion(text, text, text DEFAULT NULL)
+RETURNS number
+AS $$
+DECLARE
+    t text := pg_catalog.upper(pg_catalog.btrim($2));
+BEGIN
+    IF $1 IS NULL OR $2 IS NULL THEN
+        RETURN 1;
+    END IF;
+    BEGIN
+        IF t = 'NUMBER' THEN
+            PERFORM $1::sys.number;
+        ELSIF t = 'INTEGER' THEN
+            PERFORM $1::pg_catalog.int4;
+        ELSIF t = 'BINARY_FLOAT' THEN
+            PERFORM $1::sys.binary_float;
+        ELSIF t = 'BINARY_DOUBLE' THEN
+            PERFORM $1::sys.binary_double;
+        ELSIF t = 'DATE' THEN
+            PERFORM sys.to_date($1, COALESCE($3, pg_catalog.current_setting('nls_date_format')));
+        ELSIF t = 'TIMESTAMP' THEN
+            PERFORM sys.to_timestamp($1, COALESCE($3, pg_catalog.current_setting('nls_timestamp_format')));
+        ELSIF t = 'TIMESTAMP WITH TIME ZONE' THEN
+            PERFORM sys.to_timestamp_tz($1, COALESCE($3, pg_catalog.current_setting('nls_timestamp_tz_format')));
+        ELSIF t IN ('VARCHAR2', 'CHAR', 'VARCHAR') THEN
+            PERFORM $1;
+        ELSE
+            RETURN 0;
+        END IF;
+        RETURN 1;
+    EXCEPTION WHEN others THEN
+        RETURN 0;
+    END;
+END;
+$$
+LANGUAGE plpgsql
+STABLE;
+
+GRANT EXECUTE ON FUNCTION sys.validate_conversion(text, text, text) TO PUBLIC;
+
+/* Oracle-compatible SUBSTR2: substring by USC2 code units.  A character
+ * outside the BMP occupies two units, so counting (and slicing) differs from
+ * SUBSTR for supplementary characters.  PostgreSQL cannot represent half of a
+ * surrogate pair in UTF-8, so a range boundary that falls inside one keeps
+ * that whole character rather than returning an invalid string; positions
+ * after it are still counted in units, which is the part callers rely on. */
+CREATE OR REPLACE FUNCTION sys.substr2(text, integer, integer DEFAULT NULL)
+RETURNS text
+AS $$
+DECLARE
+    src     text := $1;
+    pos     int  := $2;
+    slen    int  := $3;
+    n       int  := pg_catalog.length($1);
+    i       int  := 1;
+    units   int  := 0;
+    total   int  := 0;
+    ustart  int;
+    start_u int;
+    end_u   int;
+    ch      text;
+    cp      int;
+    res     text := '';
+BEGIN
+    IF n IS NULL OR pos IS NULL THEN
+        RETURN NULL;
+    END IF;
+    IF slen IS NOT NULL AND slen < 1 THEN
+        RETURN NULL;
+    END IF;
+
+    FOR i IN 1..n LOOP
+        cp := pg_catalog.ascii(pg_catalog.substr(src, i, 1));
+        total := total + CASE WHEN cp >= 65536 THEN 2 ELSE 1 END;
+    END LOOP;
+
+    IF pos > 0 THEN
+        start_u := CASE WHEN pos <= total THEN pos ELSE total + 1 END;
+    ELSIF pos < 0 THEN
+        start_u := total + pos + 1;
+    ELSE
+        start_u := 1;
+    END IF;
+    IF start_u < 1 THEN
+        start_u := 1;
+    END IF;
+    end_u := CASE WHEN slen IS NULL THEN total ELSE start_u + slen - 1 END;
+
+    FOR i IN 1..n LOOP
+        ch := pg_catalog.substr(src, i, 1);
+        cp := pg_catalog.ascii(ch);
+        ustart := units + 1;
+        units := units + CASE WHEN cp >= 65536 THEN 2 ELSE 1 END;
+        IF units >= start_u AND ustart <= end_u THEN
+            res := res || ch;
+        END IF;
+    END LOOP;
+    RETURN res;
+END;
+$$
+LANGUAGE plpgsql
+IMMUTABLE STRICT PARALLEL SAFE;
+
+/* Oracle-compatible INSTR2: the position is counted in USC2 code units.  The
+ * search itself is delegated to sys.instr, so position/occurrence semantics
+ * stay identical; only the character index is translated to a unit index, and
+ * a negative position is mapped back to the equivalent negative character
+ * position so that sys.instr still searches backwards. */
+CREATE OR REPLACE FUNCTION sys.instr2(text, text, integer DEFAULT 1, integer DEFAULT 1)
+RETURNS integer
+AS $$
+DECLARE
+    src        text := $1;
+    sub        text := $2;
+    pos        int  := $3;
+    occ        int  := $4;
+    n          int  := pg_catalog.length($1);
+    i          int  := 1;
+    units      int  := 0;
+    total      int  := 0;
+    start_u    int;
+    start_char int  := 1;
+    res_char   int;
+    cp         int;
+BEGIN
+    IF n IS NULL OR sub IS NULL OR pos IS NULL OR occ IS NULL THEN
+        RETURN NULL;
+    END IF;
+
+    FOR i IN 1..n LOOP
+        cp := pg_catalog.ascii(pg_catalog.substr(src, i, 1));
+        total := total + CASE WHEN cp >= 65536 THEN 2 ELSE 1 END;
+    END LOOP;
+
+    IF pos > 0 THEN
+        start_u := pos;
+    ELSIF pos < 0 THEN
+        start_u := total + pos + 1;
+    ELSE
+        start_u := 1;
+    END IF;
+
+    FOR i IN 1..n LOOP
+        cp := pg_catalog.ascii(pg_catalog.substr(src, i, 1));
+        units := units + CASE WHEN cp >= 65536 THEN 2 ELSE 1 END;
+        IF units >= start_u THEN
+            start_char := i;
+            EXIT;
+        END IF;
+    END LOOP;
+
+    IF pos < 0 THEN
+        /* keep the backward-searching semantics of sys.instr */
+        res_char := sys.instr(src, sub, -(n - start_char + 1), occ);
+    ELSE
+        res_char := sys.instr(src, sub, start_char, occ);
+    END IF;
+    IF res_char IS NULL OR res_char = 0 THEN
+        RETURN 0;
+    END IF;
+
+    units := 0;
+    FOR i IN 1..(res_char - 1) LOOP
+        cp := pg_catalog.ascii(pg_catalog.substr(src, i, 1));
+        units := units + CASE WHEN cp >= 65536 THEN 2 ELSE 1 END;
+    END LOOP;
+    RETURN units + 1;
+END;
+$$
+LANGUAGE plpgsql
+IMMUTABLE STRICT PARALLEL SAFE;
+
+GRANT EXECUTE ON FUNCTION sys.substr2(text, integer, integer) TO PUBLIC;
+GRANT EXECUTE ON FUNCTION sys.instr2(text, text, integer, integer) TO PUBLIC;
+
+/* Oracle-compatible ROWIDTOCHAR: the external (character) form of a ROWID.
+ * The rowid type already prints its external form through its output
+ * function, so the conversion is the type's text representation. */
+CREATE OR REPLACE FUNCTION sys.rowidtochar(sys.rowid)
+RETURNS varchar2
+AS $$ SELECT $1::pg_catalog.text::varchar2; $$
+LANGUAGE SQL
+IMMUTABLE STRICT PARALLEL SAFE;
+
+/* Oracle-compatible CHARTOROWID: parse an external ROWID string back into the
+ * rowid type, using the type's own input function so that exactly the strings
+ * the output function produces round-trip. */
+CREATE OR REPLACE FUNCTION sys.chartorowid(text)
+RETURNS sys.rowid
+AS $$ SELECT $1::pg_catalog.text::sys.rowid; $$
+LANGUAGE SQL
+IMMUTABLE STRICT PARALLEL SAFE;
+
+GRANT EXECUTE ON FUNCTION sys.rowidtochar(sys.rowid) TO PUBLIC;
+GRANT EXECUTE ON FUNCTION sys.chartorowid(text) TO PUBLIC;
+
+/* Oracle-compatible TO_NCHAR.  IvorySQL has one database character set, so
+ * the national character set is the database character set and TO_NCHAR is
+ * the identity for text; for the other types it produces the same text that
+ * TO_CHAR produces, which is what Oracle does for an explicit conversion. */
+CREATE OR REPLACE FUNCTION sys.to_nchar(text)
+RETURNS text
+AS $$ SELECT $1; $$
+LANGUAGE SQL
+IMMUTABLE STRICT PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION sys.to_nchar(number)
+RETURNS text
+AS $$ SELECT sys.to_char($1); $$
+LANGUAGE SQL
+STABLE STRICT PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION sys.to_nchar(sys.oradate)
+RETURNS text
+AS $$ SELECT sys.to_char($1); $$
+LANGUAGE SQL
+STABLE STRICT PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION sys.to_nchar(sys.oratimestamp)
+RETURNS text
+AS $$ SELECT sys.to_char($1); $$
+LANGUAGE SQL
+STABLE STRICT PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION sys.to_nchar(sys.oratimestamptz)
+RETURNS text
+AS $$ SELECT sys.to_char($1); $$
+LANGUAGE SQL
+STABLE STRICT PARALLEL SAFE;
+
+GRANT EXECUTE ON FUNCTION sys.to_nchar(text) TO PUBLIC;
+GRANT EXECUTE ON FUNCTION sys.to_nchar(number) TO PUBLIC;
+GRANT EXECUTE ON FUNCTION sys.to_nchar(sys.oradate) TO PUBLIC;
+GRANT EXECUTE ON FUNCTION sys.to_nchar(sys.oratimestamp) TO PUBLIC;
+GRANT EXECUTE ON FUNCTION sys.to_nchar(sys.oratimestamptz) TO PUBLIC;
+
+/* Oracle-compatible UNISTR: interprets \XXXX escapes as Unicode code
+ * points, including a surrogate pair written as two escapes.  A backslash
+ * that is not followed by four hex digits is kept literally, which is how
+ * Oracle treats it. */
+CREATE OR REPLACE FUNCTION sys.unistr(text)
+RETURNS text
+AS $$
+DECLARE
+    src  text := $1;
+    res  text := '';
+    i    int  := 1;
+    n    int  := pg_catalog.length($1);
+    ch   text;
+    hex4 text;
+    code int;
+    low  int;
+BEGIN
+    WHILE i <= n LOOP
+        ch := pg_catalog.substr(src, i, 1);
+        IF ch = '\' THEN
+            hex4 := pg_catalog.substr(src, i + 1, 4);
+            IF hex4 ~ '^[0-9A-Fa-f]{4}$' THEN
+                code := ('x' || hex4)::bit(16)::int;
+                i := i + 5;
+                IF code BETWEEN 55296 AND 56319 THEN
+                    IF pg_catalog.substr(src, i, 1) = '\' AND
+                       pg_catalog.substr(src, i + 1, 4) ~ '^[0-9A-Fa-f]{4}$' THEN
+                        low := ('x' || pg_catalog.substr(src, i + 1, 4))::bit(16)::int;
+                        IF low BETWEEN 56320 AND 57343 THEN
+                            code := 65536 + ((code - 55296) << 10) + (low - 56320);
+                            i := i + 5;
+                        END IF;
+                    END IF;
+                END IF;
+                res := res || pg_catalog.chr(code);
+                CONTINUE;
+            END IF;
+        END IF;
+        res := res || ch;
+        i := i + 1;
+    END LOOP;
+    RETURN res;
+END;
+$$
+LANGUAGE plpgsql
+IMMUTABLE STRICT PARALLEL SAFE;
+
+GRANT EXECUTE ON FUNCTION sys.unistr(text) TO PUBLIC;
+
+/* Oracle-compatible SYS_GUID: a 16-byte RAW value that is unique per call.
+ * gen_random_uuid() is already a version 4 UUID, so stripping the dashes and
+ * decoding the hex gives Oracle's RAW(16) shape. */
+CREATE OR REPLACE FUNCTION sys.sys_guid()
+RETURNS bytea
+AS $$ SELECT pg_catalog.decode(pg_catalog.replace(pg_catalog.gen_random_uuid()::text, '-', ''), 'hex'); $$
+LANGUAGE SQL
+VOLATILE
+PARALLEL SAFE;
+GRANT EXECUTE ON FUNCTION sys.sys_guid() TO PUBLIC;
+
+
+/* Start - INSTR4 */
+/*
+ * Oracle's INSTR4 counts positions in UCS4 code points, which is the
+ * character semantics PostgreSQL's substr() and strpos() already use; the
+ * function exists so that the code that spells out the variant keeps
+ * working, next to INSTR, INSTRB and the family.
+ *
+ * Oracle's rules are followed: a position below one counts from the end of
+ * the string and the search then runs backwards, occurrence selects which
+ * match to report (counting from the end in the backwards case), a string
+ * or substring that is NULL returns NULL and no match returns 0.
+ */
+CREATE FUNCTION sys.instr4(text, text, integer DEFAULT 1, integer DEFAULT 1)
+RETURNS integer
+AS
+$$
+declare
+	src text := $1;
+	sub text := $2;
+	pos integer := $3;
+	occ integer := $4;
+	len integer;
+	region text;
+	start integer;
+	idx integer;
+	p integer;
+	total integer := 0;
+	want integer;
+	i integer := 0;
+begin
+	if src is null or sub is null then
+		return null;
+	end if;
+
+	if occ is null or occ < 1 then
+		return 0;
+	end if;
+	if pos is null then
+		pos := 1;
+	end if;
+
+	len := pg_catalog.length(src);
+
+	if pos >= 0 then
+		start := greatest(pos, 1);
+		while start <= len loop
+			idx := pg_catalog.strpos(pg_catalog.substr(src, start), sub);
+			if idx = 0 then
+				return 0;
+			end if;
+			i := i + 1;
+			if i = occ then
+				return start + idx - 1;
+			end if;
+			start := start + idx - 1 + greatest(pg_catalog.length(sub), 1);
+		end loop;
+		return 0;
+	end if;
+
+	/* backwards from the given position, counted from the end */
+	region := pg_catalog.substr(src, 1, greatest(len + pos + 1, 1));
+	p := 1;
+	while p <= pg_catalog.length(region) loop
+		idx := pg_catalog.strpos(pg_catalog.substr(region, p), sub);
+		exit when idx = 0;
+		total := total + 1;
+		p := p + idx - 1 + greatest(pg_catalog.length(sub), 1);
+	end loop;
+
+	if total < occ then
+		return 0;
+	end if;
+
+	want := total - occ + 1;
+	p := 1;
+	while p <= pg_catalog.length(region) loop
+		idx := pg_catalog.strpos(pg_catalog.substr(region, p), sub);
+		if idx = 0 then
+			return 0;
+		end if;
+		i := i + 1;
+		if i = want then
+			return p + idx - 1;
+		end if;
+		p := p + idx - 1 + greatest(pg_catalog.length(sub), 1);
+	end loop;
+
+	return 0;
+end;
+$$
+LANGUAGE plpgsql
+IMMUTABLE;
+/* End - INSTR4 */
+
+
+/* Start - SUBSTR4 */
+/*
+ * Oracle's SUBSTR4 counts positions and lengths in UCS4 code points, which
+ * is what PostgreSQL's character based substr() does as well; the function
+ * exists so that the code that spells out the variant keeps working, and
+ * SUBSTR2 (UCS2 code units) can follow on top of the same definition.
+ *
+ * Like Oracle, a length below one returns NULL, while a position below one
+ * counts from the end of the string, and a valid position with no length
+ * returns the rest of the string.
+ */
+CREATE FUNCTION sys.substr4(text, integer, integer DEFAULT NULL)
+RETURNS text
+AS
+$$
+begin
+	if $3 is null then
+		return pg_catalog.substr($1, $2);
+	end if;
+	if $3 <= 0 then
+		return null;
+	end if;
+	return pg_catalog.substr($1, $2, $3);
+end;
+$$
+LANGUAGE plpgsql
+IMMUTABLE;
+/* End - SUBSTR4 */
+
+
+/* Start - WM_CONCAT */
+/*
+ * WM_CONCAT is Oracle's legacy aggregate for concatenating a column into a
+ * comma separated list, the job LISTAGG(t, ',') does today.  Like in
+ * Oracle, NULL values are skipped and the function returns NULL when no
+ * value was aggregated; the order of the values is not defined, exactly as
+ * in Oracle (WM_CONCAT has no WITHIN GROUP clause there either).
+ */
+CREATE FUNCTION sys.wm_concat_trans(state text, value text)
+RETURNS text
+AS
+$$
+begin
+	if value is null then
+		return state;
+	end if;
+	if state is null then
+		return value;
+	end if;
+	return state || ',' || value;
+end;
+$$
+LANGUAGE plpgsql
+IMMUTABLE;
+
+CREATE FUNCTION sys.wm_concat_final(state text)
+RETURNS text
+AS
+$$
+begin
+	return state;
+end;
+$$
+LANGUAGE plpgsql
+IMMUTABLE;
+
+CREATE AGGREGATE sys.wm_concat(text) (
+	SFUNC = sys.wm_concat_trans,
+	STYPE = text,
+	FINALFUNC = sys.wm_concat_final,
+	PARALLEL = SAFE
+);
+
+/* numbers are converted to their text form, like Oracle does implicitly */
+CREATE FUNCTION sys.wm_concat_trans(state text, value number)
+RETURNS text
+AS
+$$
+begin
+	return sys.wm_concat_trans(state, value::text);
+end;
+$$
+LANGUAGE plpgsql
+IMMUTABLE;
+
+CREATE AGGREGATE sys.wm_concat(number) (
+	SFUNC = sys.wm_concat_trans,
+	STYPE = text,
+	FINALFUNC = sys.wm_concat_final,
+	PARALLEL = SAFE
+);
+/* End - WM_CONCAT */
+
+/* Start - LENGTH2 / LENGTH4 */
+/*
+ * Oracle's LENGTH4 counts UCS4 code points and LENGTH2 counts UCS2 code
+ * units, so a supplementary character counts twice for LENGTH2 but once
+ * for LENGTH4.  The argument types mirror sys.lengthc().
+ */
+
+CREATE FUNCTION sys.length2(text)
+RETURNS integer
+AS 'MODULE_PATHNAME','ora_length2'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.length2(sys.oracharchar)
+RETURNS integer
+AS 'MODULE_PATHNAME','ora_length2'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.length2(sys.oracharbyte)
+RETURNS integer
+AS 'MODULE_PATHNAME','ora_length2'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.length2(sys.oravarcharchar)
+RETURNS integer
+AS 'MODULE_PATHNAME','ora_length2'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.length2(sys.oravarcharbyte)
+RETURNS integer
+AS 'MODULE_PATHNAME','ora_length2'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.length4(text)
+RETURNS integer
+AS 'MODULE_PATHNAME','ora_length4'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.length4(sys.oracharchar)
+RETURNS integer
+AS 'MODULE_PATHNAME','ora_length4'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.length4(sys.oracharbyte)
+RETURNS integer
+AS 'MODULE_PATHNAME','ora_length4'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.length4(sys.oravarcharchar)
+RETURNS integer
+AS 'MODULE_PATHNAME','ora_length4'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.length4(sys.oravarcharbyte)
+RETURNS integer
+AS 'MODULE_PATHNAME','ora_length4'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+/* End - LENGTH2 / LENGTH4 */
+
+
+/* Start - ORA_HASH */
+/*
+ * ORA_HASH(expr [, max_bucket [, seed]]) returns a hash value for expr in
+ * the range 0 .. max_bucket (4294967295 by default), like Oracle.
+ *
+ * As in Oracle, the hash values themselves are implementation-defined; the
+ * contract of the function is that the same expression, max_bucket and seed
+ * produce the same value, inside the requested range.
+ */
+CREATE FUNCTION sys.ora_hash(value anycompatible,
+                             max_bucket int8 DEFAULT 4294967295,
+                             seed int8 DEFAULT 0)
+RETURNS number
+AS
+$$
+begin
+	if max_bucket is null or max_bucket < 0 then
+		raise exception 'ORA_HASH: max_bucket must be a non-negative integer';
+	end if;
+
+	if value is null then
+		return null;
+	end if;
+
+	return (abs(pg_catalog.hashtextextended(value::text, seed)::numeric)
+		% (max_bucket + 1));
+end;
+$$
+LANGUAGE plpgsql
+IMMUTABLE;
+/* End - ORA_HASH */
+
+
+/* Start - BIN_TO_NUM */
+/*
+ * BIN_TO_NUM(bit, bit, ...) converts a list of bits into the number they
+ * spell; the first argument is the most significant bit:
+ *
+ *     SELECT BIN_TO_NUM(1, 0, 1, 0) FROM DUAL;   -- 10
+ *
+ * Like Oracle, every argument must be 0 or 1, otherwise an error is raised.
+ */
+CREATE FUNCTION sys.bin_to_num(VARIADIC bits number[])
+RETURNS number
+AS
+$$
+declare
+	result number := 0;
+	bit_value number;
+begin
+	if array_length(bits, 1) is null then
+		raise exception 'BIN_TO_NUM: at least one bit is required';
+	end if;
+
+	foreach bit_value in array bits loop
+		if bit_value is null or bit_value not in (0, 1) then
+			raise exception 'BIN_TO_NUM: each bit must be 0 or 1';
+		end if;
+		result := result * 2 + bit_value;
+	end loop;
+
+	return result;
+end;
+$$
+LANGUAGE plpgsql
+IMMUTABLE;
+/* End - BIN_TO_NUM */
