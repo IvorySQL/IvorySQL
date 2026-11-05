@@ -149,7 +149,10 @@ SELECT * FROM t1 WHERE t1.c1(+) IS NULL;
 SELECT t2.c2 FROM t2, t1 WHERE t2.c3 = t1.c1(+) AND t2.c2(+) = 't2_a';
 
 -- Test: (+) filter that does attach, on the other side of the same query
-SELECT count(*) FROM t2, t1 WHERE t2.c3 = t1.c1(+) AND t1.c1(+) = 10;
+-- Counting the nullable side as well as the rows tells a folded filter from
+-- a dropped one: without the comparison the second count would be 5, not 2.
+SELECT count(*), count(t1.c1) FROM t2, t1
+WHERE t2.c3 = t1.c1(+) AND t1.c1(+) = 10;
 
 -- Test: IN value list names a column, so (+) sits in an operand of IN
 SELECT count(*) FROM t2, t1 WHERE t2.c3 = t1.c1(+) AND t1.c1(+) IN (t2.c1, 5);
@@ -158,14 +161,16 @@ SELECT count(*) FROM t2, t1 WHERE t2.c3 = t1.c1(+) AND t1.c1(+) IN (t2.c1, 5);
 SELECT count(*) FROM t2, t1 WHERE t2.c3 = t1.c1(+)
 AND t1.c1(+) NOT BETWEEN t2.c1 AND t2.c1 + 1;
 
--- Test: attached IN over a value list without column references still joins
+-- Test: Oracle rejects (+) in an IN operand even with a constant-only value
+-- list, and even though the marked column could attach to the outer join of
+-- the same block (ORA-01719), so no result set is produced for this query.
 SELECT count(*) FROM t2, t1 WHERE t2.c3 = t1.c1(+) AND t1.c1(+) IN (10, 20);
 
 -- Test: (+) filter still attaches when the nullable table is shared by two
 -- preserved tables (both predicates fold into the same ON clause, so the
 -- filter must not remove the NULL-extended rows: 25 pairs, 5 of them with an
 -- equal key, 4 of those passing the filter)
-SELECT count(*) FROM t1 a, t2 b, t2 c
+SELECT count(*), count(a.c1) FROM t1 a, t2 b, t2 c
 WHERE b.c3 = a.c1(+) AND c.c3 = a.c1(+) AND a.c2(+) = 't1_a';
 
 -- NON-RELATION FROM ITEM TESTS
