@@ -237,15 +237,21 @@ Datum
 oratimestampltz_out(PG_FUNCTION_ARGS)
 {
 	TimestampTz timestamp = PG_GETARG_TIMESTAMPTZ(0);
-	char	   *result;
-	text	   *date_str;
 
-	date_str = DatumGetTextP(DirectFunctionCall2(timestamptz_to_char,
-												 TimestampTzGetDatum(timestamp),
-												 PointerGetDatum(cstring_to_text(nls_timestamp_format))));
+	if (strcmp(nls_timestamp_format, "pg") != 0)
+	{
+		char	   *result;
+		text	   *date_str;
 
-	result = text_to_cstring(date_str);
-	PG_RETURN_CSTRING(result);
+		date_str = DatumGetTextP(DirectFunctionCall2(timestamptz_to_char,
+													 TimestampTzGetDatum(timestamp),
+													 PointerGetDatum(cstring_to_text(nls_timestamp_format))));
+
+		result = text_to_cstring(date_str);
+		PG_RETURN_CSTRING(result);
+	}
+	else
+		return DirectFunctionCall1(timestamptz_out, TimestampTzGetDatum(timestamp));
 }
 
 /*
