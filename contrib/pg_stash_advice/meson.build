@@ -38,6 +38,7 @@ tests += {
   'tap': {
     'tests': [
       't/001_persist.pl',
+      't/002_persist_format.pl',
     ],
   },
 }
