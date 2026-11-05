@@ -1,0 +1,49 @@
+--
+-- dbms_lock_reentrant.sql
+--
+-- Regression test for #3047: DBMS_LOCK.REQUEST is re-entrant. Requesting the
+-- same lock N times within one session references PostgreSQL's advisory lock
+-- N times, so it must be released N times; otherwise the advisory lock leaks
+-- for the session.
+--
+-- NOTE: the pg_locks checks are issued at the top level (outside PL/pgSQL)
+-- so that the test exercises only DBMS_LOCK's advisory-lock bookkeeping.
+--
+
+-- A single acquisition + release must leave no advisory lock behind.
+do $$
+declare
+  v_handle text;
+  v_rc int;
+begin
+  dbms_lock.allocate_unique('LOCKONCE', v_handle);
+  v_rc := dbms_lock.request(v_handle, dbms_lock.x_mode, 0);
+  raise notice 'once req rc=%', v_rc;
+  v_rc := dbms_lock.release(v_handle);
+  raise notice 'once rel rc=%', v_rc;
+end $$;
+
+select count(*) as advisory_held_after_1_req_1_rel
+  from pg_locks
+  where pid = pg_backend_pid() and locktype = 'advisory';
+
+-- A re-entrant acquisition (request twice) requires two releases.
+do $$
+declare
+  v_handle text;
+  v_rc int;
+begin
+  dbms_lock.allocate_unique('LOCKREPEAT', v_handle);
+  v_rc := dbms_lock.request(v_handle, dbms_lock.x_mode, 0);
+  raise notice 'req1 rc=%', v_rc;
+  v_rc := dbms_lock.request(v_handle, dbms_lock.x_mode, 0);
+  raise notice 'req2 rc=%', v_rc;
+  v_rc := dbms_lock.release(v_handle);
+  raise notice 'rel1 rc=%', v_rc;
+  v_rc := dbms_lock.release(v_handle);
+  raise notice 'rel2 rc=%', v_rc;
+end $$;
+
+select count(*) as advisory_held_after_2_req_2_rel
+  from pg_locks
+  where pid = pg_backend_pid() and locktype = 'advisory';

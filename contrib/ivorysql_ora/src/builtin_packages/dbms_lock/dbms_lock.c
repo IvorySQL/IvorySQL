@@ -32,6 +32,7 @@
 #include "catalog/pg_type.h"
 #include "utils/elog.h"
 #include "utils/timeout.h"
+#include "utils/memutils.h"
 #include "utils/uuid.h"
 #include "access/hash.h"
 #include "storage/lock.h"
@@ -74,6 +75,7 @@ typedef struct
 {
     int64       key;        /* hash key */
     int8        mode;        /* last mode we recorded */
+    int         refcount;    /* number of active acquisitions (REQUEST calls) */
 } lock_entry;
 
 static HTAB *dbms_lock_hash_table = NULL;
@@ -84,7 +86,7 @@ static HTAB *dbms_lock_hash_table = NULL;
 static void dbms_lock_init_hash_table(void);
 static bool dbms_lock_record_acquire(int64, int8);
 static bool dbms_lock_check(int64, int8);
-static bool dbms_lock_record_release(int64, int8);
+static int dbms_lock_record_release(int64, int8);
 
 /*
  * init private lock hash table
@@ -94,17 +96,28 @@ static bool dbms_lock_record_release(int64, int8);
 static void
 dbms_lock_init_hash_table(void)
 {
-    HASHCTL ctl;
+    HASHCTL     ctl;
+    MemoryContext oldcontext;
 
     MemSet(&ctl, 0, sizeof(ctl));
     ctl.keysize = sizeof(int64);
     ctl.entrysize = sizeof(lock_entry);
     ctl.hash = tag_hash;
 
+    /*
+     * The hash table must outlive the statement that first uses it: DBMS_LOCK
+     * bookkeeping is per-session, while callers may invoke the package from
+     * many different statements.  Allocating in the caller's memory context
+     * would leave dbms_lock_hash_table dangling (use-after-free) as soon as
+     * that statement's context is destroyed, crashing the backend.  Allocate
+     * in TopMemoryContext so the table lives for the whole backend session.
+     */
+    oldcontext = MemoryContextSwitchTo(TopMemoryContext);
     dbms_lock_hash_table = hash_create("pg_dbms_lock table",
-                             DBMS_LOCK_MAX,         
+                             DBMS_LOCK_MAX,
                              &ctl,
                              HASH_ELEM | HASH_FUNCTION);
+    MemoryContextSwitchTo(oldcontext);
 }
 
 /*
@@ -127,6 +140,10 @@ dbms_lock_record_acquire(int64 key, int8 mode)
 
     entry->key = key;
     entry->mode = mode;
+    if (found)
+        entry->refcount++;
+    else
+        entry->refcount = 1;
     return true;
 }
 
@@ -153,7 +170,21 @@ dbms_lock_check(int64 key, int8 mode)
  * store lock release
  */
 
-static bool
+/*
+ * Release one acquisition of a lock.
+ *
+ * DBMS_LOCK.REQUEST is re-entrant: each call bumps PostgreSQL's advisory-lock
+ * reference count, so each RELEASE must release exactly one reference. We keep
+ * a per-lock acquisition count and only drop the underlying PostgreSQL
+ * advisory lock (and remove the bookkeeping entry) when the last reference is
+ * released.
+ *
+ * Returns:
+ *   0 - the lock is not held in the given mode (nothing to do)
+ *   1 - the lock is still held (reference count > 0 after decrement)
+ *   2 - the last reference was released and the advisory lock is now released
+ */
+static int
 dbms_lock_record_release(int64 key, int8 mode)
 {
     bool        found;
@@ -165,14 +196,33 @@ dbms_lock_record_release(int64 key, int8 mode)
                                         &found);
 
     if (!found)
-        return false;
+        return 0;
 
     if (entry->mode != mode)
-	    return false;
+        return 0;
+
+    /*
+     * Release exactly one PostgreSQL advisory-lock reference. PostgreSQL keeps
+     * its own per-backend reference count, so a lock that was acquired N times
+     * (via N REQUEST calls) must be released N times to actually drop the
+     * underlying lock. Releasing on every dereference prevents the session
+     * lock leak reported in #3047.
+     */
+    if (mode == DBMS_LOCK_S_MODE)
+        (void) DatumGetBool(DirectFunctionCall1(pg_advisory_unlock_shared_int8,
+                                               Int64GetDatum(key)));
+    else
+        (void) DatumGetBool(DirectFunctionCall1(pg_advisory_unlock_int8,
+                                               Int64GetDatum(key)));
+
+    entry->refcount--;
+
+    if (entry->refcount > 0)
+        return 1;               /* still held by this session */
 
     hash_search(dbms_lock_hash_table, (void *) &key, HASH_REMOVE, &found);
 
-    return true;
+    return 2;
 }
 
 
@@ -270,7 +320,7 @@ ivorysql_dbms_lock_request(PG_FUNCTION_ARGS)
             acquired = DatumGetBool(DirectFunctionCall1(pg_try_advisory_lock_shared_int8, Int64GetDatum(key)));
 
         if (acquired) {
-	    elog(DEBUG1, "dbms_lock_request: key="INT64_FORMAT" mode=%d", key, lockmode);
+            elog(DEBUG1, "dbms_lock_request: key="INT64_FORMAT" mode=%d", key, lockmode);
             hash_enter_is_ok = dbms_lock_record_acquire(key, lockmode);
 	    if (hash_enter_is_ok)
 	            PG_RETURN_INT32(DBMS_LOCK_SUCCESS);
@@ -305,35 +355,38 @@ ivorysql_dbms_lock_release(PG_FUNCTION_ARGS)
 {
     text *lockhandle = PG_GETARG_TEXT_PP(0);
     int64 key = lockname_to_key(lockhandle);
-    bool lock_s_held = false;
-    bool lock_x_held = false;
-    bool released = false;
     int8 lockmode;
 
     if (dbms_lock_hash_table == NULL)
-	    dbms_lock_init_hash_table();
-	
-    lock_s_held = dbms_lock_check(key, DBMS_LOCK_S_MODE);
-    if (lock_s_held) {
-       lockmode = DBMS_LOCK_S_MODE;
-       released = DatumGetBool(DirectFunctionCall1(pg_advisory_unlock_shared_int8, Int64GetDatum(key)));
-	elog(DEBUG1, "unlock S: key="INT64_FORMAT"  mode=%d released=%d", key, lockmode, released);
-    } else {
-      lock_x_held = dbms_lock_check(key, DBMS_LOCK_X_MODE);
-      if (lock_x_held) {
-       lockmode = DBMS_LOCK_X_MODE;
-       released = DatumGetBool(DirectFunctionCall1(pg_advisory_unlock_int8, Int64GetDatum(key)));
-       elog(DEBUG1, "unlock X: key="INT64_FORMAT" mode=%d released=%d", key, lockmode, released);
-      }
-    };
+        dbms_lock_init_hash_table();
 
-    if (released) {
-	elog(DEBUG1, "dbms_lock_release: key="INT64_FORMAT" mode=%d", key, lockmode);
-	dbms_lock_record_release(key,lockmode);
-        PG_RETURN_INT32(DBMS_LOCK_SUCCESS);
+    /* Determine the held mode before releasing. */
+    if (dbms_lock_check(key, DBMS_LOCK_S_MODE))
+        lockmode = DBMS_LOCK_S_MODE;
+    else if (dbms_lock_check(key, DBMS_LOCK_X_MODE))
+        lockmode = DBMS_LOCK_X_MODE;
+    else
+        PG_RETURN_INT32(DBMS_LOCK_PARAM_ERROR);
+
+    /*
+     * dbms_lock_record_release() decrements the acquisition count and only
+     * releases the underlying PostgreSQL advisory lock (and removes the
+     * bookkeeping entry) once the last reference is released, so a lock that
+     * was requested N times requires N releases and never leaks.
+     */
+    switch (dbms_lock_record_release(key, lockmode))
+    {
+        case 2:
+            elog(DEBUG1, "dbms_lock_release: key=" INT64_FORMAT " mode=%d fully released",
+                 key, lockmode);
+            PG_RETURN_INT32(DBMS_LOCK_SUCCESS);
+        case 1:
+            elog(DEBUG1, "dbms_lock_release: key=" INT64_FORMAT " mode=%d still held",
+                 key, lockmode);
+            PG_RETURN_INT32(DBMS_LOCK_SUCCESS);
+        default:
+            PG_RETURN_INT32(DBMS_LOCK_PARAM_ERROR);
     }
-
-    PG_RETURN_INT32(DBMS_LOCK_PARAM_ERROR);
 }
 
 /*
