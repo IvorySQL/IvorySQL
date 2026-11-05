@@ -212,6 +212,22 @@ next_slotid(void)
 }
 
 /*
+ * Return the index of a free slot, or -1 if every slot is occupied.
+ *
+ * Used to decide up front whether FOPEN can succeed, so that we never
+ * truncate or create the target file in a case where the open is ultimately
+ * going to fail (e.g. the 50-open-file limit is already reached).
+ */
+static int
+find_free_slot(void)
+{
+	for (int i = 0; i < MAX_SLOTS; i++)
+		if (slots[i].id == INVALID_SLOTID)
+			return i;
+	return -1;
+}
+
+/*
  * Find any free slot, saves handle in that
  * Returns slot ID or INVALID_SLOTID if no free slot found
  */
@@ -370,6 +386,20 @@ ora_utl_file_fopen(PG_FUNCTION_ARGS)
 	 * we implement separate file handling.
 	 */
 
+	/*
+	 * Oracle UTL_FILE semantics: a failed FOPEN (for example when the
+	 * 50-open-file limit is reached) must NOT modify the target file.
+	 * fopen(..., "w") truncates the file immediately, so we make sure a slot
+	 * is available BEFORE opening the file. Otherwise a later reserve_slot()
+	 * failure would already have destroyed an existing file.
+	 */
+	if (find_free_slot() < 0)
+		ereport(ERROR,
+		    (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+		     errmsg("program limit exceeded"),
+		     errdetail("Maximum number of open files exceeded"),
+		     errhint("You can have a maximum of %d files open simultaneously.", MAX_SLOTS)));
+
 	oldmask = umask((mode_t) utl_file_umask);
 	fd = fopen(fullname, mode);
 	umask(oldmask);
@@ -378,6 +408,10 @@ ora_utl_file_fopen(PG_FUNCTION_ARGS)
 		IO_EXCEPTION();
 
 	sid = reserve_slot(fd, max_linesize, encoding);
+	/*
+	 * find_free_slot() above guarantees a free slot exists, so reserve_slot()
+	 * cannot fail here; keep the original guard for safety.
+	 */
 	if (sid == INVALID_SLOTID)
 	{
 		fclose(fd);
