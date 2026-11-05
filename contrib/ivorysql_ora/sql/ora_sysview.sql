@@ -270,3 +270,156 @@ SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'TEST_ALL_TAB_
 \set ON_ERROR_STOP on
 
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+
+-- Oracle-compatible system and column privilege views
+DROP ROLE IF EXISTS ora_priv_role_test;
+CREATE ROLE ora_priv_role_test;
+
+SELECT PRIVILEGE, ADMIN_OPTION, INHERITED
+FROM SYS.DBA_SYS_PRIVS
+WHERE GRANTEE = SYS.ORA_CASE_TRANS(CURRENT_USER::VARCHAR2)
+ORDER BY PRIVILEGE;
+
+SELECT COUNT(*) > 0 AS has_priv
+FROM SYS.USER_SYS_PRIVS
+WHERE PRIVILEGE = 'CREATE SESSION';
+
+DROP TABLE IF EXISTS test_col_privs;
+CREATE TABLE test_col_privs (id INT, secret TEXT);
+GRANT SELECT (id) ON test_col_privs TO ora_priv_role_test;
+
+SELECT GRANTEE, TABLE_NAME, COLUMN_NAME, PRIVILEGE, GRANTABLE
+FROM SYS.DBA_COL_PRIVS
+WHERE TABLE_NAME = 'TEST_COL_PRIVS'
+ORDER BY COLUMN_NAME, GRANTEE;
+
+SELECT COUNT(*) = 1 AS all_col_privs_has_row
+FROM SYS.ALL_COL_PRIVS
+WHERE TABLE_NAME = 'TEST_COL_PRIVS'
+  AND GRANTEE = 'ORA_PRIV_ROLE_TEST';
+
+SELECT COUNT(*) = 1 AS user_col_privs_has_row
+FROM SYS.USER_COL_PRIVS
+WHERE TABLE_NAME = 'TEST_COL_PRIVS';
+
+-- A column-only grant does not imply the table privilege in PostgreSQL, so the
+-- grantee must still see its own column grant in the ALL_ view.
+DROP ROLE IF EXISTS col_priv_grantee;
+CREATE ROLE col_priv_grantee LOGIN;
+GRANT USAGE ON SCHEMA sys TO col_priv_grantee;
+GRANT SELECT (id) ON test_col_privs TO col_priv_grantee;
+SET ROLE col_priv_grantee;
+SELECT COUNT(*) = 1 AS column_grant_visible
+FROM SYS.ALL_COL_PRIVS
+WHERE TABLE_NAME = 'TEST_COL_PRIVS'
+  AND GRANTEE = 'COL_PRIV_GRANTEE'
+  AND COLUMN_NAME = 'ID';
+RESET ROLE;
+
+-- A table-wide grant is not a column grant, so the row set stays empty.
+GRANT SELECT ON test_col_privs TO PUBLIC;
+SELECT COUNT(*) AS public_col_privs
+FROM SYS.DBA_COL_PRIVS
+WHERE TABLE_NAME = 'TEST_COL_PRIVS'
+  AND GRANTEE = 'PUBLIC';
+
+DROP TABLE test_col_privs;
+-- The role still holds USAGE on schema sys, so revoke its dependencies first.
+DROP OWNED BY col_priv_grantee;
+DROP ROLE col_priv_grantee;
+DROP ROLE ora_priv_role_test;
+
+-- Oracle-compatible role privilege views
+DROP ROLE IF EXISTS rtab_role;
+DROP ROLE IF EXISTS rlogin_role;
+CREATE ROLE rtab_role CREATEROLE;
+CREATE ROLE rlogin_role LOGIN;
+DROP TABLE IF EXISTS t_role_privs;
+CREATE TABLE t_role_privs (id INT);
+GRANT SELECT ON t_role_privs TO rtab_role;
+GRANT SELECT ON t_role_privs TO rlogin_role;
+
+SELECT ROLE, TABLE_NAME, PRIVILEGE, GRANTABLE
+FROM SYS.ROLE_TAB_PRIVS
+WHERE TABLE_NAME = 'T_ROLE_PRIVS'
+ORDER BY ROLE;
+
+-- A column grant held by a role carries the column name.
+GRANT SELECT (id) ON t_role_privs TO rtab_role;
+SELECT ROLE, TABLE_NAME, COLUMN_NAME, PRIVILEGE, GRANTABLE
+FROM SYS.ROLE_TAB_PRIVS
+WHERE TABLE_NAME = 'T_ROLE_PRIVS'
+ORDER BY ROLE, COLUMN_NAME;
+
+SELECT ROLE, PRIVILEGE
+FROM SYS.ROLE_SYS_PRIVS
+WHERE ROLE = 'RTAB_ROLE';
+
+SELECT COUNT(*) = 1 AS role_has_priv
+FROM SYS.ROLE_SYS_PRIVS
+WHERE ROLE = 'RTAB_ROLE' AND PRIVILEGE = 'CREATE USER';
+
+SELECT COUNT(*) = 0 AS login_role_excluded,
+       (SELECT COUNT(*) FROM SYS.ROLE_TAB_PRIVS WHERE ROLE = 'RLOGIN_ROLE') AS login_role_rows
+FROM SYS.ROLE_TAB_PRIVS
+WHERE ROLE = 'RLOGIN_ROLE';
+
+DROP TABLE t_role_privs;
+DROP ROLE rtab_role;
+DROP ROLE rlogin_role;
+
+-- Oracle-compatible role grant dictionary views
+DROP ROLE IF EXISTS rp_child;
+DROP ROLE IF EXISTS rp_parent;
+CREATE ROLE rp_parent;
+CREATE ROLE rp_child;
+GRANT rp_parent TO rp_child;
+
+SELECT GRANTEE, GRANTED_ROLE, ADMIN_OPTION, DEFAULT_ROLE
+FROM SYS.ROLE_ROLE_PRIVS
+WHERE GRANTEE = 'RP_CHILD';
+
+SELECT COUNT(*) = 1 AS dba_has
+FROM SYS.DBA_ROLE_PRIVS
+WHERE GRANTEE = 'RP_CHILD' AND GRANTED_ROLE = 'RP_PARENT';
+
+-- The parent is not granted to the current user, so USER_ROLE_PRIVS stays empty
+SELECT COUNT(*) = 0 AS user_empty
+FROM SYS.USER_ROLE_PRIVS
+WHERE GRANTED_ROLE = 'RP_PARENT';
+
+DROP ROLE rp_child;
+DROP ROLE rp_parent;
+
+-- Oracle-compatible role and user dictionary views
+DROP ROLE IF EXISTS ora_view_role_test;
+CREATE ROLE ora_view_role_test LOGIN;
+
+SELECT ROLE, PASSWORD_REQUIRED, ORACLE_MAINTAINED
+FROM SYS.DBA_ROLES
+WHERE ROLE = 'ORA_VIEW_ROLE_TEST';
+
+SELECT USERNAME, ACCOUNT_STATUS, DEFAULT_TABLESPACE, AUTHENTICATION_TYPE
+FROM SYS.DBA_USERS
+WHERE USERNAME = 'ORA_VIEW_ROLE_TEST';
+
+SELECT USERNAME, USER_ID > 0 AS has_id
+FROM SYS.ALL_USERS
+WHERE USERNAME = 'ORA_VIEW_ROLE_TEST';
+
+-- USER_USERS is restricted to the caller
+SELECT COUNT(*) = 1 AS one_row, MIN(USERNAME) = SYS.ORA_CASE_TRANS(CURRENT_USER::VARCHAR2) AS is_me
+FROM SYS.USER_USERS;
+
+GRANT ora_view_role_test TO CURRENT_USER;
+SELECT COUNT(*) > 0 AS role_visible
+FROM SYS.SESSION_ROLES
+WHERE ROLE = 'ORA_VIEW_ROLE_TEST';
+
+DROP ROLE ora_view_role_test;
+
+-- Oracle-compatible SESSION_PRIVS view
+SELECT COUNT(*) > 0 AS has_privileges FROM SYS.SESSION_PRIVS;
+SELECT PRIVILEGE FROM SYS.SESSION_PRIVS WHERE PRIVILEGE = 'CREATE SESSION';
+SELECT COUNT(*) = 0 AS no_duplicates
+FROM (SELECT PRIVILEGE FROM SYS.SESSION_PRIVS GROUP BY PRIVILEGE HAVING COUNT(*) > 1) D;
