@@ -2276,6 +2276,51 @@ orajoin_marker_clear_walker(Node *node, void *context)
 }
 
 /*
+ * orajoin_list_contains_columnref_walker
+ *		Return true if a raw expression still references a column.
+ *
+ * Used on the bounds of a NOT BETWEEN expression to tell a genuine
+ * single-table predicate, "t.c(+) NOT BETWEEN 1 AND 5", whose bounds hold
+ * nothing that could be joined against, from "t.c(+) NOT BETWEEN t2.c1 AND
+ * 5", where the bounds name a column of another relation and the (+)
+ * operator therefore sits in one of the two OR'ed comparisons NOT BETWEEN
+ * expands to -- which Oracle rejects (ORA-01719) instead of treating it as
+ * a join condition.
+ */
+static bool
+orajoin_list_contains_columnref_walker(Node *node, void *context)
+{
+	if (node == NULL)
+		return false;
+
+	if (IsA(node, ColumnRef))
+		return true;
+
+	if (IsA(node, SelectStmt) || IsA(node, RangeSubselect))
+		return false;
+
+	if (IsA(node, SubLink))
+		return orajoin_list_contains_columnref_walker(((SubLink *) node)->testexpr, context);
+
+	return raw_expression_tree_walker(node, orajoin_list_contains_columnref_walker, context);
+}
+
+/*
+ * Convenience wrapper: apply the above to every element of a raw value list.
+ */
+static bool
+orajoin_list_contains_columnref(List *values)
+{
+	ListCell   *lc;
+
+	foreach(lc, values)
+		if (orajoin_list_contains_columnref_walker((Node *) lfirst(lc), NULL))
+		return true;
+
+	return false;
+}
+
+/*
  * Return true if 'node' contains a SubLink or subquery.
  */
 static bool
@@ -2437,6 +2482,21 @@ reorder_orajoin_args(ParseState *pstate, List *args)
 	}
 }
 
+/*
+ * extractOraJoins
+ *		Walk one WHERE predicate of a (+)-marked query block and split it
+ *		into outer-join conditions and ordinary filters.
+ *
+ * A predicate that links a preserved table to a nullable table through the
+ * (+) marker becomes a JoinExpr collected into *joinClause (or is merged
+ * into the JoinExpr already built for the same relation pair, including the
+ * shared-nullable case).  A predicate that references only one marked table
+ * is deferred to build->pending_filters so it can later fold into the ON
+ * clause of the join whose nullable side is that table.  Everything else
+ * stays in *whereClause.  Returns the node that should remain in the WHERE
+ * clause for this subtree, or NULL when the whole subtree was consumed as
+ * join conditions.
+ */
 static Node *
 extractOraJoins(ParseState *pstate, Node *expr, OraJoinBuildState *build,
 				List **whereClause, List **joinClause)
@@ -2514,19 +2574,54 @@ extractOraJoins(ParseState *pstate, Node *expr, OraJoinBuildState *build,
 			 * IN-list and NOT BETWEEN raw-parse with a bare List
 			 * (not a Node) as rexpr -- transformExpr() cannot be called on
 			 * that directly (it has no case for a raw List and falls into
-			 * "unrecognized node type"). A (+) marker in this shape is
-			 * always a single-table predicate (there is no second column
-			 * to join against: "t1.c1(+) IN (10,20)" has nothing on the
-			 * right that could be another relation's column), so route it
-			 * through the same single-table deferred-filter path as
-			 * "t.c(+) IS NULL" instead of the two-sided join-building code
-			 * below, and never touch rexpr with transformExpr().
+			 * "unrecognized node type"), so rexpr is never fed to it below.
+			 *
+			 * Oracle rejects the (+) operator in an operand of IN outright
+			 * (ORA-01719: "outer join operator (+) not allowed in operand
+			 * of OR or IN"), even for a constant-only value list and even
+			 * when the marked column could attach to an outer join of the
+			 * same block.  Do the same rather than returning results for
+			 * SQL that Oracle rejects.
+			 *
+			 * NOT BETWEEN, on the other hand, is treated by Oracle like a
+			 * single predicate on the marked column: "t.c(+) NOT BETWEEN
+			 * a AND b" with bound expressions that reference no other
+			 * relation is a one-table deferred filter, the same shape as
+			 * "t.c(+) IS NULL".  Route it through the single-table
+			 * deferred-filter path, and reject bounds that name a column,
+			 * since then the (+) operator effectively sits in one of the
+			 * two OR'ed comparisons NOT BETWEEN expands to.
 			 */
-			if ((aexpr->kind == AEXPR_IN || aexpr->kind == AEXPR_NOT_BETWEEN) &&
+			if (aexpr->kind == AEXPR_IN &&
+				IsA(aexpr->lexpr, ColumnRef) &&
+				((ColumnRef *) aexpr->lexpr)->ora_join_op_exists)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("outer join operator (+) is not allowed in operand of OR or IN"),
+						 errdetail("*Cause: The outer join operator (+) was applied to an operand of IN "
+								   "rather than to a join condition. "
+								   "*Action: Rewrite the IN predicate as comparison conditions joined "
+								   "by AND, or move the (+) marker onto a join condition.")));
+			}
+
+			if (aexpr->kind == AEXPR_NOT_BETWEEN &&
 				IsA(aexpr->lexpr, ColumnRef) &&
 				((ColumnRef *) aexpr->lexpr)->ora_join_op_exists)
 			{
 				OraJoinState mjs = {NULL, NULL};
+
+				if (IsA(aexpr->rexpr, List) &&
+					orajoin_list_contains_columnref((List *) aexpr->rexpr))
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("outer join operator (+) is not allowed in operand of OR or IN"),
+							 errdetail("*Cause: The bounds of NOT BETWEEN reference a column, "
+									   "so the outer join operator (+) was applied to an operand "
+									   "of NOT BETWEEN rather than to a join condition. "
+									   "*Action: Compare the outer-joined column with bounds that "
+									   "contain no column references, or move that comparison out "
+									   "of the NOT BETWEEN.")));
 
 				pstate->p_orajoin_state = &mjs;
 				transformExpr(pstate, aexpr->lexpr, EXPR_KIND_WHERE);
@@ -3000,6 +3095,18 @@ extractOraJoins(ParseState *pstate, Node *expr, OraJoinBuildState *build,
 	return expr;
 }
 
+/*
+ * transformOraJoinClause
+ *		Rewrite the (+) outer-join markers of one query block into ANSI
+ *		JoinExpr nodes.
+ *
+ * Called from transformSelectStmt() when the statement-level
+ * ora_join_op_exists flag reports at least one (+) marker.  The markers
+ * themselves were attached to ColumnRef nodes by the grammar; this routine
+ * walks the WHERE clause, builds the corresponding LEFT JOIN tree in the
+ * FROM clause, folds single-table marked filters into the matching ON
+ * clauses, and installs what is left as the new WHERE clause.
+ */
 void
 transformOraJoinClause(ParseState *pstate, SelectStmt *stmt)
 {
@@ -3038,7 +3145,10 @@ transformOraJoinClause(ParseState *pstate, SelectStmt *stmt)
 	/*
 	 * Fold every deferred one-table (+) filter into the ON clause of the
 	 * join whose nullable side is that table.  If no such join exists the
-	 * (+) has nowhere to attach; keep the predicate as an ordinary filter.
+	 * marker has nowhere to attach; Oracle rejects the query (ORA-01719)
+	 * rather than evaluating the predicate as an ordinary filter, because
+	 * that would silently discard the NULL-extended rows the marker asks
+	 * for.
 	 */
 	foreach(lc, build.pending_filters)
 	{
@@ -3057,12 +3167,19 @@ transformOraJoinClause(ParseState *pstate, SelectStmt *stmt)
 			}
 		}
 
-		if (pe != NULL)
-			pe->join->quals = (Node *) makeBoolExpr(AND_EXPR,
-													list_make2(pe->join->quals, f->expr),
-													-1);
-		else
-			whereClause = lappend(whereClause, f->expr);
+		if (pe == NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("outer join operator (+) is not allowed here"),
+					 errdetail("*Cause: A predicate marked with (+) is the only one that "
+							   "references its table, so that table is outer-joined to "
+							   "nothing in this query block. "
+							   "*Action: Add a join condition between the marked table and "
+							   "another table, or remove the (+) operator.")));
+
+		pe->join->quals = (Node *) makeBoolExpr(AND_EXPR,
+												list_make2(pe->join->quals, f->expr),
+												-1);
 	}
 
 	/*
