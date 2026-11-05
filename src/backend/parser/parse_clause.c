@@ -3189,21 +3189,6 @@ transformOraJoinClause(ParseState *pstate, SelectStmt *stmt)
 	 */
 	stmt->ora_join_op_exists = false;
 
-	/*
-	 * transformFromClause() mutates the JoinExpr nodes it processes in place:
-	 * their larg/rarg are replaced by the RangeTblRefs that
-	 * transformFromClauseItem() returns, and j->rtindex is set.  Feed it a
-	 * copy and keep the raw, still-untransformed tree in stmt->fromClause.
-	 *
-	 * This matters when the statement is a FROM subquery of an enclosing
-	 * query block that uses (+) itself: that block's own rewrite runs
-	 * transformFromClause() a second time, which re-analyzes every FROM
-	 * subquery from a copy of this raw tree.  The copy must contain raw
-	 * JoinExprs with untransformed operands -- a RangeTblRef in a FROM item
-	 * is rejected by transformFromClauseItem() with "unrecognized node type"
-	 * -- and with the markers gone and the flag cleared, the tree this
-	 * routine produced transforms exactly like the grammar's output would.
-	 */
 	transformFromClause(pstate, (List *) copyObject(stmt->fromClause));
 }
 
