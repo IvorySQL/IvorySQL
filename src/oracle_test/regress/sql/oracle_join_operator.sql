@@ -549,6 +549,57 @@ DROP TABLE oj_e;
 DROP TABLE oj_d;
 DROP TABLE oj_l;
 
+-- REPEATED-ANALYSIS TESTS
+-- transformOraJoinClause() rewrites the (+) predicates into JoinExpr nodes
+-- and runs transformFromClause() a second time, which re-analyzes every FROM
+-- subquery.  Statements that get analyzed more than once -- a FROM subquery
+-- using (+) inside an outer query block that also uses (+), or a prepared
+-- statement on every EXECUTE -- must survive the second analysis unchanged.
+
+-- Test: outer (+) against a derived table whose own WHERE clause uses (+)
+SELECT t2.c2 AS t2_c2, s.t1_c2 AS s_c2
+FROM t2,
+     (SELECT t3.c2 AS t3_c2, t1.c2 AS t1_c2
+        FROM t3, t1 WHERE t3.c2 = t1.c1(+)) s
+WHERE t2.c3 = s.t3_c2(+)
+ORDER BY t2.c2;
+
+-- Test: derived table uses (+); the outer (+) targets a plain outer table
+SELECT t2.c2 AS t2_c2
+FROM t2, (SELECT t1.c1 AS c1 FROM t3, t1 WHERE t3.c2 = t1.c1(+)) s, t1
+WHERE t2.c3 = t1.c1(+)
+ORDER BY t2.c2;
+
+-- Test: (+) only inside the derived table; no outer rewrite must happen
+SELECT t2.c2 AS t2_c2, s.t1_c2 AS s_c2
+FROM t2,
+     (SELECT t3.c2 AS t3_c2, t1.c2 AS t1_c2
+        FROM t3, t1 WHERE t3.c2 = t1.c1(+)) s
+WHERE t2.c3 = s.t3_c2
+ORDER BY t2.c2;
+
+-- Test: (+) on both nesting levels, two levels deep
+SELECT o.c2 AS o_c2
+FROM t2 o,
+     (SELECT t3.c2 AS t3_c2
+        FROM t3,
+             (SELECT t1.c1 AS t1_c1 FROM t1, t2 WHERE t2.c3 = t1.c1(+)) inner_s
+        WHERE t3.c2 = inner_s.t1_c1(+)) s
+WHERE o.c3 = s.t3_c2(+)
+ORDER BY o.c2;
+
+-- Test: prepared statement using (+) is re-analyzed on every EXECUTE
+\set EXECUTE_RUN_PREPARE on
+PREPARE p_ora_join AS
+SELECT t2.c2 AS t2_c2, t1.c2 AS t1_c2
+FROM t2, t1
+WHERE t2.c3 = t1.c1(+)
+ORDER BY t2.c2;
+EXECUTE p_ora_join;
+EXECUTE p_ora_join;
+DEALLOCATE p_ora_join;
+\set EXECUTE_RUN_PREPARE off
+
 -- Clean up
 DROP FUNCTION t1_rows();
 
