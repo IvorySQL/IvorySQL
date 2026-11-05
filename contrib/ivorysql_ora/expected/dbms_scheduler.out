@@ -1419,6 +1419,52 @@ FROM user_scheduler_jobs WHERE job_name = 'REG_ALL_SCHED';
  t
 (1 row)
 
+-- OWNER is exposed as in Oracle, and a superuser sees every owner's jobs.
+SELECT COUNT(*) = 1 AS owner_matches
+FROM all_scheduler_jobs
+WHERE job_name = 'REG_ALL_SCHED' AND owner = current_user;
+ owner_matches 
+---------------
+ t
+(1 row)
+
+CREATE USER sched_all_u1;
+SET SESSION AUTHORIZATION sched_all_u1;
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_all_other', job_type => 'PLSQL_BLOCK',
+      job_action => 'BEGIN NULL; END;');
+END;
+/
+RESET SESSION AUTHORIZATION;
+SELECT COUNT(*) = 1 AS superuser_sees_other_owner
+FROM all_scheduler_jobs
+WHERE job_name = 'REG_ALL_OTHER' AND owner = 'sched_all_u1';
+ superuser_sees_other_owner 
+----------------------------
+ t
+(1 row)
+
+SET SESSION AUTHORIZATION sched_all_u1;
+SELECT COUNT(*) = 1 AS own_job_visible
+FROM all_scheduler_jobs WHERE job_name = 'REG_ALL_OTHER';
+ own_job_visible 
+-----------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 0 AS other_owner_hidden
+FROM all_scheduler_jobs WHERE job_name = 'REG_ALL_SCHED';
+ other_owner_hidden 
+--------------------
+ t
+(1 row)
+
+BEGIN
+  dbms_scheduler.drop_job('reg_all_other');
+END;
+/
+RESET SESSION AUTHORIZATION;
+DROP USER sched_all_u1;
 BEGIN
   dbms_scheduler.drop_job('reg_all_sched');
 END;

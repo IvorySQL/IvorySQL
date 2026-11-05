@@ -725,42 +725,57 @@ GRANT EXECUTE ON PACKAGE dbms_scheduler TO PUBLIC;
 -- user plus everything for a superuser, which is the closest honest reading of
 -- Oracle's "accessible to you".
 CREATE OR REPLACE VIEW sys.all_scheduler_jobs AS
-	SELECT job_name, job_id, program_owner, program_name, job_type, job_action,
-		   number_of_arguments, schedule_owner, schedule_name, start_date,
-		   repeat_interval, end_date, next_run_date, job_class, auto_drop,
-		   enabled, state, run_count, failure_count, last_start_date,
+	SELECT job_owner AS owner, job_name, job_id, program_owner, program_name,
+		   job_type, job_action, number_of_arguments, schedule_owner,
+		   schedule_name, start_date, repeat_interval, end_date, next_run_date,
+		   job_class, auto_drop, enabled, state, run_count, failure_count,
+		   last_start_date,
 		   (last_end_date - last_start_date) AS last_run_duration, comments
 	FROM sys.scheduler_jobs
-	WHERE job_owner = current_user::text;
+	WHERE job_owner = current_user::text
+	   OR (SELECT rolsuper FROM pg_catalog.pg_roles
+		   WHERE rolname = current_user);
 
 CREATE OR REPLACE VIEW sys.all_scheduler_programs AS
-	SELECT program_name, program_type, program_action, number_of_arguments,
-		   enabled, comments
+	SELECT program_owner AS owner, program_name, program_type, program_action,
+		   number_of_arguments, enabled, comments
 	FROM sys.scheduler_programs
-	WHERE program_owner = current_user::text;
+	WHERE program_owner = current_user::text
+	   OR (SELECT rolsuper FROM pg_catalog.pg_roles
+		   WHERE rolname = current_user);
 
 CREATE OR REPLACE VIEW sys.all_scheduler_program_args AS
-	SELECT program_name, argument_name, argument_position, argument_type,
-		   default_value, out_argument
+	SELECT program_owner AS owner, program_name, argument_name,
+		   argument_position, argument_type, default_value, out_argument
 	FROM sys.scheduler_program_args
-	WHERE program_owner = current_user::text;
+	WHERE program_owner = current_user::text
+	   OR (SELECT rolsuper FROM pg_catalog.pg_roles
+		   WHERE rolname = current_user);
 
 CREATE OR REPLACE VIEW sys.all_scheduler_schedules AS
-	SELECT schedule_name, start_date, repeat_interval, end_date, comments
+	SELECT schedule_owner AS owner, schedule_name, start_date, repeat_interval,
+		   end_date, comments
 	FROM sys.scheduler_schedules
-	WHERE schedule_owner = current_user::text;
+	WHERE schedule_owner = current_user::text
+	   OR (SELECT rolsuper FROM pg_catalog.pg_roles
+		   WHERE rolname = current_user);
 
 CREATE OR REPLACE VIEW sys.all_scheduler_job_args AS
-	SELECT job_name, argument_position, argument_value AS value
+	SELECT job_owner AS owner, job_name, argument_position,
+		   argument_value AS value
 	FROM sys.scheduler_job_args
-	WHERE job_owner = current_user::text;
+	WHERE job_owner = current_user::text
+	   OR (SELECT rolsuper FROM pg_catalog.pg_roles
+		   WHERE rolname = current_user);
 
 CREATE OR REPLACE VIEW sys.all_scheduler_job_run_details AS
-	SELECT log_id, log_date, job_name, job_id, status, error_no, error_message,
-		   req_start_date, actual_start_date, worker_pid AS slave_pid,
-		   run_duration
+	SELECT job_owner AS owner, log_id, log_date, job_name, job_id, status,
+		   error_no, error_message, req_start_date, actual_start_date,
+		   worker_pid AS slave_pid, run_duration
 	FROM sys.scheduler_job_run_details
-	WHERE job_owner = current_user::text;
+	WHERE job_owner = current_user::text
+	   OR (SELECT rolsuper FROM pg_catalog.pg_roles
+		   WHERE rolname = current_user);
 
 GRANT SELECT ON sys.all_scheduler_jobs TO PUBLIC;
 GRANT SELECT ON sys.all_scheduler_programs TO PUBLIC;
