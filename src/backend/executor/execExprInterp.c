@@ -5108,6 +5108,7 @@ ExecEvalJsonExprPath(ExprState *state, ExprEvalStep *op,
 					{
 						val_string = DatumGetCString(DirectFunctionCall1(jsonb_out,
 																		 JsonbPGetDatum(JsonbValueToJsonb(jbv))));
+						*op->resnull = false;
 					}
 					else if (jsexpr->use_json_coercion)
 					{
@@ -5116,6 +5117,7 @@ ExecEvalJsonExprPath(ExprState *state, ExprEvalStep *op,
 					}
 					else
 					{
+						/* ExecGetJsonValueItemString() sets *op->resnull. */
 						val_string = ExecGetJsonValueItemString(jbv, op->resnull);
 
 						/*
