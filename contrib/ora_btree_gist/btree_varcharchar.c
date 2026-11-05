@@ -107,7 +107,7 @@ static bool
 gbt_varcharchargt(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 {
 	(void) flinfo;		/* not used */
-	return DatumGetBool(DirectFunctionCall2Coll(bpchargt,
+	return DatumGetBool(DirectFunctionCall2Coll(text_gt,
 												collation,
 												PointerGetDatum(a),
 												PointerGetDatum(b)));
@@ -117,7 +117,7 @@ static bool
 gbt_varcharcharge(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 {
 	(void) flinfo;		/* not used */
-	return DatumGetBool(DirectFunctionCall2Coll(bpcharge,
+	return DatumGetBool(DirectFunctionCall2Coll(text_ge,
 												collation,
 												PointerGetDatum(a),
 												PointerGetDatum(b)));
@@ -127,7 +127,7 @@ static bool
 gbt_varcharchareq(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 {
 	(void) flinfo;		/* not used */
-	return DatumGetBool(DirectFunctionCall2Coll(bpchareq,
+	return DatumGetBool(DirectFunctionCall2Coll(texteq,
 												collation,
 												PointerGetDatum(a),
 												PointerGetDatum(b)));
@@ -137,7 +137,7 @@ static bool
 gbt_varcharcharle(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 {
 	(void) flinfo;		/* not used */
-	return DatumGetBool(DirectFunctionCall2Coll(bpcharle,
+	return DatumGetBool(DirectFunctionCall2Coll(text_le,
 												collation,
 												PointerGetDatum(a),
 												PointerGetDatum(b)));
@@ -147,7 +147,7 @@ static bool
 gbt_varcharcharlt(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 {
 	(void) flinfo;		/* not used */
-	return DatumGetBool(DirectFunctionCall2Coll(bpcharlt,
+	return DatumGetBool(DirectFunctionCall2Coll(text_lt,
 												collation,
 												PointerGetDatum(a),
 												PointerGetDatum(b)));
@@ -157,7 +157,7 @@ static int32
 gbt_varcharcharcmp(const void *a, const void *b, Oid collation, FmgrInfo *flinfo)
 {
 	(void) flinfo;		/* not used */
-	return DatumGetInt32(DirectFunctionCall2Coll(bpcharcmp,
+	return DatumGetInt32(DirectFunctionCall2Coll(bttextcmp,
 												 collation,
 												 PointerGetDatum(a),
 												 PointerGetDatum(b)));
