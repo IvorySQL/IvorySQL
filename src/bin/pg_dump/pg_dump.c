@@ -7329,10 +7329,11 @@ getPackages(Archive *fout, int *numPkgs)
 
 	appendPQExpBuffer(query,
 					"SELECT p.tableoid, p.pkgname, p.oid, p.pkgnamespace,"
-					"p.pkgowner,"
+					"r.rolname AS pkgowner,"
 					"p.pkgacl,"
 					"acldefault('P', p.pkgowner) AS acldefault "
 					"FROM pg_package p "
+					"LEFT JOIN pg_catalog.pg_roles r ON r.oid = p.pkgowner "
 					"LEFT JOIN pg_init_privs pip ON "
 					"(p.oid = pip.objoid "
 					"AND pip.classoid = 'pg_package'::regclass "
@@ -7366,15 +7367,23 @@ getPackages(Archive *fout, int *numPkgs)
 			findNamespace(atooid(PQgetvalue(res, i, i_pkgnamespace)));
 		pkginfo[i].rolname = pg_strdup(PQgetvalue(res, i, i_rolname));
 		pkginfo[i].pkgacl = pg_strdup(PQgetvalue(res, i, i_pkgacl));
+		pkginfo[i].dacl.acl = pkginfo[i].pkgacl;
 		pkginfo[i].dacl.acldefault = pg_strdup(PQgetvalue(res, i, i_acldefault));
 		pkginfo[i].dacl.privtype = 0;
 		pkginfo[i].dacl.initprivs = NULL;
 
 		/* Decide whether we want to dump it */
 		selectDumpableObject(&(pkginfo[i].dobj), fout);
-		/* Do not try to dump ACL if no ACL exists. */
-		if (!PQgetisnull(res, i, i_pkgacl))
-			pkginfo[i].dobj.dump &= ~DUMP_COMPONENT_ACL;
+
+		/*
+		 * Mark whether package has an ACL.  Packages that are not dumped (for
+		 * instance the ones created by initdb in the sys schema) must not emit
+		 * an ACL entry either, or the dump would grant privileges on an object
+		 * it never creates.
+		 */
+		if ((pkginfo[i].dobj.dump & DUMP_COMPONENT_DEFINITION) &&
+			!PQgetisnull(res, i, i_pkgacl))
+			pkginfo[i].dobj.components |= DUMP_COMPONENT_ACL;
 		if (strlen(pkginfo[i].rolname) == 0)
 			pg_log_warning("WARNING: owner of package \"%s\" appears to be invalid\n",
 					  pkginfo[i].dobj.name);
@@ -17129,6 +17138,9 @@ dumpDefaultACL(Archive *fout, const DefaultACLInfo *daclinfo)
 			break;
 		case DEFACLOBJ_NAMESPACE:
 			type = "SCHEMAS";
+			break;
+		case DEFACLOBJ_PACKAGE:
+			type = "PACKAGES";
 			break;
 		case DEFACLOBJ_LARGEOBJECT:
 			type = "LARGE OBJECTS";

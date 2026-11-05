@@ -226,6 +226,26 @@ my %tests = (
 		regexp => qr/^DROP PACKAGE IF EXISTS public.test_pkg;/m,
 		like   => { clean_if_exists => 1, },
 	},
+
+	'ALTER DEFAULT PRIVILEGES GRANT ALL ON PACKAGES' => {
+		create_order => 7,
+		create_sql   =>
+			'CREATE ROLE regress_dump_test_role;
+			ALTER DEFAULT PRIVILEGES
+				GRANT ALL ON PACKAGES TO regress_dump_test_role;',
+		regexp =>
+			qr/^ALTER DEFAULT PRIVILEGES FOR ROLE (?:"[^"]+"|\S+) GRANT ALL ON PACKAGES TO regress_dump_test_role;/m,
+		like => { %full_runs, },
+	},
+
+	'GRANT EXECUTE ON PACKAGE test_pkg' => {
+		create_order => 8,
+		create_sql   =>
+			'GRANT EXECUTE ON PACKAGE test_pkg TO regress_dump_test_role;',
+		regexp =>
+			qr/^GRANT ALL ON PACKAGE public\.test_pkg TO regress_dump_test_role;/m,
+		like => { %full_runs, },
+	},
 );
 
 #########################################
