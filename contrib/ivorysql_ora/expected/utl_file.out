@@ -363,6 +363,47 @@ NOTICE:  f.datatype = 1
 NOTICE:  >>🚀 Rocket and 💡 Idea<<
 NOTICE:  >> € / ¥ / ₿<<
 NOTICE:  >>۱۲۳۴۵۶۷۸۹۰ — Multilingual: مرحبا, 你好, Привет<<
+-- #3034: a failed FOPEN (for example the 50-open-file limit) must NOT
+-- truncate or otherwise modify an existing file. Oracle UTL_FILE keeps the
+-- target untouched when the open fails; previously fopen(..., "w") truncated
+-- the file before the slot reservation could fail.
+declare
+	f UTL_FILE.FILE_TYPE;
+	target text := 'regress_3034.txt';
+	filler text := 'regress_3034_filler.txt';
+	fexists boolean;
+	file_length number;
+	block_size integer;
+begin
+	-- start from a clean slot state
+	utl_file.fclose_all();
+	-- create target with known content
+	f := utl_file.fopen('data_directory', target, 'w');
+	utl_file.put_line(f, 'ORIGINAL-CONTENT-MUST-SURVIVE');
+	utl_file.fclose(f);
+	-- fill all 50 slots by repeatedly opening the filler file
+	for i in 1..50 loop
+		f := utl_file.fopen('data_directory', filler, 'w');
+	end loop;
+	-- reopening the target with 'w' must fail (limit reached) WITHOUT
+	-- truncating the existing target file
+	begin
+		f := utl_file.fopen('data_directory', target, 'w');
+		raise notice 'ERROR: fopen succeeded despite 50 open files';
+		utl_file.fclose(f);
+	exception
+		when others then
+			raise notice 'fopen failed as expected: %', sqlerrm;
+	end;
+	utl_file.fgetattr('data_directory', target, fexists, file_length, block_size);
+	raise notice 'target preserved (exists and non-empty) = %', (fexists and file_length > 0);
+	utl_file.fclose_all();
+	begin utl_file.fremove('data_directory', filler); exception when others then null; end;
+	begin utl_file.fremove('data_directory', target); exception when others then null; end;
+end;
+/
+NOTICE:  fopen failed as expected: program limit exceeded
+NOTICE:  target preserved (exists and non-empty) = t
 -- clean up
 delete from sys.utl_file_directory where dirname = 'data_directory';
 /
