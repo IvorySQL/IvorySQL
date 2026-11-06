@@ -402,6 +402,8 @@ typedef struct ProjectionInfo
 	ExprContext *pi_exprContext;
 	/* true if projection contains volatile exprs like ROWNUM that need materialization */
 	bool		pi_needsMaterialization;
+	/* true if ROWNUM in this projection numbers the owning node's output rows */
+	bool		pi_rownum_by_node;
 } ProjectionInfo;
 
 /* ----------------
@@ -1257,6 +1259,14 @@ typedef struct PlanState
 	TupleTableSlot *ps_ResultTupleSlot; /* slot for my result tuples */
 	ExprContext *ps_ExprContext;	/* node's expression-evaluation context */
 	ProjectionInfo *ps_ProjInfo;	/* info for doing tuple projection */
+
+	/*
+	 * Oracle ROWNUM counter for nodes such as joins, whose result rows are
+	 * produced by a projection instead of a scan.  ExecProject() advances it
+	 * once per output row when the projection has pi_rownum_by_node set, and
+	 * it is reset on rescan.  Scans keep using EState.es_rownum.
+	 */
+	int64		ps_rownum;
 
 	bool		async_capable;	/* true if node is async-capable */
 

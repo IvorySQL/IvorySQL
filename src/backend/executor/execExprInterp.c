@@ -3369,6 +3369,22 @@ ExecEvalRownum(ExprState *state, ExprEvalStep *op)
 	}
 
 	/*
+	 * When ROWNUM is evaluated by a projection that numbers its own output
+	 * rows (currently a join's target list, see ExecBuildProjectionInfo), use
+	 * the node-level counter maintained by ExecProject().  The estate-level
+	 * counter below is still used for quals and all other expressions.
+	 */
+	if (planstate != NULL &&
+		planstate->ps_ProjInfo != NULL &&
+		planstate->ps_ProjInfo->pi_rownum_by_node &&
+		state == &planstate->ps_ProjInfo->pi_state)
+	{
+		*op->resvalue = Int64GetDatum(planstate->ps_rownum);
+		*op->resnull = false;
+		return;
+	}
+
+	/*
 	 * Use the estate-level ROWNUM counter.
 	 * When ROWNUM appears in a SELECT list, materialization (handled in
 	 * ExecScanExtended) ensures the value is captured and not re-evaluated.

@@ -562,6 +562,20 @@ ExecBuildProjectionInfo(List *targetList,
 	 */
 	projInfo->pi_needsMaterialization = targetlist_contains_rownum(targetList);
 
+	/*
+	 * ROWNUM numbers the rows returned by the query block it appears in.  For
+	 * a join, the projection is what produces each output row, and no scan
+	 * advances the estate-level counter there; without a counter of its own
+	 * ROWNUM would just repeat the value left behind by the last scan.  Flag
+	 * such projections so ExecProject() numbers their output rows itself.
+	 */
+	projInfo->pi_rownum_by_node =
+		projInfo->pi_needsMaterialization &&
+		parent != NULL && parent->plan != NULL &&
+		(IsA(parent->plan, NestLoop) ||
+		 IsA(parent->plan, MergeJoin) ||
+		 IsA(parent->plan, HashJoin));
+
 	return projInfo;
 }
 

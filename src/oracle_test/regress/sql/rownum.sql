@@ -299,6 +299,21 @@ SELECT * FROM (
     ORDER BY e.value DESC
 ) sub WHERE rn <= 4;
 
+-- ROWNUM in a join's select list numbers the join's output rows: the row
+-- source of the query block is the join itself, so the values run 1..N in
+-- join order (Oracle semantics).  These cases are deterministic.
+SELECT ROWNUM as rn, a.x, b.y
+FROM (VALUES (1), (2), (3)) a(x)
+CROSS JOIN (VALUES (1), (2), (3)) b(y);
+
+SELECT ROWNUM as rn, a.x, b.y
+FROM (VALUES (1), (2), (3)) a(x)
+LEFT JOIN (VALUES (1), (2), (3)) b(y) ON a.x = b.y + 100;
+
+SELECT ROWNUM as rn, a.x, b.y
+FROM (VALUES (1), (2)) a(x)
+JOIN (VALUES (1), (2)) b(y) ON a.x = b.y;
+
 -- Test that ROWNUM is materialized (not re-evaluated in outer query)
 -- This tests the materialization fix
 SELECT rn, id, name FROM (
