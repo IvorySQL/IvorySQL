@@ -379,8 +379,6 @@ static time_t AbortStartTime = 0;
 /* Length of said timeout */
 #define SIGKILL_CHILDREN_AFTER_SECS		5
 
-static bool ReachedNormalRunning = false;	/* T if we've reached PM_RUN */
-
 bool		ClientAuthInProgress = false;	/* T during new-client
 											 * authentication */
 
@@ -442,6 +440,7 @@ static void process_pm_shutdown_request(void);
 static void dummy_handler(SIGNAL_ARGS);
 static void CleanupBackend(PMChild *bp, int exitstatus);
 static void HandleChildCrash(int pid, int exitstatus, const char *procname);
+static void HandleFatalError(QuitSignalReason reason, bool consider_sigabrt);
 static void LogChildExit(int lev, const char *procname,
 						 int pid, int exitstatus);
 static void PostmasterStateMachine(void);
@@ -2445,8 +2444,25 @@ process_pm_child_exit(void)
 				}
 				else
 					StartupStatus = STARTUP_CRASHED;
-				HandleChildCrash(pid, exitstatus,
-								 _("startup process"));
+
+				/*
+				 * If FatalError is already set, we are reinitializing after a
+				 * previous crash, and HandleChildCrash() would do nothing,
+				 * leaving the state machine stuck at PM_STARTUP.  Give up,
+				 * signal the remaining children and head for PM_NO_CHILDREN,
+				 * where STARTUP_CRASHED makes us exit.
+				 */
+				if (StartupStatus == STARTUP_CRASHED &&
+					FatalError && Shutdown != ImmediateShutdown)
+				{
+					LogChildExit(LOG, _("startup process"), pid, exitstatus);
+					ereport(LOG,
+							(errmsg("aborting startup due to startup process failure")));
+					HandleFatalError(PMQUIT_FOR_CRASH, true);
+				}
+				else
+					HandleChildCrash(pid, exitstatus,
+									 _("startup process"));
 				continue;
 			}
 
@@ -2456,7 +2472,6 @@ process_pm_child_exit(void)
 			StartupStatus = STARTUP_NOT_RUNNING;
 			FatalError = false;
 			AbortStartTime = 0;
-			ReachedNormalRunning = true;
 			UpdatePMState(PM_RUN);
 			connsAllowed = true;
 
@@ -2837,15 +2852,13 @@ CleanupBackend(PMChild *bp,
  * happened. Commonly the caller will have logged the reason for entering
  * FatalError state.
  *
- * This should only be called when not already in FatalError or
- * ImmediateShutdown state.
+ * This should only be called when not already in ImmediateShutdown state.
  */
 static void
 HandleFatalError(QuitSignalReason reason, bool consider_sigabrt)
 {
 	int			sigtosend;
 
-	Assert(!FatalError);
 	Assert(Shutdown != ImmediateShutdown);
 
 	SetQuitSignalReason(reason);
@@ -3119,11 +3132,6 @@ PostmasterStateMachine(void)
 			remainMask = btmask_add(remainMask,
 									B_INVALID,
 									B_STANDALONE_BACKEND);
-
-			/* also add data checksums processes */
-			remainMask = btmask_add(remainMask,
-									B_DATACHECKSUMSWORKER_LAUNCHER,
-									B_DATACHECKSUMSWORKER_WORKER);
 
 			/* All types should be included in targetMask or remainMask */
 			Assert((remainMask.mask | targetMask.mask) == BTYPE_MASK_ALL.mask);

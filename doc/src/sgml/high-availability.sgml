@@ -920,7 +920,10 @@ primary_conninfo = 'host=192.168.1.50 port=5432 user=foo password=foopass'
      <structname>pg_stat_wal_receiver</structname></link> view.  A large
      difference between <function>pg_last_wal_replay_lsn</function> and the
      view's <literal>flushed_lsn</literal> indicates that WAL is being
-     received faster than it can be replayed.
+     received faster than it can be replayed.  Recovery state and replay
+     progress can also be monitored via the
+     <link linkend="monitoring-pg-stat-recovery-view">
+     <structname>pg_stat_recovery</structname></link> view.
     </para>
    </sect3>
   </sect2>
@@ -1406,9 +1409,9 @@ synchronous_standby_names = 'ANY 2 (s1, s2, s3)'
    </para>
 
    <para>
-    This is achieved by the following steps.  After performing write
-    operations, the application retrieves the current WAL location using a
-    function call like this.
+    This is achieved by the following steps.  Once the write transaction
+    has committed, the application retrieves a WAL location from the
+    primary using a function call like this.
 
 <programlisting>
 postgres=# SELECT pg_current_wal_insert_lsn();
@@ -1423,7 +1426,7 @@ postgres=# SELECT pg_current_wal_insert_lsn();
     The <acronym>LSN</acronym> obtained from the primary is then communicated
     to the standby server. This can be managed at the application level or
     via the connection pooler.  On the standby, the application issues the
-    <xref linkend="sql-wait-for"/> command to block further processing until
+    <xref linkend="sql-wait"/> command to block further processing until
     the standby's WAL replay process reaches (or exceeds) the specified
     <acronym>LSN</acronym>.
 
@@ -1435,8 +1438,9 @@ postgres=# WAIT FOR LSN '0/306EE20';
 (1 row)
 </programlisting>
     Once the command returns a status of success, it guarantees that all
-    changes up to the provided <acronym>LSN</acronym> have been applied,
-    ensuring that subsequent read queries will reflect the latest updates.
+    changes up to the provided <acronym>LSN</acronym> have been applied.
+    Therefore, if that <acronym>LSN</acronym> was retrieved from the primary
+    after the commit, subsequent read queries will reflect those updates.
    </para>
   </sect2>
 
@@ -1801,9 +1805,11 @@ postgres=# WAIT FOR LSN '0/306EE20';
     (In server versions before 14, the <varname>in_hot_standby</varname>
     parameter did not exist; a workable substitute method for older servers
     is <command>SHOW transaction_read_only</command>.)  In addition, a set of
-    functions (<xref linkend="functions-recovery-info-table"/>) allow users to
-    access information about the standby server. These allow you to write
-    programs that are aware of the current state of the database. These
+    functions (<xref linkend="functions-recovery-info-table"/>) and the
+    <link linkend="monitoring-pg-stat-recovery-view">
+    <structname>pg_stat_recovery</structname></link> view allow users to
+    access information about the standby server. These facilities allow you to
+    write programs that are aware of the current state of the database. They
     can be used to monitor the progress of recovery, or to allow you to
     write complex programs that restore the database to particular states.
    </para>

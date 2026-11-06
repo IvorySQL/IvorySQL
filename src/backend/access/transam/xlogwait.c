@@ -54,11 +54,13 @@
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "replication/walreceiver.h"
+#include "storage/ipc.h"
 #include "storage/latch.h"
 #include "storage/proc.h"
 #include "storage/shmem.h"
 #include "storage/subsystems.h"
 #include "utils/fmgrprotos.h"
+#include "utils/injection_point.h"
 #include "utils/pg_lsn.h"
 #include "utils/snapmgr.h"
 #include "utils/wait_event.h"
@@ -69,8 +71,12 @@ static int	waitlsn_cmp(const pairingheap_node *a, const pairingheap_node *b,
 
 struct WaitLSNState *waitLSNState = NULL;
 
+static bool waitLSNShmemExitRegistered = false;
+
 static void WaitLSNShmemRequest(void *arg);
 static void WaitLSNShmemInit(void *arg);
+static void WaitLSNShmemExit(int code, Datum arg);
+static void RegisterWaitLSNShmemExit(void);
 
 const ShmemCallbacks WaitLSNShmemCallbacks = {
 	.request_fn = WaitLSNShmemRequest,
@@ -234,6 +240,8 @@ addLSNWaiter(XLogRecPtr lsn, WaitLSNType lsnType)
 	updateMinWaitedLSN(lsnType);
 
 	LWLockRelease(WaitLSNLock);
+
+	INJECTION_POINT("wait-for-lsn-after-register", NULL);
 }
 
 /*
@@ -246,6 +254,15 @@ deleteLSNWaiter(WaitLSNType lsnType)
 	int			i = (int) lsnType;
 
 	Assert(i >= 0 && i < WAIT_LSN_TYPE_COUNT);
+
+	/*
+	 * Avoid taking WaitLSNLock if a waker has already removed us.  Only this
+	 * backend can set inHeap; other processes can only clear it.  Therefore
+	 * false is conclusive, while a stale true is harmless because it is
+	 * rechecked under WaitLSNLock below.
+	 */
+	if (!procInfo->inHeap)
+		return;
 
 	LWLockAcquire(WaitLSNLock, LW_EXCLUSIVE);
 
@@ -365,16 +382,39 @@ WaitLSNWakeup(WaitLSNType lsnType, XLogRecPtr currentLSN)
 void
 WaitLSNCleanup(void)
 {
+	/*
+	 * deleteLSNWaiter() starts with the same lockless inHeap check, so
+	 * calling it unconditionally costs nothing when this process isn't
+	 * waiting.  Its lsnType is then unused, and reading it is harmless in any
+	 * case: an entry that was never used is zeroed, which is a valid
+	 * WaitLSNType.
+	 */
 	if (waitLSNState)
+		deleteLSNWaiter(waitLSNState->procInfos[MyProcNumber].lsnType);
+}
+
+/*
+ * Exit callback to clean up any LSN wait state left behind if this process
+ * exits while waiting.  Transaction abort paths call WaitLSNCleanup()
+ * directly.
+ */
+static void
+WaitLSNShmemExit(int code, Datum arg)
+{
+	WaitLSNCleanup();
+}
+
+/*
+ * Register shared-memory exit cleanup once per process.  A backend may
+ * execute WAIT FOR LSN more than once.
+ */
+static void
+RegisterWaitLSNShmemExit(void)
+{
+	if (!waitLSNShmemExitRegistered)
 	{
-		/*
-		 * We do a fast-path check of the inHeap flag without the lock.  This
-		 * flag is set to true only by the process itself.  So, it's only
-		 * possible to get a false positive.  But that will be eliminated by a
-		 * recheck inside deleteLSNWaiter().
-		 */
-		if (waitLSNState->procInfos[MyProcNumber].inHeap)
-			deleteLSNWaiter(waitLSNState->procInfos[MyProcNumber].lsnType);
+		on_shmem_exit(WaitLSNShmemExit, 0);
+		waitLSNShmemExitRegistered = true;
 	}
 }
 
@@ -400,9 +440,10 @@ WaitLSNTypeRequiresRecovery(WaitLSNType t)
  * or replica got promoted before the target LSN reached.
  */
 WaitLSNResult
-WaitForLSN(WaitLSNType lsnType, XLogRecPtr targetLSN, int64 timeout)
+WaitForLSN(WaitLSNType lsnType, XLogRecPtr targetLSN, int timeout)
 {
 	XLogRecPtr	currentLSN;
+	WaitLSNProcInfo *procInfo;
 	TimestampTz endtime = 0;
 	int			wake_events = WL_LATCH_SET | WL_POSTMASTER_DEATH;
 
@@ -411,6 +452,16 @@ WaitForLSN(WaitLSNType lsnType, XLogRecPtr targetLSN, int64 timeout)
 
 	/* Should have a valid proc number */
 	Assert(MyProcNumber >= 0 && MyProcNumber < MaxBackends + NUM_AUXILIARY_PROCS);
+
+	procInfo = &waitLSNState->procInfos[MyProcNumber];
+
+	/*
+	 * Ensure cleanup is registered before publishing our waiter entry.
+	 * on_shmem_exit callbacks run in reverse registration order, so this
+	 * callback runs before the earlier-registered ProcKill() and removes the
+	 * entry before our PGPROC slot can be reused.
+	 */
+	RegisterWaitLSNShmemExit();
 
 	if (timeout > 0)
 	{
@@ -437,10 +488,18 @@ WaitForLSN(WaitLSNType lsnType, XLogRecPtr targetLSN, int64 timeout)
 		if (WaitLSNTypeRequiresRecovery(lsnType) && !RecoveryInProgress())
 		{
 			/*
-			 * Recovery was ended, but check if target LSN was already
+			 * Recovery has ended, but check if target LSN was already
 			 * reached.
 			 */
 			deleteLSNWaiter(lsnType);
+
+			/*
+			 * Recovery may have advanced the current position after
+			 * currentLSN was read above.  Once RecoveryInProgress() returns
+			 * false, the final position is stable, so read it again before
+			 * deciding whether promotion reached the target.
+			 */
+			currentLSN = GetCurrentLSNForWaitType(lsnType);
 
 			if (PromoteIsTriggered() && targetLSN <= currentLSN)
 				return WAIT_LSN_RESULT_SUCCESS;
@@ -453,14 +512,44 @@ WaitForLSN(WaitLSNType lsnType, XLogRecPtr targetLSN, int64 timeout)
 				break;
 		}
 
+		CHECK_FOR_INTERRUPTS();
+
+		/*
+		 * The target is not reached.  Normally we remain in the waiters heap
+		 * and can sleep again.  A wakeup can become stale, however, if the
+		 * position moves backwards after the waker removed us.  That happens
+		 * with the walreceiver-tracked positions: when streaming starts on a
+		 * new timeline, or after receiveStart was reset,
+		 * RequestXLogStreaming() re-seeds writtenUpto and flushedUpto with
+		 * the requested start position, which can be below what was published
+		 * before.  Re-register in that case and reread the position, since an
+		 * advance between the previous read and the re-add could not have
+		 * woken us.
+		 *
+		 * A wakeup that goes stale again sends us around the loop once more,
+		 * so interrupts are processed before we re-register: however often
+		 * that repeats, the wait stays cancellable.  Repeating requires a
+		 * fresh wakeup, hence the position reaching the target and falling
+		 * back below it, so it follows streaming restarts rather than burning
+		 * CPU.  The deadline is checked on every iteration that goes on to
+		 * sleep, which is the only place it matters.
+		 *
+		 * It is safe to read inHeap without the lock because only this
+		 * process sets it true.  If a waker clears it concurrently, it also
+		 * sets our latch, so we will recheck and re-register if necessary.
+		 */
+		if (!procInfo->inHeap)
+		{
+			addLSNWaiter(targetLSN, lsnType);
+			continue;
+		}
+
 		if (timeout > 0)
 		{
 			delay_ms = TimestampDifferenceMilliseconds(GetCurrentTimestamp(), endtime);
 			if (delay_ms <= 0)
 				break;
 		}
-
-		CHECK_FOR_INTERRUPTS();
 
 		rc = WaitLatch(MyLatch, wake_events, delay_ms,
 					   WaitLSNWaitEvents[lsnType]);
@@ -479,9 +568,10 @@ WaitForLSN(WaitLSNType lsnType, XLogRecPtr targetLSN, int64 timeout)
 	}
 
 	/*
-	 * Delete our process from the shared memory heap.  We might already be
-	 * deleted by the startup process.  The 'inHeap' flags prevents us from
-	 * the double deletion.
+	 * A progress waker, such as the startup process during WAL replay, may
+	 * already have removed this waiter through WaitLSNWakeup() before setting
+	 * its latch.  The inHeap flag makes this cleanup safe whether or not the
+	 * entry remains in the heap.
 	 */
 	deleteLSNWaiter(lsnType);
 

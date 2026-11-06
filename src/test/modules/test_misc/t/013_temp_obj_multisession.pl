@@ -36,6 +36,10 @@ my $psql1 = $node->background_psql('postgres');
 # masked by an index scan that would hit ReadBuffer_common from nbtree.
 $psql1->query_safe(q(CREATE TEMP TABLE foo AS SELECT 42 AS val;));
 
+# Also create an empty table, so read path go straight through the
+# extend-relation entry point.
+$psql1->query_safe(q(CREATE TEMP TABLE empty_foo (val INT);));
+
 # Resolve the owner's temp schema so the probing session can refer to
 # the table by a fully-qualified name.
 my $tempschema = $node->safe_psql(
@@ -65,6 +69,18 @@ like(
 	$stderr,
 	qr/cannot access temporary tables of other sessions/,
 	'SELECT (seqscan via read_stream)');
+
+# INSERT into empty table goes through hio.c which calls RelationAddBlocks() to
+# extend the table; that hits the check before new pages are created for the
+# table.
+$node->psql(
+	'postgres',
+	"INSERT INTO $tempschema.empty_foo VALUES (42);",
+	stderr => \$stderr);
+like(
+	$stderr,
+	qr/cannot access temporary tables of other sessions/,
+	'INSERT (caught via hio.c)');
 
 # INSERT goes through hio.c which calls ReadBufferExtended() to find a
 # page with free space; that hits the existing check before any data

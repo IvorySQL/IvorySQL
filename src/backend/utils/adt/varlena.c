@@ -3144,7 +3144,7 @@ SplitDirectoriesString(char *rawstring, char separator,
  * However, it's not clear that having one function with a bunch of option
  * flags would be much better.
  *
- * XXX there is a version of this function in src/bin/pg_dump/dumputils.c.
+ * XXX there is a version of this function in src/fe_utils/string_utils.c.
  * Be sure to update that if you have to change this.
  *
  * Inputs:
@@ -5047,7 +5047,18 @@ text_right(PG_FUNCTION_ARGS)
 	int			off;
 
 	if (n < 0)
-		n = -n;
+	{
+		/*
+		 * Negating PG_INT32_MIN would overflow, so clamp instead.  Any n
+		 * whose absolute value is at least the string's length skips the
+		 * whole string, and len can't exceed PG_INT32_MAX, so this is
+		 * equivalent.
+		 */
+		if (unlikely(n == PG_INT32_MIN))
+			n = PG_INT32_MAX;
+		else
+			n = -n;
+	}
 	else
 		n = pg_mbstrlen_with_len(p, len) - n;
 	off = pg_mbcharcliplen(p, len, n);
@@ -5637,6 +5648,20 @@ rest_of_char_same(const char *s1, const char *s2, int len)
 			return false;
 	}
 	return true;
+}
+
+/*
+ * Helper function for checking return value of Levenshtein distance functions.
+ * We calculate it as an int64, but the distance functions return an int32.
+ */
+static inline int
+levenshtein_result(int64 res)
+{
+	if (unlikely(res < PG_INT32_MIN || res > PG_INT32_MAX))
+		ereport(ERROR,
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+				 errmsg("levenshtein distance out of range")));
+	return res;
 }
 
 /* Expand each Levenshtein distance variant */

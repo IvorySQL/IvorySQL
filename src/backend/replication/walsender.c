@@ -384,6 +384,9 @@ WalSndErrorCleanup(void)
 	if (xlogreader != NULL && xlogreader->seg.ws_file >= 0)
 		wal_segment_close(xlogreader);
 
+	xlogreader = NULL;
+	logical_decoding_ctx = NULL;
+
 	if (MyReplicationSlot != NULL)
 		ReplicationSlotRelease();
 
@@ -1016,6 +1019,9 @@ StartReplication(StartReplicationCmd *cmd)
 		Assert(streamingDoneSending && streamingDoneReceiving);
 	}
 
+	XLogReaderFree(xlogreader);
+	xlogreader = NULL;
+
 	if (cmd->slotname)
 		ReplicationSlotRelease();
 
@@ -1356,7 +1362,9 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 		 * logical decoding context.
 		 */
 		EnsureLogicalDecodingEnabled();
-		Assert(IsLogicalDecodingEnabled());
+
+		/* See the comment in create_logical_replication_slot() */
+		Assert(RecoveryInProgress() || IsLogicalDecodingEnabled());
 
 		ctx = CreateInitDecodingContext(cmd->plugin, NIL, need_full_snapshot,
 										false,
@@ -1583,6 +1591,8 @@ StartLogicalReplication(StartReplicationCmd *cmd)
 	WalSndLoop(XLogSendLogical);
 
 	FreeDecodingContext(logical_decoding_ctx);
+	logical_decoding_ctx = NULL;
+	xlogreader = NULL;
 	ReplicationSlotRelease();
 
 	replication_active = false;
@@ -2120,6 +2130,9 @@ exec_replication_command(const char *cmd_string)
 
 	CHECK_FOR_INTERRUPTS();
 
+	Assert(xlogreader == NULL);
+	Assert(logical_decoding_ctx == NULL);
+
 	/*
 	 * Prepare to parse and execute the command.
 	 *
@@ -2277,7 +2290,6 @@ exec_replication_command(const char *cmd_string)
 				/* dupe, but necessary per libpqrcv_endstreaming */
 				EndReplicationCommand(cmdtag);
 
-				Assert(xlogreader != NULL);
 				break;
 			}
 
@@ -2877,7 +2889,30 @@ ProcessStandbyPSRequestMessage(void)
 	nextFullXid = ReadNextFullTransactionId();
 	fullOldestXidInCommit = FullTransactionIdFromAllowableAt(nextFullXid,
 															 oldestXidInCommit);
-	lsn = GetXLogWriteRecPtr();
+
+	/*
+	 * Report the end of the last inserted WAL record rather than the WAL
+	 * write position.  A transaction that commits asynchronously (with
+	 * synchronous_commit = off) clears DELAY_CHKPT_IN_COMMIT without flushing
+	 * its commit record, so it is visible to neither the in-commit scan above
+	 * nor a write position that has not yet reached its commit record.  The
+	 * subscriber waits until it has applied and flushed up to the reported
+	 * position before advancing its non-removable transaction ID, so the
+	 * reported position must cover every transaction that has already
+	 * committed, as each of those already carries a commit timestamp earlier
+	 * than this reply.  A transaction's commit timestamp is written as part
+	 * of its commit record, so it cannot have committed without that record
+	 * already being at or before the insert position.  A transaction that has
+	 * determined its commit timestamp but not yet inserted the record is
+	 * still in the commit phase, and so is reported by the in-commit scan
+	 * above.
+	 *
+	 * GetXLogInsertEndRecPtr() is used rather than GetXLogInsertRecPtr()
+	 * because the latter can return a position past the page header when the
+	 * last record ends at a page boundary, which can never match a record end
+	 * and would needlessly stall the subscriber's wait.
+	 */
+	lsn = GetXLogInsertEndRecPtr();
 
 	elog(DEBUG2, "sending primary status");
 

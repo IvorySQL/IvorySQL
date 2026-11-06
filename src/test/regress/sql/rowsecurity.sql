@@ -276,6 +276,10 @@ SELECT * FROM document NATURAL JOIN category WHERE f_leak(dtitle) ORDER BY did;
 SELECT * FROM document TABLESAMPLE BERNOULLI(50) REPEATABLE(0)
   WHERE f_leak(dtitle) ORDER BY did;
 
+-- a rel with RLS quals can still be removed by outer-join removal
+EXPLAIN (COSTS OFF)
+SELECT c.cid FROM category c LEFT JOIN document d ON c.cid = d.did;
+
 -- viewpoint from regress_rls_carol
 SET SESSION AUTHORIZATION regress_rls_carol;
 SELECT * FROM document WHERE f_leak(dtitle) ORDER BY did;
@@ -1851,8 +1855,10 @@ COPY copy_t FROM STDIN; --ok
 SET SESSION AUTHORIZATION regress_rls_bob;
 SET row_security TO OFF;
 COPY copy_t FROM STDIN; --fail - would be affected by RLS.
+\.
 SET row_security TO ON;
 COPY copy_t FROM STDIN; --fail - COPY FROM not supported by RLS.
+\.
 
 -- Check COPY FROM as user with permissions and BYPASSRLS
 SET SESSION AUTHORIZATION regress_rls_exempt_user;
@@ -1868,8 +1874,10 @@ COPY copy_t FROM STDIN; --ok
 SET SESSION AUTHORIZATION regress_rls_carol;
 SET row_security TO OFF;
 COPY copy_t FROM STDIN; --fail - permission denied.
+\.
 SET row_security TO ON;
 COPY copy_t FROM STDIN; --fail - permission denied.
+\.
 
 RESET SESSION AUTHORIZATION;
 DROP TABLE copy_t;
@@ -2365,7 +2373,7 @@ DROP USER regress_rls_dob_role2;
 CREATE TABLE ref_tbl (a int);
 INSERT INTO ref_tbl VALUES (1);
 
-CREATE TABLE rls_tbl (a int);
+CREATE TABLE rls_tbl (a int PRIMARY KEY);
 INSERT INTO rls_tbl VALUES (10);
 ALTER TABLE rls_tbl ENABLE ROW LEVEL SECURITY;
 CREATE POLICY p1 ON rls_tbl USING (EXISTS (SELECT 1 FROM ref_tbl));
@@ -2378,9 +2386,24 @@ ALTER VIEW rls_view OWNER TO regress_rls_bob;
 GRANT SELECT ON rls_view TO regress_rls_alice;
 
 SET SESSION AUTHORIZATION regress_rls_alice;
+
 SELECT * FROM ref_tbl; -- Permission denied
 SELECT * FROM rls_tbl; -- Permission denied
 SELECT * FROM rls_view; -- OK
+EXPLAIN (COSTS OFF) -- check that RLS enforcement is actually happening
+SELECT * FROM rls_view;
+
+-- Use the same view+table to test interaction of SJE with RLS
+SET enable_self_join_elimination = on;
+-- We can do SJE here, although presently an unused InitPlan survives
+EXPLAIN (COSTS OFF)
+SELECT * FROM rls_view r1, rls_view r2 WHERE r1.a = r2.a;
+SET SESSION AUTHORIZATION regress_rls_bob;
+-- No SJE here, because the two rls_tbl RTEs have different checkAsUser values
+EXPLAIN (COSTS OFF)
+SELECT * FROM rls_tbl r1, rls_view r2 WHERE r1.a = r2.a;
+
+RESET enable_self_join_elimination;
 RESET SESSION AUTHORIZATION;
 
 DROP VIEW rls_view;

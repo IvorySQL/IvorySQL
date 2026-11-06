@@ -38,9 +38,12 @@ test: fk-snapshot
 test: fk-snapshot-2
 test: fk-snapshot-3
 test: fk-concurrent-pk-upd
+test: fk-crosstype-recheck
+test: fk-fastpath-null-key
 test: subxid-overflow
 test: eval-plan-qual
 test: eval-plan-qual-trigger
+test: eval-plan-qual-partition-prune
 test: inplace-inval
 test: intra-grant-inplace
 test: intra-grant-inplace-db
@@ -56,6 +59,7 @@ test: insert-conflict-do-update-3
 test: insert-conflict-do-update-4
 test: insert-conflict-specconflict
 test: insert-conflict-do-select
+test: insert-conflict-serializable
 test: merge-insert-update
 test: merge-delete
 test: merge-update
@@ -114,8 +118,6 @@ test: partition-key-update-1
 test: partition-key-update-2
 test: partition-key-update-3
 test: partition-key-update-4
-test: partition-merge
-test: partition-split
 test: plpgsql-toast
 test: cluster-conflict
 test: cluster-conflict-partition
@@ -126,5 +128,7 @@ test: serializable-parallel-2
 test: serializable-parallel-3
 test: matview-write-skew
 test: lock-nowait
-test: for-portion-of
 test: ddl-dependency-locking
+test: tablespace-dependency-locking
+test: pub-concurrent-drop
+test: drop-owned-grant

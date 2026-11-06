@@ -395,19 +395,19 @@ errdetail_apply_conflict(EState *estate, ResultRelInfo *relinfo,
 			if (localts)
 			{
 				if (localorigin == InvalidReplOriginId)
-					appendStringInfo(&err_detail, _("The row to be updated was deleted locally in transaction %u at %s"),
+					appendStringInfo(&err_detail, _("The row to be updated was deleted locally in transaction %u at %s."),
 									 localxmin, timestamptz_to_str(localts));
 				else if (replorigin_by_oid(localorigin, true, &origin_name))
-					appendStringInfo(&err_detail, _("The row to be updated was deleted by a different origin \"%s\" in transaction %u at %s"),
+					appendStringInfo(&err_detail, _("The row to be updated was deleted by a different origin \"%s\" in transaction %u at %s."),
 									 origin_name, localxmin, timestamptz_to_str(localts));
 
 				/* The origin that modified this row has been removed. */
 				else
-					appendStringInfo(&err_detail, _("The row to be updated was deleted by a non-existent origin in transaction %u at %s"),
+					appendStringInfo(&err_detail, _("The row to be updated was deleted by a non-existent origin in transaction %u at %s."),
 									 localxmin, timestamptz_to_str(localts));
 			}
 			else
-				appendStringInfoString(&err_detail, _("The row to be updated was deleted"));
+				appendStringInfoString(&err_detail, _("The row to be updated was deleted."));
 
 			break;
 
@@ -571,6 +571,10 @@ get_tuple_desc(EState *estate, ResultRelInfo *relinfo, ConflictType type,
 		 * when applying update or delete, such an index scan may not result
 		 * in a unique tuple and we still compare the complete tuple in such
 		 * cases, thus such indexes are not used here.
+		 *
+		 * XXX This can disagree with the index the apply worker searched by,
+		 * see FindReplTupleInLocalRel(). It may not even be one that
+		 * ExecOpenIndices() locked.
 		 */
 		Oid			replica_index = GetRelationIdentityOrPK(localrel);
 

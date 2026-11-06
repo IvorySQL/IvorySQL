@@ -52,7 +52,7 @@ test: create_index create_index_spgist create_view index_including index_includi
 # ----------
 # Another group of parallel tests
 # ----------
-test: create_aggregate create_function_sql create_cast constraints triggers select inherit typed_table vacuum drop_if_exists updatable_views roleattributes create_am hash_func errors infinite_recurse create_property_graph for_portion_of
+test: create_aggregate create_function_sql create_cast constraints triggers select inherit typed_table vacuum drop_if_exists updatable_views roleattributes create_am hash_func errors infinite_recurse
 
 # ----------
 # invisible uses generic table names (t1, t2, ...) that collide with
@@ -115,7 +115,17 @@ test: publication subscription
 # Another group of parallel tests
 # select_views depends on create_view
 # ----------
-test: select_views portals_p2 foreign_key dependency guc bitmapops combocid tsearch tsdicts foreign_data window xmlmap functional_deps advisory_lock indirect_toast equivclass stats_rewrite graph_table
+test: select_views portals_p2 dependency guc bitmapops combocid tsearch tsdicts foreign_data window xmlmap functional_deps advisory_lock indirect_toast equivclass stats_rewrite
+
+# ----------
+# foreign_key's fk_opfamily test block temporarily adds the built-in
+# int4/int8 equality operators to another operator family.  While that
+# family exists, get_mergejoin_opfamilies() reports an extra family for
+# those operators, which changes EC-dependent plans (e.g. in window,
+# equivclass) of tests running concurrently in the same database.  So
+# foreign_key runs in its own group.
+# ----------
+test: foreign_key
 
 # ----------
 # Another group of parallel tests (JSON related)
@@ -136,7 +146,7 @@ test: plancache limit plpgsql copy2 temp domain rangefuncs prepare conversion tr
 # The stats test resets stats, so nothing else needing stats access can be in
 # this group.
 # ----------
-test: partition_merge partition_split partition_join partition_prune reloptions hash_part indexing partition_aggregate partition_info tuplesort explain memoize stats predicate numa eager_aggregate graph_table_rls planner_est
+test: partition_join partition_prune reloptions hash_part indexing partition_aggregate partition_info tuplesort explain memoize stats predicate numa eager_aggregate planner_est
 
 # ----------
 # Another group of parallel tests (compression)

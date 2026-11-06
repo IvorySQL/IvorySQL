@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PostgreSQL 9.6\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@postgresql.org\n"
-"POT-Creation-Date: 2016-08-09 22:53-0300\n"
+"POT-Creation-Date: 2026-09-05 00:39+0000\n"
 "PO-Revision-Date: 2010-07-08 17:13-0300\n"
 "Last-Translator: Euler Taveira de Oliveira <euler@timbira.com>\n"
 "Language-Team: Brazilian Portuguese <pgbr-dev@listas.postgresql.org.br>\n"
@@ -73,11 +73,28 @@ msgstr "referência à coluna \"%s\" é ambígua"
 msgid "It could refer to either a PL/iSQL variable or a table column."
 msgstr "Ela poderia referenciar uma variável PL/iSQL ou uma coluna de tabela."
 
+#: pl_comp.c:1939
+#, fuzzy, c-format
+#| msgid "role name \"%s\" is reserved"
+msgid "field name \"%s\" is a reserved key word"
+msgstr "nome de role \"%s\" é reservado"
+
+#: pl_comp.c:1941
+#, fuzzy, c-format
+#| msgid "Use \\q to quit."
+msgid "Use double quotes to quote it."
+msgstr "Use \\q para sair."
+
 #: pl_comp.c:1259 pl_comp.c:1287 pl_exec.c:4395 pl_exec.c:4744 pl_exec.c:4829
 #: pl_exec.c:4920
 #, c-format
 msgid "record \"%s\" has no field \"%s\""
 msgstr "registro \"%s\" não tem campo \"%s\""
+
+#: pl_comp.c:2574 pl_comp.c:4152
+#, c-format
+msgid "column \"%s\" of relation \"%s\" does not exist"
+msgstr "coluna \"%s\" da relação \"%s\" não existe"
 
 #: pl_comp.c:1818
 #, c-format
@@ -99,15 +116,15 @@ msgstr "relação \"%s\" não é uma tabela"
 msgid "type \"%s\" is only a shell"
 msgstr "tipo \"%s\" é indefinido"
 
+#: pl_comp.c:3184
+#, c-format
+msgid "could not find array type for data type %s"
+msgstr "não foi possível encontrar um tipo de dados matriz para tipo de dados %s"
+
 #: pl_comp.c:2243 pl_comp.c:2296
 #, c-format
 msgid "unrecognized exception condition \"%s\""
 msgstr "condição de exceção \"%s\" é desconhecida"
-
-#: pl_comp.c:2503
-#, c-format
-msgid "could not determine actual argument type for polymorphic function \"%s\""
-msgstr "não pôde determinar tipo do argumento atual para função polimórfica \"%s\""
 
 #: pl_exec.c:324 pl_exec.c:612 pl_exec.c:872
 msgid "during initialization of execution state"
@@ -183,6 +200,11 @@ msgstr "função PL/iSQL %s linha %d em %s"
 #, c-format
 msgid "PL/iSQL function %s"
 msgstr "função PL/iSQL %s"
+
+#: pl_exec.c:1581
+#, c-format
+msgid "SQL statement \"%s\""
+msgstr "comando SQL \"%s\""
 
 #: pl_exec.c:1089
 msgid "during statement block local variable initialization"
@@ -306,6 +328,11 @@ msgstr "registro \"%s\" não foi atribuído ainda"
 #, c-format
 msgid "The tuple structure of a not-yet-assigned record is indeterminate."
 msgstr "A estrutura da tupla de um registro não atribuído é indeterminada."
+
+#: pl_exec.c:9079
+#, c-format
+msgid "cannot cast type %s to %s"
+msgstr "não é possível converter o tipo de dados %s para %s"
 
 #: pl_exec.c:2717 pl_exec.c:2737
 #, c-format
@@ -674,6 +701,10 @@ msgstr "faltando expressão"
 msgid "missing SQL statement"
 msgstr "faltando comando SQL"
 
+#: pl_gram.y:3858
+msgid "syntax error, expected \"]\""
+msgstr "erro de sintaxe, esperado \"]\""
+
 #: pl_gram.y:2795
 msgid "incomplete data type declaration"
 msgstr "declaração de tipo de dado incompleta"
@@ -819,3 +850,7 @@ msgstr "%s no fim da entrada"
 #, c-format
 msgid "%s at or near \"%s\""
 msgstr "%s em ou próximo a \"%s\""
+
+#, c-format
+#~ msgid "could not determine actual argument type for polymorphic function \"%s\""
+#~ msgstr "não pôde determinar tipo do argumento atual para função polimórfica \"%s\""

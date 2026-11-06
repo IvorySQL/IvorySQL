@@ -1172,6 +1172,19 @@ include_dir 'conf.d'
         time of encryption. In order to make use of a changed value, a new
         password must be set.
        </para>
+       <note>
+        <para>
+         If a role password was created with a different iteration count than
+         the value of <literal>scram_iterations</literal> specified in the
+         <filename>postgresql.conf</filename> file or on the server command
+         line, an unauthenticated user can discern the existence of the role by
+         observing discrepancies in the server's responses to connection
+         attempts.  If you find this concerning, ensure that all role passwords
+         are created with <literal>scram_iterations</literal> set to the value
+         specified in the <filename>postgresql.conf</filename> file or on the
+         server command line.
+        </para>
+       </note>
       </listitem>
      </varlistentry>
 
@@ -1206,7 +1219,8 @@ include_dir 'conf.d'
       <listitem>
        <para>
         Controls whether a <literal>WARNING</literal> about MD5 password
-        deprecation is produced upon successful MD5 password authentication or
+        deprecation is produced upon successful authentication using an
+        MD5-encrypted password or
         when a <command>CREATE ROLE</command> or
         <command>ALTER ROLE</command> statement sets an MD5-encrypted password.
         The default value is <literal>on</literal>.
@@ -3666,11 +3680,12 @@ include_dir 'conf.d'
         <xref linkend="guc-full-page-writes"/> is on, during a base backup,
         etc.).
         A compressed page image will be decompressed during WAL replay.
-        The supported methods are <literal>pglz</literal>,
-        <literal>lz4</literal> (if <productname>PostgreSQL</productname>
-        was compiled with <option>--with-lz4</option>) and
-        <literal>zstd</literal> (if <productname>PostgreSQL</productname>
-        was compiled with <option>--with-zstd</option>).
+        The supported methods are <literal>off</literal>, <literal>on</literal>,
+        <literal>zstd</literal> (if <productname>PostgreSQL</productname> was compiled with <option>--with-zstd</option>),
+        <literal>lz4</literal> (if <productname>PostgreSQL</productname> was compiled with <option>--with-lz4</option>), and
+        <literal>pglz</literal>.
+        The value <literal>on</literal> selects the first of <literal>zstd</literal>,
+        <literal>lz4</literal>, <literal>pglz</literal> that is available.
         The default value is <literal>off</literal>.
         Only superusers and users with the appropriate <literal>SET</literal>
         privilege can change this setting.
@@ -4843,6 +4858,63 @@ restore_command = 'copy "C:\\server\\archivedir\\%f" "%p"'  # Windows
        </listitem>
       </varlistentry>
 
+      <varlistentry id="guc-output-plugin-libraries" xreflabel="output_plugin_libraries">
+       <term><varname>output_plugin_libraries</varname> (<type>string</type>)
+       <indexterm>
+        <primary><varname>output_plugin_libraries</varname> configuration parameter</primary>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         Lists the libraries installed in <xref linkend="guc-dynamic-library-path"/>
+         that are also trusted for use as logical output plugins by replication
+         clients. Any <link linkend="logicaldecoding-example">logical decoding</link>
+         or <link linkend="protocol-replication">replication</link> requests for
+         other libraries will be refused. All users are subject to this
+         restriction. The default is <literal>'pgoutput, test_decoding'</literal>,
+         which are the two logical output plugins included in the standard
+         <productname>PostgreSQL</productname> distribution.
+        </para>
+        <para>
+         The format is a comma-separated list of library names, where each name
+         is interpreted as for the <link linkend="sql-load"><command>LOAD</command></link>
+         command (but logical decoding clients must specify a plugin name that
+         <emphasis>exactly</emphasis> matches an entry in the list, without
+         variations in case or path structure). Whitespace between entries is
+         ignored; surround a library name with double quotes if you need to
+         include whitespace or commas in the name.
+        </para>
+        <para>
+         It is the responsibility of the server administrator to ensure that
+         libraries added to this list do not unintentionally give additional
+         privileges to non-superusers when they are loaded into the server.
+        </para>
+        <note>
+         <para>
+          When updating the server from a version that does not have the
+          <literal>output_plugin_libraries</literal> parameter, the following
+          query can help construct the list of plugins that are required by all
+          persistent logical replication slots:
+<programlisting>
+SELECT DISTINCT plugin FROM pg_replication_slots WHERE plugin IS NOT NULL;
+</programlisting>
+          Review the list carefully for safety before adjusting
+          <literal>output_plugin_libraries</literal>.
+         </para>
+         <para>
+          The above query can only display plugins which were successfully
+          added to replication slots at some point in the past. Newly refused
+          requests will appear in the logs with a message similar to
+<programlisting>
+ERROR:  library "..." may not be used as an output plugin
+DETAIL:  The configuration parameter "output_plugin_libraries" (currently 'pgoutput, test_decoding') does not name this library as a trusted output plugin.
+HINT:  If it is safe for all REPLICATION users to use this library as an output plugin, add it to "output_plugin_libraries" and reload the server configuration.
+</programlisting>
+         </para>
+        </note>
+       </listitem>
+      </varlistentry>
+
       <varlistentry id="guc-wal-keep-size" xreflabel="wal_keep_size">
        <term><varname>wal_keep_size</varname> (<type>integer</type>)
        <indexterm>
@@ -4986,23 +5058,31 @@ restore_command = 'copy "C:\\server\\archivedir\\%f" "%p"'  # Windows
         Specifies the maximum time the server waits during shutdown for all
         WAL data to be replicated to the receiver.  If this value is specified
         without units, it is taken as milliseconds.  A value of
-        <literal>-1</literal> (the default) disables the timeout mechanism.
+        <literal>-1</literal> (the default) disables the timeout mechanism,
+        allowing the WAL sender to wait as long as necessary for the receiver
+        to catch up.  A value of <literal>0</literal> causes the WAL sender to
+        terminate without waiting for the receiver to catch up.
        </para>
+
        <para>
-       When replication is in use, the sending server normally waits until
-       all WAL data has been transferred to the receiver before completing
-       shutdown.  This helps keep sender and receiver in sync after shutdown,
-       which is especially important for physical replication switchovers,
-       but it can delay shutdown.
+        When replication is in use, the sending server normally waits until
+        all WAL data has been transferred to the receiver before completing
+        shutdown.  This helps keep sender and receiver in sync after shutdown,
+        which is especially important for physical replication switchovers,
+        but it can delay shutdown.
        </para>
+
        <para>
-        If this parameter is set, the server stops waiting and completes
-        shutdown when the timeout expires.  This can shorten shutdown time,
-        for example, when replication is slow on high-latency networks or
-        when a logical replication apply worker is blocked waiting for locks.
-        However, in this case the sender and receiver may be out of sync after
-        shutdown.
+        If this parameter is set to zero or a positive value, the server stops
+        waiting and completes shutdown when the timeout expires.  This can
+        shorten shutdown time, for example, when replication is slow on
+        high-latency networks or when a logical replication apply worker is
+        blocked waiting for locks.  However, in this case the sender and
+        receiver may be out of sync after shutdown.  Care should be taken to
+        select a value high enough to allow all WAL data to be replicated to
+        the receiver under normal circumstances.
        </para>
+
        <para>
         This parameter can be set in <varname>primary_conninfo</varname> and
         in the <literal>CONNECTION</literal> clause of
@@ -7058,13 +7138,18 @@ local0.*    /var/log/postgresql
 
        <note>
         <para>
-          The logging collector is designed to never lose messages.  This means
+          The logging collector is designed to avoid dropping messages.  This means
           that in case of extremely high load, server processes could be
           blocked while trying to send additional log messages when the
           collector has fallen behind.  In contrast, <application>syslog</application>
           prefers to drop messages if it cannot write them, which means it
           may fail to log some messages in such cases but it will not block
           the rest of the system.
+        </para>
+        <para>
+         The logging collector does not guarantee that log messages have
+         reached durable storage.  It can still lose messages due to a system
+         crash, power loss, or an error while writing the log file.
         </para>
        </note>
 
@@ -7413,7 +7498,6 @@ local0.*    /var/log/postgresql
          <member><literal>bgworker</literal></member>
          <member><literal>bgwriter</literal></member>
          <member><literal>checkpointer</literal></member>
-         <member><literal>checksums</literal></member>
          <member><literal>ioworker</literal></member>
          <member><literal>postmaster</literal></member>
          <member><literal>slotsyncworker</literal></member>
@@ -8125,7 +8209,8 @@ local0.*    /var/log/postgresql
       <listitem>
        <para>
          This is a <function>printf</function>-style string that is output at the
-         beginning of each log line.
+         beginning of each log entry that is sent to <literal>stderr</literal>,
+         <literal>syslog</literal>, or <literal>eventlog</literal>.
          <literal>%</literal> characters begin <quote>escape sequences</quote>
          that are replaced with status information as outlined below.
          Unrecognized escapes are ignored. Other
@@ -8425,9 +8510,10 @@ log_line_prefix = '%m [%p] %q%u@%d/%a '
        <para>
         This setting only affects log messages printed as a result of
         <xref linkend="guc-log-statement"/>,
-        <xref linkend="guc-log-duration"/>, and related settings.  Non-zero
-        values of this setting add some overhead, particularly if parameters
-        are sent in binary form, since then conversion to text is required.
+        <xref linkend="guc-log-min-duration-statement"/>, and related settings.
+        Non-zero values of this setting add some overhead, particularly
+        if parameters are sent in binary form, since then conversion to
+        text is required.
        </para>
       </listitem>
      </varlistentry>
@@ -12219,7 +12305,7 @@ dynamic_library_path = '/usr/local/lib/postgresql:$libdir'
      </varlistentry>
 
      <varlistentry id="guc-data-checksums" xreflabel="data_checksums">
-      <term><varname>data_checksums</varname> (<type>enum</type>)
+      <term><varname>data_checksums</varname> (<type>bool</type>)
       <indexterm>
        <primary><varname>data_checksums</varname> configuration parameter</primary>
       </indexterm>
@@ -12227,8 +12313,6 @@ dynamic_library_path = '/usr/local/lib/postgresql:$libdir'
       <listitem>
        <para>
         Reports the state of data checksums for this cluster.
-        Possible values are <literal>on</literal>, <literal>off</literal>,
-        <literal>inprogress-on</literal> and <literal>inprogress-off</literal>.
         See <xref linkend="checksums"/> for more information.
        </para>
       </listitem>
@@ -13180,7 +13264,7 @@ LOG:  CleanUpLock: deleting: lock(0xb7acd844) id(24688,24696,0,0,0,1)
       </term>
       <listitem>
        <para>
-        Only has effect if <xref linkend="app-initdb-data-checksums"/> are enabled.
+        Only has effect if <link linkend="checksums">data checksums</link> are enabled.
        </para>
        <para>
         Detection of a checksum failure during a read normally causes

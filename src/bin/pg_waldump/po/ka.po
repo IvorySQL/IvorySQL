@@ -687,28 +687,3 @@ msgstr "შეუძლებელია ასლის აღდგენა 
 msgid "could not decompress image at %X/%08X, block %d"
 msgstr "შეუძლებელია ასლის გაშლა მისამართზე %X/%08X, ბლოკი %d"
 
-#, c-format
-#~ msgid "WAL segment size must be a power of two between 1 MB and 1 GB, but the WAL file \"%s\" header specifies %d byte"
-#~ msgid_plural "WAL segment size must be a power of two between 1 MB and 1 GB, but the WAL file \"%s\" header specifies %d bytes"
-#~ msgstr[0] "WAL სეგმენტის ზომა ორის ხარისხი უნდა იყოს, 1 მბ-სა და 1 გბ-ს სორის, მაგრამ WAL ფაილის \"%s\" თავსართი %d ბაიტზე მიუთითებს"
-#~ msgstr[1] "WAL სეგმენტის ზომა ორის ხარისხი უნდა იყოს, 1 მბ-სა და 1 გბ-ს სორის, მაგრამ WAL ფაილის \"%s\" თავსართი %d ბაიტზე მიუთითებს"
-
-#, c-format
-#~ msgid "invalid record offset at %X/%X"
-#~ msgstr "ჩანაწერის არასწორი წანაცვლება მისამართზე %X/%X"
-
-#, c-format
-#~ msgid "invalid timeline specification: \"%s\""
-#~ msgstr "დროის ხაზის არასწორი სპეციფიკაცია: \"%s\""
-
-#, c-format
-#~ msgid "missing contrecord at %X/%X"
-#~ msgstr "contrecord მისამართზე %X/%X არ არსებობს"
-
-#, c-format
-#~ msgid "out of memory while trying to decode a record of length %u"
-#~ msgstr "%u სიგრძის მქონე ჩანაწერის დეკოდირებისთვის მეხსიერება საკმარისი არაა"
-
-#, c-format
-#~ msgid "record length %u at %X/%X too long"
-#~ msgstr "ჩანაწერის სიგრძე %u მისამართზე %X/%X ძალიან გრძელია"

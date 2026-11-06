@@ -25,6 +25,7 @@
 
 #include "commands/defrem.h"
 #include "common/hashfn_unstable.h"
+#include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/extendplan.h"
 #include "optimizer/pathnode.h"
@@ -1240,14 +1241,33 @@ pgpa_join_order_permits_join(int outer_count, int inner_count,
 			{
 				if (child_target->ttype == PGPA_TARGET_ORDERED_LIST)
 				{
+					/*
+					 * JOIN_ORDER((...)) is treated as syntactic sugar; the
+					 * extra level of parentheses does not change the
+					 * interpretation. Hence, don't set sublist = true in that
+					 * case.
+					 */
+					if (list_length(target->children) != 1)
+						sublist = true;
 					target = child_target;
-					sublist = true;
 					loop = true;
 					break;
 				}
 				else
 				{
 					Assert(child_target->ttype == PGPA_TARGET_UNORDERED_LIST);
+
+					/*
+					 * If an unordered sublist is the entire advice target,
+					 * for example because the user writes JOIN_ORDER({...})
+					 * or JOIN_ORDER(({...})), and if the join we're
+					 * considering contains exactly the mentioned relations,
+					 * we need to mark this advice as fully matched, because
+					 * that won't happen anywhere else.
+					 */
+					if (itm == PGPA_ITM_EQUAL && !sublist &&
+						list_length(target->children) == 1)
+						entry->flags |= PGPA_FB_MATCH_FULL;
 					return PGPA_JO_INDIFFERENT;
 				}
 			}
@@ -1649,6 +1669,8 @@ pgpa_planner_apply_scan_advice(RelOptInfo *rel,
 		pgpa_trove_entry *my_entry = &scan_entries[i];
 		uint64		my_scan_type = all_scan_mask;
 
+		CHECK_FOR_INTERRUPTS();
+
 		/* Translate our advice tags to a scan strategy advice value. */
 		if (my_entry->tag == PGPA_TAG_DO_NOT_SCAN)
 			my_scan_type = 0;
@@ -1710,6 +1732,8 @@ pgpa_planner_apply_scan_advice(RelOptInfo *rel,
 		pgpa_trove_entry *my_entry = &rel_entries[i];
 		uint64		my_gather_mask = 0;
 		bool		just_one_rel;
+
+		CHECK_FOR_INTERRUPTS();
 
 		just_one_rel = my_entry->target->ttype == PGPA_TARGET_IDENTIFIER
 			|| list_length(my_entry->target->children) == 1;
@@ -1881,6 +1905,8 @@ pgpa_planner_append_feedback(List *list, pgpa_trove *trove,
 	{
 		pgpa_trove_entry *entry = &entries[i];
 		DefElem    *item;
+
+		CHECK_FOR_INTERRUPTS();
 
 		/*
 		 * If this entry was fully matched, check whether generating advice

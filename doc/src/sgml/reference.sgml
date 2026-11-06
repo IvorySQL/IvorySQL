@@ -56,7 +56,6 @@
    &alterPackage;
    &alterPolicy;
    &alterProcedure;
-   &alterPropertyGraph;
    &alterPublication;
    &alterRole;
    &alterRoutine;
@@ -111,7 +110,6 @@
    &createPackage;
    &createPackageBody;
    &createProcedure;
-   &createPropertyGraph;
    &createPublication;
    &createRole;
    &createRule;
@@ -161,7 +159,6 @@
    &dropPackage;
    &dropPolicy;
    &dropProcedure;
-   &dropPropertyGraph;
    &dropPublication;
    &dropRole;
    &dropRoutine;
@@ -224,7 +221,7 @@
    &update;
    &vacuum;
    &values;
-   &waitFor;
+   &wait;
 
  </reference>
 

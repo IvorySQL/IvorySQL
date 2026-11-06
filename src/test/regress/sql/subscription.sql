@@ -120,13 +120,10 @@ RESET SESSION AUTHORIZATION;
 GRANT USAGE ON FOREIGN SERVER test_server TO regress_subscription_user3;
 SET SESSION AUTHORIZATION regress_subscription_user3;
 
--- fail, need user mapping
+-- warn, need user mapping, then fail, FDW doesn't support connections
 CREATE SUBSCRIPTION regress_testsub6 SERVER test_server PUBLICATION testpub WITH (slot_name = NONE, connect = false);
 
 CREATE USER MAPPING FOR regress_subscription_user3 SERVER test_server OPTIONS(user 'foo', password 'secret');
-
--- fail, need CONNECTION clause
-CREATE SUBSCRIPTION regress_testsub6 SERVER test_server PUBLICATION testpub WITH (slot_name = NONE, connect = false);
 
 RESET SESSION AUTHORIZATION;
 ALTER FOREIGN DATA WRAPPER test_fdw CONNECTION test_fdw_connection;
@@ -136,6 +133,13 @@ CREATE SUBSCRIPTION regress_testsub6 SERVER test_server
   PUBLICATION testpub WITH (slot_name = 'dummy', connect = false);
 
 RESET SESSION AUTHORIZATION;
+-- fail, subscription depends on the server and cannot be dropped by CASCADE
+DROP SERVER test_server CASCADE;
+
+-- ok, USAGE privilege on server not checked for OWNER TO, but warn
+-- about user mapping
+ALTER SUBSCRIPTION regress_testsub6 OWNER TO regress_subscription_user2;
+ALTER SUBSCRIPTION regress_testsub6 OWNER TO regress_subscription_user3;
 REVOKE USAGE ON FOREIGN SERVER test_server FROM regress_subscription_user3;
 SET SESSION AUTHORIZATION regress_subscription_user3;
 
@@ -143,6 +147,9 @@ SET SESSION AUTHORIZATION regress_subscription_user3;
 BEGIN;
 ALTER SUBSCRIPTION regress_testsub6 CONNECTION 'dbname=regress_doesnotexist password=secret';
 ABORT;
+
+-- fail, connecting forms recheck USAGE on the foreign server
+ALTER SUBSCRIPTION regress_testsub6 REFRESH PUBLICATION;
 
 -- fails, cannot drop slot
 DROP SUBSCRIPTION regress_testsub6;
@@ -158,6 +165,15 @@ CREATE SUBSCRIPTION regress_testsub6 SERVER test_server
   PUBLICATION testpub WITH (slot_name = 'dummy', connect = false);
 
 DROP USER MAPPING FOR regress_subscription_user3 SERVER test_server;
+
+-- ok, catalog-only forms don't construct conninfo
+ALTER SUBSCRIPTION regress_testsub6 ENABLE;
+ALTER SUBSCRIPTION regress_testsub6 DISABLE;
+ALTER SUBSCRIPTION regress_testsub6 SET (synchronous_commit = local);
+ALTER SUBSCRIPTION regress_testsub6 SET (synchronous_commit = off);
+ALTER SUBSCRIPTION regress_testsub6 SET (disable_on_error = true);
+ALTER SUBSCRIPTION regress_testsub6 SET (disable_on_error = false);
+ALTER SUBSCRIPTION regress_testsub6 SET PUBLICATION testpub WITH (refresh = false);
 
 -- ok, test_server lacks user mapping, but replacing connection anyway
 BEGIN;

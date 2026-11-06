@@ -2252,7 +2252,6 @@ WHERE am.amname = 'btree' AND
 ORDER BY 1, 2, 3;
            proc            |     opfamily_name      |        opclass_name        |       opcintype        
 ---------------------------+------------------------+----------------------------+------------------------
- btvarstrequalimage        | bpchar_ops             | bpchar_ops                 | character
  btvarstrequalimage        | text_ops               | name_ops                   | name
  btvarstrequalimage        | text_ops               | text_ops                   | text
  btvarstrequalimage        | text_ops               | varchar_ops                | text
@@ -2272,6 +2271,8 @@ ORDER BY 1, 2, 3;
                            | array_ops              | array_ops                  | anyarray
                            | binary_ops             | binary_double_ops          | sys.binary_double
                            | binary_ops             | binary_float_ops           | sys.binary_float
+                           | bpchar_ops             | bpchar_ops                 | character
+                           | bpchar_pattern_ops     | bpchar_pattern_ops         | character
                            | float_ops              | float4_ops                 | real
                            | float_ops              | float8_ops                 | double precision
                            | interval_ops           | interval_ops               | interval
@@ -2279,13 +2280,14 @@ ORDER BY 1, 2, 3;
                            | multirange_ops         | multirange_ops             | anymultirange
                            | number_ops             | number_ops                 | sys.number
                            | numeric_ops            | numeric_ops                | numeric
+                           | oidvector_ops          | oidvector_ops              | oidvector
                            | oradatetime_ops        | oratimestamptz_ops         | sys.oratimestamptz
                            | range_ops              | range_ops                  | anyrange
                            | record_image_ops       | record_image_ops           | record
                            | record_ops             | record_ops                 | record
                            | tsquery_ops            | tsquery_ops                | tsquery
                            | tsvector_ops           | tsvector_ops               | tsvector
-(33 rows)
+(35 rows)
 
 -- **************** pg_index ****************
 -- Look for illegal values in pg_index fields.

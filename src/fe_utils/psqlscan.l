@@ -61,6 +61,7 @@ typedef int YYSTYPE;
 
 #define ECHO psqlscan_emit(cur_state, yytext, yyleng)
 
+static bool psqlscan_is_copy_from_stdin(PsqlScanState state);
 static void psqlscan_track_identifier(PsqlScanState state,
 									  const char *identifier);
 
@@ -296,8 +297,6 @@ less_equals		"<="
 greater_equals	">="
 less_greater	"<>"
 not_equals		"!="
-/* Note there is no need for left_arrow, since "<-" is not a single operator. */
-right_arrow		"->"
 
 /*
  * "self" is the set of chars that should be returned as single-character
@@ -309,7 +308,7 @@ right_arrow		"->"
  * If you change either set, adjust the character lists appearing in the
  * rule for "operator"!
  */
-self			[,()\[\].;\:\|\+\-\*\/\%\^\<\>\=]
+self			[,()\[\].;\:\+\-\*\/\%\^\<\>\=]
 op_chars		[\~\!\@\#\^\&\|\`\?\+\-\*\/\%\<\>\=]
 operator		{op_chars}+
 
@@ -657,10 +656,6 @@ other			.
 					ECHO;
 				}
 
-{right_arrow}	{
-					ECHO;
-				}
-
 	/*
 	 * These rules are specific to psql --- they implement parenthesis
 	 * counting and detection of command-ending semicolon.  These must
@@ -683,6 +678,9 @@ other			.
 					if (cur_state->paren_depth == 0 &&
 						cur_state->begin_depth == 0)
 					{
+						/* Remember if this subcommand was COPY FROM STDIN */
+						if (psqlscan_is_copy_from_stdin(cur_state))
+							cur_state->copy_stdin_count++;
 						/* Terminate lexing temporarily */
 						cur_state->start_state = YY_START;
 						cur_state->init_idents_count = 0;
@@ -698,11 +696,16 @@ other			.
 "\\"[;:]		{
 					/* Force a semi-colon or colon into the query buffer */
 					psqlscan_emit(cur_state, yytext + 1, 1);
-					/* Reset BEGIN/END tracking if semi at outer level */
+					/* Reset BEGIN/END/COPY tracking if semi at outer level */
 					if (yytext[1] == ';' &&
 						cur_state->paren_depth == 0 &&
 						cur_state->begin_depth == 0)
+					{
+						/* Remember if this subcommand was COPY FROM STDIN */
+						if (psqlscan_is_copy_from_stdin(cur_state))
+							cur_state->copy_stdin_count++;
 						cur_state->init_idents_count = 0;
+					}
 				}
 
 "\\"			{
@@ -956,8 +959,8 @@ other			.
 /* LCOV_EXCL_STOP */
 
 /*
- * Record the first few keywords/identifiers of a statement or CREATE
- * SCHEMA sub-statement in the idents[] array, of length idents_size.
+ * Record the first few keywords/identifiers of a statement
+ * in the idents[] array, of length idents_size.
  * *idents_count is the number of entries filled so far.
  *
  * We record the interesting keywords using their first character, which
@@ -973,17 +976,24 @@ psqlscan_record_initial_keyword(const char *identifier,
 	if (*idents_count < idents_size)
 	{
 		/*
-		 * What we need to recognize is CREATE [OR REPLACE] FUNCTION/PROCEDURE
-		 * and CREATE SCHEMA.  Checking for SCHEMA is useless but not harmful
-		 * in the CREATE SCHEMA sub-statement case.
+		 * What we need to recognize is CREATE [OR REPLACE] FUNCTION/PROCEDURE.
+		 * We record these keywords in lower case.  We also need to recognize
+		 * COPY ... FROM STDIN.  (Note: the backend grammar doesn't
+		 * distinguish STDIN from STDOUT, so we should not do so here either.)
+		 * We record these keywords in upper case, to avoid conflicting with
+		 * the first set.
 		 */
 		if (pg_strcasecmp(identifier, "create") == 0 ||
 			pg_strcasecmp(identifier, "function") == 0 ||
 			pg_strcasecmp(identifier, "procedure") == 0 ||
 			pg_strcasecmp(identifier, "or") == 0 ||
-			pg_strcasecmp(identifier, "replace") == 0 ||
-			pg_strcasecmp(identifier, "schema") == 0)
+			pg_strcasecmp(identifier, "replace") == 0)
 			idents[*idents_count] = pg_tolower((unsigned char) identifier[0]);
+		else if (pg_strcasecmp(identifier, "copy") == 0 ||
+			pg_strcasecmp(identifier, "from") == 0 ||
+			pg_strcasecmp(identifier, "stdin") == 0 ||
+			pg_strcasecmp(identifier, "stdout") == 0)
+			idents[*idents_count] = pg_toupper((unsigned char) identifier[0]);
 		/* For other keywords or identifiers, leave '\0' in the array entry */
 		(*idents_count)++;
 	}
@@ -1002,32 +1012,60 @@ psqlscan_is_create_routine(const char *idents)
 }
 
 /*
- * Track whether we are inside a BEGIN .. END block in a function definition,
+ * Does the current input match COPY ... FROM STDIN?
+ */
+static bool
+psqlscan_is_copy_from_stdin(PsqlScanState state)
+{
+	const char *idents = state->init_idents;
+
+	/*
+	 * The first word must be COPY, but after that there could be up to four
+	 * identifiers (BINARY database.schema.table) before FROM.  Since some of
+	 * the words we track are not reserved words, don't assume the intervening
+	 * array entries are '\0'.  Life is simplified here by the fact that
+	 * psqlscan_track_identifier ignores everything within parens: we won't
+	 * see column lists nor the query in COPY (query).
+	 */
+	if (idents[0] != 'C')
+		return false;
+	for (int i = 1; i < lengthof(state->init_idents) - 1; i++)
+	{
+		/* Scan to find FROM; if not seen within range, it's not valid COPY */
+		if (idents[i] != 'F')
+			continue;
+		/* It's COPY FROM STDIN only if the next word is STDIN */
+		return (idents[i + 1] == 'S');
+	}
+	return false;
+}
+
+/*
+ * This function is called each time the lexer recognizes an unquoted
+ * identifier (which could also be a keyword, and indeed keywords are the
+ * only case we really care about here).  It presently has two tasks:
+ *
+ * 1. Track whether we are inside BEGIN .. END in a function definition,
  * so that semicolons contained therein don't terminate the whole statement.
  * Short of writing a full parser here, the following heuristic should work.
  *
  * We track whether the beginning of the statement matches CREATE [OR REPLACE]
- * {FUNCTION|PROCEDURE}.  For CREATE SCHEMA, track BEGIN .. END blocks only
- * after recognizing an embedded CREATE [OR REPLACE] {FUNCTION|PROCEDURE}
- * subcommand.  Once one of these conditions holds, count BEGIN and END
- * pairs.  We also have to account for CASE ... END.
+ * {FUNCTION|PROCEDURE}.  If so, count BEGIN and END pairs.  We also have to
+ * account for CASE ... END.
+ *
+ * 2. Record enough information for psqlscan_is_copy_from_stdin() to recognize
+ * COPY FROM STDIN commands.
  */
 static void
 psqlscan_track_identifier(PsqlScanState state, const char *identifier)
 {
-	bool		is_create_schema;
-
 	/* None of this needs to happen when we're inside parentheses */
 	if (state->paren_depth != 0)
 		return;
 
 	/* Reset all my state at the start of each new statement */
 	if (state->init_idents_count == 0)
-	{
 		memset(state->init_idents, 0, sizeof(state->init_idents));
-		state->sub_idents_count = 0;
-		memset(state->sub_idents, 0, sizeof(state->sub_idents));
-	}
 
 	/* Record initial keywords if init_idents_count is small enough */
 	psqlscan_record_initial_keyword(identifier,
@@ -1036,34 +1074,9 @@ psqlscan_track_identifier(PsqlScanState state, const char *identifier)
 									&state->init_idents_count);
 
 	/*
-	 * In CREATE SCHEMA, track identifiers from each top-level CREATE schema
-	 * element separately, so that BEGIN/END tracking is enabled only within
-	 * CREATE [OR REPLACE] {FUNCTION|PROCEDURE} clauses.
+	 * Track BEGIN/CASE/END only when within an appropriate statement.
 	 */
-	is_create_schema = (state->init_idents[0] == 'c' &&
-						state->init_idents[1] == 's');
-	if (is_create_schema &&
-		state->begin_depth == 0)
-	{
-		/* Reset sub-clause state at each top-level CREATE keyword */
-		if (pg_strcasecmp(identifier, "create") == 0)
-		{
-			state->sub_idents_count = 0;
-			memset(state->sub_idents, 0, sizeof(state->sub_idents));
-		}
-		/* ... and record the first few keywords following that */
-		psqlscan_record_initial_keyword(identifier,
-										state->sub_idents,
-										lengthof(state->sub_idents),
-										&state->sub_idents_count);
-	}
-
-	/*
-	 * Track BEGIN/CASE/END only when within an appropriate (sub) statement.
-	 */
-	if (psqlscan_is_create_routine(state->init_idents) ||
-		(is_create_schema &&
-		 psqlscan_is_create_routine(state->sub_idents)))
+	if (psqlscan_is_create_routine(state->init_idents))
 	{
 		if (pg_strcasecmp(identifier, "begin") == 0)
 			state->begin_depth++;
@@ -1357,10 +1370,9 @@ psql_scan_finish(PsqlScanState state)
 /*
  * Reset lexer scanning state to start conditions.  This is appropriate
  * for executing \r psql commands (or any other time that we discard the
- * prior contents of query_buf).  It is not, however, necessary to do this
- * when we execute and clear the buffer after getting a PSCAN_SEMICOLON or
- * PSCAN_EOL scan result, because the scan state must be INITIAL when those
- * conditions are returned.
+ * prior contents of query_buf).  Do not call this between psql_scan()
+ * calls that are scanning successive chunks of a single query string;
+ * do call it when preparing to process a new query string.
  *
  * Note that this is unrelated to flushing unread input; that task is
  * done by psql_scan_finish().
@@ -1375,6 +1387,7 @@ psql_scan_reset(PsqlScanState state)
 		free(state->dolqstart);
 	state->dolqstart = NULL;
 	state->begin_depth = 0;
+	state->copy_stdin_count = 0;
 	state->init_idents_count = 0;
 }
 
@@ -1397,6 +1410,26 @@ void
 psql_scan_reselect_sql_lexer(PsqlScanState state)
 {
 	state->start_state = INITIAL;
+}
+
+/*
+ * Return the number of COPY ... FROM STDIN commands in the input string.
+ *
+ * This should be called only after we've finished parsing a complete
+ * string and are ready to send it to the backend.
+ */
+int
+psql_scan_count_copy_from_stdin(PsqlScanState state)
+{
+	if (state->init_idents_count > 0)
+	{
+		/* Count any COPY FROM STDIN following the last semicolon */
+		if (psqlscan_is_copy_from_stdin(state))
+			state->copy_stdin_count++;
+		/* ... but do so only once */
+		state->init_idents_count = 0;
+	}
+	return state->copy_stdin_count;
 }
 
 /*

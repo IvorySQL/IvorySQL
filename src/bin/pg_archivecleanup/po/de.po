@@ -1,5 +1,5 @@
 # pg_archivecleanup message translation file for pg_archivecleanup
-# Copyright (C) 2019-2025 PostgreSQL Global Development Group
+# Copyright (C) 2019-2026 PostgreSQL Global Development Group
 # This file is distributed under the same license as the PostgreSQL package.
 # Peter Eisentraut <peter@eisentraut.org>, 2019 - 2026.
 #
@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pg_archivecleanup (PostgreSQL) 19\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2026-05-28 19:26+0000\n"
-"PO-Revision-Date: 2026-05-29 07:41+0200\n"
+"POT-Creation-Date: 2026-07-04 06:26+0000\n"
+"PO-Revision-Date: 2026-07-04 12:57+0200\n"
 "Last-Translator: Peter Eisentraut <peter@eisentraut.org>\n"
 "Language-Team: German <pgsql-translators@postgresql.org>\n"
 "Language: de\n"
@@ -214,11 +214,12 @@ msgstr "älteste zu behaltene WAL-Datei muss angegeben werden"
 msgid "too many command-line arguments"
 msgstr "zu viele Kommandozeilenargumente"
 
-#: pg_archivecleanup.c:379
+#: pg_archivecleanup.c:380
 #, c-format
-msgid ""
-"Executing in dry-run mode.\n"
-"No files will be removed."
-msgstr ""
-"Ausführen im Probelaufmodus.\n"
-"Keine Dateien werden entfernt werden."
+msgid "executing in dry-run mode"
+msgstr "Ausführen im Probelaufmodus"
+
+#: pg_archivecleanup.c:381
+#, c-format
+msgid "No files will be removed."
+msgstr "Keine Dateien werden entfernt werden."

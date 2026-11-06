@@ -22,7 +22,9 @@ PGFILEDESC = "pg_plan_advice - help the planner get the right plan"
 REGRESS = alternatives gather join_order join_strategy partitionwise \
 	prepared scan semijoin syntax
 
-EXTRA_INSTALL = contrib/tsm_system_time
+TAP_TESTS = 1
+
+EXTRA_INSTALL = contrib/tsm_system_time contrib/postgres_fdw
 
 EXTRA_CLEAN = pgpa_parser.h pgpa_parser.c pgpa_scanner.c
 

@@ -1119,8 +1119,8 @@ rebuild_database_list(Oid newdb)
 static int
 db_comparator(const void *a, const void *b)
 {
-	return pg_cmp_s32(((const avl_dbase *) a)->adl_score,
-					  ((const avl_dbase *) b)->adl_score);
+	return pg_cmp_s32(((const avl_dbase *) b)->adl_score,
+					  ((const avl_dbase *) a)->adl_score);
 }
 
 /*
@@ -1817,8 +1817,33 @@ autovac_recalculate_workers_for_balance(void)
 	}
 
 	if (nworkers_for_balance != orig_nworkers_for_balance)
+	{
 		pg_atomic_write_u32(&AutoVacuumShmem->av_nworkersForBalance,
 							nworkers_for_balance);
+
+		/*
+		 * Wake up the autovacuum workers sharing the cost limit so that they
+		 * pick up the new count. An autovacuum worker that is vacuuming does
+		 * that on its next nap anyway, but one running a parallel vacuum
+		 * (leader) that is only waiting for its parallel workers to finish
+		 * never naps, and nothing else would tell it.
+		 *
+		 * Only the waiting leaders need this, but knowing which ones are
+		 * waiting would need more state. For an autovacuum worker that is not
+		 * in a latch wait, SetLatch() sends no signal and only marks the
+		 * latch set, which costs one early return from its next latch wait.
+		 */
+		dlist_foreach(iter, &AutoVacuumShmem->av_runningWorkers)
+		{
+			WorkerInfo	worker = dlist_container(WorkerInfoData, wi_links, iter.cur);
+
+			if (worker->wi_proc == NULL ||
+				pg_atomic_unlocked_test_flag(&worker->wi_dobalance))
+				continue;
+
+			SetLatch(&worker->wi_proc->procLatch);
+		}
+	}
 }
 
 /*
@@ -2485,6 +2510,7 @@ do_autovacuum(void)
 		 */
 		VacuumUpdateCosts();
 
+		INJECTION_POINT("autovacuum-worker-cost-balanced", NULL);
 
 		/* clean up memory before each iteration */
 		MemoryContextReset(PortalContext);
@@ -3232,9 +3258,10 @@ relation_needs_vacanalyze(Oid relid,
 	if (autovacuum_multixact_freeze_score_weight > 1.0)
 		effective_mxid_failsafe_age /= autovacuum_multixact_freeze_score_weight;
 
-	if (xid_age >= effective_xid_failsafe_age)
+	/* We must be careful to avoid lowering the score. */
+	if (xid_age >= effective_xid_failsafe_age && scores->xid > 1.0)
 		scores->xid = pow(scores->xid, Max(1.0, (double) xid_age / 100000000));
-	if (mxid_age >= effective_mxid_failsafe_age)
+	if (mxid_age >= effective_mxid_failsafe_age && scores->mxid > 1.0)
 		scores->mxid = pow(scores->mxid, Max(1.0, (double) mxid_age / 100000000));
 
 	scores->xid *= autovacuum_freeze_score_weight;
@@ -3652,6 +3679,8 @@ pg_stat_get_autovacuum_scores(PG_FUNCTION_ARGS)
 	TableScanDesc scan;
 	HeapTuple	tup;
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	HTAB	   *table_toast_map;
+	HASHCTL		ctl;
 
 	InitMaterializedSRF(fcinfo, 0);
 
@@ -3660,13 +3689,62 @@ pg_stat_get_autovacuum_scores(PG_FUNCTION_ARGS)
 	recentXid = ReadNextTransactionId();
 	recentMulti = ReadNextMultiXactId();
 
-	/* scan pg_class */
+	/* create hash table for toast <-> main relid mapping */
+	ctl.keysize = sizeof(Oid);
+	ctl.entrysize = sizeof(av_relation);
+	ctl.hcxt = CurrentMemoryContext;
+	table_toast_map = hash_create("TOAST to main relid map",
+								  100,
+								  &ctl,
+								  HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+
 	rel = table_open(RelationRelationId, AccessShareLock);
+
+	/*
+	 * Do an initial pass over pg_class to collect the main relations'
+	 * autovacuum parameters.
+	 */
 	scan = table_beginscan_catalog(rel, 0, NULL);
 	while ((tup = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
 		Form_pg_class form = (Form_pg_class) GETSTRUCT(tup);
 		AutoVacOpts *avopts;
+		av_relation *hentry;
+		bool		found;
+
+		/* skip ineligible entries */
+		if (form->relkind != RELKIND_RELATION &&
+			form->relkind != RELKIND_MATVIEW)
+			continue;
+		if (form->relpersistence == RELPERSISTENCE_TEMP)
+			continue;
+		if (!OidIsValid(form->reltoastrelid))
+			continue;
+
+		avopts = extract_autovac_opts(tup, RelationGetDescr(rel));
+		if (avopts == NULL)
+			continue;
+
+		hentry = hash_search(table_toast_map, &form->reltoastrelid,
+							 HASH_ENTER, &found);
+		Assert(!found);			/* rels cannot share a TOAST table */
+
+		/* hash_search already filled in the key */
+		hentry->ar_relid = form->oid;
+		hentry->ar_hasrelopts = true;
+		memcpy(&hentry->ar_reloptions, avopts, sizeof(AutoVacOpts));
+
+		pfree(avopts);
+	}
+	table_endscan(scan);
+
+	/* now scan pg_class again to compute the scores */
+	scan = table_beginscan_catalog(rel, 0, NULL);
+	while ((tup = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	{
+		Form_pg_class form = (Form_pg_class) GETSTRUCT(tup);
+		AutoVacOpts *avopts;
+		bool		free_avopts = false;
 		bool		dovacuum;
 		bool		doanalyze;
 		bool		wraparound;
@@ -3682,13 +3760,30 @@ pg_stat_get_autovacuum_scores(PG_FUNCTION_ARGS)
 		if (form->relpersistence == RELPERSISTENCE_TEMP)
 			continue;
 
+		/*
+		 * fetch reloptions -- if this toast table does not have them, try the
+		 * main rel
+		 */
 		avopts = extract_autovac_opts(tup, RelationGetDescr(rel));
+		if (avopts)
+			free_avopts = true;
+		else if (form->relkind == RELKIND_TOASTVALUE)
+		{
+			av_relation *hentry;
+			bool		found;
+
+			hentry = hash_search(table_toast_map, &form->oid,
+								 HASH_FIND, &found);
+			if (found && hentry->ar_hasrelopts)
+				avopts = &hentry->ar_reloptions;
+		}
+
 		relation_needs_vacanalyze(form->oid, avopts, form,
 								  effective_multixact_freeze_max_age,
 								  LOG_NEVER,
 								  &dovacuum, &doanalyze, &wraparound,
 								  &scores);
-		if (avopts)
+		if (free_avopts)
 			pfree(avopts);
 
 		vals[0] = ObjectIdGetDatum(form->oid);
@@ -3706,6 +3801,7 @@ pg_stat_get_autovacuum_scores(PG_FUNCTION_ARGS)
 	}
 	table_endscan(scan);
 	table_close(rel, AccessShareLock);
+	hash_destroy(table_toast_map);
 
 	return (Datum) 0;
 }

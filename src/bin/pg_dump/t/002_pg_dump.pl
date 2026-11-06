@@ -3171,18 +3171,6 @@ my %tests = (
 		},
 	},
 
-	'CREATE PROPERTY GRAPH propgraph' => {
-		create_order => 20,
-		create_sql => 'CREATE PROPERTY GRAPH dump_test.propgraph;',
-		regexp => qr/^
-			\QCREATE PROPERTY GRAPH dump_test.propgraph\E;
-			/xm,
-		like =>
-		  { %full_runs, %dump_test_schema_runs, section_pre_data => 1, },
-		unlike =>
-		  { exclude_dump_test_schema => 1, only_dump_measurement => 1, },
-	},
-
 	'CREATE PUBLICATION pub1' => {
 		create_order => 50,
 		create_sql   => 'CREATE PUBLICATION pub1;',
@@ -3973,6 +3961,31 @@ my %tests = (
 		},
 	},
 
+	'CREATE TABLE table_with_constraint_stats' => {
+		create_order => 98,
+		create_sql => 'CREATE TABLE dump_test.table_constraint_stats (
+						   col1 int,
+						   col2 int);
+						 ALTER TABLE dump_test.table_constraint_stats
+						   ADD CONSTRAINT ex_with_stats
+						   EXCLUDE USING btree ((col1 + 1) WITH =,
+							 col1 WITH =, (col2 + 1) WITH =);
+						 ALTER INDEX dump_test.ex_with_stats
+						   ALTER COLUMN 1 SET STATISTICS 100;
+						 ALTER INDEX dump_test.ex_with_stats
+						   ALTER COLUMN 3 SET STATISTICS 200;',
+		regexp => qr/^
+			\QALTER INDEX dump_test.ex_with_stats ALTER COLUMN 1 SET STATISTICS 100;\E\n
+			\QALTER INDEX dump_test.ex_with_stats ALTER COLUMN 3 SET STATISTICS 200;\E\n
+			/xms,
+		like =>
+		  { %full_runs, %dump_test_schema_runs, section_post_data => 1, },
+		unlike => {
+			exclude_dump_test_schema => 1,
+			only_dump_measurement => 1,
+		},
+	},
+
 	'CREATE TABLE test_inheritance_parent' => {
 		create_order => 90,
 		create_sql   => 'CREATE TABLE dump_test.test_inheritance_parent (
@@ -4553,22 +4566,6 @@ my %tests = (
 			exclude_dump_test_schema => 1,
 			no_privs                 => 1,
 			only_dump_measurement    => 1,
-		},
-	},
-
-	'GRANT SELECT ON PROPERTY GRAPH propgraph' => {
-		create_order => 21,
-		create_sql =>
-		  'GRANT SELECT ON PROPERTY GRAPH dump_test.propgraph TO regress_dump_test_role;',
-		regexp => qr/^
-			\QGRANT ALL ON PROPERTY GRAPH dump_test.propgraph TO regress_dump_test_role;\E
-			/xm,
-		like =>
-		  { %full_runs, %dump_test_schema_runs, section_pre_data => 1, },
-		unlike => {
-			exclude_dump_test_schema => 1,
-			no_privs => 1,
-			only_dump_measurement => 1,
 		},
 	},
 

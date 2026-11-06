@@ -237,7 +237,7 @@ main(int argc, char *argv[])
 					pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 					exit(1);
 				}
-				newest_commit_ts_xid_val = strtoul(endptr + 1, &endptr2, 0);
+				newest_commit_ts_xid_val = strtouint32_strict(endptr + 1, &endptr2, 0);
 				if (endptr2 == endptr + 1 || *endptr2 != '\0' || errno != 0)
 				{
 					pg_log_error("invalid argument for option %s", "-c");
@@ -307,6 +307,10 @@ main(int argc, char *argv[])
 					pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 					exit(1);
 				}
+
+				/* offset 0 means "invalid" in pg_multixact/offsets */
+				if (next_mxoff_val == 0)
+					pg_fatal("next multitransaction offset (-O) must not be 0");
 				next_mxoff_given = true;
 				break;
 
@@ -500,8 +504,10 @@ main(int argc, char *argv[])
 
 	if (commit_ts_xids_given)
 	{
-		ControlFile.checkPointCopy.oldestCommitTsXid = oldest_commit_ts_xid_val;
-		ControlFile.checkPointCopy.newestCommitTsXid = newest_commit_ts_xid_val;
+		if (oldest_commit_ts_xid_val != InvalidTransactionId)
+			ControlFile.checkPointCopy.oldestCommitTsXid = oldest_commit_ts_xid_val;
+		if (newest_commit_ts_xid_val != InvalidTransactionId)
+			ControlFile.checkPointCopy.newestCommitTsXid = newest_commit_ts_xid_val;
 	}
 
 	if (next_oid_given)
@@ -722,7 +728,7 @@ GuessControlValues(void)
 		FullTransactionIdFromEpochAndXid(0, FirstNormalTransactionId);
 	ControlFile.checkPointCopy.nextOid = FirstGenbkiObjectId;
 	ControlFile.checkPointCopy.nextMulti = FirstMultiXactId;
-	ControlFile.checkPointCopy.nextMultiOffset = 0;
+	ControlFile.checkPointCopy.nextMultiOffset = 1;
 	ControlFile.checkPointCopy.oldestXid = FirstNormalTransactionId;
 	ControlFile.checkPointCopy.oldestXidDB = InvalidOid;
 	ControlFile.checkPointCopy.oldestMulti = FirstMultiXactId;

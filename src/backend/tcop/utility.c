@@ -44,7 +44,6 @@
 #include "commands/portalcmds.h"
 #include "commands/prepare.h"
 #include "commands/proclang.h"
-#include "commands/propgraphcmds.h"
 #include "commands/publicationcmds.h"
 #include "commands/repack.h"
 #include "commands/schemacmds.h"
@@ -152,7 +151,6 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_AlterOperatorStmt:
 		case T_AlterOwnerStmt:
 		case T_AlterPolicyStmt:
-		case T_AlterPropGraphStmt:
 		case T_AlterPublicationStmt:
 		case T_AlterRoleSetStmt:
 		case T_AlterRoleStmt:
@@ -188,7 +186,6 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_CreateOpFamilyStmt:
 		case T_CreatePLangStmt:
 		case T_CreatePolicyStmt:
-		case T_CreatePropGraphStmt:
 		case T_CreatePublicationStmt:
 		case T_CreateRangeStmt:
 		case T_CreateRoleStmt:
@@ -1379,7 +1376,8 @@ ProcessUtilitySlow(ParseState *pstate,
 							address =
 								AlterDomainAddConstraint(stmt->typeName,
 														 stmt->def,
-														 &secondaryObject);
+														 &secondaryObject,
+														 false);
 							break;
 						case AD_DropConstraint:
 							address =
@@ -1792,14 +1790,6 @@ ProcessUtilitySlow(ParseState *pstate,
 				commandCollected = true;
 				break;
 
-			case T_CreatePropGraphStmt:
-				address = CreatePropGraph(pstate, (CreatePropGraphStmt *) parsetree);
-				break;
-
-			case T_AlterPropGraphStmt:
-				address = AlterPropGraph(pstate, (AlterPropGraphStmt *) parsetree);
-				break;
-
 			case T_CreateTransformStmt:
 				address = CreateTransform((CreateTransformStmt *) parsetree);
 				break;
@@ -1939,7 +1929,21 @@ ProcessUtilitySlow(ParseState *pstate,
 				{
 					Oid			relid;
 					CreateStatsStmt *stmt = (CreateStatsStmt *) parsetree;
-					RangeVar   *rel = (RangeVar *) linitial(stmt->relations);
+					RangeVar   *rel;
+
+					/*
+					 * Examine the FROM clause.  Currently, we only allow it
+					 * to be a single simple table, but later we'll probably
+					 * allow multiple tables and JOIN syntax.  The grammar is
+					 * already prepared for that, so we have to check here
+					 * that what we got is what we can support.
+					 */
+					if (list_length(stmt->relations) != 1)
+						ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("only a single relation is allowed in CREATE STATISTICS")));
+
+					rel = (RangeVar *) linitial(stmt->relations);
 
 					if (!IsA(rel, RangeVar))
 						ereport(ERROR,
@@ -1962,7 +1966,8 @@ ProcessUtilitySlow(ParseState *pstate,
 					/* Run parse analysis ... */
 					stmt = transformStatsStmt(relid, stmt, queryString);
 
-					address = CreateStatistics(stmt, true);
+					address = CreateStatistics(list_make1_oid(relid), stmt,
+											   true);
 				}
 				break;
 
@@ -2082,7 +2087,6 @@ ExecDropStmt(DropStmt *stmt, bool isTopLevel)
 		case OBJECT_VIEW:
 		case OBJECT_MATVIEW:
 		case OBJECT_FOREIGN_TABLE:
-		case OBJECT_PROPGRAPH:
 			RemoveRelations(stmt);
 			break;
 		default:
@@ -2365,9 +2369,6 @@ AlterObjectTypeCommandTag(ObjectType objtype)
 		case OBJECT_PROCEDURE:
 			tag = CMDTAG_ALTER_PROCEDURE;
 			break;
-		case OBJECT_PROPGRAPH:
-			tag = CMDTAG_ALTER_PROPERTY_GRAPH;
-			break;
 		case OBJECT_ROLE:
 			tag = CMDTAG_ALTER_ROLE;
 			break;
@@ -2646,9 +2647,6 @@ CreateCommandTag(Node *parsetree)
 					break;
 				case OBJECT_INDEX:
 					tag = CMDTAG_DROP_INDEX;
-					break;
-				case OBJECT_PROPGRAPH:
-					tag = CMDTAG_DROP_PROPERTY_GRAPH;
 					break;
 				case OBJECT_TYPE:
 					tag = CMDTAG_DROP_TYPE;
@@ -3050,14 +3048,6 @@ CreateCommandTag(Node *parsetree)
 				default:
 					tag = CMDTAG_UNKNOWN;
 			}
-			break;
-
-		case T_CreatePropGraphStmt:
-			tag = CMDTAG_CREATE_PROPERTY_GRAPH;
-			break;
-
-		case T_AlterPropGraphStmt:
-			tag = CMDTAG_ALTER_PROPERTY_GRAPH;
 			break;
 
 		case T_CreateTransformStmt:
@@ -3802,14 +3792,6 @@ GetCommandLogLevel(Node *parsetree)
 			break;
 
 		case T_CreateOpFamilyStmt:
-			lev = LOGSTMT_DDL;
-			break;
-
-		case T_CreatePropGraphStmt:
-			lev = LOGSTMT_DDL;
-			break;
-
-		case T_AlterPropGraphStmt:
 			lev = LOGSTMT_DDL;
 			break;
 

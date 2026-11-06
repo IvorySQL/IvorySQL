@@ -18,7 +18,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: plisql (PostgreSQL) 11\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@postgresql.org\n"
-"POT-Creation-Date: 2018-10-08 14:08+0000\n"
+"POT-Creation-Date: 2026-08-03 08:39+0000\n"
 "PO-Revision-Date: 2018-10-08 23:10+0100\n"
 "Last-Translator: Daniele Varrazzo <daniele.varrazzo@gmail.com>\n"
 "Language-Team: https://github.com/dvarrazzo/postgresql-it\n"
@@ -85,11 +85,26 @@ msgstr "il riferimento alla colonna \"%s\" è ambiguo"
 msgid "It could refer to either a PL/iSQL variable or a table column."
 msgstr "Può riferirsi o ad una variabile PL/iSQL o ad una colonna di tabella."
 
+#: pl_comp.c:1939
+#, c-format
+msgid "field name \"%s\" is a reserved key word"
+msgstr "il nome del campo \"%s\" è una parola chiave riservata"
+
+#: pl_comp.c:1941
+#, c-format
+msgid "Use double quotes to quote it."
+msgstr "Usa le virgolette doppie per citarlo."
+
 #: pl_comp.c:1294 pl_exec.c:5049 pl_exec.c:5414 pl_exec.c:5501 pl_exec.c:5592
 #: pl_exec.c:6510
 #, c-format
 msgid "record \"%s\" has no field \"%s\""
 msgstr "il record \"%s\" non ha un campo \"%s\""
+
+#: pl_comp.c:2574 pl_comp.c:4152
+#, c-format
+msgid "column \"%s\" of relation \"%s\" does not exist"
+msgstr "la colonna \"%s\" della relazione \"%s\" non esiste"
 
 #: pl_comp.c:1756
 #, c-format
@@ -106,15 +121,15 @@ msgstr "la variabile \"%s\" ha lo pseudo-tipo %s"
 msgid "type \"%s\" is only a shell"
 msgstr "il tipo \"%s\" non è completamente definito"
 
+#: pl_comp.c:3184
+#, c-format
+msgid "could not find array type for data type %s"
+msgstr "non è stato possibile trovare il tipo di array per il tipo di dati %s"
+
 #: pl_comp.c:2125 pl_comp.c:2178
 #, c-format
 msgid "unrecognized exception condition \"%s\""
 msgstr "condizione di eccezione \"%s\" sconosciuta"
-
-#: pl_comp.c:2392
-#, c-format
-msgid "could not determine actual argument type for polymorphic function \"%s\""
-msgstr "il tipo reale dell'argomento non è determinabile per la funzione polimorfa \"%s\""
 
 #: pl_exec.c:474 pl_exec.c:886 pl_exec.c:1103
 msgid "during initialization of execution state"
@@ -190,6 +205,11 @@ msgstr "funzione PL/iSQL %s riga %d a %s"
 #, c-format
 msgid "PL/iSQL function %s"
 msgstr "funzione PL/iSQL %s"
+
+#: pl_exec.c:1581
+#, c-format
+msgid "SQL statement \"%s\""
+msgstr "istruzione SQL \"%s\""
 
 #: pl_exec.c:1539
 msgid "during statement block local variable initialization"
@@ -679,6 +699,10 @@ msgstr "espressione mancante"
 msgid "missing SQL statement"
 msgstr "istruzione SQL mancante"
 
+#: pl_gram.y:3858
+msgid "syntax error, expected \"]\""
+msgstr "errore di sintassi, atteso \"]\""
+
 #: pl_gram.y:2866
 msgid "incomplete data type declaration"
 msgstr "dichiarazione del tipo di dati incompleta"
@@ -830,3 +854,7 @@ msgstr "%s alla fine dell'input"
 #, c-format
 msgid "%s at or near \"%s\""
 msgstr "%s a o presso \"%s\""
+
+#, c-format
+#~ msgid "could not determine actual argument type for polymorphic function \"%s\""
+#~ msgstr "il tipo reale dell'argomento non è determinabile per la funzione polimorfa \"%s\""

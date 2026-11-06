@@ -284,14 +284,3 @@ msgstr "%s: საკუთარი პროგრამის გამშვ
 msgid "%s: invalid argument: %s\n"
 msgstr "%s: არასწორი არგუმენტი: %s\n"
 
-#, c-format
-#~ msgid "could not change directory to \"%s\": %m"
-#~ msgstr "საქაღალდის %s-ზე შეცვლის შეცდომა: %m"
-
-#, c-format
-#~ msgid "could not identify current directory: %m"
-#~ msgstr "მიმდინარე საქაღალდის იდენტიფიკაციის პრობლემა: %m"
-
-#, c-format
-#~ msgid "could not read symbolic link \"%s\": %m"
-#~ msgstr "სიმბოლური ბმის \"%s\" წაკითხვის შეცდომა: %m"

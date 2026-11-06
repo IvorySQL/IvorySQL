@@ -36,9 +36,10 @@ extern char *ora_psql_scan_slash_option(PsqlScanState state,
 
 extern void ora_psql_scan_slash_command_end(PsqlScanState state);
 
-extern int	ora_psql_scan_get_paren_depth(PsqlScanState state);
+extern PsqlScanStateSave *ora_psql_scan_get_lex_state(PsqlScanState state);
 
-extern void ora_psql_scan_set_paren_depth(PsqlScanState state, int depth);
+extern void ora_psql_scan_set_lex_state(PsqlScanState state,
+										const PsqlScanStateSave *lex_state);
 
 extern void ora_dequote_downcase_identifier(char *str, bool downcase, int encoding);
 

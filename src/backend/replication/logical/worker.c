@@ -158,8 +158,8 @@
  *
  * - RDT_REQUEST_PUBLISHER_STATUS:
  *   Send a message to the walsender requesting the publisher status, which
- *   includes the latest WAL write position and information about transactions
- *   that are in the commit phase.
+ *   includes the latest WAL insert position and information about
+ *   transactions that are in the commit phase.
  *
  * - RDT_WAIT_FOR_PUBLISHER_STATUS:
  *   Wait for the status from the walsender. After receiving the first status,
@@ -290,6 +290,7 @@
 #include "tcop/tcopprot.h"
 #include "utils/acl.h"
 #include "utils/guc.h"
+#include "utils/injection_point.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -406,7 +407,7 @@ typedef enum
 typedef struct RetainDeadTuplesData
 {
 	RetainDeadTuplesPhase phase;	/* current phase */
-	XLogRecPtr	remote_lsn;		/* WAL write position on the publisher */
+	XLogRecPtr	remote_lsn;		/* WAL insert position on the publisher */
 
 	/*
 	 * Oldest transaction ID that was in the commit phase on the publisher.
@@ -482,6 +483,7 @@ static MemoryContext LogicalStreamingContext = NULL;
 WalReceiverConn *LogRepWorkerWalRcvConn = NULL;
 
 Subscription *MySubscription = NULL;
+char	   *MySubscriptionConninfo = NULL;
 static bool MySubscriptionValid = false;
 
 static List *on_commit_wakeup_workers_subids = NIL;
@@ -598,19 +600,17 @@ static void apply_handle_insert_internal(ApplyExecutionData *edata,
 static void apply_handle_update_internal(ApplyExecutionData *edata,
 										 ResultRelInfo *relinfo,
 										 TupleTableSlot *remoteslot,
-										 LogicalRepTupleData *newtup,
-										 Oid localindexoid);
+										 LogicalRepTupleData *newtup);
 static void apply_handle_delete_internal(ApplyExecutionData *edata,
 										 ResultRelInfo *relinfo,
 										 TupleTableSlot *remoteslot,
-										 Oid localindexoid);
+										 LogicalRepRelMapEntry *relmapentry);
 static bool FindReplTupleInLocalRel(ApplyExecutionData *edata, Relation localrel,
-									LogicalRepRelation *remoterel,
-									Oid localidxoid,
+									LogicalRepRelMapEntry *relmapentry,
 									TupleTableSlot *remoteslot,
 									TupleTableSlot **localslot);
 static bool FindDeletedTupleInLocalRel(Relation localrel,
-									   Oid localidxoid,
+									   LogicalRepRelMapEntry *relmapentry,
 									   TupleTableSlot *remoteslot,
 									   TransactionId *delete_xid,
 									   ReplOriginId *delete_origin,
@@ -944,12 +944,16 @@ finish_edata(ApplyExecutionData *edata)
 		ExecCleanupTupleRouting(edata->mtstate, edata->proute);
 
 	/*
-	 * Cleanup.  It might seem that we should call ExecCloseResultRelations()
-	 * here, but we intentionally don't.  It would close the rel we added to
+	 * Close relations opened specifically for trigger targets.  It might seem
+	 * that we should call ExecCloseResultRelations() here, but we
+	 * intentionally don't as that would close the rel we added to
 	 * es_opened_result_relations above, which is wrong because we took no
-	 * corresponding refcount.  We rely on ExecCleanupTupleRouting() to close
-	 * any other relations opened during execution.
+	 * corresponding refcount.  ExecCleanupTupleRouting() closes relations
+	 * opened for tuple routing, while ExecCloseTrigTargetRelations() closes
+	 * any relations we opened for AFTER triggers.
 	 */
+	ExecCloseTrigTargetRelations(estate);
+
 	ExecResetTupleTable(estate->es_tupleTable, false);
 	FreeExecutorState(estate);
 	pfree(edata);
@@ -1043,8 +1047,10 @@ slot_store_data(TupleTableSlot *slot, LogicalRepRelMapEntry *rel,
 			if (remoteattnum >= tupleData->ncols)
 				ereport(ERROR,
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
-						 errmsg("logical replication column %d not found in tuple: only %d column(s) received",
-								remoteattnum + 1, tupleData->ncols)));
+						 errmsg_plural("logical replication column %d not found in tuple: only %d column received",
+									   "logical replication column %d not found in tuple: only %d columns received",
+									   tupleData->ncols,
+									   remoteattnum + 1, tupleData->ncols)));
 
 			colvalue = &tupleData->colvalues[remoteattnum];
 
@@ -1160,8 +1166,10 @@ slot_modify_data(TupleTableSlot *slot, TupleTableSlot *srcslot,
 		if (remoteattnum >= tupleData->ncols)
 			ereport(ERROR,
 					(errcode(ERRCODE_PROTOCOL_VIOLATION),
-					 errmsg("logical replication column %d not found in tuple: only %d column(s) received",
-							remoteattnum + 1, tupleData->ncols)));
+					 errmsg_plural("logical replication column %d not found in tuple: only %d column received",
+								   "logical replication column %d not found in tuple: only %d columns received",
+								   tupleData->ncols,
+								   remoteattnum + 1, tupleData->ncols)));
 
 		if (tupleData->colstatus[remoteattnum] != LOGICALREP_COLUMN_UNCHANGED)
 		{
@@ -2776,11 +2784,8 @@ check_relation_updatable(LogicalRepRelMapEntry *rel)
 	if (rel->updatable)
 		return;
 
-	/*
-	 * We are in error mode so it's fine this is somewhat slow. It's better to
-	 * give user correct error.
-	 */
-	if (OidIsValid(GetRelationIdentityOrPK(rel->localrel)))
+	/* Use the entry, so this matches what updatable was decided from. */
+	if (rel->idxisreplident)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
@@ -2883,8 +2888,10 @@ apply_handle_update(StringInfo s)
 			if (remoteattnum >= newtup.ncols)
 				ereport(ERROR,
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
-						 errmsg("logical replication column %d not found in tuple: only %d column(s) received",
-								remoteattnum + 1, newtup.ncols)));
+						 errmsg_plural("logical replication column %d not found in tuple: only %d column received",
+									   "logical replication column %d not found in tuple: only %d columns received",
+									   newtup.ncols,
+									   remoteattnum + 1, newtup.ncols)));
 
 			if (newtup.colstatus[remoteattnum] != LOGICALREP_COLUMN_UNCHANGED)
 				target_perminfo->updatedCols =
@@ -2905,7 +2912,7 @@ apply_handle_update(StringInfo s)
 								   remoteslot, &newtup, CMD_UPDATE);
 	else
 		apply_handle_update_internal(edata, edata->targetRelInfo,
-									 remoteslot, &newtup, rel->localindexoid);
+									 remoteslot, &newtup);
 
 	finish_edata(edata);
 
@@ -2929,8 +2936,7 @@ static void
 apply_handle_update_internal(ApplyExecutionData *edata,
 							 ResultRelInfo *relinfo,
 							 TupleTableSlot *remoteslot,
-							 LogicalRepTupleData *newtup,
-							 Oid localindexoid)
+							 LogicalRepTupleData *newtup)
 {
 	EState	   *estate = edata->estate;
 	LogicalRepRelMapEntry *relmapentry = edata->targetRel;
@@ -2942,11 +2948,12 @@ apply_handle_update_internal(ApplyExecutionData *edata,
 	MemoryContext oldctx;
 
 	EvalPlanQualInit(&epqstate, estate, NULL, NIL, -1, NIL);
+
+	INJECTION_POINT("apply-update-before-open-indices", NULL);
+
 	ExecOpenIndices(relinfo, false);
 
-	found = FindReplTupleInLocalRel(edata, localrel,
-									&relmapentry->remoterel,
-									localindexoid,
+	found = FindReplTupleInLocalRel(edata, localrel, relmapentry,
 									remoteslot, &localslot);
 
 	/*
@@ -3000,7 +3007,7 @@ apply_handle_update_internal(ApplyExecutionData *edata,
 		 * Detecting whether the tuple was recently deleted or never existed
 		 * is crucial to avoid misleading the user during conflict handling.
 		 */
-		if (FindDeletedTupleInLocalRel(localrel, localindexoid, remoteslot,
+		if (FindDeletedTupleInLocalRel(localrel, relmapentry, remoteslot,
 									   &conflicttuple.xmin,
 									   &conflicttuple.origin,
 									   &conflicttuple.ts) &&
@@ -3102,7 +3109,7 @@ apply_handle_delete(StringInfo s)
 
 		ExecOpenIndices(relinfo, false);
 		apply_handle_delete_internal(edata, relinfo,
-									 remoteslot, rel->localindexoid);
+									 remoteslot, rel);
 		ExecCloseIndices(relinfo);
 	}
 
@@ -3128,11 +3135,10 @@ static void
 apply_handle_delete_internal(ApplyExecutionData *edata,
 							 ResultRelInfo *relinfo,
 							 TupleTableSlot *remoteslot,
-							 Oid localindexoid)
+							 LogicalRepRelMapEntry *relmapentry)
 {
 	EState	   *estate = edata->estate;
 	Relation	localrel = relinfo->ri_RelationDesc;
-	LogicalRepRelation *remoterel = &edata->targetRel->remoterel;
 	EPQState	epqstate;
 	TupleTableSlot *localslot;
 	ConflictTupleInfo conflicttuple = {0};
@@ -3145,7 +3151,7 @@ apply_handle_delete_internal(ApplyExecutionData *edata,
 		   !localrel->rd_rel->relhasindex ||
 		   RelationGetIndexList(localrel) == NIL);
 
-	found = FindReplTupleInLocalRel(edata, localrel, remoterel, localindexoid,
+	found = FindReplTupleInLocalRel(edata, localrel, relmapentry,
 									remoteslot, &localslot);
 
 	/* If found delete it. */
@@ -3190,16 +3196,20 @@ apply_handle_delete_internal(ApplyExecutionData *edata,
  * the corresponding local relation using either replica identity index,
  * primary key, index or if needed, sequential scan.
  *
+ * 'relmapentry' is the relation map entry for 'localrel'. It tells which
+ * index to use, if any, and whether that index is the relation's replica
+ * identity or primary key.
+ *
  * Local tuple, if found, is returned in '*localslot'.
  */
 static bool
 FindReplTupleInLocalRel(ApplyExecutionData *edata, Relation localrel,
-						LogicalRepRelation *remoterel,
-						Oid localidxoid,
+						LogicalRepRelMapEntry *relmapentry,
 						TupleTableSlot *remoteslot,
 						TupleTableSlot **localslot)
 {
 	EState	   *estate = edata->estate;
+	Oid			localidxoid = relmapentry->localindexoid;
 	bool		found;
 
 	/*
@@ -3211,22 +3221,39 @@ FindReplTupleInLocalRel(ApplyExecutionData *edata, Relation localrel,
 	*localslot = table_slot_create(localrel, &estate->es_tupleTable);
 
 	Assert(OidIsValid(localidxoid) ||
-		   (remoterel->replident == REPLICA_IDENTITY_FULL));
+		   (relmapentry->remoterel.replident == REPLICA_IDENTITY_FULL));
 
 	if (OidIsValid(localidxoid))
 	{
 #ifdef USE_ASSERT_CHECKING
 		Relation	idxrel = index_open(localidxoid, AccessShareLock);
 
-		/* Index must be PK, RI, or usable for REPLICA IDENTITY FULL tables */
-		Assert(GetRelationIdentityOrPK(localrel) == localidxoid ||
-			   (remoterel->replident == REPLICA_IDENTITY_FULL &&
-				IsIndexUsableForReplicaIdentityFull(idxrel,
-													edata->targetRel->attrmap)));
+		if (relmapentry->idxisreplident)
+		{
+			/*
+			 * We cannot assert this is still the replica identity or primary
+			 * key. DROP INDEX CONCURRENTLY and REINDEX CONCURRENTLY clear
+			 * indisvalid and indisreplident without conflicting with our
+			 * RowExclusiveLock, so GetRelationIdentityOrPK() may no longer
+			 * return it. Unique and non-partial is what the scan actually
+			 * relies on, and no DDL can take those away.
+			 */
+			Assert(idxrel->rd_index->indisunique);
+			Assert(heap_attisnull(idxrel->rd_indextuple,
+								  Anum_pg_index_indpred, NULL));
+		}
+		else
+		{
+			/* Otherwise every match is compared, so we need a whole row. */
+			Assert(relmapentry->remoterel.replident == REPLICA_IDENTITY_FULL);
+			Assert(IsIndexUsableForReplicaIdentityFull(idxrel,
+													   relmapentry->attrmap));
+		}
 		index_close(idxrel, AccessShareLock);
 #endif
 
 		found = RelationFindReplTupleByIndex(localrel, localidxoid,
+											 relmapentry->idxisreplident,
 											 LockTupleExclusive,
 											 remoteslot, *localslot);
 	}
@@ -3283,16 +3310,21 @@ IsIndexUsableForFindingDeletedTuple(Oid localindexoid,
  * The search is performed using either the replica identity index, primary
  * key, other available index, or a sequential scan if necessary.
  *
+ * 'relmapentry' is the relation map entry for 'localrel', as in
+ * FindReplTupleInLocalRel().
+ *
  * Returns true if the deleted tuple is found. If found, the transaction ID,
  * origin, and commit timestamp of the deletion are stored in '*delete_xid',
  * '*delete_origin', and '*delete_time' respectively.
  */
 static bool
-FindDeletedTupleInLocalRel(Relation localrel, Oid localidxoid,
+FindDeletedTupleInLocalRel(Relation localrel,
+						   LogicalRepRelMapEntry *relmapentry,
 						   TupleTableSlot *remoteslot,
 						   TransactionId *delete_xid, ReplOriginId *delete_origin,
 						   TimestampTz *delete_time)
 {
+	Oid			localidxoid = relmapentry->localindexoid;
 	TransactionId oldestxmin;
 
 	/*
@@ -3357,13 +3389,17 @@ FindDeletedTupleInLocalRel(Relation localrel, Oid localidxoid,
 	if (OidIsValid(localidxoid) &&
 		IsIndexUsableForFindingDeletedTuple(localidxoid, oldestxmin))
 		return RelationFindDeletedTupleInfoByIndex(localrel, localidxoid,
+												   relmapentry->idxisreplident,
 												   remoteslot, oldestxmin,
 												   delete_xid, delete_origin,
 												   delete_time);
 	else
-		return RelationFindDeletedTupleInfoSeq(localrel, remoteslot,
-											   oldestxmin, delete_xid,
-											   delete_origin, delete_time);
+		return RelationFindDeletedTupleInfoSeq(localrel,
+											   relmapentry->idxisreplident ?
+											   localidxoid : InvalidOid,
+											   remoteslot, oldestxmin,
+											   delete_xid, delete_origin,
+											   delete_time);
 }
 
 /*
@@ -3458,8 +3494,7 @@ apply_handle_tuple_routing(ApplyExecutionData *edata,
 
 		case CMD_DELETE:
 			apply_handle_delete_internal(edata, partrelinfo,
-										 remoteslot_part,
-										 part_entry->localindexoid);
+										 remoteslot_part, part_entry);
 			break;
 
 		case CMD_UPDATE:
@@ -3479,9 +3514,7 @@ apply_handle_tuple_routing(ApplyExecutionData *edata,
 				ConflictTupleInfo conflicttuple = {0};
 
 				/* Get the matching local tuple from the partition. */
-				found = FindReplTupleInLocalRel(edata, partrel,
-												&part_entry->remoterel,
-												part_entry->localindexoid,
+				found = FindReplTupleInLocalRel(edata, partrel, part_entry,
 												remoteslot_part, &localslot);
 				if (!found)
 				{
@@ -3493,8 +3526,7 @@ apply_handle_tuple_routing(ApplyExecutionData *edata,
 					 * never existed is crucial to avoid misleading the user
 					 * during conflict handling.
 					 */
-					if (FindDeletedTupleInLocalRel(partrel,
-												   part_entry->localindexoid,
+					if (FindDeletedTupleInLocalRel(partrel, part_entry,
 												   remoteslot_part,
 												   &conflicttuple.xmin,
 												   &conflicttuple.origin,
@@ -5061,6 +5093,8 @@ void
 maybe_reread_subscription(void)
 {
 	Subscription *newsub;
+	char	   *old_conninfo;
+	char	   *new_conninfo;
 	bool		started_tx = false;
 
 	/* When cache state is valid there is nothing to do here. */
@@ -5074,7 +5108,7 @@ maybe_reread_subscription(void)
 		started_tx = true;
 	}
 
-	newsub = GetSubscription(MyLogicalRepWorker->subid, true, true, true);
+	newsub = GetSubscription(MyLogicalRepWorker->subid, true);
 
 	if (newsub)
 	{
@@ -5107,6 +5141,13 @@ maybe_reread_subscription(void)
 		apply_worker_exit();
 	}
 
+	/*
+	 * May raise error, so build conninfo after checking that the subscription
+	 * is enabled. Allocated in transaction context; must be copied to
+	 * ApplyContext when we set MySubscriptionConninfo.
+	 */
+	new_conninfo = SubscriptionConninfo(newsub);
+
 	/* !slotname should never happen when enabled is true. */
 	Assert(newsub->slotname);
 
@@ -5120,7 +5161,7 @@ maybe_reread_subscription(void)
 	 * 'parallel' to any other value or the server decides not to stream the
 	 * in-progress transaction.
 	 */
-	if (strcmp(newsub->conninfo, MySubscription->conninfo) != 0 ||
+	if (strcmp(new_conninfo, MySubscriptionConninfo) != 0 ||
 		strcmp(newsub->name, MySubscription->name) != 0 ||
 		strcmp(newsub->slotname, MySubscription->slotname) != 0 ||
 		newsub->binary != MySubscription->binary ||
@@ -5170,6 +5211,11 @@ maybe_reread_subscription(void)
 	/* Clean old subscription info and switch to new one. */
 	MemoryContextDelete(MySubscription->cxt);
 	MySubscription = newsub;
+
+	/* copy to ApplyContext and update MySubscriptionConninfo */
+	old_conninfo = MySubscriptionConninfo;
+	MySubscriptionConninfo = MemoryContextStrdup(ApplyContext, new_conninfo);
+	pfree(old_conninfo);
 
 	/* Change synchronous commit according to the user's wishes */
 	SetConfigOption("synchronous_commit", MySubscription->synccommit,
@@ -5718,7 +5764,7 @@ run_apply_worker(void)
 	must_use_password = MySubscription->passwordrequired &&
 		!MySubscription->ownersuperuser;
 
-	LogRepWorkerWalRcvConn = walrcv_connect(MySubscription->conninfo, true,
+	LogRepWorkerWalRcvConn = walrcv_connect(MySubscriptionConninfo, true,
 											true, must_use_password,
 											MySubscription->name, &err);
 
@@ -5732,7 +5778,22 @@ run_apply_worker(void)
 	 * We don't really use the output identify_system for anything but it does
 	 * some initializations on the upstream so let's still call it.
 	 */
-	(void) walrcv_identify_system(LogRepWorkerWalRcvConn, &startpointTLI);
+	(void) walrcv_identify_system(LogRepWorkerWalRcvConn, &startpointTLI, NULL);
+
+	/*
+	 * If retain_dead_tuples is enabled, verify that the publisher is
+	 * suitable, that is, it runs a version that supports the feature and is
+	 * not in recovery. This is the authoritative check. Although the same
+	 * validation is performed opportunistically at DDL time, the publisher's
+	 * version or recovery status may have changed since then, for example
+	 * after a failover.
+	 */
+	if (MySubscription->retaindeadtuples)
+	{
+		StartTransactionCommand();
+		CheckPubDeadTupleRetention(LogRepWorkerWalRcvConn);
+		CommitTransactionCommand();
+	}
 
 	set_apply_error_context_origin(originname);
 
@@ -5823,7 +5884,7 @@ InitializeLogRepWorker(void)
 	LockSharedObject(SubscriptionRelationId, MyLogicalRepWorker->subid, 0,
 					 AccessShareLock);
 
-	MySubscription = GetSubscription(MyLogicalRepWorker->subid, true, true, true);
+	MySubscription = GetSubscription(MyLogicalRepWorker->subid, true);
 
 	if (MySubscription)
 	{
@@ -5842,8 +5903,6 @@ InitializeLogRepWorker(void)
 		proc_exit(0);
 	}
 
-	MySubscriptionValid = true;
-
 	if (!MySubscription->enabled)
 	{
 		ereport(LOG,
@@ -5852,6 +5911,17 @@ InitializeLogRepWorker(void)
 
 		apply_worker_exit();
 	}
+
+	/*
+	 * May raise error for server-based subscriptions, so build conninfo after
+	 * checking that the subscription is enabled. Build in transaction context
+	 * and copy to ApplyContext.
+	 */
+	MySubscriptionConninfo =
+		MemoryContextStrdup(ApplyContext,
+							SubscriptionConninfo(MySubscription));
+
+	MySubscriptionValid = true;
 
 	/*
 	 * Restart the worker if retain_dead_tuples was enabled during startup.
@@ -5977,17 +6047,23 @@ SetupApplyOrSyncWorker(int worker_slot)
 	 */
 
 	/* Initialise stats to a sanish value */
-	MyLogicalRepWorker->last_send_time = MyLogicalRepWorker->last_recv_time =
-		MyLogicalRepWorker->reply_time = GetCurrentTimestamp();
+	if (am_sequencesync_worker())
+	{
+		MyLogicalRepWorker->last_send_time =
+			MyLogicalRepWorker->last_recv_time =
+			MyLogicalRepWorker->reply_time = 0;
+	}
+	else
+	{
+		MyLogicalRepWorker->last_send_time =
+			MyLogicalRepWorker->last_recv_time =
+			MyLogicalRepWorker->reply_time = GetCurrentTimestamp();
+	}
 
 	/* Load the libpq-specific functions */
 	load_file("libpqwalreceiver", false);
 
 	InitializeLogRepWorker();
-
-	/* Connect to the origin and start the replication. */
-	elog(DEBUG1, "connecting to publisher using connection string \"%s\"",
-		 MySubscription->conninfo);
 
 	/*
 	 * Setup callback for syscache so that we know when something changes in

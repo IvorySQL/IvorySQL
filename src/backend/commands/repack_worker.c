@@ -21,11 +21,13 @@
 #include "access/xlogwait.h"
 #include "commands/repack.h"
 #include "commands/repack_internal.h"
+#include "libpq/libpq.h"
 #include "libpq/pqmq.h"
 #include "replication/snapbuild.h"
 #include "storage/ipc.h"
 #include "storage/proc.h"
 #include "tcop/tcopprot.h"
+#include "utils/guc.h"
 #include "utils/memutils.h"
 
 #define PGREPACK_PLUGIN   "pgrepack"
@@ -43,9 +45,6 @@ static bool am_repack_worker = false;
 
 /* The WAL segment being decoded. */
 static XLogSegNo repack_current_segment = 0;
-
-/* Our DSM segment, for shutting down */
-static dsm_segment *worker_dsm_segment = NULL;
 
 /*
  * Keep track of the table we're processing, to skip logical decoding of data
@@ -66,6 +65,7 @@ RepackWorkerMain(Datum main_arg)
 	LogicalDecodingContext *decoding_ctx;
 	SharedFileSet *sfs;
 	Snapshot	snapshot;
+	char		buf[32];
 
 	am_repack_worker = true;
 
@@ -76,18 +76,18 @@ RepackWorkerMain(Datum main_arg)
 		ereport(ERROR,
 				errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				errmsg("could not map dynamic shared memory segment"));
-	worker_dsm_segment = seg;
 
 	shared = (DecodingWorkerShared *) dsm_segment_address(seg);
 
-	/* Arrange to signal the leader if we exit. */
-	before_shmem_exit(RepackWorkerShutdown, PointerGetDatum(shared));
+	/* Arrange to signal the steering process if we exit. */
+	before_shmem_exit(RepackWorkerShutdown, PointerGetDatum(seg));
 
 	/*
 	 * Join locking group - see the comments around the call of
 	 * start_repack_decoding_worker().
 	 */
-	if (!BecomeLockGroupMember(shared->backend_proc, shared->backend_pid))
+	if (!BecomeLockGroupMember(GetPGProcByNumber(shared->backend_proc_number),
+							   shared->backend_pid))
 		return;					/* The leader is not running anymore. */
 
 	/*
@@ -101,9 +101,21 @@ RepackWorkerMain(Datum main_arg)
 	pq_set_parallel_leader(shared->backend_pid,
 						   shared->backend_proc_number);
 
-	/* Connect to the database. LOGIN is not required. */
+	/*
+	 * Connect to the database, skipping the connection authorization checks
+	 * as parallel workers do.  Note that we run as the owner of the table
+	 * being repacked, who need not be able to log in or connect; the leader
+	 * checked the invoking user's privileges before starting us.
+	 */
 	BackgroundWorkerInitializeConnectionByOid(shared->dbid, shared->roleid,
+											  BGWORKER_BYPASS_ALLOWCONN |
 											  BGWORKER_BYPASS_ROLELOGINCHECK);
+
+	/* Adopt the steering backend's relevant timeouts. */
+	snprintf(buf, sizeof(buf), "%d", shared->lock_timeout);
+	SetConfigOption("lock_timeout", buf, PGC_SUSET, PGC_S_OVERRIDE);
+	snprintf(buf, sizeof(buf), "%d", shared->transaction_timeout);
+	SetConfigOption("transaction_timeout", buf, PGC_SUSET, PGC_S_OVERRIDE);
 
 	/*
 	 * Transaction is needed to open relation, and it also provides us with a
@@ -155,27 +167,43 @@ RepackWorkerMain(Datum main_arg)
 
 		if (stop)
 			break;
-
 	}
 
-	/* Cleanup. */
+	/* Clean up and report termination to our steering process */
 	repack_cleanup_logical_decoding(decoding_ctx);
 	CommitTransactionCommand();
+	pq_putmessage(PqRepackMsg_Terminate, NULL, 0);
 }
 
 /*
- * See ParallelWorkerShutdown for details.
+ * Make sure the repack steering process tries to read from our error queue one
+ * more time.  This guards against the case where we exit uncleanly without
+ * sending an ErrorResponse to the leader, for example because some code calls
+ * proc_exit directly.
  */
 static void
 RepackWorkerShutdown(int code, Datum arg)
 {
-	DecodingWorkerShared *shared = (DecodingWorkerShared *) DatumGetPointer(arg);
+	dsm_segment *seg;
+	DecodingWorkerShared *shared;
+	pid_t		pid;
+	ProcNumber	procno;
 
-	SendProcSignal(shared->backend_pid,
-				   PROCSIG_REPACK_MESSAGE,
-				   shared->backend_proc_number);
+	seg = (dsm_segment *) DatumGetPointer(arg);
+	shared = (DecodingWorkerShared *) dsm_segment_address(seg);
+	pid = shared->backend_pid;
+	procno = shared->backend_proc_number;
 
-	dsm_detach(worker_dsm_segment);
+	/*
+	 * Detach from the shared memory segment before we signal the backend.
+	 * Detaching also detaches the error message queue, and the backend learns
+	 * that we are gone by reading that queue when it handles our signal. If
+	 * we signaled first, the backend could read the queue while it still
+	 * looks attached, and nothing would make it read again.
+	 */
+	dsm_detach(seg);
+
+	SendProcSignal(pid, PROCSIG_REPACK_MESSAGE, procno);
 }
 
 bool
@@ -225,7 +253,10 @@ repack_setup_logical_decoding(Oid relid)
 
 	/*
 	 * Set up repacked_rel_locator and repacked_rel_toast_locator, which we
-	 * use to skip decoding of unrelated relations.
+	 * use to skip decoding of unrelated relations.  The steering backend
+	 * already holds ShareUpdateExclusiveLock on both these tables, so we
+	 * don't need any locks here, other than to avoid relation_open()'s
+	 * assertion that we hold one.
 	 */
 	rel = table_open(relid, AccessShareLock);
 	repacked_rel_locator = rel->rd_locator;
@@ -397,8 +428,8 @@ decode_concurrent_changes(LogicalDecodingContext *ctx,
 			{
 				LogicalIncreaseRestartDecodingForSlot(end_lsn, end_lsn);
 				LogicalConfirmReceivedLocation(end_lsn);
-				elog(DEBUG1, "REPACK: confirmed receive location %X/%X",
-					 (uint32) (end_lsn >> 32), (uint32) end_lsn);
+				elog(DEBUG1, "REPACK: confirmed receive location %X/%08X",
+					 LSN_FORMAT_ARGS(end_lsn));
 				repack_current_segment = segno_new;
 			}
 		}
@@ -447,7 +478,7 @@ decode_concurrent_changes(LogicalDecodingContext *ctx,
 
 		if (record == NULL)
 		{
-			int64		timeout = 0;
+			int			timeout = 0;
 			WaitLSNResult res;
 
 			/*
@@ -466,7 +497,7 @@ decode_concurrent_changes(LogicalDecodingContext *ctx,
 			 * should already have been flushed to disk.
 			 */
 			if (!XLogRecPtrIsValid(lsn_upto))
-				timeout = 100L;
+				timeout = 100;
 			res = WaitForLSN(WAIT_LSN_TYPE_PRIMARY_FLUSH,
 							 ctx->reader->EndRecPtr + 1,
 							 timeout);

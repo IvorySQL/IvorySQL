@@ -539,9 +539,12 @@ pgstat_get_entry_ref(PgStat_Kind kind, Oid dboid, uint64 objid, bool create,
 			if (shheader == NULL)
 			{
 				/*
-				 * Failed the allocation of a new entry, so clean up the
-				 * shared hashtable before giving up.
+				 * Failed the allocation of a new entry, so clean up both the
+				 * local reference and the shared hashtable before giving up.
+				 * Clean the local state first, since releasing the dshash
+				 * lock can process a pending interrupt.
 				 */
+				pgstat_release_entry_ref(key, entry_ref, false);
 				dshash_delete_entry(pgStatLocal.shared_hash, shhashent);
 
 				ereport(ERROR,
@@ -789,6 +792,15 @@ pgstat_gc_entry_refs(void)
 
 		Assert(!entry_ref->shared_stats ||
 			   entry_ref->shared_stats->magic == 0xdeadbeef);
+
+		/* A NULL shared_entry marks a partial reference. */
+		if (entry_ref->shared_entry == NULL)
+		{
+			Assert(entry_ref->shared_stats == NULL);
+			Assert(entry_ref->pending == NULL);
+			pgstat_release_entry_ref(ent->key, entry_ref, false);
+			continue;
+		}
 
 		/*
 		 * "generation" checks for the case of entries being reinitialized,

@@ -329,7 +329,7 @@ static ModifyTable *make_modifytable(PlannerInfo *root, Plan *subplan,
 									 List *withCheckOptionLists, List *returningLists,
 									 List *rowMarks, OnConflictExpr *onconflict,
 									 List *mergeActionLists, List *mergeJoinConditions,
-									 ForPortionOfExpr *forPortionOf, int epqParam);
+									 int epqParam);
 static GatherMerge *create_gather_merge_plan(PlannerInfo *root,
 											 GatherMergePath *best_path);
 
@@ -1041,21 +1041,22 @@ create_gating_plan(PlannerInfo *root, Path *path, Plan *plan,
 							   (Node *) gating_quals, plan);
 
 	/*
-	 * We might have had a trivial Result plan already.  Stacking one Result
-	 * atop another is silly, so if that applies, just discard the input plan.
-	 * (We're assuming its targetlist is uninteresting; it should be either
-	 * the same as the result of build_path_tlist, or a simplified version.
-	 * However, we preserve the set of relids that it purports to scan and
-	 * attribute that to our replacement Result instead, and likewise for the
-	 * result_type.)
+	 * See if we can reduce down stacked Result nodes to a single node.  This
+	 * is only possible when the nested Result has no subplan and no gating
+	 * qual.  If we do remove the nested Result, we maintain the relids and
+	 * result_type for EXPLAIN.
 	 */
 	if (IsA(plan, Result))
 	{
 		Result	   *rplan = (Result *) plan;
 
-		gplan->plan.lefttree = NULL;
-		gplan->relids = rplan->relids;
-		gplan->result_type = rplan->result_type;
+		if (rplan->plan.lefttree == NULL &&
+			rplan->resconstantqual == NULL)
+		{
+			gplan->plan.lefttree = NULL;
+			gplan->relids = rplan->relids;
+			gplan->result_type = rplan->result_type;
+		}
 	}
 
 	/*
@@ -2885,7 +2886,6 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 							best_path->onconflict,
 							best_path->mergeActionLists,
 							best_path->mergeJoinConditions,
-							best_path->forPortionOf,
 							best_path->epqParam);
 
 	copy_generic_path_info(&plan->plan, &best_path->path);
@@ -4400,6 +4400,7 @@ create_nestloop_plan(PlannerInfo *root,
 	Plan	   *outer_plan;
 	Plan	   *inner_plan;
 	Relids		outerrelids;
+	Relids		req_outer;
 	List	   *tlist = build_path_tlist(root, &best_path->jpath.path);
 	List	   *joinrestrictclauses = best_path->jpath.joinrestrictinfo;
 	List	   *joinclauses;
@@ -4429,8 +4430,17 @@ create_nestloop_plan(PlannerInfo *root,
 	/* NestLoop can project, so no need to be picky about child tlists */
 	outer_plan = create_plan_recurse(root, best_path->jpath.outerjoinpath, 0);
 
-	/* For a nestloop, include outer relids in curOuterRels for inner side */
+	/*
+	 * Include the outer relids in curOuterRels while building the inner side.
+	 * If the outer rel is a child rel, also include its top parent's relids.
+	 * We need both forms, since Vars in the inner side refer to the child rel
+	 * while PlaceHolderInfo.ph_eval_at is expressed in terms of top parent
+	 * rels.
+	 */
 	outerrelids = best_path->jpath.outerjoinpath->parent->relids;
+	if (best_path->jpath.outerjoinpath->parent->top_parent_relids)
+		outerrelids = bms_union(outerrelids,
+								best_path->jpath.outerjoinpath->parent->top_parent_relids);
 	root->curOuterRels = bms_union(root->curOuterRels, outerrelids);
 
 	inner_plan = create_plan_recurse(root, best_path->jpath.innerjoinpath, 0);
@@ -4467,12 +4477,31 @@ create_nestloop_plan(PlannerInfo *root,
 	}
 
 	/*
+	 * The required-outer set may contain child rels if this path has been
+	 * reparameterized by an upper child join.  Include their top parents'
+	 * relids too, so that we can match both Vars referring to the child rels
+	 * and PlaceHolderVars whose PlaceHolderInfo.ph_eval_at is expressed in
+	 * terms of top parent rels.
+	 */
+	req_outer = PATH_REQ_OUTER((Path *) best_path);
+	if (req_outer)
+	{
+		int			rti = -1;
+
+		while ((rti = bms_next_member(req_outer, rti)) >= 0)
+		{
+			RelOptInfo *rel = find_base_rel_ignore_join(root, rti);
+
+			if (rel && rel->top_parent_relids)
+				req_outer = bms_union(req_outer, rel->top_parent_relids);
+		}
+	}
+
+	/*
 	 * Identify any nestloop parameters that should be supplied by this join
 	 * node, and remove them from root->curOuterParams.
 	 */
-	nestParams = identify_current_nestloop_params(root,
-												  outerrelids,
-												  PATH_REQ_OUTER((Path *) best_path));
+	nestParams = identify_current_nestloop_params(root, outerrelids, req_outer);
 
 	/*
 	 * While nestloop parameters that are Vars had better be available from
@@ -7219,7 +7248,7 @@ make_modifytable(PlannerInfo *root, Plan *subplan,
 				 List *withCheckOptionLists, List *returningLists,
 				 List *rowMarks, OnConflictExpr *onconflict,
 				 List *mergeActionLists, List *mergeJoinConditions,
-				 ForPortionOfExpr *forPortionOf, int epqParam)
+				 int epqParam)
 {
 	ModifyTable *node = makeNode(ModifyTable);
 	bool		returning_old_or_new = false;
@@ -7292,7 +7321,6 @@ make_modifytable(PlannerInfo *root, Plan *subplan,
 		node->exclRelTlist = onconflict->exclRelTlist;
 	}
 	node->updateColnosLists = updateColnosLists;
-	node->forPortionOf = (Node *) forPortionOf;
 	node->withCheckOptionLists = withCheckOptionLists;
 	node->returningOldAlias = root->parse->returningOldAlias;
 	node->returningNewAlias = root->parse->returningNewAlias;

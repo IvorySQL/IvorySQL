@@ -3095,7 +3095,9 @@ _tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH)
 	}
 
 	/* If it's a subscription, maybe ignore it */
-	if (ropt->no_subscriptions && strcmp(te->desc, "SUBSCRIPTION") == 0)
+	if (ropt->no_subscriptions &&
+		(strcmp(te->desc, "SUBSCRIPTION") == 0 ||
+		 strcmp(te->desc, "SUBSCRIPTION TABLE") == 0))
 		return 0;
 
 	/* Ignore it if section is not to be dumped/restored */
@@ -3552,14 +3554,16 @@ _reconnectToDB(ArchiveHandle *AH, const char *dbname)
 		 * Anything added between this line and the following \restrict must
 		 * be careful to avoid any possible meta-command injection vectors.
 		 */
-		ahprintf(AH, "\\unrestrict %s\n", ropt->restrict_key);
+		if (ropt->restrict_key)
+			ahprintf(AH, "\\unrestrict %s\n", ropt->restrict_key);
 
 		initPQExpBuffer(&connectbuf);
 		appendPsqlMetaConnect(&connectbuf, dbname);
 		ahprintf(AH, "%s", connectbuf.data);
 		termPQExpBuffer(&connectbuf);
 
-		ahprintf(AH, "\\restrict %s\n\n", ropt->restrict_key);
+		if (ropt->restrict_key)
+			ahprintf(AH, "\\restrict %s\n\n", ropt->restrict_key);
 	}
 
 	/*
@@ -3847,7 +3851,6 @@ _getObjectDescription(PQExpBuffer buf, const TocEntry *te)
 		strcmp(type, "DOMAIN") == 0 ||
 		strcmp(type, "FOREIGN TABLE") == 0 ||
 		strcmp(type, "MATERIALIZED VIEW") == 0 ||
-		strcmp(type, "PROPERTY GRAPH") == 0 ||
 		strcmp(type, "SEQUENCE") == 0 ||
 		strcmp(type, "STATISTICS") == 0 ||
 		strcmp(type, "TABLE") == 0 ||
