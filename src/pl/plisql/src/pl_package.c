@@ -92,7 +92,7 @@ static void plisql_check_package_status(PLiSQL_execstate *estate,
 											PLiSQL_pkg_datum *pkgdatum);
 
 static void plisql_check_subproc_define_recurse(PLiSQL_function *function, List **already_checks, yyscan_t yyscanner);
-static TupleDesc get_plisql_rec_tupdesc(PLiSQL_rec *rec);
+static TupleDesc get_plisql_rec_tupdesc(PLiSQL_rec *rec, bool *tupdesc_needs_release);
 static void plisql_addpackage_references(PLiSQL_function *func, PackageCacheItem *item);
 static PLiSQL_variable *plisql_build_package_local_variable(const char *refname,
 					int lineno,
@@ -134,10 +134,12 @@ plisql_package_parse(ParseState *parsestate, PackageCacheItem *item, List *names
 	PLiSQL_package *psource;
 	PLiSQL_nsitem *nse;
 	void *value = NULL;
+	bool		is_standard_package;
 
 	Assert(item != NULL && item->source != NULL);
 
 	psource = (PLiSQL_package *) item->source;
+	is_standard_package = strcmp(psource->source.fn_signature, "standard") == 0;
 
 	list_size = list_length(names);
 	Assert(name_start < list_size);
@@ -171,8 +173,9 @@ plisql_package_parse(ParseState *parsestate, PackageCacheItem *item, List *names
 
 		elog(ERROR, "\"%s\" is scalar variable", parse_first_name);
 	}
-	/* only row or record, cursorvar, then name doesn't match */
+	/* only row, rowtype or record, cursorvar, then name doesn't match */
 	else if (nse->itemtype != PLISQL_NSTYPE_REC &&
+		nse->itemtype != PLISQL_NSTYPE_ROWTYPE &&
 		list_size != name_start + 1)
 		elog(ERROR, "\"%s\" is not a row var", parse_first_name);
 
@@ -181,14 +184,32 @@ plisql_package_parse(ParseState *parsestate, PackageCacheItem *item, List *names
 		flags == PACKAGE_PARSE_PROC) &&
 		(nse->itemtype != PLISQL_NSTYPE_SUBPROC_FUNC &&
 		nse->itemtype != PLISQL_NSTYPE_SUBPROC_PROC))
+	{
+		/* An optional routine probe must ignore same-named non-routines. */
+		if (missing_ok && is_standard_package)
+			return NULL;
 		elog(ERROR, "\"%s\" is not a function or procedure", parse_first_name);
+	}
 
 	if ((nse->itemtype == PLISQL_NSTYPE_SUBPROC_FUNC ||
 		nse->itemtype == PLISQL_NSTYPE_SUBPROC_PROC) &&
 		(flags != PACKAGE_PARSE_FUNC &&
 		flags != PACKAGE_PARSE_PROC &&
 		flags != PACKAGE_PARSE_ENTRY))
+	{
+		/*
+		 * Some callers probe a package before falling back to ordinary type
+		 * lookup.  A same-named routine is not a package type in that context;
+		 * with missing_ok, report no match rather than aborting the fallback.
+		 * An object type's hidden method namespace is probed the same way and
+		 * its constructor carries the type's name, so the probe cannot be
+		 * limited to the standard package.  Explicitly qualified lookups pass
+		 * missing_ok = false and still report the mismatch.
+		 */
+		if (missing_ok)
+			return NULL;
 		elog(ERROR, "\"%s\" is a function or procedure", parse_first_name);
+	}
 
 	switch (nse->itemtype)
 	{
@@ -198,6 +219,14 @@ plisql_package_parse(ParseState *parsestate, PackageCacheItem *item, List *names
 
 				if (flags == PACKAGE_PARSE_TYPE)
 				{
+					/*
+					 * A package variable is only a datatype when explicitly
+					 * referenced as such (for example by legacy pkg.var type
+					 * handling).  During an optional package-type probe it is a
+					 * wrong-kind match and ordinary type lookup must continue.
+					 */
+					if (missing_ok && is_standard_package)
+						return NULL;
 					if (basetypeid != NULL)
 						*basetypeid = var->datatype->typoid;
 
@@ -215,8 +244,56 @@ plisql_package_parse(ParseState *parsestate, PackageCacheItem *item, List *names
 				}
 			}
 			break;
+		case PLISQL_NSTYPE_ROWTYPE:
+			{
+				/* TYPE ... IS RECORD declaration */
+				PLiSQL_row *row = (PLiSQL_row *) psource->source.datums[nse->itemno];
+				int32		rec_typmod;
+				MemoryContext oldcxt;
+
+				if (flags != PACKAGE_PARSE_TYPE)
+					elog(ERROR, "\"%s\" is a type, not a variable", parse_first_name);
+
+				/*
+				 * A TYPE declaration has no fields to dot into further,
+				 * unlike PLISQL_NSTYPE_REC just below (a record variable,
+				 * where a trailing name component is legitimate field
+				 * access, distinguished there by the same list_size/
+				 * name_start comparison). Any name component past the
+				 * type's own name here is invalid and must be rejected
+				 * rather than silently ignored.
+				 */
+				if (list_size != name_start + 1)
+					elog(ERROR, "\"%s\" is a type and cannot be qualified further", parse_first_name);
+
+				/*
+				 * Report RECORDOID plus the blessed TupleDesc's typmod,
+				 * matching read_datatype()'s handling of the same
+				 * declaration when referenced unqualified from within
+				 * the package that declares it.
+				 */
+				rec_typmod = (row->rowtupdesc != NULL) ? row->rowtupdesc->tdtypmod : -1;
+				if (basetypeid != NULL)
+					*basetypeid = RECORDOID;
+				if (basetypmod != NULL)
+					*basetypmod = rec_typmod;
+
+				/*
+				 * Callers (e.g. parse_datatype()) may have us running
+				 * in a short-lived compile-tmp context; the returned
+				 * PLiSQL_type must outlive this call, same as the
+				 * cached package's own datums, so build it in the
+				 * package's persistent memory context instead.
+				 */
+				oldcxt = MemoryContextSwitchTo(psource->source.fn_cxt);
+				value = (void *) plisql_build_datatype(RECORDOID, rec_typmod,
+													   InvalidOid, NULL);
+				MemoryContextSwitchTo(oldcxt);
+			}
+			break;
 		case PLISQL_NSTYPE_REC:
 			{
+				/* Record variable (not a TYPE ... IS RECORD declaration) */
 				PLiSQL_rec *rec = (PLiSQL_rec *) psource->source.datums[nse->itemno];
 
 				if (flags == PACKAGE_PARSE_VAR || flags == PACKAGE_PARSE_ENTRY)
@@ -232,6 +309,8 @@ plisql_package_parse(ParseState *parsestate, PackageCacheItem *item, List *names
 				}
 				else if (flags == PACKAGE_PARSE_TYPE)
 				{
+					if (missing_ok && is_standard_package)
+						return NULL;
 					if (rec->erh == NULL || rec->rectypeid != RECORDOID)
 					{
 						/* Report variable's declared type */
@@ -274,6 +353,9 @@ plisql_package_parse(ParseState *parsestate, PackageCacheItem *item, List *names
 														true_typeids, /* return value */
 														argdefaults); /* return value */
 
+					if (detail == FUNCDETAIL_NOTFOUND && missing_ok &&
+						is_standard_package)
+						return NULL;
 					if (detail != FUNCDETAIL_NORMAL &&
 						detail != FUNCDETAIL_PROCEDURE)
 						elog(ERROR, "wrong number or types of arguments in call to \"%s\"", parse_first_name);
@@ -352,6 +434,18 @@ plisql_get_package_datum_rowtype(const char *typename, PLiSQL_function *func,
 					return var->datatype;
 			}
 			break;
+		case PLISQL_DTYPE_ROW:
+			/*
+			 * A "TYPE ... IS RECORD" declaration is namespaced as
+			 * PLISQL_NSTYPE_ROWTYPE and backed by a PLISQL_DTYPE_ROW datum.
+			 * Callers reach this function only for package *variables*
+			 * (LookupPkgVarByvarnames() filters out type declarations), so
+			 * this is a can't-happen guard -- but fail with a clear message
+			 * rather than "unrecognized data type" if a path ever slips
+			 * through.
+			 */
+			elog(ERROR, "\"%s\" is a type, not a variable", typename);
+			break;
 		case PLISQL_DTYPE_REC:
 			{
 				PLiSQL_rec *rec = (PLiSQL_rec *) datum;
@@ -378,12 +472,18 @@ plisql_get_package_datum_rowtype(const char *typename, PLiSQL_function *func,
 				PLiSQL_recfield *recfield = (PLiSQL_recfield *) datum;
 				PLiSQL_rec *rec = (PLiSQL_rec *) func->datums[recfield->recparentno];
 				TupleDesc tupdesc;
+				bool	  tupdesc_needs_release;
 				int i;
 
 				if (rec->erh != NULL)
+				{
 					tupdesc = expanded_record_get_tupdesc(rec->erh);
+					tupdesc_needs_release = false;
+				}
 				else
-					tupdesc = get_plisql_rec_tupdesc(rec);
+				{
+					tupdesc = get_plisql_rec_tupdesc(rec, &tupdesc_needs_release);
+				}
 
 				if (tupdesc == NULL)
 					elog(ERROR, "recvar \"%s\" is has not tupdesc", rec->refname);
@@ -395,10 +495,16 @@ plisql_get_package_datum_rowtype(const char *typename, PLiSQL_function *func,
 					if (namestrcmp(&attr->attname, recfield->fieldname) == 0 &&
 						!attr->attisdropped)
 					{
-						return plisql_build_datatype(attr->atttypid, attr->atttypmod,
-													attr->attcollation, NULL);
+						PLiSQL_type *result =
+							plisql_build_datatype(attr->atttypid, attr->atttypmod,
+												  attr->attcollation, NULL);
+						if (tupdesc_needs_release)
+							ReleaseTupleDesc(tupdesc);
+						return result;
 					}
 				}
+				if (tupdesc_needs_release)
+					ReleaseTupleDesc(tupdesc);
 				elog(ERROR, "record \"%s\" has no filed \"%s\"",
 							rec->refname, recfield->fieldname);
 			}
@@ -1788,12 +1894,35 @@ plisql_check_subproc_define_recurse(PLiSQL_function *function, List **already_ch
  * get Tupdesc for record variable
  */
 static TupleDesc
-get_plisql_rec_tupdesc(PLiSQL_rec *rec)
+get_plisql_rec_tupdesc(PLiSQL_rec *rec, bool *tupdesc_needs_release)
 {
 	TypeCacheEntry *typentry;
 
-	/* doesn't consider recordoid and invalidoid */
-	if (rec->rectypeid == RECORDOID || !OidIsValid(rec->rectypeid))
+	*tupdesc_needs_release = false;
+
+	if (rec->rectypeid == RECORDOID)
+	{
+		/*
+		 * Package-defined record types use RECORDOID but carry a typmod that
+		 * identifies their blessed TupleDesc in the session record-type cache.
+		 * lookup_rowtype_tupdesc_noerror() returns a refcounted TupleDesc
+		 * registered with CurrentResourceOwner, unlike the typcache-owned
+		 * TupleDesc below, so the caller must release this one.
+		 */
+		if (rec->datatype != NULL && rec->datatype->atttypmod >= 0)
+		{
+			TupleDesc	tupdesc = lookup_rowtype_tupdesc_noerror(RECORDOID,
+																 rec->datatype->atttypmod,
+																 true);
+
+			*tupdesc_needs_release = (tupdesc != NULL);
+			return tupdesc;
+		}
+		return NULL;
+	}
+
+	/* doesn't consider invalidoid */
+	if (!OidIsValid(rec->rectypeid))
 		return NULL;
 
 	/*
@@ -1813,6 +1942,7 @@ get_plisql_rec_tupdesc(PLiSQL_rec *rec)
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("type %s is not composite",
 						format_type_be(rec->rectypeid))));
+	/* typentry->tupDesc is owned by the type cache; never release it. */
 	return typentry->tupDesc;
 }
 
@@ -2584,8 +2714,9 @@ plisql_set_package_compile_status(void)
 
 	for (nse = plisql_ns_top(); nse != NULL; nse = nse->prev)
 	{
-		/* label */
-		if (nse->itemtype == PLISQL_NSTYPE_LABEL)
+		/* labels and pure type declarations create no package state */
+		if (nse->itemtype == PLISQL_NSTYPE_LABEL ||
+			nse->itemtype == PLISQL_NSTYPE_ROWTYPE)
 			continue;
 
 		if (nse->itemtype != PLISQL_NSTYPE_VAR &&
@@ -2731,10 +2862,12 @@ static void
 plisql_remove_function_references(PLiSQL_function *func, PackageCacheItem *item)
 {
 	PLiSQL_package *psource = (PLiSQL_package *) item->source;
-
-	Assert(list_member_ptr(psource->source.funclist, func));
+	int pre_len = list_length(psource->source.funclist);
 
 	psource->source.funclist = list_delete_ptr(psource->source.funclist, (void *) func);
+
+	Assert(pre_len == list_length(psource->source.funclist) + 1);
+
 	psource->source.use_count--;
 
 	/*
@@ -2743,7 +2876,9 @@ plisql_remove_function_references(PLiSQL_function *func, PackageCacheItem *item)
 	 */
 	if (!item->intable && psource->source.use_count == 0)
 	{
-		elog(DEBUG1, "free a package %u doesn't in hashtab start", item->pkey);
+		elog(DEBUG1,
+			 "free package \"%u\" (%d funcs refs), absent from hash table",
+			 item->pkey, pre_len);
 		plisql_free_package_function(item);
 	}
 
@@ -3090,7 +3225,8 @@ is_const_datum(PLiSQL_execstate *estate, PLiSQL_datum *datum)
 void
 plisql_expand_rec_field(PLiSQL_rec *rec)
 {
-	TupleDesc tupdesc = get_plisql_rec_tupdesc(rec);
+	bool	  tupdesc_needs_release;
+	TupleDesc tupdesc = get_plisql_rec_tupdesc(rec, &tupdesc_needs_release);
 	int i;
 
 	if (tupdesc == NULL)
@@ -3103,6 +3239,8 @@ plisql_expand_rec_field(PLiSQL_rec *rec)
 		if (!attr->attisdropped)
 			plisql_build_recfield(rec, NameStr(attr->attname));
 	}
+	if (tupdesc_needs_release)
+		ReleaseTupleDesc(tupdesc);
 }
 
 /*

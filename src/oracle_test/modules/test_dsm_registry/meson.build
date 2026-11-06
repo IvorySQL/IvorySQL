@@ -21,13 +21,7 @@ test_install_data += files(
   'test_dsm_registry--1.0.sql',
 )
 
-tests += {
-  'name': 'test_dsm_registry',
-  'sd': meson.current_source_dir(),
-  'bd': meson.current_build_dir(),
-  'regress': {
-    'sql': [
-      'test_dsm_registry',
-    ],
-  },
-}
+# No Oracle regress registration: this module defines no ORA_REGRESS in the GNU
+# Make build either, and both its source and expected output are stale
+# PostgreSQL-only copies that drift under an Oracle-mode instance. Re-enable
+# only as part of an Oracle-compatible test subset.

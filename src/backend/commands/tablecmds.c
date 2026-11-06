@@ -1029,6 +1029,28 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 
 	loclHasRowid = interpretRowidOption(stmt->options, (relkind == RELKIND_RELATION ||
 										relkind == RELKIND_PARTITIONED_TABLE));
+	if (OidIsValid(ofTypeId) && get_typisobject(ofTypeId))
+	{
+		ListCell   *option;
+
+		if (relkind == RELKIND_PARTITIONED_TABLE)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("partitioned object tables are not supported")));
+		/* REFs need a stable logical row identifier on every object table. */
+		foreach(option, stmt->options)
+		{
+			DefElem    *def = lfirst_node(DefElem, option);
+
+			if (def->defnamespace == NULL &&
+				strcmp(def->defname, "rowid") == 0 &&
+				!defGetBoolean(def))
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("object tables cannot be created WITHOUT ROWID")));
+		}
+		loclHasRowid = true;
+	}
 	descriptor->tdhasrowid = (loclHasRowid || parentRowIdCount > 0);
 
 	if (relkind == RELKIND_SEQUENCE)
@@ -1151,6 +1173,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 										  allowSystemTableMods,
 										  false,
 										  InvalidOid,
+										  stmt->is_object,
 										  typaddress);
 
 	/*
@@ -1428,6 +1451,8 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 		rowid_index = makeNode(IndexStmt);
 		rowid_index->idxname = ChooseRelationName(relname, rowid_seq_name.data, "idx", namespaceId, false);
 		rowid_index->accessMethod = DEFAULT_INDEX_TYPE;
+		/* Object references require each ROWID to identify at most one row. */
+		rowid_index->unique = OidIsValid(rel->rd_rel->reloftype);
 
 		rowid_index->indexParams = lappend(rowid_index->indexParams, iparam);
 
@@ -2183,6 +2208,12 @@ ExecuteTruncateGuts(List *explicit_rels,
 			Relation	rel = (Relation) lfirst(cell);
 			List	   *seqlist = getOwnedSequences(RelationGetRelid(rel));
 			ListCell   *seqcell;
+
+			if (OidIsValid(rel->rd_rel->reloftype) &&
+				get_typisobject(rel->rd_rel->reloftype))
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("cannot restart ROWID sequence of an object table")));
 
 			foreach(seqcell, seqlist)
 			{
@@ -7266,6 +7297,13 @@ find_composite_type_dependencies(Oid typeOid, Relation origRelation,
 		/* Check for directly dependent types */
 		if (pg_depend->classid == TypeRelationId)
 		{
+			/*
+			 * A generated REF domain stores an identifier, not an embedded
+			 * object value.  In particular, a self-REF would form a dependency
+			 * cycle here and recurse forever during CREATE OR REPLACE TYPE.
+			 */
+			if (get_typrefbase(pg_depend->objid) == typeOid)
+				continue;
 			/*
 			 * This must be an array, domain, or range containing the given
 			 * type, so recursively check for uses of this type.  Note that
@@ -17788,8 +17826,8 @@ change_owner_fix_column_acls(Oid relationOid, Oid oldOwnerId, Oid newOwnerId)
  * change_owner_recurse_to_sequences
  *
  * Helper function for ATExecChangeOwner.  Examines pg_depend searching
- * for sequences that are dependent on serial columns, and changes their
- * ownership.
+ * for sequences that are dependent on serial columns or are implicit ROWID
+ * sequences, and changes their ownership.
  */
 static void
 change_owner_recurse_to_sequences(Oid relationOid, Oid newOwnerId, LOCKMODE lockmode)
@@ -17800,8 +17838,9 @@ change_owner_recurse_to_sequences(Oid relationOid, Oid newOwnerId, LOCKMODE lock
 	HeapTuple	tup;
 
 	/*
-	 * SERIAL sequences are those having an auto dependency on one of the
-	 * table's columns (we don't care *which* column, exactly).
+	 * SERIAL sequences depend on a table column.  Implicit ROWID sequences
+	 * instead have an auto dependency on the whole table, since ROWID is not
+	 * a user column.  Both must follow the table's owner.
 	 */
 	depRel = table_open(DependRelationId, AccessShareLock);
 
@@ -17823,9 +17862,8 @@ change_owner_recurse_to_sequences(Oid relationOid, Oid newOwnerId, LOCKMODE lock
 		Form_pg_depend depForm = (Form_pg_depend) GETSTRUCT(tup);
 		Relation	seqRel;
 
-		/* skip dependencies other than auto dependencies on columns */
-		if (depForm->refobjsubid == 0 ||
-			depForm->classid != RelationRelationId ||
+		/* skip dependencies other than auto or internal dependencies */
+		if (depForm->classid != RelationRelationId ||
 			depForm->objsubid != 0 ||
 			!(depForm->deptype == DEPENDENCY_AUTO || depForm->deptype == DEPENDENCY_INTERNAL))
 			continue;
@@ -17833,8 +17871,9 @@ change_owner_recurse_to_sequences(Oid relationOid, Oid newOwnerId, LOCKMODE lock
 		/* Use relation_open just in case it's an index */
 		seqRel = relation_open(depForm->objid, lockmode);
 
-		/* skip non-sequence relations */
-		if (RelationGetForm(seqRel)->relkind != RELKIND_SEQUENCE)
+		/* Whole-table dependencies are relevant only for ROWID sequences. */
+		if (RelationGetForm(seqRel)->relkind != RELKIND_SEQUENCE ||
+			(depForm->refobjsubid == 0 && !seqRel->rd_rel->relhasrowid))
 		{
 			/* No need to keep the lock */
 			relation_close(seqRel, lockmode);
@@ -19645,6 +19684,11 @@ ATExecAddOf(Relation rel, const TypeName *ofTypename, LOCKMODE lockmode)
 	check_of_type(typetuple);
 	typeform = (Form_pg_type) GETSTRUCT(typetuple);
 	typeid = typeform->oid;
+	if (typeform->typisobject &&
+		rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("partitioned object tables are not supported")));
 
 	aclresult = object_aclcheck(TypeRelationId, typeid, GetUserId(), ACL_USAGE);
 	if (aclresult != ACLCHECK_OK)

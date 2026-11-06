@@ -1087,6 +1087,23 @@ PostgreSQL documentation
   <title>Notes</title>
 
   <para>
+   Restoring data into an IvorySQL table with <literal>ROWID</literal>,
+   including an object table, preserves its row identities and requires
+   ownership of the target table (or superuser privileges).
+   <literal>INSERT</literal> privileges alone do not authorize restoring
+   identities, since reusing an identity can change the target of an existing
+   object reference.  Table owners already control the associated
+   <literal>ROWID</literal> sequence.  Enabled row-level
+   <literal>BEFORE INSERT</literal> triggers and enabled <literal>INSERT</literal>
+   rules must not be present during ROWID restoration; disabled hooks and
+   hooks that do not fire in the current replication role do not prevent it.
+   The <option>--disable-triggers</option> option can be used for a data-only
+   restore with triggers, subject to its usual superuser requirement.
+   The same ownership and hook restrictions apply to plain SQL dumps
+   restored with <application>psql</application>.
+  </para>
+
+  <para>
    When options <option>-n</option> or <option>-t</option> are specified,
    <application>pg_restore</application> makes no attempt to restore
    any other database objects that the selected table(s) or schema(s)

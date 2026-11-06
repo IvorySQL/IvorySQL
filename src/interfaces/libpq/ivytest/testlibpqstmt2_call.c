@@ -98,7 +98,10 @@ main(int argc, char **argv)
 	IvyPreparedStatement *stmt1;
 	IvyBindOutInfo bindinfos[4];
 
-	char conninfo[100]="user=system dbname=postgres port=1521";
+	const char *pgport = getenv("PGPORT");
+	const char *conninfo = (pgport && pgport[0]) ?
+		"user=system dbname=postgres" :
+		"user=system dbname=postgres port=1521";
 	//const char *oraport = argv[1];
 
 	//strcat(conninfo, oraport);

@@ -78,7 +78,7 @@ step drop_table: DROP TABLE IF EXISTS kill_prior_tuple;
 starting permutation: create_table fill_500 create_ext_btree_gist create_gist flush disable_seq disable_bitmap measure access flush result measure access flush result delete flush measure access flush result measure access flush result drop_table drop_ext_btree_gist
 step create_table: CREATE TEMPORARY TABLE kill_prior_tuple(key int not null, cat text not null);
 step fill_500: INSERT INTO kill_prior_tuple(key, cat) SELECT g.i, 'a' FROM generate_series(1, 500) g(i);
-step create_ext_btree_gist: CREATE EXTENSION btree_gist;
+step create_ext_btree_gist: SET ivorysql.compatible_mode = pg; CREATE EXTENSION btree_gist; RESET ivorysql.compatible_mode;
 step create_gist: CREATE INDEX kill_prior_tuple_gist ON kill_prior_tuple USING gist (key);
 step flush: SELECT FROM pg_stat_force_next_flush();
 step disable_seq: SET enable_seqscan = false;
@@ -155,7 +155,7 @@ step drop_ext_btree_gist: DROP EXTENSION btree_gist;
 starting permutation: create_table fill_10 create_ext_btree_gist create_gist flush disable_seq disable_bitmap measure access flush result measure access flush result delete flush measure access flush result measure access flush result drop_table drop_ext_btree_gist
 step create_table: CREATE TEMPORARY TABLE kill_prior_tuple(key int not null, cat text not null);
 step fill_10: INSERT INTO kill_prior_tuple(key, cat) SELECT g.i, 'a' FROM generate_series(1, 10) g(i);
-step create_ext_btree_gist: CREATE EXTENSION btree_gist;
+step create_ext_btree_gist: SET ivorysql.compatible_mode = pg; CREATE EXTENSION btree_gist; RESET ivorysql.compatible_mode;
 step create_gist: CREATE INDEX kill_prior_tuple_gist ON kill_prior_tuple USING gist (key);
 step flush: SELECT FROM pg_stat_force_next_flush();
 step disable_seq: SET enable_seqscan = false;

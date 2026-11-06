@@ -213,6 +213,10 @@ static void preprocess_pubobj_list(List *pubobjspec_list,
 								   ora_core_yyscan_t yyscanner);
 static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 static void determineLanguage(List *options);
+static AlterTableCmd *makeModifyColumnTypeOrVisibilityCmd(char *colname,
+												  TypeName *typeName,
+												  int location);
+static bool oracleJoinOpExists(const Node *expr);
 
 %}
 
@@ -346,6 +350,7 @@ static void determineLanguage(List *options);
 %type <list>	create_index_opt_list
 %type <defelt>	create_index_opt
 %type <list>	alter_table_cmds alter_type_cmds
+%type <list>	alter_table_cmd_group table_constraint_list
 %type <list>    alter_identity_column_option_list
 %type <defelt>  alter_identity_column_option
 %type <node>	set_statistics_value
@@ -443,7 +448,7 @@ static void determineLanguage(List *options);
 				stats_params
 				opt_include opt_c_include index_including_params
 				name_list role_list from_clause from_list opt_array_bounds
-				qualified_name_list any_name any_name_list type_name_list
+				qualified_name_list any_name any_name_list type_name_list RefTypeName
 				any_operator expr_list xmlf_expr_list attrs
 				distinct_clause opt_distinct_clause
 				target_list opt_target_list insert_column_list set_target_list
@@ -675,7 +680,8 @@ static void determineLanguage(List *options);
 %type <node> param_mode
 %type <boolean>	opt_do_from_where
 
-%type <list>	identity_clause identity_options drop_identity
+%type <list>	modify_clause modify_column_list modify_column_item
+%type <ival>	modify_column_null
 %type <boolean>	opt_with opt_by
 
 %type <node>	json_format_clause
@@ -747,7 +753,7 @@ static void determineLanguage(List *options);
 	CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE
 	CLUSTER COALESCE COLLATE COLLATION COLUMN COLUMNS COMMENT COMMENTS COMMIT
 	COMMITTED COMPRESSION CONCURRENTLY CONDITIONAL CONFIGURATION CONFLICT
-	CONNECTION CONSTRAINT CONSTRAINTS CONTENT_P CONTINUE_P CONVERSION_P COPY
+	CONNECTION CONSTRAINT CONSTRAINTS CONSTRUCTOR CONTENT_P CONTINUE_P CONVERSION_P COPY
 	COST CREATE CROSS CSV CUBE CURRENT_P
 	CURRENT_CATALOG CURRENT_DATE CURRENT_ROLE CURRENT_SCHEMA
 	CURRENT_TIME CURRENT_TIMESTAMP CURRENT_USER CURSOR CYCLE
@@ -761,7 +767,7 @@ static void determineLanguage(List *options);
 	EVENT EXCEPT EXCLUDE EXCLUDING EXCLUSIVE EXEC EXECUTE EXISTS EXPLAIN EXPRESSION EXTEND
 	EXTENSION EXTERNAL
 
-	FALSE_P FAMILY FETCH FILTER FINALIZE FIRST_P FLOAT_P FOLLOWING FOR
+	FALSE_P FAMILY FETCH FILTER FINAL_P FINALIZE FIRST_P FLOAT_P FOLLOWING FOR
 	FORCE FOREIGN FORMAT FORWARD FREEZE FROM FULL FUNCTION FUNCTIONS
 
 	GENERATED GLOBAL GRANT GRANTED GREATEST GROUP_P GROUPING GROUPS
@@ -770,7 +776,7 @@ static void determineLanguage(List *options);
 
 	IDENTITY_P IF_P IGNORE_P ILIKE IMMEDIATE IMMUTABLE IMPLICIT_P IMPORT_P IN_P INCLUDE
 	INCLUDING INCREMENT INDENT INDEX INDEXES INHERIT INHERITS INITIALLY INLINE_P
-	INNER_P INOUT INPUT_P INSENSITIVE INSERT INSTEAD INT_P INTEGER
+	INNER_P INOUT INPUT_P INSENSITIVE INSERT INSTANTIABLE INSTEAD INT_P INTEGER
 	INTERSECT INTERVAL INTO INVISIBLE INVOKER IS ISNULL ISOLATION
 
 	JOIN JSON JSON_ARRAY JSON_ARRAYAGG JSON_EXISTS JSON_OBJECT JSON_OBJECTAGG
@@ -782,7 +788,7 @@ static void determineLanguage(List *options);
 	LEADING LEAKPROOF LEAST LEFT LEVEL LIKE LIMIT LISTEN LOAD LOCAL
 	LOCALTIME LOCALTIMESTAMP LOCATION LOCK_P LOCKED LOGGED
 
-	MAPPING MATCH MATCHED MATERIALIZED MAXVALUE MERGE MERGE_ACTION METHOD
+	MAP_P MAPPING MATCH MATCHED MATERIALIZED MAXVALUE MEMBER MERGE MERGE_ACTION METHOD
 	MINUTE_P MINVALUE MODE MODIFY MONTH_P MOVE
 
 	NAME_P NAMES NATIONAL NATURAL NCHAR NESTED NEW NEXT NFC NFD NFKC NFKD NO NOCACHE NOCYCLE
@@ -804,14 +810,14 @@ static void determineLanguage(List *options);
 
 	RANGE READ REAL REASSIGN REBUILD RECHECK RECURSIVE REF_P REFERENCES REFERENCING
 	REFRESH REINDEX RELATIVE_P RELEASE RENAME REPACK REPEATABLE REPLACE REPLICA
-	RESET RESPECT_P RESTART RESTRICT RETURN RETURNING RETURNS REVOKE RIGHT ROLE ROLLBACK ROLLUP
+	RESET RESPECT_P RESTART RESTRICT RESULT_P RETURN RETURNING RETURNS REVOKE RIGHT ROLE ROLLBACK ROLLUP
 	ROUTINE ROUTINES ROW ROWID ROWNUM ROWS  ROWTYPE RULE
 
-	SAVEPOINT SCALAR SCALE SCHEMA SCHEMAS SCROLL SEARCH SECOND_P SECURITY SELECT
+	SAVEPOINT SCALAR SCALE SCHEMA SCHEMAS SCROLL SEARCH SECOND_P SECURITY SELECT SELF_P
 	SEQUENCE SEQUENCES
 	SERIALIZABLE SERVER SESSION SESSION_USER SET SETS SETOF SHARD SHARE SHOW
 	SIMILAR SIMPLE SKIP SMALLINT SNAPSHOT SOME SOURCE SPECIFICATION SQL_P STABLE STANDALONE_P
-	START STATEMENT STATISTICS STDIN STDOUT STORAGE STORED STRICT_P STRING_P STRIP_P
+	START STATEMENT STATIC_P STATISTICS STDIN STDOUT STORAGE STORED STRICT_P STRING_P STRIP_P
 	SUBSCRIPTION SUBSTRING SUPPORT SYMMETRIC SYSDATE SYSID SYSTEM_P SYSTEM_USER SYSTIMESTAMP
 
 	TABLE TABLES TABLESAMPLE TABLESPACE TARGET TEMP TEMPLATE TEMPORARY TEXT_P THEN
@@ -870,12 +876,18 @@ static void determineLanguage(List *options);
 
 %token <keyword> LISTAGG
 
-%type <node> CreatePackageStmt CreatePackageBodyStmt AlterPackageStmt
+%type <node> CreatePackageStmt CreatePackageBodyStmt AlterPackageStmt CreateTypeBodyStmt
 %type <node> package_proper_item
 %type <list> package_proper package_proper_list package_names package_names_list
 %type <str> package_src
 %type <objtype> package_type
 %type <boolean> package_is_or_as package_body_is_or_as
+
+%type <node> ObjectTypeElement ObjectTypeMethod
+%type <list> OptObjectTypeElementList ObjectTypeElementList
+%type <boolean> opt_object_method_deterministic type_body_is_or_as
+%type <boolean> type_body_create
+%type <ival> object_type_modifiers
 
 
 %type <boolean> OptViewForce
@@ -893,7 +905,8 @@ static void determineLanguage(List *options);
  * FORMAT_LA, NULLS_LA, WITH_LA, and WITHOUT_LA are needed to make the grammar
  * LALR(1).
  */
-%token		FORMAT_LA NOT_LA NULLS_LA WITH_LA WITHOUT_LA PACKAGE_BODY
+%token		CONSTRUCTOR_LA FORMAT_LA MEMBER_LA NOT_LA NULLS_LA REF_LA
+			STATIC_LA WITH_LA WITHOUT_LA PACKAGE_BODY TYPE_BODY
 
 /*
  * The grammar likewise thinks these tokens are keywords, but they are never
@@ -993,7 +1006,7 @@ static void determineLanguage(List *options);
  * They wouldn't be given a precedence at all, were it not that we need
  * left-associativity among the JOIN rules themselves.
  */
-%left		JOIN CROSS LEFT FULL RIGHT INNER_P NATURAL
+%left		JOIN CROSS LEFT FULL RIGHT INNER_P NATURAL ORAJOINOPR
 /*
  * Precedences used to resolve the shift/reduce conflicts that arise from
  * "WITH plsql_declarations" when followed by an unreserved DML keyword
@@ -1248,6 +1261,7 @@ stmt:
 			| WaitStmt
 			| CreatePackageStmt
 			| CreatePackageBodyStmt
+			| CreateTypeBodyStmt
 			| AlterPackageStmt
 			| /*EMPTY*/
 				{ $$ = NULL; }
@@ -1322,14 +1336,14 @@ utility_option_arg:
  *
  *****************************************************************************/
 
-CallStmt:	CALL func_application
+CallStmt:	CALL exec_func_application
 				{
 					CallStmt   *n = makeNode(CallStmt);
 
 					n->funccall = castNode(FuncCall, $2);
 					$$ = (Node *) n;
 				}
-			| CALL func_application INTO ORAPARAM
+			| CALL exec_func_application INTO ORAPARAM
 				{
 					CallStmt *n = makeNode(CallStmt);
 					OraParamRef *hostvar = makeNode(OraParamRef);
@@ -2576,9 +2590,43 @@ AlterTableStmt:
 		;
 
 alter_table_cmds:
+			alter_table_cmd_group					{ $$ = $1; }
+			| alter_table_cmds ',' alter_table_cmd_group
+													{ $$ = list_concat($1, $3); }
+			| MODIFY modify_clause				{ $$ = $2; }
+			| alter_table_cmds ',' MODIFY modify_clause
+											{ $$ = list_concat($1, $4); }
+		;
+
+/*
+ * A group is normally one command, but Oracle's ADD ( constraint [, ...] )
+ * expands into one AT_AddConstraint command per constraint so that
+ * AlterTableStmt.cmds stays a flat list of AlterTableCmd nodes.
+ */
+alter_table_cmd_group:
 			alter_table_cmd							{ $$ = list_make1($1); }
-			| alter_table_cmds ',' alter_table_cmd	{ $$ = lappend($1, $3); }
-			| MODIFY identity_clause				{ $$ = $2; }
+			/* ALTER TABLE <name> ADD ( <constraint> [, ...] ) */
+			| ADD_P '(' table_constraint_list ')'
+				{
+					List	   *cmds = NIL;
+					ListCell   *lc;
+
+					foreach(lc, $3)
+					{
+						AlterTableCmd *n = makeNode(AlterTableCmd);
+
+						n->subtype = AT_AddConstraint;
+						n->def = (Node *) lfirst(lc);
+						cmds = lappend(cmds, n);
+					}
+					$$ = cmds;
+				}
+		;
+
+table_constraint_list:
+			TableConstraint							{ $$ = list_make1($1); }
+			| table_constraint_list ',' TableConstraint
+													{ $$ = lappend($1, $3); }
 		;
 
 ora_alter_view_cmds:
@@ -2834,20 +2882,6 @@ alter_table_cmd:
 					n->name = $3;
 					$$ = (Node *)n;
 				}
-			| MODIFY ColId INVISIBLE
-				{
-					AlterTableCmd *n = makeNode(AlterTableCmd);
-					n->subtype = AT_SetInvisible;
-					n->name = $2;
-					$$ = (Node *)n;
-				}
-			| MODIFY ColId VISIBLE
-				{
-					AlterTableCmd *n = makeNode(AlterTableCmd);
-					n->subtype = AT_DropInvisible;
-					n->name = $2;
-					$$ = (Node *)n;
-				}
 			/* ALTER TABLE <name> ALTER [COLUMN] <colname> DROP NOT NULL */
 			| ALTER opt_column ColId DROP NOT NULL_P
 				{
@@ -3070,15 +3104,6 @@ alter_table_cmd:
 
 					n->subtype = AT_AddConstraint;
 					n->def = $2;
-					$$ = (Node *) n;
-				}
-			/* ALTER TABLE <name> ADD (CONSTRAINT ...) */
-			| ADD_P '(' TableConstraint ')'
-				{
-					AlterTableCmd *n = makeNode(AlterTableCmd);
-
-					n->subtype = AT_AddConstraint;
-					n->def = $3;
 					$$ = (Node *) n;
 				}
 			/* ALTER TABLE <name> ALTER CONSTRAINT ... */
@@ -3579,19 +3604,69 @@ set_statistics_value:
 			| DEFAULT						{ $$ = NULL; }
 		;
 
-identity_clause:
-		'(' identity_options ')'		{ $$ = $2; }
-		| identity_options				{ $$ = $1; }
-		| '(' drop_identity ')' 		{ $$ = $2; }
-		| drop_identity 				{ $$ = $1; }
-	;
+/*
+ * Oracle-compatible ALTER TABLE ... MODIFY.
+ *
+ * Each item yields a List of AlterTableCmd, because a single Oracle MODIFY item
+ * can expand into more than one internal subcommand (for example a type change
+ * plus a NOT NULL constraint).
+ *
+ * VISIBLE and INVISIBLE are unreserved keywords and can therefore be parsed
+ * as type names.  makeModifyColumnTypeOrVisibilityCmd() resolves that case
+ * after parsing, preserving the existing visibility syntax while allowing a
+ * bare type change.
+ */
+modify_clause:
+			'(' modify_column_list ')'		{ $$ = $2; }
+			| modify_column_item			{ $$ = $1; }
+		;
 
-identity_options:
-			ColId Typename GENERATED generated_when AS IDENTITY_P OptParenthesizedSeqOptList
+modify_column_list:
+			modify_column_item								{ $$ = $1; }
+			| modify_column_list ',' modify_column_item		{ $$ = list_concat($1, $3); }
+		;
+
+modify_column_item:
+			/* MODIFY <colname> <typename> */
+			ColId Typename
+				{
+					$$ = list_make1(makeModifyColumnTypeOrVisibilityCmd($1, $2, @1));
+				}
+			/* MODIFY <colname> <typename> {NOT NULL | NULL} */
+			| ColId Typename modify_column_null
 				{
 					AlterTableCmd *m = makeNode(AlterTableCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
-					ColumnDef *def = makeNode(ColumnDef);
+					ColumnDef  *def = makeNode(ColumnDef);
+
+					m->subtype = AT_AlterColumnType;
+					m->name = $1;
+					m->def = (Node *) def;
+					/* We only use these fields of the ColumnDef node */
+					def->typeName = $2;
+					def->location = @1;
+
+					n->subtype = $3 ? AT_SetNotNull : AT_DropNotNull;
+					n->name = $1;
+
+					$$ = list_make2(m, n);
+				}
+			/* MODIFY <colname> {NOT NULL | NULL} */
+			| ColId modify_column_null
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+
+					n->subtype = $2 ? AT_SetNotNull : AT_DropNotNull;
+					n->name = $1;
+					$$ = list_make1(n);
+				}
+			/* MODIFY <colname> [<typename>] GENERATED ... AS IDENTITY [(...)] */
+			| ColId Typename GENERATED generated_when AS IDENTITY_P OptParenthesizedSeqOptList
+				{
+					AlterTableCmd *m = makeNode(AlterTableCmd);
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					ColumnDef  *def = makeNode(ColumnDef);
+
 					m->subtype = AT_AlterColumnType;
 					m->name = $1;
 					m->def = (Node *) def;
@@ -3601,37 +3676,42 @@ identity_options:
 						$4 = ATTRIBUTE_ORA_IDENTITY_ALWAYS;
 					else if ($4 == ATTRIBUTE_IDENTITY_BY_DEFAULT)
 						$4 = ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT;
-					n->def = (Node *)lcons(makeDefElem("generated", (Node *) makeInteger($4), @1), $7);
-
+					n->def = (Node *) lcons(makeDefElem("generated", (Node *) makeInteger($4), @1), $7);
 					n->subtype = AT_SetIdentity;
 					n->name = $1;
+
 					$$ = list_make2(m, n);
 				}
 			| ColId GENERATED generated_when AS IDENTITY_P OptParenthesizedSeqOptList
 				{
 					AlterTableCmd *n = makeNode(AlterTableCmd);
+
 					if ($3 == ATTRIBUTE_IDENTITY_ALWAYS)
 						$3 = ATTRIBUTE_ORA_IDENTITY_ALWAYS;
 					else if ($3 == ATTRIBUTE_IDENTITY_BY_DEFAULT)
 						$3 = ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT;
-					n->def = (Node *)lcons(makeDefElem("generated", (Node *) makeInteger($3), @1), $6);
+					n->def = (Node *) lcons(makeDefElem("generated", (Node *) makeInteger($3), @1), $6);
+					n->subtype = AT_SetIdentity;
+					n->name = $1;
 
-				n->subtype = AT_SetIdentity;
-				n->name = $1;
+					$$ = list_make1(n);
+				}
+			/* MODIFY <colname> DROP IDENTITY */
+			| ColId DROP IDENTITY_P
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
 
-				$$ = list_make1(n);
-			}
+					n->subtype = AT_DropIdentity;
+					n->name = $1;
+					n->missing_ok = false;
+					$$ = list_make1(n);
+				}
+		;
 
-drop_identity:
-		ColId DROP IDENTITY_P
-			{
-				AlterTableCmd *n = makeNode(AlterTableCmd);
-				n->subtype = AT_DropIdentity;
-				n->name = $1;
-				n->missing_ok = false;
-				$$ = list_make1(n);
-			}
-	;
+modify_column_null:
+			NOT NULL_P						{ $$ = true; }
+			| NULL_P						{ $$ = false; }
+		;
 
 set_access_method_name:
 			ColId							{ $$ = $1; }
@@ -4334,6 +4414,26 @@ columnDef:	ColId Typename opt_column_storage opt_column_compression create_gener
 					SplitColQualList($6, &n->constraints, &n->collClause,
 									 yyscanner);
 					n->is_invisible = $7;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| ColId REF_LA RefTypeName opt_column_storage opt_column_compression create_generic_options ColQualList column_invisible
+				{
+					ColumnDef *n = makeNode(ColumnDef);
+					TypeName *t = makeNode(TypeName);
+
+					t->refTypeName = makeTypeNameFromNameList($3);
+					t->location = @2;
+					n->colname = $1;
+					n->typeName = t;
+					n->storage_name = $4;
+					n->compression = $5;
+					n->is_local = true;
+					n->collOid = InvalidOid;
+					n->fdwoptions = $6;
+					SplitColQualList($7, &n->constraints, &n->collClause,
+									 yyscanner);
+					n->is_invisible = $8;
 					n->location = @1;
 					$$ = (Node *) n;
 				}
@@ -6977,6 +7077,73 @@ DefineStmt:
 					n->coldeflist = $6;
 					$$ = (Node *) n;
 				}
+			| CREATE TYPE_P any_name AS OBJECT_P
+			  '(' OptObjectTypeElementList ')' object_type_modifiers
+				{
+					CompositeTypeStmt *n = makeNode(CompositeTypeStmt);
+					ListCell   *lc;
+					const char *scanbuf = pg_yyget_extra(yyscanner)->core_yy_extra.scanbuf;
+
+					/* can't use qualified_name, sigh */
+					if ($7 != NIL && IsA(llast($7), ObjectTypeMethod))
+						llast_node(ObjectTypeMethod, $7)->end_location = @8;
+					n->typevar = makeRangeVarFromAnyName($3, @3, yyscanner);
+					n->coldeflist = NIL;
+					n->methods = NIL;
+					foreach(lc, $7)
+					{
+						Node *element = lfirst(lc);
+
+						if (IsA(element, ColumnDef))
+							n->coldeflist = lappend(n->coldeflist, element);
+						else
+						{
+							ObjectTypeMethod *method = castNode(ObjectTypeMethod, element);
+
+							method->source = pnstrdup(scanbuf + method->location,
+														method->end_location - method->location);
+							n->methods = lappend(n->methods, element);
+						}
+					}
+					n->is_object = true;
+					n->replace = false;
+					n->instantiable = ($9 & 1) != 0;
+					n->final = ($9 & 2) != 0;
+					$$ = (Node *) n;
+				}
+			| CREATE OR REPLACE TYPE_P any_name AS OBJECT_P
+			  '(' OptObjectTypeElementList ')' object_type_modifiers
+				{
+					CompositeTypeStmt *n = makeNode(CompositeTypeStmt);
+					ListCell   *lc;
+					const char *scanbuf = pg_yyget_extra(yyscanner)->core_yy_extra.scanbuf;
+
+					if ($9 != NIL && IsA(llast($9), ObjectTypeMethod))
+						llast_node(ObjectTypeMethod, $9)->end_location = @10;
+					n->typevar = makeRangeVarFromAnyName($5, @5, yyscanner);
+					n->coldeflist = NIL;
+					n->methods = NIL;
+					foreach(lc, $9)
+					{
+						Node *element = lfirst(lc);
+
+						if (IsA(element, ColumnDef))
+							n->coldeflist = lappend(n->coldeflist, element);
+						else
+						{
+							ObjectTypeMethod *method = castNode(ObjectTypeMethod, element);
+
+							method->source = pnstrdup(scanbuf + method->location,
+														method->end_location - method->location);
+							n->methods = lappend(n->methods, element);
+						}
+					}
+					n->is_object = true;
+					n->replace = true;
+					n->instantiable = ($11 & 1) != 0;
+					n->final = ($11 & 2) != 0;
+					$$ = (Node *) n;
+				}
 			| CREATE TYPE_P any_name AS ENUM_P '(' opt_enum_val_list ')'
 				{
 					CreateEnumStmt *n = makeNode(CreateEnumStmt);
@@ -7695,6 +7862,11 @@ object_type_name_on_any_name:
 any_name_list:
 			any_name								{ $$ = list_make1($1); }
 			| any_name_list ',' any_name			{ $$ = lappend($1, $3); }
+		;
+
+/* A REF target is an object type name, not a column-storage option. */
+RefTypeName: IDENT					{ $$ = list_make1(makeString($1)); }
+			| IDENT '.' IDENT			{ $$ = list_make2(makeString($1), makeString($3)); }
 		;
 
 any_name:	ColId						{ $$ = list_make1(makeString($1)); }
@@ -10527,6 +10699,29 @@ package_body_is_or_as:
 				IS	{ set_oracle_plsql_body(yyscanner, OraBody_PACKAGEBODY); }
 				|AS	{ set_oracle_plsql_body(yyscanner, OraBody_PACKAGEBODY); }
 				;
+
+CreateTypeBodyStmt:
+			type_body_create any_name type_body_is_or_as package_src
+				{
+					CreateTypeBodyStmt *n = makeNode(CreateTypeBodyStmt);
+
+					n->replace = $1;
+					n->typeName = $2;
+					n->body = $4;
+					$$ = (Node *) n;
+				}
+			;
+
+type_body_create:
+			CREATE TYPE_BODY BODY				{ $$ = false; }
+			| CREATE OR REPLACE TYPE_BODY BODY	{ $$ = true; }
+			;
+
+type_body_is_or_as:
+				IS	{ set_oracle_plsql_body(yyscanner, OraBody_TYPEBODY); }
+				|AS	{ set_oracle_plsql_body(yyscanner, OraBody_TYPEBODY); }
+				;
+
 AlterPackageStmt:
 			ALTER PACKAGE package_names ora_editioned
 				{
@@ -14633,6 +14828,7 @@ simple_select:
 					n->groupDistinct = ($7)->distinct;
 					n->havingClause = $8;
 					n->windowClause = $9;
+					n->ora_join_op_exists = oracleJoinOpExists(n->whereClause);
 					$$ = (Node *) n;
 				}
 			| SELECT distinct_clause target_list
@@ -14650,6 +14846,7 @@ simple_select:
 					n->groupDistinct = ($7)->distinct;
 					n->havingClause = $8;
 					n->windowClause = $9;
+					n->ora_join_op_exists = oracleJoinOpExists(n->whereClause);
 					$$ = (Node *) n;
 				}
 			| values_clause							{ $$ = $1; }
@@ -15893,6 +16090,172 @@ TableFuncElement:	ColId Typename opt_collate_clause
 					n->location = @1;
 					$$ = (Node *) n;
 				}
+		;
+
+/*
+ * Oracle object type elements are either stored attributes or routine
+ * declarations.  Keep them as separate node kinds so type creation can build
+ * the composite relation first and then compile the method specification.
+ */
+OptObjectTypeElementList:
+			ObjectTypeElementList			{ $$ = $1; }
+			| /*EMPTY*/					{ $$ = NIL; }
+		;
+
+ObjectTypeElementList:
+			ObjectTypeElement				{ $$ = list_make1($1); }
+			| ObjectTypeElementList ',' ObjectTypeElement
+										{
+											if (IsA(llast($1), ObjectTypeMethod))
+												llast_node(ObjectTypeMethod, $1)->end_location = @2;
+											$$ = lappend($1, $3);
+										}
+		;
+
+ObjectTypeElement:
+			ColId Typename opt_collate_clause
+				{
+					ColumnDef *n = makeNode(ColumnDef);
+
+					n->colname = $1;
+					n->typeName = $2;
+					n->inhcount = 0;
+					n->is_local = true;
+					n->is_not_null = false;
+					n->is_from_type = false;
+					n->storage = 0;
+					n->raw_default = NULL;
+					n->cooked_default = NULL;
+					n->collClause = (CollateClause *) $3;
+					n->collOid = InvalidOid;
+					n->constraints = NIL;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| ColId REF_LA RefTypeName
+				{
+					ColumnDef *n = makeNode(ColumnDef);
+					TypeName *t = makeNode(TypeName);
+
+					n->colname = $1;
+					t->refTypeName = makeTypeNameFromNameList($3);
+					t->location = @2;
+					n->typeName = t;
+					n->is_local = true;
+					n->collOid = InvalidOid;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| ObjectTypeMethod				{ $$ = $1; }
+		;
+
+ObjectTypeMethod:
+			MEMBER_LA FUNCTION ColId opt_ora_func_args_with_defaults
+			  RETURN Typename opt_object_method_deterministic
+				{
+					ObjectTypeMethod *n = makeNode(ObjectTypeMethod);
+
+					n->kind = OBJECT_METHOD_MEMBER_FUNCTION;
+					n->name = $3;
+					n->parameters = $4;
+					n->returnType = $6;
+					n->deterministic = $7;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| MEMBER_LA PROCEDURE ColId opt_ora_func_args_with_defaults
+				{
+					ObjectTypeMethod *n = makeNode(ObjectTypeMethod);
+
+					n->kind = OBJECT_METHOD_MEMBER_PROCEDURE;
+					n->name = $3;
+					n->parameters = $4;
+					n->returnType = NULL;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| STATIC_LA FUNCTION ColId opt_ora_func_args_with_defaults
+			  RETURN Typename opt_object_method_deterministic
+				{
+					ObjectTypeMethod *n = makeNode(ObjectTypeMethod);
+
+					n->kind = OBJECT_METHOD_STATIC_FUNCTION;
+					n->name = $3;
+					n->parameters = $4;
+					n->returnType = $6;
+					n->deterministic = $7;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| STATIC_LA PROCEDURE ColId opt_ora_func_args_with_defaults
+				{
+					ObjectTypeMethod *n = makeNode(ObjectTypeMethod);
+
+					n->kind = OBJECT_METHOD_STATIC_PROCEDURE;
+					n->name = $3;
+					n->parameters = $4;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| MAP_P MEMBER_LA FUNCTION ColId opt_ora_func_args_with_defaults
+			  RETURN Typename opt_object_method_deterministic
+				{
+					ObjectTypeMethod *n = makeNode(ObjectTypeMethod);
+
+					n->kind = OBJECT_METHOD_MAP;
+					n->name = $4;
+					n->parameters = $5;
+					n->returnType = $7;
+					n->deterministic = $8;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| ORDER MEMBER_LA FUNCTION ColId opt_ora_func_args_with_defaults
+			  RETURN Typename opt_object_method_deterministic
+				{
+					ObjectTypeMethod *n = makeNode(ObjectTypeMethod);
+
+					n->kind = OBJECT_METHOD_ORDER;
+					n->name = $4;
+					n->parameters = $5;
+					n->returnType = $7;
+					n->deterministic = $8;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| CONSTRUCTOR_LA FUNCTION ColId opt_ora_func_args_with_defaults
+			  RETURN SELF_P AS RESULT_P
+				{
+					ObjectTypeMethod *n = makeNode(ObjectTypeMethod);
+
+					n->kind = OBJECT_METHOD_CONSTRUCTOR;
+					n->name = $3;
+					n->parameters = $4;
+					n->returnType = NULL;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+		;
+
+opt_object_method_deterministic:
+			DETERMINISTIC					{ $$ = true; }
+			| /*EMPTY*/					{ $$ = false; }
+		;
+
+object_type_modifiers:
+			/*EMPTY*/						{ $$ = 3; }
+			| INSTANTIABLE					{ $$ = 3; }
+			| NOT INSTANTIABLE				{ $$ = 2; }
+			| FINAL_P						{ $$ = 3; }
+			| NOT FINAL_P					{ $$ = 1; }
+			| INSTANTIABLE FINAL_P			{ $$ = 3; }
+			| INSTANTIABLE NOT FINAL_P		{ $$ = 1; }
+			| NOT INSTANTIABLE FINAL_P		{ $$ = 2; }
+			| NOT INSTANTIABLE NOT FINAL_P	{ $$ = 0; }
+			| FINAL_P INSTANTIABLE			{ $$ = 3; }
+			| FINAL_P NOT INSTANTIABLE		{ $$ = 2; }
+			| NOT FINAL_P INSTANTIABLE		{ $$ = 1; }
+			| NOT FINAL_P NOT INSTANTIABLE	{ $$ = 0; }
 		;
 
 /*
@@ -19925,6 +20288,32 @@ columnref:	ColId
 						}
 					}
 				}
+			| ColId ORAJOINOPR
+				{
+					$$ = makeColumnRef($1, NIL, @1, yyscanner);
+					if (IsA($$, ColumnRef))
+						((ColumnRef *) $$)->ora_join_op_exists = true;
+					else if (IsA($$, A_Indirection))
+						((ColumnRef *) ((A_Indirection *) $$)->arg)->ora_join_op_exists = true;
+					else
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("Oracle join operator (+) cannot be applied to a subscripted expression"),
+								 parser_errposition(@1)));
+				}
+			| ColId indirection ORAJOINOPR
+				{
+					$$ = makeColumnRef($1, $2, @1, yyscanner);
+					if (IsA($$, ColumnRef))
+						((ColumnRef *) $$)->ora_join_op_exists = true;
+					else if (IsA($$, A_Indirection))
+						((ColumnRef *) ((A_Indirection *) $$)->arg)->ora_join_op_exists = true;
+					else
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("Oracle join operator (+) cannot be applied to a subscripted expression"),
+								 parser_errposition(@1)));
+				}
 		;
 
 indirection_el:
@@ -20809,6 +21198,7 @@ unreserved_keyword:
 			| CONFLICT
 			| CONNECTION
 			| CONSTRAINTS
+			| CONSTRUCTOR
 			| CONTENT_P
 			| CONTINUE_P
 			| CONVERSION_P
@@ -20865,6 +21255,7 @@ unreserved_keyword:
 			| EXTERNAL
 			| FAMILY
 			| FILTER
+			| FINAL_P
 			| FINALIZE
 			| FIRST_P
 			| FOLLOWING
@@ -20901,6 +21292,7 @@ unreserved_keyword:
 			| INPUT_P
 			| INSENSITIVE
 			| INSERT
+			| INSTANTIABLE
 			| INSTEAD
 			| INVISIBLE
 			| INVOKER
@@ -20930,6 +21322,7 @@ unreserved_keyword:
 			| MATCHED
 			| MATERIALIZED
 			| MAXVALUE
+			| MEMBER
 			| MERGE
 			| METADATA
 			| METHOD
@@ -21034,6 +21427,7 @@ unreserved_keyword:
 			| RESPECT_P
 			| RESTART
 			| RESTRICT
+			| RESULT_P
 			| RESULT_CACHE
 			| RETURN
 			| RETURNS
@@ -21058,6 +21452,7 @@ unreserved_keyword:
 			| SEARCH
 			| SECOND_P
 			| SECURITY
+			| SELF_P
 			| SEQUENCE
 			| SEQUENCES
 			| SERIALIZABLE
@@ -21081,6 +21476,7 @@ unreserved_keyword:
 			| STANDALONE_P
 			| START
 			| STATEMENT
+			| STATIC_P
 			| STATISTICS
 			| STDIN
 			| STDOUT
@@ -21331,6 +21727,7 @@ reserved_keyword:
 			| LISTAGG
 			| LOCALTIME
 			| LOCALTIMESTAMP
+			| MAP_P
 			| NAN_P
 			| NOCOPY
 			| NOCYCLE
@@ -21999,6 +22396,49 @@ makeColumnRef(char *colname, List *indirection,
 	/* No subscripting, so all indirection gets added to field list */
 	c->fields = lcons(makeString(colname), indirection);
 	return (Node *) c;
+}
+
+/*
+ * Build the command for the type-or-visibility form of Oracle MODIFY.
+ *
+ * VISIBLE and INVISIBLE are unreserved keywords, so the grammar accepts them
+ * as unqualified type names.  Treat those two exact, unadorned names as the
+ * pre-existing visibility syntax.  A qualified, modified, or array type with
+ * the same final name remains a regular type name.
+ */
+static AlterTableCmd *
+makeModifyColumnTypeOrVisibilityCmd(char *colname, TypeName *typeName,
+									int location)
+{
+	AlterTableCmd *cmd = makeNode(AlterTableCmd);
+	ColumnDef  *def;
+
+	cmd->name = colname;
+	if (!typeName->setof && !typeName->pct_type && !typeName->row_type &&
+		list_length(typeName->names) == 1 && typeName->typmods == NIL &&
+		typeName->arrayBounds == NIL)
+	{
+		const char *typeNameStr = strVal(linitial(typeName->names));
+
+		if (strcmp(typeNameStr, "invisible") == 0)
+		{
+			cmd->subtype = AT_SetInvisible;
+			return cmd;
+		}
+		if (strcmp(typeNameStr, "visible") == 0)
+		{
+			cmd->subtype = AT_DropInvisible;
+			return cmd;
+		}
+	}
+
+	def = makeNode(ColumnDef);
+	def->typeName = typeName;
+	def->location = location;
+	cmd->subtype = AT_AlterColumnType;
+	cmd->def = (Node *) def;
+
+	return cmd;
 }
 
 static Node *
@@ -22964,6 +23404,39 @@ preprocess_pubobj_list(List *pubobjspec_list, ora_core_yyscan_t yyscanner)
 
 		prevobjtype = pubobj->pubobjtype;
 	}
+}
+
+/*
+ * oracleJoinOpExists
+ *		Return true if any ColumnRef in this raw WHERE tree carries the
+ *		Oracle (+) outer-join marker, so transformSelectStmt() knows to run
+ *		transformOraJoinClause().
+ *
+ * That routine is also where (+) placement is validated or rejected, so the
+ * scan here has to be broad: it walks the whole expression -- not just the
+ * direct operands of a comparison -- and descends through OR and NOT as
+ * well as AND.  It stops at a sub-select boundary: a (+) inside a subquery
+ * is that subquery's own concern and is handled when it is analyzed.
+ */
+static bool
+oracleJoinOpMarkerWalker(Node *node, void *context)
+{
+	if (node == NULL)
+		return false;
+
+	if (IsA(node, ColumnRef))
+		return ((ColumnRef *) node)->ora_join_op_exists;
+
+	if (IsA(node, SubLink) || IsA(node, SelectStmt) || IsA(node, RangeSubselect))
+		return false;
+
+	return raw_expression_tree_walker(node, oracleJoinOpMarkerWalker, context);
+}
+
+static bool
+oracleJoinOpExists(const Node *expr)
+{
+	return oracleJoinOpMarkerWalker((Node *) expr, NULL);
 }
 
 /*----------

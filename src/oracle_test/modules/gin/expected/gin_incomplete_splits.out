@@ -186,9 +186,9 @@ select verify(:next_i);
 (1 row)
 
 SELECT injection_points_detach('gin-finish-incomplete-split');
- injection_points_detach
+ injection_points_detach 
 -------------------------
-
+ 
 (1 row)
 
 --
@@ -300,4 +300,3 @@ select count(*) = :bitmapscan_count as seqscan_agrees
 drop table gin_posting_tree;
 drop extension pageinspect;
 drop extension injection_points;
-

@@ -58,11 +58,10 @@ case $testhost in
 		;;
 esac
 
-# Note: oracle-mode servers also listen on ivorysql.listen_addresses /
-# ivorysql.port (default localhost/1521).  The test programs connect via
-# unix socket (PGHOST + hardcoded port=1521), so mirror $LISTEN_ADDRESSES
-# into ivorysql.listen_addresses to avoid fatal port conflicts with other
-# servers that may hold TCP port 1521.
+# Note: oracle-mode servers also listen on ivorysql.listen_addresses.
+# Mirror $LISTEN_ADDRESSES into it to keep the oracle listener consistent
+# with the PostgreSQL listener (both bind no TCP addresses when empty).
+# The oracle TCP port is selected dynamically below.
 POSTMASTER_OPTS="-F -c listen_addresses=$LISTEN_ADDRESSES -c ivorysql.listen_addresses=$LISTEN_ADDRESSES -k \"$PGHOST\""
 export PGHOST
 
@@ -136,6 +135,26 @@ do
 	PGPORT=`expr $PGPORT + 1`
 	export PGPORT
 done
+
+# PostgreSQL and Oracle connections use separate listeners. Reserve the
+# selected port for PostgreSQL, then connect the tests to the Oracle port.
+POSTMASTER_OPTS="$POSTMASTER_OPTS -p $PGPORT"
+PGPORT=`expr $PGPORT + 1`
+export PGPORT
+
+i=0
+while psql -X postgres </dev/null 2>/dev/null
+do
+	i=`expr $i + 1`
+	if [ $i -eq 16 ]
+	then
+		echo port $PGPORT apparently in use
+		exit 1
+	fi
+	PGPORT=`expr $PGPORT + 1`
+	export PGPORT
+done
+POSTMASTER_OPTS="$POSTMASTER_OPTS -o $PGPORT"
 
 # buildfarm may try to override port via EXTRA_REGRESS_OPTS ...
 EXTRA_REGRESS_OPTS="$EXTRA_REGRESS_OPTS --port=$PGPORT"

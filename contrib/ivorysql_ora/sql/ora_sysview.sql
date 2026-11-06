@@ -198,10 +198,23 @@ SELECT count(*) > 0 AS view_exists
 FROM information_schema.views
 WHERE table_schema = 'sys' AND table_name = 'dba_cons_columns';
 
+-- Restricted to tables this test owns: the unrestricted form reported
+-- whichever rows happened to sort first in the whole cluster, so any new
+-- catalog or test table anywhere rewrote the expected output.
+CREATE TABLE t_dba_cons_cols (
+    id INT,
+    code VARCHAR2(10),
+    CONSTRAINT pk_dba_cons_cols PRIMARY KEY (id),
+    CONSTRAINT uq_dba_cons_cols UNIQUE (code)
+);
+
 SELECT constraint_name, table_name, column_name, position
 FROM sys.dba_cons_columns
-ORDER BY constraint_name, table_name, column_name
-LIMIT 5;
+WHERE table_name = 'T_DBA_CONS_COLS'
+AND constraint_name IN ('PK_DBA_CONS_COLS', 'UQ_DBA_CONS_COLS')
+ORDER BY constraint_name, table_name, column_name;
+
+DROP TABLE t_dba_cons_cols;
 
 -- ALL_TAB_COLUMNS
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;

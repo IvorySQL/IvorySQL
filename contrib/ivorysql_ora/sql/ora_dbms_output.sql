@@ -174,16 +174,74 @@ BEGIN
 END;
 /
 
--- Test 3.3: Re-ENABLE clears buffer
+-- Test 3.3: Re-ENABLE preserves buffer
+-- Full contract: unread lines and pending PUT text are preserved, and the
+-- latest size limit is applied to the active buffer.
 DECLARE
     line TEXT;
     status INTEGER;
+    i INTEGER;
+    overflow BOOLEAN := FALSE;
 BEGIN
+    -- Unread line preserved across re-enable
     dbms_output.enable();
     dbms_output.put_line('First enable content');
-    dbms_output.enable();  -- Re-enable should clear
+    dbms_output.enable();  -- Re-enable should preserve unread output
     dbms_output.get_line(line, status);
     RAISE NOTICE 'Test 3.3 - After re-enable: [%], Status: %', line, status;
+
+    -- Pending PUT text preserved across re-enable
+    dbms_output.put('Pending PUT');
+    dbms_output.enable();  -- Re-enable should preserve partial output
+    dbms_output.new_line();
+    dbms_output.get_line(line, status);
+    RAISE NOTICE 'Test 3.3 - Pending PUT preserved: [%], Status: %', line, status;
+
+    -- New size limit enforced: writing past the old 2000-byte limit succeeds
+    dbms_output.enable(2000);   -- small limit
+    dbms_output.enable(1000000);  -- re-enable with a larger limit
+    FOR i IN 1..60 LOOP
+        BEGIN
+            dbms_output.put_line(rpad('X', 50, 'X'));  -- 50 bytes x 60 = 3000 bytes
+        EXCEPTION WHEN OTHERS THEN
+            overflow := TRUE;
+            EXIT;
+        END;
+    END LOOP;
+    IF overflow THEN
+        RAISE NOTICE 'Test 3.3 - New size limit applied: FAILED';
+    ELSE
+        RAISE NOTICE 'Test 3.3 - New size limit applied: PASSED (3000 bytes written)';
+    END IF;
+
+    -- Shrinking the limit below the buffered content: buffered lines stay
+    -- readable, and new writes are rejected until the buffer drains
+    dbms_output.enable(2000);  -- shrink below the 3000 bytes already buffered
+    BEGIN
+        dbms_output.put_line('Y');
+        RAISE NOTICE 'Test 3.3 - Shrink write: unexpected success';
+    EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE 'Test 3.3 - Shrink write blocked: %', SQLERRM;
+    END;
+    dbms_output.get_line(line, status);
+    RAISE NOTICE 'Test 3.3 - Shrink keeps buffered: [%], Status: %', line, status;
+
+    -- Drain all remaining buffered lines, checking the count and order
+    i := 0;
+    LOOP
+        dbms_output.get_line(line, status);
+        EXIT WHEN status != 0;
+        i := i + 1;
+        IF line <> rpad('X', 50, 'X') THEN
+            RAISE NOTICE 'Test 3.3 - Shrink drain order: unexpected [%]', line;
+        END IF;
+    END LOOP;
+    RAISE NOTICE 'Test 3.3 - Shrink drained: % lines, Status: %', i, status;
+
+    -- Usage is back below the limit: a marker write succeeds and reads back
+    dbms_output.put_line('MARKER');
+    dbms_output.get_line(line, status);
+    RAISE NOTICE 'Test 3.3 - Shrink resumes writes: [%], Status: %', line, status;
 END;
 /
 
@@ -281,6 +339,7 @@ END;
 DECLARE
     v_count INTEGER := 0;
 BEGIN
+    dbms_output.disable();  -- Ensure a clean buffer: re-ENABLE preserves unread output
     dbms_output.enable(2000);  -- 2000 byte content limit
     -- Write 1-byte lines until overflow
     -- Internal: 1-byte lines need 3 bytes each (2 prefix + 1 data)
@@ -312,6 +371,7 @@ DECLARE
     line TEXT;
     status INTEGER;
 BEGIN
+    dbms_output.disable();  -- Ensure a clean buffer: re-ENABLE preserves unread output
     dbms_output.enable();
     dbms_output.put_line('Line A');
     dbms_output.put_line('Line B');
@@ -332,6 +392,7 @@ DECLARE
     lines TEXT[];
     numlines INTEGER := 100;  -- Request more than available
 BEGIN
+    dbms_output.disable();  -- Ensure a clean buffer: re-ENABLE preserves unread output
     dbms_output.enable();
     dbms_output.put_line('Only');
     dbms_output.put_line('Three');
@@ -577,6 +638,7 @@ END;
 -- Write in first block
 DO $$
 BEGIN
+    dbms_output.disable();  -- Ensure a clean buffer: re-ENABLE preserves unread output
     dbms_output.enable(1000000);
     dbms_output.put_line('Written in block 1');
 END;

@@ -26,16 +26,6 @@
  *-------------------------------------------------------------------------
  */
 
-#if 0
-/* nls_length_semantics */
-typedef enum
-{
-	NLS_LENGTH_SEMANTICS_CHAR,			/* CHAR */
-	NLS_LENGTH_SEMANTICS_BYTE,			/* BYTE */
-} NLSLENGTHSEMANTICS;
-
-extern int	nls_length_semantics;
-#endif
 
 extern void IvorysqlOraDefineGucs(void);
 

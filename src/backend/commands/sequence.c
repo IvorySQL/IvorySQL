@@ -1571,7 +1571,6 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	DefElem    *min_value = NULL;
 	DefElem    *cache_value = NULL;
 	DefElem    *is_cycled = NULL;
-	DefElem	   *scale = NULL;
 	ListCell   *option;
 	bool		reset_max_value = false;
 	bool		reset_min_value = false;
@@ -1641,14 +1640,14 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 		}
 		else if (strcmp(defel->defname, "cache") == 0)
 		{
-			if (cache_value)
+			if (cache_value || no_cache_flag)
 				errorConflictingDefElem(defel, pstate);
 			cache_value = defel;
 			*need_seq_rewrite = true;
 		}
 		else if (strcmp(defel->defname, "nocache") == 0)
 		{
-			if (cache_value)
+			if (cache_value || no_cache_flag)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("conflicting or redundant options"),
@@ -1697,33 +1696,31 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 		}
 		else if(strcmp(defel->defname, "scale_extend") == 0)
 		{
-			if (scale)
+			if (scale_flag || noscale_flag)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						errmsg("duplicate or conflicting SCALE or EXTEND specifications"),
 						parser_errposition(pstate, defel->location)));
 			}
-			scale = defel;
 			scale_flag = true;
 			extend_flag = true;
 		}
 		else if(strcmp(defel->defname, "scale_noextend") == 0)
 		{
-			if (scale)
+			if (scale_flag || noscale_flag)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						errmsg("duplicate or conflicting SCALE or EXTEND specifications"),
 						parser_errposition(pstate, defel->location)));
 			}
-			scale = defel;
 			scale_flag = true;
 			extend_flag = false;
 		}
 		else if(strcmp(defel->defname, "noscale") == 0)
 		{
-			if (scale)
+			if (scale_flag || noscale_flag)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
@@ -2379,10 +2376,12 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	}
 	else if (isInit)
 	{
-		if (seq_type == ATTRIBUTE_IDENTITY_DEFAULT_ON_NULL || seq_type == ATTRIBUTE_ORA_IDENTITY_ALWAYS
+		if (no_cache_flag)
+			seqform->seqcache = 1;
+		else if (seq_type == ATTRIBUTE_IDENTITY_DEFAULT_ON_NULL || seq_type == ATTRIBUTE_ORA_IDENTITY_ALWAYS
 						|| seq_type == ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT)
 			seqform->seqcache = 20;
-		else if (compatible_db == ORA_PARSER && !no_cache_flag)
+		else if (compatible_db == ORA_PARSER && !for_identity)
 			seqform->seqcache = 20;
 		else
 			seqform->seqcache = 1;

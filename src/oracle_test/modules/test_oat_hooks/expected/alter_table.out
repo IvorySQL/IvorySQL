@@ -61,6 +61,7 @@ BEGIN
     RETURN NEW;
   END IF;
 END; $$;
+/
 NOTICE:  in process utility: superuser attempting CREATE FUNCTION
 NOTICE:  in object access: superuser attempting namespace search (subId=0x0) [no report on violation, allowed]
 NOTICE:  in object access: superuser finished namespace search (subId=0x0) [no report on violation, allowed]

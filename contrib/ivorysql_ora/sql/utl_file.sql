@@ -8,7 +8,7 @@ select 'data_directory', current_setting('data_directory');
 
 -- test case for fopen with invalid directory object name
 declare
-    f sys.ora_utl_file_file_type;
+    f UTL_FILE.FILE_TYPE;
 begin
     -- an invalid directory object name
     f := utl_file.fopen('wrong_directory','regress.txt','a',1024);
@@ -17,11 +17,12 @@ end;
 
 -- test fopen, put, putf, put_line, new_line, get_line, is_open, fclose, fclose_all
 declare
-    f sys.ora_utl_file_file_type;
+    f UTL_FILE.FILE_TYPE;
     line text;
     i integer;
 begin
     f := utl_file.fopen('data_directory', 'regress.txt', 'w');
+    raise notice 'f.datatype = %', f.datatype;
 
     -- data writing
     utl_file.put_line(f, 'abc');
@@ -48,14 +49,24 @@ begin
     utl_file.get_line(f, line);
     while line is not null and i < 11 loop
         raise notice '[%] >>%<<', i, line;
-        utl_file.get_line(f, line);
+        begin
+            utl_file.get_line(f, line);
+        exception
+            when NO_DATA_FOUND then
+                line := null;
+        end;
         i:=i+1;
 
     end loop;
 
     while line is not null loop
         raise notice '[%] >>%<<', i, line;
-        utl_file.get_line(f, line, 3);
+        begin
+            utl_file.get_line(f, line, 3);
+        exception
+            when NO_DATA_FOUND then
+                line := null;
+        end;
         i:=i+1;
     end loop;
 
@@ -93,8 +104,8 @@ end;
 
 -- test fflush, fseek
 declare
-    f sys.ora_utl_file_file_type;
-    f1 sys.ora_utl_file_file_type;
+    f UTL_FILE.FILE_TYPE;
+    f1 UTL_FILE.FILE_TYPE;
     line text;
     i integer;
     line2_pos integer;
@@ -109,23 +120,38 @@ begin
 
     -- data reading before fflush
     raise notice 'data read before fflush';
-    utl_file.get_line(f1, line);
+    begin
+        utl_file.get_line(f1, line);
+    exception
+        when NO_DATA_FOUND then
+            line := null;
+    end;
     while line is not null loop
         raise notice '>>%<<', line;
-        utl_file.get_line(f1, line);
+            begin
+                utl_file.get_line(f1, line);
+            exception
+                when NO_DATA_FOUND then
+                    line := null;
+            end;
     end loop;
     raise notice '>>%<<', line;
 
     utl_file.fflush(f);
 
     -- data reading after fflush
-    utl_file.fseek(f1); -- reset off_set to 0
+    utl_file.fseek(f1, 0, NULL); -- reset offset to 0
     raise notice 'data read after fflush';
     utl_file.get_line(f1, line);
     line2_pos := utl_file.fgetpos(f1); -- after reading line 1, get position
     while line is not null loop
         raise notice '>>%<<', line;
-        utl_file.get_line(f1, line);
+            begin
+                utl_file.get_line(f1, line);
+            exception
+                when NO_DATA_FOUND then
+                    line := null;
+            end;
     end loop;
     raise notice '>>%<<', line;
     raise notice 'lets print line#2 again';
@@ -150,9 +176,128 @@ begin
 end;
 /
 
+-- invalid FSEEK offsets must not move the file position
+declare
+    f UTL_FILE.FILE_TYPE;
+    fexists boolean;
+    file_length number;
+    seek_offset integer;
+    block_size integer;
+begin
+    utl_file.fgetattr('data_directory', 'regressflush.txt',
+                      fexists, file_length, block_size);
+    seek_offset := file_length;
+    f := utl_file.fopen('data_directory', 'regressflush.txt', 'r');
+
+    begin
+        utl_file.fseek(f);
+    exception
+        when others then
+            raise notice 'null offsets: %, position: %', sqlerrm,
+                         utl_file.fgetpos(f);
+    end;
+
+    begin
+        utl_file.fseek(f, -1, NULL);
+    exception
+        when others then
+            raise notice 'negative absolute offset: %, position: %', sqlerrm,
+                         utl_file.fgetpos(f);
+    end;
+
+    begin
+        utl_file.fseek(f, seek_offset + 1, NULL);
+    exception
+        when others then
+            raise notice 'absolute offset past EOF: %, position: %', sqlerrm,
+                         utl_file.fgetpos(f);
+    end;
+
+    begin
+        utl_file.fseek(f, NULL, seek_offset + 1);
+    exception
+        when others then
+            raise notice 'relative offset past EOF: %, position: %', sqlerrm,
+                         utl_file.fgetpos(f);
+    end;
+
+    utl_file.fseek(f, 1, NULL);
+    begin
+        utl_file.fseek(f, NULL, -2);
+    exception
+        when others then
+            raise notice 'relative offset before start: %, position: %', sqlerrm,
+                         utl_file.fgetpos(f);
+    end;
+
+    utl_file.fseek(f, seek_offset, NULL);
+    raise notice 'offset at EOF accepted: %',
+                 utl_file.fgetpos(f) = seek_offset;
+
+    utl_file.fclose(f);
+end;
+/
+
+-- FSEEK on a write handle must see data that is still buffered
+declare
+    f UTL_FILE.FILE_TYPE;
+begin
+    f := utl_file.fopen('data_directory', 'regressseek.txt', 'w');
+    utl_file.put_line(f, 'abc');   -- 4 bytes, still in the stdio buffer
+    utl_file.fseek(f, NULL, -2);
+    raise notice 'buffered relative seek position: %', utl_file.fgetpos(f);
+    utl_file.fseek(f, 2, NULL);
+    raise notice 'buffered write seek position: %', utl_file.fgetpos(f);
+    utl_file.fclose(f);
+end;
+/
+
+-- GET_LINE raises NO_DATA_FOUND when no text was read because of end of
+-- file, including the first read of an empty file; PL/iSQL callers can
+-- catch it explicitly (matching Oracle)
+declare
+    f UTL_FILE.FILE_TYPE;
+    line text;
+begin
+    f := utl_file.fopen('data_directory', 'regress_eof.txt', 'w');
+    utl_file.put_line(f, 'first');
+    utl_file.put_line(f, 'second');
+    utl_file.fclose(f);
+
+    f := utl_file.fopen('data_directory', 'regress_eof.txt', 'r');
+    utl_file.get_line(f, line);
+    raise notice 'eof-file line1=[%]', line;
+    utl_file.get_line(f, line);
+    raise notice 'eof-file line2=[%]', line;
+    utl_file.get_line(f, line);
+    raise notice 'eof-file line3=[%] (not reached)', line;
+exception
+    when NO_DATA_FOUND then
+        raise notice 'caught NO_DATA_FOUND at eof, sqlerrm=[%]', sqlerrm;
+    when others then
+        raise notice 'unexpected exception: %', sqlerrm;
+end;
+/
+
+declare
+    f UTL_FILE.FILE_TYPE;
+    line text;
+begin
+    f := utl_file.fopen('data_directory', 'regress_empty.txt', 'w');
+    utl_file.fclose(f);
+
+    f := utl_file.fopen('data_directory', 'regress_empty.txt', 'r');
+    utl_file.get_line(f, line);
+    raise notice 'empty-file line=[%] (not reached)', line;
+exception
+    when NO_DATA_FOUND then
+        raise notice 'caught NO_DATA_FOUND on empty file, sqlerrm=[%]', sqlerrm;
+end;
+/
+
 -- test cases for automatic file closing on session terminated/rollback etc
 declare
-    f sys.ora_utl_file_file_type;
+    f UTL_FILE.FILE_TYPE;
 begin
     f := utl_file.fopen('data_directory','regress.txt','a',1024);
 
@@ -161,6 +306,40 @@ begin
     raise notice 'is_open = %', utl_file.is_open(f);
     rollback;
     raise notice 'is_open = %', utl_file.is_open(f);
+end;
+/
+
+
+-- test fopen_nchar, put_line_nchar, get_line_nchar, fclose
+declare
+    f UTL_FILE.FILE_TYPE;
+    line text;
+    i integer;
+begin
+    f := utl_file.fopen_nchar('data_directory', 'regress-utf.txt', 'w');
+    raise notice 'f.datatype = %', f.datatype;
+    -- data writing
+    utl_file.put_line_nchar(f, '🚀 Rocket and 💡 Idea');
+    utl_file.put_line_nchar(f, ' € / ¥ / ₿');    
+    utl_file.put_line_nchar(f, '۱۲۳۴۵۶۷۸۹۰ — Multilingual: مرحبا, 你好, Привет');    
+    utl_file.fclose(f);
+
+    f := utl_file.fopen_nchar('data_directory', 'regress-utf.txt', 'r');
+    raise notice 'f.datatype = %', f.datatype;
+
+    -- data reading; GET_LINE_NCHAR raises NO_DATA_FOUND at end of file
+    -- (Oracle behavior), so the loop terminates on the exception
+    begin
+        loop
+            utl_file.get_line_nchar(f, line);
+            raise notice '>>%<<', line;
+        end loop;
+    exception
+        when NO_DATA_FOUND then
+            null;
+    end;
+
+    utl_file.fclose(f);
 end;
 /
 
