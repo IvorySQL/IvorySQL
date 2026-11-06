@@ -480,6 +480,20 @@ binary_float_in(PG_FUNCTION_ARGS)
 		{
 			if (ORA_PARSER == compatible_db && !isliteral)
 			{
+				char	   *tail = endptr;
+
+				/*
+				 * The IEEE-result returns below must not bypass the
+				 * trailing-junk check at the end of this function.
+				 */
+				while (*tail != '\0' && isspace((unsigned char) *tail))
+					tail++;
+				if (*tail != '\0')
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+							 errmsg("invalid input syntax for type %s: \"%s\"",
+									"binary_float", orig_num)));
+
 				/*
 				 * isinf() is cross-platform incompatible. We can using isinf() on linux,
 				 * but not on windows. Because the isinf of windows can't distinguish infinity
