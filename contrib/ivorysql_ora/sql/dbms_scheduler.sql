@@ -396,8 +396,16 @@ BEGIN
   dbms_scheduler.set_job_argument_value('reg_job_inline', 'y', 'x');
 END;
 /
-SELECT job_name, argument_position, value FROM user_scheduler_job_args
+SELECT job_name, argument_name, argument_position, argument_type, value
+  FROM user_scheduler_job_args
   ORDER BY argument_position;
+-- The ALL_ variant exposes the same metadata plus OWNER.
+SELECT COUNT(*) = 2 AS all_job_args_metadata
+  FROM all_scheduler_job_args
+  WHERE job_name = 'REG_JOB_NAMED'
+    AND owner = current_user
+    AND argument_name IS NOT NULL
+    AND argument_type IS NOT NULL;
 
 --
 -- ENABLE / DISABLE
@@ -815,3 +823,44 @@ DROP PROCEDURE sched_reg_proc;
 DELETE FROM sys.scheduler_job_run_details;
 DROP ROLE regress_dbms_scheduler;
 RESET timezone;
+
+-- Oracle-compatible ALL_SCHEDULER_* views
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_all_sched', job_type => 'PLSQL_BLOCK',
+      job_action => 'BEGIN NULL; END;');
+END;
+/
+SELECT COUNT(*) = 1 AS all_jobs
+FROM all_scheduler_jobs WHERE job_name = 'REG_ALL_SCHED';
+SELECT COUNT(*) = 1 AS user_jobs_match
+FROM user_scheduler_jobs WHERE job_name = 'REG_ALL_SCHED';
+-- OWNER is exposed as in Oracle, and a superuser sees every owner's jobs.
+SELECT COUNT(*) = 1 AS owner_matches
+FROM all_scheduler_jobs
+WHERE job_name = 'REG_ALL_SCHED' AND owner = current_user;
+CREATE USER sched_all_u1;
+SET SESSION AUTHORIZATION sched_all_u1;
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_all_other', job_type => 'PLSQL_BLOCK',
+      job_action => 'BEGIN NULL; END;');
+END;
+/
+RESET SESSION AUTHORIZATION;
+SELECT COUNT(*) = 1 AS superuser_sees_other_owner
+FROM all_scheduler_jobs
+WHERE job_name = 'REG_ALL_OTHER' AND owner = 'sched_all_u1';
+SET SESSION AUTHORIZATION sched_all_u1;
+SELECT COUNT(*) = 1 AS own_job_visible
+FROM all_scheduler_jobs WHERE job_name = 'REG_ALL_OTHER';
+SELECT COUNT(*) = 0 AS other_owner_hidden
+FROM all_scheduler_jobs WHERE job_name = 'REG_ALL_SCHED';
+BEGIN
+  dbms_scheduler.drop_job('reg_all_other');
+END;
+/
+RESET SESSION AUTHORIZATION;
+DROP USER sched_all_u1;
+BEGIN
+  dbms_scheduler.drop_job('reg_all_sched');
+END;
+/

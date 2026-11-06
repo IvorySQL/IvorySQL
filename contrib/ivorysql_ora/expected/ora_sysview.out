@@ -157,6 +157,9 @@ DROP FUNCTION IF EXISTS FUNC_WITH_DEFAULT;
  wait_class        | varchar2(64)           |           |          | 
  transaction_start | pg_catalog.timestamptz |           |          | 
  port              | number                 |           |          | 
+ user#             | number                 |           |          | 
+ process           | varchar2(20)           |           |          | 
+ last_call_et      | number                 |           |          | 
 
 \d SYS.V$PROCESS
                     View "sys.v$process"
@@ -167,18 +170,19 @@ DROP FUNCTION IF EXISTS FUNC_WITH_DEFAULT;
  program    | varchar2(256) |           |          | 
  pname      | varchar2(30)  |           |          | 
  background | varchar2(1)   |           |          | 
+ pid        | number        |           |          | 
 
 SELECT * 
 FROM SYS.V$PARAMETER 
 WHERE NAME IN ('listen_addresses','application_name','archive_command','archive_mode','block_size')
 ORDER BY NAME;
-       name       | type |         value          | default_value | isdefault | isses_modifiable | issys_modifiable |                            description                            
-------------------+------+------------------------+---------------+-----------+------------------+------------------+-------------------------------------------------------------------
- application_name | 2    | pg_regress/ora_sysview |               | FALSE     | TRUE             | IMMEDIATE        | Sets the application name to be reported in statistics and logs.
- archive_command  | 2    | (disabled)             |               | FALSE     | FALSE            | IMMEDIATE        | Sets the shell command that will be called to archive a WAL file.
- archive_mode     | 2    | off                    | off           | TRUE      | FALSE            | FALSE            | Allows archiving of WAL files using "archive_command".
- block_size       | 3    | 8192                   | 8192          | TRUE      | FALSE            | FALSE            | Shows the size of a disk block.
- listen_addresses | 2    |                        | localhost     | FALSE     | FALSE            | FALSE            | Sets the host name or IP address(es) to listen to.
+ num |       name       | type |         value          |     display_value      | default_value | isdefault | isses_modifiable | issys_modifiable | ispdb_modifiable | ordinal | isadjusted | isbasic |                            description                            | update_comment | hash 
+-----+------------------+------+------------------------+------------------------+---------------+-----------+------------------+------------------+------------------+---------+------------+---------+-------------------------------------------------------------------+----------------+------
+ 7   | application_name | 2    | pg_regress/ora_sysview | pg_regress/ora_sysview |               | FALSE     | TRUE             | IMMEDIATE        | FALSE            | 7       | FALSE      | FALSE   | Sets the application name to be reported in statistics and logs.  |                | 
+ 9   | archive_command  | 2    | (disabled)             | (disabled)             |               | FALSE     | FALSE            | IMMEDIATE        | FALSE            | 9       | FALSE      | FALSE   | Sets the shell command that will be called to archive a WAL file. |                | 
+ 11  | archive_mode     | 2    | off                    | off                    | off           | TRUE      | FALSE            | FALSE            | FALSE            | 11      | FALSE      | FALSE   | Allows archiving of WAL files using "archive_command".            |                | 
+ 44  | block_size       | 3    | 8192                   | 8192                   | 8192          | TRUE      | FALSE            | FALSE            | FALSE            | 44      | FALSE      | FALSE   | Shows the size of a disk block.                                   |                | 
+ 206 | listen_addresses | 2    |                        |                        | localhost     | FALSE     | FALSE            | FALSE            | FALSE            | 206     | FALSE      | FALSE   | Sets the host name or IP address(es) to listen to.                |                | 
 (5 rows)
 
 CREATE TABLE t_pk_single (id NUMBER PRIMARY KEY, name VARCHAR2(50));
@@ -493,3 +497,580 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- V$PARAMETER must expose Oracle's documented column list and order
+\d SYS.V$PARAMETER
+                       View "sys.v$parameter"
+      Column      |      Type      | Collation | Nullable | Default 
+------------------+----------------+-----------+----------+---------
+ num              | number         |           |          | 
+ name             | varchar2(80)   |           |          | 
+ type             | number         |           |          | 
+ value            | varchar2(4000) |           |          | 
+ display_value    | varchar2(4000) |           |          | 
+ default_value    | varchar2(255)  |           |          | 
+ isdefault        | varchar2(5)    |           |          | 
+ isses_modifiable | varchar2(5)    |           |          | 
+ issys_modifiable | varchar2(9)    |           |          | 
+ ispdb_modifiable | varchar2(5)    |           |          | 
+ ordinal          | number         |           |          | 
+ isadjusted       | varchar2(5)    |           |          | 
+ isbasic          | varchar2(5)    |           |          | 
+ description      | varchar2(255)  |           |          | 
+ update_comment   | varchar2(255)  |           |          | 
+ hash             | number         |           |          | 
+
+-- NUM and ORDINAL are a dense 1..N numbering in name order
+SELECT COUNT(*) = COUNT(DISTINCT NUM) AS num_dense,
+       COUNT(*) = COUNT(DISTINCT ORDINAL) AS ordinal_dense,
+       MIN(NUM) = 1 AS num_starts_at_one
+FROM SYS.V$PARAMETER;
+ num_dense | ordinal_dense | num_starts_at_one 
+-----------+---------------+-------------------
+ t         | t             | t
+(1 row)
+
+-- DISPLAY_VALUE renders booleans the Oracle way and passes other values
+-- through unchanged; the unsupported columns stay NULL/FALSE
+SELECT NAME, DISPLAY_VALUE, ISPDB_MODIFIABLE, ISADJUSTED, ISBASIC,
+       HASH IS NULL AS hash_null, UPDATE_COMMENT IS NULL AS comment_null
+FROM SYS.V$PARAMETER
+WHERE NAME = 'enable_seqscan';
+      name      | display_value | ispdb_modifiable | isadjusted | isbasic | hash_null | comment_null 
+----------------+---------------+------------------+------------+---------+-----------+--------------
+ enable_seqscan | TRUE          | FALSE            | FALSE      | FALSE   | t         | t
+(1 row)
+
+SELECT NAME, DISPLAY_VALUE = VALUE AS display_matches_value
+FROM SYS.V$PARAMETER
+WHERE NAME = 'max_connections';
+      name       | display_matches_value 
+-----------------+-----------------------
+ max_connections | t
+(1 row)
+
+-- V$INSTANCE / V$VERSION
+SELECT INSTANCE_NUMBER, STATUS, DATABASE_STATUS, INSTANCE_ROLE, ACTIVE_STATE, LOGINS
+FROM SYS.V$INSTANCE;
+ instance_number | status | database_status |  instance_role   | active_state | logins  
+-----------------+--------+-----------------+------------------+--------------+---------
+ 1               | OPEN   | ACTIVE          | PRIMARY_INSTANCE | NORMAL       | ALLOWED
+(1 row)
+
+SELECT INSTANCE_NAME IS NOT NULL AS has_instance_name,
+       HOST_NAME IS NOT NULL AS has_host_name,
+       VERSION IS NOT NULL AS has_version,
+       STARTUP_TIME IS NOT NULL AS has_startup_time
+FROM SYS.V$INSTANCE;
+ has_instance_name | has_host_name | has_version | has_startup_time 
+-------------------+---------------+-------------+------------------
+ t                 | t             | t           | t
+(1 row)
+
+SELECT BANNER IS NOT NULL AS has_banner,
+       BANNER_FULL IS NOT NULL AS has_banner_full
+FROM SYS.V$VERSION;
+ has_banner | has_banner_full 
+------------+-----------------
+ t          | t
+(1 row)
+
+-- Oracle-compatible lock and wait runtime views
+DROP TABLE IF EXISTS t_lock_test;
+NOTICE:  table "t_lock_test" does not exist, skipping
+CREATE TABLE t_lock_test (id INT);
+INSERT INTO t_lock_test VALUES (1);
+BEGIN;
+SELECT id FROM t_lock_test WHERE id = 1 FOR UPDATE;
+ id 
+----
+  1
+(1 row)
+
+-- The session's own relation lock has to show up as a TM lock in mode 2
+SELECT COUNT(*) > 0 AS has_tm_lock
+FROM SYS.V$LOCK
+WHERE SID = PG_BACKEND_PID() AND TYPE = 'TM' AND LMODE = 2;
+ has_tm_lock 
+-------------
+ t
+(1 row)
+
+SELECT MIN(LOCKED_MODE) AS locked_mode
+FROM SYS.V$LOCKED_OBJECT
+WHERE SESSION_ID = PG_BACKEND_PID();
+ locked_mode 
+-------------
+ 2
+(1 row)
+
+COMMIT;
+SELECT COUNT(*) = (SELECT COUNT(*) FROM PG_STAT_ACTIVITY) AS all_sessions
+FROM SYS.V$SESSION_WAIT;
+ all_sessions 
+--------------
+ t
+(1 row)
+
+DROP TABLE t_lock_test;
+-- Oracle-compatible instance and database runtime views
+SELECT NAME = CURRENT_DATABASE() AS is_current,
+       OPEN_MODE, DATABASE_ROLE,
+       LOG_MODE IN ('ARCHIVELOG', 'NOARCHIVELOG') AS log_mode_ok,
+       CURRENT_SCN > 0 AS scn_positive
+FROM SYS.V$DATABASE;
+ is_current | open_mode  | database_role | log_mode_ok | scn_positive 
+------------+------------+---------------+-------------+--------------
+ t          | READ WRITE | PRIMARY       | t           | t
+(1 row)
+
+SELECT COUNT(*) = 5 AS five_rows FROM SYS.V$SGA;
+ five_rows 
+-----------
+ t
+(1 row)
+
+SELECT VALUE = PG_SIZE_BYTES(CURRENT_SETTING('shared_buffers')) AS buffers_match
+FROM SYS.V$SGA WHERE NAME = 'Database Buffers';
+ buffers_match 
+---------------
+ t
+(1 row)
+
+SELECT A.VALUE = SUM(B.VALUE) AS total_matches
+FROM SYS.V$SGA A, SYS.V$SGA B
+WHERE A.NAME = 'Total System Global Area'
+  AND B.NAME <> 'Total System Global Area'
+GROUP BY A.VALUE;
+ total_matches 
+---------------
+ t
+(1 row)
+
+SELECT COUNT(*) = (SELECT COUNT(*) FROM PG_STAT_ACTIVITY
+                    WHERE BACKEND_TYPE <> 'client backend') AS all_bg
+FROM SYS.V$BGPROCESS;
+ all_bg 
+--------
+ t
+(1 row)
+
+SELECT COUNT(*) > 0 AS has_bg FROM SYS.V$BGPROCESS;
+ has_bg 
+--------
+ t
+(1 row)
+
+-- Oracle-compatible NLS parameter views
+SELECT PARAMETER, VALUE
+FROM SYS.NLS_SESSION_PARAMETERS
+WHERE PARAMETER IN ('NLS_DATE_FORMAT', 'NLS_TERRITORY', 'NLS_LENGTH_SEMANTICS')
+ORDER BY PARAMETER;
+      parameter       |   value    
+----------------------+------------
+ NLS_DATE_FORMAT      | YYYY-MM-DD
+ NLS_LENGTH_SEMANTICS | byte
+ NLS_TERRITORY        | AMERICA
+(3 rows)
+
+-- A session-level change is visible in the session view only
+SET nls_date_format = 'YYYY/MM/DD';
+SELECT VALUE AS session_value FROM SYS.NLS_SESSION_PARAMETERS
+WHERE PARAMETER = 'NLS_DATE_FORMAT';
+ session_value 
+---------------
+ YYYY/MM/DD
+(1 row)
+
+SELECT VALUE AS instance_value FROM SYS.NLS_INSTANCE_PARAMETERS
+WHERE PARAMETER = 'NLS_DATE_FORMAT';
+ instance_value 
+----------------
+ YYYY-MM-DD
+(1 row)
+
+RESET nls_date_format;
+SELECT VALUE AS restored_value FROM SYS.NLS_SESSION_PARAMETERS
+WHERE PARAMETER = 'NLS_DATE_FORMAT';
+ restored_value 
+----------------
+ YYYY-MM-DD
+(1 row)
+
+SELECT PARAMETER, VALUE
+FROM SYS.NLS_DATABASE_PARAMETERS
+WHERE PARAMETER IN ('NLS_CHARACTERSET', 'NLS_NCHAR_CHARACTERSET', 'NLS_DATE_FORMAT')
+ORDER BY PARAMETER;
+       parameter        |   value    
+------------------------+------------
+ NLS_CHARACTERSET       | UTF8
+ NLS_DATE_FORMAT        | YYYY-MM-DD
+ NLS_NCHAR_CHARACTERSET | UTF8
+(3 rows)
+
+-- Oracle-compatible V$SYSSTAT view
+SELECT COUNT(*) = 8 AS eight_rows FROM SYS.V$SYSSTAT;
+ eight_rows 
+------------
+ t
+(1 row)
+
+SELECT MIN(VALUE) >= 0 AS values_non_negative FROM SYS.V$SYSSTAT;
+ values_non_negative 
+---------------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 1 AS has_commits FROM SYS.V$SYSSTAT WHERE NAME = 'user commits';
+ has_commits 
+-------------
+ t
+(1 row)
+
+SELECT COUNT(*) = COUNT(DISTINCT NAME) AS names_unique FROM SYS.V$SYSSTAT;
+ names_unique 
+--------------
+ t
+(1 row)
+
+-- Oracle-compatible V$SYSTEM_PARAMETER view
+SELECT COUNT(*) = (SELECT COUNT(*) FROM PG_SETTINGS) AS matches_pg_settings
+FROM SYS.V$SYSTEM_PARAMETER;
+ matches_pg_settings 
+---------------------
+ t
+(1 row)
+
+SELECT VALUE = CURRENT_SETTING('shared_buffers') AS value_matches,
+       DEFAULT_VALUE IS NOT NULL AS has_default
+FROM SYS.V$SYSTEM_PARAMETER
+WHERE NAME = 'shared_buffers';
+ value_matches | has_default 
+---------------+-------------
+ f             | t
+(1 row)
+
+SELECT COUNT(*) = COUNT(DISTINCT NAME) AS names_unique FROM SYS.V$SYSTEM_PARAMETER;
+ names_unique 
+--------------
+ t
+(1 row)
+
+-- Oracle-compatible V$TRANSACTION view
+DROP TABLE IF EXISTS t_txn_test;
+NOTICE:  table "t_txn_test" does not exist, skipping
+CREATE TABLE t_txn_test (id INT);
+BEGIN;
+INSERT INTO t_txn_test VALUES (1);
+SELECT COUNT(*) = 1 AS has_transaction
+FROM SYS.V$TRANSACTION
+WHERE SID = PG_BACKEND_PID() AND STATUS = 'ACTIVE';
+ has_transaction 
+-----------------
+ t
+(1 row)
+
+SELECT COUNT(*) > 0 AS xid_visible
+FROM SYS.V$TRANSACTION
+WHERE SID = PG_BACKEND_PID() AND XID IS NOT NULL;
+ xid_visible 
+-------------
+ t
+(1 row)
+
+COMMIT;
+DROP TABLE t_txn_test;
+-- Oracle-compatible V$CONTROLFILE view
+SELECT NAME = CURRENT_SETTING('data_directory') || '/global/pg_control' AS matches_data_dir,
+       STATUS
+FROM SYS.V$CONTROLFILE;
+ matches_data_dir | status 
+------------------+--------
+ t                | VALID
+(1 row)
+
+-- Oracle-compatible V$SPPARAMETER view
+SELECT COUNT(*) > 0 AS has_entries FROM SYS.V$SPPARAMETER;
+ has_entries 
+-------------
+ t
+(1 row)
+
+SELECT COUNT(*) = COUNT(DISTINCT NAME) AS names_unique FROM SYS.V$SPPARAMETER;
+ names_unique 
+--------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 0 AS all_names_valid
+FROM SYS.V$SPPARAMETER
+WHERE NAME NOT IN (SELECT NAME FROM PG_SETTINGS);
+ all_names_valid 
+-----------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 1 AS one_shared_buffers
+FROM SYS.V$SPPARAMETER WHERE NAME = 'shared_buffers';
+ one_shared_buffers 
+--------------------
+ t
+(1 row)
+
+-- Oracle-compatible V$DIAG_INFO view
+SELECT COUNT(*) = 5 AS five_rows FROM SYS.V$DIAG_INFO;
+ five_rows 
+-----------
+ t
+(1 row)
+
+SELECT VALUE = CURRENT_SETTING('data_directory') AS data_dir_matches
+FROM SYS.V$DIAG_INFO WHERE NAME = 'Data Directory';
+ data_dir_matches 
+------------------
+ t
+(1 row)
+
+SELECT COUNT(*) = COUNT(DISTINCT NAME) AS names_unique FROM SYS.V$DIAG_INFO;
+ names_unique 
+--------------
+ t
+(1 row)
+
+-- V$SESSION now reports the Oracle columns USER#, PROCESS and LAST_CALL_ET
+SELECT COUNT(*) = 1 AS has_me
+FROM SYS.V$SESSION WHERE SID = PG_BACKEND_PID();
+ has_me 
+--------
+ t
+(1 row)
+
+SELECT COUNT(*) = 1 AS user_number_present
+FROM SYS.V$SESSION WHERE SID = PG_BACKEND_PID() AND "USER#" > 0;
+ user_number_present 
+---------------------
+ t
+(1 row)
+
+SELECT PROCESS = PG_BACKEND_PID()::TEXT AS process_matches
+FROM SYS.V$SESSION WHERE SID = PG_BACKEND_PID();
+ process_matches 
+-----------------
+ t
+(1 row)
+
+SELECT LAST_CALL_ET >= 0 AS last_call_et_sane
+FROM SYS.V$SESSION WHERE SID = PG_BACKEND_PID();
+ last_call_et_sane 
+-------------------
+ t
+(1 row)
+
+-- Oracle-compatible V$THREAD view
+SELECT COUNT(*) = 1 AS one_thread, MIN(THREAD_NO) = 1 AS thread_no,
+       MIN(STATUS) = 'OPEN' AS open, MIN(GROUPS) = 1 AS one_group
+FROM SYS.V$THREAD;
+ one_thread | thread_no | open | one_group 
+------------+-----------+------+-----------
+ t          | t         | t    | t
+(1 row)
+
+-- V$PROCESS now reports Oracle's PID column
+SELECT PID = SPID AS pid_matches_spid
+FROM SYS.V$PROCESS WHERE SPID = PG_BACKEND_PID();
+ pid_matches_spid 
+------------------
+ t
+(1 row)
+
+-- Oracle-compatible V$SEGSTAT_NAME / V$SEGSTAT
+SELECT COUNT(*) = 3 AS three_statistics FROM SYS.V$SEGSTAT_NAME;
+ three_statistics 
+------------------
+ t
+(1 row)
+
+DROP TABLE IF EXISTS t_segstat_test;
+NOTICE:  table "t_segstat_test" does not exist, skipping
+CREATE TABLE t_segstat_test (id INT);
+INSERT INTO t_segstat_test SELECT GENERATE_SERIES(1, 10);
+SELECT id FROM t_segstat_test WHERE id = 1;
+ id 
+----
+  1
+(1 row)
+
+SELECT COUNT(*) = 3 AS three_values_per_segment
+FROM SYS.V$SEGSTAT
+WHERE OBJ# = 't_segstat_test'::REGCLASS::INT8;
+ three_values_per_segment 
+--------------------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 3 * (SELECT COUNT(*) FROM PG_STATIO_ALL_TABLES ST
+                        JOIN PG_CLASS C ON C.OID = ST.RELID
+                        JOIN PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+                       WHERE N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')) AS total_rows
+FROM SYS.V$SEGSTAT;
+ total_rows 
+------------
+ t
+(1 row)
+
+-- Oracle-compatible V$NLS_PARAMETERS
+SELECT COUNT(*) = 7 AS seven_rows FROM SYS.V$NLS_PARAMETERS;
+ seven_rows 
+------------
+ t
+(1 row)
+
+SELECT VALUE = CURRENT_SETTING('nls_date_format') AS date_format_matches
+FROM SYS.V$NLS_PARAMETERS WHERE PARAMETER = 'NLS_DATE_FORMAT';
+ date_format_matches 
+---------------------
+ t
+(1 row)
+
+-- Oracle-compatible V$EVENT_NAME
+SELECT COUNT(*) = (SELECT COUNT(*) FROM PG_CATALOG.PG_WAIT_EVENTS) AS all_events
+FROM SYS.V$EVENT_NAME;
+ all_events 
+------------
+ t
+(1 row)
+
+SELECT COUNT(*) > 0 AS has_io_class FROM SYS.V$EVENT_NAME WHERE WAIT_CLASS = 'IO';
+ has_io_class 
+--------------
+ t
+(1 row)
+
+-- Oracle-compatible V$TIMER
+SELECT COUNT(*) = 1 AS one_row, MIN(HMSECS) > 0 AS positive FROM SYS.V$TIMER;
+ one_row | positive 
+---------+----------
+ t       | t
+(1 row)
+
+-- Oracle-compatible V$LOCK_TYPE
+SELECT COUNT(*) = 7 AS seven_types FROM SYS.V$LOCK_TYPE;
+ seven_types 
+-------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 1 AS tm_present FROM SYS.V$LOCK_TYPE WHERE TYPE = 'TM';
+ tm_present 
+------------
+ t
+(1 row)
+
+-- V$TIMEZONE_NAMES lists the server's time zones with Oracle-shaped offsets
+SELECT COUNT(*) > 100 AS has_zones FROM SYS.V$TIMEZONE_NAMES;
+ has_zones 
+-----------
+ t
+(1 row)
+
+SELECT TIMEZONE_ID, TZ_ABBREV, TZ_OFFSET
+FROM SYS.V$TIMEZONE_NAMES
+WHERE TIMEZONE_ID = 'UTC';
+ timezone_id | tz_abbrev | tz_offset 
+-------------+-----------+-----------
+ UTC         | UTC       | +00:00
+(1 row)
+
+SELECT COUNT(*) = 0 AS offsets_well_formed
+FROM SYS.V$TIMEZONE_NAMES
+WHERE TZ_OFFSET NOT LIKE '+__:__' AND TZ_OFFSET NOT LIKE '-__:__';
+ offsets_well_formed 
+---------------------
+ t
+(1 row)
+
+SELECT COUNT(*) > 0 AS has_nonzero_offsets
+FROM SYS.V$TIMEZONE_NAMES
+WHERE TZ_OFFSET <> '+00:00';
+ has_nonzero_offsets 
+---------------------
+ t
+(1 row)
+
+-- V$OBJECT_USAGE reports index usage the way Oracle's monitoring view does:
+-- an index is USED once it has been scanned since the statistics were reset
+CREATE TABLE t_obj_usage (a INT);
+CREATE INDEX idx_obj_usage ON t_obj_usage (a);
+INSERT INTO t_obj_usage VALUES (1), (2);
+ANALYZE t_obj_usage;
+SELECT INDEX_NAME, TABLE_NAME, MONITORING, USED, END_MONITORING IS NULL AS monitoring_open
+FROM SYS.V$OBJECT_USAGE
+WHERE INDEX_NAME = 'IDX_OBJ_USAGE';
+  index_name   | table_name  | monitoring | used | monitoring_open 
+---------------+-------------+------------+------+-----------------
+ IDX_OBJ_USAGE | T_OBJ_USAGE | YES        | NO   | t
+(1 row)
+
+SET enable_seqscan = off;
+SELECT count(*) AS scanned FROM t_obj_usage WHERE a = 1;
+ scanned 
+---------
+       1
+(1 row)
+
+RESET enable_seqscan;
+SELECT pg_stat_force_next_flush();
+ pg_stat_force_next_flush 
+--------------------------
+ 
+(1 row)
+
+SELECT INDEX_NAME, USED
+FROM SYS.V$OBJECT_USAGE
+WHERE INDEX_NAME = 'IDX_OBJ_USAGE';
+  index_name   | used 
+---------------+------
+ IDX_OBJ_USAGE | YES
+(1 row)
+
+DROP TABLE t_obj_usage;
+-- USER_OBJECT_USAGE lists only the current user's indexes, DBA_OBJECT_USAGE all
+-- of them; both expose the same columns as V$OBJECT_USAGE
+DROP ROLE IF EXISTS ora_idx_other;
+NOTICE:  role "ora_idx_other" does not exist, skipping
+CREATE ROLE ora_idx_other;
+CREATE TABLE t_idx_usage (a INT);
+CREATE INDEX idx_usage_probe ON t_idx_usage (a);
+GRANT SELECT ON t_idx_usage TO ora_idx_other;
+SELECT COUNT(*) = 1 AS owner_sees_own
+FROM SYS.USER_OBJECT_USAGE WHERE INDEX_NAME = 'IDX_USAGE_PROBE';
+ owner_sees_own 
+----------------
+ t
+(1 row)
+
+SET ROLE ora_idx_other;
+SELECT COUNT(*) = 0 AS other_user_hidden
+FROM SYS.USER_OBJECT_USAGE WHERE INDEX_NAME = 'IDX_USAGE_PROBE';
+ other_user_hidden 
+-------------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 1 AS other_sees_dba
+FROM SYS.DBA_OBJECT_USAGE WHERE INDEX_NAME = 'IDX_USAGE_PROBE';
+ other_sees_dba 
+----------------
+ t
+(1 row)
+
+SET ROLE NONE;
+SELECT COUNT(*) = 1 AS dba_sees_all
+FROM SYS.DBA_OBJECT_USAGE WHERE INDEX_NAME = 'IDX_USAGE_PROBE';
+ dba_sees_all 
+--------------
+ t
+(1 row)
+
+DROP INDEX idx_usage_probe;
+DROP TABLE t_idx_usage;
+DROP ROLE ora_idx_other;

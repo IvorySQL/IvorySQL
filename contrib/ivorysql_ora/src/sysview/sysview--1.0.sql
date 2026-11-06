@@ -954,7 +954,12 @@ SELECT
     WAIT_EVENT::VARCHAR2(64) AS EVENT,
     WAIT_EVENT_TYPE::VARCHAR2(64) AS WAIT_CLASS,
     XACT_START AS TRANSACTION_START,
-    CLIENT_PORT::NUMBER AS PORT
+    CLIENT_PORT::NUMBER AS PORT,
+    USESYSID::INT8::NUMBER AS "USER#",
+    PID::VARCHAR2(20) AS PROCESS,
+    CASE WHEN NOW() < COALESCE(STATE_CHANGE, BACKEND_START) THEN 0
+         ELSE EXTRACT(EPOCH FROM (NOW() - COALESCE(STATE_CHANGE, BACKEND_START)))::NUMBER
+    END AS LAST_CALL_ET
 FROM PG_STAT_ACTIVITY;
 
 
@@ -968,11 +973,20 @@ SELECT
     BACKEND_TYPE::VARCHAR2(30) AS PNAME,
     CASE WHEN BACKEND_TYPE =  'client backend' THEN NULL
          ELSE '1'
-    END::VARCHAR2(1) AS BACKGROUND
+    END::VARCHAR2(1) AS BACKGROUND,
+    PID::NUMBER AS PID
 FROM PG_STAT_ACTIVITY;
 
+-- V$PARAMETER: the documented Oracle column list, in Oracle's order.
+-- NUM/ORDINAL are the parameter's position in name order, DISPLAY_VALUE
+-- renders booleans the way Oracle prints them, and ISPDB_MODIFIABLE,
+-- ISADJUSTED, ISBASIC, UPDATE_COMMENT and HASH have no PostgreSQL
+-- counterpart: there are no per-PDB parameters, the server never adjusts a
+-- value behind the user's back, and PostgreSQL neither classifies "basic"
+-- parameters nor exposes a parameter hash.
 CREATE OR REPLACE VIEW SYS.V$PARAMETER AS
 SELECT
+    ROW_NUMBER() OVER (ORDER BY NAME)::NUMBER AS NUM,
     NAME::VARCHAR2(80) AS NAME,
     CASE
         WHEN VARTYPE = 'bool'    THEN 1
@@ -980,6 +994,12 @@ SELECT
         ELSE 2
     END::NUMBER AS TYPE,
     SETTING::VARCHAR2(4000) AS VALUE,
+    CASE
+        WHEN VARTYPE = 'bool' THEN
+            CASE WHEN SETTING = 'on' THEN 'TRUE' ELSE 'FALSE' END
+        ELSE
+            SETTING
+    END::VARCHAR2(4000) AS DISPLAY_VALUE,
     BOOT_VAL::VARCHAR2(255) AS DEFAULT_VALUE,
     -- Mapping update levels
     CASE
@@ -995,7 +1015,13 @@ SELECT
         WHEN CONTEXT IN ('postmaster','internal') THEN 'FALSE'
         ELSE 'DEFERRED'
     END::VARCHAR2(9) AS ISSYS_MODIFIABLE,
-    SHORT_DESC::VARCHAR2(255) AS DESCRIPTION
+    'FALSE'::VARCHAR2(5) AS ISPDB_MODIFIABLE,
+    ROW_NUMBER() OVER (ORDER BY NAME)::NUMBER AS ORDINAL,
+    'FALSE'::VARCHAR2(5) AS ISADJUSTED,
+    'FALSE'::VARCHAR2(5) AS ISBASIC,
+    SHORT_DESC::VARCHAR2(255) AS DESCRIPTION,
+    NULL::VARCHAR2(255) AS UPDATE_COMMENT,
+    NULL::NUMBER AS HASH
 FROM PG_SETTINGS;
 
 CREATE OR REPLACE VIEW SYS.all_cons_columns AS
@@ -1282,3 +1308,560 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+--
+-- V$INSTANCE: one row describing the running instance, like Oracle's
+-- dynamic performance view.  PostgreSQL has no instance name of its own,
+-- so INSTANCE_NAME is the configured cluster_name and falls back to the
+-- port, and HOST_NAME is the address the server listens on.
+--
+CREATE OR REPLACE VIEW SYS.V$INSTANCE AS
+SELECT
+    1::NUMBER AS INSTANCE_NUMBER,
+    COALESCE(NULLIF(CURRENT_SETTING('cluster_name', TRUE), ''),
+             CURRENT_SETTING('port'))::VARCHAR2(16) AS INSTANCE_NAME,
+    COALESCE(PG_CATALOG.INET_SERVER_ADDR()::TEXT, 'localhost')::VARCHAR2(64) AS HOST_NAME,
+    CURRENT_SETTING('server_version')::VARCHAR2(17) AS VERSION,
+    PG_CATALOG.PG_POSTMASTER_START_TIME() AS STARTUP_TIME,
+    'OPEN'::VARCHAR2(12) AS STATUS,
+    'ALLOWED'::VARCHAR2(10) AS LOGINS,
+    'ACTIVE'::VARCHAR2(17) AS DATABASE_STATUS,
+    'PRIMARY_INSTANCE'::VARCHAR2(18) AS INSTANCE_ROLE,
+    'NORMAL'::VARCHAR2(9) AS ACTIVE_STATE;
+
+
+--
+-- V$VERSION: the version banner of the server, like Oracle's V$VERSION.
+--
+CREATE OR REPLACE VIEW SYS.V$VERSION AS
+SELECT
+    PG_CATALOG.VERSION()::VARCHAR2(200) AS BANNER,
+    PG_CATALOG.VERSION()::VARCHAR2(500) AS BANNER_FULL,
+    PG_CATALOG.VERSION()::VARCHAR2(200) AS BANNER_LEGACY;
+
+-- V$LOCK: locks held and awaited by every backend.  TYPE keeps Oracle's two
+-- letter class where one exists (TM for relation, TX for transaction, VX for
+-- virtual xid, TP for tuple, AD for advisory, OB for object); LMODE maps the
+-- PostgreSQL lock mode onto Oracle's numeric mode.
+CREATE OR REPLACE VIEW SYS.V$LOCK AS
+SELECT
+    L.PID::NUMBER                                                          AS SID,
+    CASE L.LOCKTYPE
+        WHEN 'relation' THEN 'TM'
+        WHEN 'transactionid' THEN 'TX'
+        WHEN 'virtualxid' THEN 'VX'
+        WHEN 'tuple' THEN 'TP'
+        WHEN 'advisory' THEN 'AD'
+        WHEN 'object' THEN 'OB'
+        WHEN 'extend' THEN 'EX'
+        ELSE UPPER(L.LOCKTYPE)
+    END::VARCHAR2(8)                                                       AS TYPE,
+    COALESCE(L.RELATION, L.CLASSID, 0)::INT8::NUMBER                       AS ID1,
+    COALESCE(L.OBJID, L.OBJSUBID, 0)::INT8::NUMBER                         AS ID2,
+
+    CASE L.MODE
+        WHEN 'AccessShareLock' THEN 2
+        WHEN 'RowShareLock' THEN 2
+        WHEN 'RowExclusiveLock' THEN 3
+        WHEN 'ShareUpdateExclusiveLock' THEN 4
+        WHEN 'ShareLock' THEN 4
+        WHEN 'ShareRowExclusiveLock' THEN 5
+        WHEN 'ExclusiveLock' THEN 6
+        WHEN 'AccessExclusiveLock' THEN 6
+        ELSE 0
+    END::NUMBER                                                             AS LMODE,
+    CASE WHEN L.GRANTED THEN 0 ELSE 1 END::NUMBER                          AS REQUEST,
+    NULL::NUMBER                                                           AS CTIME,
+    CASE WHEN L.GRANTED THEN 0 ELSE 1 END::NUMBER                          AS BLOCK,
+    0::NUMBER                                                              AS CON_ID
+FROM PG_CATALOG.PG_LOCKS L;
+GRANT SELECT ON SYS.V$LOCK TO PUBLIC;
+
+-- V$LOCKED_OBJECT: one row per relation on which a backend holds a lock.
+CREATE OR REPLACE VIEW SYS.V$LOCKED_OBJECT AS
+SELECT
+    L.RELATION::INT8::NUMBER                                               AS OBJECT_ID,
+    L.PID::NUMBER                                                          AS SESSION_ID,
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128) AS ORACLE_USERNAME,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)                 AS OBJECT_NAME,
+
+    CASE L.MODE
+        WHEN 'AccessShareLock' THEN 2
+        WHEN 'RowShareLock' THEN 2
+        WHEN 'RowExclusiveLock' THEN 3
+        WHEN 'ShareUpdateExclusiveLock' THEN 4
+        WHEN 'ShareLock' THEN 4
+        WHEN 'ShareRowExclusiveLock' THEN 5
+        WHEN 'ExclusiveLock' THEN 6
+        WHEN 'AccessExclusiveLock' THEN 6
+        ELSE 0
+    END::NUMBER                                                             AS LOCKED_MODE
+FROM PG_CATALOG.PG_LOCKS L
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = L.RELATION
+WHERE L.LOCKTYPE = 'relation'
+  AND L.GRANTED;
+GRANT SELECT ON SYS.V$LOCKED_OBJECT TO PUBLIC;
+
+-- V$SESSION_WAIT: the wait event of every backend, in Oracle's shape.
+CREATE OR REPLACE VIEW SYS.V$SESSION_WAIT AS
+SELECT
+    A.PID::NUMBER                                                          AS SID,
+    A.PID::NUMBER                                                          AS SEQ,
+    A.WAIT_EVENT::VARCHAR2(64)                                             AS EVENT,
+    A.WAIT_EVENT_TYPE::VARCHAR2(64)                                        AS WAIT_CLASS,
+    CASE WHEN A.WAIT_EVENT IS NULL THEN 'WAITING'
+         ELSE 'WAITED UNKNOWN TIME'
+    END::VARCHAR2(64)                                                      AS STATE,
+    NULL::NUMBER                                                           AS WAIT_TIME,
+    NULL::NUMBER                                                           AS SECONDS_IN_WAIT,
+    0::NUMBER                                                              AS CON_ID
+FROM PG_CATALOG.PG_STAT_ACTIVITY A;
+GRANT SELECT ON SYS.V$SESSION_WAIT TO PUBLIC;
+
+-- V$DATABASE: one row describing the database this session is connected to.
+-- Only values with a real PostgreSQL source are filled in; CREATED would
+-- need superuser-only file access and stays NULL.
+CREATE OR REPLACE VIEW SYS.V$DATABASE AS
+SELECT
+    D.OID::INT8::NUMBER                                                    AS DBID,
+    D.DATNAME::VARCHAR2(128)                                               AS NAME,
+    D.DATNAME::VARCHAR2(128)                                               AS DB_UNIQUE_NAME,
+    NULL::TIMESTAMPTZ                                                      AS CREATED,
+    'READ WRITE'::VARCHAR2(16)                                             AS OPEN_MODE,
+    CASE WHEN CURRENT_SETTING('archive_mode') IN ('on', 'always')
+         THEN 'ARCHIVELOG' ELSE 'NOARCHIVELOG'
+    END::VARCHAR2(16)                                                      AS LOG_MODE,
+    'PRIMARY'::VARCHAR2(16)                                                AS DATABASE_ROLE,
+    SPLIT_PART(SPLIT_PART(VERSION(), ' on ', 2), ',', 1)::VARCHAR2(128)    AS PLATFORM_NAME,
+    CURRENT_SETTING('server_version')::VARCHAR2(64)                        AS VERSION,
+    NULL::VARCHAR2(3)                                                      AS FORCE_LOGGING,
+    'NO'::VARCHAR2(3)                                                      AS FLASHBACK_ON,
+    'NO'::VARCHAR2(3)                                                      AS SUPPLEMENTAL_LOG_DATA_MIN,
+    'CURRENT'::VARCHAR2(9)                                                 AS CONTROLFILE_TYPE,
+    PG_WAL_LSN_DIFF(PG_CURRENT_WAL_LSN(), '0/0')::NUMBER                   AS CURRENT_SCN
+FROM PG_CATALOG.PG_DATABASE D
+WHERE D.DATNAME = CURRENT_DATABASE();
+GRANT SELECT ON SYS.V$DATABASE TO PUBLIC;
+
+-- V$SGA: the five rows Oracle reports, computed from the real PostgreSQL
+-- memory settings.  wal_buffers = -1 means "derive 1/32 of shared_buffers,
+-- at least 64kB", which is what the server does.
+CREATE OR REPLACE VIEW SYS.V$SGA AS
+SELECT X.NAME, X.VALUE::NUMBER AS VALUE, 0::NUMBER AS CON_ID
+FROM (
+    SELECT 'Fixed Size'::VARCHAR2(32) AS NAME, 0::NUMERIC AS VALUE, 1 AS ORD
+    UNION ALL
+    SELECT 'Variable Size'::VARCHAR2(32), 0::NUMERIC, 2
+    UNION ALL
+    SELECT 'Database Buffers'::VARCHAR2(32),
+           PG_SIZE_BYTES(CURRENT_SETTING('shared_buffers'))::NUMERIC, 3
+    UNION ALL
+    SELECT 'Redo Buffers'::VARCHAR2(32),
+           CASE WHEN CURRENT_SETTING('wal_buffers') = '-1'
+                THEN GREATEST(PG_SIZE_BYTES(CURRENT_SETTING('shared_buffers')) / 32,
+                              65536)
+                ELSE PG_SIZE_BYTES(CURRENT_SETTING('wal_buffers'))
+           END::NUMERIC, 4
+    UNION ALL
+    SELECT 'Total System Global Area'::VARCHAR2(32),
+           (PG_SIZE_BYTES(CURRENT_SETTING('shared_buffers')) +
+            CASE WHEN CURRENT_SETTING('wal_buffers') = '-1'
+                 THEN GREATEST(PG_SIZE_BYTES(CURRENT_SETTING('shared_buffers')) / 32,
+                               65536)
+                 ELSE PG_SIZE_BYTES(CURRENT_SETTING('wal_buffers'))
+            END)::NUMERIC, 5
+) X
+ORDER BY X.ORD;
+GRANT SELECT ON SYS.V$SGA TO PUBLIC;
+
+-- V$BGPROCESS: one row per background process, which is pg_stat_activity
+-- minus the client backends.
+CREATE OR REPLACE VIEW SYS.V$BGPROCESS AS
+SELECT
+    NULL::VARCHAR2(16)                                                     AS PADDR,
+    A.PID::NUMBER                                                          AS PSERIAL,
+    A.BACKEND_TYPE::VARCHAR2(80)                                           AS NAME,
+    NULL::VARCHAR2(4000)                                                   AS DESCRIPTION,
+    NULL::VARCHAR2(4000)                                                   AS ERROR
+FROM PG_CATALOG.PG_STAT_ACTIVITY A
+WHERE A.BACKEND_TYPE <> 'client backend';
+GRANT SELECT ON SYS.V$BGPROCESS TO PUBLIC;
+
+-- NLS_SESSION_PARAMETERS: the NLS settings in force for this session.  They are
+-- the nls_* GUCs ivorysql_ora already honours, so the view never reports a
+-- format string the server would not actually use.
+CREATE OR REPLACE VIEW SYS.NLS_SESSION_PARAMETERS AS
+SELECT X.PARAMETER, X.VALUE
+FROM (
+    SELECT 'NLS_CURRENCY'::VARCHAR2(64) AS PARAMETER, CURRENT_SETTING('nls_currency')::VARCHAR2(64) AS VALUE
+    UNION ALL SELECT 'NLS_DATE_FORMAT', CURRENT_SETTING('nls_date_format')::VARCHAR2(64)
+    UNION ALL SELECT 'NLS_ISO_CURRENCY', CURRENT_SETTING('nls_iso_currency')::VARCHAR2(64)
+    UNION ALL SELECT 'NLS_LENGTH_SEMANTICS', CURRENT_SETTING('nls_length_semantics')::VARCHAR2(64)
+    UNION ALL SELECT 'NLS_TERRITORY', CURRENT_SETTING('nls_territory')::VARCHAR2(64)
+    UNION ALL SELECT 'NLS_TIMESTAMP_FORMAT', CURRENT_SETTING('nls_timestamp_format')::VARCHAR2(64)
+    UNION ALL SELECT 'NLS_TIMESTAMP_TZ_FORMAT', CURRENT_SETTING('nls_timestamp_tz_format')::VARCHAR2(64)
+) X
+ORDER BY X.PARAMETER;
+GRANT SELECT ON SYS.NLS_SESSION_PARAMETERS TO PUBLIC;
+
+-- NLS_INSTANCE_PARAMETERS: the value a new session would start from, taken
+-- from pg_settings.reset_val rather than from the current session.
+CREATE OR REPLACE VIEW SYS.NLS_INSTANCE_PARAMETERS AS
+SELECT X.PARAMETER, X.VALUE
+FROM (
+    SELECT 'NLS_CURRENCY'::VARCHAR2(64) AS PARAMETER, (SELECT RESET_VAL FROM PG_CATALOG.PG_SETTINGS WHERE NAME = 'nls_currency')::VARCHAR2(64) AS VALUE
+    UNION ALL SELECT 'NLS_DATE_FORMAT', (SELECT RESET_VAL FROM PG_CATALOG.PG_SETTINGS WHERE NAME = 'nls_date_format')::VARCHAR2(64)
+    UNION ALL SELECT 'NLS_ISO_CURRENCY', (SELECT RESET_VAL FROM PG_CATALOG.PG_SETTINGS WHERE NAME = 'nls_iso_currency')::VARCHAR2(64)
+    UNION ALL SELECT 'NLS_LENGTH_SEMANTICS', (SELECT RESET_VAL FROM PG_CATALOG.PG_SETTINGS WHERE NAME = 'nls_length_semantics')::VARCHAR2(64)
+    UNION ALL SELECT 'NLS_TERRITORY', (SELECT RESET_VAL FROM PG_CATALOG.PG_SETTINGS WHERE NAME = 'nls_territory')::VARCHAR2(64)
+    UNION ALL SELECT 'NLS_TIMESTAMP_FORMAT', (SELECT RESET_VAL FROM PG_CATALOG.PG_SETTINGS WHERE NAME = 'nls_timestamp_format')::VARCHAR2(64)
+    UNION ALL SELECT 'NLS_TIMESTAMP_TZ_FORMAT', (SELECT RESET_VAL FROM PG_CATALOG.PG_SETTINGS WHERE NAME = 'nls_timestamp_tz_format')::VARCHAR2(64)
+) X
+ORDER BY X.PARAMETER;
+GRANT SELECT ON SYS.NLS_INSTANCE_PARAMETERS TO PUBLIC;
+
+-- NLS_DATABASE_PARAMETERS: the values compiled/configured at database creation
+-- (pg_settings.boot_val), plus the database character set, which PostgreSQL
+-- also uses as the national character set because it has only one.
+CREATE OR REPLACE VIEW SYS.NLS_DATABASE_PARAMETERS AS
+SELECT X.PARAMETER, X.VALUE
+FROM (
+    SELECT 'NLS_CURRENCY'::VARCHAR2(64) AS PARAMETER, (SELECT BOOT_VAL FROM PG_CATALOG.PG_SETTINGS WHERE NAME = 'nls_currency')::VARCHAR2(64) AS VALUE
+    UNION ALL SELECT 'NLS_DATE_FORMAT', (SELECT BOOT_VAL FROM PG_CATALOG.PG_SETTINGS WHERE NAME = 'nls_date_format')::VARCHAR2(64)
+    UNION ALL SELECT 'NLS_ISO_CURRENCY', (SELECT BOOT_VAL FROM PG_CATALOG.PG_SETTINGS WHERE NAME = 'nls_iso_currency')::VARCHAR2(64)
+    UNION ALL SELECT 'NLS_LENGTH_SEMANTICS', (SELECT BOOT_VAL FROM PG_CATALOG.PG_SETTINGS WHERE NAME = 'nls_length_semantics')::VARCHAR2(64)
+    UNION ALL SELECT 'NLS_TERRITORY', (SELECT BOOT_VAL FROM PG_CATALOG.PG_SETTINGS WHERE NAME = 'nls_territory')::VARCHAR2(64)
+    UNION ALL SELECT 'NLS_TIMESTAMP_FORMAT', (SELECT BOOT_VAL FROM PG_CATALOG.PG_SETTINGS WHERE NAME = 'nls_timestamp_format')::VARCHAR2(64)
+    UNION ALL SELECT 'NLS_TIMESTAMP_TZ_FORMAT', (SELECT BOOT_VAL FROM PG_CATALOG.PG_SETTINGS WHERE NAME = 'nls_timestamp_tz_format')::VARCHAR2(64)
+    UNION ALL
+    SELECT 'NLS_CHARACTERSET'::VARCHAR2(64),
+           PG_ENCODING_TO_CHAR(ENCODING)::VARCHAR2(64)
+    FROM PG_CATALOG.PG_DATABASE WHERE DATNAME = CURRENT_DATABASE()
+    UNION ALL
+    SELECT 'NLS_NCHAR_CHARACTERSET'::VARCHAR2(64),
+           PG_ENCODING_TO_CHAR(ENCODING)::VARCHAR2(64)
+    FROM PG_CATALOG.PG_DATABASE WHERE DATNAME = CURRENT_DATABASE()
+) X
+ORDER BY X.PARAMETER;
+GRANT SELECT ON SYS.NLS_DATABASE_PARAMETERS TO PUBLIC;
+
+-- V$SYSSTAT: instance-wide counters.  Oracle reports cumulative numbers since
+-- startup; the rows below come from pg_stat_database and pg_stat_wal, so the
+-- names are Oracle's and the values are the real PostgreSQL counters.
+CREATE OR REPLACE VIEW SYS.V$SYSSTAT AS
+SELECT X.NAME, X.VALUE, 0::NUMBER AS CON_ID
+FROM (
+    SELECT 'user commits'::VARCHAR2(64) AS NAME,
+           COALESCE(SUM(D.XACT_COMMIT), 0)::NUMBER AS VALUE
+    FROM PG_CATALOG.PG_STAT_DATABASE D
+    UNION ALL
+    SELECT 'user rollbacks', COALESCE(SUM(D.XACT_ROLLBACK), 0)::NUMBER
+    FROM PG_CATALOG.PG_STAT_DATABASE D
+    UNION ALL
+    SELECT 'physical reads', COALESCE(SUM(D.BLKS_READ), 0)::NUMBER
+    FROM PG_CATALOG.PG_STAT_DATABASE D
+    UNION ALL
+    SELECT 'db block gets', COALESCE(SUM(D.BLKS_HIT), 0)::NUMBER
+    FROM PG_CATALOG.PG_STAT_DATABASE D
+    UNION ALL
+    SELECT 'session logical reads', COALESCE(SUM(D.BLKS_HIT + D.BLKS_READ), 0)::NUMBER
+    FROM PG_CATALOG.PG_STAT_DATABASE D
+    UNION ALL
+    SELECT 'user calls', COALESCE(SUM(D.XACT_COMMIT + D.XACT_ROLLBACK), 0)::NUMBER
+    FROM PG_CATALOG.PG_STAT_DATABASE D
+    UNION ALL
+    SELECT 'redo size', COALESCE(SUM(W.WAL_BYTES), 0)::NUMBER
+    FROM PG_CATALOG.PG_STAT_WAL W
+    UNION ALL
+    SELECT 'sorts (disk)', COALESCE(SUM(D.TEMP_FILES), 0)::NUMBER
+    FROM PG_CATALOG.PG_STAT_DATABASE D
+) X
+ORDER BY NAME;
+GRANT SELECT ON SYS.V$SYSSTAT TO PUBLIC;
+
+-- V$SYSTEM_PARAMETER: the instance-wide value of every parameter.  Oracle
+-- distinguishes it from V$PARAMETER (the session value); PostgreSQL keeps both
+-- in pg_settings, so this view reports the same columns V$PARAMETER already
+-- exposes, which is what tools that query either name expect to find.
+CREATE OR REPLACE VIEW SYS.V$SYSTEM_PARAMETER AS
+SELECT
+    NAME::VARCHAR2(80)                                            AS NAME,
+    CASE
+        WHEN VARTYPE = 'bool'    THEN 1
+        WHEN VARTYPE = 'integer' THEN 3
+        ELSE 2
+    END::NUMBER                                                   AS TYPE,
+    SETTING::VARCHAR2(4000)                                       AS VALUE,
+    BOOT_VAL::VARCHAR2(255)                                       AS DEFAULT_VALUE,
+    CASE WHEN SETTING IS NOT DISTINCT FROM BOOT_VAL THEN 'TRUE'
+         ELSE 'FALSE'
+    END::VARCHAR2(5)                                              AS ISDEFAULT,
+    CASE WHEN CONTEXT IN ('user', 'superuser') THEN 'TRUE'
+         ELSE 'FALSE'
+    END::VARCHAR2(5)                                              AS ISSES_MODIFIABLE,
+    CASE WHEN CONTEXT IN ('user', 'superuser', 'sighup') THEN 'IMMEDIATE'
+         WHEN CONTEXT IN ('postmaster', 'internal') THEN 'FALSE'
+         ELSE 'DEFERRED'
+    END::VARCHAR2(9)                                              AS ISSYS_MODIFIABLE,
+    SHORT_DESC::VARCHAR2(255)                                     AS DESCRIPTION
+FROM PG_CATALOG.PG_SETTINGS;
+GRANT SELECT ON SYS.V$SYSTEM_PARAMETER TO PUBLIC;
+
+-- V$TRANSACTION: one row per backend that currently holds a transaction id.
+-- PostgreSQL exposes exactly that in pg_locks (a granted transactionid lock)
+-- and the start time in pg_stat_activity, so the view reports those instead of
+-- inventing undo-segment numbers.
+CREATE OR REPLACE VIEW SYS.V$TRANSACTION AS
+SELECT
+    A.PID::NUMBER                                                  AS SID,
+    L.TRANSACTIONID::TEXT::VARCHAR2(32)                            AS XID,
+    'ACTIVE'::VARCHAR2(16)                                         AS STATUS,
+    A.XACT_START                                                   AS START_TIME,
+    NULL::NUMBER                                                   AS USED_UBLK,
+    NULL::NUMBER                                                   AS USED_UREC,
+    0::NUMBER                                                      AS CON_ID
+FROM PG_CATALOG.PG_LOCKS L
+JOIN PG_CATALOG.PG_STAT_ACTIVITY A ON A.PID = L.PID
+WHERE L.LOCKTYPE = 'transactionid'
+  AND L.GRANTED;
+GRANT SELECT ON SYS.V$TRANSACTION TO PUBLIC;
+
+-- V$CONTROLFILE: Oracle lists its control files.  PostgreSQL's equivalent
+-- single control file lives in the data directory, and the path is derivable
+-- from settings every user may read.
+CREATE OR REPLACE VIEW SYS.V$CONTROLFILE AS
+SELECT
+    'VALID'::VARCHAR2(7)                                           AS STATUS,
+    (CURRENT_SETTING('data_directory') || '/global/pg_control')::VARCHAR2(4000) AS NAME;
+GRANT SELECT ON SYS.V$CONTROLFILE TO PUBLIC;
+
+-- V$SPPARAMETER: Oracle's server parameter file view.  PostgreSQL's equivalent
+-- is the set of values that come from postgresql.conf (pg_settings.source =
+-- 'configuration file'), so the view reports those, with ORDINAL as the
+-- position in the settings list and ISSPECIFIED always TRUE because a row only
+-- exists when the file specifies the parameter.
+CREATE OR REPLACE VIEW SYS.V$SPPARAMETER AS
+SELECT
+    '*'::VARCHAR2(1)                                              AS SID,
+    NAME::VARCHAR2(80)                                             AS NAME,
+    SETTING::VARCHAR2(4000)                                        AS VALUE,
+    CASE WHEN CONTEXT IN ('user', 'superuser') THEN 'TRUE'
+         ELSE 'FALSE'
+    END::VARCHAR2(5)                                               AS ISSYS_MODIFIABLE,
+    ROW_NUMBER() OVER (ORDER BY NAME)::NUMBER                       AS ORDINAL,
+    'TRUE'::VARCHAR2(5)                                            AS ISSPECIFIED
+FROM PG_CATALOG.PG_SETTINGS
+WHERE SOURCE IN ('configuration file', 'override');
+GRANT SELECT ON SYS.V$SPPARAMETER TO PUBLIC;
+
+-- V$DIAG_INFO: Oracle's diagnostic locations.  PostgreSQL reports the same
+-- paths through read-only settings, so a tool that looks up "where are the
+-- logs/configuration" gets a real answer instead of "relation does not exist".
+CREATE OR REPLACE VIEW SYS.V$DIAG_INFO AS
+SELECT X.NAME, X.VALUE
+FROM (
+    SELECT 'Data Directory'::VARCHAR2(64) AS NAME,
+           CURRENT_SETTING('data_directory')::VARCHAR2(4000) AS VALUE
+    UNION ALL
+    SELECT 'Log Directory'::VARCHAR2(64),
+           CURRENT_SETTING('log_directory')::VARCHAR2(4000)
+    UNION ALL
+    SELECT 'Config File'::VARCHAR2(64),
+           CURRENT_SETTING('config_file')::VARCHAR2(4000)
+    UNION ALL
+    SELECT 'HBA File'::VARCHAR2(64),
+           CURRENT_SETTING('hba_file')::VARCHAR2(4000)
+    UNION ALL
+    SELECT 'Ident File'::VARCHAR2(64),
+           CURRENT_SETTING('ident_file')::VARCHAR2(4000)
+) X
+ORDER BY X.NAME;
+GRANT SELECT ON SYS.V$DIAG_INFO TO PUBLIC;
+
+-- V$THREAD: PostgreSQL has a single redo stream, so the view reports the one
+-- thread that Oracle would also report for a single-instance database.
+CREATE OR REPLACE VIEW SYS.V$THREAD AS
+SELECT
+    1::NUMBER                                                      AS THREAD_NO,
+    'OPEN'::VARCHAR2(8)                                            AS STATUS,
+    'PUBLIC'::VARCHAR2(8)                                          AS ENABLED,
+    1::NUMBER                                                      AS GROUPS,
+    1::NUMBER                                                      AS INSTANCE,
+    0::NUMBER                                                      AS CON_ID;
+GRANT SELECT ON SYS.V$THREAD TO PUBLIC;
+
+-- V$SEGSTAT_NAME / V$SEGSTAT: per-segment I/O statistics in Oracle's shape.
+-- PostgreSQL reports the same counters per relation in pg_statio_all_tables,
+-- so the name view lists the three statistics that can be derived and the
+-- value view reports them per segment.
+CREATE OR REPLACE VIEW SYS.V$SEGSTAT_NAME AS
+SELECT
+    'logical reads'::VARCHAR2(64)                                  AS STATISTIC_NAME,
+    1::NUMBER                                                      AS STATISTIC_NO,
+    'NO'::VARCHAR2(3)                                              AS SAMPLED,
+    0::NUMBER                                                      AS CON_ID
+UNION ALL
+SELECT 'physical reads'::VARCHAR2(64), 2::NUMBER, 'NO'::VARCHAR2(3), 0::NUMBER
+UNION ALL
+SELECT 'buffer gets'::VARCHAR2(64), 3::NUMBER, 'NO'::VARCHAR2(3), 0::NUMBER;
+GRANT SELECT ON SYS.V$SEGSTAT_NAME TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.V$SEGSTAT AS
+SELECT
+    C.OID::INT8::NUMBER                                            AS OBJ#,
+    C.OID::INT8::NUMBER                                            AS DATAOBJ#,
+    TS.OID::INT8::NUMBER                                           AS TS#,
+    'TABLE'::VARCHAR2(13)                                          AS OBJ_TYPE,
+    S.STATISTIC_NAME::VARCHAR2(64)                                 AS STATISTIC_NAME,
+    S.STATISTIC_NO::NUMBER                                         AS STATISTIC#,
+    S.VALUE::NUMBER                                                AS VALUE,
+    0::NUMBER                                                      AS CON_ID
+FROM PG_CATALOG.PG_CLASS C
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+JOIN PG_CATALOG.PG_TABLESPACE TS
+  ON TS.OID = (CASE WHEN C.RELTABLESPACE = 0
+                    THEN (SELECT DATTABLESPACE FROM PG_CATALOG.PG_DATABASE
+                           WHERE DATNAME = CURRENT_DATABASE())
+                    ELSE C.RELTABLESPACE
+               END)
+CROSS JOIN LATERAL (
+    SELECT ST.HEAP_BLKS_READ + ST.HEAP_BLKS_HIT + ST.IDX_BLKS_READ + ST.IDX_BLKS_HIT AS LOGICAL_READS,
+           ST.HEAP_BLKS_READ + ST.IDX_BLKS_READ AS PHYSICAL_READS,
+           ST.HEAP_BLKS_HIT + ST.IDX_BLKS_HIT AS BUFFER_GETS
+      FROM PG_CATALOG.PG_STATIO_ALL_TABLES ST
+     WHERE ST.RELID = C.OID
+) IO
+CROSS JOIN LATERAL (
+    VALUES ('logical reads'::VARCHAR2(64), 1::NUMBER, IO.LOGICAL_READS),
+           ('physical reads'::VARCHAR2(64), 2::NUMBER, IO.PHYSICAL_READS),
+           ('buffer gets'::VARCHAR2(64), 3::NUMBER, IO.BUFFER_GETS)
+) AS S(STATISTIC_NAME, STATISTIC_NO, VALUE)
+WHERE C.RELKIND IN ('r', 'p', 'm')
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast');
+GRANT SELECT ON SYS.V$SEGSTAT TO PUBLIC;
+
+-- V$NLS_PARAMETERS: the NLS settings in force for the session, under the name
+-- and column shape Oracle uses for the same information.
+CREATE OR REPLACE VIEW SYS.V$NLS_PARAMETERS AS
+SELECT X.PARAMETER, X.VALUE
+FROM (
+    SELECT 'NLS_CURRENCY'::VARCHAR2(64) AS PARAMETER,
+           CURRENT_SETTING('nls_currency')::VARCHAR2(64) AS VALUE
+    UNION ALL SELECT 'NLS_DATE_FORMAT'::VARCHAR2(64), CURRENT_SETTING('nls_date_format')::VARCHAR2(64)
+    UNION ALL SELECT 'NLS_ISO_CURRENCY'::VARCHAR2(64), CURRENT_SETTING('nls_iso_currency')::VARCHAR2(64)
+    UNION ALL SELECT 'NLS_LENGTH_SEMANTICS'::VARCHAR2(64), CURRENT_SETTING('nls_length_semantics')::VARCHAR2(64)
+    UNION ALL SELECT 'NLS_TERRITORY'::VARCHAR2(64), CURRENT_SETTING('nls_territory')::VARCHAR2(64)
+    UNION ALL SELECT 'NLS_TIMESTAMP_FORMAT'::VARCHAR2(64), CURRENT_SETTING('nls_timestamp_format')::VARCHAR2(64)
+    UNION ALL SELECT 'NLS_TIMESTAMP_TZ_FORMAT'::VARCHAR2(64), CURRENT_SETTING('nls_timestamp_tz_format')::VARCHAR2(64)
+) X
+ORDER BY X.PARAMETER;
+GRANT SELECT ON SYS.V$NLS_PARAMETERS TO PUBLIC;
+
+-- V$EVENT_NAME: the wait events the server can report, which PostgreSQL keeps
+-- in pg_wait_events.  Oracle's view lists its own event names; this one lists
+-- the events an IvorySQL session can actually wait on.
+CREATE OR REPLACE VIEW SYS.V$EVENT_NAME AS
+SELECT
+    ROW_NUMBER() OVER (ORDER BY W.TYPE, W.NAME)::NUMBER             AS EVENT_NO,
+    W.NAME::VARCHAR2(64)                                            AS NAME,
+    W.TYPE::VARCHAR2(64)                                            AS WAIT_CLASS,
+    NULL::VARCHAR2(64)                                              AS PARAMETER1,
+    NULL::VARCHAR2(64)                                              AS PARAMETER2,
+    NULL::VARCHAR2(64)                                              AS PARAMETER3,
+    W.DESCRIPTION::VARCHAR2(4000)                                   AS DESCRIPTION,
+    0::NUMBER                                                       AS CON_ID
+FROM pg_catalog.pg_wait_events W;
+GRANT SELECT ON SYS.V$EVENT_NAME TO PUBLIC;
+
+-- V$TIMER: one row with the current time in hundredths of a second, which is
+-- what Oracle's wait loops read to measure elapsed time without a round trip
+-- to a table.
+CREATE OR REPLACE VIEW SYS.V$TIMER AS
+SELECT
+    (pg_catalog.date_part('epoch', pg_catalog.clock_timestamp()) * 100)::int8::NUMBER AS HMSECS,
+    0::NUMBER                                                       AS CON_ID;
+GRANT SELECT ON SYS.V$TIMER TO PUBLIC;
+
+-- V$LOCK_TYPE: the lock classes V$LOCK reports, with a description.  The list
+-- mirrors the case expression in V$LOCK, so the two views agree.
+CREATE OR REPLACE VIEW SYS.V$LOCK_TYPE AS
+SELECT
+    T.TYPE::VARCHAR2(8)                                             AS TYPE,
+    NULL::VARCHAR2(32)                                              AS ID1TAG,
+    NULL::VARCHAR2(32)                                              AS ID2TAG,
+    T.DESCRIPTION::VARCHAR2(4000)                                   AS DESCRIPTION,
+    0::NUMBER                                                       AS CON_ID
+FROM (VALUES
+        ('TM', 'relation locks'),
+        ('TX', 'transaction id locks'),
+        ('TP', 'tuple locks'),
+        ('VX', 'virtual xid locks'),
+        ('AD', 'advisory locks'),
+        ('OB', 'object locks'),
+        ('EX', 'relation extension locks')
+     ) AS T(TYPE, DESCRIPTION);
+GRANT SELECT ON SYS.V$LOCK_TYPE TO PUBLIC;
+-- V$TIMEZONE_NAMES: Oracle's list of time zone names, abbreviations and UTC
+-- offsets, taken from the server's own tzdata.
+CREATE OR REPLACE VIEW SYS.V$TIMEZONE_NAMES AS
+SELECT
+    NAME::VARCHAR2(64) AS TIMEZONE_ID,
+    ABBREV::VARCHAR2(40) AS TZ_ABBREV,
+    (CASE
+         WHEN pg_catalog.date_part('epoch', UTC_OFFSET) < 0 THEN '-'
+         ELSE '+'
+     END
+     || TO_CHAR(ABS(pg_catalog.date_part('hour', UTC_OFFSET)), 'FM00')
+     || ':' ||
+     TO_CHAR(ABS(pg_catalog.date_part('minute', UTC_OFFSET)), 'FM00'))::VARCHAR2(7) AS TZ_OFFSET
+FROM PG_TIMEZONE_NAMES;
+
+-- V$OBJECT_USAGE: Oracle's index-usage monitoring view.  PostgreSQL always
+-- collects index statistics (unless track_counts is off), so MONITORING is
+-- always YES and END_MONITORING is always NULL; USED reports whether the index
+-- has been scanned since the table's statistics were last reset.
+CREATE OR REPLACE VIEW SYS.V$OBJECT_USAGE AS
+SELECT
+    SYS.ORA_CASE_TRANS(IDX.RELNAME::VARCHAR2(128))::VARCHAR2(128) AS INDEX_NAME,
+    SYS.ORA_CASE_TRANS(TBL.RELNAME::VARCHAR2(128))::VARCHAR2(128) AS TABLE_NAME,
+    'YES'::VARCHAR2(3) AS MONITORING,
+    CASE WHEN STI.IDX_SCAN > 0 THEN 'YES' ELSE 'NO' END::VARCHAR2(3) AS USED,
+    STT.STATS_RESET AS START_MONITORING,
+    NULL::TIMESTAMP WITH TIME ZONE AS END_MONITORING
+FROM PG_STAT_USER_INDEXES STI
+JOIN PG_CLASS IDX ON IDX.OID = STI.INDEXRELID
+JOIN PG_CLASS TBL ON TBL.OID = STI.RELID
+LEFT JOIN PG_STAT_USER_TABLES STT ON STT.RELID = STI.RELID;
+
+
+-- USER_OBJECT_USAGE and DBA_OBJECT_USAGE: the same monitoring data as
+-- V$OBJECT_USAGE, split the way Oracle splits the dictionary -- USER_ for the
+-- indexes the current user owns, DBA_ for every index.
+CREATE OR REPLACE VIEW SYS.USER_OBJECT_USAGE AS
+SELECT
+    SYS.ORA_CASE_TRANS(IDX.RELNAME::VARCHAR2(128))::VARCHAR2(128) AS INDEX_NAME,
+    SYS.ORA_CASE_TRANS(TBL.RELNAME::VARCHAR2(128))::VARCHAR2(128) AS TABLE_NAME,
+    'YES'::VARCHAR2(3) AS MONITORING,
+    CASE WHEN STI.IDX_SCAN > 0 THEN 'YES' ELSE 'NO' END::VARCHAR2(3) AS USED,
+    STT.STATS_RESET AS START_MONITORING,
+    NULL::TIMESTAMP WITH TIME ZONE AS END_MONITORING
+FROM PG_STAT_USER_INDEXES STI
+JOIN PG_CLASS IDX ON IDX.OID = STI.INDEXRELID
+JOIN PG_CLASS TBL ON TBL.OID = STI.RELID
+LEFT JOIN PG_STAT_USER_TABLES STT ON STT.RELID = STI.RELID
+WHERE IDX.RELOWNER = CURRENT_USER::REGROLE;
+GRANT SELECT ON SYS.USER_OBJECT_USAGE TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.DBA_OBJECT_USAGE AS
+SELECT
+    SYS.ORA_CASE_TRANS(IDX.RELNAME::VARCHAR2(128))::VARCHAR2(128) AS INDEX_NAME,
+    SYS.ORA_CASE_TRANS(TBL.RELNAME::VARCHAR2(128))::VARCHAR2(128) AS TABLE_NAME,
+    'YES'::VARCHAR2(3) AS MONITORING,
+    CASE WHEN STI.IDX_SCAN > 0 THEN 'YES' ELSE 'NO' END::VARCHAR2(3) AS USED,
+    STT.STATS_RESET AS START_MONITORING,
+    NULL::TIMESTAMP WITH TIME ZONE AS END_MONITORING
+FROM PG_STAT_USER_INDEXES STI
+JOIN PG_CLASS IDX ON IDX.OID = STI.INDEXRELID
+JOIN PG_CLASS TBL ON TBL.OID = STI.RELID
+LEFT JOIN PG_STAT_USER_TABLES STT ON STT.RELID = STI.RELID;
+GRANT SELECT ON SYS.DBA_OBJECT_USAGE TO PUBLIC;

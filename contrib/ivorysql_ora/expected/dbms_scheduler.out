@@ -696,13 +696,26 @@ CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_set_job_argument_value_na
 PL/iSQL function sys.dbms_scheduler.set_job_argument_value line 155 at PERFORM
 SQL statement "CALL dbms_scheduler.set_job_argument_value('reg_job_inline', 'y', 'x')"
 PL/iSQL function inline_code_block line 2 at CALL
-SELECT job_name, argument_position, value FROM user_scheduler_job_args
+SELECT job_name, argument_name, argument_position, argument_type, value
+  FROM user_scheduler_job_args
   ORDER BY argument_position;
-   job_name    | argument_position | value 
----------------+-------------------+-------
- REG_JOB_NAMED |                 1 | 11
- REG_JOB_NAMED |                 2 | y-set
+   job_name    | argument_name | argument_position | argument_type | value 
+---------------+---------------+-------------------+---------------+-------
+ REG_JOB_NAMED | X             |                 1 | NUMBER        | 11
+ REG_JOB_NAMED | Y             |                 2 | VARCHAR2      | y-set
 (2 rows)
+
+-- The ALL_ variant exposes the same metadata plus OWNER.
+SELECT COUNT(*) = 2 AS all_job_args_metadata
+  FROM all_scheduler_job_args
+  WHERE job_name = 'REG_JOB_NAMED'
+    AND owner = current_user
+    AND argument_name IS NOT NULL
+    AND argument_type IS NOT NULL;
+ all_job_args_metadata 
+-----------------------
+ t
+(1 row)
 
 --
 -- ENABLE / DISABLE
@@ -1399,3 +1412,73 @@ DROP PROCEDURE sched_reg_proc;
 DELETE FROM sys.scheduler_job_run_details;
 DROP ROLE regress_dbms_scheduler;
 RESET timezone;
+-- Oracle-compatible ALL_SCHEDULER_* views
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_all_sched', job_type => 'PLSQL_BLOCK',
+      job_action => 'BEGIN NULL; END;');
+END;
+/
+SELECT COUNT(*) = 1 AS all_jobs
+FROM all_scheduler_jobs WHERE job_name = 'REG_ALL_SCHED';
+ all_jobs 
+----------
+ t
+(1 row)
+
+SELECT COUNT(*) = 1 AS user_jobs_match
+FROM user_scheduler_jobs WHERE job_name = 'REG_ALL_SCHED';
+ user_jobs_match 
+-----------------
+ t
+(1 row)
+
+-- OWNER is exposed as in Oracle, and a superuser sees every owner's jobs.
+SELECT COUNT(*) = 1 AS owner_matches
+FROM all_scheduler_jobs
+WHERE job_name = 'REG_ALL_SCHED' AND owner = current_user;
+ owner_matches 
+---------------
+ t
+(1 row)
+
+CREATE USER sched_all_u1;
+SET SESSION AUTHORIZATION sched_all_u1;
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_all_other', job_type => 'PLSQL_BLOCK',
+      job_action => 'BEGIN NULL; END;');
+END;
+/
+RESET SESSION AUTHORIZATION;
+SELECT COUNT(*) = 1 AS superuser_sees_other_owner
+FROM all_scheduler_jobs
+WHERE job_name = 'REG_ALL_OTHER' AND owner = 'sched_all_u1';
+ superuser_sees_other_owner 
+----------------------------
+ t
+(1 row)
+
+SET SESSION AUTHORIZATION sched_all_u1;
+SELECT COUNT(*) = 1 AS own_job_visible
+FROM all_scheduler_jobs WHERE job_name = 'REG_ALL_OTHER';
+ own_job_visible 
+-----------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 0 AS other_owner_hidden
+FROM all_scheduler_jobs WHERE job_name = 'REG_ALL_SCHED';
+ other_owner_hidden 
+--------------------
+ t
+(1 row)
+
+BEGIN
+  dbms_scheduler.drop_job('reg_all_other');
+END;
+/
+RESET SESSION AUTHORIZATION;
+DROP USER sched_all_u1;
+BEGIN
+  dbms_scheduler.drop_job('reg_all_sched');
+END;
+/
