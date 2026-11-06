@@ -514,6 +514,24 @@ ora_utl_file_fcopy(PG_FUNCTION_ARGS)
 		IO_EXCEPTION();
 	}
 
+	/*
+	 * FCOPY must not truncate its own source: when both paths resolve to
+	 * the same file, opening the destination with "wt" would destroy the
+	 * contents before copy_text_file() reads them. Detect the collision
+	 * (same device and inode) and refuse the operation before any damage.
+	 */
+	{
+		struct stat srcst;
+		struct stat dstst;
+
+		if (stat(srcpath, &srcst) == 0 && stat(dstpath, &dstst) == 0 &&
+			srcst.st_dev == dstst.st_dev && srcst.st_ino == dstst.st_ino)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("FCOPY source and destination are the same file: \"%s\" and \"%s\"",
+							srcpath, dstpath)));
+	}
+
 	dstfile = fopen(dstpath, "wt");
 
 	if (dstfile == NULL)
