@@ -504,8 +504,8 @@ DefineView(ViewStmt *stmt, const char *queryString,
 		 * swallowed into an invalid FORCE VIEW.
 		 */
 		edata = CopyErrorData();
-		if (edata->errorcode == ERRCODE_QUERY_CANCELED ||
-			edata->errorcode == ERRCODE_ADMIN_SHUTDOWN)
+		if (edata->sqlerrcode == ERRCODE_QUERY_CANCELED ||
+			edata->sqlerrcode == ERRCODE_ADMIN_SHUTDOWN)
 			PG_RE_THROW();
 		FlushErrorState();
 
