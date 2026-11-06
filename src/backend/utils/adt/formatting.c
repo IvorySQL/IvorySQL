@@ -7111,13 +7111,29 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 
 				/*
 				 * As with NUM_G, the group separator specified by a comma in
-				 * the format model is optional in the input.  When it is
-				 * missing the input character is a digit that belongs to the
-				 * adjacent 9 node, so do not consume it here.
+				 * the format model is optional in the input, and it may not
+				 * appear to the right of the decimal point.  When the
+				 * separator is missing the input character is a digit that
+				 * belongs to the adjacent 9 node, so do not consume it here.
 				 */
 			case NUM_COMMA:
-				if (isdigit((unsigned char) *input_tem))
+				if (*input_tem == ',')
+				{
+					if (isrigth == true)
+						isrigth = false;
+				}
+				else if (isdigit((unsigned char) *input_tem))
+				{
+					if (isrigth == true)
+						isrigth = false;
 					input_tem++;
+				}
+				else
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("invalid number format model")));
+				}
 				break;
 
 			case NUM_PR:
