@@ -5031,7 +5031,7 @@ struct config_string ConfigureNamesString[] =
 		},
 		&output_plugin_libraries_string,
 		"pgoutput, test_decoding",
-		NULL, NULL, NULL
+		check_output_plugin_libraries, NULL, NULL
 	},
 
 	{
