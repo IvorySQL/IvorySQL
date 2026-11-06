@@ -7314,7 +7314,14 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 								*Np->inout_p != ',')
 								continue;
 						}
-						Np->inout_p += strlen(Np->L_thousands_sep) - 1;
+						/*
+						 * A matched comma occupies a single input character,
+						 * so the loop advance is already the correct amount.
+						 * Only skip the remaining bytes of a multi-byte
+						 * locale separator.
+						 */
+						if (*Np->inout_p != ',')
+							Np->inout_p += strlen(Np->L_thousands_sep) - 1;
 					}
 					break;
 
