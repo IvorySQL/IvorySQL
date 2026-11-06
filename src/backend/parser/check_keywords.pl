@@ -220,7 +220,7 @@ kwlist_line: while (<$kwlist>)
 		}
 
 		# Check that the keyword is present in the right category list
-		%kwhash = %{ $kwhashes{$kwcat_id} };
+		%kwhash = %{ $kwhashes{$kwcat_id} // {} };
 
 		if (!(%kwhash))
 		{
