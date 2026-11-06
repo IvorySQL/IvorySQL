@@ -19,6 +19,18 @@ SELECT '-10e400'::binary_double;
 SELECT '10e-400'::binary_double;
 SELECT '-10e-400'::binary_double;
 
+-- an out-of-range value followed by anything but whitespace is a syntax error,
+-- not a silent Infinity or 0
+SELECT '10e400 x'::binary_double;
+SELECT '10e-400 x'::binary_double;
+-- whitespace after an out-of-range value is still accepted
+SELECT '10e400   '::binary_double;
+-- the same two rules hold for a negative overflow and for an underflow
+SELECT '-10e400 x'::binary_double;
+SELECT '10e-400   '::binary_double;
+SELECT '-10e400   '::binary_double;
+SELECT '-10e-400 x'::binary_double;
+
 -- bad input
 INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('');
 INSERT INTO BINARY_DOUBLE_TBL(f1) VALUES ('     ');
