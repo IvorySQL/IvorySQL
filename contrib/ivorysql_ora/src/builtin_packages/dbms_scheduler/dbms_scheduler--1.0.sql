@@ -266,14 +266,30 @@ CREATE VIEW sys.user_scheduler_jobs AS
 	FROM sys.scheduler_jobs
 	WHERE job_owner = current_user::text;
 
+-- Oracle fills ARGUMENT_NAME/ARGUMENT_TYPE from the program a job runs; an
+-- inline job has no argument metadata, so those columns stay NULL there.
 CREATE VIEW sys.dba_scheduler_job_args AS
-	SELECT job_owner AS owner, job_name, argument_position, argument_value AS value
-	FROM sys.scheduler_job_args;
+	SELECT ja.job_owner AS owner, ja.job_name, pa.argument_name,
+		   ja.argument_position, pa.argument_type, ja.argument_value AS value
+	FROM sys.scheduler_job_args ja
+	JOIN sys.scheduler_jobs j
+	  ON j.job_owner = ja.job_owner AND j.job_name = ja.job_name
+	LEFT JOIN sys.scheduler_program_args pa
+	  ON pa.program_owner = j.program_owner
+	 AND pa.program_name = j.program_name
+	 AND pa.argument_position = ja.argument_position;
 
 CREATE VIEW sys.user_scheduler_job_args AS
-	SELECT job_name, argument_position, argument_value AS value
-	FROM sys.scheduler_job_args
-	WHERE job_owner = current_user::text;
+	SELECT ja.job_name, pa.argument_name, ja.argument_position,
+		   pa.argument_type, ja.argument_value AS value
+	FROM sys.scheduler_job_args ja
+	JOIN sys.scheduler_jobs j
+	  ON j.job_owner = ja.job_owner AND j.job_name = ja.job_name
+	LEFT JOIN sys.scheduler_program_args pa
+	  ON pa.program_owner = j.program_owner
+	 AND pa.program_name = j.program_name
+	 AND pa.argument_position = ja.argument_position
+	WHERE ja.job_owner = current_user::text;
 
 /* worker_pid is exposed under Oracle's column name for the same thing. */
 CREATE VIEW sys.dba_scheduler_job_run_details AS
@@ -761,10 +777,16 @@ CREATE OR REPLACE VIEW sys.all_scheduler_schedules AS
 		   WHERE rolname = current_user);
 
 CREATE OR REPLACE VIEW sys.all_scheduler_job_args AS
-	SELECT job_owner AS owner, job_name, argument_position,
-		   argument_value AS value
-	FROM sys.scheduler_job_args
-	WHERE job_owner = current_user::text
+	SELECT ja.job_owner AS owner, ja.job_name, pa.argument_name,
+		   ja.argument_position, pa.argument_type, ja.argument_value AS value
+	FROM sys.scheduler_job_args ja
+	JOIN sys.scheduler_jobs j
+	  ON j.job_owner = ja.job_owner AND j.job_name = ja.job_name
+	LEFT JOIN sys.scheduler_program_args pa
+	  ON pa.program_owner = j.program_owner
+	 AND pa.program_name = j.program_name
+	 AND pa.argument_position = ja.argument_position
+	WHERE ja.job_owner = current_user::text
 	   OR (SELECT rolsuper FROM pg_catalog.pg_roles
 		   WHERE rolname = current_user);
 

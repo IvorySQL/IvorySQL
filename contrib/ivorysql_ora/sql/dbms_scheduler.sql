@@ -396,8 +396,16 @@ BEGIN
   dbms_scheduler.set_job_argument_value('reg_job_inline', 'y', 'x');
 END;
 /
-SELECT job_name, argument_position, value FROM user_scheduler_job_args
+SELECT job_name, argument_name, argument_position, argument_type, value
+  FROM user_scheduler_job_args
   ORDER BY argument_position;
+-- The ALL_ variant exposes the same metadata plus OWNER.
+SELECT COUNT(*) = 2 AS all_job_args_metadata
+  FROM all_scheduler_job_args
+  WHERE job_name = 'REG_JOB_NAMED'
+    AND owner = current_user
+    AND argument_name IS NOT NULL
+    AND argument_type IS NOT NULL;
 
 --
 -- ENABLE / DISABLE

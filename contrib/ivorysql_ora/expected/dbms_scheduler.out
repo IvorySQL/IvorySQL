@@ -696,13 +696,26 @@ CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_set_job_argument_value_na
 PL/iSQL function sys.dbms_scheduler.set_job_argument_value line 155 at PERFORM
 SQL statement "CALL dbms_scheduler.set_job_argument_value('reg_job_inline', 'y', 'x')"
 PL/iSQL function inline_code_block line 2 at CALL
-SELECT job_name, argument_position, value FROM user_scheduler_job_args
+SELECT job_name, argument_name, argument_position, argument_type, value
+  FROM user_scheduler_job_args
   ORDER BY argument_position;
-   job_name    | argument_position | value 
----------------+-------------------+-------
- REG_JOB_NAMED |                 1 | 11
- REG_JOB_NAMED |                 2 | y-set
+   job_name    | argument_name | argument_position | argument_type | value 
+---------------+---------------+-------------------+---------------+-------
+ REG_JOB_NAMED | X             |                 1 | NUMBER        | 11
+ REG_JOB_NAMED | Y             |                 2 | VARCHAR2      | y-set
 (2 rows)
+
+-- The ALL_ variant exposes the same metadata plus OWNER.
+SELECT COUNT(*) = 2 AS all_job_args_metadata
+  FROM all_scheduler_job_args
+  WHERE job_name = 'REG_JOB_NAMED'
+    AND owner = current_user
+    AND argument_name IS NOT NULL
+    AND argument_type IS NOT NULL;
+ all_job_args_metadata 
+-----------------------
+ t
+(1 row)
 
 --
 -- ENABLE / DISABLE
