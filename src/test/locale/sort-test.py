@@ -14,7 +14,7 @@ list = infile.readlines()
 infile.close()
 
 for i in range(0, len(list)):
-    list[i] = list[i][:-1]  # chop!
+    list[i] = list[i].rstrip("\r\n")  # chop!
 
 list.sort(key=locale.strxfrm)
 print('\n'.join(list))
