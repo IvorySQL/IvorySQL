@@ -218,9 +218,10 @@ typedef struct PLiSQL_type
 	Oid			collation;		/* from pg_type, but can be overridden */
 	bool		typisarray;		/* is "true" array, or domain over one */
 	int32		atttypmod;		/* typmod (taken from someplace else) */
-	bool		notnull;		/* the type is built by variable%type,
-						 * isnull or notnull of the variable */
-	TypeName   *pctrowtypname;	/* type name only for the types that use %TYPE or %ROWTYPE */
+	bool		notnull;		/* the type is built by variable%type, isnull
+								 * or notnull of the variable */
+	TypeName   *pctrowtypname;	/* type name only for the types that use %TYPE
+								 * or %ROWTYPE */
 	/* Remaining fields are used only for named composite types (not RECORD) */
 	TypeName   *origtypname;	/* type name as written by user */
 	TypeCacheEntry *tcache;		/* typcache entry for composite type */
@@ -323,6 +324,15 @@ typedef struct PLiSQL_variable
 	PLiSQL_expr *default_val;
 }			PLiSQL_variable;
 
+typedef enum PLiSQL_cursor_attribute_kind
+{
+	PLISQL_CURSOR_ATTRIBUTE_NONE,
+	PLISQL_CURSOR_ISOPEN,
+	PLISQL_CURSOR_FOUND,
+	PLISQL_CURSOR_NOTFOUND,
+	PLISQL_CURSOR_ROWCOUNT
+} PLiSQL_cursor_attribute_kind;
+
 /*
  * Scalar variable
  *
@@ -357,8 +367,9 @@ typedef struct PLiSQL_var
 	int			cursor_explicit_argrow;
 	int			cursor_options;
 
-	char		info; /* record the argument mode which may be IN, OUT or IN OUT.
-			       * If variable is built in plisql block locally, it is empty */
+	char		info;			/* record the argument mode which may be IN,
+								 * OUT or IN OUT. If variable is built in
+								 * plisql block locally, it is empty */
 
 	/* Fields below here can change at runtime */
 
@@ -372,6 +383,10 @@ typedef struct PLiSQL_var
 	 * been fulfilled, this is PLISQL_PROMISE_NONE.
 	 */
 	PLiSQL_promise_type promise;
+
+	/* 内部只读变量按源游标编号读取当前属性值。 */
+	PLiSQL_cursor_attribute_kind cursor_attribute;
+	int			cursor_attr_dno;
 }			PLiSQL_var;
 
 /*
@@ -442,8 +457,9 @@ typedef struct PLiSQL_rec
 	/* RECFIELDs for this record are chained together for easy access */
 	int			firstfield;		/* dno of first RECFIELD, or -1 if none */
 
-	char		info;  /* record the argument mode which may be IN, OUT or IN OUT.
-				* If variable is built in plisql block locally, it is empty */
+	char		info;			/* record the argument mode which may be IN,
+								 * OUT or IN OUT. If variable is built in
+								 * plisql block locally, it is empty */
 
 	/* Fields below here can change at runtime */
 
@@ -907,7 +923,8 @@ typedef struct PLiSQL_stmt_raise
 	char	   *message;		/* old-style message format literal, or NULL */
 	List	   *params;			/* list of expressions for old-style message */
 	List	   *options;		/* list of PLiSQL_raise_option */
-	struct PLiSQL_exception_var *exception_var;	/* user-defined exception, or NULL */
+	struct PLiSQL_exception_var *exception_var; /* user-defined exception, or
+												 * NULL */
 }			PLiSQL_stmt_raise;
 
 /*
@@ -1072,14 +1089,20 @@ typedef struct PLiSQL_function
 	/* these fields change when the function is used */
 	struct PLiSQL_execstate *cur_estate;
 	unsigned long use_count;
-	int		fn_ret_vardno;	/* the variable dno for the function return value */
-	bool		fn_no_return;	/* when the function return type is not VOIDOID, if the body has not a RETURN statment,
-					 * the CREATE FUNCTION can be executed successfully, but when the function is called,
-					 * an error will be reported */
+	int			fn_ret_vardno;	/* the variable dno for the function return
+								 * value */
+	bool		fn_no_return;	/* when the function return type is not
+								 * VOIDOID, if the body has not a RETURN
+								 * statment, the CREATE FUNCTION can be
+								 * executed successfully, but when the
+								 * function is called, an error will be
+								 * reported */
 	bool		do_from_call;
-	char		**paramnames;	/* saved do + using parameter'name */
-	bool		is_with_clause_func;	/* true: body is a WITH FUNCTION/PROCEDURE inline subprogram */
-} PLiSQL_function;
+	char	  **paramnames;		/* saved do + using parameter'name */
+	bool		is_with_clause_func;	/* true: body is a WITH
+										 * FUNCTION/PROCEDURE inline
+										 * subprogram */
+}			PLiSQL_function;
 
 typedef struct plisql_hashent
 {
@@ -1328,8 +1351,8 @@ extern List *plisql_active_with_func_entries;
 extern PGDLLEXPORT PLiSQL_function * plisql_compile(FunctionCallInfo fcinfo,
 													bool forValidator);
 
-extern PLiSQL_function *plisql_compile_inline(char *proc_source, ParamListInfo inparams, bool fromcall,
-											  Oid initial_rettype, bool initial_is_proc);
+extern PLiSQL_function * plisql_compile_inline(char *proc_source, ParamListInfo inparams, bool fromcall,
+											   Oid initial_rettype, bool initial_is_proc);
 extern PGDLLEXPORT void plisql_parser_setup(struct ParseState *pstate,
 											PLiSQL_expr * expr);
 extern bool plisql_parse_word(char *paramname, char *word1, const char *yytxt,
@@ -1447,6 +1470,8 @@ extern int	plisql_token_length(yyscan_t yyscanner);
 extern void plisql_push_back_token(int token, union YYSTYPE *yylvalp,
 								   YYLTYPE *yyllocp, yyscan_t yyscanner);
 extern bool plisql_token_is_unreserved_keyword(int token);
+extern PLiSQL_cursor_attribute_kind plisql_scan_cursor_attribute(yyscan_t yyscanner,
+																 int *endlocation);
 extern void plisql_append_source_text(StringInfo buf, int startlocation,
 									  int endlocation, yyscan_t yyscanner);
 extern int	plisql_peek(yyscan_t yyscanner);
