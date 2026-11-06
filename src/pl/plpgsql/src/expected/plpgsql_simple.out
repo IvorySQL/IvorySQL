@@ -148,3 +148,46 @@ end $$;
 ERROR:  bigint out of range
 CONTEXT:  SQL statement "select x*x*x"
 PL/pgSQL function inline_code_block line 5 at SQL statement
+-- Check that "SELECT simple-expression INTO" reports correct FOUND and
+-- ROW_COUNT when the expression has to be replanned and turns out to be
+-- no longer simple (here: a scalar function is replaced by a SRF).
+create function simple_into_f1() returns int language sql as 'select 1';
+create function simple_into_found() returns bool language plpgsql as $$
+declare v int;
+begin
+  select simple_into_f1() into v;
+  return found;
+end $$;
+create function simple_into_rowcount() returns int language plpgsql as $$
+declare v int; rc int;
+begin
+  select simple_into_f1() into v;
+  get diagnostics rc = row_count;
+  return rc;
+end $$;
+select simple_into_found(), simple_into_rowcount();
+ simple_into_found | simple_into_rowcount 
+-------------------+----------------------
+ t                 |                    1
+(1 row)
+
+drop function simple_into_f1();
+create function simple_into_f1() returns setof int language sql
+  as 'select 1 where false';
+-- The first call after the redefinition must not claim that a row was returned.
+select simple_into_found(), simple_into_rowcount();
+ simple_into_found | simple_into_rowcount 
+-------------------+----------------------
+ f                 |                    0
+(1 row)
+
+-- Nor may any subsequent call.
+select simple_into_found(), simple_into_rowcount();
+ simple_into_found | simple_into_rowcount 
+-------------------+----------------------
+ f                 |                    0
+(1 row)
+
+drop function simple_into_rowcount();
+drop function simple_into_found();
+drop function simple_into_f1();
