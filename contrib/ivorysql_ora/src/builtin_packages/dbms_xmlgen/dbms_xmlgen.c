@@ -45,6 +45,7 @@ typedef struct XmlGenContext
 	char	   *rowset_tag;
 	char	   *row_tag;
 	int			processed;
+	int			fetched_rows;	/* rows already returned in chunked mode */
 } XmlGenContext;
 
 static XmlGenContext contexts[MAX_CONTEXTS];
@@ -109,6 +110,24 @@ append_escaped(StringInfo out, const char *value)
 }
 
 /*
+ * Oracle folds unquoted column names to upper case, and DBMS_XMLGEN uses the
+ * folded name as the element name, so <A>, not <a>.
+ */
+static void
+append_column_tag(StringInfo out, const char *name)
+{
+	const char *p;
+
+	for (p = name; *p; p++)
+	{
+		if (*p >= 'a' && *p <= 'z')
+			appendStringInfoChar(out, *p - 'a' + 'A');
+		else
+			appendStringInfoChar(out, *p);
+	}
+}
+
+/*
  * Run the query and return the document.  *emitted receives the number of rows
  * written, which GETNUMROWSPROCESSED reports.
  */
@@ -120,6 +139,7 @@ render_query(const char *query, int max_rows, int skip_rows,
 	MemoryContext caller_context = CurrentMemoryContext;
 	char	   *result;
 	int			rc;
+	int			open_len;
 	uint64		row;
 	uint64		written = 0;
 
@@ -139,7 +159,9 @@ render_query(const char *query, int max_rows, int skip_rows,
 	}
 
 	initStringInfo(&out);
-	appendStringInfo(&out, "<?xml version=\"1.0\"?>\n<%s>", rowset_tag);
+	appendStringInfo(&out, "<?xml version=\"1.0\"?>\n");
+	open_len = out.len;
+	appendStringInfo(&out, "<%s>", rowset_tag);
 
 	for (row = 0; row < SPI_processed; row++)
 	{
@@ -159,7 +181,8 @@ render_query(const char *query, int max_rows, int skip_rows,
 			char	   *name = SPI_fname(desc, col);
 			char	   *value = SPI_getvalue(tuple, desc, col);
 
-			appendStringInfo(&out, "\n    <%s", name);
+			appendStringInfoString(&out, "\n    <");
+			append_column_tag(&out, name);
 			if (value == NULL)
 			{
 				appendStringInfoString(&out, "/>");
@@ -167,12 +190,22 @@ render_query(const char *query, int max_rows, int skip_rows,
 			}
 			appendStringInfoChar(&out, '>');
 			append_escaped(&out, value);
-			appendStringInfo(&out, "</%s>", name);
+			appendStringInfoString(&out, "</");
+			append_column_tag(&out, name);
+			appendStringInfoChar(&out, '>');
 		}
 		appendStringInfo(&out, "\n  </%s>", row_tag);
 	}
 
-	appendStringInfo(&out, "\n</%s>", rowset_tag);
+	if (written == 0)
+	{
+		/* Oracle emits an empty document as <ROWSET/>. */
+		out.len = open_len;
+		out.data[out.len] = '\0';
+		appendStringInfo(&out, "<%s/>", rowset_tag);
+	}
+	else
+		appendStringInfo(&out, "\n</%s>", rowset_tag);
 
 	/* SPI_finish() destroys the memory context initStringInfo() used. */
 	MemoryContextSwitchTo(caller_context);
@@ -188,15 +221,25 @@ render_query(const char *query, int max_rows, int skip_rows,
 Datum
 ora_dbms_xmlgen_render(PG_FUNCTION_ARGS)
 {
-	char	   *query = text_to_cstring(PG_GETARG_TEXT_PP(0));
-	int			max_rows = PG_ARGISNULL(1) ? -1 : PG_GETARG_INT32(1);
-	int			skip_rows = PG_ARGISNULL(2) ? 0 : PG_GETARG_INT32(2);
-	char	   *rowset_tag = PG_ARGISNULL(3) ? "ROWSET" :
+	char	   *query;
+	int			max_rows;
+	int			skip_rows;
+	char	   *rowset_tag;
+	char	   *row_tag;
+	char	   *doc;
+
+	/* GETXML(NULL) is a NULL document, not a crash. */
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+
+	query = text_to_cstring(PG_GETARG_TEXT_PP(0));
+	max_rows = PG_ARGISNULL(1) ? -1 : PG_GETARG_INT32(1);
+	skip_rows = PG_ARGISNULL(2) ? 0 : PG_GETARG_INT32(2);
+	rowset_tag = PG_ARGISNULL(3) ? "ROWSET" :
 		text_to_cstring(PG_GETARG_TEXT_PP(3));
-	char	   *row_tag = PG_ARGISNULL(4) ? "ROW" :
+	row_tag = PG_ARGISNULL(4) ? "ROW" :
 		text_to_cstring(PG_GETARG_TEXT_PP(4));
-	char	   *doc = render_query(query, max_rows, skip_rows, rowset_tag, row_tag,
-								  NULL);
+	doc = render_query(query, max_rows, skip_rows, rowset_tag, row_tag, NULL);
 
 	if (doc == NULL)
 		PG_RETURN_NULL();
@@ -206,8 +249,13 @@ ora_dbms_xmlgen_render(PG_FUNCTION_ARGS)
 Datum
 ora_dbms_xmlgen_newcontext(PG_FUNCTION_ARGS)
 {
-	char	   *query = text_to_cstring(PG_GETARG_TEXT_PP(0));
+	char	   *query;
 	int			i;
+
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+
+	query = text_to_cstring(PG_GETARG_TEXT_PP(0));
 
 	for (i = 0; i < MAX_CONTEXTS; i++)
 	{
@@ -220,6 +268,7 @@ ora_dbms_xmlgen_newcontext(PG_FUNCTION_ARGS)
 			contexts[i].rowset_tag = context_strdup("ROWSET");
 			contexts[i].row_tag = context_strdup("ROW");
 			contexts[i].processed = 0;
+			contexts[i].fetched_rows = 0;
 			PG_RETURN_INT32(i + 1);
 		}
 	}
@@ -233,9 +282,22 @@ Datum
 ora_dbms_xmlgen_render_ctx(PG_FUNCTION_ARGS)
 {
 	XmlGenContext *ctx = get_context(PG_GETARG_INT32(0));
-	char	   *doc = render_query(ctx->query, ctx->max_rows, ctx->skip_rows,
-								  ctx->rowset_tag, ctx->row_tag,
-								  &ctx->processed);
+	int			skip = ctx->skip_rows;
+	char	   *doc;
+
+	/*
+	 * With SETMAXROWS, Oracle treats GETXML as a chunked fetch: each call
+	 * returns the next maxrows rows.  Without it, every call renders the whole
+	 * result, so the offset stays at SETSKIPROWS.
+	 */
+	if (ctx->max_rows >= 0)
+		skip += ctx->fetched_rows;
+
+	doc = render_query(ctx->query, ctx->max_rows, skip,
+					   ctx->rowset_tag, ctx->row_tag, &ctx->processed);
+
+	if (ctx->max_rows >= 0)
+		ctx->fetched_rows += ctx->processed;
 
 	if (doc == NULL)
 		PG_RETURN_NULL();
@@ -248,6 +310,7 @@ ora_dbms_xmlgen_set_maxrows(PG_FUNCTION_ARGS)
 	XmlGenContext *ctx = get_context(PG_GETARG_INT32(0));
 
 	ctx->max_rows = PG_ARGISNULL(1) ? -1 : PG_GETARG_INT32(1);
+	ctx->fetched_rows = 0;
 	PG_RETURN_VOID();
 }
 
@@ -257,6 +320,7 @@ ora_dbms_xmlgen_set_skiprows(PG_FUNCTION_ARGS)
 	XmlGenContext *ctx = get_context(PG_GETARG_INT32(0));
 
 	ctx->skip_rows = PG_ARGISNULL(1) ? 0 : PG_GETARG_INT32(1);
+	ctx->fetched_rows = 0;
 	PG_RETURN_VOID();
 }
 

@@ -2494,3 +2494,20 @@ BEGIN
     END;
 END;
 /
+
+-- With SETMAXROWS, GETXML is a chunked fetch: every call returns the next
+-- batch and the counter reports the rows of the most recent call only.
+DECLARE
+    ctx NUMBER;
+BEGIN
+    ctx := dbms_xmlgen.newcontext('SELECT 1 AS a FROM dual UNION ALL SELECT 2 AS a FROM dual UNION ALL SELECT 3 AS a FROM dual');
+    dbms_xmlgen.setmaxrows(ctx, 2);
+    RAISE NOTICE 'chunk1=%', dbms_xmlgen.getxml(ctx);
+    RAISE NOTICE 'processed1=%', dbms_xmlgen.getnumrowsprocessed(ctx);
+    RAISE NOTICE 'chunk2=%', dbms_xmlgen.getxml(ctx);
+    RAISE NOTICE 'processed2=%', dbms_xmlgen.getnumrowsprocessed(ctx);
+    RAISE NOTICE 'chunk3=%', dbms_xmlgen.getxml(ctx);
+    RAISE NOTICE 'processed3=%', dbms_xmlgen.getnumrowsprocessed(ctx);
+    dbms_xmlgen.closecontext(ctx);
+END;
+/
