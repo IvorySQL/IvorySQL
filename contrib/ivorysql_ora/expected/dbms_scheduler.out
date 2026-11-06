@@ -1478,6 +1478,69 @@ END;
 /
 RESET SESSION AUTHORIZATION;
 DROP USER sched_all_u1;
+-- The other ALL_ views expose the same objects: program, program argument,
+-- schedule and job argument metadata.  The run-details view has no rows for a
+-- job that never ran, which is also what Oracle reports.
+CREATE OR REPLACE PROCEDURE reg_all_proc(x NUMBER, y VARCHAR2) IS
+BEGIN
+  NULL;
+END;
+/
+BEGIN
+  dbms_scheduler.create_program('reg_all_prog', 'STORED_PROCEDURE', 'reg_all_proc', 2);
+  dbms_scheduler.define_program_argument('reg_all_prog', 1, 'p1', 'NUMBER');
+  dbms_scheduler.define_program_argument('reg_all_prog', 2, 'p2', 'VARCHAR2');
+  dbms_scheduler.enable('reg_all_prog');
+  dbms_scheduler.create_schedule('reg_all_schedule',
+      repeat_interval => 'FREQ=DAILY;BYHOUR=1;BYMINUTE=2;BYSECOND=3');
+  dbms_scheduler.create_job('reg_all_job', program_name => 'reg_all_prog',
+      schedule_name => 'reg_all_schedule');
+  dbms_scheduler.set_job_argument_value('reg_all_job', 1, '5');
+END;
+/
+SELECT COUNT(*) = 1 AS all_programs
+FROM all_scheduler_programs WHERE program_name = 'REG_ALL_PROG';
+ all_programs 
+--------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 2 AS all_program_args
+FROM all_scheduler_program_args WHERE program_name = 'REG_ALL_PROG';
+ all_program_args 
+------------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 1 AS all_schedules
+FROM all_scheduler_schedules WHERE schedule_name = 'REG_ALL_SCHEDULE';
+ all_schedules 
+---------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 1 AS all_job_args
+FROM all_scheduler_job_args
+WHERE job_name = 'REG_ALL_JOB' AND argument_name = 'P1' AND value = '5';
+ all_job_args 
+--------------
+ t
+(1 row)
+
+SELECT COUNT(*) = 0 AS all_run_details_empty
+FROM all_scheduler_job_run_details WHERE job_name = 'REG_ALL_JOB';
+ all_run_details_empty 
+-----------------------
+ t
+(1 row)
+
+BEGIN
+  dbms_scheduler.drop_job('reg_all_job');
+  dbms_scheduler.drop_program('reg_all_prog');
+  dbms_scheduler.drop_schedule('reg_all_schedule');
+END;
+/
+DROP PROCEDURE reg_all_proc;
 BEGIN
   dbms_scheduler.drop_job('reg_all_sched');
 END;
