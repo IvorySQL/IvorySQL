@@ -111,6 +111,14 @@ CREATE TYPE <replaceable class="parameter">name</replaceable>
    To be able to create a composite type, you must
    have <literal>USAGE</literal> privilege on all attribute types.
   </para>
+
+  <para>
+   With the IvorySQL Oracle parser, an attribute in
+   <literal>CREATE TYPE ... AS OBJECT</literal> can use
+   <literal>table.column%TYPE</literal> to copy a column's data type and
+   type modifier, such as length or precision.  The reference is resolved
+   when the object type is created or replaced.
+  </para>
   </refsect2>
 
   <refsect2 id="sql-createtype-enum">
