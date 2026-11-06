@@ -474,6 +474,7 @@ DefineView(ViewStmt *stmt, const char *queryString,
 	ListCell   *cell;
 	bool		check_option;
 	bool		compile_failed = false;
+	MemoryContext oldcontext = CurrentMemoryContext;
 	ObjectAddress address;
 	ObjectAddress temp_object;
 
@@ -503,10 +504,12 @@ DefineView(ViewStmt *stmt, const char *queryString,
 		 * the user cancelled, and the error must propagate instead of being
 		 * swallowed into an invalid FORCE VIEW.
 		 */
+		MemoryContextSwitchTo(oldcontext);
 		edata = CopyErrorData();
 		if (edata->sqlerrcode == ERRCODE_QUERY_CANCELED ||
 			edata->sqlerrcode == ERRCODE_ADMIN_SHUTDOWN)
 			PG_RE_THROW();
+		FreeErrorData(edata);
 		FlushErrorState();
 
 		compile_failed = true;
