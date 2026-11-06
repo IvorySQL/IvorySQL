@@ -82,6 +82,12 @@ ExecReScan(PlanState *node)
 		InstrEndLoop(node->instrument);
 
 	/*
+	 * Restart the node-level ROWNUM counter, if this node has one, so that a
+	 * rescan numbers its output rows from 1 again.
+	 */
+	node->ps_rownum = 0;
+
+	/*
 	 * If we have changed parameters, propagate that info.
 	 *
 	 * Note: ExecReScanSetParamPlan() can add bits to node->chgParam,

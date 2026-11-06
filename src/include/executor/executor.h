@@ -512,6 +512,13 @@ ExecProject(ProjectionInfo *projInfo)
 	 */
 	ExecClearTuple(slot);
 
+	/*
+	 * Oracle ROWNUM in a join's output list numbers the rows emitted by the
+	 * join itself, so advance the node-level counter once per output row.
+	 */
+	if (projInfo->pi_rownum_by_node)
+		state->parent->ps_rownum++;
+
 	/* Run the expression */
 	ExecEvalExprNoReturnSwitchContext(state, econtext);
 
