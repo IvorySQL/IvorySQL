@@ -1042,16 +1042,16 @@ SELECT '' AS to_char_15, to_char(val, 'FM9999999990999999.099999999999999') 	FRO
 SELECT '' AS to_char_16, to_char(val, 'L9999999999999999.099999999999999')	FROM num_data;
  to_char_16 |              to_char              
 ------------+-----------------------------------
-            |                   .00000000000000
-            |                   .00000000000000
-            |          -34338492.2153970
-            |                  4.31000000000000
-            |            7799461.41190000
-            |              16397.0384910000
-            |              93901.5776302600
-            |          -83028485.0000000
-            |              74881.0000000000
-            |          -24926804.0450474
+            | $                 .00000000000000
+            | $                 .00000000000000
+            | $        -34338492.2153970
+            | $                4.31000000000000
+            | $          7799461.41190000
+            | $            16397.0384910000
+            | $            93901.5776302600
+            | $        -83028485.0000000
+            | $            74881.0000000000
+            | $        -24926804.0450474
 (10 rows)
 
 SELECT '' AS to_char_17, to_char(val, 'FM9999999999999999.99999999999999')	FROM num_data;
@@ -1261,6 +1261,49 @@ SELECT '' AS to_number_16, to_number('12.34','9G999D99');
 
 SELECT '' AS to_number_17, to_number('1122.34','9G999D99');
 ERROR:  invalid number format model
+-- nls_currency / nls_iso_currency currency format elements (issue #3088)
+SHOW nls_currency;
+ nls_currency 
+--------------
+ $
+(1 row)
+
+SHOW nls_iso_currency;
+ nls_iso_currency 
+------------------
+ AMERICA
+(1 row)
+
+SET nls_currency = 'CNY';
+SELECT to_char(1234.56::number, 'L9G999D99') AS currency_L;
+  currency_l  
+--------------
+ CNY 1,234.56
+(1 row)
+
+SET nls_iso_currency = 'CHINA';
+SELECT to_char(1234.56::number, 'C9G999D99') AS currency_C_china;
+ currency_c_china 
+------------------
+ CNY 1,234.56
+(1 row)
+
+SET nls_iso_currency = 'AMERICA';
+SELECT to_char(1234.56::number, 'C9G999D99') AS currency_C_america;
+ currency_c_america 
+--------------------
+ USD 1,234.56
+(1 row)
+
+SET nls_iso_currency = 'CNY';
+SELECT to_char(1234.56::number, 'C9G999D99') AS currency_C_cny;
+ currency_c_cny 
+----------------
+ CNY 1,234.56
+(1 row)
+
+RESET nls_currency;
+RESET nls_iso_currency;
 -- Without a format model, trailing spaces are accepted in the integer part.
 SELECT '' AS to_number_18, to_number('123 ');
  to_number_18 | to_number 

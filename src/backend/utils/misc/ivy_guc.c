@@ -35,8 +35,8 @@ bool		identifier_case_from_pg_dump = false;
 bool		enable_case_switch = true;
 
 static char	   *nls_territory = "AMERICA";
-static char	   *nls_currency = "$";
-static char	   *nls_iso_currency = "AMERICA";
+char	   *nls_currency = "$";
+char	   *nls_iso_currency = "AMERICA";
 
 bool		enable_emptystring_to_NULL = false;
 
