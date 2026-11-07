@@ -1887,6 +1887,32 @@ CREATE AGGREGATE sys.stragg(text) (
 );
 /* End - STRAGG */
 
+/* STATS_MODE */
+/*
+ * STATS_MODE: Oracle-compatible aggregate that returns the most frequent
+ * non-null value.  When several values are equally frequent Oracle returns
+ * one of them; here the smallest one is returned, so results are deterministic.
+ * Values are collected with array_append (array_cat combines partial states
+ * for parallel aggregation), and the final step reuses PostgreSQL's mode()
+ * ordered-set aggregate, which ignores NULLs.
+ */
+CREATE FUNCTION sys.stats_mode_finalfn(anycompatiblearray)
+RETURNS anycompatible
+AS $$ SELECT mode() WITHIN GROUP (ORDER BY v) FROM unnest($1) AS u(v) $$
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE;
+
+CREATE AGGREGATE sys.stats_mode(anycompatible) (
+    SFUNC       = array_append,
+    STYPE       = anycompatiblearray,
+    INITCOND    = '{}',
+    FINALFUNC   = sys.stats_mode_finalfn,
+    COMBINEFUNC = array_cat,
+    PARALLEL    = SAFE
+);
+/* End - STATS_MODE */
+
 /* LNNVL */
 /*
  * LNNVL: Oracle-compatible condition negation.
