@@ -19443,6 +19443,15 @@ func_expr: func_application within_group_clause filter_clause null_treatment ove
 						if (list_length($3) == 1)
 							$3 = lappend($3, makeStringConst("", @3));
 
+						/*
+						 * Oracle accepts a measure of any data type and
+						 * implicitly converts it to VARCHAR2, but string_agg()
+						 * only takes text or bytea.  Cast the measure to text so
+						 * that NUMBER, DATE, integer, etc. measures work.
+						 */
+						linitial($3) = makeTypeCast((Node *) linitial($3),
+													SystemTypeName("text"), @3);
+
 						string_agg_n = makeFuncCall(SystemFuncName("string_agg"),
 													$3,
 													COERCE_EXPLICIT_CALL, @1);
