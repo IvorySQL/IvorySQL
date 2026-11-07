@@ -144,7 +144,7 @@ begin
     aliaspath := current_setting('data_directory') || '/regress_fcopy_alias.txt';
     -- COPY PROGRAM invokes a shell, so quote paths before creating the hard link.
     execute format('COPY (SELECT 1) TO PROGRAM %L',
-                   'ln -- ' || chr(39) || replace(srcpath, chr(39), chr(39) || chr(92) || chr(39) || chr(39)) || chr(39) ||
+                   'ln ' || chr(39) || replace(srcpath, chr(39), chr(39) || chr(92) || chr(39) || chr(39)) || chr(39) ||
                    ' ' || chr(39) || replace(aliaspath, chr(39), chr(39) || chr(92) || chr(39) || chr(39)) || chr(39));
     begin
         utl_file.fcopy('data_directory', 'regress_fcopy_same.txt',
