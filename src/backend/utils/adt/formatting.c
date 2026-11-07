@@ -5806,10 +5806,16 @@ ora_do_to_timestamp(text *date_txt, text *fmt, Oid collid, bool std,
 		}
 	}
 
-	/* Oracle year field defaults to the year value of sysdate */
+	/*
+	 * Oracle defaults a missing month field to the current month, as
+	 * returned by SYSDATE.  tm_mon cannot be used as an "unset" sentinel
+	 * here because ORA_ZERO_tm() pre-sets it to 1, so test whether the
+	 * picture actually supplied a month (directly via MM/MON/MONTH or
+	 * derived from DDD) through the fmask bit instead.
+	 */
 	if (ORA_PARSER == compatible_db)
 	{
-		if (!tm->tm_mon)
+		if (!(fmask & DTK_M(MONTH)))
 			tm->tm_mon = cur_tm.tm_mon;
 	}
 
