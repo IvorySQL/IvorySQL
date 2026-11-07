@@ -485,6 +485,8 @@ ora_utl_file_fcopy(PG_FUNCTION_ARGS)
 	int 		copy_result;
 	FILE	   *srcfile;
 	FILE	   *dstfile;
+	struct stat srcstat;
+	struct stat dststat;
 
 	NOT_NULL_ARG(0);
 	NOT_NULL_ARG(1);
@@ -512,6 +514,25 @@ ora_utl_file_fcopy(PG_FUNCTION_ARGS)
 	{
 		/* failed to open src file. */
 		IO_EXCEPTION();
+	}
+
+	/* Compare file identities before the destination can be truncated. */
+	if (fstat(fileno(srcfile), &srcstat) != 0)
+	{
+		int			save_errno = errno;
+
+		fclose(srcfile);
+		errno = save_errno;
+		IO_EXCEPTION();
+	}
+	if (strcmp(srcpath, dstpath) == 0 ||
+		(stat(dstpath, &dststat) == 0 && srcstat.st_ino != 0 &&
+		 srcstat.st_dev == dststat.st_dev && srcstat.st_ino == dststat.st_ino))
+	{
+		fclose(srcfile);
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("source and destination must be different files")));
 	}
 
 	dstfile = fopen(dstpath, "wt");
