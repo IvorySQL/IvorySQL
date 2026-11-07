@@ -160,6 +160,12 @@ begin
     if line <> 'original contents' then
         raise exception 'FCOPY changed its hard-link destination: %', line;
     end if;
+    f := utl_file.fopen('data_directory', 'regress_fcopy_same.txt', 'r');
+    utl_file.get_line(f, line);
+    utl_file.fclose(f);
+    if line <> 'original contents' then
+        raise exception 'FCOPY changed its hard-link source: %', line;
+    end if;
     utl_file.fremove('data_directory', 'regress_fcopy_alias.txt');
     utl_file.fremove('data_directory', 'regress_fcopy_same.txt');
 end;
