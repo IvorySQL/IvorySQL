@@ -343,6 +343,8 @@ extern PGDLLIMPORT int nls_length_semantics;
 extern PGDLLIMPORT char *nls_date_format;
 extern PGDLLIMPORT char *nls_timestamp_format;
 extern PGDLLIMPORT char *nls_timestamp_tz_format;
+extern PGDLLIMPORT char *nls_currency;
+extern PGDLLIMPORT char *nls_iso_currency;
 extern PGDLLIMPORT int	datetime_ignore_nls_mask;
 
 extern PGDLLIMPORT bool	seq_scale_fixed;
