@@ -1904,6 +1904,34 @@ CREATE AGGREGATE sys.stragg(text) (
 );
 /* End - STRAGG */
 
+/* MEDIAN */
+/*
+ * MEDIAN: Oracle-compatible continuous-distribution median aggregate.
+ * Ignores NULL inputs and returns NULL for an empty set.  Equivalent to
+ * percentile_cont(0.5) WITHIN GROUP (ORDER BY expr): the middle value for
+ * an odd number of inputs, or the mean of the two middle values for an
+ * even number.  Numeric inputs of other types are converted to float8
+ * through the standard implicit casts.
+ */
+CREATE FUNCTION sys.median_transfn(internal, float8)
+RETURNS internal
+AS 'MODULE_PATHNAME', 'median_transfn'
+LANGUAGE C
+CALLED ON NULL INPUT;
+
+CREATE FUNCTION sys.median_finalfn(internal)
+RETURNS float8
+AS 'MODULE_PATHNAME', 'median_finalfn'
+LANGUAGE C
+CALLED ON NULL INPUT;
+
+CREATE AGGREGATE sys.median(float8) (
+    SFUNC     = sys.median_transfn,
+    STYPE     = internal,
+    FINALFUNC = sys.median_finalfn
+);
+/* End - MEDIAN */
+
 /* LNNVL */
 /*
  * LNNVL: Oracle-compatible condition negation.
