@@ -39,6 +39,7 @@
 #include "utils/builtins.h"
 #include "utils/array.h"
 #include "catalog/pg_type.h"
+#include "utils/float.h"
 #include "math.h"
 
 PG_FUNCTION_INFO_V1(uid);
@@ -204,17 +205,14 @@ median_transfn(PG_FUNCTION_ARGS)
 	PG_RETURN_NULL();
 }
 
+/*
+ * Sort NaN above all other values, matching float8_cmp_internal and the
+ * documented percentile_cont(0.5) equivalence.
+ */
 static int
 median_float8_cmp(const void *a, const void *b)
 {
-	float8		fa = *(const float8 *) a;
-	float8		fb = *(const float8 *) b;
-
-	if (fa < fb)
-		return -1;
-	if (fa > fb)
-		return 1;
-	return 0;
+	return float8_cmp_internal(*(const float8 *) a, *(const float8 *) b);
 }
 
 /*
