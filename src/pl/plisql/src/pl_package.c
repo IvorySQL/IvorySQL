@@ -2667,7 +2667,8 @@ plisql_check_package_refcursor_var(int sqlvarno)
  * get package last global dno
  */
 int
-plisql_get_package_last_globaldno(int sqlstate_dno, int sqlerrm_dno)
+plisql_get_package_last_globaldno(int sqlstate_dno, int sqlerrm_dno,
+								  int sqlcode_dno)
 {
 	PLiSQL_nsitem *nse;
 	int lastdno = -1;
@@ -2681,7 +2682,8 @@ plisql_get_package_last_globaldno(int sqlstate_dno, int sqlerrm_dno)
 
 		/* ignore some special var */
 		if (nse->itemno == sqlstate_dno ||
-			nse->itemno == sqlerrm_dno)
+			nse->itemno == sqlerrm_dno ||
+			nse->itemno == sqlcode_dno)
 			continue;
 
 		Assert(nse->itemno >= 0 && nse->itemno < plisql_nDatums);

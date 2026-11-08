@@ -3354,13 +3354,7 @@ plisql_parse_err_condition(char *condname)
 	/* First check for user-defined exceptions */
 	PLiSQL_exception_var *exc = plisql_lookup_exception(condname);
 	if (exc != NULL)
-	{
-		new = palloc_object(PLiSQL_condition);
-		new->sqlerrstate = exc->sqlcode;
-		new->condname = condname;
-		new->next = NULL;
-		return new;
-	}
+		return plisql_exception_conditions(exc, condname);
 
 	/* Check for OTHERS */
 	if (strcmp(condname, "others") == 0)

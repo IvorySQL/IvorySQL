@@ -2214,22 +2214,29 @@ exec_stmt_block(PLiSQL_execstate * estate, PLiSQL_stmt_block * block)
 				if (exception_matches_conditions(edata, exception->conditions))
 				{
 					/*
-					 * Initialize the magic SQLSTATE and SQLERRM variables for
-					 * the exception block; this also frees values from any
-					 * prior use of the same exception. We needn't do this
-					 * until we have found a matching exception.
+					 * Initialize the magic SQLSTATE, SQLERRM and SQLCODE
+					 * variables for the exception block; this also frees
+					 * values from any prior use of the same exception. We
+					 * needn't do this until we have found a matching
+					 * exception.
 					 */
 					PLiSQL_var *state_var;
 					PLiSQL_var *errm_var;
+					PLiSQL_var *code_var;
 
 					state_var = (PLiSQL_var *)
 						estate->datums[block->exceptions->sqlstate_varno];
 					errm_var = (PLiSQL_var *)
 						estate->datums[block->exceptions->sqlerrm_varno];
+					code_var = (PLiSQL_var *)
+						estate->datums[block->exceptions->sqlcode_varno];
 
 					assign_text_var(estate, state_var,
 									unpack_sql_state(edata->sqlerrcode));
 					assign_text_var(estate, errm_var, edata->message);
+					assign_simple_var(estate, code_var,
+									  Int32GetDatum(plisql_sqlstate_to_errnum(edata->sqlerrcode)),
+									  false, false);
 
 					/*
 					 * Also set up cur_error so the error data is accessible
@@ -4214,8 +4221,7 @@ exec_stmt_raise(PLiSQL_execstate * estate, PLiSQL_stmt_raise * stmt)
 	{
 		PLiSQL_exception_var *exc = stmt->exception_var;
 
-		/* Use the exception's sqlcode */
-		err_code = exc->sqlcode;
+		err_code = exc->sqlerrstate;
 		condname = MemoryContextStrdup(stmt_mcontext, exc->refname);
 
 		/* If no custom message, use Oracle default */

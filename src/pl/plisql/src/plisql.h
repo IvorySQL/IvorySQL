@@ -523,6 +523,7 @@ typedef struct PLiSQL_exception_block
 {
 	int			sqlstate_varno;
 	int			sqlerrm_varno;
+	int			sqlcode_varno;
 	List	   *exc_list;		/* List of WHEN clauses */
 }			PLiSQL_exception_block;
 

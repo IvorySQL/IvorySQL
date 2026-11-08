@@ -519,7 +519,8 @@ ora_outermost_pl_block		: ora_decl_sect K_BEGIN proc_sect exception_sect K_END o
 				plisql_check_package_refcursor_var(-1);
 				plisql_compile_packageitem->last_globaldno =
 							plisql_get_package_last_globaldno($4 == NULL ? -1 : $4->sqlstate_varno,
-											$4 == NULL ? -1 : $4->sqlerrm_varno);
+											$4 == NULL ? -1 : $4->sqlerrm_varno,
+											$4 == NULL ? -1 : $4->sqlcode_varno);
 			}
 
 			new = palloc0_object(PLiSQL_stmt_block);
@@ -582,7 +583,7 @@ ora_pl_package: ora_decl_sect K_END opt_label
 				check_labels($1.label, $3, @3, yyscanner);
 				plisql_check_package_refcursor_var(-1);
 				plisql_compile_packageitem->last_globaldno =
-										plisql_get_package_last_globaldno(-1, -1);
+										plisql_get_package_last_globaldno(-1, -1, -1);
 				if (!plisql_compile_packageitem->finish_compile_special)
 					plisql_compile_packageitem->status =
 								plisql_set_package_compile_status();
@@ -3372,6 +3373,15 @@ exception_sect	:
 													 true);
 						var->isconst = true;
 						new->sqlerrm_varno = var->dno;
+
+						var = plisql_build_variable("sqlcode", lineno,
+													 plisql_build_datatype(INT4OID,
+																			-1,
+																			InvalidOid,
+																			NULL),
+													 true);
+						var->isconst = true;
+						new->sqlcode_varno = var->dno;
 
 						$<exception_block>$ = new;
 					}

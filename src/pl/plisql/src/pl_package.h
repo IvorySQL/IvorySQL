@@ -189,7 +189,8 @@ extern PLiSQL_type *plisql_parse_package_type(TypeName *typeName,
 extern PLiSQL_function *plisql_get_package_func(FunctionCallInfo fcinfo,  bool forValidator);
 extern void plisql_remove_function_relations(PLiSQL_function *func);
 extern void plisql_check_package_refcursor_var(int sqlvarno);
-extern int plisql_get_package_last_globaldno(int sqlstate_dno, int sqlerrm_dno);
+extern int plisql_get_package_last_globaldno(int sqlstate_dno, int sqlerrm_dno,
+											 int sqlcode_dno);
 extern PLiSQL_package_status plisql_set_package_compile_status(void);
 extern void plisql_close_package_cursorvar(PLiSQL_var *var);
 extern PackageCacheItem *get_current_compile_package(PackageCacheKey key);
