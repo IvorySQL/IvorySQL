@@ -7292,6 +7292,7 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 					}
 					else
 						Np->inout_p += strlen(Np->L_iso_currency_symbol) - 1;
+					break;
 
 				case NUM_RN:
 					if (IS_FILLMODE(Np->Num))
