@@ -1572,12 +1572,15 @@ ora_setup_regexp_substr_matches(text *src_text,
 	/* save original string --- we'll extract result substrings from it */
 	matchctx->orig_str = src_text;
 
-	/* do we want to remember subpatterns? */
+	/*
+	 * do we want to remember subpatterns?  Only the first nine fit in
+	 * pmatch, and callers never ask for a later one.
+	 */
 	if (re->re_nsub > 0 && subexpr_pos != 0)
 	{
 		use_subpatterns = true;
 		matchctx->use_subpatterns = true;
-		matchctx->npatterns = re->re_nsub;
+		matchctx->npatterns = Min(re->re_nsub, lengthof(pmatch) - 1);
 	}
 	else
 	{
@@ -1667,51 +1670,40 @@ static bool
 ora_build_regexp_instr_matches_result(regexp_matches_ctx *matchctx ,int ret_opt,int subexpr_pos,Datum *subpattern)
 {
 	int	loc;
+	int	so;
+	int	eo;
 	char    ret_str_val[100] = {0};
 
-	/* Extract matching substrings from the original string */
+	/*
+	 * match_locs holds 0-based character offsets, with eo just past the end
+	 * of the match.  An empty match has so == eo and is still a match.
+	 */
 	loc = matchctx->next_match * matchctx->npatterns * 2;
-	if (subexpr_pos <= matchctx->npatterns)
+	if (matchctx->use_subpatterns)
 	{
-		int	so = 0;
-		int	eo = 0;
-
-		if (matchctx->npatterns >= 1 && matchctx->use_subpatterns && subexpr_pos > 0)
-		{
-			so = matchctx->match_locs[loc + 2 *(subexpr_pos - 1)];
-			eo = matchctx->match_locs[loc + 2 * subexpr_pos - 1];
-		}
-		else if (matchctx->npatterns == 1)
-		{
-			so = matchctx->match_locs[loc];
-			eo = matchctx->match_locs[loc + matchctx->npatterns * 2 -1] - 1;
-			if(eo < 0)
-				eo = 0;
-			if(so == eo)
-				return false;
-		}
-
-		if (so < 0 || eo < 0)
-		{
+		if (subexpr_pos > matchctx->npatterns)
 			return false;
-		}
-		else
-		{
-			if (ret_opt == 0)
-			{
-				sprintf(ret_str_val,"%d",so + 1);
-				*subpattern = PointerGetDatum(cstring_to_text(ret_str_val));
-			}
-			else
-			{
-				sprintf(ret_str_val,"%d",eo + 2);
-				*subpattern = PointerGetDatum(cstring_to_text(ret_str_val));
-			}
-		}
-		return true;
+		so = matchctx->match_locs[loc + 2 * (subexpr_pos - 1)];
+		eo = matchctx->match_locs[loc + 2 * (subexpr_pos - 1) + 1];
+	}
+	else if (subexpr_pos > 0)
+	{
+		/* the pattern has no subexpressions */
+		return false;
 	}
 	else
+	{
+		so = matchctx->match_locs[loc];
+		eo = matchctx->match_locs[loc + 1];
+	}
+
+	/* the subexpression did not take part in the match */
+	if (so < 0 || eo < 0)
 		return false;
+
+	sprintf(ret_str_val, "%d", (ret_opt == 0 ? so : eo) + 1);
+	*subpattern = PointerGetDatum(cstring_to_text(ret_str_val));
+	return true;
 }
 
 /*
@@ -1744,12 +1736,15 @@ ora_setup_regexp_instr_matches(text *src_text,
 	/* save original string --- we'll extract result substrings from it */
 	matchctx->orig_str = src_text;
 
-	/* do we want to remember subpatterns? */
+	/*
+	 * do we want to remember subpatterns?  Only the first nine fit in
+	 * pmatch, and callers never ask for a later one.
+	 */
 	if (re->re_nsub > 0 && subexpr_pos != 0)
 	{
 		use_subpatterns = true;
 		matchctx->use_subpatterns = true;
-		matchctx->npatterns = re->re_nsub;
+		matchctx->npatterns = Min(re->re_nsub, lengthof(pmatch) - 1);
 	}
 	else
 	{
