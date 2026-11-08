@@ -1528,9 +1528,15 @@ parse_format(FormatNode *node, const char *str, const KeyWord *kw,
 				else
 				{
 					if (ORA_PARSER == compatible_db && !is_separator_char(str))
+					{
+						if (flags & NUM_FLAG)
+							ereport(ERROR,
+									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+									 errmsg("invalid number format model")));
 						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
 								 errmsg("date format not recognized")));
+					}
 					else
 						n->type = NODE_TYPE_CHAR;
 				}
@@ -7051,7 +7057,7 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 						break;
 
 					ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 							 errmsg("invalid number")));
 				}
 				break;
@@ -7530,8 +7536,8 @@ Numeric ora_to_number_internal(text *value, text *fmt)
 			/* An exponent must have at least one digit */
 			if (!has_exp_digit)
 				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("invalid number format model")));
+						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+						 errmsg("invalid number")));
 
 			if (exp_overflow)
 			{
@@ -7558,15 +7564,10 @@ Numeric ora_to_number_internal(text *value, text *fmt)
 		while (*p == ' ')
 			p++;
 
-		if (*p != '\0')
+		if (*p != '\0' || !has_digit)
 			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("invalid number format model")));
-
-		if (!has_digit)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("invalid number format model")));
+					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+					 errmsg("invalid number")));
 
 		/*
 		 * Derive the numeric typmod from the mantissa digits and the

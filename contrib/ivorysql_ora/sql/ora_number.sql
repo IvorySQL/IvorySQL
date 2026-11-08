@@ -1002,3 +1002,33 @@ SELECT to_number('1e0') AS exp_zero;
 SELECT to_number('1e+0') AS exp_plus_zero;
 SELECT to_number('1e-0') AS exp_minus_zero;
 /* End - to_number scientific notation */
+
+/* Begin - to_number: bad value is "invalid number", bad format is "invalid number format model" (issue #3101) */
+SELECT to_number('abc') AS bad_value;
+SELECT to_number('12a', '999') AS bad_value_with_format;
+SELECT to_number('1', '9X9') AS bad_format_model;
+SELECT to_char(1, '9X9') AS bad_to_char_format_model;
+DECLARE
+  n NUMBER;
+BEGIN
+  BEGIN
+    n := to_number('abc');
+  EXCEPTION
+    WHEN invalid_text_representation THEN
+      RAISE INFO 'to_number(''abc''): % %', SQLSTATE, SQLERRM;
+  END;
+  BEGIN
+    n := to_number('1e');
+  EXCEPTION
+    WHEN invalid_text_representation THEN
+      RAISE INFO 'to_number(''1e''): % %', SQLSTATE, SQLERRM;
+  END;
+  BEGIN
+    n := to_number('12a', '999');
+  EXCEPTION
+    WHEN invalid_text_representation THEN
+      RAISE INFO 'to_number(''12a'', ''999''): % %', SQLSTATE, SQLERRM;
+  END;
+END;
+/
+/* End - issue #3101 */

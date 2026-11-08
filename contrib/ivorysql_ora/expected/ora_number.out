@@ -1270,7 +1270,7 @@ SELECT '' AS to_number_18, to_number('123 ');
 
 -- Whitespace between digits remains invalid.
 SELECT '' AS to_number_19, to_number('123 4');
-ERROR:  invalid number format model
+ERROR:  invalid number
 --
 -- Input syntax
 --
@@ -1869,41 +1869,41 @@ SELECT to_number('1e-10000000000000000000') AS w;
 
 /* malformed input still raises an error */
 SELECT to_number('1e') AS k;
-ERROR:  invalid number format model
+ERROR:  invalid number
 SELECT to_number('1e+') AS l;
-ERROR:  invalid number format model
+ERROR:  invalid number
 SELECT to_number('e3') AS m;
-ERROR:  invalid number format model
+ERROR:  invalid number
 SELECT to_number('1.2e3.4') AS n;
-ERROR:  invalid number format model
+ERROR:  invalid number
 SELECT to_number('--1') AS o;
-ERROR:  invalid number format model
+ERROR:  invalid number
 SELECT to_number('1..2') AS p;
-ERROR:  invalid number format model
+ERROR:  invalid number
 SELECT to_number('12a') AS q;
-ERROR:  invalid number format model
+ERROR:  invalid number
 SELECT to_number('1 e3') AS space_before_e;
-ERROR:  invalid number format model
+ERROR:  invalid number
 SELECT to_number('1e 3') AS space_after_e;
-ERROR:  invalid number format model
+ERROR:  invalid number
 SELECT to_number('1e3e4') AS double_e;
-ERROR:  invalid number format model
+ERROR:  invalid number
 SELECT to_number('1e--3') AS double_sign;
-ERROR:  invalid number format model
+ERROR:  invalid number
 SELECT to_number('1e+-3') AS mixed_sign;
-ERROR:  invalid number format model
+ERROR:  invalid number
 SELECT to_number('   ') AS all_blank;
-ERROR:  invalid number format model
+ERROR:  invalid number
 SELECT to_number('-') AS bare_sign;
-ERROR:  invalid number format model
+ERROR:  invalid number
 SELECT to_number('.') AS bare_dot;
-ERROR:  invalid number format model
+ERROR:  invalid number
 SELECT to_number('NaN') AS nan_case;
-ERROR:  invalid number format model
+ERROR:  invalid number
 SELECT to_number('Infinity') AS inf_case;
-ERROR:  invalid number format model
+ERROR:  invalid number
 SELECT to_number('-Infinity') AS neg_inf_case;
-ERROR:  invalid number format model
+ERROR:  invalid number
 /* empty string is NULL under Oracle semantics, so STRICT returns NULL */
 SELECT to_number(''::varchar2) AS empty_str;
  empty_str 
@@ -1944,3 +1944,39 @@ SELECT to_number('1e-0') AS exp_minus_zero;
 (1 row)
 
 /* End - to_number scientific notation */
+/* Begin - to_number: bad value is "invalid number", bad format is "invalid number format model" (issue #3101) */
+SELECT to_number('abc') AS bad_value;
+ERROR:  invalid number
+SELECT to_number('12a', '999') AS bad_value_with_format;
+ERROR:  invalid number
+SELECT to_number('1', '9X9') AS bad_format_model;
+ERROR:  invalid number format model
+SELECT to_char(1, '9X9') AS bad_to_char_format_model;
+ERROR:  invalid number format model
+DECLARE
+  n NUMBER;
+BEGIN
+  BEGIN
+    n := to_number('abc');
+  EXCEPTION
+    WHEN invalid_text_representation THEN
+      RAISE INFO 'to_number(''abc''): % %', SQLSTATE, SQLERRM;
+  END;
+  BEGIN
+    n := to_number('1e');
+  EXCEPTION
+    WHEN invalid_text_representation THEN
+      RAISE INFO 'to_number(''1e''): % %', SQLSTATE, SQLERRM;
+  END;
+  BEGIN
+    n := to_number('12a', '999');
+  EXCEPTION
+    WHEN invalid_text_representation THEN
+      RAISE INFO 'to_number(''12a'', ''999''): % %', SQLSTATE, SQLERRM;
+  END;
+END;
+/
+INFO:  to_number('abc'): 22P02 invalid number
+INFO:  to_number('1e'): 22P02 invalid number
+INFO:  to_number('12a', '999'): 22P02 invalid number
+/* End - issue #3101 */
