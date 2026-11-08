@@ -5405,7 +5405,7 @@ exec_stmt_fetch(PLiSQL_execstate * estate, PLiSQL_stmt_fetch * stmt)
 
 	if (curvar->isnull)
 		ereport(ERROR,
-				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				(errcode(ERRCODE_INVALID_CURSOR_STATE),
 				 errmsg("cursor variable \"%s\" is null", curvar->refname)));
 
 	/* Use eval_mcontext for short-lived string */
@@ -5497,7 +5497,7 @@ exec_stmt_close(PLiSQL_execstate * estate, PLiSQL_stmt_close * stmt)
 
 	if (curvar->isnull)
 		ereport(ERROR,
-				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				(errcode(ERRCODE_INVALID_CURSOR_STATE),
 				 errmsg("cursor variable \"%s\" is null", curvar->refname)));
 
 	/* Use eval_mcontext for short-lived string */

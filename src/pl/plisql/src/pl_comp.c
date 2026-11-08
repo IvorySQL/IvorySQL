@@ -88,6 +88,25 @@ typedef struct
 
 static const ExceptionLabelMap exception_label_map[] = {
 #include "plerrcodes.h"			/* pgrminclude ignore */
+
+	/*
+	 * Oracle predefined exceptions (package STANDARD) whose names have no
+	 * PostgreSQL counterpart.  NO_DATA_FOUND, TOO_MANY_ROWS and
+	 * CASE_NOT_FOUND already come from plerrcodes.h.  A name listed more
+	 * than once matches all of its SQLSTATEs in a handler; RAISE uses the
+	 * first one.
+	 */
+	{"cursor_already_open", ERRCODE_DUPLICATE_CURSOR},
+	{"dup_val_on_index", ERRCODE_UNIQUE_VIOLATION},
+	{"invalid_cursor", ERRCODE_INVALID_CURSOR_STATE},
+	{"invalid_cursor", ERRCODE_UNDEFINED_CURSOR},
+	{"invalid_number", ERRCODE_INVALID_TEXT_REPRESENTATION},
+	{"program_error", ERRCODE_INTERNAL_ERROR},
+	{"storage_error", ERRCODE_OUT_OF_MEMORY},
+	{"value_error", ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE},
+	{"value_error", ERRCODE_STRING_DATA_RIGHT_TRUNCATION},
+	{"value_error", ERRCODE_INVALID_TEXT_REPRESENTATION},
+	{"zero_divide", ERRCODE_DIVISION_BY_ZERO},
 	{NULL, 0}
 };
 
