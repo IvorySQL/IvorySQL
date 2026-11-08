@@ -1478,6 +1478,26 @@ SELECT INSTR('Information for the information age requires information.', 'infor
 SELECT INSTR('Information for the information age requires information.', 'information', 2);
 SELECT INSTR('Information for the information age requires information.', 'information', 1, 4);
 
+-- occurrence must be positive (ORA-01428)
+SELECT INSTR('abcabc', 'b', 3, 0) FROM DUAL;
+SELECT INSTR('abcabc', 'b', 1, -1) FROM DUAL;
+SELECT INSTR('abcabc', 'b', -1, 0) FROM DUAL;
+SELECT INSTRB('abcabc', 'b', 1, 0) FROM DUAL;
+
+-- positions outside the string return 0, including the int4 extremes
+SELECT INSTR('abcabc', 'b', 7) FROM DUAL;
+SELECT INSTR('abcabc', 'b', -7) FROM DUAL;
+SELECT INSTR('abcabc', 'b', 2147483647) FROM DUAL;
+SELECT INSTR('abcabc', 'b', -2147483648) FROM DUAL;
+SELECT INSTR('abcabc', 'b', -2147483648, 2) FROM DUAL;
+SELECT INSTRB('abcabc', 'b', -2147483648) FROM DUAL;
+
+-- negative positions inside the string still search backward
+SELECT INSTR('abcabc', 'b', -1) FROM DUAL;
+SELECT INSTR('abcabc', 'b', -1, 2) FROM DUAL;
+SELECT INSTR('abcabc', 'b', -6) FROM DUAL;
+SELECT INSTR('abcabc', 'a', -6) FROM DUAL;
+
 /*
  * asciistr
  */

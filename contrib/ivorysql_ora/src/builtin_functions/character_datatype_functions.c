@@ -1323,11 +1323,6 @@ ora_instrb(PG_FUNCTION_ARGS)
 
 	if (position == 0)
 		PG_RETURN_INT32(0);
-	
-	if (occurrence <= 0)
-		ereport(ERROR,
-					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-					 errmsg("The parameter of occurrence must be positive")));
 
 	str = PG_GETARG_TEXT_PP(0);
 	search_str = PG_GETARG_TEXT_PP(1);
@@ -1827,6 +1822,12 @@ text_instring(text *str, text *search_str, int32 position, int32 occurrence, boo
 	int32	result;
 	TextPositionState	state;
 
+	/* Oracle raises ORA-01428 for a non-positive occurrence */
+	if (occurrence <= 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("argument '%d' is out of range", occurrence)));
+
 	text_position_setup(str, search_str, &state, isByte);
 
 	src_text_len = state.len1;
@@ -1851,13 +1852,22 @@ text_instring(text *str, text *search_str, int32 position, int32 occurrence, boo
 	 * of string and then searches backward from the resulting position. An
 	 * additional search forward from the resulting positionis performed at
 	 * the result position. So maxTimes need to plus 1.
+	 *
+	 * Check the position range first, so that -position cannot overflow.
 	 */
+	if (position > src_text_len || position < -src_text_len ||
+		src_text_len < sub_text_len)
+	{
+		text_position_cleanup(&state);
+		return 0;
+	}
+
 	if (position > 0)
 		maxTimes = src_text_len - sub_text_len - position + 2;
 	else
 		maxTimes = src_text_len - Max(sub_text_len, -position) + 1;
 
-	if (abs(position) > src_text_len || src_text_len < sub_text_len || occurrence > maxTimes)
+	if (occurrence > maxTimes)
 	{
 		text_position_cleanup(&state);
 		return 0;
