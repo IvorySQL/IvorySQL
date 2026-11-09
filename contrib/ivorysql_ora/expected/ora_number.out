@@ -1799,6 +1799,12 @@ SELECT '[' || to_char(0.5, '$999.99') || ']' AS fraction;
  [    $.50]
 (1 row)
 
+SELECT '[' || to_char(123.45, '$999.99') || ']' AS full_fraction;
+ full_fraction 
+---------------
+ [ $123.45]
+(1 row)
+
 SELECT '[' || to_char(0.5, '$990.99') || ']' AS zero_before_point;
  zero_before_point 
 -------------------
@@ -1827,6 +1833,18 @@ SELECT '[' || to_char(1, '99$9') || ']' AS dollar_in_middle;
  dollar_in_middle 
 ------------------
  [   $1]
+(1 row)
+
+SELECT '[' || to_char(123, '999$') || ']' AS dollar_at_end;
+ dollar_at_end 
+---------------
+ [ $123]
+(1 row)
+
+SELECT '[' || to_char(123, '9,999$') || ']' AS dollar_at_end_grouping;
+ dollar_at_end_grouping 
+------------------------
+ [   $123]
 (1 row)
 
 SELECT '[' || to_char(-1, '$999MI') || ']' AS trailing_minus;
@@ -1887,18 +1905,34 @@ SELECT to_number('-$123', '$999') AS negative_value;
  -123
 (1 row)
 
+SELECT to_number('+$123', '$999') AS plus_value;
+ plus_value 
+------------
+ 123
+(1 row)
+
+SELECT to_number('$123', '999$') AS dollar_at_end_of_model;
+ dollar_at_end_of_model 
+------------------------
+ 123
+(1 row)
+
 SELECT to_number(' $1,234.56', '$9,999.99') AS grouping_value;
  grouping_value 
 ----------------
  1234.56
 (1 row)
 
-SELECT to_number('123', '$999') AS no_dollar_in_value;
- no_dollar_in_value 
---------------------
- 123
+SELECT to_number('$1,234.50', '$999,999.99') AS wider_model;
+ wider_model 
+-------------
+ 1234.50
 (1 row)
 
+SELECT to_number('123', '$999') AS no_dollar_in_value;
+ERROR:  invalid number
+SELECT to_number('$', '$999') AS only_dollar;
+ERROR:  invalid number
 SELECT to_number(to_char(-1234.5, '$9,999.99'), '$9,999.99') AS round_trip;
  round_trip 
 ------------

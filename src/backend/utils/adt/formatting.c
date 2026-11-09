@@ -7430,8 +7430,8 @@ ora_text_without_byte(const char *s, int len, int pos)
 
 /*
  * $ in an Oracle TO_NUMBER format is a floating dollar sign.  Remove it from
- * the format, and remove a dollar sign that follows the leading blanks and
- * the sign of the value, so that the rest is parsed without it.  A sign
+ * the format, and remove the dollar sign that must follow the leading blanks
+ * and the sign of the value, so that the rest is parsed without it.  A sign
  * after the dollar sign is not valid.
  */
 static void
@@ -7461,14 +7461,12 @@ ora_remove_dollar(text **value, text **fmt)
 		;
 	if (i < vlen && (v[i] == '-' || v[i] == '+' || v[i] == '<'))
 		i++;
-	if (i < vlen && v[i] == '$')
-	{
-		if (i + 1 < vlen && (v[i + 1] == '-' || v[i + 1] == '+' || v[i + 1] == '<'))
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-					 errmsg("invalid number")));
-		*value = ora_text_without_byte(v, vlen, i);
-	}
+	if (i + 1 >= vlen || v[i] != '$' ||
+		v[i + 1] == '-' || v[i + 1] == '+' || v[i + 1] == '<')
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+				 errmsg("invalid number")));
+	*value = ora_text_without_byte(v, vlen, i);
 }
 
 Numeric ora_to_number_internal(text *value, text *fmt)
