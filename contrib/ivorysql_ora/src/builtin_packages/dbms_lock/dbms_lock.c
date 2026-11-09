@@ -321,24 +321,10 @@ ivorysql_dbms_lock_release(PG_FUNCTION_ARGS)
     bool lock_x_held = false;
     bool released = false;
     int8 lockmode;
-    bool found;
-    lock_entry *entry;
 
     if (dbms_lock_hash_table == NULL)
 	    dbms_lock_init_hash_table();
 	
-    /* Repeated DBMS_LOCK.REQUEST calls in the same session stack: release
-     * only one reference at a time, keeping the record and the advisory lock
-     * until the last reference goes away. */
-    entry = (lock_entry *) hash_search(dbms_lock_hash_table,
-                                        (void *) &key,
-                                        HASH_FIND,
-                                        &found);
-    if (found && entry->refcount > 1)
-    {
-        entry->refcount--;
-        PG_RETURN_INT32(DBMS_LOCK_SUCCESS);
-    }
 
     lock_s_held = dbms_lock_check(key, DBMS_LOCK_S_MODE);
     if (lock_s_held) {
