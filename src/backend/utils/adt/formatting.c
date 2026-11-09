@@ -3932,7 +3932,19 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 				SKIP_THth(s, n->suffix);
 				if (ORA_PARSER == compatible_db)
 				{
-					/* Check for valid day of month */
+					/*
+					 * Check for valid day of month.  The lower bound has to be
+					 * enforced here, where a day value is known to have been
+					 * supplied: a zero day is later dropped by the "if
+					 * (tmfc.dd)" test in ora_do_to_timestamp(), so DD=00 used
+					 * to be silently replaced by the default day 1 instead of
+					 * raising ORA-01847 like Oracle does.
+					 */
+					if (out->dd < 1)
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
+								 errmsg("The value of day must be between 1 and the last day of the month.")));
+
 					if (out->year != 0 && out->mm != 0)
 					{
 						if (out->dd > day_tab[isleap(out->year)][out->mm - 1])
