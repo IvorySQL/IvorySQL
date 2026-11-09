@@ -207,15 +207,15 @@ DROP FUNCTION tco;
 BEGIN;
 MERGE INTO people_target pt
 USING people_source ps
-ON    (pt.person_id = ps.person_id AND ps.title = 'Mr')
+ON    (pt.person_id = ps.person_id AND ps.title <> 'Mr')
 WHEN MATCHED THEN UPDATE
   SET pt.title = 'Dr'
 ;
 SELECT * FROM people_target;
  person_id | first_name | last_name | title
 -----------+------------+-----------+-------
-         1 | John       | Smith     | Dr
-         2 | alice      | jones     | Mrs
+         1 | John       | Smith     | Mr
+         2 | alice      | jones     | Dr
          3 | tony       | james     | Dr
 (3 rows)
 

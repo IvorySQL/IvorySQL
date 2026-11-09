@@ -188,7 +188,7 @@ DROP FUNCTION tco;
 BEGIN;
 MERGE INTO people_target pt
 USING people_source ps
-ON    (pt.person_id = ps.person_id AND ps.title = 'Mr')
+ON    (pt.person_id = ps.person_id AND ps.title <> 'Mr')
 WHEN MATCHED THEN UPDATE
   SET pt.title = 'Dr'
 ;
