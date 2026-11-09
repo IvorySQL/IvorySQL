@@ -1039,6 +1039,8 @@ typedef struct NUMProc
 				read_post,		/* to_number - number of dec. digit */
 				read_pre;		/* to_number - number non-dec. digit */
 
+	bool		dollar;			/* to_char - Oracle $ still to be written */
+
 	char	   *number,			/* string with number	*/
 			   *number_p,		/* pointer to current number position */
 			   *inout,			/* in / out buffer	*/
@@ -6621,6 +6623,7 @@ static void
 NUM_numpart_to_char(NUMProc *Np, int id)
 {
 	int			end;
+	bool		number_starts;
 
 	if (IS_ROMAN(Np->Num))
 		return;
@@ -6646,9 +6649,11 @@ NUM_numpart_to_char(NUMProc *Np, int id)
 	 * Write sign if real number will write to output Note: IS_PREDEC_SPACE()
 	 * handle "9.9" --> " .1"
 	 */
-	if (Np->sign_wrote == false &&
+	number_starts =
 		(Np->num_curr >= Np->out_pre_spaces || (IS_ZERO(Np->Num) && Np->Num->zero_start == Np->num_curr)) &&
-		(IS_PREDEC_SPACE(Np) == false || (Np->last_relevant && *Np->last_relevant == '.')))
+		(IS_PREDEC_SPACE(Np) == false || (Np->last_relevant && *Np->last_relevant == '.'));
+
+	if (Np->sign_wrote == false && number_starts)
 	{
 		if (IS_LSIGN(Np->Num))
 		{
@@ -6683,6 +6688,16 @@ NUM_numpart_to_char(NUMProc *Np, int id)
 		}
 	}
 
+	/*
+	 * Oracle's $ floats: it goes after the sign, in front of the first digit.
+	 * When the value overflows the format, it is filled like the digits.
+	 */
+	if (Np->dollar && number_starts)
+	{
+		*Np->inout_p = (*Np->number == '#') ? '#' : '$';
+		++Np->inout_p;
+		Np->dollar = false;
+	}
 
 	/*
 	 * digits / FM / Zero / Dec. point
@@ -7401,6 +7416,61 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 	}
 }
 
+/* Make a text of the len bytes at s, leaving out the byte at pos */
+static text *
+ora_text_without_byte(const char *s, int len, int pos)
+{
+	text	   *result = (text *) palloc(VARHDRSZ + len - 1);
+
+	SET_VARSIZE(result, VARHDRSZ + len - 1);
+	memcpy(VARDATA(result), s, pos);
+	memcpy(VARDATA(result) + pos, s + pos + 1, len - pos - 1);
+	return result;
+}
+
+/*
+ * $ in an Oracle TO_NUMBER format is a floating dollar sign.  Remove it from
+ * the format, and remove a dollar sign that follows the leading blanks and
+ * the sign of the value, so that the rest is parsed without it.  A sign
+ * after the dollar sign is not valid.
+ */
+static void
+ora_remove_dollar(text **value, text **fmt)
+{
+	const char *f = VARDATA(*fmt);
+	int			flen = VARSIZE(*fmt) - VARHDRSZ;
+	const char *dollar = memchr(f, '$', flen);
+	const char *v;
+	int			vlen;
+	int			i;
+
+	if (dollar == NULL)
+		return;
+
+	if (flen == 1 ||
+		memchr(dollar + 1, '$', flen - (dollar - f) - 1) != NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("invalid number format model")));
+
+	*fmt = ora_text_without_byte(f, flen, dollar - f);
+
+	v = VARDATA(*value);
+	vlen = VARSIZE(*value) - VARHDRSZ;
+	for (i = 0; i < vlen && v[i] == ' '; i++)
+		;
+	if (i < vlen && (v[i] == '-' || v[i] == '+' || v[i] == '<'))
+		i++;
+	if (i < vlen && v[i] == '$')
+	{
+		if (i + 1 < vlen && (v[i + 1] == '-' || v[i + 1] == '+' || v[i + 1] == '<'))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+					 errmsg("invalid number")));
+		*value = ora_text_without_byte(v, vlen, i);
+	}
+}
+
 Numeric ora_to_number_internal(text *value, text *fmt)
 {
 	NUMDesc		Num;
@@ -7414,6 +7484,7 @@ Numeric ora_to_number_internal(text *value, text *fmt)
 
 	if(fmt)
 	{
+		ora_remove_dollar(&value, &fmt);
 		len = VARSIZE(fmt) - VARHDRSZ;
 		if (len <= 0 || len >= INT_MAX / NUM_MAX_ITEM_SIZ)
 			return NULL;
@@ -7631,12 +7702,39 @@ NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 	if (Np->Num->zero_start)
 		--Np->Num->zero_start;
 
+	/*
+	 * In Oracle mode, $ in a TO_CHAR format is a floating dollar sign rather
+	 * than a literal.  It may appear once, anywhere in the format.
+	 */
+	if (is_to_char && ORA_PARSER == compatible_db)
+	{
+		for (n = node; n->type != NODE_TYPE_END; n++)
+		{
+			if (n->type != NODE_TYPE_CHAR || strcmp(n->character, "$") != 0)
+				continue;
+			if (Np->dollar || IS_ROMAN(Np->Num))
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("invalid number format model")));
+			Np->dollar = true;
+		}
+	}
+
 	if (IS_EEEE(Np->Num))
 	{
 		if (!Np->is_to_char)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("\"EEEE\" not supported for input")));
+
+		/* number starts with its sign, or a space for it */
+		if (Np->dollar)
+		{
+			inout[0] = number[0];
+			inout[1] = (number[1] == '#') ? '#' : '$';
+			strcpy(inout + 2, number + 1);
+			return inout;
+		}
 		return strcpy(inout, number);
 	}
 
@@ -8047,6 +8145,9 @@ NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 			 */
 			if (Np->is_to_char)
 			{
+				/* Oracle's $ is written in front of the number instead */
+				if (ORA_PARSER == compatible_db && strcmp(n->character, "$") == 0)
+					continue;
 				strcpy(Np->inout_p, n->character);
 				Np->inout_p += strlen(Np->inout_p);
 			}
