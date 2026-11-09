@@ -1090,13 +1090,16 @@ STRICT
 PARALLEL SAFE
 STABLE;
 
+-- The interval overloads must stay IMMUTABLE: they render through
+-- dsinterval_out()/yminterval_out() with a fixed SQL-standard encoding and
+-- do not consult any session setting (the format argument is ignored).
 CREATE FUNCTION sys.to_char(sys.dsinterval)
 RETURNS varchar2
 AS 'MODULE_PATHNAME','oradsinterval_to_char1'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 CREATE FUNCTION sys.to_char(sys.dsinterval, text)
 RETURNS varchar2
@@ -1104,7 +1107,7 @@ AS 'MODULE_PATHNAME','oradsinterval_to_char1'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 CREATE FUNCTION sys.to_char(sys.dsinterval, text, text)
 RETURNS varchar2
@@ -1112,7 +1115,7 @@ AS 'MODULE_PATHNAME','oradsinterval_to_char1'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 CREATE FUNCTION sys.to_char(sys.yminterval)
 RETURNS varchar2
@@ -1120,7 +1123,7 @@ AS 'MODULE_PATHNAME','orayminterval_to_char1'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 CREATE FUNCTION sys.to_char(sys.yminterval, text)
 RETURNS varchar2
@@ -1128,7 +1131,7 @@ AS 'MODULE_PATHNAME','orayminterval_to_char1'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 CREATE FUNCTION sys.to_char(sys.yminterval, text, text)
 RETURNS varchar2
@@ -1136,7 +1139,7 @@ AS 'MODULE_PATHNAME','orayminterval_to_char1'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
-STABLE;
+IMMUTABLE;
 
 CREATE FUNCTION sys.to_yminterval(text)
 RETURNS sys.yminterval

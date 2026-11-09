@@ -1519,6 +1519,54 @@ ERROR:  functions in index expression must be marked IMMUTABLE
 LINE 1: CREATE INDEX ON to_date_bigint_idx_test (sys.to_date(value, ...
                                                  ^
 DROP TABLE to_date_bigint_idx_test;
+-- the 12 NLS/session-dependent to_char overloads must be STABLE: their
+-- output follows nls_date_format, nls_timestamp_format,
+-- nls_timestamp_tz_format and/or the session TimeZone, so an expression
+-- index would freeze keys that no longer match the expression
+SELECT count(*) AS stable_nls_to_char_overloads
+FROM pg_proc
+WHERE oid IN ('sys.to_char(sys.oradate)'::regprocedure,
+              'sys.to_char(sys.oradate,text)'::regprocedure,
+              'sys.to_char(sys.oradate,text,text)'::regprocedure,
+              'sys.to_char(sys.oratimestamp)'::regprocedure,
+              'sys.to_char(sys.oratimestamp,text)'::regprocedure,
+              'sys.to_char(sys.oratimestamp,text,text)'::regprocedure,
+              'sys.to_char(sys.oratimestamptz)'::regprocedure,
+              'sys.to_char(sys.oratimestamptz,text)'::regprocedure,
+              'sys.to_char(sys.oratimestamptz,text,text)'::regprocedure,
+              'sys.to_char(sys.oratimestampltz)'::regprocedure,
+              'sys.to_char(sys.oratimestampltz,text)'::regprocedure,
+              'sys.to_char(sys.oratimestampltz,text,text)'::regprocedure)
+  AND provolatile = 's';
+ stable_nls_to_char_overloads 
+------------------------------
+                           12
+(1 row)
+
+-- the interval overloads stay IMMUTABLE: they render through
+-- dsinterval_out()/yminterval_out() with a fixed SQL-standard encoding and
+-- consult no session setting, so expression indexes keep working
+SELECT count(*) AS immutable_interval_to_char_overloads
+FROM pg_proc
+WHERE oid IN ('sys.to_char(sys.dsinterval)'::regprocedure,
+              'sys.to_char(sys.dsinterval,text)'::regprocedure,
+              'sys.to_char(sys.dsinterval,text,text)'::regprocedure,
+              'sys.to_char(sys.yminterval)'::regprocedure,
+              'sys.to_char(sys.yminterval,text)'::regprocedure,
+              'sys.to_char(sys.yminterval,text,text)'::regprocedure)
+  AND provolatile = 'i';
+ immutable_interval_to_char_overloads 
+--------------------------------------
+                                    6
+(1 row)
+
+CREATE TABLE to_char_idx_test (d date, iv interval day to second);
+CREATE INDEX ON to_char_idx_test (sys.to_char(d));
+ERROR:  functions in index expression must be marked IMMUTABLE
+LINE 1: CREATE INDEX ON to_char_idx_test (sys.to_char(d));
+                                          ^
+CREATE INDEX ON to_char_idx_test (sys.to_char(iv));
+DROP TABLE to_char_idx_test;
 create table test1(d date);
 insert into test1 values (to_date('2009-12-2', 'syyyy-mm-dd'));
 insert into test1 values (to_date('-1452-12-2', 'syyyy-mm-dd'));
