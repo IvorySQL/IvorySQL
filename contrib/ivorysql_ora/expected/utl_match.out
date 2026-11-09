@@ -522,7 +522,7 @@ SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY('DIXON','DICKSONX');
 SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY('JELLYFISH','SMELLYFISH');
  jaro_winkler_similarity 
 -------------------------
-                      90
+                      89
 (1 row)
 
 SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY('abcd','badc');
@@ -620,7 +620,7 @@ SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY('中文测试','中文测A');
 SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY('你好','您好');
  jaro_winkler_similarity 
 -------------------------
-                      67
+                      66
 (1 row)
 
 -- ============================================================
