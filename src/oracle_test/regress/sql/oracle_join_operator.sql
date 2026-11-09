@@ -161,6 +161,22 @@ SELECT count(*) FROM t2, t1 WHERE t2.c3 = t1.c1(+) AND t1.c1(+) IN (t2.c1, 5);
 SELECT count(*) FROM t2, t1 WHERE t2.c3 = t1.c1(+)
 AND t1.c1(+) NOT BETWEEN t2.c1 AND t2.c1 + 1;
 
+-- Test: a scalar subquery in the bounds of a marked NOT BETWEEN is
+-- rejected too (ORA-01799: a column may not be outer-joined to a
+-- subquery), whether the subquery is correlated to the query block ...
+SELECT count(*) FROM t1 a, t2 b
+WHERE b.c3 = a.c1(+) AND a.c1(+) NOT BETWEEN (SELECT 10 WHERE b.c3 = 10) AND 20;
+
+-- ... hides a correlated reference behind its own FROM clause ...
+SELECT count(*) FROM t1 a, t2 b
+WHERE b.c3 = a.c1(+) AND a.c1(+) NOT BETWEEN (SELECT 10 FROM t3 x WHERE x.c1 = b.c3) AND 20;
+
+-- ... or references only its own relations (the guard fires before the
+-- bounds are even examined, so no subquery form can slip a marked bound
+-- into the outer-join qualification).
+SELECT count(*) FROM t1 a, t2 b
+WHERE b.c3 = a.c1(+) AND a.c1(+) NOT BETWEEN (SELECT x.c1 * 5 FROM t3 x WHERE x.c1 = 3) AND 20;
+
 -- Test: Oracle rejects (+) in an IN operand even with a constant-only value
 -- list, and even though the marked column could attach to the outer join of
 -- the same block (ORA-01719), so no result set is produced for this query.
