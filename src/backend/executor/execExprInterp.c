@@ -3356,17 +3356,9 @@ ExecEvalNextValueExpr(ExprState *state, ExprEvalStep *op)
 void
 ExecEvalRownum(ExprState *state, ExprEvalStep *op)
 {
-	PlanState  *planstate;
-	EState	   *estate = NULL;
+	PlanState  *planstate = state ? state->parent : NULL;
+	EState	   *estate = planstate ? planstate->state : NULL;
 	int64		rownum_value = 1;  /* default */
-
-	/* Safely get the PlanState and EState */
-	if (state && state->parent)
-	{
-		planstate = state->parent;
-		if (planstate)
-			estate = planstate->state;
-	}
 
 	/*
 	 * When ROWNUM is evaluated by a projection that numbers its own output
