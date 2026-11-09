@@ -1055,6 +1055,8 @@ SELECT to_number('1-2', '9MI9') AS mi_not_last;
 -- used to crash the backend
 SELECT to_number('.5', '99') AS dot_at_first_node;
 SELECT to_number('1.5', '9-99') AS literal_before_nines;
+-- a model without nodes used to be read from before its start
+SELECT to_number('1', '""') AS empty_quoted_model;
 -- characters the format model does not consume
 SELECT to_number('a123', '999') AS junk_prefix;
 SELECT to_number('a12', '99') AS junk_prefix_full_model;
@@ -1067,6 +1069,12 @@ SELECT to_number('-123-', '999MI') AS sign_and_mi;
 SELECT to_number('a123', '0999') AS junk_at_zero;
 SELECT to_number('12x', '990') AS junk_at_last_zero;
 SELECT to_number('1.5', '0999') AS dot_without_d_zero;
+-- SG and PL positions are checked
+SELECT to_number('123x', '999SG') AS sg_junk;
+SELECT to_number('123', '999SG') AS sg_missing;
+SELECT to_number('-123-', '999SG') AS sg_and_leading_sign;
+SELECT to_number('123x', '999PL') AS pl_junk;
+SELECT to_number('123-', '999PL') AS pl_minus;
 -- still accepted
 SELECT to_number('-123', '999') AS minus;
 SELECT to_number('+123', '999') AS plus;
@@ -1077,6 +1085,13 @@ SELECT to_number('<123>', '999PR') AS pr;
 SELECT to_number(' <123>', '999PR') AS blank_then_pr;
 SELECT to_number('-123', 'S999') AS s_sign;
 SELECT to_number('123-', '999MI') AS mi;
+SELECT to_number('123-', '999SG') AS sg;
+SELECT to_number('-123', 'SG999') AS sg_leading;
+SELECT to_number(to_char(-123, '999PL'), '999PL') AS pl_negative_round_trip;
+SELECT to_number(to_char(123, '999PL'), '999PL') AS pl_positive_round_trip;
+SELECT to_number(to_char(-123, 'FM999PL'), 'FM999PL') AS fm_pl_round_trip;
+SELECT to_number('123', '999PL') AS pl_absent;
+SELECT to_number('-1.5', '9.9PL') AS pl_decimal;
 SELECT to_number('-12', '099') AS minus_zero_model;
 SELECT to_number('012', '099') AS zero_model;
 SELECT to_number('12.5', '099.99') AS leading_zero_model;

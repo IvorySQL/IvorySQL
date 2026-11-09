@@ -2019,6 +2019,9 @@ SELECT to_number('.5', '99') AS dot_at_first_node;
 ERROR:  invalid number
 SELECT to_number('1.5', '9-99') AS literal_before_nines;
 ERROR:  invalid number format model
+-- a model without nodes used to be read from before its start
+SELECT to_number('1', '""') AS empty_quoted_model;
+ERROR:  invalid number format model
 -- characters the format model does not consume
 SELECT to_number('a123', '999') AS junk_prefix;
 ERROR:  invalid number
@@ -2040,6 +2043,17 @@ ERROR:  invalid number
 SELECT to_number('12x', '990') AS junk_at_last_zero;
 ERROR:  invalid number
 SELECT to_number('1.5', '0999') AS dot_without_d_zero;
+ERROR:  invalid number
+-- SG and PL positions are checked
+SELECT to_number('123x', '999SG') AS sg_junk;
+ERROR:  invalid number
+SELECT to_number('123', '999SG') AS sg_missing;
+ERROR:  invalid number
+SELECT to_number('-123-', '999SG') AS sg_and_leading_sign;
+ERROR:  invalid number
+SELECT to_number('123x', '999PL') AS pl_junk;
+ERROR:  invalid number
+SELECT to_number('123-', '999PL') AS pl_minus;
 ERROR:  invalid number
 -- still accepted
 SELECT to_number('-123', '999') AS minus;
@@ -2094,6 +2108,48 @@ SELECT to_number('123-', '999MI') AS mi;
   mi  
 ------
  -123
+(1 row)
+
+SELECT to_number('123-', '999SG') AS sg;
+  sg  
+------
+ -123
+(1 row)
+
+SELECT to_number('-123', 'SG999') AS sg_leading;
+ sg_leading 
+------------
+ -123
+(1 row)
+
+SELECT to_number(to_char(-123, '999PL'), '999PL') AS pl_negative_round_trip;
+ pl_negative_round_trip 
+------------------------
+ -123
+(1 row)
+
+SELECT to_number(to_char(123, '999PL'), '999PL') AS pl_positive_round_trip;
+ pl_positive_round_trip 
+------------------------
+ 123
+(1 row)
+
+SELECT to_number(to_char(-123, 'FM999PL'), 'FM999PL') AS fm_pl_round_trip;
+ fm_pl_round_trip 
+------------------
+ -123
+(1 row)
+
+SELECT to_number('123', '999PL') AS pl_absent;
+ pl_absent 
+-----------
+ 123
+(1 row)
+
+SELECT to_number('-1.5', '9.9PL') AS pl_decimal;
+ pl_decimal 
+------------
+ -1.5
 (1 row)
 
 SELECT to_number('-12', '099') AS minus_zero_model;

@@ -7016,6 +7016,13 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 		Np->number_p = Np->number;
 	else
 		Np->number_p = Np->number + 1;	/* first char is space for sign */
+
+	/* a model such as '""' has no nodes for the reverse matching below */
+	if (node->type == NODE_TYPE_END)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("invalid number format model")));
+
 	/**
 	 *Reverse matching, if the match does not match, an error is reported
 	 */
@@ -7137,6 +7144,23 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 				}
 				break;
 
+			/* TO_CHAR writes '+' or a blank for PL, or nothing with FM */
+			case NUM_PL:
+				if (isdigit((unsigned char) *input_tem))
+					input_tem++;
+				else if (*input_tem != '+' && *input_tem != ' ')
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+								 errmsg("invalid number")));
+				break;
+
+			case NUM_SG:
+				if (*input_tem != '-' && *input_tem != '+')
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+								 errmsg("invalid number")));
+				break;
+
 			case NUM_FM:
 				if (ntem != node)
 				{
@@ -7168,7 +7192,8 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 	/**
 	 * What the format model did not consume may only be blanks followed by
 	 * a sign: the '<' that pairs with a trailing '>' for PR, or '-' or '+'
-	 * when the model has no sign element of its own.
+	 * when the model has no S, MI, SG or PR.  PL alone leaves the minus sign
+	 * in front of the digits.
 	 */
 	input_rest = Np->inout;
 	while (input_rest < input_tem && *input_rest == ' ')
@@ -7185,7 +7210,7 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 	else if (input_rest < input_tem &&
 			 (*input_rest == '-' || *input_rest == '+') &&
 			 !IS_LSIGN(Np->Num) && !IS_MINUS(Np->Num) &&
-			 !IS_PLUS(Np->Num) && !IS_BRACKET(Np->Num))
+			 !IS_BRACKET(Np->Num))
 		input_rest++;
 	if (input_rest != input_tem)
 		ereport(ERROR,
