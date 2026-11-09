@@ -2272,7 +2272,7 @@ SELECT to_number('0', '99.99');
 (1 row)
 
 SELECT to_number('.-01', 'S99.99');
-ERROR:  invalid number format model
+ERROR:  invalid number
 SELECT to_number('.01-', '99.99S');
  to_number 
 -----------
@@ -2290,7 +2290,7 @@ SELECT to_number('34,50','999,99');
 SELECT to_number('123,000','999G');
 ERROR:  invalid number format model
 SELECT to_number('123456','999G999');
-ERROR:  invalid number format model
+ERROR:  invalid number
 SELECT to_number('$1234.56','L9,999.99');
 ERROR:  invalid number
 SELECT to_number('$1234.56','L99,999.99');

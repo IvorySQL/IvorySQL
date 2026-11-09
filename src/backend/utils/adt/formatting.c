@@ -7064,11 +7064,17 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 
 			case NUM_DEC:
 			case NUM_D:
-				if (*input_tem != '.' || isrigth == false)
+				if (isrigth == false)
 				{
 					ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							errmsg("invalid number format model")));
+				}
+				if (*input_tem != '.')
+				{
+					ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+							errmsg("invalid number")));
 				}
 				isrigth = false;
 				break;
@@ -7078,21 +7084,20 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 			 * can't put it at the head or the tail
 			 */
 			case NUM_G:
-				if (*input_tem != ',')
-				{
-					ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							errmsg("invalid number format model")));
-				}
-				if (isrigth == true)
-					isrigth = false;
-
 				if (ntem == node || (ntem+1)->type == NODE_TYPE_END)
 				{
 					ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							errmsg("invalid number format model")));
 				}
+				if (*input_tem != ',')
+				{
+					ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+							errmsg("invalid number")));
+				}
+				if (isrigth == true)
+					isrigth = false;
 				break;
 
 			case NUM_PR:
@@ -7104,22 +7109,22 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 					input_tem++;
 				else if (*input_tem != '>')
 					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								 errmsg("invalid number format model")));
+							(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+								 errmsg("invalid number")));
 				break;
 
 			case NUM_MI:
-				if (*input_tem != '-' && *input_tem != '+' && *input_tem != ' ')
-				{
-					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								 errmsg("invalid number format model")));
-				}
 				if ((ntem+1)->type != NODE_TYPE_END)
 				{
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								errmsg("invalid number format model")));
+				}
+				if (*input_tem != '-' && *input_tem != '+' && *input_tem != ' ')
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+								 errmsg("invalid number")));
 				}
 				break;
 
@@ -7138,28 +7143,28 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 				 * matching '+' or '-'
 				 */
 			case NUM_S:
-				if (*input_tem != '-' && *input_tem != '+')
-					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								 errmsg("invalid number format model")));
-
 				if (ntem != node && (ntem+1)->type != NODE_TYPE_END)
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								errmsg("invalid number format model")));
+
+				if (*input_tem != '-' && *input_tem != '+')
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+								 errmsg("invalid number")));
 				break;
 		}
 	}while(ntem != node && input_tem > Np->inout);
 
 	/**
-	 * Error if there are more data types than Numbers
+	 * Error if the value has more digits than the format model
 	 */
 	if (ntem == node && input_tem > Np->inout)
 	{
 		if ( isdigit((unsigned char) *(input_tem - 1)) || *(input_tem - 1) == '.' || *(input_tem - 1) == ',' )
 			ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					errmsg("invalid number format model")));
+				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+					errmsg("invalid number")));
 	}
 
 	n = ntem;

@@ -1029,6 +1029,25 @@ BEGIN
     WHEN invalid_text_representation THEN
       RAISE INFO 'to_number(''12a'', ''999''): % %', SQLSTATE, SQLERRM;
   END;
+  BEGIN
+    n := to_number('1x2', '9.9');
+  EXCEPTION
+    WHEN invalid_text_representation THEN
+      RAISE INFO 'to_number(''1x2'', ''9.9''): % %', SQLSTATE, SQLERRM;
+  END;
 END;
 /
+-- a value that does not match a valid format model
+SELECT to_number('1x2', '9.9') AS bad_decimal_point;
+SELECT to_number('1.555', '9.99') AS too_many_decimals;
+SELECT to_number('1x234', '9G999') AS bad_group_separator;
+SELECT to_number('123', '99') AS too_many_digits;
+SELECT to_number('12x', '99PR') AS bad_pr;
+SELECT to_number('12x', '99MI') AS bad_mi;
+SELECT to_number('x12', 'S99') AS bad_s;
+SELECT to_number('1,234', '9G999') AS group_separator;
+-- an invalid format model
+SELECT to_number('1.2.3', '9.9.9') AS two_decimal_points;
+SELECT to_number('12,', '99G') AS trailing_group_separator;
+SELECT to_number('1-2', '9MI9') AS mi_not_last;
 /* End - issue #3101 */

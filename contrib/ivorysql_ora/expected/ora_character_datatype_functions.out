@@ -3277,7 +3277,7 @@ SELECT to_number(1210.73, 9999.99) from dual;
 (1 row)
 
 SELECT to_number(1210.733, 9999.99) from dual; --err
-ERROR:  invalid number format model
+ERROR:  invalid number
 CONTEXT:  SQL function "to_number" statement 1
 SELECT to_number(cast(1210 as smallint), cast(9999 as smallint)) from dual;
  to_number 
