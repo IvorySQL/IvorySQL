@@ -1038,25 +1038,24 @@ DROP TABLE test1;
 DROP TABLE test2;
 --
 -- INTERSECT and EXCEPT with ROWNUM
--- NOTE: Oracle resets ROWNUM for each side of INTERSECT/EXCEPT independently.
--- Current IvorySQL implementation shares ROWNUM counter across both sides,
--- which produces different results than Oracle.
+-- Oracle resets ROWNUM for each side of INTERSECT/EXCEPT independently, so each
+-- branch starts counting at 1.  IvorySQL follows that behaviour.
 --
 -- INTERSECT with ROWNUM
--- Oracle: Each side produces (1,1), (2,2), (3,3) independently, intersection = 3 rows
--- IvorySQL: Left side produces (1,1), (2,2), (3,3), right side produces (4,1), (5,2), (6,3)
---           No intersection because ROWNUM values differ
+-- Each side produces (1,1), (2,2), (3,3) independently, intersection = 3 rows
 SELECT ROWNUM as rn, id FROM (SELECT 1 as id FROM dual UNION ALL SELECT 2 FROM dual UNION ALL SELECT 3 FROM dual)
 INTERSECT
 SELECT ROWNUM as rn, id FROM (SELECT 1 as id FROM dual UNION ALL SELECT 2 FROM dual UNION ALL SELECT 3 FROM dual)
 ORDER BY rn;
  rn | id 
 ----+----
-(0 rows)
+  1 |  1
+  2 |  2
+  3 |  3
+(3 rows)
 
 -- EXCEPT with ROWNUM
--- Oracle: Left (1,1),(2,2),(3,3) EXCEPT Right (1,2) = (1,1),(2,2),(3,3) (no match on rn)
--- IvorySQL: Left (1,1),(2,2),(3,3) EXCEPT Right (4,2) = (1,1),(2,2),(3,3)
+-- Left (1,1),(2,2),(3,3) EXCEPT Right (1,2) = (1,1),(2,2),(3,3) (no match on rn)
 SELECT ROWNUM as rn, id FROM (SELECT 1 as id FROM dual UNION ALL SELECT 2 FROM dual UNION ALL SELECT 3 FROM dual)
 EXCEPT
 SELECT ROWNUM as rn, id FROM (SELECT 2 as id FROM dual)
@@ -1067,6 +1066,20 @@ ORDER BY rn;
   2 |  2
   3 |  3
 (3 rows)
+
+-- EXCEPT where the right side's ROWNUM does collide with the left side's
+-- Left (1,1),(2,2),(3,3) EXCEPT Right (1,1) = (2,2),(3,3)
+-- (if the counter were shared, the right side would produce (4,1) and nothing
+-- would be removed)
+SELECT ROWNUM as rn, id FROM (SELECT 1 as id FROM dual UNION ALL SELECT 2 FROM dual UNION ALL SELECT 3 FROM dual)
+EXCEPT
+SELECT ROWNUM as rn, id FROM (SELECT 1 as id FROM dual)
+ORDER BY rn;
+ rn | id 
+----+----
+  2 |  2
+  3 |  3
+(2 rows)
 
 --
 -- LATERAL join with ROWNUM

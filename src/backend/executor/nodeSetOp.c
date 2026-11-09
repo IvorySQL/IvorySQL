@@ -71,11 +71,39 @@ typedef SetOpStatePerGroupData *SetOpStatePerGroup;
 
 static TupleTableSlot *setop_retrieve_sorted(SetOpState *setopstate);
 static void setop_load_group(SetOpStatePerInput *input, PlanState *inputPlan,
-							 SetOpState *setopstate);
+							 SetOpState *setopstate, int64 *side_rownum);
 static int	setop_compare_slots(TupleTableSlot *s1, TupleTableSlot *s2,
 								SetOpState *setopstate);
 static void setop_fill_hash_table(SetOpState *setopstate);
 static TupleTableSlot *setop_retrieve_hash_table(SetOpState *setopstate);
+
+/*
+ * Fetch the next tuple from one side of the set operation, preserving that
+ * side's independent ROWNUM counter.
+ *
+ * Oracle assigns ROWNUM separately for each branch of an INTERSECT/EXCEPT:
+ * both branches start counting at 1 rather than the right branch continuing
+ * where the left one stopped.  IvorySQL keeps the counter in the EState, which
+ * is shared by every node of the query, so we save the outer query's counter,
+ * swap in this side's counter, run the child, then save the child's counter
+ * back and restore the outer one.  This mirrors what nodeSubqueryscan.c does
+ * for sub-SELECTs.
+ */
+static pg_attribute_always_inline TupleTableSlot *
+setop_exec_child(SetOpState *setopstate, PlanState *inputPlan,
+				 int64 *side_rownum)
+{
+	EState	   *estate = setopstate->ps.state;
+	int64		save_rownum = estate->es_rownum;
+	TupleTableSlot *slot;
+
+	estate->es_rownum = *side_rownum;
+	slot = ExecProcNode(inputPlan);
+	*side_rownum = estate->es_rownum;
+	estate->es_rownum = save_rownum;
+
+	return slot;
+}
 
 
 /*
@@ -225,7 +253,9 @@ setop_retrieve_sorted(SetOpState *setopstate)
 	{
 		setopstate->need_init = false;
 
-		setopstate->leftInput.nextTupleSlot = ExecProcNode(outerPlan);
+		setopstate->leftInput.nextTupleSlot =
+			setop_exec_child(setopstate, outerPlan,
+							 &setopstate->left_rownum);
 
 		/*
 		 * If the outer relation is empty, then we will emit nothing, and we
@@ -237,7 +267,9 @@ setop_retrieve_sorted(SetOpState *setopstate)
 			return NULL;
 		}
 
-		setopstate->rightInput.nextTupleSlot = ExecProcNode(innerPlan);
+		setopstate->rightInput.nextTupleSlot =
+			setop_exec_child(setopstate, innerPlan,
+							 &setopstate->right_rownum);
 
 		/* Set flags that we've not completed either side's group */
 		setopstate->leftInput.needGroup = true;
@@ -256,7 +288,8 @@ setop_retrieve_sorted(SetOpState *setopstate)
 		 * Fetch the rest of the current outer group, if we didn't already.
 		 */
 		if (setopstate->leftInput.needGroup)
-			setop_load_group(&setopstate->leftInput, outerPlan, setopstate);
+			setop_load_group(&setopstate->leftInput, outerPlan, setopstate,
+							 &setopstate->left_rownum);
 
 		/*
 		 * If no more outer groups, we're done, and don't need to look at any
@@ -272,7 +305,8 @@ setop_retrieve_sorted(SetOpState *setopstate)
 		 * Fetch the rest of the current inner group, if we didn't already.
 		 */
 		if (setopstate->rightInput.needGroup)
-			setop_load_group(&setopstate->rightInput, innerPlan, setopstate);
+			setop_load_group(&setopstate->rightInput, innerPlan, setopstate,
+							 &setopstate->right_rownum);
 
 		/*
 		 * Determine whether we have matching groups on both sides (this is
@@ -338,7 +372,7 @@ setop_retrieve_sorted(SetOpState *setopstate)
  */
 static void
 setop_load_group(SetOpStatePerInput *input, PlanState *inputPlan,
-				 SetOpState *setopstate)
+				 SetOpState *setopstate, int64 *side_rownum)
 {
 	input->needGroup = false;
 
@@ -363,7 +397,8 @@ setop_load_group(SetOpStatePerInput *input, PlanState *inputPlan,
 		int			cmpresult;
 
 		/* Get next input tuple, if there is one */
-		input->nextTupleSlot = ExecProcNode(inputPlan);
+		input->nextTupleSlot = setop_exec_child(setopstate, inputPlan,
+											   side_rownum);
 		if (TupIsNull(input->nextTupleSlot))
 			break;
 
@@ -438,7 +473,8 @@ setop_fill_hash_table(SetOpState *setopstate)
 		SetOpStatePerGroup pergroup;
 		bool		isnew;
 
-		outerslot = ExecProcNode(outerPlan);
+		outerslot = setop_exec_child(setopstate, outerPlan,
+									 &setopstate->left_rownum);
 		if (TupIsNull(outerslot))
 			break;
 		have_tuples = true;
@@ -479,7 +515,8 @@ setop_fill_hash_table(SetOpState *setopstate)
 			TupleHashTable hashtable = setopstate->hashtable;
 			TupleHashEntryData *entry;
 
-			innerslot = ExecProcNode(innerPlan);
+			innerslot = setop_exec_child(setopstate, innerPlan,
+										 &setopstate->right_rownum);
 			if (TupIsNull(innerslot))
 				break;
 
@@ -589,6 +626,8 @@ ExecInitSetOp(SetOp *node, EState *estate, int eflags)
 	setopstate->numOutput = 0;
 	setopstate->numCols = node->numCols;
 	setopstate->need_init = true;
+	setopstate->left_rownum = 0;
+	setopstate->right_rownum = 0;
 
 	/*
 	 * create expression context
@@ -735,11 +774,17 @@ ExecReScanSetOp(SetOpState *node)
 		/* Else, we must rebuild the hashtable */
 		ResetTupleHashTable(node->hashtable);
 		node->table_filled = false;
+		/* Re-reading both inputs, so both ROWNUM counters start over */
+		node->left_rownum = 0;
+		node->right_rownum = 0;
 	}
 	else
 	{
 		/* Need to re-read first input from each side */
 		node->need_init = true;
+		/* Re-reading both inputs, so both ROWNUM counters start over */
+		node->left_rownum = 0;
+		node->right_rownum = 0;
 	}
 
 	/*
