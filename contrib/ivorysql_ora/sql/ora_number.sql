@@ -804,6 +804,7 @@ SET nls_iso_currency = 'CNY';
 SELECT to_char(1234.56::number, 'C9G999D99') AS currency_C_cny;
 SET nls_iso_currency = 'USD';
 SELECT to_number('USD1234','C9999') AS number_C_usd;
+SELECT to_number(' USD1234','C9999') AS number_C_usd_leading_blank;
 RESET nls_currency;
 RESET nls_iso_currency;
 -- Without a format model, trailing spaces are accepted in the integer part.

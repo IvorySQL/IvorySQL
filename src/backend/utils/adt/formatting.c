@@ -7291,7 +7291,15 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 						Np->inout_p += strlen(Np->inout_p) - 1;
 					}
 					else
-						Np->inout_p += strlen(Np->L_iso_currency_symbol) - 1;
+					{
+						/* Skip leading blanks before the ISO currency symbol. */
+						while (Np->inout_p < Np->inout + from_char_input_len &&
+							   *Np->inout_p == ' ')
+							Np->inout_p++;
+						NUM_eat_non_data_chars(Np, pg_mbstrlen(Np->L_iso_currency_symbol),
+											   from_char_input_len);
+						continue;
+					}
 					break;
 
 				case NUM_RN:

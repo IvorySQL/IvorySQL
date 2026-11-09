@@ -1309,6 +1309,12 @@ SELECT to_number('USD1234','C9999') AS number_C_usd;
  1234
 (1 row)
 
+SELECT to_number(' USD1234','C9999') AS number_C_usd_leading_blank;
+ number_c_usd_leading_blank 
+----------------------------
+ 1234
+(1 row)
+
 RESET nls_currency;
 RESET nls_iso_currency;
 -- Without a format model, trailing spaces are accepted in the integer part.
