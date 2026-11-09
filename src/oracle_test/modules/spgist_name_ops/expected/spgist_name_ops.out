@@ -20,12 +20,12 @@ INFO:  SP-GiST leaf data type text does not match declared type name
 create table t(f1 name, f2 integer, f3 text);
 create index on t using spgist(f1) include(f2, f3);
 \d+ t_f1_f2_f3_idx
-                 Index "public.t_f1_f2_f3_idx"
- Column |  Type   | Key? | Definition | Storage  | Stats target 
---------+---------+------+------------+----------+--------------
- f1     | text    | yes  | f1         | extended | 
- f2     | integer | no   | f2         | plain    | 
- f3     | text    | no   | f3         | extended | 
+                     Index "public.t_f1_f2_f3_idx"
+ Column |      Type       | Key? | Definition | Storage  | Stats target 
+--------+-----------------+------+------------+----------+--------------
+ f1     | text            | yes  | f1         | extended | 
+ f2     | pg_catalog.int4 | no   | f2         | plain    | 
+ f3     | text            | no   | f3         | extended | 
 spgist, for table "public.t"
 
 insert into t select
@@ -74,12 +74,12 @@ ERROR:  54000
 drop index t_f1_f2_f3_idx;
 create index on t using spgist(f1 name_ops_old) include(f2, f3);
 \d+ t_f1_f2_f3_idx
-                 Index "public.t_f1_f2_f3_idx"
- Column |  Type   | Key? | Definition | Storage  | Stats target 
---------+---------+------+------------+----------+--------------
- f1     | name    | yes  | f1         | plain    | 
- f2     | integer | no   | f2         | plain    | 
- f3     | text    | no   | f3         | extended | 
+                     Index "public.t_f1_f2_f3_idx"
+ Column |      Type       | Key? | Definition | Storage  | Stats target 
+--------+-----------------+------+------------+----------+--------------
+ f1     | name            | yes  | f1         | plain    | 
+ f2     | pg_catalog.int4 | no   | f2         | plain    | 
+ f3     | text            | no   | f3         | extended | 
 spgist, for table "public.t"
 
 explain (costs off)

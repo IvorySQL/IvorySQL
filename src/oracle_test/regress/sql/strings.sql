@@ -486,17 +486,17 @@ SELECT 'a_c'::bytea LIKE 'a$__'::bytea ESCAPE '$'::bytea AS "true";
 SELECT 'a_c'::bytea NOT LIKE 'a$__'::bytea ESCAPE '$'::bytea AS "false";
 
 -- escape character same as pattern character
-SELECT 'maca' LIKE 'm%aca' ESCAPE '%' AS "true";
-SELECT 'maca' NOT LIKE 'm%aca' ESCAPE '%' AS "false";
+SELECT 'maca' LIKE 'm%aca' ESCAPE '%' AS "error";
+SELECT 'maca' NOT LIKE 'm%aca' ESCAPE '%' AS "error";
 
-SELECT 'ma%a' LIKE 'm%a%%a' ESCAPE '%' AS "true";
-SELECT 'ma%a' NOT LIKE 'm%a%%a' ESCAPE '%' AS "false";
+SELECT 'ma%a' LIKE 'm%a%%a' ESCAPE '%' AS "error";
+SELECT 'ma%a' NOT LIKE 'm%a%%a' ESCAPE '%' AS "error";
 
-SELECT 'bear' LIKE 'b_ear' ESCAPE '_' AS "true";
-SELECT 'bear' NOT LIKE 'b_ear' ESCAPE '_' AS "false";
+SELECT 'bear' LIKE 'b_ear' ESCAPE '_' AS "error";
+SELECT 'bear' NOT LIKE 'b_ear' ESCAPE '_' AS "error";
 
-SELECT 'be_r' LIKE 'b_e__r' ESCAPE '_' AS "true";
-SELECT 'be_r' NOT LIKE 'b_e__r' ESCAPE '_' AS "false";
+SELECT 'be_r' LIKE 'b_e__r' ESCAPE '_' AS "error";
+SELECT 'be_r' NOT LIKE 'b_e__r' ESCAPE '_' AS "error";
 
 SELECT 'be_r' LIKE '__e__r' ESCAPE '_' AS "false";
 SELECT 'be_r' NOT LIKE '__e__r' ESCAPE '_' AS "true";
@@ -565,6 +565,7 @@ SELECT text 'text' || varchar ' and varchar' AS "Concat text to varchar";
 
 --
 -- test substr with toasted text values
+-- Exercise PostgreSQL substring semantics explicitly in Oracle mode.
 --
 CREATE TABLE toasttest(f1 text);
 
@@ -581,18 +582,18 @@ insert into toasttest values(repeat('1234567890',10000));
 
 -- If the starting position is zero or less, then return from the start of the string
 -- adjusting the length to be consistent with the "negative start" per SQL.
-SELECT substr(f1, -1, 5) from toasttest;
+SELECT pg_catalog.substr(f1, -1, 5) from toasttest;
 
 -- If the length is less than zero, an ERROR is thrown.
-SELECT substr(f1, 5, -1) from toasttest;
+SELECT pg_catalog.substr(f1, 5, -1) from toasttest;
 
 -- If no third argument (length) is provided, the length to the end of the
 -- string is assumed.
-SELECT substr(f1, 99995) from toasttest;
+SELECT pg_catalog.substr(f1, 99995) from toasttest;
 
 -- If start plus length is > string length, the result is truncated to
 -- string length
-SELECT substr(f1, 99995, 10) from toasttest;
+SELECT pg_catalog.substr(f1, 99995, 10) from toasttest;
 
 TRUNCATE TABLE toasttest;
 INSERT INTO toasttest values (repeat('1234567890',300));

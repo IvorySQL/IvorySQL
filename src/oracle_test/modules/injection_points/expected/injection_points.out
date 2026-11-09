@@ -6,6 +6,7 @@ CREATE FUNCTION wait_pid(int)
   RETURNS void
   AS :'regresslib'
   LANGUAGE C STRICT;
+/
 -- Non-strict checks
 SELECT injection_points_run(NULL);
  injection_points_run 
@@ -34,14 +35,14 @@ SELECT injection_points_attach('TestInjectionLog', 'notice');
 (1 row)
 
 SELECT injection_points_attach('TestInjectionLog2', 'notice');
- injection_points_attach
+ injection_points_attach 
 -------------------------
-
+ 
 (1 row)
 
 SELECT point_name, library, function FROM injection_points_list()
   ORDER BY point_name COLLATE "C";
-     point_name     |     library      |     function
+     point_name     |     library      |     function     
 --------------------+------------------+------------------
  TestInjectionError | injection_points | injection_error
  TestInjectionLog   | injection_points | injection_notice
@@ -302,9 +303,9 @@ SELECT injection_points_attach('TestConditionLocal1', 'error');
 (1 row)
 
 SELECT injection_points_detach('TestConditionLocal1');
- injection_points_detach
+ injection_points_detach 
 -------------------------
-
+ 
 (1 row)
 
 -- Function variant for attach.
@@ -329,35 +330,35 @@ SELECT injection_points_attach('TestInjectionNoticeFunc', 'injection_points',
 ERROR:  injection point function cannot be NULL
 SELECT injection_points_attach('TestInjectionNoticeFunc', 'injection_points',
   'injection_notice', NULL);
- injection_points_attach
+ injection_points_attach 
 -------------------------
-
+ 
 (1 row)
 
 SELECT point_name, library, function FROM injection_points_list()
   ORDER BY point_name COLLATE "C";
-       point_name        |     library      |     function
+       point_name        |     library      |     function     
 -------------------------+------------------+------------------
  TestInjectionNoticeFunc | injection_points | injection_notice
 (1 row)
 
 SELECT injection_points_run('TestInjectionNoticeFunc', NULL); -- notice
 NOTICE:  notice triggered for injection point TestInjectionNoticeFunc
- injection_points_run
+ injection_points_run 
 ----------------------
-
+ 
 (1 row)
 
 SELECT injection_points_detach('TestInjectionNoticeFunc');
- injection_points_detach
+ injection_points_detach 
 -------------------------
-
+ 
 (1 row)
 
 -- No points should be left around.
 SELECT point_name, library, function FROM injection_points_list()
   ORDER BY point_name COLLATE "C";
- point_name | library | function
+ point_name | library | function 
 ------------+---------+----------
 (0 rows)
 

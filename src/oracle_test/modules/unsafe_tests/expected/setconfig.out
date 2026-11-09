@@ -68,11 +68,9 @@ DO $$BEGIN EXECUTE format(
 \set VERBOSITY terse
 DO $$BEGIN EXECUTE format(
 	'ALTER DATABASE %I SET bogus = 0', current_catalog); END$$;
-/
 ERROR:  unrecognized configuration parameter "bogus"
 DO $$BEGIN EXECUTE format(
 	'ALTER DATABASE %I RESET bogus', current_catalog); END$$;
-/
 ERROR:  unrecognized configuration parameter "bogus"
 ALTER USER regress_authenticated_user_db_ssa RESET bogus;
 ERROR:  unrecognized configuration parameter "bogus"

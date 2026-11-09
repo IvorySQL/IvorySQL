@@ -148,6 +148,80 @@ my %tests = (
 		like => { %full_runs, },
 	},
 
+	'CREATE TYPE oracle_object_type AS OBJECT' => {
+		create_order => 3,
+		create_sql   =>
+			'CREATE TYPE oracle_object_type AS OBJECT (
+				id integer,
+				label varchar2(20)
+			)',
+		regexp => qr/^CREATE TYPE public\.oracle_object_type AS OBJECT \(/m,
+		like   => { %full_runs, },
+	},
+
+	'CREATE FUNCTION dump_object_helper' => {
+		create_order => 4,
+		create_sql   => q{CREATE FUNCTION dump_object_helper(integer)
+			RETURNS integer LANGUAGE SQL IMMUTABLE
+			AS 'SELECT $1 * 2'},
+		regexp => qr/^CREATE FUNCTION public\.dump_object_helper/m,
+		like   => { %full_runs, },
+	},
+
+	'CREATE TYPE dump_object_type with methods' => {
+		create_order => 5,
+		create_sql   => q{CREATE TYPE dump_object_type AS OBJECT (
+				value integer,
+				MAP MEMBER FUNCTION sort_key RETURN integer,
+				MEMBER FUNCTION doubled RETURN integer,
+				MEMBER FUNCTION echoed(p_text varchar2 DEFAULT 'a;b') RETURN varchar2,
+				MEMBER FUNCTION trailing_slash(p_text varchar2 DEFAULT 'a\') RETURN varchar2
+			) NOT FINAL},
+		regexp => qr/^CREATE TYPE public\.dump_object_type AS OBJECT \([\s\S]*member function doubled return integer[\s\S]*\) NOT FINAL;/mi,
+		like   => { %full_runs, },
+	},
+
+	'CREATE TYPE BODY dump_object_type' => {
+		create_order => 6,
+		create_sql   =>
+			'CREATE TYPE BODY dump_object_type AS
+				MAP MEMBER FUNCTION sort_key RETURN integer IS
+				BEGIN
+					RETURN self.value % 10;
+				END sort_key;
+				MEMBER FUNCTION doubled RETURN integer IS
+				BEGIN
+					RETURN dump_object_helper(self.value);
+				END doubled;
+				MEMBER FUNCTION echoed(p_text varchar2) RETURN varchar2 IS
+				BEGIN
+					RETURN p_text;
+				END echoed;
+				MEMBER FUNCTION trailing_slash(p_text varchar2) RETURN varchar2 IS
+				BEGIN
+					RETURN p_text;
+				END trailing_slash;
+			END;',
+		regexp => qr/^CREATE TYPE BODY public\.dump_object_type AS/m,
+		like   => { %full_runs, },
+	},
+
+	'object method standard literal keeps a trailing backslash' => {
+		regexp => qr/member function trailing_slash\(p_text varchar2 default 'a\\'\) return varchar2/im,
+		like   => { %full_runs, },
+	},
+
+	'object method default literal keeps its semicolon' => {
+		regexp => qr/member function echoed\(p_text varchar2 default 'a;b'\) return varchar2/im,
+		like   => { %full_runs, },
+	},
+
+	'object method namespace is not dumped as a package' => {
+		regexp => qr/^CREATE (?:EDITIONABLE )?PACKAGE public\.dump_object_type/m,
+		like   => { %full_runs, },
+		unlike => { %full_runs, },
+	},
+
 	'DROP PACKAGE IF EXISTS public.test_pkg;' => {
 		regexp => qr/^DROP PACKAGE IF EXISTS public.test_pkg;/m,
 		like   => { clean_if_exists => 1, },
@@ -341,6 +415,37 @@ foreach my $run (sort keys %pgdump_runs)
 		}
 	}
 }
+
+#########################################
+# Restore the schema dump to catch output that looks plausible but does not
+# parse, and exercise one restored object method.
+
+$node->safe_psql('postgres', 'create database restoredb;',
+	connect_to_oraport => 1);
+my ($restore_stdout, $restore_stderr);
+my $restore_status = $node->psql(
+	'restoredb',
+	slurp_file("$tempdir/packages.sql"),
+	stdout => \$restore_stdout,
+	stderr => \$restore_stderr,
+	connect_to_oraport => 1);
+is($restore_status, 0, 'plain schema dump restores successfully')
+	or diag($restore_stderr);
+is(
+	$node->safe_psql(
+		'restoredb',
+		q{SELECT p.doubled()
+		  FROM (VALUES (dump_object_type(7))) AS objects(p)},
+		connect_to_oraport => 1),
+	'14',
+	'restored object method executes');
+is(
+	$node->safe_psql(
+		'restoredb',
+		q{SELECT dump_object_type(11) < dump_object_type(2)},
+		connect_to_oraport => 1),
+	't',
+	'restored MAP method drives comparison');
 
 #########################################
 # Stop the database instance, which will be removed at the end of the tests.

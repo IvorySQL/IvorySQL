@@ -774,7 +774,8 @@ other			.
 					/* This is where the creation process ends */
 					if ((cur_state->ora_plsql_expect_end_symbol == END_SYMBOL_SLASH && 
 							cur_state->paren_depth == 0 && cur_state->begin_depth == 0) || 
-								is_oracle_slash(cur_state, cur_state->scanline))
+						is_oracle_slash(cur_state, cur_state->scanline,
+										yytext - cur_state->curline))
 					{
 						/* Terminate lexing temporarily */
 						cur_state->cancel_semicolon_terminator = false;
@@ -831,6 +832,7 @@ other			.
 									/* EXPLAIN WITH: preserve [0]='e' and [1]='w' */
 									cur_state->init_idents[2] = 0;
 									cur_state->init_idents[3] = 0;
+									cur_state->init_idents[4] = 0;
 									cur_state->init_idents_count = 2;
 								}
 								else
@@ -839,12 +841,13 @@ other			.
 									cur_state->init_idents[1] = 0;
 									cur_state->init_idents[2] = 0;
 									cur_state->init_idents[3] = 0;
+									cur_state->init_idents[4] = 0;
 									cur_state->init_idents_count = 1;
 								}
 							}
 							else
 							{
-								/* nested END;: leave identifiers/cancel intact */
+								/* nested END;: leave init_idents/cancel intact */
 								cur_state->ora_plsql_expect_end_symbol = END_SYMBOL_INVALID;
 							}
 							skip_this_semi = true;
@@ -1139,6 +1142,8 @@ other			.
 						pg_strcasecmp(yytext, "function") == 0 ||
 						pg_strcasecmp(yytext, "procedure") == 0 ||
 						pg_strcasecmp(yytext, "package") == 0 ||
+						pg_strcasecmp(yytext, "type") == 0 ||
+						pg_strcasecmp(yytext, "body") == 0 ||
 						pg_strcasecmp(yytext, "or") == 0 ||
 						pg_strcasecmp(yytext, "replace") == 0)
 					{
@@ -1172,7 +1177,7 @@ other			.
 						cur_state->ora_plsql_expect_end_symbol = END_SYMBOL_INVALID;
 					/*
 					 * Simply discard EDITIONABLE and NONEDITIONABLE that occur in
-					 * the first 4 identifiers at the beginning of the command.
+						 * the first few identifiers at the beginning of the command.
 					 * Also discard identifiers inside parentheses — this lets
 					 * EXPLAIN (COSTS OFF) WITH FUNCTION be recognized by the
 					 * scanner even though options appear between EXPLAIN and WITH.
@@ -1183,9 +1188,18 @@ other			.
 						cur_state->init_idents_count++;
 
 					if (((cur_state->init_idents[0] == 'c' &&
-						  (cur_state->init_idents[1] == 'f' || cur_state->init_idents[1] == 'p' ||
-						   (cur_state->init_idents[1] == 'o' && cur_state->init_idents[2] == 'r' &&
-							(cur_state->init_idents[3] == 'f' || cur_state->init_idents[3] == 'p')))) ||
+							  (cur_state->init_idents[1] == 'f' ||
+							   cur_state->init_idents[1] == 'p' ||
+							   (cur_state->init_idents[1] == 'o' &&
+								cur_state->init_idents[2] == 'r' &&
+								(cur_state->init_idents[3] == 'f' ||
+								 cur_state->init_idents[3] == 'p')) ||
+							   (cur_state->init_idents[1] == 't' &&
+								cur_state->init_idents[2] == 'b') ||
+							   (cur_state->init_idents[1] == 'o' &&
+								cur_state->init_idents[2] == 'r' &&
+								cur_state->init_idents[3] == 't' &&
+								cur_state->init_idents[4] == 'b'))) ||
 						 (cur_state->init_idents[0] == 'w' &&
 						  (cur_state->init_idents[1] == 'f' || cur_state->init_idents[1] == 'p')) ||
 						 /* EXPLAIN WITH FUNCTION/PROCEDURE */
@@ -1940,47 +1954,38 @@ ora_psqlscan_test_variable(PsqlScanState state, const char *txt, int len)
 	}
 }
 
+/*
+ * Called by the unquoted '/' rule, so slashes inside strings and comments
+ * have already been excluded by the lexer.  Readline can supply several
+ * logical lines in one buffer (for example, with bracketed paste).  Inspect
+ * only the line containing this slash, not the whole input buffer.
+ */
 bool
-is_oracle_slash(PsqlScanState state, const char *line)
+is_oracle_slash(PsqlScanState state, const char *line, int offset)
 {
-	bool result = false;
+	const char *p;
 
-	switch (state->start_state)
+	/* A substituted variable is not a standalone client command. */
+	if (state->buffer_stack != NULL)
+		return false;
+
+	Assert(line[offset] == '/');
+
+	for (p = line + offset; p > line;)
 	{
-		case INITIAL:
-		case xqs:	/* we treat these like INITIAL */
-			{
-				int len, i;
-				bool has_slash = false;
+		char		ch = *--p;
 
-				len = strlen(line);
-				for (i = 0; i < len; i++)
-				{
-					/* allow special char */
-					if (line[i] == '\t' ||
-						line[i] == '\n' ||
-						line[i] == '\r' ||
-						line[i] == ' ')
-						continue;
-
-					if (line[i] == '/')
-					{
-						if (has_slash)
-							break;
-						has_slash = true;
-						continue;
-					}
-					/* others */
-					break;
-				}
-
-				if (i == len && has_slash)
-					result = true;
-			}
+		if (ch == '\n' || ch == '\r')
 			break;
-		default:
-			break;
+		if (ch != ' ' && ch != '\t')
+			return false;
 	}
 
-	return result;
+	for (p = line + offset + 1; *p && *p != '\n' && *p != '\r'; p++)
+	{
+		if (*p != ' ' && *p != '\t')
+			return false;
+	}
+
+	return true;
 }
