@@ -7019,6 +7019,13 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 		Np->number_p = Np->number;
 	else
 		Np->number_p = Np->number + 1;	/* first char is space for sign */
+
+	/* a model such as '""' has no nodes for the reverse matching below */
+	if (node->type == NODE_TYPE_END)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("invalid number format model")));
+
 	/**
 	 *Reverse matching, if the match does not match, an error is reported
 	 */

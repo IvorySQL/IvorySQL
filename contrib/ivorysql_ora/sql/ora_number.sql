@@ -982,6 +982,7 @@ SELECT to_number(to_char(-1234.5, '$9,999.99'), '$9,999.99') AS round_trip;
 SELECT to_number('$-123', '$999') AS sign_after_dollar;
 SELECT to_number('1$23', '$999') AS dollar_inside_value;
 SELECT to_number('$1', '$$9') AS two_dollars_in_model;
+SELECT to_number('$1', '""$') AS only_dollar_in_model;
 -- PostgreSQL mode keeps $ as a literal character
 SET ivorysql.compatible_mode = pg;
 SELECT '[' || to_char(-123, '$999') || ']' AS pg_literal;
