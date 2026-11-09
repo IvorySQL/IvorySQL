@@ -121,8 +121,8 @@ utl_url_charset_to_encoding(text *charset)
 	/*
 	 * Oracle documents that url_charset accepts the Oracle naming
 	 * conventions as well as IANA names.  Map the common Oracle names for
-	 * the encodings PostgreSQL supports; names for encodings PostgreSQL
-	 * does not have (e.g. CL8ISO8859P5 for ISO 8859-5) are deliberately
+	 * the encodings PostgreSQL knows (server encodings and conversion
+	 * encodings alike); names for encodings PostgreSQL does not have are
 	 * absent and still report the unrecognized-set error.
 	 */
 	static const struct
@@ -141,6 +141,7 @@ utl_url_charset_to_encoding(text *charset)
 		{"ZHT16BIG5", "BIG5"},
 		{"KO16KSC5601", "EUC_KR"},
 		{"KO16MSWIN949", "UHC"},
+		{"CL8ISO8859P5", "ISO_8859_5"},
 	};
 
 	char	   *name = text_to_cstring(charset);
