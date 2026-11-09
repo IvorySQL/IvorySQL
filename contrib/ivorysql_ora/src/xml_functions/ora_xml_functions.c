@@ -536,12 +536,35 @@ register_ns_from_csting(xmlXPathContextPtr xpathCtx, char* nsList)
 	/* process the original string, removing leading and trailing spaces */
 	nslist = ivy_trim(nsList);
 
-	f = strchr(nslist, (int)'=');
-	while (f != NULL)
+	/*
+	 * Scan for the "=" that separates a prefix from its URI.  An equals
+	 * sign inside the quoted URI value (e.g. xmlns:p="...?version=1")
+	 * belongs to the URI and must not fail the separator shape check, so
+	 * quoted sections are skipped wholesale; an unterminated quote is
+	 * rejected.  Unlike the previous strchr() loop this also never reads
+	 * before the start of the string.
+	 */
+	f = nslist;
+	while (*f)
 	{
-		if ((*(f - 1) == ' ') || (*(f + 1) != '"') || (*(f + 2) == ' '))
-			elog(ERROR, "Invalid namespace");
-		f = strchr(f + 1, (int)'=');
+		if (*f == '"')
+		{
+			f++;
+			while (*f && *f != '"')
+				f++;
+			if (*f == '\0')
+				elog(ERROR, "Invalid namespace");
+			f++;
+			continue;
+		}
+		if (*f == '=')
+		{
+			if ((f == nslist || *(f - 1) == ' ') && f[1] == '"' && f[2] != ' ')
+				f++;
+			else
+				elog(ERROR, "Invalid namespace");
+		}
+		f++;
 	}
 
 	sub = strtok(nslist, " ");
