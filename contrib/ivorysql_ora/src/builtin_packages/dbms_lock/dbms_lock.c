@@ -128,6 +128,14 @@ dbms_lock_record_acquire(int64 key, int8 mode)
 
     entry->key = key;
     entry->mode = mode;
+    /*
+     * One refcount suffices because a single entry never tracks two modes:
+     * when a session already holds a key in one advisory mode and requests
+     * a conflicting mode for it, PostgreSQL's lock manager self-deadlocks
+     * the request (the holder is the requester itself), so the second
+     * REQUEST errors out before this record is updated.  Only repeated
+     * requests of the same mode stack here.
+     */
     if (found)
         entry->refcount++;      /* re-request: PostgreSQL bumps its local
                                  * lock count, so we must track it too */
