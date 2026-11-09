@@ -833,6 +833,33 @@ DROP TABLE regexp_temp;
 SELECT SUBSTRB('ABCDEFG',5,4.2) "Substring with bytes" FROM DUAL;
 SELECT SUBSTRB('ABCDEFG',5) "Substring with bytes" FROM DUAL;
 
+-- A byte range that ends or starts inside a multibyte character is padded
+-- with spaces, so that the result is still valid in the database encoding,
+-- but the padded result must keep the requested byte length.
+-- '数据库' is 9 bytes in UTF-8 (3 bytes per character), 'a' || emoji || 'b'
+-- is 6 bytes: 'a', one 4-byte emoji and 'b'.
+SELECT LENGTHB(SUBSTRB('数据库',1,2)) len, ENCODE(CONVERT_TO(SUBSTRB('数据库',1,2),'UTF8'),'hex') hex FROM DUAL;
+SELECT LENGTHB(SUBSTRB('数据库',2,3)) len, ENCODE(CONVERT_TO(SUBSTRB('数据库',2,3),'UTF8'),'hex') hex FROM DUAL;
+SELECT LENGTHB(SUBSTRB('数据库',4,2)) len, ENCODE(CONVERT_TO(SUBSTRB('数据库',4,2),'UTF8'),'hex') hex FROM DUAL;
+SELECT LENGTHB(SUBSTRB('数据库',5,1)) len, ENCODE(CONVERT_TO(SUBSTRB('数据库',5,1),'UTF8'),'hex') hex FROM DUAL;
+SELECT LENGTHB(SUBSTRB('a😀b',1,3)) len, ENCODE(CONVERT_TO(SUBSTRB('a😀b',1,3),'UTF8'),'hex') hex FROM DUAL;
+SELECT LENGTHB(SUBSTRB('a😀b',2,2)) len, ENCODE(CONVERT_TO(SUBSTRB('a😀b',2,2),'UTF8'),'hex') hex FROM DUAL;
+-- A range that starts and ends on character boundaries is not padded.
+SELECT SUBSTRB('数据库',1,3) val, LENGTHB(SUBSTRB('数据库',1,3)) len FROM DUAL;
+SELECT SUBSTRB('数据库',4,3) val, LENGTHB(SUBSTRB('数据库',4,3)) len FROM DUAL;
+SELECT SUBSTRB('数据库',7) val, LENGTHB(SUBSTRB('数据库',7)) len FROM DUAL;
+-- ASCII input is unaffected by the padding.
+SELECT SUBSTRB('abcdef',1,2) val, LENGTHB(SUBSTRB('abcdef',1,2)) len FROM DUAL;
+SELECT SUBSTRB('abcdef',-2,3) val, LENGTHB(SUBSTRB('abcdef',-2,3)) len FROM DUAL;
+-- A range clipped by the end of the string keeps the remaining byte count.
+SELECT LENGTHB(SUBSTRB('数据库',8,5)) len, ENCODE(CONVERT_TO(SUBSTRB('数据库',8,5),'UTF8'),'hex') hex FROM DUAL;
+SELECT SUBSTRB('数据库',10,2) IS NULL empty_range FROM DUAL;
+-- Negative position, length zero and NULL arguments.
+SELECT LENGTHB(SUBSTRB('数据库',-8,3)) len, ENCODE(CONVERT_TO(SUBSTRB('数据库',-8,3),'UTF8'),'hex') hex FROM DUAL;
+SELECT SUBSTRB('数据库',1,0) IS NULL zero_length FROM DUAL;
+SELECT SUBSTRB('数据库',1,NULL::int) IS NULL null_len,
+       SUBSTRB(NULL::text,1,2) IS NULL null_str FROM DUAL;
+
 /*
  * instrb
  */
