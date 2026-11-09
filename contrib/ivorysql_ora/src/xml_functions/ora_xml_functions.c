@@ -559,9 +559,13 @@ register_ns_from_csting(xmlXPathContextPtr xpathCtx, char* nsList)
 		}
 		if (*f == '=')
 		{
-			if ((f == nslist || *(f - 1) == ' ') && f[1] == '"' && f[2] != ' ')
-				f++;
-			else
+			/*
+			 * Separator shape check, as before: the '=' must follow the
+			 * prefix (not a space), be followed by the opening quote and
+			 * not by a space.  Equals signs inside the quoted URI were
+			 * already skipped above.
+			 */
+			if (f == nslist || *(f - 1) == ' ' || f[1] != '"' || f[2] == ' ')
 				elog(ERROR, "Invalid namespace");
 		}
 		f++;
