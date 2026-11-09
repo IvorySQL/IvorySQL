@@ -6839,6 +6839,11 @@ NUM_eat_non_data_chars(NUMProc *Np, int n, size_t input_len)
 	}
 }
 
+/* literal nodes have no keyword */
+#define ORA_NUM_IS_DIGIT_NODE(n) \
+	((n)->type == NODE_TYPE_ACTION && \
+	 ((n)->key->id == NUM_9 || (n)->key->id == NUM_0))
+
 static char *
 ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 		   char *number, int from_char_input_len, int to_char_out_pre_spaces,
@@ -6848,6 +6853,7 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 	NUMProc		_Np,
 			   *Np = &_Np;
 	char *input_tem;
+	char *input_rest;
 	bool isrigth;
 
 	MemSet(Np, 0, sizeof(NUMProc));
@@ -7038,15 +7044,17 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 			 * and the special case is when the number of 9 in the fractional part of the type is ignored
 			 */
 			case NUM_9:
+			case NUM_0:
 				if (!isdigit((unsigned char) *input_tem))
 				{
 					if (*input_tem == '.' && isrigth == true)
 					{
-						while ((ntem - 1)->key->id == NUM_9 && (ntem - 1) != node)
+						if (ntem != node)
 						{
-							ntem--;
+							while ((ntem - 1) != node && ORA_NUM_IS_DIGIT_NODE(ntem - 1))
+								ntem--;
 						}
-						if ((ntem - 1)->key->id != NUM_9)
+						if (ntem == node || !ORA_NUM_IS_DIGIT_NODE(ntem - 1))
 						{
 							input_tem++;
 							break;
@@ -7084,20 +7092,21 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 			 * can't put it at the head or the tail
 			 */
 			case NUM_G:
+				if (*input_tem != ',')
+				{
+					ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							errmsg("invalid number format model")));
+				}
+				if (isrigth == true)
+					isrigth = false;
+
 				if (ntem == node || (ntem+1)->type == NODE_TYPE_END)
 				{
 					ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							errmsg("invalid number format model")));
 				}
-				if (*input_tem != ',')
-				{
-					ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-							errmsg("invalid number")));
-				}
-				if (isrigth == true)
-					isrigth = false;
 				break;
 
 			case NUM_PR:
@@ -7157,15 +7166,31 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 	}while(ntem != node && input_tem > Np->inout);
 
 	/**
-	 * Error if the value has more digits than the format model
+	 * What the format model did not consume may only be blanks followed by
+	 * a sign: the '<' that pairs with a trailing '>' for PR, or '-' or '+'
+	 * when the model has no sign element of its own.
 	 */
-	if (ntem == node && input_tem > Np->inout)
+	input_rest = Np->inout;
+	while (input_rest < input_tem && *input_rest == ' ')
+		input_rest++;
+	if (IS_BRACKET(Np->Num) && from_char_input_len > 0 &&
+		Np->inout[from_char_input_len - 1] == '>')
 	{
-		if ( isdigit((unsigned char) *(input_tem - 1)) || *(input_tem - 1) == '.' || *(input_tem - 1) == ',' )
+		if (input_rest == input_tem || *input_rest != '<')
 			ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 					errmsg("invalid number")));
+		input_rest++;
 	}
+	else if (input_rest < input_tem &&
+			 (*input_rest == '-' || *input_rest == '+') &&
+			 !IS_LSIGN(Np->Num) && !IS_MINUS(Np->Num) &&
+			 !IS_PLUS(Np->Num) && !IS_BRACKET(Np->Num))
+		input_rest++;
+	if (input_rest != input_tem)
+		ereport(ERROR,
+			(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+				errmsg("invalid number")));
 
 	n = ntem;
 

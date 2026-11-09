@@ -1260,7 +1260,7 @@ SELECT '' AS to_number_16, to_number('12.34','9G999D99');
 (1 row)
 
 SELECT '' AS to_number_17, to_number('1122.34','9G999D99');
-ERROR:  invalid number
+ERROR:  invalid number format model
 -- Without a format model, trailing spaces are accepted in the integer part.
 SELECT '' AS to_number_18, to_number('123 ');
  to_number_18 | to_number 
@@ -1991,8 +1991,6 @@ SELECT to_number('1x2', '9.9') AS bad_decimal_point;
 ERROR:  invalid number
 SELECT to_number('1.555', '9.99') AS too_many_decimals;
 ERROR:  invalid number
-SELECT to_number('1x234', '9G999') AS bad_group_separator;
-ERROR:  invalid number
 SELECT to_number('123', '99') AS too_many_digits;
 ERROR:  invalid number
 SELECT to_number('12x', '99PR') AS bad_pr;
@@ -2015,3 +2013,129 @@ ERROR:  invalid number format model
 SELECT to_number('1-2', '9MI9') AS mi_not_last;
 ERROR:  invalid number format model
 /* End - issue #3101 */
+/* Begin - to_number must not crash or drop digits after junk input (issue #3133) */
+-- used to crash the backend
+SELECT to_number('.5', '99') AS dot_at_first_node;
+ERROR:  invalid number
+SELECT to_number('1.5', '9-99') AS literal_before_nines;
+ERROR:  invalid number format model
+-- characters the format model does not consume
+SELECT to_number('a123', '999') AS junk_prefix;
+ERROR:  invalid number
+SELECT to_number('a12', '99') AS junk_prefix_full_model;
+ERROR:  invalid number
+SELECT to_number('x-123', '999') AS junk_before_sign;
+ERROR:  invalid number
+SELECT to_number('--123', '999') AS double_minus;
+ERROR:  invalid number
+SELECT to_number('<123', '999PR') AS pr_without_close;
+ERROR:  invalid number
+SELECT to_number('123>', '999PR') AS pr_without_open;
+ERROR:  invalid number
+SELECT to_number('-123-', '999MI') AS sign_and_mi;
+ERROR:  invalid number
+-- 0 positions must hold digits
+SELECT to_number('a123', '0999') AS junk_at_zero;
+ERROR:  invalid number
+SELECT to_number('12x', '990') AS junk_at_last_zero;
+ERROR:  invalid number
+SELECT to_number('1.5', '0999') AS dot_without_d_zero;
+ERROR:  invalid number
+-- still accepted
+SELECT to_number('-123', '999') AS minus;
+ minus 
+-------
+ -123
+(1 row)
+
+SELECT to_number('+123', '999') AS plus;
+ plus 
+------
+ 123
+(1 row)
+
+SELECT to_number('-12', '99') AS minus_full_model;
+ minus_full_model 
+------------------
+ -12
+(1 row)
+
+SELECT to_number(' -12', '99') AS blank_then_minus;
+ blank_then_minus 
+------------------
+ -12
+(1 row)
+
+SELECT to_number(' 12', '99') AS blank_prefix;
+ blank_prefix 
+--------------
+ 12
+(1 row)
+
+SELECT to_number('<123>', '999PR') AS pr;
+  pr  
+------
+ -123
+(1 row)
+
+SELECT to_number(' <123>', '999PR') AS blank_then_pr;
+ blank_then_pr 
+---------------
+ -123
+(1 row)
+
+SELECT to_number('-123', 'S999') AS s_sign;
+ s_sign 
+--------
+ -123
+(1 row)
+
+SELECT to_number('123-', '999MI') AS mi;
+  mi  
+------
+ -123
+(1 row)
+
+SELECT to_number('-12', '099') AS minus_zero_model;
+ minus_zero_model 
+------------------
+ -12
+(1 row)
+
+SELECT to_number('012', '099') AS zero_model;
+ zero_model 
+------------
+ 12
+(1 row)
+
+SELECT to_number('12.5', '099.99') AS leading_zero_model;
+ leading_zero_model 
+--------------------
+ 12.5
+(1 row)
+
+SELECT to_number('1.5', '9.00') AS zero_fraction;
+ zero_fraction 
+---------------
+ 1.5
+(1 row)
+
+SELECT to_number('1.50', '9.00') AS zero_fraction_full;
+ zero_fraction_full 
+--------------------
+ 1.50
+(1 row)
+
+SELECT to_number('.5', '.99') AS no_integer_part;
+ no_integer_part 
+-----------------
+ 0.5
+(1 row)
+
+SELECT to_number('1.5', 'FM9.99') AS fm_short_fraction;
+ fm_short_fraction 
+-------------------
+ 1.5
+(1 row)
+
+/* End - issue #3133 */

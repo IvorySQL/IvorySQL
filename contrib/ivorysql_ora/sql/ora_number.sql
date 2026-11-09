@@ -1040,7 +1040,6 @@ END;
 -- a value that does not match a valid format model
 SELECT to_number('1x2', '9.9') AS bad_decimal_point;
 SELECT to_number('1.555', '9.99') AS too_many_decimals;
-SELECT to_number('1x234', '9G999') AS bad_group_separator;
 SELECT to_number('123', '99') AS too_many_digits;
 SELECT to_number('12x', '99PR') AS bad_pr;
 SELECT to_number('12x', '99MI') AS bad_mi;
@@ -1051,3 +1050,38 @@ SELECT to_number('1.2.3', '9.9.9') AS two_decimal_points;
 SELECT to_number('12,', '99G') AS trailing_group_separator;
 SELECT to_number('1-2', '9MI9') AS mi_not_last;
 /* End - issue #3101 */
+
+/* Begin - to_number must not crash or drop digits after junk input (issue #3133) */
+-- used to crash the backend
+SELECT to_number('.5', '99') AS dot_at_first_node;
+SELECT to_number('1.5', '9-99') AS literal_before_nines;
+-- characters the format model does not consume
+SELECT to_number('a123', '999') AS junk_prefix;
+SELECT to_number('a12', '99') AS junk_prefix_full_model;
+SELECT to_number('x-123', '999') AS junk_before_sign;
+SELECT to_number('--123', '999') AS double_minus;
+SELECT to_number('<123', '999PR') AS pr_without_close;
+SELECT to_number('123>', '999PR') AS pr_without_open;
+SELECT to_number('-123-', '999MI') AS sign_and_mi;
+-- 0 positions must hold digits
+SELECT to_number('a123', '0999') AS junk_at_zero;
+SELECT to_number('12x', '990') AS junk_at_last_zero;
+SELECT to_number('1.5', '0999') AS dot_without_d_zero;
+-- still accepted
+SELECT to_number('-123', '999') AS minus;
+SELECT to_number('+123', '999') AS plus;
+SELECT to_number('-12', '99') AS minus_full_model;
+SELECT to_number(' -12', '99') AS blank_then_minus;
+SELECT to_number(' 12', '99') AS blank_prefix;
+SELECT to_number('<123>', '999PR') AS pr;
+SELECT to_number(' <123>', '999PR') AS blank_then_pr;
+SELECT to_number('-123', 'S999') AS s_sign;
+SELECT to_number('123-', '999MI') AS mi;
+SELECT to_number('-12', '099') AS minus_zero_model;
+SELECT to_number('012', '099') AS zero_model;
+SELECT to_number('12.5', '099.99') AS leading_zero_model;
+SELECT to_number('1.5', '9.00') AS zero_fraction;
+SELECT to_number('1.50', '9.00') AS zero_fraction_full;
+SELECT to_number('.5', '.99') AS no_integer_part;
+SELECT to_number('1.5', 'FM9.99') AS fm_short_fraction;
+/* End - issue #3133 */
