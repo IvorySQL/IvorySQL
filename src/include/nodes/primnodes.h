@@ -1532,7 +1532,10 @@ typedef struct CoalesceExpr
 typedef enum MinMaxOp
 {
 	IS_GREATEST,
-	IS_LEAST
+	IS_LEAST,
+	/* Append variants so existing stored expressions keep their semantics. */
+	IS_ORACLE_GREATEST,
+	IS_ORACLE_LEAST
 } MinMaxOp;
 
 typedef struct MinMaxExpr

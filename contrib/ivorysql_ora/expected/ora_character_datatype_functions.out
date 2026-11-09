@@ -1438,7 +1438,7 @@ select * from t_regexp_like where regexp_like(value,'ABC', 'n');
 (0 rows)
 
 select * from t_regexp_like where regexp_like(value,'ABC', 'p');
-ERROR:  invalid option of regexp_like: p
+ERROR:  illegal argument for function
 select * from t_regexp_like where regexp_like(value,'ABC', 'c');
  id | value 
 ----+-------

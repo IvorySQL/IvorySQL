@@ -39,6 +39,7 @@
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
 #include "utils/array.h"
+#include "utils/builtins.h"
 #include "utils/float.h"
 #include "utils/fmgrprotos.h"
 #include "utils/sortsupport.h"
@@ -47,9 +48,11 @@
 #include "utils/guc.h"
 #include "utils/ora_compatible.h"
 
+#include "../include/common_datatypes.h"
 
 PG_FUNCTION_INFO_V1(binary_float_in);
 PG_FUNCTION_INFO_V1(binary_float_out);
+PG_FUNCTION_INFO_V1(binary_float_to_char);
 PG_FUNCTION_INFO_V1(binary_float_recv);
 PG_FUNCTION_INFO_V1(binary_float_send);
 PG_FUNCTION_INFO_V1(number_binary_float);
@@ -568,23 +571,33 @@ Datum
 binary_float_out(PG_FUNCTION_ARGS)
 {
 	float4		num = PG_GETARG_FLOAT4(0);
-	char	   *ascii = (char *) palloc(32);
+	char	   *ascii;
 	int			ndig = FLT_DIG + extra_float_digits;
 
+	if (ORA_PARSER == compatible_db)
+		PG_RETURN_CSTRING(ora_binary_float_to_cstring(num,
+													ORACLE_BINARY_FLOAT_DIGITS));
+
+	ascii = palloc(32);
 	if (extra_float_digits > 0)
 	{
-		if (ORA_PARSER == compatible_db)
-			binary_float_to_shortest_decimal_buf(num, ascii);
-		else
-			float_to_shortest_decimal_buf(num, ascii);
+		float_to_shortest_decimal_buf(num, ascii);
 		PG_RETURN_CSTRING(ascii);
 	}
 
-	if (ORA_PARSER == compatible_db)
-		(void) ivy_strfromd(ascii, 32, ndig, num);
-	else
-		(void) pg_strfromd(ascii, 32, ndig, num);
+	(void) pg_strfromd(ascii, 32, ndig, num);
 	PG_RETURN_CSTRING(ascii);
+}
+
+Datum
+binary_float_to_char(PG_FUNCTION_ARGS)
+{
+	char	   *ascii = ora_binary_float_to_cstring(PG_GETARG_FLOAT4(0),
+													 ORACLE_BINARY_FLOAT_DIGITS);
+	text	   *result = cstring_to_text(ascii);
+
+	pfree(ascii);
+	PG_RETURN_TEXT_P(result);
 }
 
 /*
