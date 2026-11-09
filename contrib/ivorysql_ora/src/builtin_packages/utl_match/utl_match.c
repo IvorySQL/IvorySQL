@@ -390,8 +390,8 @@ ora_utl_match_jaro_winkler(PG_FUNCTION_ARGS)
 /*
  * sys.ora_utl_match_jaro_winkler_similarity(s1 text, s2 text) RETURNS integer
  *
- * Returns JARO_WINKLER(s1, s2) * 100, rounded to the nearest integer
- * (0..100).  Like Oracle, returns 0 if either input is NULL.
+ * Returns JARO_WINKLER(s1, s2) * 100 truncated to an integer (0..100).  Like
+ * Oracle, returns 0 if either input is NULL.
  */
 Datum
 ora_utl_match_jaro_winkler_similarity(PG_FUNCTION_ARGS)
@@ -411,7 +411,11 @@ ora_utl_match_jaro_winkler_similarity(PG_FUNCTION_ARGS)
 					  VARSIZE_ANY_EXHDR(t1),
 					  (const unsigned char *) VARDATA_ANY(t2),
 					  VARSIZE_ANY_EXHDR(t2));
-	res = round_to_int(jw * 100.0);
+	/*
+	 * Oracle truncates here.  EDIT_DISTANCE_SIMILARITY rounds half up, which
+	 * is why that one still goes through round_to_int().
+	 */
+	res = (int) floor(jw * 100.0);
 
 	PG_RETURN_INT32(res);
 }
