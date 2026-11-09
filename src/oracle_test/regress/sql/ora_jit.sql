@@ -1,0 +1,34 @@
+-- Exercise Oracle expression steps with JIT when LLVM is available.
+-- The same results are required in builds without LLVM.
+SET jit = on;
+SET jit_above_cost = 0;
+SET jit_inline_above_cost = -1;
+SET jit_optimize_above_cost = -1;
+
+CREATE TABLE ora_jit_test (id int);
+INSERT INTO ora_jit_test VALUES (1), (2), (3);
+SELECT ROWNUM, id FROM ora_jit_test WHERE ROWNUM <= 3;
+
+CREATE FUNCTION ora_jit_out(input_value int, output_value OUT int)
+RETURN int AS
+BEGIN
+  output_value := input_value * 2;
+  RETURN input_value + 1;
+END;
+/
+
+DECLARE
+  v_out int;
+  v_result int;
+BEGIN
+  SELECT ora_jit_out(g, v_out) INTO v_result FROM generate_series(3, 3) g;
+  RAISE NOTICE 'return=%, out=%', v_result, v_out;
+END;
+/
+
+DROP FUNCTION ora_jit_out(int, int);
+DROP TABLE ora_jit_test;
+RESET jit;
+RESET jit_above_cost;
+RESET jit_inline_above_cost;
+RESET jit_optimize_above_cost;

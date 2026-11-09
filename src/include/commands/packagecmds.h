@@ -36,6 +36,12 @@
 
 extern ObjectAddress CreatePackage(CreatePackageStmt *stmt);
 extern ObjectAddress CreatePackageBody(CreatePackageBodyStmt *stmt);
+extern ObjectAddress CreateObjectTypePackage(Oid typeOid, List *methods,
+										 bool replace, bool instantiable,
+										 bool final);
+extern ObjectAddress CreateObjectTypeBody(CreateTypeBodyStmt *stmt);
+extern Oid GetObjectTypePackageOid(Oid typeOid, bool missing_ok);
+extern char *GetObjectTypeComparisonMethod(Oid typeOid, bool *isOrder);
 extern ObjectAddress AlterPackage(AlterPackageStmt *stmt);
 extern Oid LookupPackageByNames(List *pkgname, bool missing_ok);
 extern Oid LookupPackageBodyByNames(List *pkgname, bool missing_ok);
@@ -57,4 +63,3 @@ extern HeapTuple get_functup_bytypenames(Oid namespaceid,
 						oidvector *parametertypes,
 						Datum allParametertypes);
 #endif
-

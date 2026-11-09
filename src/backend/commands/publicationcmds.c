@@ -544,7 +544,8 @@ static bool
 contain_mutable_or_user_functions_checker(Oid func_id, void *context)
 {
 	return (func_volatile(func_id) != PROVOLATILE_IMMUTABLE ||
-			func_id >= FirstNormalObjectId);
+			(func_id >= FirstNormalObjectId &&
+			 !is_ora_builtin_expr_function(func_id)));
 }
 
 /*

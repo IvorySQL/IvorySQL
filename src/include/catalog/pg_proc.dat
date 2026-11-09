@@ -12643,7 +12643,7 @@
   prorettype => 'bool', proargtypes => 'oid text', prosrc => 'has_package_privilege_id' },
 { oid => '4648', descr => 'get all subprocs in packages',
   proname => 'pg_get_subprocs_in_package', prorows => '1000', proretset => 't',
-  provolatile => 's', proparallel => 'r', prorettype => 'record',
+  provolatile => 's', proparallel => 'u', prorettype => 'record',
   proargtypes => '', proallargtypes => '{oid,oid,oid,text,text,int4,char,int4,int4,oid,text,oidvector,_text,_char,_text,_text,bool,_text,_text,_int4,_int4,_int4}',
   proargmodes => '{o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o}',
   proargnames => '{oid,namespace,owner,package_name,proc_name,fno,kind,nargs,ndefaults,rettype,rettypname,argtypes,argtypenames,argmodes,argnames,argdefaults,prosecdef,type_names,type_object_types,data_lengths,data_precisions,data_scales}',
@@ -12760,5 +12760,20 @@
 { oid => '6462', descr => 'hash',
   proname => 'hashoid8extended', prorettype => 'int8',
   proargtypes => 'oid8 int8', prosrc => 'hashoid8extended' },
+
+# Oracle object-table REF dereference.  The second argument is a typed NULL
+# supplied by parse analysis to select the target composite return type.
+# object_ref is installed after bootstrap, so the anyelement input is checked
+# against that type (resolving domains) in C before accessing the Datum.
+# Direct calls are supported and use the caller's SELECT privileges.
+{ oid => '9700', descr => 'dereference an Oracle object-table REF',
+  proname => 'ora_deref_internal', pronamespace => 'sys',
+  proisstrict => 'f', provolatile => 's', proparallel => 'u', prorettype => 'anycompatible',
+  proargtypes => 'anyelement anycompatible', prosrc => 'ora_deref_internal' },
+
+{ oid => '9701', descr => 'set the ROWID of one restored row in the current command',
+  proname => 'ora_set_next_rowid', pronamespace => 'sys',
+  proisstrict => 't', provolatile => 'v', proparallel => 'u', prorettype => 'void',
+  proargtypes => 'regclass int8', prosrc => 'ora_set_next_rowid' },
 
 ]

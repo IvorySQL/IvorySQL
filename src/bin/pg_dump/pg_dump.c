@@ -130,6 +130,13 @@ static const char *const SeqTypeNames[] =
 	[SEQTYPE_BIGINT] = "bigint",
 };
 
+static const char *const SeqTypeInternalNames[] =
+{
+	[SEQTYPE_SMALLINT] = "int2",
+	[SEQTYPE_INTEGER] = "int4",
+	[SEQTYPE_BIGINT] = "int8",
+};
+
 StaticAssertDecl(lengthof(SeqTypeNames) == (SEQTYPE_BIGINT + 1),
 				 "array length mismatch");
 
@@ -295,6 +302,7 @@ static void dumpDumpableObject(Archive *fout, DumpableObject *dobj);
 static void dumpNamespace(Archive *fout, const NamespaceInfo *nspinfo);
 static void dumpExtension(Archive *fout, const ExtensionInfo *extinfo);
 static void dumpType(Archive *fout, const TypeInfo *tyinfo);
+static bool hasOracleRefTypeCatalog(Archive *fout);
 static void dumpBaseType(Archive *fout, const TypeInfo *tyinfo);
 static void dumpEnumType(Archive *fout, const TypeInfo *tyinfo);
 static void dumpRangeType(Archive *fout, const TypeInfo *tyinfo);
@@ -321,6 +329,8 @@ static void dumpTrigger(Archive *fout, const TriggerInfo *tginfo);
 static void dumpEventTrigger(Archive *fout, const EventTriggerInfo *evtinfo);
 static void dumpTable(Archive *fout, const TableInfo *tbinfo);
 static void dumpTableSchema(Archive *fout, const TableInfo *tbinfo);
+static void appendForceViewStmt(Archive *fout, PQExpBuffer q,
+								const TableInfo *tbinfo);
 static void dumpTableAttach(Archive *fout, const TableAttachInfo *attachinfo);
 static void dumpAttrDef(Archive *fout, const AttrDefInfo *adinfo);
 static void collectSequences(Archive *fout);
@@ -2118,6 +2128,14 @@ selectDumpableTable(TableInfo *tbinfo, Archive *fout)
 static void
 selectDumpableType(TypeInfo *tyinfo, Archive *fout)
 {
+	/* CREATE TYPE AS OBJECT regenerates its private REF domain. */
+	if (OidIsValid(tyinfo->refBaseOid))
+	{
+		tyinfo->dobj.objType = DO_DUMMY_TYPE;
+		tyinfo->dobj.dump = DUMP_COMPONENT_NONE;
+		return;
+	}
+
 	/* skip complex types, except for standalone composite types */
 	if (OidIsValid(tyinfo->typrelid) &&
 		tyinfo->typrelkind != RELKIND_COMPOSITE_TYPE)
@@ -2555,8 +2573,19 @@ dumpTableData_insert(Archive *fout, const void *dcontext)
 	PGresult   *res;
 	int			nfields,
 				i;
-	int			rows_per_statement = dopt->dump_inserts;
+	int			rows_per_statement = tbinfo->relhasrowid ? 1 : dopt->dump_inserts;
 	int			rows_this_statement = 0;
+	PQExpBuffer rowidRelname = NULL;
+
+	if (tbinfo->relhasrowid)
+	{
+		/*
+		 * Keep the trusted ROWID override inside the INSERT's FROM clause.
+		 * A separate SELECT must not leave restore state for a later command.
+		 */
+		rowidRelname = createPQExpBuffer();
+		appendStringLiteralAH(rowidRelname, fmtQualifiedDumpable(tbinfo), fout);
+	}
 
 	/* Temporary allows to access to foreign tables to dump data */
 	if (tbinfo->relkind == RELKIND_FOREIGN_TABLE)
@@ -2576,7 +2605,8 @@ dumpTableData_insert(Archive *fout, const void *dcontext)
 	{
 		if (tbinfo->attisdropped[i])
 			continue;
-		if (tbinfo->attgenerated[i] && dopt->column_inserts)
+		if (tbinfo->attgenerated[i] &&
+			(dopt->column_inserts || tbinfo->relhasrowid))
 			continue;
 		if (nfields > 0)
 			appendPQExpBufferStr(q, ", ");
@@ -2587,8 +2617,14 @@ dumpTableData_insert(Archive *fout, const void *dcontext)
 		attgenerated[nfields] = tbinfo->attgenerated[i];
 		nfields++;
 	}
+	if (tbinfo->relhasrowid)
+	{
+		if (nfields > 0)
+			appendPQExpBufferStr(q, ", ");
+		appendPQExpBufferStr(q, "(rowid).rowno AS __ivory_ref_rowno");
+	}
 	/* Servers before 9.4 will complain about zero-column SELECT */
-	if (nfields == 0)
+	if (nfields == 0 && !tbinfo->relhasrowid)
 		appendPQExpBufferStr(q, "NULL");
 	appendPQExpBuffer(q, " FROM ONLY %s",
 					  fmtQualifiedDumpable(tbinfo));
@@ -2603,7 +2639,7 @@ dumpTableData_insert(Archive *fout, const void *dcontext)
 							  PGRES_TUPLES_OK);
 
 		/* cross-check field count, allowing for dummy NULL if any */
-		if (nfields != PQnfields(res) &&
+		if (nfields + (tbinfo->relhasrowid ? 1 : 0) != PQnfields(res) &&
 			!(nfields == 0 && PQnfields(res) == 1))
 			pg_fatal("wrong number of fields retrieved from table \"%s\"",
 					 tbinfo->dobj.name);
@@ -2613,7 +2649,7 @@ dumpTableData_insert(Archive *fout, const void *dcontext)
 		 * possible in "insertStmt", which we can then just print for each
 		 * statement. If the table happens to have zero dumpable columns then
 		 * this will be a complete statement, otherwise it will end in
-		 * "VALUES" and be ready to have the row's column values printed.
+		 * "VALUES" (or "SELECT" for ROWID tables) ready for the column values.
 		 */
 		if (insertStmt == NULL)
 		{
@@ -2637,14 +2673,14 @@ dumpTableData_insert(Archive *fout, const void *dcontext)
 							  fmtQualifiedDumpable(targettab));
 
 			/* corner case for zero-column table */
-			if (nfields == 0)
+			if (nfields == 0 && !tbinfo->relhasrowid)
 			{
 				appendPQExpBufferStr(insertStmt, "DEFAULT VALUES;\n");
 			}
 			else
 			{
 				/* append the list of column names if required */
-				if (dopt->column_inserts)
+				if (nfields > 0 && (dopt->column_inserts || tbinfo->relhasrowid))
 				{
 					appendPQExpBufferChar(insertStmt, '(');
 					for (int field = 0; field < nfields; field++)
@@ -2660,7 +2696,8 @@ dumpTableData_insert(Archive *fout, const void *dcontext)
 				if (tbinfo->needs_override)
 					appendPQExpBufferStr(insertStmt, "OVERRIDING SYSTEM VALUE ");
 
-				appendPQExpBufferStr(insertStmt, "VALUES");
+				appendPQExpBufferStr(insertStmt,
+									 tbinfo->relhasrowid ? "SELECT " : "VALUES");
 			}
 		}
 
@@ -2679,16 +2716,19 @@ dumpTableData_insert(Archive *fout, const void *dcontext)
 			 * given that using INSERTs is mostly only ever needed for
 			 * cross-database exports.
 			 */
-			if (nfields == 0)
+			if (nfields == 0 && !tbinfo->relhasrowid)
 				continue;
 
-			/* Emit a row heading */
-			if (rows_per_statement == 1)
-				archputs(" (", fout);
-			else if (rows_this_statement > 0)
-				archputs(",\n\t(", fout);
-			else
-				archputs("\n\t(", fout);
+			/* SELECT does not use the VALUES row delimiters. */
+			if (!tbinfo->relhasrowid)
+			{
+				if (rows_per_statement == 1)
+					archputs(" (", fout);
+				else if (rows_this_statement > 0)
+					archputs(",\n\t(", fout);
+				else
+					archputs("\n\t(", fout);
+			}
 
 			for (int field = 0; field < nfields; field++)
 			{
@@ -2761,7 +2801,12 @@ dumpTableData_insert(Archive *fout, const void *dcontext)
 			}
 
 			/* Terminate the row ... */
-			archputs(")", fout);
+			if (tbinfo->relhasrowid)
+				archprintf(fout,
+						   " FROM sys.ora_set_next_rowid(%s::regclass, %s) WHERE true",
+						   rowidRelname->data, PQgetvalue(res, tuple, nfields));
+			else
+				archputs(")", fout);
 
 			/* ... and the statement, if the target no. of rows is reached */
 			if (++rows_this_statement >= rows_per_statement)
@@ -2800,6 +2845,8 @@ dumpTableData_insert(Archive *fout, const void *dcontext)
 	if (insertStmt != NULL)
 		destroyPQExpBuffer(insertStmt);
 	free(attgenerated);
+	if (rowidRelname != NULL)
+		destroyPQExpBuffer(rowidRelname);
 
 	/* Revert back the setting */
 	if (tbinfo->relkind == RELKIND_FOREIGN_TABLE)
@@ -2904,7 +2951,7 @@ dumpTableData(Archive *fout, const TableDataInfo *tdinfo)
 	else
 		copyFrom = fmtQualifiedDumpable(tbinfo);
 
-	if (dopt->dump_inserts == 0)
+	if (dopt->dump_inserts == 0 && !tbinfo->relhasrowid)
 	{
 		/* Dump/restore using COPY */
 		dumpFn = dumpTableData_copy;
@@ -6290,6 +6337,24 @@ cleanup:
 	return extinfo;
 }
 
+/* Probe the catalog, since a same-version PostgreSQL server lacks this field. */
+static bool
+hasOracleRefTypeCatalog(Archive *fout)
+{
+	static int	result = -1;
+	PGresult   *res;
+
+	if (result >= 0)
+		return result != 0;
+	res = ExecuteSqlQueryForSingleRow(fout,
+		"SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_attribute "
+		"WHERE attrelid = 'pg_catalog.pg_type'::pg_catalog.regclass "
+		"AND attname = 'typrefbase' AND NOT attisdropped)");
+	result = PQgetvalue(res, 0, 0)[0] == 't';
+	PQclear(res);
+	return result != 0;
+}
+
 /*
  * getTypes:
  *	  get information about all types in the system catalogs
@@ -6318,6 +6383,8 @@ getTypes(Archive *fout)
 	int			i_typrelkind;
 	int			i_typtype;
 	int			i_typisdefined;
+	int			i_typisobject;
+	int			i_typrefbase;
 	int			i_isarray;
 	int			i_typarray;
 
@@ -6343,7 +6410,18 @@ getTypes(Archive *fout)
 						 "typelem, typrelid, typarray, "
 						 "CASE WHEN typrelid = 0 THEN ' '::\"char\" "
 						 "ELSE (SELECT relkind FROM pg_class WHERE oid = typrelid) END AS typrelkind, "
-						 "typtype, typisdefined, "
+						 "typtype, typisdefined, ");
+
+	if (fout->remoteVersion >= 190000)
+		appendPQExpBufferStr(query, "typisobject, ");
+	else
+		appendPQExpBufferStr(query, "false AS typisobject, ");
+	if (hasOracleRefTypeCatalog(fout))
+		appendPQExpBufferStr(query, "typrefbase, ");
+	else
+		appendPQExpBufferStr(query, "0::oid AS typrefbase, ");
+
+	appendPQExpBufferStr(query,
 						 "typname[0] = '_' AND typelem != 0 AND "
 						 "(SELECT typarray FROM pg_type te WHERE oid = pg_type.typelem) = oid AS isarray "
 						 "FROM pg_type");
@@ -6366,6 +6444,8 @@ getTypes(Archive *fout)
 	i_typrelkind = PQfnumber(res, "typrelkind");
 	i_typtype = PQfnumber(res, "typtype");
 	i_typisdefined = PQfnumber(res, "typisdefined");
+	i_typisobject = PQfnumber(res, "typisobject");
+	i_typrefbase = PQfnumber(res, "typrefbase");
 	i_isarray = PQfnumber(res, "isarray");
 	i_typarray = PQfnumber(res, "typarray");
 
@@ -6388,6 +6468,9 @@ getTypes(Archive *fout)
 		tyinfo[i].typrelid = atooid(PQgetvalue(res, i, i_typrelid));
 		tyinfo[i].typrelkind = *PQgetvalue(res, i, i_typrelkind);
 		tyinfo[i].typtype = *PQgetvalue(res, i, i_typtype);
+		tyinfo[i].isObject =
+			strcmp(PQgetvalue(res, i, i_typisobject), "t") == 0;
+		tyinfo[i].refBaseOid = atooid(PQgetvalue(res, i, i_typrefbase));
 		tyinfo[i].shellType = NULL;
 
 		if (strcmp(PQgetvalue(res, i, i_typisdefined), "t") == 0)
@@ -7258,6 +7341,8 @@ getPackages(Archive *fout, int *numPkgs)
 					"(SELECT oid FROM pg_namespace "
 					"WHERE nspname = 'pg_catalog')"
 					);
+	if (fout->remoteVersion >= 190000)
+		appendPQExpBufferStr(query, " AND p.pkgtypeoid = 0");
 	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
 	ntups = PQntuples(res);
 	*numPkgs = ntups;
@@ -7413,6 +7498,7 @@ getTables(Archive *fout, int *numTables)
 	int			i_reltablespace;
 	int			i_relhasoids;
 	int			i_relhasrowid;
+	int			i_forceview_case;
 	int			i_relhastriggers;
 	int			i_relpersistence;
 	int			i_relispopulated;
@@ -7507,6 +7593,26 @@ getTables(Archive *fout, int *numTables)
 			appendPQExpBufferStr(query, "c.relhasrowid, ");
 		else
 			appendPQExpBufferStr(query, "false AS relhasrowid, ");
+	}
+
+	/* Older IvorySQL and PostgreSQL servers may not have this catalog. */
+	{
+		PGresult   *res_force;
+		bool		has_force_views;
+
+		res_force = ExecuteSqlQueryForSingleRow(fout,
+			"SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_class c "
+			"JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+			"WHERE n.nspname = 'pg_catalog' AND c.relname = 'pg_force_view')");
+		has_force_views = strcmp(PQgetvalue(res_force, 0, 0), "t") == 0;
+		PQclear(res_force);
+
+		if (has_force_views)
+			appendPQExpBufferStr(query,
+				"(SELECT ident_case FROM pg_catalog.pg_force_view "
+				"WHERE fvoid = c.oid) AS forceview_case, ");
+		else
+			appendPQExpBufferStr(query, "NULL AS forceview_case, ");
 	}
 
 	if (fout->remoteVersion >= 120000)
@@ -7671,6 +7777,7 @@ getTables(Archive *fout, int *numTables)
 	i_reltablespace = PQfnumber(res, "reltablespace");
 	i_relhasoids = PQfnumber(res, "relhasoids");
 	i_relhasrowid = PQfnumber(res, "relhasrowid");
+	i_forceview_case = PQfnumber(res, "forceview_case");
 	i_relhastriggers = PQfnumber(res, "relhastriggers");
 	i_relpersistence = PQfnumber(res, "relpersistence");
 	i_relispopulated = PQfnumber(res, "relispopulated");
@@ -7733,6 +7840,7 @@ getTables(Archive *fout, int *numTables)
 		tblinfo[i].ncheck = atoi(PQgetvalue(res, i, i_relchecks));
 		tblinfo[i].hasindex = (strcmp(PQgetvalue(res, i, i_relhasindex), "t") == 0);
 		tblinfo[i].relhasrowid = (strcmp(PQgetvalue(res, i, i_relhasrowid), "t") == 0);
+		tblinfo[i].forceview_case = *PQgetvalue(res, i, i_forceview_case);
 		tblinfo[i].hasrules = (strcmp(PQgetvalue(res, i, i_relhasrules), "t") == 0);
 		tblinfo[i].relpages = atoi(PQgetvalue(res, i, i_relpages));
 		if (PQgetisnull(res, i, i_toastpages))
@@ -9581,8 +9689,18 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 						 "a.attisdropped,\n"
 						 "a.attlen,\n"
 						 "a.attalign,\n"
-						 "a.attislocal,\n"
-						 "pg_catalog.format_type(t.oid, a.atttypmod) AS atttypname,\n"
+						 "a.attislocal,\n");
+	if (hasOracleRefTypeCatalog(fout))
+		appendPQExpBufferStr(q,
+							 "CASE WHEN t.typrefbase <> 0 THEN "
+							 "'REF \"' || replace(refn.nspname, '\"', '\"\"') || "
+							 "'\".\"' || replace(reft.typname, '\"', '\"\"') || '\"' "
+							 "ELSE pg_catalog.format_type(t.oid, a.atttypmod) "
+							 "END AS atttypname,\n");
+	else
+		appendPQExpBufferStr(q,
+							 "pg_catalog.format_type(t.oid, a.atttypmod) AS atttypname,\n");
+	appendPQExpBufferStr(q,
 						 "array_to_string(a.attoptions, ', ') AS attoptions,\n"
 						 "CASE WHEN a.attcollation <> t.typcollation "
 						 "THEN a.attcollation ELSE 0 END AS attcollation,\n"
@@ -9693,6 +9811,10 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 					  "LEFT JOIN pg_catalog.pg_type t "
 					  "ON (a.atttypid = t.oid)\n",
 					  tbloids->data);
+	if (hasOracleRefTypeCatalog(fout))
+		appendPQExpBufferStr(q,
+							 "LEFT JOIN pg_catalog.pg_type reft ON reft.oid = t.typrefbase "
+							 "LEFT JOIN pg_catalog.pg_namespace refn ON refn.oid = reft.typnamespace\n");
 
 	/*
 	 * In versions 18 and up, we need pg_constraint for explicit NOT NULL
@@ -13255,6 +13377,110 @@ dumpDomain(Archive *fout, const TypeInfo *tyinfo)
 	free(qualtypname);
 }
 
+/* Change method separators without touching SQL literals or comments. */
+static void
+convertObjectMethodsToTypeElements(char *source)
+{
+	char	   *p;
+
+	for (p = source; *p != '\0'; p++)
+	{
+		if (*p == '\'')
+		{
+			bool		backslash_escape = false;
+
+			/* Backslash quotes only have special meaning in E'...' strings. */
+			if (p > source && (p[-1] == 'e' || p[-1] == 'E') &&
+				(p - 1 == source ||
+				 (!isalnum((unsigned char) p[-2]) && p[-2] != '_' &&
+				  p[-2] != '$')))
+				backslash_escape = true;
+			for (p++; *p != '\0'; p++)
+			{
+				if (backslash_escape && *p == '\\' && p[1] != '\0')
+					p++;
+				else if (*p == '\'')
+				{
+					if (p[1] == '\'')
+						p++;
+					else
+						break;
+				}
+			}
+			if (*p == '\0')
+				break;
+		}
+		else if (*p == '"')
+		{
+			for (p++; *p != '\0'; p++)
+			{
+				if (*p == '"')
+				{
+					if (p[1] == '"')
+						p++;
+					else
+						break;
+				}
+			}
+			if (*p == '\0')
+				break;
+		}
+		else if (p[0] == '-' && p[1] == '-')
+		{
+			while (*p != '\0' && *p != '\n')
+				p++;
+			if (*p == '\0')
+				break;
+		}
+		else if (p[0] == '/' && p[1] == '*')
+		{
+			int			depth = 1;
+
+			p += 2;
+			while (*p != '\0' && depth > 0)
+			{
+				if (p[0] == '/' && p[1] == '*')
+				{
+					depth++;
+					p += 2;
+				}
+				else if (p[0] == '*' && p[1] == '/')
+				{
+					depth--;
+					p += 2;
+				}
+				else
+					p++;
+			}
+			if (*p == '\0')
+				break;
+			p--;
+		}
+		else if (*p == '$')
+		{
+			char	   *tagend = p + 1;
+
+			while (isalnum((unsigned char) *tagend) || *tagend == '_')
+				tagend++;
+			if (*tagend == '$')
+			{
+				size_t		taglen = tagend - p + 1;
+				char	   *close;
+
+				for (close = tagend + 1; *close != '\0'; close++)
+					if (*close == '$' && strncmp(close, p, taglen) == 0)
+						break;
+				if (*close != '\0')
+					p = close + taglen - 1;
+				else
+					break;
+			}
+		}
+		else if (*p == ';')
+			*p = ',';
+	}
+}
+
 /*
  * dumpCompositeType
  *	  writes out to fout the queries to recreate a user-defined stand-alone
@@ -13280,6 +13506,10 @@ dumpCompositeType(Archive *fout, const TypeInfo *tyinfo)
 	int			i_attcollation;
 	int			i;
 	int			actual_atts;
+	char	   *object_methods = NULL;
+	char	   *object_body = NULL;
+	bool		object_instantiable = true;
+	bool		object_final = true;
 
 	if (!fout->is_prepared[PREPQUERY_DUMPCOMPOSITETYPE])
 	{
@@ -13293,16 +13523,30 @@ dumpCompositeType(Archive *fout, const TypeInfo *tyinfo)
 		 */
 		appendPQExpBufferStr(query,
 							 "PREPARE dumpCompositeType(pg_catalog.oid) AS\n"
-							 "SELECT a.attname, a.attnum, "
-							 "pg_catalog.format_type(a.atttypid, a.atttypmod) AS atttypdefn, "
+							 "SELECT a.attname, a.attnum, ");
+		if (hasOracleRefTypeCatalog(fout))
+			appendPQExpBufferStr(query,
+								 "CASE WHEN at.typrefbase <> 0 THEN "
+								 "'REF \"' || replace(refn.nspname, '\"', '\"\"') || "
+								 "'\".\"' || replace(reft.typname, '\"', '\"\"') || '\"' "
+								 "ELSE pg_catalog.format_type(a.atttypid, a.atttypmod) "
+								 "END AS atttypdefn, ");
+		else
+			appendPQExpBufferStr(query,
+								 "pg_catalog.format_type(a.atttypid, a.atttypmod) AS atttypdefn, ");
+		appendPQExpBufferStr(query,
 							 "a.attlen, a.attalign, a.attisdropped, "
 							 "CASE WHEN a.attcollation <> at.typcollation "
 							 "THEN a.attcollation ELSE 0 END AS attcollation "
 							 "FROM pg_catalog.pg_type ct "
 							 "JOIN pg_catalog.pg_attribute a ON a.attrelid = ct.typrelid "
-							 "LEFT JOIN pg_catalog.pg_type at ON at.oid = a.atttypid "
-							 "WHERE ct.oid = $1 "
-							 "ORDER BY a.attnum");
+							 "LEFT JOIN pg_catalog.pg_type at ON at.oid = a.atttypid ");
+		if (hasOracleRefTypeCatalog(fout))
+			appendPQExpBufferStr(query,
+								 "LEFT JOIN pg_catalog.pg_type reft ON reft.oid = at.typrefbase "
+								 "LEFT JOIN pg_catalog.pg_namespace refn ON refn.oid = reft.typnamespace ");
+		appendPQExpBufferStr(query,
+							 "WHERE ct.oid = $1 ORDER BY a.attnum");
 
 		ExecuteSqlStatement(fout, query->data);
 
@@ -13335,8 +13579,58 @@ dumpCompositeType(Archive *fout, const TypeInfo *tyinfo)
 	qtypname = pg_strdup(fmtId(tyinfo->dobj.name));
 	qualtypname = pg_strdup(fmtQualifiedDumpable(tyinfo));
 
-	appendPQExpBuffer(q, "CREATE TYPE %s AS (",
-					  qualtypname);
+	if (tyinfo->isObject && fout->remoteVersion >= 190000)
+	{
+		PGresult   *objectRes;
+
+		printfPQExpBuffer(query,
+						  "SELECT p.pkgsrc, p.pkginstantiable, p.pkgfinal, "
+						  "(SELECT b.bodysrc FROM pg_catalog.pg_package_body b "
+						  " WHERE b.pkgoid = p.oid) AS bodysrc "
+						  "FROM pg_catalog.pg_package p "
+						  "WHERE p.pkgtypeoid = '%u'::pg_catalog.oid",
+						  tyinfo->dobj.catId.oid);
+		objectRes = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
+		if (PQntuples(objectRes) == 1)
+		{
+			char	   *end;
+
+			object_methods = pg_strdup(PQgetvalue(objectRes, 0,
+											 PQfnumber(objectRes, "pkgsrc")));
+			object_instantiable = PQgetvalue(objectRes, 0,
+											   PQfnumber(objectRes, "pkginstantiable"))[0] == 't';
+			object_final = PQgetvalue(objectRes, 0,
+									  PQfnumber(objectRes, "pkgfinal"))[0] == 't';
+			if (!PQgetisnull(objectRes, 0, PQfnumber(objectRes, "bodysrc")))
+				object_body = pg_strdup(PQgetvalue(objectRes, 0,
+										 PQfnumber(objectRes, "bodysrc")));
+
+			/* Remove the package-shaped source's final END marker. */
+			end = object_methods + strlen(object_methods);
+			while (end > object_methods && isspace((unsigned char) end[-1]))
+				*--end = '\0';
+			if (end - object_methods >= 3 &&
+				pg_strcasecmp(end - 3, "end") == 0)
+			{
+				end -= 3;
+				while (end > object_methods && isspace((unsigned char) end[-1]))
+					end--;
+				*end = '\0';
+			}
+			/* Package declarations use semicolons; type elements use commas. */
+			convertObjectMethodsToTypeElements(object_methods);
+			end = object_methods + strlen(object_methods);
+			while (end > object_methods && isspace((unsigned char) end[-1]))
+				end--;
+			if (end > object_methods && end[-1] == ',')
+				end[-1] = '\0';
+		}
+		PQclear(objectRes);
+	}
+
+	appendPQExpBuffer(q, "CREATE TYPE %s AS%s (",
+					  qualtypname,
+					  tyinfo->isObject ? " OBJECT" : "");
 
 	actual_atts = 0;
 	for (i = 0; i < ntups; i++)
@@ -13406,7 +13700,29 @@ dumpCompositeType(Archive *fout, const TypeInfo *tyinfo)
 							  fmtId(attname));
 		}
 	}
-	appendPQExpBufferStr(q, "\n);\n");
+	if (object_methods != NULL && object_methods[0] != '\0')
+	{
+		if (actual_atts++ > 0)
+			appendPQExpBufferChar(q, ',');
+		appendPQExpBuffer(q, "\n\t%s", object_methods);
+	}
+	appendPQExpBufferStr(q, "\n)");
+	if (tyinfo->isObject)
+	{
+		if (!object_instantiable)
+			appendPQExpBufferStr(q, " NOT INSTANTIABLE");
+		if (!object_final)
+			appendPQExpBufferStr(q, " NOT FINAL");
+	}
+	appendPQExpBufferStr(q, ";\n");
+	if (object_body != NULL && object_body[0] != '\0')
+	{
+		appendPQExpBuffer(q, "CREATE TYPE BODY %s AS\n%s;\n",
+						  qualtypname, object_body);
+		if (((ArchiveHandle *) fout)->format == archNull &&
+			db_mode == DB_ORACLE)
+			appendPQExpBufferStr(q, "/\n");
+	}
 	appendPQExpBufferStr(q, dropped->data);
 
 	appendPQExpBuffer(delq, "DROP TYPE %s;\n", qualtypname);
@@ -13455,6 +13771,8 @@ dumpCompositeType(Archive *fout, const TypeInfo *tyinfo)
 	destroyPQExpBuffer(query);
 	free(qtypname);
 	free(qualtypname);
+	free(object_methods);
+	free(object_body);
 }
 
 /*
@@ -17471,6 +17789,76 @@ dumpTable(Archive *fout, const TableInfo *tbinfo)
 }
 
 /*
+ * An invalid FORCE VIEW has no _RETURN rule.  Its catalog entry contains a
+ * complete CREATE statement, not the SELECT returned for an ordinary view.
+ * Execute it with the original identifier case and the view's schema first
+ * in search_path.  Dynamic SQL is necessary because an archive entry is parsed
+ * as a single command string, before any SET commands in it take effect.
+ * Save and restore all settings, including for --single-transaction restores.
+ */
+static void
+appendForceViewStmt(Archive *fout, PQExpBuffer q, const TableInfo *tbinfo)
+{
+	PQExpBuffer query = createPQExpBuffer();
+	PQExpBuffer body = createPQExpBuffer();
+	PGresult   *res;
+	const char *ident_case;
+
+	switch (tbinfo->forceview_case)
+	{
+		case 'n':
+		case 'u':				/* definition generated by the server */
+			ident_case = "normal";
+			break;
+		case 'i':
+			ident_case = "interchange";
+			break;
+		case 'l':
+			ident_case = "lowercase";
+			break;
+		default:
+			pg_fatal("unrecognized identifier case for force view \"%s\"",
+					 tbinfo->dobj.name);
+	}
+
+	appendPQExpBuffer(query,
+		"SELECT source FROM pg_catalog.pg_force_view WHERE fvoid = '%u'::pg_catalog.oid",
+		tbinfo->dobj.catId.oid);
+	res = ExecuteSqlQueryForSingleRow(fout, query->data);
+	if (PQgetisnull(res, 0, 0) || PQgetlength(res, 0, 0) == 0)
+		pg_fatal("definition of force view \"%s\" appears to be empty",
+				 tbinfo->dobj.name);
+
+	appendPQExpBufferStr(body,
+		"DECLARE\n"
+		"    saved_path text := pg_catalog.current_setting('search_path');\n"
+		"    saved_case text := pg_catalog.current_setting('ivorysql.identifier_case_switch');\n"
+		"    saved_mode text := pg_catalog.current_setting('ivorysql.compatible_mode');\n"
+		"BEGIN\n"
+		"    PERFORM pg_catalog.set_config('ivorysql.compatible_mode', 'oracle', true);\n"
+		"    PERFORM pg_catalog.set_config('search_path', pg_catalog.concat(");
+	appendStringLiteralAH(body, fmtId(tbinfo->dobj.namespace->dobj.name), fout);
+	appendPQExpBufferStr(body,
+		", CASE WHEN pg_catalog.length(saved_path) > 0 THEN ', ' || saved_path END), true);\n"
+		"    PERFORM pg_catalog.set_config('ivorysql.identifier_case_switch', ");
+	appendStringLiteralAH(body, ident_case, fout);
+	appendPQExpBufferStr(body, ", true);\n    EXECUTE ");
+	appendStringLiteralAH(body, PQgetvalue(res, 0, 0), fout);
+	appendPQExpBufferStr(body, ";\n"
+		"    PERFORM pg_catalog.set_config('ivorysql.identifier_case_switch', saved_case, true);\n"
+		"    PERFORM pg_catalog.set_config('search_path', saved_path, true);\n"
+		"    PERFORM pg_catalog.set_config('ivorysql.compatible_mode', saved_mode, true);\n"
+		"END;");
+	appendPQExpBufferStr(q, "DO ");
+	appendStringLiteralAH(q, body->data, fout);
+	appendPQExpBufferStr(q, " LANGUAGE plpgsql;\n");
+
+	PQclear(res);
+	destroyPQExpBuffer(query);
+	destroyPQExpBuffer(body);
+}
+
+/*
  * Create the AS clause for a view or materialized view. The semicolon is
  * stripped because a materialized view must add a WITH NO DATA clause.
  *
@@ -17611,28 +17999,33 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 			binary_upgrade_set_pg_class_oids(fout, q,
 											 tbinfo->dobj.catId.oid);
 
-		appendPQExpBuffer(q, "CREATE VIEW %s", qualrelname);
-
-		if (tbinfo->dummy_view)
-			result = createDummyViewAsClause(fout, tbinfo);
+		if (tbinfo->forceview_case)
+			appendForceViewStmt(fout, q, tbinfo);
 		else
 		{
-			if (nonemptyReloptions(tbinfo->reloptions))
-			{
-				appendPQExpBufferStr(q, " WITH (");
-				appendReloptionsArrayAH(q, tbinfo->reloptions, "", fout);
-				appendPQExpBufferChar(q, ')');
-			}
-			result = createViewAsClause(fout, tbinfo);
-		}
-		appendPQExpBuffer(q, " AS\n%s", result->data);
-		destroyPQExpBuffer(result);
+			appendPQExpBuffer(q, "CREATE VIEW %s", qualrelname);
 
-		if (tbinfo->checkoption != NULL && !tbinfo->dummy_view)
-			appendPQExpBuffer(q, "\n  WITH %s CHECK OPTION", tbinfo->checkoption);
-		if (tbinfo->readOnly && !tbinfo->dummy_view)
-			appendPQExpBufferStr(q, "\n  WITH READ ONLY");
-		appendPQExpBufferStr(q, ";\n");
+			if (tbinfo->dummy_view)
+				result = createDummyViewAsClause(fout, tbinfo);
+			else
+			{
+				if (nonemptyReloptions(tbinfo->reloptions))
+				{
+					appendPQExpBufferStr(q, " WITH (");
+					appendReloptionsArrayAH(q, tbinfo->reloptions, "", fout);
+					appendPQExpBufferChar(q, ')');
+				}
+				result = createViewAsClause(fout, tbinfo);
+			}
+			appendPQExpBuffer(q, " AS\n%s", result->data);
+			destroyPQExpBuffer(result);
+
+			if (tbinfo->checkoption != NULL && !tbinfo->dummy_view)
+				appendPQExpBuffer(q, "\n  WITH %s CHECK OPTION", tbinfo->checkoption);
+			if (tbinfo->readOnly && !tbinfo->dummy_view)
+				appendPQExpBufferStr(q, "\n  WITH READ ONLY");
+			appendPQExpBufferStr(q, ";\n");
+		}
 	}
 	else if (tbinfo->relkind == RELKIND_PROPGRAPH)
 	{
@@ -19694,9 +20087,14 @@ dumpTableConstraintComment(Archive *fout, const ConstraintInfo *coninfo)
 static inline SeqType
 parse_sequence_type(const char *name)
 {
+	/* Oracle format_type can return a schema-qualified internal type name. */
+	if (strncmp(name, "pg_catalog.", strlen("pg_catalog.")) == 0)
+		name += strlen("pg_catalog.");
+
 	for (int i = 0; i < lengthof(SeqTypeNames); i++)
 	{
-		if (strcmp(SeqTypeNames[i], name) == 0)
+		if (strcmp(SeqTypeNames[i], name) == 0 ||
+			strcmp(SeqTypeInternalNames[i], name) == 0)
 			return (SeqType) i;
 	}
 
@@ -20966,6 +21364,23 @@ getDependencies(Archive *fout)
 			pg_log_warning("no referenced object %u %u",
 						   refobjId.tableoid, refobjId.oid);
 #endif
+			continue;
+		}
+
+		/* A REF domain is regenerated by CREATE TYPE AS OBJECT. */
+		if (dobj->objType == DO_DUMMY_TYPE &&
+			OidIsValid(((TypeInfo *) dobj)->refBaseOid))
+			continue;
+		if (refdobj->objType == DO_DUMMY_TYPE &&
+			OidIsValid(((TypeInfo *) refdobj)->refBaseOid))
+		{
+			TypeInfo   *target = findTypeByOid(((TypeInfo *) refdobj)->refBaseOid);
+
+			/* The object type's own relation is created by that command too. */
+			if (target != NULL &&
+				!(dobj->objType == DO_TABLE &&
+				  ((TableInfo *) dobj)->reltype == target->dobj.catId.oid))
+				addObjectDependency(dobj, target->dobj.dumpId);
 			continue;
 		}
 

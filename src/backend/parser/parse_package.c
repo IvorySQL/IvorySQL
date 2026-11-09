@@ -28,13 +28,17 @@
  */
 
 #include "postgres.h"
+#include "access/htup_details.h"
 #include "parser/parse_package.h"
 #include "utils/packagecache.h"
 #include "utils/acl.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/ora_compatible.h"
+#include "utils/syscache.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_package.h"
+#include "catalog/pg_type.h"
 #include "commands/packagecmds.h"
 #include "commands/dbcommands.h"
 #include "miscadmin.h"
@@ -470,10 +474,36 @@ LookupPkgFunc(ParseState *pstate, List *funcname,
 
 	*pkgoid = pkey;
 
-	/* check package usage */
-	aclresult = pg_package_aclcheck(pkey, GetUserId(), ACL_EXECUTE);
-	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, OBJECT_PACKAGE, get_package_name(pkey));
+	/*
+	 * Object methods are an implementation detail of the type, so access is
+	 * governed by USAGE on the type rather than EXECUTE on the hidden package.
+	 */
+	{
+		HeapTuple	packageTuple;
+		Form_pg_package packageForm;
+
+		packageTuple = SearchSysCache1(PKGOID, ObjectIdGetDatum(pkey));
+		if (!HeapTupleIsValid(packageTuple))
+			elog(ERROR, "cache lookup failed for package %u", pkey);
+		packageForm = (Form_pg_package) GETSTRUCT(packageTuple);
+		if (OidIsValid(packageForm->pkgtypeoid))
+		{
+			Oid			typeOid = packageForm->pkgtypeoid;
+
+			ReleaseSysCache(packageTuple);
+			aclresult = object_aclcheck(TypeRelationId, typeOid,
+										GetUserId(), ACL_USAGE);
+			if (aclresult != ACLCHECK_OK)
+				aclcheck_error_type(aclresult, typeOid);
+		}
+		else
+		{
+			ReleaseSysCache(packageTuple);
+			aclresult = pg_package_aclcheck(pkey, GetUserId(), ACL_EXECUTE);
+			if (aclresult != ACLCHECK_OK)
+				aclcheck_error(aclresult, OBJECT_PACKAGE, get_package_name(pkey));
+		}
+	}
 
 	return parse_package_func(pstate, &pkey, funcname,
 			 funcname_startloc, fargs, fargnames, nargs,
@@ -482,4 +512,3 @@ LookupPkgFunc(ParseState *pstate, List *funcname,
 			 nvargs, vatype, true_typeids, argdefaults,
 			 pfunc, missing_ok);
 }
-

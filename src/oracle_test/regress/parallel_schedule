@@ -14,6 +14,10 @@ test: case_conversion
 # required setup steps
 test: test_setup
 
+# Changes to extension objects must not overlap other tests.  All changes made
+# by this test are rolled back before the parallel groups start.
+test: oracle_builtin_oid
+
 # ----------
 # The first group of parallel tests
 # ----------
@@ -46,6 +50,7 @@ test: copy copyselect copydml copyencoding insert insert_conflict
 # Note: many of the tests in later groups depend on create_index
 # ----------
 test: create_function_c create_misc create_operator create_procedure create_table create_type create_schema
+test: ref_type
 test: create_index create_index_spgist create_view index_including index_including_gist
 
 # ----------
@@ -178,7 +183,7 @@ test: ora_force_view ora_read_only_view
 # Oracle ROWNUM pseudocolumn
 # ----------
 
-test: rownum ora_listagg
+test: rownum ora_listagg ora_jit
 
 # ----------
 # Oracle identifier syntax (#1002)

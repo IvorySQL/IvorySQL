@@ -367,6 +367,7 @@ do_compile(FunctionCallInfo fcinfo,
 		/* re-using a previously existing struct, so clear it out */
 		memset(function, 0, sizeof(PLiSQL_function));
 	}
+	function->object_method_kind = OBJECT_METHOD_NONE;
 	plisql_curr_compile = function;
 
     /* format_procedure leaks memory, so run it in temp context */
@@ -1295,6 +1296,7 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams, bool fromcall,
 
 	/* Function struct does not live past current statement */
 	function = palloc0_object(PLiSQL_function);
+	function->object_method_kind = OBJECT_METHOD_NONE;
 
 	plisql_curr_compile = function;
 

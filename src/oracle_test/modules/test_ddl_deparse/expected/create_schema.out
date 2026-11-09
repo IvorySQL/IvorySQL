@@ -18,8 +18,8 @@ CREATE SCHEMA element_test
   CREATE DOMAIN d1 AS INT
   CREATE FUNCTION et_add(int4, int4) RETURNS int4 LANGUAGE sql
     AS 'SELECT $1 + $2'
-  CREATE PROCEDURE et_proc(int4, int4)
-    BEGIN ATOMIC SELECT et_add($1,$2); END
+  CREATE PROCEDURE et_proc(int4, int4) LANGUAGE sql
+    AS 'SELECT et_add($1,$2)'
   CREATE TYPE floatrange AS RANGE (subtype = float8, subtype_diff = float8mi)
   CREATE TYPE ss AS (a int)
   CREATE TYPE sss
