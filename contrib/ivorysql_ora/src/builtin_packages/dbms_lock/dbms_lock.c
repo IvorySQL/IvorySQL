@@ -73,8 +73,8 @@
 typedef struct
 {
     int64       key;        /* hash key */
-    int8        mode;        /* last mode we recorded */
-    int32       refcount;   /* session-local acquisitions of this key */
+    int32       s_ref;      /* session-local acquisitions of the shared mode */
+    int32       x_ref;      /* session-local acquisitions of the exclusive mode */
 } lock_entry;
 
 static HTAB *dbms_lock_hash_table = NULL;
@@ -83,9 +83,9 @@ static HTAB *dbms_lock_hash_table = NULL;
  * static routines
  */
 static void dbms_lock_init_hash_table(void);
-static bool dbms_lock_record_acquire(int64, int8);
-static bool dbms_lock_check(int64, int8);
-static bool dbms_lock_record_release(int64, int8);
+static bool dbms_lock_record_acquire(int64, bool);
+static bool dbms_lock_check(int64, bool);
+static bool dbms_lock_record_release(int64, bool);
 
 /*
  * init private lock hash table
@@ -112,7 +112,7 @@ dbms_lock_init_hash_table(void)
  * store lock acquire: returns false in case of error
  */
 static bool 
-dbms_lock_record_acquire(int64 key, int8 mode)
+dbms_lock_record_acquire(int64 key, bool exclusive)
 {
     bool        found;
     lock_entry *entry;
@@ -127,30 +127,15 @@ dbms_lock_record_acquire(int64 key, int8 mode)
     }
 
     /*
-     * A conflicting-mode request for a key this session already holds
-     * cannot normally reach us: PostgreSQL's lock manager self-deadlocks
-     * the advisory request while it is still pending.  Guard the record
-     * anyway so entry->mode can never diverge from the mode the session
-     * actually holds and releases.
+     * Track each mode separately: a session may legitimately hold both
+     * the shared and the exclusive acquisition of one key (PostgreSQL
+     * grants its own upgrade request because a backend's locks do not
+     * conflict with itself), and each acquisition needs its own unlock.
      */
-    if (found && entry->mode != mode)
-        return false;
-
-    entry->key = key;
-    entry->mode = mode;
-    /*
-     * One refcount suffices because a single entry never tracks two modes:
-     * when a session already holds a key in one advisory mode and requests
-     * a conflicting mode for it, PostgreSQL's lock manager self-deadlocks
-     * the request (the holder is the requester itself), so the second
-     * REQUEST errors out before this record is updated.  Only repeated
-     * requests of the same mode stack here.
-     */
-    if (found)
-        entry->refcount++;      /* re-request: PostgreSQL bumps its local
-                                 * lock count, so we must track it too */
+    if (exclusive)
+        entry->x_ref++;
     else
-        entry->refcount = 1;
+        entry->s_ref++;
     return true;
 }
 
@@ -158,7 +143,7 @@ dbms_lock_record_acquire(int64 key, int8 mode)
  * check lock is held
  */
 static bool
-dbms_lock_check(int64 key, int8 mode)
+dbms_lock_check(int64 key, bool exclusive)
 {
    bool        found;
    lock_entry *entry;
@@ -167,7 +152,7 @@ dbms_lock_check(int64 key, int8 mode)
                                           (void *) &key,
                                           HASH_FIND,
                                           &found);
-   if (found  && entry->mode == mode)
+   if (found && (exclusive ? entry->x_ref > 0 : entry->s_ref > 0))
         return true;
 
     return false;
@@ -178,7 +163,7 @@ dbms_lock_check(int64 key, int8 mode)
  */
 
 static bool
-dbms_lock_record_release(int64 key, int8 mode)
+dbms_lock_record_release(int64 key, bool exclusive)
 {
     bool        found;
     lock_entry *entry;
@@ -191,16 +176,21 @@ dbms_lock_record_release(int64 key, int8 mode)
     if (!found)
         return false;
 
-    if (entry->mode != mode)
-	    return false;
-
-    if (entry->refcount > 1)
+    if (exclusive)
     {
-        entry->refcount--;      /* still held: keep record and advisory lock */
-        return true;
+        if (entry->x_ref <= 0)
+            return false;
+        entry->x_ref--;
+    }
+    else
+    {
+        if (entry->s_ref <= 0)
+            return false;
+        entry->s_ref--;
     }
 
-    hash_search(dbms_lock_hash_table, (void *) &key, HASH_REMOVE, &found);
+    if (entry->s_ref == 0 && entry->x_ref == 0)
+        hash_search(dbms_lock_hash_table, (void *) &key, HASH_REMOVE, &found);
 
     return true;
 }
@@ -301,7 +291,7 @@ ivorysql_dbms_lock_request(PG_FUNCTION_ARGS)
 
         if (acquired) {
 	    elog(DEBUG1, "dbms_lock_request: key="INT64_FORMAT" mode=%d", key, lockmode);
-            hash_enter_is_ok = dbms_lock_record_acquire(key, lockmode);
+            hash_enter_is_ok = dbms_lock_record_acquire(key, exclusive);
 	    if (hash_enter_is_ok)
 	            PG_RETURN_INT32(DBMS_LOCK_SUCCESS);
 	    else  elog(ERROR, "failed to record lock in hash table");
@@ -344,13 +334,13 @@ ivorysql_dbms_lock_release(PG_FUNCTION_ARGS)
 	    dbms_lock_init_hash_table();
 	
 
-    lock_s_held = dbms_lock_check(key, DBMS_LOCK_S_MODE);
+    lock_s_held = dbms_lock_check(key, false);
     if (lock_s_held) {
        lockmode = DBMS_LOCK_S_MODE;
        released = DatumGetBool(DirectFunctionCall1(pg_advisory_unlock_shared_int8, Int64GetDatum(key)));
 	elog(DEBUG1, "unlock S: key="INT64_FORMAT"  mode=%d released=%d", key, lockmode, released);
     } else {
-      lock_x_held = dbms_lock_check(key, DBMS_LOCK_X_MODE);
+      lock_x_held = dbms_lock_check(key, true);
       if (lock_x_held) {
        lockmode = DBMS_LOCK_X_MODE;
        released = DatumGetBool(DirectFunctionCall1(pg_advisory_unlock_int8, Int64GetDatum(key)));
@@ -360,7 +350,7 @@ ivorysql_dbms_lock_release(PG_FUNCTION_ARGS)
 
     if (released) {
 	elog(DEBUG1, "dbms_lock_release: key="INT64_FORMAT" mode=%d", key, lockmode);
-	dbms_lock_record_release(key,lockmode);
+	dbms_lock_record_release(key, lockmode == DBMS_LOCK_X_MODE);
         PG_RETURN_INT32(DBMS_LOCK_SUCCESS);
     }
 
