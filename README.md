@@ -92,7 +92,7 @@ translations for the documentation. If you have design skills you can contribute
 Testing the IvorySQL and reporting issues or by issuing pull requests for bug fixes or new features or answering the questions
 on mailing lists are some ways to contribute to the IvorySQL project and all types of contributions are welcomed and appreciated
 by the IvorySQL community.
-For contribution guidelines, please refer to the [Community Contribution Guide](https://www.ivorysql.org/zh-cn/contribution-guidelines/) and [the Developer Contribution Guide](https://docs.ivorysql.org/cn/ivorysql-doc/v5.6/8.1).
+For contribution guidelines, please refer to the [Community Contribution Guide](https://ivorysql.org/community/contribution-guidelines) and [the Developer Contribution Guide](https://docs.ivorysql.org/cn/ivorysql-doc/v5.6/8.1).
 
 **Important:** Before submitting any code contribution, all contributors are required to sign the Contributor License Agreement (CLA). The CLA protects both contributors and the project, and helps the community build a more standardized and sustainable open-source governance system.
 
