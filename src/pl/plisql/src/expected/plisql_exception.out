@@ -534,6 +534,95 @@ END;
 INFO:  package init block saw SQLCODE -1476
 DROP PACKAGE test_sqlcode_pkg;
 --
+-- Test 11g: package exceptions named as pkg.exc in WHEN and RAISE (issue #3100)
+--
+CREATE OR REPLACE PACKAGE test_pkg_exc IS
+  e_plain EXCEPTION;
+  e_init EXCEPTION;
+  PRAGMA EXCEPTION_INIT(e_init, -20010);
+  counter NUMBER := 0;
+  PROCEDURE raise_plain;
+  PROCEDURE raise_init;
+END test_pkg_exc;
+/
+CREATE OR REPLACE PACKAGE BODY test_pkg_exc IS
+  PROCEDURE raise_plain IS
+  BEGIN
+    RAISE e_plain;
+  END raise_plain;
+  PROCEDURE raise_init IS
+  BEGIN
+    RAISE test_pkg_exc.e_init;
+  EXCEPTION
+    WHEN test_pkg_exc.e_plain THEN
+      RAISE INFO 'raise_init: wrong handler';
+  END raise_init;
+END test_pkg_exc;
+/
+CREATE OR REPLACE PROCEDURE test_pkg_exc_caller IS
+BEGIN
+  BEGIN
+    test_pkg_exc.raise_plain;
+  EXCEPTION
+    WHEN test_pkg_exc.e_init THEN
+      RAISE INFO 'raise_plain: wrong handler';
+    WHEN test_pkg_exc.e_plain THEN
+      RAISE INFO 'raise_plain: caught by WHEN test_pkg_exc.e_plain, SQLCODE %', SQLCODE;
+  END;
+  BEGIN
+    test_pkg_exc.raise_init;
+  EXCEPTION
+    WHEN test_pkg_exc.e_init THEN
+      RAISE INFO 'raise_init: caught by WHEN test_pkg_exc.e_init, SQLCODE %', SQLCODE;
+  END;
+  BEGIN
+    RAISE test_pkg_exc.e_init;
+  EXCEPTION
+    WHEN public.test_pkg_exc.e_plain OR public.test_pkg_exc.e_init THEN
+      RAISE INFO 'RAISE test_pkg_exc.e_init: caught by WHEN public.test_pkg_exc.e_init, SQLSTATE %', SQLSTATE;
+  END;
+END;
+/
+CALL test_pkg_exc_caller();
+INFO:  raise_plain: caught by WHEN test_pkg_exc.e_plain, SQLCODE 1
+INFO:  raise_init: caught by WHEN test_pkg_exc.e_init, SQLCODE -20010
+INFO:  RAISE test_pkg_exc.e_init: caught by WHEN public.test_pkg_exc.e_init, SQLSTATE O0HCQ
+-- a package exception that is not handled
+BEGIN
+  RAISE test_pkg_exc.e_plain;
+END;
+/
+ERROR:  User-Defined Exception
+CONTEXT:  PL/iSQL function inline_code_block line 2 at RAISE
+-- a package variable or a missing name is not an exception
+BEGIN
+  NULL;
+EXCEPTION
+  WHEN test_pkg_exc.counter THEN
+    NULL;
+END;
+/
+ERROR:  syntax error at or near "test_pkg_exc.counter"
+LINE 4:   WHEN test_pkg_exc.counter THEN
+               ^
+QUERY:  BEGIN
+  NULL;
+EXCEPTION
+  WHEN test_pkg_exc.counter THEN
+    NULL;
+END
+BEGIN
+  NULL;
+EXCEPTION
+  WHEN test_pkg_exc.no_such_exc THEN
+    NULL;
+END;
+/
+ERROR:  "no_such_exc" doesn't exist in package "test_pkg_exc"
+CONTEXT:  compilation of PL/iSQL function "inline_code_block" near line 3
+DROP PROCEDURE test_pkg_exc_caller;
+DROP PACKAGE test_pkg_exc;
+--
 -- Test 12: SQLERRM in procedures when package has EXCEPTION variables (issue #1151)
 -- When a package declares user-defined EXCEPTION variables at package scope,
 -- passing SQLERRM to procedures from exception handlers should work.

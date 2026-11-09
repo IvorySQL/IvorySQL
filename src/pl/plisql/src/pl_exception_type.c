@@ -17,6 +17,7 @@
 #include "postgres.h"
 
 #include "pl_exception_type.h"
+#include "pl_package.h"
 #include "plisql.h"
 
 /*
@@ -256,10 +257,16 @@ plisql_datum_is_exception(PLiSQL_datum *datum)
 /*
  * plisql_datum_get_exception
  *		Get exception variable from datum (with type checking)
+ *
+ * A reference to a package exception from outside the package, such as
+ * pkg.exc, is a package datum; return the package's exception variable.
  */
 PLiSQL_exception_var *
 plisql_datum_get_exception(PLiSQL_datum *datum)
 {
+	if (datum != NULL && datum->dtype == PLISQL_DTYPE_PACKAGE_DATUM)
+		datum = ((PLiSQL_pkg_datum *) datum)->pkgvar;
+
 	if (!plisql_datum_is_exception(datum))
 		return NULL;
 
