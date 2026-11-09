@@ -126,6 +126,16 @@ dbms_lock_record_acquire(int64 key, int8 mode)
        return false;
     }
 
+    /*
+     * A conflicting-mode request for a key this session already holds
+     * cannot normally reach us: PostgreSQL's lock manager self-deadlocks
+     * the advisory request while it is still pending.  Guard the record
+     * anyway so entry->mode can never diverge from the mode the session
+     * actually holds and releases.
+     */
+    if (found && entry->mode != mode)
+        return false;
+
     entry->key = key;
     entry->mode = mode;
     /*
