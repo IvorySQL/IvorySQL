@@ -212,7 +212,7 @@ WHEN MATCHED THEN UPDATE
   SET pt.title = 'Dr'
 ;
 SELECT * FROM people_target;
- person_id | first_name | last_name | title
+ person_id | first_name | last_name | title 
 -----------+------------+-----------+-------
          1 | John       | Smith     | Mr
          2 | alice      | jones     | Dr
