@@ -314,6 +314,13 @@ SELECT ROWNUM as rn, a.x, b.y
 FROM (VALUES (1), (2)) a(x)
 JOIN (VALUES (1), (2)) b(y) ON a.x = b.y;
 
+-- A hashed IN subplan evaluated in a join qual also builds a projection on
+-- the join; that projection must not consume the join's output row numbers.
+SELECT ROWNUM as rn, a.x, b.y
+FROM (VALUES (1), (2), (3)) a(x)
+JOIN (VALUES (1), (2), (3)) b(y) ON true
+WHERE ROWNUM IN (SELECT 1);
+
 -- Test that ROWNUM is materialized (not re-evaluated in outer query)
 -- This tests the materialization fix
 SELECT rn, id, name FROM (
