@@ -735,6 +735,49 @@ BEGIN
 END;
 $$;
 
+-- Test 11.3: PUT_LINE and PUT accept NUMBER arguments
+-- Oracle declares PUT_LINE/PUT with a VARCHAR2 parameter, so numeric
+-- arguments are converted implicitly.  The parameter used to be TEXT, which
+-- has no implicit cast from the numeric types, so these calls were rejected
+-- with "wrong number or types of arguments".
+DO $$
+DECLARE
+    v_line VARCHAR2(32767);
+    v_status INTEGER;
+BEGIN
+    dbms_output.enable(1000000);
+    dbms_output.put_line(42);
+    dbms_output.put_line(1 + 1);
+    dbms_output.put_line(2.5);
+    dbms_output.put('n=');
+    dbms_output.put(7);
+    dbms_output.new_line();
+    dbms_output.get_line(v_line, v_status);
+    RAISE NOTICE 'Test 11.3a - PUT_LINE(42): [%], Status: %', v_line, v_status;
+    dbms_output.get_line(v_line, v_status);
+    RAISE NOTICE 'Test 11.3b - PUT_LINE(1+1): [%], Status: %', v_line, v_status;
+    dbms_output.get_line(v_line, v_status);
+    RAISE NOTICE 'Test 11.3c - PUT_LINE(2.5): [%], Status: %', v_line, v_status;
+    dbms_output.get_line(v_line, v_status);
+    RAISE NOTICE 'Test 11.3d - PUT(7): [%], Status: %', v_line, v_status;
+END;
+$$;
+
+-- Test 11.4: PUT_LINE accepts a DATE argument (implicit DATE -> VARCHAR2)
+SET DateStyle = 'ISO, MDY';
+DO $$
+DECLARE
+    v_line VARCHAR2(32767);
+    v_status INTEGER;
+BEGIN
+    dbms_output.enable(1000000);
+    dbms_output.put_line(to_date('2026-11-04', 'YYYY-MM-DD'));
+    dbms_output.get_line(v_line, v_status);
+    RAISE NOTICE 'Test 11.4 - PUT_LINE(date): [%], Status: %', v_line, v_status;
+END;
+$$;
+RESET DateStyle;
+
 -- =============================================================================
 -- Section 12: Buffer Space Recycling (Oracle recycles space after GET_LINE)
 -- =============================================================================
