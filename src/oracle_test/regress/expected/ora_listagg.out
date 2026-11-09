@@ -133,5 +133,46 @@ ORDER BY deptno;
 ERROR:  syntax error at or near "ORDER"
 LINE 2:        LISTAGG(ename, ',' ORDER BY ename) WITHIN GROUP(ORDER...
                                   ^
+-- Test 14: DISTINCT qualifier removes duplicate measure values
+INSERT INTO listagg_test VALUES (10, 'CLARK', 2450);
+SELECT LISTAGG(DISTINCT ename, ',') WITHIN GROUP (ORDER BY ename)
+FROM listagg_test WHERE deptno = 10;
+ ora_listagg_check 
+-------------------
+ CLARK,KING,MILLER
+(1 row)
+
+-- Test 15: DISTINCT qualifier with the single-argument form
+SELECT LISTAGG(DISTINCT ename) WITHIN GROUP (ORDER BY ename)
+FROM listagg_test WHERE deptno = 10;
+ ora_listagg_check 
+-------------------
+ CLARKKINGMILLER
+(1 row)
+
+-- Test 16: ALL qualifier keeps duplicate measure values (default behaviour)
+SELECT LISTAGG(ALL ename, ',') WITHIN GROUP (ORDER BY ename)
+FROM listagg_test WHERE deptno = 10;
+    ora_listagg_check    
+-------------------------
+ CLARK,CLARK,KING,MILLER
+(1 row)
+
+-- Test 17: DISTINCT qualifier with grouped aggregation
+SELECT deptno, LISTAGG(DISTINCT ename, '|') WITHIN GROUP (ORDER BY ename)
+FROM listagg_test GROUP BY deptno ORDER BY deptno;
+ deptno | ora_listagg_check  
+--------+--------------------
+     10 | CLARK|KING|MILLER
+     20 | ADAMS|FORD|JONES
+     30 | ALLEN|BLAKE|MARTIN
+(3 rows)
+
+-- Test 18: DISTINCT requires ORDER BY expressions to appear in argument list
+SELECT LISTAGG(DISTINCT ename, ',') WITHIN GROUP (ORDER BY sal)
+FROM listagg_test WHERE deptno = 10;
+ERROR:  in an aggregate with DISTINCT, ORDER BY expressions must appear in argument list
+LINE 1: ...ECT LISTAGG(DISTINCT ename, ',') WITHIN GROUP (ORDER BY sal)
+                                                                   ^
 -- Cleanup
 DROP TABLE listagg_test;
