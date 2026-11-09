@@ -88,6 +88,27 @@ FROM listagg_test
 GROUP BY deptno
 ORDER BY deptno;
 
+-- Test 14: DISTINCT qualifier removes duplicate measure values
+INSERT INTO listagg_test VALUES (10, 'CLARK', 2450);
+SELECT LISTAGG(DISTINCT ename, ',') WITHIN GROUP (ORDER BY ename)
+FROM listagg_test WHERE deptno = 10;
+
+-- Test 15: DISTINCT qualifier with the single-argument form
+SELECT LISTAGG(DISTINCT ename) WITHIN GROUP (ORDER BY ename)
+FROM listagg_test WHERE deptno = 10;
+
+-- Test 16: ALL qualifier keeps duplicate measure values (default behaviour)
+SELECT LISTAGG(ALL ename, ',') WITHIN GROUP (ORDER BY ename)
+FROM listagg_test WHERE deptno = 10;
+
+-- Test 17: DISTINCT qualifier with grouped aggregation
+SELECT deptno, LISTAGG(DISTINCT ename, '|') WITHIN GROUP (ORDER BY ename)
+FROM listagg_test GROUP BY deptno ORDER BY deptno;
+
+-- Test 18: DISTINCT requires ORDER BY expressions to appear in argument list
+SELECT LISTAGG(DISTINCT ename, ',') WITHIN GROUP (ORDER BY sal)
+FROM listagg_test WHERE deptno = 10;
+
 -- Cleanup
 DROP TABLE listagg_test;
 
