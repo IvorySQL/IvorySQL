@@ -687,13 +687,118 @@ IMMUTABLE;
  * outside the BMP each count as one.
  *
  * Oracle's SUBSTR position semantics are honored: position 0 is treated as
- * 1, a negative position counts backward from the end of the string, and a
- * length less than 1 -- as well as a start past the end -- answers null
- * (Oracle: the empty string is null, the same convention substrb uses).
+ * 1, a negative position counts backward from the end of the string, a
+ * negative position that reaches past the beginning of the string answers
+ * null, and a length less than 1 -- as well as a start past the end --
+ * answers null (Oracle: the empty string is null, the same convention
+ * substrb uses).
+ *
+ * All the character types bind the C symbol directly and none of them goes
+ * through a cast: sys.oracharchar -> text and sys.oracharbyte -> text are
+ * both implemented by rtrim(), so routing CHAR through either of them would
+ * silently drop the blank padding that Oracle counts.  This is the same
+ * overload set -- and the same reason -- as sys.lengthc()'s.  (The varchar
+ * overload is the VARCHAR2 byte type, sys.oravarcharbyte.)
+ *
+ * Every first-argument type has an integer-position overload as well as a
+ * number-position one, and both are needed.  func_get_detail() picks the
+ * candidate with the most exact matches, so a call with an integer position
+ * prefers the integer-position overloads; with only the number-position ones
+ * in the set, the CLOB/NCLOB rejection overloads below would win that count
+ * and every substrc('abcdef', 2) would end up "not unique".  With both
+ * position types present the text overload -- the preferred type of the
+ * string category -- wins the tie, exactly as it does for sys.lengthc().
+ *
+ * sys.clob and sys.nclob are domains over text, so plain resolution folds
+ * them onto the text overload; the exact-match overloads below are what
+ * stops them, the same way sys.lengthc()'s are.  They are what makes
+ * substrc(TO_CLOB('abc'), 1, 2) an error instead of a silent answer: the
+ * exact match happens while the call is parsed, before the optimizer folds
+ * the constant away.
  */
+CREATE FUNCTION sys.substrc(text, number)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc_no_length'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
 CREATE FUNCTION sys.substrc(varchar, number)
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc_no_length'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(sys.oracharchar, number)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc_no_length'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(sys.oracharbyte, number)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc_no_length'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(sys.oravarcharchar, number)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc_no_length'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(text, integer)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc_no_length'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(varchar, integer)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc_no_length'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(sys.oracharchar, integer)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc_no_length'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(sys.oracharbyte, integer)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc_no_length'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(sys.oravarcharchar, integer)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc_no_length'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(text, number, number)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
@@ -707,7 +812,132 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-COMMENT ON FUNCTION sys.substrc(varchar, number, number) IS 'Return part of a string, position and length counted in Unicode complete characters';
+CREATE FUNCTION sys.substrc(sys.oracharchar, number, number)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(sys.oracharbyte, number, number)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(sys.oravarcharchar, number, number)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(text, integer, integer)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(varchar, integer, integer)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(sys.oracharchar, integer, integer)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(sys.oracharbyte, integer, integer)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(sys.oravarcharchar, integer, integer)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+/*
+ * The LOB types Oracle's SUBSTRC refuses; see ora_substrc_unsupported().
+ * NOT STRICT on purpose -- Oracle rejects the type while parsing, so a NULL
+ * of a rejected type has to error out too.
+ */
+CREATE FUNCTION sys.substrc(sys.clob, number)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(sys.nclob, number)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(sys.clob, integer)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(sys.nclob, integer)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(sys.clob, number, number)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(sys.nclob, number, number)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(sys.clob, integer, integer)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(sys.nclob, integer, integer)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+COMMENT ON FUNCTION sys.substrc(text, number, number) IS 'Return part of a string, position and length counted in Unicode complete characters';
 
 CREATE FUNCTION sys.replace(varchar, varchar, varchar default NULL)
 RETURNS text
@@ -1660,6 +1890,11 @@ IMMUTABLE;
  * overloads bind the C symbols and the varchar2/number ones are thin
  * wrappers, so unknown literals and Oracle-side NUMBER arguments keep
  * resolving the way they do for INSTR.
+ *
+ * Oracle's argument rules are enforced by the C symbols: the occurrence
+ * must be positive (a non-positive one is refused with ORA-01428) and the
+ * position must not be zero (a zero position starts the search before the
+ * first character, so the answer is 0).
  */
 CREATE FUNCTION sys.instrc(str text, patt text, sta int, nth int)
 RETURNS int
@@ -1711,6 +1946,188 @@ AS $$
   select sys.instrc(str::text, patt::text);
 $$ LANGUAGE SQL
 STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+/*
+ * The Oracle character types bind the C symbols directly and none of them
+ * goes through a cast: sys.oracharchar -> text and sys.oracharbyte -> text
+ * are both implemented by rtrim(), so routing CHAR through either of them
+ * would silently drop the blank padding that Oracle counts --
+ * INSTRC(CAST('ab' AS CHAR(5 BYTE)), ' ') has to find the first blank at
+ * position 3.  This is the same overload set -- and the same reason -- as
+ * sys.lengthc()'s.  (The varchar2 overload is the VARCHAR2 byte type,
+ * sys.oravarcharbyte.)
+ *
+ * The text overload is not optional: with more than one candidate in the
+ * same namespace, func_select_candidate() cannot break the tie by search
+ * path position and fails with "function ... is not unique" for an
+ * unknown-type literal such as instrc('abc', 'c').  text is the preferred
+ * type of the string category, so it wins that tie.
+ */
+CREATE FUNCTION sys.instrc(sys.oracharchar, sys.oracharchar)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_2'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.oracharbyte, sys.oracharbyte)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_2'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.oravarcharchar, sys.oravarcharchar)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_2'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.oracharchar, sys.oracharchar, int)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_3'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.oracharbyte, sys.oracharbyte, int)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_3'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.oravarcharchar, sys.oravarcharchar, int)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_3'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.oracharchar, sys.oracharchar, int, int)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_4'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.oracharbyte, sys.oracharbyte, int, int)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_4'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.oravarcharchar, sys.oravarcharchar, int, int)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_4'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+/*
+ * The LOB types Oracle's INSTRC refuses; see ora_instrc_unsupported().
+ * NOT STRICT on purpose -- Oracle rejects the type while parsing, so a NULL
+ * of a rejected type has to error out too.
+ *
+ * The unknown pattern is what catches the common call: the pattern of an
+ * untyped literal is the unknown type while the call is parsed, so an
+ * exact-match overload on it is what makes instrc(TO_CLOB('abc'), 'b') an
+ * error instead of a silent answer.
+ */
+CREATE FUNCTION sys.instrc(sys.clob, sys.clob)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.nclob)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.clob, int)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.nclob, int)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.clob, int, int)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.nclob, int, int)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, unknown)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, unknown)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, unknown, int)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, unknown, int)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, unknown, int, int)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, unknown, int, int)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
