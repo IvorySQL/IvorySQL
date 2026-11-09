@@ -1,0 +1,23 @@
+--
+-- ORA_TO_DATE_INVALID_DAY
+-- Test that Oracle-compatible TO_DATE / TO_TIMESTAMP reject day 0
+-- (ORA-01847), instead of silently replacing it with the default day 1.
+--
+
+-- day 00 is not a valid day of the month
+SELECT to_date('2026-11-00', 'YYYY-MM-DD');
+SELECT to_timestamp('2026-11-00 10:20:30', 'YYYY-MM-DD HH24:MI:SS');
+-- the day may be parsed before the month and year are known
+SELECT to_date('00-11-2026', 'DD-MM-YYYY');
+-- a day supplied on its own
+SELECT to_date('00', 'DD');
+
+-- the upper bound is still enforced
+SELECT to_date('2026-02-30', 'YYYY-MM-DD');
+SELECT to_date('2026-11-31', 'YYYY-MM-DD');
+
+-- valid boundaries and the default day still work
+SELECT to_char(to_date('2024-02-29', 'YYYY-MM-DD'), 'YYYY-MM-DD');
+SELECT to_char(to_date('2026-11-30', 'YYYY-MM-DD'), 'YYYY-MM-DD');
+SELECT to_char(to_date('2026-11-01', 'YYYY-MM-DD'), 'YYYY-MM-DD');
+SELECT to_char(to_date('2026-11', 'YYYY-MM'), 'YYYY-MM-DD');
