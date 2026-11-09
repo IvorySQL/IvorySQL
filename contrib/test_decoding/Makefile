@@ -5,7 +5,8 @@ PGFILEDESC = "test_decoding - example of a logical decoding output plugin"
 
 REGRESS = ddl xact rewrite toast permissions decoding_in_xact \
 	decoding_into_rel binary prepared replorigin time messages \
-	spill slot truncate stream stats twophase twophase_stream
+	spill slot truncate stream stats twophase twophase_stream \
+	rowtypes_alter
 ORA_REGRESS = ivy_ddl xact ivy_rewrite ivy_toast permissions decoding_in_xact \
 	ivy_decoding_into_rel binary prepared replorigin ivy_time messages \
 	spill ivy_slot truncate ivy_stream stats twophase twophase_stream
