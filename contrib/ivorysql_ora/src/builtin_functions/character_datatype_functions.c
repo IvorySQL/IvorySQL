@@ -1487,6 +1487,14 @@ text_substring_byte(Datum str, int32 start, int32 length, bool length_not_specif
 		{
 			prefixSpace = true;
 			prefixSpaceCnt = subStrBegin - (sliceBegin + S1 - 1);
+
+			/*
+			 * The whole requested byte range may fit inside the character
+			 * that we just skipped over.  The padded result must not get
+			 * longer than the requested byte range in that case.
+			 */
+			if (prefixSpaceCnt > E1 - S1)
+				prefixSpaceCnt = E1 - S1;
 		}
 
 		subStrEnd = subStrBegin;
@@ -1499,14 +1507,14 @@ text_substring_byte(Datum str, int32 start, int32 length, bool length_not_specif
 			suffixSpaceCnt = sliceBegin + E1 - 1 - subStrEnd;
 		}
 
-		if (subStrEnd == subStrBegin)
-		{
-			if (prefixSpace && suffixSpace)
-				return cstring_to_text("  ");
-			else
-				return cstring_to_text(" ");
-		}
-
+		/*
+		 * If the requested byte range starts and ends inside the same
+		 * character, subStrBegin == subStrEnd and the result consists of the
+		 * prefix and/or suffix spaces only.  Do not shortcut that case with a
+		 * hard-coded one/two space string: the generic path below sizes the
+		 * result from the space counters, so the result keeps the byte range
+		 * that was actually requested (clipped to the end of the string).
+		 */
 		ret = (text *) palloc(VARHDRSZ + (subStrEnd - subStrBegin + prefixSpaceCnt + suffixSpaceCnt));
 		SET_VARSIZE(ret, VARHDRSZ + (subStrEnd - subStrBegin + prefixSpaceCnt + suffixSpaceCnt));
 		
