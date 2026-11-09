@@ -1,0 +1,170 @@
+-- Empty, NULL, and omitted replacements all remove the search string.
+SELECT '[' || REPLACE('hello world', 'world', '') || ']' AS empty_replacement,
+       '[' || REPLACE('hello world', 'world', NULL) || ']' AS null_replacement,
+       '[' || REPLACE('hello world', 'world') || ']' AS omitted_replacement,
+       LENGTH(REPLACE('hello world', 'world', '')) AS result_length;
+ empty_replacement | null_replacement | omitted_replacement | result_length 
+-------------------+------------------+---------------------+---------------
+ [hello ]          | [hello ]         | [hello ]            |             6
+(1 row)
+
+-- A NULL or empty search string leaves the source unchanged.
+SELECT REPLACE('hello world', NULL, 'x') AS null_search,
+       REPLACE('hello world', '', 'x') AS empty_search,
+       REPLACE('hello world', NULL) AS omitted_replacement;
+ null_search | empty_search | omitted_replacement 
+-------------+--------------+---------------------
+ hello world | hello world  | hello world
+(1 row)
+
+SELECT REPLACE(NULL, 'world', 'x') IS NULL AS null_source,
+       REPLACE('', 'world', 'x') IS NULL AS empty_source;
+ null_source | empty_source 
+-------------+--------------
+ t           | t
+(1 row)
+
+-- Completely removing the source yields NULL, not a non-NULL empty text.
+SELECT REPLACE('world', 'world', '') IS NULL AS fully_deleted,
+       REPLACE('world', 'world', NULL) IS NULL AS null_replacement,
+       REPLACE('world', 'world') IS NULL AS omitted_replacement,
+       sys.REPLACE('world'::varchar2, 'world'::varchar2,
+                   NULL::varchar2) IS NULL AS varchar_deleted;
+ fully_deleted | null_replacement | omitted_replacement | varchar_deleted 
+---------------+------------------+---------------------+-----------------
+ t             | t                | t                   | t
+(1 row)
+
+-- Other replacement behavior, including repeated and multibyte matches.
+SELECT REPLACE('JACK and JUE', 'J', 'BL') AS replaced,
+       REPLACE('aaaaa', 'aa', '') AS repeated,
+       REPLACE('abc', 'x', '') AS no_match,
+       REPLACE('abcabc', 'abc', 'abc') AS unchanged;
+    replaced    | repeated | no_match | unchanged 
+----------------+----------+----------+-----------
+ BLACK and BLUE | a        | abc      | abcabc
+(1 row)
+
+SELECT REPLACE(UNISTR('\4E2D\6587\4E2D\6587'), UNISTR('\4E2D\6587'), 'x') AS multibyte,
+       REPLACE(UNISTR('\4E2D\6587'), UNISTR('\4E2D\6587'), '') IS NULL AS multibyte_deleted;
+ multibyte | multibyte_deleted 
+-----------+-------------------
+ xx        | t
+(1 row)
+
+-- Both text and VARCHAR2 columns must use Oracle NULL argument rules.
+CREATE TABLE replace_inputs (id integer, t text, v varchar2(30), needle text);
+INSERT INTO replace_inputs VALUES
+    (1, 'hello world', 'hello world', 'world'),
+    (2, 'hello world', 'hello world', NULL),
+    (3, 'world', 'world', 'world'),
+    (4, NULL, NULL, 'world');
+SELECT id, REPLACE(t, needle, NULL) AS text_result,
+       REPLACE(v, needle, NULL) AS varchar_result,
+       REPLACE(t, needle, NULL) IS NULL AS result_is_null,
+       LENGTH(REPLACE(t, needle, NULL)) AS result_length
+FROM replace_inputs ORDER BY id;
+ id | text_result | varchar_result | result_is_null | result_length 
+----+-------------+----------------+----------------+---------------
+  1 | hello       | hello          | f              |             6
+  2 | hello world | hello world    | f              |            11
+  3 |             |                | t              |              
+  4 |             |                | t              |              
+(4 rows)
+
+DROP TABLE replace_inputs;
+-- Raw empty text arguments are handled by the Oracle implementation too.
+SET ivorysql.enable_emptystring_to_null = off;
+SELECT sys.REPLACE('', 'x', 'y') IS NULL AS empty_source,
+       sys.REPLACE('abc', '', NULL) AS empty_search,
+       sys.REPLACE('abc', 'abc', '') IS NULL AS fully_deleted;
+ empty_source | empty_search | fully_deleted 
+--------------+--------------+---------------
+ t            | abc          | t
+(1 row)
+
+RESET ivorysql.enable_emptystring_to_null;
+-- An explicit PG search path or qualification keeps PostgreSQL semantics.
+SET search_path = pg_catalog, sys, public;
+SELECT REPLACE('hello world', 'world', NULL) IS NULL AS pg_path_first;
+ pg_path_first 
+---------------
+ t
+(1 row)
+
+RESET search_path;
+SELECT pg_catalog.REPLACE('hello world', 'world', NULL) IS NULL AS pg_qualified;
+ pg_qualified 
+--------------
+ t
+(1 row)
+
+-- Default PG-mode calls retain strict NULL handling and empty text output.
+SET ivorysql.compatible_mode = pg;
+SELECT '[' || REPLACE('hello world', 'world', '') || ']' AS pg_empty_replacement,
+       REPLACE('hello world', 'world', NULL) IS NULL AS pg_null_replacement,
+       REPLACE('hello world', NULL, 'x') IS NULL AS pg_null_search;
+ pg_empty_replacement | pg_null_replacement | pg_null_search 
+----------------------+---------------------+----------------
+ [hello ]             | t                   | t
+(1 row)
+
+SELECT REPLACE('world', 'world', '') IS NULL AS pg_deleted_is_null,
+       LENGTH(REPLACE('world', 'world', '')) AS pg_deleted_length;
+ pg_deleted_is_null | pg_deleted_length 
+--------------------+-------------------
+ f                  |                 0
+(1 row)
+
+SET ivorysql.compatible_mode = oracle;
+-- Switching to the Oracle built-in must preserve expression eligibility.
+BEGIN;
+SET LOCAL client_min_messages = error;
+ALTER FUNCTION sys.replace(text, text, text) RENAME TO replace_before_oid_test;
+CREATE FUNCTION sys.replace(text, text, text DEFAULT NULL)
+RETURNS text AS '$libdir/ivorysql_ora', 'ora_replace'
+LANGUAGE C IMMUTABLE CALLED ON NULL INPUT;
+/
+ALTER EXTENSION ivorysql_ora ADD FUNCTION sys.replace(text, text, text);
+SELECT 'sys.replace(text,text,text)'::regprocedure::oid >= 16384 AS high_oid;
+ high_oid 
+----------
+ t
+(1 row)
+
+CREATE TABLE replace_generated (s text,
+    r text GENERATED ALWAYS AS (REPLACE(s, 'world', NULL)) VIRTUAL);
+INSERT INTO replace_generated(s) VALUES ('hello world'), ('world'), (NULL);
+SELECT s, r, r IS NULL AS result_is_null FROM replace_generated
+ORDER BY s COLLATE "C" NULLS LAST;
+      s      |   r    | result_is_null 
+-------------+--------+----------------
+ hello world | hello  | f
+ world       |        | t
+             |        | t
+(3 rows)
+
+CREATE PUBLICATION replace_pub FOR TABLE replace_generated
+    WHERE (REPLACE(s, 'world', 'x') = 'x') WITH (publish = 'insert');
+SELECT count(*) AS function_dependencies FROM pg_depend
+WHERE refclassid = 'pg_proc'::regclass
+  AND refobjid = 'sys.replace(text,text,text)'::regprocedure
+  AND classid IN ('pg_publication_rel'::regclass, 'pg_attrdef'::regclass);
+ function_dependencies 
+-----------------------
+                     2
+(1 row)
+
+-- An immutable SQL replacement of the extension member is still rejected.
+SAVEPOINT rejected;
+CREATE OR REPLACE FUNCTION sys.replace(text, text, text DEFAULT NULL)
+RETURNS text LANGUAGE SQL IMMUTABLE CALLED ON NULL INPUT AS 'SELECT $1';
+/
+CREATE PUBLICATION replace_bad_pub FOR TABLE replace_generated
+    WHERE (REPLACE(s, 'world', 'x') = 'x') WITH (publish = 'insert');
+ERROR:  invalid publication WHERE expression
+LINE 2:     WHERE (REPLACE(s, 'world', 'x') = 'x') WITH (publish = '...
+                   ^
+DETAIL:  User-defined or built-in mutable functions are not allowed.
+ROLLBACK TO rejected;
+ROLLBACK;

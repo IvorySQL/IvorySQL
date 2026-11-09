@@ -10539,13 +10539,22 @@ get_rule_expr(Node *node, deparse_context *context,
 				switch (minmaxexpr->op)
 				{
 					case IS_GREATEST:
+					case IS_ORACLE_GREATEST:
 						appendStringInfoString(buf, "GREATEST(");
 						break;
 					case IS_LEAST:
+					case IS_ORACLE_LEAST:
 						appendStringInfoString(buf, "LEAST(");
 						break;
 				}
-				get_rule_expr((Node *) minmaxexpr->args, context, true);
+				/*
+				 * Oracle chooses conversions from the original first argument.
+				 * Showing our implicit CHAR relabel as an explicit VARCHAR2
+				 * cast would trim padding when the definition is restored.
+				 */
+				get_rule_expr((Node *) minmaxexpr->args, context,
+							  minmaxexpr->op != IS_ORACLE_GREATEST &&
+							  minmaxexpr->op != IS_ORACLE_LEAST);
 				appendStringInfoChar(buf, ')');
 			}
 			break;

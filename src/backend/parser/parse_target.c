@@ -1927,9 +1927,11 @@ FigureColnameInternal(Node *node, char **name)
 			switch (((MinMaxExpr *) node)->op)
 			{
 				case IS_GREATEST:
+				case IS_ORACLE_GREATEST:
 					*name = "greatest";
 					return 2;
 				case IS_LEAST:
+				case IS_ORACLE_LEAST:
 					*name = "least";
 					return 2;
 			}

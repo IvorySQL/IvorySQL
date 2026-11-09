@@ -32,6 +32,8 @@
 #define ORACLE_MAX_TIMESTAMP_PRECISION	9
 #define ORACLE_MAX_INTERVAL_PRECISION	9
 #define REGEXP_REPLACE_BACKREF_CNT		10
+#define ORACLE_BINARY_FLOAT_DIGITS		9
+#define ORACLE_BINARY_DOUBLE_DIGITS		17
 
 #define SAMESIGN(a,b)	(((a) < 0) == ((b) < 0))
 
@@ -54,6 +56,7 @@
 
 /* common_datatypes.c */
 extern text *ora_dotrim(const char *string, int stringlen, const char *set, int setlen, bool doltrim, bool dortrim);
+extern char *ora_binary_float_to_cstring(double value, int precision);
 
 /* oradate.c */
 extern PGDLLEXPORT Datum oradate_cmp(PG_FUNCTION_ARGS);

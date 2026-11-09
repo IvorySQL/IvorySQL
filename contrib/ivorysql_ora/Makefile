@@ -81,8 +81,14 @@ ORA_REGRESS = \
 	ora_binary_float \
 	ora_binary_double \
 	ora_nanvl \
+	ora_binary_float_format \
 	ora_raw_long \
 	ora_character_datatype_functions \
+	ora_regexp_like \
+	ora_regexp_instr \
+	ora_replace \
+	ora_minmax \
+	ora_substr \
 	ora_datetime_datatype_functions \
 	ora_misc_functions \
 	ora_vsize \
@@ -90,6 +96,7 @@ ORA_REGRESS = \
 	datatype_and_func_bugs \
 	ora_sysview \
 	ora_like_operator \
+	ora_like_char \
 	ora_xml_functions \
 	dbms_utility \
 	ora_dbms_output \

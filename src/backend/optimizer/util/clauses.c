@@ -77,6 +77,7 @@ typedef struct
 	List	   *active_fns;
 	Node	   *case_val;
 	bool		estimate;
+	bool		defer_evaluation;	/* later arguments of an Oracle MinMaxExpr */
 } eval_const_expressions_context;
 
 typedef struct
@@ -2652,6 +2653,7 @@ eval_const_expressions(PlannerInfo *root, Node *node)
 	context.active_fns = NIL;	/* nothing being recursively simplified */
 	context.case_val = NULL;	/* no CASE being examined */
 	context.estimate = false;	/* safe transformations only */
+	context.defer_evaluation = false;
 	return eval_const_expressions_mutator(node, &context);
 }
 
@@ -2794,6 +2796,7 @@ estimate_expression_value(PlannerInfo *root, Node *node)
 	context.active_fns = NIL;	/* nothing being recursively simplified */
 	context.case_val = NULL;	/* no CASE being examined */
 	context.estimate = true;	/* unsafe transformations OK */
+	context.defer_evaluation = false;
 	return eval_const_expressions_mutator(node, &context);
 }
 
@@ -2820,7 +2823,8 @@ estimate_expression_value(PlannerInfo *root, Node *node)
 
 /* Generic macro for applying evaluate_expr */
 #define ece_evaluate_expr(node) \
-	((Node *) evaluate_expr((Expr *) (node), \
+	(context->defer_evaluation ? (Node *) (node) : \
+	 (Node *) evaluate_expr((Expr *) (node), \
 							exprType((Node *) (node)), \
 							exprTypmod((Node *) (node)), \
 							exprCollation((Node *) (node))))
@@ -3972,10 +3976,56 @@ eval_const_expressions_mutator(Node *node,
 				else
 					return copyObject(node);
 			}
+		case T_MinMaxExpr:
+			{
+				MinMaxExpr *minmax = (MinMaxExpr *) node;
+				MinMaxExpr *newminmax;
+				bool		saved_defer = context->defer_evaluation;
+				bool		all_const = true;
+				ListCell   *lc;
+
+				if (minmax->op != IS_ORACLE_GREATEST &&
+					minmax->op != IS_ORACLE_LEAST)
+				{
+					/* Assume the btree comparison function is immutable. */
+					node = ece_generic_processing(node);
+					if (ece_all_arguments_const(node))
+						return ece_evaluate_expr(node);
+					return node;
+				}
+
+				newminmax = makeNode(MinMaxExpr);
+				*newminmax = *minmax;
+				newminmax->args = NIL;
+				foreach(lc, minmax->args)
+				{
+					Node	   *arg;
+
+					/*
+					 * A nonconstant argument could be NULL at execution time.
+					 * Canonicalize subsequent arguments (including defaults and
+					 * named arguments), but do not execute them while planning.
+					 */
+					context->defer_evaluation = saved_defer || !all_const;
+					arg = eval_const_expressions_mutator(lfirst(lc), context);
+					newminmax->args = lappend(newminmax->args, arg);
+					if (IsA(arg, Const))
+					{
+						/* Later arguments are unreachable after a known NULL. */
+						if (((Const *) arg)->constisnull)
+							break;
+					}
+					else
+						all_const = false;
+				}
+				context->defer_evaluation = saved_defer;
+				if (all_const)
+					return ece_evaluate_expr(newminmax);
+				return (Node *) newminmax;
+			}
 		case T_SubscriptingRef:
 		case T_ArrayExpr:
 		case T_RowExpr:
-		case T_MinMaxExpr:
 			{
 				/*
 				 * Generic handling for node types whose own processing is
@@ -3986,10 +4036,6 @@ eval_const_expressions_mutator(Node *node,
 				 * fetch and assignment are both immutable.  This constrains
 				 * type-specific subscripting implementations; maybe we should
 				 * relax it someday.
-				 *
-				 * Treating MinMaxExpr this way amounts to assuming that the
-				 * btree comparison function it calls is immutable; see the
-				 * reasoning in contain_mutable_functions_walker.
 				 */
 
 				/* Copy the node and const-simplify its arguments */
@@ -4076,7 +4122,7 @@ eval_const_expressions_mutator(Node *node,
 				 */
 				SQLValueFunction *svf = (SQLValueFunction *) node;
 
-				if (context->estimate)
+				if (context->estimate && !context->defer_evaluation)
 					return (Node *) evaluate_expr((Expr *) svf,
 												  svf->type,
 												  svf->typmod,
@@ -4576,6 +4622,9 @@ ece_function_is_safe(Oid funcid, eval_const_expressions_context *context)
 {
 	char		provolatile = func_volatile(funcid);
 
+	if (context->defer_evaluation)
+		return false;
+
 	/*
 	 * Ordinarily we are only allowed to simplify immutable functions. But for
 	 * purposes of estimation, we consider it okay to simplify functions that
@@ -4923,6 +4972,11 @@ simplify_function(Oid funcid, Oid result_type, int32 result_typmod,
 	}
 
 	/* Now attempt simplification of the function call proper. */
+	if (context->defer_evaluation)
+	{
+		ReleaseSysCache(func_tuple);
+		return NULL;
+	}
 
 	newexpr = evaluate_function(funcid, result_type, result_typmod,
 								result_collid, input_collid,

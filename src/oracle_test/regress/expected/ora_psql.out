@@ -610,9 +610,9 @@ print v1
  3.14
 
 print v3 v5
-  V3  
-------
- 3.14
+           V3            
+-------------------------
+ 3.1400000000000001E+000
 
      V5     
 ------------
@@ -715,13 +715,13 @@ print
 ------
  3.14
 
-  V2  
-------
- 3.14
+       V2       
+----------------
+ 3.1400001E+000
 
-  V3  
-------
- 3.14
+           V3            
+-------------------------
+ 3.1400000000000001E+000
 
     V4    
 ----------
@@ -760,9 +760,9 @@ print v1 noexist v2
 
 Bind variable "noexist" not declared.
 
-  V2  
-------
- 3.14
+       V2       
+----------------
+ 3.1400001E+000
 
 -- invalid host/bind variable name.
 print v1 a'b v2
@@ -772,9 +772,9 @@ print v1 a'b v2
 
 invalid host/bind variable name.
 
-  V2  
-------
- 3.14
+       V2       
+----------------
+ 3.1400001E+000
 
 -- For a'b, an error is reported when the bind variable 'a' is not exits:
 --	SP2-0552: Bind variable "A" not declared. 
@@ -918,8 +918,8 @@ raise notice 'the value of local variable is %', lval12;
 end;
 /
 NOTICE:  old value of v1 is 123
-NOTICE:  old value of v2 is 3.14
-NOTICE:  old value of v3 is 3.1415926
+NOTICE:  old value of v2 is 3.1400001E+000
+NOTICE:  old value of v3 is 3.1415926000000001E+000
 NOTICE:  old value of v4 is t
 NOTICE:  old value of v5 is this is char(100) datatype                                                                          
 NOTICE:  old value of v6 is this is char(100 char) datatype                                                                     
@@ -930,8 +930,8 @@ NOTICE:  old value of v10 is this is varchar2(100) datatype
 NOTICE:  old value of v11 is this is varchar2(100 char) datatype
 NOTICE:  old value of v12 is this is varchar2(100 byte) datatype
 NOTICE:  new value of v1 is 3.141592657
-NOTICE:  new value of v2 is 3.1415927
-NOTICE:  new value of v3 is 3.141592657
+NOTICE:  new value of v2 is 3.14159274E+000
+NOTICE:  new value of v3 is 3.1415926569999999E+000
 NOTICE:  new value of v4 is f
 NOTICE:  new value of v5 is new value = this is char(100) datatype                                                              
 NOTICE:  new value of v6 is new value = this is char(100 char) datatype                                                         
@@ -942,8 +942,8 @@ NOTICE:  new value of v10 is new value = this is varchar2(100) datatype
 NOTICE:  new value of v11 is new value = this is varchar2(100 char) datatype
 NOTICE:  new value of v12 is new value = this is varchar2(100 byte) datatype
 NOTICE:  the value of local variable is 123
-NOTICE:  the value of local variable is 3.14
-NOTICE:  the value of local variable is 3.1415926
+NOTICE:  the value of local variable is 3.1400001E+000
+NOTICE:  the value of local variable is 3.1415926000000001E+000
 NOTICE:  the value of local variable is t
 NOTICE:  the value of local variable is this is char(100) datatype                                                                          
 NOTICE:  the value of local variable is this is char(100 char) datatype                                                                     
@@ -959,14 +959,14 @@ print v1
  3.141592657
 
 print v2
-    V2     
------------
- 3.1415927
+       V2        
+-----------------
+ 3.14159274E+000
 
 print v3
-     V3      
--------------
- 3.141592657
+           V3            
+-------------------------
+ 3.1415926569999999E+000
 
 print v4
  V4 
