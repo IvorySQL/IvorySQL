@@ -46,6 +46,7 @@
 #include "access/attnum.h"
 #include "access/sysattr.h"
 #include "access/transam.h"
+#include "access/xlogdefs.h"
 #include "catalog/pg_aggregate_d.h"
 #include "catalog/pg_am_d.h"
 #include "catalog/pg_attribute_d.h"
@@ -411,6 +412,9 @@ static void binary_upgrade_extension_member(PQExpBuffer upgrade_buffer,
 											const char *objtype,
 											const char *objname,
 											const char *objnamespace);
+static void binary_upgrade_set_next_attribute_versions(PQExpBuffer upgrade_buffer,
+													   int numatts,
+													   const uint64 *attversions);
 static const char *getAttrName(int attrnum, const TableInfo *tblInfo);
 static const char *fmtCopyColumnList(const TableInfo *ti, PQExpBuffer buffer);
 static bool nonemptyReloptions(const char *reloptions);
@@ -6077,6 +6081,37 @@ binary_upgrade_set_pg_class_oids(Archive *fout,
 }
 
 /*
+ * Emit SQL to pre-set the attribute versions for the next relation to be
+ * created.
+ *
+ * attversions[j] is the version of attribute j+1, or InvalidXLogRecPtr if it
+ * was unversioned in the source cluster. This needs to include dropped
+ * attributes.
+ *
+ * The version has to be set as part of the CREATE itself, rather than be
+ * fixed up afterwards, as some CREATE statements can contain expressions that
+ * can embed a row type constant of the relation being created. If the
+ * attribute versions were to be updated subsequently, the embedded datums
+ * would be considered "out-of-date" and throw errors on use.
+ */
+static void
+binary_upgrade_set_next_attribute_versions(PQExpBuffer upgrade_buffer,
+										   int numatts,
+										   const uint64 *attversions)
+{
+	appendPQExpBufferStr(upgrade_buffer,
+						 "\n-- For binary upgrade, must preserve the attribute versions\n"
+						 "SELECT pg_catalog.binary_upgrade_set_next_attribute_versions('{");
+
+	for (int j = 0; j < numatts; j++)
+		appendPQExpBuffer(upgrade_buffer, "%s%X/%X",
+						  j > 0 ? "," : "",
+						  LSN_FORMAT_ARGS(attversions[j]));
+
+	appendPQExpBufferStr(upgrade_buffer, "}'::pg_catalog.pg_lsn[]);\n\n");
+}
+
+/*
  * If the DumpableObject is a member of an extension, add a suitable
  * ALTER EXTENSION ADD command to the creation commands in upgrade_buffer.
  *
@@ -9571,6 +9606,7 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 	int			i_notnull_islocal;
 	int			i_notnull_invalidoid;
 	int			i_attoptions;
+	int			i_attversion;
 	int			i_attcollation;
 	int			i_attcompression;
 	int			i_attisinvisible;
@@ -9658,8 +9694,33 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 	else
 		appendPQExpBufferStr(q,
 							 "pg_catalog.format_type(t.oid, a.atttypmod) AS atttypname,\n");
+
+	/*
+	 * Read attoptions and attversion.
+	 *
+	 * Attversion is stored as a special attoptions value in the
+	 * back-branches. In that case we need to remove the special attoptions
+	 * value.
+	 *
+	 * Attribute versioning may also have been backpatched to versions older
+	 * than the ones it was backpatched to upstream, so do this for all server
+	 * versions, without using functions missing in old versions (like
+	 * starts_with()).
+	 */
+	appendPQExpBuffer(q,
+					  "array_to_string(ARRAY(\n"
+					  "  SELECT o FROM unnest(a.attoptions) o\n"
+					  "  WHERE substr(o, 1, %2$zu) <> '%1$s='\n"
+					  "), ', ') AS attoptions,\n"
+					  "(\n"
+					  "  SELECT substr(o, %2$zu + 1)\n"
+					  "  FROM unnest(a.attoptions) o\n"
+					  "  WHERE substr(o, 1, %2$zu) = '%1$s='\n"
+					  ") AS attversion,\n",
+					  ATTRIBUTE_VERSION_ATTOPTION,
+					  strlen(ATTRIBUTE_VERSION_ATTOPTION) + 1);
+
 	appendPQExpBufferStr(q,
-						 "array_to_string(a.attoptions, ', ') AS attoptions,\n"
 						 "CASE WHEN a.attcollation <> t.typcollation "
 						 "THEN a.attcollation ELSE 0 END AS attcollation,\n"
 						 "pg_catalog.array_to_string(ARRAY("
@@ -9825,6 +9886,7 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 	i_notnull_noinherit = PQfnumber(res, "notnull_noinherit");
 	i_notnull_islocal = PQfnumber(res, "notnull_islocal");
 	i_attoptions = PQfnumber(res, "attoptions");
+	i_attversion = PQfnumber(res, "attversion");
 	i_attcollation = PQfnumber(res, "attcollation");
 	i_attcompression = PQfnumber(res, "attcompression");
 	i_attisinvisible = PQfnumber(res, "attisinvisible");
@@ -9888,6 +9950,7 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 		tbinfo->attalign = pg_malloc_array(char, numatts);
 		tbinfo->attislocal = pg_malloc_array(bool, numatts);
 		tbinfo->attoptions = pg_malloc_array(char *, numatts);
+		tbinfo->attversion = pg_malloc_array(uint64, numatts);
 		tbinfo->attcollation = pg_malloc_array(Oid, numatts);
 		tbinfo->attcompression = pg_malloc_array(char, numatts);
 		tbinfo->attisinvisible = (bool *) pg_malloc(ntups * sizeof(bool));
@@ -9937,6 +10000,10 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 			tbinfo->notnull_comment[j] = PQgetisnull(res, r, i_notnull_comment) ?
 				NULL : pg_strdup(PQgetvalue(res, r, i_notnull_comment));
 			tbinfo->attoptions[j] = pg_strdup(PQgetvalue(res, r, i_attoptions));
+			if (PQgetisnull(res, r, i_attversion))
+				tbinfo->attversion[j] = 0;
+			else
+				tbinfo->attversion[j] = strtou64(PQgetvalue(res, r, i_attversion), NULL, 10);
 			tbinfo->attcollation[j] = atooid(PQgetvalue(res, r, i_attcollation));
 			tbinfo->attcompression[j] = *(PQgetvalue(res, r, i_attcompression));
 			tbinfo->attisinvisible[j] = (PQgetvalue(res, r, i_attisinvisible)[0] == 't');
@@ -13471,12 +13538,15 @@ dumpCompositeType(Archive *fout, const TypeInfo *tyinfo)
 	int			i_attalign;
 	int			i_attisdropped;
 	int			i_attcollation;
+	int			i_attnum;
+	int			i_attversion;
 	int			i;
 	int			actual_atts;
 	char	   *object_methods = NULL;
 	char	   *object_body = NULL;
 	bool		object_instantiable = true;
 	bool		object_final = true;
+	uint64	   *attversions = NULL;
 
 	if (!fout->is_prepared[PREPQUERY_DUMPCOMPOSITETYPE])
 	{
@@ -13504,7 +13574,24 @@ dumpCompositeType(Archive *fout, const TypeInfo *tyinfo)
 		appendPQExpBufferStr(query,
 							 "a.attlen, a.attalign, a.attisdropped, "
 							 "CASE WHEN a.attcollation <> at.typcollation "
-							 "THEN a.attcollation ELSE 0 END AS attcollation "
+							 "THEN a.attcollation ELSE 0 END AS attcollation, ");
+
+		/*
+		 * See similar code in getTableAttrs().
+		 *
+		 * XXX: This query is non-trivial enough to make deduplicating with
+		 * getTableAttrs() worthwhile. But ISTM the proper way for that is to
+		 * deduplicate all of getTableAttrs() and dumpCompositeType().
+		 */
+		appendPQExpBuffer(query,
+						  "(\n"
+						  " SELECT substr(o, %2$zu + 1)\n"
+						  " FROM unnest(a.attoptions) o\n"
+						  " WHERE substr(o, 1, %2$zu) = '%1$s=') AS attversion\n",
+						  ATTRIBUTE_VERSION_ATTOPTION,
+						  strlen(ATTRIBUTE_VERSION_ATTOPTION) + 1);
+
+		appendPQExpBufferStr(query,
 							 "FROM pg_catalog.pg_type ct "
 							 "JOIN pg_catalog.pg_attribute a ON a.attrelid = ct.typrelid "
 							 "LEFT JOIN pg_catalog.pg_type at ON at.oid = a.atttypid ");
@@ -13534,13 +13621,30 @@ dumpCompositeType(Archive *fout, const TypeInfo *tyinfo)
 	i_attalign = PQfnumber(res, "attalign");
 	i_attisdropped = PQfnumber(res, "attisdropped");
 	i_attcollation = PQfnumber(res, "attcollation");
+	i_attnum = PQfnumber(res, "attnum");
+	i_attversion = PQfnumber(res, "attversion");
 
 	if (dopt->binary_upgrade)
 	{
+		/*
+		 * Collect the attribute versions in a pass of their own, so that they
+		 * can be emitted before the CREATE TYPE, like in dumpTableSchema().
+		 */
+		attversions = pg_malloc0_array(uint64, ntups);
+		for (i = 0; i < ntups; i++)
+		{
+			int			attnum = atoi(PQgetvalue(res, i, i_attnum));
+
+			if (attnum >= 1 && attnum <= ntups &&
+				!PQgetisnull(res, i, i_attversion))
+				attversions[attnum - 1] = strtou64(PQgetvalue(res, i, i_attversion), NULL, 10);
+		}
+
 		binary_upgrade_set_type_oids_by_type_oid(fout, q,
 												 tyinfo->dobj.catId.oid,
 												 false, false);
 		binary_upgrade_set_pg_class_oids(fout, q, tyinfo->typrelid);
+		binary_upgrade_set_next_attribute_versions(q, ntups, attversions);
 	}
 
 	qtypname = pg_strdup(fmtId(tyinfo->dobj.name));
@@ -13734,6 +13838,8 @@ dumpCompositeType(Archive *fout, const TypeInfo *tyinfo)
 	PQclear(res);
 	destroyPQExpBuffer(q);
 	destroyPQExpBuffer(dropped);
+	if (attversions != NULL)
+		pg_free(attversions);
 	destroyPQExpBuffer(delq);
 	destroyPQExpBuffer(query);
 	free(qtypname);
@@ -17879,7 +17985,14 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 					   qrelname);
 
 	if (dopt->binary_upgrade)
+	{
 		binary_upgrade_set_type_oids_by_rel(fout, q, tbinfo);
+
+		/* only relations with a row type have versioned attributes */
+		if (RELKIND_HAS_ROWTYPE(tbinfo->relkind))
+			binary_upgrade_set_next_attribute_versions(q, tbinfo->numatts,
+													   tbinfo->attversion);
+	}
 
 	/* Is it a table or a view? */
 	if (tbinfo->relkind == RELKIND_VIEW)
