@@ -1612,3 +1612,39 @@ SELECT SUBSTRC(NULL,1) FROM DUAL;
 SELECT sys.instrc('CORPORATE FLOOR', 'OR', 5, 2) FROM DUAL;
 SELECT sys.instrc('今天明天', '天', 1.9) FROM DUAL;
 SELECT sys.substrc('今天明天', 2.4, 2.9) FROM DUAL;
+
+-- A negative position that reaches past the beginning of the string has no
+-- answer in Oracle: SUBSTRC('abcdef', -10, 2) is null there, not the whole
+-- string.  -6 is the last negative position that still has an answer.
+SELECT SUBSTRC('abcdef',-10) FROM DUAL;
+SELECT SUBSTRC('abcdef',-6,2) FROM DUAL;
+
+-- The character types keep their blank padding.  The CHAR -> text and the
+-- CHAR -> varchar casts are both implemented by rtrim(), so the overloads
+-- have to take the character types directly; Oracle counts the padding of
+-- a CHAR value, so SUBSTRC has to answer 'b   ' here and not 'b'.
+SELECT
+    LENGTHC(CAST('ab' AS CHAR(5 BYTE))) AS input_len,
+    LENGTHC(SUBSTRC(CAST('ab' AS CHAR(5 BYTE)), 2)) AS output_len,
+    REPLACE(
+        SUBSTRC(CAST('ab' AS CHAR(5 BYTE)), 2),
+        ' ',
+        '_'
+    ) AS visible_result,
+    INSTRC(CAST('ab' AS CHAR(5 BYTE)), ' ') AS first_blank
+FROM dual;
+
+-- CLOB and NCLOB are not character types: Oracle refuses them with
+-- ORA-00932.
+SELECT SUBSTRC(CAST('abc' AS CLOB), 1, 2) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS CLOB), 'b') FROM DUAL;
+SELECT SUBSTRC(CAST('abc' AS NCLOB), 1, 2) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS NCLOB), 'b') FROM DUAL;
+
+-- The occurrence must be positive and the position must not be zero: a zero
+-- position starts the search before the first character, so nothing can
+-- match.
+SELECT INSTRC('abc','c',0,1) FROM DUAL;
+SELECT INSTRC('abc','c',0) FROM DUAL;
+SELECT INSTRC('abc','a',2,-1) FROM DUAL;
+SELECT INSTRC('abc','a',1,0) FROM DUAL;
