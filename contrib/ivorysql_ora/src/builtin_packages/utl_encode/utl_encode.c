@@ -177,6 +177,31 @@ ivorysql_utl_encode_base64_decode(PG_FUNCTION_ARGS)
 		PG_RETURN_BYTEA_P(result);
 	}
 
+	/*
+	 * Reject invalid Base64 padding before decoding: per RFC 4648 section 4
+	 * the '=' padding may only appear as one or two trailing characters of
+	 * the final quartet ("XYZ=" or "XY==").  pg_b64_decode() silently
+	 * accepts inputs where data follows the padding, e.g. "YQ=B" decodes to
+	 * "a" and "YQ== YWI=" (whitespace stripped above) decodes to "aa",
+	 * while both are invalid.  Enforce the padding position here.
+	 */
+	for (i = 0; i < clean_len; i++)
+	{
+		if (clean_buf[i] == '=')
+		{
+			int			j;
+
+			for (j = i + 1; j < clean_len; j++)
+			{
+				if (clean_buf[j] != '=')
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("UTL_ENCODE.BASE64_DECODE: invalid base64 padding, data after '='")));
+			}
+			break;
+		}
+	}
+
 	/* Allocate output buffer (pg_b64_dec_len gives an upper bound) */
 	dec_buf_len = pg_b64_dec_len(clean_len);
 	result = (bytea *) palloc(VARHDRSZ + dec_buf_len);
