@@ -47,7 +47,7 @@ LANGUAGE C IMMUTABLE STRICT;
 CREATE FUNCTION sys.ora_utl_raw_substr(r bytea, pos integer, len integer DEFAULT NULL)
 RETURNS bytea
 AS 'MODULE_PATHNAME', 'ora_utl_raw_substr'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE;
 
 CREATE FUNCTION sys.ora_utl_raw_concat(r1 bytea, r2 bytea)
 RETURNS bytea
@@ -87,7 +87,7 @@ LANGUAGE C IMMUTABLE STRICT;
 CREATE FUNCTION sys.ora_utl_raw_compare(r1 bytea, r2 bytea, pad bytea DEFAULT NULL)
 RETURNS integer
 AS 'MODULE_PATHNAME', 'ora_utl_raw_compare'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE;
 
 CREATE FUNCTION sys.ora_utl_raw_translate(r bytea, from_set bytea, to_set bytea)
 RETURNS bytea
@@ -97,7 +97,7 @@ LANGUAGE C IMMUTABLE STRICT;
 CREATE FUNCTION sys.ora_utl_raw_overlay(overlay_str bytea, target bytea, pos integer DEFAULT 1, len integer DEFAULT NULL, pad bytea DEFAULT NULL)
 RETURNS bytea
 AS 'MODULE_PATHNAME', 'ora_utl_raw_overlay'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE;
 
 CREATE FUNCTION sys.ora_utl_raw_cast_from_binary_integer(n integer, endianness integer)
 RETURNS bytea
