@@ -2183,6 +2183,9 @@ typedef struct NestLoopState
 	JoinState	js;				/* its first field is NodeTag */
 	bool		nl_NeedNewOuter;
 	bool		nl_MatchedOuter;
+	bool		nl_ResetInnerRownum;	/* restart inner ROWNUM per outer row */
+	bool		nl_CountOuterRownum;	/* join output rows consume ROWNUM */
+	int64		nl_InnerRownum; /* ROWNUM counter of the inner side */
 	TupleTableSlot *nl_NullInnerTupleSlot;
 } NestLoopState;
 

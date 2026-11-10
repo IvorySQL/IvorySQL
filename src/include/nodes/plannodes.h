@@ -1023,6 +1023,13 @@ typedef struct NestLoop
 	Join		join;
 	/* list of NestLoopParam nodes */
 	List	   *nestParams;
+	/*
+	 * Oracle ROWNUM compatibility: true when the inner subtree contains
+	 * ROWNUM expressions.  The inner plan is (re-)executed once per outer
+	 * row, and in Oracle each such execution belongs to a separate query
+	 * block, so its ROWNUM counter must restart at 1 for each outer row.
+	 */
+	bool		reset_inner_rownum;
 } NestLoop;
 
 typedef struct NestLoopParam

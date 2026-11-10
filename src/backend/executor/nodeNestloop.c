@@ -149,6 +149,14 @@ ExecNestLoop(PlanState *pstate)
 			 * now rescan the inner plan
 			 */
 			ENL1_printf("rescanning inner plan");
+
+			/*
+			 * Oracle ROWNUM compatibility: the inner side is a separate query
+			 * block, so its ROWNUM counter restarts for every outer tuple.
+			 */
+			if (node->nl_ResetInnerRownum)
+				node->nl_InnerRownum = 0;
+
 			ExecReScan(innerPlan);
 		}
 
@@ -157,7 +165,23 @@ ExecNestLoop(PlanState *pstate)
 		 */
 		ENL1_printf("getting new inner tuple");
 
-		innerTupleSlot = ExecProcNode(innerPlan);
+		/*
+		 * Run the inner plan with its own ROWNUM counter, so that the counter
+		 * used by the outer query block is neither consumed nor advanced by
+		 * the rows produced on the inner side.
+		 */
+		if (node->nl_ResetInnerRownum)
+		{
+			EState	   *estate = node->js.ps.state;
+			int64		save_rownum = estate->es_rownum;
+
+			estate->es_rownum = node->nl_InnerRownum;
+			innerTupleSlot = ExecProcNode(innerPlan);
+			node->nl_InnerRownum = estate->es_rownum;
+			estate->es_rownum = save_rownum;
+		}
+		else
+			innerTupleSlot = ExecProcNode(innerPlan);
 		econtext->ecxt_innertuple = innerTupleSlot;
 
 		if (TupIsNull(innerTupleSlot))
@@ -188,6 +212,14 @@ ExecNestLoop(PlanState *pstate)
 					 * ExecProject().
 					 */
 					ENL1_printf("qualification succeeded, projecting tuple");
+
+					/*
+					 * Assign the ROWNUM of this join output row, since the
+					 * inner side no longer advances the shared counter.
+					 */
+					if (node->nl_ResetInnerRownum &&
+						node->nl_CountOuterRownum)
+						node->js.ps.state->es_rownum++;
 
 					return ExecProject(node->js.ps.ps_ProjInfo);
 				}
@@ -237,6 +269,13 @@ ExecNestLoop(PlanState *pstate)
 				 * slot containing the result tuple using ExecProject().
 				 */
 				ENL1_printf("qualification succeeded, projecting tuple");
+
+				/*
+				 * Assign the ROWNUM of this join output row, since the inner
+				 * side no longer advances the shared counter.
+				 */
+				if (node->nl_ResetInnerRownum && node->nl_CountOuterRownum)
+					node->js.ps.state->es_rownum++;
 
 				return ExecProject(node->js.ps.ps_ProjInfo);
 			}
@@ -346,6 +385,21 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 	nlstate->nl_NeedNewOuter = true;
 	nlstate->nl_MatchedOuter = false;
 
+	/*
+	 * ROWNUM bookkeeping for the inner side.  nl_ResetInnerRownum is set by
+	 * the planner when the inner subtree contains ROWNUM expressions (the
+	 * inner side then behaves like a separate query block and its counter
+	 * restarts for each outer tuple).  The join output rows themselves must
+	 * still advance the outer query block's ROWNUM counter, which would
+	 * otherwise stop advancing once the inner side no longer contributes to
+	 * the shared counter.
+	 */
+	nlstate->nl_ResetInnerRownum = node->reset_inner_rownum;
+	nlstate->nl_CountOuterRownum =
+		nlstate->js.ps.ps_ProjInfo != NULL &&
+		nlstate->js.ps.ps_ProjInfo->pi_needsMaterialization;
+	nlstate->nl_InnerRownum = 0;
+
 	NL1_printf("ExecInitNestLoop: %s\n",
 			   "node initialized");
 
@@ -398,4 +452,5 @@ ExecReScanNestLoop(NestLoopState *node)
 
 	node->nl_NeedNewOuter = true;
 	node->nl_MatchedOuter = false;
+	node->nl_InnerRownum = 0;
 }
