@@ -960,8 +960,10 @@ typedef struct PLiSQL_stmt_dynexecute
 	bool		strict;			/* INTO STRICT flag */
 	PLiSQL_variable *target;	/* INTO target (record or row) */
 	List	   *params;			/* USING expressions */
+	List	   *parammodes;		/* PROARGMODE_* of each USING expression
+								 * (EXECUTE IMMEDIATE only) */
 	bool		haveout;		/* "out" or "in out" mode */
-	PLiSQL_row *out;			/* OUT target, if row */
+	PLiSQL_row *out;			/* OUT and IN OUT targets, in USING order */
 }			PLiSQL_stmt_dynexecute;
 
 /*

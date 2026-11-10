@@ -936,8 +936,13 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 		bool		typByVal;
 		MemoryContext old;
 
-		/* use datumCopy to pass variables, first switch to saved memory context */
-		old = MemoryContextSwitchTo(Ora_spi_saved_memorycontext());
+		/*
+		 * use datumCopy to pass variables, first switch to the caller's
+		 * context if it gave one, else to the saved memory context
+		 */
+		old = MemoryContextSwitchTo(codeblock->params->outctext ?
+									codeblock->params->outctext :
+									Ora_spi_saved_memorycontext());
 		for (i = 0; i < fake_fcinfo->nargs; ++i)
 		{
 			if (!fake_fcinfo->args[i].isnull)
