@@ -1572,9 +1572,21 @@ AS 'select sys.to_date($1::text, $2)'
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
 --to_char
+-- Without a format model Oracle converts a NUMBER to a VARCHAR2 value
+-- "exactly long enough to hold its significant digits": trailing zeros
+-- in the fraction are dropped and the integer digit is omitted for
+-- values between -1 and 1 (e.g. 0.5 -> '.5', 1.50 -> '1.5', 100.0 -> '100').
 CREATE OR REPLACE FUNCTION sys.to_char(number)
 RETURNS sys.oravarcharchar
-AS 'select sys.to_char($1::text)'
+AS $$
+  SELECT regexp_replace(
+           CASE WHEN strpos(t, '.') = 0
+                THEN t
+                ELSE rtrim(rtrim(t, '0'), '.')
+           END,
+           '^(-?)0\.', '\1.')
+  FROM (SELECT $1::pg_catalog.text AS t) s
+$$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
 
 --to_number
