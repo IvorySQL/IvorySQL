@@ -129,8 +129,8 @@ RETURNS double precision
 AS 'MODULE_PATHNAME', 'ora_utl_raw_cast_to_binary_double'
 LANGUAGE C IMMUTABLE STRICT;
 
-CREATE FUNCTION sys.ora_utl_raw_cast_from_binary_float(r bytea, endianness integer)
-RETURNS real
+CREATE FUNCTION sys.ora_utl_raw_cast_from_binary_float(n real, endianness integer)
+RETURNS bytea
 AS 'MODULE_PATHNAME', 'ora_utl_raw_cast_from_binary_float'
 LANGUAGE C IMMUTABLE STRICT;
 
