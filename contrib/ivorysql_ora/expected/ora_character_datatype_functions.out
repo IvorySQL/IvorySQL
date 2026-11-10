@@ -1745,6 +1745,12 @@ SELECT LENGTHB(SUBSTRB('数据库', 5, 1)) "bytes" FROM DUAL;
      1
 (1 row)
 
+SELECT LENGTHB(SUBSTRB('数据库', 2, 1)) "bytes" FROM DUAL;
+ bytes 
+-------
+     1
+(1 row)
+
 /* Ranges that fit inside a character must keep returning that character. */
 SELECT SUBSTRB('数据库', 1, 3) "Substring with bytes" FROM DUAL;
  Substring with bytes 
