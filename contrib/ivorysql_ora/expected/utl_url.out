@@ -447,3 +447,35 @@ ERROR:  UTL_URL.UNESCAPE: truncated escape code sequence in URL
 DETAIL:  A "%" at position 4 is not followed by two hexadecimal digits.
 CONTEXT:  PL/iSQL function sys.utl_url.unescape line 11 at RETURN
 PL/iSQL function inline_code_block line 4 at assignment
+-- ASCII-looking trail bytes belong to the multibyte character, not the URL.
+SELECT utl_url.escape('テ/a', FALSE, 'SJIS') AS sjis_trail_letter,
+       utl_url.escape('テ/a', TRUE, 'SJIS') AS sjis_reserved;
+ sjis_trail_letter | sjis_reserved 
+------------------+---------------
+ %83%65/a          | %83%65%2Fa    
+(1 row)
+
+SELECT utl_url.escape('丂@a', FALSE, 'GBK') AS gbk_trail_delimiter,
+       utl_url.escape('丂@a', TRUE, 'GBK') AS gbk_reserved;
+ gbk_trail_delimiter | gbk_reserved 
+--------------------+--------------
+ %81%40@a            | %81%40%40a   
+(1 row)
+
+SELECT utl_url.escape('𐀀/a', FALSE, 'GB18030') AS gb18030_trail_digits;
+ gb18030_trail_digits 
+----------------------
+ %90%30%81%30/a       
+(1 row)
+
+SELECT utl_url.unescape(utl_url.escape('テ/a', FALSE, 'SJIS'), 'SJIS') = 'テ/a'
+         AS sjis_roundtrip,
+       utl_url.unescape(utl_url.escape('丂@a', FALSE, 'GBK'), 'GBK') = '丂@a'
+         AS gbk_roundtrip,
+       utl_url.unescape(utl_url.escape('𐀀/a', FALSE, 'GB18030'), 'GB18030') = '𐀀/a'
+         AS gb18030_roundtrip;
+ sjis_roundtrip | gbk_roundtrip | gb18030_roundtrip 
+----------------+---------------+-------------------
+ t              | t             | t                 
+(1 row)
+
