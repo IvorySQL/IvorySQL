@@ -27,6 +27,10 @@ CREATE OR REPLACE PACKAGE UTL_RAW IS
     FUNCTION BIT_XOR(r1 IN RAW, r2 IN RAW) RETURN RAW;
     FUNCTION BIT_COMPLEMENT(r IN RAW) RETURN RAW;
     FUNCTION COMPARE(r1 IN RAW, r2 IN RAW, pad IN RAW DEFAULT NULL) RETURN NUMBER;
+    FUNCTION TRANSLATE(r IN RAW, from_set IN RAW, to_set IN RAW) RETURN RAW;
+    FUNCTION OVERLAY(overlay_str IN RAW, target IN RAW, pos IN NUMBER DEFAULT 1, len IN NUMBER DEFAULT NULL, pad IN RAW DEFAULT NULL) RETURN RAW;
+    FUNCTION CAST_FROM_BINARY_INTEGER(n IN NUMBER, endianness IN NUMBER) RETURN RAW;
+    FUNCTION CAST_TO_BINARY_INTEGER(r IN RAW, endianness IN NUMBER) RETURN NUMBER;
 END;
 
 -- C implementations registered as sys-level functions
@@ -83,6 +87,26 @@ LANGUAGE C IMMUTABLE STRICT;
 CREATE FUNCTION sys.ora_utl_raw_compare(r1 bytea, r2 bytea, pad bytea DEFAULT NULL)
 RETURNS integer
 AS 'MODULE_PATHNAME', 'ora_utl_raw_compare'
+LANGUAGE C IMMUTABLE STRICT;
+
+CREATE FUNCTION sys.ora_utl_raw_translate(r bytea, from_set bytea, to_set bytea)
+RETURNS bytea
+AS 'MODULE_PATHNAME', 'ora_utl_raw_translate'
+LANGUAGE C IMMUTABLE STRICT;
+
+CREATE FUNCTION sys.ora_utl_raw_overlay(overlay_str bytea, target bytea, pos integer DEFAULT 1, len integer DEFAULT NULL, pad bytea DEFAULT NULL)
+RETURNS bytea
+AS 'MODULE_PATHNAME', 'ora_utl_raw_overlay'
+LANGUAGE C IMMUTABLE STRICT;
+
+CREATE FUNCTION sys.ora_utl_raw_cast_from_binary_integer(n integer, endianness integer)
+RETURNS bytea
+AS 'MODULE_PATHNAME', 'ora_utl_raw_cast_from_binary_integer'
+LANGUAGE C IMMUTABLE STRICT;
+
+CREATE FUNCTION sys.ora_utl_raw_cast_to_binary_integer(r bytea, endianness integer)
+RETURNS integer
+AS 'MODULE_PATHNAME', 'ora_utl_raw_cast_to_binary_integer'
 LANGUAGE C IMMUTABLE STRICT;
 
 -- UTL_RAW Package Body
@@ -145,5 +169,25 @@ CREATE OR REPLACE PACKAGE BODY UTL_RAW IS
     FUNCTION COMPARE(r1 IN RAW, r2 IN RAW, pad IN RAW DEFAULT NULL) RETURN NUMBER IS
     BEGIN
         RETURN sys.ora_utl_raw_compare(r1, r2, pad);
+    END;
+
+    FUNCTION TRANSLATE(r IN RAW, from_set IN RAW, to_set IN RAW) RETURN RAW IS
+    BEGIN
+        RETURN sys.ora_utl_raw_translate(r, from_set, to_set);
+    END;
+
+    FUNCTION OVERLAY(overlay_str IN RAW, target IN RAW, pos IN NUMBER DEFAULT 1, len IN NUMBER DEFAULT NULL, pad IN RAW DEFAULT NULL) RETURN RAW IS
+    BEGIN
+        RETURN sys.ora_utl_raw_overlay(overlay_str, target, pos, len, pad);
+    END;
+
+    FUNCTION CAST_FROM_BINARY_INTEGER(n IN NUMBER, endianness IN NUMBER) RETURN RAW IS
+    BEGIN
+        RETURN sys.ora_utl_raw_cast_from_binary_integer(n, endianness);
+    END;
+
+    FUNCTION CAST_TO_BINARY_INTEGER(r IN RAW, endianness IN NUMBER) RETURN NUMBER IS
+    BEGIN
+        RETURN sys.ora_utl_raw_cast_to_binary_integer(r, endianness);
     END;
 END;
