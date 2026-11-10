@@ -57,7 +57,7 @@ $(DATA_built): gensql.pl
 	$(PERL) $< gcc_build $(patsubst ivorysql_ora--%.sql, %,$@)
 
 # Preload the compatible oracle misc sql script
-install-data:
+install-data: installdirs
 	$(INSTALL_DATA) $(srcdir)/preload_ora_misc.sql '$(DESTDIR)$(datadir)/preload_ora_misc.sql'
 
 # Clean the generated SQL(s).
