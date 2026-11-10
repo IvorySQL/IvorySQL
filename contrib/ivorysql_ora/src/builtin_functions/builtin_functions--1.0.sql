@@ -1664,7 +1664,10 @@ BEGIN
 		  WHEN 'CURRENT_USERID' THEN
 			SELECT current_user::regrole::oid INTO res;
 		  WHEN 'CURRENT_EDITION_NAME' THEN
-			SELECT version() INTO res;
+			/* IvorySQL has no edition-based redefinition, so a session
+			 * always runs in the default edition, which Oracle calls
+			 * ORA$BASE. */
+			SELECT 'ORA$BASE' INTO res;
 		  WHEN 'CLIENT_PROGRAM_NAME' THEN
 			SELECT application_name INTO res FROM pg_stat_activity WHERE pid = pg_backend_pid();
 		  WHEN 'IP_ADDRESS' THEN
@@ -1758,7 +1761,9 @@ BEGIN
 		  WHEN 'SERVER_HOST' THEN SELECT NULL INTO res;
 		  WHEN 'SERVICE_NAME' THEN SELECT NULL INTO res;
 		  WHEN 'SESSION_EDITION_ID' THEN SELECT NULL INTO res;
-		  WHEN 'SESSION_EDITION_NAME' THEN SELECT NULL INTO res;
+		  WHEN 'SESSION_EDITION_NAME' THEN
+			/* The same default edition as CURRENT_EDITION_NAME. */
+			SELECT 'ORA$BASE' INTO res;
 		  WHEN 'SESSIONID' THEN
 			SELECT sys.get_sessionid() INTO res;
 		  WHEN 'STATEMENTID' THEN SELECT NULL INTO res;
