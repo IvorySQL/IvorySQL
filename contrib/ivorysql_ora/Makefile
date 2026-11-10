@@ -77,6 +77,11 @@ ORA_REGRESS = \
 	ora_xml_functions \
 	ora_dbms_output
 
+# Wire the Oracle-compatibility regression suite into pgxs.  Without this,
+# "make installcheck" reports "Nothing to be done" and none of the cases
+# listed in ORA_REGRESS above are ever executed, locally or in CI.
+REGRESS = $(ORA_REGRESS)
+
 SHLIB_LINK += -lxml2
 
 ifdef USE_PGXS
