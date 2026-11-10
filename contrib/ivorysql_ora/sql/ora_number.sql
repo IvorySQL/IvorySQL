@@ -1100,3 +1100,27 @@ SELECT to_number('1.50', '9.00') AS zero_fraction_full;
 SELECT to_number('.5', '.99') AS no_integer_part;
 SELECT to_number('1.5', 'FM9.99') AS fm_short_fraction;
 /* End - issue #3133 */
+
+/* Begin - to_number reads the blank-padded output of to_char (issue #3145) */
+SELECT to_number(to_char(12, '999'), '999') AS round_trip;
+SELECT to_number(' 12', '999') AS blank_prefix;
+SELECT to_number(to_char(-12, '999'), '999') AS round_trip_negative;
+SELECT to_number(to_char(1.5, '999.99'), '999.99') AS round_trip_decimal;
+SELECT to_number(to_char(12, '9,999'), '9,999') AS round_trip_group;
+SELECT to_number(to_char(12, '0999'), '0999') AS round_trip_zero;
+SELECT to_number(to_char(12, 'S999'), 'S999') AS round_trip_s;
+SELECT to_number(to_char(-12, 'S999'), 'S999') AS round_trip_s_negative;
+SELECT to_number(to_char(-12, '999S'), '999S') AS round_trip_trailing_s;
+SELECT to_number(to_char(12, '999MI'), '999MI') AS round_trip_mi;
+SELECT to_number(to_char(-12, '999MI'), '999MI') AS round_trip_mi_negative;
+SELECT to_number(to_char(-12, '999PL'), '999PL') AS round_trip_pl;
+SELECT to_number(to_char(12, '999PR'), '999PR') AS round_trip_pr;
+SELECT to_number(to_char(-12, '999PR'), '999PR') AS round_trip_pr_negative;
+SELECT to_number('<1>', '999PR') AS short_pr;
+-- still rejected
+SELECT to_number('   ', '999') AS only_blanks;
+SELECT to_number(' 1 2', '999') AS inner_blank;
+SELECT to_number('<1', '999PR') AS short_pr_without_close;
+SELECT to_number('1>', '999PR') AS short_pr_without_open;
+SELECT to_number('-1', '999PR') AS minus_with_pr;
+/* End - issue #3145 */

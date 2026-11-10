@@ -2195,3 +2195,106 @@ SELECT to_number('1.5', 'FM9.99') AS fm_short_fraction;
 (1 row)
 
 /* End - issue #3133 */
+/* Begin - to_number reads the blank-padded output of to_char (issue #3145) */
+SELECT to_number(to_char(12, '999'), '999') AS round_trip;
+ round_trip 
+------------
+ 12
+(1 row)
+
+SELECT to_number(' 12', '999') AS blank_prefix;
+ blank_prefix 
+--------------
+ 12
+(1 row)
+
+SELECT to_number(to_char(-12, '999'), '999') AS round_trip_negative;
+ round_trip_negative 
+---------------------
+ -12
+(1 row)
+
+SELECT to_number(to_char(1.5, '999.99'), '999.99') AS round_trip_decimal;
+ round_trip_decimal 
+--------------------
+ 1.50
+(1 row)
+
+SELECT to_number(to_char(12, '9,999'), '9,999') AS round_trip_group;
+ round_trip_group 
+------------------
+ 12
+(1 row)
+
+SELECT to_number(to_char(12, '0999'), '0999') AS round_trip_zero;
+ round_trip_zero 
+-----------------
+ 12
+(1 row)
+
+SELECT to_number(to_char(12, 'S999'), 'S999') AS round_trip_s;
+ round_trip_s 
+--------------
+ 12
+(1 row)
+
+SELECT to_number(to_char(-12, 'S999'), 'S999') AS round_trip_s_negative;
+ round_trip_s_negative 
+-----------------------
+ -12
+(1 row)
+
+SELECT to_number(to_char(-12, '999S'), '999S') AS round_trip_trailing_s;
+ round_trip_trailing_s 
+-----------------------
+ -12
+(1 row)
+
+SELECT to_number(to_char(12, '999MI'), '999MI') AS round_trip_mi;
+ round_trip_mi 
+---------------
+ 12
+(1 row)
+
+SELECT to_number(to_char(-12, '999MI'), '999MI') AS round_trip_mi_negative;
+ round_trip_mi_negative 
+------------------------
+ -12
+(1 row)
+
+SELECT to_number(to_char(-12, '999PL'), '999PL') AS round_trip_pl;
+ round_trip_pl 
+---------------
+ -12
+(1 row)
+
+SELECT to_number(to_char(12, '999PR'), '999PR') AS round_trip_pr;
+ round_trip_pr 
+---------------
+ 12
+(1 row)
+
+SELECT to_number(to_char(-12, '999PR'), '999PR') AS round_trip_pr_negative;
+ round_trip_pr_negative 
+------------------------
+ -12
+(1 row)
+
+SELECT to_number('<1>', '999PR') AS short_pr;
+ short_pr 
+----------
+ -1
+(1 row)
+
+-- still rejected
+SELECT to_number('   ', '999') AS only_blanks;
+ERROR:  invalid number
+SELECT to_number(' 1 2', '999') AS inner_blank;
+ERROR:  invalid number
+SELECT to_number('<1', '999PR') AS short_pr_without_close;
+ERROR:  invalid number
+SELECT to_number('1>', '999PR') AS short_pr_without_open;
+ERROR:  invalid number
+SELECT to_number('-1', '999PR') AS minus_with_pr;
+ERROR:  invalid number
+/* End - issue #3145 */

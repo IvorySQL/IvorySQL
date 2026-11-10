@@ -6843,18 +6843,36 @@ NUM_eat_non_data_chars(NUMProc *Np, int n, size_t input_len)
 #define ORA_NUM_IS_DIGIT_NODE(n) \
 	((n)->type == NODE_TYPE_ACTION && \
 	 ((n)->key->id == NUM_9 || (n)->key->id == NUM_0))
+#define ORA_NUM_IS_CURRENCY_NODE(n) \
+	((n)->type == NODE_TYPE_ACTION && \
+	 ((n)->key->id == NUM_L || (n)->key->id == NUM_C))
 
 static char *
 ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 		   char *number, int from_char_input_len, int to_char_out_pre_spaces,
 			  int sign, bool is_to_char, Oid collid)
 {
-	FormatNode *n, *ntem;
+	FormatNode *n, *ntem, *lead;
 	NUMProc		_Np,
 			   *Np = &_Np;
 	char *input_tem;
 	char *input_rest;
 	bool isrigth;
+	bool bracketed;
+
+	/* TO_CHAR pads the number with leading blanks */
+	if (!is_to_char)
+	{
+		while (from_char_input_len > 0 && *inout == ' ')
+		{
+			inout++;
+			from_char_input_len--;
+		}
+		if (from_char_input_len == 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+					 errmsg("invalid number")));
+	}
 
 	MemSet(Np, 0, sizeof(NUMProc));
 
@@ -7030,6 +7048,9 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 	input_tem = Np->inout + from_char_input_len;
 	/** isrigth  if  marking to the right of the decimal point */
 	isrigth = true;
+	/* PR reads a negative value as '<' and '>' around the digits */
+	bracketed = IS_BRACKET(Np->Num) && from_char_input_len > 0 &&
+		Np->inout[from_char_input_len - 1] == '>';
 
 	for (; ntem->type != NODE_TYPE_END; ntem++)
 		;
@@ -7068,7 +7089,10 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 						}
 					}
 
-					if ((*input_tem == '-' || *input_tem == '+') && input_tem == Np->inout)
+					if (input_tem == Np->inout &&
+						(bracketed ? *input_tem == '<' :
+						 !IS_BRACKET(Np->Num) &&
+						 (*input_tem == '-' || *input_tem == '+')))
 						break;
 
 					ereport(ERROR,
@@ -7116,6 +7140,7 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 				}
 				break;
 
+			/* TO_CHAR writes '>' or a blank for PR, or nothing with FM */
 			case NUM_PR:
 				if ( (ntem+1)->type != NODE_TYPE_END)
 					ereport(ERROR,
@@ -7123,7 +7148,7 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 								 errmsg("invalid number format model")));
 				if (isdigit((unsigned char) *input_tem))
 					input_tem++;
-				else if (*input_tem != '>')
+				else if (*input_tem != '>' && *input_tem != ' ')
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 								 errmsg("invalid number")));
@@ -7190,22 +7215,27 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 	}while(ntem != node && input_tem > Np->inout);
 
 	/**
-	 * What the format model did not consume may only be blanks followed by
-	 * a sign: the '<' that pairs with a trailing '>' for PR, or '-' or '+'
-	 * when the model has no S, MI, SG or PR.  PL alone leaves the minus sign
-	 * in front of the digits.
+	 * What the format model did not consume may only be a sign: the '<' that
+	 * pairs with a trailing '>' for PR, or '-' or '+' when the model has no
+	 * S, MI, SG or PR.  PL alone leaves the minus sign in front of the digits.
+	 * A digit position may already have read the sign at the start.  The
+	 * currency symbol of a leading L or C can be longer than the one
+	 * character matched above, so it is left to the forward pass.
 	 */
+	lead = node;
+	if (lead->type == NODE_TYPE_ACTION && lead->key->id == NUM_FM)
+		lead++;
 	input_rest = Np->inout;
-	while (input_rest < input_tem && *input_rest == ' ')
-		input_rest++;
-	if (IS_BRACKET(Np->Num) && from_char_input_len > 0 &&
-		Np->inout[from_char_input_len - 1] == '>')
+	if (ntem <= lead && ORA_NUM_IS_CURRENCY_NODE(lead))
+		input_rest = input_tem;
+	else if (bracketed)
 	{
-		if (input_rest == input_tem || *input_rest != '<')
+		if (*input_rest != '<')
 			ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 					errmsg("invalid number")));
-		input_rest++;
+		if (input_rest < input_tem)
+			input_rest++;
 	}
 	else if (input_rest < input_tem &&
 			 (*input_rest == '-' || *input_rest == '+') &&
