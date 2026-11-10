@@ -1,0 +1,27 @@
+-- Regex result construction converts packed pg_wchar values back to GB18030.
+-- Include ASCII-range trail bytes and both ends of the supported widths.
+CREATE DATABASE gb18030_wchar ENCODING 'GB18030'
+  LC_COLLATE 'C' LC_CTYPE 'C' TEMPLATE template0;
+\c gb18030_wchar
+SET client_encoding TO UTF8;
+
+WITH samples(bytes) AS (
+  VALUES ('41'), ('8140'), ('817e'), ('d6d0'), ('81308130'), ('90308130')
+)
+SELECT bytes,
+       encode(convert_to((regexp_match(
+         convert_from(decode(bytes, 'hex'), 'GB18030'), '(.)'))[1],
+         'GB18030'), 'hex') AS matched_bytes
+FROM samples;
+
+-- A single result must preserve the widths of adjacent mixed characters.
+SELECT encode(convert_to((regexp_match(
+  convert_from(decode('418140d6d0903081305a', 'hex'), 'GB18030'),
+  '(.*)'))[1], 'GB18030'), 'hex') AS mixed_bytes;
+
+SELECT encode(convert_to(part, 'GB18030'), 'hex') AS split_bytes
+FROM regexp_split_to_table(
+  convert_from(decode('418140d6d0903081305a', 'hex'), 'GB18030'), '') AS part;
+
+\c postgres
+DROP DATABASE gb18030_wchar;
