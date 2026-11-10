@@ -22,6 +22,17 @@ RETURNS bytea
 AS 'MODULE_PATHNAME', 'ivorysql_utl_encode_base64_decode'
 LANGUAGE C IMMUTABLE PARALLEL SAFE STRICT;
 
+-- QUOTED_PRINTABLE support (RFC 2045 section 6.7, 76-character lines)
+CREATE FUNCTION sys.utl_encode_quoted_printable_encode(bytea)
+RETURNS bytea
+AS 'MODULE_PATHNAME', 'ora_utl_encode_qp_encode'
+LANGUAGE C IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.utl_encode_quoted_printable_decode(bytea)
+RETURNS bytea
+AS 'MODULE_PATHNAME', 'ora_utl_encode_qp_decode'
+LANGUAGE C IMMUTABLE PARALLEL SAFE STRICT;
+
 -- PL/iSQL package declaration
 CREATE PACKAGE utl_encode AS
 
@@ -49,6 +60,18 @@ CREATE PACKAGE utl_encode AS
      */
     FUNCTION base64_decode(r IN RAW) RETURN RAW;
 
+    /*
+     * QUOTED_PRINTABLE_ENCODE
+     * RFC 2045 quoted-printable; 76-character lines with '=' soft breaks.
+     */
+    FUNCTION quoted_printable_encode(r IN RAW) RETURN RAW;
+
+    /*
+     * QUOTED_PRINTABLE_DECODE
+     * Decodes quoted-printable; strips soft line breaks.
+     */
+    FUNCTION quoted_printable_decode(r IN RAW) RETURN RAW;
+
 END utl_encode;
 
 CREATE PACKAGE BODY utl_encode AS
@@ -61,6 +84,16 @@ CREATE PACKAGE BODY utl_encode AS
     FUNCTION base64_decode(r IN RAW) RETURN RAW IS
     BEGIN
         RETURN utl_encode_base64_decode(r);
+    END;
+
+    FUNCTION quoted_printable_encode(r IN RAW) RETURN RAW IS
+    BEGIN
+        RETURN sys.utl_encode_quoted_printable_encode(r);
+    END;
+
+    FUNCTION quoted_printable_decode(r IN RAW) RETURN RAW IS
+    BEGIN
+        RETURN sys.utl_encode_quoted_printable_decode(r);
     END;
 
 END utl_encode;
