@@ -2,7 +2,7 @@
 
 [![build](https://github.com/IvorySQL/IvorySQL/actions/workflows/build.yml/badge.svg?branch=master&event=push)](https://github.com/IvorySQL/IvorySQL/actions/workflows/build.yml)
 [![Contrib_regression](https://github.com/IvorySQL/IvorySQL/actions/workflows/contrib_regression.yml/badge.svg?branch=master&event=push)](https://github.com/IvorySQL/IvorySQL/actions/workflows/contrib_regression.yml)
-[![meson_build](https://github.com/IvorySQL/IvorySQL/actions/workflows/meson_build.yml/badge.svg?branch=master&event=push)](https://github.com/IvorySQL/IvorySQL/actions/workflows/meson_build.yml)
+[![meson_build](https://github.com/IvorySQL/IvorySQL/actions/workflows/meson_build_test.yml/badge.svg?branch=master&event=push)](https://github.com/IvorySQL/IvorySQL/actions/workflows/meson_build_test.yml)
 [![pg_regression](https://github.com/IvorySQL/IvorySQL/actions/workflows/pg_regression.yml/badge.svg?branch=master&event=push)](https://github.com/IvorySQL/IvorySQL/actions/workflows/pg_regression.yml)
 [![oracle_regression](https://github.com/IvorySQL/IvorySQL/actions/workflows/oracle_regression.yml/badge.svg?branch=master&event=push)](https://github.com/IvorySQL/IvorySQL/actions/workflows/oracle_regression.yml)
 
