@@ -533,8 +533,14 @@ register_ns_from_csting(xmlXPathContextPtr xpathCtx, char* nsList)
 	initStringInfo(&prefix);
 	initStringInfo(&url);
 
-	/* process the original string, removing leading and trailing spaces */
-	nslist = ivy_trim(nsList);
+	/*
+	 * Process the original string, removing leading and trailing spaces.
+	 * Work on a palloc'd copy: ivy_trim() and strtok() below modify the
+	 * string in place, and updatexml() hands the same namespace string to
+	 * register_ns_from_csting() once per XPath/value pair, so the caller's
+	 * copy must be left intact.
+	 */
+	nslist = ivy_trim(pstrdup(nsList));
 
 	f = strchr(nslist, (int)'=');
 	while (f != NULL)
@@ -579,6 +585,7 @@ register_ns_from_csting(xmlXPathContextPtr xpathCtx, char* nsList)
 		resetStringInfo(&url);
 	}
 
+	pfree(nslist);
 	pfree(tmp.data);
 	pfree(prefix.data);
 	pfree(url.data);
