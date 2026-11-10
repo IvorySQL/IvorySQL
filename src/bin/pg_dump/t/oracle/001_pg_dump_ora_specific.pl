@@ -447,6 +447,38 @@ is(
 	't',
 	'restored MAP method drives comparison');
 
+# pg_restore's SQL output is a separate path from pg_dump's plain format.
+# Load it through the Oracle psql parser and call methods with quoted defaults.
+my $object_archive = "$tempdir/objects.dump";
+my $object_script = "$tempdir/objects.sql";
+$node->command_ok(
+	[
+		'pg_dump', '--format=custom', '--schema-only',
+		'--port' => $node->oraport,
+		'--file' => $object_archive, 'testdb',
+	],
+	'create a custom archive containing Oracle object types');
+$node->command_ok(
+	['pg_restore', '--no-owner', '--file' => $object_script, $object_archive],
+	'write SQL from the custom archive');
+$node->safe_psql('postgres', 'CREATE DATABASE archive_script_db',
+	connect_to_oraport => 1);
+$node->command_ok(
+	[
+		'psql', '-X', '--set=ON_ERROR_STOP=1',
+		'--port' => $node->oraport, '--dbname' => 'archive_script_db',
+		'--file' => $object_script,
+	],
+	'load the generated SQL through the Oracle port');
+is(
+	$node->safe_psql(
+		'archive_script_db',
+		q{SELECT p.doubled(), p.echoed(), p.trailing_slash()
+		  FROM (VALUES (dump_object_type(7))) AS objects(p)},
+		connect_to_oraport => 1),
+	'14|a;b|a\\',
+	'archive script restores object methods and their quoted defaults');
+
 #########################################
 # Stop the database instance, which will be removed at the end of the tests.
 
