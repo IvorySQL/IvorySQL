@@ -35,6 +35,19 @@
  */
 #define UTL_ENCODE_B64_LINE_LEN 64
 
+/* value of a hex digit, or -1 if not one */
+static int
+utl_encode_hexval(unsigned char c)
+{
+	if (c >= '0' && c <= '9')
+		return c - '0';
+	if (c >= 'A' && c <= 'F')
+		return c - 'A' + 10;
+	if (c >= 'a' && c <= 'f')
+		return c - 'a' + 10;
+	return -1;
+}
+
 /*
  * ivorysql_utl_encode_base64_encode
  *
@@ -193,4 +206,118 @@ ivorysql_utl_encode_base64_decode(PG_FUNCTION_ARGS)
 	SET_VARSIZE(result, VARHDRSZ + decoded_len);
 
 	PG_RETURN_BYTEA_P(result);
+}
+
+PG_FUNCTION_INFO_V1(ora_utl_encode_qp_encode);
+PG_FUNCTION_INFO_V1(ora_utl_encode_qp_decode);
+
+/*
+ * QUOTED_PRINTABLE_ENCODE
+ *
+ * RFC 2045 section 6.7 quoted-printable, with 76-character lines closed by
+ * CRLF and '=' soft line breaks.  Oracle documents 76-character lines for
+ * this function.
+ *
+ * Byte handling:
+ *   - 0x21-0x7E except '=' pass through literally
+ *   - space and tab pass through literally except at end of line or end of
+ *     input (RFC 2045 rule 3: transport-padding must be encoded)
+ *   - everything else, including '=' itself, becomes "=XX" (uppercase hex)
+ */
+#define UTL_ENCODE_QP_MAX_LINE 76
+
+Datum
+ora_utl_encode_qp_encode(PG_FUNCTION_ARGS)
+{
+	bytea	   *src = PG_GETARG_BYTEA_PP(0);
+	int			len = VARSIZE_ANY_EXHDR(src);
+	const char *data = VARDATA_ANY(src);
+	StringInfoData buf;
+	int			linelen = 0;
+	int			i;
+
+	initStringInfo(&buf);
+	for (i = 0; i < len; i++)
+	{
+		unsigned char c = (unsigned char) data[i];
+		bool		last = (i == len - 1);
+		bool		literal = (c >= 0x21 && c <= 0x7E && c != '=')
+			|| ((c == ' ' || c == '\t') && !last);
+
+		/* a literal at column 76 would close the line: break first */
+		if (linelen == UTL_ENCODE_QP_MAX_LINE - 1)
+		{
+			appendStringInfoString(&buf, "=\r\n");
+			linelen = 0;
+			/* a space/tab moved to column 76 must be encoded instead */
+			if (c == ' ' || c == '\t')
+				literal = false;
+		}
+
+		if (literal)
+		{
+			appendStringInfoChar(&buf, c);
+			linelen++;
+		}
+		else
+		{
+			if (linelen > UTL_ENCODE_QP_MAX_LINE - 3)
+			{
+				appendStringInfoString(&buf, "=\r\n");
+				linelen = 0;
+			}
+			appendStringInfo(&buf, "=%02X", c);
+			linelen += 3;
+		}
+	}
+
+	PG_RETURN_BYTEA_P(cstring_to_text_with_len(buf.data, buf.len));
+}
+
+/*
+ * QUOTED_PRINTABLE_DECODE
+ *
+ * Decodes "=XX" hex escapes and strips soft line breaks ("=CRLF" or "=LF").
+ * An '=' not followed by two hex digits or a line break raises VALUE_ERROR.
+ */
+Datum
+ora_utl_encode_qp_decode(PG_FUNCTION_ARGS)
+{
+	bytea	   *src = PG_GETARG_BYTEA_PP(0);
+	int			len = VARSIZE_ANY_EXHDR(src);
+	const char *data = VARDATA_ANY(src);
+	StringInfoData buf;
+	int			i;
+
+	initStringInfo(&buf);
+	for (i = 0; i < len; i++)
+	{
+		unsigned char c = (unsigned char) data[i];
+
+		if (c != '=')
+		{
+			appendStringInfoChar(&buf, c);
+			continue;
+		}
+
+		if (i + 2 < len &&
+			utl_encode_hexval((unsigned char) data[i + 1]) >= 0 &&
+			utl_encode_hexval((unsigned char) data[i + 2]) >= 0)
+		{
+			appendStringInfoChar(&buf,
+								 (char) ((utl_encode_hexval((unsigned char) data[i + 1]) << 4)
+										 | utl_encode_hexval((unsigned char) data[i + 2])));
+			i += 2;
+		}
+		else if (i + 1 < len && data[i + 1] == '\n')
+			i++;				/* soft break "=LF" */
+		else if (i + 2 < len && data[i + 1] == '\r' && data[i + 2] == '\n')
+			i += 2;				/* soft break "=CRLF" */
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("QUOTED_PRINTABLE_DECODE: invalid escape sequence")));
+	}
+
+	PG_RETURN_BYTEA_P(cstring_to_text_with_len(buf.data, buf.len));
 }
