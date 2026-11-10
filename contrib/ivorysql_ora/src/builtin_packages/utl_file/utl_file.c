@@ -92,6 +92,7 @@ static char *safe_named_location(text *location);
 static text *
 get_line(FILE *fd, size_t max_linesize, int encoding, bool *iseof);
 static char *get_safe_path(text *location, text *filename);
+static bool same_file(const char *path1, const char *path2);
 static void close_all_files(void);
 static int copy_text_file(FILE *srcfile, FILE *dstfile,
 						  int start_line, int end_line);
@@ -512,6 +513,22 @@ ora_utl_file_fcopy(PG_FUNCTION_ARGS)
 	{
 		/* failed to open src file. */
 		IO_EXCEPTION();
+	}
+
+	/*
+	 * Opening the destination with "wt" truncates it.  If both paths name
+	 * the same file -- same spelling, a "./" variant, a hard link or a
+	 * symlink -- that destroys the source before copy_text_file() has read
+	 * anything, and the caller would get a "successful" empty copy.
+	 * The check runs after parameter validation, so INVALID_PARAMETER_VALUE
+	 * keeps its existing priority, and after the source is opened, so a
+	 * missing source still raises IO_ERROR as it always did.
+	 */
+	if (same_file(srcpath, dstpath))
+	{
+		fclose(srcfile);
+		CUSTOM_EXCEPTION(INVALID_OPERATION,
+						 "Source and destination file are the same.");
 	}
 
 	dstfile = fopen(dstpath, "wt");
@@ -1079,6 +1096,39 @@ safe_named_location(text *location)
 	SPI_finish();
 
 	return result;
+}
+
+/*
+ * same_file - do both paths name the same existing file?
+ *
+ * Identical strings are caught first: on platforms that do not fill
+ * st_ino (notably Windows) the stat() comparison below can never fire,
+ * yet the truncation happens there too.
+ * stat() additionally covers different spellings ("a.txt" vs "./a.txt"),
+ * hard links and symlinks.  A missing file returns false, which cannot
+ * happen here in practice: the caller opens the source first and raises
+ * IO_ERROR before this check is reached.
+ */
+static bool
+same_file(const char *path1, const char *path2)
+{
+	struct stat st1;
+	struct stat st2;
+
+	if (strcmp(path1, path2) == 0)
+		return true;
+
+	if (stat(path1, &st1) != 0 || stat(path2, &st2) != 0)
+		return false;
+
+	/*
+	 * Some platforms (notably Windows) do not fill st_ino; a zero inode
+	 * would make every pair of files on the same device look identical.
+	 */
+	if (st1.st_ino == 0 || st2.st_ino == 0)
+		return false;
+
+	return st1.st_dev == st2.st_dev && st1.st_ino == st2.st_ino;
 }
 
 /*
