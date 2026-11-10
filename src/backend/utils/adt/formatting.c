@@ -4033,6 +4033,22 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 				}
 				if (from_char_parse_int(&out->year, &s, n, escontext) < 0)
 					return;
+				if (ORA_PARSER == compatible_db)
+				{
+					/*
+					 * Check the full-year range here, where a year value is
+					 * known to have been supplied: a zero year is later
+					 * dropped by the "if (tmfc.year)" test in
+					 * ora_do_to_timestamp(), so YYYY=0000 used to be silently
+					 * replaced by the default (current) year instead of
+					 * raising ORA-01841 like Oracle does.  SYYYY already
+					 * rejects year 0 right after its own parse.
+					 */
+					if (out->year < -4712 || out->year > 9999 || out->year == 0)
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
+								 errmsg("YEAR must be between -4713 and +9999, and not be 0")));
+				}
 				out->yysz = 4;
 				SKIP_THth(s, n->suffix);
 				break;

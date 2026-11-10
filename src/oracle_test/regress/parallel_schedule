@@ -192,6 +192,12 @@ test: rownum ora_listagg ora_jit
 test: ora_identifiers
 
 # ----------
+# Oracle TO_DATE / TO_TIMESTAMP full-year validation (ORA-01841)
+# ----------
+
+test: ora_to_date_invalid_year
+
+# ----------
 # Oracle ALTER INDEX ... REBUILD syntax (#1064)
 # ----------
 
