@@ -649,7 +649,7 @@ ora_tz_offset(PG_FUNCTION_ARGS)
 	struct pg_tm tt,
 			   *tm = &tt;
 	fsec_t		fsec;
-	int64		tz;
+	int			tz;
 	int			hourdat,
 				mindate;
 	char	   *reschar = (char *) palloc(8);
@@ -666,12 +666,11 @@ ora_tz_offset(PG_FUNCTION_ARGS)
 				 errmsg("timezone is not ok")));
 	}
 
-	if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) != 0)
+	if (timestamp2tm(timestamp, &tz, tm, &fsec, NULL, timezonedat) != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("timestamp out of range")));
 
-	tz = DetermineTimeZoneOffset(tm, timezonedat);
 	if (tz <= 0)
 	{
 		tz = tz * (-1);
