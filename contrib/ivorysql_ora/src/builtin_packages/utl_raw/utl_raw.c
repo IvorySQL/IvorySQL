@@ -329,3 +329,228 @@ ora_utl_raw_compare(PG_FUNCTION_ARGS)
 	}
 	PG_RETURN_INT32(0);
 }
+
+PG_FUNCTION_INFO_V1(ora_utl_raw_translate);
+PG_FUNCTION_INFO_V1(ora_utl_raw_overlay);
+PG_FUNCTION_INFO_V1(ora_utl_raw_cast_from_binary_integer);
+PG_FUNCTION_INFO_V1(ora_utl_raw_cast_to_binary_integer);
+
+/*
+ * ora_utl_raw_translate - map each byte of r through from_set -> to_set.
+ *
+ * Bytes of r not present in from_set pass through unchanged.  A from_set
+ * byte beyond the end of to_set has no counterpart, and matching bytes of
+ * r are omitted from the result, per Oracle.  (For pad-filled behaviour
+ * Oracle provides TRANSLITERATE instead.)
+ */
+Datum
+ora_utl_raw_translate(PG_FUNCTION_ARGS)
+{
+	bytea	   *r = PG_GETARG_BYTEA_PP(0);
+	bytea	   *from_set = PG_GETARG_BYTEA_PP(1);
+	bytea	   *to_set = PG_GETARG_BYTEA_PP(2);
+	int			rlen = VARSIZE_ANY_EXHDR(r);
+	const char *rdata = VARDATA_ANY(r);
+	int			flen = VARSIZE_ANY_EXHDR(from_set);
+	const char *fdata = VARDATA_ANY(from_set);
+	int			tlen = VARSIZE_ANY_EXHDR(to_set);
+	const char *tdata = VARDATA_ANY(to_set);
+	StringInfoData buf;
+	int			i,
+				j;
+
+	initStringInfo(&buf);
+	for (i = 0; i < rlen; i++)
+	{
+		unsigned char b = (unsigned char) rdata[i];
+
+		for (j = 0; j < flen; j++)
+		{
+			if ((unsigned char) fdata[j] == b)
+				break;
+		}
+		if (j >= flen)
+			appendStringInfoChar(&buf, b);	/* unmapped: keep */
+		else if (j < tlen)
+			appendStringInfoChar(&buf, tdata[j]);	/* mapped */
+		/* j >= tlen: omitted entirely */
+	}
+	PG_RETURN_TEXT_P(cstring_to_text_with_len(buf.data, buf.len));
+}
+
+/*
+ * ora_utl_raw_overlay - overwrite a region of target with overlay bytes.
+ *
+ * pos is 1-based and must be >= 1; len defaults to the overlay length; a
+ * shorter overlay is extended cyclically with pad (default 0x00).  The
+ * result length is max(target length, pos-1+len).
+ */
+Datum
+ora_utl_raw_overlay(PG_FUNCTION_ARGS)
+{
+	bytea	   *ov = PG_GETARG_BYTEA_PP(0);
+	bytea	   *target = PG_GETARG_BYTEA_PP(1);
+	int			ovlen = VARSIZE_ANY_EXHDR(ov);
+	const char *ovdata = VARDATA_ANY(ov);
+	int			tlen = VARSIZE_ANY_EXHDR(target);
+	const char *tdata = VARDATA_ANY(target);
+	int32		pos = PG_GETARG_INT32(2);
+	int32		len;
+	const char *pdata;
+	int			padlen;
+	int			outlen;
+	bytea	   *result;
+	int			i;
+
+	if (pos < 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("OVERLAY: position must be >= 1")));
+
+	if (PG_NARGS() > 3 && !PG_ARGISNULL(3))
+		len = PG_GETARG_INT32(3);
+	else
+		len = ovlen;
+	if (len < 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("OVERLAY: length must be non-negative")));
+
+	if (PG_NARGS() > 4 && !PG_ARGISNULL(4))
+	{
+		bytea	   *pad = PG_GETARG_BYTEA_PP(4);
+
+		if (VARSIZE_ANY_EXHDR(pad) > 0)
+		{
+			pdata = VARDATA_ANY(pad);
+			padlen = VARSIZE_ANY_EXHDR(pad);
+		}
+	}
+
+	/*
+	 * Default pad is 0x00 when the argument is omitted, NULL, or an
+	 * empty RAW.
+	 */
+	if (pdata == NULL || padlen <= 0)
+	{
+		static const char zero = 0;
+
+		pdata = &zero;
+		padlen = 1;
+	}
+
+	outlen = tlen > (pos - 1) + len ? tlen : (pos - 1) + len;
+	result = (bytea *) palloc(VARHDRSZ + outlen);
+	memcpy(VARDATA(result), tdata, tlen);
+	for (i = 0; i < len; i++)
+	{
+		int			src = i < ovlen ? i : i % ovlen;
+
+		VARDATA(result)[pos - 1 + i] =
+			i < ovlen ? ovdata[src] : pdata[(i - ovlen) % padlen];
+	}
+	SET_VARSIZE(result, VARHDRSZ + outlen);
+	PG_RETURN_BYTEA_P(result);
+}
+
+/*
+ * Endianness selector shared by the BINARY_INTEGER casts: 1 = big endian,
+ * 2 = little endian, 3 = machine endian.
+ */
+static int
+utl_raw_effective_endian(int32 endianness)
+{
+	if (endianness == 1)
+		return 1;
+	if (endianness == 2)
+		return 2;
+	if (endianness == 3)
+	{
+		static int	machine = 0;
+
+		if (machine == 0)
+		{
+			uint32		probe = 0x01020304;
+			unsigned char first = *((unsigned char *) &probe);
+
+			machine = (first == 0x01) ? 1 : 2;
+		}
+		return machine;
+	}
+	ereport(ERROR,
+			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			 errmsg("endianness must be 1 (big), 2 (little) or 3 (machine)")));
+}
+
+/*
+ * ora_utl_raw_cast_from_binary_integer - encode a 32-bit integer as four
+ * bytes in the requested byte order.
+ */
+Datum
+ora_utl_raw_cast_from_binary_integer(PG_FUNCTION_ARGS)
+{
+	int32		n = PG_GETARG_INT32(0);
+	int32		endianness = PG_GETARG_INT32(1);
+	int			order = utl_raw_effective_endian(endianness);
+	bytea	   *result;
+	unsigned char *out;
+	uint32		u = (uint32) n;
+
+	result = (bytea *) palloc(VARHDRSZ + 4);
+	out = (unsigned char *) VARDATA(result);
+	if (order == 1)
+	{
+		out[0] = (u >> 24) & 0xFF;
+		out[1] = (u >> 16) & 0xFF;
+		out[2] = (u >> 8) & 0xFF;
+		out[3] = u & 0xFF;
+	}
+	else
+	{
+		out[0] = u & 0xFF;
+		out[1] = (u >> 8) & 0xFF;
+		out[2] = (u >> 16) & 0xFF;
+		out[3] = (u >> 24) & 0xFF;
+	}
+	SET_VARSIZE(result, VARHDRSZ + 4);
+	PG_RETURN_BYTEA_P(result);
+}
+
+/*
+ * ora_utl_raw_cast_to_binary_integer - decode one to four bytes as a
+ * 32-bit integer in the requested byte order.  Fewer than four bytes are
+ * sign-extended from the most significant byte; more than four bytes
+ * raise VALUE_ERROR.
+ */
+Datum
+ora_utl_raw_cast_to_binary_integer(PG_FUNCTION_ARGS)
+{
+	bytea	   *r = PG_GETARG_BYTEA_PP(0);
+	int			len = VARSIZE_ANY_EXHDR(r);
+	const char *data = VARDATA_ANY(r);
+	int32		endianness = PG_GETARG_INT32(1);
+	int			order = utl_raw_effective_endian(endianness);
+	uint32		u = 0;
+	int			i;
+
+	if (len < 1 || len > 4)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("CAST_TO_BINARY_INTEGER: input must be 1 to 4 bytes")));
+	if (order == 1)
+	{
+		for (i = 0; i < len; i++)
+			u = (u << 8) | (unsigned char) data[i];
+		/* sign-extend from the most significant byte actually present */
+		if (len < 4 && (data[0] & 0x80))
+			u |= 0xFFFFFFFFu << (8 * len);
+	}
+	else
+	{
+		for (i = len - 1; i >= 0; i--)
+			u = (u << 8) | (unsigned char) data[i];
+		if (len < 4 && (data[len - 1] & 0x80))
+			u |= 0xFFFFFFFFu << (8 * len);
+	}
+	PG_RETURN_INT32((int32) u);
+}
