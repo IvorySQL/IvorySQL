@@ -53,9 +53,14 @@ extern List *addTargetToSortList(ParseState *pstate, TargetEntry *tle,
 extern Index assignSortGroupRef(TargetEntry *tle, List *tlist);
 extern bool targetIsInSortList(TargetEntry *tle, Oid sortop, List *sortList);
 
-extern bool	interpretRowidOption(List *defList, bool allowRowid);
+extern bool interpretRowidOption(List *defList, bool allowRowid);
 
 /* functions in parse_jsontable.c */
 extern ParseNamespaceItem *transformJsonTable(ParseState *pstate, JsonTable *jt);
+
+/* functions in parse_unpivot.c */
+extern ParseNamespaceItem *transformRangeUnpivot(ParseState *pstate,
+												 RangeUnpivot *ru);
+extern void checkUnpivotZeroLengthColumns(const Query *query);
 
 #endif							/* PARSE_CLAUSE_H */

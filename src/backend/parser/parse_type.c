@@ -86,7 +86,7 @@ LookupTypeNameExtended(ParseState *pstate,
 
 	if (typeName->refTypeName != NULL)
 	{
-		Oid		object_type;
+		Oid			object_type;
 
 		if (compatible_db != ORA_PARSER)
 			ereport(ERROR,
@@ -178,10 +178,10 @@ LookupTypeNameExtended(ParseState *pstate,
 	}
 	else if (ORA_PARSER == compatible_db && typeName->row_type)
 	{
-		char		*schema_name = NULL;
-		char		*relname = NULL;
-		RangeVar   	*rel;
-		Oid 		relid;
+		char	   *schema_name = NULL;
+		char	   *relname = NULL;
+		RangeVar   *rel;
+		Oid			relid;
 
 		DeconstructQualifiedName(typeName->names, &schema_name, &relname);
 		rel = makeRangeVar(schema_name, relname, typeName->location);
@@ -269,7 +269,8 @@ LookupTypeNameOid(ParseState *pstate, const TypeName *typeName, bool missing_ok)
 	Type		tup;
 
 	/* maybe comes from a package */
-	PkgType		*pkgtype = LookupPkgTypeByTypename(typeName->names, missing_ok);
+	PkgType    *pkgtype = LookupPkgTypeByTypename(typeName->names, missing_ok);
+
 	if (pkgtype != NULL)
 	{
 		typoid = pkgtype->basetypid;
@@ -626,6 +627,23 @@ LookupCollation(ParseState *pstate, List *collnames, int location)
 }
 
 /*
+ * get_oracle_nchar_collation_oid
+ *		Return the collation used to mark Oracle NATIONAL character types.
+ *
+ * NCHAR and NVARCHAR2 use the same base type OIDs as CHAR and VARCHAR2 in
+ * the current type system.  The marker collation preserves their national
+ * character-set family without changing their physical representation or
+ * typmod handling.
+ */
+Oid
+get_oracle_nchar_collation_oid(bool missing_ok)
+{
+	return get_collation_oid(list_make2(makeString("sys"),
+										makeString("nchar_cs")),
+							 missing_ok);
+}
+
+/*
  * GetColumnDefCollation
  *
  * Get the collation to be used for a column being defined, given the
@@ -651,6 +669,14 @@ GetColumnDefCollation(ParseState *pstate, const ColumnDef *coldef, Oid typeOid)
 	{
 		/* Precooked collation spec, use that */
 		result = coldef->collOid;
+	}
+	else if (coldef->typeName != NULL && coldef->typeName->nchar)
+	{
+		/*
+		 * Keep NCHAR/NVARCHAR2 distinguishable from the database-character
+		 * family even though both families currently share type OIDs.
+		 */
+		result = get_oracle_nchar_collation_oid(false);
 	}
 	else
 	{
@@ -922,10 +948,10 @@ parseTypeString(const char *str, Oid *typeid_p, int32 *typmod_p,
  */
 Type
 LookupOraTypeName(ParseState *pstate, const TypeName *typeName,
-			   int32 *typmod_p, bool missing_ok)
+				  int32 *typmod_p, bool missing_ok)
 {
 	return LookupOraTypeNameExtended(pstate,
-				  typeName, typmod_p, true, missing_ok);
+									 typeName, typmod_p, true, missing_ok);
 }
 
 /*
@@ -934,10 +960,10 @@ LookupOraTypeName(ParseState *pstate, const TypeName *typeName,
  */
 Type
 LookupOraTypeNameExtended(ParseState *pstate,
-			   const TypeName *typeName, int32 *typmod_p,
-			   bool temp_ok, bool missing_ok)
+						  const TypeName *typeName, int32 *typmod_p,
+						  bool temp_ok, bool missing_ok)
 {
-	Oid		typoid;
+	Oid			typoid;
 	HeapTuple	tup;
 	int32		typmod;
 
@@ -951,7 +977,7 @@ LookupOraTypeNameExtended(ParseState *pstate,
 		/* Handle %TYPE reference */
 		RangeVar   *rel = makeRangeVar(NULL, NULL, typeName->location);
 		char	   *field = NULL;
-		Oid	   relid;
+		Oid			relid;
 		AttrNumber	attnum;
 
 		/* deconstruct the name list */
@@ -959,10 +985,10 @@ LookupOraTypeNameExtended(ParseState *pstate,
 		{
 			case 1:
 				ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("improper %%TYPE reference (too few dotted names): %s",
-							NameListToString(typeName->names)),
-							 parser_errposition(pstate, typeName->location)));
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("improper %%TYPE reference (too few dotted names): %s",
+								NameListToString(typeName->names)),
+						 parser_errposition(pstate, typeName->location)));
 				break;
 			case 2:
 				rel->relname = strVal(linitial(typeName->names));
@@ -981,10 +1007,10 @@ LookupOraTypeNameExtended(ParseState *pstate,
 				break;
 			default:
 				ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("improper %%TYPE reference (too many dotted names): %s",
-							NameListToString(typeName->names)),
-							 parser_errposition(pstate, typeName->location)));
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("improper %%TYPE reference (too many dotted names): %s",
+								NameListToString(typeName->names)),
+						 parser_errposition(pstate, typeName->location)));
 				break;
 		}
 
@@ -1003,10 +1029,10 @@ LookupOraTypeNameExtended(ParseState *pstate,
 				typoid = InvalidOid;
 			else
 				ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_COLUMN),
-					 errmsg("column \"%s\" of relation \"%s\" does not exist",
-							field, rel->relname),
-							 parser_errposition(pstate, typeName->location)));
+						(errcode(ERRCODE_UNDEFINED_COLUMN),
+						 errmsg("column \"%s\" of relation \"%s\" does not exist",
+								field, rel->relname),
+						 parser_errposition(pstate, typeName->location)));
 		}
 		else
 		{
@@ -1018,10 +1044,10 @@ LookupOraTypeNameExtended(ParseState *pstate,
 	}
 	else if (ORA_PARSER == compatible_db && typeName->row_type)
 	{
-		char		*schema_name = NULL;
-		char		*relname = NULL;
-		RangeVar   	*rel;
-		Oid 		relid;
+		char	   *schema_name = NULL;
+		char	   *relname = NULL;
+		RangeVar   *rel;
+		Oid			relid;
 
 		DeconstructQualifiedName(typeName->names, &schema_name, &relname);
 		rel = makeRangeVar(schema_name, relname, typeName->location);
@@ -1046,7 +1072,7 @@ LookupOraTypeNameExtended(ParseState *pstate,
 		{
 			/* Look in specific schema */
 			Oid			namespaceId;
-			ParseCallbackState 	pcbstate;
+			ParseCallbackState pcbstate;
 
 			setup_parser_errposition_callback(&pcbstate, pstate, typeName->location);
 
@@ -1054,8 +1080,8 @@ LookupOraTypeNameExtended(ParseState *pstate,
 
 			if (OidIsValid(namespaceId))
 				typoid = GetSysCacheOid2(TYPENAMENSP, Anum_pg_type_oid,
-							 PointerGetDatum(typname),
-							 ObjectIdGetDatum(namespaceId));
+										 PointerGetDatum(typname),
+										 ObjectIdGetDatum(namespaceId));
 			else
 				typoid = InvalidOid;
 
@@ -1083,7 +1109,7 @@ LookupOraTypeNameExtended(ParseState *pstate,
 	tup = SearchSysCache1(TYPEOID, ObjectIdGetDatum(typoid));
 
 	/* should not happen */
-	if (!HeapTupleIsValid(tup)) 
+	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "cache lookup failed for type %u", typoid);
 
 	typmod = typenameTypeMod(pstate, typeName, (Type) tup);

@@ -49,13 +49,15 @@ if host_system == 'windows'
     '--FILEDESC', 'ivorysql_ora - Oracle Compatible extension on Postgres Database',])
 endif
 
-custom_target('ivorysql_ora--1.0.sql',
-  output: 'ivorysql_ora--1.0.sql',
-  command: [perl, '../contrib/ivorysql_ora/gensql.pl', 'meson', '1.0'],
-  capture: true,
-  install: true,
-  install_dir: contrib_data_args['install_dir'],
-)
+foreach version : ['1.0', '1.0--1.1', '1.1']
+  custom_target('ivorysql_ora--' + version + '.sql',
+    output: 'ivorysql_ora--' + version + '.sql',
+    command: [perl, '../contrib/ivorysql_ora/gensql.pl', 'meson', version],
+    capture: true,
+    install: true,
+    install_dir: contrib_data_args['install_dir'],
+  )
+endforeach
 
 ivorysql_ora = shared_module('ivorysql_ora',
   ivorysql_ora_sources,

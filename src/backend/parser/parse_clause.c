@@ -219,7 +219,7 @@ setTargetTable(ParseState *pstate, RangeVar *relation,
 	pstate->p_target_relation = parserOpenTable(pstate, relation,
 												RowExclusiveLock);
 
-	if(rel_is_force_view(RelationGetRelid(pstate->p_target_relation)))
+	if (rel_is_force_view(RelationGetRelid(pstate->p_target_relation)))
 	{
 		relation_close(pstate->p_target_relation, RowExclusiveLock);
 		compile_force_view(RelationGetRelid(pstate->p_target_relation));
@@ -1273,6 +1273,18 @@ transformFromClauseItem(ParseState *pstate, Node *n,
 		rtr->rtindex = nsitem->p_rtindex;
 		return (Node *) rtr;
 	}
+	else if (IsA(n, RangeUnpivot))
+	{
+		RangeTblRef *rtr;
+		ParseNamespaceItem *nsitem;
+
+		nsitem = transformRangeUnpivot(pstate, (RangeUnpivot *) n);
+		*top_nsitem = nsitem;
+		*namespace = list_make1(nsitem);
+		rtr = makeNode(RangeTblRef);
+		rtr->rtindex = nsitem->p_rtindex;
+		return (Node *) rtr;
+	}
 	else if (IsA(n, RangeGraphTable))
 	{
 		RangeTblRef *rtr;
@@ -2019,11 +2031,16 @@ setNamespaceLateralState(List *namespace, bool lateral_only, bool lateral_ok)
 typedef struct OraJoinBuildState
 {
 	List	   *fromClause;		/* original FROM clause, for node recovery */
-	Node	  **rtindex_to_node;	/* rtindex -> current top join subtree (or NULL) */
-	int			num_rtindexes;		/* size of rtindex_to_node, indices 1..num_rtindexes */
-	List	   *pair_joins;		/* list of OraJoinPairEntry *, one per distinct relation pair joined so far */
-	List	   *pending_filters;	/* list of OraJoinFilterEntry *, single-table (+) predicates deferred to a join's ON clause */
-} OraJoinBuildState;
+	Node	  **rtindex_to_node;	/* rtindex -> current top join subtree (or
+									 * NULL) */
+	int			num_rtindexes;	/* size of rtindex_to_node, indices
+								 * 1..num_rtindexes */
+	List	   *pair_joins;		/* list of OraJoinPairEntry *, one per
+								 * distinct relation pair joined so far */
+	List	   *pending_filters;	/* list of OraJoinFilterEntry *,
+									 * single-table (+) predicates deferred to
+									 * a join's ON clause */
+}			OraJoinBuildState;
 
 /*
  * A predicate that carried the (+) marker but references only one range
@@ -2038,7 +2055,7 @@ typedef struct OraJoinFilterEntry
 {
 	int			rtindex;		/* range-table index of the (+)-marked column */
 	Node	   *expr;			/* the raw predicate */
-} OraJoinFilterEntry;
+}			OraJoinFilterEntry;
 
 /*
  * Records the specific JoinExpr built for one relation pair, keyed by
@@ -2055,7 +2072,7 @@ typedef struct OraJoinPairEntry
 	int			preserved_idx;	/* rtindex of the side NOT marked (+) */
 	int			nullable_idx;	/* rtindex of the side marked (+) */
 	JoinExpr   *join;			/* the JoinExpr built for this pair */
-} OraJoinPairEntry;
+}			OraJoinPairEntry;
 
 /*
  * For a base (non-join) RTE produced from a plain FROM list, the Nth RTE
@@ -2094,7 +2111,7 @@ node_contains_rtindex(ParseState *pstate, List *fromClause, Node *node, int rtin
 		JoinExpr   *j = (JoinExpr *) node;
 
 		return node_contains_rtindex(pstate, fromClause, j->larg, rtindex) ||
-			   node_contains_rtindex(pstate, fromClause, j->rarg, rtindex);
+			node_contains_rtindex(pstate, fromClause, j->rarg, rtindex);
 	}
 
 	rte = rt_fetch(rtindex, pstate->p_rtable);
@@ -2138,7 +2155,7 @@ node_contains_rtindex(ParseState *pstate, List *fromClause, Node *node, int rtin
  * original FROM node (recovered by identity, not by name).
  */
 static Node *
-get_orajoin_operand_node(OraJoinBuildState *build, RangeTblEntry *rte, int rtindex)
+get_orajoin_operand_node(OraJoinBuildState * build, RangeTblEntry *rte, int rtindex)
 {
 	Node	   *node;
 	RangeVar   *rv;
@@ -2156,15 +2173,15 @@ get_orajoin_operand_node(OraJoinBuildState *build, RangeTblEntry *rte, int rtind
 	rv->inh = true;
 
 	/*
-	 * Only attach an alias when the original FROM item actually had one
-	 * (e.g. a self-join like "t1 a, t1 b"). A schema-qualified column
-	 * reference (schema.table.col) can only resolve against a namespace
-	 * item that has NO alias -- see refnameNamespaceItem()'s comment and
+	 * Only attach an alias when the original FROM item actually had one (e.g.
+	 * a self-join like "t1 a, t1 b"). A schema-qualified column reference
+	 * (schema.table.col) can only resolve against a namespace item that has
+	 * NO alias -- see refnameNamespaceItem()'s comment and
 	 * scanNameSpaceForRelid()'s "rte->alias == NULL" check. Always
 	 * synthesizing an alias here (as previously done, unconditionally
 	 * matching rte->eref->aliasname) made every rebuilt operand carry an
-	 * alias even when the user wrote none, which made qualified
-	 * references like "public.t1.c1(+)" unresolvable.
+	 * alias even when the user wrote none, which made qualified references
+	 * like "public.t1.c1(+)" unresolvable.
 	 */
 	if (rte->alias != NULL)
 		rv->alias = copyObject(rte->alias);
@@ -2180,7 +2197,7 @@ get_orajoin_operand_node(OraJoinBuildState *build, RangeTblEntry *rte, int rtind
  * inside it.
  */
 static void
-set_orajoin_node(OraJoinBuildState *build, int rtindex, Node *old_node, Node *new_node)
+set_orajoin_node(OraJoinBuildState * build, int rtindex, Node *old_node, Node *new_node)
 {
 	int			i;
 
@@ -2202,7 +2219,7 @@ set_orajoin_node(OraJoinBuildState *build, int rtindex, Node *old_node, Node *ne
  * predicate each rtindex appeared on this time.
  */
 static OraJoinPairEntry *
-find_orajoin_pair(OraJoinBuildState *build, int idx1, int idx2)
+find_orajoin_pair(OraJoinBuildState * build, int idx1, int idx2)
 {
 	ListCell   *lc;
 
@@ -2386,7 +2403,8 @@ reorder_orajoin_args(ParseState *pstate, List *args)
 	int		   *nulls;
 	bool	   *is_join;
 	ListCell   *lc;
-	int			i, j;
+	int			i,
+				j;
 
 	if (n <= 1)
 		return;
@@ -2398,7 +2416,7 @@ reorder_orajoin_args(ParseState *pstate, List *args)
 	i = 0;
 	foreach(lc, args)
 	{
-		Node   *arg = (Node *) lfirst(lc);
+		Node	   *arg = (Node *) lfirst(lc);
 
 		if (get_orajoin_predicate_tables(pstate, arg, &pres[i], &nulls[i]))
 			is_join[i] = true;
@@ -2408,8 +2426,8 @@ reorder_orajoin_args(ParseState *pstate, List *args)
 
 	/*
 	 * Simple topological sort: if predicate j produces table X as nullable
-	 * (nulls[j] == X), and predicate i uses table X as preserved
-	 * (pres[i] == X), then j must precede i.
+	 * (nulls[j] == X), and predicate i uses table X as preserved (pres[i] ==
+	 * X), then j must precede i.
 	 */
 	for (i = 0; i < n; i++)
 	{
@@ -2428,9 +2446,15 @@ reorder_orajoin_args(ParseState *pstate, List *args)
 					lfirst(ci) = lfirst(cj);
 					lfirst(cj) = tmp_val;
 
-					tmp_int = pres[i]; pres[i] = pres[j]; pres[j] = tmp_int;
-					tmp_int = nulls[i]; nulls[i] = nulls[j]; nulls[j] = tmp_int;
-					tmp_bool = is_join[i]; is_join[i] = is_join[j]; is_join[j] = tmp_bool;
+					tmp_int = pres[i];
+					pres[i] = pres[j];
+					pres[j] = tmp_int;
+					tmp_int = nulls[i];
+					nulls[i] = nulls[j];
+					nulls[j] = tmp_int;
+					tmp_bool = is_join[i];
+					is_join[i] = is_join[j];
+					is_join[j] = tmp_bool;
 				}
 			}
 		}
@@ -2438,16 +2462,16 @@ reorder_orajoin_args(ParseState *pstate, List *args)
 }
 
 static Node *
-extractOraJoins(ParseState *pstate, Node *expr, OraJoinBuildState *build,
+extractOraJoins(ParseState *pstate, Node *expr, OraJoinBuildState * build,
 				List **whereClause, List **joinClause)
 {
 	if (expr == NULL)
 		return NULL;
 
-	if (IsA(expr, BoolExpr) && ((BoolExpr *)expr)->boolop == AND_EXPR)
+	if (IsA(expr, BoolExpr) && ((BoolExpr *) expr)->boolop == AND_EXPR)
 	{
-		BoolExpr *blexpr = (BoolExpr *) expr;
-		BoolExpr *new_blexpr = copyObject(blexpr);
+		BoolExpr   *blexpr = (BoolExpr *) expr;
+		BoolExpr   *new_blexpr = copyObject(blexpr);
 		ListCell   *lc;
 
 		reorder_orajoin_args(pstate, new_blexpr->args);
@@ -2455,19 +2479,19 @@ extractOraJoins(ParseState *pstate, Node *expr, OraJoinBuildState *build,
 		/* process and remove all join conditions */
 		foreach(lc, new_blexpr->args)
 			if (extractOraJoins(pstate, lfirst(lc), build, whereClause, joinClause))
-				new_blexpr->args = foreach_delete_current(new_blexpr->args, lc);
+			new_blexpr->args = foreach_delete_current(new_blexpr->args, lc);
 
 		if (list_length(new_blexpr->args) > 0)
 			*whereClause = lappend(*whereClause, new_blexpr);
 
 		/*
-		 * This AND node has been fully accounted for: its join conditions
-		 * are now in *joinClause and whatever is left of it is a fresh
-		 * BoolExpr appended to *whereClause above.  Return non-NULL so a
-		 * parent AND removes the original (possibly right-nested) node from
-		 * its own argument list -- returning NULL here left the raw node in
-		 * place, so its extracted join predicate ended up duplicated as a
-		 * WHERE filter and silently turned the outer join into an inner one.
+		 * This AND node has been fully accounted for: its join conditions are
+		 * now in *joinClause and whatever is left of it is a fresh BoolExpr
+		 * appended to *whereClause above.  Return non-NULL so a parent AND
+		 * removes the original (possibly right-nested) node from its own
+		 * argument list -- returning NULL here left the raw node in place, so
+		 * its extracted join predicate ended up duplicated as a WHERE filter
+		 * and silently turned the outer join into an inner one.
 		 */
 		return expr;
 	}
@@ -2487,10 +2511,10 @@ extractOraJoins(ParseState *pstate, Node *expr, OraJoinBuildState *build,
 
 			/*
 			 * A BETWEEN expression with an outer-join operator is equivalent
-			 * to two comparison operators connected by AND (e.g.
-			 * "x(+) BETWEEN a AND b" is "x(+) >= a AND x(+) <= b").
-			 * Expand it into an AND BoolExpr and recurse so that two-table
-			 * joins or single-table deferred filters are built properly.
+			 * to two comparison operators connected by AND (e.g. "x(+)
+			 * BETWEEN a AND b" is "x(+) >= a AND x(+) <= b"). Expand it into
+			 * an AND BoolExpr and recurse so that two-table joins or
+			 * single-table deferred filters are built properly.
 			 */
 			if (aexpr->kind == AEXPR_BETWEEN &&
 				IsA(aexpr->rexpr, List) &&
@@ -2511,16 +2535,16 @@ extractOraJoins(ParseState *pstate, Node *expr, OraJoinBuildState *build,
 			}
 
 			/*
-			 * IN-list and NOT BETWEEN raw-parse with a bare List
-			 * (not a Node) as rexpr -- transformExpr() cannot be called on
-			 * that directly (it has no case for a raw List and falls into
-			 * "unrecognized node type"). A (+) marker in this shape is
-			 * always a single-table predicate (there is no second column
-			 * to join against: "t1.c1(+) IN (10,20)" has nothing on the
-			 * right that could be another relation's column), so route it
-			 * through the same single-table deferred-filter path as
-			 * "t.c(+) IS NULL" instead of the two-sided join-building code
-			 * below, and never touch rexpr with transformExpr().
+			 * IN-list and NOT BETWEEN raw-parse with a bare List (not a Node)
+			 * as rexpr -- transformExpr() cannot be called on that directly
+			 * (it has no case for a raw List and falls into "unrecognized
+			 * node type"). A (+) marker in this shape is always a
+			 * single-table predicate (there is no second column to join
+			 * against: "t1.c1(+) IN (10,20)" has nothing on the right that
+			 * could be another relation's column), so route it through the
+			 * same single-table deferred-filter path as "t.c(+) IS NULL"
+			 * instead of the two-sided join-building code below, and never
+			 * touch rexpr with transformExpr().
 			 */
 			if ((aexpr->kind == AEXPR_IN || aexpr->kind == AEXPR_NOT_BETWEEN) &&
 				IsA(aexpr->lexpr, ColumnRef) &&
@@ -2552,15 +2576,14 @@ extractOraJoins(ParseState *pstate, Node *expr, OraJoinBuildState *build,
 			}
 
 			/*
-			 * Detect a (+) marker anywhere in either operand, not just at
-			 * the immediate top of lexpr/rexpr -- a marked column can be
-			 * buried inside a function call, arithmetic expression, or
-			 * subscript (e.g. "upper(t.c(+))", "t.c(+) + 0") and is
-			 * still a valid join operand; only the marker's *position*
-			 * within the predicate as a whole matters here, not its
-			 * syntactic depth. record_orajoin_operand(), invoked below via
-			 * transformExpr(), independently walks down to find and
-			 * capture the actual Var.
+			 * Detect a (+) marker anywhere in either operand, not just at the
+			 * immediate top of lexpr/rexpr -- a marked column can be buried
+			 * inside a function call, arithmetic expression, or subscript
+			 * (e.g. "upper(t.c(+))", "t.c(+) + 0") and is still a valid join
+			 * operand; only the marker's *position* within the predicate as a
+			 * whole matters here, not its syntactic depth.
+			 * record_orajoin_operand(), invoked below via transformExpr(),
+			 * independently walks down to find and capture the actual Var.
 			 */
 			ora_join_op_exists = orajoin_marker_walker(aexpr->lexpr, NULL) ||
 				(is_binary_op_aexpr(aexpr->kind) &&
@@ -2568,31 +2591,41 @@ extractOraJoins(ParseState *pstate, Node *expr, OraJoinBuildState *build,
 
 			if (ora_join_op_exists && is_binary_op_aexpr(aexpr->kind))
 			{
-				int					lindex, rindex;
-				int					preserved_idx,
-									nullable_idx;
-				RangeTblEntry		*lrte, *rrte;
-				OraJoinState		ljs = {NULL, NULL}, rjs = {NULL, NULL};
-				OraJoinType			jtyp = NO_ORA_JOIN;
-				JoinExpr			*n;
-				Node				*lnode, *rnode;
-				Node				*old_lnode, *old_rnode;
-				OraJoinPairEntry	*pair_entry;
-				ListCell			*lc3;
-				OraJoinPairEntry	*shared = NULL;
+				int			lindex,
+							rindex;
+				int			preserved_idx,
+							nullable_idx;
+				RangeTblEntry *lrte,
+						   *rrte;
+				OraJoinState ljs = {NULL, NULL}, rjs = {NULL, NULL};
+				OraJoinType jtyp = NO_ORA_JOIN;
+				JoinExpr   *n;
+				Node	   *lnode,
+						   *rnode;
+				Node	   *old_lnode,
+						   *old_rnode;
+				OraJoinPairEntry *pair_entry;
+				ListCell   *lc3;
+				OraJoinPairEntry *shared = NULL;
 
-				/* transform left arg of condition first and see if any oracle join present */
+				/*
+				 * transform left arg of condition first and see if any oracle
+				 * join present
+				 */
 				pstate->p_orajoin_state = &ljs;
 				transformExpr(pstate, aexpr->lexpr, EXPR_KIND_WHERE);
 
-				/* transform right arg of condition first and see if any oracle join present */
+				/*
+				 * transform right arg of condition first and see if any
+				 * oracle join present
+				 */
 				pstate->p_orajoin_state = &rjs;
 				transformExpr(pstate, aexpr->rexpr, EXPR_KIND_WHERE);
 				pstate->p_orajoin_state = NULL;
 
 				/*
-				 * One (or both) sides did not resolve to a plain column of
-				 * a range-table entry.
+				 * One (or both) sides did not resolve to a plain column of a
+				 * range-table entry.
 				 */
 				if (ljs.var == NULL || rjs.var == NULL)
 				{
@@ -2608,10 +2641,10 @@ extractOraJoins(ParseState *pstate, Node *expr, OraJoinBuildState *build,
 						OraJoinFilterEntry *f;
 
 						/*
-						 * A one-table predicate carrying (+), such as
-						 * "t.c(+) = 'x'".  In Oracle this belongs in the ON
-						 * clause of the outer join that has table t on its
-						 * nullable side; putting it in WHERE would drop the
+						 * A one-table predicate carrying (+), such as "t.c(+)
+						 * = 'x'".  In Oracle this belongs in the ON clause of
+						 * the outer join that has table t on its nullable
+						 * side; putting it in WHERE would drop the
 						 * NULL-extended rows.  Defer it and fold it in once
 						 * every pairwise join exists (see
 						 * transformOraJoinClause()).
@@ -2692,56 +2725,54 @@ extractOraJoins(ParseState *pstate, Node *expr, OraJoinBuildState *build,
 				}
 
 				/*
-					* Look up the JoinExpr built for this exact relation
-					* pair before (if any), rather than whatever bigger
-					* subtree either side's rtindex currently maps to.
-					* Chained joins (e.g. "a.id=b.id(+) AND
-					* b.id2=c.id2(+)") can leave every rtindex pointing
-					* at the same top-level, multi-relation subtree;
-					* folding a later a/b predicate into "whatever that
-					* top node happens to be" would misattribute it to
-					* the b/c join instead.
-					*/
+				 * Look up the JoinExpr built for this exact relation pair
+				 * before (if any), rather than whatever bigger subtree either
+				 * side's rtindex currently maps to. Chained joins (e.g.
+				 * "a.id=b.id(+) AND b.id2=c.id2(+)") can leave every rtindex
+				 * pointing at the same top-level, multi-relation subtree;
+				 * folding a later a/b predicate into "whatever that top node
+				 * happens to be" would misattribute it to the b/c join
+				 * instead.
+				 */
 				pair_entry = find_orajoin_pair(build, lindex, rindex);
 
 				if (pair_entry != NULL)
 				{
 					/*
-						* A predicate for this pair already exists. Its
-						* outer join direction must match, or this new
-						* predicate contradicts the earlier one (e.g.
-						* "a.id=b.id(+)" [b nullable] followed by
-						* "a.code(+)=b.code" [a nullable] for the same
-						* pair) -- folding both into one ON clause would
-						* silently pick a direction. Reject instead.
-						*/
+					 * A predicate for this pair already exists. Its outer
+					 * join direction must match, or this new predicate
+					 * contradicts the earlier one (e.g. "a.id=b.id(+)" [b
+					 * nullable] followed by "a.code(+)=b.code" [a nullable]
+					 * for the same pair) -- folding both into one ON clause
+					 * would silently pick a direction. Reject instead.
+					 */
 					if (pair_entry->preserved_idx != preserved_idx ||
 						pair_entry->nullable_idx != nullable_idx)
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
-									errmsg("two tables cannot be outer-joined to each other")));
+								 errmsg("two tables cannot be outer-joined to each other")));
 
 					n = pair_entry->join;
 					n->quals = (Node *) makeBoolExpr(AND_EXPR,
-														list_make2(n->quals, (Node *) aexpr),
-														-1);
+													 list_make2(n->quals, (Node *) aexpr),
+													 -1);
 					return (Node *) n;
 				}
 
 				/*
 				 * No JoinExpr exists yet for this exact pair. But if this
-				 * predicate's nullable side is already the nullable side
-				 * of a *different* pair (e.g. "t1.c1=t2.c3(+) AND
-				 * t3.c1=t2.c1(+)": t2 is nullable against both t1 and
-				 * t3), Oracle does not chain them -- it cross-joins the
-				 * preserved tables and applies both (+) conditions,
-				 * ANDed together, as a single shared ON clause against
-				 * the one nullable table. Detect that here and merge,
-				 * rather than falling through to get_orajoin_operand_node()
-				 * below, which would instead nest one join inside the
-				 * other (silently reinterpreting this as a chain, which
-				 * is a different and incompatible construct -- see the
-				 * legitimate chaining comment on find_orajoin_pair()).
+				 * predicate's nullable side is already the nullable side of a
+				 * *different* pair (e.g. "t1.c1=t2.c3(+) AND t3.c1=t2.c1(+)":
+				 * t2 is nullable against both t1 and t3), Oracle does not
+				 * chain them -- it cross-joins the preserved tables and
+				 * applies both (+) conditions, ANDed together, as a single
+				 * shared ON clause against the one nullable table. Detect
+				 * that here and merge, rather than falling through to
+				 * get_orajoin_operand_node() below, which would instead nest
+				 * one join inside the other (silently reinterpreting this as
+				 * a chain, which is a different and incompatible construct --
+				 * see the legitimate chaining comment on
+				 * find_orajoin_pair()).
 				 */
 
 				foreach(lc3, build->pair_joins)
@@ -2764,20 +2795,20 @@ extractOraJoins(ParseState *pstate, Node *expr, OraJoinBuildState *build,
 					JoinExpr   *cross;
 
 					/*
-					 * If this preserved table is already part of the
-					 * shared join's preserved subtree (e.g. chained outer
-					 * joins like "d = e(+) AND e = l(+) AND d = l(+)"),
-					 * we do not cross-join it again -- it is already in the
-					 * preserved subtree! We simply add this condition to the
-					 * shared ON clause and record the pair.
+					 * If this preserved table is already part of the shared
+					 * join's preserved subtree (e.g. chained outer joins like
+					 * "d = e(+) AND e = l(+) AND d = l(+)"), we do not
+					 * cross-join it again -- it is already in the preserved
+					 * subtree! We simply add this condition to the shared ON
+					 * clause and record the pair.
 					 */
 					if (node_contains_rtindex(pstate, build->fromClause,
 											  shared->join->larg, preserved_idx))
 					{
 						shared->join->quals = (Node *) makeBoolExpr(AND_EXPR,
-																		list_make2(shared->join->quals,
-																				(Node *) aexpr),
-																		-1);
+																	list_make2(shared->join->quals,
+																			   (Node *) aexpr),
+																	-1);
 
 						pair_entry = (OraJoinPairEntry *) palloc(sizeof(OraJoinPairEntry));
 						pair_entry->preserved_idx = preserved_idx;
@@ -2790,11 +2821,11 @@ extractOraJoins(ParseState *pstate, Node *expr, OraJoinBuildState *build,
 
 					new_preserved_rte = rt_fetch(preserved_idx, pstate->p_rtable);
 					old_new_preserved_node = (preserved_idx > 0 &&
-												preserved_idx <= build->num_rtindexes) ?
+											  preserved_idx <= build->num_rtindexes) ?
 						build->rtindex_to_node[preserved_idx] : NULL;
 					new_preserved_node = get_orajoin_operand_node(build,
-																	new_preserved_rte,
-																	preserved_idx);
+																  new_preserved_rte,
+																  preserved_idx);
 
 					old_preserved_larg = shared->join->larg;
 
@@ -2806,14 +2837,20 @@ extractOraJoins(ParseState *pstate, Node *expr, OraJoinBuildState *build,
 					cross->rarg = new_preserved_node;
 					cross->quals = NULL;
 
-					/* Widen the existing LEFT JOIN's preserved side and ON clause. */
+					/*
+					 * Widen the existing LEFT JOIN's preserved side and ON
+					 * clause.
+					 */
 					shared->join->larg = (Node *) cross;
 					shared->join->quals = (Node *) makeBoolExpr(AND_EXPR,
-																	list_make2(shared->join->quals,
-																			(Node *) aexpr),
-																	-1);
+																list_make2(shared->join->quals,
+																		   (Node *) aexpr),
+																-1);
 
-					/* Track the new preserved table under the same JoinExpr too. */
+					/*
+					 * Track the new preserved table under the same JoinExpr
+					 * too.
+					 */
 					pair_entry = (OraJoinPairEntry *) palloc(sizeof(OraJoinPairEntry));
 					pair_entry->preserved_idx = preserved_idx;
 					pair_entry->nullable_idx = nullable_idx;
@@ -2821,7 +2858,7 @@ extractOraJoins(ParseState *pstate, Node *expr, OraJoinBuildState *build,
 					build->pair_joins = lappend(build->pair_joins, pair_entry);
 
 					set_orajoin_node(build, preserved_idx, old_new_preserved_node,
-										(Node *) shared->join);
+									 (Node *) shared->join);
 
 					if (joinClause != NULL)
 						*joinClause = list_delete_ptr(*joinClause, new_preserved_node);
@@ -2837,7 +2874,10 @@ extractOraJoins(ParseState *pstate, Node *expr, OraJoinBuildState *build,
 				lnode = get_orajoin_operand_node(build, lrte, lindex);
 				rnode = get_orajoin_operand_node(build, rrte, rindex);
 
-				/* convert and make ANSI style join statement that PG understands. */
+				/*
+				 * convert and make ANSI style join statement that PG
+				 * understands.
+				 */
 				n = makeNode(JoinExpr);
 				n->jointype = JOIN_LEFT;
 				n->isNatural = false;
@@ -2853,14 +2893,14 @@ extractOraJoins(ParseState *pstate, Node *expr, OraJoinBuildState *build,
 				}
 
 				/* ON clause */
-				n->quals = (Node *)aexpr;
+				n->quals = (Node *) aexpr;
 
 				/*
-					* Record this pair's specific JoinExpr so a later
-					* predicate for exactly this pair can find and fold
-					* into it directly, even after it gets nested inside
-					* a bigger multi-table join subtree below.
-					*/
+				 * Record this pair's specific JoinExpr so a later predicate
+				 * for exactly this pair can find and fold into it directly,
+				 * even after it gets nested inside a bigger multi-table join
+				 * subtree below.
+				 */
 				pair_entry = (OraJoinPairEntry *) palloc(sizeof(OraJoinPairEntry));
 				pair_entry->preserved_idx = preserved_idx;
 				pair_entry->nullable_idx = nullable_idx;
@@ -2869,18 +2909,18 @@ extractOraJoins(ParseState *pstate, Node *expr, OraJoinBuildState *build,
 
 				/*
 				 * Record the new join subtree for every rtindex on either
-				 * side, repointing any rtindexes that were nested inside
-				 * an existing subtree being merged here.
+				 * side, repointing any rtindexes that were nested inside an
+				 * existing subtree being merged here.
 				 */
 				set_orajoin_node(build, lindex, old_lnode, (Node *) n);
 				set_orajoin_node(build, rindex, old_rnode, (Node *) n);
 
 				/*
-				 * Track only the current top-level join subtrees. If
-				 * either side was already a top-level entry in
-				 * joinClause (an independent join pair being merged in
-				 * here), drop it there -- it is now nested inside n
-				 * rather than being a separate top-level join.
+				 * Track only the current top-level join subtrees. If either
+				 * side was already a top-level entry in joinClause (an
+				 * independent join pair being merged in here), drop it there
+				 * -- it is now nested inside n rather than being a separate
+				 * top-level join.
 				 */
 				if (joinClause != NULL)
 				{
@@ -2889,24 +2929,24 @@ extractOraJoins(ParseState *pstate, Node *expr, OraJoinBuildState *build,
 					*joinClause = lappend(*joinClause, n);
 				}
 
-				return (Node *)n;
+				return (Node *) n;
 			}
 		}
 		else if (IsA(expr, NullTest))
 		{
 			/*
-			 * A single-table (+) predicate, eg: "t.c(+) = <constant>". 
-			 * Defer it and fold it into the ON clause of the join whose 
-			 * nullable side is that table.
+			 * A single-table (+) predicate, eg: "t.c(+) = <constant>". Defer
+			 * it and fold it into the ON clause of the join whose nullable
+			 * side is that table.
 			 */
 			NullTest   *nt = (NullTest *) expr;
 
-			if (orajoin_marker_walker((Node *)nt->arg, NULL))
+			if (orajoin_marker_walker((Node *) nt->arg, NULL))
 			{
 				OraJoinState njs = {NULL, NULL};
 
 				pstate->p_orajoin_state = &njs;
-				transformExpr(pstate, (Node *)nt->arg, EXPR_KIND_WHERE);
+				transformExpr(pstate, (Node *) nt->arg, EXPR_KIND_WHERE);
 				pstate->p_orajoin_state = NULL;
 
 				if (njs.var != NULL && njs.cref->ora_join_op_exists)
@@ -2931,35 +2971,34 @@ extractOraJoins(ParseState *pstate, Node *expr, OraJoinBuildState *build,
 	}
 
 	/*
-	 * Nothing above handled this expression as an Oracle-join predicate:
-	 * it's an OR, a NOT, or some other expression form extractOraJoins()
-	 * doesn't specially recognize.
+	 * Nothing above handled this expression as an Oracle-join predicate: it's
+	 * an OR, a NOT, or some other expression form extractOraJoins() doesn't
+	 * specially recognize.
 	 *
 	 * A (+) marker hidden inside an OR is rejected the way Oracle does
-	 * (ORA-01719: "outer join operator (+) not allowed in operand of OR
-	 * or IN").
+	 * (ORA-01719: "outer join operator (+) not allowed in operand of OR or
+	 * IN").
 	 *
 	 * A (+) marker hidden inside a NOT is, empirically, *not* rejected by
 	 * Oracle -- it's a real, if surprising, construct. Oracle's actual
-	 * semantics for "NOT (t2.c3 = t1.c1(+))" are not "negate the outer
-	 * join's ON clause"; verified against a real Oracle instance, they
-	 * are: (ordinary CROSS JOIN of the two tables, filtered by
-	 * NOT(condition) using plain three-valued SQL logic, with no
-	 * outer-join padding at all) UNION ALL (preserved-side rows that
-	 * appear zero times in that filtered result, each padded with NULL
-	 * for the nullable side's columns -- i.e. only rows whose join key
-	 * makes every comparison NULL, such as a NULL join column, not
-	 * merely rows with no equal value). Reproducing this exactly requires
-	 * rewriting the statement into a two-branch UNION ALL query before
-	 * transformSelectStmt/transformOraJoinClause ever run (by the time
-	 * this function executes, the target list and FROM clause are
-	 * already partway through transformation, too late to graft a UNION
-	 * onto the statement safely) -- a materially larger change than
-	 * anything else in extractOraJoins(). Until that is implemented,
-	 * reject the construct explicitly and accurately (not as if Oracle
-	 * itself forbids it) rather than silently discard the outer-join
-	 * marker and produce ordinary cross-join-filtered results, which is
-	 * wrong for any row whose join key is NULL.
+	 * semantics for "NOT (t2.c3 = t1.c1(+))" are not "negate the outer join's
+	 * ON clause"; verified against a real Oracle instance, they are:
+	 * (ordinary CROSS JOIN of the two tables, filtered by NOT(condition)
+	 * using plain three-valued SQL logic, with no outer-join padding at all)
+	 * UNION ALL (preserved-side rows that appear zero times in that filtered
+	 * result, each padded with NULL for the nullable side's columns -- i.e.
+	 * only rows whose join key makes every comparison NULL, such as a NULL
+	 * join column, not merely rows with no equal value). Reproducing this
+	 * exactly requires rewriting the statement into a two-branch UNION ALL
+	 * query before transformSelectStmt/transformOraJoinClause ever run (by
+	 * the time this function executes, the target list and FROM clause are
+	 * already partway through transformation, too late to graft a UNION onto
+	 * the statement safely) -- a materially larger change than anything else
+	 * in extractOraJoins(). Until that is implemented, reject the construct
+	 * explicitly and accurately (not as if Oracle itself forbids it) rather
+	 * than silently discard the outer-join marker and produce ordinary
+	 * cross-join-filtered results, which is wrong for any row whose join key
+	 * is NULL.
 	 *
 	 * This deliberate limitation is reported as ERRCODE_FEATURE_NOT_SUPPORTED
 	 * (SQLSTATE 0A000), with an errdetail() spelling out that it is an
@@ -2972,9 +3011,9 @@ extractOraJoins(ParseState *pstate, Node *expr, OraJoinBuildState *build,
 
 		if (b->boolop == OR_EXPR && orajoin_marker_walker(expr, NULL))
 			ereport(ERROR,
-				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("A predicate without outer join operator (+) not allowed in operand of OR"
-					" or IN when outer join operator (+) is present")));
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("A predicate without outer join operator (+) not allowed in operand of OR"
+							" or IN when outer join operator (+) is present")));
 
 		if (b->boolop == NOT_EXPR && orajoin_marker_walker(expr, NULL))
 			ereport(ERROR,
@@ -2988,8 +3027,8 @@ extractOraJoins(ParseState *pstate, Node *expr, OraJoinBuildState *build,
 	 * Any (+) marker still reachable here is one this predicate form cannot
 	 * express as a join: the operator is buried inside a function call, an
 	 * arithmetic expression, a subscript, an IS [NOT] NULL test, and so on.
-	 * Oracle rejects these too; do the same rather than silently dropping
-	 * the marker and running a plain inner join.
+	 * Oracle rejects these too; do the same rather than silently dropping the
+	 * marker and running a plain inner join.
 	 */
 	if (orajoin_marker_walker(expr, NULL))
 		ereport(ERROR,
@@ -3011,10 +3050,10 @@ transformOraJoinClause(ParseState *pstate, SelectStmt *stmt)
 	int			rtindex;
 
 	/*
-	 * The rewrite recovers each original FROM item by its ordinal position
-	 * in the range table, which only holds for a flat comma-separated FROM
-	 * list.  Oracle itself forbids mixing (+) with ANSI JOIN syntax, so
-	 * reject that here rather than silently mis-transform it.
+	 * The rewrite recovers each original FROM item by its ordinal position in
+	 * the range table, which only holds for a flat comma-separated FROM list.
+	 * Oracle itself forbids mixing (+) with ANSI JOIN syntax, so reject that
+	 * here rather than silently mis-transform it.
 	 */
 	foreach(lc, stmt->fromClause)
 	{
@@ -3022,9 +3061,9 @@ transformOraJoinClause(ParseState *pstate, SelectStmt *stmt)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("old style outer join (+) cannot be used with ANSI joins"),
-				 	 errdetail("*Cause: When a query block uses ANSI style joins, "
-						"the old notation for specifying outer joins (+) cannot be used. "
-						"*Action: Use ANSI style for specifying outer joins also.")));
+					 errdetail("*Cause: When a query block uses ANSI style joins, "
+							   "the old notation for specifying outer joins (+) cannot be used. "
+							   "*Action: Use ANSI style for specifying outer joins also.")));
 	}
 
 	build.fromClause = stmt->fromClause;
@@ -3036,9 +3075,9 @@ transformOraJoinClause(ParseState *pstate, SelectStmt *stmt)
 	extractOraJoins(pstate, stmt->whereClause, &build, &whereClause, &joinClause);
 
 	/*
-	 * Fold every deferred one-table (+) filter into the ON clause of the
-	 * join whose nullable side is that table.  If no such join exists the
-	 * (+) has nowhere to attach; keep the predicate as an ordinary filter.
+	 * Fold every deferred one-table (+) filter into the ON clause of the join
+	 * whose nullable side is that table.  If no such join exists the (+) has
+	 * nowhere to attach; keep the predicate as an ordinary filter.
 	 */
 	foreach(lc, build.pending_filters)
 	{
@@ -3066,9 +3105,9 @@ transformOraJoinClause(ParseState *pstate, SelectStmt *stmt)
 	}
 
 	/*
-	 * A (+) marker on any predicate that stays in WHERE is meaningless
-	 * there; clear it so it cannot trip the guard in record_orajoin_operand()
-	 * when the predicate is later transformed as an ordinary qualifier.
+	 * A (+) marker on any predicate that stays in WHERE is meaningless there;
+	 * clear it so it cannot trip the guard in record_orajoin_operand() when
+	 * the predicate is later transformed as an ordinary qualifier.
 	 */
 	foreach(lc, whereClause)
 		orajoin_marker_clear_walker((Node *) lfirst(lc), NULL);
@@ -3085,8 +3124,8 @@ transformOraJoinClause(ParseState *pstate, SelectStmt *stmt)
 	/*
 	 * Append any original FROM item whose rtindex never ended up inside a
 	 * generated join subtree. Identifying these by range-table position
-	 * (rather than by relation name, as before) means repeated aliases of
-	 * the same relation are told apart correctly.
+	 * (rather than by relation name, as before) means repeated aliases of the
+	 * same relation are told apart correctly.
 	 */
 	rtindex = 0;
 	foreach(lc, oldfromClause)
@@ -3123,12 +3162,12 @@ transformOraJoinClause(ParseState *pstate, SelectStmt *stmt)
 	 * table must be cleared too, or the fresh pass will misalign against
 	 * stale entries left by the first, now-discarded pass:
 	 *
-	 *	p_joinexprs		indexed by join-RTE rtindex (asserted in the caller)
-	 *	p_nullingrels	indexed by rtindex, extended lazily
-	 *	p_rteperminfos	one entry per RTE; leftovers here are orphaned
-	 *					(no rte->perminfoindex references them), which trips
-	 *					the consistency Assert in ExecCheckPermissions() and,
-	 *					in non-assert builds, causes redundant ACL checks.
+	 * p_joinexprs		indexed by join-RTE rtindex (asserted in the caller)
+	 * p_nullingrels	indexed by rtindex, extended lazily p_rteperminfos	one
+	 * entry per RTE; leftovers here are orphaned (no rte->perminfoindex
+	 * references them), which trips the consistency Assert in
+	 * ExecCheckPermissions() and, in non-assert builds, causes redundant ACL
+	 * checks.
 	 */
 	pstate->p_joinexprs = NIL;
 	pstate->p_nullingrels = NIL;
@@ -3411,8 +3450,8 @@ findTargetlistEntrySQL92(ParseState *pstate, Node *node, List **tlist,
 		list_length(((ColumnRefOrFuncCall *) node)->cref->fields) == 1 &&
 		IsA(linitial(((ColumnRefOrFuncCall *) node)->cref->fields), String))
 	{
-		char		 *name = strVal(linitial(((ColumnRefOrFuncCall *) node)->cref->fields));
-		int 		location = ((ColumnRefOrFuncCall *) node)->cref->location;
+		char	   *name = strVal(linitial(((ColumnRefOrFuncCall *) node)->cref->fields));
+		int			location = ((ColumnRefOrFuncCall *) node)->cref->location;
 
 		if (exprKind == EXPR_KIND_GROUP_BY)
 		{
@@ -5258,7 +5297,7 @@ transformFrameOffset(ParseState *pstate, int frameOptions,
 bool
 interpretRowidOption(List *defList, bool allowRowid)
 {
-	ListCell	*cell;
+	ListCell   *cell;
 
 	/* Scan list to see if ROWID was included */
 	foreach(cell, defList)
@@ -5282,8 +5321,8 @@ interpretRowidOption(List *defList, bool allowRowid)
 		return false;
 
 	/*
-	 * ROWID option was not specified, so use default GUC value,
-	 * but this GUC only valid in DB_ORACLE model
+	 * ROWID option was not specified, so use default GUC value, but this GUC
+	 * only valid in DB_ORACLE model
 	 */
 	if (compatible_db == ORA_PARSER)
 		return default_with_rowids;
@@ -5293,41 +5332,41 @@ interpretRowidOption(List *defList, bool allowRowid)
 
 /*
  * check_funcexpr_outparams
- * OUT or IN OUT arguments of the function must be variables 
+ * OUT or IN OUT arguments of the function must be variables
  * when allow_out_parameter_const is false.
  */
 static void
 check_funcexpr_outparams(List *funcexprs)
 {
-	ListCell *lc;
+	ListCell   *lc;
 
 	if (allow_out_parameter_const)
 		return;
 
-	foreach (lc, funcexprs)
+	foreach(lc, funcexprs)
 	{
-		FuncExpr *func = (FuncExpr *) lfirst(lc);
+		FuncExpr   *func = (FuncExpr *) lfirst(lc);
 		int			i;
-		ListCell 	*lc1;
-		Oid 	   *argtypes = NULL;
+		ListCell   *lc1;
+		Oid		   *argtypes = NULL;
 		char	  **argnames = NULL;
-		char	   *argmodes= NULL;
-		HeapTuple		procTup = NULL;
-		char *proname = NULL;
+		char	   *argmodes = NULL;
+		HeapTuple	procTup = NULL;
+		char	   *proname = NULL;
 
 		if (!IsA(func, FuncExpr))
 			return;
 
 		if (FUNC_EXPR_FROM_PG_PROC(func->function_from))
 		{
-			Form_pg_proc	procStruct;
-		
+			Form_pg_proc procStruct;
+
 			procTup = SearchSysCache1(PROCOID, ObjectIdGetDatum(func->funcid));
 
 			if (!HeapTupleIsValid(procTup))
 				ereport(ERROR,
-					(errcode(ERRCODE_DATA_EXCEPTION),
-					 errmsg("cache lookup failed for function %u", func->funcid)));
+						(errcode(ERRCODE_DATA_EXCEPTION),
+						 errmsg("cache lookup failed for function %u", func->funcid)));
 
 			procStruct = (Form_pg_proc) GETSTRUCT(procTup);
 
@@ -5357,7 +5396,7 @@ check_funcexpr_outparams(List *funcexprs)
 		else
 		{
 			get_subproc_arg_info(func, &argtypes,
-										&argnames, &argmodes);
+								 &argnames, &argmodes);
 			proname = get_internal_function_name(func);
 		}
 		i = 0;
@@ -5368,15 +5407,15 @@ check_funcexpr_outparams(List *funcexprs)
 			if (argmodes[i] == PROARGMODE_OUT ||
 				argmodes[i] == PROARGMODE_INOUT)
 			{
-				Node *arg = (Node *) lfirst(lc1);
+				Node	   *arg = (Node *) lfirst(lc1);
 
 				arg = ParseParamVariable(arg);
 				if (!IsA(arg, Param))
 				{
 					ereport(ERROR,
-						(errcode(ERRCODE_DATA_EXCEPTION),
-						errmsg("OUT or IN OUT arguments of the function %s must be variables.",
-								proname)));
+							(errcode(ERRCODE_DATA_EXCEPTION),
+							 errmsg("OUT or IN OUT arguments of the function %s must be variables.",
+									proname)));
 				}
 			}
 			i++;

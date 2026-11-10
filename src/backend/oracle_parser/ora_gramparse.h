@@ -24,6 +24,7 @@
 
 #include "nodes/parsenodes.h"
 #include "oracle_parser/ora_scanner.h"
+#include "utils/hsearch.h"
 
 /*
  * NB: include ora_gram.h only AFTER including ora_scanner.h, because ora_scanner.h
@@ -41,7 +42,7 @@ typedef enum OraBodyStyle
 	OraBody_TYPEBODY,
 	OraBody_MAYBE_ANONYMOUS_BLOCK_BEGIN,
 	OraBody_MAYBE_ANONYMOUS_BLOCK_DECLARE
-}OraBodyStyle;
+} OraBodyStyle;
 
 /* Auxiliary data about a token (other than the token type) */
 typedef struct
@@ -49,6 +50,7 @@ typedef struct
 	YYSTYPE		lval;			/* semantic information */
 	YYLTYPE		lloc;			/* offset in scanbuf */
 	int			leng;			/* length in bytes */
+	bool		replayed;		/* token was cached by UNPIVOT probing */
 } TokenAuxData;
 
 /* Token pushback stack */
@@ -81,18 +83,20 @@ typedef struct ora_base_yy_extra_type
 	List	   *parsetree;		/* final parse result is delivered here */
 
 	/*
-	 * The native PG only cache one-token info include yylloc, yylval and token
-	 * number in yyextra, IvorySQL cache multiple tokens info using two arrays.
+	 * The native PG only cache one-token info include yylloc, yylval and
+	 * token number in yyextra, IvorySQL cache multiple tokens info using two
+	 * arrays.
 	 */
-	int max_pushbacks;		/* the maxsize of cache array */
-	int loc_pushback; 		/* # of used tokens */
-	int	num_pushbacks;		/* # of cached tokens */
-	int	*pushback_token;			/* token number array */
+	int			max_pushbacks;	/* the maxsize of cache array */
+	int			loc_pushback;	/* # of used tokens */
+	int			num_pushbacks;	/* # of cached tokens */
+	int		   *pushback_token; /* token number array */
 	TokenAuxData *pushback_auxdata; /* auxdata array */
+	HTAB	   *unpivot_lookahead_cache;
 
 	OraBodyStyle body_style;
-	int          body_start;
-	int          body_level;
+	int			body_start;
+	int			body_level;
 } ora_base_yy_extra_type;
 
 /*
@@ -106,7 +110,7 @@ typedef struct ora_base_yy_extra_type
 
 /* from libparser_oracle.c */
 extern int	ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp,
-					   	   ora_core_yyscan_t yyscanner);
+						   ora_core_yyscan_t yyscanner);
 
 extern void set_oracle_plsql_body(ora_core_yyscan_t yyscanner, OraBodyStyle body_style);
 extern void set_oracle_plsql_bodystart(ora_core_yyscan_t yyscanner, int body_start, int body_level);
