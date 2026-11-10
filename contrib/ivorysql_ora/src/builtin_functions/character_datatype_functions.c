@@ -1483,6 +1483,15 @@ text_substring_byte(Datum str, int32 start, int32 length, bool length_not_specif
 		while (subStrBegin < sliceBegin + S1 - 1)
 			subStrBegin += pg_mblen(subStrBegin);
 
+		/*
+		 * The requested range can end inside the character that was just
+		 * skipped.  Clamp the position to the end of the range so the
+		 * padding counted below never makes the result longer than the
+		 * requested number of bytes.
+		 */
+		if (subStrBegin > sliceBegin + E1 - 1)
+			subStrBegin = sliceBegin + E1 - 1;
+
 		if (subStrBegin > sliceBegin + S1 - 1)
 		{
 			prefixSpace = true;
@@ -1499,14 +1508,14 @@ text_substring_byte(Datum str, int32 start, int32 length, bool length_not_specif
 			suffixSpaceCnt = sliceBegin + E1 - 1 - subStrEnd;
 		}
 
-		if (subStrEnd == subStrBegin)
-		{
-			if (prefixSpace && suffixSpace)
-				return cstring_to_text("  ");
-			else
-				return cstring_to_text(" ");
-		}
-
+		/*
+		 * When the requested byte range falls entirely inside one multibyte
+		 * character, nothing is copied and the result is made of the padding
+		 * spaces alone.  Do not shortcut this case: the padding counters above
+		 * already hold the exact number of bytes needed to keep the result as
+		 * long as the requested range, and hardcoding one or two spaces here
+		 * would silently return a shorter string.
+		 */
 		ret = (text *) palloc(VARHDRSZ + (subStrEnd - subStrBegin + prefixSpaceCnt + suffixSpaceCnt));
 		SET_VARSIZE(ret, VARHDRSZ + (subStrEnd - subStrBegin + prefixSpaceCnt + suffixSpaceCnt));
 		

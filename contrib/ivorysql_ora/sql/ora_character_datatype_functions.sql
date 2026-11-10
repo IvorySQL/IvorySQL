@@ -834,6 +834,21 @@ SELECT SUBSTRB('ABCDEFG',5,4.2) "Substring with bytes" FROM DUAL;
 SELECT SUBSTRB('ABCDEFG',5) "Substring with bytes" FROM DUAL;
 
 /*
+ * A byte range that falls entirely inside a multibyte character returns only
+ * padding spaces, but it must still be as long as the requested range.
+ */
+SELECT LENGTHB(SUBSTRB('数据库', 1, 2)) "bytes" FROM DUAL;
+SELECT LENGTHB(SUBSTRB('数据库', 2, 3)) "bytes" FROM DUAL;
+SELECT LENGTHB(SUBSTRB('数据库', 4, 2)) "bytes" FROM DUAL;
+SELECT LENGTHB(SUBSTRB('数据库', 8, 5)) "bytes" FROM DUAL;
+SELECT LENGTHB(SUBSTRB('数据库', -8, 3)) "bytes" FROM DUAL;
+SELECT LENGTHB(SUBSTRB('数据库', 5, 1)) "bytes" FROM DUAL;
+
+/* Ranges that fit inside a character must keep returning that character. */
+SELECT SUBSTRB('数据库', 1, 3) "Substring with bytes" FROM DUAL;
+SELECT SUBSTRB('abcdef', 1, 2) "Substring with bytes" FROM DUAL;
+
+/*
  * instrb
  */
 SELECT INSTRB('CORPORATE FLOOR','OR',5,2) "Instring in bytes" FROM DUAL;
