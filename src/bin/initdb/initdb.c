@@ -285,6 +285,7 @@ static char *get_id(void);
 static int	get_encoding_id(const char *encoding_name);
 static void set_input(char **dest, const char *filename);
 static void check_input(char *path);
+static void check_oracle_extensions(void);
 static void write_version_file(const char *extrapath);
 static void set_null_conf(void);
 static void test_config_settings(void);
@@ -1048,6 +1049,78 @@ check_input(char *path)
 	{
 		pg_log_error("file \"%s\" is not a regular file", path);
 		pg_log_error_hint("This might mean you have a corrupted installation or identified the wrong directory with the invocation option -L.");
+		exit(1);
+	}
+}
+
+/*
+ * check that the files Oracle-compatible mode needs are installed
+ *
+ * Oracle-compatible mode runs "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\""
+ * from preload_ora_misc.sql while template1 is being built.  That command is
+ * executed by a --single backend started with exit_on_error=true, so a missing
+ * extension ends initialization with a bare FATAL -- after the data directory
+ * has been created, and only for initdb to remove it again.  Checking here,
+ * before anything is written, keeps the failure free of side effects and lets
+ * us point at the actual cause.
+ */
+static void
+check_oracle_extensions(void)
+{
+	char		pkglib_path[MAXPGPATH];
+	char		share_dir[MAXPGPATH];
+	char	   *files[3];
+	bool		incomplete = false;
+	int			i;
+
+	/*
+	 * These are the files contrib/uuid-ossp installs; initdb has no way to
+	 * provide them itself.  CREATE EXTENSION needs the control file and the
+	 * version script, and the backend loads the shared library as soon as that
+	 * script creates the first C function, so all three are required.  The
+	 * version in the script name matches the default_version of
+	 * contrib/uuid-ossp/uuid-ossp.control.
+	 *
+	 * Without them, preload_ora_misc.sql fails while the post-bootstrap
+	 * backend runs with exit_on_error=true, which is long after the cluster
+	 * has been built: initdb then reports an extension error that does not say
+	 * what is missing, and removes the data directory again.  Checking here,
+	 * before anything is written to disk, keeps that failure side-effect free.
+	 */
+	get_pkglib_path(backend_exec, pkglib_path);
+
+	/*
+	 * Resolve the share directory through the running binary, not through
+	 * share_path: share_path is overridden by -L, and -L only affects the input
+	 * files initdb reads itself.  CREATE EXTENSION runs later in the
+	 * post-bootstrap backend, which resolves extension scripts against the
+	 * directory compiled into that binary, so -L must not decide whether this
+	 * check reports the extension as missing.
+	 */
+	get_share_path(backend_exec, share_dir);
+
+	files[0] = psprintf("%s/extension/uuid-ossp.control", share_dir);
+	files[1] = psprintf("%s/extension/uuid-ossp--1.1.sql", share_dir);
+	files[2] = psprintf("%s/uuid-ossp%s", pkglib_path, DLSUFFIX);
+
+	for (i = 0; i < lengthof(files); i++)
+	{
+		struct stat statbuf;
+
+		if (stat(files[i], &statbuf) == 0 && S_ISREG(statbuf.st_mode))
+			continue;
+
+		if (!incomplete)
+		{
+			pg_log_error("Oracle-compatible mode requires the \"uuid-ossp\" extension, but this installation is incomplete:");
+			incomplete = true;
+		}
+		pg_log_error_detail("missing file \"%s\"", files[i]);
+	}
+
+	if (incomplete)
+	{
+		pg_log_error_hint("The \"uuid-ossp\" extension is provided by contrib/uuid-ossp and is only built when the source tree is configured with --with-uuid=ossp.  Run \"make -C contrib/uuid-ossp install\", or reconfigure and reinstall, and then try again.  To initialize a cluster without Oracle compatibility, use \"-m pg\" (or \"--dbmode=pg\") instead.");
 		exit(1);
 	}
 }
@@ -3000,6 +3073,7 @@ setup_data_file_paths(void)
 	{
 		check_input(ora_conf_file);
 		check_input(preload_ora_misc);
+		check_oracle_extensions();
 	}
 }
 
