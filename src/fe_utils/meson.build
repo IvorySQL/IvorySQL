@@ -1,18 +1,6 @@
 # Copyright (c) 2022-2026, PostgreSQL Global Development Group
 # Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
 
-run_command(
-  [ln,
-   '-s',
-   '../backend/oracle_parser/ora_keywords.c'],
-  check:false)
-
-run_command(
-  [ln,
-   '-s',
-   '../oracle_fe_utils/ora_string_utils.c'],
-  check:false)
-
 fe_utils_sources = files(
   'archive.c',
   'astreamer_file.c',
@@ -32,8 +20,19 @@ fe_utils_sources = files(
   'simple_list.c',
   'string_utils.c',
   'version.c',
-  'ora_keywords.c',
-  'ora_string_utils.c',
+)
+
+# Keep shared Oracle sources in the build directory, where quoted includes
+# resolve to this target's generated headers rather than a source-tree copy.
+fe_utils_sources += configure_file(
+  input: '../backend/oracle_parser/ora_keywords.c',
+  output: 'ora_keywords.c',
+  copy: true,
+)
+fe_utils_sources += configure_file(
+  input: '../oracle_fe_utils/ora_string_utils.c',
+  output: 'ora_string_utils.c',
+  copy: true,
 )
 
 ora_parser_kwlist = custom_target('ora_kwlist',
