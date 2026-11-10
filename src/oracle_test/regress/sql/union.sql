@@ -671,3 +671,24 @@ on true limit 1;
 explain (verbose, costs off)
 select null::int[] union all select null::int[] union all select null::bigint[];
 reset ivorysql.enable_emptystring_to_null;
+
+--
+-- Oracle's set operators all have the same precedence and are evaluated from
+-- left to right unless parentheses say otherwise, where PostgreSQL binds
+-- INTERSECT tighter than UNION and EXCEPT.  In oracle mode we follow Oracle.
+-- Every answer below was measured on Oracle Database 21c.
+--
+-- (1 UNION 2) INTERSECT 2 = 2, not 1 UNION (2 INTERSECT 2) = 1, 2
+SELECT 1 AS n FROM dual UNION SELECT 2 FROM dual INTERSECT SELECT 2 FROM dual ORDER BY 1;
+-- (1 UNION 2) INTERSECT 3 = empty, not 1 UNION (2 INTERSECT 3) = 1
+SELECT 1 AS n FROM dual UNION SELECT 2 FROM dual INTERSECT SELECT 3 FROM dual ORDER BY 1;
+-- (1 EXCEPT 1) INTERSECT 2 = empty, not 1 EXCEPT (1 INTERSECT 2) = 1
+SELECT 1 AS n FROM dual EXCEPT SELECT 1 FROM dual INTERSECT SELECT 2 FROM dual ORDER BY 1;
+-- the same two groupings written out, to show which one the bare form takes
+(SELECT 1 AS n FROM dual EXCEPT SELECT 1 FROM dual) INTERSECT SELECT 2 FROM dual ORDER BY 1;
+SELECT 1 AS n FROM dual EXCEPT (SELECT 1 FROM dual INTERSECT SELECT 2 FROM dual) ORDER BY 1;
+-- a longer chain stays left to right
+SELECT 1 AS n FROM dual UNION SELECT 2 FROM dual UNION SELECT 3 FROM dual INTERSECT SELECT 3 FROM dual ORDER BY 1;
+SELECT 1 AS n FROM dual UNION SELECT 2 FROM dual EXCEPT SELECT 2 FROM dual INTERSECT SELECT 1 FROM dual ORDER BY 1;
+-- INTERSECT first is still available with parentheses
+SELECT 1 AS n FROM dual UNION (SELECT 2 FROM dual INTERSECT SELECT 2 FROM dual) ORDER BY 1;
