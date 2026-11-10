@@ -559,3 +559,138 @@ ora_utl_raw_cast_to_binary_integer(PG_FUNCTION_ARGS)
 	}
 	PG_RETURN_INT32((int32) u);
 }
+
+PG_FUNCTION_INFO_V1(ora_utl_raw_cast_from_binary_double);
+PG_FUNCTION_INFO_V1(ora_utl_raw_cast_to_binary_double);
+PG_FUNCTION_INFO_V1(ora_utl_raw_cast_from_binary_float);
+PG_FUNCTION_INFO_V1(ora_utl_raw_cast_to_binary_float);
+
+/*
+ * ora_utl_raw_cast_from_binary_double - emit the IEEE-754 bit pattern of a
+ * double as eight bytes in the requested byte order.
+ */
+Datum
+ora_utl_raw_cast_from_binary_double(PG_FUNCTION_ARGS)
+{
+	float8		n = PG_GETARG_FLOAT8(0);
+	int32		endianness = PG_GETARG_INT32(1);
+	int			order = utl_raw_effective_endian(endianness);
+	union
+	{
+		float8		f;
+		uint64		u;
+	}			v;
+	bytea	   *result;
+	unsigned char *out;
+	int			i;
+
+	v.f = n;
+	result = (bytea *) palloc(VARHDRSZ + 8);
+	out = (unsigned char *) VARDATA(result);
+	for (i = 0; i < 8; i++)
+	{
+		int			shift = order == 1 ? (7 - i) : i;
+
+		out[i] = (unsigned char) ((v.u >> (8 * shift)) & 0xFF);
+	}
+	SET_VARSIZE(result, VARHDRSZ + 8);
+	PG_RETURN_BYTEA_P(result);
+}
+
+/*
+ * ora_utl_raw_cast_to_binary_double - rebuild a double from exactly eight
+ * bytes in the requested byte order; any other length raises VALUE_ERROR.
+ */
+Datum
+ora_utl_raw_cast_to_binary_double(PG_FUNCTION_ARGS)
+{
+	bytea	   *r = PG_GETARG_BYTEA_PP(0);
+	int			len = VARSIZE_ANY_EXHDR(r);
+	const char *data = VARDATA_ANY(r);
+	int32		endianness = PG_GETARG_INT32(1);
+	int			order = utl_raw_effective_endian(endianness);
+	union
+	{
+		float8		f;
+		uint64		u;
+	}			v;
+	int			i;
+
+	if (len != 8)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("CAST_TO_BINARY_DOUBLE: input must be exactly 8 bytes")));
+
+	for (i = 0; i < 8; i++)
+	{
+		int			shift = order == 1 ? (7 - i) : i;
+
+		v.u |= ((uint64) ((unsigned char) data[i])) << (8 * shift);
+	}
+	PG_RETURN_FLOAT8(v.f);
+}
+
+/*
+ * ora_utl_raw_cast_from_binary_float - IEEE-754 single-precision variant,
+ * four bytes in the requested byte order.
+ */
+Datum
+ora_utl_raw_cast_from_binary_float(PG_FUNCTION_ARGS)
+{
+	float4		n = PG_GETARG_FLOAT4(0);
+	int32		endianness = PG_GETARG_INT32(1);
+	int			order = utl_raw_effective_endian(endianness);
+	union
+	{
+		float4		f;
+		uint32		u;
+	}			v;
+	bytea	   *result;
+	unsigned char *out;
+	int			i;
+
+	v.f = n;
+	result = (bytea *) palloc(VARHDRSZ + 4);
+	out = (unsigned char *) VARDATA(result);
+	for (i = 0; i < 4; i++)
+	{
+		int			shift = order == 1 ? (3 - i) : i;
+
+		out[i] = (unsigned char) ((v.u >> (8 * shift)) & 0xFF);
+	}
+	SET_VARSIZE(result, VARHDRSZ + 4);
+	PG_RETURN_BYTEA_P(result);
+}
+
+/*
+ * ora_utl_raw_cast_to_binary_float - rebuild a float4 from exactly four
+ * bytes in the requested byte order.
+ */
+Datum
+ora_utl_raw_cast_to_binary_float(PG_FUNCTION_ARGS)
+{
+	bytea	   *r = PG_GETARG_BYTEA_PP(0);
+	int			len = VARSIZE_ANY_EXHDR(r);
+	const char *data = VARDATA_ANY(r);
+	int32		endianness = PG_GETARG_INT32(1);
+	int			order = utl_raw_effective_endian(endianness);
+	union
+	{
+		float4		f;
+		uint32		u;
+	}			v;
+	int			i;
+
+	if (len != 4)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("CAST_TO_BINARY_FLOAT: input must be exactly 4 bytes")));
+
+	for (i = 0; i < 4; i++)
+	{
+		int			shift = order == 1 ? (3 - i) : i;
+
+		v.u |= ((uint32) ((unsigned char) data[i])) << (8 * shift);
+	}
+	PG_RETURN_FLOAT4(v.f);
+}
