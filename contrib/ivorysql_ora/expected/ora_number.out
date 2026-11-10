@@ -1947,6 +1947,27 @@ SELECT to_number('$1', '$$9') AS two_dollars_in_model;
 ERROR:  invalid number format model
 SELECT to_number('$1', '""$') AS only_dollar_in_model;
 ERROR:  invalid number format model
+-- a $ in double quotes stays literal text
+SELECT '[' || to_char(12, '"$"999') || ']' AS quoted_dollar;
+ quoted_dollar 
+---------------
+ [$  12]
+(1 row)
+
+SELECT '[' || to_char(12, '"$"$999') || ']' AS quoted_and_floating;
+ quoted_and_floating 
+---------------------
+ [$  $12]
+(1 row)
+
+SELECT '[' || to_char(12, '999"$"') || ']' AS quoted_dollar_at_end;
+ quoted_dollar_at_end 
+----------------------
+ [  12$]
+(1 row)
+
+SELECT to_number('$12', '"$"999') AS to_number_quoted_dollar;
+ERROR:  invalid number
 -- PostgreSQL mode keeps $ as a literal character
 SET ivorysql.compatible_mode = pg;
 SELECT '[' || to_char(-123, '$999') || ']' AS pg_literal;

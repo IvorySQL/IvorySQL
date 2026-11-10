@@ -164,6 +164,8 @@ typedef struct
 								 * (DCH_SUFFIX_*) */
 	const KeyWord *key;			/* if type is ACTION */
 	bool		sep;
+	bool		quoted;			/* if type is CHAR: from a double-quoted
+								 * string */
 } FormatNode;
 
 
@@ -1509,6 +1511,7 @@ parse_format(FormatNode *node, const char *str, const KeyWord *kw,
 					n->character[chlen] = '\0';
 					n->key = NULL;
 					n->suffix = 0;
+					n->quoted = true;
 					n++;
 					str += chlen;
 				}
@@ -1541,6 +1544,7 @@ parse_format(FormatNode *node, const char *str, const KeyWord *kw,
 				n->character[chlen] = '\0';
 				n->key = NULL;
 				n->suffix = 0;
+				n->quoted = false;
 				n++;
 				str += chlen;
 			}
@@ -7446,21 +7450,38 @@ ora_remove_dollar(text **value, text **fmt)
 {
 	const char *f = VARDATA(*fmt);
 	int			flen = VARSIZE(*fmt) - VARHDRSZ;
-	const char *dollar = memchr(f, '$', flen);
+	int			dollar = -1;
+	bool		in_quotes = false;
 	const char *v;
 	int			vlen;
 	int			i;
 
-	if (dollar == NULL)
+	/* quoting as in parse_format: a $ in double quotes is literal text */
+	for (i = 0; i < flen; i += pg_mblen_range(f + i, f + flen))
+	{
+		if (f[i] == '\\' && i + 1 < flen && (in_quotes || f[i + 1] == '"'))
+			i++;
+		else if (f[i] == '"')
+			in_quotes = !in_quotes;
+		else if (f[i] == '$' && !in_quotes)
+		{
+			if (dollar >= 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("invalid number format model")));
+			dollar = i;
+		}
+	}
+
+	if (dollar < 0)
 		return;
 
-	if (flen == 1 ||
-		memchr(dollar + 1, '$', flen - (dollar - f) - 1) != NULL)
+	if (flen == 1)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("invalid number format model")));
 
-	*fmt = ora_text_without_byte(f, flen, dollar - f);
+	*fmt = ora_text_without_byte(f, flen, dollar);
 
 	v = VARDATA(*value);
 	vlen = VARSIZE(*value) - VARHDRSZ;
@@ -7715,7 +7736,8 @@ NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 	{
 		for (n = node; n->type != NODE_TYPE_END; n++)
 		{
-			if (n->type != NODE_TYPE_CHAR || strcmp(n->character, "$") != 0)
+			if (n->type != NODE_TYPE_CHAR || n->quoted ||
+				strcmp(n->character, "$") != 0)
 				continue;
 			if (Np->dollar || IS_ROMAN(Np->Num))
 				ereport(ERROR,
@@ -8151,7 +8173,8 @@ NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 			if (Np->is_to_char)
 			{
 				/* Oracle's $ is written in front of the number instead */
-				if (ORA_PARSER == compatible_db && strcmp(n->character, "$") == 0)
+				if (ORA_PARSER == compatible_db && n->type == NODE_TYPE_CHAR &&
+					!n->quoted && strcmp(n->character, "$") == 0)
 					continue;
 				strcpy(Np->inout_p, n->character);
 				Np->inout_p += strlen(Np->inout_p);

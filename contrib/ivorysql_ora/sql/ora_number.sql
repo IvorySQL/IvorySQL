@@ -983,6 +983,11 @@ SELECT to_number('$-123', '$999') AS sign_after_dollar;
 SELECT to_number('1$23', '$999') AS dollar_inside_value;
 SELECT to_number('$1', '$$9') AS two_dollars_in_model;
 SELECT to_number('$1', '""$') AS only_dollar_in_model;
+-- a $ in double quotes stays literal text
+SELECT '[' || to_char(12, '"$"999') || ']' AS quoted_dollar;
+SELECT '[' || to_char(12, '"$"$999') || ']' AS quoted_and_floating;
+SELECT '[' || to_char(12, '999"$"') || ']' AS quoted_dollar_at_end;
+SELECT to_number('$12', '"$"999') AS to_number_quoted_dollar;
 -- PostgreSQL mode keeps $ as a literal character
 SET ivorysql.compatible_mode = pg;
 SELECT '[' || to_char(-123, '$999') || ']' AS pg_literal;
