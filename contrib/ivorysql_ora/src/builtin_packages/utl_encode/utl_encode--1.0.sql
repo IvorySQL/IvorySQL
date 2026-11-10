@@ -33,6 +33,16 @@ RETURNS bytea
 AS 'MODULE_PATHNAME', 'ora_utl_encode_qp_decode'
 LANGUAGE C IMMUTABLE PARALLEL SAFE STRICT;
 
+CREATE FUNCTION sys.utl_encode_text_encode(s varchar2, charset varchar2 DEFAULT NULL, encoding integer DEFAULT NULL)
+RETURNS bytea
+AS 'MODULE_PATHNAME', 'ora_utl_encode_text_encode'
+LANGUAGE C IMMUTABLE;
+
+CREATE FUNCTION sys.utl_encode_text_decode(r bytea, charset varchar2 DEFAULT NULL, encoding integer DEFAULT NULL)
+RETURNS varchar2
+AS 'MODULE_PATHNAME', 'ora_utl_encode_text_decode'
+LANGUAGE C IMMUTABLE;
+
 -- PL/iSQL package declaration
 CREATE PACKAGE utl_encode AS
 
@@ -72,6 +82,19 @@ CREATE PACKAGE utl_encode AS
      */
     FUNCTION quoted_printable_decode(r IN RAW) RETURN RAW;
 
+    /*
+     * TEXT_ENCODE
+     * Convert a VARCHAR2 to the target character set and optionally apply
+     * an encoding scheme: NULL = none, 1 = base64, 2 = quoted-printable.
+     */
+    FUNCTION text_encode(s IN VARCHAR2, charset IN VARCHAR2 DEFAULT NULL, encoding IN PLS_INTEGER DEFAULT NULL) RETURN RAW;
+
+    /*
+     * TEXT_DECODE
+     * Inverse of TEXT_ENCODE.
+     */
+    FUNCTION text_decode(r IN RAW, charset IN VARCHAR2 DEFAULT NULL, encoding IN PLS_INTEGER DEFAULT NULL) RETURN VARCHAR2;
+
 END utl_encode;
 
 CREATE PACKAGE BODY utl_encode AS
@@ -94,6 +117,16 @@ CREATE PACKAGE BODY utl_encode AS
     FUNCTION quoted_printable_decode(r IN RAW) RETURN RAW IS
     BEGIN
         RETURN sys.utl_encode_quoted_printable_decode(r);
+    END;
+
+    FUNCTION text_encode(s IN VARCHAR2, charset IN VARCHAR2 DEFAULT NULL, encoding IN PLS_INTEGER DEFAULT NULL) RETURN RAW IS
+    BEGIN
+        RETURN sys.utl_encode_text_encode(s, charset, encoding);
+    END;
+
+    FUNCTION text_decode(r IN RAW, charset IN VARCHAR2 DEFAULT NULL, encoding IN PLS_INTEGER DEFAULT NULL) RETURN VARCHAR2 IS
+    BEGIN
+        RETURN sys.utl_encode_text_decode(r, charset, encoding);
     END;
 
 END utl_encode;
