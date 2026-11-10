@@ -35,6 +35,7 @@ CREATE OR REPLACE PACKAGE UTL_RAW IS
     FUNCTION CAST_TO_BINARY_DOUBLE(r IN RAW, endianness IN NUMBER) RETURN BINARY_DOUBLE;
     FUNCTION CAST_FROM_BINARY_FLOAT(n IN BINARY_FLOAT, endianness IN NUMBER) RETURN RAW;
     FUNCTION CAST_TO_BINARY_FLOAT(r IN RAW, endianness IN NUMBER) RETURN BINARY_FLOAT;
+    FUNCTION TRANSLITERATE(r IN RAW, to_set IN RAW DEFAULT NULL, from_set IN RAW DEFAULT NULL, pad IN RAW DEFAULT NULL) RETURN RAW;
 END;
 
 -- C implementations registered as sys-level functions
@@ -112,6 +113,11 @@ CREATE FUNCTION sys.ora_utl_raw_cast_to_binary_integer(r bytea, endianness integ
 RETURNS integer
 AS 'MODULE_PATHNAME', 'ora_utl_raw_cast_to_binary_integer'
 LANGUAGE C IMMUTABLE STRICT;
+
+CREATE FUNCTION sys.ora_utl_raw_transliterate(r bytea, to_set bytea DEFAULT NULL, from_set bytea DEFAULT NULL, pad bytea DEFAULT NULL)
+RETURNS bytea
+AS 'MODULE_PATHNAME', 'ora_utl_raw_transliterate'
+LANGUAGE C IMMUTABLE;
 
 CREATE FUNCTION sys.ora_utl_raw_cast_from_binary_double(n double precision, endianness integer)
 RETURNS bytea
@@ -233,5 +239,10 @@ CREATE OR REPLACE PACKAGE BODY UTL_RAW IS
     FUNCTION CAST_TO_BINARY_FLOAT(r IN RAW, endianness IN NUMBER) RETURN BINARY_FLOAT IS
     BEGIN
         RETURN sys.ora_utl_raw_cast_to_binary_float(r, endianness);
+    END;
+
+    FUNCTION TRANSLITERATE(r IN RAW, to_set IN RAW DEFAULT NULL, from_set IN RAW DEFAULT NULL, pad IN RAW DEFAULT NULL) RETURN RAW IS
+    BEGIN
+        RETURN sys.ora_utl_raw_transliterate(r, to_set, from_set, pad);
     END;
 END;
