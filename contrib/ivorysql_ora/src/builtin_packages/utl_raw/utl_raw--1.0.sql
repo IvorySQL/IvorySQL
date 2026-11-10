@@ -31,6 +31,10 @@ CREATE OR REPLACE PACKAGE UTL_RAW IS
     FUNCTION OVERLAY(overlay_str IN RAW, target IN RAW, pos IN NUMBER DEFAULT 1, len IN NUMBER DEFAULT NULL, pad IN RAW DEFAULT NULL) RETURN RAW;
     FUNCTION CAST_FROM_BINARY_INTEGER(n IN NUMBER, endianness IN NUMBER) RETURN RAW;
     FUNCTION CAST_TO_BINARY_INTEGER(r IN RAW, endianness IN NUMBER) RETURN NUMBER;
+    FUNCTION CAST_FROM_BINARY_DOUBLE(n IN BINARY_DOUBLE, endianness IN NUMBER) RETURN RAW;
+    FUNCTION CAST_TO_BINARY_DOUBLE(r IN RAW, endianness IN NUMBER) RETURN BINARY_DOUBLE;
+    FUNCTION CAST_FROM_BINARY_FLOAT(n IN BINARY_FLOAT, endianness IN NUMBER) RETURN RAW;
+    FUNCTION CAST_TO_BINARY_FLOAT(r IN RAW, endianness IN NUMBER) RETURN BINARY_FLOAT;
 END;
 
 -- C implementations registered as sys-level functions
@@ -107,6 +111,26 @@ LANGUAGE C IMMUTABLE STRICT;
 CREATE FUNCTION sys.ora_utl_raw_cast_to_binary_integer(r bytea, endianness integer)
 RETURNS integer
 AS 'MODULE_PATHNAME', 'ora_utl_raw_cast_to_binary_integer'
+LANGUAGE C IMMUTABLE STRICT;
+
+CREATE FUNCTION sys.ora_utl_raw_cast_from_binary_double(n double precision, endianness integer)
+RETURNS bytea
+AS 'MODULE_PATHNAME', 'ora_utl_raw_cast_from_binary_double'
+LANGUAGE C IMMUTABLE STRICT;
+
+CREATE FUNCTION sys.ora_utl_raw_cast_to_binary_double(r bytea, endianness integer)
+RETURNS double precision
+AS 'MODULE_PATHNAME', 'ora_utl_raw_cast_to_binary_double'
+LANGUAGE C IMMUTABLE STRICT;
+
+CREATE FUNCTION sys.ora_utl_raw_cast_from_binary_float(r bytea, endianness integer)
+RETURNS real
+AS 'MODULE_PATHNAME', 'ora_utl_raw_cast_from_binary_float'
+LANGUAGE C IMMUTABLE STRICT;
+
+CREATE FUNCTION sys.ora_utl_raw_cast_to_binary_float(r bytea, endianness integer)
+RETURNS real
+AS 'MODULE_PATHNAME', 'ora_utl_raw_cast_to_binary_float'
 LANGUAGE C IMMUTABLE STRICT;
 
 -- UTL_RAW Package Body
@@ -189,5 +213,25 @@ CREATE OR REPLACE PACKAGE BODY UTL_RAW IS
     FUNCTION CAST_TO_BINARY_INTEGER(r IN RAW, endianness IN NUMBER) RETURN NUMBER IS
     BEGIN
         RETURN sys.ora_utl_raw_cast_to_binary_integer(r, endianness);
+    END;
+
+    FUNCTION CAST_FROM_BINARY_DOUBLE(n IN BINARY_DOUBLE, endianness IN NUMBER) RETURN RAW IS
+    BEGIN
+        RETURN sys.ora_utl_raw_cast_from_binary_double(n, endianness);
+    END;
+
+    FUNCTION CAST_TO_BINARY_DOUBLE(r IN RAW, endianness IN NUMBER) RETURN BINARY_DOUBLE IS
+    BEGIN
+        RETURN sys.ora_utl_raw_cast_to_binary_double(r, endianness);
+    END;
+
+    FUNCTION CAST_FROM_BINARY_FLOAT(n IN BINARY_FLOAT, endianness IN NUMBER) RETURN RAW IS
+    BEGIN
+        RETURN sys.ora_utl_raw_cast_from_binary_float(n, endianness);
+    END;
+
+    FUNCTION CAST_TO_BINARY_FLOAT(r IN RAW, endianness IN NUMBER) RETURN BINARY_FLOAT IS
+    BEGIN
+        RETURN sys.ora_utl_raw_cast_to_binary_float(r, endianness);
     END;
 END;
