@@ -43,7 +43,6 @@
 static bool plisql_extra_checks_check_hook(char **newvalue, void **extra, GucSource source);
 static void plisql_extra_warnings_assign_hook(const char *newvalue, void *extra);
 static void plisql_extra_errors_assign_hook(const char *newvalue, void *extra);
-static void set_blocks_oraparam_level(PLiSQL_stmt_block * block, int top, int cur);
 
 PG_MODULE_MAGIC_EXT(
 					.name = "plisql",
@@ -658,7 +657,6 @@ plisql_call_handler(PG_FUNCTION_ARGS)
 
 	push_oraparam_stack();
 	get_oraparam_level(&oraparam_top_level, &oraparam_cur_level);
-	set_blocks_oraparam_level(func->action, oraparam_top_level, oraparam_cur_level);
 
 	PG_TRY();
 	{
@@ -853,7 +851,6 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 	}
 	push_oraparam_stack();
 	get_oraparam_level(&oraparam_top_level, &oraparam_cur_level);
-	set_blocks_oraparam_level(func->action, oraparam_top_level, oraparam_cur_level);
 
 	/* And run the function */
 	PG_TRY();
@@ -1118,30 +1115,4 @@ plisql_validator(PG_FUNCTION_ARGS)
 	ReleaseSysCache(tuple);
 
 	PG_RETURN_VOID();
-}
-
-static void
-set_blocks_oraparam_level(PLiSQL_stmt_block * block, int top, int cur)
-{
-	ListCell   *s;
-
-	if (block == NULL || block->body == NIL)
-	{
-		return;
-	}
-
-	block->ora_param_stack_top_level = top;
-	block->ora_param_stack_cur_level = cur;
-
-	foreach(s, block->body)
-	{
-		PLiSQL_stmt *stmt = (PLiSQL_stmt *) lfirst(s);
-
-		if (stmt != NULL && (enum PLiSQL_stmt_type) stmt->cmd_type == PLISQL_STMT_BLOCK)
-		{
-			set_blocks_oraparam_level((PLiSQL_stmt_block *) stmt, top, cur);
-		}
-	}
-
-	return;
 }
