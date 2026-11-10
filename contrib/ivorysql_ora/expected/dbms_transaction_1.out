@@ -538,6 +538,35 @@ select current_user;
  regress_dbms_tx_other_user
 (1 row)
 
+-- A read-only lookup does not assign an ID. An explicitly requested ID
+-- is the same top-level XID returned for the rest of this transaction.
+begin;
+select dbms_transaction.local_transaction_id() is null as unassigned;
+ unassigned 
+------------
+ t
+(1 row)
+
+select dbms_transaction.local_transaction_id(true) is not null as assigned;
+ assigned 
+----------
+ t
+(1 row)
+
+select dbms_transaction.local_transaction_id() =
+       pg_catalog.pg_current_xact_id_if_assigned()::text as same_id;
+ same_id 
+---------
+ t
+(1 row)
+
+rollback;
+select dbms_transaction.local_transaction_id() is null as unassigned;
+ unassigned 
+------------
+ t
+(1 row)
+
 -- no explicit GRANT needed: EXECUTE on the package is granted to PUBLIC
 -- when dbms_transaction is installed
 begin;
