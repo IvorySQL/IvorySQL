@@ -94,24 +94,31 @@ ora_utl_raw_substr(PG_FUNCTION_ARGS)
 	if (PG_NARGS() > 2 && !PG_ARGISNULL(2))
 	{
 		sublen = PG_GETARG_INT32(2);
-		if (sublen < 0)
+		if (sublen < 1)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("SUBSTR: length must be non-negative")));
+					 errmsg("SUBSTR: length must be >= 1")));
 	}
 	else
 		sublen = len;
 
-	if (pos < 1)
+	/*
+	 * Oracle counts a negative position backward from the end of r and
+	 * raises VALUE_ERROR for pos = 0 or a position beyond the end.
+	 */
+	if (pos < 0)
+		pos = len + pos + 1;
+	else if (pos == 0 || pos > len)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("SUBSTR: position must be >= 1")));
-
-	if (pos > len)
-		PG_RETURN_NULL();
+				 errmsg("SUBSTR: position 0 or beyond the end of r")));
+	if (pos < 1)
+		pos = 1;
 
 	if (sublen > len - (pos - 1))
 		sublen = len - (pos - 1);
+	if (sublen <= 0)
+		PG_RETURN_NULL();
 
 	{
 		bytea	   *result = (bytea *) palloc(VARHDRSZ + sublen);
@@ -123,34 +130,46 @@ ora_utl_raw_substr(PG_FUNCTION_ARGS)
 }
 
 /*
- * ora_utl_raw_concat - concatenate two RAW values.  Oracle returns the
- * non-NULL operand when exactly one input is NULL, so this is not STRICT.
+ * ora_utl_raw_concat - concatenate up to 12 RAW values (Oracle's documented
+ * argument range); NULL arguments are skipped.  Oracle raises an error when
+ * the concatenated size exceeds the maximum RAW length of 32767 bytes.
  */
+#define UTL_RAW_CONCAT_MAX_ARGS		12
+#define UTL_RAW_MAX_LENGTH			32767
+
 Datum
 ora_utl_raw_concat(PG_FUNCTION_ARGS)
 {
-	bytea	   *r1;
-	bytea	   *r2;
-	int			len1,
-				len2;
+	int			nargs = Min(PG_NARGS(), UTL_RAW_CONCAT_MAX_ARGS);
+	Size		outlen = 0;
 	bytea	   *result;
+	char	   *out;
+	int			i;
 
-	if (PG_ARGISNULL(0) && PG_ARGISNULL(1))
-		PG_RETURN_NULL();
-	if (PG_ARGISNULL(0))
-		PG_RETURN_BYTEA_P(PG_GETARG_BYTEA_PP(1));
-	if (PG_ARGISNULL(1))
-		PG_RETURN_BYTEA_P(PG_GETARG_BYTEA_PP(0));
+	for (i = 0; i < nargs; i++)
+	{
+		if (!PG_ARGISNULL(i))
+			outlen += VARSIZE_ANY_EXHDR(PG_GETARG_BYTEA_PP(i));
+	}
 
-	r1 = PG_GETARG_BYTEA_PP(0);
-	r2 = PG_GETARG_BYTEA_PP(1);
-	len1 = VARSIZE_ANY_EXHDR(r1);
-	len2 = VARSIZE_ANY_EXHDR(r2);
+	if (outlen > UTL_RAW_MAX_LENGTH)
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("CONCAT: concatenated size exceeds the maximum RAW length")));
 
-	result = (bytea *) palloc(VARHDRSZ + len1 + len2);
-	memcpy(VARDATA(result), VARDATA_ANY(r1), len1);
-	memcpy(VARDATA(result) + len1, VARDATA_ANY(r2), len2);
-	SET_VARSIZE(result, VARHDRSZ + len1 + len2);
+	result = (bytea *) palloc(VARHDRSZ + outlen);
+	out = VARDATA(result);
+	for (i = 0; i < nargs; i++)
+	{
+		if (!PG_ARGISNULL(i))
+		{
+			bytea	   *ri = PG_GETARG_BYTEA_PP(i);
+
+			memcpy(out, VARDATA_ANY(ri), VARSIZE_ANY_EXHDR(ri));
+			out += VARSIZE_ANY_EXHDR(ri);
+		}
+	}
+	SET_VARSIZE(result, VARHDRSZ + outlen);
 	PG_RETURN_BYTEA_P(result);
 }
 
@@ -167,10 +186,10 @@ ora_utl_raw_copies(PG_FUNCTION_ARGS)
 	bytea	   *result;
 	int			i;
 
-	if (n < 0)
+	if (n <= 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("COPIES: count must be non-negative")));
+				 errmsg("COPIES: count must be positive")));
 	if (n > 0 && (Size) len > ((MaxAllocSize - VARHDRSZ) / (Size) n))
 		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
@@ -292,22 +311,31 @@ ora_utl_raw_bit_complement(PG_FUNCTION_ARGS)
 Datum
 ora_utl_raw_compare(PG_FUNCTION_ARGS)
 {
-	bytea	   *r1 = PG_GETARG_BYTEA_PP(0);
-	bytea	   *r2 = PG_GETARG_BYTEA_PP(1);
+	bytea	   *r1;
+	bytea	   *r2;
 	bytea	   *pad;
-	int			len1 = VARSIZE_ANY_EXHDR(r1);
-	int			len2 = VARSIZE_ANY_EXHDR(r2);
-	int			maxlen = len1 > len2 ? len1 : len2;
-	const char *d1 = VARDATA_ANY(r1);
-	const char *d2 = VARDATA_ANY(r2);
+	int			len1;
+	int			len2;
+
+	/*
+	 * Oracle returns 0 when both operands are NULL, so the function is
+	 * not STRICT; single NULL operands are compared as zero length
+	 * (i.e. extended with pad to the other side's length).
+	 */
+	if (PG_ARGISNULL(0) && PG_ARGISNULL(1))
+		PG_RETURN_INT32(0);
+
+	const char *d1;
+	const char *d2;
 	const char *pd;
+	int			maxlen;
 	int			padlen;
 	int			i;
 
-	if (PG_NARGS() > 2 && !PG_ARGISNULL(2))
-		pad = PG_GETARG_BYTEA_PP(2);
-	else
-		pad = NULL;
+	pad = (PG_NARGS() > 2 && !PG_ARGISNULL(2)) ? PG_GETARG_BYTEA_PP(2) : NULL;
+	d1 = r1 ? VARDATA_ANY(r1) : NULL;
+	d2 = r2 ? VARDATA_ANY(r2) : NULL;
+	maxlen = len1 > len2 ? len1 : len2;
 
 	if (pad != NULL && VARSIZE_ANY_EXHDR(pad) > 0)
 	{
@@ -351,10 +379,28 @@ PG_FUNCTION_INFO_V1(ora_utl_raw_cast_to_binary_integer);
 Datum
 ora_utl_raw_translate(PG_FUNCTION_ARGS)
 {
-	bytea	   *r = PG_GETARG_BYTEA_PP(0);
-	bytea	   *from_set = PG_GETARG_BYTEA_PP(1);
-	bytea	   *to_set = PG_GETARG_BYTEA_PP(2);
-	int			rlen = VARSIZE_ANY_EXHDR(r);
+	bytea	   *r;
+	bytea	   *from_set;
+	bytea	   *to_set;
+	int			rlen;
+
+	/* registered without STRICT: enforce Oracle's argument rules here */
+	if (PG_ARGISNULL(0) || PG_ARGISNULL(1) || PG_ARGISNULL(2))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("TRANSLATE: arguments must not be NULL")));
+
+	r = PG_GETARG_BYTEA_PP(0);
+	from_set = PG_GETARG_BYTEA_PP(1);
+	to_set = PG_GETARG_BYTEA_PP(2);
+	if (VARSIZE_ANY_EXHDR(r) == 0 ||
+		VARSIZE_ANY_EXHDR(from_set) == 0 ||
+		VARSIZE_ANY_EXHDR(to_set) == 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("TRANSLATE: arguments must have non-zero length")));
+
+	rlen = VARSIZE_ANY_EXHDR(r);
 	const char *rdata = VARDATA_ANY(r);
 	int			flen = VARSIZE_ANY_EXHDR(from_set);
 	const char *fdata = VARDATA_ANY(from_set);
@@ -401,11 +447,17 @@ ora_utl_raw_overlay(PG_FUNCTION_ARGS)
 	const char *tdata = VARDATA_ANY(target);
 	int32		pos = PG_GETARG_INT32(2);
 	int32		len;
-	const char *pdata;
-	int			padlen;
+	const char *pdata = NULL;
+	int			padlen = 1;
 	int			outlen;
 	bytea	   *result;
 	int			i;
+
+	/* Oracle raises VALUE_ERROR for a NULL or empty overlay_str */
+	if (ovlen <= 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("OVERLAY: overlay_str must not be NULL or empty")));
 
 	if (pos < 1)
 		ereport(ERROR,
@@ -413,13 +465,15 @@ ora_utl_raw_overlay(PG_FUNCTION_ARGS)
 				 errmsg("OVERLAY: position must be >= 1")));
 
 	if (PG_NARGS() > 3 && !PG_ARGISNULL(3))
+	{
 		len = PG_GETARG_INT32(3);
+		if (len < 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("OVERLAY: length must be non-negative")));
+	}
 	else
 		len = ovlen;
-	if (len < 0)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("OVERLAY: length must be non-negative")));
 
 	if (PG_NARGS() > 4 && !PG_ARGISNULL(4))
 	{
@@ -464,7 +518,15 @@ ora_utl_raw_overlay(PG_FUNCTION_ARGS)
 	}
 
 	result = (bytea *) palloc(VARHDRSZ + (Size) outlen);
+
+	/*
+	 * Copy target, padding the region between its end and pos with pad
+	 * when pos extends past the target (Oracle pads target up to pos).
+	 */
 	memcpy(VARDATA(result), tdata, tlen);
+	for (i = tlen; i < pos - 1 && i < outlen; i++)
+		VARDATA(result)[i] = pdata[(i - tlen) % padlen];
+
 	for (i = 0; i < len && (pos - 1) + i < outlen; i++)
 	{
 		if (i < ovlen)
@@ -635,10 +697,14 @@ ora_utl_raw_cast_to_binary_double(PG_FUNCTION_ARGS)
 	int			i;
 
 	v.u = 0;
-	if (len != 8)
+	/*
+	 * Oracle uses only the first 8 bytes when more are supplied, and
+	 * maps a negative zero result to positive zero.
+	 */
+	if (len < 8)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("CAST_TO_BINARY_DOUBLE: input must be exactly 8 bytes")));
+				 errmsg("CAST_TO_BINARY_DOUBLE: input must be at least 8 bytes")));
 
 	for (i = 0; i < 8; i++)
 	{
@@ -646,6 +712,8 @@ ora_utl_raw_cast_to_binary_double(PG_FUNCTION_ARGS)
 
 		v.u |= ((uint64) ((unsigned char) data[i])) << (8 * shift);
 	}
+	if (v.f == 0.0)
+		v.u = 0;				/* -0 -> +0 */
 	PG_RETURN_FLOAT8(v.f);
 }
 
@@ -701,10 +769,14 @@ ora_utl_raw_cast_to_binary_float(PG_FUNCTION_ARGS)
 	int			i;
 
 	v.u = 0;
-	if (len != 4)
+	/*
+	 * Oracle uses only the first 4 bytes when more are supplied, and
+	 * maps a negative zero result to positive zero.
+	 */
+	if (len < 4)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("CAST_TO_BINARY_FLOAT: input must be exactly 4 bytes")));
+				 errmsg("CAST_TO_BINARY_FLOAT: input must be at least 4 bytes")));
 
 	for (i = 0; i < 4; i++)
 	{
@@ -712,6 +784,8 @@ ora_utl_raw_cast_to_binary_float(PG_FUNCTION_ARGS)
 
 		v.u |= ((uint32) ((unsigned char) data[i])) << (8 * shift);
 	}
+	if (v.f == 0.0)
+		v.u = 0;				/* -0 -> +0 */
 	PG_RETURN_FLOAT4(v.f);
 }
 
@@ -729,7 +803,7 @@ PG_FUNCTION_INFO_V1(ora_utl_raw_transliterate);
 Datum
 ora_utl_raw_transliterate(PG_FUNCTION_ARGS)
 {
-	bytea	   *r = PG_GETARG_BYTEA_PP(0);
+	bytea	   *r;
 	bytea	   *to_set = NULL;
 	bytea	   *from_set = NULL;
 	int			tlen = 0;
@@ -744,30 +818,41 @@ ora_utl_raw_transliterate(PG_FUNCTION_ARGS)
 				i,
 				j;
 
+	/*
+	 * Oracle raises VALUE_ERROR when r is NULL or zero-length.
+	 */
+	if (PG_ARGISNULL(0) || VARSIZE_ANY_EXHDR(PG_GETARG_BYTEA_PP(0)) == 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("TRANSLITERATE: r must not be NULL or empty")));
+	r = PG_GETARG_BYTEA_PP(0);
+
 	if (PG_NARGS() > 1 && !PG_ARGISNULL(1))
+	{
 		to_set = PG_GETARG_BYTEA_PP(1);
+		tdata = VARDATA_ANY(to_set);
+		tlen = VARSIZE_ANY_EXHDR(to_set);
+	}
+	/*
+	 * A NULL to_set stands for the NULL string: with the from_set range
+	 * padded, every mapped byte falls through to pad, so the result is
+	 * r's length filled with pad (0x00 unless given).
+	 */
 	if (PG_NARGS() > 2 && !PG_ARGISNULL(2))
+	{
 		from_set = PG_GETARG_BYTEA_PP(2);
+		fdata = VARDATA_ANY(from_set);
+		flen = VARSIZE_ANY_EXHDR(from_set);
+	}
 
 	rlen = VARSIZE_ANY_EXHDR(r);
 
-	if (to_set == NULL)
-		PG_RETURN_BYTEA_P(PG_GETARG_BYTEA_PP(0));
-
-	tdata = VARDATA_ANY(to_set);
-	tlen = VARSIZE_ANY_EXHDR(to_set);
-
-	if (from_set != NULL)
+	if (from_set != NULL && flen <= 0)
 	{
-		fdata = VARDATA_ANY(from_set);
-		flen = VARSIZE_ANY_EXHDR(from_set);
-		if (flen <= 0)
-		{
-			/* an empty from_set has no mappings: return r unchanged */
-			PG_RETURN_BYTEA_P(PG_GETARG_BYTEA_PP(0));
-		}
+		/* an empty from_set has no mappings: return r unchanged */
+		PG_RETURN_BYTEA_P(PG_GETARG_BYTEA_PP(0));
 	}
-	else
+	if (from_set == NULL)
 	{
 		for (i = 0; i < 256; i++)
 			fallback[i] = (char) i;
@@ -809,4 +894,60 @@ ora_utl_raw_transliterate(PG_FUNCTION_ARGS)
 			appendStringInfoChar(&buf, b);
 	}
 	PG_RETURN_TEXT_P(cstring_to_text_with_len(buf.data, buf.len));
+}
+
+PG_FUNCTION_INFO_V1(ora_utl_raw_xrange);
+
+/*
+ * ora_utl_raw_xrange - succession of single bytes from start_byte to
+ * end_byte, wrapping through 0xFF back to 0x00; defaults 0x00 and 0xFF.
+ */
+Datum
+ora_utl_raw_xrange(PG_FUNCTION_ARGS)
+{
+	unsigned char start;
+	unsigned char end;
+	unsigned char s,
+				e;
+	bytea	   *result;
+	int			i;
+
+	if (PG_NARGS() > 0 && !PG_ARGISNULL(0))
+	{
+		bytea	   *sb = PG_GETARG_BYTEA_PP(0);
+
+		if (VARSIZE_ANY_EXHDR(sb) != 1)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("XRANGE: start_byte must be a single byte")));
+		start = (unsigned char) VARDATA_ANY(sb)[0];
+	}
+	else
+		start = 0x00;
+
+	if (PG_NARGS() > 1 && !PG_ARGISNULL(1))
+	{
+		bytea	   *eb = PG_GETARG_BYTEA_PP(1);
+
+		if (VARSIZE_ANY_EXHDR(eb) != 1)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("XRANGE: end_byte must be a single byte")));
+		end = (unsigned char) VARDATA_ANY(eb)[0];
+	}
+	else
+		end = 0xFF;
+
+	s = start;
+	e = end;
+
+	{
+		int			count = (e >= s) ? (e - s + 1) : (256 - s + e + 1);
+
+		result = (bytea *) palloc(VARHDRSZ + count);
+		for (i = 0; i < count; i++)
+			VARDATA(result)[i] = (char) ((s + i) & 0xFF);
+		SET_VARSIZE(result, VARHDRSZ + count);
+	}
+	PG_RETURN_BYTEA_P(result);
 }
