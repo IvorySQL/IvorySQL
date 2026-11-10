@@ -28,6 +28,7 @@
  */
 
 #include <time.h>
+#include <math.h>
 
 #include "postgres.h"
 #include "datatype/timestamp.h"
@@ -1483,6 +1484,10 @@ Datum
 numtodsinterval(PG_FUNCTION_ARGS)
 {
 	float8		interval_val = PG_GETARG_FLOAT8(0);
+	float8		days;
+	float8		units_per_day;
+	float8		total_usecs;
+	float8		scaled_days;
 	text	   *interval_unit = PG_GETARG_TEXT_P(1);
 	char	   *interval_unit_str;
 	int			interval_unit_len = 0;
@@ -1502,19 +1507,19 @@ numtodsinterval(PG_FUNCTION_ARGS)
 
 	if (pg_strcasecmp(interval_unit_str, "day") == 0)
 	{
-		interval_val *= USECS_PER_DAY;
+		units_per_day = 1;
 	}
 	else if (pg_strcasecmp(interval_unit_str, "hour") == 0)
 	{
-		interval_val *= USECS_PER_HOUR;
+		units_per_day = HOURS_PER_DAY;
 	}
 	else if (pg_strcasecmp(interval_unit_str, "minute") == 0)
 	{
-		interval_val *= USECS_PER_MINUTE;
+		units_per_day = MINS_PER_HOUR * HOURS_PER_DAY;
 	}
 	else if (pg_strcasecmp(interval_unit_str, "second") == 0)
 	{
-		interval_val *= USECS_PER_SEC;
+		units_per_day = SECS_PER_DAY;
 	}
 	else
 	{
@@ -1523,11 +1528,35 @@ numtodsinterval(PG_FUNCTION_ARGS)
 				 errmsg("illegal argument for function numtoyminterval")));
 	}
 
+	/* Validate the nine-digit day field before converting it to an integer. */
+	days = trunc(interval_val / units_per_day);
+	if (!isfinite(days) || fabs(days) > 999999999)
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("interval out of range")));
+
 	result = (Interval *) palloc(sizeof(Interval));
 
 	result->month = 0;
-	result->day = (int) (interval_val / USECS_PER_DAY);
-	result->time = (interval_val - ((int) (interval_val / USECS_PER_DAY)) * USECS_PER_DAY);
+	total_usecs = interval_val * (USECS_PER_DAY / units_per_day);
+	scaled_days = trunc(total_usecs / USECS_PER_DAY);
+	if (fabs(scaled_days) <= PG_INT64_MAX / USECS_PER_DAY)
+	{
+		/* Preserve existing fractional truncation where the product is safe. */
+		result->day = (int32) scaled_days;
+		result->time = total_usecs - result->day * USECS_PER_DAY;
+	}
+	else
+	{
+		/*
+		 * A valid nine-digit day field can overflow an int64 microsecond
+		 * product.  Split those days off before scaling the remainder,
+		 * also avoiding cancellation of large float8 microsecond values.
+		 */
+		result->day = (int32) days;
+		result->time = fmod(interval_val, units_per_day) *
+			(USECS_PER_DAY / units_per_day);
+	}
 
 	PG_RETURN_INTERVAL_P(result);
 }
