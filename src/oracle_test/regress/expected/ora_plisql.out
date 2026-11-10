@@ -1843,3 +1843,11 @@ NOTICE:  Parameter value: world
 NOTICE:  Named param return: 23
 -- Cleanup (may fail if function wasn't created)
 DROP FUNCTION IF EXISTS test_rownum_param;
+--
+-- A DO block cannot take more USING parameters than FUNC_MAX_ARGS (100):
+-- the inline handler allocates one argument slot per parameter on its own
+-- stack, so a longer list overflows the frame and kills the backend.
+--
+-- (temporarily hide query, to avoid the long block query)
+\set ECHO none
+ERROR:  DO statement has too many parameters: 200, the maximum is 100
