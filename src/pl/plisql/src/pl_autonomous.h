@@ -42,4 +42,10 @@ extern Datum plisql_exec_autonomous_function(PLiSQL_function *func,
  */
 extern bool plisql_check_dblink_available(void);
 
+/*
+ * Run an anonymous code block (DO) carrying PRAGMA AUTONOMOUS_TRANSACTION
+ * in its own session
+ */
+extern void plisql_exec_autonomous_do(const char *source_text);
+
 #endif							/* PL_AUTONOMOUS_H */

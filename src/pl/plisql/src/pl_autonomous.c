@@ -33,6 +33,8 @@
 
 static Oid	dblink_exec_oid = InvalidOid;
 static Oid	dblink_oid = InvalidOid;
+static Oid	dblink_connect_oid = InvalidOid;
+static Oid	dblink_disconnect_oid = InvalidOid;
 
 /**
  * Reset the cached dblink_exec OID when the pg_proc catalog changes.
@@ -50,6 +52,8 @@ dblink_oid_invalidation_callback(Datum arg, int cacheid, uint32 hashvalue)
 	/* Reset the cached OIDs so they will be looked up again next time */
 	dblink_exec_oid = InvalidOid;
 	dblink_oid = InvalidOid;
+	dblink_connect_oid = InvalidOid;
+	dblink_disconnect_oid = InvalidOid;
 }
 
 /**
@@ -193,6 +197,205 @@ plisql_check_dblink_available(void)
 	return OidIsValid(get_extension_oid("dblink", true));
 }
 
+/*
+ * Name of the short-lived named dblink connection the autonomous-transaction
+ * transport uses for statements that may end their own transaction.
+ */
+#define AUTONOMOUS_CONN_NAME "plisql_autonomous_txn"
+
+/**
+ * Build the connection string of the autonomous session: the current
+ * database, on localhost and the port this backend listens on.
+ *
+ * @returns A palloc'd, libpq-safe connection string.  The caller frees it.
+ */
+static char *
+build_autonomous_connstr(void)
+{
+	StringInfoData connstr_buf;
+	const char *port_str;
+	const char *host_str;
+	char	   *dbname;
+
+	/* Get current database name dynamically */
+	dbname = get_current_database();
+
+	/* Build connection string with libpq-safe quoting */
+	port_str = GetConfigOption("port", false, false);
+	initStringInfo(&connstr_buf);
+	appendStringInfoString(&connstr_buf, "dbname='");
+	for (const char *p = dbname; *p; p++)
+	{
+		if (*p == '\'' || *p == '\\')
+			appendStringInfoChar(&connstr_buf, '\\');
+		appendStringInfoChar(&connstr_buf, *p);
+	}
+	appendStringInfoChar(&connstr_buf, '\'');
+
+	/* Add host if configured */
+	host_str = GetConfigOption("listen_addresses", false, false);
+	if (host_str && strcmp(host_str, "*") != 0 && strcmp(host_str, "") != 0)
+	{
+		/* Use localhost for local connections */
+		appendStringInfoString(&connstr_buf, " host=localhost");
+	}
+
+	/* Add port if configured */
+	if (port_str)
+		appendStringInfo(&connstr_buf, " port=%s", port_str);
+
+	pfree(dbname);
+	return connstr_buf.data;
+}
+
+/*
+ * Look up one of dblink's support functions; ereport with the standard
+ * hint when the extension is not installed.
+ */
+static Oid
+lookup_dblink_function(const char *funcname, int nargs, const Oid *argtypes)
+{
+	Oid			funcoid;
+
+	funcoid = LookupFuncName(list_make1(makeString((char *) funcname)),
+							 nargs, argtypes, true);
+	if (!OidIsValid(funcoid))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_FUNCTION),
+				 errmsg("%s function not found", funcname),
+				 errhint("Install dblink extension: CREATE EXTENSION dblink")));
+	return funcoid;
+}
+
+/**
+ * Disconnect the private named connection, ignoring any error (the
+ * connection may not exist).  Kept in its own function so the PG_TRY does
+ * not nest inside another one in the caller.
+ */
+static void
+autonomous_conn_disconnect(Oid disconnect_oid)
+{
+	PG_TRY();
+	{
+		(void) OidFunctionCall1(disconnect_oid,
+								CStringGetTextDatum(AUTONOMOUS_CONN_NAME));
+	}
+	PG_CATCH();
+	{
+		FlushErrorState();
+	}
+	PG_END_TRY();
+}
+
+/**
+ * Run one statement in an autonomous session, with the session's GUCs set
+ * up by separate statements.
+ *
+ * The statement is sent as the ONLY statement of its simple-query string.
+ * That matters: a multi-statement string would put the far backend into an
+ * implicit transaction block, which forces an atomic execution context,
+ * and COMMIT/ROLLBACK inside an autonomous routine would then fail with
+ * "invalid transaction termination".  As a single statement, the far
+ * routine runs non-atomically and can end its own transaction, exactly
+ * like an autonomous routine can in Oracle.
+ *
+ * A short-lived named connection carries the session GUCs between the
+ * statements: connect, SET compatible_mode, SET the recursion guard, run
+ * the statement, disconnect.  The name is private to this transport; a
+ * leftover connection under that name (only possible after a hard error
+ * between the steps) is disconnected best-effort first.
+ *
+ * @param sql The single SQL statement to run in the autonomous session.
+ */
+static void
+autonomous_session_exec(const char *sql)
+{
+	char	   *connstr;
+	Oid			connect_oid;
+	Oid			exec_oid;
+	Oid			disconnect_oid;
+	Oid			argtypes[2] = {TEXTOID, TEXTOID};
+
+	/*
+	 * Look up the dblink functions we need.  Each OID is cached and checked
+	 * independently: a failed lookup must not leave the others set while
+	 * some are still invalid (an enclosing PL/iSQL exception handler could
+	 * recover from the error, and the next call would then skip the missing
+	 * lookups and call into an invalid OID).
+	 */
+	if (!OidIsValid(dblink_exec_oid))
+		dblink_exec_oid = lookup_dblink_function("dblink_exec", 2, argtypes);
+	if (!OidIsValid(dblink_connect_oid))
+		dblink_connect_oid = lookup_dblink_function("dblink_connect", 2, argtypes);
+	if (!OidIsValid(dblink_disconnect_oid))
+		dblink_disconnect_oid = lookup_dblink_function("dblink_disconnect", 1, argtypes);
+	connect_oid = dblink_connect_oid;
+	exec_oid = dblink_exec_oid;
+	disconnect_oid = dblink_disconnect_oid;
+
+	connstr = build_autonomous_connstr();
+
+	/* Best effort: drop a leftover connection under our private name */
+	autonomous_conn_disconnect(disconnect_oid);
+
+	PG_TRY();
+	{
+		(void) OidFunctionCall2(connect_oid,
+								CStringGetTextDatum(AUTONOMOUS_CONN_NAME),
+								CStringGetTextDatum(connstr));
+
+		(void) OidFunctionCall2(exec_oid,
+								CStringGetTextDatum(AUTONOMOUS_CONN_NAME),
+								CStringGetTextDatum("SET ivorysql.compatible_mode = oracle"));
+
+		(void) OidFunctionCall2(exec_oid,
+								CStringGetTextDatum(AUTONOMOUS_CONN_NAME),
+								CStringGetTextDatum("SET plisql.inside_autonomous_transaction = true"));
+
+		(void) OidFunctionCall2(exec_oid,
+								CStringGetTextDatum(AUTONOMOUS_CONN_NAME),
+								CStringGetTextDatum(sql));
+	}
+	PG_FINALLY();
+	{
+		/* Always release the named connection again */
+		autonomous_conn_disconnect(disconnect_oid);
+	}
+	PG_END_TRY();
+
+	pfree(connstr);
+}
+
+/**
+ * Run an anonymous code block (DO) that carries PRAGMA AUTONOMOUS_TRANSACTION
+ * in its own session.
+ *
+ * A DO block has no catalog entry that another session could re-invoke by
+ * name, so the whole source text is shipped to the autonomous session and
+ * re-run there.  The far session is told it is already inside an autonomous
+ * transaction (the recursion guard the named-routine path uses as well), so
+ * the far copy of the block executes inline in the far session's own
+ * transaction: its COMMIT/ROLLBACK end only that transaction, and the
+ * caller's transaction is untouched.
+ *
+ * @param source_text The source text of the anonymous block, exactly as the
+ *        DO statement received it (including the PRAGMA in the declaration
+ *        section).
+ */
+void
+plisql_exec_autonomous_do(const char *source_text)
+{
+	StringInfoData sql;
+
+	initStringInfo(&sql);
+	appendStringInfoString(&sql, "DO LANGUAGE plisql ");
+	appendStringInfoString(&sql, quote_literal_cstr(source_text));
+
+	autonomous_session_exec(sql.data);
+
+	pfree(sql.data);
+}
+
 /**
  * Construct the SQL statement that invokes the specified function/procedure inside an autonomous session.
  *
@@ -286,13 +489,17 @@ build_autonomous_call(PLiSQL_function *func, FunctionCallInfo fcinfo, bool *is_f
 		}
 	}
 
-	/* Build complete SQL - use SELECT for functions, CALL for procedures */
+	/* Build complete SQL - use SELECT for functions, CALL for procedures.
+	 * Only the invocation itself: the session settings are applied by the
+	 * transport (a separate statement prefix for functions, dedicated
+	 * statements on a named connection for procedures and DO blocks, which
+	 * must not share a query string with anything else, see
+	 * autonomous_session_exec).
+	 */
 	if (*is_function)
 	{
 		/* Functions: use SELECT to capture return value */
 		appendStringInfo(&sql,
-			"SET ivorysql.compatible_mode = oracle; "
-			"SET plisql.inside_autonomous_transaction = true; "
 			"SELECT %s(%s);",
 			proc_name,
 			args.data);
@@ -301,8 +508,6 @@ build_autonomous_call(PLiSQL_function *func, FunctionCallInfo fcinfo, bool *is_f
 	{
 		/* Procedures: use CALL (no return value) */
 		appendStringInfo(&sql,
-			"SET ivorysql.compatible_mode = oracle; "
-			"SET plisql.inside_autonomous_transaction = true; "
 			"CALL %s(%s);",
 			proc_name,
 			args.data);
@@ -422,7 +627,9 @@ execute_autonomous_function(char *connstr, char *sql, Oid rettype, FunctionCallI
 /**
  * Execute a PL/iSQL function or procedure in an autonomous transaction.
  *
- * For procedures (VOID return), dispatches a CALL statement via dblink_exec().
+ * For procedures (VOID return), runs the CALL statement as the only
+ * statement of a short-lived autonomous session, so the procedure can end
+ * its own transaction (COMMIT/ROLLBACK).
  * For functions (non-VOID return), dispatches a SELECT statement via dblink() and SPI
  * to capture the return value.
  *
@@ -438,36 +645,11 @@ plisql_exec_autonomous_function(PLiSQL_function *func, FunctionCallInfo fcinfo,
 {
 	char *sql;
 	char *connstr;
-	StringInfoData connstr_buf;
-	const char *port_str;
-	const char *host_str;
-	char *dbname;
-	Datum connstr_datum;
-	Datum sql_datum;
-	Datum result_datum;
 	Datum result;
-	char *result_str;
-	Oid dblink_exec_oid_local;
 	bool is_function;
 	HeapTuple proctup;
 	Form_pg_proc procstruct;
 	Oid rettype;
-
-	/* Lookup dblink_exec function if not cached */
-	if (!OidIsValid(dblink_exec_oid))
-	{
-		Oid argtypes[2] = {TEXTOID, TEXTOID};
-		dblink_exec_oid_local = LookupFuncName(list_make1(makeString("dblink_exec")), 2, argtypes, true);
-		if (!OidIsValid(dblink_exec_oid_local))
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_FUNCTION),
-					 errmsg("dblink_exec function not found"),
-					 errhint("Install dblink extension: CREATE EXTENSION dblink")));
-		dblink_exec_oid = dblink_exec_oid_local;
-	}
-
-	/* Get current database name dynamically */
-	dbname = get_current_database();
 
 	/* Get return type to determine if this is a function or procedure */
 	proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(func->fn_oid));
@@ -481,84 +663,69 @@ plisql_exec_autonomous_function(PLiSQL_function *func, FunctionCallInfo fcinfo,
 	sql = build_autonomous_call(func, fcinfo, &is_function);
 
 	/* Build connection string with libpq-safe quoting */
-	port_str = GetConfigOption("port", false, false);
-	initStringInfo(&connstr_buf);
-
-	/* Append dbname with single-quote escaping for libpq */
-	appendStringInfoString(&connstr_buf, "dbname='");
-	for (const char *p = dbname; *p; p++)
-	{
-		if (*p == '\'' || *p == '\\')
-			appendStringInfoChar(&connstr_buf, '\\');
-		appendStringInfoChar(&connstr_buf, *p);
-	}
-	appendStringInfoChar(&connstr_buf, '\'');
-
-	/* Add host if configured */
-	host_str = GetConfigOption("listen_addresses", false, false);
-	if (host_str && strcmp(host_str, "*") != 0 && strcmp(host_str, "") != 0)
-	{
-		/* Use localhost for local connections */
-		appendStringInfoString(&connstr_buf, " host=localhost");
-	}
-
-	/* Add port if configured */
-	if (port_str)
-		appendStringInfo(&connstr_buf, " port=%s", port_str);
-
-	connstr = connstr_buf.data;
+	connstr = build_autonomous_connstr();
 
 	/* Execute based on whether this is a function or procedure */
 	if (is_function)
 	{
-		/* Function: use dblink() with SPI to capture return value */
+		/*
+		 * Function: use dblink() with SPI to capture the return value.  A
+		 * function cannot end its caller's transaction anyway, so the
+		 * session settings can share the query string with the SELECT.
+		 */
+		StringInfoData fullsql;
+
+		initStringInfo(&fullsql);
+		appendStringInfoString(&fullsql,
+							   "SET ivorysql.compatible_mode = oracle; "
+							   "SET plisql.inside_autonomous_transaction = true; ");
+		appendStringInfoString(&fullsql, sql);
+
 		PG_TRY();
 		{
-			result = execute_autonomous_function(connstr, sql, rettype, fcinfo);
+			result = execute_autonomous_function(connstr, fullsql.data, rettype, fcinfo);
 		}
 		PG_CATCH();
 		{
 			/* Clean up and re-throw */
-			pfree(connstr_buf.data);
+			pfree(fullsql.data);
+			pfree(connstr);
 			pfree(sql);
-			pfree(dbname);
 			PG_RE_THROW();
 		}
 		PG_END_TRY();
 
 		/* Clean up */
-		pfree(connstr_buf.data);
+		pfree(fullsql.data);
+		pfree(connstr);
 		pfree(sql);
-		pfree(dbname);
 
 		return result;
 	}
 	else
 	{
-		/* Procedure: use dblink_exec() - no return value */
-		connstr_datum = CStringGetTextDatum(connstr);
-		sql_datum = CStringGetTextDatum(sql);
-
+		/*
+		 * Procedure: run the CALL as the only statement of an autonomous
+		 * session, so that an explicit COMMIT/ROLLBACK inside the procedure
+		 * ends only that session's transaction instead of failing with
+		 * "invalid transaction termination".
+		 */
 		PG_TRY();
 		{
-			result_datum = OidFunctionCall2(dblink_exec_oid, connstr_datum, sql_datum);
-			result_str = TextDatumGetCString(result_datum);
-			pfree(result_str);  /* Result is typically "OK" or similar */
+			autonomous_session_exec(sql);
 		}
 		PG_CATCH();
 		{
 			/* Clean up and re-throw */
-			pfree(connstr_buf.data);
+			pfree(connstr);
 			pfree(sql);
-			pfree(dbname);
 			PG_RE_THROW();
 		}
 		PG_END_TRY();
 
 		/* Clean up */
-		pfree(connstr_buf.data);
+		pfree(connstr);
 		pfree(sql);
-		pfree(dbname);
 
 		/* Procedures return NULL */
 		fcinfo->isnull = true;
