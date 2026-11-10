@@ -321,3 +321,103 @@ ora_utl_encode_qp_decode(PG_FUNCTION_ARGS)
 
 	PG_RETURN_BYTEA_P(cstring_to_text_with_len(buf.data, buf.len));
 }
+
+PG_FUNCTION_INFO_V1(ora_utl_encode_text_encode);
+PG_FUNCTION_INFO_V1(ora_utl_encode_text_decode);
+
+/*
+ * Oracle encoding-scheme constants: NULL = none, 1 = base64, 2 = quoted
+ * printable (utl_encode.base64 / utl_encode.quoted_printable in Oracle).
+ */
+#define UTL_ENCODE_SCHEME_BASE64	1
+#define UTL_ENCODE_SCHEME_QP		2
+
+/*
+ * ora_utl_encode_text_encode - convert a VARCHAR2 to a target character
+ * set and optionally apply an encoding scheme.
+ *
+ *   TEXT_ENCODE(s, charset DEFAULT NULL, scheme DEFAULT NULL)
+ *
+ * A NULL charset means the database encoding; scheme NULL sends the raw
+ * converted bytes, 1 applies base64, 2 applies quoted-printable.
+ */
+Datum
+ora_utl_encode_text_encode(PG_FUNCTION_ARGS)
+{
+	text	   *s = PG_GETARG_TEXT_PP(0);
+	bytea	   *raw;
+
+	if (PG_NARGS() > 1 && !PG_ARGISNULL(1))
+	{
+		text	   *charset = PG_GETARG_TEXT_PP(1);
+
+		raw = (bytea *) DatumGetPointer(DirectFunctionCall2(pg_convert_to,
+															PointerGetDatum(s),
+															PointerGetDatum(charset)));
+	}
+	else
+		raw = (bytea *) DatumGetPointer(DirectFunctionCall2(pg_convert_to,
+															PointerGetDatum(s),
+															PointerGetDatum(cstring_to_text(GetDatabaseEncodingName()))));
+
+	if (PG_NARGS() > 2 && !PG_ARGISNULL(2))
+	{
+		int32		scheme = PG_GETARG_INT32(2);
+
+		if (scheme == UTL_ENCODE_SCHEME_BASE64)
+			raw = (bytea *) DatumGetPointer(DirectFunctionCall1(ivorysql_utl_encode_base64_encode,
+																PointerGetDatum(raw)));
+		else if (scheme == UTL_ENCODE_SCHEME_QP)
+			raw = (bytea *) DatumGetPointer(DirectFunctionCall1(ora_utl_encode_qp_encode,
+																PointerGetDatum(raw)));
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("TEXT_ENCODE: encoding scheme must be NULL, 1 (base64) or 2 (quoted printable)")));
+	}
+
+	PG_RETURN_BYTEA_P(raw);
+}
+
+/*
+ * ora_utl_encode_text_decode - inverse of TEXT_ENCODE: optionally undo the
+ * encoding scheme, then convert the bytes from the given character set
+ * into the database encoding.
+ */
+Datum
+ora_utl_encode_text_decode(PG_FUNCTION_ARGS)
+{
+	bytea	   *raw = PG_GETARG_BYTEA_PP(0);
+	text	   *result;
+
+	if (PG_NARGS() > 2 && !PG_ARGISNULL(2))
+	{
+		int32		scheme = PG_GETARG_INT32(2);
+
+		if (scheme == UTL_ENCODE_SCHEME_BASE64)
+			raw = (bytea *) DatumGetPointer(DirectFunctionCall1(ivorysql_utl_encode_base64_decode,
+																PointerGetDatum(raw)));
+		else if (scheme == UTL_ENCODE_SCHEME_QP)
+			raw = (bytea *) DatumGetPointer(DirectFunctionCall1(ora_utl_encode_qp_decode,
+																PointerGetDatum(raw)));
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("TEXT_DECODE: encoding scheme must be NULL, 1 (base64) or 2 (quoted printable)")));
+	}
+
+	if (PG_NARGS() > 1 && !PG_ARGISNULL(1))
+	{
+		text	   *charset = PG_GETARG_TEXT_PP(1);
+
+		result = (text *) DatumGetPointer(DirectFunctionCall2(pg_convert_from,
+															  PointerGetDatum(raw),
+															  PointerGetDatum(charset)));
+	}
+	else
+		result = (text *) DatumGetPointer(DirectFunctionCall2(pg_convert_from,
+															  PointerGetDatum(raw),
+															  PointerGetDatum(cstring_to_text(GetDatabaseEncodingName()))));
+
+	PG_RETURN_TEXT_P(result);
+}
