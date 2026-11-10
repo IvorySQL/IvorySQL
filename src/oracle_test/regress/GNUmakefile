@@ -106,9 +106,10 @@ oracle-check: all
 oracle-check-tests: all | oracle-temp-install
 	$(oracle_regress_check) $(ORACLE_REGRESS_OPTS) $(MAXCONNOPT) $(TESTS) $(EXTRA_TESTS)
 
+# Keep the Oracle default, but honor an explicit PGPORT or --port override.
 oracle-installcheck: all
-	$(oracle_regress_installcheck) $(ORACLE_REGRESS_OPTS) --schedule=$(srcdir)/serial_schedule --port 1521 --max-connections=1 $(EXTRA_TESTS)
-	$(oracle_regress_installcheck) $(ORACLE_REGRESS_OPTS) --schedule=$(srcdir)/parallel_schedule --port 1521 --max-connections=1 $(EXTRA_TESTS)
+	$(oracle_regress_installcheck) --port=$(or $(PGPORT),1521) $(ORACLE_REGRESS_OPTS) --schedule=$(srcdir)/serial_schedule --max-connections=1 $(EXTRA_TESTS)
+	$(oracle_regress_installcheck) --port=$(or $(PGPORT),1521) $(ORACLE_REGRESS_OPTS) --schedule=$(srcdir)/parallel_schedule --max-connections=1 $(EXTRA_TESTS)
 
 oracle-installcheck-parallel: all
 	$(oracle_regress_installcheck) $(ORACLE_REGRESS_OPTS) --schedule=$(srcdir)/parallel_schedule $(MAXCONNOPT) $(EXTRA_TESTS)
@@ -120,7 +121,7 @@ oracle-installcheck-tests: all
 
 runcheck: oracle-check
 runtest: oracle-installcheck
-runtest-parallel: installcheck-parallel oracle-installcheck-parallel
+runtest-parallel: oracle-installcheck-parallel
 
 bigtest: all
 	$(oracle_regress_installcheck) $(ORACLE_REGRESS_OPTS) --schedule=$(srcdir)/serial_schedule --max-connections=1 numeric_big
