@@ -236,7 +236,7 @@ ora_utl_encode_qp_encode(PG_FUNCTION_ARGS)
 	int			linelen = 0;
 	int			i;
 
-	initStringInfo(&buf);
+		initStringInfo(&buf);
 	for (i = 0; i < len; i++)
 	{
 		unsigned char c = (unsigned char) data[i];
@@ -244,14 +244,27 @@ ora_utl_encode_qp_encode(PG_FUNCTION_ARGS)
 		bool		literal = (c >= 0x21 && c <= 0x7E && c != '=')
 			|| ((c == ' ' || c == '\t') && !last);
 
-		/* a literal at column 76 would close the line: break first */
-		if (linelen == UTL_ENCODE_QP_MAX_LINE - 1)
+		/*
+		 * The '=' of a soft break must fit on the current line, so a
+		 * literal may use at most 75 columns and an =XX escape at most
+		 * 72; anything beyond that closes the line first.  A space or
+		 * tab would otherwise land at the end of a line, so when the
+		 * break displaces it, encode it instead.
+		 */
+		if (literal && linelen > 74)
 		{
 			appendStringInfoString(&buf, "=\r\n");
 			linelen = 0;
-			/* a space/tab moved to column 76 must be encoded instead */
-			if (c == ' ' || c == '\t')
-				literal = false;
+		}
+		else if (!literal && linelen > 72)
+		{
+			appendStringInfoString(&buf, "=\r\n");
+			linelen = 0;
+		}
+		else if (!literal && (c == ' ' || c == '\t') && linelen > 72)
+		{
+			appendStringInfoString(&buf, "=\r\n");
+			linelen = 0;
 		}
 
 		if (literal)
@@ -261,17 +274,11 @@ ora_utl_encode_qp_encode(PG_FUNCTION_ARGS)
 		}
 		else
 		{
-			if (linelen > UTL_ENCODE_QP_MAX_LINE - 3)
-			{
-				appendStringInfoString(&buf, "=\r\n");
-				linelen = 0;
-			}
 			appendStringInfo(&buf, "=%02X", c);
 			linelen += 3;
 		}
 	}
-
-	PG_RETURN_BYTEA_P(cstring_to_text_with_len(buf.data, buf.len));
+PG_RETURN_BYTEA_P(cstring_to_text_with_len(buf.data, buf.len));
 }
 
 /*
@@ -344,21 +351,29 @@ PG_FUNCTION_INFO_V1(ora_utl_encode_text_decode);
 Datum
 ora_utl_encode_text_encode(PG_FUNCTION_ARGS)
 {
-	text	   *s = PG_GETARG_TEXT_PP(0);
 	bytea	   *raw;
 
-	if (PG_NARGS() > 1 && !PG_ARGISNULL(1))
+	/* optional args prevent STRICT; reject NULL input explicitly */
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+
 	{
-		text	   *charset = PG_GETARG_TEXT_PP(1);
+		text	   *s = PG_GETARG_TEXT_PP(0);
+		Datum		encname;
+
+		if (PG_NARGS() > 1 && !PG_ARGISNULL(1))
+		{
+			char	   *charset = text_to_cstring(PG_GETARG_TEXT_PP(1));
+
+			encname = DirectFunctionCall1(namein, CStringGetDatum(charset));
+		}
+		else
+			encname = DirectFunctionCall1(namein, CStringGetDatum(GetDatabaseEncodingName()));
 
 		raw = (bytea *) DatumGetPointer(DirectFunctionCall2(pg_convert_to,
 															PointerGetDatum(s),
-															PointerGetDatum(charset)));
+															encname));
 	}
-	else
-		raw = (bytea *) DatumGetPointer(DirectFunctionCall2(pg_convert_to,
-															PointerGetDatum(s),
-															PointerGetDatum(cstring_to_text(GetDatabaseEncodingName()))));
 
 	if (PG_NARGS() > 2 && !PG_ARGISNULL(2))
 	{
@@ -387,8 +402,14 @@ ora_utl_encode_text_encode(PG_FUNCTION_ARGS)
 Datum
 ora_utl_encode_text_decode(PG_FUNCTION_ARGS)
 {
-	bytea	   *raw = PG_GETARG_BYTEA_PP(0);
 	text	   *result;
+
+	/* optional args prevent STRICT; reject NULL input explicitly */
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+
+	{
+		bytea	   *raw = PG_GETARG_BYTEA_PP(0);
 
 	if (PG_NARGS() > 2 && !PG_ARGISNULL(2))
 	{
@@ -408,16 +429,16 @@ ora_utl_encode_text_decode(PG_FUNCTION_ARGS)
 
 	if (PG_NARGS() > 1 && !PG_ARGISNULL(1))
 	{
-		text	   *charset = PG_GETARG_TEXT_PP(1);
+		char	   *charset = text_to_cstring(PG_GETARG_TEXT_PP(1));
 
 		result = (text *) DatumGetPointer(DirectFunctionCall2(pg_convert_from,
 															  PointerGetDatum(raw),
-															  PointerGetDatum(charset)));
+															  DirectFunctionCall1(namein, CStringGetDatum(charset))));
 	}
 	else
 		result = (text *) DatumGetPointer(DirectFunctionCall2(pg_convert_from,
 															  PointerGetDatum(raw),
-															  PointerGetDatum(cstring_to_text(GetDatabaseEncodingName()))));
+															  DirectFunctionCall1(namein, CStringGetDatum(GetDatabaseEncodingName()))));
 
 	PG_RETURN_TEXT_P(result);
 }
