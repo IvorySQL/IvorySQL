@@ -31,6 +31,26 @@ Furthermore, for more detailed installation instructions, please refer to the [I
 - [Rpm installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.6/4.1#Rpm-installation)
 - [Source code installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.6/4.1#Source-code-installation)
 
+## Connecting to an Oracle-mode cluster
+
+A cluster initialized with `initdb -m oracle` accepts PostgreSQL and Oracle
+syntax on separate ports. With the default configuration, port 5432 starts
+sessions in PostgreSQL compatibility mode and port 1521 starts sessions in
+Oracle compatibility mode. Use the Oracle port when running an Oracle SQL or
+PL/iSQL example.
+
+```sh
+# Expected: pg
+psql -X -p 5432 -d ivorysql -c 'SHOW ivorysql.compatible_mode'
+
+# Expected: oracle
+psql -X -p 1521 -d ivorysql -c 'SHOW ivorysql.compatible_mode'
+```
+
+For a cluster with custom ports, use the configured `port` and
+`ivorysql.port` values. A cluster initialized with `initdb -m pg` exposes
+only the PostgreSQL listener.
+
 ## Development with Docker
 
 For a consistent development environment, we provide a Docker-based setup that includes all build dependencies.
