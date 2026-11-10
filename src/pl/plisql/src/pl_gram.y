@@ -5122,11 +5122,14 @@ read_using_mode(int *varno, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscann
 		tok = yylex(yylvalp, yyllocp, yyscanner);
 	}
 
-	/* a variable named "out" can still be an IN argument */
+	/*
+	 * OUT is a mode only when a variable follows it; otherwise it is a
+	 * variable named "out", as in "USING out" or "USING out + 1".
+	 */
 	if (tok_is_keyword(tok, yylvalp, K_OUT, "out"))
 	{
 		next = plisql_peek(yyscanner);
-		if (next != ',' && next != ';' && next != K_INTO)
+		if (next == IDENT || next == PARAM || next == ORAPARAM)
 		{
 			mode = in ? PROARGMODE_INOUT : PROARGMODE_OUT;
 			tok = yylex(yylvalp, yyllocp, yyscanner);

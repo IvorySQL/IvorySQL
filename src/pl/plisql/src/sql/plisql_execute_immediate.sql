@@ -248,6 +248,12 @@ BEGIN
   RAISE NOTICE 'v = %', v;
   EXECUTE IMMEDIATE immediate INTO v USING IN out;
   RAISE NOTICE 'v = %', v;
+  EXECUTE IMMEDIATE immediate INTO v USING out + 1;
+  RAISE NOTICE 'v = %', v;
+  EXECUTE IMMEDIATE immediate INTO v USING IN out * 2;
+  RAISE NOTICE 'v = %', v;
+  EXECUTE IMMEDIATE 'BEGIN :1 := 11; END;' USING OUT out;
+  RAISE NOTICE 'out = %', out;
   immediate := 'CREATE TABLE ei_t2 (id int)';
   EXECUTE immediate;
   EXECUTE IMMEDIATE 'DROP TABLE ei_t2';
@@ -255,8 +261,23 @@ BEGIN
 END;
 /
 
+-- an OUT target given as a positional parameter
+CREATE OR REPLACE PROCEDURE ei_pos(r OUT int) IS
+BEGIN
+  EXECUTE IMMEDIATE 'BEGIN :1 := 5; END;' USING OUT $1;
+END;
+/
+DECLARE
+  v int;
+BEGIN
+  ei_pos(v);
+  RAISE NOTICE 'v = %', v;
+END;
+/
+
 DROP PACKAGE ei_pkg;
 DROP FUNCTION ei_f;
 DROP PROCEDURE ei_p;
 DROP PROCEDURE ei_p2;
+DROP PROCEDURE ei_pos;
 DROP TABLE ei_t;
