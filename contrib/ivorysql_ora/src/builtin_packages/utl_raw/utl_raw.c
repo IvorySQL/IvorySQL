@@ -59,10 +59,10 @@ ora_utl_raw_cast_to_varchar2(PG_FUNCTION_ARGS)
 	int			len = VARSIZE_ANY_EXHDR(r);
 	const char *data = VARDATA_ANY(r);
 
-	PG_RETURN_TEXT_P(pg_do_encoding_conversion(
-									 (unsigned char *) data, len,
-									 GetDatabaseEncoding(),
-									 GetDatabaseEncoding()));
+	/* reject byte sequences that are invalid in the database encoding */
+	pg_verify_mbstr(GetDatabaseEncoding(), data, len, false);
+
+	PG_RETURN_TEXT_P(cstring_to_text_with_len(data, len));
 }
 
 /*
@@ -171,8 +171,12 @@ ora_utl_raw_copies(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("COPIES: count must be non-negative")));
+	if (n > 0 && (Size) len > ((MaxAllocSize - VARHDRSZ) / (Size) n))
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("COPIES: result too large")));
 
-	result = (bytea *) palloc(VARHDRSZ + (size_t) len * n);
+	result = (bytea *) palloc(VARHDRSZ + (Size) len * (Size) n);
 	for (i = 0; i < n; i++)
 		memcpy(VARDATA(result) + (size_t) len * i, VARDATA_ANY(r), len);
 	SET_VARSIZE(result, VARHDRSZ + (size_t) len * n);
@@ -199,8 +203,9 @@ ora_utl_raw_reverse(PG_FUNCTION_ARGS)
 }
 
 /*
- * Shared bitwise worker: r1 and r2 must have equal length, as Oracle raises
- * VALUE_ERROR on a mismatch rather than truncating silently.
+ * Shared bitwise worker.  Oracle accepts operands of different lengths:
+ * the shared prefix is combined bytewise and the remaining tail of the
+ * longer operand is appended unchanged.
  */
 static bytea *
 utl_raw_bit_op(bytea *r1, bytea *r2, char op)
@@ -209,16 +214,13 @@ utl_raw_bit_op(bytea *r1, bytea *r2, char op)
 	int			len2 = VARSIZE_ANY_EXHDR(r2);
 	const char *d1 = VARDATA_ANY(r1);
 	const char *d2 = VARDATA_ANY(r2);
+	int			shared = len1 < len2 ? len1 : len2;
+	int			outlen = len1 > len2 ? len1 : len2;
 	bytea	   *result;
 	int			i;
 
-	if (len1 != len2)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("BIT_%c: operands must have equal length", op)));
-
-	result = (bytea *) palloc(VARHDRSZ + len1);
-	for (i = 0; i < len1; i++)
+	result = (bytea *) palloc(VARHDRSZ + outlen);
+	for (i = 0; i < shared; i++)
 	{
 		switch (op)
 		{
@@ -233,7 +235,11 @@ utl_raw_bit_op(bytea *r1, bytea *r2, char op)
 				break;
 		}
 	}
-	SET_VARSIZE(result, VARHDRSZ + len1);
+	if (len1 > len2)
+		memcpy(VARDATA(result) + shared, d1 + shared, len1 - shared);
+	else if (len2 > len1)
+		memcpy(VARDATA(result) + shared, d2 + shared, len2 - shared);
+	SET_VARSIZE(result, VARHDRSZ + outlen);
 	return result;
 }
 
@@ -278,11 +284,10 @@ ora_utl_raw_bit_complement(PG_FUNCTION_ARGS)
 }
 
 /*
- * ora_utl_raw_compare - lexicographic comparison of two RAW values.
- *
- * The shorter value is right-padded with "pad" (default 0x00, applied
- * cyclically) to the longer length before comparing, per Oracle.  Returns
- * -1, 0 or 1.
+ * ora_utl_raw_compare - position of the first mismatching byte between two
+ * RAW values, compared after right-padding the shorter operand with "pad"
+ * (default 0x00, applied cyclically).  Returns the 1-based position, or 0
+ * when the (padded) values are equal.
  */
 Datum
 ora_utl_raw_compare(PG_FUNCTION_ARGS)
@@ -325,7 +330,7 @@ ora_utl_raw_compare(PG_FUNCTION_ARGS)
 			: (unsigned char) pd[i % padlen];
 
 		if (b1 != b2)
-			PG_RETURN_INT32(b1 < b2 ? -1 : 1);
+			PG_RETURN_INT32(i + 1);
 	}
 	PG_RETURN_INT32(0);
 }
