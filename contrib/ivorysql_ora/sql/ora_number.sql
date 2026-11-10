@@ -1123,4 +1123,8 @@ SELECT to_number(' 1 2', '999') AS inner_blank;
 SELECT to_number('<1', '999PR') AS short_pr_without_close;
 SELECT to_number('1>', '999PR') AS short_pr_without_open;
 SELECT to_number('-1', '999PR') AS minus_with_pr;
+-- a leading currency symbol cannot hide digits
+SELECT to_number('99123', 'C999') AS digits_at_c;
+SELECT to_number('9123', 'C999') AS digit_at_c;
+SELECT to_number('ab123', 'L999') AS longer_than_l;
 /* End - issue #3145 */

@@ -6843,9 +6843,8 @@ NUM_eat_non_data_chars(NUMProc *Np, int n, size_t input_len)
 #define ORA_NUM_IS_DIGIT_NODE(n) \
 	((n)->type == NODE_TYPE_ACTION && \
 	 ((n)->key->id == NUM_9 || (n)->key->id == NUM_0))
-#define ORA_NUM_IS_CURRENCY_NODE(n) \
-	((n)->type == NODE_TYPE_ACTION && \
-	 ((n)->key->id == NUM_L || (n)->key->id == NUM_C))
+#define ORA_NUM_IS_NODE(n, kid) \
+	((n)->type == NODE_TYPE_ACTION && (n)->key->id == (kid))
 
 static char *
 ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
@@ -7218,16 +7217,37 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 	 * What the format model did not consume may only be a sign: the '<' that
 	 * pairs with a trailing '>' for PR, or '-' or '+' when the model has no
 	 * S, MI, SG or PR.  PL alone leaves the minus sign in front of the digits.
-	 * A digit position may already have read the sign at the start.  The
-	 * currency symbol of a leading L or C can be longer than the one
-	 * character matched above, so it is left to the forward pass.
+	 * A digit position may already have read the sign at the start.
+	 *
+	 * The currency symbol of a leading L or C is read by the forward pass,
+	 * and it can be longer than the one character matched above.  For L the
+	 * forward pass skips the length of the local currency symbol.  For C it
+	 * stops at the first digit, sign or separator, so the ISO currency symbol
+	 * cannot contain one.
 	 */
 	lead = node;
-	if (lead->type == NODE_TYPE_ACTION && lead->key->id == NUM_FM)
+	if (ORA_NUM_IS_NODE(lead, NUM_FM))
 		lead++;
 	input_rest = Np->inout;
-	if (ntem <= lead && ORA_NUM_IS_CURRENCY_NODE(lead))
+	if (ntem <= lead && ORA_NUM_IS_NODE(lead, NUM_L))
+	{
+		if ((size_t) (input_tem + 1 - Np->inout) != strlen(Np->L_currency_symbol))
+			ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+					errmsg("invalid number")));
 		input_rest = input_tem;
+	}
+	else if (ntem <= lead && ORA_NUM_IS_NODE(lead, NUM_C))
+	{
+		while (input_rest <= input_tem &&
+			   strchr("0123456789.,+-", *input_rest) == NULL)
+			input_rest++;
+		if (input_rest <= input_tem)
+			ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+					errmsg("invalid number")));
+		input_rest = input_tem;
+	}
 	else if (bracketed)
 	{
 		if (*input_rest != '<')

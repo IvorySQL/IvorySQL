@@ -2297,4 +2297,11 @@ SELECT to_number('1>', '999PR') AS short_pr_without_open;
 ERROR:  invalid number
 SELECT to_number('-1', '999PR') AS minus_with_pr;
 ERROR:  invalid number
+-- a leading currency symbol cannot hide digits
+SELECT to_number('99123', 'C999') AS digits_at_c;
+ERROR:  invalid number
+SELECT to_number('9123', 'C999') AS digit_at_c;
+ERROR:  invalid number
+SELECT to_number('ab123', 'L999') AS longer_than_l;
+ERROR:  invalid number
 /* End - issue #3145 */
