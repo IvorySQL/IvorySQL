@@ -694,3 +694,99 @@ ora_utl_raw_cast_to_binary_float(PG_FUNCTION_ARGS)
 	}
 	PG_RETURN_FLOAT4(v.f);
 }
+
+PG_FUNCTION_INFO_V1(ora_utl_raw_transliterate);
+
+/*
+ * ora_utl_raw_transliterate - like TRANSLATE, but bytes whose from_set
+ * position has no to_set counterpart are replaced with pad (default 0x00,
+ * applied cyclically) instead of being omitted.
+ *
+ * Defaults per Oracle: a NULL to_set returns r unchanged; a NULL from_set
+ * stands for all 256 byte values in ascending order; a NULL or empty pad
+ * is 0x00.
+ */
+Datum
+ora_utl_raw_transliterate(PG_FUNCTION_ARGS)
+{
+	bytea	   *r = PG_GETARG_BYTEA_PP(0);
+	bytea	   *to_set = NULL;
+	bytea	   *from_set = NULL;
+	int			tlen = 0;
+	int			flen = 256;
+	const char *tdata = NULL;
+	char		fallback[256];
+	const char *fdata = fallback;
+	StringInfoData buf;
+	const char *pdata = NULL;
+	int			padlen = 1;
+	int			rlen,
+				i,
+				j;
+
+	if (PG_NARGS() > 1 && !PG_ARGISNULL(1))
+		to_set = PG_GETARG_BYTEA_PP(1);
+	if (PG_NARGS() > 2 && !PG_ARGISNULL(2))
+		from_set = PG_GETARG_BYTEA_PP(2);
+
+	rlen = VARSIZE_ANY_EXHDR(r);
+
+	if (to_set == NULL)
+		PG_RETURN_BYTEA_P(PG_GETARG_BYTEA_PP(0));
+
+	tdata = VARDATA_ANY(to_set);
+	tlen = VARSIZE_ANY_EXHDR(to_set);
+
+	if (from_set != NULL)
+	{
+		fdata = VARDATA_ANY(from_set);
+		flen = VARSIZE_ANY_EXHDR(from_set);
+		if (flen <= 0)
+		{
+			/* an empty from_set has no mappings: return r unchanged */
+			PG_RETURN_BYTEA_P(PG_GETARG_BYTEA_PP(0));
+		}
+	}
+	else
+	{
+		for (i = 0; i < 256; i++)
+			fallback[i] = (char) i;
+	}
+
+	if (PG_NARGS() > 3 && !PG_ARGISNULL(3))
+	{
+		bytea	   *pad = PG_GETARG_BYTEA_PP(3);
+
+		if (VARSIZE_ANY_EXHDR(pad) > 0)
+		{
+			pdata = VARDATA_ANY(pad);
+			padlen = VARSIZE_ANY_EXHDR(pad);
+		}
+	}
+
+	{
+		static const char zero = 0;
+
+		if (pdata == NULL)
+			pdata = &zero;
+	}
+
+	initStringInfo(&buf);
+	for (i = 0; i < rlen; i++)
+	{
+		unsigned char b = (unsigned char) VARDATA_ANY(r)[i];
+
+		for (j = 0; j < flen; j++)
+		{
+			if ((unsigned char) fdata[j] == b)
+				break;
+		}
+		if (j < tlen)
+			appendStringInfoChar(&buf, tdata[j]);
+		else if (j < flen)
+			appendStringInfoChar(&buf, pdata[j % padlen]);
+		else
+			appendStringInfoChar(&buf, b);
+	}
+	PG_RETURN_TEXT_P(cstring_to_text_with_len(buf.data, buf.len));
+}
