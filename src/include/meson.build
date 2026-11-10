@@ -142,6 +142,7 @@ header_subdirs = [
   'mb',
   'nodes',
   'optimizer',
+  'oracle_fe_utils',
   'oracle_parser',
   'parser',
   'partitioning',
