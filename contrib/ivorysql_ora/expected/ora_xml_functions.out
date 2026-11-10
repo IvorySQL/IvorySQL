@@ -1053,3 +1053,69 @@ select insertchildxml(XMLtype('<a>A<b>B</b></a>'), '/', 'c', XMLType('<c>C</c>')
  <a>A<b>B</b><c>C</c></a>
 (1 row)
 
+--
+-- multiple XPath/value pairs in updatexml
+--
+-- each pair's XPath evaluation state must be released before the next
+-- pair is evaluated; only the parsed document is kept until the end
+--
+SELECT updatexml(XMLType('<a><b>1</b><c>2</c></a>'),
+  '/a/b/text()', '111', '/a/c/text()', '222') FROM dual;
+  updatexml   
+--------------
+ <a>         +
+   <b>111</b>+
+   <c>222</c>+
+ </a>
+(1 row)
+
+SELECT updatexml(XMLType('<a><b>1</b><c>2</c><d>3</d></a>'),
+  '/a/b/text()', '111', '/a/c/text()', '222', '/a/d/text()', '333') FROM dual;
+  updatexml   
+--------------
+ <a>         +
+   <b>111</b>+
+   <c>222</c>+
+   <d>333</d>+
+ </a>
+(1 row)
+
+-- second pair replaces a whole node instead of a text() value
+SELECT updatexml(XMLType('<a><b>1</b><c>2</c></a>'),
+  '/a/b/text()', '111', '/a/c', XMLType('<c>222</c>')) FROM dual;
+  updatexml   
+--------------
+ <a>         +
+   <b>111</b>+
+   <c>222</c>+
+ </a>
+(1 row)
+
+-- second pair's XPath matches nothing: the other updates are still applied
+SELECT updatexml(XMLType('<a><b>1</b><c>2</c></a>'),
+  '/a/b/text()', '111', '/a/missing/text()', '222') FROM dual;
+  updatexml   
+--------------
+ <a>         +
+   <b>111</b>+
+   <c>2</c>  +
+ </a>
+(1 row)
+
+-- multiple pairs with a namespace argument
+SELECT updatexml(xmltype('<e:root xmlns:e="http://www.example.com/e"><e:a>1</e:a><e:b>2</e:b></e:root>'),
+  'e:root/e:a/text()', '111', 'e:root/e:b/text()', '222',
+  'xmlns:e="http://www.example.com/e"') FROM dual;
+                  updatexml                  
+---------------------------------------------
+ <e:root xmlns:e="http://www.example.com/e">+
+   <e:a>111</e:a>                           +
+   <e:b>222</e:b>                           +
+ </e:root>
+(1 row)
+
+-- an invalid XPath in a later pair must error out cleanly, after the
+-- earlier pairs have been evaluated
+SELECT updatexml(XMLType('<a><b>1</b><c>2</c></a>'),
+  '/a/b/text()', '111', '///', '222') FROM dual;
+ERROR:  invalid XPath expression

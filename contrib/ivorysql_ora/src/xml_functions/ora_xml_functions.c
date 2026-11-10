@@ -180,11 +180,14 @@ ivy_xml_parser_init(PgXmlStrictness strictness)
 }
 
 /*
- * cleanup_ws
- *	clean up after processing the result of using xpath
+ * free_xpath_eval_state
+ *	free the XPath evaluation state (compiled expression, evaluation
+ *	context and result object) held in a xpath_ws, keeping the parsed
+ *	document (ws->doc) intact, so that it can be reused for another
+ *	XPath evaluation round.
  */
 static void
-cleanup_ws(xpath_ws *ws)
+free_xpath_eval_state(xpath_ws *ws)
 {
 	if (ws->xpathobj)
 		xmlXPathFreeObject(ws->xpathobj);
@@ -195,6 +198,16 @@ cleanup_ws(xpath_ws *ws)
 	if (ws->xpathctx)
 		xmlXPathFreeContext(ws->xpathctx);
 	ws->xpathctx = NULL;
+}
+
+/*
+ * cleanup_ws
+ *	clean up after processing the result of using xpath
+ */
+static void
+cleanup_ws(xpath_ws *ws)
+{
+	free_xpath_eval_state(ws);
 	if (ws->doc)
 		xmlFreeDoc(ws->doc);
 	ws->doc = NULL;
@@ -2422,6 +2435,16 @@ updatexml(List *args)
 
 		ret = (xmltype *)ivy_xml_xmlnode2xmltype((xmlNodePtr)ws.doc);
 		ret = (xmltype *)rv_newline((text *)ret);
+
+		/*
+		 * The node update for this pair is done; release this round's
+		 * XPath evaluation state (result object, compiled expression
+		 * and evaluation context) now, as the next loop iteration
+		 * assigns fresh ones over them, which would leak the current
+		 * ones.  ws.doc must survive: it carries the updates done so
+		 * far and is freed by cleanup_ws() after the loop.
+		 */
+		free_xpath_eval_state(&ws);
 
 		narg += 2;
 		if (narg == tmp->length)
