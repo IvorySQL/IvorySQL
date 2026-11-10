@@ -316,6 +316,12 @@ ora_utl_raw_compare(PG_FUNCTION_ARGS)
 	bytea	   *pad;
 	int			len1;
 	int			len2;
+	const char *d1;
+	const char *d2;
+	const char *pd;
+	int			maxlen;
+	int			padlen;
+	int			i;
 
 	/*
 	 * Oracle returns 0 when both operands are NULL, so the function is
@@ -325,14 +331,11 @@ ora_utl_raw_compare(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(0) && PG_ARGISNULL(1))
 		PG_RETURN_INT32(0);
 
-	const char *d1;
-	const char *d2;
-	const char *pd;
-	int			maxlen;
-	int			padlen;
-	int			i;
-
 	pad = (PG_NARGS() > 2 && !PG_ARGISNULL(2)) ? PG_GETARG_BYTEA_PP(2) : NULL;
+	r1 = PG_ARGISNULL(0) ? NULL : PG_GETARG_BYTEA_PP(0);
+	r2 = PG_ARGISNULL(1) ? NULL : PG_GETARG_BYTEA_PP(1);
+	len1 = r1 ? VARSIZE_ANY_EXHDR(r1) : 0;
+	len2 = r2 ? VARSIZE_ANY_EXHDR(r2) : 0;
 	d1 = r1 ? VARDATA_ANY(r1) : NULL;
 	d2 = r2 ? VARDATA_ANY(r2) : NULL;
 	maxlen = len1 > len2 ? len1 : len2;
