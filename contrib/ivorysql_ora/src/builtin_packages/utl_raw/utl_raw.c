@@ -444,17 +444,35 @@ ora_utl_raw_overlay(PG_FUNCTION_ARGS)
 		padlen = 1;
 	}
 
-	outlen = tlen > (pos - 1) + len ? tlen : (pos - 1) + len;
-	result = (bytea *) palloc(VARHDRSZ + outlen);
-	memcpy(VARDATA(result), tdata, tlen);
-	for (i = 0; i < len; i++)
+	/*
+	 * Compute the result size in 64 bits and clamp it to the maximum
+	 * allocatable size: large pos/len must not wrap the 32-bit
+	 * arithmetic or hand a negative length to palloc.
+	 */
 	{
-		int			src = i < ovlen ? i : i % ovlen;
+		int64		need = (int64) (pos - 1) + (int64) len;
 
-		VARDATA(result)[pos - 1 + i] =
-			i < ovlen ? ovdata[src] : pdata[(i - ovlen) % padlen];
+		if (need < 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("OVERLAY: result size out of range")));
+		outlen = (tlen > need) ? tlen : (int) need;
+		if ((Size) outlen > MaxAllocSize)
+			ereport(ERROR,
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg("OVERLAY: result too large")));
 	}
-	SET_VARSIZE(result, VARHDRSZ + outlen);
+
+	result = (bytea *) palloc(VARHDRSZ + (Size) outlen);
+	memcpy(VARDATA(result), tdata, tlen);
+	for (i = 0; i < len && (pos - 1) + i < outlen; i++)
+	{
+		if (i < ovlen)
+			VARDATA(result)[pos - 1 + i] = ovdata[i];
+		else
+			VARDATA(result)[pos - 1 + i] = pdata[(i - ovlen) % padlen];
+	}
+	SET_VARSIZE(result, VARHDRSZ + (Size) outlen);
 	PG_RETURN_BYTEA_P(result);
 }
 
@@ -616,6 +634,7 @@ ora_utl_raw_cast_to_binary_double(PG_FUNCTION_ARGS)
 	}			v;
 	int			i;
 
+	v.u = 0;
 	if (len != 8)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -681,6 +700,7 @@ ora_utl_raw_cast_to_binary_float(PG_FUNCTION_ARGS)
 	}			v;
 	int			i;
 
+	v.u = 0;
 	if (len != 4)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
