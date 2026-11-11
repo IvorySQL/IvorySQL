@@ -31,6 +31,9 @@
 #include <errno.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#ifdef WIN32
+#include <io.h>
+#endif
 
 #include "executor/spi.h"
 
@@ -92,7 +95,7 @@ static char *safe_named_location(text *location);
 static text *
 get_line(FILE *fd, size_t max_linesize, int encoding, bool *iseof);
 static char *get_safe_path(text *location, text *filename);
-static bool same_file(const char *path1, const char *path2);
+static bool same_file_streams(FILE *file1, FILE *file2);
 static void close_all_files(void);
 static int copy_text_file(FILE *srcfile, FILE *dstfile,
 						  int start_line, int end_line);
@@ -516,28 +519,62 @@ ora_utl_file_fcopy(PG_FUNCTION_ARGS)
 	}
 
 	/*
-	 * Opening the destination with "wt" truncates it.  If both paths name
-	 * the same file -- same spelling, a "./" variant, a hard link or a
-	 * symlink -- that destroys the source before copy_text_file() has read
-	 * anything, and the caller would get a "successful" empty copy.
-	 * The check runs after parameter validation, so INVALID_PARAMETER_VALUE
-	 * keeps its existing priority, and after the source is opened, so a
-	 * missing source still raises IO_ERROR as it always did.
+	 * Open the destination WITHOUT truncating it.  Opening with "wt" here
+	 * would destroy the source if both paths name the same file -- same
+	 * spelling, a "./" variant, a hard link, a symlink, or a pathname
+	 * replaced by an external process between a check and this open.
+	 * Instead, open in update mode, compare the two opened handles, and
+	 * truncate the destination only after the handles are known to differ.
+	 * Comparing opened handles closes both the check-to-use race and the
+	 * case where stat() does not fill st_ino (notably Windows).
 	 */
-	if (same_file(srcpath, dstpath))
-	{
-		fclose(srcfile);
-		CUSTOM_EXCEPTION(INVALID_OPERATION,
-						 "Source and destination file are the same.");
-	}
-
-	dstfile = fopen(dstpath, "wt");
+	dstfile = fopen(dstpath, "rt+");
 
 	if (dstfile == NULL)
 	{
-		/* failed to open dst file. */
-		fclose(srcfile);
-		IO_EXCEPTION();
+		/*
+		 * A missing destination is the normal case: creating a brand-new
+		 * file can never destroy an existing source, so fall back to "wt".
+		 */
+		if (errno != ENOENT)
+		{
+			/* failed to open dst file. */
+			fclose(srcfile);
+			IO_EXCEPTION();
+		}
+
+		dstfile = fopen(dstpath, "wt");
+
+		if (dstfile == NULL)
+		{
+			/* failed to create dst file. */
+			fclose(srcfile);
+			IO_EXCEPTION();
+		}
+	}
+	else
+	{
+		if (same_file_streams(srcfile, dstfile))
+		{
+			fclose(dstfile);
+			fclose(srcfile);
+			CUSTOM_EXCEPTION(INVALID_OPERATION,
+							 "Source and destination file are the same.");
+		}
+
+		/* different files: truncate the destination through its handle */
+#ifdef WIN32
+		if (_chsize(_fileno(dstfile), 0) != 0)
+#else
+		if (ftruncate(fileno(dstfile), 0) != 0)
+#endif
+		{
+			fclose(dstfile);
+			fclose(srcfile);
+			IO_EXCEPTION();
+		}
+
+		rewind(dstfile);
 	}
 
 	copy_result = copy_text_file(srcfile, dstfile, start_line, end_line);
@@ -1099,36 +1136,55 @@ safe_named_location(text *location)
 }
 
 /*
- * same_file - do both paths name the same existing file?
+ * same_file_streams - do two open streams refer to the same file?
  *
- * Identical strings are caught first: on platforms that do not fill
- * st_ino (notably Windows) the stat() comparison below can never fire,
- * yet the truncation happens there too.
- * stat() additionally covers different spellings ("a.txt" vs "./a.txt"),
- * hard links and symlinks.  A missing file returns false, which cannot
- * happen here in practice: the caller opens the source first and raises
- * IO_ERROR before this check is reached.
+ * Comparing the identity of the already-opened handles covers different
+ * spellings ("a.txt" vs "./a.txt"), hard links and symlinks, and is free
+ * of the check-to-use race of a pathname-based test: the answer cannot
+ * change between the comparison and the subsequent truncation of the
+ * destination, because no pathname is consulted again.
+ *
+ * On Windows, stat() does not reliably fill st_ino, so ask the OS for the
+ * volume serial number and file index of each handle instead.
  */
 static bool
-same_file(const char *path1, const char *path2)
+same_file_streams(FILE *file1, FILE *file2)
 {
+#ifdef WIN32
+	HANDLE		h1;
+	HANDLE		h2;
+	BY_HANDLE_FILE_INFORMATION info1;
+	BY_HANDLE_FILE_INFORMATION info2;
+
+	h1 = (HANDLE) _get_osfhandle(_fileno(file1));
+	h2 = (HANDLE) _get_osfhandle(_fileno(file2));
+
+	if (h1 == INVALID_HANDLE_VALUE || h2 == INVALID_HANDLE_VALUE)
+		return false;
+
+	if (!GetFileInformationByHandle(h1, &info1) ||
+		!GetFileInformationByHandle(h2, &info2))
+		return false;
+
+	return info1.dwVolumeSerialNumber == info2.dwVolumeSerialNumber &&
+		info1.nFileIndexHigh == info2.nFileIndexHigh &&
+		info1.nFileIndexLow == info2.nFileIndexLow;
+#else
 	struct stat st1;
 	struct stat st2;
 
-	if (strcmp(path1, path2) == 0)
-		return true;
-
-	if (stat(path1, &st1) != 0 || stat(path2, &st2) != 0)
+	if (fstat(fileno(file1), &st1) != 0 || fstat(fileno(file2), &st2) != 0)
 		return false;
 
 	/*
-	 * Some platforms (notably Windows) do not fill st_ino; a zero inode
-	 * would make every pair of files on the same device look identical.
+	 * Some platforms do not fill st_ino; a zero inode would make every
+	 * pair of files on the same device look identical.
 	 */
 	if (st1.st_ino == 0 || st2.st_ino == 0)
 		return false;
 
 	return st1.st_dev == st2.st_dev && st1.st_ino == st2.st_ino;
+#endif
 }
 
 /*
