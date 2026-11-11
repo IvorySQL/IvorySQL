@@ -1120,7 +1120,7 @@ check_oracle_extensions(void)
 
 	if (incomplete)
 	{
-		pg_log_error_hint("The \"uuid-ossp\" extension is provided by contrib/uuid-ossp and is only built when the source tree is configured with --with-uuid=ossp.  Run \"make -C contrib/uuid-ossp install\", or reconfigure and reinstall, and then try again.  To initialize a cluster without Oracle compatibility, use \"-m pg\" (or \"--dbmode=pg\") instead.");
+		pg_log_error_hint("The \"uuid-ossp\" extension is provided by contrib/uuid-ossp and is only built when the source tree is configured with --with-uuid=ossp, --with-uuid=e2fs or --with-uuid=bsd.  Run \"make -C contrib/uuid-ossp install\", or reconfigure and reinstall, and then try again.  To initialize a cluster without Oracle compatibility, use \"-m pg\" (or \"--dbmode=pg\") instead.");
 		exit(1);
 	}
 }

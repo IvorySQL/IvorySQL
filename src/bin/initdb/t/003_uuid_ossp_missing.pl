@@ -146,13 +146,20 @@ ok(-f "$pg_datadir/PG_VERSION", 'initdb -m pg created the cluster');
 # 3. A complete installation must not report the extension as missing.
 my $complete_datadir = "$tempdir/data_complete";
 
-my ($stdout, $stderr) = run_command(
+my ($complete_stdout, $complete_stderr) = run_command(
 	[
 		"$bindir/initdb", '-D', $complete_datadir, '-m', 'oracle', '-N',
 		'--no-locale'
 	]);
 
-unlike($stderr, qr/requires the "uuid-ossp" extension/,
+# run_command does not look at the exit code, so without this assertion a
+# failure for any other reason would make the unlike() below pass vacuously.
+my $complete_status = $? >> 8;
+
+is($complete_status, 0,
+	'initdb -m oracle exits 0 when the extension is installed');
+
+unlike($complete_stderr, qr/requires the "uuid-ossp" extension/,
 	'no uuid-ossp complaint when the extension is installed');
 
 done_testing();
