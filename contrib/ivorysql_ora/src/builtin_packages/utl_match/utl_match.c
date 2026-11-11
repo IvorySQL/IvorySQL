@@ -45,8 +45,11 @@
  *   JARO_WINKLER('AAAAAAB','AAAAAAC')           = 0.9428...
  * - The Jaro match window is floor(max(len1,len2) / 2) - 1, e.g.
  *   JARO_WINKLER('aaaa','aaabbba') = 0.8083...
- * - Similarity results are rounded half-up, e.g.
+ * - EDIT_DISTANCE_SIMILARITY rounds half-up, e.g.
  *   EDIT_DISTANCE_SIMILARITY('saturday','sunday') = 63.
+ * - JARO_WINKLER_SIMILARITY truncates towards zero, e.g.
+ *   JARO_WINKLER_SIMILARITY('Dunningham','Cunnigham') = 89 although the
+ *   exact value is 89.6296... (Oracle docs, UTL_MATCH table 1).
  *
  * The algorithms also reproduce the golden values published in the
  * Oracle PL/SQL Packages and Types Reference:
@@ -390,8 +393,10 @@ ora_utl_match_jaro_winkler(PG_FUNCTION_ARGS)
 /*
  * sys.ora_utl_match_jaro_winkler_similarity(s1 text, s2 text) RETURNS integer
  *
- * Returns JARO_WINKLER(s1, s2) * 100, rounded to the nearest integer
- * (0..100).  Like Oracle, returns 0 if either input is NULL.
+ * Returns JARO_WINKLER(s1, s2) * 100, truncated towards zero (0..100),
+ * like Oracle: the Oracle doc table gives 89 for a pair whose exact
+ * value is 89.6296..., so the percentage is not rounded to nearest.
+ * Like Oracle, returns 0 if either input is NULL.
  */
 Datum
 ora_utl_match_jaro_winkler_similarity(PG_FUNCTION_ARGS)
@@ -411,7 +416,14 @@ ora_utl_match_jaro_winkler_similarity(PG_FUNCTION_ARGS)
 					  VARSIZE_ANY_EXHDR(t1),
 					  (const unsigned char *) VARDATA_ANY(t2),
 					  VARSIZE_ANY_EXHDR(t2));
-	res = round_to_int(jw * 100.0);
+	/*
+	 * Oracle truncates the percentage instead of rounding it: the doc
+	 * table gives 89 for a pair whose exact value is 89.6296..., which
+	 * only truncation produces.  The tiny epsilon keeps results that are
+	 * exact integers in theory (and may arrive as x.9999999999 through
+	 * binary floating point) from truncating one too low.
+	 */
+	res = (int) (jw * 100.0 + 1e-9);
 
 	PG_RETURN_INT32(res);
 }
