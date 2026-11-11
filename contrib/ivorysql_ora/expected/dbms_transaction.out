@@ -496,7 +496,11 @@ select dbms_transaction.local_transaction_id() is null as unassigned;
  t
 (1 row)
 
-select dbms_transaction.local_transaction_id(true) is not null as assigned;
+with assigned_id as materialized (
+    select dbms_transaction.local_transaction_id(true) as xid
+)
+select xid = pg_catalog.pg_current_xact_id_if_assigned()::text as assigned
+from assigned_id;
  assigned 
 ----------
  t

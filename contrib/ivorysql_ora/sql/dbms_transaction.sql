@@ -409,7 +409,11 @@ select current_user;
 -- is the same top-level XID returned for the rest of this transaction.
 begin;
 select dbms_transaction.local_transaction_id() is null as unassigned;
-select dbms_transaction.local_transaction_id(true) is not null as assigned;
+with assigned_id as materialized (
+    select dbms_transaction.local_transaction_id(true) as xid
+)
+select xid = pg_catalog.pg_current_xact_id_if_assigned()::text as assigned
+from assigned_id;
 select dbms_transaction.local_transaction_id() =
        pg_catalog.pg_current_xact_id_if_assigned()::text as same_id;
 rollback;

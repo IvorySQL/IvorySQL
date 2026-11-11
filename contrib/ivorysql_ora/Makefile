@@ -46,7 +46,7 @@ OBJS = \
 EXTENSION = ivorysql_ora
 
 # SQL(s) which need to be generated only if which is specified here.
-DATA_built = ivorysql_ora--1.0.sql
+DATA_built = ivorysql_ora--1.0.sql ivorysql_ora--1.0--1.1.sql
 
 install: install-data
 
@@ -54,7 +54,10 @@ clean: cleansql
 
 # SQL(s) merge using perl
 $(DATA_built): gensql.pl
-	$(PERL) $< gcc_build $(patsubst ivorysql_ora--%.sql, %,$@)
+	$(PERL) $(srcdir)/gensql.pl gcc_build $(patsubst ivorysql_ora--%.sql, %,$@)
+
+ivorysql_ora--1.0.sql: src/builtin_packages/dbms_transaction/dbms_transaction--1.0.sql
+ivorysql_ora--1.0--1.1.sql: src/builtin_packages/dbms_transaction/dbms_transaction--1.0--1.1.sql
 
 # Preload the compatible oracle misc sql script
 install-data:
