@@ -29,6 +29,7 @@
 #include "postgres.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #ifdef WIN32
@@ -96,6 +97,7 @@ static text *
 get_line(FILE *fd, size_t max_linesize, int encoding, bool *iseof);
 static char *get_safe_path(text *location, text *filename);
 static int same_file_streams(FILE *file1, FILE *file2);
+static FILE *open_dst_new(const char *path);
 static void close_all_files(void);
 static int copy_text_file(FILE *srcfile, FILE *dstfile,
 						  int start_line, int end_line);
@@ -488,6 +490,7 @@ ora_utl_file_fcopy(PG_FUNCTION_ARGS)
 	int			end_line;
 	int 		copy_result;
 	int			same_result;
+	int			dst_attempts;
 	FILE	   *srcfile;
 	FILE	   *dstfile;
 
@@ -528,15 +531,58 @@ ora_utl_file_fcopy(PG_FUNCTION_ARGS)
 	 * truncate the destination only after the handles are known to differ.
 	 * Comparing opened handles closes both the check-to-use race and the
 	 * case where stat() does not fill st_ino (notably Windows).
+	 *
+	 * When the destination does not exist yet, it is created exclusively
+	 * with open_dst_new(): a symlink or hard link planted in the target
+	 * directory between the failed update-mode open and the create is
+	 * never followed.  If a destination appears in that window (EEXIST),
+	 * the update-mode open and the identity check are retried once.
 	 */
-	dstfile = fopen(dstpath, "rt+");
-
-	if (dstfile == NULL)
+	for (dst_attempts = 0; dst_attempts < 2; dst_attempts++)
 	{
-		/*
-		 * A missing destination is the normal case: creating a brand-new
-		 * file can never destroy an existing source, so fall back to "wt".
-		 */
+		dstfile = fopen(dstpath, "rt+");
+
+		if (dstfile != NULL)
+		{
+			same_result = same_file_streams(srcfile, dstfile);
+
+			if (same_result < 0)
+			{
+				/*
+				 * Fail closed: the identity of the two files could not
+				 * be determined, so the destination might be the
+				 * source.  Truncating it could destroy the source.
+				 */
+				fclose(dstfile);
+				fclose(srcfile);
+				CUSTOM_EXCEPTION(INVALID_OPERATION,
+								 "Could not determine whether the source and destination file are the same.");
+			}
+
+			if (same_result > 0)
+			{
+				fclose(dstfile);
+				fclose(srcfile);
+				CUSTOM_EXCEPTION(INVALID_OPERATION,
+								 "Source and destination file are the same.");
+			}
+
+			/* different files: truncate the destination through its handle */
+#ifdef WIN32
+			if (_chsize(_fileno(dstfile), 0) != 0)
+#else
+			if (ftruncate(fileno(dstfile), 0) != 0)
+#endif
+			{
+				fclose(dstfile);
+				fclose(srcfile);
+				IO_EXCEPTION();
+			}
+
+			rewind(dstfile);
+			break;
+		}
+
 		if (errno != ENOENT)
 		{
 			/* failed to open dst file. */
@@ -544,53 +590,24 @@ ora_utl_file_fcopy(PG_FUNCTION_ARGS)
 			IO_EXCEPTION();
 		}
 
-		dstfile = fopen(dstpath, "wt");
+		/* missing destination: the normal case, create it exclusively */
+		dstfile = open_dst_new(dstpath);
 
-		if (dstfile == NULL)
+		if (dstfile != NULL)
+			break;
+
+		if (errno != EEXIST)
 		{
 			/* failed to create dst file. */
 			fclose(srcfile);
 			IO_EXCEPTION();
 		}
-	}
-	else
-	{
-		same_result = same_file_streams(srcfile, dstfile);
 
-		if (same_result < 0)
-		{
-			/*
-			 * Fail closed: the identity of the two files could not be
-			 * determined, so the destination might be the source.
-			 * Truncating it could destroy the source file.
-			 */
-			fclose(dstfile);
-			fclose(srcfile);
-			CUSTOM_EXCEPTION(INVALID_OPERATION,
-							 "Could not determine whether the source and destination file are the same.");
-		}
-
-		if (same_result > 0)
-		{
-			fclose(dstfile);
-			fclose(srcfile);
-			CUSTOM_EXCEPTION(INVALID_OPERATION,
-							 "Source and destination file are the same.");
-		}
-
-		/* different files: truncate the destination through its handle */
-#ifdef WIN32
-		if (_chsize(_fileno(dstfile), 0) != 0)
-#else
-		if (ftruncate(fileno(dstfile), 0) != 0)
-#endif
-		{
-			fclose(dstfile);
-			fclose(srcfile);
-			IO_EXCEPTION();
-		}
-
-		rewind(dstfile);
+		/*
+		 * A destination appeared between the failed update-mode open
+		 * above and the exclusive create; loop back to open it in
+		 * update mode and run the identity check on it.
+		 */
 	}
 
 	copy_result = copy_text_file(srcfile, dstfile, start_line, end_line);
@@ -1208,6 +1225,44 @@ same_file_streams(FILE *file1, FILE *file2)
 
 	return (st1.st_dev == st2.st_dev && st1.st_ino == st2.st_ino) ? 1 : 0;
 #endif
+}
+
+/*
+ * open_dst_new - create the destination file exclusively.
+ *
+ * The exclusive create (O_EXCL) guarantees that a symlink or hard link
+ * planted in the target directory between the failed update-mode open
+ * and this create is never followed: creating "wt" through such a link
+ * would truncate the source.  Returns the new stream, or NULL with
+ * errno set (EEXIST means a destination appeared in that window).
+ */
+static FILE *
+open_dst_new(const char *path)
+{
+	int			fd;
+	FILE	   *dstfile;
+
+#ifdef WIN32
+	fd = _open(path, _O_WRONLY | _O_CREAT | _O_EXCL | _O_TEXT,
+			   _S_IREAD | _S_IWRITE);
+#else
+	fd = open(path, O_WRONLY | O_CREAT | O_EXCL,
+			  S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+#endif
+
+	if (fd < 0)
+		return NULL;
+
+#ifdef WIN32
+	dstfile = _fdopen(fd, "w");
+#else
+	dstfile = fdopen(fd, "w");
+#endif
+
+	if (dstfile == NULL)
+		close(fd);
+
+	return dstfile;
 }
 
 /*
