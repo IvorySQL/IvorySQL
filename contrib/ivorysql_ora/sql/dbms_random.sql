@@ -29,6 +29,10 @@ select dbms_random.random() as from_text_seed;
 call dbms_random.seed(cast(7 as number));
 select dbms_random.value() >= 0 and dbms_random.value() < 1 as value_in_unit_range;
 
+-- VALUE keeps 38 decimal places rather than passing through float8
+call dbms_random.seed(cast(7 as number));
+select scale(dbms_random.value()) = 38 as value_has_38_places;
+
 -- VALUE can be used without parentheses as an ORDER BY expression
 call dbms_random.seed(cast(42 as number));
 select n from generate_series(1, 5) as t(n) order by dbms_random.value;
@@ -52,6 +56,18 @@ call dbms_random.seed(cast(99 as number));
 select min(v) >= 10000000000000001 and max(v) < 10000000000000002 as large_range_ok
 from (select dbms_random.value(10000000000000001, 10000000000000002) as v
       from generate_series(1, 200) t) s;
+call dbms_random.seed(cast(99 as number));
+select scale(dbms_random.value(10000000000000001, 10000000000000002)) = 38
+       as large_range_has_38_places;
+
+-- digits beyond the float8 rounding limit really vary: the low 21 fraction
+-- digits are not all zeros under two different seeds
+call dbms_random.seed(cast(7 as number));
+select ((dbms_random.value() * 1e38)::numeric % 1000000000000000000000) <> 0
+       as tail_digits_vary_seed7;
+call dbms_random.seed(cast(11 as number));
+select ((dbms_random.value() * 1e38)::numeric % 1000000000000000000000) <> 0
+       as tail_digits_vary_seed11;
 
 --
 -- STRING: deterministic with a seed, honors the character class
