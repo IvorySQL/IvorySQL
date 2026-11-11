@@ -1002,3 +1002,136 @@ SELECT to_number('1e0') AS exp_zero;
 SELECT to_number('1e+0') AS exp_plus_zero;
 SELECT to_number('1e-0') AS exp_minus_zero;
 /* End - to_number scientific notation */
+
+/* Begin - to_number: bad value is "invalid number", bad format is "invalid number format model" (issue #3101) */
+SELECT to_number('abc') AS bad_value;
+SELECT to_number('12a', '999') AS bad_value_with_format;
+SELECT to_number('1', '9X9') AS bad_format_model;
+SELECT to_char(1, '9X9') AS bad_to_char_format_model;
+DECLARE
+  n NUMBER;
+BEGIN
+  BEGIN
+    n := to_number('abc');
+  EXCEPTION
+    WHEN invalid_text_representation THEN
+      RAISE INFO 'to_number(''abc''): % %', SQLSTATE, SQLERRM;
+  END;
+  BEGIN
+    n := to_number('1e');
+  EXCEPTION
+    WHEN invalid_text_representation THEN
+      RAISE INFO 'to_number(''1e''): % %', SQLSTATE, SQLERRM;
+  END;
+  BEGIN
+    n := to_number('12a', '999');
+  EXCEPTION
+    WHEN invalid_text_representation THEN
+      RAISE INFO 'to_number(''12a'', ''999''): % %', SQLSTATE, SQLERRM;
+  END;
+  BEGIN
+    n := to_number('1x2', '9.9');
+  EXCEPTION
+    WHEN invalid_text_representation THEN
+      RAISE INFO 'to_number(''1x2'', ''9.9''): % %', SQLSTATE, SQLERRM;
+  END;
+END;
+/
+-- a value that does not match a valid format model
+SELECT to_number('1x2', '9.9') AS bad_decimal_point;
+SELECT to_number('1.555', '9.99') AS too_many_decimals;
+SELECT to_number('123', '99') AS too_many_digits;
+SELECT to_number('12x', '99PR') AS bad_pr;
+SELECT to_number('12x', '99MI') AS bad_mi;
+SELECT to_number('x12', 'S99') AS bad_s;
+SELECT to_number('1,234', '9G999') AS group_separator;
+-- an invalid format model
+SELECT to_number('1.2.3', '9.9.9') AS two_decimal_points;
+SELECT to_number('12,', '99G') AS trailing_group_separator;
+SELECT to_number('1-2', '9MI9') AS mi_not_last;
+/* End - issue #3101 */
+
+/* Begin - to_number must not crash or drop digits after junk input (issue #3133) */
+-- used to crash the backend
+SELECT to_number('.5', '99') AS dot_at_first_node;
+SELECT to_number('1.5', '9-99') AS literal_before_nines;
+-- a model without nodes used to be read from before its start
+SELECT to_number('1', '""') AS empty_quoted_model;
+-- characters the format model does not consume
+SELECT to_number('a123', '999') AS junk_prefix;
+SELECT to_number('a12', '99') AS junk_prefix_full_model;
+SELECT to_number('x-123', '999') AS junk_before_sign;
+SELECT to_number('--123', '999') AS double_minus;
+SELECT to_number('<123', '999PR') AS pr_without_close;
+SELECT to_number('123>', '999PR') AS pr_without_open;
+SELECT to_number('-123-', '999MI') AS sign_and_mi;
+-- 0 positions must hold digits
+SELECT to_number('a123', '0999') AS junk_at_zero;
+SELECT to_number('12x', '990') AS junk_at_last_zero;
+SELECT to_number('1.5', '0999') AS dot_without_d_zero;
+-- SG and PL positions are checked
+SELECT to_number('123x', '999SG') AS sg_junk;
+SELECT to_number('123', '999SG') AS sg_missing;
+SELECT to_number('-123-', '999SG') AS sg_and_leading_sign;
+SELECT to_number('123x', '999PL') AS pl_junk;
+SELECT to_number('123-', '999PL') AS pl_minus;
+SELECT to_number('1x2', '9SG9') AS sg_middle_junk;
+SELECT to_number('1x2', '9PL9') AS pl_middle_junk;
+-- still accepted
+SELECT to_number('-123', '999') AS minus;
+SELECT to_number('+123', '999') AS plus;
+SELECT to_number('-12', '99') AS minus_full_model;
+SELECT to_number(' -12', '99') AS blank_then_minus;
+SELECT to_number(' 12', '99') AS blank_prefix;
+SELECT to_number('<123>', '999PR') AS pr;
+SELECT to_number(' <123>', '999PR') AS blank_then_pr;
+SELECT to_number('-123', 'S999') AS s_sign;
+SELECT to_number('123-', '999MI') AS mi;
+SELECT to_number('123-', '999SG') AS sg;
+SELECT to_number('-123', 'SG999') AS sg_leading;
+SELECT to_number(to_char(-123, '999PL'), '999PL') AS pl_negative_round_trip;
+SELECT to_number(to_char(123, '999PL'), '999PL') AS pl_positive_round_trip;
+SELECT to_number(to_char(-123, 'FM999PL'), 'FM999PL') AS fm_pl_round_trip;
+SELECT to_number('123', '999PL') AS pl_absent;
+SELECT to_number('12', '9PL9') AS pl_middle_absent;
+SELECT to_number('123', '9PL99') AS pl_middle_absent_2;
+SELECT to_number('1+2', '9PL9') AS pl_middle_plus;
+SELECT to_number(to_char(-12, '9PL9'), '9PL9') AS pl_middle_negative_round_trip;
+SELECT to_number(to_char(-12, 'FM9PL9'), 'FM9PL9') AS fm_pl_middle_round_trip;
+SELECT to_number('-1.5', '9.9PL') AS pl_decimal;
+SELECT to_number('-12', '099') AS minus_zero_model;
+SELECT to_number('012', '099') AS zero_model;
+SELECT to_number('12.5', '099.99') AS leading_zero_model;
+SELECT to_number('1.5', '9.00') AS zero_fraction;
+SELECT to_number('1.50', '9.00') AS zero_fraction_full;
+SELECT to_number('.5', '.99') AS no_integer_part;
+SELECT to_number('1.5', 'FM9.99') AS fm_short_fraction;
+/* End - issue #3133 */
+
+/* Begin - to_number reads the blank-padded output of to_char (issue #3145) */
+SELECT to_number(to_char(12, '999'), '999') AS round_trip;
+SELECT to_number(' 12', '999') AS blank_prefix;
+SELECT to_number(to_char(-12, '999'), '999') AS round_trip_negative;
+SELECT to_number(to_char(1.5, '999.99'), '999.99') AS round_trip_decimal;
+SELECT to_number(to_char(12, '9,999'), '9,999') AS round_trip_group;
+SELECT to_number(to_char(12, '0999'), '0999') AS round_trip_zero;
+SELECT to_number(to_char(12, 'S999'), 'S999') AS round_trip_s;
+SELECT to_number(to_char(-12, 'S999'), 'S999') AS round_trip_s_negative;
+SELECT to_number(to_char(-12, '999S'), '999S') AS round_trip_trailing_s;
+SELECT to_number(to_char(12, '999MI'), '999MI') AS round_trip_mi;
+SELECT to_number(to_char(-12, '999MI'), '999MI') AS round_trip_mi_negative;
+SELECT to_number(to_char(-12, '999PL'), '999PL') AS round_trip_pl;
+SELECT to_number(to_char(12, '999PR'), '999PR') AS round_trip_pr;
+SELECT to_number(to_char(-12, '999PR'), '999PR') AS round_trip_pr_negative;
+SELECT to_number('<1>', '999PR') AS short_pr;
+-- still rejected
+SELECT to_number('   ', '999') AS only_blanks;
+SELECT to_number(' 1 2', '999') AS inner_blank;
+SELECT to_number('<1', '999PR') AS short_pr_without_close;
+SELECT to_number('1>', '999PR') AS short_pr_without_open;
+SELECT to_number('-1', '999PR') AS minus_with_pr;
+-- a leading currency symbol cannot hide digits
+SELECT to_number('99123', 'C999') AS digits_at_c;
+SELECT to_number('9123', 'C999') AS digit_at_c;
+SELECT to_number('ab123', 'L999') AS longer_than_l;
+/* End - issue #3145 */

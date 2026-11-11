@@ -2197,25 +2197,25 @@ SELECT to_char(1234.56::float8, '99999V99');
 
 -- Check parsing of literal text in a format string
 SELECT to_char('100'::numeric, 'foo999');
-ERROR:  date format not recognized
+ERROR:  invalid number format model
 SELECT to_char('100'::numeric, 'f\oo999');
-ERROR:  date format not recognized
+ERROR:  invalid number format model
 SELECT to_char('100'::numeric, 'f\\oo999');
-ERROR:  date format not recognized
+ERROR:  invalid number format model
 SELECT to_char('100'::numeric, 'f\"oo999');
-ERROR:  date format not recognized
+ERROR:  invalid number format model
 SELECT to_char('100'::numeric, 'f\\"oo999');
-ERROR:  date format not recognized
+ERROR:  invalid number format model
 SELECT to_char('100'::numeric, 'f"ool"999');
-ERROR:  date format not recognized
+ERROR:  invalid number format model
 SELECT to_char('100'::numeric, 'f"\ool"999');
-ERROR:  date format not recognized
+ERROR:  invalid number format model
 SELECT to_char('100'::numeric, 'f"\\ool"999');
-ERROR:  date format not recognized
+ERROR:  invalid number format model
 SELECT to_char('100'::numeric, 'f"ool\"999');
-ERROR:  date format not recognized
+ERROR:  invalid number format model
 SELECT to_char('100'::numeric, 'f"ool\\"999');
-ERROR:  date format not recognized
+ERROR:  invalid number format model
 -- TO_NUMBER()
 --
 SET lc_numeric = 'C';
@@ -2272,7 +2272,7 @@ SELECT to_number('0', '99.99');
 (1 row)
 
 SELECT to_number('.-01', 'S99.99');
-ERROR:  invalid number format model
+ERROR:  invalid number
 SELECT to_number('.01-', '99.99S');
  to_number 
 -----------
