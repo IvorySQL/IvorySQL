@@ -179,7 +179,6 @@ static int	encodingid;
 static char *bki_file;
 static char *hba_file;
 static char *ident_file;
-static char *ivorysql_file;
 static char *hosts_file;
 static char *conf_file;
 static char *dictionary_file;
@@ -2954,7 +2953,6 @@ setup_data_file_paths(void)
 		set_input(&bki_file, "postgres_oracle.bki");
 	set_input(&hba_file, "pg_hba.conf.sample");
 	set_input(&ident_file, "pg_ident.conf.sample");
-	set_input(&ivorysql_file, "ivorysql.conf.sample");
 	set_input(&hosts_file, "pg_hosts.conf.sample");
 	set_input(&conf_file, "postgresql.conf.sample");
 	set_input(&dictionary_file, "snowball_create.sql");
