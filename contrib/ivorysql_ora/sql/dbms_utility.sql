@@ -353,9 +353,10 @@ CREATE OR REPLACE PROCEDURE test_call_stack_level3 AS
   v_count INTEGER;
 BEGIN
   v_stack := DBMS_UTILITY.FORMAT_CALL_STACK;
-  -- Count the number of function entries (look for 'function ' pattern)
-  v_count := (LENGTH(v_stack) - LENGTH(REPLACE(v_stack, 'function ', ''))) / 9;
-  RAISE INFO 'Call stack has % function entries', v_count;
+  -- Count routine frames; functions and procedures carry distinct labels
+  v_count := (LENGTH(v_stack) - LENGTH(REPLACE(v_stack, 'function ', ''))) / 9
+           + (LENGTH(v_stack) - LENGTH(REPLACE(v_stack, 'procedure ', ''))) / 10;
+  RAISE INFO 'Call stack has % routine entries', v_count;
 END;
 /
 
@@ -504,6 +505,54 @@ END;
 
 CALL bug_schema.schema_caller();
 DROP SCHEMA bug_schema CASCADE;
+
+-- Test 20: FORMAT_CALL_STACK - label each frame with its routine kind.
+-- Regression: before fix, procedure and anonymous-block frames were all
+-- printed as "function" (issue #2317).
+CREATE OR REPLACE PROCEDURE test_call_stack_kind_proc AS
+  v_stack VARCHAR2(4000);
+BEGIN
+  v_stack := DBMS_UTILITY.FORMAT_CALL_STACK;
+  IF v_stack LIKE '%procedure %TEST_CALL_STACK_KIND_PROC%' THEN
+    RAISE INFO 'Procedure frame labeled procedure: OK';
+  ELSE
+    RAISE INFO 'Procedure frame labeled procedure: FAILED (got: %)', v_stack;
+  END IF;
+END;
+/
+
+CALL test_call_stack_kind_proc();
+
+CREATE OR REPLACE FUNCTION test_call_stack_kind_fn RETURN INTEGER AS
+  v_stack VARCHAR2(4000);
+BEGIN
+  v_stack := DBMS_UTILITY.FORMAT_CALL_STACK;
+  IF v_stack LIKE '%function %TEST_CALL_STACK_KIND_FN%' THEN
+    RAISE INFO 'Function frame labeled function: OK';
+  ELSE
+    RAISE INFO 'Function frame labeled function: FAILED (got: %)', v_stack;
+  END IF;
+  RETURN 1;
+END;
+/
+
+SELECT test_call_stack_kind_fn();
+
+DO $$
+DECLARE
+  v_stack VARCHAR2(4000);
+BEGIN
+  v_stack := DBMS_UTILITY.FORMAT_CALL_STACK;
+  IF v_stack LIKE '%anonymous block%' THEN
+    RAISE INFO 'Anonymous block frame labeled anonymous block: OK';
+  ELSE
+    RAISE INFO 'Anonymous block frame labeled anonymous block: FAILED (got: %)', v_stack;
+  END IF;
+END;
+$$;
+
+DROP FUNCTION test_call_stack_kind_fn;
+DROP PROCEDURE test_call_stack_kind_proc;
 
 RESET ivorysql.identifier_case_switch;
 RESET ivorysql.enable_case_switch;

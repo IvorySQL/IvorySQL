@@ -10393,8 +10393,10 @@ plisql_get_current_exception_sqlerrcode(void)
  * plisql_get_call_stack
  *
  * Returns the current PL/iSQL call stack as a formatted string, one frame
- * per line as "handle\tlineno\tsignature". Package members' signature is
- * schema/package-qualified (see plisql_package_qualified_signature()), not
+ * per line as "handle\tlineno\tkind\tsignature".  kind is one of
+ * "function", "procedure" or "anonymous block", so callers can label each
+ * frame the way Oracle's FORMAT_CALL_STACK does.  Package members' signature
+ * is schema/package-qualified (see plisql_package_qualified_signature()), not
  * just the bare routine name.
  *
  * This walks the error_context_stack looking for PL/iSQL function contexts,
@@ -10423,6 +10425,7 @@ plisql_get_call_stack(void)
 		{
 			PLiSQL_execstate *estate = (PLiSQL_execstate *) context->arg;
 			int lineno = 0;
+			const char *kind;
 			char *signature;
 			char *qualified_signature;
 
@@ -10431,6 +10434,25 @@ plisql_get_call_stack(void)
 				lineno = estate->err_var->lineno;
 			else if (estate->err_stmt != NULL)
 				lineno = estate->err_stmt->lineno;
+
+			/*
+			 * Label the frame with the kind of routine, as Oracle's
+			 * FORMAT_CALL_STACK does.  Anonymous blocks have no pg_proc
+			 * entry, so fn_prokind is the only reliable source here.
+			 */
+			switch (estate->func->fn_prokind)
+			{
+				case PROKIND_PROCEDURE:
+					kind = "procedure";
+					break;
+				case PROKIND_ANONYMOUS_BLOCK:
+				case PROKIND_ANONYMOUS_BLOCK_ONLY_PARSE:
+					kind = "anonymous block";
+					break;
+				default:
+					kind = "function";
+					break;
+			}
 
 			/*
 			 * Package members' fn_signature is only ever the bare routine
@@ -10450,9 +10472,10 @@ plisql_get_call_stack(void)
 			if (found_any)
 				appendStringInfoChar(&buf, '\n');
 
-			appendStringInfo(&buf, "%p\t%d\t%s",
+			appendStringInfo(&buf, "%p\t%d\t%s\t%s",
 							 (void *) estate->func,
 							 lineno,
+							 kind,
 							 signature);
 			found_any = true;
 
