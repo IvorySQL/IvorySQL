@@ -19,6 +19,18 @@ INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('-10e70');
 INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('10e-70');
 INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('-10e-70');
 
+-- an out-of-range value followed by anything but whitespace is a syntax error,
+-- not a silent Infinity or 0
+SELECT '10e70 x'::binary_float;
+SELECT '10e-70 x'::binary_float;
+-- whitespace after an out-of-range value is still accepted
+SELECT '10e70   '::binary_float;
+-- the same two rules hold for a negative overflow and for an underflow
+SELECT '-10e70 x'::binary_float;
+SELECT '10e-70   '::binary_float;
+SELECT '-10e70   '::binary_float;
+SELECT '-10e-70 x'::binary_float;
+
 -- bad input
 INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('');
 INSERT INTO BINARY_FLOAT_TBL(f1) VALUES ('       ');
