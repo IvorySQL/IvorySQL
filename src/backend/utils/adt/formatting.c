@@ -3649,7 +3649,7 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 
 				/*
 				 * Compatible oracle, if the number of fractional seconds is greater than
-				 * the lenght of format picture item 'FFx' should error out.
+				 * the length of format picture item 'FFx' should error out.
 				 * eg: select to_timestamp('1990-1-1 11:11:11.1235', 'yyyy-mm-dd hh24:mi:ss.ff3') from dual;
 				 * errmsg: ORA-01830: date format picture ends before converting entire input string.
 				 */
