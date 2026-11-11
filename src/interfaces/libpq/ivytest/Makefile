@@ -18,6 +18,8 @@ PROGS = testlibpq testlibpqstmt2 testlibpq_nullstmt testlibpq_allout testlibpq_p
         testlibpq_binary_double testlibpq_binary_float testlibpq_interval testlibpq_number testlibpq_prepare_call \
 		testlibpq_call testlibpqstmt2_call
 
+PROGS += testlibpq_float8_binding
+
 all: $(PROGS)
 
 clean distclean maintainer-clean:
