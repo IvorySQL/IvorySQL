@@ -1,0 +1,184 @@
+--
+-- Tests for Oracle's implicit composite-type constructor syntax,
+-- type_name(v1, v2, ...), which Postgres has no native call syntax for
+-- (only ROW(...)::type_name).  try_resolve_composite_constructor_call()
+-- in pl_subproc_function.c redirects a call-shaped reference to a known
+-- composite type into a construction of that type, coercing each
+-- argument to its attribute's type exactly as ROW(...)::type_name's own
+-- per-field coercion would, then packing the (already correctly-typed)
+-- values into a tuple via the generic runtime helper
+-- plisql_row_construct_internal() in pl_composite.c.
+--
+CREATE TYPE ora_point AS (x INTEGER, y INTEGER);
+CREATE TYPE ora_person AS (id NUMBER, name VARCHAR2(255));
+--
+-- Basic construction, as a function return and as an argument.
+--
+CREATE OR REPLACE PACKAGE test_composite_ctor AS
+    FUNCTION make_point(a INTEGER, b INTEGER) RETURN ora_point;
+    FUNCTION point_sum(p ora_point) RETURN INTEGER;
+    FUNCTION describe_person RETURN VARCHAR2;
+END test_composite_ctor;
+/
+CREATE OR REPLACE PACKAGE BODY test_composite_ctor AS
+    FUNCTION make_point(a INTEGER, b INTEGER) RETURN ora_point IS
+    BEGIN
+        RETURN ora_point(a, b);
+    END;
+    FUNCTION point_sum(p ora_point) RETURN INTEGER IS
+    BEGIN
+        RETURN p.x + p.y;
+    END;
+    -- untyped literal and int->NUMBER widening are coerced the same way
+    -- ROW(1, 'Ada')::ora_person already would be
+    FUNCTION describe_person RETURN VARCHAR2 IS
+        p ora_person := ora_person(1, 'Ada');
+    BEGIN
+        RETURN 'id=' || p.id || ' name=' || p.name;
+    END;
+END test_composite_ctor;
+/
+SELECT test_composite_ctor.make_point(3, 4);
+ make_point 
+------------
+ (3,4)
+(1 row)
+
+SELECT test_composite_ctor.point_sum(test_composite_ctor.make_point(3, 4));
+ point_sum 
+-----------
+         7
+(1 row)
+
+SELECT test_composite_ctor.describe_person();
+ describe_person 
+-----------------
+ id=1 name=Ada
+(1 row)
+
+DROP PACKAGE test_composite_ctor;
+--
+-- A NULL argument constructs a NULL attribute, not an error.
+--
+DECLARE
+    p ora_point;
+BEGIN
+    p := ora_point(NULL, 5);
+    RAISE NOTICE 'x is null: %, y: %', p.x IS NULL, p.y;
+END;
+/
+NOTICE:  x is null: t, y: 5
+--
+-- An argument that cannot be coerced to its attribute's type raises a
+-- clear error naming the attribute, rather than a generic parse failure.
+--
+DECLARE
+    p ora_point;
+BEGIN
+    p := ora_point(ARRAY[1, 2], 5);
+END;
+/
+ERROR:  constructor argument 1 for type ora_point has type pg_catalog.int4[], which cannot be cast to attribute "x"'s type pg_catalog.int4
+LINE 1: p := ora_point(ARRAY[1, 2], 5)
+             ^
+QUERY:  p := ora_point(ARRAY[1, 2], 5)
+CONTEXT:  PL/iSQL function inline_code_block line 4 at assignment
+--
+-- A wrong argument count is not treated as a malformed constructor call:
+-- it falls through to ordinary function resolution, which reports the
+-- ordinary "function does not exist" -- leaving room for a real,
+-- differently-aried function of the same name (below) to still resolve.
+--
+DECLARE
+    p ora_point;
+BEGIN
+    p := ora_point(1);
+END;
+/
+ERROR:  function ora_point(pg_catalog.int4) does not exist
+LINE 1: p := ora_point(1)
+             ^
+DETAIL:  There is no function of that name.
+QUERY:  p := ora_point(1)
+CONTEXT:  PL/iSQL function inline_code_block line 4 at assignment
+--
+-- A real function sharing a type's name is not shadowed by the
+-- constructor: an argument count matching the function's signature (and
+-- not the type's attribute count) still resolves to the function, and
+-- the constructor still works for the arity that matches the type.
+--
+CREATE FUNCTION ora_point(n INTEGER) RETURN INTEGER AS
+BEGIN
+    RETURN n * 10;
+END;
+/
+DECLARE
+    n INTEGER;
+    p ora_point;
+BEGIN
+    n := ora_point(7);
+    p := ora_point(1, 2);
+    RAISE NOTICE 'function: %, constructor: x=%, y=%', n, p.x, p.y;
+END;
+/
+NOTICE:  function: 70, constructor: x=1, y=2
+DROP FUNCTION ora_point(INTEGER);
+--
+-- A schema-qualified type name is resolved as a constructor too.
+--
+CREATE SCHEMA composite_ctor_test_schema;
+CREATE TYPE composite_ctor_test_schema.qualified_point AS (x INTEGER, y INTEGER);
+DECLARE
+    p composite_ctor_test_schema.qualified_point;
+BEGIN
+    p := composite_ctor_test_schema.qualified_point(1, 2);
+    RAISE NOTICE 'qualified: x=%, y=%', p.x, p.y;
+END;
+/
+NOTICE:  qualified: x=1, y=2
+DROP SCHEMA composite_ctor_test_schema CASCADE;
+NOTICE:  drop cascades to type composite_ctor_test_schema.qualified_point
+--
+-- A table's rowtype has a dropped attribute counted in its attribute
+-- count; positional construction refuses it with a clear error rather
+-- than silently misaligning the remaining arguments.
+--
+CREATE TABLE composite_ctor_test_droptab (a INTEGER, b INTEGER, c INTEGER);
+ALTER TABLE composite_ctor_test_droptab DROP COLUMN b;
+DECLARE
+    r composite_ctor_test_droptab;
+BEGIN
+    r := composite_ctor_test_droptab(1, 2, 3);
+END;
+/
+ERROR:  type composite_ctor_test_droptab has a dropped attribute and cannot be constructed positionally
+LINE 1: r := composite_ctor_test_droptab(1, 2, 3)
+             ^
+QUERY:  r := composite_ctor_test_droptab(1, 2, 3)
+CONTEXT:  PL/iSQL function inline_code_block line 4 at assignment
+DROP TABLE composite_ctor_test_droptab;
+--
+-- The motivating case: a nested table of a composite type, built and
+-- read back entirely through Oracle's own surface syntax.  coll(i).field
+-- itself needs an extra layer of parens -- (coll(i)).field -- because a
+-- function-call-shaped expression can't be followed directly by .field
+-- in Postgres's own grammar (only a parenthesized expression or a plain
+-- column reference can); that is a separate, general Postgres parsing
+-- rule, not something this constructor redirect changes.
+--
+DECLARE
+    TYPE ora_point_tab IS TABLE OF ora_point;
+    v_list ora_point_tab := ora_point_tab();
+BEGIN
+    v_list.EXTEND(2);
+    v_list(1) := ora_point(1, 2);
+    v_list(2) := ora_point(3, 4);
+    FOR i IN v_list.FIRST .. v_list.LAST LOOP
+        RAISE NOTICE 'x: %, y: %', (v_list(i)).x, (v_list(i)).y;
+    END LOOP;
+END;
+/
+NOTICE:  x: 1, y: 2
+NOTICE:  x: 3, y: 4
+DROP TYPE ora_person;
+DROP TYPE ora_point;

@@ -2,6 +2,8 @@
 # Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
 
 plisql_sources = files(
+  'pl_collection.c',
+  'pl_collection_runtime.c',
   'pl_comp.c',
   'pl_exec.c',
   'pl_funcs.c',
