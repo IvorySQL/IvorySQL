@@ -405,6 +405,20 @@ grant all on regress_dbms_tx_other_user_t to regress_dbms_tx_other_user;
 set session authorization regress_dbms_tx_other_user;
 select current_user;
 
+-- A read-only lookup does not assign an ID. An explicitly requested ID
+-- is the same top-level XID returned for the rest of this transaction.
+begin;
+select dbms_transaction.local_transaction_id() is null as unassigned;
+with assigned_id as materialized (
+    select dbms_transaction.local_transaction_id(true) as xid
+)
+select xid = pg_catalog.pg_current_xact_id_if_assigned()::text as assigned
+from assigned_id;
+select dbms_transaction.local_transaction_id() =
+       pg_catalog.pg_current_xact_id_if_assigned()::text as same_id;
+rollback;
+select dbms_transaction.local_transaction_id() is null as unassigned;
+
 -- no explicit GRANT needed: EXECUTE on the package is granted to PUBLIC
 -- when dbms_transaction is installed
 begin;

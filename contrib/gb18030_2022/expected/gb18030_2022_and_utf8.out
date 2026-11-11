@@ -954,13 +954,12 @@ show shared_preload_libraries;
  gb18030_2022
 (1 row)
 
-\dx
+\dx gb18030_2022
                                 List of installed extensions
      Name     | Version | Default version |   Schema   |             Description             
 --------------+---------+-----------------+------------+-------------------------------------
  gb18030_2022 | 1.0     | 1.0             | pg_catalog | support gb18030 2022 with extension
- plpgsql      | 1.0     | 1.0             | pg_catalog | PL/pgSQL procedural language
-(2 rows)
+(1 row)
 
 SELECT count(0)
 FROM pg_settings

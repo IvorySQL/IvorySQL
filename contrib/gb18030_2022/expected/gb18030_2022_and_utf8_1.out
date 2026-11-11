@@ -954,12 +954,18 @@ show shared_preload_libraries;
  gb18030_2022, liboracle_parser, ivorysql_ora
 (1 row)
 
-\dx
-                              List of installed extensions
-     Name     | Version |   Schema   |                   Description                    
---------------+---------+------------+--------------------------------------------------
- gb18030_2022 | 1.0     | pg_catalog | support gb18030 2022 with extension
- ivorysql_ora | 1.0     | sys        | Oracle Compatible extension on Postgres Database
- plisql       | 1.0     | pg_catalog | PL/iSQL procedural language
- plpgsql      | 1.0     | pg_catalog | PL/pgSQL procedural language
-(4 rows)
+\dx gb18030_2022
+                                List of installed extensions
+     Name     | Version | Default version |   Schema   |             Description             
+--------------+---------+-----------------+------------+-------------------------------------
+ gb18030_2022 | 1.0     | 1.0             | pg_catalog | support gb18030 2022 with extension
+(1 row)
+
+SELECT count(0)
+FROM pg_settings
+WHERE name = 'shared_preload_libraries' and setting like '%gb18030_2022%';
+ count 
+-------
+     1
+(1 row)
+

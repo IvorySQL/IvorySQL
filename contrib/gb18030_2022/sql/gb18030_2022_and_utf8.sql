@@ -368,7 +368,7 @@ select convert('ḿ', 'UTF8', 'GB18030');
 
 
 show shared_preload_libraries;
-\dx
+\dx gb18030_2022
 
 SELECT count(0)
 FROM pg_settings
