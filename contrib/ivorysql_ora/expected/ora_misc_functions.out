@@ -4521,3 +4521,125 @@ DETAIL:  "ivorysql" is a reserved prefix.
 reset ivorysql.dummy_config;
 ERROR:  invalid configuration parameter name "ivorysql.dummy_config"
 DETAIL:  "ivorysql" is a reserved prefix.
+-- RAISE_APPLICATION_ERROR turns its arguments into an ORA-<number>: <message>
+-- error, rejects numbers outside Oracle's user-defined range, and is callable
+-- as a statement from Oracle-style code.
+CREATE OR REPLACE FUNCTION rae_catch(n NUMBER, m VARCHAR2)
+RETURN VARCHAR2 AS $$
+BEGIN
+    RAISE_APPLICATION_ERROR(n, m);
+    RETURN 'not reached';
+EXCEPTION WHEN OTHERS THEN
+    RETURN SQLERRM;
+END;
+$$ LANGUAGE plisql;
+SELECT rae_catch(-20001, 'boom') AS caught;
+SELECT rae_catch(-20000, 'lowest allowed') AS caught_lowest;
+SELECT rae_catch(-20999, 'highest allowed') AS caught_highest;
+SELECT rae_catch(-1234, 'outside the range') AS caught_out_of_range;
+-- unqualified statement call, exactly as Oracle writes it
+DO $$
+BEGIN
+    RAISE_APPLICATION_ERROR(-20042, 'uncaught');
+END;
+$$;
+DROP FUNCTION rae_catch(NUMBER, VARCHAR2);
+-- Oracle-compatible ORA_INVOKING_USER
+SELECT SYS.ORA_INVOKING_USER() = CURRENT_USER::VARCHAR2 AS is_current_user
+FROM DUAL;
+-- Oracle-compatible NLS_INITCAP
+SELECT SYS.NLS_INITCAP('hello world') = 'Hello World' AS initcap_ok;
+SELECT SYS.NLS_INITCAP('hello world', 'NLS_SORT=XGERMAN') = 'Hello World' AS locale_arg_ok;
+-- Oracle-compatible VALIDATE_CONVERSION
+SELECT SYS.VALIDATE_CONVERSION('123', 'NUMBER') AS number_ok;
+SELECT SYS.VALIDATE_CONVERSION('abc', 'NUMBER') AS number_bad;
+SELECT SYS.VALIDATE_CONVERSION('2020-01-02', 'DATE') AS date_ok;
+SELECT SYS.VALIDATE_CONVERSION('2020-99-99', 'DATE') AS date_bad;
+SELECT SYS.VALIDATE_CONVERSION('12.5', 'BINARY_DOUBLE') AS binary_double_ok;
+SELECT SYS.VALIDATE_CONVERSION('abc', 'VARCHAR2') AS text_ok;
+SELECT SYS.VALIDATE_CONVERSION(NULL, 'NUMBER') AS null_ok;
+SELECT SYS.VALIDATE_CONVERSION('x', 'NO_SUCH_TYPE') AS unknown_bad;
+-- Oracle-compatible SUBSTR2 and INSTR2 (USC2 code units)
+SELECT SYS.SUBSTR2('abcdef', 2, 3) = 'bcd' AS basic;
+SELECT SYS.SUBSTR2('abcdef', -2, 2) = 'ef' AS negative_position;
+SELECT SYS.SUBSTR2('abcdef', 3) = 'cdef' AS no_length;
+SELECT SYS.SUBSTR2('abcdef', 2, 0) IS NULL AS zero_length;
+-- A supplementary character occupies two units: 'b' starts at unit 4
+SELECT SYS.SUBSTR2('😀ab', 3, 1) = 'a' AS astral_offset;
+SELECT SYS.SUBSTR2('😀ab', 1, 2) = '😀' AS astral_two_units;
+SELECT SYS.SUBSTR2('😀ab', 4, 1) = 'b' AS astral_last;
+SELECT SYS.INSTR2('abcdef', 'cd') = 3 AS instr_basic;
+SELECT SYS.INSTR2('abcdef', 'cd') = SYS.INSTR('abcdef', 'cd') AS instr_same_for_ascii;
+SELECT SYS.INSTR2('😀ab', 'b') = 4 AS instr_astral;
+SELECT SYS.INSTR2('abcabc', 'bc', 1, 2) = 5 AS instr_occurrence;
+SELECT SYS.INSTR2('abcdef', 'cd', -1) = SYS.INSTR('abcdef', 'cd', -1) AS instr_negative;
+SELECT SYS.INSTR2('abcdef', 'zz') = 0 AS instr_missing;
+-- Oracle-compatible ROWIDTOCHAR and CHARTOROWID
+SELECT SYS.ROWIDTOCHAR('(0,1)'::SYS.ROWID) AS rowid_text;
+SELECT SYS.CHARTOROWID(SYS.ROWIDTOCHAR('(0,1)'::SYS.ROWID)) = '(0,1)'::SYS.ROWID AS roundtrip;
+SELECT SYS.ROWIDTOCHAR(NULL::SYS.ROWID) IS NULL AS strict_null;
+-- Oracle-compatible TO_NCHAR and UNISTR
+SELECT SYS.TO_NCHAR('abc') = 'abc' AS text_identity;
+SELECT SYS.TO_NCHAR(42) = '42' AS number_text;
+SELECT SYS.TO_NCHAR(DATE '2020-01-02') = SYS.TO_CHAR(DATE '2020-01-02') AS date_text;
+SELECT SYS.UNISTR('abc') = 'abc' AS plain;
+SELECT SYS.UNISTR('a\0062c') = 'abc' AS escaped;
+SELECT SYS.UNISTR('\4E2D\6587') = '中文' AS cjk;
+SELECT pg_catalog.length(SYS.UNISTR('\D83D\DE00')) = 1 AS surrogate_pair;
+SELECT SYS.UNISTR('x\zzz') = 'x\zzz' AS bad_escape_kept;
+-- Oracle-compatible SYS_GUID
+SELECT pg_catalog.octet_length(SYS.SYS_GUID()) = 16 AS guid_16_bytes;
+SELECT SYS.RAWTOHEX(SYS.SYS_GUID()) ~ '^[0-9A-F]{32}$' AS guid_hex_shape;
+SELECT SYS.SYS_GUID() <> SYS.SYS_GUID() AS guid_unique;
+/* Start - WM_CONCAT */
+/* Oracle's legacy aggregate: the values joined by a comma */
+SELECT wm_concat(x) AS joined FROM (SELECT x FROM (VALUES ('a'), ('b'), ('c')) v(x) ORDER BY x) t;
+/* numbers are converted, NULLs are skipped */
+SELECT wm_concat(x) AS numbers FROM (SELECT x FROM (VALUES (3), (1)) v(x) ORDER BY x) t;
+SELECT wm_concat(x) AS with_null FROM (SELECT x FROM (VALUES ('a'), (NULL)) v(x) ORDER BY x) t;
+/* no value at all gives NULL, not an empty string */
+SELECT wm_concat(x) IS NULL AS empty_is_null FROM (SELECT NULL AS x) t;
+/* it is an aggregate, so it works per group as well */
+SELECT i AS grp, wm_concat(x) AS joined
+FROM (SELECT 1 AS i, 'a' AS x UNION ALL SELECT 1, 'b' UNION ALL SELECT 2, 'c') t
+GROUP BY i ORDER BY i;
+/* End - WM_CONCAT */
+/* Start - ORA_HASH */
+/* the same input always hashes to the same value ... */
+SELECT ora_hash('abc') = ora_hash('abc') AS stable;
+SELECT ora_hash('abc', 100, 42) = ora_hash('abc', 100, 42) AS stable_seeded;
+/* ... and the value is always inside 0 .. max_bucket */
+SELECT ora_hash('abc') BETWEEN 0 AND 4294967295 AS default_range;
+SELECT ora_hash('abc', 9) BETWEEN 0 AND 9 AS range_9;
+SELECT ora_hash(12345, 100) BETWEEN 0 AND 100 AS range_100;
+/* a value, a bucket count and a seed are hashed differently */
+SELECT ora_hash('abc', 9) <> ora_hash('abd', 9) AS differs_by_value;
+SELECT ora_hash('abc', 100, 1) BETWEEN 0 AND 100 AS seeded_range;
+/* NULL propagates, a negative bucket count is rejected */
+SELECT ora_hash(NULL) IS NULL AS null_hash;
+SELECT ora_hash('abc', -1) AS negative_bucket;
+/* End - ORA_HASH */
+     caught      
+-----------------
+ ORA-20001: boom
+(1 row)
+
+       caught_lowest       
+---------------------------
+ ORA-20000: lowest allowed
+(1 row)
+
+       caught_highest       
+----------------------------
+ ORA-20999: highest allowed
+(1 row)
+
+                                 caught_out_of_range                                  
+--------------------------------------------------------------------------------------
+ ORA-21000: error number argument to raise_application_error of -1234 is out of range
+(1 row)
+
+ERROR:  ORA-20042: uncaught
+CONTEXT:  PL/iSQL function raise_application_error(number,text,pg_catalog.bool) line 10 at RAISE
+SQL statement "CALL RAISE_APPLICATION_ERROR(-20042, 'uncaught')"
+PL/iSQL function inline_code_block line 3 at CALL

@@ -22,6 +22,7 @@ OBJS = \
 	src/datatype/binary_float.o \
 	src/datatype/binary_double.o \
 	src/builtin_functions/character_datatype_functions.o \
+	src/builtin_functions/character_length_functions.o \
 	src/builtin_functions/datetime_datatype_functions.o \
 	src/builtin_functions/numeric_datatype_functions.o \
 	src/builtin_functions/misc_functions.o \

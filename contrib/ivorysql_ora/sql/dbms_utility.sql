@@ -507,3 +507,140 @@ DROP SCHEMA bug_schema CASCADE;
 
 RESET ivorysql.identifier_case_switch;
 RESET ivorysql.enable_case_switch;
+
+-- DBMS_UTILITY.EXEC_DDL_STATEMENT runs a DDL statement given as a string
+BEGIN
+  dbms_utility.exec_ddl_statement('CREATE TABLE t_util_ddl (a INT)');
+END;
+/
+SELECT COUNT(*) = 1 AS ddl_ran
+FROM pg_catalog.pg_class
+WHERE relname = 't_util_ddl';
+BEGIN
+  dbms_utility.exec_ddl_statement('DROP TABLE t_util_ddl');
+END;
+/
+SELECT COUNT(*) = 0 AS ddl_dropped
+FROM pg_catalog.pg_class
+WHERE relname = 't_util_ddl';
+
+-- PORT_STRING identifies the platform, IS_PARALLEL_SERVER is FALSE outside RAC
+SELECT length(dbms_utility.port_string) > 0 AS port_string_set
+FROM dual;
+DO $$
+BEGIN
+  IF dbms_utility.is_parallel_server THEN
+    RAISE EXCEPTION 'unexpected parallel server';
+  END IF;
+  RAISE NOTICE 'is_parallel_server is false';
+END;
+$$;
+
+-- Oracle-compatible DBMS_UTILITY.DB_VERSION / IS_BIT_SET
+SELECT DBMS_UTILITY.DB_VERSION() = CURRENT_SETTING('server_version') AS version_matches
+FROM DUAL;
+SELECT DBMS_UTILITY.IS_BIT_SET(4, 2) AS bit2_of_4,
+       DBMS_UTILITY.IS_BIT_SET(4, 1) AS bit1_of_4,
+       DBMS_UTILITY.IS_BIT_SET(7, 0) AS bit0_of_7
+FROM DUAL;
+
+-- Oracle-compatible DBMS_UTILITY.CANONICALIZE
+DECLARE
+  n text;
+  l int;
+BEGIN
+  dbms_utility.canonicalize('  scott.emp  ', n, l);
+  RAISE NOTICE 'canon=% len=%', n, l;
+END;
+/
+
+-- Oracle-compatible DBMS_UTILITY.ANALYZE_DATABASE
+DROP TABLE IF EXISTS t_analyze_db_test;
+CREATE TABLE t_analyze_db_test (id INT);
+INSERT INTO t_analyze_db_test SELECT GENERATE_SERIES(1, 5);
+BEGIN
+  dbms_utility.analyze_database();
+END;
+/
+SELECT reltuples = 5 AS analyzed FROM pg_class WHERE oid = 't_analyze_db_test'::regclass;
+DROP TABLE t_analyze_db_test;
+
+-- Oracle-compatible DBMS_UTILITY.NAME_RESOLVE
+DROP TABLE IF EXISTS t_nameresolve_test;
+CREATE TABLE t_nameresolve_test (id INT);
+DECLARE
+  s text; p1 text; p2 text; db text; t int; o int;
+BEGIN
+  dbms_utility.name_resolve('public.t_nameresolve_test', 1, s, p1, p2, db, t, o);
+  RAISE NOTICE 'schema=% object=% type=% oid_positive=%', s, p1, t, (o > 0);
+END;
+/
+DROP TABLE t_nameresolve_test;
+
+-- Oracle-compatible DBMS_UTILITY.GET_DEPENDENCY
+DROP VIEW IF EXISTS v_getdep_test;
+DROP TABLE IF EXISTS t_getdep_test;
+CREATE TABLE t_getdep_test (id INT);
+CREATE VIEW v_getdep_test AS SELECT id FROM t_getdep_test;
+BEGIN
+  dbms_utility.get_dependency('VIEW', 'public', 'v_getdep_test');
+END;
+/
+DROP VIEW v_getdep_test;
+DROP TABLE t_getdep_test;
+
+-- Oracle-compatible DBMS_UTILITY.COMMA_TO_TABLE / TABLE_TO_COMMA
+DECLARE
+  n int;
+  t text[];
+  l text;
+BEGIN
+  dbms_utility.comma_to_table('a, b ,c', n, t);
+  RAISE NOTICE 'count=% values=%', n, t;
+  dbms_utility.table_to_comma(t, n, l);
+  RAISE NOTICE 'count=% list=%', n, l;
+  dbms_utility.comma_to_table(NULL, n, t);
+  RAISE NOTICE 'null count=%', n;
+END;
+/
+
+-- Oracle-compatible DBMS_UTILITY.ANALYZE_SCHEMA / COMPILE_SCHEMA
+DROP TABLE IF EXISTS t_analyze_schema_test;
+CREATE TABLE t_analyze_schema_test (id INT);
+INSERT INTO t_analyze_schema_test SELECT GENERATE_SERIES(1, 10);
+
+BEGIN
+  dbms_utility.analyze_schema('public');
+END;
+/
+SELECT reltuples = 10 AS analyzed
+FROM pg_class WHERE oid = 't_analyze_schema_test'::regclass;
+
+BEGIN
+  dbms_utility.compile_schema('public');
+END;
+/
+BEGIN
+  dbms_utility.compile_schema('no_such_schema_xyz');
+  RAISE NOTICE 'compile_schema accepted an unknown schema';
+EXCEPTION WHEN others THEN
+  RAISE NOTICE 'unknown schema rejected';
+END;
+/
+DROP TABLE t_analyze_schema_test;
+
+-- Oracle-compatible DBMS_UTILITY.GET_TIME / GET_HASH_VALUE / NAME_TOKENIZE
+SELECT DBMS_UTILITY.GET_TIME() > 0 AS time_positive;
+SELECT DBMS_UTILITY.GET_HASH_VALUE('abc', 1, 100) BETWEEN 1 AND 100 AS hash_in_range;
+SELECT DBMS_UTILITY.GET_HASH_VALUE('abc', 1, 100) = DBMS_UTILITY.GET_HASH_VALUE('abc', 1, 100) AS hash_stable;
+SELECT DBMS_UTILITY.GET_HASH_VALUE(NULL, 1, 100) IS NULL AS hash_null;
+
+declare
+  a text; b text; c text; d text; e text;
+begin
+  dbms_utility.name_tokenize('scott.emp@hr', a, b, c, d, e);
+  raise notice 'owner=% name=% link=%', a, b, c;
+  dbms_utility.name_tokenize('emp', a, b, c, d, e);
+  raise notice 'owner=% name=% link=%', a, b, c;
+end;
+/
