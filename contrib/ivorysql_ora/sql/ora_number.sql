@@ -790,6 +790,23 @@ SELECT '' AS to_number_14, to_number('12.34');
 SELECT '' AS to_number_15, to_number('-1122.34');
 SELECT '' AS to_number_16, to_number('12.34','9G999D99');
 SELECT '' AS to_number_17, to_number('1122.34','9G999D99');
+
+-- nls_currency / nls_iso_currency currency format elements (issue #3088)
+SHOW nls_currency;
+SHOW nls_iso_currency;
+SET nls_currency = 'CNY';
+SELECT to_char(1234.56::number, 'L9G999D99') AS currency_L;
+SET nls_iso_currency = 'CHINA';
+SELECT to_char(1234.56::number, 'C9G999D99') AS currency_C_china;
+SET nls_iso_currency = 'AMERICA';
+SELECT to_char(1234.56::number, 'C9G999D99') AS currency_C_america;
+SET nls_iso_currency = 'CNY';
+SELECT to_char(1234.56::number, 'C9G999D99') AS currency_C_cny;
+SET nls_iso_currency = 'USD';
+SELECT to_number('USD1234','C9999') AS number_C_usd;
+SELECT to_number(' USD1234','C9999') AS number_C_usd_leading_blank;
+RESET nls_currency;
+RESET nls_iso_currency;
 -- Without a format model, trailing spaces are accepted in the integer part.
 SELECT '' AS to_number_18, to_number('123 ');
 -- Whitespace between digits remains invalid.

@@ -2408,7 +2408,7 @@
   flags => 'GUC_NOT_IN_SAMPLE',
   variable => 'nls_iso_currency',
   boot_val => '"AMERICA"',
-  check_hook => 'nls_territory_check',
+  check_hook => 'nls_length_check',
 },
 
 { name => 'nls_length_semantics', type => 'enum', context => 'PGC_USERSET', group => 'COMPAT_ORACLE_OPTIONS',

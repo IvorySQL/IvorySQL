@@ -1050,7 +1050,8 @@ typedef struct NUMProc
 			   *L_positive_sign,
 			   *decimal,
 			   *L_thousands_sep,
-			   *L_currency_symbol;
+			   *L_currency_symbol,
+			   *L_iso_currency_symbol;
 } NUMProc;
 
 /* Return flags for DCH_from_char() */
@@ -1357,6 +1358,7 @@ NUMDesc_prepare(NUMDesc *num, FormatNode *n)
 			break;
 
 		case NUM_L:
+		case NUM_C:
 		case NUM_G:
 			num->need_locale = true;
 			break;
@@ -6341,10 +6343,27 @@ NUM_prepare_locale(NUMProc *Np)
 		/*
 		 * Currency symbol
 		 */
-		if (lconv->currency_symbol && *lconv->currency_symbol)
+		if (DB_ORACLE == database_mode)
+			Np->L_currency_symbol = nls_currency;
+		else if (lconv->currency_symbol && *lconv->currency_symbol)
 			Np->L_currency_symbol = lconv->currency_symbol;
 		else
 			Np->L_currency_symbol = " ";
+
+		/*
+		 * ISO currency symbol (Oracle "C" format element)
+		 */
+		if (DB_ORACLE == database_mode)
+		{
+			if (pg_strcasecmp(nls_iso_currency, "CHINA") == 0)
+				Np->L_iso_currency_symbol = "CNY";
+			else if (pg_strcasecmp(nls_iso_currency, "AMERICA") == 0)
+				Np->L_iso_currency_symbol = "USD";
+			else
+				Np->L_iso_currency_symbol = nls_iso_currency;
+		}
+		else
+			Np->L_iso_currency_symbol = " ";
 	}
 	else
 	{
@@ -6357,6 +6376,7 @@ NUM_prepare_locale(NUMProc *Np)
 
 		Np->L_thousands_sep = ",";
 		Np->L_currency_symbol = " ";
+		Np->L_iso_currency_symbol = " ";
 	}
 }
 
@@ -7264,6 +7284,24 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 						Np->inout_p += strlen(Np->L_currency_symbol) - 1;
 					break;
 
+				case NUM_C:
+					if (Np->is_to_char)
+					{
+						strcpy(Np->inout_p, Np->L_iso_currency_symbol);
+						Np->inout_p += strlen(Np->inout_p) - 1;
+					}
+					else
+					{
+						/* Skip leading blanks before the ISO currency symbol. */
+						while (Np->inout_p < Np->inout + from_char_input_len &&
+							   *Np->inout_p == ' ')
+							Np->inout_p++;
+						NUM_eat_non_data_chars(Np, pg_mbstrlen(Np->L_iso_currency_symbol),
+											   from_char_input_len);
+						continue;
+					}
+					break;
+
 				case NUM_RN:
 					if (IS_FILLMODE(Np->Num))
 					{
@@ -7883,6 +7921,27 @@ NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 
 				case NUM_L:
 					pattern = Np->L_currency_symbol;
+					if (Np->is_to_char)
+					{
+						/* Truncate symbol if it's potentially too long */
+						pattern_len = strlen(pattern);
+						if (unlikely(pattern_len > NUM_MAX_ITEM_SIZ))
+							pattern_len = pg_mbcliplen(pattern, pattern_len,
+													   NUM_MAX_ITEM_SIZ);
+
+						memcpy(Np->inout_p, pattern, pattern_len);
+						Np->inout_p += pattern_len - 1;
+					}
+					else
+					{
+						/* Here we do not truncate the symbol ... */
+						NUM_eat_non_data_chars(Np, pg_mbstrlen(pattern), input_len);
+						continue;
+					}
+					break;
+
+				case NUM_C:
+					pattern = Np->L_iso_currency_symbol;
 					if (Np->is_to_char)
 					{
 						/* Truncate symbol if it's potentially too long */
