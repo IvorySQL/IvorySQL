@@ -74,8 +74,8 @@ LANGUAGE C VOLATILE;
 CREATE OR REPLACE PACKAGE dbms_output IS
     PROCEDURE enable(buffer_size INTEGER DEFAULT 20000);
     PROCEDURE disable;
-    PROCEDURE put_line(a TEXT);
-    PROCEDURE put(a TEXT);
+    PROCEDURE put_line(a VARCHAR2);
+    PROCEDURE put(a VARCHAR2);
     PROCEDURE new_line;
     PROCEDURE get_line(line OUT TEXT, status OUT INTEGER);
     PROCEDURE get_line(line OUT VARCHAR2, status OUT INTEGER);
@@ -95,12 +95,12 @@ CREATE OR REPLACE PACKAGE BODY dbms_output IS
         PERFORM sys.ora_dbms_output_disable();
     END;
 
-    PROCEDURE put_line(a TEXT) IS
+    PROCEDURE put_line(a VARCHAR2) IS
     BEGIN
         PERFORM sys.ora_dbms_output_put_line(a);
     END;
 
-    PROCEDURE put(a TEXT) IS
+    PROCEDURE put(a VARCHAR2) IS
     BEGIN
         PERFORM sys.ora_dbms_output_put(a);
     END;
