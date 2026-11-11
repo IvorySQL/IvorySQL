@@ -1558,3 +1558,36 @@ select to_single_byte('１．２');
 select to_single_byte(１．２);
 select to_single_byte(3.4);
 select to_single_byte(NULL);
+
+-- Tests for nls_charset_id / nls_charset_name
+select sys.nls_charset_id('US7ASCII');
+select sys.nls_charset_id('al32utf8');
+select sys.nls_charset_id('UTF8');
+select sys.nls_charset_id('AL16UTF16');
+select sys.nls_charset_id('AL16UTF16LE');
+select sys.nls_charset_id('ZHS16GBK');
+select sys.nls_charset_id('we8iso8859p1');
+select sys.nls_charset_id('we8mswin1252');
+select sys.nls_charset_id('utfe');
+select sys.nls_charset_id('we8dec');
+select sys.nls_charset_name(1);
+select sys.nls_charset_name(2);
+select sys.nls_charset_name(31);
+select sys.nls_charset_name(178);
+select sys.nls_charset_name(850);
+select sys.nls_charset_name(871);
+select sys.nls_charset_name(872);
+select sys.nls_charset_name(873);
+select sys.nls_charset_name(2000);
+select sys.nls_charset_name(2002);
+-- NULL in, NULL out
+select sys.nls_charset_id(NULL) is null;
+select sys.nls_charset_name(NULL) is null;
+-- an unknown id answers NULL
+select sys.nls_charset_name(12345) is null;
+-- an unknown name raises
+select sys.nls_charset_id('NOT_A_CHARSET');
+-- round trips
+select sys.nls_charset_name(nls_charset_id('AL32UTF8'));
+select sys.nls_charset_name(nls_charset_id('ZHS16GBK'));
+select sys.nls_charset_name(nls_charset_id('al16utf16'));
