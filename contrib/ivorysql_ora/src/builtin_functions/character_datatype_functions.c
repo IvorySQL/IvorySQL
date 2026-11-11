@@ -781,9 +781,7 @@ ora_regexp_like(PG_FUNCTION_ARGS)
 	regmatch_t	pmatch[2];
 
 	if ((NULL == s) || (NULL == p))
-	{
-		PG_RETURN_BOOL(false);
-	}
+		PG_RETURN_NULL();
 
 	if (in_flag != NULL)
 	{
@@ -793,8 +791,7 @@ ora_regexp_like(PG_FUNCTION_ARGS)
 			if (!MATCHPARAM(*match_pa_to_str))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("invalid option of regexp_like: %c",
-								*match_pa_to_str)));
+						 errmsg("illegal argument for function")));
 		}
 	}
 
