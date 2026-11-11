@@ -90,6 +90,7 @@ ORA_REGRESS = \
 	datatype_and_func_bugs \
 	ora_sysview \
 	ora_arguments \
+	ora_sys_context \
 	ora_like_operator \
 	ora_like_bigint \
 	ora_xml_functions \
