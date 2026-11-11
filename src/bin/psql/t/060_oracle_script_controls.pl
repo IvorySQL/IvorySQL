@@ -21,6 +21,7 @@ my @failures = (
 		qr/is not a valid NUMBER/ ],
 	[ 'VARIABLE missing', qr/Bind variable "missing" not declared/i ],
 	[ 'PRINT missing', qr/Bind variable "missing" not declared/i ],
+	[ 'PRINT 1bad', qr/invalid host\/bind variable name/i ],
 	[ 'VARIABLE n unknown_type', qr/Usage: VAR\[IABLE\]/ ],
 );
 
@@ -54,6 +55,38 @@ PSQL
 is($ret, 0, 'Oracle client commands in an inactive branch are skipped');
 is($stderr, '', 'the inactive commands emit no errors');
 is($stdout, '7', 'the inactive assignment leaves the value unchanged');
+
+my $failed_transaction = <<'PSQL';
+BEGIN;
+SELECT 1 / 0;
+\if false
+VARIABLE n CHAR(10) = 'unterminated
+VARIABLE v VARCHAR2(10)
+\endif
+ROLLBACK;
+\echo after_command
+PSQL
+($ret, $stdout, $stderr) = $node->psql('postgres',
+	$failed_transaction, connstr => $connstr, on_error_stop => 0);
+is($ret, 0, 'inactive declarations are skipped in a failed transaction');
+like($stderr, qr/division by zero/i, 'the transaction fails as intended');
+unlike($stderr, qr/current transaction is aborted|missing terminating quote/i,
+	'inactive declarations do not query the server or report errors');
+like($stdout, qr/^after_command$/m, 'the script continues after rollback');
+
+my $active_declaration = <<'PSQL';
+BEGIN;
+SELECT 1 / 0;
+VARIABLE n CHAR(10)
+ROLLBACK;
+\echo after_command
+PSQL
+($ret, $stdout, $stderr) = $node->psql('postgres',
+	$active_declaration, connstr => $connstr, on_error_stop => 0);
+is($ret, 0, 'a failed length semantics lookup does not crash psql');
+like($stderr, qr/current transaction is aborted/i,
+	'the active declaration reports the lookup error');
+like($stdout, qr/^after_command$/m, 'the active script continues after rollback');
 
 $node->stop;
 done_testing();

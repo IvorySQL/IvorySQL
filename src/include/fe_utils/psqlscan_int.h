@@ -95,6 +95,7 @@ typedef struct BindVarType
 {
 	char	*name;		/* name of datatype */
 	int32	oid;		/* oid of datatype */
+	int32	byte_oid;	/* BYTE OID when length semantics are unspecified */
 	int32	typmod;		/* length with header */
 } BindVarType;
 

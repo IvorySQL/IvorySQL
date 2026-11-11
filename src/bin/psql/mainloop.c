@@ -529,14 +529,32 @@ MainLoop(FILE *source)
 		                    }
 		                    else
 		                    {
-		                        // Set bind variable with type
-		                        Assert(bind_var->vartype);
-								psqlplus_success = SetBindVariable(pset.vars,
-		                                        bind_var->var_name,
-		                                        bind_var->vartype->oid,
-		                                        bind_var->vartype->typmod,
-		                                        bind_var->init_value,
-		                                        bind_var->initial_nonnull_value);
+							BindVarType *vartype = bind_var->vartype;
+							int32		type_oid;
+
+							Assert(vartype);
+							type_oid = vartype->oid;
+							if (vartype->byte_oid)
+							{
+								PGresult   *res;
+
+								res = PQexec(pset.db, "SHOW nls_length_semantics");
+								if (PQresultStatus(res) != PGRES_TUPLES_OK)
+								{
+									pg_log_error("%s", PQerrorMessage(pset.db));
+									PQclear(res);
+									psqlplus_success = false;
+									goto psqlplus_next;
+								}
+								if (pg_strcasecmp(PQgetvalue(res, 0, 0), "byte") == 0)
+									type_oid = vartype->byte_oid;
+								PQclear(res);
+							}
+							psqlplus_success =
+								SetBindVariable(pset.vars, bind_var->var_name,
+										type_oid, vartype->typmod,
+										bind_var->init_value,
+										bind_var->initial_nonnull_value);
 		                    }
 		                }
 		                break;
