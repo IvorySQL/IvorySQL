@@ -750,6 +750,31 @@ select regexp_instr('123456789010', '(1(2)3)(4(5(6))(7(8))(9(0)(10)))', 1, 1, 0,
 
 select regexp_instr('123456789010', '(1(2)3)(4(5(6))(7(8))(9(0)(10)))', 1, 1, 0, 'i',9) from dual;
 
+--One-character, empty and subexpression matches (issue #2016)
+select regexp_instr('abcabc', 'c', 1) from dual;
+
+select regexp_instr('abcabc', 'c', 1, 2) from dual;
+
+select regexp_instr('abcabc', 'c', 4, 1) from dual;
+
+select regexp_instr('abcabc', 'c', 1, 1, 1) from dual;
+
+select regexp_instr('a,b,c', ',', 1, 2) from dual;
+
+select regexp_instr('abc', 'c*', 1, 1) from dual;
+
+select regexp_instr('abc', 'x*', 1, 1, 1) from dual;
+
+select regexp_instr('abcabc', '(a)(b)', 1, 1, 0, 'i', 2) from dual;
+
+select regexp_instr('abcabc', '(a)(b)', 1, 1, 1, 'i', 2) from dual;
+
+select regexp_instr('abcabc', '(a)(b)', 1, 2, 1, 'i', 1) from dual;
+
+select regexp_instr('abcabc', 'b', 1, 1, 0, 'i', 1) from dual;
+
+select regexp_instr('123456789010', '(1(2)3)(4(5(6))(7(8))(9(0)(10)))', 1, 1, 1, 'i',9) from dual;
+
 /*
  * regexp_like
  */
