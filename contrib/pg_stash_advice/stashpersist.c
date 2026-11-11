@@ -368,7 +368,7 @@ pgsa_read_from_disk(void)
 								PGSA_DUMP_FILE, lineno)));
 
 			/* No further fields are expected. */
-			if (*cursor != '\0')
+			if (cursor != NULL)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATA_CORRUPTED),
 						 errmsg("syntax error in file \"%s\" line %u: expected end of line",
@@ -423,7 +423,7 @@ pgsa_read_from_disk(void)
 								PGSA_DUMP_FILE, lineno)));
 
 			/* No further fields are expected. */
-			if (*cursor != '\0')
+			if (cursor != NULL)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATA_CORRUPTED),
 						 errmsg("syntax error in file \"%s\" line %u: expected end of line",
@@ -605,7 +605,8 @@ pgsa_append_tsv_escaped_string(StringInfo buf, const char *str)
  * Extract the next tab-delimited field from *cursor.
  *
  * The tab delimiter is replaced with '\0' and *cursor is advanced past it.
- * If *cursor already points to '\0' (no more fields), returns NULL.
+ * An empty final field is valid.  Set *cursor to NULL when no delimiter
+ * follows the field, and return NULL on subsequent calls.
  */
 static char *
 pgsa_next_tsv_field(char **cursor)
@@ -613,7 +614,7 @@ pgsa_next_tsv_field(char **cursor)
 	char	   *start = *cursor;
 	char	   *p = start;
 
-	if (*p == '\0')
+	if (p == NULL)
 		return NULL;
 
 	while (*p != '\0' && *p != '\t')
@@ -621,6 +622,8 @@ pgsa_next_tsv_field(char **cursor)
 
 	if (*p == '\t')
 		*p++ = '\0';
+	else
+		p = NULL;
 
 	*cursor = p;
 	return start;
