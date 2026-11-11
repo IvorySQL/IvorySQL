@@ -3901,11 +3901,19 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 				n->sep = true;
 				if (from_char_parse_int(&out->ddd, &s, n, escontext) < 0)
 					return;
+				if (ORA_PARSER == compatible_db && out->ddd < 1)
+					ereport(ERROR,
+							(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
+							 errmsg("The value of day of year must be between 1 and 365 (366 for leap year).")));
 				SKIP_THth(s, n->suffix);
 				break;
 			case DCH_IDDD:
 				if (from_char_parse_int_len(&out->ddd, &s, 3, n, escontext) < 0)
 					return;
+				if (ORA_PARSER == compatible_db && out->ddd < 1)
+					ereport(ERROR,
+							(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
+							 errmsg("The value of day of year must be between 1 and 365 (366 for leap year).")));
 				SKIP_THth(s, n->suffix);
 				break;
 			case DCH_DD:
