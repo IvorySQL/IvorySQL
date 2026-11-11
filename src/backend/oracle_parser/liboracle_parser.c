@@ -402,7 +402,7 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 				 * In the PLSQL, the cursor declare must be 'CURSOR ...',
 				 * not '... CURSOR ...'.
 				 *
-				 * PLSQL supports "type xxx is ref cursor" grammer
+				 * PLSQL supports "type xxx is ref cursor" grammar
 				 * so we check the last token is ref or not.
 				 * declare cursor doesn't support ref for the cursor name.
 				 *
