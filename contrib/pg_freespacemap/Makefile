@@ -13,7 +13,7 @@ DATA = pg_freespacemap--1.1.sql \
 PGFILEDESC = "pg_freespacemap - monitoring of free space map"
 
 REGRESS_OPTS = --temp-config $(top_srcdir)/contrib/pg_freespacemap/pg_freespacemap.conf
-ORA_REGRESS_OPTS = --temp-config $(top_srcdir)/contrib/pg_freespacemap/pg_freespacemap.conf
+ORACLE_REGRESS_OPTS = --temp-config $(top_srcdir)/contrib/pg_freespacemap/pg_freespacemap.conf
 REGRESS = pg_freespacemap
 ORA_REGRESS = pg_freespacemap
 
