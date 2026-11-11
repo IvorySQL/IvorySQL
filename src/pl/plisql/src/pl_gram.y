@@ -5124,12 +5124,22 @@ read_using_mode(int *varno, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscann
 
 	/*
 	 * OUT is a mode only when a variable follows it; otherwise it is a
-	 * variable named "out", as in "USING out" or "USING out + 1".
+	 * variable named "out", as in "USING out" or "USING out + 1".  The peek
+	 * reports every word that is not a reserved PL/iSQL keyword as IDENT,
+	 * including BETWEEN, LIKE and IS, so when a variable named "out" is in
+	 * scope, a word after it is the target only if the argument ends there
+	 * or the name is qualified.  "USING out BETWEEN 1 AND 2" stays an IN
+	 * argument.
 	 */
 	if (tok_is_keyword(tok, yylvalp, K_OUT, "out"))
 	{
-		next = plisql_peek(yyscanner);
-		if (next == IDENT || next == PARAM || next == ORAPARAM)
+		int			next2;
+
+		plisql_peek2(&next, &next2, NULL, NULL, yyscanner);
+		if (next == PARAM || next == ORAPARAM ||
+			(next == IDENT &&
+			 (tok == K_OUT || next2 == ',' || next2 == ';' ||
+			  next2 == K_INTO || next2 == '.')))
 		{
 			mode = in ? PROARGMODE_INOUT : PROARGMODE_OUT;
 			tok = yylex(yylvalp, yyllocp, yyscanner);
