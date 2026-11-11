@@ -37,9 +37,15 @@
 #include "varatt.h"
 #include "lib/stringinfo.h"
 #include "utils/builtins.h"
+#include "utils/array.h"
+#include "catalog/pg_type.h"
+#include "utils/float.h"
+#include "math.h"
 
 PG_FUNCTION_INFO_V1(uid);
 PG_FUNCTION_INFO_V1(stragg_transfn);
+PG_FUNCTION_INFO_V1(median_transfn);
+PG_FUNCTION_INFO_V1(median_finalfn);
 PG_FUNCTION_INFO_V1(ora_vsize);
 
 
@@ -161,4 +167,96 @@ stragg_transfn(PG_FUNCTION_ARGS)
 	if (state)
 		PG_RETURN_POINTER(state);
 	PG_RETURN_NULL();
+}
+
+/*
+ * median_transfn
+ *
+ * Transition function for the Oracle-compatible MEDIAN aggregate.
+ * Collects non-null float8 values into an array build state, which the
+ * final function sorts and interpolates.  NULL inputs are ignored, so
+ * the aggregate is declared CALLED ON NULL INPUT and skips them here.
+ */
+Datum
+median_transfn(PG_FUNCTION_ARGS)
+{
+	ArrayBuildState *state;
+	MemoryContext aggcontext;
+	MemoryContext oldcontext;
+
+	if (!AggCheckCallContext(fcinfo, &aggcontext))
+		elog(ERROR, "median_transfn called in non-aggregate context");
+
+	state = PG_ARGISNULL(0) ? NULL : (ArrayBuildState *) PG_GETARG_POINTER(0);
+
+	/* Skip NULL input values */
+	if (!PG_ARGISNULL(1))
+	{
+		float8		val = PG_GETARG_FLOAT8(1);
+
+		oldcontext = MemoryContextSwitchTo(aggcontext);
+		state = accumArrayResult(state, Float8GetDatum(val), false,
+								 FLOAT8OID, aggcontext);
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	if (state)
+		PG_RETURN_POINTER(state);
+	PG_RETURN_NULL();
+}
+
+/*
+ * Sort NaN above all other values, matching float8_cmp_internal and the
+ * documented percentile_cont(0.5) equivalence.
+ */
+static int
+median_float8_cmp(const void *a, const void *b)
+{
+	return float8_cmp_internal(*(const float8 *) a, *(const float8 *) b);
+}
+
+/*
+ * median_finalfn
+ *
+ * Final function for the Oracle-compatible MEDIAN aggregate.
+ * Sorts the collected values and returns the continuous-distribution
+ * median: the middle value for an odd number of inputs, or the mean of
+ * the two middle values for an even number (matching
+ * percentile_cont(0.5) WITHIN GROUP (ORDER BY ...)).  Returns NULL for
+ * an empty input set.
+ */
+Datum
+median_finalfn(PG_FUNCTION_ARGS)
+{
+	ArrayBuildState *state;
+	MemoryContext aggcontext;
+	ArrayType  *arr;
+	float8	   *vals;
+	int			n;
+	float8		result;
+
+	if (!AggCheckCallContext(fcinfo, &aggcontext))
+		elog(ERROR, "median_finalfn called in non-aggregate context");
+
+	state = PG_ARGISNULL(0) ? NULL : (ArrayBuildState *) PG_GETARG_POINTER(0);
+	if (state == NULL)
+		PG_RETURN_NULL();
+
+	arr = makeArrayResult(state, CurrentMemoryContext);
+	if (ARR_HASNULL(arr))
+		elog(ERROR, "median_finalfn received an array with NULL elements");
+
+	vals = (float8 *) ARR_DATA_PTR(arr);
+	n = ArrayGetNItems(ARR_NDIM(arr), ARR_DIMS(arr));
+	if (n == 0)
+		PG_RETURN_NULL();
+
+	qsort(vals, n, sizeof(float8), median_float8_cmp);
+
+	if (n % 2 == 1)
+		result = vals[n / 2];
+	else
+		result = (vals[n / 2 - 1] + vals[n / 2]) / 2.0;
+
+	PG_RETURN_FLOAT8(result);
 }
