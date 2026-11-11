@@ -35,6 +35,23 @@ IvorySQL 项目采用 Apache 2.0 许可协议发布，并鼓励各种形式的�
 - [RPM 安装](https://docs.ivorysql.org/cn/ivorysql-doc/v5.6/4.1#rpm安装)
 - [源代码安装](https://docs.ivorysql.org/cn/ivorysql-doc/v5.6/4.1#源码安装)
 
+## 连接 Oracle 模式集群
+
+通过 `initdb -m oracle` 初始化的集群使用两个端口。默认配置下，连接
+5432 端口时会话以 PostgreSQL 兼容模式启动，连接 1521 端口时会话以 Oracle
+兼容模式启动。运行 Oracle SQL 或 PL/iSQL 示例时，请连接 Oracle 端口。
+
+```sh
+# 预期输出 pg
+psql -X -p 5432 -d ivorysql -c 'SHOW ivorysql.compatible_mode'
+
+# 预期输出 oracle
+psql -X -p 1521 -d ivorysql -c 'SHOW ivorysql.compatible_mode'
+```
+
+如果集群使用自定义端口，请以 `port` 和 `ivorysql.port` 的配置值为准。
+通过 `initdb -m pg` 初始化的集群只提供 PostgreSQL 监听端口。
+
 ## 为IvorySQL做贡献
 有许多方式可以为 IvorySQL 做出贡献。您可以通过更新文档或提供文档翻译来贡献。如果您具备设计技能，还可以参与 IvorySQL 官网项目的建设。
 
