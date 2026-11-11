@@ -35,6 +35,7 @@ tests += {
     'tests': [
       't/001_initdb.pl',
       't/002_gb18030.pl',
+      't/003_uuid_ossp_missing.pl',
     ],
   },
 }
