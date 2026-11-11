@@ -1579,10 +1579,10 @@ LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 CREATE OR REPLACE FUNCTION sys.to_char(number)
 RETURNS sys.oravarcharchar
 AS $$
-  SELECT regexp_replace(
-           CASE WHEN strpos(t, '.') = 0
+  SELECT pg_catalog.regexp_replace(
+           CASE WHEN pg_catalog.strpos(t, '.') = 0
                 THEN t
-                ELSE rtrim(rtrim(t, '0'), '.')
+                ELSE pg_catalog.rtrim(pg_catalog.rtrim(t, '0'), '.')
            END,
            '^(-?)0\.', '\1.')
   FROM (SELECT $1::pg_catalog.text AS t) s

@@ -54,3 +54,19 @@ SELECT to_char(-0.5, '9.99') FROM dual;
 SELECT to_char(1.50, 'FM9.99') FROM dual;
 SELECT to_char(123.456, '999.999') FROM dual;
 SELECT to_char(100, '999.99') FROM dual;
+
+-- A same-signature pg_catalog.regexp_replace shadow in an earlier schema
+-- must not change the default conversion: the wrapper resolves its
+-- helpers in pg_catalog explicitly.
+CREATE SCHEMA tochar_shadow;
+CREATE FUNCTION tochar_shadow.strpos(text, text) RETURNS int
+  LANGUAGE sql IMMUTABLE AS 'SELECT 0';
+CREATE FUNCTION tochar_shadow.rtrim(text, text) RETURNS text
+  LANGUAGE sql IMMUTABLE AS 'SELECT repeat(''#'', length($1))';
+CREATE FUNCTION tochar_shadow.regexp_replace(text, text, text) RETURNS text
+  LANGUAGE sql IMMUTABLE AS 'SELECT ''shadowed''';
+SET search_path = tochar_shadow, pg_catalog;
+SELECT to_char(cast('0.50' as number)) AS not_shadowed FROM dual;
+SELECT to_char(cast('100.0' as number)) AS not_shadowed_too FROM dual;
+RESET search_path;
+DROP SCHEMA tochar_shadow CASCADE;
