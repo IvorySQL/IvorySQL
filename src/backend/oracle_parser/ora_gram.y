@@ -17354,7 +17354,11 @@ opt_type_modifiers: '(' expr_list ')'				{ $$ = $2; }
 numeric_opt_type_modifiers: opt_type_modifiers				{ $$ = $1; }
 					| '(' '*' ',' expr_list ')'
 						{
-							$$ = NIL;
+							/*
+							 * Oracle treats NUMBER(*, s) as precision 38 with
+							 * scale s, so keep the scale instead of dropping it.
+							 */
+							$$ = lcons(makeIntConst(38, @2), $4);
 						}
 					| '(' expr_list ',' '*' ')'
 						{

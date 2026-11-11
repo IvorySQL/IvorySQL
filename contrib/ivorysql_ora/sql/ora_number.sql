@@ -909,6 +909,25 @@ DROP TABLE t0000045;
 CREATE TABLE t0000045(a NUMBER(10, *));
 CREATE TABLE t0000045(a NUMBER(*, *));
 
+-- NUMBER(*, s) has precision 38 and keeps the scale s, as in Oracle
+CREATE TABLE number_star_scale(a NUMBER(*, 0), b NUMBER(*, 2), c NUMBER(*, -2));
+INSERT INTO number_star_scale VALUES (1.6, 3.14159, 12345.6);
+SELECT a, b, c FROM number_star_scale;
+SELECT attname, format_type(atttypid, atttypmod) FROM pg_attribute
+  WHERE attrelid = 'number_star_scale'::regclass AND attnum > 0 ORDER BY attnum;
+DROP TABLE number_star_scale;
+SELECT CAST(123.456 AS NUMBER(*, 1)) FROM dual;
+-- NUMERIC, DECIMAL and DEC use the same rule and map to pg_catalog.numeric
+CREATE TABLE number_star_alias(a NUMERIC(*, 0), b DECIMAL(*, 2), c DEC(*, -2));
+INSERT INTO number_star_alias VALUES (1.6, 3.14159, 12345.6);
+SELECT a, b, c FROM number_star_alias;
+SELECT attname, format_type(atttypid, atttypmod) FROM pg_attribute
+  WHERE attrelid = 'number_star_alias'::regclass AND attnum > 0 ORDER BY attnum;
+DROP TABLE number_star_alias;
+-- precision 38 with scale 2 allows 36 integer digits
+SELECT CAST(123456789012345678901234567890123456.789 AS NUMBER(*, 2)) FROM dual;
+SELECT CAST(1234567890123456789012345678901234567.8 AS NUMBER(*, 2)) FROM dual;
+
 
 /* Begin - bug0000457 */
 SELECT BITAND(NULL::number, NULL::number);

@@ -1570,7 +1570,7 @@ SELECT attname, atttypid, atttypmod FROM pg_attribute
   WHERE attrelid = (SELECT oid FROM pg_class WHERE relname LIKE 't0000045') AND attname LIKE 'a';
  attname | atttypid | atttypmod 
 ---------+----------+-----------
- a       |     9520 |        -1
+ a       |     9520 |   2490382
 (1 row)
 
 DROP TABLE t0000045;
@@ -1582,6 +1582,60 @@ CREATE TABLE t0000045(a NUMBER(*, *));
 ERROR:  NUMERIC scale specifier is out of range
 LINE 1: CREATE TABLE t0000045(a NUMBER(*, *));
                                           ^
+-- NUMBER(*, s) has precision 38 and keeps the scale s, as in Oracle
+CREATE TABLE number_star_scale(a NUMBER(*, 0), b NUMBER(*, 2), c NUMBER(*, -2));
+INSERT INTO number_star_scale VALUES (1.6, 3.14159, 12345.6);
+SELECT a, b, c FROM number_star_scale;
+ a |  b   |   c   
+---+------+-------
+ 2 | 3.14 | 12300
+(1 row)
+
+SELECT attname, format_type(atttypid, atttypmod) FROM pg_attribute
+  WHERE attrelid = 'number_star_scale'::regclass AND attnum > 0 ORDER BY attnum;
+ attname |  format_type  
+---------+---------------
+ a       | number(38,0)
+ b       | number(38,2)
+ c       | number(38,-2)
+(3 rows)
+
+DROP TABLE number_star_scale;
+SELECT CAST(123.456 AS NUMBER(*, 1)) FROM dual;
+ number 
+--------
+ 123.5
+(1 row)
+
+-- NUMERIC, DECIMAL and DEC use the same rule and map to pg_catalog.numeric
+CREATE TABLE number_star_alias(a NUMERIC(*, 0), b DECIMAL(*, 2), c DEC(*, -2));
+INSERT INTO number_star_alias VALUES (1.6, 3.14159, 12345.6);
+SELECT a, b, c FROM number_star_alias;
+ a |  b   |   c   
+---+------+-------
+ 2 | 3.14 | 12300
+(1 row)
+
+SELECT attname, format_type(atttypid, atttypmod) FROM pg_attribute
+  WHERE attrelid = 'number_star_alias'::regclass AND attnum > 0 ORDER BY attnum;
+ attname |        format_type        
+---------+---------------------------
+ a       | pg_catalog.numeric(38,0)
+ b       | pg_catalog.numeric(38,2)
+ c       | pg_catalog.numeric(38,-2)
+(3 rows)
+
+DROP TABLE number_star_alias;
+-- precision 38 with scale 2 allows 36 integer digits
+SELECT CAST(123456789012345678901234567890123456.789 AS NUMBER(*, 2)) FROM dual;
+                 number                  
+-----------------------------------------
+ 123456789012345678901234567890123456.79
+(1 row)
+
+SELECT CAST(1234567890123456789012345678901234567.8 AS NUMBER(*, 2)) FROM dual;
+ERROR:  numeric field overflow
+DETAIL:  A field with precision 38, scale 2 must round to an absolute value less than 10^36.
 /* Begin - bug0000457 */
 SELECT BITAND(NULL::number, NULL::number);
  bitand 
