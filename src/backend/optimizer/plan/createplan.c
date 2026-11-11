@@ -80,6 +80,7 @@ static Plan *create_scan_plan(PlannerInfo *root, Path *best_path,
 static List *build_path_tlist(PlannerInfo *root, Path *path);
 static bool use_physical_tlist(PlannerInfo *root, Path *path, int flags);
 static bool contain_rownum_expr(Node *node);
+static bool plan_contains_rownum(Plan *plan);
 static int count_rownum_exprs(Node *node);
 static List *collect_rownum_exprs(List *tlist);
 static bool aggref_args_contain_rownum(List *tlist);
@@ -4541,6 +4542,17 @@ create_nestloop_plan(PlannerInfo *root,
 
 	copy_generic_path_info(&join_plan->join.plan, &best_path->jpath.path);
 
+	/*
+	 * Oracle ROWNUM compatibility: the inner side of a nestloop is executed
+	 * once per outer tuple.  In Oracle, every execution of a subquery in the
+	 * FROM clause belongs to a separate query block whose ROWNUM counter
+	 * starts at 1, so the inner counter must be restarted for each outer row.
+	 * Without this the ROWNUM values produced on the inner side keep growing
+	 * across outer rows (see the LATERAL example in rownum.sql).
+	 */
+	if (plan_contains_rownum(inner_plan))
+		join_plan->reset_inner_rownum = true;
+
 	return join_plan;
 }
 
@@ -7505,6 +7517,47 @@ static bool
 contain_rownum_expr(Node *node)
 {
 	return contain_rownum_expr_walker(node, NULL);
+}
+
+/*
+ * plan_contains_rownum
+ *		Check whether a completed Plan tree contains any ROWNUM expressions.
+ *
+ * contain_rownum_expr() only walks expression trees; this routine recurses
+ * through the plan tree itself (target lists, quals and the join qual of
+ * join nodes) so that the executor can be told, at plan time, whether a
+ * subtree needs ROWNUM bookkeeping.
+ */
+static bool
+plan_contains_rownum(Plan *plan)
+{
+	if (plan == NULL)
+		return false;
+
+	if (contain_rownum_expr((Node *) plan->targetlist) ||
+		contain_rownum_expr((Node *) plan->qual))
+		return true;
+
+	if (IsA(plan, NestLoop) || IsA(plan, MergeJoin) || IsA(plan, HashJoin))
+	{
+		if (contain_rownum_expr((Node *) ((Join *) plan)->joinqual))
+			return true;
+	}
+
+	/*
+	 * A SubqueryScan carries its subplan outside of lefttree/righttree, so it
+	 * has to be descended into explicitly.  This matters for ROWNUM: a lateral
+	 * subquery is still a SubqueryScan at this point, and set_subqueryscan_
+	 * references() may later pull the node up, leaving the ROWNUM expression to
+	 * be evaluated directly in the join's inner plan.
+	 */
+	if (IsA(plan, SubqueryScan))
+		return plan_contains_rownum(((SubqueryScan *) plan)->subplan);
+
+	if (plan_contains_rownum(plan->lefttree))
+		return true;
+
+	return plan_contains_rownum(plan->righttree);
 }
 
 /*
