@@ -95,7 +95,7 @@ static char *safe_named_location(text *location);
 static text *
 get_line(FILE *fd, size_t max_linesize, int encoding, bool *iseof);
 static char *get_safe_path(text *location, text *filename);
-static bool same_file_streams(FILE *file1, FILE *file2);
+static int same_file_streams(FILE *file1, FILE *file2);
 static void close_all_files(void);
 static int copy_text_file(FILE *srcfile, FILE *dstfile,
 						  int start_line, int end_line);
@@ -487,6 +487,7 @@ ora_utl_file_fcopy(PG_FUNCTION_ARGS)
 	int			start_line;
 	int			end_line;
 	int 		copy_result;
+	int			same_result;
 	FILE	   *srcfile;
 	FILE	   *dstfile;
 
@@ -554,7 +555,22 @@ ora_utl_file_fcopy(PG_FUNCTION_ARGS)
 	}
 	else
 	{
-		if (same_file_streams(srcfile, dstfile))
+		same_result = same_file_streams(srcfile, dstfile);
+
+		if (same_result < 0)
+		{
+			/*
+			 * Fail closed: the identity of the two files could not be
+			 * determined, so the destination might be the source.
+			 * Truncating it could destroy the source file.
+			 */
+			fclose(dstfile);
+			fclose(srcfile);
+			CUSTOM_EXCEPTION(INVALID_OPERATION,
+							 "Could not determine whether the source and destination file are the same.");
+		}
+
+		if (same_result > 0)
 		{
 			fclose(dstfile);
 			fclose(srcfile);
@@ -1138,6 +1154,12 @@ safe_named_location(text *location)
 /*
  * same_file_streams - do two open streams refer to the same file?
  *
+ * Returns 1 if the streams refer to the same file, 0 if they refer to
+ * different files, and -1 if their identity could not be determined.
+ * The caller must treat -1 as "unknown, possibly the same file" and
+ * refuse to proceed (fail closed); truncating the destination while it
+ * might be the source would destroy the source.
+ *
  * Comparing the identity of the already-opened handles covers different
  * spellings ("a.txt" vs "./a.txt"), hard links and symlinks, and is free
  * of the check-to-use race of a pathname-based test: the answer cannot
@@ -1147,7 +1169,7 @@ safe_named_location(text *location)
  * On Windows, stat() does not reliably fill st_ino, so ask the OS for the
  * volume serial number and file index of each handle instead.
  */
-static bool
+static int
 same_file_streams(FILE *file1, FILE *file2)
 {
 #ifdef WIN32
@@ -1160,30 +1182,31 @@ same_file_streams(FILE *file1, FILE *file2)
 	h2 = (HANDLE) _get_osfhandle(_fileno(file2));
 
 	if (h1 == INVALID_HANDLE_VALUE || h2 == INVALID_HANDLE_VALUE)
-		return false;
+		return -1;
 
 	if (!GetFileInformationByHandle(h1, &info1) ||
 		!GetFileInformationByHandle(h2, &info2))
-		return false;
+		return -1;
 
-	return info1.dwVolumeSerialNumber == info2.dwVolumeSerialNumber &&
-		info1.nFileIndexHigh == info2.nFileIndexHigh &&
-		info1.nFileIndexLow == info2.nFileIndexLow;
+	return (info1.dwVolumeSerialNumber == info2.dwVolumeSerialNumber &&
+			info1.nFileIndexHigh == info2.nFileIndexHigh &&
+			info1.nFileIndexLow == info2.nFileIndexLow) ? 1 : 0;
 #else
 	struct stat st1;
 	struct stat st2;
 
 	if (fstat(fileno(file1), &st1) != 0 || fstat(fileno(file2), &st2) != 0)
-		return false;
+		return -1;
 
 	/*
 	 * Some platforms do not fill st_ino; a zero inode would make every
-	 * pair of files on the same device look identical.
+	 * pair of files on the same device look identical, so the identity
+	 * is unknown rather than different.
 	 */
 	if (st1.st_ino == 0 || st2.st_ino == 0)
-		return false;
+		return -1;
 
-	return st1.st_dev == st2.st_dev && st1.st_ino == st2.st_ino;
+	return (st1.st_dev == st2.st_dev && st1.st_ino == st2.st_ino) ? 1 : 0;
 #endif
 }
 
