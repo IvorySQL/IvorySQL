@@ -649,7 +649,7 @@ SELECT to_date('2015 366', 'YYYY DDD');
 SELECT to_date('2016 365', 'YYYY DDD');  -- ok
 SELECT to_date('2016 366', 'YYYY DDD');  -- ok
 SELECT to_date('2016 367', 'YYYY DDD');
-SELECT to_date('0000-02-01','YYYY-MM-DD');  -- allowed, though it shouldn't be
+SELECT to_date('0000-02-01','YYYY-MM-DD');  -- year 0 is rejected in Oracle mode
 
 -- to_char's TZ format code produces zone abbrev if known
 SELECT to_char('2012-12-12 12:00'::timestamptz, 'YYYY-MM-DD HH:MI:SS TZ');
