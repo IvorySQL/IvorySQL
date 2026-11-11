@@ -33,7 +33,9 @@
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "access/hash.h"
+#include "catalog/pg_collation.h"
 #include "utils/builtins.h"
+#include "utils/formatting.h"
 #include "utils/memutils.h"
 #include "utils/packagecache.h"
 #include "utils/tuplestore.h"
@@ -59,13 +61,14 @@ typedef struct CtxKey
 {
 	char		namespace[DBMS_SESSION_NAME_LEN];
 	char		attribute[DBMS_SESSION_NAME_LEN];
-} CtxKey;
+}			CtxKey;
 
 typedef struct CtxEntry
 {
 	CtxKey		key;			/* must be first field */
-	char	   *value;			/* palloc'd in DbmsSessionContext, NULL for NULL value */
-} CtxEntry;
+	char	   *value;			/* palloc'd in DbmsSessionContext, NULL for
+								 * NULL value */
+}			CtxEntry;
 
 /* Per-backend session state */
 static HTAB *DbmsSessionHash = NULL;
@@ -73,7 +76,8 @@ static MemoryContext DbmsSessionContext = NULL;
 
 /* Internal helpers */
 static void dbms_session_init(void);
-static void make_key(CtxKey *key, const char *ns, const char *attr);
+static bool fold_name(char *dest, const char *src, const char *kind, bool missing_ok);
+static bool make_key(CtxKey * key, const char *ns, const char *attr, bool missing_ok);
 static void clear_namespace(const char *ns);
 
 /* SQL-callable function declarations */
@@ -97,8 +101,8 @@ dbms_session_init(void)
 	HASHCTL		ctl;
 
 	DbmsSessionContext = AllocSetContextCreate(TopMemoryContext,
-									 "DBMS_SESSION context",
-									 ALLOCSET_DEFAULT_SIZES);
+											   "DBMS_SESSION context",
+											   ALLOCSET_DEFAULT_SIZES);
 
 	MemSet(&ctl, 0, sizeof(ctl));
 	ctl.keysize = sizeof(CtxKey);
@@ -106,41 +110,54 @@ dbms_session_init(void)
 	ctl.hcxt = DbmsSessionContext;
 
 	DbmsSessionHash = hash_create("DBMS_SESSION context hash",
-						   DBMS_SESSION_HASH_INIT_SIZE,
-						   &ctl,
-						   HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+								  DBMS_SESSION_HASH_INIT_SIZE,
+								  &ctl,
+								  HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+}
+
+/*
+ * Fold a context name using the database's default collation.  PostgreSQL's
+ * case conversion handles multibyte characters and can change the byte length,
+ * so check the folded result before copying it into the fixed-size hash key.
+ */
+static bool
+fold_name(char *dest, const char *src, const char *kind, bool missing_ok)
+{
+	char	   *upper = str_toupper(src, strlen(src), DEFAULT_COLLATION_OID);
+	size_t		len = strlen(upper);
+
+	if (len >= DBMS_SESSION_NAME_LEN)
+	{
+		pfree(upper);
+		if (missing_ok)
+			return false;
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("DBMS_SESSION %s too long (max %d bytes)",
+						kind, DBMS_SESSION_NAME_LEN - 1)));
+	}
+
+	memcpy(dest, upper, len + 1);
+	pfree(upper);
+	return true;
 }
 
 /*
  * make_key - build a zero-filled hash key from namespace/attribute names.
  *
- * Oracle treats namespace and attribute names case-insensitively (it folds
- * them to upper case internally), so we upper-case both while copying.  This
- * makes SET_CONTEXT('app', 'usr', ...) readable via SYS_CONTEXT('APP', 'USR'),
- * matching Oracle.  Rejects names that do not fit the fixed-size key buffer.
+ * Oracle treats names case-insensitively.  A read with an overlong name cannot
+ * match any stored key, so callers can request a missing result instead of an
+ * error.  HASH_BLOBS compares the whole key, including unused bytes.
  */
-static void
-make_key(CtxKey *key, const char *ns, const char *attr)
+static bool
+make_key(CtxKey * key, const char *ns, const char *attr, bool missing_ok)
 {
-	int			i;
-
-	if (strlen(ns) >= DBMS_SESSION_NAME_LEN)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("DBMS_SESSION namespace too long (max %d bytes)",
-						DBMS_SESSION_NAME_LEN - 1)));
-	if (strlen(attr) >= DBMS_SESSION_NAME_LEN)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("DBMS_SESSION attribute too long (max %d bytes)",
-						DBMS_SESSION_NAME_LEN - 1)));
-
-	/* MemSet first: HASH_BLOBS compares the whole struct as bytes. */
 	MemSet(key, 0, sizeof(CtxKey));
-	for (i = 0; ns[i] != '\0'; i++)
-		key->namespace[i] = pg_toupper((unsigned char) ns[i]);
-	for (i = 0; attr[i] != '\0'; i++)
-		key->attribute[i] = pg_toupper((unsigned char) attr[i]);
+	if (!fold_name(key->namespace, ns, "namespace", missing_ok))
+		return false;
+	if (!fold_name(key->attribute, attr, "attribute", missing_ok))
+		return false;
+	return true;
 }
 
 /*
@@ -167,16 +184,9 @@ clear_namespace(const char *ns)
 	if (nentries == 0)
 		return;
 
-	/*
-	 * Stored keys are upper-cased (see make_key), so upper-case the namespace
-	 * here too before comparing.  An over-long namespace cannot match any
-	 * stored key (those are length-checked at insert time).
-	 */
-	if (strlen(ns) >= DBMS_SESSION_NAME_LEN)
+	/* An overlong namespace cannot match any stored key. */
+	if (!fold_name(ns_up, ns, "namespace", true))
 		return;
-	for (i = 0; ns[i] != '\0'; i++)
-		ns_up[i] = pg_toupper((unsigned char) ns[i]);
-	ns_up[i] = '\0';
 
 	victims = (CtxKey *) palloc(sizeof(CtxKey) * nentries);
 
@@ -234,7 +244,7 @@ ora_dbms_session_set_context(PG_FUNCTION_ARGS)
 	if (DbmsSessionHash == NULL)
 		dbms_session_init();
 
-	make_key(&key, ns, attr);
+	make_key(&key, ns, attr, false);
 
 	entry = (CtxEntry *) hash_search(DbmsSessionHash, &key, HASH_ENTER, &found);
 
@@ -287,7 +297,7 @@ ora_dbms_session_clear_context(PG_FUNCTION_ARGS)
 		CtxEntry   *entry;
 		bool		found;
 
-		make_key(&key, ns, attr);
+		make_key(&key, ns, attr, false);
 		entry = (CtxEntry *) hash_search(DbmsSessionHash, &key, HASH_FIND, &found);
 		if (found)
 		{
@@ -350,14 +360,15 @@ ora_dbms_session_get_context(PG_FUNCTION_ARGS)
 
 	/*
 	 * Read path: an over-long name can never match a stored key (set/clear
-	 * reject them at insert time), so return NULL rather than letting make_key
-	 * raise an error.  This keeps SYS_CONTEXT() usable in predicates without
-	 * aborting the query on an oversized argument.
+	 * reject them at insert time), so return NULL rather than letting
+	 * make_key raise an error.  This keeps SYS_CONTEXT() usable in predicates
+	 * without aborting the query on an oversized argument.
 	 */
 	if (strlen(ns) >= DBMS_SESSION_NAME_LEN || strlen(attr) >= DBMS_SESSION_NAME_LEN)
 		PG_RETURN_NULL();
 
-	make_key(&key, ns, attr);
+	if (!make_key(&key, ns, attr, true))
+		PG_RETURN_NULL();
 	entry = (CtxEntry *) hash_search(DbmsSessionHash, &key, HASH_FIND, &found);
 
 	if (!found || entry->value == NULL)
