@@ -180,15 +180,22 @@ edit_distance_similarity(const unsigned char *s1, int n1, const unsigned char *s
 {
 	int			ed = edit_distance(s1, n1, s2, n2);
 	int			max = n1 > n2 ? n1 : n2;
-	double		sim;
+	int64		p;
 
 	if (max == 0)
 		return 100;
 
-	sim = (1.0 - (double) ed / (double) max) * 100.0;
-	if (sim < 0.0)
-		sim = 0.0;
-	return round_to_int(sim);
+	/*
+	 * ((max - ed) * 100 / max, rounded half-up, in integer arithmetic.
+	 * Binary floating point evaluates exact ties such as
+	 * EDIT_DISTANCE_SIMILARITY(repeat('a', 40),
+	 * repeat('a', 23) || repeat('b', 17)) (exactly 57.5) as 57.4999...
+	 * and rounds them down where Oracle returns 58.
+	 */
+	p = max - ed;
+	if (p < 0)
+		p = 0;
+	return (int) ((p * 200 + max) / (2 * max));
 }
 
 /* Jaro similarity (standard definition, range 0..1), byte-based. */
