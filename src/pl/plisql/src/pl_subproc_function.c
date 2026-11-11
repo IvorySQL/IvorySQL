@@ -403,8 +403,8 @@ plisql_build_variable_from_funcargs(PLiSQL_subproc_function * subprocfunc, bool 
 		/*
 		 * Oracle permits an object's attributes to be referenced without a
 		 * SELF. qualifier inside member routines.  Materialize record-field
-		 * datums and put aliases in the routine namespace.  Later formal
-		 * parameters and local declarations naturally shadow these entries.
+		 * datums and put aliases in the routine namespace, except for names
+		 * reserved by formal parameters.  Local declarations can shadow them.
 		 */
 		if (i == 0 && argvariable->dtype == PLISQL_DTYPE_REC &&
 			plisql_object_method_has_self(subprocfunc->object_method_kind))
@@ -418,9 +418,24 @@ plisql_build_variable_from_funcargs(PLiSQL_subproc_function * subprocfunc, bool 
 			{
 				Form_pg_attribute attribute = TupleDescAttr(tupdesc, fieldno);
 				PLiSQL_recfield *field;
+				int			argno;
 
 				if (attribute->attisdropped)
 					continue;
+
+				/*
+				 * Formal parameters take precedence over attribute aliases.
+				 * Check all arguments before adding an alias, otherwise a
+				 * later parameter with this name looks like a duplicate
+				 * declaration.
+				 */
+				for (argno = 0; argno < nargs; argno++)
+					if (argnames[argno] != NULL &&
+						strcmp(argnames[argno], NameStr(attribute->attname)) == 0)
+						break;
+				if (argno < nargs)
+					continue;
+
 				field = plisql_build_recfield(self, NameStr(attribute->attname));
 				plisql_ns_additem(PLISQL_NSTYPE_VAR, field->dno,
 								  NameStr(attribute->attname));
