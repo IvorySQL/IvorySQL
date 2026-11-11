@@ -3010,6 +3010,11 @@ transformOraJoinClause(ParseState *pstate, SelectStmt *stmt)
 	ListCell   *lc;
 	int			rtindex;
 
+	if (!orajoin_marker_walker(stmt->whereClause, NULL))
+	{
+		stmt->ora_join_op_exists = false;
+		return;
+	}
 	/*
 	 * The rewrite recovers each original FROM item by its ordinal position
 	 * in the range table, which only holds for a flat comma-separated FROM
@@ -3134,7 +3139,8 @@ transformOraJoinClause(ParseState *pstate, SelectStmt *stmt)
 	pstate->p_nullingrels = NIL;
 	pstate->p_rteperminfos = NIL;
 
-	transformFromClause(pstate, stmt->fromClause);
+	stmt->ora_join_op_exists = false;
+	transformFromClause(pstate, (List *) copyObject(stmt->fromClause));
 }
 
 /*
