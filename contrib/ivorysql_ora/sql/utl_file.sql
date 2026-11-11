@@ -102,6 +102,37 @@ begin
 end;
 /
 
+-- FCOPY must refuse to copy a file onto itself instead of truncating it
+declare
+    fexists boolean;
+    file_length number;
+    block_size integer;
+begin
+    -- regress2.txt is the renamed regress.txt at this point
+    begin
+        utl_file.fcopy('data_directory', 'regress2.txt',
+                       'data_directory', 'regress2.txt');
+        raise notice 'self-copy unexpectedly succeeded';
+    exception
+        when others then
+            raise notice 'self-copy: %', sqlerrm;
+    end;
+    -- a different spelling of the same file must be refused too
+    begin
+        utl_file.fcopy('data_directory', 'regress2.txt',
+                       'data_directory', './regress2.txt');
+        raise notice 'same-file copy unexpectedly succeeded';
+    exception
+        when others then
+            raise notice 'same-file copy: %', sqlerrm;
+    end;
+    -- the file must still be intact
+    utl_file.fgetattr('data_directory', 'regress2.txt',
+                      fexists, file_length, block_size);
+    raise notice 'fexists = %, file_length = %', fexists, file_length;
+end;
+/
+
 -- test fflush, fseek
 declare
     f UTL_FILE.FILE_TYPE;

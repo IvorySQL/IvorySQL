@@ -29,8 +29,12 @@
 #include "postgres.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#ifdef WIN32
+#include <io.h>
+#endif
 
 #include "executor/spi.h"
 
@@ -92,6 +96,8 @@ static char *safe_named_location(text *location);
 static text *
 get_line(FILE *fd, size_t max_linesize, int encoding, bool *iseof);
 static char *get_safe_path(text *location, text *filename);
+static int same_file_streams(FILE *file1, FILE *file2);
+static FILE *open_dst_new(const char *path);
 static void close_all_files(void);
 static int copy_text_file(FILE *srcfile, FILE *dstfile,
 						  int start_line, int end_line);
@@ -483,6 +489,8 @@ ora_utl_file_fcopy(PG_FUNCTION_ARGS)
 	int			start_line;
 	int			end_line;
 	int 		copy_result;
+	int			same_result;
+	int			dst_attempts;
 	FILE	   *srcfile;
 	FILE	   *dstfile;
 
@@ -514,13 +522,92 @@ ora_utl_file_fcopy(PG_FUNCTION_ARGS)
 		IO_EXCEPTION();
 	}
 
-	dstfile = fopen(dstpath, "wt");
-
-	if (dstfile == NULL)
+	/*
+	 * Open the destination WITHOUT truncating it.  Opening with "wt" here
+	 * would destroy the source if both paths name the same file -- same
+	 * spelling, a "./" variant, a hard link, a symlink, or a pathname
+	 * replaced by an external process between a check and this open.
+	 * Instead, open in update mode, compare the two opened handles, and
+	 * truncate the destination only after the handles are known to differ.
+	 * Comparing opened handles closes both the check-to-use race and the
+	 * case where stat() does not fill st_ino (notably Windows).
+	 *
+	 * When the destination does not exist yet, it is created exclusively
+	 * with open_dst_new(): a symlink or hard link planted in the target
+	 * directory between the failed update-mode open and the create is
+	 * never followed.  If a destination appears in that window (EEXIST),
+	 * the update-mode open and the identity check are retried once.
+	 */
+	for (dst_attempts = 0; dst_attempts < 2; dst_attempts++)
 	{
-		/* failed to open dst file. */
-		fclose(srcfile);
-		IO_EXCEPTION();
+		dstfile = fopen(dstpath, "rt+");
+
+		if (dstfile != NULL)
+		{
+			same_result = same_file_streams(srcfile, dstfile);
+
+			if (same_result < 0)
+			{
+				/*
+				 * Fail closed: the identity of the two files could not
+				 * be determined, so the destination might be the
+				 * source.  Truncating it could destroy the source.
+				 */
+				fclose(dstfile);
+				fclose(srcfile);
+				CUSTOM_EXCEPTION(INVALID_OPERATION,
+								 "Could not determine whether the source and destination file are the same.");
+			}
+
+			if (same_result > 0)
+			{
+				fclose(dstfile);
+				fclose(srcfile);
+				CUSTOM_EXCEPTION(INVALID_OPERATION,
+								 "Source and destination file are the same.");
+			}
+
+			/* different files: truncate the destination through its handle */
+#ifdef WIN32
+			if (_chsize(_fileno(dstfile), 0) != 0)
+#else
+			if (ftruncate(fileno(dstfile), 0) != 0)
+#endif
+			{
+				fclose(dstfile);
+				fclose(srcfile);
+				IO_EXCEPTION();
+			}
+
+			rewind(dstfile);
+			break;
+		}
+
+		if (errno != ENOENT)
+		{
+			/* failed to open dst file. */
+			fclose(srcfile);
+			IO_EXCEPTION();
+		}
+
+		/* missing destination: the normal case, create it exclusively */
+		dstfile = open_dst_new(dstpath);
+
+		if (dstfile != NULL)
+			break;
+
+		if (errno != EEXIST)
+		{
+			/* failed to create dst file. */
+			fclose(srcfile);
+			IO_EXCEPTION();
+		}
+
+		/*
+		 * A destination appeared between the failed update-mode open
+		 * above and the exclusive create; loop back to open it in
+		 * update mode and run the identity check on it.
+		 */
 	}
 
 	copy_result = copy_text_file(srcfile, dstfile, start_line, end_line);
@@ -1079,6 +1166,103 @@ safe_named_location(text *location)
 	SPI_finish();
 
 	return result;
+}
+
+/*
+ * same_file_streams - do two open streams refer to the same file?
+ *
+ * Returns 1 if the streams refer to the same file, 0 if they refer to
+ * different files, and -1 if their identity could not be determined.
+ * The caller must treat -1 as "unknown, possibly the same file" and
+ * refuse to proceed (fail closed); truncating the destination while it
+ * might be the source would destroy the source.
+ *
+ * Comparing the identity of the already-opened handles covers different
+ * spellings ("a.txt" vs "./a.txt"), hard links and symlinks, and is free
+ * of the check-to-use race of a pathname-based test: the answer cannot
+ * change between the comparison and the subsequent truncation of the
+ * destination, because no pathname is consulted again.
+ *
+ * On Windows, stat() does not reliably fill st_ino, so ask the OS for the
+ * volume serial number and file index of each handle instead.
+ */
+static int
+same_file_streams(FILE *file1, FILE *file2)
+{
+#ifdef WIN32
+	HANDLE		h1;
+	HANDLE		h2;
+	BY_HANDLE_FILE_INFORMATION info1;
+	BY_HANDLE_FILE_INFORMATION info2;
+
+	h1 = (HANDLE) _get_osfhandle(_fileno(file1));
+	h2 = (HANDLE) _get_osfhandle(_fileno(file2));
+
+	if (h1 == INVALID_HANDLE_VALUE || h2 == INVALID_HANDLE_VALUE)
+		return -1;
+
+	if (!GetFileInformationByHandle(h1, &info1) ||
+		!GetFileInformationByHandle(h2, &info2))
+		return -1;
+
+	return (info1.dwVolumeSerialNumber == info2.dwVolumeSerialNumber &&
+			info1.nFileIndexHigh == info2.nFileIndexHigh &&
+			info1.nFileIndexLow == info2.nFileIndexLow) ? 1 : 0;
+#else
+	struct stat st1;
+	struct stat st2;
+
+	if (fstat(fileno(file1), &st1) != 0 || fstat(fileno(file2), &st2) != 0)
+		return -1;
+
+	/*
+	 * Some platforms do not fill st_ino; a zero inode would make every
+	 * pair of files on the same device look identical, so the identity
+	 * is unknown rather than different.
+	 */
+	if (st1.st_ino == 0 || st2.st_ino == 0)
+		return -1;
+
+	return (st1.st_dev == st2.st_dev && st1.st_ino == st2.st_ino) ? 1 : 0;
+#endif
+}
+
+/*
+ * open_dst_new - create the destination file exclusively.
+ *
+ * The exclusive create (O_EXCL) guarantees that a symlink or hard link
+ * planted in the target directory between the failed update-mode open
+ * and this create is never followed: creating "wt" through such a link
+ * would truncate the source.  Returns the new stream, or NULL with
+ * errno set (EEXIST means a destination appeared in that window).
+ */
+static FILE *
+open_dst_new(const char *path)
+{
+	int			fd;
+	FILE	   *dstfile;
+
+#ifdef WIN32
+	fd = _open(path, _O_WRONLY | _O_CREAT | _O_EXCL | _O_TEXT,
+			   _S_IREAD | _S_IWRITE);
+#else
+	fd = open(path, O_WRONLY | O_CREAT | O_EXCL,
+			  S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+#endif
+
+	if (fd < 0)
+		return NULL;
+
+#ifdef WIN32
+	dstfile = _fdopen(fd, "w");
+#else
+	dstfile = fdopen(fd, "w");
+#endif
+
+	if (dstfile == NULL)
+		close(fd);
+
+	return dstfile;
 }
 
 /*
