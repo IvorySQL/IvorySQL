@@ -78,8 +78,8 @@ PG_FUNCTION_INFO_V1(ora_utl_match_jaro_winkler_similarity);
 
 /*
  * Work performed between two checks for interrupts, measured in inner-loop
- * iterations.  Keeps cancellation / statement_timeout responsive even for
- * very large (quadratic) comparisons.
+ * iterations or common-affix bytes.  Keeps cancellation / statement_timeout
+ * responsive even for very large (quadratic) comparisons.
  */
 #define UTL_MATCH_CHECK_INTERVAL	1024
 
@@ -116,6 +116,34 @@ edit_distance(const unsigned char *s1, int n1, const unsigned char *s2, int n2)
 		return 0;
 	}
 
+	/* Equal prefixes and suffixes do not affect Levenshtein distance. */
+	while (n1 > 0 && n2 > 0 && *s1 == *s2)
+	{
+		s1++;
+		s2++;
+		n1--;
+		n2--;
+		if (++progress == UTL_MATCH_CHECK_INTERVAL)
+		{
+			CHECK_FOR_INTERRUPTS();
+			progress = 0;
+		}
+	}
+	while (n1 > 0 && n2 > 0 && s1[n1 - 1] == s2[n2 - 1])
+	{
+		n1--;
+		n2--;
+		if (++progress == UTL_MATCH_CHECK_INTERVAL)
+		{
+			CHECK_FOR_INTERRUPTS();
+			progress = 0;
+		}
+	}
+	if (n1 == 0)
+		return n2;
+	if (n2 == 0)
+		return n1;
+
 	/* Levenshtein distance is symmetric, so swap to save memory. */
 	if (n1 < n2)
 	{
@@ -150,8 +178,8 @@ edit_distance(const unsigned char *s1, int n1, const unsigned char *s2, int n2)
 			 * Check for interrupts while walking the DP matrix so that huge
 			 * inputs can still be cancelled or honor statement_timeout.
 			 * progress accumulates across both loop dimensions, so highly
-			 * unequal inputs (n1 >> n2) are covered by the outer-loop path
-			 * as well.
+			 * unequal inputs (n1 >> n2) are covered by the outer-loop path as
+			 * well.
 			 */
 			if (++progress == UTL_MATCH_CHECK_INTERVAL)
 			{
@@ -222,8 +250,8 @@ jaro(const unsigned char *s1, int n1, const unsigned char *s2, int n2)
 	s2match = (int *) palloc0(n2 * sizeof(int));
 
 	/*
-	 * Count matching bytes: each byte of s1 can match a not yet used byte
-	 * of s2 within the search window.
+	 * Count matching bytes: each byte of s1 can match a not yet used byte of
+	 * s2 within the search window.
 	 */
 	for (i = 0; i < n1; i++)
 	{
