@@ -168,6 +168,9 @@ static Node *makeBFloatConst(char *str, int location);
 static Node *makeBDoubleConst(char *str, int location);
 static Node *makeNullAConst(int location);
 static Node *makeAConst(Node *v, int location);
+static Node *makeListAggFuncCall(List *args, List *order, Node *filter,
+								 Node *over, bool distinct, int location,
+								 ora_core_yyscan_t yyscanner);
 static RoleSpec *makeRoleSpec(RoleSpecType type, int location);
 static void check_qualified_name(List *names, ora_core_yyscan_t yyscanner);
 static List *check_func_name(List *names, ora_core_yyscan_t yyscanner);
@@ -19452,7 +19455,17 @@ func_expr: func_application within_group_clause filter_clause null_treatment ove
 				{ $$ = $1; }
 
 
-                        | LISTAGG '(' func_arg_list ')' within_group_clause filter_clause over_clause 
+			| LISTAGG '(' ALL func_arg_list ')' within_group_clause filter_clause over_clause
+				{
+					$$ = makeListAggFuncCall($4, $6, $7, $8, false, @1,
+											 yyscanner);
+				}
+			| LISTAGG '(' DISTINCT func_arg_list ')' within_group_clause filter_clause over_clause
+				{
+					$$ = makeListAggFuncCall($4, $6, $7, $8, true, @1,
+											 yyscanner);
+				}
+                        | LISTAGG '(' func_arg_list ')' within_group_clause filter_clause over_clause
                 	{
 	                    FuncCall *string_agg_n;
 	                    FuncCall *check_n;
@@ -23437,6 +23450,47 @@ makeAConst(Node *v, int location)
 	}
 
 	return n;
+}
+
+/*
+ * makeListAggFuncCall
+ * Build the rewrite target for LISTAGG with an optional ALL/DISTINCT
+ * qualifier: string_agg() wrapped in sys.ora_listagg_check() so that the
+ * 4000-byte VARCHAR2 result limit is enforced.
+ */
+static Node *
+makeListAggFuncCall(List *args, List *order, Node *filter, Node *over,
+					bool distinct, int location, ora_core_yyscan_t yyscanner)
+{
+	FuncCall   *string_agg_n;
+	FuncCall   *check_n;
+
+	if (order == NIL)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("LISTAGG requires WITHIN GROUP (ORDER BY ...)"),
+				 parser_errposition(location)));
+
+	/*
+	 * If no delimiter provided (single arg), append an empty string so
+	 * string_agg always receives exactly 2 arguments.
+	 */
+	if (list_length(args) == 1)
+		args = lappend(args, makeStringConst("", location));
+
+	string_agg_n = makeFuncCall(SystemFuncName("string_agg"),
+								args,
+								COERCE_EXPLICIT_CALL, location);
+	string_agg_n->agg_order = order;
+	string_agg_n->agg_filter = filter;
+	string_agg_n->over = over;
+	string_agg_n->agg_distinct = distinct;
+
+	/* Wrap with sys.ora_listagg_check to enforce the 4000-byte limit */
+	check_n = makeFuncCall(OracleSystemFuncName("ora_listagg_check"),
+						   list_make1((Node *) string_agg_n),
+						   COERCE_EXPLICIT_CALL, location);
+	return (Node *) check_n;
 }
 
 /* makeRoleSpec
