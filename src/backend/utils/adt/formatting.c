@@ -7452,6 +7452,9 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 					{
 						if (*Np->inout_p == '+')
 							*Np->number = '+';
+						/* an omitted PL, which the check allows, reads nothing */
+						else if (*Np->inout_p != ' ')
+							continue;
 					}
 					break;
 

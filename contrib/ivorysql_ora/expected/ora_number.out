@@ -2055,6 +2055,10 @@ SELECT to_number('123x', '999PL') AS pl_junk;
 ERROR:  invalid number
 SELECT to_number('123-', '999PL') AS pl_minus;
 ERROR:  invalid number
+SELECT to_number('1x2', '9SG9') AS sg_middle_junk;
+ERROR:  invalid number
+SELECT to_number('1x2', '9PL9') AS pl_middle_junk;
+ERROR:  invalid number
 -- still accepted
 SELECT to_number('-123', '999') AS minus;
  minus 
@@ -2144,6 +2148,36 @@ SELECT to_number('123', '999PL') AS pl_absent;
  pl_absent 
 -----------
  123
+(1 row)
+
+SELECT to_number('12', '9PL9') AS pl_middle_absent;
+ pl_middle_absent 
+------------------
+ 12
+(1 row)
+
+SELECT to_number('123', '9PL99') AS pl_middle_absent_2;
+ pl_middle_absent_2 
+--------------------
+ 123
+(1 row)
+
+SELECT to_number('1+2', '9PL9') AS pl_middle_plus;
+ pl_middle_plus 
+----------------
+ 12
+(1 row)
+
+SELECT to_number(to_char(-12, '9PL9'), '9PL9') AS pl_middle_negative_round_trip;
+ pl_middle_negative_round_trip 
+-------------------------------
+ -12
+(1 row)
+
+SELECT to_number(to_char(-12, 'FM9PL9'), 'FM9PL9') AS fm_pl_middle_round_trip;
+ fm_pl_middle_round_trip 
+-------------------------
+ -12
 (1 row)
 
 SELECT to_number('-1.5', '9.9PL') AS pl_decimal;
