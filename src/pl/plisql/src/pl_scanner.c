@@ -241,18 +241,18 @@ plisql_yylex(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 
 				if (i != plisql_curr_compile->fn_nargs)
 				{
-                    snprintf(buf, sizeof(buf), "%s", plisql_curr_compile->paramnames[i]);
+					snprintf(buf, sizeof(buf), "%s", plisql_curr_compile->paramnames[i]);
 				}
 				else
 				{
 					num = calculate_oraparamnumber(aux1.lval.str);
-                    snprintf(buf, sizeof(buf), "$%d", num);
+					snprintf(buf, sizeof(buf), "$%d", num);
 				}
 			}
 			else
 			{
 				num = calculate_oraparamnumber(aux1.lval.str);
-                snprintf(buf, sizeof(buf), "$%d", num);
+				snprintf(buf, sizeof(buf), "$%d", num);
 			}
 
 			paramname = buf;
@@ -595,6 +595,48 @@ plisql_peek2(int *tok1_p, int *tok2_p, int *tok1_loc, int *tok2_loc, yyscan_t yy
 
 	push_back_token(tok2, &aux2, yyscanner);
 	push_back_token(tok1, &aux1, yyscanner);
+}
+
+/*
+ * 只消耗百分号和未加引号的游标属性名，其他标记留给原有解析。
+ */
+PLiSQL_cursor_attribute_kind
+plisql_scan_cursor_attribute(yyscan_t yyscanner, int *endlocation)
+{
+	TokenAuxData percent;
+	TokenAuxData name;
+	int			token;
+	PLiSQL_cursor_attribute_kind kind = PLISQL_CURSOR_ATTRIBUTE_NONE;
+
+	token = internal_yylex(&percent, yyscanner);
+	if (token != '%')
+	{
+		push_back_token(token, &percent, yyscanner);
+		return kind;
+	}
+
+	token = internal_yylex(&name, yyscanner);
+	if (token == IDENT && yyextra->scanorig[name.lloc] != '"')
+	{
+		if (pg_strcasecmp(name.lval.str, "isopen") == 0)
+			kind = PLISQL_CURSOR_ISOPEN;
+		else if (pg_strcasecmp(name.lval.str, "found") == 0)
+			kind = PLISQL_CURSOR_FOUND;
+		else if (pg_strcasecmp(name.lval.str, "notfound") == 0)
+			kind = PLISQL_CURSOR_NOTFOUND;
+		else if (pg_strcasecmp(name.lval.str, "rowcount") == 0)
+			kind = PLISQL_CURSOR_ROWCOUNT;
+	}
+
+	if (kind != PLISQL_CURSOR_ATTRIBUTE_NONE)
+		*endlocation = name.lloc + name.leng;
+	else
+	{
+		push_back_token(token, &name, yyscanner);
+		push_back_token('%', &percent, yyscanner);
+	}
+
+	return kind;
 }
 
 /*

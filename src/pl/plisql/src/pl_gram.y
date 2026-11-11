@@ -3835,6 +3835,78 @@ make_plisql_expr(const char *query,
 	return expr;
 }
 
+/*
+ * 为游标属性生成内部只读参数，复用原有的 PL/iSQL 变量绑定。
+ */
+static void
+rewrite_cursor_attribute(StringInfo rewritten, int *copy_start,
+						 int token, const YYSTYPE *value, int location,
+						 int *endlocation, yyscan_t yyscanner)
+{
+	const char *ident;
+	PLiSQL_datum *cursor;
+	PLiSQL_datum *var;
+	PLiSQL_cursor_attribute_kind kind;
+	PLiSQL_var *attr;
+	Oid			attr_type;
+	char		name[NAMEDATALEN];
+	int			suffix = 0;
+
+	if (token == T_DATUM)
+		cursor = value->wdatum.datum;
+	else
+	{
+		PLiSQL_nsitem *ns;
+
+		if (token == T_WORD)
+			ident = value->word.ident;
+		else if (plisql_token_is_unreserved_keyword(token))
+			ident = value->keyword;
+		else
+			return;
+
+		if (plisql_peek(yyscanner) != '%')
+			return;
+		ns = plisql_ns_lookup(plisql_ns_top(), false, ident, NULL, NULL, NULL);
+		if (ns == NULL || ns->itemtype != PLISQL_NSTYPE_VAR)
+			return;
+		cursor = plisql_Datums[ns->itemno];
+	}
+
+	var = cursor;
+	if (var->dtype == PLISQL_DTYPE_PACKAGE_DATUM)
+		var = ((PLiSQL_pkg_datum *) var)->pkgvar;
+	if (var->dtype != PLISQL_DTYPE_VAR ||
+		((PLiSQL_var *) var)->datatype->typoid != REFCURSOROID)
+		return;
+
+	kind = plisql_scan_cursor_attribute(yyscanner, endlocation);
+	if (kind == PLISQL_CURSOR_ATTRIBUTE_NONE)
+		return;
+
+	do
+	{
+		snprintf(name, sizeof(name), "__Cursor%%Attribute_%d_%d__",
+				 plisql_nDatums, suffix++);
+	} while (plisql_ns_lookup(plisql_ns_top(), false, name, NULL, NULL, NULL));
+	attr_type = kind == PLISQL_CURSOR_ROWCOUNT ? INT8OID : BOOLOID;
+	attr = (PLiSQL_var *)
+		plisql_build_variable(name, plisql_location_to_lineno(location, yyscanner),
+							  plisql_build_datatype(attr_type, -1, InvalidOid, NULL),
+							  true);
+	attr->isconst = true;
+	attr->cursor_attribute = kind;
+	attr->cursor_attr_dno = cursor->dno;
+	/* 包过程也使用当前执行帧中的游标编号。 */
+	attr->pkgoid = InvalidOid;
+
+	if (rewritten->data == NULL)
+		initStringInfo(rewritten);
+	plisql_append_source_text(rewritten, *copy_start, location, yyscanner);
+	appendStringInfo(rewritten, "\"%s\"", name);
+	*copy_start = *endlocation;
+}
+
 /* Mark a PLiSQL_expr as being the source of an assignment to target */
 static void
 mark_expr_as_assignment_source(PLiSQL_expr *expr, PLiSQL_datum *target)
@@ -3946,10 +4018,13 @@ read_sql_construct(int until,
 {
 	int			tok;
 	StringInfoData ds;
+	StringInfoData rewritten = {0};
 	IdentifierLookup save_IdentifierLookup;
 	int			startlocation = -1;
 	int			endlocation = -1;
+	int			copy_start = -1;
 	int			parenlevel = 0;
+	bool		cursor_attrs = parsemode != RAW_PARSE_DEFAULT;
 	PLiSQL_expr		*expr;
 
 	initStringInfo(&ds);
@@ -3962,7 +4037,10 @@ read_sql_construct(int until,
 	{
 		tok = yylex(yylvalp, yyllocp, yyscanner);
 		if (startlocation < 0)			/* remember loc of first token */
-			startlocation = *yyllocp;
+		{
+			startlocation = copy_start = *yyllocp;
+			cursor_attrs |= tok == K_CALL;
+		}
 		if (tok == until && parenlevel == 0)
 			break;
 		if (tok == until2 && parenlevel == 0)
@@ -4001,6 +4079,9 @@ read_sql_construct(int until,
 		}
 		/* Remember end+1 location of last accepted token */
 		endlocation =  *yyllocp + plisql_token_length(yyscanner);
+		if (cursor_attrs)
+			rewrite_cursor_attribute(&rewritten, &copy_start, tok, yylvalp,
+									 *yyllocp, &endlocation, yyscanner);
 	}
 
 	plisql_IdentifierLookup = save_IdentifierLookup;
@@ -4028,12 +4109,18 @@ read_sql_construct(int until,
 	 */
 	plisql_append_source_text(&ds, startlocation, endlocation, yyscanner);
 
-	expr = make_plisql_expr(ds.data, parsemode);
-	pfree(ds.data);
-
 	if (valid_sql)
-		check_sql_expr(expr->query, expr->parseMode, startlocation, yyscanner);
+		check_sql_expr(ds.data, parsemode, startlocation, yyscanner);
 
+	if (rewritten.data != NULL)
+	{
+		plisql_append_source_text(&rewritten, copy_start, endlocation, yyscanner);
+		expr = make_plisql_expr(rewritten.data, parsemode);
+		pfree(rewritten.data);
+	}
+	else
+		expr = make_plisql_expr(ds.data, parsemode);
+	pfree(ds.data);
 	return expr;
 }
 
@@ -4397,9 +4484,11 @@ static PLiSQL_expr *
 build_call_expr(int firsttoken, int location, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 {
 	StringInfoData		ds;
+	StringInfoData		rewritten = {0};
 	IdentifierLookup	save_IdentifierLookup;
 	PLiSQL_expr			*expr;
 	int					tok;
+	int					copy_start = location;
 	bool				has_parentheses = false;
 
 	initStringInfo(&ds);
@@ -4420,6 +4509,13 @@ build_call_expr(int firsttoken, int location, YYSTYPE *yylvalp, YYLTYPE *yyllocp
 			break;
 		if (tok == 0)
 			yyerror(yyllocp, NULL,  yyscanner, "unexpected end of function definition");
+		if (has_parentheses)
+		{
+			int endlocation = *yyllocp + plisql_token_length(yyscanner);
+
+			rewrite_cursor_attribute(&rewritten, &copy_start, tok, yylvalp,
+									 *yyllocp, &endlocation, yyscanner);
+		}
 	}
 
 	plisql_IdentifierLookup = save_IdentifierLookup;
@@ -4449,6 +4545,14 @@ build_call_expr(int firsttoken, int location, YYSTYPE *yylvalp, YYLTYPE *yyllocp
 	pfree(ds.data);
 
 	check_sql_expr(expr->query, expr->parseMode, location, yyscanner);
+
+	if (rewritten.data != NULL)
+	{
+		plisql_append_source_text(&rewritten, copy_start, *yyllocp, yyscanner);
+		pfree(expr->query);
+		expr->query = psprintf("CALL %s", rewritten.data);
+		pfree(rewritten.data);
+	}
 
 	return expr;
 }

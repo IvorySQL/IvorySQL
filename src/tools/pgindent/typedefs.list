@@ -1997,6 +1997,7 @@ PIO_STATUS_BLOCK
 PLAINTREE
 PLAssignStmt
 PLcword
+PLiSQL_cursor_attribute_kind
 PLpgSQL_case_when
 PLpgSQL_condition
 PLpgSQL_datum

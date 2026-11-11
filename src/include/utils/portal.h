@@ -202,6 +202,11 @@ typedef struct PortalData
 	/* Presentation data, primarily used by the pg_cursors system view */
 	TimestampTz creation_time;	/* time at which this portal was defined */
 	bool		visible;		/* include this portal in pg_cursors? */
+
+	/* 最近一次取数的结果与累计取出的行数。 */
+	uint64		rowsFetched;
+	bool		fetchAttempted;
+	bool		lastFetchFound;
 }			PortalData;
 
 /*
