@@ -57,11 +57,24 @@ custom_target('ivorysql_ora--1.0.sql',
   install_dir: contrib_data_args['install_dir'],
 )
 
+custom_target('ivorysql_ora--1.1.sql',
+  output: 'ivorysql_ora--1.1.sql',
+  command: [perl, '../contrib/ivorysql_ora/gensql.pl', 'meson', '1.0'],
+  capture: true,
+  install: true,
+  install_dir: contrib_data_args['install_dir'],
+)
+
 ivorysql_ora = shared_module('ivorysql_ora',
   ivorysql_ora_sources,
   kwargs: contrib_mod_args,
 )
 contrib_targets += ivorysql_ora
+
+install_data(
+  'ivorysql_ora--1.0--1.1.sql',
+  kwargs: contrib_data_args,
+)
 
 install_data(
   'ivorysql_ora.control',
