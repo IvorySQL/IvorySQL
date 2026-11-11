@@ -564,10 +564,12 @@ static bool oracleJoinOpExists(const Node *expr);
 %type <list>	NumericOnly_list
 %type <alias>	alias_clause opt_alias_clause opt_alias_clause_for_join_using
 %type <list>	func_alias_clause
+%type <list>	pivot_agg_list pivot_in_list
 %type <sortby>	sortby
 %type <ielem>	index_elem index_elem_options
 %type <selem>	stats_param
 %type <node>	table_ref
+%type <node>	pivot_clause pivot_agg_item pivot_in_item opt_pivot_alias
 %type <jexpr>	joined_table
 %type <range>	relation_expr
 %type <range>	extended_relation_expr
@@ -837,7 +839,7 @@ static bool oracleJoinOpExists(const Node *expr);
 	ORDER ORDINALITY OTHERS OUT_P OUTER_P
 	OVER OVERLAPS OVERLAY OVERRIDING OWNED OWNER PACKAGES
 
-	PARALLEL PARAMETER PARSER PARTIAL PARTITION PARTITIONS PASSING PASSWORD PATH
+	PARALLEL PARAMETER PARSER PARTIAL PARTITION PARTITIONS PASSING PASSWORD PATH PIVOT
 	EXTRACT PGEXTRACT PLACING PLAN PLANS POLICY PORTION
 	POSITION PRECEDING PRECISION PRESERVE PREPARE PREPARED PRIMARY
 	PRIOR PRIVILEGES PROCEDURAL PROCEDURE PROCEDURES PROGRAM PROPERTIES PROPERTY PUBLICATION
@@ -862,7 +864,7 @@ static bool oracleJoinOpExists(const Node *expr);
 	TRUNCATE TRUSTED TYPE_P TYPES_P
 
 	UESCAPE UNBOUNDED UNCONDITIONAL UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN
-	UNLISTEN UNLOGGED UNTIL UNUSABLE UPDATE UPDATEXML USER USERENV USING
+	UNLISTEN UNLOGGED UNPIVOT UNTIL UNUSABLE UPDATE UPDATEXML USER USERENV USING
 
 	VACUUM VALID VALIDATE VALIDATOR VALUE_P VALUES VARCHAR VARCHAR2 VARIADIC VARYING
 	VERBOSE VERSION_P VERTEX VIEW VIEWS VIRTUAL VISIBLE VOLATILE
@@ -1034,6 +1036,7 @@ static bool oracleJoinOpExists(const Node *expr);
 %left		AT				/* sets precedence for AT TIME ZONE, AT LOCAL */
 %left		COLLATE
 %right		UMINUS
+%nonassoc	PIVOT UNPIVOT
 %left		'[' ']'
 %left		'(' ')'
 %left		TYPECAST
@@ -16206,8 +16209,152 @@ table_ref:	relation_expr opt_alias_clause
 					jt->lateral = true;
 					$$ = (Node *) jt;
 				}
+			| relation_expr pivot_clause opt_alias_clause %prec PIVOT
+				{
+					RangePivot *n = (RangePivot *) $2;
+
+					n->sub = (Node *) $1;
+					n->alias = $3;
+					$$ = (Node *) n;
+				}
+			| select_with_parens pivot_clause opt_alias_clause %prec PIVOT
+				{
+					RangePivot *n = (RangePivot *) $2;
+
+					n->sub = (Node *) $1;
+					n->alias = $3;
+					$$ = (Node *) n;
+				}
 		;
 
+
+/*
+ * Oracle-compatible PIVOT / UNPIVOT clause, attached to a table reference.
+ *
+ *	PIVOT ( agg(expr) [[AS] alias], ... FOR for_cols IN ( item [[AS] alias], ... ) )
+ *	UNPIVOT [INCLUDE NULLS | EXCLUDE NULLS]
+ *		( measure_cols FOR for_col IN ( src_cols [[AS] alias], ... ) )
+ *
+ * Parsed into a RangePivot node; transformRangePivot() rewrites the clause
+ * into an equivalent grouped subquery (PIVOT) or a lateral VALUES join
+ * (UNPIVOT) during parse analysis.
+ */
+pivot_clause:
+			PIVOT '(' pivot_agg_list FOR name_list pivot_in_list ')'
+				{
+					RangePivot *n = makeNode(RangePivot);
+
+					n->pivotkind = 'p';
+					n->sub = NULL;
+					n->aggs = $3;
+					n->forCols = $5;
+					n->inItems = $6;
+					n->includeNulls = true;
+					n->valueNames = NIL;
+					n->forName = NULL;
+					n->alias = NULL;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| UNPIVOT '(' name_list FOR ColLabel pivot_in_list ')'
+				{
+					RangePivot *n = makeNode(RangePivot);
+
+					n->pivotkind = 'u';
+					n->sub = NULL;
+					n->aggs = NIL;
+					n->forCols = NIL;
+					n->inItems = $6;
+					n->valueNames = $3;
+					n->forName = makeString($5);
+					n->includeNulls = false;
+					n->alias = NULL;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| UNPIVOT INCLUDE NULLS_P '(' name_list FOR ColLabel pivot_in_list ')'
+				{
+					RangePivot *n = makeNode(RangePivot);
+
+					n->pivotkind = 'u';
+					n->sub = NULL;
+					n->aggs = NIL;
+					n->forCols = NIL;
+					n->inItems = $8;
+					n->valueNames = $5;
+					n->forName = makeString($7);
+					n->includeNulls = true;
+					n->alias = NULL;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| UNPIVOT EXCLUDE NULLS_P '(' name_list FOR ColLabel pivot_in_list ')'
+				{
+					RangePivot *n = makeNode(RangePivot);
+
+					n->pivotkind = 'u';
+					n->sub = NULL;
+					n->aggs = NIL;
+					n->forCols = NIL;
+					n->inItems = $8;
+					n->valueNames = $5;
+					n->forName = makeString($7);
+					n->includeNulls = false;
+					n->alias = NULL;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+		;
+
+pivot_agg_list:
+			pivot_agg_item						{ $$ = list_make1($1); }
+			| pivot_agg_list ',' pivot_agg_item	{ $$ = lappend($1, $3); }
+		;
+
+pivot_agg_item:
+			func_application opt_pivot_alias
+				{
+					FuncCall   *fc = castNode(FuncCall, $1);
+					PivotAggItem *n = makeNode(PivotAggItem);
+
+					n->funcname = fc->funcname;
+					n->aggexpr = NIL;
+					n->agg_star = fc->agg_star;
+					n->alias = $2;
+					n->location = @1;
+					if (!fc->agg_star && list_length(fc->args) != 1)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("pivot aggregate must take exactly one argument"),
+								 parser_errposition(@1)));
+					else if (!fc->agg_star)
+						n->aggexpr = linitial(fc->args);
+					$$ = (Node *) n;
+				}
+		;
+
+pivot_in_list:
+			pivot_in_item						{ $$ = list_make1($1); }
+			| pivot_in_list ',' pivot_in_item	{ $$ = lappend($1, $3); }
+		;
+
+pivot_in_item:
+			a_expr opt_pivot_alias
+				{
+					PivotInItem *n = makeNode(PivotInItem);
+
+					n->values = list_make1($1);
+					n->alias = $2;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+		;
+
+opt_pivot_alias:
+			AS ColLabel							{ $$ = (Node *) makeString($2); }
+			| AS SCONST							{ $$ = (Node *) makeString($2); }
+			| /*EMPTY*/							{ $$ = NULL; }
+		;
 
 /*
  * It may seem silly to separate joined_table from table_ref, but there is
@@ -22240,6 +22387,7 @@ unreserved_keyword:
 			| PASSWORD
 			| PATH
 			| PIPELINED
+			| PIVOT
 			| PLAN
 			| PLANS
 			| POLICY
@@ -22370,6 +22518,7 @@ unreserved_keyword:
 			| UNKNOWN
 			| UNLISTEN
 			| UNLOGGED
+			| UNPIVOT
 			| UNTIL
 			| UNUSABLE
 			| UPDATE
@@ -22978,6 +23127,7 @@ bare_label_keyword:
 			| PATH
 			| PGEXTRACT
 			| PIPELINED
+			| PIVOT
 			| PLACING
 			| PLAN
 			| PLANS
@@ -23131,6 +23281,7 @@ bare_label_keyword:
 			| UNKNOWN
 			| UNLISTEN
 			| UNLOGGED
+			| UNPIVOT
 			| UNTIL
 			| UNUSABLE
 			| UPDATE
