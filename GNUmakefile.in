@@ -39,7 +39,10 @@ $(call recurse,install-world-bin,src config contrib,install)
 # build src/ before contrib/
 install-world-bin-contrib-recurse: install-world-bin-src-recurse
 
-$(call recurse,installdirs uninstall init-po update-po,doc src config)
+$(call recurse,installdirs init-po update-po,doc src config)
+
+# Match the compatibility extensions installed by the default install target.
+$(call recurse,uninstall,doc src config contrib/gb18030_2022 contrib/ivorysql_ora contrib/uuid-ossp contrib/ora_btree_gist contrib/ora_btree_gin)
 
 $(call recurse,coverage,doc src config contrib)
 
