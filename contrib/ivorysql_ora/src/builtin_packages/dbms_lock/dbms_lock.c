@@ -40,13 +40,22 @@
 #include "c.h"
 #include "utils/float.h"
 
-/* Oracle compatible lock modes */
-/* we support only:
- * LOCK_S_MODE
- * LOCK_X_MODE
+/*
+ * Oracle compatible lock modes (DBMS_LOCK constants): all six documented
+ * modes are accepted.  They map onto PostgreSQL's two advisory-lock
+ * strengths, preserving Oracle's conflict relationships as far as the
+ * two strengths allow: NL takes no lock at all, SS and S take the shared
+ * strength, SX, SSX and X take the exclusive strength.
  */
-#define DBMS_LOCK_S_MODE      4
-#define DBMS_LOCK_X_MODE      6
+#define DBMS_LOCK_NL_MODE      1
+#define DBMS_LOCK_SS_MODE      2
+#define DBMS_LOCK_SX_MODE      3
+#define DBMS_LOCK_S_MODE       4
+#define DBMS_LOCK_SSX_MODE     5
+#define DBMS_LOCK_X_MODE       6
+
+/* maxwait: waits forever (matches Oracle's documented constant) */
+#define DBMS_LOCK_MAXWAIT      32767
 
 /* Oracle compatible return codes */
 #define DBMS_LOCK_SUCCESS         0
@@ -210,20 +219,31 @@ lockname_to_key(text *lockname)
     return key;
 }
 
-static bool
-is_exclusive_mode(int mode)
+/* how a documented DBMS_LOCK mode maps onto advisory strengths */
+#define DBMS_LOCK_CLASS_ILLEGAL   0
+#define DBMS_LOCK_CLASS_NONE      1
+#define DBMS_LOCK_CLASS_SHARED    2
+#define DBMS_LOCK_CLASS_EXCLUSIVE 3
+
+static int
+classify_mode(int mode)
 {
     switch (mode)
     {
-        case DBMS_LOCK_X_MODE:
-            return true;
+        case DBMS_LOCK_NL_MODE:
+            return DBMS_LOCK_CLASS_NONE;
 
+        case DBMS_LOCK_SS_MODE:
         case DBMS_LOCK_S_MODE:
-            return false;
+            return DBMS_LOCK_CLASS_SHARED;
+
+        case DBMS_LOCK_SX_MODE:
+        case DBMS_LOCK_SSX_MODE:
+        case DBMS_LOCK_X_MODE:
+            return DBMS_LOCK_CLASS_EXCLUSIVE;
 
         default:
-            ereport(ERROR,
-                    (errmsg("invalid DBMS_LOCK mode")));
+            return DBMS_LOCK_CLASS_ILLEGAL;
     }
 }
 
@@ -268,10 +288,11 @@ Datum
 ivorysql_dbms_lock_request(PG_FUNCTION_ARGS)
 {
     text *lockhandle = PG_GETARG_TEXT_PP(0);
-    int lockmode = PG_GETARG_INT32(1);     /* Oracle lock mode S=4, X=6 */
+    int lockmode = PG_GETARG_INT32(1);     /* Oracle lock mode: 1..6 */
     int timeout = PG_GETARG_INT32(2);  /* seconds */
     int64 key = lockname_to_key(lockhandle);
-    bool exclusive = is_exclusive_mode(lockmode);
+    int     mclass = classify_mode(lockmode);
+    bool exclusive;
     TimestampTz start = GetCurrentTimestamp();
     bool acquired = false;
     bool hash_enter_is_ok = false;
@@ -279,8 +300,15 @@ ivorysql_dbms_lock_request(PG_FUNCTION_ARGS)
     if (dbms_lock_hash_table == NULL)
 	    dbms_lock_init_hash_table();
 
-    if (timeout < 0)
+    /* an undocumented mode is a parameter error (Oracle return code 3) */
+    if (mclass == DBMS_LOCK_CLASS_ILLEGAL || timeout < 0)
         PG_RETURN_INT32(DBMS_LOCK_PARAM_ERROR);
+
+    /* NL_MODE takes no lock and conflicts with nothing: report success */
+    if (mclass == DBMS_LOCK_CLASS_NONE)
+        PG_RETURN_INT32(DBMS_LOCK_SUCCESS);
+
+    exclusive = (mclass == DBMS_LOCK_CLASS_EXCLUSIVE);
 
     while (true)
     {
