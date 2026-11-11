@@ -48,6 +48,7 @@
 #include "nodes/makefuncs.h"
 #include "nodes/execnodes.h"
 #include "rewrite/rewriteHandler.h"
+#include "rewrite/rewriteManip.h"
 #include "storage/bufmgr.h"
 #include "storage/lmgr.h"
 #include "storage/predicate.h"
@@ -823,6 +824,27 @@ IvytransformMergeStmt(ParseState *pstate, MergeStmt *stmt)
 
 	qry->mergeJoinCondition = transformExpr(pstate, stmt->joinCondition,
 											EXPR_KIND_JOIN_ON);
+
+	/*
+	 * Remember which target columns are referenced by the ON clause, so that
+	 * an UPDATE action cannot modify them (Oracle restriction).  This has to
+	 * be done from the transformed expression: matching column names against
+	 * the target relation alone would also flag source columns that happen to
+	 * share a name with a target column.
+	 */
+	{
+		ListCell   *lc;
+
+		foreach(lc, pull_vars_of_level((Node *) qry->mergeJoinCondition, 0))
+		{
+			Var		   *var = (Var *) lfirst(lc);
+
+			if (var->varno == qry->resultRelation &&
+				var->varattno > InvalidAttrNumber &&
+				var->varattno <= pstate->merge_on_attr_size)
+				pstate->merge_on_attrno[var->varattno - 1] = 1;
+		}
+	}
 
 	/*
 	 * Create the temporary query's jointree using the joinlist we built using

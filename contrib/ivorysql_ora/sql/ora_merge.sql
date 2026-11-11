@@ -179,6 +179,31 @@ WHEN MATCHED THEN UPDATE
 ;
 
 DROP FUNCTION tco;
+
+--
+-- Test Columns referenced in the ON Clause cannot be updated
+-- 4: the ON clause references only source columns whose names also exist on
+-- the target, so updating the target column must be allowed
+--
+BEGIN;
+MERGE INTO people_target pt
+USING people_source ps
+ON    (pt.person_id = ps.person_id AND ps.title <> 'Mr')
+WHEN MATCHED THEN UPDATE
+  SET pt.title = 'Dr'
+;
+SELECT * FROM people_target;
+ROLLBACK;
+
+-- 5: the ON clause references the target column itself, so it is still
+-- rejected
+MERGE INTO people_target pt
+USING people_source ps
+ON    (pt.person_id = ps.person_id AND pt.title = 'Mr')
+WHEN MATCHED THEN UPDATE
+  SET pt.title = 'Dr'
+;
+
 SELECT * FROM people_target;
 
 
