@@ -3777,9 +3777,19 @@ ExecEvalMinMax(ExprState *state, ExprEvalStep *op)
 
 	for (int off = 0; off < op->d.minmax.nelems; off++)
 	{
-		/* ignore NULL inputs */
 		if (nulls[off])
+		{
+			/*
+			 * Oracle's GREATEST/LEAST return NULL when any argument is
+			 * NULL, whereas the SQL standard ignores NULL inputs.
+			 */
+			if (compatible_db == ORA_PARSER)
+			{
+				*op->resnull = true;
+				return;
+			}
 			continue;
+		}
 
 		if (*op->resnull)
 		{
