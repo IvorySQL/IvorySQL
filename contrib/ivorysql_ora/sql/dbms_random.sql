@@ -78,6 +78,8 @@ select length(dbms_random.string('U', '32768')) as capped_text_len_over;
 
 -- unknown character classes default to uppercase; malformed input is rejected
 select dbms_random.string('Z', 4) ~ '^[A-Z]{4}$' as unknown_class_is_upper from dual;
+select dbms_random.string('é', 4) ~ '^[A-Z]{4}$' as multibyte_class_is_upper from dual;
+select dbms_random.string('éé', 4) from dual;
 select dbms_random.string('UU', 4) from dual;
 
 -- NULL numeric seeds do not enter the C numeric conversion path

@@ -36,6 +36,7 @@
 #include "miscadmin.h"
 #include "common/hashfn.h"
 #include "common/pg_prng.h"
+#include "mb/pg_wchar.h"
 #include "utils/builtins.h"
 #include "utils/numeric.h"
 #include "utils/timestamp.h"
@@ -47,7 +48,7 @@
 
 /* Per-backend generator state */
 static pg_prng_state random_state;
-static bool		state_seeded = false;
+static bool state_seeded = false;
 
 /* SQL-callable function declarations */
 PG_FUNCTION_INFO_V1(ora_dbms_random_initialize);
@@ -198,8 +199,8 @@ ora_dbms_random_string(PG_FUNCTION_ARGS)
 	const char *lower_only = "abcdefghijklmnopqrstuvwxyz";
 	const char *upper_only = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 	const char *printable = "`1234567890-=qwertyuiop[]asdfghjkl;'zxcvbnm,./"
-							"!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:\"ZXCVBNM<>?"
-							" \\~";
+		"!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:\"ZXCVBNM<>?"
+		" \\~";
 	const char *charset;
 	size_t		chrset_size;
 	StringInfoData str;
@@ -222,7 +223,7 @@ ora_dbms_random_string(PG_FUNCTION_ARGS)
 			opt = "U";
 	}
 
-	if (opt[1] != '\0')
+	if (pg_mbstrlen(opt) != 1)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("the character class must be a single character: u, l, a, x or p")));
@@ -262,22 +263,22 @@ ora_dbms_random_string(PG_FUNCTION_ARGS)
 	}
 
 	truncated_len = DatumGetNumeric(DirectFunctionCall2(numeric_trunc,
-															NumericGetDatum(PG_GETARG_NUMERIC(1)),
-															Int32GetDatum(0)));
+														NumericGetDatum(PG_GETARG_NUMERIC(1)),
+														Int32GetDatum(0)));
 	if (DatumGetInt32(DirectFunctionCall2(numeric_cmp,
-														NumericGetDatum(truncated_len),
-														DirectFunctionCall1(int4_numeric,
-																			Int32GetDatum(0)))) <= 0)
+										  NumericGetDatum(truncated_len),
+										  DirectFunctionCall1(int4_numeric,
+															  Int32GetDatum(0)))) <= 0)
 		PG_RETURN_NULL();
 
 	if (DatumGetInt32(DirectFunctionCall2(numeric_cmp,
-														NumericGetDatum(truncated_len),
-														DirectFunctionCall1(int4_numeric,
-																			Int32GetDatum(DBMS_RANDOM_MAX_STRING_LEN)))) > 0)
+										  NumericGetDatum(truncated_len),
+										  DirectFunctionCall1(int4_numeric,
+															  Int32GetDatum(DBMS_RANDOM_MAX_STRING_LEN)))) > 0)
 		len = DBMS_RANDOM_MAX_STRING_LEN;
 	else
 		len = DatumGetInt32(DirectFunctionCall1(numeric_int4,
-														NumericGetDatum(truncated_len)));
+												NumericGetDatum(truncated_len)));
 
 	ensure_seeded();
 
@@ -335,22 +336,22 @@ ora_dbms_random_value_range(PG_FUNCTION_ARGS)
 	high = PG_GETARG_NUMERIC(1);
 
 	if (DatumGetInt32(DirectFunctionCall2(numeric_cmp,
-													NumericGetDatum(low),
-													NumericGetDatum(high))) == 0)
+										  NumericGetDatum(low),
+										  NumericGetDatum(high))) == 0)
 		PG_RETURN_NUMERIC(low);
 
 	ensure_seeded();
 	fraction = DatumGetNumeric(DirectFunctionCall1(float8_numeric,
-													Float8GetDatum(pg_prng_double(&random_state))));
+												   Float8GetDatum(pg_prng_double(&random_state))));
 	range = DatumGetNumeric(DirectFunctionCall2(numeric_sub,
-													NumericGetDatum(high),
-													NumericGetDatum(low)));
+												NumericGetDatum(high),
+												NumericGetDatum(low)));
 	offset = DatumGetNumeric(DirectFunctionCall2(numeric_mul,
-													 NumericGetDatum(range),
-													 NumericGetDatum(fraction)));
+												 NumericGetDatum(range),
+												 NumericGetDatum(fraction)));
 	result = DatumGetNumeric(DirectFunctionCall2(numeric_add,
-													NumericGetDatum(low),
-													NumericGetDatum(offset)));
+												 NumericGetDatum(low),
+												 NumericGetDatum(offset)));
 
 	PG_RETURN_NUMERIC(result);
 }
