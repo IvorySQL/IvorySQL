@@ -885,15 +885,11 @@ SELECT regexp_like('Steven', '^Ste(v|ph)en$');
 SELECT regexp_like('a'||CHR(10)||'d', 'a.d', 'n');
  regexp_like 
 -------------
- f
-(1 row)
-
-SELECT regexp_like('a'||CHR(10)||'d', 'a.d', 's');
- regexp_like 
--------------
  t
 (1 row)
 
+SELECT regexp_like('a'||CHR(10)||'d', 'a.d', 's');
+ERROR:  illegal argument for function
 SELECT regexp_like('abc', ' a . c ', 'x');
  regexp_like 
 -------------
@@ -901,7 +897,7 @@ SELECT regexp_like('abc', ' a . c ', 'x');
 (1 row)
 
 SELECT regexp_like('abc', 'a.c', 'g');  -- error
-ERROR:  regexp_like() does not support the "global" option
+ERROR:  illegal argument for function
 -- regexp_instr tests
 SELECT regexp_instr('abcdefghi', 'd.f');
  regexp_instr 

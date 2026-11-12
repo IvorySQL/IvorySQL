@@ -796,6 +796,47 @@ select * from t_regexp_like where regexp_like('', null);
 select * from t_regexp_like where regexp_like(null, null);
 select * from t_regexp_like where regexp_like(null, null, null);
 
+-- REGEXP_LIKE match_parameter n/m/default (issue #2295)
+CREATE TABLE t_regexp_like_types
+(
+  text_value text,
+  varchar2_value varchar2(20)
+);
+INSERT INTO t_regexp_like_types
+VALUES ('X'||chr(10), 'X'||chr(10));
+
+select regexp_like(text_value, 'X.') from t_regexp_like_types;
+select regexp_like(text_value, 'X.', 'n') from t_regexp_like_types;
+select regexp_like(text_value, 'X.', 'c') from t_regexp_like_types;
+select regexp_like(varchar2_value, 'X.') from t_regexp_like_types;
+select regexp_like(varchar2_value, 'X.', 'n') from t_regexp_like_types;
+select regexp_like('x'||chr(10)||'b'||chr(10)||'y', '^b$');
+select regexp_like('x'||chr(10)||'b'||chr(10)||'y', '^b$', 'n');
+select regexp_like('x'||chr(10)||'b'||chr(10)||'y', '^b$', 'm');
+select regexp_like('x'||chr(10)||'b'||chr(10)||'y', '^x$', 'mn');
+select regexp_substr('X'||chr(10), 'X.', 1, 1, 'n') =
+       ('X'||chr(10)) as regexp_substr_n;
+select regexp_like(text_value, 'X.', 'z') from t_regexp_like_types;
+
+-- A NULL or empty match parameter means the default flags
+select regexp_like('abc', 'abc', NULL);
+select regexp_like('abc', 'abc', '');
+select regexp_like('ABC', 'abc', '');
+select regexp_like(text_value, 'X.', NULL) from t_regexp_like_types;
+select regexp_like(varchar2_value, 'X.', NULL) from t_regexp_like_types;
+select regexp_like(NULL, 'abc', 'i') is null as null_source,
+       regexp_like('abc', NULL, 'i') is null as null_pattern;
+
+-- REGEXP_LIKE in indexes and generated columns
+CREATE INDEX t_regexp_like_types_text ON t_regexp_like_types ((regexp_like(text_value, 'x', 'i')));
+CREATE INDEX t_regexp_like_types_vc ON t_regexp_like_types ((regexp_like(varchar2_value, 'x')));
+CREATE INDEX t_regexp_like_types_part ON t_regexp_like_types (text_value) WHERE regexp_like(text_value, '^X');
+CREATE TABLE t_regexp_like_gen (t text, g bool GENERATED ALWAYS AS (regexp_like(t, 'a')) STORED);
+INSERT INTO t_regexp_like_gen (t) VALUES ('abc'), ('xyz');
+SELECT * FROM t_regexp_like_gen ORDER BY t;
+DROP TABLE t_regexp_like_gen;
+
+DROP table t_regexp_like_types;
 DROP table t_regexp_like;
 
 /*

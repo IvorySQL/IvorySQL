@@ -1438,7 +1438,7 @@ select * from t_regexp_like where regexp_like(value,'ABC', 'n');
 (0 rows)
 
 select * from t_regexp_like where regexp_like(value,'ABC', 'p');
-ERROR:  invalid option of regexp_like: p
+ERROR:  illegal argument for function
 select * from t_regexp_like where regexp_like(value,'ABC', 'c');
  id | value 
 ----+-------
@@ -1574,6 +1574,130 @@ select * from t_regexp_like where regexp_like(null, null, null);
 ----+-------
 (0 rows)
 
+-- REGEXP_LIKE match_parameter n/m/default (issue #2295)
+CREATE TABLE t_regexp_like_types
+(
+  text_value text,
+  varchar2_value varchar2(20)
+);
+INSERT INTO t_regexp_like_types
+VALUES ('X'||chr(10), 'X'||chr(10));
+select regexp_like(text_value, 'X.') from t_regexp_like_types;
+ regexp_like 
+-------------
+ f
+(1 row)
+
+select regexp_like(text_value, 'X.', 'n') from t_regexp_like_types;
+ regexp_like 
+-------------
+ t
+(1 row)
+
+select regexp_like(text_value, 'X.', 'c') from t_regexp_like_types;
+ regexp_like 
+-------------
+ f
+(1 row)
+
+select regexp_like(varchar2_value, 'X.') from t_regexp_like_types;
+ regexp_like 
+-------------
+ f
+(1 row)
+
+select regexp_like(varchar2_value, 'X.', 'n') from t_regexp_like_types;
+ regexp_like 
+-------------
+ t
+(1 row)
+
+select regexp_like('x'||chr(10)||'b'||chr(10)||'y', '^b$');
+ regexp_like 
+-------------
+ f
+(1 row)
+
+select regexp_like('x'||chr(10)||'b'||chr(10)||'y', '^b$', 'n');
+ regexp_like 
+-------------
+ f
+(1 row)
+
+select regexp_like('x'||chr(10)||'b'||chr(10)||'y', '^b$', 'm');
+ regexp_like 
+-------------
+ t
+(1 row)
+
+select regexp_like('x'||chr(10)||'b'||chr(10)||'y', '^x$', 'mn');
+ regexp_like 
+-------------
+ t
+(1 row)
+
+select regexp_substr('X'||chr(10), 'X.', 1, 1, 'n') =
+       ('X'||chr(10)) as regexp_substr_n;
+ regexp_substr_n 
+-----------------
+ t
+(1 row)
+
+select regexp_like(text_value, 'X.', 'z') from t_regexp_like_types;
+ERROR:  illegal argument for function
+-- A NULL or empty match parameter means the default flags
+select regexp_like('abc', 'abc', NULL);
+ regexp_like 
+-------------
+ t
+(1 row)
+
+select regexp_like('abc', 'abc', '');
+ regexp_like 
+-------------
+ t
+(1 row)
+
+select regexp_like('ABC', 'abc', '');
+ regexp_like 
+-------------
+ f
+(1 row)
+
+select regexp_like(text_value, 'X.', NULL) from t_regexp_like_types;
+ regexp_like 
+-------------
+ f
+(1 row)
+
+select regexp_like(varchar2_value, 'X.', NULL) from t_regexp_like_types;
+ regexp_like 
+-------------
+ f
+(1 row)
+
+select regexp_like(NULL, 'abc', 'i') is null as null_source,
+       regexp_like('abc', NULL, 'i') is null as null_pattern;
+ null_source | null_pattern 
+-------------+--------------
+ t           | t
+(1 row)
+
+-- REGEXP_LIKE in indexes and generated columns
+CREATE INDEX t_regexp_like_types_text ON t_regexp_like_types ((regexp_like(text_value, 'x', 'i')));
+CREATE INDEX t_regexp_like_types_vc ON t_regexp_like_types ((regexp_like(varchar2_value, 'x')));
+CREATE INDEX t_regexp_like_types_part ON t_regexp_like_types (text_value) WHERE regexp_like(text_value, '^X');
+CREATE TABLE t_regexp_like_gen (t text, g bool GENERATED ALWAYS AS (regexp_like(t, 'a')) STORED);
+INSERT INTO t_regexp_like_gen (t) VALUES ('abc'), ('xyz');
+SELECT * FROM t_regexp_like_gen ORDER BY t;
+  t  | g 
+-----+---
+ abc | t
+ xyz | f
+(2 rows)
+
+DROP TABLE t_regexp_like_gen;
+DROP table t_regexp_like_types;
 DROP table t_regexp_like;
 /*
  * regexp_count
