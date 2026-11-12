@@ -433,3 +433,7 @@ CREATE PACKAGE BODY dbms_lob AS
     END;
 
 END;
+
+-- Oracle grants its built-in packages to PUBLIC; packages do not get that
+-- grant implicitly.
+GRANT EXECUTE ON PACKAGE dbms_lob TO PUBLIC;
