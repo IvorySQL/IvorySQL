@@ -2060,17 +2060,13 @@ typedef struct OraJoinPairEntry
 /*
  * For a base (non-join) RTE produced from a plain FROM list, the Nth RTE
  * created by transformFromClause corresponds, in order, to the Nth item
- * of the original FROM clause. RTE_RELATION entries can always be
- * rebuilt from relid, but RTE_CTE / RTE_VALUES / RTE_FUNCTION /
- * RTE_SUBQUERY have no relid, so recover their original node instead of
- * synthesizing an incomplete RangeVar from a NULL relation name.
+ * of the original FROM clause. Recover the original node for relations
+ * too: rebuilding a RangeVar from relid loses ONLY and the surrounding
+ * RangeTableSample, changing which rows participate in the join.
  */
 static Node *
-get_orajoin_fromclause_node(List *fromClause, RangeTblEntry *rte, int rtindex)
+get_orajoin_fromclause_node(List *fromClause, int rtindex)
 {
-	if (rte->rtekind == RTE_RELATION)
-		return NULL;			/* handled by the existing relid/RangeVar path */
-
 	if (fromClause == NIL || rtindex <= 0 || rtindex > list_length(fromClause))
 		return NULL;			/* out of range -- fall back to old behavior */
 
@@ -2084,8 +2080,6 @@ get_orajoin_fromclause_node(List *fromClause, RangeTblEntry *rte, int rtindex)
 static bool
 node_contains_rtindex(ParseState *pstate, List *fromClause, Node *node, int rtindex)
 {
-	RangeTblEntry *rte;
-
 	if (node == NULL || rtindex <= 0 || rtindex > list_length(pstate->p_rtable))
 		return false;
 
@@ -2097,31 +2091,7 @@ node_contains_rtindex(ParseState *pstate, List *fromClause, Node *node, int rtin
 			   node_contains_rtindex(pstate, fromClause, j->rarg, rtindex);
 	}
 
-	rte = rt_fetch(rtindex, pstate->p_rtable);
-
-	if (rte->rtekind == RTE_RELATION)
-	{
-		if (IsA(node, RangeVar))
-		{
-			RangeVar   *rv = (RangeVar *) node;
-
-			if (rte->alias != NULL)
-			{
-				if (rv->alias != NULL &&
-					strcmp(rv->alias->aliasname, rte->alias->aliasname) == 0)
-					return true;
-			}
-			else
-			{
-				if (rv->alias == NULL &&
-					strcmp(rv->relname, get_rel_name(rte->relid)) == 0)
-					return true;
-			}
-		}
-		return false;
-	}
-
-	/* Non-relation RTE: fromClause position matches rtindex */
+	/* Every base operand is copied from its original FROM item. */
 	if (fromClause != NIL && rtindex <= list_length(fromClause))
 	{
 		Node	   *fc_node = (Node *) list_nth(fromClause, rtindex - 1);
@@ -2147,7 +2117,7 @@ get_orajoin_operand_node(OraJoinBuildState *build, RangeTblEntry *rte, int rtind
 		build->rtindex_to_node[rtindex] != NULL)
 		return build->rtindex_to_node[rtindex];
 
-	node = get_orajoin_fromclause_node(build->fromClause, rte, rtindex);
+	node = get_orajoin_fromclause_node(build->fromClause, rtindex);
 	if (node != NULL)
 		return node;
 
