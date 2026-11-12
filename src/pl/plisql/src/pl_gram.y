@@ -112,6 +112,8 @@ static void check_packagedatum_assignable(PLiSQL_pkg_datum *datum,
 static	void			 check_assignable(PLiSQL_datum *datum, int location, yyscan_t yyscanner);
 static	void			 read_into_target(PLiSQL_variable **target, bool *strict,
 										  YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
+static	char			 read_using_mode(int *varno, YYSTYPE *yylvalp, YYLTYPE *yyllocp,
+										 yyscan_t yyscanner);
 static	PLiSQL_row		*read_into_scalar_list(char *initial_name,
 											   PLiSQL_datum *initial_datum,
 											   int initial_location,
@@ -367,6 +369,7 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location, YYSTYPE *yylv
 %token <keyword>	K_GET
 %token <keyword>	K_HINT
 %token <keyword>	K_IF
+%token <keyword>	K_IMMEDIATE
 %token <keyword>	K_IMPORT
 %token <keyword>	K_IN
 %token <keyword>	K_INFO
@@ -3036,6 +3039,25 @@ stmt_dynexecute : K_EXECUTE
 						PLiSQL_stmt_dynexecute *new;
 						PLiSQL_expr *expr;
 						int endtoken;
+						int			tok;
+						bool		immediate = false;
+						List	   *outvarnos = NIL;
+
+						/*
+						 * A variable named "immediate" is still the query
+						 * string when followed by ;, INTO, USING or an
+						 * operator.
+						 */
+						tok = yylex(&yylval, &yylloc, yyscanner);
+						if (tok_is_keyword(tok, &yylval, K_IMMEDIATE, "immediate"))
+						{
+							int			next = plisql_peek(yyscanner);
+
+							immediate = (next != ';' && next != K_INTO &&
+										 next != K_USING && next != Op);
+						}
+						if (!immediate)
+							plisql_push_back_token(tok, &yylval, &yylloc, yyscanner);
 
 						expr = read_sql_construct(K_INTO, K_USING, ';',
 												  "INTO or USING or ;",
@@ -3052,6 +3074,7 @@ stmt_dynexecute : K_EXECUTE
 						new->strict = false;
 						new->target = NULL;
 						new->params = NIL;
+						new->parammodes = NIL;
 						new->haveout = false;
 						new->out = NULL;
 
@@ -3070,6 +3093,9 @@ stmt_dynexecute : K_EXECUTE
 									yyerror(&yylloc, NULL, yyscanner,  "syntax error");
 								new->into = true;
 								read_into_target(&new->target, &new->strict, &yylval, &yylloc, yyscanner);
+								/* Oracle raises NO_DATA_FOUND or TOO_MANY_ROWS */
+								if (immediate)
+									new->strict = true;
 								endtoken = yylex(&yylval, &yylloc, yyscanner);
 							}
 							else if (endtoken == K_USING)
@@ -3078,6 +3104,16 @@ stmt_dynexecute : K_EXECUTE
 									yyerror(&yylloc, NULL, yyscanner,  "syntax error");
 								do
 								{
+									char		mode = PROARGMODE_IN;
+									int			varno = -1;
+
+									if (immediate)
+									{
+										mode = read_using_mode(&varno, &yylval, &yylloc, yyscanner);
+										if (mode != PROARGMODE_IN)
+											outvarnos = lappend_int(outvarnos, varno);
+										new->parammodes = lappend_int(new->parammodes, mode);
+									}
 									expr = read_sql_construct(',', ';', K_INTO,
 															  ", or ; or INTO",
 															  RAW_PARSE_PLISQL_EXPR,
@@ -3090,6 +3126,24 @@ stmt_dynexecute : K_EXECUTE
 								break;
 							else
 								yyerror(&yylloc, NULL, yyscanner,  "syntax error");
+						}
+
+						if (outvarnos != NIL)
+						{
+							PLiSQL_row *row = palloc0_object(PLiSQL_row);
+							ListCell   *lc;
+							int			i = 0;
+
+							row->dtype = PLISQL_DTYPE_ROW;
+							row->refname = "(unnamed row)";
+							row->lineno = new->lineno;
+							row->rowtupdesc = NULL;
+							row->nfields = list_length(outvarnos);
+							row->varnos = palloc_array(int, row->nfields);
+							foreach(lc, outvarnos)
+								row->varnos[i++] = lfirst_int(lc);
+							new->haveout = true;
+							new->out = row;
 						}
 
 						$$ = (PLiSQL_stmt *)new;
@@ -3576,6 +3630,7 @@ unreserved_keyword	:
 				| K_FORWARD
 				| K_GET
 				| K_HINT
+				| K_IMMEDIATE
 				| K_IMPORT
 				| K_INFO
 				| K_INSERT
@@ -3692,6 +3747,7 @@ unit_name_keyword:
 				| K_FORWARD
 				| K_GET
 				| K_HINT
+				| K_IMMEDIATE
 				| K_IMPORT
 				| K_INFO
 				| K_INSERT
@@ -5043,6 +5099,69 @@ read_into_target(PLiSQL_variable **target, bool *strict, YYSTYPE *yylvalp, YYLTY
 			/* just to give a better message than "syntax error" */
 			current_token_is_not_variable(tok, yylvalp, yyllocp, yyscanner);
 	}
+}
+
+/*
+ * Read the IN, OUT or IN OUT in front of an EXECUTE IMMEDIATE bind argument.
+ * An OUT or IN OUT argument must be an assignable variable; its dno is
+ * returned in *varno.  The argument itself is pushed back to be read as an
+ * expression.
+ */
+static char
+read_using_mode(int *varno, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
+{
+	char		mode = PROARGMODE_IN;
+	bool		in = false;
+	int			tok;
+	int			next;
+
+	tok = yylex(yylvalp, yyllocp, yyscanner);
+	if (tok == K_IN)
+	{
+		in = true;
+		tok = yylex(yylvalp, yyllocp, yyscanner);
+	}
+
+	/*
+	 * OUT is a mode only when a variable follows it; otherwise it is a
+	 * variable named "out", as in "USING out" or "USING out + 1".  The peek
+	 * reports every word that is not a reserved PL/iSQL keyword as IDENT,
+	 * including BETWEEN, LIKE and IS, so when a variable named "out" is in
+	 * scope, a word after it is the target only if the argument ends there
+	 * or the name is qualified.  "USING out BETWEEN 1 AND 2" stays an IN
+	 * argument.
+	 */
+	if (tok_is_keyword(tok, yylvalp, K_OUT, "out"))
+	{
+		int			next2;
+
+		plisql_peek2(&next, &next2, NULL, NULL, yyscanner);
+		if (next == PARAM || next == ORAPARAM ||
+			(next == IDENT &&
+			 (tok == K_OUT || next2 == ',' || next2 == ';' ||
+			  next2 == K_INTO || next2 == '.')))
+		{
+			mode = in ? PROARGMODE_INOUT : PROARGMODE_OUT;
+			tok = yylex(yylvalp, yyllocp, yyscanner);
+		}
+	}
+
+	if (mode != PROARGMODE_IN)
+	{
+		if (tok != T_DATUM)
+			current_token_is_not_variable(tok, yylvalp, yyllocp, yyscanner);
+		next = plisql_peek(yyscanner);
+		if (next != ',' && next != ';' && next != K_INTO)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("OUT and IN OUT bind arguments must be variables"),
+					 parser_errposition(*yyllocp)));
+		check_assignable(yylvalp->wdatum.datum, *yyllocp, yyscanner);
+		*varno = yylvalp->wdatum.datum->dno;
+	}
+
+	plisql_push_back_token(tok, yylvalp, yyllocp, yyscanner);
+	return mode;
 }
 
 /*

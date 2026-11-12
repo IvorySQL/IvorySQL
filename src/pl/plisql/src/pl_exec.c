@@ -5018,6 +5018,33 @@ exec_stmt_dynexecute(PLiSQL_execstate * estate,
 	 */
 	paramLI = exec_eval_using_params(estate, stmt->params);
 
+	/*
+	 * A PL/iSQL block run through the DO path copies its OUT and IN OUT
+	 * parameters back into paramLI, in outctext; OUT ones start as NULL.
+	 */
+	if (stmt->haveout)
+	{
+		int			i;
+
+		paramLI->haveout = true;
+		paramLI->outctext = stmt_mcontext;
+		for (i = 0; i < paramLI->numParams; i++)
+		{
+			ParamExternData *prm = &paramLI->params[i];
+			char		mode = (char) list_nth_int(stmt->parammodes, i);
+
+			if (mode == PROARGMODE_IN)
+				continue;
+			prm->pmode = mode;
+			prm->pflags = PARAM_FLAG_OUT;
+			if (mode == PROARGMODE_OUT)
+			{
+				prm->value = (Datum) 0;
+				prm->isnull = true;
+			}
+		}
+	}
+
 	memset(&options, 0, sizeof(options));
 	options.params = paramLI;
 	options.read_only = estate->readonly_func;
@@ -5162,6 +5189,41 @@ exec_stmt_dynexecute(PLiSQL_execstate * estate,
 		 * tuples that are being ignored, but historically we have not done
 		 * that.
 		 */
+	}
+
+	if (stmt->haveout)
+	{
+		SPITupleTable *tuptab = SPI_tuptable;
+
+		/* CALL returns the procedure's OUT arguments as one row */
+		if (exec_res == SPI_OK_UTILITY && !stmt->into && tuptab != NULL)
+		{
+			if (SPI_processed != 1 ||
+				tuptab->tupdesc->natts != stmt->out->nfields)
+				ereport(ERROR,
+						(errcode(ERRCODE_DATATYPE_MISMATCH),
+						 errmsg("statement returned %d values for %d OUT and IN OUT bind arguments",
+								SPI_processed == 1 ? tuptab->tupdesc->natts : 0,
+								stmt->out->nfields)));
+			exec_move_row(estate, (PLiSQL_variable *) stmt->out,
+						  tuptab->vals[0], tuptab->tupdesc);
+		}
+		else
+		{
+			int			i;
+			int			j = 0;
+
+			for (i = 0; i < paramLI->numParams; i++)
+			{
+				ParamExternData *prm = &paramLI->params[i];
+
+				if (list_nth_int(stmt->parammodes, i) == PROARGMODE_IN)
+					continue;
+				exec_assign_value(estate, estate->datums[stmt->out->varnos[j++]],
+								  prm->value, prm->isnull, prm->ptype, -1);
+			}
+		}
+		exec_eval_cleanup(estate);
 	}
 
 	/* Release any result from SPI_execute, as well as transient data */

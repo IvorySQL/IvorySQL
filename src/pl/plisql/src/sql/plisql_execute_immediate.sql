@@ -1,0 +1,289 @@
+--
+-- Tests for EXECUTE IMMEDIATE
+--
+
+CREATE TABLE ei_t (id int, name varchar2(20));
+INSERT INTO ei_t VALUES (1, 'one'), (2, 'two');
+
+-- INTO and USING
+DECLARE
+  v varchar2(20);
+BEGIN
+  EXECUTE IMMEDIATE 'SELECT name FROM ei_t WHERE id = :1' INTO v USING 2;
+  RAISE NOTICE 'name: %', v;
+END;
+/
+
+-- the statement can come from a variable; USING may come before INTO
+DECLARE
+  s varchar2(100) := 'CREATE TABLE ei_t2 (id int)';
+  v int;
+BEGIN
+  EXECUTE IMMEDIATE s;
+  EXECUTE IMMEDIATE 'INSERT INTO ei_t2 VALUES (:1)' USING 5;
+  EXECUTE IMMEDIATE 'SELECT id * :1 FROM ei_t2' USING 2 INTO v;
+  EXECUTE IMMEDIATE 'DROP TABLE ei_t2';
+  RAISE NOTICE 'value: %', v;
+END;
+/
+
+-- INTO needs exactly one row
+DECLARE
+  v int := 7;
+BEGIN
+  EXECUTE IMMEDIATE 'SELECT id FROM ei_t WHERE id = 99' INTO v;
+  RAISE NOTICE 'not reached';
+EXCEPTION
+  WHEN no_data_found THEN
+    RAISE NOTICE 'no_data_found, v = %', v;
+END;
+/
+
+DECLARE
+  v int;
+BEGIN
+  EXECUTE IMMEDIATE 'SELECT id FROM ei_t' INTO v;
+  RAISE NOTICE 'not reached';
+EXCEPTION
+  WHEN too_many_rows THEN
+    RAISE NOTICE 'too_many_rows';
+END;
+/
+
+-- EXECUTE without IMMEDIATE is unchanged
+DECLARE
+  v int := 7;
+  w int;
+BEGIN
+  EXECUTE 'SELECT id FROM ei_t WHERE id = 99' INTO v;
+  EXECUTE 'SELECT id FROM ei_t ORDER BY id' INTO w;
+  RAISE NOTICE 'v = %, w = %', v, w;
+END;
+/
+
+-- OUT and IN OUT bind arguments
+DECLARE
+  v int := 5;
+  w int := 5;
+BEGIN
+  EXECUTE IMMEDIATE 'BEGIN :1 := 42; END;' USING OUT v;
+  EXECUTE IMMEDIATE 'BEGIN :1 := :1 * 10; END;' USING IN OUT w;
+  RAISE NOTICE 'v = %, w = %', v, w;
+END;
+/
+
+-- an OUT argument starts as NULL
+DECLARE
+  v int := 5;
+BEGIN
+  EXECUTE IMMEDIATE 'BEGIN RAISE NOTICE ''inside: %'', coalesce(:1, -1); END;' USING OUT v;
+  RAISE NOTICE 'v = %', v;
+END;
+/
+
+-- text values, and OUT, IN and OUT arguments mixed
+DECLARE
+  x varchar2(20);
+  y int;
+BEGIN
+  EXECUTE IMMEDIATE 'BEGIN SELECT name INTO :1 FROM ei_t WHERE id = 1; END;' USING OUT x;
+  RAISE NOTICE 'x = %', x;
+  EXECUTE IMMEDIATE 'BEGIN :1 := ''abc'' || :2; :3 := length(:1); END;'
+    USING OUT x, IN 'def', OUT y;
+  RAISE NOTICE 'x = %, y = %', x, y;
+END;
+/
+
+-- named placeholders in a block bind by name
+DECLARE
+  x int;
+  y int;
+BEGIN
+  EXECUTE IMMEDIATE 'BEGIN :a := 1; :b := :a + 1; END;' USING OUT x, OUT y;
+  RAISE NOTICE 'x = %, y = %', x, y;
+END;
+/
+
+-- a fresh value on every execution
+DECLARE
+  v varchar2(20);
+BEGIN
+  FOR i IN 1..3 LOOP
+    EXECUTE IMMEDIATE 'BEGIN :1 := ''n'' || :2; END;' USING OUT v, i;
+    RAISE NOTICE 'v = %', v;
+  END LOOP;
+END;
+/
+
+-- procedures with OUT and IN OUT parameters
+CREATE OR REPLACE PROCEDURE ei_p(a IN int, b OUT int) IS
+BEGIN
+  b := a * 2;
+END;
+/
+CREATE OR REPLACE PROCEDURE ei_p2(a IN OUT int, b OUT varchar2) IS
+BEGIN
+  a := a + 1;
+  b := 'b' || a;
+END;
+/
+
+DECLARE
+  v int;
+  w int;
+  a int := 1;
+  b varchar2(10);
+BEGIN
+  EXECUTE IMMEDIATE 'BEGIN ei_p(:1, :2); END;' USING 4, OUT v;
+  EXECUTE IMMEDIATE 'CALL ei_p(:1, :2)' USING 5, OUT w;
+  EXECUTE IMMEDIATE 'CALL ei_p2(:1, :2)' USING IN OUT a, OUT b;
+  RAISE NOTICE 'v = %, w = %, a = %, b = %', v, w, a, b;
+END;
+/
+
+-- CALL returns two OUT values for one bind argument
+DECLARE
+  a int := 1;
+BEGIN
+  EXECUTE IMMEDIATE 'CALL ei_p2(:1, NULL)' USING IN OUT a;
+END;
+/
+
+-- OUT parameter of a function called from SQL
+CREATE OR REPLACE FUNCTION ei_f(n int) RETURN varchar2 IS
+  r varchar2(30);
+BEGIN
+  EXECUTE IMMEDIATE 'BEGIN :1 := rpad(''x'', :2, ''y''); END;' USING OUT r, n;
+  RETURN r;
+END;
+/
+SELECT ei_f(5), ei_f(3) FROM dual;
+
+-- package variables and record fields as targets
+CREATE OR REPLACE PACKAGE ei_pkg IS
+  g varchar2(20);
+  PROCEDURE set_g;
+END;
+/
+CREATE OR REPLACE PACKAGE BODY ei_pkg IS
+  PROCEDURE set_g IS
+  BEGIN
+    EXECUTE IMMEDIATE 'BEGIN :1 := ''inside''; END;' USING OUT g;
+  END;
+END;
+/
+
+BEGIN
+  ei_pkg.set_g;
+  RAISE NOTICE 'g = %', ei_pkg.g;
+END;
+/
+
+DECLARE
+  r ei_t%ROWTYPE;
+BEGIN
+  EXECUTE IMMEDIATE 'BEGIN :1 := ''outside''; END;' USING OUT ei_pkg.g;
+  RAISE NOTICE 'g = %', ei_pkg.g;
+  EXECUTE IMMEDIATE 'BEGIN :1 := 3; :2 := ''three''; END;' USING OUT r.id, OUT r.name;
+  RAISE NOTICE 'r = %, %', r.id, r.name;
+END;
+/
+
+-- an error in the block leaves the variable alone
+DECLARE
+  v int := 9;
+BEGIN
+  EXECUTE IMMEDIATE 'BEGIN :1 := 1 / 0; END;' USING OUT v;
+EXCEPTION
+  WHEN division_by_zero THEN
+    RAISE NOTICE 'v = %', v;
+END;
+/
+
+-- the value is checked against the target's type
+DECLARE
+  v varchar2(2);
+BEGIN
+  EXECUTE IMMEDIATE 'BEGIN :1 := ''abcdef''; END;' USING OUT v;
+END;
+/
+
+-- OUT and IN OUT arguments must be assignable variables
+DECLARE
+  v int;
+BEGIN
+  EXECUTE IMMEDIATE 'BEGIN :1 := 1; END;' USING OUT v + 1;
+END;
+/
+DECLARE
+  c CONSTANT int := 1;
+BEGIN
+  EXECUTE IMMEDIATE 'BEGIN :1 := 1; END;' USING IN OUT c;
+END;
+/
+BEGIN
+  EXECUTE IMMEDIATE 'BEGIN :1 := 1; END;' USING OUT nosuch;
+END;
+/
+-- an IN parameter cannot be a target (compilation error)
+CREATE OR REPLACE PROCEDURE ei_r(r IN varchar2) IS
+BEGIN
+  EXECUTE IMMEDIATE 'BEGIN :1 := ''x''; END;' USING OUT r;
+END;
+/
+
+-- variables named "immediate" and "out" still work
+DECLARE
+  immediate varchar2(100) := 'SELECT :1 FROM dual';
+  out int := 6;
+  v int;
+BEGIN
+  EXECUTE immediate INTO v USING 3;
+  RAISE NOTICE 'v = %', v;
+  EXECUTE immediate || ' WHERE 1 = 1' INTO v USING 4;
+  RAISE NOTICE 'v = %', v;
+  EXECUTE IMMEDIATE 'SELECT 1 FROM dual' INTO v;
+  RAISE NOTICE 'v = %', v;
+  EXECUTE IMMEDIATE immediate INTO v USING out;
+  RAISE NOTICE 'v = %', v;
+  EXECUTE IMMEDIATE immediate INTO v USING IN out;
+  RAISE NOTICE 'v = %', v;
+  EXECUTE IMMEDIATE immediate INTO v USING out + 1;
+  RAISE NOTICE 'v = %', v;
+  EXECUTE IMMEDIATE immediate INTO v USING IN out * 2;
+  RAISE NOTICE 'v = %', v;
+  EXECUTE IMMEDIATE 'SELECT CASE WHEN :1 THEN 1 ELSE 0 END FROM dual' INTO v USING out BETWEEN 1 AND 10;
+  RAISE NOTICE 'v = %', v;
+  EXECUTE IMMEDIATE 'SELECT CASE WHEN :1 THEN 1 ELSE 0 END FROM dual' INTO v USING out IS NULL;
+  RAISE NOTICE 'v = %', v;
+  EXECUTE IMMEDIATE 'BEGIN :1 := 8; END;' USING OUT v;
+  RAISE NOTICE 'v = %', v;
+  EXECUTE IMMEDIATE 'BEGIN :1 := 11; END;' USING OUT out;
+  RAISE NOTICE 'out = %', out;
+  immediate := 'CREATE TABLE ei_t2 (id int)';
+  EXECUTE immediate;
+  EXECUTE IMMEDIATE 'DROP TABLE ei_t2';
+  RAISE NOTICE 'done';
+END;
+/
+
+-- an OUT target given as a positional parameter
+CREATE OR REPLACE PROCEDURE ei_pos(r OUT int) IS
+BEGIN
+  EXECUTE IMMEDIATE 'BEGIN :1 := 5; END;' USING OUT $1;
+END;
+/
+DECLARE
+  v int;
+BEGIN
+  ei_pos(v);
+  RAISE NOTICE 'v = %', v;
+END;
+/
+
+DROP PACKAGE ei_pkg;
+DROP FUNCTION ei_f;
+DROP PROCEDURE ei_p;
+DROP PROCEDURE ei_p2;
+DROP PROCEDURE ei_pos;
+DROP TABLE ei_t;
