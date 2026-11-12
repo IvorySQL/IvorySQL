@@ -24,6 +24,7 @@
 
 
 static int	psql_get_ivorysql_port(const char *database);
+
 /*
  * start a psql test process for specified file (including redirection),
  * and return process ID
@@ -34,6 +35,7 @@ psql_start_test(const char *testname,
 				_stringlist **expectfiles,
 				_stringlist **tags)
 {
+	static int	oracle_port = 0;
 	PID_TYPE	pid;
 	char		infile[MAXPGPATH];
 	char		outfile[MAXPGPATH];
@@ -65,6 +67,10 @@ psql_start_test(const char *testname,
 	add_stringlist_item(resultfiles, outfile);
 	add_stringlist_item(expectfiles, expectfile);
 
+	/* The port is fixed for the lifetime of the server under test. */
+	if (oracle_port == 0)
+		oracle_port = psql_get_ivorysql_port(dblist->str);
+
 	initStringInfo(&psql_cmd);
 
 	if (launcher)
@@ -78,7 +84,7 @@ psql_start_test(const char *testname,
 					 "\"%s%spsql\" -p %d -X -a -q -d \"%s\" %s < \"%s\" > \"%s\" 2>&1",
 					 bindir ? bindir : "",
 					 bindir ? "/" : "",
-					 psql_get_ivorysql_port(dblist->str),
+					 oracle_port,
 					 dblist->str,
 					 "-v HIDE_TABLEAM=on -v HIDE_TOAST_COMPRESSION=on",
 					 infile,
@@ -124,18 +130,46 @@ main(int argc, char *argv[])
 static int
 psql_get_ivorysql_port(const char *database)
 {
-	char psql_cmd[1024];
-	FILE *fp;
-	char port_ora[10];
-	char *temp_p;
-	snprintf(psql_cmd, sizeof(psql_cmd),
-			"\"%s%spsql\" -X -A -t -c \"show ivorysql.port\"  \"%s\"",
-			bindir ? bindir : "",
-			bindir ? "/" : "",
-			database);
-	fp = popen(psql_cmd,"r");
-	temp_p = fgets(port_ora, sizeof(port_ora), fp);
-	if (temp_p == NULL)
-		printf("get ivorysql.port failed\n");
-	return atoi(port_ora);
+	StringInfoData cmd;
+	FILE	   *pipe;
+	char		result[32];
+	char	   *end;
+	long		port;
+	bool		have_result;
+	int			status;
+
+	initStringInfo(&cmd);
+	appendStringInfo(&cmd,
+					 "\"%s%spsql\" -X -A -t -c \"show ivorysql.port\" -d \"%s\"",
+					 bindir ? bindir : "",
+					 bindir ? "/" : "",
+					 database);
+	pipe = popen(cmd.data, "r");
+	pfree(cmd.data);
+	if (pipe == NULL)
+	{
+		fprintf(stderr, _("could not start psql to determine the Oracle port: %m\n"));
+		exit(2);
+	}
+
+	have_result = fgets(result, sizeof(result), pipe) != NULL;
+	status = pclose(pipe);
+	if (!have_result || status != 0)
+	{
+		fprintf(stderr, _("could not determine the Oracle port for database \"%s\"\n"),
+				database);
+		exit(2);
+	}
+
+	errno = 0;
+	port = strtol(result, &end, 10);
+	if (errno != 0 || end == result || end[strspn(end, "\r\n")] != '\0' ||
+		port < 1 || port > 65535)
+	{
+		fprintf(stderr, _("database \"%s\" did not report a valid Oracle port\n"),
+				database);
+		exit(2);
+	}
+
+	return (int) port;
 }
