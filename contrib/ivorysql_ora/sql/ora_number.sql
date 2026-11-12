@@ -790,6 +790,18 @@ SELECT '' AS to_number_14, to_number('12.34');
 SELECT '' AS to_number_15, to_number('-1122.34');
 SELECT '' AS to_number_16, to_number('12.34','9G999D99');
 SELECT '' AS to_number_17, to_number('1122.34','9G999D99');
+-- The group separator in the format model is optional in the input; a missing
+-- separator must not make TO_NUMBER drop leading digits.
+SELECT '' AS to_number_20, to_number('1234.56', '9,999.99');
+SELECT '' AS to_number_21, to_number('1234.56', '9G999D99');
+-- A present group separator must still be consumed in fill mode.
+SELECT '' AS to_number_22, to_number('1234,567', 'FM9G999G999');
+SELECT '' AS to_number_23, to_number('1234,567', 'FM9,999,999');
+-- A group separator is never allowed to the right of the decimal point.
+SELECT '' AS to_number_24, to_number('1.234', '9.9G99');
+-- The same rule applies to a literal comma in the format model.
+SELECT '' AS to_number_25, to_number('1.234', '9.9,99');
+SELECT '' AS to_number_26, to_number('1234.56', '9,999.9,9');
 -- Without a format model, trailing spaces are accepted in the integer part.
 SELECT '' AS to_number_18, to_number('123 ');
 -- Whitespace between digits remains invalid.
