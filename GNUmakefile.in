@@ -13,15 +13,19 @@ $(call recurse,all install,src config contrib/gb18030_2022 contrib/ivorysql_ora 
 docs:
 	$(MAKE) -C doc all
 
-$(call recurse,world,doc src config contrib,all)
+# The Oracle bootstrap and index extensions are installed by the default
+# target, so a world build must include them as well.
+world_contrib_dirs = contrib contrib/ivorysql_ora contrib/ora_btree_gist contrib/ora_btree_gin
+
+$(call recurse,world,doc src config $(world_contrib_dirs),all)
 
 # build src/ before contrib/
-world-contrib-recurse: world-src-recurse
+$(addprefix world-,$(addsuffix -recurse,$(world_contrib_dirs))): world-src-recurse
 
-$(call recurse,world-bin,src config contrib,all)
+$(call recurse,world-bin,src config $(world_contrib_dirs),all)
 
 # build src/ before contrib/
-world-bin-contrib-recurse: world-bin-src-recurse
+$(addprefix world-bin-,$(addsuffix -recurse,$(world_contrib_dirs))): world-bin-src-recurse
 
 html man:
 	$(MAKE) -C doc $@
@@ -29,15 +33,15 @@ html man:
 install-docs:
 	$(MAKE) -C doc install
 
-$(call recurse,install-world,doc src config contrib,install)
+$(call recurse,install-world,doc src config $(world_contrib_dirs),install)
 
 # build src/ before contrib/
-install-world-contrib-recurse: install-world-src-recurse
+$(addprefix install-world-,$(addsuffix -recurse,$(world_contrib_dirs))): install-world-src-recurse
 
-$(call recurse,install-world-bin,src config contrib,install)
+$(call recurse,install-world-bin,src config $(world_contrib_dirs),install)
 
 # build src/ before contrib/
-install-world-bin-contrib-recurse: install-world-bin-src-recurse
+$(addprefix install-world-bin-,$(addsuffix -recurse,$(world_contrib_dirs))): install-world-bin-src-recurse
 
 $(call recurse,installdirs uninstall init-po update-po,doc src config)
 
