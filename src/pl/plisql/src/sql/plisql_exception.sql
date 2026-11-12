@@ -316,6 +316,291 @@ END test_pragma_zero;
 SELECT 'PRAGMA EXCEPTION_INIT negative error code tests completed' AS result;
 
 --
+-- Test 11e: PRAGMA EXCEPTION_INIT maps the error number to an SQLSTATE (issue #3097)
+-- A number with a PostgreSQL counterpart catches that error, and RAISE uses
+-- its SQLSTATE.  Any other number gets an SQLSTATE of its own in class O.
+--
+CREATE TABLE test_pragma_map_t (id int PRIMARY KEY);
+
+CREATE OR REPLACE PROCEDURE test_pragma_map IS
+  e_zero EXCEPTION;
+  PRAGMA EXCEPTION_INIT(e_zero, -1476);
+  e_dup EXCEPTION;
+  PRAGMA EXCEPTION_INIT(e_dup, -1);
+  e_value EXCEPTION;
+  PRAGMA EXCEPTION_INIT(e_value, -6502);
+  e_nodata EXCEPTION;
+  PRAGMA EXCEPTION_INIT(e_nodata, 100);
+  e_app EXCEPTION;
+  PRAGMA EXCEPTION_INIT(e_app, -20001);
+  e_app2 EXCEPTION;
+  PRAGMA EXCEPTION_INIT(e_app2, -20002);
+  n NUMBER;
+  v VARCHAR2(3);
+BEGIN
+  BEGIN
+    n := 1 / 0;
+  EXCEPTION
+    WHEN e_zero THEN
+      RAISE INFO 'e_zero caught division by zero: %', SQLSTATE;
+  END;
+
+  BEGIN
+    RAISE e_zero;
+  EXCEPTION
+    WHEN division_by_zero THEN
+      RAISE INFO 'RAISE e_zero is division_by_zero: %', SQLSTATE;
+  END;
+
+  BEGIN
+    INSERT INTO test_pragma_map_t VALUES (1);
+    INSERT INTO test_pragma_map_t VALUES (1);
+  EXCEPTION
+    WHEN e_dup THEN
+      RAISE INFO 'e_dup caught unique violation: %', SQLSTATE;
+  END;
+
+  -- -1 must not turn into a catch-all handler
+  BEGIN
+    BEGIN
+      n := 1 / 0;
+    EXCEPTION
+      WHEN e_dup THEN
+        RAISE INFO 'wrong: e_dup caught division by zero';
+    END;
+  EXCEPTION
+    WHEN OTHERS THEN
+      RAISE INFO 'e_dup let division by zero through: %', SQLSTATE;
+  END;
+
+  BEGIN
+    v := 'abcd';
+  EXCEPTION
+    WHEN e_value THEN
+      RAISE INFO 'e_value caught string truncation: %', SQLSTATE;
+  END;
+
+  BEGIN
+    n := 'abc';
+  EXCEPTION
+    WHEN e_value THEN
+      RAISE INFO 'e_value caught invalid number text: %', SQLSTATE;
+  END;
+
+  BEGIN
+    RAISE no_data_found;
+  EXCEPTION
+    WHEN e_nodata THEN
+      RAISE INFO 'e_nodata caught no_data_found: %', SQLSTATE;
+  END;
+
+  BEGIN
+    RAISE e_app;
+  EXCEPTION
+    WHEN e_app2 THEN
+      RAISE INFO 'wrong: e_app2 caught e_app';
+    WHEN e_app THEN
+      RAISE INFO 'e_app caught: %', SQLSTATE;
+  END;
+END;
+/
+
+CALL test_pragma_map();
+
+DROP PROCEDURE test_pragma_map;
+DROP TABLE test_pragma_map_t;
+
+--
+-- Test 11f: SQLCODE in exception handlers (issue #3099)
+--
+CREATE OR REPLACE PROCEDURE test_sqlcode IS
+  e_user EXCEPTION;
+  e_app EXCEPTION;
+  PRAGMA EXCEPTION_INIT(e_app, -20001);
+  e_far EXCEPTION;
+  PRAGMA EXCEPTION_INIT(e_far, -1000000);
+  n NUMBER;
+BEGIN
+  BEGIN
+    n := 1 / 0;
+  EXCEPTION
+    WHEN OTHERS THEN
+      RAISE INFO 'division by zero: SQLCODE %', SQLCODE;
+  END;
+
+  BEGIN
+    RAISE no_data_found;
+  EXCEPTION
+    WHEN OTHERS THEN
+      RAISE INFO 'no_data_found: SQLCODE %', SQLCODE;
+  END;
+
+  BEGIN
+    EXECUTE 'SELECT * FROM test_sqlcode_no_such_table';
+  EXCEPTION
+    WHEN OTHERS THEN
+      RAISE INFO 'undefined table: SQLCODE %', SQLCODE;
+  END;
+
+  BEGIN
+    RAISE e_user;
+  EXCEPTION
+    WHEN OTHERS THEN
+      RAISE INFO 'user-defined exception: SQLCODE %', SQLCODE;
+  END;
+
+  BEGIN
+    RAISE e_app;
+  EXCEPTION
+    WHEN OTHERS THEN
+      RAISE INFO 'EXCEPTION_INIT -20001: SQLCODE % SQLSTATE %', SQLCODE, SQLSTATE;
+  END;
+
+  BEGIN
+    RAISE e_far;
+  EXCEPTION
+    WHEN OTHERS THEN
+      RAISE INFO 'EXCEPTION_INIT -1000000: SQLCODE % SQLSTATE %', SQLCODE, SQLSTATE;
+  END;
+
+  -- no Oracle number: positive, like Oracle's non-Oracle exceptions
+  BEGIN
+    RAISE invalid_parameter_value;
+  EXCEPTION
+    WHEN OTHERS THEN
+      RAISE INFO 'invalid_parameter_value: SQLCODE % SQLSTATE %', SQLCODE, SQLSTATE;
+  END;
+
+  BEGIN
+    BEGIN
+      n := 1 / 0;
+    EXCEPTION
+      WHEN OTHERS THEN
+        RAISE e_app;
+    END;
+  EXCEPTION
+    WHEN OTHERS THEN
+      RAISE INFO 'outer handler: SQLCODE % (%)', SQLCODE, SQLERRM;
+  END;
+END;
+/
+
+CALL test_sqlcode();
+
+DROP PROCEDURE test_sqlcode;
+
+-- SQLCODE in a package initialization block
+CREATE OR REPLACE PACKAGE test_sqlcode_pkg IS
+  last_code NUMBER;
+  PROCEDURE show_code;
+END test_sqlcode_pkg;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_sqlcode_pkg IS
+  PROCEDURE show_code IS
+  BEGIN
+    RAISE INFO 'package init block saw SQLCODE %', last_code;
+  END show_code;
+BEGIN
+  last_code := 1 / 0;
+EXCEPTION
+  WHEN OTHERS THEN
+    last_code := SQLCODE;
+END test_sqlcode_pkg;
+/
+
+BEGIN
+  test_sqlcode_pkg.show_code();
+END;
+/
+
+DROP PACKAGE test_sqlcode_pkg;
+
+--
+-- Test 11g: package exceptions named as pkg.exc in WHEN and RAISE (issue #3100)
+--
+CREATE OR REPLACE PACKAGE test_pkg_exc IS
+  e_plain EXCEPTION;
+  e_init EXCEPTION;
+  PRAGMA EXCEPTION_INIT(e_init, -20010);
+  counter NUMBER := 0;
+  PROCEDURE raise_plain;
+  PROCEDURE raise_init;
+END test_pkg_exc;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_pkg_exc IS
+  PROCEDURE raise_plain IS
+  BEGIN
+    RAISE e_plain;
+  END raise_plain;
+
+  PROCEDURE raise_init IS
+  BEGIN
+    RAISE test_pkg_exc.e_init;
+  EXCEPTION
+    WHEN test_pkg_exc.e_plain THEN
+      RAISE INFO 'raise_init: wrong handler';
+  END raise_init;
+END test_pkg_exc;
+/
+
+CREATE OR REPLACE PROCEDURE test_pkg_exc_caller IS
+BEGIN
+  BEGIN
+    test_pkg_exc.raise_plain;
+  EXCEPTION
+    WHEN test_pkg_exc.e_init THEN
+      RAISE INFO 'raise_plain: wrong handler';
+    WHEN test_pkg_exc.e_plain THEN
+      RAISE INFO 'raise_plain: caught by WHEN test_pkg_exc.e_plain, SQLCODE %', SQLCODE;
+  END;
+
+  BEGIN
+    test_pkg_exc.raise_init;
+  EXCEPTION
+    WHEN test_pkg_exc.e_init THEN
+      RAISE INFO 'raise_init: caught by WHEN test_pkg_exc.e_init, SQLCODE %', SQLCODE;
+  END;
+
+  BEGIN
+    RAISE test_pkg_exc.e_init;
+  EXCEPTION
+    WHEN public.test_pkg_exc.e_plain OR public.test_pkg_exc.e_init THEN
+      RAISE INFO 'RAISE test_pkg_exc.e_init: caught by WHEN public.test_pkg_exc.e_init, SQLSTATE %', SQLSTATE;
+  END;
+END;
+/
+
+CALL test_pkg_exc_caller();
+
+-- a package exception that is not handled
+BEGIN
+  RAISE test_pkg_exc.e_plain;
+END;
+/
+
+-- a package variable or a missing name is not an exception
+BEGIN
+  NULL;
+EXCEPTION
+  WHEN test_pkg_exc.counter THEN
+    NULL;
+END;
+/
+
+BEGIN
+  NULL;
+EXCEPTION
+  WHEN test_pkg_exc.no_such_exc THEN
+    NULL;
+END;
+/
+
+DROP PROCEDURE test_pkg_exc_caller;
+DROP PACKAGE test_pkg_exc;
+
+--
 -- Test 12: SQLERRM in procedures when package has EXCEPTION variables (issue #1151)
 -- When a package declares user-defined EXCEPTION variables at package scope,
 -- passing SQLERRM to procedures from exception handlers should work.

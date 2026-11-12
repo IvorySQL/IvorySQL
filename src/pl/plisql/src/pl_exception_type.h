@@ -47,11 +47,15 @@ typedef struct PLiSQL_exception_var
 	int			lineno;			/* line number of declaration */
 
 	/*
-	 * sqlcode is the error code associated with this exception.
+	 * sqlcode is the Oracle error number associated with this exception.
 	 * Default is 1 for user-defined exceptions.
 	 * Can be set to a specific Oracle error code via PRAGMA EXCEPTION_INIT.
+	 *
+	 * sqlerrstate is the SQLSTATE that RAISE uses for the exception: P0001
+	 * by default, or the SQLSTATE that sqlcode maps to.
 	 */
 	int			sqlcode;		/* associated error code (default 1) */
+	int			sqlerrstate;	/* SQLSTATE raised for the exception */
 } PLiSQL_exception_var;
 
 /*
@@ -74,6 +78,14 @@ extern PLiSQL_exception_var *plisql_lookup_exception(const char *name);
 
 /* Set SQLCODE for exception (used by PRAGMA EXCEPTION_INIT) */
 extern void plisql_exception_set_sqlcode(PLiSQL_exception_var *exc, int sqlcode);
+
+/* Build the handler conditions that catch an exception */
+extern PLiSQL_condition *plisql_exception_conditions(PLiSQL_exception_var *exc,
+													 char *condname);
+
+/* Map between Oracle error numbers and SQLSTATEs */
+extern int	plisql_errnum_to_sqlstate(int errnum);
+extern int	plisql_sqlstate_to_errnum(int sqlerrstate);
 
 /* Process PRAGMA EXCEPTION_INIT directive (compile-time) */
 extern void plisql_process_pragma_exception_init(const char *exc_name,

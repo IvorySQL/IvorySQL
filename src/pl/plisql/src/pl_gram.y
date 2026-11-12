@@ -132,6 +132,7 @@ static	PLiSQL_expr	*read_cursor_args(PLiSQL_var *cursor, int until,
 										  YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
 static	List			*read_raise_options(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
 static	void			check_raise_parameters(PLiSQL_stmt_raise *stmt);
+static	PLiSQL_condition *read_condition(char *name, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
 static	PLiSQL_expr		*build_call_expr(int firsttoken, int location, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
 %}
 
@@ -519,7 +520,8 @@ ora_outermost_pl_block		: ora_decl_sect K_BEGIN proc_sect exception_sect K_END o
 				plisql_check_package_refcursor_var(-1);
 				plisql_compile_packageitem->last_globaldno =
 							plisql_get_package_last_globaldno($4 == NULL ? -1 : $4->sqlstate_varno,
-											$4 == NULL ? -1 : $4->sqlerrm_varno);
+											$4 == NULL ? -1 : $4->sqlerrm_varno,
+											$4 == NULL ? -1 : $4->sqlcode_varno);
 			}
 
 			new = palloc0_object(PLiSQL_stmt_block);
@@ -582,7 +584,7 @@ ora_pl_package: ora_decl_sect K_END opt_label
 				check_labels($1.label, $3, @3, yyscanner);
 				plisql_check_package_refcursor_var(-1);
 				plisql_compile_packageitem->last_globaldno =
-										plisql_get_package_last_globaldno(-1, -1);
+										plisql_get_package_last_globaldno(-1, -1, -1);
 				if (!plisql_compile_packageitem->finish_compile_special)
 					plisql_compile_packageitem->status =
 								plisql_set_package_compile_status();
@@ -2877,9 +2879,9 @@ stmt_raise		: K_RAISE
 								{
 								/* Check if it is a user-defined exception variable */
 								if (tok == T_DATUM &&
-									plisql_datum_is_exception(yylval.wdatum.datum))
+									plisql_datum_get_exception(yylval.wdatum.datum) != NULL)
 								{
-									new->exception_var = (PLiSQL_exception_var *) yylval.wdatum.datum;
+									new->exception_var = plisql_datum_get_exception(yylval.wdatum.datum);
 								}
 								else
 									if (tok == T_WORD)
@@ -3373,6 +3375,15 @@ exception_sect	:
 						var->isconst = true;
 						new->sqlerrm_varno = var->dno;
 
+						var = plisql_build_variable("sqlcode", lineno,
+													 plisql_build_datatype(INT4OID,
+																			-1,
+																			InvalidOid,
+																			NULL),
+													 true);
+						var->isconst = true;
+						new->sqlcode_varno = var->dno;
+
 						$<exception_block>$ = new;
 					}
 					proc_exceptions
@@ -3422,38 +3433,27 @@ proc_conditions	: proc_conditions K_OR proc_condition
 						}
 				;
 
-proc_condition	: any_identifier
+proc_condition	: T_WORD
 						{
-							if (strcmp($1, "sqlstate") != 0)
-							{
-								$$ = plisql_parse_err_condition($1);
-							}
+							$$ = read_condition($1.ident, &yylval, &yylloc, yyscanner);
+						}
+				| unreserved_keyword
+						{
+							$$ = read_condition(pstrdup($1), &yylval, &yylloc, yyscanner);
+						}
+				| T_DATUM
+						{
+							PLiSQL_exception_var *exc = plisql_datum_get_exception($1.datum);
+
+							/* a local exception, or pkg.exc from outside the package */
+							if (exc != NULL)
+								$$ = plisql_exception_conditions(exc,
+																 $1.ident ? $1.ident : NameListToString($1.idents));
 							else
 							{
-								PLiSQL_condition *new;
-								char   *sqlstatestr;
-
-								/* next token should be a string literal */
-								if (yylex(&yylval, &yylloc, yyscanner) != SCONST)
+								if ($1.ident == NULL) /* composite name not OK */
 									yyerror(&yylloc, NULL, yyscanner,  "syntax error");
-								sqlstatestr = yylval.str;
-
-								if (strlen(sqlstatestr) != 5)
-									yyerror(&yylloc, NULL, yyscanner,  "invalid SQLSTATE code");
-								if (strspn(sqlstatestr, "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ") != 5)
-									yyerror(&yylloc, NULL, yyscanner,  "invalid SQLSTATE code");
-
-								new = palloc_object(PLiSQL_condition);
-								new->sqlerrstate =
-									MAKE_SQLSTATE(sqlstatestr[0],
-												  sqlstatestr[1],
-												  sqlstatestr[2],
-												  sqlstatestr[3],
-												  sqlstatestr[4]);
-								new->condname = sqlstatestr;
-								new->next = NULL;
-
-								$$ = new;
+								$$ = read_condition($1.ident, &yylval, &yylloc, yyscanner);
 							}
 						}
 				;
@@ -5527,6 +5527,42 @@ read_cursor_args(PLiSQL_var *cursor, int until, YYSTYPE *yylvalp, YYLTYPE *yyllo
 		yyerror(yyllocp, NULL,  yyscanner, "syntax error");
 
 	return expr;
+}
+
+/*
+ * Build the condition list for an exception handler condition given by
+ * name, reading the string literal that follows SQLSTATE
+ */
+static PLiSQL_condition *
+read_condition(char *name, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
+{
+	PLiSQL_condition *new;
+	char	   *sqlstatestr;
+
+	if (strcmp(name, "sqlstate") != 0)
+		return plisql_parse_err_condition(name);
+
+	/* next token should be a string literal */
+	if (yylex(yylvalp, yyllocp, yyscanner) != SCONST)
+		yyerror(yyllocp, NULL, yyscanner, "syntax error");
+	sqlstatestr = yylvalp->str;
+
+	if (strlen(sqlstatestr) != 5)
+		yyerror(yyllocp, NULL, yyscanner, "invalid SQLSTATE code");
+	if (strspn(sqlstatestr, "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ") != 5)
+		yyerror(yyllocp, NULL, yyscanner, "invalid SQLSTATE code");
+
+	new = palloc_object(PLiSQL_condition);
+	new->sqlerrstate =
+		MAKE_SQLSTATE(sqlstatestr[0],
+					  sqlstatestr[1],
+					  sqlstatestr[2],
+					  sqlstatestr[3],
+					  sqlstatestr[4]);
+	new->condname = sqlstatestr;
+	new->next = NULL;
+
+	return new;
 }
 
 /*
