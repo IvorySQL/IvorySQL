@@ -733,9 +733,15 @@ months_between(PG_FUNCTION_ARGS)
 	else
 	{
 		result = (y1 - y2) * 12 + (m1 - m2) + (d1 - d2) / 31.0;
-		/* If the days are different, you need to compare the time difference */
-		if (d1 != d2)
-			result += ((time1 - time2) / 31.0) / USECS_PER_DAY;
+		/*
+		 * Add the time-of-day difference (as a fraction of a 31-day month).
+		 * It must be added even when both dates fall on the same calendar
+		 * day: Oracle incorporates the time of day of both dates into the
+		 * fractional month computation.  (Previously this was gated on
+		 * d1 != d2, silently dropping the time difference for same-day
+		 * inputs, e.g. MONTHS_BETWEEN('08:30','09:00') returned 0.)
+		 */
+		result += ((time1 - time2) / 31.0) / USECS_PER_DAY;
 	}
 	PG_RETURN_FLOAT8(result);
 }
