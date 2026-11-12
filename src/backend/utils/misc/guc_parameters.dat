@@ -2421,6 +2421,14 @@
   check_hook => 'check_nls_length_semantics',
 },
 
+{ name => 'nls_numeric_characters', type => 'string', context => 'PGC_USERSET', group => 'COMPAT_ORACLE_OPTIONS',
+  short_desc => 'Compatible Oracle NLS parameter for numeric separators.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'nls_numeric_characters',
+  boot_val => '".,"',
+  check_hook => 'nls_numeric_characters_check',
+},
+
 { name => 'nls_territory', type => 'string', context => 'PGC_USERSET', group => 'COMPAT_ORACLE_OPTIONS',
   short_desc => 'Compatible Oracle NLS parameter for NLS_TERRITORY.',
   flags => 'GUC_NOT_IN_SAMPLE',
