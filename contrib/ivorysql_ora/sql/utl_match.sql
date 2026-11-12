@@ -14,7 +14,8 @@
 --   * half-transpositions are truncated (integer t/2)
 --   * Winkler prefix boost is unconditional (no 0.7 threshold), capped at 4
 --   * Jaro match window is floor(max(len)/2) - 1
---   * similarities are rounded half-up
+--   * EDIT_DISTANCE_SIMILARITY rounds half-up, JARO_WINKLER_SIMILARITY
+--     truncates
 --
 
 SET ivorysql.compatible_mode = oracle;
@@ -155,6 +156,21 @@ SELECT UTL_MATCH.JARO_WINKLER('MARTHA','MARHTA');
 -- ============================================================
 
 SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY('shackleford','shackelford');
+-- Oracle docs, UTL_MATCH "Table 1 Comparison between normalized values
+-- returned by Jaro-Winkler and Edit Distance algorithms": Jaro-Winkler
+-- 89, 92, 90, 96, 95, 92; Edit Distance 80, 83, 86, 67, 88, 89.  Two of the
+-- Jaro-Winkler rows only match if the percentage is truncated.
+SELECT a, b,
+       UTL_MATCH.JARO_WINKLER_SIMILARITY(a,b) AS jw,
+       UTL_MATCH.EDIT_DISTANCE_SIMILARITY(a,b) AS ed
+FROM (VALUES
+  ('Dunningham','Cunnigham'),
+  ('Abroms','Abrams'),
+  ('Lampley','Campley'),
+  ('Marhta','Martha'),
+  ('Jonathon','Jonathan'),
+  ('Jeraldine','Geraldine')
+) v(a,b);
 SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY('MARTHA','MARHTA');
 SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY('DWAYNE','DUANE');
 SELECT UTL_MATCH.JARO_WINKLER_SIMILARITY('DIXON','DICKSONX');
