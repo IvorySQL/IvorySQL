@@ -652,18 +652,36 @@ ora_utl_file_frename(PG_FUNCTION_ARGS)
 	srcpath = get_safe_path(PG_GETARG_TEXT_P(0), PG_GETARG_TEXT_P(1));
 	dstpath = get_safe_path(PG_GETARG_TEXT_P(2), PG_GETARG_TEXT_P(3));
 
-	if (!overwrite)
+	if (overwrite)
 	{
-		struct stat	st;
-		if (stat(dstpath, &st) == 0)
-			CUSTOM_EXCEPTION(WRITE_ERROR, "Destination file already exists");
-		else if (errno != ENOENT)
+		/* rename() replaces an existing destination. */
+		if (rename(srcpath, dstpath) != 0)
 			IO_EXCEPTION();
 	}
+	else
+	{
+		/*
+		 * The destination must not be replaced.  Checking with stat() and then
+		 * calling rename() is not atomic: another backend could create dstpath
+		 * in between and rename() would silently overwrite it.
+		 *
+		 * link() fails with EEXIST when the destination already exists, so
+		 * link() followed by unlink() gives atomic no-replace semantics.
+		 * PostgreSQL supplies link() on Windows through src/port/win32link.c.
+		 *
+		 * link() cannot cross filesystems; the previous code failed on EXDEV at
+		 * rename() as well, so such a rename was never supported.
+		 */
+		if (link(srcpath, dstpath) != 0)
+		{
+			if (errno == EEXIST)
+				CUSTOM_EXCEPTION(WRITE_ERROR, "Destination file already exists");
+			IO_EXCEPTION();
+		}
 
-	/* rename() overwrites existing files. */
-	if (rename(srcpath, dstpath) != 0)
-		IO_EXCEPTION();
+		if (unlink(srcpath) != 0)
+			IO_EXCEPTION();
+	}
 
 	PG_RETURN_VOID();
 }
