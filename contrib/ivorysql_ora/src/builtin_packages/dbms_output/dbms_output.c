@@ -118,8 +118,10 @@ PG_FUNCTION_INFO_V1(ora_dbms_output_get_lines);
  *
  * buffer_size: user-specified content limit in bytes, or -1 for unlimited.
  *
- * Re-enabling an active buffer preserves unread output and applies the latest
- * size limit.  Enabling a disabled buffer starts with an empty buffer.
+ * Re-enabling an active buffer preserves unread output and keeps the largest
+ * size limit requested so far (Oracle behavior); a smaller request must not
+ * make already buffered output overflow.  Enabling a disabled buffer starts
+ * with an empty buffer.
  */
 static void
 init_output_buffer(int64 buffer_size)
@@ -128,7 +130,14 @@ init_output_buffer(int64 buffer_size)
 
 	if (output_buffer != NULL && output_buffer->enabled)
 	{
-		output_buffer->buffer_size = buffer_size;
+		/*
+		 * Keep the largest limit.  Unlimited stays unlimited, and a finite
+		 * limit only grows.
+		 */
+		if (output_buffer->buffer_size != DBMS_OUTPUT_UNLIMITED &&
+			(buffer_size == DBMS_OUTPUT_UNLIMITED ||
+			 buffer_size > output_buffer->buffer_size))
+			output_buffer->buffer_size = buffer_size;
 		return;
 	}
 
