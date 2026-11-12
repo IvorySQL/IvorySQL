@@ -1410,21 +1410,21 @@ tm2dsinterval(struct tm *tm, fsec_t fsec, Interval *span)
  * Compatible oracle:
  * For INTERVAL DAY TO SECOND type the field of "MONTH" is invalid.
  * Only calculate the value of "interval->day" and "interval->time".
+ *
+ * The span is computed in 128 bits.  The linear representation of a valid
+ * DAY TO SECOND interval does not always fit into an int64, and letting it
+ * wrap around in TimeOffset silently reverses the ordering of large values.
  */
-static inline TimeOffset
+static inline INT128
 dsinterval_cmp_value(const Interval *interval)
 {
-	TimeOffset	span;
+	INT128		span;
 
-	span = interval->time;
+	/* Widen the time field to 128 bits */
+	span = int64_to_int128(interval->time);
 
-#ifdef HAVE_INT64_TIMESTAMP
-/* 	span += interval->month * INT64CONST(30) * USECS_PER_DAY; */
-	span += interval->day * INT64CONST(24) * USECS_PER_HOUR;
-#else
-/* 	span += interval->month * ((double) DAYS_PER_MONTH * SECS_PER_DAY); */
-	span += interval->day * ((double) HOURS_PER_DAY * SECS_PER_HOUR);
-#endif
+	/* Scale the day field up to microseconds, forming a 128-bit product */
+	int128_add_int64_mul_int64(&span, interval->day, USECS_PER_DAY);
 
 	return span;
 }
@@ -1432,10 +1432,10 @@ dsinterval_cmp_value(const Interval *interval)
 static int
 dsinterval_cmp_internal(Interval *interval1, Interval *interval2)
 {
-	TimeOffset	span1 = dsinterval_cmp_value(interval1);
-	TimeOffset	span2 = dsinterval_cmp_value(interval2);
+	INT128		span1 = dsinterval_cmp_value(interval1);
+	INT128		span2 = dsinterval_cmp_value(interval2);
 
-	return ((span1 < span2) ? -1 : (span1 > span2) ? 1 : 0);
+	return int128_compare(span1, span2);
 }
 
 /*****************************************************************************
@@ -2487,7 +2487,7 @@ in_range_dsinterval_dsinterval(PG_FUNCTION_ARGS)
 	bool		less = PG_GETARG_BOOL(4);
 	Interval   *sum;
 
-	if (int128_compare(int64_to_int128(dsinterval_cmp_value(offset)), int64_to_int128(0)) < 0)
+	if (int128_compare(dsinterval_cmp_value(offset), int64_to_int128(0)) < 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PRECEDING_OR_FOLLOWING_SIZE),
 				 errmsg("invalid preceding or following size in window function")));
@@ -2523,7 +2523,7 @@ Datum
 dsinterval_hash(PG_FUNCTION_ARGS)
 {
 	Interval   *interval = PG_GETARG_INTERVAL_P(0);
-	TimeOffset	span = dsinterval_cmp_value(interval);
+	int64		span = int128_to_int64(dsinterval_cmp_value(interval));
 
 	return DirectFunctionCall1(hashint8, Int64GetDatumFast(span));
 }
@@ -2532,11 +2532,10 @@ Datum
 dsinterval_hash_extended(PG_FUNCTION_ARGS)
 {
 	Interval   *interval = PG_GETARG_INTERVAL_P(0);
-	INT128		span = int64_to_int128(dsinterval_cmp_value(interval));
 	int64		span64;
 
-	/* Same approach as interval_hash */
-	span64 = int128_to_int64(span);
+	/* Same approach as interval_hash: hash the low 64 bits of the span */
+	span64 = int128_to_int64(dsinterval_cmp_value(interval));
 
 	return DirectFunctionCall2(hashint8extended, Int64GetDatumFast(span64),
 							   PG_GETARG_DATUM(1));
