@@ -398,39 +398,18 @@ endif
 distclean: clean
 
 ifdef REGRESS
-
 REGRESS_OPTS += --dbname=$(CONTRIB_TESTDB)
-
-# When doing a VPATH build, must copy over the data files so that the
-# driver script can find them.  We have to use an absolute path for
-# the targets, because otherwise make will try to locate the missing
-# files using VPATH, and will find them in $(srcdir), but the point
-# here is that we want to copy them from $(srcdir) to the build
-# directory.
-
-ifdef VPATH
-abs_builddir := $(shell pwd)
-test_files_src := $(wildcard $(srcdir)/data/*.data)
-test_files_build := $(patsubst $(srcdir)/%, $(abs_builddir)/%, $(test_files_src))
-
-all: $(test_files_build)
-$(test_files_build): $(abs_builddir)/%: $(srcdir)/%
-	$(MKDIR_P) $(dir $@)
-	ln -s $< $@
-endif # VPATH
-endif # REGRESS
+endif
 
 ifdef ORA_REGRESS
-
 ORACLE_REGRESS_OPTS += --dbname=$(CONTRIB_TESTDB)
+endif
 
-# When doing a VPATH build, must copy over the data files so that the
-# driver script can find them.  We have to use an absolute path for
-# the targets, because otherwise make will try to locate the missing
-# files using VPATH, and will find them in $(srcdir), but the point
-# here is that we want to copy them from $(srcdir) to the build
-# directory.
+# Both regression drivers need the same data files in a VPATH build.
+# Use absolute target paths so that make looks for the links in the build
+# directory instead of resolving them to the source files via VPATH.
 
+ifneq ($(strip $(REGRESS) $(ORA_REGRESS)),)
 ifdef VPATH
 abs_builddir := $(shell pwd)
 test_files_src := $(wildcard $(srcdir)/data/*.data)
@@ -441,7 +420,7 @@ $(test_files_build): $(abs_builddir)/%: $(srcdir)/%
 	$(MKDIR_P) $(dir $@)
 	ln -s $< $@
 endif # VPATH
-endif # ORA_REGRESS
+endif
 
 
 .PHONY: submake oracle-submake
