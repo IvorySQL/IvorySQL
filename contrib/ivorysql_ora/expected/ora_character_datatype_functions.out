@@ -3303,7 +3303,12 @@ SELECT to_number(cast(1210.73 as numeric), cast(9999.99 as numeric)) from dual;
  1210.73
 (1 row)
 
---select to_number('$12345.67', '$99999999.99') from dual;
+select to_number('$12345.67', '$99999999.99') from dual;
+ to_number 
+-----------
+ 12345.67
+(1 row)
+
 --select to_number('1,2,6,7,8', '99,99,99,9,999') from dual;
 select to_number('1;2;6;7;8', '99,99,99,9,999') from dual; --error
 ERROR:  invalid number

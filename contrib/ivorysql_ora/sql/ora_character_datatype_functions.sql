@@ -1378,7 +1378,7 @@ SELECT to_number(cast(1210 as smallint), cast(9999 as smallint)) from dual;
 SELECT to_number(cast(1210 as int), cast(9999 as int)) from dual;
 SELECT to_number(cast(1210 as bigint), cast(9999 as bigint)) from dual;
 SELECT to_number(cast(1210.73 as numeric), cast(9999.99 as numeric)) from dual;
---select to_number('$12345.67', '$99999999.99') from dual;
+select to_number('$12345.67', '$99999999.99') from dual;
 --select to_number('1,2,6,7,8', '99,99,99,9,999') from dual;
 select to_number('1;2;6;7;8', '99,99,99,9,999') from dual; --error
 select to_number('1.1,2,6,7,8', '9999,99,99,9,999') from dual; --error

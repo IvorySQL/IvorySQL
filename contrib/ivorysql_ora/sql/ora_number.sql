@@ -944,6 +944,57 @@ SELECT BITAND(6,'8') re FROM DUAL;
 SELECT BITAND('6',8) re FROM DUAL;
 /* End - bug0000478 */
 
+/* Begin - $ is a floating dollar sign in to_char and to_number (issue #2018) */
+SELECT '[' || to_char(1, '$999') || ']' AS one_digit;
+SELECT '[' || to_char(123, '$999') || ']' AS three_digits;
+SELECT '[' || to_char(-123, '$999') || ']' AS negative;
+SELECT '[' || to_char(1234, '$999') || ']' AS overflow;
+SELECT '[' || to_char(0, '$999') || ']' AS zero;
+SELECT '[' || to_char(1, 'FM$999') || ']' AS fm;
+SELECT '[' || to_char(-1, 'FM$999') || ']' AS fm_negative;
+SELECT '[' || to_char(0.5, '$999.99') || ']' AS fraction;
+SELECT '[' || to_char(123.45, '$999.99') || ']' AS full_fraction;
+SELECT '[' || to_char(0.5, '$990.99') || ']' AS zero_before_point;
+SELECT '[' || to_char(1234567.891, '$9,999,999.99') || ']' AS grouping;
+SELECT '[' || to_char(12, '$9G999D99') || ']' AS g_and_d;
+SELECT '[' || to_char(-1, '$0999') || ']' AS leading_zeros;
+SELECT '[' || to_char(1, '99$9') || ']' AS dollar_in_middle;
+SELECT '[' || to_char(123, '999$') || ']' AS dollar_at_end;
+SELECT '[' || to_char(123, '9,999$') || ']' AS dollar_at_end_grouping;
+SELECT '[' || to_char(-1, '$999MI') || ']' AS trailing_minus;
+SELECT '[' || to_char(-1, '$999PR') || ']' AS brackets;
+SELECT '[' || to_char(-1, 'S$999') || ']' AS leading_s;
+SELECT '[' || to_char(12345, '$9.99EEEE') || ']' AS sci;
+SELECT '[' || to_char(-12345, '$9.99EEEE') || ']' AS sci_negative;
+SELECT '[' || to_char(12345::int, '$99,999') || ']' AS int4_value;
+SELECT '[' || to_char(1.5::float8, '$9.9') || ']' AS float8_value;
+SELECT to_char(1, '$$999') AS two_dollars;
+SELECT to_char(1, '$RN') AS dollar_rn;
+SELECT to_number('$123', '$999') AS dollar_value;
+SELECT to_number('-$123', '$999') AS negative_value;
+SELECT to_number('+$123', '$999') AS plus_value;
+SELECT to_number('$123', '999$') AS dollar_at_end_of_model;
+SELECT to_number(' $1,234.56', '$9,999.99') AS grouping_value;
+SELECT to_number('$1,234.50', '$999,999.99') AS wider_model;
+SELECT to_number('123', '$999') AS no_dollar_in_value;
+SELECT to_number('$', '$999') AS only_dollar;
+SELECT to_number(to_char(-1234.5, '$9,999.99'), '$9,999.99') AS round_trip;
+SELECT to_number('$-123', '$999') AS sign_after_dollar;
+SELECT to_number('1$23', '$999') AS dollar_inside_value;
+SELECT to_number('$1', '$$9') AS two_dollars_in_model;
+SELECT to_number('$1', '""$') AS only_dollar_in_model;
+-- a $ in double quotes stays literal text
+SELECT '[' || to_char(12, '"$"999') || ']' AS quoted_dollar;
+SELECT '[' || to_char(12, '"$"$999') || ']' AS quoted_and_floating;
+SELECT '[' || to_char(12, '999"$"') || ']' AS quoted_dollar_at_end;
+SELECT to_number('$12', '"$"999') AS to_number_quoted_dollar;
+-- PostgreSQL mode keeps $ as a literal character
+SET ivorysql.compatible_mode = pg;
+SELECT '[' || to_char(-123, '$999') || ']' AS pg_literal;
+SELECT '[' || to_char(1, '$$999') || ']' AS pg_two_literals;
+RESET ivorysql.compatible_mode;
+/* End - issue #2018 */
+
 
 /* Begin - to_number accepts scientific notation and blank padding */
 SELECT to_number('1e3') AS a;
