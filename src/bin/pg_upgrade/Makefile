@@ -66,6 +66,17 @@ export with_icu
 check:
 	$(prove_check)
 
+ifeq ($(enable_tap_tests),yes)
+# The installcheck path does not run the temporary installation that
+# builds EXTRA_INSTALL.  The extension-control-path test reads this library
+# directly from the build tree.
+installcheck: | submake-test-extensions
+
+.PHONY: submake-test-extensions
+submake-test-extensions:
+	$(MAKE) -C $(top_builddir)/src/test/modules/test_extensions all
+endif
+
 installcheck:
 	$(prove_installcheck)
 
