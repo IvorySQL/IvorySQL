@@ -4074,3 +4074,28 @@ select to_single_byte(NULL);
  
 (1 row)
 
+select to_single_byte('Hello １２３ World ａｂｃ');
+   to_single_byte    
+---------------------
+ Hello 123 World abc
+(1 row)
+
+select to_single_byte('中文测试123');
+ to_single_byte 
+----------------
+ 中文测试123
+(1 row)
+
+select sys.to_single_byte(convert_from('\xE4BDA0'::bytea,'UTF8')::sys.oracharbyte(1));
+ERROR:  invalid byte sequence for encoding "UTF8": 0xe4
+select sys.to_single_byte(convert_from('\xC3A9'::bytea,'UTF8')::sys.oracharbyte(1));
+ERROR:  invalid byte sequence for encoding "UTF8": 0xc3
+select sys.to_single_byte(convert_from('\xF09F9880'::bytea,'UTF8')::sys.oracharbyte(1));
+ERROR:  invalid byte sequence for encoding "UTF8": 0xf0
+select sys.to_single_byte(convert_from('\x41E4BDA0'::bytea,'UTF8')::sys.oracharbyte(2));
+ERROR:  invalid byte sequence for encoding "UTF8": 0xe4
+select sys.to_single_byte(convert_from('\xE4BDA0'::bytea,'UTF8')::sys.oracharbyte(3));
+ to_single_byte 
+----------------
+ 你
+(1 row)

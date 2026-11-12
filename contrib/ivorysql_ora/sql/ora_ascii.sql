@@ -18,4 +18,8 @@ select ascii(to_char('2026-01-11 01:02:03.00'::timestamp,'DD-MON-YYYY HH24:MI:SS
 
 select ascii(to_char('2026-01-22 01:02:03.00 +01:00'::timestamptz,'DD-MON-YYYY HH24:MI:SS TZH:TZM')) from dual;
 
+select ascii(timestamp '2026-01-22 01:02:03.00'::sys.oratimestampltz) from dual;
+
 select ascii('') is null from dual;
+
+select ascii(NULL::sys.number) is null from dual;
