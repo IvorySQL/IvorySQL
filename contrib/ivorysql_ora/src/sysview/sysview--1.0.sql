@@ -1282,3 +1282,80 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+--
+-- USER_TAB_SUBPARTITIONS / ALL_TAB_SUBPARTITIONS / DBA_TAB_SUBPARTITIONS:
+-- the second partitioning level, i.e. a partition that is itself
+-- partitioned.  SUBPARTITION_POSITION numbers the subpartitions of one
+-- partition and HIGH_VALUE carries the subpartition bound as PostgreSQL
+-- spells it.
+--
+CREATE OR REPLACE VIEW SYS.USER_TAB_SUBPARTITIONS AS
+SELECT
+    sys.ora_case_trans(gp.relname::varchar2)::varchar2(128) AS table_name,
+    sys.ora_case_trans(pc.relname::varchar2)::varchar2(128) AS partition_name,
+    sys.ora_case_trans(cc.relname::varchar2)::varchar2(128) AS subpartition_name,
+    row_number() OVER (PARTITION BY pc.oid ORDER BY cc.relname)::numeric AS subpartition_position,
+    pg_catalog.pg_get_expr(cc.relpartbound, cc.oid)::varchar2(4000) AS high_value,
+    'VALID'::varchar2(8) AS status
+FROM pg_inherits i2
+JOIN pg_class cc ON cc.oid = i2.inhrelid
+JOIN pg_class pc ON pc.oid = i2.inhparent
+JOIN pg_inherits i1 ON i1.inhrelid = pc.oid
+JOIN pg_class gp ON gp.oid = i1.inhparent
+JOIN pg_namespace n ON gp.relnamespace = n.oid
+WHERE
+    cc.relispartition
+    AND pc.relispartition
+    AND gp.relkind = 'p'
+    AND pg_catalog.pg_get_userbyid(gp.relowner) = current_user
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema');
+
+GRANT SELECT ON SYS.USER_TAB_SUBPARTITIONS TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.ALL_TAB_SUBPARTITIONS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(gp.relname::varchar2)::varchar2(128) AS table_name,
+    sys.ora_case_trans(pc.relname::varchar2)::varchar2(128) AS partition_name,
+    sys.ora_case_trans(cc.relname::varchar2)::varchar2(128) AS subpartition_name,
+    row_number() OVER (PARTITION BY pc.oid ORDER BY cc.relname)::numeric AS subpartition_position,
+    pg_catalog.pg_get_expr(cc.relpartbound, cc.oid)::varchar2(4000) AS high_value,
+    'VALID'::varchar2(8) AS status
+FROM pg_inherits i2
+JOIN pg_class cc ON cc.oid = i2.inhrelid
+JOIN pg_class pc ON pc.oid = i2.inhparent
+JOIN pg_inherits i1 ON i1.inhrelid = pc.oid
+JOIN pg_class gp ON gp.oid = i1.inhparent
+JOIN pg_namespace n ON gp.relnamespace = n.oid
+WHERE
+    cc.relispartition
+    AND pc.relispartition
+    AND gp.relkind = 'p'
+    AND pg_catalog.has_table_privilege(current_user, gp.oid, 'SELECT')
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema');
+
+GRANT SELECT ON SYS.ALL_TAB_SUBPARTITIONS TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.DBA_TAB_SUBPARTITIONS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(gp.relname::varchar2)::varchar2(128) AS table_name,
+    sys.ora_case_trans(pc.relname::varchar2)::varchar2(128) AS partition_name,
+    sys.ora_case_trans(cc.relname::varchar2)::varchar2(128) AS subpartition_name,
+    row_number() OVER (PARTITION BY pc.oid ORDER BY cc.relname)::numeric AS subpartition_position,
+    pg_catalog.pg_get_expr(cc.relpartbound, cc.oid)::varchar2(4000) AS high_value,
+    'VALID'::varchar2(8) AS status
+FROM pg_inherits i2
+JOIN pg_class cc ON cc.oid = i2.inhrelid
+JOIN pg_class pc ON pc.oid = i2.inhparent
+JOIN pg_inherits i1 ON i1.inhrelid = pc.oid
+JOIN pg_class gp ON gp.oid = i1.inhparent
+JOIN pg_namespace n ON gp.relnamespace = n.oid
+WHERE
+    cc.relispartition
+    AND pc.relispartition
+    AND gp.relkind = 'p'
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema');
+
+GRANT SELECT ON SYS.DBA_TAB_SUBPARTITIONS TO PUBLIC;
