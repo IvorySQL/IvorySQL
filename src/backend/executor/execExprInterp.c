@@ -3356,16 +3356,24 @@ ExecEvalNextValueExpr(ExprState *state, ExprEvalStep *op)
 void
 ExecEvalRownum(ExprState *state, ExprEvalStep *op)
 {
-	PlanState  *planstate;
-	EState	   *estate = NULL;
+	PlanState  *planstate = state ? state->parent : NULL;
+	EState	   *estate = planstate ? planstate->state : NULL;
 	int64		rownum_value = 1;  /* default */
 
-	/* Safely get the PlanState and EState */
-	if (state && state->parent)
+	/*
+	 * When ROWNUM is evaluated by a projection that numbers its own output
+	 * rows (currently a join's target list, see ExecBuildProjectionInfo), use
+	 * the node-level counter maintained by ExecProject().  The estate-level
+	 * counter below is still used for quals and all other expressions.
+	 */
+	if (planstate != NULL &&
+		planstate->ps_ProjInfo != NULL &&
+		planstate->ps_ProjInfo->pi_rownum_by_node &&
+		state == &planstate->ps_ProjInfo->pi_state)
 	{
-		planstate = state->parent;
-		if (planstate)
-			estate = planstate->state;
+		*op->resvalue = Int64GetDatum(planstate->ps_rownum);
+		*op->resnull = false;
+		return;
 	}
 
 	/*
