@@ -363,3 +363,46 @@ DROP PACKAGE test_exc_pkg1;
 DROP PACKAGE test_exc_pkg2;
 DROP PACKAGE test_exc_pkg3;
 DROP PROCEDURE test_standalone_exc;
+
+-- The default SQLSTATE does not identify a user-defined exception.
+DECLARE
+    expected_error EXCEPTION;
+BEGIN
+    DECLARE
+        other_error EXCEPTION;
+    BEGIN
+        RAISE expected_error;
+    EXCEPTION
+        WHEN other_error THEN RAISE NOTICE 'wrong nested handler';
+    END;
+EXCEPTION
+    WHEN expected_error THEN RAISE NOTICE 'caught declared exception';
+END;
+/
+
+-- Reraising an error retains the original declaration's identity.
+DECLARE
+    first_error EXCEPTION;
+    second_error EXCEPTION;
+BEGIN
+    BEGIN
+        RAISE first_error;
+    EXCEPTION
+        WHEN first_error THEN RAISE;
+    END;
+EXCEPTION
+    WHEN second_error THEN RAISE NOTICE 'wrong rethrow handler';
+    WHEN first_error THEN RAISE NOTICE 'caught reraised exception';
+END;
+/
+
+-- Ordinary P0001 errors can still be handled by their SQLSTATE.
+DECLARE
+    declared_error EXCEPTION;
+BEGIN
+    RAISE EXCEPTION 'plain raise';
+EXCEPTION
+    WHEN declared_error THEN RAISE NOTICE 'wrong plain-error handler';
+    WHEN SQLSTATE 'P0001' THEN RAISE NOTICE 'caught plain SQLSTATE';
+END;
+/

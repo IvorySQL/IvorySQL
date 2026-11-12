@@ -52,6 +52,7 @@ typedef struct PLiSQL_exception_var
 	 * Can be set to a specific Oracle error code via PRAGMA EXCEPTION_INIT.
 	 */
 	int			sqlcode;		/* associated error code (default 1) */
+	uint64		exception_id;	/* zero for SQLSTATE-mapped exceptions */
 } PLiSQL_exception_var;
 
 /*
