@@ -493,3 +493,59 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- ALL/DBA/USER_PROCEDURES include package subprograms
+CREATE OR REPLACE PACKAGE view_proc_pkg IS
+    FUNCTION get_one RETURN NUMBER;
+    PROCEDURE do_nothing;
+    PROCEDURE ping;
+END view_proc_pkg;
+/
+CREATE OR REPLACE PACKAGE BODY view_proc_pkg IS
+    FUNCTION get_one RETURN NUMBER IS
+    BEGIN
+        RETURN 1;
+    END get_one;
+    PROCEDURE do_nothing IS
+    BEGIN
+        NULL;
+    END do_nothing;
+    PROCEDURE ping IS
+    BEGIN
+        NULL;
+    END ping;
+END view_proc_pkg;
+/
+SELECT OBJECT_NAME, PROCEDURE_NAME, OBJECT_TYPE, OVERLOAD
+FROM SYS.ALL_PROCEDURES
+WHERE OBJECT_NAME = 'VIEW_PROC_PKG'
+ORDER BY PROCEDURE_NAME;
+  object_name  | procedure_name | object_type | overload 
+---------------+----------------+-------------+----------
+ VIEW_PROC_PKG | DO_NOTHING     | PROCEDURE   | 
+ VIEW_PROC_PKG | GET_ONE        | FUNCTION    | 
+ VIEW_PROC_PKG | PING           | PROCEDURE   | 
+(3 rows)
+
+SELECT OBJECT_NAME, PROCEDURE_NAME, OBJECT_TYPE, OVERLOAD
+FROM SYS.DBA_PROCEDURES
+WHERE OBJECT_NAME = 'VIEW_PROC_PKG'
+ORDER BY PROCEDURE_NAME;
+  object_name  | procedure_name | object_type | overload 
+---------------+----------------+-------------+----------
+ VIEW_PROC_PKG | DO_NOTHING     | PROCEDURE   | 
+ VIEW_PROC_PKG | GET_ONE        | FUNCTION    | 
+ VIEW_PROC_PKG | PING           | PROCEDURE   | 
+(3 rows)
+
+SELECT OBJECT_NAME, PROCEDURE_NAME, OBJECT_TYPE, OVERLOAD
+FROM SYS.USER_PROCEDURES
+WHERE OBJECT_NAME = 'VIEW_PROC_PKG'
+ORDER BY PROCEDURE_NAME;
+  object_name  | procedure_name | object_type | overload 
+---------------+----------------+-------------+----------
+ VIEW_PROC_PKG | DO_NOTHING     | PROCEDURE   | 
+ VIEW_PROC_PKG | GET_ONE        | FUNCTION    | 
+ VIEW_PROC_PKG | PING           | PROCEDURE   | 
+(3 rows)
+
+DROP PACKAGE view_proc_pkg;
