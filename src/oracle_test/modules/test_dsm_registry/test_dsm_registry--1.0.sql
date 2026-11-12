@@ -1,4 +1,4 @@
-/* src/oracle_test/modules/test_dsm_registry/test_dsm_registry--1.0.sql */
+/* src/test/modules/test_dsm_registry/test_dsm_registry--1.0.sql */
 
 -- complain if script is sourced in psql, rather than via CREATE EXTENSION
 \echo Use "CREATE EXTENSION test_dsm_registry" to load this file. \quit
