@@ -32,9 +32,13 @@ indent_size = tab
 """
 
     for line in lines:
-        if line.startswith("#") or len(line) == 0:
+        if line.startswith("#") or not line.strip():
             continue
-        name, git_rules = line.split()
+        name, *attributes = line.split()
+        git_rules = next(
+            (a for a in attributes
+             if a == "-whitespace" or a.startswith("whitespace=")),
+            "")
         if git_rules == "-whitespace":
             rules = [
                 "indent_style = unset",
