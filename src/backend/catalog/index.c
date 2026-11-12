@@ -3066,8 +3066,7 @@ index_build(Relation heapRelation,
 		indexInfo->ii_ParallelWorkers == 0)
 		indexInfo->ii_ParallelWorkers =
 			plan_create_index_workers(RelationGetRelid(heapRelation),
-									  RelationGetRelid(indexRelation),
-									  0);	/* 0 = auto, no override */
+									  RelationGetRelid(indexRelation));
 
 	if (indexInfo->ii_ParallelWorkers == 0)
 		ereport(DEBUG1,
@@ -3976,14 +3975,14 @@ reindex_index(const ReindexStmt *stmt, Oid indexId,
 	{
 		/*
 		 * PARALLEL N: pre-compute worker count with the explicit override.
-		 * Gates 1 and 2 in plan_create_index_workers() still apply.
+		 * Gates 1 and 2 in plan_create_index_workers_override() still apply.
 		 * Gate 4 (32 MB memory cap) is skipped, consistent with the
 		 * parallel_workers reloption behaviour.
 		 */
 		indexInfo->ii_ParallelWorkers =
-			plan_create_index_workers(RelationGetRelid(heapRelation),
-									  RelationGetRelid(iRel),
-									  params->nworkers);
+			plan_create_index_workers_override(RelationGetRelid(heapRelation),
+											   RelationGetRelid(iRel),
+											   params->nworkers);
 	}
 
 	/* Initialize the index and rebuild */
