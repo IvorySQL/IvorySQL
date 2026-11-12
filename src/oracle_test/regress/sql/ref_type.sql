@@ -57,3 +57,37 @@ DROP TABLE ref_reg_people;
 DROP TABLE ref_reg_others;
 DROP TYPE ref_reg_person;
 DROP TYPE ref_reg_other;
+
+-- Converting a table must preserve the ROWID requirement for object tables.
+CREATE TYPE ref_rowid_object AS OBJECT (id integer);
+CREATE TABLE ref_rowid_converted (id integer) WITHOUT ROWID;
+INSERT INTO ref_rowid_converted VALUES (31);
+SET ivorysql.compatible_mode = pg;
+ALTER TABLE ref_rowid_converted OF ref_rowid_object;
+\echo missing_rowid_sqlstate: :SQLSTATE
+SELECT reloftype = 0 AS still_untyped, NOT relhasrowid AS still_without_rowid
+FROM pg_class WHERE oid = 'ref_rowid_converted'::regclass;
+SET ivorysql.compatible_mode = oracle;
+ALTER TABLE ref_rowid_converted SET WITH ROWID;
+SET ivorysql.compatible_mode = pg;
+ALTER TABLE ref_rowid_converted OF ref_rowid_object;
+SET ivorysql.compatible_mode = oracle;
+INSERT INTO ref_rowid_converted VALUES (32);
+SELECT p.id, (DEREF(REF(p))).id AS referenced_id
+FROM ref_rowid_converted p ORDER BY p.id;
+DROP TABLE ref_rowid_converted;
+DROP TYPE ref_rowid_object;
+
+-- Ordinary composite typed tables do not require ROWID.
+SET ivorysql.compatible_mode = pg;
+CREATE TYPE ref_rowid_plain AS (id integer);
+SET ivorysql.compatible_mode = oracle;
+CREATE TABLE ref_rowid_plain_table (id integer) WITHOUT ROWID;
+SET ivorysql.compatible_mode = pg;
+ALTER TABLE ref_rowid_plain_table OF ref_rowid_plain;
+SELECT reloftype = 'ref_rowid_plain'::regtype AS plain_typed,
+       NOT relhasrowid AS still_without_rowid
+FROM pg_class WHERE oid = 'ref_rowid_plain_table'::regclass;
+DROP TABLE ref_rowid_plain_table;
+DROP TYPE ref_rowid_plain;
+SET ivorysql.compatible_mode = oracle;
