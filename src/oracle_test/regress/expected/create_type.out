@@ -247,6 +247,52 @@ SELECT typisobject FROM pg_type WHERE typname = 'oracle_object_type';
 
 DROP FUNCTION object_label;
 DROP TYPE oracle_object_type;
+-- %TYPE 从源列取得类型、长度和精度，也支持带模式名的引用。
+CREATE TABLE pct_type_source (
+    empno number(6) NOT NULL,
+    ename varchar2(50),
+    sal number(10,2),
+    hiredate date
+);
+CREATE TYPE pct_type_employee AS OBJECT (
+    empno pct_type_source.empno%TYPE,
+    ename public.pct_type_source.ename%TYPE,
+    sal pct_type_source.sal%TYPE,
+    hiredate pct_type_source.hiredate%TYPE
+);
+SELECT attname, format_type(atttypid, atttypmod) AS attribute_type
+FROM pg_attribute
+WHERE attrelid = 'pct_type_employee'::regclass AND attnum > 0
+ORDER BY attnum;
+ attname  | attribute_type 
+----------+----------------
+ empno    | number(6,0)
+ ename    | varchar2(50)
+ sal      | number(10,2)
+ hiredate | date
+(4 rows)
+
+-- 替换对象类型时重新读取列的长度。
+ALTER TABLE pct_type_source ALTER COLUMN ename TYPE varchar2(12);
+CREATE OR REPLACE TYPE pct_type_employee AS OBJECT (
+    empno pct_type_source.empno%TYPE,
+    ename pct_type_source.ename%TYPE,
+    sal pct_type_source.sal%TYPE,
+    hiredate pct_type_source.hiredate%TYPE
+);
+SELECT format_type(atttypid, atttypmod) AS attribute_type
+FROM pg_attribute
+WHERE attrelid = 'pct_type_employee'::regclass AND attname = 'ename';
+ attribute_type 
+----------------
+ varchar2(12)
+(1 row)
+
+-- 缺失源列的定义应报错。
+CREATE TYPE pct_type_missing AS OBJECT (attr pct_type_source.missing%TYPE);
+ERROR:  column "missing" of relation "pct_type_source" does not exist
+DROP TABLE pct_type_source;
+DROP TYPE pct_type_employee;
 -- The namespace conflict is symmetric when the standalone routine exists first.
 CREATE FUNCTION object_type_name_conflict RETURN integer
 IS

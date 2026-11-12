@@ -17,6 +17,7 @@
 
 #include "access/htup_details.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_attribute.h"
 #include "catalog/pg_type.h"
 #include "lib/stringinfo.h"
 #include "nodes/makefuncs.h"
@@ -86,7 +87,7 @@ LookupTypeNameExtended(ParseState *pstate,
 
 	if (typeName->refTypeName != NULL)
 	{
-		Oid		object_type;
+		Oid			object_type;
 
 		if (compatible_db != ORA_PARSER)
 			ereport(ERROR,
@@ -178,10 +179,10 @@ LookupTypeNameExtended(ParseState *pstate,
 	}
 	else if (ORA_PARSER == compatible_db && typeName->row_type)
 	{
-		char		*schema_name = NULL;
-		char		*relname = NULL;
-		RangeVar   	*rel;
-		Oid 		relid;
+		char	   *schema_name = NULL;
+		char	   *relname = NULL;
+		RangeVar   *rel;
+		Oid			relid;
 
 		DeconstructQualifiedName(typeName->names, &schema_name, &relname);
 		rel = makeRangeVar(schema_name, relname, typeName->location);
@@ -269,7 +270,8 @@ LookupTypeNameOid(ParseState *pstate, const TypeName *typeName, bool missing_ok)
 	Type		tup;
 
 	/* maybe comes from a package */
-	PkgType		*pkgtype = LookupPkgTypeByTypename(typeName->names, missing_ok);
+	PkgType    *pkgtype = LookupPkgTypeByTypename(typeName->names, missing_ok);
+
 	if (pkgtype != NULL)
 	{
 		typoid = pkgtype->basetypid;
@@ -922,10 +924,10 @@ parseTypeString(const char *str, Oid *typeid_p, int32 *typmod_p,
  */
 Type
 LookupOraTypeName(ParseState *pstate, const TypeName *typeName,
-			   int32 *typmod_p, bool missing_ok)
+				  int32 *typmod_p, bool missing_ok)
 {
 	return LookupOraTypeNameExtended(pstate,
-				  typeName, typmod_p, true, missing_ok);
+									 typeName, typmod_p, true, missing_ok);
 }
 
 /*
@@ -934,12 +936,12 @@ LookupOraTypeName(ParseState *pstate, const TypeName *typeName,
  */
 Type
 LookupOraTypeNameExtended(ParseState *pstate,
-			   const TypeName *typeName, int32 *typmod_p,
-			   bool temp_ok, bool missing_ok)
+						  const TypeName *typeName, int32 *typmod_p,
+						  bool temp_ok, bool missing_ok)
 {
-	Oid		typoid;
+	Oid			typoid;
 	HeapTuple	tup;
-	int32		typmod;
+	int32		typmod = -1;
 
 	if (typeName->names == NIL)
 	{
@@ -951,18 +953,18 @@ LookupOraTypeNameExtended(ParseState *pstate,
 		/* Handle %TYPE reference */
 		RangeVar   *rel = makeRangeVar(NULL, NULL, typeName->location);
 		char	   *field = NULL;
-		Oid	   relid;
-		AttrNumber	attnum;
+		Oid			relid;
+		HeapTuple	atttup;
 
 		/* deconstruct the name list */
 		switch (list_length(typeName->names))
 		{
 			case 1:
 				ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("improper %%TYPE reference (too few dotted names): %s",
-							NameListToString(typeName->names)),
-							 parser_errposition(pstate, typeName->location)));
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("improper %%TYPE reference (too few dotted names): %s",
+								NameListToString(typeName->names)),
+						 parser_errposition(pstate, typeName->location)));
 				break;
 			case 2:
 				rel->relname = strVal(linitial(typeName->names));
@@ -981,10 +983,10 @@ LookupOraTypeNameExtended(ParseState *pstate,
 				break;
 			default:
 				ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("improper %%TYPE reference (too many dotted names): %s",
-							NameListToString(typeName->names)),
-							 parser_errposition(pstate, typeName->location)));
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("improper %%TYPE reference (too many dotted names): %s",
+								NameListToString(typeName->names)),
+						 parser_errposition(pstate, typeName->location)));
 				break;
 		}
 
@@ -996,32 +998,35 @@ LookupOraTypeNameExtended(ParseState *pstate,
 		 * penalty and would also require a permissions check.
 		 */
 		relid = RangeVarGetRelid(rel, NoLock, missing_ok);
-		attnum = get_attnum(relid, field);
-		if (attnum == InvalidAttrNumber)
+		atttup = SearchSysCacheAttName(relid, field);
+		if (!HeapTupleIsValid(atttup))
 		{
 			if (missing_ok)
 				typoid = InvalidOid;
 			else
 				ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_COLUMN),
-					 errmsg("column \"%s\" of relation \"%s\" does not exist",
-							field, rel->relname),
-							 parser_errposition(pstate, typeName->location)));
+						(errcode(ERRCODE_UNDEFINED_COLUMN),
+						 errmsg("column \"%s\" of relation \"%s\" does not exist",
+								field, rel->relname),
+						 parser_errposition(pstate, typeName->location)));
 		}
 		else
 		{
-			typoid = get_atttype(relid, attnum);
+			Form_pg_attribute attr = (Form_pg_attribute) GETSTRUCT(atttup);
 
-			/* this construct should never have an array indicator */
+			/* 从同一列记录取得类型及其长度或精度。 */
+			typoid = attr->atttypid;
+			typmod = attr->atttypmod;
+			ReleaseSysCache(atttup);
 			Assert(typeName->arrayBounds == NIL);
 		}
 	}
 	else if (ORA_PARSER == compatible_db && typeName->row_type)
 	{
-		char		*schema_name = NULL;
-		char		*relname = NULL;
-		RangeVar   	*rel;
-		Oid 		relid;
+		char	   *schema_name = NULL;
+		char	   *relname = NULL;
+		RangeVar   *rel;
+		Oid			relid;
 
 		DeconstructQualifiedName(typeName->names, &schema_name, &relname);
 		rel = makeRangeVar(schema_name, relname, typeName->location);
@@ -1046,7 +1051,7 @@ LookupOraTypeNameExtended(ParseState *pstate,
 		{
 			/* Look in specific schema */
 			Oid			namespaceId;
-			ParseCallbackState 	pcbstate;
+			ParseCallbackState pcbstate;
 
 			setup_parser_errposition_callback(&pcbstate, pstate, typeName->location);
 
@@ -1054,8 +1059,8 @@ LookupOraTypeNameExtended(ParseState *pstate,
 
 			if (OidIsValid(namespaceId))
 				typoid = GetSysCacheOid2(TYPENAMENSP, Anum_pg_type_oid,
-							 PointerGetDatum(typname),
-							 ObjectIdGetDatum(namespaceId));
+										 PointerGetDatum(typname),
+										 ObjectIdGetDatum(namespaceId));
 			else
 				typoid = InvalidOid;
 
@@ -1083,10 +1088,11 @@ LookupOraTypeNameExtended(ParseState *pstate,
 	tup = SearchSysCache1(TYPEOID, ObjectIdGetDatum(typoid));
 
 	/* should not happen */
-	if (!HeapTupleIsValid(tup)) 
+	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "cache lookup failed for type %u", typoid);
 
-	typmod = typenameTypeMod(pstate, typeName, (Type) tup);
+	if (!typeName->pct_type)
+		typmod = typenameTypeMod(pstate, typeName, (Type) tup);
 
 	if (typmod_p)
 		*typmod_p = typmod;
