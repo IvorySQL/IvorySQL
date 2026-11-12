@@ -493,3 +493,29 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- PART_INDEXES views: partitioned indexes
+CREATE TABLE TEST_PIDX (A INT) PARTITION BY RANGE (A);
+CREATE TABLE TEST_PIDX_P1 PARTITION OF TEST_PIDX FOR VALUES FROM (0) TO (10);
+CREATE INDEX TEST_PIDX_I ON TEST_PIDX (A);
+SELECT INDEX_NAME, TABLE_NAME, PARTITIONING_TYPE, STATUS, PARTITIONED
+FROM SYS.USER_PART_INDEXES WHERE INDEX_NAME = 'TEST_PIDX_I';
+ index_name  | table_name | partitioning_type | status | partitioned 
+-------------+------------+-------------------+--------+-------------
+ TEST_PIDX_I | TEST_PIDX  | RANGE             | VALID  | YES
+(1 row)
+
+SELECT COUNT(*) AS ALL_PART_INDEXES
+FROM SYS.ALL_PART_INDEXES WHERE INDEX_NAME = 'TEST_PIDX_I';
+ all_part_indexes 
+------------------
+                1
+(1 row)
+
+SELECT COUNT(*) AS DBA_PART_INDEXES
+FROM SYS.DBA_PART_INDEXES WHERE INDEX_NAME = 'TEST_PIDX_I';
+ dba_part_indexes 
+------------------
+                1
+(1 row)
+
+DROP TABLE TEST_PIDX;
