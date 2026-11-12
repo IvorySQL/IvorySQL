@@ -435,6 +435,20 @@ ora_dbms_output_put(PG_FUNCTION_ARGS)
 				 errmsg("ORU-10028: line length overflow, limit of %d bytes per line",
 						DBMS_OUTPUT_MAX_LINE_LENGTH)));
 
+	/*
+	 * Oracle counts pending PUT text against the configured buffer limit,
+	 * so an over-limit PUT fails immediately instead of at the next
+	 * NEW_LINE or PUT_LINE.
+	 */
+	if (str_len > 0 &&
+		output_buffer->buffer_size != DBMS_OUTPUT_UNLIMITED &&
+		(int64) output_buffer->current_line->len + str_len >
+		output_buffer->buffer_size - output_buffer->buffer_used)
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("ORU-10027: buffer overflow, limit of %lld bytes",
+						(long long) output_buffer->buffer_size)));
+
 	/* Accumulate in current_line without creating a line yet */
 	appendStringInfoString(output_buffer->current_line, str);
 

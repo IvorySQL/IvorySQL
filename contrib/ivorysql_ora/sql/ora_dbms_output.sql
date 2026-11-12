@@ -814,6 +814,76 @@ END;
 $$;
 
 -- =============================================================================
+-- Section 16: PUT counts pending text against the buffer limit
+-- =============================================================================
+
+-- Test 16.1: A single over-limit PUT fails immediately
+DECLARE
+BEGIN
+    dbms_output.disable();
+    dbms_output.enable(2000);
+    BEGIN
+        dbms_output.put(rpad('X', 2001, 'X'));
+        RAISE NOTICE 'Test 16.1 - PUT over limit: unexpected success';
+    EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE 'Test 16.1 - PUT over limit blocked: %', SQLERRM;
+    END;
+END;
+/
+
+-- Test 16.2: Accumulated PUT text is limited too
+DECLARE
+BEGIN
+    dbms_output.disable();
+    dbms_output.enable(2000);
+    dbms_output.put(rpad('X', 1000, 'X'));
+    BEGIN
+        dbms_output.put(rpad('Y', 1001, 'Y'));
+        RAISE NOTICE 'Test 16.2 - Accumulated PUT over limit: unexpected success';
+    EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE 'Test 16.2 - Accumulated PUT over limit blocked: %', SQLERRM;
+    END;
+END;
+/
+
+-- Test 16.3: Exactly reaching the limit is allowed
+DECLARE
+    line TEXT;
+    status INTEGER;
+BEGIN
+    dbms_output.disable();
+    dbms_output.enable(2000);
+    dbms_output.put(rpad('X', 2000, 'X'));
+    dbms_output.new_line();
+    dbms_output.get_line(line, status);
+    RAISE NOTICE 'Test 16.3 - Exact limit line length=%, Status=%', length(line), status;
+END;
+/
+
+-- Test 16.4: Buffered content reduces the remaining PUT capacity
+DECLARE
+    line TEXT;
+    status INTEGER;
+BEGIN
+    dbms_output.disable();
+    dbms_output.enable(2000);
+    dbms_output.put_line(rpad('X', 2000, 'X'));
+    BEGIN
+        dbms_output.put('Z');
+        RAISE NOTICE 'Test 16.4 - PUT after full buffer: unexpected success';
+    EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE 'Test 16.4 - PUT after full buffer blocked: %', SQLERRM;
+    END;
+    dbms_output.get_line(line, status);
+    RAISE NOTICE 'Test 16.4 - Drained full line length=%, Status=%', length(line), status;
+    dbms_output.put('Z');
+    dbms_output.new_line();
+    dbms_output.get_line(line, status);
+    RAISE NOTICE 'Test 16.4 - PUT after drain: [%], Status=%', line, status;
+END;
+/
+
+-- =============================================================================
 -- Cleanup
 -- =============================================================================
 DROP PROCEDURE test_output_proc;
