@@ -891,19 +891,15 @@ ora_utl_file_putf(PG_FUNCTION_ARGS)
 			fpt++; format_length--;
 			continue;
 		}
-		/* Never consume the first byte of a multibyte character after '%'. */
-		if (fpt[0] == '%' && !IS_HIGHBIT_SET(fpt[1]))
+		/*
+		 * UTL_FILE.PUTF substitutes %s only.  Every other percent sequence,
+		 * including %%, is copied literally, as Oracle does.  Never consume
+		 * the first byte of a multibyte character after '%'.
+		 */
+		if (fpt[0] == '%' && !IS_HIGHBIT_SET(fpt[1]) && fpt[1] == 's')
 		{
-			if (fpt[1] == '%')
-			{
-				CHECK_LENGTH(++cur_len);
-				if (fputc('%', fd) == EOF)
-					CHECK_ERRNO_PUT();
-			}
-			else if (fpt[1] == 's' && ++cur_par <= 5 && !PG_ARGISNULL(cur_par + 1))
-			{
+			if (++cur_par <= 5 && !PG_ARGISNULL(cur_par + 1))
 				cur_len += do_write(fcinfo, cur_par + 1, fd, max_linesize - cur_len, encoding);
-			}
 			fpt++; format_length--;
 			continue;
 		}
