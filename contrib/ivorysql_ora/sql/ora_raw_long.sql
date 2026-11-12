@@ -26,6 +26,26 @@ select '123'::raw = '123'::bytea;
 select '123'::raw(2) = '123'::bytea;
 select '\xff'::bytea = '\xff'::raw(2);
 select 'ff'::text = 'ff'::long(2);
+
+-- Explicit LONG(n) casts retain only complete multibyte characters.
+SELECT cast('中文' AS long(6)) = '中文'
+       AND lengthb(cast('中文' AS long(6))) = 6;
+SELECT cast('中文' AS long(5)) = '中'
+       AND lengthb(cast('中文' AS long(5))) = 3;
+SELECT coalesce(lengthb(cast('中文' AS long(2))), 0) = 0;
+SELECT cast('abcdef' AS long(4)) = 'abcd';
+SELECT cast('abc' AS long(4)) = 'abc';
+
+-- Explicit bytea -> RAW(n) casts truncate by bytes, not by characters.
+SELECT cast('\xDEADBEEF'::bytea AS raw(4)) = '\xDEADBEEF'::bytea
+       AND lengthb(cast('\xDEADBEEF'::bytea AS raw(4))) = 4;
+SELECT cast('\xDEADBEEF'::bytea AS raw(3)) = '\xDEADBE'::bytea
+       AND lengthb(cast('\xDEADBEEF'::bytea AS raw(3))) = 3;
+SELECT cast('\x'::bytea AS raw(4)) = '\x'::bytea
+       AND lengthb(cast('\x'::bytea AS raw(4))) = 0;
+SELECT cast('\x00FF10'::bytea AS raw(2)) = '\x00FF'::bytea
+       AND lengthb(cast('\x00FF10'::bytea AS raw(2))) = 2;
+
 DELETE FROM RW_TEXT;
 CREATE INDEX test_orachar_btree ON RW_TEXT(a);
 INSERT INTO RW_TEXT VALUES(3,'\xFF');
