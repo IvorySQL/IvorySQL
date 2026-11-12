@@ -103,8 +103,6 @@ typedef struct BitString
 
 extern Integer *makeInteger(int i);
 extern Float *makeFloat(char *numericStr);
-extern BFloat *makeBFloat(char *numericStr);
-extern BDouble *makeBDouble(char *numericStr);
 extern Boolean *makeBoolean(bool val);
 extern String *makeString(char *str);
 extern BitString *makeBitString(char *str);
