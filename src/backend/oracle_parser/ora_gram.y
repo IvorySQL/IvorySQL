@@ -333,6 +333,7 @@ static bool oracleJoinOpExists(const Node *expr);
 
 %type <str>			opt_single_name
 %type <list>		opt_qualified_name
+%type <list>		OptOracleTableOptions
 %type <boolean>		opt_concurrently opt_usingindex
 %type <dbehavior>	opt_drop_behavior
 %type <list>		opt_utility_option_list
@@ -788,7 +789,7 @@ static bool oracleJoinOpExists(const Node *expr);
 	CACHE CALL CALLED CASCADE CASCADED CASE CAST CATALOG_P CHAIN CHAR_P
 	CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE
 	CLUSTER COALESCE COLLATE COLLATION COLUMN COLUMNS COMMENT COMMENTS COMMIT
-	COMMITTED COMPRESSION CONCURRENTLY CONDITIONAL CONFIGURATION CONFLICT
+	COMMITTED COMPRESS COMPRESSION CONCURRENTLY CONDITIONAL CONFIGURATION CONFLICT
 	CONNECTION CONSTRAINT CONSTRAINTS CONSTRUCTOR CONTENT_P CONTINUE_P CONVERSION_P COPY
 	COST CREATE CROSS CSV CUBE CURRENT_P
 	CURRENT_CATALOG CURRENT_DATE CURRENT_ROLE CURRENT_SCHEMA
@@ -822,13 +823,13 @@ static bool oracleJoinOpExists(const Node *expr);
 
 	LABEL LANGUAGE LARGE_P LAST_P LATERAL_P
 	LEADING LEAKPROOF LEAST LEFT LEVEL LIKE LIMIT LISTEN LOAD LOCAL
-	LOCALTIME LOCALTIMESTAMP LOCATION LOCK_P LOCKED LOGGED
+	LOCALTIME LOCALTIMESTAMP LOCATION LOCK_P LOCKED LOGGED LOGGING
 
 	MAP_P MAPPING MATCH MATCHED MATERIALIZED MAXVALUE MEMBER MERGE MERGE_ACTION METHOD
-	MINUTE_P MINVALUE MODE MODIFY MONTH_P MOVE
+	MINUTE_P MINVALUE MODE MODIFY MONITORING MONTH_P MOVE
 
-	NAME_P NAMES NATIONAL NATURAL NCHAR NESTED NEW NEXT NFC NFD NFKC NFKD NO NODE NOCACHE NOCYCLE
-	NOMAXVALUE NOMINVALUE NONE NOORDER NOPARALLEL
+	NAME_P NAMES NATIONAL NATURAL NCHAR NESTED NEW NEXT NFC NFD NFKC NFKD NO NODE NOCACHE NOCOMPRESS NOCYCLE NOLOGGING
+	NOMAXVALUE NOMINVALUE NOMONITORING NONE NOORDER NOPARALLEL
 	NOEXTEND NOKEEP NORMALIZE NORMALIZED NOSCALE NOSHARD
 	NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLIF
 	NULLS_P NUMBER_P NUMERIC NVL NVL2
@@ -4283,7 +4284,7 @@ copy_generic_opt_arg_list_item:
 
 CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 			OptInherit OptPartitionSpec table_access_method_clause OptWith
-			OnCommitOption OptTableSpace
+			OnCommitOption OptTableSpace OptOracleTableOptions
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 
@@ -4303,7 +4304,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 				}
 		| CREATE OptTemp TABLE IF_P NOT EXISTS qualified_name '('
 			OptTableElementList ')' OptInherit OptPartitionSpec table_access_method_clause
-			OptWith OnCommitOption OptTableSpace
+			OptWith OnCommitOption OptTableSpace OptOracleTableOptions
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 
@@ -4323,7 +4324,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 				}
 		| CREATE OptTemp TABLE qualified_name OF any_name
 			OptTypedTableElementList OptPartitionSpec table_access_method_clause
-			OptWith OnCommitOption OptTableSpace
+			OptWith OnCommitOption OptTableSpace OptOracleTableOptions
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 
@@ -4344,7 +4345,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 				}
 		| CREATE OptTemp TABLE IF_P NOT EXISTS qualified_name OF any_name
 			OptTypedTableElementList OptPartitionSpec table_access_method_clause
-			OptWith OnCommitOption OptTableSpace
+			OptWith OnCommitOption OptTableSpace OptOracleTableOptions
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 
@@ -4365,7 +4366,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 				}
 		| CREATE OptTemp TABLE qualified_name PARTITION OF qualified_name
 			OptTypedTableElementList PartitionBoundSpec OptPartitionSpec
-			table_access_method_clause OptWith OnCommitOption OptTableSpace
+			table_access_method_clause OptWith OnCommitOption OptTableSpace OptOracleTableOptions
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 
@@ -4386,7 +4387,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 				}
 		| CREATE OptTemp TABLE IF_P NOT EXISTS qualified_name PARTITION OF
 			qualified_name OptTypedTableElementList PartitionBoundSpec OptPartitionSpec
-			table_access_method_clause OptWith OnCommitOption OptTableSpace
+			table_access_method_clause OptWith OnCommitOption OptTableSpace OptOracleTableOptions
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 
@@ -5370,6 +5371,31 @@ OptTableSpace:   TABLESPACE name					{ $$ = $2; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
+OptOracleTableOptions:
+			/*EMPTY*/								{ $$ = NIL; }
+			| OracleTableOptionList					{ $$ = NIL; }
+		;
+
+OracleTableOptionList:
+			OracleTableOption
+			| OracleTableOptionList OracleTableOption
+		;
+
+OracleTableOption:
+			LOGGING
+			| NOLOGGING
+			| COMPRESS
+			| NOCOMPRESS
+			| NOCACHE
+			| NOPARALLEL
+			| MONITORING
+			| NOMONITORING
+			| CACHE
+			| CACHE NumericOnly
+			| PARALLEL
+			| PARALLEL NumericOnly
+		;
+
 OptConsTableSpace:   USING INDEX TABLESPACE name	{ $$ = $4; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
@@ -5525,7 +5551,7 @@ CreateAsStmt:
 
 create_as_target:
 			qualified_name opt_column_list table_access_method_clause
-			OptWith OnCommitOption OptTableSpace
+			OptWith OnCommitOption OptTableSpace OptOracleTableOptions
 				{
 					$$ = makeNode(IntoClause);
 					$$->rel = $1;
@@ -22040,6 +22066,7 @@ unreserved_keyword:
 			| COMMIT
 			| COMMITTED
 			| COMPILE
+			| COMPRESS
 			| COMPRESSION
 			| CONDITIONAL
 			| CONFIGURATION
@@ -22165,6 +22192,7 @@ unreserved_keyword:
 			| LOCK_P
 			| LOCKED
 			| LOGGED
+			| LOGGING
 			| LONG_P
 			| LOOP_P
 			| LSN_P
@@ -22181,6 +22209,7 @@ unreserved_keyword:
 			| MINVALUE
 			| MODE
 			| MODIFY
+			| MONITORING
 			| MONTH_P
 			| MOVE
 			| NAME_P
@@ -22194,11 +22223,14 @@ unreserved_keyword:
 			| NFKD
 			| NO
 			| NOCACHE
+			| NOCOMPRESS
 			| NODE
 			| NOEXTEND
 			| NOKEEP
+			| NOLOGGING
 			| NOMAXVALUE
 			| NOMINVALUE
+			| NOMONITORING
 			| NONEDITIONABLE
 			| NOORDER
 			| NOPARALLEL
@@ -22707,6 +22739,7 @@ bare_label_keyword:
 			| COMMIT
 			| COMMITTED
 			| COMPILE
+			| COMPRESS
 			| COMPRESSION
 			| CONCURRENTLY
 			| CONDITIONAL
@@ -22886,6 +22919,7 @@ bare_label_keyword:
 			| LOCK_P
 			| LOCKED
 			| LOGGED
+			| LOGGING
 			| LONG_P
 			| LOOP_P
 			| LSN_P
@@ -22901,6 +22935,7 @@ bare_label_keyword:
 			| MINVALUE
 			| MODE
 			| MODIFY
+			| MONITORING
 			| MOVE
 			| NAME_P
 			| NAMES
@@ -22917,13 +22952,16 @@ bare_label_keyword:
 			| NFKD
 			| NO
 			| NOCACHE
+			| NOCOMPRESS
 			| NOCOPY
 			| NOCYCLE
 			| NODE
 			| NOEXTEND
 			| NOKEEP
+			| NOLOGGING
 			| NOMAXVALUE
 			| NOMINVALUE
+			| NOMONITORING
 			| NONE
 			| NONEDITIONABLE
 			| NOPARALLEL
