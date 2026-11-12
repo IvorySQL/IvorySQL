@@ -1,4 +1,6 @@
 /*
+ * Portions Copyright (c) 2026, PostgreSQL Global Development Group
+ *
  * contrib/ora_btree_gist/btree_binary_double.c
  */
 #include "postgres.h"
@@ -26,35 +28,39 @@ PG_FUNCTION_INFO_V1(gbt_binary_double_penalty);
 PG_FUNCTION_INFO_V1(gbt_binary_double_same);
 
 
+/*
+ * Use the NaN-aware comparators so that GiST agrees with the SQL operators
+ * and B-tree indexes.  Penalty and distance must handle NaNs as well.
+ */
 static bool
 gbt_binary_doublegt(const void *a, const void *b, FmgrInfo *flinfo)
 {
 	(void) flinfo;		/* not used */
-	return (*((const float8 *) a) > *((const float8 *) b));
+	return float8_gt(*((const float8 *) a), *((const float8 *) b));
 }
 static bool
 gbt_binary_doublege(const void *a, const void *b, FmgrInfo *flinfo)
 {
 	(void) flinfo;		/* not used */
-	return (*((const float8 *) a) >= *((const float8 *) b));
+	return float8_ge(*((const float8 *) a), *((const float8 *) b));
 }
 static bool
 gbt_binary_doubleeq(const void *a, const void *b, FmgrInfo *flinfo)
 {
 	(void) flinfo;		/* not used */
-	return (*((const float8 *) a) == *((const float8 *) b));
+	return float8_eq(*((const float8 *) a), *((const float8 *) b));
 }
 static bool
 gbt_binary_doublele(const void *a, const void *b, FmgrInfo *flinfo)
 {
 	(void) flinfo;		/* not used */
-	return (*((const float8 *) a) <= *((const float8 *) b));
+	return float8_le(*((const float8 *) a), *((const float8 *) b));
 }
 static bool
 gbt_binary_doublelt(const void *a, const void *b, FmgrInfo *flinfo)
 {
 	(void) flinfo;		/* not used */
-	return (*((const float8 *) a) < *((const float8 *) b));
+	return float8_lt(*((const float8 *) a), *((const float8 *) b));
 }
 
 static int
@@ -62,17 +68,13 @@ gbt_binary_doublekey_cmp(const void *a, const void *b, FmgrInfo *flinfo)
 {
 	float8KEY  *ia = (float8KEY *) (((const Nsrt *) a)->t);
 	float8KEY  *ib = (float8KEY *) (((const Nsrt *) b)->t);
+	int			res;
 
 	(void) flinfo;		/* not used */
-	if (ia->lower == ib->lower)
-	{
-		if (ia->upper == ib->upper)
-			return 0;
-
-		return (ia->upper > ib->upper) ? 1 : -1;
-	}
-
-	return (ia->lower > ib->lower) ? 1 : -1;
+	res = float8_cmp_internal(ia->lower, ib->lower);
+	if (res != 0)
+		return res;
+	return float8_cmp_internal(ia->upper, ib->upper);
 }
 
 static float8
@@ -86,6 +88,15 @@ gbt_binary_double_dist(const void *a, const void *b, FmgrInfo *flinfo)
 	r = arg1 - arg2;
 	if (unlikely(isinf(r)) && !isinf(arg1) && !isinf(arg2))
 		float_overflow_error();
+	if (unlikely(isnan(r)))
+	{
+		if (isnan(arg1) && isnan(arg2))
+			r = 0.0;			/* treat NaNs as equal */
+		else if (isnan(arg1) || isnan(arg2))
+			r = get_float8_infinity();	/* max dist for NaN vs non-NaN */
+		else
+			r = 0.0;			/* must be Inf - Inf case */
+	}
 	return fabs(r);
 }
 
@@ -117,6 +128,15 @@ binary_double_dist(PG_FUNCTION_ARGS)
 	if (unlikely(isinf(r)) && !isinf(a) && !isinf(b))
 		float_overflow_error();
 
+	if (unlikely(isnan(r)))
+	{
+		if (isnan(a) && isnan(b))
+			r = 0.0;			/* treat NaNs as equal */
+		else if (isnan(a) || isnan(b))
+			r = get_float8_infinity();	/* max dist for NaN vs non-NaN */
+		else
+			r = 0.0;			/* must be Inf - Inf case */
+	}
 	PG_RETURN_FLOAT8(fabs(r));
 }
 
@@ -201,7 +221,7 @@ gbt_binary_double_penalty(PG_FUNCTION_ARGS)
 	float8KEY  *newentry = (float8KEY *) DatumGetPointer(((GISTENTRY *) PG_GETARG_POINTER(1))->key);
 	float	   *result = (float *) PG_GETARG_POINTER(2);
 
-	penalty_num(result, origentry->lower, origentry->upper, newentry->lower, newentry->upper);
+	float_penalty_num(result, origentry->lower, origentry->upper, newentry->lower, newentry->upper);
 
 	PG_RETURN_POINTER(result);
 }

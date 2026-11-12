@@ -1,4 +1,6 @@
 /*
+ * Portions Copyright (c) 2026, PostgreSQL Global Development Group
+ *
  * contrib/ora_btree_gist/btree_binary_float.c
  */
 #include "postgres.h"
@@ -26,35 +28,39 @@ PG_FUNCTION_INFO_V1(gbt_binary_float_distance);
 PG_FUNCTION_INFO_V1(gbt_binary_float_penalty);
 PG_FUNCTION_INFO_V1(gbt_binary_float_same);
 
+/*
+ * Use the NaN-aware comparators so that GiST agrees with the SQL operators
+ * and B-tree indexes.  Penalty and distance must handle NaNs as well.
+ */
 static bool
 gbt_binary_floatgt(const void *a, const void *b, FmgrInfo *flinfo)
 {
 	(void) flinfo;		/* not used */
-	return (*((const float4 *) a) > *((const float4 *) b));
+	return float4_gt(*((const float4 *) a), *((const float4 *) b));
 }
 static bool
 gbt_binary_floatge(const void *a, const void *b, FmgrInfo *flinfo)
 {
 	(void) flinfo;		/* not used */
-	return (*((const float4 *) a) >= *((const float4 *) b));
+	return float4_ge(*((const float4 *) a), *((const float4 *) b));
 }
 static bool
 gbt_binary_floateq(const void *a, const void *b, FmgrInfo *flinfo)
 {
 	(void) flinfo;		/* not used */
-	return (*((const float4 *) a) == *((const float4 *) b));
+	return float4_eq(*((const float4 *) a), *((const float4 *) b));
 }
 static bool
 gbt_binary_floatle(const void *a, const void *b, FmgrInfo *flinfo)
 {
 	(void) flinfo;		/* not used */
-	return (*((const float4 *) a) <= *((const float4 *) b));
+	return float4_le(*((const float4 *) a), *((const float4 *) b));
 }
 static bool
 gbt_binary_floatlt(const void *a, const void *b, FmgrInfo *flinfo)
 {
 	(void) flinfo;		/* not used */
-	return (*((const float4 *) a) < *((const float4 *) b));
+	return float4_lt(*((const float4 *) a), *((const float4 *) b));
 }
 
 static int
@@ -62,24 +68,35 @@ gbt_binary_floatkey_cmp(const void *a, const void *b, FmgrInfo *flinfo)
 {
 	float4KEY  *ia = (float4KEY *) (((const Nsrt *) a)->t);
 	float4KEY  *ib = (float4KEY *) (((const Nsrt *) b)->t);
+	int			res;
 
 	(void) flinfo;		/* not used */
-	if (ia->lower == ib->lower)
-	{
-		if (ia->upper == ib->upper)
-			return 0;
-
-		return (ia->upper > ib->upper) ? 1 : -1;
-	}
-
-	return (ia->lower > ib->lower) ? 1 : -1;
+	res = float4_cmp_internal(ia->lower, ib->lower);
+	if (res != 0)
+		return res;
+	return float4_cmp_internal(ia->upper, ib->upper);
 }
 
 static float8
 gbt_binary_float_dist(const void *a, const void *b, FmgrInfo *flinfo)
 {
+	float8		arg1 = *(const float4 *) a;
+	float8		arg2 = *(const float4 *) b;
+	float8		r;
+
 	(void) flinfo;		/* not used */
-	return GET_FLOAT_DISTANCE(float4, a, b);
+	r = arg1 - arg2;
+	/* With float4 inputs, infinity cannot be due to overflow here. */
+	if (unlikely(isnan(r)))
+	{
+		if (isnan(arg1) && isnan(arg2))
+			r = 0.0;			/* treat NaNs as equal */
+		else if (isnan(arg1) || isnan(arg2))
+			r = get_float8_infinity();	/* max dist for NaN vs non-NaN */
+		else
+			r = 0.0;			/* must be Inf - Inf case */
+	}
+	return fabs(r);
 }
 
 
@@ -110,6 +127,15 @@ binary_float_dist(PG_FUNCTION_ARGS)
 	if (unlikely(isinf(r)) && !isinf(a) && !isinf(b))
 		float_overflow_error();
 
+	if (unlikely(isnan(r)))
+	{
+		if (isnan(a) && isnan(b))
+			r = 0.0;			/* treat NaNs as equal */
+		else if (isnan(a) || isnan(b))
+			r = get_float4_infinity();	/* max dist for NaN vs non-NaN */
+		else
+			r = 0.0;			/* must be Inf - Inf case */
+	}
 	PG_RETURN_FLOAT4(fabsf(r));
 }
 
@@ -195,7 +221,7 @@ gbt_binary_float_penalty(PG_FUNCTION_ARGS)
 	float4KEY  *newentry = (float4KEY *) DatumGetPointer(((GISTENTRY *) PG_GETARG_POINTER(1))->key);
 	float	   *result = (float *) PG_GETARG_POINTER(2);
 
-	penalty_num(result, origentry->lower, origentry->upper, newentry->lower, newentry->upper);
+	float_penalty_num(result, origentry->lower, origentry->upper, newentry->lower, newentry->upper);
 
 	PG_RETURN_POINTER(result);
 }

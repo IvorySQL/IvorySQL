@@ -14,6 +14,7 @@
  * limitations under the License.
  * 
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
+ * Portions Copyright (c) 2026, PostgreSQL Global Development Group
  * contrib/btree_gist/btree_utils_num.h
  */
 #ifndef __BTREE_UTILS_NUM_H__
@@ -25,6 +26,7 @@
 #include "access/gist.h"
 #include "btree_gist.h"
 #include "utils/rel.h"
+#include "utils/float.h"
 
 typedef char GBT_NUMKEY;
 
@@ -91,6 +93,85 @@ typedef struct
   } \
 } while (0)
 
+
+/*
+ * Compute the penalty for expanding a floating-point range, accounting for
+ * NaNs, infinities, and overflows.  Adapted from PostgreSQL btree_gist.
+ */
+static inline float
+float_penalty_num_impl(double olower, double oupper,
+					   double nlower, double nupper,
+					   int natts)
+{
+	float		result = 0.0F;
+	double		tmp = 0.0;
+
+	/* Add penalty for expanding upper bound */
+	if (float8_gt(nupper, oupper))
+	{
+		double		delta = nupper - oupper;
+
+		if (unlikely(isnan(delta)))
+		{
+			/* oupper couldn't be NaN here, see float8_gt */
+			if (isnan(nupper))
+				delta = FLT_MAX;	/* max penalty for NaN vs non-NaN */
+			else
+				delta = 0.0;	/* must be Inf - Inf case */
+		}
+		else if (delta > FLT_MAX)
+			delta = FLT_MAX;	/* clamp to FLT_MAX, esp for infinity */
+		tmp += delta;
+	}
+	/* Add penalty for expanding lower bound */
+	if (float8_gt(olower, nlower))
+	{
+		double		delta = olower - nlower;
+
+		if (unlikely(isnan(delta)))
+		{
+			/* nlower couldn't be NaN here, see float8_gt */
+			if (isnan(olower))
+				delta = FLT_MAX;	/* max penalty for NaN vs non-NaN */
+			else
+				delta = 0.0;	/* must be Inf - Inf case */
+		}
+		else if (delta > FLT_MAX)
+			delta = FLT_MAX;	/* clamp to FLT_MAX, esp for infinity */
+		tmp += delta;
+	}
+	if (tmp > 0.0)
+	{
+		double		delta = oupper - olower;
+
+		/* Clamp delta (the original range size) to 0 .. FLT_MAX */
+		if (unlikely(isnan(delta)))
+		{
+			/* here, we must deal with olower possibly being NaN */
+			if (isnan(oupper) && isnan(olower))
+				delta = 0.0;	/* treat NaNs as equal */
+			else if (isnan(oupper) || isnan(olower))
+				delta = FLT_MAX;	/* max penalty for NaN vs non-NaN */
+			else
+				delta = 0.0;	/* must be Inf - Inf case */
+		}
+		else if (delta > FLT_MAX)
+			delta = FLT_MAX;	/* clamp to FLT_MAX, esp for infinity */
+		/* Ensure result is non-zero, even if next step underflows to zero */
+		result += FLT_MIN;
+		/* Scale penalty to 0 .. 1 */
+		result += (float) (tmp / (tmp + delta));
+		/* Scale to 0 .. FLT_MAX / (natts + 1) */
+		result *= FLT_MAX / (natts + 1);
+	}
+	return result;
+}
+
+#define float_penalty_num(result,olower,oupper,nlower,nupper) do { \
+	GISTENTRY  *entry = (GISTENTRY *) PG_GETARG_POINTER(0); \
+	*(result) = float_penalty_num_impl(olower, oupper, nlower, nupper, \
+									   entry->rel->rd_att->natts); \
+} while (0)
 
 /*
  * Convert an Interval to an approximate equivalent number of seconds
