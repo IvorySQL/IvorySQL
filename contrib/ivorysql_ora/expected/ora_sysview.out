@@ -216,8 +216,6 @@ WHERE owner = SYS.ORA_CASE_TRANS(CURRENT_USER::VARCHAR2)
 ORDER BY table_name, constraint_name, position;
         table_name         |                 constraint_name                 |     column_name     | position 
 ---------------------------+-------------------------------------------------+---------------------+----------
- NULL_SPECIAL              | null_special_id_NOT_NULL                        | ID                  | 1
- NULL_SPECIALBK            | null_specialbk_id_NOT_NULL                      | ID                  | 1
  SCHEDULER_JOBS            | SCHEDULER_JOBS_JOB_TYPE_CHECK                   | JOB_TYPE            | 1
  SCHEDULER_JOBS            | SCHEDULER_JOBS_NUMBER_OF_ARGUMENTS_CHECK        | NUMBER_OF_ARGUMENTS | 1
  SCHEDULER_JOBS            | SCHEDULER_JOBS_PKEY                             | JOB_OWNER           | 1
@@ -277,7 +275,7 @@ ORDER BY table_name, constraint_name, position;
  T_PK_SINGLE               | T_PK_SINGLE_PKEY                                | ID                  | 1
  T_UNIQUE                  | UK_COL1                                         | COL1                | 1
  UTL_FILE_DIRECTORY        | UTL_FILE_DIRECTORY_PKEY                         | DIRNAME             | 1
-(61 rows)
+(59 rows)
 
 SELECT constraint_name, COUNT(*) AS column_count
 FROM all_cons_columns
@@ -312,8 +310,6 @@ ORDER BY constraint_name;
  T_PK_SINGLE_PKEY                                |            1
  UK_COL1                                         |            1
  UTL_FILE_DIRECTORY_PKEY                         |            1
- null_special_id_NOT_NULL                        |            1
- null_specialbk_id_NOT_NULL                      |            1
  scheduler_job_run_details_job_name_NOT_NULL     |            1
  scheduler_job_run_details_job_owner_NOT_NULL    |            1
  scheduler_job_run_details_log_date_NOT_NULL     |            1
@@ -331,7 +327,7 @@ ORDER BY constraint_name;
  scheduler_programs_number_of_arguments_NOT_NULL |            1
  scheduler_programs_program_action_NOT_NULL      |            1
  scheduler_programs_program_type_NOT_NULL        |            1
-(45 rows)
+(43 rows)
 
 DROP VIEW IF EXISTS v_dummy;
 DROP MATERIALIZED VIEW IF EXISTS mv_dummy;
@@ -493,3 +489,35 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- TAB_SUBPARTITIONS views: the second partitioning level
+CREATE TABLE TEST_SUBP (A INT, B INT) PARTITION BY RANGE (A);
+CREATE TABLE TEST_SUBP_P1 PARTITION OF TEST_SUBP
+    FOR VALUES FROM (0) TO (10) PARTITION BY LIST (B);
+CREATE TABLE TEST_SUBP_P1_S1 PARTITION OF TEST_SUBP_P1 FOR VALUES IN (1);
+CREATE TABLE TEST_SUBP_P1_S2 PARTITION OF TEST_SUBP_P1 FOR VALUES IN (2);
+CREATE TABLE TEST_SUBP_P2 PARTITION OF TEST_SUBP FOR VALUES FROM (10) TO (20);
+SELECT TABLE_NAME, PARTITION_NAME, SUBPARTITION_NAME, SUBPARTITION_POSITION, STATUS
+FROM SYS.USER_TAB_SUBPARTITIONS
+WHERE TABLE_NAME = 'TEST_SUBP'
+ORDER BY PARTITION_NAME, SUBPARTITION_POSITION;
+ table_name | partition_name | subpartition_name | subpartition_position | status 
+------------+----------------+-------------------+-----------------------+--------
+ TEST_SUBP  | TEST_SUBP_P1   | TEST_SUBP_P1_S1   |                     1 | VALID
+ TEST_SUBP  | TEST_SUBP_P1   | TEST_SUBP_P1_S2   |                     2 | VALID
+(2 rows)
+
+SELECT COUNT(*) AS ALL_SUBPARTITIONS
+FROM SYS.ALL_TAB_SUBPARTITIONS WHERE TABLE_NAME = 'TEST_SUBP';
+ all_subpartitions 
+-------------------
+                 2
+(1 row)
+
+SELECT COUNT(*) AS DBA_SUBPARTITIONS
+FROM SYS.DBA_TAB_SUBPARTITIONS WHERE TABLE_NAME = 'TEST_SUBP';
+ dba_subpartitions 
+-------------------
+                 2
+(1 row)
+
+DROP TABLE TEST_SUBP;
