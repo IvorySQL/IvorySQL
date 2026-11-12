@@ -34,6 +34,11 @@ foreach my $line (<ARGV>)
 		{
 			$range_start = $codepoint;
 		}
+		elsif ($codepoint != $prev_codepoint + 1)
+		{
+			printf "\t{0x%04X, 0x%04X},\n", $range_start, $prev_codepoint;
+			$range_start = $codepoint;
+		}
 	}
 	else
 	{
