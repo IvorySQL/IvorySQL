@@ -522,6 +522,19 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 			cur_token = internal_yylex(yyscanner, llocp, &aux1);
 		}
 
+		if (cur_token == 0 && blocklevel == 0 && beginpos < 0)
+		{
+			/*
+			 * EOF arrived immediately after AS/IS with no body content at
+			 * all (e.g. "CREATE FUNCTION ... AS" followed by end of input).
+			 * Propagate EOF so the grammar reports a proper syntax error.
+			 * Synthesizing an SCONST below would pstrdup(scanbuf + beginpos)
+			 * with beginpos == -1, reading one byte before the scan buffer.
+			 */
+			set_oracle_plsql_body(yyscanner, OraBody_UNKOWN);
+			return 0;
+		}
+
 		if ((cur_token == ';' && blocklevel == 0 &&
 			subproc_define_level == 0) ||
 			(cur_token == 0 && blocklevel > 0))
@@ -628,6 +641,17 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 			}
 
 			cur_token = internal_yylex(yyscanner, llocp, &aux1);
+		}
+
+		if (cur_token == 0 && blocklevel == 0 && beginpos < 0)
+		{
+			/*
+			 * Same as above: EOF right after AS/IS with no body content.
+			 * Propagate EOF so the grammar reports a syntax error instead
+			 * of reading scanbuf[-1] via pstrdup(scanbuf + beginpos).
+			 */
+			set_oracle_plsql_body(yyscanner, OraBody_UNKOWN);
+			return 0;
 		}
 
 		if ((cur_token == ';'  && blocklevel == 0) ||
