@@ -22,6 +22,34 @@ CALL test_basic_error();
 
 DROP PROCEDURE test_basic_error;
 
+-- The captured routine must keep its schema even if the handler changes
+-- search_path to a schema with another procedure of the same signature.
+CREATE SCHEMA backtrace_schema;
+CREATE SCHEMA backtrace_shadow;
+CREATE OR REPLACE PROCEDURE backtrace_shadow.test_schema_error AS
+BEGIN
+  NULL;
+END;
+/
+SET search_path TO backtrace_schema, public, sys;
+CREATE OR REPLACE PROCEDURE test_schema_error AS
+  v_backtrace VARCHAR2(4000);
+BEGIN
+  RAISE EXCEPTION 'Error outside public';
+EXCEPTION
+  WHEN OTHERS THEN
+    PERFORM pg_catalog.set_config('search_path', 'backtrace_shadow, public, sys', false);
+    v_backtrace := DBMS_UTILITY.FORMAT_ERROR_BACKTRACE;
+    RAISE INFO 'Schema backtrace: %', v_backtrace;
+END;
+/
+CALL test_schema_error();
+RESET search_path;
+DROP PROCEDURE backtrace_schema.test_schema_error;
+DROP SCHEMA backtrace_schema;
+DROP PROCEDURE backtrace_shadow.test_schema_error;
+DROP SCHEMA backtrace_shadow;
+
 -- Test 2: FORMAT_ERROR_BACKTRACE - Nested procedure calls
 CREATE OR REPLACE PROCEDURE test_level3 AS
 BEGIN

@@ -58,6 +58,7 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/ora_compatible.h"
+#include "utils/regproc.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
@@ -123,6 +124,8 @@ static ResourceOwner shared_simple_eval_resowner = NULL;
  * within the exception handler, even when nested function calls occur.
  */
 static PLiSQL_execstate *exception_handling_estate = NULL;
+/* Preserve routine identity in error context captured by exception blocks. */
+static bool capture_qualified_exception_context = false;
 
 /*
  * Memory management within a plisql function generally works with three
@@ -1503,6 +1506,14 @@ plisql_exec_error_callback(void *arg)
 	 * long-lived function cache and must never be freed.
 	 */
 	qualified_funcname = plisql_package_qualified_signature(estate->func);
+	/* Keep the original routine's identity when a handler changes search_path. */
+	if (capture_qualified_exception_context &&
+		qualified_funcname == NULL &&
+		estate->func->item == NULL &&
+		OidIsValid(estate->func->fn_oid))
+		qualified_funcname = format_procedure_extended(estate->func->fn_oid,
+										FORMAT_PROC_FORCE_QUALIFY |
+										FORMAT_PROC_INVALID_AS_NULL);
 	funcname = qualified_funcname != NULL ? qualified_funcname : estate->func->fn_signature;
 
 	if (estate->err_text != NULL)
@@ -2088,6 +2099,7 @@ exec_stmt_block(PLiSQL_execstate * estate, PLiSQL_stmt_block * block)
 		ExprContext *old_eval_econtext = estate->eval_econtext;
 		ErrorData  *save_cur_error = estate->cur_error;
 		PLiSQL_execstate *save_exception_handling_estate = exception_handling_estate;
+		bool		save_qualified_context = capture_qualified_exception_context;
 		MemoryContext stmt_mcontext;
 
 		estate->err_text = gettext_noop("during statement block entry");
@@ -2106,6 +2118,7 @@ exec_stmt_block(PLiSQL_execstate * estate, PLiSQL_stmt_block * block)
 		BeginInternalSubTransaction(NULL);
 		/* Want to run statements inside function's memory context */
 		MemoryContextSwitchTo(oldcontext);
+		capture_qualified_exception_context = true;
 
 		PG_TRY();
 		{
@@ -2159,6 +2172,8 @@ exec_stmt_block(PLiSQL_execstate * estate, PLiSQL_stmt_block * block)
 		{
 			ErrorData  *edata;
 			ListCell   *e;
+
+			capture_qualified_exception_context = save_qualified_context;
 
 			pop_oraparam_stack(block->ora_param_stack_top_level, block->ora_param_stack_cur_level);
 
@@ -2273,6 +2288,7 @@ exec_stmt_block(PLiSQL_execstate * estate, PLiSQL_stmt_block * block)
 			MemoryContextReset(stmt_mcontext);
 		}
 		PG_END_TRY();
+		capture_qualified_exception_context = save_qualified_context;
 
 		Assert(save_cur_error == estate->cur_error);
 	}
