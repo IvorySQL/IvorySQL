@@ -48,6 +48,7 @@
 
 #include "catalog/pg_type.h"
 #include "utils/date.h"
+#include "utils/lsyscache.h"
 #include "utils/timestamp.h"
 
 #include "utils/guc.h"
@@ -80,6 +81,8 @@ PG_FUNCTION_INFO_V1(oracle_instr_4);
 PG_FUNCTION_INFO_V1(ora_instrc_2);
 PG_FUNCTION_INFO_V1(ora_instrc_3);
 PG_FUNCTION_INFO_V1(ora_instrc_4);
+PG_FUNCTION_INFO_V1(ora_instrc_3_number);
+PG_FUNCTION_INFO_V1(ora_instrc_4_number);
 PG_FUNCTION_INFO_V1(ora_instrc_unsupported);
 PG_FUNCTION_INFO_V1(ora_substrc);
 PG_FUNCTION_INFO_V1(ora_substrc_no_length);
@@ -121,7 +124,7 @@ static int getindex(const char **map, char *mbchar, int mblen);
 static Oid	ora_call_argtype(FunctionCallInfo fcinfo, int argnum);
 static void ora_reject_lob_args(FunctionCallInfo fcinfo, int nargs,
 								const char *fname);
-static int32 ora_substrc_position(FunctionCallInfo fcinfo, int argnum);
+static int32 ora_position_arg(FunctionCallInfo fcinfo, int argnum);
 
 /*
  * length/lengthb function for 'oracharchar' and 'oracharbyte' type.
@@ -2210,6 +2213,11 @@ ora_nfc_normalize(text *arg)
  *   instrc (string TEXT, substring TEXT, position INTEGER)
  *   instrc (string TEXT, substring TEXT, position INTEGER, occurrence INTEGER)
  *
+ * position and occurrence are NUMBER in Oracle, so the number-position
+ * variants ora_instrc_3_number()/ora_instrc_4_number() read them through
+ * ora_position_arg(), the same accessor the number-position overloads of
+ * sys.substrc() use.
+ *
  * Argument rules, as Oracle has them:
  *
  *   - the occurrence must be positive; a non-positive occurrence is refused
@@ -2224,8 +2232,11 @@ ora_instrc_2(PG_FUNCTION_ARGS)
 	text	   *arg1;
 	text	   *arg2;
 
-	/* Oracle's INSTRC refuses the LOB types */
-	ora_reject_lob_args(fcinfo, 2, "instrc");
+	/*
+	 * Oracle's INSTRC refuses the LOB types for the source string only; the
+	 * pattern may be a CLOB or an NCLOB, so only argument 0 is checked here.
+	 */
+	ora_reject_lob_args(fcinfo, 1, "instrc");
 
 	arg1 = ora_nfc_normalize(PG_GETARG_TEXT_PP(0));
 	arg2 = ora_nfc_normalize(PG_GETARG_TEXT_PP(1));
@@ -2240,8 +2251,8 @@ ora_instrc_3(PG_FUNCTION_ARGS)
 	text	   *arg2;
 	int			arg3;
 
-	/* Oracle's INSTRC refuses the LOB types */
-	ora_reject_lob_args(fcinfo, 2, "instrc");
+	/* Oracle's INSTRC refuses the LOB types for the source string only */
+	ora_reject_lob_args(fcinfo, 1, "instrc");
 
 	arg3 = PG_GETARG_INT32(2);
 
@@ -2263,8 +2274,8 @@ ora_instrc_4(PG_FUNCTION_ARGS)
 	int			arg3;
 	int			arg4;
 
-	/* Oracle's INSTRC refuses the LOB types */
-	ora_reject_lob_args(fcinfo, 2, "instrc");
+	/* Oracle's INSTRC refuses the LOB types for the source string only */
+	ora_reject_lob_args(fcinfo, 1, "instrc");
 
 	arg3 = PG_GETARG_INT32(2);
 	arg4 = PG_GETARG_INT32(3);
@@ -2288,20 +2299,99 @@ ora_instrc_4(PG_FUNCTION_ARGS)
 }
 
 /*
- * ora_substrc_position --- the position/length argument as an integer.
+ * ora_instrc_3_number / ora_instrc_4_number --- the number-position variants
+ * of ora_instrc_3 / ora_instrc_4.
  *
- * The arguments are declared as sys.number in the number-position overloads
- * of sys.substrc() and as integer in the integer-position ones, and the
+ * Oracle declares position and occurrence as NUMBER, so the direct
+ * character-type overloads accept sys.number as well as integer: with only
+ * the integer-position overloads in the set, a call with NUMBER arguments
+ * resolved onto the varchar2 wrapper, whose casts strip the blank padding
+ * of a CHAR source.  The positions are read through the shared accessor,
+ * exactly as ora_substrc() reads them.
+ */
+Datum
+ora_instrc_3_number(PG_FUNCTION_ARGS)
+{
+	text	   *arg1;
+	text	   *arg2;
+	int			arg3;
+
+	/* Oracle's INSTRC refuses the LOB types for the source string only */
+	ora_reject_lob_args(fcinfo, 1, "instrc");
+
+	arg3 = ora_position_arg(fcinfo, 2);
+
+	/* a zero position starts before the first character: nothing matches */
+	if (arg3 == 0)
+		PG_RETURN_INT32(0);
+
+	arg1 = ora_nfc_normalize(PG_GETARG_TEXT_PP(0));
+	arg2 = ora_nfc_normalize(PG_GETARG_TEXT_PP(1));
+
+	PG_RETURN_INT32(text_instring(arg1, arg2, arg3, 1, false));
+}
+
+Datum
+ora_instrc_4_number(PG_FUNCTION_ARGS)
+{
+	text	   *arg1;
+	text	   *arg2;
+	int			arg3;
+	int			arg4;
+
+	/* Oracle's INSTRC refuses the LOB types for the source string only */
+	ora_reject_lob_args(fcinfo, 1, "instrc");
+
+	arg3 = ora_position_arg(fcinfo, 2);
+	arg4 = ora_position_arg(fcinfo, 3);
+
+	/* the occurrence must be positive */
+	if (arg4 < 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+				 errmsg("argument '%d' is out of range", arg4),
+				 errdetail("Oracle raises ORA-01428 here: the occurrence"
+						   " argument of INSTRC must be a positive number.")));
+
+	/* a zero position starts before the first character: nothing matches */
+	if (arg3 == 0)
+		PG_RETURN_INT32(0);
+
+	arg1 = ora_nfc_normalize(PG_GETARG_TEXT_PP(0));
+	arg2 = ora_nfc_normalize(PG_GETARG_TEXT_PP(1));
+
+	PG_RETURN_INT32(text_instring(arg1, arg2, arg3, arg4, false));
+}
+
+/*
+ * ora_position_arg --- the position/length/occurrence argument as an integer.
+ *
+ * These arguments are declared as sys.number in the number-position overloads
+ * of sys.substrc() and sys.instrc(), as integer in the integer-position ones
+ * and as smallint/bigint in the smallint- and bigint-position ones, and the
  * fmgr contract hands us the datum of the declared type -- so the accessor
- * depends on which one was called.
+ * depends on which one was called.  A bigint position outside the int4 range
+ * is answered with the standard integer-out-of-range error, like a sys.number
+ * position with the same value is.
  */
 static int32
-ora_substrc_position(FunctionCallInfo fcinfo, int argnum)
+ora_position_arg(FunctionCallInfo fcinfo, int argnum)
 {
 	Oid			argtype = get_fn_expr_argtype(fcinfo->flinfo, argnum);
 
-	if (OidIsValid(argtype) && getBaseType(argtype) == INT4OID)
-		return PG_GETARG_INT32(argnum);
+	if (OidIsValid(argtype))
+	{
+		switch (getBaseType(argtype))
+		{
+			case INT2OID:
+				return (int32) PG_GETARG_INT16(argnum);
+			case INT4OID:
+				return PG_GETARG_INT32(argnum);
+			case INT8OID:
+				return DatumGetInt32(DirectFunctionCall1(int84,
+														 PG_GETARG_DATUM(argnum)));
+		}
+	}
 
 	return DatumGetInt32(DirectFunctionCall1(numeric_int4, PG_GETARG_DATUM(argnum)));
 }
@@ -2418,8 +2508,8 @@ ora_substrc(PG_FUNCTION_ARGS)
 	/* Oracle's SUBSTRC refuses the LOB types */
 	ora_reject_lob_args(fcinfo, 1, "substrc");
 
-	start = ora_substrc_position(fcinfo, 1);
-	length = ora_substrc_position(fcinfo, 2);
+	start = ora_position_arg(fcinfo, 1);
+	length = ora_position_arg(fcinfo, 2);
 
 	res = text_substring_complete_chars(ora_nfc_normalize(PG_GETARG_TEXT_PP(0)),
 										start, length, false);
@@ -2444,7 +2534,7 @@ ora_substrc_no_length(PG_FUNCTION_ARGS)
 	/* Oracle's SUBSTRC refuses the LOB types */
 	ora_reject_lob_args(fcinfo, 1, "substrc");
 
-	start = ora_substrc_position(fcinfo, 1);
+	start = ora_position_arg(fcinfo, 1);
 
 	res = text_substring_complete_chars(ora_nfc_normalize(PG_GETARG_TEXT_PP(0)),
 										start, -1, true);
