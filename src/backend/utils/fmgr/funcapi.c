@@ -1869,16 +1869,6 @@ get_internal_function_result_type(FuncExpr *fexpr,
 }
 
 /*
- * call get_type_func_class from external
- */
-TypeFuncClass
-external_get_type_func_class(Oid typid, Oid *base_typeid)
-{
-	return get_type_func_class(typid, base_typeid);
-}
-
-
-/*
  * get plisql internal function out args for call procedure
  */
 List *

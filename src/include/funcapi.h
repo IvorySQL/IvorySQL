@@ -269,7 +269,6 @@ extern TypeFuncClass get_internal_function_result_type(FuncExpr *fexpr,
 													   ReturnSetInfo *rsinfo,
 													   Oid *resultTypeId,
 													   TupleDesc *resultTupleDesc);
-extern TypeFuncClass external_get_type_func_class(Oid typid, Oid *base_typeid);
 extern List *get_internal_function_outargs(FuncExpr *fexpr);
 extern char *get_internal_function_result_name(FuncExpr *fexpr);
 extern bool func_should_change_return_type(Oid functionId, Oid *rettype,
