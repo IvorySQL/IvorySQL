@@ -214,25 +214,28 @@ BEGIN
         RAISE NOTICE 'Test 3.3 - New size limit applied: PASSED (3000 bytes written)';
     END IF;
 
-    -- Shrinking the limit below the buffered content: buffered lines stay
-    -- readable, and new writes are rejected until the buffer drains
-    dbms_output.enable(2000);  -- shrink below the 3000 bytes already buffered
+    -- A smaller ENABLE must not shrink the active buffer: Oracle keeps the
+    -- largest requested limit, so the write succeeds and buffered lines stay
+    -- readable.
+    dbms_output.enable(2000);
     BEGIN
         dbms_output.put_line('Y');
-        RAISE NOTICE 'Test 3.3 - Shrink write: unexpected success';
+        RAISE NOTICE 'Test 3.3 - Shrink write accepted: [Y]';
     EXCEPTION WHEN OTHERS THEN
         RAISE NOTICE 'Test 3.3 - Shrink write blocked: %', SQLERRM;
     END;
     dbms_output.get_line(line, status);
     RAISE NOTICE 'Test 3.3 - Shrink keeps buffered: [%], Status: %', line, status;
 
-    -- Drain all remaining buffered lines, checking the count and order
+    -- Drain all remaining buffered lines: 59 X lines followed by Y
     i := 0;
     LOOP
         dbms_output.get_line(line, status);
         EXIT WHEN status != 0;
         i := i + 1;
-        IF line <> rpad('X', 50, 'X') THEN
+        IF i <= 59 AND line <> rpad('X', 50, 'X') THEN
+            RAISE NOTICE 'Test 3.3 - Shrink drain order: unexpected [%]', line;
+        ELSIF i = 60 AND line <> 'Y' THEN
             RAISE NOTICE 'Test 3.3 - Shrink drain order: unexpected [%]', line;
         END IF;
     END LOOP;
@@ -316,6 +319,7 @@ DECLARE
     overflow_occurred BOOLEAN := FALSE;
     line_count INTEGER := 0;
 BEGIN
+    dbms_output.disable();  -- Reset the buffer and its retained size limit
     dbms_output.enable(2000);  -- Small buffer
     FOR i IN 1..100 LOOP
         BEGIN
@@ -812,6 +816,38 @@ BEGIN
     END IF;
 END;
 $$;
+
+-- =============================================================================
+-- Section 15: Repeated ENABLE keeps the largest buffer limit
+-- =============================================================================
+
+-- Test 15.1: A smaller ENABLE must not shrink an active buffer
+DECLARE
+    lines TEXT[];
+    numlines INTEGER := 10;
+BEGIN
+    dbms_output.enable(1000000);
+    dbms_output.put_line(rpad('X', 3000, 'X'));
+    dbms_output.enable(2000);
+    dbms_output.put_line('more');
+    dbms_output.get_lines(lines, numlines);
+    RAISE NOTICE 'Test 15.1 - Retrieved % lines after smaller ENABLE', numlines;
+END;
+/
+
+-- Test 15.2: An unlimited buffer stays unlimited after a finite ENABLE
+DECLARE
+    lines TEXT[];
+    numlines INTEGER := 10;
+BEGIN
+    dbms_output.enable(NULL);
+    dbms_output.put_line(rpad('X', 3000, 'X'));
+    dbms_output.enable(2000);
+    dbms_output.put_line('more');
+    dbms_output.get_lines(lines, numlines);
+    RAISE NOTICE 'Test 15.2 - Retrieved % lines after unlimited ENABLE', numlines;
+END;
+/
 
 -- =============================================================================
 -- Cleanup
