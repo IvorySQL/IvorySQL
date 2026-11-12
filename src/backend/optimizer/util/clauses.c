@@ -5035,12 +5035,27 @@ expr_is_nonnullable(PlannerInfo *root, Expr *expr, NotNullSource source)
 			break;
 		case T_MinMaxExpr:
 			{
+				MinMaxExpr *minmaxexpr = (MinMaxExpr *) expr;
+
+				/*
+				 * In Oracle compatibility mode a MinMaxExpr returns NULL if
+				 * any argument is NULL, so every argument must be proven
+				 * non-nullable.
+				 */
+				if (compatible_db == ORA_PARSER)
+				{
+					foreach_ptr(Expr, arg, minmaxexpr->args)
+					{
+						if (!expr_is_nonnullable(root, arg, source))
+							return false;
+					}
+					return true;
+				}
+
 				/*
 				 * Like CoalesceExpr, a MinMaxExpr returns NULL only if all
 				 * its arguments evaluate to NULL.
 				 */
-				MinMaxExpr *minmaxexpr = (MinMaxExpr *) expr;
-
 				foreach_ptr(Expr, arg, minmaxexpr->args)
 				{
 					if (expr_is_nonnullable(root, arg, source))
