@@ -151,13 +151,13 @@ typedef struct
 
 StaticAssertDecl(BACKEND_NUM_TYPES < 32, "too many backend types for uint32");
 
-static const BackendTypeMask BTYPE_MASK_ALL = {(1 << BACKEND_NUM_TYPES) - 1};
+static const BackendTypeMask BTYPE_MASK_ALL = {((uint32) 1 << BACKEND_NUM_TYPES) - 1};
 static const BackendTypeMask BTYPE_MASK_NONE = {0};
 
 static inline BackendTypeMask
 btmask(BackendType t)
 {
-	BackendTypeMask mask = {.mask = 1 << t};
+	BackendTypeMask mask = {.mask = ((uint32) 1 << t)};
 
 	return mask;
 }
@@ -166,7 +166,7 @@ static inline BackendTypeMask
 btmask_add_n(BackendTypeMask mask, int nargs, BackendType *t)
 {
 	for (int i = 0; i < nargs; i++)
-		mask.mask |= 1 << t[i];
+		mask.mask |= ((uint32) 1 << t[i]);
 	return mask;
 }
 
@@ -179,7 +179,7 @@ btmask_add_n(BackendTypeMask mask, int nargs, BackendType *t)
 static inline BackendTypeMask
 btmask_del(BackendTypeMask mask, BackendType t)
 {
-	mask.mask &= ~(1 << t);
+	mask.mask &= ~((uint32) 1 << t);
 	return mask;
 }
 
@@ -202,7 +202,7 @@ btmask_all_except_n(int nargs, BackendType *t)
 static inline bool
 btmask_contains(BackendTypeMask mask, BackendType t)
 {
-	return (mask.mask & (1 << t)) != 0;
+	return (mask.mask & ((uint32) 1 << t)) != 0;
 }
 
 
@@ -803,8 +803,24 @@ PostmasterMain(int argc, char *argv[])
 	 * Locate the proper configuration files and data directory, and read
 	 * postgresql.conf for the first time.
 	 */
-	if (!SelectConfigFiles(userDoption, progname))
+		if (!SelectConfigFiles(userDoption, progname))
 		ExitPostmaster(2);
+
+	/*
+	 * IvorySQL: validate Oracle-compatible port settings.
+	 */
+	if (DB_ORACLE == database_mode)
+	{
+		if (OraPortNumber <= 0 || OraPortNumber > 65535)
+			ereport(FATAL,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("invalid Oracle port number: %d", OraPortNumber)));
+
+		if (OraPortNumber == PostPortNumber)
+			ereport(FATAL,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("Oracle port number must differ from PostgreSQL port number")));
+	}
 
 	if (output_config_variable != NULL)
 	{
@@ -1222,7 +1238,7 @@ PostmasterMain(int argc, char *argv[])
 			ereport(FATAL,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("invalid list syntax in parameter \"%s\"",
-							"listen_addresses")));
+							"oracle_listen_addresses")));
 		}
 
 		foreach(l, elemlist)
@@ -1355,9 +1371,16 @@ PostmasterMain(int argc, char *argv[])
 			ereport(FATAL,
 					(errmsg("could not create any PostgreSQL Unix-domain sockets")));
 
-		/* Oracle unix domain socket */
+				/* Oracle unix domain socket */
 		if (DB_ORACLE == database_mode)
 		{
+			if (OraPortNumber <= 0 || OraPortNumber > 65535)
+			{
+				ereport(FATAL,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("invalid Oracle port number for Unix socket: %d",
+								OraPortNumber)));
+			}
 			success = 0;
 			foreach(l, elemlist)
 			{
@@ -1791,7 +1814,7 @@ ServerLoop(void)
 {
 	time_t		last_lockfile_recheck_time,
 				last_touch_time;
-	WaitEvent	events[MAXLISTEN];
+	WaitEvent	events[MAXLISTEN + 1];
 	int			nevents;
 
 	ConfigurePostmasterWaitSet(true);
