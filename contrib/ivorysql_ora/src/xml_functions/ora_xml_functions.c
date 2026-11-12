@@ -788,10 +788,13 @@ ivy_xml_delenode(xmlXPathObjectPtr xpathobj)
 	if (xpathobj->type == XPATH_NODESET)
 	{
 		num = xpathobj->nodesetval->nodeNr;
+		/* Detach all matches before freeing an ancestor's subtree. */
+		for (i = 0; i < num; i++)
+			xmlUnlinkNode(xpathobj->nodesetval->nodeTab[i]);
 		for (i = 0; i < num; i++)
 		{
-			xmlUnlinkNode(xpathobj->nodesetval->nodeTab[i]);
 			xmlFreeNode(xpathobj->nodesetval->nodeTab[i]);
+			xpathobj->nodesetval->nodeTab[i] = NULL;
 		}
 	}
 }
