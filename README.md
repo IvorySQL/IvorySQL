@@ -12,7 +12,7 @@ English | [中文](README_CN.md)
 
 IvorySQL is developed based on [PostgreSQL](https://github.com/postgres/postgres). 
 IvorySQL is advanced, fully featured, open-source Oracle-compatible PostgreSQL with a firm commitment to always remain 100% compatible and a drop-in replacement for the latest PostgreSQL. IvorySQL adds the `ivorysql.compatible_mode` GUC parameter to switch between Oracle and PostgreSQL compatibility modes.
-One of the highlights of IvorySQL is PL/iSQL procedural language that supports oracle’s PL/SQL syntax and Oracle style Packages.
+One of the highlights of IvorySQL is PL/iSQL procedural language that supports Oracle’s PL/SQL syntax and Oracle style Packages.
 
 The IvorySQL project is released under the Apache 2 license and encourages all types of contributions. For IvorySQL community no contribution is too small, and we want to thank all our community contributors.
 
@@ -23,7 +23,7 @@ We are committed to abiding by the principles of [open-source ways](https://open
 </br>
 
 ## Installation
-We recommend following our [Quick Start](https://docs.ivorysql.org/en/ivorysql-doc/v5.6/3.1#quick-installation) for how to install and running IvorySQL.
+We recommend following our [Quick Start](https://docs.ivorysql.org/en/ivorysql-doc/v5.6/3.1#quick-installation) for how to install and run IvorySQL.
 
 Furthermore, for more detailed installation instructions, please refer to the [Installation Docs](https://docs.ivorysql.org/en/ivorysql-doc/v5.6/4.1#introduction). We provide four installation methods for IvorySQL, as outlined below:
 - [Yum installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.6/4.1#Yum-installation)
