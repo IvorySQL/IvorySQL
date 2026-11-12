@@ -92,7 +92,7 @@ static char *safe_named_location(text *location);
 static text *
 get_line(FILE *fd, size_t max_linesize, int encoding, bool *iseof);
 static char *get_safe_path(text *location, text *filename);
-static void close_all_files(void);
+static void close_all_files(bool report_errors);
 static int copy_text_file(FILE *srcfile, FILE *dstfile,
 						  int start_line, int end_line);
 static void put_lines(FILE *fd, int lines);
@@ -462,7 +462,7 @@ ora_utl_file_fclose(PG_FUNCTION_ARGS)
 Datum
 ora_utl_file_fclose_all(PG_FUNCTION_ARGS)
 {
-	close_all_files();
+	close_all_files(true);
 	PG_RETURN_VOID();
 }
 
@@ -1127,11 +1127,25 @@ get_safe_path(text *location_or_dirname, text *filename)
 	return fullname;
 }
 
+/*
+ * close_all_files
+ *
+ * Closes every file still held by this backend and releases its slot.
+ *
+ * report_errors must only be true when we are called from
+ * UTL_FILE.FCLOSE_ALL(), where a failed fclose() is reported back to the
+ * user as WRITE_ERROR.  The transaction-abort and backend-exit cleanup
+ * paths pass false: raising an error from a ResourceRelease callback
+ * re-enters error handling while we are already aborting, and raising from
+ * a before_shmem_exit hook happens outside any error-capable context.
+ * Those paths log a WARNING instead.
+ */
 static void
-close_all_files(void)
+close_all_files(bool report_errors)
 {
 	FILE *fd = NULL;
 	bool report_error = false;
+	int fail_errno = 0;
 
 	for (int i = 0; i < MAX_SLOTS; i++)
 	{
@@ -1160,13 +1174,40 @@ close_all_files(void)
 			if(fd != NULL && fclose(fd) == 0)
 				continue;
 			else
+			{
+				/*
+				 * Remember the first failure's errno.  Later iterations may
+				 * overwrite it, and a NULL handle leaves errno stale.
+				 */
+				if (!report_error && fd != NULL)
+					fail_errno = errno;
 				report_error = true;
+			}
 		}
 	}
 
-	/* some file(s) were not closed, throw exception */
+	/*
+	 * Some file(s) were not closed.  Only FCLOSE_ALL() reports that to the
+	 * user; cleanup callbacks must not raise, so they get a WARNING.
+	 */
 	if(report_error)
-		STRERROR_EXCEPTION(WRITE_ERROR);
+	{
+		if (fail_errno != 0)
+			errno = fail_errno;
+
+		/*
+		 * The STRERROR_* macros expand to do{...}while(0); with a trailing
+		 * semicolon, so each branch needs braces.
+		 */
+		if (report_errors)
+		{
+			STRERROR_EXCEPTION(WRITE_ERROR);
+		}
+		else
+		{
+			STRERROR_WARNING(WRITE_ERROR);
+		}
+	}
 }
 
 /*
@@ -1237,7 +1278,7 @@ resource_cleanup_callback(ResourceReleasePhase phase,
 	/* Close all files if session ended abnormally */
 	if(!isCommit)
 	{
-		close_all_files();
+		close_all_files(false);
 	}
 }
 
@@ -1249,7 +1290,7 @@ resource_cleanup_callback(ResourceReleasePhase phase,
 static void
 BeforeShmemExit_Files(int code, Datum arg)
 {
-	close_all_files();
+	close_all_files(false);
 }
 
 static void
