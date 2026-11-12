@@ -565,7 +565,12 @@ next_day(PG_FUNCTION_ARGS)
 		goto found;
 
 	changstr = pg_server_to_any(str, len, PG_UTF8);
-	changstrlen = strlen(changstr);
+	/*
+	 * pg_server_to_any() returns the original pointer when no conversion is
+	 * needed.  A text datum's payload is length-delimited, not necessarily
+	 * NUL-terminated, so only use strlen() for an allocated conversion result.
+	 */
+	changstrlen = (changstr == str) ? len : strlen(changstr);
 
 	if ((d = weekday_search(&WEEKDAYS[0], changstr, changstrlen)) >= 0)
 		goto found;

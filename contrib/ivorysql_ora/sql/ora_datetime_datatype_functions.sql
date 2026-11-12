@@ -198,6 +198,7 @@ create table datetest (aa date);
 insert into datetest values (NEXT_DAY(date '2018-01-23 13:12:34','mon'));
 insert into datetest values (NEXT_DAY(date '2018-02-12',2));
 insert into datetest values (NEXT_DAY(date '2018-02-12','monday'));
+insert into datetest values (NEXT_DAY(date '2018-02-12','星期一'));
 
 select * from datetest;
 drop table datetest;
