@@ -6,6 +6,10 @@
 -- and integration with SYS_CONTEXT (incl. row-level security).
 --
 
+-- USERENV proxy identity is unset outside proxy-authenticated sessions.
+select sys_context('USERENV', 'PROXY_USER') is null as proxy_user_is_null,
+       sys_context('USERENV', 'PROXY_USERID') is null as proxy_userid_is_null;
+
 --
 -- SET_CONTEXT + SYS_CONTEXT read-back
 --
