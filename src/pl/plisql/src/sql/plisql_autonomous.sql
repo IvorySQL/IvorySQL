@@ -313,7 +313,11 @@ COMMIT;
 
 -- This should fail gracefully with proper error message
 -- \set ON_ERROR_STOP off
+-- terse: the error's context would echo the dblink connection string,
+-- whose port is the temp instance's and differs between make and meson
+\set VERBOSITY terse
 SELECT test_function_error();
+\set VERBOSITY default
 -- \set ON_ERROR_STOP on
 
 --

@@ -55,26 +55,17 @@ sub sql_merge
 {
 	# Read information from ivorysql_ora_merge_sqls.
 	#     There are SQLs specified which need to be merged.
-	if ($first_arg eq 'meson') {
-		open(INFO, "<", File::Spec->rel2abs("../contrib/ivorysql_ora/ivorysql_ora_merge_sqls"))
-		|| croak "Could not open file ivorysql_ora_merge_sqls: $!";
-	}
-	else {
-		open(INFO, "<", File::Spec->catfile($FindBin::Bin, "ivorysql_ora_merge_sqls"))
-                || croak "Could not open file ivorysql_ora_merge_sqls: $!";
-	}
+	# Both make and meson find the merge list and the sql files beside this
+	# script: meson runs it from the build directory, which need not be a
+	# child of the source tree.
+	open(INFO, "<", File::Spec->catfile($FindBin::Bin, "ivorysql_ora_merge_sqls"))
+	|| croak "Could not open file ivorysql_ora_merge_sqls: $!";
 
 	while (<INFO>)
 	{
 		# Delete the last tailing "\n" of this line.
 		chomp($_);
-		if ($first_arg eq 'meson') {
-			push @sql_set, "../contrib/ivorysql_ora/$_";
-		}
-		else
-		{
-			push @sql_set, File::Spec->catfile($FindBin::Bin, $_);
-		}
+		push @sql_set, File::Spec->catfile($FindBin::Bin, $_);
 	}
 	close INFO;
 
