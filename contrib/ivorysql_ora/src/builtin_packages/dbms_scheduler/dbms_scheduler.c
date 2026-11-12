@@ -1589,13 +1589,12 @@ Datum
 ora_dbms_scheduler_disable(PG_FUNCTION_ARGS)
 {
 	char	   *raw_name = text_arg_or_null(fcinfo, 0);
+	bool		force = PG_ARGISNULL(1) ? false : PG_GETARG_BOOL(1);
 	char	   *commit_semantics = text_arg_or_null(fcinfo, 2);
 	SchedName	obj;
 	char		kind;
-	Oid			argtypes[2] = {TEXTOID, TEXTOID};
-	Datum		values[2];
-
-	/* "force" (arg 1) is accepted for Oracle compatibility and ignored */
+	Oid			argtypes[3] = {TEXTOID, TEXTOID, BOOLOID};
+	Datum		values[3];
 
 	SPI_connect();
 
@@ -1609,6 +1608,30 @@ ora_dbms_scheduler_disable(PG_FUNCTION_ARGS)
 	switch (kind)
 	{
 		case SCHED_KIND_JOB:
+		{
+			uint64		running;
+
+			/*
+			 * Oracle rejects DISABLE without force while the job is running.
+			 * The job state is normally RUNNING, but a run row is the
+			 * authoritative record; check both so a manually materialized
+			 * run cannot slip through.
+			 */
+			running = sched_meta_select("SELECT 1 FROM sys.scheduler_jobs"
+								 " WHERE job_owner = $1 AND job_name = $2"
+								 "   AND state = 'RUNNING' LIMIT 1",
+								 2, argtypes, values, NULL);
+			if (running == 0)
+				running = sched_meta_select("SELECT 1 FROM sys.scheduler_job_run_details"
+									 " WHERE job_owner = $1 AND job_name = $2"
+									 "   AND status = 'r' LIMIT 1",
+									 2, argtypes, values, NULL);
+			if (running > 0 && !force)
+				ereport(ERROR,
+						(errcode(ERRCODE_OBJECT_IN_USE),
+						 errmsg("job \"%s\".\"%s\" is running",
+								obj.owner, obj.name),
+						 errhint("Use force => true to disable it.")));
 
 			/*
 			 * A job that is running keeps the RUNNING state: dropping it here
@@ -1617,13 +1640,15 @@ ora_dbms_scheduler_disable(PG_FUNCTION_ARGS)
 			 * outcome as the job's state when it finishes, as it does for any
 			 * job disabled under it.
 			 */
+			values[2] = BoolGetDatum(running > 0);
 			sched_meta_dml("UPDATE sys.scheduler_jobs SET enabled = false,"
-					  " state = CASE WHEN state = 'RUNNING' THEN state"
+					  " state = CASE WHEN state = 'RUNNING' OR $3 THEN 'RUNNING'"
 					  "              ELSE 'DISABLED' END,"
 					  " next_run_date = NULL"
 					  " WHERE job_owner = $1 AND job_name = $2",
-					  2, argtypes, values, NULL);
+					  3, argtypes, values, NULL);
 			break;
+		}
 		case SCHED_KIND_PROGRAM:
 			sched_meta_dml("UPDATE sys.scheduler_programs SET enabled = false"
 					  " WHERE program_owner = $1 AND program_name = $2",
