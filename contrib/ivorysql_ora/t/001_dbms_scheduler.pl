@@ -85,7 +85,7 @@ is($state, 't|SCHEDULED|t', 'repeating job stays enabled and scheduled');
 # ---------------------------------------------------------------------
 # DISABLE stops future runs
 # ---------------------------------------------------------------------
-ora_sql(q{BEGIN dbms_scheduler.disable('tap_repeat'); END;});
+ora_sql(q{BEGIN dbms_scheduler.disable('tap_repeat', force => TRUE); END;});
 my $count_after_disable = $node->safe_psql($db,
 	"SELECT count(*) FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_REPEAT'");
 sleep(4);
@@ -173,7 +173,7 @@ BEGIN
   dbms_scheduler.enable('tap_maxfail');
   INSERT INTO sched_tap_t SELECT 5, 'fc=' || failure_count
     FROM sys.scheduler_jobs WHERE job_name = 'TAP_MAXFAIL';
-  dbms_scheduler.disable('tap_maxfail');
+  dbms_scheduler.disable('tap_maxfail', force => TRUE);
 END;});
 is($node->safe_psql($db, "SELECT note FROM sched_tap_t WHERE id = 5"),
 	'fc=0', 'ENABLE clears the failure count');
@@ -246,7 +246,7 @@ for (1 .. 40)
 }
 is($max_running, 1, 'a job never has two runs going at the same time');
 
-ora_sql(q{BEGIN dbms_scheduler.disable('tap_overlap'); END;});
+ora_sql(q{BEGIN dbms_scheduler.disable('tap_overlap', force => TRUE); END;});
 
 is( $node->safe_psql(
 		$db, q{
@@ -318,7 +318,7 @@ ok(1, 'the job is scheduled again after its worker was terminated');
 
 ora_sql(q{
 BEGIN
-  dbms_scheduler.disable('tap_killed');
+  dbms_scheduler.disable('tap_killed', force => TRUE);
   dbms_scheduler.stop_job('tap_killed', force => TRUE);
 END;});
 
@@ -409,7 +409,7 @@ my $runs = $node->safe_psql($db,
 ok($runs >= 3,
 	"a cycle sleeps until the next run date, not to the poll boundary ($runs runs)");
 
-ora_sql(q{BEGIN dbms_scheduler.disable('tap_wake'); END;});
+ora_sql(q{BEGIN dbms_scheduler.disable('tap_wake', force => TRUE); END;});
 $node->safe_psql($db,
 	"ALTER SYSTEM SET ivorysql.scheduler_poll_interval = 1");
 $node->reload;
@@ -445,7 +445,7 @@ $node->poll_query_until($db,
 	"SELECT count(*) > 0 FROM sched_tap_t WHERE id = 3 AND note = 'prog-default'"
 ) or die "named-program job did not run";
 ok(1, 'named-program job runs with job arguments and program defaults');
-ora_sql(q{BEGIN dbms_scheduler.disable('tap_named'); END;});
+ora_sql(q{BEGIN dbms_scheduler.disable('tap_named', force => TRUE); END;});
 
 # ---------------------------------------------------------------------
 # scheduling survives a server restart; interrupted 'r' rows are closed
@@ -470,7 +470,7 @@ is( $node->safe_psql(
 	'0',
 	'no interrupted running-state log rows survive a restart');
 
-ora_sql(q{BEGIN dbms_scheduler.disable('tap_restart'); END;});
+ora_sql(q{BEGIN dbms_scheduler.disable('tap_restart', force => TRUE); END;});
 
 # ---------------------------------------------------------------------
 # a job whose stored calendar cannot be parsed is taken out on its own,
@@ -513,7 +513,7 @@ $node->poll_query_until($db,
 ) or die "database scheduler stopped claiming other jobs";
 ok(1, 'the database scheduler keeps running the remaining jobs');
 
-ora_sql(q{BEGIN dbms_scheduler.disable('tap_survivor'); END;});
+ora_sql(q{BEGIN dbms_scheduler.disable('tap_survivor', force => TRUE); END;});
 
 # ---------------------------------------------------------------------
 # expired run history is purged automatically, on its own schedule
@@ -585,7 +585,7 @@ $node->poll_query_until($db,
 	"SELECT count(*) > $alive FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_SURVIVOR' AND status = 's'"
 ) or die "database scheduler stopped after a bad purge schedule";
 ok(1, 'a malformed purge schedule does not stop job scheduling');
-ora_sql(q{BEGIN dbms_scheduler.disable('tap_survivor'); END;});
+ora_sql(q{BEGIN dbms_scheduler.disable('tap_survivor', force => TRUE); END;});
 
 # put purging back where the rest of the test expects it
 $node->safe_psql($db,
