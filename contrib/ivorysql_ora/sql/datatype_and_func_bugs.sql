@@ -17,6 +17,25 @@ END;
 
 alter session set NLS_DATE_FORMAT='yyyy-mm-dd hh24:mi:ss';
 select add_months('2022-08-23',3) from dual;
+
+-- Oracle's GREATEST/LEAST return NULL when any argument is NULL.
+select greatest(null, 1) is null as greatest_null,
+       least(null, 1) is null as least_null,
+       greatest(null, 1, 2) is null as greatest_multi_null
+from dual;
+
+create table ora_minmax_test(id int, a int);
+insert into ora_minmax_test values (1, null), (2, 1);
+select id, greatest(a, 2) is null as is_greatest_null,
+       least(a, 2) is null as is_least_null
+from ora_minmax_test order by id;
+drop table ora_minmax_test;
+
+-- PostgreSQL mode keeps the standard NULL-ignoring behavior.
+set ivorysql.compatible_mode to pg;
+select greatest(null, 1) as pg_greatest, least(null, 1) as pg_least;
+set ivorysql.compatible_mode to oracle;
+
 alter session set NLS_LENGTH_SEMANTICS='BYTE';
 create table char_tb(char_clo char(3));
 insert into char_tb values('测试');

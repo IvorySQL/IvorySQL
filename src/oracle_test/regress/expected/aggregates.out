@@ -2832,33 +2832,33 @@ select * from aggordview1 order by ten;
 drop view aggordview1;
 -- variadic aggregates
 select least_agg(q1,q2) from int8_tbl;
-     least_agg     
--------------------
- -4567890123456789
+ least_agg 
+-----------
+          
 (1 row)
 
 select least_agg(variadic array[q1,q2]) from int8_tbl;
-     least_agg     
--------------------
- -4567890123456789
+ least_agg 
+-----------
+          
 (1 row)
 
 select cleast_agg(q1,q2) from int8_tbl;
-    cleast_agg     
--------------------
- -4567890123456789
+ cleast_agg 
+------------
+           
 (1 row)
 
 select cleast_agg(4.5,f1) from int4_tbl;
- cleast_agg  
--------------
- -2147483647
+ cleast_agg 
+------------
+           
 (1 row)
 
 select cleast_agg(variadic array[4.5,f1]) from int4_tbl;
- cleast_agg  
--------------
- -2147483647
+ cleast_agg 
+------------
+           
 (1 row)
 
 select pg_typeof(cleast_agg(variadic array[4.5,f1])) from int4_tbl;
