@@ -1911,7 +1911,8 @@ ora_date_trunc(Timestamp day, int f)
 	{
 			CASE_fmt_CC
 				if (y > 0)
-				result = DATE2J((y / 100) * 100 + 1, 1, 1);
+				/* Year 100 is in the first century, 200 in the second, etc. */
+				result = DATE2J(((y - 1) / 100) * 100 + 1, 1, 1);
 			else
 				result = DATE2J(-((99 - (y - 1)) / 100) * 100 + 1, 1, 1);
 			break;
