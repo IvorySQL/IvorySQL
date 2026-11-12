@@ -656,7 +656,14 @@ ora_tz_offset(PG_FUNCTION_ARGS)
 	text	   *txtimezone1 = PG_GETARG_TEXT_PP(0);
 
 	char	   *strtimezone1 = text_to_cstring(txtimezone1);
-	TimestampTz timestamp = GetCurrentTimestamp();
+
+	/*
+	 * Oracle bases the offset on the date the statement is executed, and the
+	 * function is marked STABLE, so use the statement start time rather than
+	 * the wall clock: a STABLE function must return the same value everywhere
+	 * in one statement.
+	 */
+	TimestampTz timestamp = GetCurrentStatementStartTimestamp();
 
 	/* to get pg_tz struct data of char */
 	if ((timezonedat = ora_make_timezone(&strtimezone1)) == NULL)

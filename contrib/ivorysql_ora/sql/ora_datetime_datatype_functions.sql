@@ -326,6 +326,15 @@ select tz_offset('+14:05') from dual; /* BUG:0000444 */
 select * from datetest;
 drop table datetest;
 
+--tz_offset: must not be IMMUTABLE, the offset depends on the statement date
+select provolatile from pg_proc
+ where proname = 'tz_offset' and pronamespace = 'sys'::regnamespace;
+
+--tz_offset: an expression index must be rejected (the function is not immutable)
+create table tz_imm_test (a int);
+create index tz_imm_test_i on tz_imm_test (tz_offset('GMT'));
+drop table tz_imm_test;
+
 --from_tz
 SELECT FROM_TZ(TIMESTAMP '2000-03-28 08:00:00', '3:00') FROM DUAL;
   
