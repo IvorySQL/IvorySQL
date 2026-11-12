@@ -1282,3 +1282,82 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+--
+-- USER_PART_INDEXES / ALL_PART_INDEXES / DBA_PART_INDEXES: partitioned
+-- indexes, like Oracle's views of the same name.  PARTITIONING_TYPE maps
+-- the catalog strategy to Oracle's RANGE, LIST or HASH and STATUS is
+-- always VALID.
+--
+CREATE OR REPLACE VIEW SYS.USER_PART_INDEXES AS
+SELECT
+    sys.ora_case_trans(pi.relname::varchar2)::varchar2(128) AS index_name,
+    sys.ora_case_trans(t.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE p.partstrat
+        WHEN 'r' THEN 'RANGE'
+        WHEN 'l' THEN 'LIST'
+        WHEN 'h' THEN 'HASH'
+        ELSE 'RANGE'
+    END)::varchar2(12) AS partitioning_type,
+    'VALID'::varchar2(8) AS status,
+    'YES'::varchar2(3) AS partitioned
+FROM pg_class pi
+JOIN pg_namespace n ON pi.relnamespace = n.oid
+JOIN pg_index i ON i.indexrelid = pi.oid
+JOIN pg_class t ON t.oid = i.indrelid
+JOIN pg_partitioned_table p ON p.partrelid = t.oid
+WHERE
+    pi.relkind = 'I'
+    AND pg_catalog.pg_get_userbyid(pi.relowner) = current_user
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema');
+
+GRANT SELECT ON SYS.USER_PART_INDEXES TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.ALL_PART_INDEXES AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(pi.relname::varchar2)::varchar2(128) AS index_name,
+    sys.ora_case_trans(t.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE p.partstrat
+        WHEN 'r' THEN 'RANGE'
+        WHEN 'l' THEN 'LIST'
+        WHEN 'h' THEN 'HASH'
+        ELSE 'RANGE'
+    END)::varchar2(12) AS partitioning_type,
+    'VALID'::varchar2(8) AS status,
+    'YES'::varchar2(3) AS partitioned
+FROM pg_class pi
+JOIN pg_namespace n ON pi.relnamespace = n.oid
+JOIN pg_index i ON i.indexrelid = pi.oid
+JOIN pg_class t ON t.oid = i.indrelid
+JOIN pg_partitioned_table p ON p.partrelid = t.oid
+WHERE
+    pi.relkind = 'I'
+    AND pg_catalog.has_table_privilege(current_user, t.oid, 'SELECT')
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema');
+
+GRANT SELECT ON SYS.ALL_PART_INDEXES TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.DBA_PART_INDEXES AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(pi.relname::varchar2)::varchar2(128) AS index_name,
+    sys.ora_case_trans(t.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE p.partstrat
+        WHEN 'r' THEN 'RANGE'
+        WHEN 'l' THEN 'LIST'
+        WHEN 'h' THEN 'HASH'
+        ELSE 'RANGE'
+    END)::varchar2(12) AS partitioning_type,
+    'VALID'::varchar2(8) AS status,
+    'YES'::varchar2(3) AS partitioned
+FROM pg_class pi
+JOIN pg_namespace n ON pi.relnamespace = n.oid
+JOIN pg_index i ON i.indexrelid = pi.oid
+JOIN pg_class t ON t.oid = i.indrelid
+JOIN pg_partitioned_table p ON p.partrelid = t.oid
+WHERE
+    pi.relkind = 'I'
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema');
+
+GRANT SELECT ON SYS.DBA_PART_INDEXES TO PUBLIC;
