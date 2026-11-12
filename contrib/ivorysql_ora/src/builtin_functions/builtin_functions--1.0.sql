@@ -1576,16 +1576,66 @@ LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 -- "exactly long enough to hold its significant digits": trailing zeros
 -- in the fraction are dropped and the integer digit is omitted for
 -- values between -1 and 1 (e.g. 0.5 -> '.5', 1.50 -> '1.5', 100.0 -> '100').
+-- The default model is TM9, which keeps that fixed-point text only while
+-- it fits in 64 characters; when the output would be longer Oracle
+-- switches to scientific notation (e.g. 1e100 -> '1E+100').  Rebuild the
+-- trimmed text as <first significant digit>[.<remaining digits>]E<+|->n
+-- past the threshold.
 CREATE OR REPLACE FUNCTION sys.to_char(number)
 RETURNS sys.oravarcharchar
 AS $$
-  SELECT pg_catalog.regexp_replace(
+  WITH s0 AS (
+    SELECT t,
            CASE WHEN pg_catalog.strpos(t, '.') = 0
                 THEN t
                 ELSE pg_catalog.rtrim(pg_catalog.rtrim(t, '0'), '.')
-           END,
-           '^(-?)0\.', '\1.')
-  FROM (SELECT $1::pg_catalog.text AS t) s
+           END AS notrail
+    FROM (SELECT $1::pg_catalog.text AS t) s
+  ),
+  s1 AS (
+    SELECT pg_catalog.regexp_replace(notrail, '^(-?)0\.', '\1.') AS fixed
+    FROM s0
+  ),
+  s2 AS (
+    SELECT fixed,
+           CASE WHEN pg_catalog.substring(fixed, 1, 1) = '-'
+                THEN pg_catalog.substring(fixed, 2)
+                ELSE fixed
+           END AS core
+    FROM s1
+  ),
+  s3 AS (
+    SELECT fixed,
+           CASE WHEN pg_catalog.strpos(core, '.') = 0
+                THEN core
+                ELSE pg_catalog.concat(pg_catalog.substring(core, 1, pg_catalog.strpos(core, '.') - 1),
+                                       pg_catalog.substring(core, pg_catalog.strpos(core, '.') + 1))
+           END AS ds,
+           CASE WHEN pg_catalog.strpos(core, '.') = 0
+                THEN pg_catalog.length(core)
+                ELSE pg_catalog.strpos(core, '.') - 1
+           END AS intlen
+    FROM s2
+  ),
+  s4 AS (
+    SELECT fixed, intlen,
+           pg_catalog.length(ds) - pg_catalog.length(pg_catalog.ltrim(ds, '0')) AS lead0,
+           pg_catalog.rtrim(pg_catalog.ltrim(ds, '0'), '0') AS sig
+    FROM s3
+  )
+  SELECT CASE
+           WHEN pg_catalog.length(fixed) <= 64
+             THEN fixed
+           ELSE pg_catalog.concat(
+                  CASE WHEN pg_catalog.substring(fixed, 1, 1) = '-' THEN '-' END,
+                  pg_catalog.substring(sig, 1, 1),
+                  CASE WHEN pg_catalog.length(sig) > 1
+                       THEN pg_catalog.concat('.', pg_catalog.substring(sig, 2)) END,
+                  'E',
+                  CASE WHEN intlen - lead0 - 1 < 0 THEN '-' ELSE '+' END,
+                  pg_catalog.abs(intlen - lead0 - 1)::pg_catalog.text)
+         END
+  FROM s4
 $$
 LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
 
