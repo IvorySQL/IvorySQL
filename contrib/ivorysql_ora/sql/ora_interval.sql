@@ -167,6 +167,30 @@ CREATE INDEX test_dsinterval_hash on TEST_DSINTERVAL USING hash (a);
 
 CREATE INDEX test_dsinterval_brin on TEST_DSINTERVAL USING brin (a);
 
+-- EXTRACT works on the Oracle interval types
+SELECT EXTRACT(DAY FROM numtodsinterval(1.5,'DAY')) AS d,
+       EXTRACT(HOUR FROM numtodsinterval(1.5,'DAY')) AS h,
+       EXTRACT(MINUTE FROM numtodsinterval(1.5,'DAY')) AS m,
+       EXTRACT(SECOND FROM numtodsinterval(1.5,'DAY')) AS s
+FROM dual;
+
+SELECT EXTRACT(DAY FROM timestamp '2020-01-02 12:34:56' - timestamp '2020-01-01 00:00:00') AS d,
+       EXTRACT(HOUR FROM timestamp '2020-01-02 12:34:56' - timestamp '2020-01-01 00:00:00') AS h,
+       EXTRACT(MINUTE FROM timestamp '2020-01-02 12:34:56' - timestamp '2020-01-01 00:00:00') AS m,
+       EXTRACT(SECOND FROM timestamp '2020-01-02 12:34:56' - timestamp '2020-01-01 00:00:00') AS s
+FROM dual;
+
+SELECT EXTRACT(YEAR FROM numtoyminterval(14,'MONTH')) AS y,
+       EXTRACT(MONTH FROM numtoyminterval(14,'MONTH')) AS m
+FROM dual;
+
+SELECT EXTRACT(DAY FROM numtodsinterval(-1,'DAY')) AS d,
+       EXTRACT(HOUR FROM numtodsinterval(-1.5,'DAY')) AS h
+FROM dual;
+
+SELECT a, EXTRACT(DAY FROM a) AS day, EXTRACT(HOUR FROM a) AS hour
+FROM TEST_DSINTERVAL ORDER BY a;
+
 
 -- drop table
 DROP TABLE TEST_YMINTERVAL;
