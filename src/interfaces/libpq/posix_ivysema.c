@@ -168,23 +168,24 @@ PGSemaphoreCreate(PGSemaphore sema)
  *
  * Lock a semaphore (decrement count), blocking if count would be < 0
  */
-void
+int
 PGSemaphoreLock(PGSemaphore sema)
 {
-	int	errStatus;
+        int     errStatus;
 
-	do
-	{
-		errStatus = sem_wait(PG_SEM_REF(sema));
-	} while (errStatus < 0 && errno == EINTR);
+        do
+        {
+                errStatus = sem_wait(PG_SEM_REF(sema));
+        } while (errStatus < 0 && errno == EINTR);
 
-	if (errStatus < 0)
-	{
-		fprintf(stderr, "sem_wait failed: %m");
-		return;
-	}
+        if (errStatus < 0)
+        {
+                fprintf(stderr, "sem_wait failed: %m");
+                return 0;
+        }
+
+        return 1;
 }
-
 /*
  * PGSemaphoreUnlock
  *
