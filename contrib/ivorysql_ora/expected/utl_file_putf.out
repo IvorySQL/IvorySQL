@@ -45,7 +45,7 @@ SELECT sys.ora_utl_file_fopen('putf_multibyte', 'utl_file_putf_gb18030_tokens.da
 SELECT sys.ora_utl_file_putf(:fd, '衆n\n%s%%', 'OK') AS wrote \gset
 SELECT sys.ora_utl_file_fclose(:fd) AS closed \gset
 SELECT 'gb18030_tokens=' || replace(encode(pg_read_binary_file('utl_file_putf_gb18030_tokens.dat'), 'hex'), '0d0a', '0a');
-gb18030_tokens=d05c6e0a4f4b25
+gb18030_tokens=d05c6e0a4f4b2525
 SELECT sys.ora_utl_file_fremove('putf_multibyte', 'utl_file_putf_gb18030_tokens.dat') AS removed \gset
 -- gb18030_argument
 SELECT sys.ora_utl_file_fopen('putf_multibyte', 'utl_file_putf_gb18030_argument.dat', 'w', 1024, 'GB18030') AS fd \gset
@@ -87,8 +87,24 @@ SELECT sys.ora_utl_file_fopen('putf_multibyte', 'utl_file_putf_ascii_tokens.dat'
 SELECT sys.ora_utl_file_putf(:fd, '%s|%%|tail\', 'OK') AS wrote \gset
 SELECT sys.ora_utl_file_fclose(:fd) AS closed \gset
 SELECT 'ascii_tokens=' || encode(pg_read_binary_file('utl_file_putf_ascii_tokens.dat'), 'hex');
-ascii_tokens=4f4b7c257c7461696c5c
+ascii_tokens=4f4b7c25257c7461696c5c
 SELECT sys.ora_utl_file_fremove('putf_multibyte', 'utl_file_putf_ascii_tokens.dat') AS removed \gset
+-- literal_percent: only %s is special; %% and unsupported sequences such as
+-- %d are copied literally (Oracle behavior).
+SELECT sys.ora_utl_file_fopen('putf_multibyte', 'utl_file_putf_literal_percent.dat', 'w', 1024, 'UTF8') AS fd \gset
+SELECT sys.ora_utl_file_putf(:fd, 'a%%b%dc', 'X') AS wrote \gset
+SELECT sys.ora_utl_file_fclose(:fd) AS closed \gset
+SELECT 'literal_percent=' || encode(pg_read_binary_file('utl_file_putf_literal_percent.dat'), 'hex');
+literal_percent=61252562256463
+SELECT sys.ora_utl_file_fremove('putf_multibyte', 'utl_file_putf_literal_percent.dat') AS removed \gset
+-- literal_percent_null: %s with a NULL argument writes nothing; a missing
+-- argument for %s also writes nothing, while %% and %d stay literal.
+SELECT sys.ora_utl_file_fopen('putf_multibyte', 'utl_file_putf_literal_percent_null.dat', 'w', 1024, 'UTF8') AS fd \gset
+SELECT sys.ora_utl_file_putf(:fd, '%s|%%|%d|%s', NULL) AS wrote \gset
+SELECT sys.ora_utl_file_fclose(:fd) AS closed \gset
+SELECT 'literal_percent_null=' || encode(pg_read_binary_file('utl_file_putf_literal_percent_null.dat'), 'hex');
+literal_percent_null=7c25257c25647c
+SELECT sys.ora_utl_file_fremove('putf_multibyte', 'utl_file_putf_literal_percent_null.dat') AS removed \gset
 -- null_argument
 SELECT sys.ora_utl_file_fopen('putf_multibyte', 'utl_file_putf_null_argument.dat', 'w', 1024, 'UTF8') AS fd \gset
 SELECT sys.ora_utl_file_putf(:fd, '%s|%s', 'OK') AS wrote \gset
