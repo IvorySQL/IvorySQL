@@ -216,6 +216,8 @@ WHERE owner = SYS.ORA_CASE_TRANS(CURRENT_USER::VARCHAR2)
 ORDER BY table_name, constraint_name, position;
         table_name         |                 constraint_name                 |     column_name     | position 
 ---------------------------+-------------------------------------------------+---------------------+----------
+ NULL_SPECIAL              | null_special_id_NOT_NULL                        | ID                  | 1
+ NULL_SPECIALBK            | null_specialbk_id_NOT_NULL                      | ID                  | 1
  SCHEDULER_JOBS            | SCHEDULER_JOBS_JOB_TYPE_CHECK                   | JOB_TYPE            | 1
  SCHEDULER_JOBS            | SCHEDULER_JOBS_NUMBER_OF_ARGUMENTS_CHECK        | NUMBER_OF_ARGUMENTS | 1
  SCHEDULER_JOBS            | SCHEDULER_JOBS_PKEY                             | JOB_OWNER           | 1
@@ -275,7 +277,7 @@ ORDER BY table_name, constraint_name, position;
  T_PK_SINGLE               | T_PK_SINGLE_PKEY                                | ID                  | 1
  T_UNIQUE                  | UK_COL1                                         | COL1                | 1
  UTL_FILE_DIRECTORY        | UTL_FILE_DIRECTORY_PKEY                         | DIRNAME             | 1
-(59 rows)
+(61 rows)
 
 SELECT constraint_name, COUNT(*) AS column_count
 FROM all_cons_columns
@@ -310,6 +312,8 @@ ORDER BY constraint_name;
  T_PK_SINGLE_PKEY                                |            1
  UK_COL1                                         |            1
  UTL_FILE_DIRECTORY_PKEY                         |            1
+ null_special_id_NOT_NULL                        |            1
+ null_specialbk_id_NOT_NULL                      |            1
  scheduler_job_run_details_job_name_NOT_NULL     |            1
  scheduler_job_run_details_job_owner_NOT_NULL    |            1
  scheduler_job_run_details_log_date_NOT_NULL     |            1
@@ -327,7 +331,7 @@ ORDER BY constraint_name;
  scheduler_programs_number_of_arguments_NOT_NULL |            1
  scheduler_programs_program_action_NOT_NULL      |            1
  scheduler_programs_program_type_NOT_NULL        |            1
-(43 rows)
+(45 rows)
 
 DROP VIEW IF EXISTS v_dummy;
 DROP MATERIALIZED VIEW IF EXISTS mv_dummy;
