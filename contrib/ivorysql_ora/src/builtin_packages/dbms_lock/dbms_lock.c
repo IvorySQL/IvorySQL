@@ -41,11 +41,13 @@
 #include "utils/float.h"
 
 /*
- * Oracle compatible lock modes (DBMS_LOCK constants): all six documented
- * modes are accepted.  They map onto PostgreSQL's two advisory-lock
- * strengths, preserving Oracle's conflict relationships as far as the
- * two strengths allow: NL takes no lock at all, SS and S take the shared
- * strength, SX, SSX and X take the exclusive strength.
+ * Oracle compatible lock modes (DBMS_LOCK constants).  Only NL, S and X
+ * can be mapped onto PostgreSQL's two advisory-lock strengths without
+ * breaking Oracle's documented conflict matrix: SX must coexist across
+ * sessions and with SS/SSX, which an exclusive advisory lock forbids,
+ * and SSX must exclude S, which a shared advisory lock allows.  SS, SX
+ * and SSX therefore report the parameter-error return code until lock
+ * support with a finer-grained conflict matrix exists.
  */
 #define DBMS_LOCK_NL_MODE      1
 #define DBMS_LOCK_SS_MODE      2
@@ -133,6 +135,17 @@ dbms_lock_record_acquire(int64 key, bool exclusive)
 
     if (entry == NULL) {
        return false;
+    }
+
+    /*
+     * HASH_ENTER only initializes the key of a newly inserted entry
+     * (dynahash requires the caller to fill the rest); zero the
+     * counters before the first increment, or they start from garbage.
+     */
+    if (!found)
+    {
+        entry->s_ref = 0;
+        entry->x_ref = 0;
     }
 
     /*
@@ -233,12 +246,9 @@ classify_mode(int mode)
         case DBMS_LOCK_NL_MODE:
             return DBMS_LOCK_CLASS_NONE;
 
-        case DBMS_LOCK_SS_MODE:
         case DBMS_LOCK_S_MODE:
             return DBMS_LOCK_CLASS_SHARED;
 
-        case DBMS_LOCK_SX_MODE:
-        case DBMS_LOCK_SSX_MODE:
         case DBMS_LOCK_X_MODE:
             return DBMS_LOCK_CLASS_EXCLUSIVE;
 
@@ -293,6 +303,7 @@ ivorysql_dbms_lock_request(PG_FUNCTION_ARGS)
     int64 key = lockname_to_key(lockhandle);
     int     mclass = classify_mode(lockmode);
     bool exclusive;
+    bool forever = (timeout >= DBMS_LOCK_MAXWAIT);
     TimestampTz start = GetCurrentTimestamp();
     bool acquired = false;
     bool hash_enter_is_ok = false;
@@ -329,7 +340,7 @@ ivorysql_dbms_lock_request(PG_FUNCTION_ARGS)
         if (timeout == 0)
             PG_RETURN_INT32(DBMS_LOCK_TIMEOUT);
 
-        if (timeout > 0)
+        if (timeout > 0 && !forever)
         {
             TimestampTz now = GetCurrentTimestamp();
             long elapsed = (long) ((now - start) / 1000000);
