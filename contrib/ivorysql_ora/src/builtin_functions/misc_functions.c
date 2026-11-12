@@ -41,6 +41,8 @@
 PG_FUNCTION_INFO_V1(uid);
 PG_FUNCTION_INFO_V1(stragg_transfn);
 PG_FUNCTION_INFO_V1(ora_vsize);
+PG_FUNCTION_INFO_V1(ora_empty_clob);
+PG_FUNCTION_INFO_V1(ora_empty_blob);
 
 
 /*
@@ -109,6 +111,33 @@ Datum
 uid(PG_FUNCTION_ARGS)
 {
 	PG_RETURN_UINT32(GetUserId());
+}
+
+/*
+ * ora_empty_clob / ora_empty_blob
+ *
+ * Oracle-compatible EMPTY_CLOB()/EMPTY_BLOB() constructors.
+ *
+ * In Oracle an empty string is NULL, so a zero-length LOB can only be
+ * initialized through EMPTY_CLOB()/EMPTY_BLOB(), which return a non-NULL
+ * LOB value of length zero.  IvorySQL implements clob/blob/nclob as
+ * domains over text/bytea, so the constructors return a zero-length
+ * varlena of the base type and let the return-type domain produce
+ * sys.clob/sys.blob values.
+ */
+Datum
+ora_empty_clob(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_TEXT_P(cstring_to_text(""));
+}
+
+Datum
+ora_empty_blob(PG_FUNCTION_ARGS)
+{
+	bytea	   *result = (bytea *) palloc(VARHDRSZ);
+
+	SET_VARSIZE(result, VARHDRSZ);
+	PG_RETURN_BYTEA_P(result);
 }
 
 /*
