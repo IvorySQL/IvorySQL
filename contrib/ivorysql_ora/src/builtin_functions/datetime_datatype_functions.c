@@ -404,7 +404,15 @@ add_months(PG_FUNCTION_ARGS)
 	int64		n;
 	Numeric		num = PG_GETARG_NUMERIC(1);
 
-	n = DatumGetInt32(DirectFunctionCall1(numeric_int8, NumericGetDatum(num)));
+	/*
+	 * Oracle truncates a fractional month count toward zero (ADD_MONTHS
+	 * treats 1.9 months as 1 month and -1.5 months as -1 month), so
+	 * truncate the numeric before converting it to an integer.
+	 */
+	n = DatumGetInt64(DirectFunctionCall1(numeric_int8,
+										  DirectFunctionCall2(numeric_trunc,
+															  NumericGetDatum(num),
+															  Int32GetDatum(0))));
 
 	TMODULO(time, date, USECS_PER_DAY);
 	if (time < INT64CONST(0))
@@ -417,7 +425,22 @@ add_months(PG_FUNCTION_ARGS)
 	j2date((int) date, &y, &m, &d);
 	last_day = (d == days_of_month(y, m));
 
-	v = div(y * 12 + m - 1 + n, 12);
+	/*
+	 * n is int64, so compute the month arithmetic in int64 to avoid
+	 * silent truncation inside div(), which takes an int argument.
+	 * Keep the resulting year within the supported date range.
+	 */
+	{
+		int64		total_months = (int64) y * 12 + m - 1 + n;
+
+		if (total_months < (int64) -4714 * 12 ||
+			total_months > (int64) 5874897 * 12)
+			ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					 errmsg("datetime value out of range")));
+
+		v = div((int) total_months, 12);
+	}
 	y = v.quot;
 	if (y < 0)
 		y += 1;
