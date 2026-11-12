@@ -116,6 +116,60 @@ NOTICE:  fexists = t, file_length = 75, block_size = 4096
 NOTICE:  fexists = t, file_length = 75, block_size = 4096
 NOTICE:  fexists = f, file_length = <NULL>, block_size = <NULL>
 NOTICE:  fexists = t, file_length = 75, block_size = 4096
+-- FCOPY must leave the source intact when both names identify the same file.
+declare
+    f utl_file.file_type;
+    line text;
+    srcpath text;
+    aliaspath text;
+begin
+    f := utl_file.fopen('data_directory', 'regress_fcopy_same.txt', 'w');
+    utl_file.put_line(f, 'original contents');
+    utl_file.fclose(f);
+    begin
+        utl_file.fcopy('data_directory', 'regress_fcopy_same.txt',
+                        'data_directory', 'regress_fcopy_same.txt');
+        raise exception 'FCOPY accepted identical source and destination';
+    exception
+        when invalid_parameter_value then
+            null;
+    end;
+    f := utl_file.fopen('data_directory', 'regress_fcopy_same.txt', 'r');
+    utl_file.get_line(f, line);
+    utl_file.fclose(f);
+    if line <> 'original contents' then
+        raise exception 'FCOPY changed its source: %', line;
+    end if;
+    srcpath := current_setting('data_directory') || '/regress_fcopy_same.txt';
+    aliaspath := current_setting('data_directory') || '/regress_fcopy_alias.txt';
+    -- COPY PROGRAM invokes a shell, so quote paths before creating the hard link.
+    execute format('COPY (SELECT 1) TO PROGRAM %L',
+                   'ln ' || chr(39) || replace(srcpath, chr(39), chr(39) || chr(92) || chr(39) || chr(39)) || chr(39) ||
+                   ' ' || chr(39) || replace(aliaspath, chr(39), chr(39) || chr(92) || chr(39) || chr(39)) || chr(39));
+    begin
+        utl_file.fcopy('data_directory', 'regress_fcopy_same.txt',
+                        'data_directory', 'regress_fcopy_alias.txt');
+        raise exception 'FCOPY accepted a hard-link destination';
+    exception
+        when invalid_parameter_value then
+            null;
+    end;
+    f := utl_file.fopen('data_directory', 'regress_fcopy_alias.txt', 'r');
+    utl_file.get_line(f, line);
+    utl_file.fclose(f);
+    if line <> 'original contents' then
+        raise exception 'FCOPY changed its hard-link destination: %', line;
+    end if;
+    f := utl_file.fopen('data_directory', 'regress_fcopy_same.txt', 'r');
+    utl_file.get_line(f, line);
+    utl_file.fclose(f);
+    if line <> 'original contents' then
+        raise exception 'FCOPY changed its hard-link source: %', line;
+    end if;
+    utl_file.fremove('data_directory', 'regress_fcopy_alias.txt');
+    utl_file.fremove('data_directory', 'regress_fcopy_same.txt');
+end;
+/
 -- test fflush, fseek
 declare
     f UTL_FILE.FILE_TYPE;
