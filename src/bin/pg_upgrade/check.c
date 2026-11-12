@@ -22,6 +22,7 @@ static void check_is_install_user(ClusterInfo *cluster);
 static void check_for_unsupported_encodings(ClusterInfo *cluster);
 static void check_for_connection_status(ClusterInfo *cluster);
 static void check_for_prepared_transactions(ClusterInfo *cluster);
+static void check_for_user_defined_packages(ClusterInfo *cluster);
 static void check_for_isn_and_int8_passing_mismatch(ClusterInfo *cluster);
 static void check_for_user_defined_postfix_ops(ClusterInfo *cluster);
 static void check_for_incompatible_polymorphics(ClusterInfo *cluster);
@@ -632,6 +633,8 @@ check_and_dump_old_cluster(void)
 	 */
 	check_is_install_user(&old_cluster);
 	check_for_prepared_transactions(&old_cluster);
+	if (pg_cluster_within_oracle_mode)
+		check_for_user_defined_packages(&old_cluster);
 	check_for_isn_and_int8_passing_mismatch(&old_cluster);
 
 	if (GET_MAJOR_VERSION(old_cluster.major_version) >= 1700)
@@ -1303,6 +1306,85 @@ check_for_unsupported_encodings(ClusterInfo *cluster)
 		check_ok();
 }
 
+
+/*
+ * check_for_user_defined_packages()
+ *
+ * --using-ora-pg restores through the PostgreSQL port, where CREATE PACKAGE
+ * is not accepted.  Refuse the upgrade before any data moves if the source
+ * cluster contains user-defined packages; extension-owned packages are
+ * restored by CREATE EXTENSION and are safe.
+ */
+static void
+check_for_user_defined_packages(ClusterInfo *cluster)
+{
+	PGresult   *res;
+	PGconn	   *conn;
+	bool		has_package_catalog;
+	int			nuser_packages = 0;
+
+	prep_status("Checking for user-defined packages");
+
+	if (cluster->dbarr.ndbs == 0)
+	{
+		check_ok();
+		return;
+	}
+
+	/*
+	 * The catalog exists only in IvorySQL clusters.  A PostgreSQL source
+	 * cluster has no packages to check.
+	 */
+	conn = connectToServer(cluster, cluster->dbarr.dbs[0].db_name);
+	res = executeQueryOrDie(conn,
+							"SELECT count(*) "
+							"FROM pg_catalog.pg_class "
+							"WHERE relname = 'pg_package' "
+							"AND relnamespace = 'pg_catalog'::regnamespace");
+	has_package_catalog = (atoi(PQgetvalue(res, 0, 0)) > 0);
+	PQclear(res);
+	PQfinish(conn);
+
+	if (!has_package_catalog)
+	{
+		check_ok();
+		return;
+	}
+
+	/*
+	 * Packages live in individual databases, so check each database rather
+	 * than only template1.  Extension-owned packages are restored by CREATE
+	 * EXTENSION and do not need this refusal.
+	 */
+	for (int dbnum = 0; dbnum < cluster->dbarr.ndbs; dbnum++)
+	{
+		DbInfo	   *dbinfo = &cluster->dbarr.dbs[dbnum];
+
+		conn = connectToServer(cluster, dbinfo->db_name);
+		res = executeQueryOrDie(conn,
+								"SELECT count(*) "
+								"FROM pg_catalog.pg_package p "
+								"WHERE p.pkgnamespace NOT IN ("
+								"  'pg_catalog'::regnamespace,"
+								"  'pg_toast'::regnamespace,"
+								"  'information_schema'::regnamespace) "
+								"AND NOT EXISTS ("
+								"  SELECT 1 FROM pg_catalog.pg_depend d "
+								"  WHERE d.classid = 'pg_catalog.pg_package'::regclass "
+								"    AND d.objid = p.oid "
+								"    AND d.refclassid = 'pg_catalog.pg_extension'::regclass "
+								"    AND d.deptype = 'e')");
+		nuser_packages += atoi(PQgetvalue(res, 0, 0));
+		PQclear(res);
+		PQfinish(conn);
+	}
+
+	if (nuser_packages > 0)
+		pg_fatal("The source cluster contains %d user-defined package(s), which --using-ora-pg cannot restore through the PostgreSQL port",
+				 nuser_packages);
+
+	check_ok();
+}
 
 /*
  *	check_for_prepared_transactions()
