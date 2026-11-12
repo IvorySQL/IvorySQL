@@ -17130,6 +17130,9 @@ dumpDefaultACL(Archive *fout, const DefaultACLInfo *daclinfo)
 		case DEFACLOBJ_NAMESPACE:
 			type = "SCHEMAS";
 			break;
+		case DEFACLOBJ_PACKAGE:
+			type = "PACKAGES";
+			break;
 		case DEFACLOBJ_LARGEOBJECT:
 			type = "LARGE OBJECTS";
 			break;
