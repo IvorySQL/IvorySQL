@@ -408,7 +408,11 @@ ora_utl_file_fopen(PG_FUNCTION_ARGS)
 Datum
 ora_utl_file_is_open(PG_FUNCTION_ARGS)
 {
-	uint32	sid = PG_GETARG_UINT32(0);
+	uint32	sid;
+
+	CHECK_FILE_HANDLE();
+
+	sid = PG_GETARG_UINT32(0);
 
 	if(sid == INVALID_SLOTID)
 		PG_RETURN_BOOL(false);
@@ -434,7 +438,11 @@ ora_utl_file_is_open(PG_FUNCTION_ARGS)
 Datum
 ora_utl_file_fclose(PG_FUNCTION_ARGS)
 {
-	FILE *fd = free_slot(PG_GETARG_UINT32(0));
+	FILE *fd;
+
+	CHECK_FILE_HANDLE();
+
+	fd = free_slot(PG_GETARG_UINT32(0));
 
 	if(fd == NULL)
 	{

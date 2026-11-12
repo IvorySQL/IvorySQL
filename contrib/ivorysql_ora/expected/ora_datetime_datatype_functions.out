@@ -2098,3 +2098,19 @@ drop table ds_tb;
 reset NLS_TIMESTAMP_FORMAT;
 reset NLS_TIMESTAMP_TZ_FORMAT;
 reset NLS_DATE_FORMAT;
+
+-- add_months must keep the month field within 1..12 when the month total
+-- crosses backwards over the year-one boundary (comparisons are used
+-- because pre-year-one display is unreliable)
+SELECT add_months(oradate '2024-01-15', -24288) > add_months(oradate '2024-01-15', -24289) AS ordered;
+ ordered 
+---------
+ t
+(1 row)
+
+SELECT add_months(oradate '2024-03-31', -1) AS month_end_clamp;
+ month_end_clamp 
+-----------------
+ 2024-02-29
+(1 row)
+
