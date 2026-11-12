@@ -485,6 +485,8 @@ ora_utl_file_fcopy(PG_FUNCTION_ARGS)
 	int 		copy_result;
 	FILE	   *srcfile;
 	FILE	   *dstfile;
+	struct stat srcstat;
+	struct stat dststat;
 
 	NOT_NULL_ARG(0);
 	NOT_NULL_ARG(1);
@@ -505,6 +507,21 @@ ora_utl_file_fcopy(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				errmsg("end_line must be positive (%d passed)", end_line)));
+
+	/*
+	 * Refuse to copy a file onto itself: the destination is opened for writing
+	 * below, which would truncate the source before it has been read.
+	 *
+	 * Comparing the two paths as strings is not enough, because the same file
+	 * can also be reached through a hard link or a symbolic link, so compare
+	 * the file identity instead.
+	 */
+	if (stat(srcpath, &srcstat) == 0 &&
+		stat(dstpath, &dststat) == 0 &&
+		srcstat.st_dev == dststat.st_dev &&
+		srcstat.st_ino == dststat.st_ino)
+		CUSTOM_EXCEPTION(INVALID_OPERATION,
+						 "Source and destination are the same file.");
 
 	srcfile = fopen(srcpath, "rt");
 
