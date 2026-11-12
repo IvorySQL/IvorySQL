@@ -260,3 +260,10 @@ FROM dbms_lob_test WHERE id = 1;
 SELECT dbms_lob.instr(doc, 'oracle') AS pos FROM dbms_lob_test WHERE id = 1;
 
 DROP TABLE dbms_lob_test;
+
+-- Like Oracle's built-in packages, dbms_lob is executable by PUBLIC
+CREATE ROLE dbms_lob_reader_3207;
+SET ROLE dbms_lob_reader_3207;
+SELECT dbms_lob.getlength('abc'::clob) AS public_length;
+RESET ROLE;
+DROP ROLE dbms_lob_reader_3207;
