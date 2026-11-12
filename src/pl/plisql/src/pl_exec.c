@@ -2076,7 +2076,7 @@ exec_stmt_block(PLiSQL_execstate * estate, PLiSQL_stmt_block * block)
 
 	estate->err_var = NULL;
 
-	pop_oraparam_stack(block->ora_param_stack_top_level, block->ora_param_stack_cur_level);
+	pop_oraparam_stack(estate->ora_param_stack_top_level, estate->ora_param_stack_cur_level);
 
 	if (block->exceptions)
 	{
@@ -2160,7 +2160,7 @@ exec_stmt_block(PLiSQL_execstate * estate, PLiSQL_stmt_block * block)
 			ErrorData  *edata;
 			ListCell   *e;
 
-			pop_oraparam_stack(block->ora_param_stack_top_level, block->ora_param_stack_cur_level);
+			pop_oraparam_stack(estate->ora_param_stack_top_level, estate->ora_param_stack_cur_level);
 
 			estate->err_text = gettext_noop("during exception cleanup");
 
@@ -4477,6 +4477,10 @@ plisql_estate_setup(PLiSQL_execstate * estate,
 
 	estate->exitlabel = NULL;
 	estate->cur_error = NULL;
+
+	/* The caller has just pushed the ORAPARAM level of this call */
+	get_oraparam_level(&estate->ora_param_stack_top_level,
+					   &estate->ora_param_stack_cur_level);
 
 	estate->tuple_store = NULL;
 	estate->tuple_store_desc = NULL;

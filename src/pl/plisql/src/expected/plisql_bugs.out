@@ -126,3 +126,167 @@ SELECT test_bug1124_order() AS result FROM dual;
 (1 row)
 
 DROP FUNCTION test_bug1124_order;
+--
+-- Test for GitHub Issue #3153: a block nested in IF, LOOP or an exception
+-- handler, a block with no statements, or the first reference to a package
+-- broke a later EXECUTE ... USING of the caller (no parameter :1).
+--
+-- Test 1: a block inside IF, LOOP and an exception handler
+DECLARE
+    v integer;
+BEGIN
+    IF 1 = 1 THEN
+        BEGIN NULL; END;
+    END IF;
+    EXECUTE 'SELECT :1 + 1 FROM dual' INTO v USING 1;
+    RAISE NOTICE 'after IF: %', v;
+    FOR i IN 1..2 LOOP
+        BEGIN NULL; END;
+    END LOOP;
+    EXECUTE 'SELECT :1 + 1 FROM dual' INTO v USING 2;
+    RAISE NOTICE 'after LOOP: %', v;
+    BEGIN
+        RAISE EXCEPTION 'x';
+    EXCEPTION
+        WHEN OTHERS THEN
+            BEGIN NULL; END;
+    END;
+    EXECUTE 'BEGIN RAISE NOTICE ''after handler: %'', :1; END;' USING 3;
+END;
+/
+NOTICE:  after IF: 2
+NOTICE:  after LOOP: 3
+NOTICE:  after handler: 3
+-- Test 2: a procedure with a block inside IF, and a procedure with no statements
+CREATE OR REPLACE PROCEDURE test_bug3153_nested IS
+BEGIN
+    IF 1 = 1 THEN
+        BEGIN NULL; END;
+    END IF;
+END;
+/
+CREATE OR REPLACE PROCEDURE test_bug3153_empty IS
+BEGIN
+END;
+/
+BEGIN
+    test_bug3153_nested;
+    EXECUTE 'BEGIN RAISE NOTICE ''after nested: %'', :1; END;' USING 4;
+    test_bug3153_empty;
+    EXECUTE 'BEGIN RAISE NOTICE ''after empty: %'', :1; END;' USING 5;
+END;
+/
+NOTICE:  after nested: 4
+NOTICE:  after empty: 5
+DROP PROCEDURE test_bug3153_nested;
+DROP PROCEDURE test_bug3153_empty;
+--
+-- The first reference to a package runs its initialization.  Each test below
+-- starts a new session, so that the package is not loaded yet.
+--
+CREATE OR REPLACE PACKAGE test_bug3153_proc IS
+    PROCEDURE p;
+END;
+/
+CREATE OR REPLACE PACKAGE BODY test_bug3153_proc IS
+    PROCEDURE p IS
+    BEGIN
+        RAISE NOTICE 'in p';
+    END;
+END;
+/
+CREATE OR REPLACE PACKAGE test_bug3153_var IS
+    g integer := 7;
+END;
+/
+CREATE OR REPLACE PACKAGE test_bug3153_init IS
+    g integer;
+    FUNCTION f(a integer) RETURN integer;
+END;
+/
+CREATE OR REPLACE PACKAGE BODY test_bug3153_init IS
+    FUNCTION f(a integer) RETURN integer IS
+    BEGIN
+        RETURN a + g;
+    END;
+BEGIN
+    EXECUTE 'SELECT :1 * 2 FROM dual' INTO g USING 21;
+END;
+/
+CREATE OR REPLACE PACKAGE test_bug3153_fail IS
+    g integer;
+END;
+/
+CREATE OR REPLACE PACKAGE BODY test_bug3153_fail IS
+BEGIN
+    RAISE EXCEPTION 'init failed';
+END;
+/
+CREATE OR REPLACE FUNCTION test_bug3153_func RETURN integer IS
+    v integer;
+BEGIN
+    v := test_bug3153_var.g;
+    EXECUTE 'SELECT :1 + 1 FROM dual' INTO v USING v;
+    RETURN v;
+END;
+/
+-- Test 3: call a package procedure, then run a dynamic block with a bind
+\c
+BEGIN
+    test_bug3153_proc.p;
+    EXECUTE 'BEGIN RAISE NOTICE ''bind %'', :1; END;' USING 1;
+END;
+/
+NOTICE:  in p
+NOTICE:  bind 1
+-- Test 4: a function reads a package variable, then binds it
+\c
+SELECT test_bug3153_func() AS result FROM dual;
+ result 
+--------
+      8
+(1 row)
+
+-- Test 5: the initialization section itself runs dynamic SQL with a bind
+\c
+DECLARE
+    v integer;
+BEGIN
+    v := test_bug3153_init.g;
+    EXECUTE 'SELECT :1 + :2 FROM dual' INTO v USING v, 1;
+    RAISE NOTICE 'result %', v;
+END;
+/
+NOTICE:  result 43
+-- Test 6: the same package is first referenced in dynamic SQL with a bind
+\c
+DECLARE
+    v integer;
+BEGIN
+    EXECUTE 'SELECT test_bug3153_init.f(:1) FROM dual' INTO v USING 1;
+    RAISE NOTICE 'result %', v;
+    EXECUTE 'SELECT :1 + :2 FROM dual' INTO v USING v, 1;
+    RAISE NOTICE 'result %', v;
+END;
+/
+NOTICE:  result 43
+NOTICE:  result 44
+-- Test 7: the initialization section fails
+\c
+BEGIN
+    BEGIN
+        RAISE NOTICE '%', test_bug3153_fail.g;
+    EXCEPTION
+        WHEN OTHERS THEN
+            RAISE NOTICE 'caught: %', SQLERRM;
+    END;
+    EXECUTE 'BEGIN RAISE NOTICE ''bind %'', :1; END;' USING 3;
+END;
+/
+NOTICE:  caught: init failed
+NOTICE:  bind 3
+DROP FUNCTION test_bug3153_func;
+DROP PACKAGE test_bug3153_proc;
+DROP PACKAGE test_bug3153_var;
+DROP PACKAGE test_bug3153_init;
+DROP PACKAGE test_bug3153_fail;

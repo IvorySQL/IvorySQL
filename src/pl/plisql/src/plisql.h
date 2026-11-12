@@ -549,8 +549,6 @@ typedef struct PLiSQL_stmt_block
 	int			n_initvars;		/* Length of initvarnos[] */
 	int		   *initvarnos;		/* dnos of variables declared in this block */
 	PLiSQL_exception_block *exceptions;
-	int			ora_param_stack_top_level;
-	int			ora_param_stack_cur_level;
 }			PLiSQL_stmt_block;
 
 /*
@@ -1163,6 +1161,10 @@ typedef struct PLiSQL_execstate
 	PLiSQL_stmt *err_stmt;		/* current stmt */
 	PLiSQL_variable *err_var;	/* current variable, if in a DECLARE section */
 	const char *err_text;		/* additional state info */
+
+	/* ORAPARAM stack levels of this call; every block pops back to them */
+	int			ora_param_stack_top_level;
+	int			ora_param_stack_cur_level;
 
 	void	   *plugin_info;	/* reserved for use by optional plugin */
 }			PLiSQL_execstate;
