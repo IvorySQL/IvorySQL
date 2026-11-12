@@ -77,6 +77,7 @@ typedef struct DbmsOutputBuffer
 	int64		buffer_used;	/* Content bytes only (user-perceived usage) */
 	int			line_count;		/* Number of lines currently in buffer */
 	bool		enabled;		/* Buffer enabled/disabled state */
+	bool		line_retrieved; /* GET_LINE/GET_LINES has consumed a line */
 	StringInfo	current_line;	/* Accumulator for PUT calls (not yet a line) */
 	MemoryContext buffer_mcxt;	/* Memory context for buffer allocations */
 } DbmsOutputBuffer;
@@ -98,6 +99,7 @@ static DbmsOutputBuffer *output_buffer = NULL;
 /* Internal function declarations */
 static void init_output_buffer(int64 buffer_size);
 static void cleanup_output_buffer(void);
+static void discard_unread_lines(void);
 static void add_line_to_buffer(const char *line, int line_len);
 static DbmsOutputLine *pop_line_from_buffer(void);
 
@@ -184,6 +186,33 @@ cleanup_output_buffer(void)
 }
 
 /*
+ * discard_unread_lines
+ *
+ * Discard lines left in the buffer after a GET_LINE or GET_LINES call.
+ * Oracle empties the unread part of the buffer when output is written
+ * again, so a later GET cannot return stale lines.
+ */
+static void
+discard_unread_lines(void)
+{
+	DbmsOutputLine *node;
+
+	if (output_buffer == NULL || !output_buffer->line_retrieved)
+		return;
+
+	while ((node = output_buffer->head) != NULL)
+	{
+		output_buffer->head = node->next;
+		pfree(node);
+	}
+
+	output_buffer->tail = NULL;
+	output_buffer->buffer_used = 0;
+	output_buffer->line_count = 0;
+	output_buffer->line_retrieved = false;
+}
+
+/*
  * add_line_to_buffer
  *
  * Add a completed line to the linked list buffer.
@@ -201,6 +230,9 @@ add_line_to_buffer(const char *line, int line_len)
 	MemoryContext oldcontext;
 	DbmsOutputLine *node;
 	Size		node_size;
+
+	/* Writing after a GET discards lines left unread (Oracle behavior). */
+	discard_unread_lines();
 
 	/*
 	 * Check user-perceived buffer limit BEFORE adding (Oracle behavior).
@@ -421,6 +453,9 @@ ora_dbms_output_put(PG_FUNCTION_ARGS)
 	if (output_buffer == NULL || !output_buffer->enabled)
 		PG_RETURN_VOID();
 
+	/* Writing after a GET discards lines left unread (Oracle behavior). */
+	discard_unread_lines();
+
 	/* Handle NULL argument - treat as empty string (Oracle behavior) */
 	if (PG_ARGISNULL(0))
 		PG_RETURN_VOID();  /* NULL appends nothing */
@@ -496,6 +531,9 @@ ora_dbms_output_get_line(PG_FUNCTION_ARGS)
 	tupdesc = BlessTupleDesc(tupdesc);
 
 	node = pop_line_from_buffer();
+
+	if (node != NULL)
+		output_buffer->line_retrieved = true;
 
 	if (node == NULL)
 	{
@@ -588,6 +626,8 @@ ora_dbms_output_get_lines(PG_FUNCTION_ARGS)
 				actual_lines = i;
 				break;
 			}
+
+			output_buffer->line_retrieved = true;
 
 			if (node->len == DBMS_OUTPUT_NULL_LINE_LEN)
 			{
