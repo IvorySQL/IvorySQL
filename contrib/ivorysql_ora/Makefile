@@ -89,6 +89,7 @@ ORA_REGRESS = \
 	ora_merge \
 	datatype_and_func_bugs \
 	ora_sysview \
+	ora_all_scheduler_job_log \
 	ora_arguments \
 	ora_like_operator \
 	ora_like_bigint \
