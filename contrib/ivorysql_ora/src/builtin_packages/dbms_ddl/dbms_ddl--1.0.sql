@@ -21,13 +21,13 @@ CREATE FUNCTION sys.ora_dbms_ddl_alter_compile(text, text, text)
 RETURNS void
 AS 'MODULE_PATHNAME','ora_dbms_ddl_alter_compile'
 LANGUAGE C
-IMMUTABLE;
+VOLATILE;
 
 CREATE FUNCTION sys.ora_dbms_ddl_analyze_object(text, text, text, text)
 RETURNS void
 AS 'MODULE_PATHNAME','ora_dbms_ddl_analyze_object'
 LANGUAGE C
-IMMUTABLE;
+VOLATILE;
 
 CREATE PACKAGE dbms_ddl AS
 
