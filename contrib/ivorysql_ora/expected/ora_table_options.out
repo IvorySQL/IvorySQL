@@ -1,0 +1,25 @@
+--
+-- Oracle CREATE TABLE storage/parallel options
+--
+SET IVORYSQL.COMPATIBLE_MODE TO ORACLE;
+CREATE TABLE test_table_options_1 (id NUMBER)
+	LOGGING NOCOMPRESS NOCACHE NOPARALLEL MONITORING;
+CREATE TABLE test_table_options_2 (id NUMBER)
+	NOLOGGING COMPRESS CACHE PARALLEL 2 NOMONITORING;
+CREATE TABLE test_table_options_3 (id NUMBER)
+	TABLESPACE pg_default LOGGING NOCOMPRESS;
+INSERT INTO test_table_options_1 VALUES (1);
+INSERT INTO test_table_options_2 VALUES (2);
+INSERT INTO test_table_options_3 VALUES (3);
+SELECT id FROM test_table_options_1
+UNION ALL SELECT id FROM test_table_options_2
+UNION ALL SELECT id FROM test_table_options_3
+ORDER BY id;
+ id 
+----
+ 1
+ 2
+ 3
+(3 rows)
+
+DROP TABLE test_table_options_1, test_table_options_2, test_table_options_3;
