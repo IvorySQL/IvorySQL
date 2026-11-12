@@ -814,6 +814,66 @@ END;
 $$;
 
 -- =============================================================================
+-- Section 14: Writing after GET discards unread lines (Oracle behavior)
+-- =============================================================================
+
+-- Test 14.1: PUT_LINE after GET_LINE discards the remaining unread lines
+DECLARE
+    line TEXT;
+    status INTEGER;
+BEGIN
+    dbms_output.enable();
+    dbms_output.put_line('old-1');
+    dbms_output.put_line('old-2');
+    dbms_output.get_line(line, status);
+    RAISE NOTICE 'Test 14.1 - First GET: [%], status=%', line, status;
+    dbms_output.put_line('new');
+    dbms_output.get_line(line, status);
+    RAISE NOTICE 'Test 14.1 - After write: [%], status=%', line, status;
+    dbms_output.get_line(line, status);
+    RAISE NOTICE 'Test 14.1 - No stale line, status=%', status;
+END;
+/
+
+-- Test 14.2: Partial GET_LINES followed by PUT_LINE discards the rest
+DECLARE
+    lines TEXT[];
+    numlines INTEGER := 1;
+    line TEXT;
+    status INTEGER;
+BEGIN
+    dbms_output.enable();
+    dbms_output.put_line('a');
+    dbms_output.put_line('b');
+    dbms_output.put_line('c');
+    dbms_output.get_lines(lines, numlines);
+    RAISE NOTICE 'Test 14.2 - Retrieved % lines, first=[%]', numlines, lines[1];
+    dbms_output.put_line('d');
+    dbms_output.get_line(line, status);
+    RAISE NOTICE 'Test 14.2 - After write: [%], status=%', line, status;
+    dbms_output.get_line(line, status);
+    RAISE NOTICE 'Test 14.2 - No stale line, status=%', status;
+END;
+/
+
+-- Test 14.3: PUT without newline after GET also discards unread lines
+DECLARE
+    line TEXT;
+    status INTEGER;
+BEGIN
+    dbms_output.enable();
+    dbms_output.put_line('x');
+    dbms_output.put_line('y');
+    dbms_output.get_line(line, status);
+    RAISE NOTICE 'Test 14.3 - First GET: [%]', line;
+    dbms_output.put('z');
+    dbms_output.put_line('');
+    dbms_output.get_line(line, status);
+    RAISE NOTICE 'Test 14.3 - After PUT: [%], status=%', line, status;
+END;
+/
+
+-- =============================================================================
 -- Cleanup
 -- =============================================================================
 DROP PROCEDURE test_output_proc;
