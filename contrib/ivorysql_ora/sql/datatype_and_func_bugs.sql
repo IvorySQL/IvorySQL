@@ -81,3 +81,10 @@ drop function s1.f_alter(arg1 number, arg2 number);
 drop function s1.f_alter(arg1 OUT int);
 drop function s1.f_alter(arg1 text);
 drop function s1.f_alter(arg1 number, arg2 number, arg3 number);
+
+-- Functions that inspect session or wall-clock state must not be immutable.
+select proname, provolatile
+from pg_catalog.pg_proc
+where oid in ('sys.tz_offset(text)'::regprocedure,
+              'sys.uid()'::regprocedure)
+order by proname;
