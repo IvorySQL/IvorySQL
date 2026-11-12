@@ -742,8 +742,16 @@ psqlplus_next:
 				pg_send_history(history_buf);
 			}
 
-			pset.stmt_lineno = 1;
-			resetPQExpBuffer(query_buf);
+			if (conditional_active(cond_stack))
+			{
+				pset.stmt_lineno = 1;
+				resetPQExpBuffer(query_buf);
+			}
+			else if (added_nl_pos > 0)
+			{
+				/* Remove only the newline added for the skipped command. */
+				query_buf->data[--query_buf->len] = '\0';
+			}
 			psql_scan_finish(scan_state);
 			ora_psql_scan_finish(ora_scan_state);
 			free(psqlplus_line);

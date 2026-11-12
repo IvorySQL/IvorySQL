@@ -857,33 +857,37 @@ ListBindVariables(VariableSpace space, const char *name)
 	{
 		if (ptr->varkind == PSQL_BIND_VAR)
 		{
-			PQExpBuffer query = createPQExpBuffer();
+			PQExpBuffer query;
 			PGresult	*res;
-			char		*typdesc = NULL;
+			char		*typdesc;
+			char		*p;
 
-			if (name)
-			{
-				if (strcmp(ptr->name, name) != 0)
-					continue;
-			}
+			if (name && strcmp(ptr->name, name) != 0)
+				continue;
 
-			bindvar_num++;
+			query = createPQExpBuffer();
 			appendPQExpBuffer(query, "SELECT format_type(%d, %d);", ptr->typoid, ptr->typmod);
 			res = PQexec(pset.db, query->data);
-			if (PQresultStatus(res) == PGRES_TUPLES_OK &&
-				PQntuples(res) == 1 &&
-				!PQgetisnull(res, 0, 0))
+			destroyPQExpBuffer(query);
+			if (PQresultStatus(res) != PGRES_TUPLES_OK ||
+				PQntuples(res) != 1 || PQgetisnull(res, 0, 0))
 			{
-				char	*p;
-				typdesc = pg_strdup(PQgetvalue(res, 0, 0));
-
-				/* Oracle bind variable datatype are displayed in uppercase */
-				for (p = typdesc; *p; p++)
-				{
-					*p = pg_toupper((unsigned char) *p);
-				}
+				if (PQresultStatus(res) != PGRES_TUPLES_OK)
+					pg_log_error("%s", PQerrorMessage(pset.db));
+				else
+					pg_log_error("Could not determine data type for bind variable \"%s\".", ptr->name);
+				PQclear(res);
+				return false;
 			}
 
+			typdesc = pg_strdup(PQgetvalue(res, 0, 0));
+			PQclear(res);
+
+			/* Oracle displays bind variable data types in uppercase. */
+			for (p = typdesc; *p; p++)
+				*p = pg_toupper((unsigned char) *p);
+
+			bindvar_num++;
 			if (bindvar_num != 1)
 				printf("\n");
 			if (ptr->name)
@@ -891,9 +895,7 @@ ListBindVariables(VariableSpace space, const char *name)
 			if (ptr->typoid)
 				printf("datatype	%s\n", typdesc);
 
-			PQclear(res);
 			pg_free(typdesc);
-			destroyPQExpBuffer(query);
 
 			if (cancel_pressed)
 				break;

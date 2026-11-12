@@ -88,5 +88,34 @@ like($stderr, qr/current transaction is aborted/i,
 	'the active declaration reports the lookup error');
 like($stdout, qr/^after_command$/m, 'the active script continues after rollback');
 
+my $failed_type_lookup = <<'PSQL';
+VARIABLE n NUMBER = 7
+\set ON_ERROR_STOP off
+BEGIN;
+SELECT 1 / 0;
+\set ON_ERROR_STOP on
+VARIABLE n
+\echo after_command
+PSQL
+($ret, $stdout, $stderr) =
+  $node->psql('postgres', $failed_type_lookup, connstr => $connstr);
+is($ret, 3, 'a failed bind variable type lookup stops the script');
+like($stderr, qr/current transaction is aborted/i, 'the lookup reports its error');
+is($stdout, '', 'the failed lookup leaves no output and stops further commands');
+
+my $pending_query = <<'PSQL';
+SELECT (40
+\if false
+VARIABLE n NUMBER
+VARIABLE n unknown_type
+\endif
++ 2);
+PSQL
+($ret, $stdout, $stderr) =
+  $node->psql('postgres', $pending_query, connstr => $connstr);
+is($ret, 0, 'psql completes a pending query after an inactive branch');
+is($stderr, '', 'skipping client commands emits no errors');
+is($stdout, '42', 'skipping client commands preserves the pending SQL');
+
 $node->stop;
 done_testing();
