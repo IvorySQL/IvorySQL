@@ -803,6 +803,31 @@ END;
 SELECT job_owner, job_name, status FROM sys.scheduler_job_run_details
   ORDER BY job_owner, job_name;
 
+-- DISABLE without force rejects a running job; force keeps it RUNNING
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_job_running',
+      job_type => 'PLSQL_BLOCK', job_action => 'BEGIN NULL; END;');
+END;
+/
+INSERT INTO sys.scheduler_job_run_details(job_owner, job_name, status)
+  VALUES (current_user, 'REG_JOB_RUNNING', 'r');
+BEGIN
+  dbms_scheduler.disable('reg_job_running', force => FALSE);
+END;
+/
+SELECT job_name, enabled, state FROM user_scheduler_jobs
+  WHERE job_name = 'REG_JOB_RUNNING';
+BEGIN
+  dbms_scheduler.disable('reg_job_running', force => TRUE);
+END;
+/
+SELECT job_name, enabled, state FROM user_scheduler_jobs
+  WHERE job_name = 'REG_JOB_RUNNING';
+DELETE FROM sys.scheduler_job_run_details WHERE job_name = 'REG_JOB_RUNNING';
+BEGIN
+  dbms_scheduler.drop_job('reg_job_running', force => TRUE);
+END;
+/
 -- cleanup
 RESET SESSION AUTHORIZATION;
 DROP USER sched_regress_u1;
