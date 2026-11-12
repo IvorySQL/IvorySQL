@@ -166,7 +166,7 @@ foreach my $catname (@catnames)
 		}
 
 		# Preserve comments or brackets that are on their own line.
-		elsif ($data =~ /^\s*(\[|\]|#.*?)\s*$/)
+		elsif ($data =~ m{^\s*(\[|\]|#.*?|/\*(?:BEGIN|END)\sOracle\sCompatibility\sMetadatas\*/)\s*$})
 		{
 			print $dat "$1\n";
 		}
