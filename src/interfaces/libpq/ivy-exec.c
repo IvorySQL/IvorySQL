@@ -2883,8 +2883,8 @@ IvyassignOutParameters(const Ivyresult *tres, IvyBindOutInfo *outbind)
 	if (outbind == NULL)
 		return;
 
-	/* no result, we set indp to -1 */
-	if (NULL == tres || NULL == tres->result)
+	/* No output row: mark the bindings NULL without changing their buffers. */
+	if (NULL == tres || NULL == tres->result || PQntuples(tres->result) == 0)
 	{
 		IvyBindOutInfo *serbind;
 
@@ -3466,6 +3466,14 @@ assign_value_internel(PGresult *res, char *column,
 	if (resultcolumno >= 0)
 	{
 		struct pgresAttValue *attrvalue;
+
+		/* Column metadata is present even when the result has no rows. */
+		if (PQntuples(res) == 0)
+		{
+			if (indp != NULL)
+				*indp = -1;
+			return;
+		}
 
 		attrvalue = &res->tuples[0][resultcolumno];
 
