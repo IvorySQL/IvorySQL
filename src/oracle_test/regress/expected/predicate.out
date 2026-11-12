@@ -539,12 +539,11 @@ SELECT * FROM pred_tab WHERE COALESCE(b, c) IS NULL;
 -- MinMaxExpr
 EXPLAIN (COSTS OFF)
 SELECT * FROM pred_tab WHERE GREATEST(b, a) IS NULL;
-          QUERY PLAN          
-------------------------------
- Result
-   Replaces: Scan on pred_tab
-   One-Time Filter: false
-(3 rows)
+             QUERY PLAN             
+------------------------------------
+ Seq Scan on pred_tab
+   Filter: (GREATEST(b, a) IS NULL)
+(2 rows)
 
 EXPLAIN (COSTS OFF)
 SELECT * FROM pred_tab WHERE GREATEST(b, c) IS NULL;
