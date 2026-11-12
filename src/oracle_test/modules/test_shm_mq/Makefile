@@ -14,6 +14,8 @@ DATA = test_shm_mq--1.0.sql
 
 REGRESS = test_shm_mq
 
+ORA_REGRESS = $(REGRESS)
+
 ifdef USE_PGXS
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
