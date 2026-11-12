@@ -75,6 +75,7 @@ ORA_REGRESS = \
 	ora_character \
 	ora_datetime \
 	ora_interval \
+	ora_interval_arith \
 	ora_number \
 	ora_to_number_hex \
 	ora_binary_float \

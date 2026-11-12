@@ -2232,38 +2232,38 @@ dsinterval_mi(PG_FUNCTION_ARGS)
 	Interval   *span1 = PG_GETARG_INTERVAL_P(0);
 	Interval   *span2 = PG_GETARG_INTERVAL_P(1);
 	Interval   *result;
-	TimeOffset	span1_usecs;
-	TimeOffset	span2_usecs;
+	int64		day_diff;
+	int64		time_diff;
 
-	span1_usecs = span1->time;
-	span1_usecs += span1->day * INT64CONST(24) * USECS_PER_HOUR;
-
-	span2_usecs = span2->time;
-	span2_usecs += span2->day * INT64CONST(24) * USECS_PER_HOUR;
-
-	result = (Interval *) palloc(sizeof(Interval));
+	/*
+	 * Subtract the two fields separately.
+	 *
+	 * Reducing each operand to a single microsecond count first would make the
+	 * result depend on an int64 that overflows for the large day to second
+	 * values the type accepts: the difference then came out with the wrong
+	 * value, or even with the wrong sign.  The fields themselves cannot
+	 * overflow here, so the subtraction is done on them directly.
+	 */
+	day_diff = (int64) span1->day - (int64) span2->day;
+	time_diff = span1->time - span2->time;
 
 	/*
 	 * Compatible oracle For Interval day to second, the field of datetime
 	 * 'YEAR' 'MONTH' will be zero. Recompute the value of result->day and
 	 * result->time .
 	 */
+	day_diff += time_diff / USECS_PER_DAY;
+	time_diff = time_diff % USECS_PER_DAY;
+
+	if (day_diff < PG_INT32_MIN || day_diff > PG_INT32_MAX)
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("interval out of range")));
+
+	result = (Interval *) palloc(sizeof(Interval));
 	result->month = 0;
-	result->day = (span1_usecs - span2_usecs) / USECS_PER_DAY;
-	result->time = (span1_usecs - span2_usecs) % USECS_PER_DAY;
-
-	/* overflow check copied from int4mi */
-	if (!SAMESIGN(span1->day, span2->day) &&
-		!SAMESIGN(result->day, span1->day))
-		ereport(ERROR,
-				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("interval out of range")));
-
-	if (!SAMESIGN(span1->time, span2->time) &&
-		!SAMESIGN(result->time, span1->time))
-		ereport(ERROR,
-				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("interval out of range")));
+	result->day = (int32) day_diff;
+	result->time = time_diff;
 
 	PG_RETURN_INTERVAL_P(result);
 }
