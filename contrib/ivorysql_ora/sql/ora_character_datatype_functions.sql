@@ -1648,3 +1648,68 @@ SELECT INSTRC('abc','c',0,1) FROM DUAL;
 SELECT INSTRC('abc','c',0) FROM DUAL;
 SELECT INSTRC('abc','a',2,-1) FROM DUAL;
 SELECT INSTRC('abc','a',1,0) FROM DUAL;
+
+-- The exact-match rejection overloads have to cover implicitly convertible
+-- argument combinations, not just the plain same-type calls: sys.clob and
+-- sys.nclob are domains over text, and the optimizer folds a constant
+-- argument -- together with its domain coercion -- away to a plain text
+-- constant before the C function runs, so a CLOB source written next to a
+-- typed pattern or NUMBER positions must be refused while parsing.
+SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS VARCHAR2(1 BYTE))) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS NCLOB), CAST('b' AS VARCHAR2(1 BYTE))) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS TEXT)) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS CLOB), 'b', CAST(1 AS NUMBER), CAST(1 AS NUMBER)) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS CLOB), 'b', CAST(1 AS NUMERIC)) FROM DUAL;
+SELECT SUBSTRC(CAST('abc' AS CLOB), CAST(1 AS NUMBER)) FROM DUAL;
+
+-- Oracle refuses a CLOB or NCLOB source, but the pattern may be a CLOB or an
+-- NCLOB: only the source argument is checked.
+CREATE TABLE instrc_pattern_lob (c clob);
+INSERT INTO instrc_pattern_lob VALUES ('b');
+SELECT INSTRC(CAST('abc' AS TEXT), c) FROM instrc_pattern_lob;
+SELECT INSTRC(CAST('ab' AS CHAR(5 BYTE)), c) FROM instrc_pattern_lob;
+SELECT INSTRC('abc', CAST('b' AS CLOB)) FROM DUAL;
+SELECT INSTRC('abc', CAST('b' AS NCLOB)) FROM DUAL;
+DROP TABLE instrc_pattern_lob;
+
+-- Oracle lets the source and the pattern use different character types; the
+-- exact (source, pattern) pairs win the resolution instead of ending in
+-- "function instrc(...) is not unique".
+SELECT INSTRC(CAST('ab' AS CHAR(5 BYTE)), CAST('b' AS VARCHAR2(1 BYTE))) FROM DUAL;
+SELECT INSTRC(CAST('ab' AS CHAR(5 BYTE)), CAST(' ' AS VARCHAR2(1 BYTE))) FROM DUAL;
+SELECT INSTRC(CAST(' ' AS VARCHAR2(1 BYTE)), CAST('ab' AS CHAR(5 BYTE))) FROM DUAL;
+SELECT INSTRC(CAST('ab' AS CHAR(5 CHAR)), CAST('b' AS VARCHAR2(1 CHAR))) FROM DUAL;
+SELECT INSTRC(CAST('ab' AS TEXT), CAST('b' AS CHAR(2 BYTE))) FROM DUAL;
+SELECT INSTRC(CAST('ab' AS VARCHAR2(5 CHAR)), CAST('b' AS CHAR(1 BYTE))) FROM DUAL;
+
+-- position and occurrence are NUMBER in Oracle: the direct character-type
+-- overloads accept sys.number too, so a CHAR source does not fall onto the
+-- varchar2 wrapper and lose its blank padding.
+SELECT INSTRC(CAST('ab' AS CHAR(5 BYTE)), CAST(' ' AS CHAR(1 BYTE)), CAST(1 AS NUMBER), CAST(1 AS NUMBER)) FROM DUAL;
+SELECT INSTRC(CAST('ab' AS CHAR(5 BYTE)), CAST(' ' AS CHAR(1 BYTE)), CAST(2 AS NUMBER)) FROM DUAL;
+SELECT INSTRC(CAST('ab' AS CHAR(5 BYTE)), CAST(' ' AS CHAR(1 BYTE)), CAST(1 AS NUMBER), CAST(0 AS NUMBER)) FROM DUAL;
+SELECT INSTRC(CAST('ab' AS CHAR(5 BYTE)), CAST(' ' AS CHAR(1 BYTE)), CAST(0 AS NUMBER)) FROM DUAL;
+SELECT INSTRC(CAST('ab' AS CHAR(5 BYTE)), CAST(' ' AS CHAR(1 BYTE)), CAST(1 AS NUMBER), CAST(-1 AS NUMBER)) FROM DUAL;
+SELECT LENGTHC(SUBSTRC(CAST('ab' AS CHAR(5 BYTE)), CAST(2 AS NUMBER))) FROM DUAL;
+SELECT REPLACE(SUBSTRC(CAST('ab' AS CHAR(5 BYTE)), CAST(2 AS NUMBER)), ' ', '_') FROM DUAL;
+SELECT SUBSTRC(CAST('今天明天' AS VARCHAR2(12 BYTE)), CAST(2 AS NUMBER), CAST(2 AS NUMBER)) FROM DUAL;
+
+-- Positions written as smallint, bigint or plain numeric are NUMBER
+-- arguments all the same: they must not lose the CHAR padding of the
+-- source, and a CLOB or NCLOB source is refused whatever spelling the
+-- positions use.
+SELECT INSTRC('abc','b', 2::bigint) FROM DUAL;
+SELECT INSTRC('abc','b', 2::bigint, 2::bigint) FROM DUAL;
+SELECT INSTRC('abc','b', 2::smallint) FROM DUAL;
+SELECT INSTRC(CAST('ab' AS CHAR(5 BYTE)), CAST(' ' AS CHAR(1 BYTE)), 1::bigint) FROM DUAL;
+SELECT INSTRC(CAST('ab' AS CHAR(5 BYTE)), CAST(' ' AS CHAR(1 BYTE)), CAST(2 AS NUMERIC)) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS CLOB), 'b', 1::bigint, 1::bigint) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS NCLOB), 'b', 1::bigint) FROM DUAL;
+SELECT SUBSTRC('今天明天', 2::bigint, 2::bigint) FROM DUAL;
+SELECT SUBSTRC('今天明天', 2::smallint) FROM DUAL;
+SELECT LENGTHC(SUBSTRC(CAST('ab' AS CHAR(5 BYTE)), 2::bigint)) FROM DUAL;
+SELECT LENGTHC(SUBSTRC(CAST('ab' AS CHAR(5 BYTE)), 2.4)) FROM DUAL;
+SELECT SUBSTRC(CAST('abc' AS CLOB), 1::bigint, 2::bigint) FROM DUAL;
+SELECT SUBSTRC(CAST('abc' AS NCLOB), 1::smallint) FROM DUAL;
+SELECT SUBSTRC(CAST('abc' AS CLOB), CAST(1 AS NUMERIC), CAST(2 AS NUMERIC)) FROM DUAL;
+SELECT SUBSTRC(CAST('abc' AS NCLOB), CAST(1 AS NUMERIC)) FROM DUAL;
