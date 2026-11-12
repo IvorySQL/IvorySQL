@@ -716,8 +716,20 @@ INSERT INTO map_object_index_test VALUES
     (11, map_object_type(11, 'eleven')),
     (2, map_object_type(2, 'two')),
     (9, map_object_type(9, 'nine'));
+-- Attribute hashes are incompatible with MAP equality, even though index
+-- support functions can be called without consulting the type cache.
+SELECT hash_record(map_object_type(11, 'eleven'));
+SELECT hash_record_extended(map_object_type(11, 'eleven'), 0);
+CREATE INDEX map_object_hash_idx ON map_object_index_test USING hash (value);
+-- An empty hash index must not allow incompatible keys to be inserted later.
+CREATE TABLE map_object_empty_hash (value map_object_type);
+CREATE INDEX map_object_empty_hash_idx ON map_object_empty_hash USING hash (value);
+INSERT INTO map_object_empty_hash VALUES (map_object_type(11, 'eleven'));
+DROP TABLE map_object_empty_hash;
 CREATE INDEX map_object_value_idx ON map_object_index_test (value);
 SET ivorysql.compatible_mode = pg;
+SELECT hash_record(ROW(11, 'eleven')::map_object_type);
+SELECT hash_record_extended(ROW(11, 'eleven')::map_object_type, 42);
 SET enable_seqscan = off;
 SELECT id
 FROM map_object_index_test
@@ -805,6 +817,10 @@ INSERT INTO order_object_index_test VALUES
     (7, order_object_type(7, 'seven')),
     (2, order_object_type(2, 'two')),
     (9, order_object_type(9, 'nine'));
+-- ORDER equality also cannot use field-by-field hashes.
+SELECT hash_record(order_object_type(7, 'seven'));
+SELECT hash_record_extended(order_object_type(7, 'seven'), 0);
+CREATE INDEX order_object_hash_idx ON order_object_index_test USING hash (value);
 CREATE INDEX order_object_value_idx ON order_object_index_test (value);
 SET ivorysql.compatible_mode = pg;
 SET enable_seqscan = off;
