@@ -26,7 +26,7 @@ BEGIN
 		RET;
 	RETURN RET;
 END;
-$$ LANGUAGE PLPGSQL IMMUTABLE;
+$$ LANGUAGE PLPGSQL STABLE;
 
 /* Shared argument rows for the three Oracle dictionary views. */
 CREATE OR REPLACE VIEW SYS._ORA_ARGUMENTS AS
