@@ -88,6 +88,27 @@ FROM listagg_test
 GROUP BY deptno
 ORDER BY deptno;
 
+-- Test 14: numeric measure is implicitly converted to VARCHAR2
+SELECT LISTAGG(sal, ',') WITHIN GROUP (ORDER BY sal)
+FROM listagg_test WHERE deptno = 10;
+
+-- Test 15: integer measure
+SELECT LISTAGG(deptno, ',') WITHIN GROUP (ORDER BY deptno)
+FROM listagg_test;
+
+-- Test 16: numeric measure with GROUP BY
+SELECT deptno, LISTAGG(sal, ';') WITHIN GROUP (ORDER BY sal DESC)
+FROM listagg_test GROUP BY deptno ORDER BY deptno;
+
+-- Test 17: NULL values of a non-character measure are ignored
+SELECT LISTAGG(CASE WHEN sal > 2000 THEN sal END, ',') WITHIN GROUP (ORDER BY sal)
+FROM listagg_test WHERE deptno = 20;
+
+-- Test 18: DATE measure
+SELECT LISTAGG(d, ',') WITHIN GROUP (ORDER BY d)
+FROM (SELECT DATE '2026-01-02' d FROM dual
+      UNION ALL SELECT DATE '2026-01-01' FROM dual) sub;
+
 -- Cleanup
 DROP TABLE listagg_test;
 
