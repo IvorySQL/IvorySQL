@@ -454,6 +454,7 @@ MainLoop(FILE *source)
 		{
 		    PsqlScanState	pstate;
 		    yyscan_t		yyscanner;
+			bool			psqlplus_success = true;
 		    char			*psqlplus_line = pg_strdup(line); // Copy current input line for Oracle command processing
 
 		    // Create and initialize Oracle compatibility mode scanning state
@@ -472,6 +473,9 @@ MainLoop(FILE *source)
 		        /* Parsing succeeded, this is a valid Oracle client command */
 		        psqlplus_cmd	*psqlpluscmd = pstate->psqlpluscmd;
 
+				if (!conditional_active(cond_stack))
+					goto psqlplus_next;
+
 		        switch(psqlpluscmd->cmd_type)
 		        {
 		            case PSQLPLUS_CMD_VARIABLE:
@@ -480,11 +484,8 @@ MainLoop(FILE *source)
 
 		                    if (bind_var->list_bind_var == true)
 		                    {
-		                        // List bind variables
-		                        if (bind_var->var_name)
+								psqlplus_success =
 		                            ListBindVariables(pset.vars, bind_var->var_name);
-		                        else
-		                            ListBindVariables(pset.vars, NULL);
 		                    }
 		                    else if (bind_var->miss_termination_quote)
 		                    {
@@ -517,24 +518,43 @@ MainLoop(FILE *source)
 		                                    str_double_quote ,
 		                                    quote);
 		                        pg_free(str_double_quote);
+								psqlplus_success = false;
 		                    }
 		                    else if (bind_var->assign_bind_var)
 		                    {
 		                        // Assign value to bind variable
-		                        AssignBindVariable(pset.vars,
+								psqlplus_success = AssignBindVariable(pset.vars,
 		                                           bind_var->var_name,
 		                                           bind_var->init_value);
 		                    }
 		                    else
 		                    {
-		                        // Set bind variable with type
-		                        Assert(bind_var->vartype);
-		                        SetBindVariable(pset.vars,
-		                                        bind_var->var_name,
-		                                        bind_var->vartype->oid,
-		                                        bind_var->vartype->typmod,
-		                                        bind_var->init_value,
-		                                        bind_var->initial_nonnull_value);
+							BindVarType *vartype = bind_var->vartype;
+							int32		type_oid;
+
+							Assert(vartype);
+							type_oid = vartype->oid;
+							if (vartype->byte_oid)
+							{
+								PGresult   *res;
+
+								res = PQexec(pset.db, "SHOW nls_length_semantics");
+								if (PQresultStatus(res) != PGRES_TUPLES_OK)
+								{
+									pg_log_error("%s", PQerrorMessage(pset.db));
+									PQclear(res);
+									psqlplus_success = false;
+									goto psqlplus_next;
+								}
+								if (pg_strcasecmp(PQgetvalue(res, 0, 0), "byte") == 0)
+									type_oid = vartype->byte_oid;
+								PQclear(res);
+							}
+							psqlplus_success =
+								SetBindVariable(pset.vars, bind_var->var_name,
+										type_oid, vartype->typmod,
+										bind_var->init_value,
+										bind_var->initial_nonnull_value);
 		                    }
 		                }
 		                break;
@@ -542,7 +562,7 @@ MainLoop(FILE *source)
 		            case PSQLPLUS_CMD_PRINT:
 		                {
 		                    psqlplus_cmd_print *pb = (psqlplus_cmd_print *) pstate->psqlpluscmd;
-		                    PrintBindVariables(pset.vars, pb->print_items);
+							psqlplus_success = PrintBindVariables(pset.vars, pb->print_items);
 		                }
 		                break;
 					case PSQLPLUS_CMD_EXECUTE:
@@ -559,6 +579,7 @@ MainLoop(FILE *source)
 								(tmpline[0] == '\n' && tmpline[1] == '\0'))
 							{
 								pg_log_error("Usage: EXEC[UTE] statement");
+								psqlplus_success = false;
 								goto psqlplus_next;
 							}
 
@@ -602,27 +623,11 @@ MainLoop(FILE *source)
 
 		            default:
 		                pg_log_error("Invalid PSQL*PLUS client command.");
+						psqlplus_success = false;
 		                break;
 		        }
 
-psqlplus_next:
-		        /* If in interactive mode, add command to history */
-		        if (pset.cur_cmd_interactive)
-		        {
-		            pg_append_history(psqlplus_line, history_buf);
-		            pg_send_history(history_buf);
-		        }
-
-		        /* Reset state */
-		        pset.stmt_lineno = 1;
-		        resetPQExpBuffer(query_buf);
-		        psql_scan_finish(scan_state);
-		        ora_psql_scan_finish(ora_scan_state);
-		        free(psqlplus_line);
-		        free(line);
-		        psqlplus_scanner_finish(yyscanner);
-		        ora_psql_scan_destroy(pstate);
-		        continue;
+				goto psqlplus_next;
 		    }
 
 		    /* Parsing failed but confirmed as Oracle client command */
@@ -630,6 +635,9 @@ psqlplus_next:
 		    {
 		        char	*token;
 		        const char	*whitespace = " \t\n\r";
+
+				if (!conditional_active(cond_stack))
+					goto psqlplus_next;
 
 		        // Get the first token of the command (e.g., VARIABLE or PRINT)
 		        token = strtokx(pstate->scanline, whitespace, NULL, NULL,
@@ -657,6 +665,7 @@ psqlplus_next:
 		                pg_log_error("Usage: VAR[IABLE] [ <variable> [ NUMBER | CHAR | CHAR (n [CHAR|BYTE]) |\n"
 		                             "\t\t\t VARCHAR2 (n [CHAR|BYTE]) | NCHAR | NCHAR (n) |\n"
 		                             "\t\t\t NVARCHAR2 (n) | BINARY_FLOAT | BINARY_DOUBLE ] ]");
+					psqlplus_success = false;
 		        }
 		        else if (token && pg_strcasecmp(token, "print") == 0)
 		        {
@@ -698,10 +707,8 @@ psqlplus_next:
 		                                0, false, false, pset.encoding);
 		            }
 
-		            if (pl->length == 0)
-		                PrintBindVariables(pset.vars, NULL);
-		            else
-		                PrintBindVariables(pset.vars, pl);
+					psqlplus_success = PrintBindVariables(pset.vars,
+														  pl->length == 0 ? NULL : pl);
 
 		            // Free memory
 		            while (pl->length > 0)
@@ -724,24 +731,39 @@ psqlplus_next:
 		            }
 		        }
 
-		        /* Save command to history */
-		        if (pset.cur_cmd_interactive)
-		        {
-		            pg_append_history(psqlplus_line, history_buf);
-		            pg_send_history(history_buf);
-		        }
+				goto psqlplus_next;
+			}
+			goto non_psqlplus_cmd;
 
-		        /* Reset state */
-		        pset.stmt_lineno = 1;
-		        resetPQExpBuffer(query_buf);
-		        psql_scan_finish(scan_state);
-		        ora_psql_scan_finish(ora_scan_state);
-		        free(psqlplus_line);
-		        free(line);
-		        psqlplus_scanner_finish(yyscanner);
-		        ora_psql_scan_destroy(pstate);
-		        continue;
+psqlplus_next:
+			if (pset.cur_cmd_interactive)
+			{
+				pg_append_history(psqlplus_line, history_buf);
+				pg_send_history(history_buf);
+			}
+
+			if (conditional_active(cond_stack))
+			{
+				pset.stmt_lineno = 1;
+				resetPQExpBuffer(query_buf);
+			}
+			else if (added_nl_pos > 0)
+			{
+				/* Remove only the newline added for the skipped command. */
+				query_buf->data[--query_buf->len] = '\0';
+			}
+			psql_scan_finish(scan_state);
+			ora_psql_scan_finish(ora_scan_state);
+			free(psqlplus_line);
+			free(line);
+			psqlplus_scanner_finish(yyscanner);
+			ora_psql_scan_destroy(pstate);
+			if (!pset.cur_cmd_interactive && die_on_error && !psqlplus_success)
+			{
+				successResult = EXIT_USER;
+				break;
 		    }
+			continue;
 
 non_psqlplus_cmd:
 		    /* Not a compatible Oracle client command, release resources */

@@ -809,7 +809,7 @@ SetBindVariable(VariableSpace space,
 				else
 					current->value = NULL;
 
-				return true;
+				return initval == NULL || value != NULL;
 			}
 			else if (current->varkind == PSQL_SHELL_VAR)
 			{
@@ -838,52 +838,56 @@ SetBindVariable(VariableSpace space,
 	current->next = previous->next;
 	previous->next = current;
 
-	return true;
+	return initval == NULL || value != NULL;
 }
 
 /*
  * Lists the current display characteristics for a single variable or all variables.
  */
-void
+bool
 ListBindVariables(VariableSpace space, const char *name)
 {
 	struct _variable *ptr;
 	int		bindvar_num = 0;	/* # of bind variables to list */
 
 	if (!space)
-		return;
+		return false;
 
 	for (ptr = space->next; ptr; ptr = ptr->next)
 	{
 		if (ptr->varkind == PSQL_BIND_VAR)
 		{
-			PQExpBuffer query = createPQExpBuffer();
+			PQExpBuffer query;
 			PGresult	*res;
-			char		*typdesc = NULL;
+			char		*typdesc;
+			char		*p;
 
-			if (name)
-			{
-				if (strcmp(ptr->name, name) != 0)
-					continue;
-			}
+			if (name && strcmp(ptr->name, name) != 0)
+				continue;
 
-			bindvar_num++;
+			query = createPQExpBuffer();
 			appendPQExpBuffer(query, "SELECT format_type(%d, %d);", ptr->typoid, ptr->typmod);
 			res = PQexec(pset.db, query->data);
-			if (PQresultStatus(res) == PGRES_TUPLES_OK &&
-				PQntuples(res) == 1 &&
-				!PQgetisnull(res, 0, 0))
+			destroyPQExpBuffer(query);
+			if (PQresultStatus(res) != PGRES_TUPLES_OK ||
+				PQntuples(res) != 1 || PQgetisnull(res, 0, 0))
 			{
-				char	*p;
-				typdesc = pg_strdup(PQgetvalue(res, 0, 0));
-
-				/* Oracle bind variable datatype are displayed in uppercase */
-				for (p = typdesc; *p; p++)
-				{
-					*p = pg_toupper((unsigned char) *p);
-				}
+				if (PQresultStatus(res) != PGRES_TUPLES_OK)
+					pg_log_error("%s", PQerrorMessage(pset.db));
+				else
+					pg_log_error("Could not determine data type for bind variable \"%s\".", ptr->name);
+				PQclear(res);
+				return false;
 			}
 
+			typdesc = pg_strdup(PQgetvalue(res, 0, 0));
+			PQclear(res);
+
+			/* Oracle displays bind variable data types in uppercase. */
+			for (p = typdesc; *p; p++)
+				*p = pg_toupper((unsigned char) *p);
+
+			bindvar_num++;
 			if (bindvar_num != 1)
 				printf("\n");
 			if (ptr->name)
@@ -891,9 +895,7 @@ ListBindVariables(VariableSpace space, const char *name)
 			if (ptr->typoid)
 				printf("datatype	%s\n", typdesc);
 
-			PQclear(res);
 			pg_free(typdesc);
-			destroyPQExpBuffer(query);
 
 			if (cancel_pressed)
 				break;
@@ -904,15 +906,18 @@ ListBindVariables(VariableSpace space, const char *name)
 		pg_log_error("Bind variable \"%s\" not declared.", name);
 	else if (name == NULL && bindvar_num == 0)
 		pg_log_error("No bind variables declared.");
+
+	return bindvar_num != 0;
 }
 
 /*
  * Print the value for some specific variables or all variables.
  */
-void
+bool
 PrintBindVariables(VariableSpace space, print_list *bvlist)
 {
 	struct _variable *ptr;
+	bool		success = true;
 
 	if (bvlist == NULL)
 	{
@@ -937,6 +942,7 @@ PrintBindVariables(VariableSpace space, print_list *bvlist)
 			{
 				pg_log_error("invalid host/bind variable name.");
 				printf("\n");
+				success = false;
 				continue;
 			}
 
@@ -964,9 +970,12 @@ PrintBindVariables(VariableSpace space, print_list *bvlist)
 			{
 				pg_log_error("Bind variable \"%s\" not declared.", item->bv_name);
 				printf("\n");
+				success = false;
 			}
 		}
 	}
+
+	return success;
 }
 
 /*
@@ -1015,12 +1024,11 @@ AssignBindVariable(VariableSpace space, const char *name, const char *value)
 	{
 		char	*newvalue = valid_bind_variable_value(current->typoid, current->typmod, value);
 
-		if (newvalue)
-		{
-			if (current->value)
-				pg_free(current->value);
-			current->value = newvalue;
-		}
+		if (newvalue == NULL)
+			return false;
+
+		pg_free(current->value);
+		current->value = newvalue;
 	}
 	else
 	{

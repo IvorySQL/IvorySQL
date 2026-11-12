@@ -126,8 +126,8 @@ void		PsqlVarEnumError(const char *name, const char *value, const char *suggesti
 bool		SetBindVariable(VariableSpace space, const char *name, 
 							const int typoid, const int typmod,
 							const char *initval, bool notnull);
-void		ListBindVariables(VariableSpace space, const char *name);
-void		PrintBindVariables(VariableSpace space, print_list *bvlist);
+bool		ListBindVariables(VariableSpace space, const char *name);
+bool		PrintBindVariables(VariableSpace space, print_list *bvlist);
 bool		AssignBindVariable(VariableSpace space, const char *name, const char *value);
 bool		ValidBindVariableName(const char *name);
 struct _variable *BindVariableExist(VariableSpace space, const char *name);

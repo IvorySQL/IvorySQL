@@ -21,13 +21,11 @@
 #include "fe_utils/psqlscan_int.h"
 #include "oracle_fe_utils/ora_psqlscan.h"
 #include "psqlplus.h"
-#include "settings.h"
 
 static psqlplus_cmd_var *make_variable_node(void);
 static psqlplus_cmd_print *make_print_node(void);
 static psqlplus_cmd_execute *make_exec_node(void);
 static BindVarType *make_bindvartype(int32 oid, int32 typmod, const char *typname);
-static char *get_guc_settings(const char *gucname);
 static print_item *make_print_item(char *name, bool valid);
 static print_list *make_print_list1(print_item *item);
 static print_list *merge_print_list(print_list *list1, print_list *list2);
@@ -283,10 +281,8 @@ bind_vartype:
 			}
 		| K_CHAR '(' ICONST ')'
 			{
-				if (pg_strcasecmp(get_guc_settings("nls_length_semantics"), "byte") == 0)
-					$$ = make_bindvartype(ORACHARBYTEOID, $3, $1);
-				else
-					$$ = make_bindvartype(ORACHARCHAROID, $3, $1);
+				$$ = make_bindvartype(ORACHARCHAROID, $3, $1);
+				$$->byte_oid = ORACHARBYTEOID;
 			}
 		| K_CHAR '(' ICONST K_CHAR ')'
 			{
@@ -310,10 +306,8 @@ bind_vartype:
 			}
 		| K_VARCHAR2 '(' ICONST ')'
 			{
-				if (pg_strcasecmp(get_guc_settings("nls_length_semantics"), "byte") == 0)
-					$$ = make_bindvartype(ORAVARCHARBYTEOID, $3, $1);
-				else
-					$$ = make_bindvartype(ORAVARCHARCHAROID, $3, $1);
+				$$ = make_bindvartype(ORAVARCHARCHAROID, $3, $1);
+				$$->byte_oid = ORAVARCHARBYTEOID;
 			}
 		| K_VARCHAR2 '(' ICONST K_CHAR ')'
 			{
@@ -519,32 +513,6 @@ make_bindvartype(int32 oid, int32 typmod, const char *typname)
 	return vartype;
 }
 
-
-/*
- * Get the value of the specified GUC.
- */
-static char *
-get_guc_settings(const char *gucname)
-{
-	PQExpBuffer query = createPQExpBuffer();
-	PGresult	*res;
-	char		*val = NULL;
-
-	appendPQExpBuffer(query, "SELECT setting from pg_settings where name = '%s';", gucname);
-	res = PQexec(pset.db, query->data);
-
-	if (PQresultStatus(res) == PGRES_TUPLES_OK &&
-		PQntuples(res) == 1 &&
-		!PQgetisnull(res, 0, 0))
-	{		
-		val = pg_strdup(PQgetvalue(res, 0, 0));
-	}
-
-	PQclear(res);
-	destroyPQExpBuffer(query);
-
-	return val;
-}
 
 static print_item *
 make_print_item(char *name, bool valid)
