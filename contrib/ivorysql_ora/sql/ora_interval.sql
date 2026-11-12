@@ -172,3 +172,92 @@ CREATE INDEX test_dsinterval_brin on TEST_DSINTERVAL USING brin (a);
 DROP TABLE TEST_YMINTERVAL;
 
 DROP TABLE TEST_DSINTERVAL;
+
+-- Day counts above 106751991 overflow an int64 microsecond count.  Such counts
+-- are legal in Oracle mode (INTERVAL DAY(9)), so comparisons, ordering and
+-- hashing must still agree for them.
+SELECT interval '106751992 0:0:0' day(9) to second > interval '1 0:0:0' day(9) to second AS above_int64;
+
+SELECT interval '999999999 0:0:0' day(9) to second > interval '0 0:0:0' day(9) to second AS max_day_gt_zero;
+
+SELECT interval '0 0:0:0' day(9) to second > interval '999999999 0:0:0' day(9) to second AS zero_gt_max_day;
+
+SELECT interval '999999999 0:0:0' day(9) to second = interval '0 0:0:0' day(9) to second AS max_day_eq_zero;
+
+SELECT MIN(x), MAX(x) FROM (VALUES (interval '999999999 0:0:0' day(9) to second),
+                                   (interval '0 0:0:0' day(9) to second),
+                                   (interval '1 0:0:0' day(9) to second)) t(x);
+
+SELECT x FROM (VALUES (interval '999999999 0:0:0' day(9) to second),
+                      (interval '0 0:0:0' day(9) to second),
+                      (interval '1 0:0:0' day(9) to second)) t(x) ORDER BY x;
+
+-- The same day-to-microseconds scaling also feeds the '-' operator and
+-- in_range(), which computes the RANGE frame boundary.  Both must handle day
+-- counts above the INT64 boundary too.
+SELECT interval '999999999 0:0:0' day(9) to second - interval '1 0:0:0' day(9) to second;
+
+SELECT interval '106751992 0:0:0' day(9) to second - interval '1 0:0:0' day(9) to second;
+
+-- The borrow and carry between the day and time fields must keep working when
+-- the day count is above the INT64 boundary and the time fields differ.
+SELECT interval '999999999 1:1:1' day(9) to second - interval '1 2:2:2' day(9) to second;
+
+SELECT interval '999999999 23:59:59' day(9) to second - interval '1 0:0:0' day(9) to second;
+
+-- subtracting and adding back must return the original value
+SELECT (interval '999999999 1:1:1' day(9) to second - interval '1 2:2:2' day(9) to second)
+       + interval '1 2:2:2' day(9) to second AS roundtrip;
+
+-- Reversing the operands takes the other normalization branch (day_diff < 0
+-- with time_diff > 0), and the two results must be exact opposites.
+SELECT interval '1 2:2:2' day(9) to second - interval '999999999 1:1:1' day(9) to second;
+
+SELECT (interval '999999999 1:1:1' day(9) to second - interval '1 2:2:2' day(9) to second)
+     + (interval '1 2:2:2' day(9) to second - interval '999999999 1:1:1' day(9) to second) AS sum_is_zero;
+
+SELECT id, count(*) OVER (ORDER BY d
+                          RANGE BETWEEN interval '106751992 0:0:0' day(9) to second PRECEDING
+                                    AND CURRENT ROW)
+FROM (VALUES (1, interval '0 0:0:0' day(9) to second),
+             (2, interval '1 0:0:0' day(9) to second),
+             (3, interval '999999999 0:0:0' day(9) to second)) t(id, d)
+ORDER BY id;
+
+-- Indexed access must agree with the comparison above the INT64 boundary.
+CREATE TABLE TEST_DSINTERVAL_BIG (a dsinterval);
+
+INSERT INTO TEST_DSINTERVAL_BIG VALUES
+  (interval '0 0:0:0' day(9) to second),
+  (interval '999999998 0:0:0' day(9) to second),
+  (interval '999999999 0:0:0' day(9) to second);
+
+CREATE INDEX test_dsinterval_big_btree ON TEST_DSINTERVAL_BIG (a);
+
+SET enable_seqscan = off;
+
+SELECT a FROM TEST_DSINTERVAL_BIG WHERE a = interval '999999999 0:0:0' day(9) to second;
+
+SELECT a FROM TEST_DSINTERVAL_BIG WHERE a > interval '999999998 0:0:0' day(9) to second;
+
+SELECT a FROM TEST_DSINTERVAL_BIG ORDER BY a;
+
+RESET enable_seqscan;
+
+-- only the hash index may answer the equality lookups below
+DROP INDEX test_dsinterval_big_btree;
+
+CREATE INDEX test_dsinterval_big_hash ON TEST_DSINTERVAL_BIG USING hash (a);
+
+SET enable_seqscan = off;
+
+-- equal values must hash to the same value the index holds
+SELECT count(*) FROM TEST_DSINTERVAL_BIG WHERE a = interval '0 0:0:0' day(9) to second;
+
+SELECT count(*) FROM TEST_DSINTERVAL_BIG WHERE a = interval '999999999 0:0:0' day(9) to second;
+
+SELECT count(*) FROM TEST_DSINTERVAL_BIG WHERE a = interval '999999997 0:0:0' day(9) to second;
+
+RESET enable_seqscan;
+
+DROP TABLE TEST_DSINTERVAL_BIG;

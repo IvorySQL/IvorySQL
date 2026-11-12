@@ -39,6 +39,7 @@
 #include "access/xact.h"
 #include "catalog/pg_type.h"
 #include "common/int128.h"
+#include "common/int.h"
 #include "funcapi.h"
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
@@ -1147,7 +1148,8 @@ ora_ParseISO8601Number(const char *str, char **endptr, int *ipart, double *fpart
 	return 0;
 }
 
-/* copy&pasted from .../src/backend/utils/adt/datetime.c
+/*
+ * copy&pasted from .../src/backend/utils/adt/datetime.c
  *
  * * changed struct pg_tm to struct tm
  *
@@ -1353,7 +1355,8 @@ ora_DecodeISO8601Interval(char *str,
 	return 0;
 }
 
-/* interval2tm()
+/*
+ * interval2tm()
  * Convert an interval data type to a tm structure.
  */
 static int
@@ -1411,20 +1414,22 @@ tm2dsinterval(struct tm *tm, fsec_t fsec, Interval *span)
  * For INTERVAL DAY TO SECOND type the field of "MONTH" is invalid.
  * Only calculate the value of "interval->day" and "interval->time".
  */
-static inline TimeOffset
+static inline INT128
 dsinterval_cmp_value(const Interval *interval)
 {
-	TimeOffset	span;
+	INT128		span;
 
-	span = interval->time;
-
-#ifdef HAVE_INT64_TIMESTAMP
-/* 	span += interval->month * INT64CONST(30) * USECS_PER_DAY; */
-	span += interval->day * INT64CONST(24) * USECS_PER_HOUR;
-#else
-/* 	span += interval->month * ((double) DAYS_PER_MONTH * SECS_PER_DAY); */
-	span += interval->day * ((double) HOURS_PER_DAY * SECS_PER_HOUR);
-#endif
+	/*
+	 * Oracle declares DAY(9), so a day count may be as large as 999,999,999.
+	 * Scaling that to microseconds needs 128 bits: an int64 product wraps for
+	 * anything above 106,751,991 days, which corrupts comparisons, hashing
+	 * and btree ordering for values that are legal in Oracle mode.
+	 *
+	 * This mirrors interval_cmp_value() in src/backend/utils/adt/timestamp.c,
+	 * except that the month field is not part of INTERVAL DAY TO SECOND.
+	 */
+	span = int64_to_int128(interval->time);
+	int128_add_int64_mul_int64(&span, interval->day, USECS_PER_DAY);
 
 	return span;
 }
@@ -1432,17 +1437,18 @@ dsinterval_cmp_value(const Interval *interval)
 static int
 dsinterval_cmp_internal(Interval *interval1, Interval *interval2)
 {
-	TimeOffset	span1 = dsinterval_cmp_value(interval1);
-	TimeOffset	span2 = dsinterval_cmp_value(interval2);
+	INT128		span1 = dsinterval_cmp_value(interval1);
+	INT128		span2 = dsinterval_cmp_value(interval2);
 
-	return ((span1 < span2) ? -1 : (span1 > span2) ? 1 : 0);
+	return int128_compare(span1, span2);
 }
 
 /*****************************************************************************
  *	 Base I/O function
  *****************************************************************************/
 
-/* dsinterval_in()
+/*
+ * dsinterval_in()
  * Convert a string to internal form.
  *
  * External format(s):
@@ -2232,14 +2238,46 @@ dsinterval_mi(PG_FUNCTION_ARGS)
 	Interval   *span1 = PG_GETARG_INTERVAL_P(0);
 	Interval   *span2 = PG_GETARG_INTERVAL_P(1);
 	Interval   *result;
-	TimeOffset	span1_usecs;
-	TimeOffset	span2_usecs;
+	int64		day_diff;
+	int64		time_diff;
 
-	span1_usecs = span1->time;
-	span1_usecs += span1->day * INT64CONST(24) * USECS_PER_HOUR;
+	/*
+	 * Subtract the two fields separately instead of scaling the day field to
+	 * microseconds: with Oracle's DAY(9) a day count can reach 999,999,999,
+	 * and scaling it to an int64 microsecond count wraps above 106,751,991
+	 * days.  Carrying between the two fields below yields the same (day,
+	 * time) split as the total-microseconds form, without the wrap.
+	 */
+	day_diff = (int64) span1->day - (int64) span2->day;
 
-	span2_usecs = span2->time;
-	span2_usecs += span2->day * INT64CONST(24) * USECS_PER_HOUR;
+	if (pg_sub_s64_overflow(span1->time, span2->time, &time_diff))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("interval out of range")));
+
+	day_diff += time_diff / USECS_PER_DAY;
+	time_diff = time_diff % USECS_PER_DAY;
+
+	/*
+	 * Keep the truncation-toward-zero split of the previous form, which
+	 * borrows a day only when the remainder and the running day count have
+	 * opposite signs.
+	 */
+	if (time_diff < 0 && day_diff > 0)
+	{
+		day_diff -= 1;
+		time_diff += USECS_PER_DAY;
+	}
+	else if (time_diff > 0 && day_diff < 0)
+	{
+		day_diff += 1;
+		time_diff -= USECS_PER_DAY;
+	}
+
+	if (day_diff > PG_INT32_MAX || day_diff < PG_INT32_MIN)
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("interval out of range")));
 
 	result = (Interval *) palloc(sizeof(Interval));
 
@@ -2249,21 +2287,8 @@ dsinterval_mi(PG_FUNCTION_ARGS)
 	 * result->time .
 	 */
 	result->month = 0;
-	result->day = (span1_usecs - span2_usecs) / USECS_PER_DAY;
-	result->time = (span1_usecs - span2_usecs) % USECS_PER_DAY;
-
-	/* overflow check copied from int4mi */
-	if (!SAMESIGN(span1->day, span2->day) &&
-		!SAMESIGN(result->day, span1->day))
-		ereport(ERROR,
-				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("interval out of range")));
-
-	if (!SAMESIGN(span1->time, span2->time) &&
-		!SAMESIGN(result->time, span1->time))
-		ereport(ERROR,
-				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("interval out of range")));
+	result->day = (int32) day_diff;
+	result->time = time_diff;
 
 	PG_RETURN_INTERVAL_P(result);
 }
@@ -2352,8 +2377,8 @@ dsinterval_mul(PG_FUNCTION_ARGS)
 #endif
 
 	/*
-	 * compatible oracle
-	 * For Interval day to second, the field of datetime 'year' 'month' will be truncated.
+	 * compatible oracle For Interval day to second, the field of datetime
+	 * 'year' 'month' will be truncated.
 	 */
 	result->month = 0;
 	result->day += result->time / USECS_PER_DAY;
@@ -2450,8 +2475,8 @@ dsinterval_div(PG_FUNCTION_ARGS)
 #endif
 
 	/*
-	 * compatible oracle
-	 * For Interval day to second, the field of datetime 'year' 'month' will be truncated.
+	 * compatible oracle For Interval day to second, the field of datetime
+	 * 'year' 'month' will be truncated.
 	 */
 	result->month = 0;
 	result->day += result->time / USECS_PER_DAY;
@@ -2487,7 +2512,7 @@ in_range_dsinterval_dsinterval(PG_FUNCTION_ARGS)
 	bool		less = PG_GETARG_BOOL(4);
 	Interval   *sum;
 
-	if (int128_compare(int64_to_int128(dsinterval_cmp_value(offset)), int64_to_int128(0)) < 0)
+	if (int128_compare(dsinterval_cmp_value(offset), int64_to_int128(0)) < 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PRECEDING_OR_FOLLOWING_SIZE),
 				 errmsg("invalid preceding or following size in window function")));
@@ -2515,27 +2540,35 @@ in_range_dsinterval_dsinterval(PG_FUNCTION_ARGS)
 /*
  * Hashing for intervals
  *
- * We must produce equal hashvals for values that yminterval_cmp_internal()
- * considers equal.  So, compute the net span the same way it does,
- * and then hash that, using either int64 or float8 hashing.
+ * We must produce equal hashvals for values that
+ * dsinterval_cmp_internal() considers equal.  So, compute the net span
+ * the same way it does, and then hash that.
  */
 Datum
 dsinterval_hash(PG_FUNCTION_ARGS)
 {
 	Interval   *interval = PG_GETARG_INTERVAL_P(0);
-	TimeOffset	span = dsinterval_cmp_value(interval);
+	INT128		span = dsinterval_cmp_value(interval);
+	int64		span64;
 
-	return DirectFunctionCall1(hashint8, Int64GetDatumFast(span));
+	/*
+	 * Use only the least significant 64 bits for hashing, exactly as
+	 * interval_hash() does, so that hash values computed before the switch to
+	 * INT128 stay unchanged.
+	 */
+	span64 = int128_to_int64(span);
+
+	return DirectFunctionCall1(hashint8, Int64GetDatumFast(span64));
 }
 
 Datum
 dsinterval_hash_extended(PG_FUNCTION_ARGS)
 {
 	Interval   *interval = PG_GETARG_INTERVAL_P(0);
-	INT128		span = int64_to_int128(dsinterval_cmp_value(interval));
+	INT128		span = dsinterval_cmp_value(interval);
 	int64		span64;
 
-	/* Same approach as interval_hash */
+	/* Same approach as dsinterval_hash */
 	span64 = int128_to_int64(span);
 
 	return DirectFunctionCall2(hashint8extended, Int64GetDatumFast(span64),
