@@ -17133,6 +17133,9 @@ dumpDefaultACL(Archive *fout, const DefaultACLInfo *daclinfo)
 		case DEFACLOBJ_LARGEOBJECT:
 			type = "LARGE OBJECTS";
 			break;
+		case DEFACLOBJ_PACKAGE:
+			type = "PACKAGES";
+			break;
 		default:
 			/* shouldn't get here */
 			pg_fatal("unrecognized object type in default privileges: %d",

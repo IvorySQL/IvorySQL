@@ -206,6 +206,15 @@ my %tests = (
 		like   => { %full_runs, },
 	},
 
+	'ALTER DEFAULT PRIVILEGES ... ON PACKAGES' => {
+		create_order => 7,
+		create_sql   => 'CREATE ROLE regress_pkg_grantee;
+			ALTER DEFAULT PRIVILEGES
+			GRANT EXECUTE ON PACKAGES TO regress_pkg_grantee;',
+		regexp => qr/^ALTER DEFAULT PRIVILEGES FOR ROLE .+? GRANT ALL ON PACKAGES TO regress_pkg_grantee;/m,
+		like   => { %full_runs, },
+	},
+
 	'object method standard literal keeps a trailing backslash' => {
 		regexp => qr/member function trailing_slash\(p_text varchar2 default 'a\\'\) return varchar2/im,
 		like   => { %full_runs, },
@@ -418,7 +427,8 @@ foreach my $run (sort keys %pgdump_runs)
 
 #########################################
 # Restore the schema dump to catch output that looks plausible but does not
-# parse, and exercise one restored object method.
+# parse, exercise one restored object method, and check a restored default
+# privilege on packages.
 
 $node->safe_psql('postgres', 'create database restoredb;',
 	connect_to_oraport => 1);
@@ -446,6 +456,17 @@ is(
 		connect_to_oraport => 1),
 	't',
 	'restored MAP method drives comparison');
+is(
+	$node->safe_psql(
+		'restoredb',
+		q{SELECT count(*)
+		  FROM pg_default_acl d, aclexplode(d.defaclacl) a
+		  WHERE d.defaclobjtype = 'P'
+		    AND a.grantee = 'regress_pkg_grantee'::regrole
+		    AND a.privilege_type = 'EXECUTE'},
+		connect_to_oraport => 1),
+	'1',
+	'restored default privilege on packages');
 
 #########################################
 # Stop the database instance, which will be removed at the end of the tests.
