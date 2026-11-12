@@ -34,6 +34,7 @@ use warnings FATAL => 'all';
 use Carp;
 
 use File::Spec;
+use FindBin;
 
 my @sql_set;
 
@@ -59,7 +60,7 @@ sub sql_merge
 		|| croak "Could not open file ivorysql_ora_merge_sqls: $!";
 	}
 	else {
-		open(INFO, "<", File::Spec->rel2abs("ivorysql_ora_merge_sqls"))
+		open(INFO, "<", File::Spec->catfile($FindBin::Bin, "ivorysql_ora_merge_sqls"))
                 || croak "Could not open file ivorysql_ora_merge_sqls: $!";
 	}
 
@@ -72,7 +73,7 @@ sub sql_merge
 		}
 		else
 		{
-			push @sql_set, "$_";
+			push @sql_set, File::Spec->catfile($FindBin::Bin, $_);
 		}
 	}
 	close INFO;
