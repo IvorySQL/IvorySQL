@@ -32,6 +32,7 @@
 #include "varatt.h"
 
 #include "access/detoast.h"
+#include "common/int.h"
 #include "common/unicode_norm.h"
 #include "lib/stringinfo.h"
 #include "mb/pg_wchar.h"
@@ -1435,7 +1436,15 @@ text_substring_byte(Datum str, int32 start, int32 length, bool length_not_specif
 		else
 		{
 			L1 = length;
-			slice_size = S1 + L1 + eml;
+
+			/*
+			 * S1 + L1 + eml can overflow int32 when the length is huge; in
+			 * that case the substring must run to end of string, just like
+			 * upstream text_substring() does with pg_add_s32_overflow().
+			 */
+			if (pg_add_s32_overflow(S1, L1, &slice_size) ||
+				pg_add_s32_overflow(slice_size, eml, &slice_size))
+				slice_size = L1 = -1;
 		}
 
 		/*
