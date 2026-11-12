@@ -8139,6 +8139,18 @@ CREATE OPERATOR * (
 	commutator = *
 );
 
+/*
+ * The Oracle interval types use the same internal representation as
+ * PostgreSQL's interval.  Binary-coercible implicit casts let interval
+ * functions (notably EXTRACT and date_part) accept them, e.g.
+ * EXTRACT(DAY FROM numtodsinterval(1, 'DAY')).
+ */
+CREATE CAST (sys.dsinterval AS pg_catalog.interval)
+WITHOUT FUNCTION AS IMPLICIT;
+
+CREATE CAST (sys.yminterval AS pg_catalog.interval)
+WITHOUT FUNCTION AS IMPLICIT;
+
 /***************************************************************
  *
  * oracle NUMBER support
