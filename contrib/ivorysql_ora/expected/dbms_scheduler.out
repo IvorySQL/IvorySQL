@@ -1387,6 +1387,47 @@ SELECT job_owner, job_name, status FROM sys.scheduler_job_run_details
  regress_dbms_scheduler | PURGE_LIVE | r
 (1 row)
 
+-- DISABLE without force rejects a running job; force keeps it RUNNING
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_job_running',
+      job_type => 'PLSQL_BLOCK', job_action => 'BEGIN NULL; END;');
+END;
+/
+INSERT INTO sys.scheduler_job_run_details(job_owner, job_name, status)
+  VALUES (current_user, 'REG_JOB_RUNNING', 'r');
+BEGIN
+  dbms_scheduler.disable('reg_job_running', force => FALSE);
+END;
+/
+ERROR:  job "regress_dbms_scheduler"."REG_JOB_RUNNING" is running
+HINT:  Use force => true to disable it.
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_scheduler_disable(name, force, commit_semantics)"
+PL/iSQL function sys.dbms_scheduler.disable line 76 at PERFORM
+SQL statement "CALL dbms_scheduler.disable('reg_job_running', force => FALSE)"
+PL/iSQL function inline_code_block line 2 at CALL
+SELECT job_name, enabled, state FROM user_scheduler_jobs
+  WHERE job_name = 'REG_JOB_RUNNING';
+    job_name     | enabled |  state   
+-----------------+---------+----------
+ REG_JOB_RUNNING | f       | DISABLED
+(1 row)
+
+BEGIN
+  dbms_scheduler.disable('reg_job_running', force => TRUE);
+END;
+/
+SELECT job_name, enabled, state FROM user_scheduler_jobs
+  WHERE job_name = 'REG_JOB_RUNNING';
+    job_name     | enabled |  state  
+-----------------+---------+---------
+ REG_JOB_RUNNING | f       | RUNNING
+(1 row)
+
+DELETE FROM sys.scheduler_job_run_details WHERE job_name = 'REG_JOB_RUNNING';
+BEGIN
+  dbms_scheduler.drop_job('reg_job_running', force => TRUE);
+END;
+/
 -- cleanup
 RESET SESSION AUTHORIZATION;
 DROP USER sched_regress_u1;
