@@ -38,6 +38,7 @@
 /* Global variables controlling behavior of ora_fmtId() */
 extern DBMode db_mode;
 extern void getDbCompatibleMode(PGconn *conn);
+extern void updateDbCompatibleModeIfReported(PGconn *conn);
 
 /* Functions */
 extern const char *ora_fmtId(const char *identifier);
