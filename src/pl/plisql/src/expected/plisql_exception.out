@@ -379,6 +379,182 @@ SELECT 'SQLERRM with package EXCEPTION test passed (issue #1151)' AS result;
 (1 row)
 
 DROP PACKAGE test_sqlerrm_with_exc;
+--
+-- Test 13: Oracle predefined exception names (issue #3098)
+--
+CREATE TABLE test_predef_t (id int PRIMARY KEY);
+INSERT INTO test_predef_t VALUES (1);
+DECLARE
+  n NUMBER;
+BEGIN
+  n := 1 / 0;
+EXCEPTION
+  WHEN ZERO_DIVIDE THEN
+    RAISE INFO 'ZERO_DIVIDE caught %', SQLSTATE;
+END;
+/
+INFO:  ZERO_DIVIDE caught 22012
+BEGIN
+  INSERT INTO test_predef_t VALUES (1);
+EXCEPTION
+  WHEN DUP_VAL_ON_INDEX THEN
+    RAISE INFO 'DUP_VAL_ON_INDEX caught %', SQLSTATE;
+END;
+/
+INFO:  DUP_VAL_ON_INDEX caught 23505
+DECLARE
+  v VARCHAR2(3);
+  n NUMBER(2);
+  m NUMBER;
+BEGIN
+  BEGIN
+    v := 'abcdef';
+  EXCEPTION
+    WHEN VALUE_ERROR THEN
+      RAISE INFO 'VALUE_ERROR caught string overflow %', SQLSTATE;
+  END;
+  BEGIN
+    n := 100;
+  EXCEPTION
+    WHEN VALUE_ERROR THEN
+      RAISE INFO 'VALUE_ERROR caught number overflow %', SQLSTATE;
+  END;
+  BEGIN
+    m := 'abc';
+  EXCEPTION
+    WHEN VALUE_ERROR THEN
+      RAISE INFO 'VALUE_ERROR caught conversion error %', SQLSTATE;
+  END;
+END;
+/
+INFO:  VALUE_ERROR caught string overflow 22001
+INFO:  VALUE_ERROR caught number overflow 22003
+INFO:  VALUE_ERROR caught conversion error 22P02
+DECLARE
+  m NUMBER;
+BEGIN
+  m := '12a';
+EXCEPTION
+  WHEN INVALID_NUMBER THEN
+    RAISE INFO 'INVALID_NUMBER caught %', SQLSTATE;
+END;
+/
+INFO:  INVALID_NUMBER caught 22P02
+CREATE OR REPLACE PROCEDURE test_predef_cursor_open IS
+  c CURSOR FOR SELECT 1 AS x FROM dual;
+BEGIN
+  OPEN c;
+  OPEN c;
+EXCEPTION
+  WHEN CURSOR_ALREADY_OPEN THEN
+    RAISE INFO 'CURSOR_ALREADY_OPEN caught %', SQLSTATE;
+END;
+/
+CALL test_predef_cursor_open();
+INFO:  CURSOR_ALREADY_OPEN caught 42P03
+DROP PROCEDURE test_predef_cursor_open;
+CREATE OR REPLACE PROCEDURE test_predef_invalid_cursor IS
+  c CURSOR FOR SELECT 1 AS x FROM dual;
+  rc refcursor;
+  v int;
+BEGIN
+  BEGIN
+    FETCH c INTO v;
+  EXCEPTION
+    WHEN INVALID_CURSOR THEN
+      RAISE INFO 'INVALID_CURSOR caught FETCH before OPEN %', SQLSTATE;
+  END;
+  BEGIN
+    CLOSE c;
+  EXCEPTION
+    WHEN INVALID_CURSOR THEN
+      RAISE INFO 'INVALID_CURSOR caught CLOSE before OPEN %', SQLSTATE;
+  END;
+  BEGIN
+    OPEN c;
+    CLOSE c;
+    FETCH c INTO v;
+  EXCEPTION
+    WHEN INVALID_CURSOR THEN
+      RAISE INFO 'INVALID_CURSOR caught FETCH after CLOSE %', SQLSTATE;
+  END;
+  BEGIN
+    FETCH rc INTO v;
+  EXCEPTION
+    WHEN INVALID_CURSOR THEN
+      RAISE INFO 'INVALID_CURSOR caught FETCH from unopened cursor variable %', SQLSTATE;
+  END;
+END;
+/
+CALL test_predef_invalid_cursor();
+INFO:  INVALID_CURSOR caught FETCH before OPEN 24000
+INFO:  INVALID_CURSOR caught CLOSE before OPEN 24000
+INFO:  INVALID_CURSOR caught FETCH after CLOSE 34000
+INFO:  INVALID_CURSOR caught FETCH from unopened cursor variable 24000
+DROP PROCEDURE test_predef_invalid_cursor;
+-- RAISE of a predefined name, caught by the Oracle and the PostgreSQL name
+BEGIN
+  RAISE ZERO_DIVIDE;
+EXCEPTION
+  WHEN ZERO_DIVIDE THEN
+    RAISE INFO 'RAISE ZERO_DIVIDE: % %', SQLSTATE, SQLERRM;
+END;
+/
+INFO:  RAISE ZERO_DIVIDE: 22012 zero_divide
+BEGIN
+  RAISE ZERO_DIVIDE;
+EXCEPTION
+  WHEN division_by_zero THEN
+    RAISE INFO 'division_by_zero caught RAISE ZERO_DIVIDE';
+END;
+/
+INFO:  division_by_zero caught RAISE ZERO_DIVIDE
+BEGIN
+  BEGIN
+    RAISE VALUE_ERROR;
+  EXCEPTION WHEN VALUE_ERROR THEN
+    RAISE INFO 'RAISE VALUE_ERROR: %', SQLSTATE;
+  END;
+  BEGIN
+    RAISE INVALID_CURSOR;
+  EXCEPTION WHEN INVALID_CURSOR THEN
+    RAISE INFO 'RAISE INVALID_CURSOR: %', SQLSTATE;
+  END;
+  BEGIN
+    RAISE STORAGE_ERROR;
+  EXCEPTION WHEN STORAGE_ERROR THEN
+    RAISE INFO 'RAISE STORAGE_ERROR: %', SQLSTATE;
+  END;
+  BEGIN
+    RAISE PROGRAM_ERROR;
+  EXCEPTION WHEN PROGRAM_ERROR THEN
+    RAISE INFO 'RAISE PROGRAM_ERROR: %', SQLSTATE;
+  END;
+END;
+/
+INFO:  RAISE VALUE_ERROR: 22003
+INFO:  RAISE INVALID_CURSOR: 24000
+INFO:  RAISE STORAGE_ERROR: 53200
+INFO:  RAISE PROGRAM_ERROR: XX000
+-- A predefined name only catches its own errors
+BEGIN
+  INSERT INTO test_predef_t VALUES (1);
+EXCEPTION
+  WHEN ZERO_DIVIDE OR VALUE_ERROR THEN
+    RAISE INFO 'wrong handler';
+  WHEN OTHERS THEN
+    RAISE INFO 'OTHERS caught %', SQLSTATE;
+END;
+/
+INFO:  OTHERS caught 23505
+-- Unhandled predefined exception
+BEGIN
+  RAISE DUP_VAL_ON_INDEX;
+END;
+/
+ERROR:  dup_val_on_index
+CONTEXT:  PL/iSQL function inline_code_block line 2 at RAISE
+DROP TABLE test_predef_t;
 -- Cleanup
 DROP PACKAGE test_pragma_init;
 DROP PACKAGE test_pragma_raise;
