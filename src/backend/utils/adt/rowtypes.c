@@ -240,10 +240,16 @@ static HTAB *objectComparePlanCache = NULL;
  * SPI keeps package compilation, invalidation, privileges, and PL/iSQL
  * execution on their normal paths.  The generic record operators are strict,
  * so this is never entered for a SQL NULL object.
+ *
+ * *resultIsNull is set when the method itself returned NULL.  Oracle treats
+ * that as an unknown comparison ("the object comparison itself will evaluate
+ * to NULL"), not as "the objects are equal", so callers must not collapse it
+ * into a zero result.
  */
 static bool
 compare_oracle_object_records(Oid typeOid, HeapTupleHeader record1,
-							  HeapTupleHeader record2, int32 *result)
+							  HeapTupleHeader record2, int32 *result,
+							  bool *resultIsNull)
 {
 	HeapTuple	typeTuple;
 	Form_pg_type typeForm;
@@ -291,7 +297,8 @@ compare_oracle_object_records(Oid typeOid, HeapTupleHeader record1,
 	initStringInfo(&sql);
 	if (isOrder)
 		appendStringInfo(&sql,
-			"SELECT CASE WHEN comparison < 0 THEN -1 "
+			"SELECT CASE WHEN comparison IS NULL THEN NULL "
+			"WHEN comparison < 0 THEN -1 "
 			"WHEN comparison > 0 THEN 1 ELSE 0 END "
 			"FROM (SELECT %s.%s.%s($1, $2) AS comparison OFFSET 0) s",
 			quote_identifier(schemaName),
@@ -302,7 +309,8 @@ compare_oracle_object_records(Oid typeOid, HeapTupleHeader record1,
 			"WITH keys AS MATERIALIZED "
 			"(SELECT %s.%s.%s($1) AS left_key, "
 			"%s.%s.%s($2) AS right_key) "
-			"SELECT CASE WHEN left_key < right_key THEN -1 "
+			"SELECT CASE WHEN left_key IS NULL OR right_key IS NULL THEN NULL "
+			"WHEN left_key < right_key THEN -1 "
 			"WHEN left_key > right_key THEN 1 ELSE 0 END FROM keys",
 			quote_identifier(schemaName),
 			quote_identifier(NameStr(typeForm->typname)),
@@ -351,6 +359,13 @@ compare_oracle_object_records(Oid typeOid, HeapTupleHeader record1,
 			 typeOid);
 	value = SPI_getbinval(SPI_tuptable->vals[0], SPI_tuptable->tupdesc,
 						  1, &isnull);
+	/*
+	 * A NULL comparison result means the method could not decide (Oracle:
+	 * "the object comparison itself will evaluate to NULL").  Report it
+	 * separately instead of folding it into 0, which would claim that the
+	 * two objects are equal.
+	 */
+	*resultIsNull = isnull;
 	*result = isnull ? 0 : DatumGetInt32(value);
 	SPI_finish();
 
@@ -1132,6 +1147,7 @@ record_cmp(FunctionCallInfo fcinfo)
 	HeapTupleHeader record1 = PG_GETARG_HEAPTUPLEHEADER(0);
 	HeapTupleHeader record2 = PG_GETARG_HEAPTUPLEHEADER(1);
 	int			result = 0;
+	bool		objectIsNull = false;
 	Oid			tupType1;
 	Oid			tupType2;
 	int32		tupTypmod1;
@@ -1161,10 +1177,16 @@ record_cmp(FunctionCallInfo fcinfo)
 	tupTypmod2 = HeapTupleHeaderGetTypMod(record2);
 	if (tupType1 == tupType2 && get_typisobject(tupType1))
 	{
-		if (compare_oracle_object_records(tupType1, record1, record2, &result))
+		if (compare_oracle_object_records(tupType1, record1, record2, &result,
+										  &objectIsNull))
 		{
 			PG_FREE_IF_COPY(record1, 0);
 			PG_FREE_IF_COPY(record2, 1);
+			/*
+			 * An unknown comparison (the MAP/ORDER method returned NULL)
+			 * keeps the previous ordering behaviour: such objects group
+			 * together, the same way a NULL grouping key does in Oracle.
+			 */
 			return result;
 		}
 		ereport(ERROR,
@@ -1390,6 +1412,7 @@ record_eq(PG_FUNCTION_ARGS)
 	HeapTupleHeader record2 = PG_GETARG_HEAPTUPLEHEADER(1);
 	bool		result = true;
 	int32		objectResult;
+	bool		objectIsNull = false;
 	Oid			tupType1;
 	Oid			tupType2;
 	int32		tupTypmod1;
@@ -1419,11 +1442,18 @@ record_eq(PG_FUNCTION_ARGS)
 	tupTypmod2 = HeapTupleHeaderGetTypMod(record2);
 	if (tupType1 == tupType2 &&
 		compare_oracle_object_records(tupType1, record1, record2,
-									  &objectResult))
+									  &objectResult, &objectIsNull))
 	{
 		PG_FREE_IF_COPY(record1, 0);
 		PG_FREE_IF_COPY(record2, 1);
-		PG_RETURN_BOOL(objectResult == 0);
+		/*
+		 * Oracle evaluates the comparison to NULL when the MAP/ORDER method
+		 * returns NULL, so the objects are not known to be equal.  The
+		 * equality operator cannot return NULL, so report "not equal" —
+		 * claiming equality here would make two different objects compare
+		 * equal (and collapse them in DISTINCT / GROUP BY).
+		 */
+		PG_RETURN_BOOL(!objectIsNull && objectResult == 0);
 	}
 	tupdesc1 = lookup_rowtype_tupdesc(tupType1, tupTypmod1);
 	ncolumns1 = tupdesc1->natts;
