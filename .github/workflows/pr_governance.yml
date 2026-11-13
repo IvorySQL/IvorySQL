@@ -1,6 +1,12 @@
 name: pr-governance
 
 on:
+  # Kept on pull_request_target on purpose: this job only reads issues, pull
+  # requests and reviews and never checks out the pull request head, so it does
+  # not need the elevated context the trigger is normally criticised for. The
+  # plain pull_request event would need a maintainer to approve every run from
+  # a fork, which would leave the governance check pending on exactly the pull
+  # requests it is meant to vet.
   pull_request_target:
     types:
       - opened
@@ -19,11 +25,11 @@ permissions:
 jobs:
   policy:
     name: policy
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Validate PR governance policy
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const pr = context.payload.pull_request;
