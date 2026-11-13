@@ -1,9 +1,13 @@
 name: pr-governance
 
 on:
-  # pull_request_target is restricted on public repositories starting 2026-12-02.
-  # This workflow only needs read access, so the regular pull_request event is sufficient.
-  pull_request:
+  # Kept on pull_request_target on purpose: this job only reads issues, pull
+  # requests and reviews and never checks out the pull request head, so it does
+  # not need the elevated context the trigger is normally criticised for. The
+  # plain pull_request event would need a maintainer to approve every run from
+  # a fork, which would leave the governance check pending on exactly the pull
+  # requests it is meant to vet.
+  pull_request_target:
     types:
       - opened
       - edited
