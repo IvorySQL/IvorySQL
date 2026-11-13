@@ -72,3 +72,9 @@ CREATE OR REPLACE PACKAGE BODY UTL_MATCH IS
         RETURN sys.ora_utl_match_jaro_winkler_similarity(s1, s2);
     END;
 END UTL_MATCH;
+
+/* Oracle grants this package to PUBLIC, so every user may call it; what the
+ * routines themselves reach stays restricted (for UTL_FILE, the directory
+ * objects).  Without the grant a plain role got "permission denied for
+ * package". */
+GRANT EXECUTE ON PACKAGE utl_match TO PUBLIC;
