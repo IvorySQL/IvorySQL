@@ -206,11 +206,11 @@ select (rowid).rowno, * from t2;
 ERROR:  "rowid": invalid identifier
 LINE 1: select (rowid).rowno, * from t2;
                 ^
--- clearup
+-- cleanup
 drop table t2;
 drop table t3;
 --
---3, CTEATE TABLE ... WITH ROWID 
+--3, CREATE TABLE ... WITH ROWID
 --
 create table t2 (a int, b int) with rowid;
 insert into t2 values(20, 3);
@@ -417,6 +417,9 @@ create global temporary table t4(
     mystr  text,
     id      int
 ) with rowid ON COMMIT PRESERVE ROWS;
+WARNING:  GLOBAL is deprecated in temporary table creation
+LINE 1: create global temporary table t4(
+               ^
 insert into t4 SELECT 'INSERT GTT table t4 WITH ROWID', generate_series(1,200);
 select (rowid).rowno, * from t4 limit 5;
  rowno |             mystr              | id 
