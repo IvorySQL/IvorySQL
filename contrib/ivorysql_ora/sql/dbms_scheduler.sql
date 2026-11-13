@@ -815,3 +815,25 @@ DROP PROCEDURE sched_reg_proc;
 DELETE FROM sys.scheduler_job_run_details;
 DROP ROLE regress_dbms_scheduler;
 RESET timezone;
+
+-- Oracle-compatible USER/DBA_SCHEDULER_RUNNING_JOBS
+SELECT COUNT(*) = 0 AS idle_normally FROM user_scheduler_running_jobs;
+
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_running_job', job_type => 'PLSQL_BLOCK',
+      job_action => 'BEGIN NULL; END;');
+END;
+/
+UPDATE sys.scheduler_jobs
+   SET state = 'RUNNING', last_start_date = pg_catalog.now()
+ WHERE lower(job_name) = 'reg_running_job' AND job_owner = current_user::text;
+
+SELECT COUNT(*) = 1 AS one_running,
+       MIN(elapsed_time) IS NOT NULL AS elapsed_visible
+FROM user_scheduler_running_jobs
+WHERE job_name = 'REG_RUNNING_JOB';
+
+SELECT COUNT(*) = 1 AS dba_has
+FROM dba_scheduler_running_jobs WHERE job_name = 'REG_RUNNING_JOB';
+
+DELETE FROM sys.scheduler_jobs WHERE lower(job_name) = 'reg_running_job' AND job_owner = current_user::text;
