@@ -224,3 +224,48 @@ SELECT sys.rawtohex('\x'::bytea) IS NULL;
  t
 (1 row)
 
+-- Text input is raw character data, not bytea hex or escape input.
+SET standard_conforming_strings = on;
+SELECT sys.rawtohex('\x4142'::text);
+   rawtohex   
+--------------
+ 5C7834313432
+(1 row)
+
+SELECT sys.rawtohex('\101'::text);
+ rawtohex 
+----------
+ 5C313031
+(1 row)
+
+SELECT sys.rawtohex('\q'::text);
+ rawtohex 
+----------
+ 5C71
+(1 row)
+
+SELECT sys.rawtohex('\'::text);
+ rawtohex 
+----------
+ 5C
+(1 row)
+
+SELECT sys.rawtohex('\\'::text);
+ rawtohex 
+----------
+ 5C5C
+(1 row)
+
+SELECT sys.rawtohex('\x4142'::varchar2);
+   rawtohex   
+--------------
+ 5C7834313432
+(1 row)
+
+SELECT sys.rawtohex('中\文'::text);
+    rawtohex    
+----------------
+ E4B8AD5CE69687
+(1 row)
+
+RESET standard_conforming_strings;
