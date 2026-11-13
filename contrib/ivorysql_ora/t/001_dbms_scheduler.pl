@@ -24,7 +24,7 @@ use PostgreSQL::Test::Utils;
 use Test::More;
 
 my $node = PostgreSQL::Test::Cluster->new('scheduler');
-$node->init;
+$node->init( extra => [ '-m', 'oracle' ] );
 # background scheduling is off by default; this test is all about it
 $node->append_conf(
 	'postgresql.conf', qq{
@@ -38,11 +38,19 @@ $node->start;
 
 my $db = 'ivorysql';
 
-# Oracle-syntax statements go through the oracle listener port.
+# Oracle-syntax statements go through the oracle listener port: the
+# compatibility mode of a session is decided by which socket it arrives on,
+# so only the ivorysql.port socket speaks Oracle.
+my ($ret, $ora_port) = $node->psql('postgres', 'SHOW ivorysql.port');
+die "could not read ivorysql.port (exit $ret)" if $ret != 0;
+die "unexpected ivorysql.port: $ora_port" unless $ora_port =~ /^\d+$/;
+my $ora_connstr =
+  sprintf("port=%s host=%s dbname='%s'", $ora_port, $node->host, $db);
+
 sub ora_sql
 {
 	my ($sql) = @_;
-	return $node->safe_psql($db, $sql, connect_to_oraport => 1);
+	return $node->safe_psql($db, $sql, connstr => $ora_connstr);
 }
 
 # the launcher is registered at shared_preload time and starts one
