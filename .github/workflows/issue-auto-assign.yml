@@ -6,13 +6,13 @@ on:
 
 jobs:
   assign_on_command:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       issues: write
       contents: read
     steps:
       - name: Assign to user on /assign command
-        uses: actions/github-script@v6
+        uses: actions/github-script@v8
         with:
           github-token: ${{secrets.IVORY_TOKEN}}
           script: |
