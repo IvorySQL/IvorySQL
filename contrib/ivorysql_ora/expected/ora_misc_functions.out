@@ -4521,3 +4521,21 @@ DETAIL:  "ivorysql" is a reserved prefix.
 reset ivorysql.dummy_config;
 ERROR:  invalid configuration parameter name "ivorysql.dummy_config"
 DETAIL:  "ivorysql" is a reserved prefix.
+-- pg_get_keywords() in Oracle compatible mode must expose the five columns
+-- pg_proc declares (word, catcode, barelabel, catdesc, baredesc); before the
+-- fix the oracle hook built a three-column descriptor and every column access
+-- failed with "function return row and query-specified return row do not match".
+SELECT COUNT(*) > 100 AS has_keywords FROM PG_CATALOG.PG_GET_KEYWORDS();
+ has_keywords 
+--------------
+ t
+(1 row)
+
+SELECT WORD, CATCODE, BARELABEL, CATDESC, BAREDESC
+FROM PG_CATALOG.PG_GET_KEYWORDS()
+WHERE WORD = 'select';
+  word  | catcode | barelabel | catdesc  |     baredesc      
+--------+---------+-----------+----------+-------------------
+ select | R       | t         | reserved | can be bare label
+(1 row)
+

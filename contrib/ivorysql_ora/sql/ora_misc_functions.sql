@@ -2464,3 +2464,13 @@ reset default_text_search_config;
 -- should throw errors, because dummy_config is not a valid configuration name
 set ivorysql.dummy_config to dummy;
 reset ivorysql.dummy_config;
+
+-- pg_get_keywords() in Oracle compatible mode must expose the five columns
+-- pg_proc declares (word, catcode, barelabel, catdesc, baredesc); before the
+-- fix the oracle hook built a three-column descriptor and every column access
+-- failed with "function return row and query-specified return row do not match".
+SELECT COUNT(*) > 100 AS has_keywords FROM PG_CATALOG.PG_GET_KEYWORDS();
+
+SELECT WORD, CATCODE, BARELABEL, CATDESC, BAREDESC
+FROM PG_CATALOG.PG_GET_KEYWORDS()
+WHERE WORD = 'select';

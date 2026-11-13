@@ -1198,15 +1198,16 @@ oracle_pg_get_keywords(PG_FUNCTION_ARGS)
 		funcctx = SRF_FIRSTCALL_INIT();
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
-		tupdesc = CreateTemplateTupleDesc(3);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "word",
-						   TEXTOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "catcode",
-						   CHAROID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "catdesc",
-						   TEXTOID, -1, 0);
-
-		TupleDescFinalize(tupdesc);
+		/*
+		 * Use the row type pg_proc declares (word, catcode, barelabel,
+		 * catdesc, baredesc).  Building a three-column descriptor here made
+		 * every column access fail with "function return row and
+		 * query-specified return row do not match", because the catalog
+		 * declares five OUT parameters.
+		 */
+		if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+			elog(ERROR, "return type must be a row type");
+		funcctx->tuple_desc = tupdesc;
 		funcctx->attinmeta = TupleDescGetAttInMetadata(tupdesc);
 
 		MemoryContextSwitchTo(oldcontext);
@@ -1216,7 +1217,7 @@ oracle_pg_get_keywords(PG_FUNCTION_ARGS)
 
 	if (funcctx->call_cntr < OraScanKeywords.num_keywords)
 	{
-		char	   *values[3];
+		char	   *values[5];
 		HeapTuple	tuple;
 
 		/* cast-away-const is ugly but alternatives aren't much better */
@@ -1228,24 +1229,35 @@ oracle_pg_get_keywords(PG_FUNCTION_ARGS)
 		{
 			case UNRESERVED_KEYWORD:
 				values[1] = "U";
-				values[2] = _("unreserved");
+				values[3] = _("unreserved");
 				break;
 			case COL_NAME_KEYWORD:
 				values[1] = "C";
-				values[2] = _("unreserved (cannot be function or type name)");
+				values[3] = _("unreserved (cannot be function or type name)");
 				break;
 			case TYPE_FUNC_NAME_KEYWORD:
 				values[1] = "T";
-				values[2] = _("reserved (can be function or type name)");
+				values[3] = _("reserved (can be function or type name)");
 				break;
 			case RESERVED_KEYWORD:
 				values[1] = "R";
-				values[2] = _("reserved");
+				values[3] = _("reserved");
 				break;
 			default:			/* shouldn't be possible */
 				values[1] = NULL;
-				values[2] = NULL;
+				values[3] = NULL;
 				break;
+		}
+
+		if (OraScanKeywordBareLabel[funcctx->call_cntr])
+		{
+			values[2] = "true";
+			values[4] = _("can be bare label");
+		}
+		else
+		{
+			values[2] = "false";
+			values[4] = _("requires AS");
 		}
 
 		tuple = BuildTupleFromCStrings(funcctx->attinmeta, values);
