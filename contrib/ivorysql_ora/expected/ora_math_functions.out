@@ -1,0 +1,275 @@
+--
+-- SQRT, EXP, LN, LOG and POWER with integer and string arguments
+-- (Oracle-compatible)
+--
+-- Oracle computes these functions on NUMBER and returns NUMBER.  An integer
+-- argument used to bind the float8 versions and keep about 16 digits.
+--
+-- Oracle references:
+--   https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/SQRT.html
+--   https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/POWER.html
+--   https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/Data-Types.html
+--
+--
+-- values returned by Oracle 23ai, from issue #2020
+--
+SELECT POWER(3, 50) FROM DUAL;
+          power           
+--------------------------
+ 717897987691852588770249
+(1 row)
+
+SELECT TO_CHAR(POWER(3, 50)) FROM DUAL;
+         to_char          
+--------------------------
+ 717897987691852588770249
+(1 row)
+
+SELECT POWER(2, 64) FROM DUAL;
+        power         
+----------------------
+ 18446744073709551616
+(1 row)
+
+SELECT TO_CHAR(SQRT(2)) FROM DUAL;
+                 to_char                  
+------------------------------------------
+ 1.41421356237309504880168872420969807857
+(1 row)
+
+--
+-- every integer type gets a numeric result
+--
+SELECT pg_typeof(SQRT(2)) AS sqrt, pg_typeof(EXP(1)) AS exp,
+       pg_typeof(LN(2)) AS ln, pg_typeof(LOG(100)) AS log1,
+       pg_typeof(LOG(2, 8)) AS log2, pg_typeof(POWER(2, 3)) AS power
+FROM DUAL;
+        sqrt        |        exp         |         ln         |        log1        |        log2        |       power        
+--------------------+--------------------+--------------------+--------------------+--------------------+--------------------
+ pg_catalog.numeric | pg_catalog.numeric | pg_catalog.numeric | pg_catalog.numeric | pg_catalog.numeric | pg_catalog.numeric
+(1 row)
+
+SELECT SQRT(CAST(2 AS SMALLINT)) AS int2, SQRT(CAST(2 AS INTEGER)) AS int4,
+       SQRT(CAST(2 AS BIGINT)) AS int8 FROM DUAL;
+                   int2                   |                   int4                   |                   int8                   
+------------------------------------------+------------------------------------------+------------------------------------------
+ 1.41421356237309504880168872420969807857 | 1.41421356237309504880168872420969807857 | 1.41421356237309504880168872420969807857
+(1 row)
+
+SELECT EXP(CAST(1 AS SMALLINT)) AS int2, EXP(CAST(1 AS BIGINT)) AS int8 FROM DUAL;
+                   int2                   |                   int8                   
+------------------------------------------+------------------------------------------
+ 2.71828182845904523536028747135266249776 | 2.71828182845904523536028747135266249776
+(1 row)
+
+SELECT LN(CAST(2 AS SMALLINT)) AS int2, LN(CAST(2 AS BIGINT)) AS int8 FROM DUAL;
+                    int2                    |                    int8                    
+--------------------------------------------+--------------------------------------------
+ 0.6931471805599453094172321214581765680755 | 0.6931471805599453094172321214581765680755
+(1 row)
+
+SELECT LOG(CAST(2 AS SMALLINT)) AS int2, LOG(CAST(2 AS BIGINT)) AS int8 FROM DUAL;
+                    int2                    |                    int8                    
+--------------------------------------------+--------------------------------------------
+ 0.3010299956639811952137388947244930267682 | 0.3010299956639811952137388947244930267682
+(1 row)
+
+SELECT LOG(CAST(2 AS SMALLINT), CAST(3 AS SMALLINT)) AS int2,
+       LOG(CAST(2 AS BIGINT), CAST(3 AS BIGINT)) AS int8 FROM DUAL;
+                   int2                   |                   int8                   
+------------------------------------------+------------------------------------------
+ 1.58496250072115618145373894394781650876 | 1.58496250072115618145373894394781650876
+(1 row)
+
+SELECT POWER(CAST(3 AS SMALLINT), CAST(-1 AS SMALLINT)) AS int2,
+       POWER(CAST(3 AS BIGINT), CAST(40 AS BIGINT)) AS int8 FROM DUAL;
+                    int2                    |         int8         
+--------------------------------------------+----------------------
+ 0.3333333333333333333333333333333333333333 | 12157665459056928801
+(1 row)
+
+-- mixed integer types use the wider one
+SELECT POWER(CAST(2 AS SMALLINT), CAST(70 AS BIGINT)) AS power,
+       pg_typeof(POWER(CAST(2 AS SMALLINT), CAST(70 AS BIGINT))) AS type,
+       LOG(CAST(2 AS INTEGER), CAST(3 AS BIGINT)) AS log FROM DUAL;
+         power          |        type        |                   log                    
+------------------------+--------------------+------------------------------------------
+ 1180591620717411303424 | pg_catalog.numeric | 1.58496250072115618145373894394781650876
+(1 row)
+
+--
+-- NUMBER precision: 20 base-100 digits from the first nonzero one,
+-- so a result keeps 39 or 40 significant digits
+--
+SELECT SQRT(2) AS sqrt_2, SQRT(200) AS sqrt_200, SQRT(3) AS sqrt_3 FROM DUAL;
+                  sqrt_2                  |                 sqrt_200                 |                  sqrt_3                  
+------------------------------------------+------------------------------------------+------------------------------------------
+ 1.41421356237309504880168872420969807857 | 14.1421356237309504880168872420969807857 | 1.73205080756887729352744634150587236694
+(1 row)
+
+SELECT EXP(1) AS e, EXP(-1) AS inv_e, EXP(10) AS e_10, EXP(-10) AS inv_e_10 FROM DUAL;
+                    e                     |                   inv_e                    |                   e_10                   |                    inv_e_10                    
+------------------------------------------+--------------------------------------------+------------------------------------------+------------------------------------------------
+ 2.71828182845904523536028747135266249776 | 0.3678794411714423215955237701614608674458 | 22026.4657948067165169579006452842443664 | 0.00004539992976248485153559151556055061023792
+(1 row)
+
+SELECT LN(2) AS ln_2, LN(10) AS ln_10, LN(1000000) AS ln_1e6 FROM DUAL;
+                    ln_2                    |                  ln_10                  |                  ln_1e6                   
+--------------------------------------------+-----------------------------------------+-------------------------------------------
+ 0.6931471805599453094172321214581765680755 | 2.3025850929940456840179914546843642076 | 13.81551055796427410410794872810618524561
+(1 row)
+
+SELECT LOG(2) AS log_2, LOG(2, 3) AS log_2_3, LOG(3, 2) AS log_3_2 FROM DUAL;
+                   log_2                    |                 log_2_3                  |                  log_3_2                   
+--------------------------------------------+------------------------------------------+--------------------------------------------
+ 0.3010299956639811952137388947244930267682 | 1.58496250072115618145373894394781650876 | 0.6309297535714574370995271143427608542996
+(1 row)
+
+SELECT POWER(3, -1) AS third, POWER(7, -3) AS seventh_cubed,
+       POWER(2, -100) AS two_to_minus_100 FROM DUAL;
+                   third                    |                seventh_cubed                |                             two_to_minus_100                             
+--------------------------------------------+---------------------------------------------+--------------------------------------------------------------------------
+ 0.3333333333333333333333333333333333333333 | 0.00291545189504373177842565597667638483965 | 0.0000000000000000000000000000007888609052210118054117285652827862296732
+(1 row)
+
+-- longer results are rounded the way a NUMBER stores them
+SELECT POWER(7, 50) AS power_7_50, POWER(2, 200) AS power_2_200 FROM DUAL;
+                 power_7_50                  |                          power_2_200                          
+---------------------------------------------+---------------------------------------------------------------
+ 1798465042647412146620280340569649349250000 | 1606938044258990275541962092341162602520000000000000000000000
+(1 row)
+
+-- exact results stay exact
+SELECT LOG(2, 8) AS log_2_8, LOG(10, 1000) AS log_10_1000, LOG(100) AS log_100,
+       SQRT(144) AS sqrt_144, POWER(10, 30) AS power_10_30,
+       POWER(2, -2) AS quarter, POWER(-3, 3) AS minus_27, POWER(-2, -1) AS minus_half
+FROM DUAL;
+ log_2_8 | log_10_1000 | log_100 | sqrt_144 |           power_10_30           | quarter | minus_27 | minus_half 
+---------+-------------+---------+----------+---------------------------------+---------+----------+------------
+       3 |           3 |       2 |       12 | 1000000000000000000000000000000 |    0.25 |      -27 |       -0.5
+(1 row)
+
+--
+-- zero and one
+--
+SELECT SQRT(0) AS sqrt_0, EXP(0) AS exp_0, LN(1) AS ln_1, LOG(1) AS log_1,
+       LOG(5, 1) AS log_5_1, POWER(0, 0) AS power_0_0, POWER(0, 3) AS power_0_3,
+       POWER(1, -5) AS power_1_minus_5 FROM DUAL;
+ sqrt_0 | exp_0 | ln_1 | log_1 | log_5_1 | power_0_0 | power_0_3 | power_1_minus_5 
+--------+-------+------+-------+---------+-----------+-----------+-----------------
+      0 |     1 |    0 |     0 |       0 |         1 |         0 |               1
+(1 row)
+
+--
+-- NULL
+--
+SELECT SQRT(CAST(NULL AS INTEGER)) AS sqrt, POWER(2, NULL) AS power,
+       LOG(NULL, 8) AS log FROM DUAL;
+ sqrt | power | log 
+------+-------+-----
+      |       |    
+(1 row)
+
+--
+-- errors
+--
+SELECT SQRT(-1) FROM DUAL;
+ERROR:  cannot take square root of a negative number
+CONTEXT:  SQL function "sqrt" statement 1
+SELECT LN(0) FROM DUAL;
+ERROR:  cannot take logarithm of zero
+CONTEXT:  SQL function "ln" statement 1
+SELECT LN(-1) FROM DUAL;
+ERROR:  cannot take logarithm of a negative number
+CONTEXT:  SQL function "ln" statement 1
+SELECT LOG(0) FROM DUAL;
+ERROR:  cannot take logarithm of zero
+CONTEXT:  SQL function "log" statement 1
+SELECT LOG(1, 8) FROM DUAL;
+ERROR:  division by zero
+CONTEXT:  SQL function "log" statement 1
+SELECT POWER(0, -1) FROM DUAL;
+ERROR:  zero raised to a negative power is undefined
+CONTEXT:  SQL function "power" statement 1
+--
+-- string arguments convert to NUMBER
+--
+SELECT SQRT('2.25') AS sqrt_lit, EXP('1') AS exp_lit, LN('2') AS ln_lit,
+       LOG('100') AS log_lit FROM DUAL;
+ sqrt_lit |                 exp_lit                  |                   ln_lit                   | log_lit 
+----------+------------------------------------------+--------------------------------------------+---------
+      1.5 | 2.71828182845904523536028747135266249776 | 0.6931471805599453094172321214581765680755 |       2
+(1 row)
+
+SELECT LOG('2', '8') AS log_lits, POWER('2', '10') AS power_lits,
+       POWER('2.5', 3) AS power_lit_int, POWER(2, '0.5') AS power_int_lit FROM DUAL;
+ log_lits | power_lits | power_lit_int |              power_int_lit               
+----------+------------+---------------+------------------------------------------
+        3 |       1024 |        15.625 | 1.41421356237309504880168872420969807857
+(1 row)
+
+CREATE TABLE ora_math_str (v VARCHAR2(10), c CHAR(5), s SMALLINT);
+INSERT INTO ora_math_str VALUES ('2.5', '2', 3);
+SELECT SQRT(v) AS sqrt_v, SQRT(c) AS sqrt_c, POWER(v, 2) AS power_v_2,
+       POWER(v, s) AS power_v_s FROM ora_math_str;
+                  sqrt_v                  |                  sqrt_c                  | power_v_2 | power_v_s 
+------------------------------------------+------------------------------------------+-----------+-----------
+ 1.58113883008418966599944677221635926686 | 1.41421356237309504880168872420969807857 |      6.25 |    15.625
+(1 row)
+
+SELECT POWER(2, v) AS power_2_v, LOG(c, v) AS log_c_v,
+       pg_typeof(SQRT(v)) AS sqrt_type, pg_typeof(POWER(v, 2)) AS power_type
+FROM ora_math_str;
+                power_2_v                 |                 log_c_v                  |     sqrt_type      |     power_type     
+------------------------------------------+------------------------------------------+--------------------+--------------------
+ 5.65685424949238019520675489683879231428 | 1.32192809488736234787031942948939017586 | pg_catalog.numeric | pg_catalog.numeric
+(1 row)
+
+DROP TABLE ora_math_str;
+SELECT SQRT('abc') FROM DUAL;
+ERROR:  invalid input syntax for type numeric: "abc"
+CONTEXT:  SQL function "sqrt" statement 1
+--
+-- other argument types keep the existing functions
+--
+SELECT pg_typeof(SQRT(2.0)) AS numeric_arg, pg_typeof(POWER(2, 0.5)) AS numeric_exp,
+       pg_typeof(SQRT(CAST(2 AS BINARY_DOUBLE))) AS binary_double_arg,
+       pg_typeof(SQRT(CAST(2 AS DOUBLE PRECISION))) AS float8_arg FROM DUAL;
+    numeric_arg     |    numeric_exp     | binary_double_arg |    float8_arg     
+--------------------+--------------------+-------------------+-------------------
+ pg_catalog.numeric | pg_catalog.numeric | pg_catalog.float8 | pg_catalog.float8
+(1 row)
+
+SELECT SQRT(2.0) AS sqrt_2_0, POWER(2, 0.5) AS power_2_half FROM DUAL;
+     sqrt_2_0      |    power_2_half    
+-------------------+--------------------
+ 1.414213562373095 | 1.4142135623730950
+(1 row)
+
+--
+-- integer columns and PL/iSQL parameters
+--
+CREATE TABLE ora_math_tab (i INTEGER, b BIGINT);
+INSERT INTO ora_math_tab VALUES (2, 3);
+INSERT INTO ora_math_tab VALUES (10, -2);
+SELECT i, b, SQRT(i) AS sqrt, POWER(i, b) AS power, LOG(i, b * b) AS log
+FROM ora_math_tab ORDER BY i;
+ i  | b  |                   sqrt                   | power |                    log                     
+----+----+------------------------------------------+-------+--------------------------------------------
+  2 |  3 | 1.41421356237309504880168872420969807857 |     8 |   3.16992500144231236290747788789563301752
+ 10 | -2 | 3.16227766016837933199889354443271853372 |  0.01 | 0.6020599913279623904274777894489860535364
+(2 rows)
+
+DROP TABLE ora_math_tab;
+CREATE OR REPLACE FUNCTION ora_math_power(n INTEGER) RETURN NUMBER IS
+BEGIN
+    RETURN POWER(n, 30);
+END;
+/
+SELECT ora_math_power(3) FROM DUAL;
+ ora_math_power  
+-----------------
+ 205891132094649
+(1 row)
+
+DROP FUNCTION ora_math_power;

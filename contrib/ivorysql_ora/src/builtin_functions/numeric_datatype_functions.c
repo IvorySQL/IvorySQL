@@ -48,9 +48,23 @@ PG_FUNCTION_INFO_V1(binary_float_nanvl);
 PG_FUNCTION_INFO_V1(binary_double_nanvl);
 PG_FUNCTION_INFO_V1(ora_to_binary_float);
 PG_FUNCTION_INFO_V1(ora_to_binary_double);
+PG_FUNCTION_INFO_V1(ora_sqrt_number);
+PG_FUNCTION_INFO_V1(ora_exp_number);
+PG_FUNCTION_INFO_V1(ora_ln_number);
+PG_FUNCTION_INFO_V1(ora_log_number);
+PG_FUNCTION_INFO_V1(ora_power_number);
+
+/*
+ * Significant digits that ora_number_math() computes with: 40 for the
+ * largest NUMBER mantissa, plus guard digits for the final rounding.
+ */
+#define ORA_MATH_DIGITS 60
 
 static int ora_to_number_hex_width(text *fmt);
 static Numeric ora_to_number_hex(text *value, int width);
+static bool ora_number_exponent(Numeric num, int *exponent);
+static Numeric ora_number_round(Numeric num);
+static Numeric ora_number_math(PGFunction func, Numeric x, Numeric y);
 
 /*
  * Recognize the hexadecimal number format separately from the shared decimal
@@ -392,4 +406,163 @@ ora_to_binary_double(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 
 	PG_RETURN_FLOAT8(result);
+}
+
+/*
+ * Set *exponent to the power of ten of the first nonzero digit of num.
+ * Returns false if num is zero, NaN or infinite.
+ */
+static bool
+ora_number_exponent(Numeric num, int *exponent)
+{
+	char	   *str;
+	char	   *p;
+	char	   *point;
+	bool		nonzero = true;
+
+	if (numeric_is_nan(num) || numeric_is_inf(num))
+		return false;
+
+	str = DatumGetCString(DirectFunctionCall1(numeric_out,
+											  NumericGetDatum(num)));
+	p = str;
+	if (*p == '-')
+		p++;
+	point = strchr(p, '.');
+
+	if (*p != '0')
+		*exponent = (point ? point - p : strlen(p)) - 1;
+	else
+	{
+		char	   *q = point ? point + 1 : p + 1;
+
+		while (*q == '0')
+			q++;
+		if (*q == '\0')
+			nonzero = false;
+		else
+			*exponent = -(q - point);
+	}
+
+	pfree(str);
+	return nonzero;
+}
+
+/*
+ * Round num to what an Oracle NUMBER holds, and drop trailing zeros.
+ *
+ * A NUMBER keeps 20 base-100 digits, starting with the one that holds the
+ * first nonzero decimal digit.  So a value in [1, 100) keeps 38 decimal
+ * places: 39 significant digits below 10 and 40 from 10 up.
+ */
+static Numeric
+ora_number_round(Numeric num)
+{
+	int			exponent;
+	Datum		result = NumericGetDatum(num);
+
+	if (ora_number_exponent(num, &exponent))
+	{
+		int			exponent100;
+
+		exponent100 = exponent >= 0 ? exponent / 2 : -((1 - exponent) / 2);
+		result = DirectFunctionCall2(numeric_round, result,
+									 Int32GetDatum(38 - 2 * exponent100));
+	}
+
+	return DatumGetNumeric(DirectFunctionCall1(numeric_trim_scale, result));
+}
+
+/*
+ * Compute func(x) or, if y is not NULL, func(x, y), to NUMBER precision.
+ *
+ * numeric's sqrt, exp, ln, log and power give about 16 significant digits,
+ * but never fewer decimal places than their first argument has.  So a first
+ * call gives the magnitude of the result, and a second call with x scaled
+ * up gives ORA_MATH_DIGITS significant digits.
+ */
+static Numeric
+ora_number_math(PGFunction func, Numeric x, Numeric y)
+{
+	Datum		result;
+	int			exponent;
+
+	if (y)
+		result = DirectFunctionCall2(func, NumericGetDatum(x),
+									 NumericGetDatum(y));
+	else
+		result = DirectFunctionCall1(func, NumericGetDatum(x));
+
+	if (ora_number_exponent(DatumGetNumeric(result), &exponent) &&
+		!numeric_is_nan(x) && !numeric_is_inf(x))
+	{
+		int			scale = ORA_MATH_DIGITS - 1 - exponent;
+		int			xscale;
+
+		scale = Min(scale, NUMERIC_MAX_DISPLAY_SCALE);
+		xscale = DatumGetInt32(DirectFunctionCall1(numeric_scale,
+												   NumericGetDatum(x)));
+		if (scale > xscale)
+		{
+			Datum		scaled = DirectFunctionCall2(numeric_round,
+													 NumericGetDatum(x),
+													 Int32GetDatum(scale));
+
+			if (y)
+				result = DirectFunctionCall2(func, scaled, NumericGetDatum(y));
+			else
+				result = DirectFunctionCall1(func, scaled);
+		}
+	}
+
+	return ora_number_round(DatumGetNumeric(result));
+}
+
+/*
+ * ora_sqrt_number, ora_exp_number, ora_ln_number, ora_log_number and
+ * ora_power_number
+ * Oracle SQRT, EXP, LN, LOG and POWER computed to NUMBER precision.
+ * LOG with one argument is base 10, like PostgreSQL's.
+ */
+Datum
+ora_sqrt_number(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_NUMERIC(ora_number_math(numeric_sqrt,
+									  PG_GETARG_NUMERIC(0), NULL));
+}
+
+Datum
+ora_exp_number(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_NUMERIC(ora_number_math(numeric_exp,
+									  PG_GETARG_NUMERIC(0), NULL));
+}
+
+Datum
+ora_ln_number(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_NUMERIC(ora_number_math(numeric_ln,
+									  PG_GETARG_NUMERIC(0), NULL));
+}
+
+Datum
+ora_log_number(PG_FUNCTION_ARGS)
+{
+	if (PG_NARGS() == 1)
+	{
+		Numeric		ten = int64_to_numeric(10);
+
+		PG_RETURN_NUMERIC(ora_number_math(numeric_log, ten,
+										  PG_GETARG_NUMERIC(0)));
+	}
+
+	PG_RETURN_NUMERIC(ora_number_math(numeric_log, PG_GETARG_NUMERIC(0),
+									  PG_GETARG_NUMERIC(1)));
+}
+
+Datum
+ora_power_number(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_NUMERIC(ora_number_math(numeric_power, PG_GETARG_NUMERIC(0),
+									  PG_GETARG_NUMERIC(1)));
 }
