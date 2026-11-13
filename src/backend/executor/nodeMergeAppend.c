@@ -204,8 +204,8 @@ ExecInitMergeAppend(MergeAppend *node, EState *estate, int eflags)
 	 */
 	mergestate->ms_initialized = false;
 
-	/* Copy is_union flag for ROWNUM reset handling (Oracle compatibility) */
-	mergestate->ms_is_union = node->is_union;
+	/* Copy ROWNUM reset flag (Oracle compatibility) */
+	mergestate->ms_reset_rownum = node->reset_rownum;
 
 	return mergestate;
 }
@@ -244,19 +244,15 @@ ExecMergeAppend(PlanState *pstate)
 		 * First time through: pull the first tuple from each valid subplan,
 		 * and set up the heap.
 		 *
-		 * For UNION queries, reset ROWNUM before each subplan starts.
-		 * This ensures each UNION branch has independent ROWNUM counting
-		 * (Oracle compatibility).
+		 * When the UNION/UNION ALL branches evaluate ROWNUM themselves, reset
+		 * the counter before each subplan starts so that each branch numbers
+		 * its rows independently (Oracle compatibility).  The flag is not set
+		 * when only an enclosing query block uses ROWNUM.
 		 */
 		i = -1;
 		while ((i = bms_next_member(node->ms_valid_subplans, i)) >= 0)
 		{
-			/*
-			 * For UNION, reset ROWNUM before each branch executes.
-			 * Each child's Sort will buffer all tuples from its scan,
-			 * so ROWNUM needs to start fresh for each branch.
-			 */
-			if (node->ms_is_union)
+			if (node->ms_reset_rownum)
 				node->ps.state->es_rownum = 0;
 
 			node->ms_slots[i] = ExecProcNode(node->mergeplans[i]);

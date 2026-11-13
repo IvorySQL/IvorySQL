@@ -80,7 +80,7 @@ static Plan *create_scan_plan(PlannerInfo *root, Path *best_path,
 static List *build_path_tlist(PlannerInfo *root, Path *path);
 static bool use_physical_tlist(PlannerInfo *root, Path *path, int flags);
 static bool contain_rownum_expr(Node *node);
-static int count_rownum_exprs(Node *node);
+static int	count_rownum_exprs(Node *node);
 static List *collect_rownum_exprs(List *tlist);
 static bool aggref_args_contain_rownum(List *tlist);
 static bool aggref_args_contain_rownum_walker(Node *node, void *context);
@@ -89,7 +89,7 @@ typedef struct replace_rownum_context
 {
 	List	   *rownum_vars;	/* List of Vars to replace RownumExprs */
 	int			rownum_idx;		/* Current index in rownum_vars list */
-} replace_rownum_context;
+}			replace_rownum_context;
 
 static Node *replace_rownum_expr_mutator(Node *node, void *context);
 static List *get_gating_quals(PlannerInfo *root, List *quals);
@@ -1212,6 +1212,133 @@ mark_async_capable_plan(Plan *plan, Path *path)
 }
 
 /*
+ * contains_rownum_walker
+ *	  expression_tree_walker callback: detect the Oracle ROWNUM pseudocolumn.
+ */
+static bool
+contains_rownum_walker(Node *node, void *context)
+{
+	if (node == NULL)
+		return false;
+	if (IsA(node, RownumExpr))
+		return true;
+	return expression_tree_walker(node, contains_rownum_walker, context);
+}
+
+/*
+ * plan_contains_rownum
+ *	  Return true if 'plan' (or any of its subplans) evaluates the Oracle
+ *	  ROWNUM pseudocolumn in a target list or a qual.
+ *
+ * This is used to decide whether an Append/MergeAppend that came from a
+ * UNION/UNION ALL really has to reset the ROWNUM counter when it switches
+ * branches (Oracle numbers each branch independently).  Resetting is only
+ * correct when the branches themselves use ROWNUM; when the RownumExpr
+ * belongs to an enclosing query block, e.g.
+ *		SELECT ROWNUM FROM (SELECT ... UNION ALL SELECT ...) t
+ * resetting the shared counter would restart the enclosing numbering at
+ * every branch switch.
+ */
+static bool
+plan_contains_rownum(Plan *plan)
+{
+	ListCell   *lc;
+
+	if (plan == NULL)
+		return false;
+
+	if (plan->targetlist != NIL &&
+		contains_rownum_walker((Node *) plan->targetlist, NULL))
+		return true;
+	if (plan->qual != NIL &&
+		contains_rownum_walker((Node *) plan->qual, NULL))
+		return true;
+
+	/*
+	 * Join nodes keep their own expression fields: the join condition lives
+	 * in Join.joinqual, not in plan->qual, and the merge/hash keys have their
+	 * own lists.  ROWNUM used only there (e.g. "... JOIN ... ON a.id = b.id
+	 * AND ROWNUM <= 2") would otherwise be missed.  Join itself has no node
+	 * tag, so switch on the concrete join node types.
+	 */
+	if (IsA(plan, NestLoop) || IsA(plan, MergeJoin) || IsA(plan, HashJoin))
+	{
+		Join	   *join = (Join *) plan;
+
+		if (join->joinqual != NIL &&
+			contains_rownum_walker((Node *) join->joinqual, NULL))
+			return true;
+		if (IsA(plan, MergeJoin))
+		{
+			MergeJoin  *mj = (MergeJoin *) plan;
+
+			if (mj->mergeclauses != NIL &&
+				contains_rownum_walker((Node *) mj->mergeclauses, NULL))
+				return true;
+		}
+		else if (IsA(plan, HashJoin))
+		{
+			HashJoin   *hj = (HashJoin *) plan;
+
+			if (hj->hashclauses != NIL &&
+				contains_rownum_walker((Node *) hj->hashclauses, NULL))
+				return true;
+		}
+	}
+
+	if (plan_contains_rownum(outerPlan(plan)) ||
+		plan_contains_rownum(innerPlan(plan)))
+		return true;
+
+	/*
+	 * Some plan nodes keep their inputs somewhere other than lefttree/
+	 * righttree; recurse into those explicitly.  A UNION branch, for
+	 * instance, is a SubqueryScan whose ROWNUM expression sits in the
+	 * subquery's own plan tree.
+	 */
+	if (IsA(plan, SubqueryScan))
+	{
+		if (plan_contains_rownum(((SubqueryScan *) plan)->subplan))
+			return true;
+	}
+	else if (IsA(plan, Append))
+	{
+		foreach(lc, ((Append *) plan)->appendplans)
+		{
+			if (plan_contains_rownum((Plan *) lfirst(lc)))
+				return true;
+		}
+	}
+	else if (IsA(plan, MergeAppend))
+	{
+		foreach(lc, ((MergeAppend *) plan)->mergeplans)
+		{
+			if (plan_contains_rownum((Plan *) lfirst(lc)))
+				return true;
+		}
+	}
+	return false;
+}
+
+/*
+ * plans_contain_rownum
+ *	  Return true if any plan in 'plans' evaluates the Oracle ROWNUM
+ *	  pseudocolumn.  See plan_contains_rownum().
+ */
+static bool
+plans_contain_rownum(List *plans)
+{
+	ListCell   *lc;
+
+	foreach(lc, plans)
+	{
+		if (plan_contains_rownum((Plan *) lfirst(lc)))
+			return true;
+	}
+	return false;
+}
+
+/*
  * create_append_plan
  *	  Create an Append plan for 'best_path' and (recursively) plans
  *	  for its subpaths.
@@ -1279,7 +1406,6 @@ create_append_plan(PlannerInfo *root, AppendPath *best_path, int flags)
 	plan->plan.righttree = NULL;
 	plan->apprelids = rel->relids;
 	plan->child_append_relid_sets = best_path->child_append_relid_sets;
-	plan->is_union = best_path->is_union;
 
 	if (pathkeys != NIL)
 	{
@@ -1441,6 +1567,14 @@ create_append_plan(PlannerInfo *root, AppendPath *best_path, int flags)
 	plan->appendplans = subplans;
 	plan->nasyncplans = nasyncplans;
 	plan->first_partial_plan = best_path->first_partial_path;
+
+	/*
+	 * Reset ROWNUM between branches only when the branches evaluate ROWNUM
+	 * themselves (Oracle numbers each UNION/UNION ALL branch independently).
+	 * See plan_contains_rownum().
+	 */
+	plan->reset_rownum = best_path->is_union &&
+		plans_contain_rownum(subplans);
 
 	copy_generic_path_info(&plan->plan, (Path *) best_path);
 
@@ -1621,7 +1755,13 @@ create_merge_append_plan(PlannerInfo *root, MergeAppendPath *best_path,
 	}
 
 	node->mergeplans = subplans;
-	node->is_union = best_path->is_union;
+
+	/*
+	 * Reset ROWNUM before each branch only when the branches evaluate ROWNUM
+	 * themselves; see plan_contains_rownum().
+	 */
+	node->reset_rownum = best_path->is_union &&
+		plans_contain_rownum(subplans);
 
 	/*
 	 * If prepare_sort_from_pathkeys added sort columns, but we were told to
@@ -1929,11 +2069,11 @@ create_projection_plan(PlannerInfo *root, ProjectionPath *best_path, int flags)
 		needs_result_node = !tlist_same_exprs(tlist, subplan->targetlist);
 
 		/*
-		 * Special handling for Oracle ROWNUM with Sort:
-		 * If the projection contains ROWNUM and the subplan is a Sort,
-		 * we need to ensure ROWNUM is evaluated BEFORE the sort, not after.
-		 * Oracle semantics require ROWNUM to be assigned during row retrieval,
-		 * before any ORDER BY clause is applied.
+		 * Special handling for Oracle ROWNUM with Sort: If the projection
+		 * contains ROWNUM and the subplan is a Sort, we need to ensure ROWNUM
+		 * is evaluated BEFORE the sort, not after. Oracle semantics require
+		 * ROWNUM to be assigned during row retrieval, before any ORDER BY
+		 * clause is applied.
 		 *
 		 * NOTE: If ROWNUM only appears inside aggregate function arguments
 		 * (like SUM(ROWNUM)), skip this handling because the aggregate
@@ -1955,8 +2095,8 @@ create_projection_plan(PlannerInfo *root, ProjectionPath *best_path, int flags)
 			replace_rownum_context context;
 
 			/*
-			 * Get the Sort's input plan (the scan).
-			 * For both Sort and IncrementalSort, the input is in 'lefttree'.
+			 * Get the Sort's input plan (the scan). For both Sort and
+			 * IncrementalSort, the input is in 'lefttree'.
 			 */
 			sortinput = subplan->lefttree;
 
@@ -1973,23 +2113,23 @@ create_projection_plan(PlannerInfo *root, ProjectionPath *best_path, int flags)
 			}
 
 			/*
-			 * Build a new target list for the sort's input that includes
-			 * all existing columns plus ROWNUM expressions.
+			 * Build a new target list for the sort's input that includes all
+			 * existing columns plus ROWNUM expressions.
 			 */
 			new_input_tlist = list_copy(sortinput->targetlist);
 			new_resno = list_length(new_input_tlist) + 1;
 			scan_rownum_start = new_resno;
 
 			/*
-			 * Add ROWNUM expressions to the scan's target list.
-			 * We need to add one RownumExpr for each occurrence, not just
-			 * one per target entry (a single TLE might reference ROWNUM multiple times).
+			 * Add ROWNUM expressions to the scan's target list. We need to
+			 * add one RownumExpr for each occurrence, not just one per target
+			 * entry (a single TLE might reference ROWNUM multiple times).
 			 */
 			foreach(lc, rownum_tles)
 			{
 				TargetEntry *tle = lfirst_node(TargetEntry, lc);
-				int num_rownums = count_rownum_exprs((Node *) tle->expr);
-				int i;
+				int			num_rownums = count_rownum_exprs((Node *) tle->expr);
+				int			i;
 
 				/*
 				 * Add one RownumExpr to scan output for each ROWNUM reference
@@ -2009,17 +2149,17 @@ create_projection_plan(PlannerInfo *root, ProjectionPath *best_path, int flags)
 			}
 
 			/*
-			 * Update the sort input's target list.
-			 * Use change_plan_targetlist to handle non-projection-capable nodes.
+			 * Update the sort input's target list. Use change_plan_targetlist
+			 * to handle non-projection-capable nodes.
 			 */
 			sortinput = change_plan_targetlist(sortinput, new_input_tlist,
-												sortinput->parallel_safe);
+											   sortinput->parallel_safe);
 			subplan->lefttree = sortinput;
 
 			/*
-			 * Build list of Vars referencing the ROWNUM columns from scan output.
-			 * These will be used to replace ROWNUM expressions in the final tlist.
-			 * Create one Var for each ROWNUM occurrence.
+			 * Build list of Vars referencing the ROWNUM columns from scan
+			 * output. These will be used to replace ROWNUM expressions in the
+			 * final tlist. Create one Var for each ROWNUM occurrence.
 			 */
 			rownum_vars = NIL;
 			new_resno = scan_rownum_start;
@@ -2027,16 +2167,17 @@ create_projection_plan(PlannerInfo *root, ProjectionPath *best_path, int flags)
 			foreach(lc, rownum_tles)
 			{
 				TargetEntry *tle = lfirst_node(TargetEntry, lc);
-				int num_rownums = count_rownum_exprs((Node *) tle->expr);
-				int i;
+				int			num_rownums = count_rownum_exprs((Node *) tle->expr);
+				int			i;
 
 				/*
-				 * Create one Var for each ROWNUM expression in this target entry.
+				 * Create one Var for each ROWNUM expression in this target
+				 * entry.
 				 */
 				for (i = 0; i < num_rownums; i++)
 				{
 					Var		   *var;
-					Oid			rownum_type = INT8OID;  /* ROWNUM is always int8 */
+					Oid			rownum_type = INT8OID;	/* ROWNUM is always int8 */
 
 					var = makeVar(OUTER_VAR,
 								  new_resno++,
@@ -2056,7 +2197,7 @@ create_projection_plan(PlannerInfo *root, ProjectionPath *best_path, int flags)
 
 			foreach(lc, rownum_vars)
 			{
-				Var *var = lfirst_node(Var, lc);
+				Var		   *var = lfirst_node(Var, lc);
 				TargetEntry *new_tle;
 
 				new_tle = makeTargetEntry((Expr *) copyObject(var),
@@ -2069,23 +2210,24 @@ create_projection_plan(PlannerInfo *root, ProjectionPath *best_path, int flags)
 			subplan->targetlist = new_input_tlist;
 
 			/*
-			 * Now replace all ROWNUM expressions in the final tlist
-			 * with Vars referencing Sort's output (which has the ROWNUM
-			 * values from the scan).
+			 * Now replace all ROWNUM expressions in the final tlist with Vars
+			 * referencing Sort's output (which has the ROWNUM values from the
+			 * scan).
 			 */
 			context.rownum_vars = rownum_vars;
 			context.rownum_idx = 0;
 			tlist = (List *) replace_rownum_expr_mutator((Node *) tlist, &context);
 
 			/*
-			 * The tlist now has ROWNUM replaced with Vars. If needs_result_node
-			 * is still true, a Result node will be created on top of Sort.
-			 * This is fine for bare ROWNUM (no Aggrefs) because setrefs can
-			 * handle Vars in Result's tlist by looking them up in Sort's output.
+			 * The tlist now has ROWNUM replaced with Vars. If
+			 * needs_result_node is still true, a Result node will be created
+			 * on top of Sort. This is fine for bare ROWNUM (no Aggrefs)
+			 * because setrefs can handle Vars in Result's tlist by looking
+			 * them up in Sort's output.
 			 */
 
-skip_rownum_handling:
-			;	/* Empty statement for label */
+	skip_rownum_handling:
+			;					/* Empty statement for label */
 		}
 	}
 
@@ -2346,14 +2488,14 @@ create_agg_plan(PlannerInfo *root, AggPath *best_path)
 	tlist = build_path_tlist(root, &best_path->path);
 
 	/*
-	 * Oracle ROWNUM compatibility: if any aggregate function has ROWNUM
-	 * in its arguments, we need to add ROWNUM to the subplan's target list.
-	 * This ensures ROWNUM is evaluated during the scan (where it gets
-	 * incrementing values) rather than during aggregation.
+	 * Oracle ROWNUM compatibility: if any aggregate function has ROWNUM in
+	 * its arguments, we need to add ROWNUM to the subplan's target list. This
+	 * ensures ROWNUM is evaluated during the scan (where it gets incrementing
+	 * values) rather than during aggregation.
 	 *
 	 * The setrefs.c code will then match the RownumExpr in the Aggref
-	 * arguments with the RownumExpr in the subplan's target list and
-	 * create appropriate Var references.
+	 * arguments with the RownumExpr in the subplan's target list and create
+	 * appropriate Var references.
 	 */
 	if (aggref_args_contain_rownum(tlist))
 	{
@@ -2362,9 +2504,9 @@ create_agg_plan(PlannerInfo *root, AggPath *best_path)
 		RownumExpr *rownum_expr;
 
 		/*
-		 * Add a single RownumExpr to the subplan's target list.
-		 * Multiple ROWNUM references in aggregates will all match this
-		 * one entry via equal() comparison.
+		 * Add a single RownumExpr to the subplan's target list. Multiple
+		 * ROWNUM references in aggregates will all match this one entry via
+		 * equal() comparison.
 		 */
 		new_resno = list_length(subplan->targetlist) + 1;
 		rownum_expr = makeNode(RownumExpr);
@@ -7527,8 +7669,9 @@ replace_rownum_expr_mutator(Node *node, void *context)
 		/* Replace with the next Var from our list */
 		if (ctx->rownum_idx < list_length(ctx->rownum_vars))
 		{
-			Var *replacement = (Var *) list_nth(ctx->rownum_vars,
-												ctx->rownum_idx);
+			Var		   *replacement = (Var *) list_nth(ctx->rownum_vars,
+													   ctx->rownum_idx);
+
 			ctx->rownum_idx++;
 			return (Node *) copyObject(replacement);
 		}
@@ -7546,7 +7689,7 @@ replace_rownum_expr_mutator(Node *node, void *context)
 static bool
 count_rownum_exprs_walker(Node *node, void *context)
 {
-	int *count = (int *) context;
+	int		   *count = (int *) context;
 
 	if (node == NULL)
 		return false;
@@ -7554,7 +7697,7 @@ count_rownum_exprs_walker(Node *node, void *context)
 	if (IsA(node, RownumExpr))
 	{
 		(*count)++;
-		return false;  /* Don't recurse into RownumExpr */
+		return false;			/* Don't recurse into RownumExpr */
 	}
 
 	return expression_tree_walker(node, count_rownum_exprs_walker, context);
@@ -7567,7 +7710,8 @@ count_rownum_exprs_walker(Node *node, void *context)
 static int
 count_rownum_exprs(Node *node)
 {
-	int count = 0;
+	int			count = 0;
+
 	count_rownum_exprs_walker(node, &count);
 	return count;
 }

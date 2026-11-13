@@ -976,6 +976,42 @@ SELECT ROWNUM, 'c' as src FROM (SELECT 1 FROM DUAL UNION ALL SELECT 2 FROM DUAL)
 (6 rows)
 
 --
+-- ROWNUM in an outer query block over a UNION ALL result
+-- Oracle assigns ROWNUM in the query block in which it is written, so an
+-- outer ROWNUM over a UNION ALL subquery numbers the combined result 1..N.
+-- The counter must not be restarted when the Append switches branches: the
+-- branches do not evaluate ROWNUM themselves here.
+--
+-- Outer ROWNUM over a UNION ALL of table subqueries
+SELECT ROWNUM AS rn, id FROM (
+    SELECT id FROM rownum_test WHERE id <= 3
+    UNION ALL
+    SELECT id FROM rownum_test WHERE id >= 8
+) t;
+ rn | id 
+----+----
+  1 |  1
+  2 |  2
+  3 |  3
+  4 |  8
+  5 |  9
+  6 | 10
+(6 rows)
+
+-- Top-N over a UNION ALL result (ROWNUM is assigned before the filter)
+SELECT ROWNUM AS rn, id FROM (
+    SELECT id FROM rownum_test WHERE id <= 3
+    UNION ALL
+    SELECT id FROM rownum_test WHERE id >= 8
+) t WHERE ROWNUM <= 3;
+ rn | id 
+----+----
+  1 |  1
+  2 |  2
+  3 |  3
+(3 rows)
+
+--
 -- UNION (not UNION ALL) with ROWNUM
 -- UNION uses MergeAppend + Unique nodes, so needs different ROWNUM reset handling.
 -- Each UNION branch should have independent ROWNUM counting.

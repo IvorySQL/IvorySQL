@@ -428,10 +428,15 @@ typedef struct Append
 	int			part_prune_index;
 
 	/*
-	 * True if this Append is from a UNION/UNION ALL operation. Used to reset
-	 * ROWNUM counter when switching between UNION branches (Oracle behavior).
+	 * True if the executor must reset the ROWNUM counter when it switches to
+	 * the next branch.  Oracle numbers the rows of each UNION/UNION ALL
+	 * branch independently, so this is set for a UNION/UNION ALL Append whose
+	 * branches evaluate ROWNUM themselves.  It is deliberately not set when
+	 * only an enclosing query block uses ROWNUM: in that case resetting the
+	 * shared counter would restart the numbering of the enclosing result
+	 * (e.g. SELECT ROWNUM FROM (SELECT ... UNION ALL SELECT ...) t).
 	 */
-	bool		is_union;
+	bool		reset_rownum;
 } Append;
 
 /* ----------------
@@ -477,10 +482,11 @@ typedef struct MergeAppend
 	int			part_prune_index;
 
 	/*
-	 * True if this MergeAppend is from a UNION/UNION ALL operation. Used to
-	 * reset ROWNUM counter before each branch starts (Oracle behavior).
+	 * True if the executor must reset the ROWNUM counter before each branch
+	 * starts, for the same reason as Append.reset_rownum: only when the
+	 * UNION/UNION ALL branches evaluate ROWNUM themselves.
 	 */
-	bool		is_union;
+	bool		reset_rownum;
 } MergeAppend;
 
 /* ----------------
