@@ -80,6 +80,7 @@ ORA_REGRESS = \
 	ora_binary_float \
 	ora_binary_double \
 	ora_nanvl \
+	ora_math_functions \
 	ora_raw_long \
 	ora_character_datatype_functions \
 	ora_substr \
