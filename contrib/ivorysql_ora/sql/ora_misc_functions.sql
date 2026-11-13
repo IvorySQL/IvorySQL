@@ -2464,3 +2464,32 @@ reset default_text_search_config;
 -- should throw errors, because dummy_config is not a valid configuration name
 set ivorysql.dummy_config to dummy;
 reset ivorysql.dummy_config;
+
+-- Oracle-compatible DBMS_STATS.GATHER_TABLE_STATS / GATHER_INDEX_STATS /
+-- GATHER_SCHEMA_STATS
+DROP TABLE IF EXISTS t_dbms_stats_test;
+CREATE TABLE t_dbms_stats_test (id INT, v TEXT);
+INSERT INTO t_dbms_stats_test SELECT G, 'v' || G FROM GENERATE_SERIES(1, 20) AS G;
+CREATE INDEX idx_dbms_stats_test ON t_dbms_stats_test (v);
+
+BEGIN
+  dbms_stats.gather_table_stats('public', 't_dbms_stats_test');
+END;
+/
+SELECT reltuples = 20 AS table_analyzed FROM pg_class WHERE oid = 't_dbms_stats_test'::regclass;
+
+BEGIN
+  dbms_stats.gather_index_stats('public', 'idx_dbms_stats_test');
+END;
+/
+BEGIN
+  dbms_stats.gather_schema_stats('public');
+END;
+/
+BEGIN
+  dbms_stats.gather_table_stats('public', 'no_such_table_xyz');
+EXCEPTION WHEN others THEN
+  RAISE NOTICE 'missing table rejected';
+END;
+/
+DROP TABLE t_dbms_stats_test;
