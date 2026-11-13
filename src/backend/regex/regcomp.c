@@ -452,7 +452,7 @@ pg_regcomp(regex_t *re,
 
 	/* parsing */
 	lexstart(v);				/* also handles prefixes */
-	if (v->cflags & (REG_NLSTOP | REG_NLANCH | REG_NLDOT))
+	if (v->cflags & (REG_NLSTOP | REG_NLANCH | REG_NLDOT | REG_NLEND))
 	{
 		/* assign newline a unique color */
 		v->nlcolor = subcolor(v->cm, newline());
@@ -879,7 +879,7 @@ parseqatom(struct vars *v,
 			break;
 		case '$':
 			ARCV('$', 1);
-			if (v->cflags & REG_NLANCH)
+			if (v->cflags & (REG_NLANCH | REG_NLEND))
 				ARCV(AHEAD, v->nlcolor);
 			NEXT();
 			return top;

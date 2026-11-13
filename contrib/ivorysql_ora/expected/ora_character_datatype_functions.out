@@ -1651,6 +1651,97 @@ select regexp_count('ABC12D3', '([A-Z][0-9]){2}') Char_num_within_2_places, rege
                         0 |                        1
 (1 row)
 
+-- With m+n, only the end anchor recognizes internal line boundaries.
+SELECT match_param,
+       sys.regexp_count(s, '^b$', 1, match_param) AS start_match,
+       sys.regexp_count(s, 'b$', 1, match_param) AS end_match,
+       sys.regexp_count(s, '^x.b.y$', 1, match_param) AS dot_match,
+       pg_catalog.regexp_count(s, '^b$', 1, match_param) AS pg_match
+FROM (VALUES ('m'), ('n'), ('mn'), ('nm')) AS flags(match_param)
+CROSS JOIN (VALUES ('x'||chr(10)||'b'||chr(10)||'y')) AS data(s)
+ORDER BY match_param;
+ match_param | start_match | end_match | dot_match | pg_match 
+-------------+-------------+-----------+-----------+----------
+ m           |           1 |         1 |         0 |        1
+ mn          |           0 |         1 |         1 |        1
+ n           |           0 |         0 |         1 |        1
+ nm          |           0 |         1 |         1 |        1
+(4 rows)
+
+SELECT sys.regexp_count('b'||chr(10)||'y', '^b$', 1, 'mn') AS starts_at_beginning,
+       sys.regexp_count('x'||chr(10)||'b'||chr(10), '^', 1, 'mn') AS single_start
+FROM dual;
+ starts_at_beginning | single_start 
+---------------------+--------------
+                   1 |            1
+(1 row)
+
+-- Embedded ARE newline modes override the external Oracle match parameters.
+SELECT match_param, pattern,
+       sys.regexp_count(s, pattern, 1, match_param) AS ora_match,
+       pg_catalog.regexp_count(s, pattern, 1, match_param) AS pg_match
+FROM (VALUES ('mn'), ('nm')) AS flags(match_param)
+CROSS JOIN (VALUES ('(?s)b$'), ('(?p)b$'), ('(?n)^b$'), ('(?w)^b$'),
+                  ('(?ns)b$'), ('(?wp)b$'), ('(?sn)^b$'), ('(?pw)^b$')) AS patterns(pattern)
+CROSS JOIN (VALUES ('x'||chr(10)||'b'||chr(10)||'y')) AS data(s)
+ORDER BY match_param, pattern;
+ match_param | pattern  | ora_match | pg_match 
+-------------+----------+-----------+----------
+ mn          | (?n)^b$  |         1 |        1
+ mn          | (?ns)b$  |         0 |        0
+ mn          | (?p)b$   |         0 |        0
+ mn          | (?pw)^b$ |         1 |        1
+ mn          | (?s)b$   |         0 |        0
+ mn          | (?sn)^b$ |         1 |        1
+ mn          | (?w)^b$  |         1 |        1
+ mn          | (?wp)b$  |         0 |        0
+ nm          | (?n)^b$  |         1 |        1
+ nm          | (?ns)b$  |         0 |        0
+ nm          | (?p)b$   |         0 |        0
+ nm          | (?pw)^b$ |         1 |        1
+ nm          | (?s)b$   |         0 |        0
+ nm          | (?sn)^b$ |         1 |        1
+ nm          | (?w)^b$  |         1 |        1
+ nm          | (?wp)b$  |         0 |        0
+(16 rows)
+
+-- The shared Oracle flag parser also serves REPLACE, SUBSTR, and INSTR.
+SELECT match_param,
+       sys.regexp_replace(s, '^bb$', 'B', 1, 0, match_param) = s AS unchanged,
+       coalesce(sys.regexp_substr(s, '^bb$', 1, 1, match_param), '<null>') AS matched,
+       sys.regexp_instr(s, '^bb$', 1, 1, 0, match_param)::integer AS match_pos
+FROM (VALUES ('m'), ('mn'), ('nm'), ('mnn'), ('nmm'),
+             ('mni'), ('mnc'), ('mnx')) AS flags(match_param)
+CROSS JOIN (VALUES ('x'||chr(10)||'bb'||chr(10)||'y')) AS data(s)
+ORDER BY match_param;
+ match_param | unchanged | matched | match_pos 
+-------------+-----------+---------+-----------
+ m           | f         | bb      |         3
+ mn          | t         | <null>  |         0
+ mnc         | t         | <null>  |         0
+ mni         | t         | <null>  |         0
+ mnn         | t         | <null>  |         0
+ mnx         | t         | <null>  |         0
+ nm          | t         | <null>  |         0
+ nmm         | t         | <null>  |         0
+(8 rows)
+
+-- A non-default search position still permits an internal end anchor.
+SELECT match_param,
+       sys.regexp_count(s, 'bb$', 2, match_param) AS matches,
+       sys.regexp_replace(s, 'bb$', 'B', 2, 0, match_param) =
+           'x'||chr(10)||'B'||chr(10)||'y' AS replaced,
+       sys.regexp_substr(s, 'bb$', 2, 1, match_param) AS matched,
+       sys.regexp_instr(s, 'bb$', 2, 1, 0, match_param)::integer AS match_pos
+FROM (VALUES ('mn'), ('nm')) AS flags(match_param)
+CROSS JOIN (VALUES ('x'||chr(10)||'bb'||chr(10)||'y')) AS data(s)
+ORDER BY match_param;
+ match_param | matches | replaced | matched | match_pos 
+-------------+---------+----------+---------+-----------
+ mn          |       1 | t        | bb      |         3
+ nm          |       1 | t        | bb      |         3
+(2 rows)
+
 CREATE TABLE regexp_temp(empName varchar2(20));
 INSERT INTO regexp_temp (empName) VALUES ('John Doe');
 INSERT INTO regexp_temp (empName) VALUES ('Jane Doe');
