@@ -884,6 +884,18 @@ errcode(int sqlerrcode)
 	return 0;					/* return value does not matter */
 }
 
+/*
+ * Record the identity of a PL/iSQL exception separately from its SQLSTATE.
+ */
+int
+errplisql_exception(uint64 exception_id)
+{
+	ErrorData  *edata = &errordata[errordata_stack_depth];
+
+	CHECK_STACK_DEPTH();
+	edata->plisql_exception_id = exception_id;
+	return 0;
+}
 
 /*
  * errcode_for_file_access --- add SQLSTATE error code to the current error
@@ -2103,6 +2115,7 @@ ThrowErrorData(ErrorData *edata)
 	/* Copy the supplied fields to the error stack entry. */
 	if (edata->sqlerrcode != 0)
 		newedata->sqlerrcode = edata->sqlerrcode;
+	newedata->plisql_exception_id = edata->plisql_exception_id;
 	if (edata->message)
 		newedata->message = pstrdup(edata->message);
 	if (edata->detail)

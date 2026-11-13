@@ -3443,7 +3443,7 @@ proc_condition	: any_identifier
 								if (strspn(sqlstatestr, "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ") != 5)
 									yyerror(&yylloc, NULL, yyscanner,  "invalid SQLSTATE code");
 
-								new = palloc_object(PLiSQL_condition);
+								new = palloc0_object(PLiSQL_condition);
 								new->sqlerrstate =
 									MAKE_SQLSTATE(sqlstatestr[0],
 												  sqlstatestr[1],

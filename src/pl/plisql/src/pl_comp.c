@@ -3355,8 +3355,9 @@ plisql_parse_err_condition(char *condname)
 	PLiSQL_exception_var *exc = plisql_lookup_exception(condname);
 	if (exc != NULL)
 	{
-		new = palloc_object(PLiSQL_condition);
+		new = palloc0_object(PLiSQL_condition);
 		new->sqlerrstate = exc->sqlcode;
+		new->exception_id = exc->exception_id;
 		new->condname = condname;
 		new->next = NULL;
 		return new;
@@ -3365,7 +3366,7 @@ plisql_parse_err_condition(char *condname)
 	/* Check for OTHERS */
 	if (strcmp(condname, "others") == 0)
 	{
-		new = palloc_object(PLiSQL_condition);
+		new = palloc0_object(PLiSQL_condition);
 		new->sqlerrstate = PLISQL_OTHERS;
 		new->condname = condname;
 		new->next = NULL;
@@ -3377,7 +3378,7 @@ plisql_parse_err_condition(char *condname)
 	{
 		if (strcmp(condname, exception_label_map[i].label) == 0)
 		{
-			new = palloc_object(PLiSQL_condition);
+			new = palloc0_object(PLiSQL_condition);
 			new->sqlerrstate = exception_label_map[i].sqlerrstate;
 			new->condname = condname;
 			new->next = prev;

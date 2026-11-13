@@ -1900,6 +1900,13 @@ exception_matches_conditions(ErrorData *edata, PLiSQL_condition * cond)
 	{
 		int			sqlerrstate = cond->sqlerrstate;
 
+		if (cond->exception_id != 0)
+		{
+			if (edata->plisql_exception_id == cond->exception_id)
+				return true;
+			continue;
+		}
+
 		/*
 		 * OTHERS matches everything *except* query-canceled and
 		 * assert-failure.  If you're foolish enough, you can match those
@@ -4182,6 +4189,7 @@ static int
 exec_stmt_raise(PLiSQL_execstate * estate, PLiSQL_stmt_raise * stmt)
 {
 	int			err_code = 0;
+	uint64		exception_id = 0;
 	char	   *condname = NULL;
 	char	   *err_message = NULL;
 	char	   *err_detail = NULL;
@@ -4216,6 +4224,7 @@ exec_stmt_raise(PLiSQL_execstate * estate, PLiSQL_stmt_raise * stmt)
 
 		/* Use the exception's sqlcode */
 		err_code = exc->sqlcode;
+		exception_id = exc->exception_id;
 		condname = MemoryContextStrdup(stmt_mcontext, exc->refname);
 
 		/* If no custom message, use Oracle default */
@@ -4379,6 +4388,7 @@ exec_stmt_raise(PLiSQL_execstate * estate, PLiSQL_stmt_raise * stmt)
 	 */
 	ereport(stmt->elog_level,
 			(err_code ? errcode(err_code) : 0,
+			 exception_id ? errplisql_exception(exception_id) : 0,
 			 errmsg_internal("%s", err_message),
 			 (err_detail != NULL) ? errdetail_internal("%s", err_detail) : 0,
 			 (err_hint != NULL) ? errhint("%s", err_hint) : 0,
