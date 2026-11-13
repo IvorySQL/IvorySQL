@@ -1282,3 +1282,1327 @@ WHERE
   AND NOT pg_class.relispartition;
 
 GRANT SELECT ON SYS.ALL_TAB_COLUMNS TO PUBLIC;
+
+-- USER_/ALL_/DBA_TAB_MODIFICATIONS: how much a table has changed.  Oracle
+-- reports the changes since the last statistics refresh; PostgreSQL keeps the
+-- per-table counters cumulatively and only tracks the total since the last
+-- ANALYZE, so INSERTS/UPDATES/DELETES are the cumulative counters and
+-- TIMESTAMP is the last analyze time.  The column comment states this instead
+-- of pretending to be Oracle's delta.
+CREATE OR REPLACE VIEW SYS.DBA_TAB_MODIFICATIONS AS
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128) AS TABLE_OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)         AS TABLE_NAME,
+    NULL::VARCHAR2(128)                                            AS PARTITION_NAME,
+    NULL::NUMBER                                                   AS PARTITION_POSITION,
+    NULL::VARCHAR2(128)                                            AS SUBPARTITION_NAME,
+    NULL::NUMBER                                                   AS SUBPARTITION_POSITION,
+    ST.N_TUP_INS::NUMBER                                           AS INSERTS,
+    ST.N_TUP_UPD::NUMBER                                           AS UPDATES,
+    ST.N_TUP_DEL::NUMBER                                           AS DELETES,
+    ST.LAST_ANALYZE                                                AS TIMESTAMP,
+    0::NUMBER                                                      AS DROP_SEGMENTS,
+    0::NUMBER                                                      AS FLAGS,
+    C.RELOWNER                                                     AS OWNER_OID,
+    C.OID                                                          AS REL_OID
+FROM PG_CATALOG.PG_STAT_ALL_TABLES ST
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = ST.RELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+WHERE N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast');
+GRANT SELECT ON SYS.DBA_TAB_MODIFICATIONS TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.USER_TAB_MODIFICATIONS AS
+SELECT TABLE_NAME, PARTITION_NAME, PARTITION_POSITION, SUBPARTITION_NAME,
+       SUBPARTITION_POSITION, INSERTS, UPDATES, DELETES, TIMESTAMP,
+       DROP_SEGMENTS, FLAGS
+FROM SYS.DBA_TAB_MODIFICATIONS
+WHERE OWNER_OID = (SELECT OID FROM PG_CATALOG.PG_ROLES WHERE ROLNAME = CURRENT_USER);
+GRANT SELECT ON SYS.USER_TAB_MODIFICATIONS TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.ALL_TAB_MODIFICATIONS AS
+SELECT TABLE_OWNER, TABLE_NAME, PARTITION_NAME, PARTITION_POSITION,
+       SUBPARTITION_NAME, SUBPARTITION_POSITION, INSERTS, UPDATES, DELETES,
+       TIMESTAMP, DROP_SEGMENTS, FLAGS
+FROM SYS.DBA_TAB_MODIFICATIONS
+WHERE HAS_TABLE_PRIVILEGE(REL_OID, 'SELECT');
+GRANT SELECT ON SYS.ALL_TAB_MODIFICATIONS TO PUBLIC;
+
+-- V$SESSION_LONGOPS: long-running operations with progress.  Oracle fills it
+-- while a long operation runs; PostgreSQL exposes the same information in the
+-- pg_stat_progress_* views, so this one unions the operations that report
+-- progress per block.  It is empty when nothing long is running, exactly like
+-- Oracle's view between operations.
+CREATE OR REPLACE VIEW SYS.V$SESSION_LONGOPS AS
+SELECT
+    P.PID::NUMBER                                                  AS SID,
+    NULL::NUMBER                                                   AS SERIAL,
+    P.OPNAME::VARCHAR2(64)                                         AS OPNAME,
+    P.TARGET::VARCHAR2(128)                                        AS TARGET,
+    NULL::TIMESTAMPTZ                                              AS START_TIME,
+    NULL::TIMESTAMPTZ                                              AS LAST_UPDATE_TIME,
+    NULL::NUMBER                                                   AS ELAPSED_SECONDS,
+    NULL::NUMBER                                                   AS TIME_REMAINING,
+    P.SOFAR::NUMBER                                                AS SOFAR,
+    P.TOTALWORK::NUMBER                                            AS TOTALWORK,
+    P.UNITS::VARCHAR2(32)                                          AS UNITS,
+    0::NUMBER                                                      AS CON_ID
+FROM (
+    SELECT PID,
+           'Vacuum'::VARCHAR2(64) AS OPNAME,
+           RELID::REGCLASS::TEXT::VARCHAR2(128) AS TARGET,
+           HEAP_BLKS_SCANNED AS SOFAR,
+           HEAP_BLKS_TOTAL AS TOTALWORK,
+           'blocks'::VARCHAR2(32) AS UNITS
+    FROM PG_CATALOG.PG_STAT_PROGRESS_VACUUM
+    UNION ALL
+    SELECT PID,
+           'Create Index'::VARCHAR2(64),
+           RELID::REGCLASS::TEXT::VARCHAR2(128),
+           BLOCKS_DONE,
+           BLOCKS_TOTAL,
+           'blocks'::VARCHAR2(32)
+    FROM PG_CATALOG.PG_STAT_PROGRESS_CREATE_INDEX
+) P;
+GRANT SELECT ON SYS.V$SESSION_LONGOPS TO PUBLIC;
+
+-- USER_/ALL_/DBA_POLICIES: Oracle's view of VPD policies, mapped onto
+-- PostgreSQL row-level security policies (pg_policy).  SEL/INS/UPD/CHK say
+-- which command the policy applies to: Oracle has no separate DELETE flag, so
+-- a DELETE policy is reported in CHK, which is the column Oracle uses for the
+-- check side.
+CREATE OR REPLACE VIEW SYS.DBA_POLICIES AS
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(C.RELOWNER)::VARCHAR2)::VARCHAR2(128) AS OBJECT_OWNER,
+    SYS.ORA_CASE_TRANS(C.RELNAME::VARCHAR2)::VARCHAR2(128)        AS OBJECT_NAME,
+    NULL::VARCHAR2(128)                                           AS POLICY_GROUP,
+    SYS.ORA_CASE_TRANS(P.POLNAME::VARCHAR2)::VARCHAR2(128)        AS POLICY_NAME,
+    NULL::VARCHAR2(128)                                           AS PF_OWNER,
+    NULL::VARCHAR2(128)                                           AS PACKAGE,
+    PG_GET_EXPR(P.POLQUAL, C.OID)::VARCHAR2(4000)                 AS FUNCTION,
+    CASE WHEN P.POLCMD IN ('r', '*') THEN 'YES' ELSE 'NO' END::VARCHAR2(3) AS SEL,
+    CASE WHEN P.POLCMD IN ('a', '*') THEN 'YES' ELSE 'NO' END::VARCHAR2(3) AS INS,
+    CASE WHEN P.POLCMD IN ('w', '*') THEN 'YES' ELSE 'NO' END::VARCHAR2(3) AS UPD,
+    'NO'::VARCHAR2(3)                                             AS IDX,
+    CASE WHEN P.POLCMD IN ('d', '*') THEN 'YES' ELSE 'NO' END::VARCHAR2(3) AS CHK,
+    'YES'::VARCHAR2(3)                                            AS ENABLE,
+    'NO'::VARCHAR2(3)                                             AS STATIC_POLICY,
+    'STATIC'::VARCHAR2(10)                                        AS POLICY_TYPE,
+    'NO'::VARCHAR2(3)                                             AS LONG_PREDICATE,
+    C.RELOWNER                                                    AS OWNER_OID,
+    C.OID                                                         AS REL_OID
+FROM PG_CATALOG.PG_POLICY P
+JOIN PG_CATALOG.PG_CLASS C ON C.OID = P.POLRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = C.RELNAMESPACE
+WHERE N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast');
+GRANT SELECT ON SYS.DBA_POLICIES TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.ALL_POLICIES AS
+SELECT OBJECT_OWNER, OBJECT_NAME, POLICY_GROUP, POLICY_NAME, PF_OWNER, PACKAGE,
+       FUNCTION, SEL, INS, UPD, IDX, CHK, ENABLE, STATIC_POLICY, POLICY_TYPE,
+       LONG_PREDICATE
+FROM SYS.DBA_POLICIES
+WHERE HAS_TABLE_PRIVILEGE(REL_OID, 'SELECT');
+GRANT SELECT ON SYS.ALL_POLICIES TO PUBLIC;
+
+CREATE OR REPLACE VIEW SYS.USER_POLICIES AS
+SELECT OBJECT_NAME, POLICY_GROUP, POLICY_NAME, PF_OWNER, PACKAGE, FUNCTION,
+       SEL, INS, UPD, IDX, CHK, ENABLE, STATIC_POLICY, POLICY_TYPE,
+       LONG_PREDICATE
+FROM SYS.DBA_POLICIES
+WHERE OWNER_OID = (SELECT OID FROM PG_CATALOG.PG_ROLES WHERE ROLNAME = CURRENT_USER);
+GRANT SELECT ON SYS.USER_POLICIES TO PUBLIC;
+
+-- USER_IND_STATISTICS: optimizer statistics of the current user's indexes.
+-- PostgreSQL keeps index statistics in pg_statistic keyed by the index
+-- relation, so NUM_ROWS/LEAF_BLOCKS come from pg_class and DISTINCT_KEYS
+-- from the first indexed column.  Fields without a PostgreSQL source are
+-- NULL rather than invented.
+CREATE OR REPLACE VIEW SYS.USER_IND_STATISTICS AS
+SELECT INDEX_OWNER, INDEX_NAME, TABLE_OWNER, TABLE_NAME, PARTITION_NAME,
+       PARTITION_POSITION, SUBPARTITION_NAME, SUBPARTITION_POSITION,
+       OBJECT_TYPE, LAST_ANALYZED, NUM_ROWS, LEAF_BLOCKS, DISTINCT_KEYS,
+       AVG_LEAF_BLOCKS_PER_KEY, AVG_DATA_BLOCKS_PER_KEY, CLUSTERING_FACTOR,
+       STATUS, NUM_DISTINCT, SAMPLE_SIZE, GLOBAL_STATS, USER_STATS,
+       STALE_STATS, NOTE
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(IC.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS INDEX_OWNER,
+    SYS.ORA_CASE_TRANS(IC.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS INDEX_NAME,
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(TC.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS TABLE_OWNER,
+    SYS.ORA_CASE_TRANS(TC.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS TABLE_NAME,
+    NULL::VARCHAR2(128)                                                        AS PARTITION_NAME,
+    NULL::NUMBER                                                               AS PARTITION_POSITION,
+    NULL::VARCHAR2(128)                                                        AS SUBPARTITION_NAME,
+    NULL::NUMBER                                                               AS SUBPARTITION_POSITION,
+    'INDEX'::VARCHAR2(13)                                                      AS OBJECT_TYPE,
+    NULL::TIMESTAMPTZ                                                          AS LAST_ANALYZED,
+    CASE WHEN IC.RELTUPLES < 0 THEN NULL
+         ELSE ROUND(IC.RELTUPLES)::NUMBER
+    END                                                                        AS NUM_ROWS,
+    IC.RELPAGES::NUMBER                                                        AS LEAF_BLOCKS,
+    (SELECT CASE WHEN S.STADISTINCT >= 0 THEN ROUND(S.STADISTINCT)::NUMBER END
+       FROM PG_CATALOG.PG_STATISTIC S
+      WHERE S.STARELID = IC.OID AND S.STAATTNUM = 1
+      LIMIT 1)                                                                 AS DISTINCT_KEYS,
+    NULL::NUMBER                                                               AS AVG_LEAF_BLOCKS_PER_KEY,
+    NULL::NUMBER                                                               AS AVG_DATA_BLOCKS_PER_KEY,
+    NULL::NUMBER                                                               AS CLUSTERING_FACTOR,
+    'VALID'::VARCHAR2(8)                                                       AS STATUS,
+    (SELECT CASE WHEN S.STADISTINCT >= 0 THEN ROUND(S.STADISTINCT)::NUMBER END
+       FROM PG_CATALOG.PG_STATISTIC S
+      WHERE S.STARELID = IC.OID AND S.STAATTNUM = 1
+      LIMIT 1)                                                                 AS NUM_DISTINCT,
+    NULL::NUMBER                                                               AS SAMPLE_SIZE,
+    'YES'::VARCHAR2(3)                                                         AS GLOBAL_STATS,
+    'NO'::VARCHAR2(3)                                                          AS USER_STATS,
+    CASE WHEN IC.RELTUPLES < 0 THEN 'YES' ELSE 'NO' END::VARCHAR2(3)           AS STALE_STATS,
+    NULL::VARCHAR2(4000)                                                       AS NOTE,
+    TC.OID                                                                     AS TABLE_OID
+FROM PG_CATALOG.PG_INDEX I
+JOIN PG_CATALOG.PG_CLASS IC ON IC.OID = I.INDEXRELID
+JOIN PG_CATALOG.PG_CLASS TC ON TC.OID = I.INDRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = TC.RELNAMESPACE
+WHERE IC.RELKIND = 'i'
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+WHERE S.INDEX_OWNER = SYS.ORA_CASE_TRANS(CURRENT_USER::VARCHAR2);
+GRANT SELECT ON SYS.USER_IND_STATISTICS TO PUBLIC;
+
+-- ALL_IND_STATISTICS: the same rows for indexes on tables the current user
+-- can read.
+CREATE OR REPLACE VIEW SYS.ALL_IND_STATISTICS AS
+SELECT INDEX_OWNER, INDEX_NAME, TABLE_OWNER, TABLE_NAME, PARTITION_NAME,
+       PARTITION_POSITION, SUBPARTITION_NAME, SUBPARTITION_POSITION,
+       OBJECT_TYPE, LAST_ANALYZED, NUM_ROWS, LEAF_BLOCKS, DISTINCT_KEYS,
+       AVG_LEAF_BLOCKS_PER_KEY, AVG_DATA_BLOCKS_PER_KEY, CLUSTERING_FACTOR,
+       STATUS, NUM_DISTINCT, SAMPLE_SIZE, GLOBAL_STATS, USER_STATS,
+       STALE_STATS, NOTE
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(IC.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS INDEX_OWNER,
+    SYS.ORA_CASE_TRANS(IC.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS INDEX_NAME,
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(TC.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS TABLE_OWNER,
+    SYS.ORA_CASE_TRANS(TC.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS TABLE_NAME,
+    NULL::VARCHAR2(128)                                                        AS PARTITION_NAME,
+    NULL::NUMBER                                                               AS PARTITION_POSITION,
+    NULL::VARCHAR2(128)                                                        AS SUBPARTITION_NAME,
+    NULL::NUMBER                                                               AS SUBPARTITION_POSITION,
+    'INDEX'::VARCHAR2(13)                                                      AS OBJECT_TYPE,
+    NULL::TIMESTAMPTZ                                                          AS LAST_ANALYZED,
+    CASE WHEN IC.RELTUPLES < 0 THEN NULL
+         ELSE ROUND(IC.RELTUPLES)::NUMBER
+    END                                                                        AS NUM_ROWS,
+    IC.RELPAGES::NUMBER                                                        AS LEAF_BLOCKS,
+    (SELECT CASE WHEN S.STADISTINCT >= 0 THEN ROUND(S.STADISTINCT)::NUMBER END
+       FROM PG_CATALOG.PG_STATISTIC S
+      WHERE S.STARELID = IC.OID AND S.STAATTNUM = 1
+      LIMIT 1)                                                                 AS DISTINCT_KEYS,
+    NULL::NUMBER                                                               AS AVG_LEAF_BLOCKS_PER_KEY,
+    NULL::NUMBER                                                               AS AVG_DATA_BLOCKS_PER_KEY,
+    NULL::NUMBER                                                               AS CLUSTERING_FACTOR,
+    'VALID'::VARCHAR2(8)                                                       AS STATUS,
+    (SELECT CASE WHEN S.STADISTINCT >= 0 THEN ROUND(S.STADISTINCT)::NUMBER END
+       FROM PG_CATALOG.PG_STATISTIC S
+      WHERE S.STARELID = IC.OID AND S.STAATTNUM = 1
+      LIMIT 1)                                                                 AS NUM_DISTINCT,
+    NULL::NUMBER                                                               AS SAMPLE_SIZE,
+    'YES'::VARCHAR2(3)                                                         AS GLOBAL_STATS,
+    'NO'::VARCHAR2(3)                                                          AS USER_STATS,
+    CASE WHEN IC.RELTUPLES < 0 THEN 'YES' ELSE 'NO' END::VARCHAR2(3)           AS STALE_STATS,
+    NULL::VARCHAR2(4000)                                                       AS NOTE,
+    TC.OID                                                                     AS TABLE_OID
+FROM PG_CATALOG.PG_INDEX I
+JOIN PG_CATALOG.PG_CLASS IC ON IC.OID = I.INDEXRELID
+JOIN PG_CATALOG.PG_CLASS TC ON TC.OID = I.INDRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = TC.RELNAMESPACE
+WHERE IC.RELKIND = 'i'
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S
+WHERE HAS_TABLE_PRIVILEGE(S.TABLE_OID, 'SELECT');
+GRANT SELECT ON SYS.ALL_IND_STATISTICS TO PUBLIC;
+
+-- DBA_IND_STATISTICS: unrestricted.
+CREATE OR REPLACE VIEW SYS.DBA_IND_STATISTICS AS
+SELECT INDEX_OWNER, INDEX_NAME, TABLE_OWNER, TABLE_NAME, PARTITION_NAME,
+       PARTITION_POSITION, SUBPARTITION_NAME, SUBPARTITION_POSITION,
+       OBJECT_TYPE, LAST_ANALYZED, NUM_ROWS, LEAF_BLOCKS, DISTINCT_KEYS,
+       AVG_LEAF_BLOCKS_PER_KEY, AVG_DATA_BLOCKS_PER_KEY, CLUSTERING_FACTOR,
+       STATUS, NUM_DISTINCT, SAMPLE_SIZE, GLOBAL_STATS, USER_STATS,
+       STALE_STATS, NOTE
+FROM (
+
+SELECT
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(IC.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS INDEX_OWNER,
+    SYS.ORA_CASE_TRANS(IC.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS INDEX_NAME,
+    SYS.ORA_CASE_TRANS(PG_GET_USERBYID(TC.RELOWNER)::VARCHAR2)::VARCHAR2(128)  AS TABLE_OWNER,
+    SYS.ORA_CASE_TRANS(TC.RELNAME::VARCHAR2)::VARCHAR2(128)                    AS TABLE_NAME,
+    NULL::VARCHAR2(128)                                                        AS PARTITION_NAME,
+    NULL::NUMBER                                                               AS PARTITION_POSITION,
+    NULL::VARCHAR2(128)                                                        AS SUBPARTITION_NAME,
+    NULL::NUMBER                                                               AS SUBPARTITION_POSITION,
+    'INDEX'::VARCHAR2(13)                                                      AS OBJECT_TYPE,
+    NULL::TIMESTAMPTZ                                                          AS LAST_ANALYZED,
+    CASE WHEN IC.RELTUPLES < 0 THEN NULL
+         ELSE ROUND(IC.RELTUPLES)::NUMBER
+    END                                                                        AS NUM_ROWS,
+    IC.RELPAGES::NUMBER                                                        AS LEAF_BLOCKS,
+    (SELECT CASE WHEN S.STADISTINCT >= 0 THEN ROUND(S.STADISTINCT)::NUMBER END
+       FROM PG_CATALOG.PG_STATISTIC S
+      WHERE S.STARELID = IC.OID AND S.STAATTNUM = 1
+      LIMIT 1)                                                                 AS DISTINCT_KEYS,
+    NULL::NUMBER                                                               AS AVG_LEAF_BLOCKS_PER_KEY,
+    NULL::NUMBER                                                               AS AVG_DATA_BLOCKS_PER_KEY,
+    NULL::NUMBER                                                               AS CLUSTERING_FACTOR,
+    'VALID'::VARCHAR2(8)                                                       AS STATUS,
+    (SELECT CASE WHEN S.STADISTINCT >= 0 THEN ROUND(S.STADISTINCT)::NUMBER END
+       FROM PG_CATALOG.PG_STATISTIC S
+      WHERE S.STARELID = IC.OID AND S.STAATTNUM = 1
+      LIMIT 1)                                                                 AS NUM_DISTINCT,
+    NULL::NUMBER                                                               AS SAMPLE_SIZE,
+    'YES'::VARCHAR2(3)                                                         AS GLOBAL_STATS,
+    'NO'::VARCHAR2(3)                                                          AS USER_STATS,
+    CASE WHEN IC.RELTUPLES < 0 THEN 'YES' ELSE 'NO' END::VARCHAR2(3)           AS STALE_STATS,
+    NULL::VARCHAR2(4000)                                                       AS NOTE,
+    TC.OID                                                                     AS TABLE_OID
+FROM PG_CATALOG.PG_INDEX I
+JOIN PG_CATALOG.PG_CLASS IC ON IC.OID = I.INDEXRELID
+JOIN PG_CATALOG.PG_CLASS TC ON TC.OID = I.INDRELID
+JOIN PG_CATALOG.PG_NAMESPACE N ON N.OID = TC.RELNAMESPACE
+WHERE IC.RELKIND = 'i'
+  AND N.NSPNAME NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+
+) S;
+GRANT SELECT ON SYS.DBA_IND_STATISTICS TO PUBLIC;
+
+--
+-- USER_TAB_PRIVS / ALL_TAB_PRIVS / DBA_TAB_PRIVS: the grants on the
+-- relations, like Oracle's views of the same name.  PUBLIC grants are
+-- reported with the GRANTEE spelled PUBLIC and the owner is reported as the
+-- grantor, because the catalog does not record who granted a privilege.
+--
+CREATE OR REPLACE VIEW SYS.USER_TAB_PRIVS AS
+SELECT
+    (CASE WHEN a.grantee = 0 THEN 'PUBLIC'
+          ELSE pg_catalog.pg_get_userbyid(a.grantee)
+     END)::varchar2(128) AS grantee,
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    pg_catalog.pg_get_userbyid(c.relowner)::varchar2(128) AS grantor,
+    a.privilege_type::varchar2(40) AS privilege,
+    (CASE WHEN a.is_grantable THEN 'YES' ELSE 'NO' END)::varchar2(3) AS grantable
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+CROSS JOIN LATERAL pg_catalog.aclexplode(c.relacl) AS a
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND c.relkind IN ('r','v','m','p','f','S')
+    AND (a.grantee = (SELECT r.oid FROM pg_roles r WHERE r.rolname = current_user)
+         OR pg_catalog.pg_get_userbyid(c.relowner) = current_user);
+
+GRANT SELECT ON SYS.USER_TAB_PRIVS TO PUBLIC;
+
+--
+-- ALL_TAB_PRIVS: the same rows for every relation the current user may
+-- read, with the privilege filter the ALL_ views carry.  PUBLIC grants are
+-- reported with the GRANTEE spelled PUBLIC and the owner is reported as the
+-- grantor, because the catalog does not record who granted a privilege.
+--
+CREATE OR REPLACE VIEW SYS.ALL_TAB_PRIVS AS
+SELECT
+    (CASE WHEN a.grantee = 0 THEN 'PUBLIC'
+          ELSE pg_catalog.pg_get_userbyid(a.grantee)
+     END)::varchar2(128) AS grantee,
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    pg_catalog.pg_get_userbyid(c.relowner)::varchar2(128) AS grantor,
+    a.privilege_type::varchar2(40) AS privilege,
+    (CASE WHEN a.is_grantable THEN 'YES' ELSE 'NO' END)::varchar2(3) AS grantable
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+CROSS JOIN LATERAL pg_catalog.aclexplode(c.relacl) AS a
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND c.relkind IN ('r','v','m','p','f','S')
+    AND pg_catalog.has_table_privilege(current_user, c.oid, 'SELECT');
+
+GRANT SELECT ON SYS.ALL_TAB_PRIVS TO PUBLIC;
+
+--
+-- DBA_TAB_PRIVS: the same rows without the privilege filter, like the
+-- other DBA_ views.  PUBLIC grants are
+-- reported with the GRANTEE spelled PUBLIC and the owner is reported as the
+-- grantor, because the catalog does not record who granted a privilege.
+--
+CREATE OR REPLACE VIEW SYS.DBA_TAB_PRIVS AS
+SELECT
+    (CASE WHEN a.grantee = 0 THEN 'PUBLIC'
+          ELSE pg_catalog.pg_get_userbyid(a.grantee)
+     END)::varchar2(128) AS grantee,
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    pg_catalog.pg_get_userbyid(c.relowner)::varchar2(128) AS grantor,
+    a.privilege_type::varchar2(40) AS privilege,
+    (CASE WHEN a.is_grantable THEN 'YES' ELSE 'NO' END)::varchar2(3) AS grantable
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+CROSS JOIN LATERAL pg_catalog.aclexplode(c.relacl) AS a
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND c.relkind IN ('r','v','m','p','f','S');
+
+
+GRANT SELECT ON SYS.DBA_TAB_PRIVS TO PUBLIC;
+
+--
+-- USER_IND_PARTITIONS / ALL_IND_PARTITIONS / DBA_IND_PARTITIONS: the
+-- partitions of a partitioned index, like Oracle's views of the same name.
+--
+CREATE OR REPLACE VIEW SYS.USER_IND_PARTITIONS AS
+SELECT
+    sys.ora_case_trans(pi.relname::varchar2)::varchar2(128) AS index_name,
+    sys.ora_case_trans(ci.relname::varchar2)::varchar2(128) AS partition_name,
+    sys.ora_case_trans(t.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE WHEN i.indisunique THEN 'UNIQUE' ELSE 'NONUNIQUE' END)::varchar2(9) AS uniqueness,
+    'VALID'::varchar2(8) AS status
+FROM pg_inherits inh
+JOIN pg_class ci ON ci.oid = inh.inhrelid
+JOIN pg_class pi ON pi.oid = inh.inhparent
+JOIN pg_index i ON i.indexrelid = pi.oid
+JOIN pg_class t ON t.oid = i.indrelid
+JOIN pg_namespace n ON ci.relnamespace = n.oid
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND ci.relispartition
+    AND pi.relkind = 'I'
+    AND pg_catalog.pg_get_userbyid(pi.relowner) = current_user;
+
+GRANT SELECT ON SYS.USER_IND_PARTITIONS TO PUBLIC;
+
+--
+-- ALL_IND_PARTITIONS: the same rows for every index the current user may
+-- read, with the privilege filter the ALL_ views carry.
+--
+CREATE OR REPLACE VIEW SYS.ALL_IND_PARTITIONS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(pi.relname::varchar2)::varchar2(128) AS index_name,
+    sys.ora_case_trans(ci.relname::varchar2)::varchar2(128) AS partition_name,
+    sys.ora_case_trans(t.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE WHEN i.indisunique THEN 'UNIQUE' ELSE 'NONUNIQUE' END)::varchar2(9) AS uniqueness,
+    'VALID'::varchar2(8) AS status
+FROM pg_inherits inh
+JOIN pg_class ci ON ci.oid = inh.inhrelid
+JOIN pg_class pi ON pi.oid = inh.inhparent
+JOIN pg_index i ON i.indexrelid = pi.oid
+JOIN pg_class t ON t.oid = i.indrelid
+JOIN pg_namespace n ON ci.relnamespace = n.oid
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND ci.relispartition
+    AND pi.relkind = 'I'
+    AND pg_catalog.has_table_privilege(current_user, t.oid, 'SELECT');
+
+GRANT SELECT ON SYS.ALL_IND_PARTITIONS TO PUBLIC;
+
+--
+-- DBA_IND_PARTITIONS: the same rows without the privilege filter, like the
+-- other DBA_ views.
+--
+CREATE OR REPLACE VIEW SYS.DBA_IND_PARTITIONS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(pi.relname::varchar2)::varchar2(128) AS index_name,
+    sys.ora_case_trans(ci.relname::varchar2)::varchar2(128) AS partition_name,
+    sys.ora_case_trans(t.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE WHEN i.indisunique THEN 'UNIQUE' ELSE 'NONUNIQUE' END)::varchar2(9) AS uniqueness,
+    'VALID'::varchar2(8) AS status
+FROM pg_inherits inh
+JOIN pg_class ci ON ci.oid = inh.inhrelid
+JOIN pg_class pi ON pi.oid = inh.inhparent
+JOIN pg_index i ON i.indexrelid = pi.oid
+JOIN pg_class t ON t.oid = i.indrelid
+JOIN pg_namespace n ON ci.relnamespace = n.oid
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND ci.relispartition
+    AND pi.relkind = 'I'
+;
+
+
+GRANT SELECT ON SYS.DBA_IND_PARTITIONS TO PUBLIC;
+
+--
+-- USER_PART_TABLES / ALL_PART_TABLES / DBA_PART_TABLES: the partitioned
+-- tables, like Oracle's views of the same name.  PARTITIONING_TYPE maps
+-- the catalog strategy to Oracle's RANGE, LIST or HASH and STATUS is
+-- always VALID.
+--
+CREATE OR REPLACE VIEW SYS.USER_PART_TABLES AS
+SELECT
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE p.partstrat
+        WHEN 'r' THEN 'RANGE'
+        WHEN 'l' THEN 'LIST'
+        WHEN 'h' THEN 'HASH'
+        ELSE 'RANGE'
+    END)::varchar2(12) AS partitioning_type,
+    'VALID'::varchar2(8) AS status,
+    'YES'::varchar2(3) AS partitioned
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+JOIN pg_partitioned_table p ON p.partrelid = c.oid
+WHERE
+    c.relkind = 'p'
+    AND pg_catalog.pg_get_userbyid(c.relowner) = current_user
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema');
+
+GRANT SELECT ON SYS.USER_PART_TABLES TO PUBLIC;
+
+--
+-- ALL_PART_TABLES: the same rows for every partitioned table the current
+-- user may read, with the privilege filter the ALL_ views carry.  PARTITIONING_TYPE maps
+-- the catalog strategy to Oracle's RANGE, LIST or HASH and STATUS is
+-- always VALID.
+--
+CREATE OR REPLACE VIEW SYS.ALL_PART_TABLES AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE p.partstrat
+        WHEN 'r' THEN 'RANGE'
+        WHEN 'l' THEN 'LIST'
+        WHEN 'h' THEN 'HASH'
+        ELSE 'RANGE'
+    END)::varchar2(12) AS partitioning_type,
+    'VALID'::varchar2(8) AS status,
+    'YES'::varchar2(3) AS partitioned
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+JOIN pg_partitioned_table p ON p.partrelid = c.oid
+WHERE
+    c.relkind = 'p'
+    AND pg_catalog.has_table_privilege(current_user, c.oid, 'SELECT')
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema');
+
+GRANT SELECT ON SYS.ALL_PART_TABLES TO PUBLIC;
+
+--
+-- DBA_PART_TABLES: the same rows without the privilege filter, like the
+-- other DBA_ views.  PARTITIONING_TYPE maps
+-- the catalog strategy to Oracle's RANGE, LIST or HASH and STATUS is
+-- always VALID.
+--
+CREATE OR REPLACE VIEW SYS.DBA_PART_TABLES AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE p.partstrat
+        WHEN 'r' THEN 'RANGE'
+        WHEN 'l' THEN 'LIST'
+        WHEN 'h' THEN 'HASH'
+        ELSE 'RANGE'
+    END)::varchar2(12) AS partitioning_type,
+    'VALID'::varchar2(8) AS status,
+    'YES'::varchar2(3) AS partitioned
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+JOIN pg_partitioned_table p ON p.partrelid = c.oid
+WHERE
+    c.relkind = 'p'
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema');
+
+
+GRANT SELECT ON SYS.DBA_PART_TABLES TO PUBLIC;
+
+--
+-- USER_TAB_PARTITIONS / ALL_TAB_PARTITIONS / DBA_TAB_PARTITIONS: the
+-- partitions of the partitioned tables, like Oracle's views of the same
+-- name.  PARTITION_POSITION numbers the partitions of a table and
+-- HIGH_VALUE carries the partition bound as PostgreSQL spells it.
+--
+CREATE OR REPLACE VIEW SYS.USER_TAB_PARTITIONS AS
+SELECT
+    sys.ora_case_trans(pc.relname::varchar2)::varchar2(128) AS table_name,
+    sys.ora_case_trans(cc.relname::varchar2)::varchar2(128) AS partition_name,
+    row_number() OVER (PARTITION BY pc.oid ORDER BY cc.relname)::numeric AS partition_position,
+    pg_catalog.pg_get_expr(cc.relpartbound, cc.oid)::varchar2(4000) AS high_value,
+    'VALID'::varchar2(8) AS status
+FROM pg_inherits i
+JOIN pg_class cc ON cc.oid = i.inhrelid
+JOIN pg_class pc ON pc.oid = i.inhparent
+JOIN pg_namespace n ON cc.relnamespace = n.oid
+WHERE
+    cc.relispartition
+    AND pc.relkind = 'p'
+    AND pg_catalog.pg_get_userbyid(pc.relowner) = current_user
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema');
+
+GRANT SELECT ON SYS.USER_TAB_PARTITIONS TO PUBLIC;
+
+--
+-- ALL_TAB_PARTITIONS: the same rows for every partitioned table the current
+-- user may read, with the privilege filter the ALL_ views carry.
+-- PARTITION_POSITION numbers the partitions of a table and
+-- HIGH_VALUE carries the partition bound as PostgreSQL spells it.
+--
+CREATE OR REPLACE VIEW SYS.ALL_TAB_PARTITIONS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(pc.relname::varchar2)::varchar2(128) AS table_name,
+    sys.ora_case_trans(cc.relname::varchar2)::varchar2(128) AS partition_name,
+    row_number() OVER (PARTITION BY pc.oid ORDER BY cc.relname)::numeric AS partition_position,
+    pg_catalog.pg_get_expr(cc.relpartbound, cc.oid)::varchar2(4000) AS high_value,
+    'VALID'::varchar2(8) AS status
+FROM pg_inherits i
+JOIN pg_class cc ON cc.oid = i.inhrelid
+JOIN pg_class pc ON pc.oid = i.inhparent
+JOIN pg_namespace n ON cc.relnamespace = n.oid
+WHERE
+    cc.relispartition
+    AND pc.relkind = 'p'
+    AND pg_catalog.has_table_privilege(current_user, pc.oid, 'SELECT')
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema');
+
+GRANT SELECT ON SYS.ALL_TAB_PARTITIONS TO PUBLIC;
+
+--
+-- DBA_TAB_PARTITIONS: the same rows without the privilege filter, like the
+-- other DBA_ views.
+-- PARTITION_POSITION numbers the partitions of a table and
+-- HIGH_VALUE carries the partition bound as PostgreSQL spells it.
+--
+CREATE OR REPLACE VIEW SYS.DBA_TAB_PARTITIONS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(pc.relname::varchar2)::varchar2(128) AS table_name,
+    sys.ora_case_trans(cc.relname::varchar2)::varchar2(128) AS partition_name,
+    row_number() OVER (PARTITION BY pc.oid ORDER BY cc.relname)::numeric AS partition_position,
+    pg_catalog.pg_get_expr(cc.relpartbound, cc.oid)::varchar2(4000) AS high_value,
+    'VALID'::varchar2(8) AS status
+FROM pg_inherits i
+JOIN pg_class cc ON cc.oid = i.inhrelid
+JOIN pg_class pc ON pc.oid = i.inhparent
+JOIN pg_namespace n ON cc.relnamespace = n.oid
+WHERE
+    cc.relispartition
+    AND pc.relkind = 'p'
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema');
+
+
+GRANT SELECT ON SYS.DBA_TAB_PARTITIONS TO PUBLIC;
+
+--
+-- USER_IND_EXPRESSIONS / ALL_IND_EXPRESSIONS / DBA_IND_EXPRESSIONS: the
+-- expression keys of the indexes, the entries the column view skips
+-- because they have no column name.  COLUMN_EXPRESSION carries the
+-- expression as PostgreSQL spells it.
+--
+CREATE OR REPLACE VIEW SYS.USER_IND_EXPRESSIONS AS
+SELECT
+    sys.ora_case_trans(ic.relname::varchar2)::varchar2(128) AS index_name,
+    sys.ora_case_trans(tc.relname::varchar2)::varchar2(128) AS table_name,
+    pg_catalog.pg_get_indexdef(i.indexrelid, k.ordinality::int, true)::varchar2(4000) AS column_expression,
+    k.ordinality::numeric AS column_position
+FROM pg_index i
+JOIN pg_class ic ON ic.oid = i.indexrelid
+JOIN pg_class tc ON tc.oid = i.indrelid
+JOIN pg_namespace n ON ic.relnamespace = n.oid
+CROSS JOIN LATERAL unnest(
+    pg_catalog.string_to_array(i.indkey::text, ' ')::int2[]
+) WITH ORDINALITY AS k(attnum, ordinality)
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND pg_catalog.pg_get_userbyid(ic.relowner) = current_user
+    AND k.attnum = 0;
+
+GRANT SELECT ON SYS.USER_IND_EXPRESSIONS TO PUBLIC;
+
+--
+-- ALL_IND_EXPRESSIONS: the same rows for every index the current user may
+-- read, with the privilege filter the ALL_ views carry.  The expressions are
+-- the entries the column view skips.  COLUMN_EXPRESSION carries them as
+-- PostgreSQL spells them.
+--
+CREATE OR REPLACE VIEW SYS.ALL_IND_EXPRESSIONS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(ic.relname::varchar2)::varchar2(128) AS index_name,
+    sys.ora_case_trans(tc.relname::varchar2)::varchar2(128) AS table_name,
+    pg_catalog.pg_get_indexdef(i.indexrelid, k.ordinality::int, true)::varchar2(4000) AS column_expression,
+    k.ordinality::numeric AS column_position
+FROM pg_index i
+JOIN pg_class ic ON ic.oid = i.indexrelid
+JOIN pg_class tc ON tc.oid = i.indrelid
+JOIN pg_namespace n ON ic.relnamespace = n.oid
+CROSS JOIN LATERAL unnest(
+    pg_catalog.string_to_array(i.indkey::text, ' ')::int2[]
+) WITH ORDINALITY AS k(attnum, ordinality)
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND pg_catalog.has_table_privilege(current_user, tc.oid, 'SELECT')
+    AND k.attnum = 0;
+
+GRANT SELECT ON SYS.ALL_IND_EXPRESSIONS TO PUBLIC;
+
+--
+-- DBA_IND_EXPRESSIONS: the same rows without the privilege filter, like the
+-- other DBA_ views.  The expressions are
+-- the entries the column view skips.  COLUMN_EXPRESSION carries them as
+-- PostgreSQL spells them.
+--
+CREATE OR REPLACE VIEW SYS.DBA_IND_EXPRESSIONS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(ic.relname::varchar2)::varchar2(128) AS index_name,
+    sys.ora_case_trans(tc.relname::varchar2)::varchar2(128) AS table_name,
+    pg_catalog.pg_get_indexdef(i.indexrelid, k.ordinality::int, true)::varchar2(4000) AS column_expression,
+    k.ordinality::numeric AS column_position
+FROM pg_index i
+JOIN pg_class ic ON ic.oid = i.indexrelid
+JOIN pg_class tc ON tc.oid = i.indrelid
+JOIN pg_namespace n ON ic.relnamespace = n.oid
+CROSS JOIN LATERAL unnest(
+    pg_catalog.string_to_array(i.indkey::text, ' ')::int2[]
+) WITH ORDINALITY AS k(attnum, ordinality)
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND k.attnum = 0;
+
+
+GRANT SELECT ON SYS.DBA_IND_EXPRESSIONS TO PUBLIC;
+
+--
+-- USER_MVIEWS / ALL_MVIEWS / DBA_MVIEWS: the materialized views, like
+-- Oracle's views of the same name.  PostgreSQL records neither the last
+-- refresh time nor whether a refresh was complete or fast, so
+-- LAST_REFRESH_TYPE reports COMPLETE (REFRESH MATERIALIZED VIEW recomputes
+-- the view) and LAST_REFRESH_DATE stays NULL.
+--
+CREATE OR REPLACE VIEW SYS.USER_MVIEWS AS
+SELECT
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS mview_name,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS container_name,
+    pg_catalog.pg_get_viewdef(c.oid)::varchar2(4000) AS query,
+    'COMPLETE'::varchar2(8) AS last_refresh_type,
+    NULL::timestamptz AS last_refresh_date,
+    'VALID'::varchar2(8) AS status
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+WHERE
+    c.relkind = 'm'
+    AND pg_catalog.pg_get_userbyid(c.relowner) = current_user
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema');
+
+GRANT SELECT ON SYS.USER_MVIEWS TO PUBLIC;
+
+--
+-- ALL_MVIEWS: the same materialized views for every one the current user
+-- may read, with the privilege filter the ALL_ views carry.  PostgreSQL records neither the last
+-- refresh time nor whether a refresh was complete or fast, so
+-- LAST_REFRESH_TYPE reports COMPLETE (REFRESH MATERIALIZED VIEW recomputes
+-- the view) and LAST_REFRESH_DATE stays NULL.
+--
+CREATE OR REPLACE VIEW SYS.ALL_MVIEWS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS mview_name,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS container_name,
+    pg_catalog.pg_get_viewdef(c.oid)::varchar2(4000) AS query,
+    'COMPLETE'::varchar2(8) AS last_refresh_type,
+    NULL::timestamptz AS last_refresh_date,
+    'VALID'::varchar2(8) AS status
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+WHERE
+    c.relkind = 'm'
+    AND pg_catalog.has_table_privilege(current_user, c.oid, 'SELECT')
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema');
+
+GRANT SELECT ON SYS.ALL_MVIEWS TO PUBLIC;
+
+--
+-- DBA_MVIEWS: the same rows without the privilege filter, like the other
+-- DBA_ views.  PostgreSQL records neither the last
+-- refresh time nor whether a refresh was complete or fast, so
+-- LAST_REFRESH_TYPE reports COMPLETE (REFRESH MATERIALIZED VIEW recomputes
+-- the view) and LAST_REFRESH_DATE stays NULL.
+--
+CREATE OR REPLACE VIEW SYS.DBA_MVIEWS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS mview_name,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS container_name,
+    pg_catalog.pg_get_viewdef(c.oid)::varchar2(4000) AS query,
+    'COMPLETE'::varchar2(8) AS last_refresh_type,
+    NULL::timestamptz AS last_refresh_date,
+    'VALID'::varchar2(8) AS status
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+WHERE
+    c.relkind = 'm'
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema');
+
+
+GRANT SELECT ON SYS.DBA_MVIEWS TO PUBLIC;
+
+--
+-- USER_IND_COLUMNS / ALL_IND_COLUMNS / DBA_IND_COLUMNS: the columns of the
+-- indexes, like Oracle's views of the same name, in index position order.
+-- Expression indexes have no column name in the catalog, so those entries
+-- are skipped.
+--
+CREATE OR REPLACE VIEW SYS.USER_IND_COLUMNS AS
+SELECT
+    sys.ora_case_trans(ic.relname::varchar2)::varchar2(128) AS index_name,
+    sys.ora_case_trans(tc.relname::varchar2)::varchar2(128) AS table_name,
+    sys.ora_case_trans(a.attname::varchar2)::varchar2(128) AS column_name,
+    k.ordinality::numeric AS column_position
+FROM pg_index i
+JOIN pg_class ic ON ic.oid = i.indexrelid
+JOIN pg_class tc ON tc.oid = i.indrelid
+JOIN pg_namespace n ON ic.relnamespace = n.oid
+CROSS JOIN LATERAL unnest(
+    pg_catalog.string_to_array(i.indkey::text, ' ')::int2[]
+) WITH ORDINALITY AS k(attnum, ordinality)
+JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum
+WHERE
+    pg_catalog.pg_get_userbyid(ic.relowner) = current_user
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND k.attnum > 0;
+
+GRANT SELECT ON SYS.USER_IND_COLUMNS TO PUBLIC;
+
+--
+-- ALL_IND_COLUMNS: the same columns for every index the current user
+-- may read, with the privilege filter the ALL_ views carry.
+-- Expression indexes have no column name in the catalog, so those entries
+-- are skipped.
+--
+CREATE OR REPLACE VIEW SYS.ALL_IND_COLUMNS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(ic.relname::varchar2)::varchar2(128) AS index_name,
+    sys.ora_case_trans(tc.relname::varchar2)::varchar2(128) AS table_name,
+    sys.ora_case_trans(a.attname::varchar2)::varchar2(128) AS column_name,
+    k.ordinality::numeric AS column_position
+FROM pg_index i
+JOIN pg_class ic ON ic.oid = i.indexrelid
+JOIN pg_class tc ON tc.oid = i.indrelid
+JOIN pg_namespace n ON ic.relnamespace = n.oid
+CROSS JOIN LATERAL unnest(
+    pg_catalog.string_to_array(i.indkey::text, ' ')::int2[]
+) WITH ORDINALITY AS k(attnum, ordinality)
+JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum
+WHERE
+    pg_catalog.pg_get_userbyid(ic.relowner) = current_user
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND k.attnum > 0;
+
+GRANT SELECT ON SYS.ALL_IND_COLUMNS TO PUBLIC;
+
+--
+-- DBA_IND_COLUMNS: the same rows without the privilege filter, like the
+-- other DBA_ views.
+-- Expression indexes have no column name in the catalog, so those entries
+-- are skipped.
+--
+CREATE OR REPLACE VIEW SYS.DBA_IND_COLUMNS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(ic.relname::varchar2)::varchar2(128) AS index_name,
+    sys.ora_case_trans(tc.relname::varchar2)::varchar2(128) AS table_name,
+    sys.ora_case_trans(a.attname::varchar2)::varchar2(128) AS column_name,
+    k.ordinality::numeric AS column_position
+FROM pg_index i
+JOIN pg_class ic ON ic.oid = i.indexrelid
+JOIN pg_class tc ON tc.oid = i.indrelid
+JOIN pg_namespace n ON ic.relnamespace = n.oid
+CROSS JOIN LATERAL unnest(
+    pg_catalog.string_to_array(i.indkey::text, ' ')::int2[]
+) WITH ORDINALITY AS k(attnum, ordinality)
+JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum
+WHERE
+    pg_catalog.pg_get_userbyid(ic.relowner) = current_user
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND k.attnum > 0;
+
+
+GRANT SELECT ON SYS.DBA_IND_COLUMNS TO PUBLIC;
+
+--
+-- USER_CONSTRAINTS / ALL_CONSTRAINTS / DBA_CONSTRAINTS: the constraints of
+-- the relations, like Oracle's views of the same name.  CONSTRAINT_TYPE
+-- maps the catalog codes to Oracle's letters (P primary key, U unique,
+-- R referential, C check), SEARCH_CONDITION carries the check expression
+-- and DELETE_RULE the referential action; STATUS is always ENABLED because
+-- the catalogs have no disabled constraints.
+--
+CREATE OR REPLACE VIEW SYS.USER_CONSTRAINTS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(con.conname::varchar2)::varchar2(128) AS constraint_name,
+    (CASE con.contype
+        WHEN 'p' THEN 'P'
+        WHEN 'u' THEN 'U'
+        WHEN 'f' THEN 'R'
+        ELSE 'C'
+    END)::varchar2(1) AS constraint_type,
+    sys.ora_case_trans(t.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE WHEN con.contype = 'c'
+          THEN pg_catalog.pg_get_constraintdef(con.oid)
+          ELSE NULL
+     END)::varchar2(4000) AS search_condition,
+    (CASE WHEN con.contype = 'f' THEN
+        (CASE con.confdeltype
+            WHEN 'c' THEN 'CASCADE'
+            WHEN 'n' THEN 'SET NULL'
+            WHEN 'd' THEN 'SET DEFAULT'
+            ELSE 'NO ACTION'
+        END)
+     END)::varchar2(9) AS delete_rule,
+    'ENABLED'::varchar2(8) AS status
+FROM pg_constraint con
+JOIN pg_class t ON t.oid = con.conrelid
+JOIN pg_namespace n ON t.relnamespace = n.oid
+WHERE
+    pg_catalog.pg_get_userbyid(t.relowner) = current_user
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND con.contype IN ('p','u','f','c')
+    AND NOT t.relispartition;
+
+GRANT SELECT ON SYS.USER_CONSTRAINTS TO PUBLIC;
+
+--
+-- ALL_CONSTRAINTS: the same constraints for every relation the current user
+-- may access, with the privilege filter the ALL_ views carry.  CONSTRAINT_TYPE
+-- maps the catalog codes to Oracle's letters (P primary key, U unique,
+-- R referential, C check), SEARCH_CONDITION carries the check expression
+-- and DELETE_RULE the referential action; STATUS is always ENABLED because
+-- the catalogs have no disabled constraints.
+--
+CREATE OR REPLACE VIEW SYS.ALL_CONSTRAINTS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(con.conname::varchar2)::varchar2(128) AS constraint_name,
+    (CASE con.contype
+        WHEN 'p' THEN 'P'
+        WHEN 'u' THEN 'U'
+        WHEN 'f' THEN 'R'
+        ELSE 'C'
+    END)::varchar2(1) AS constraint_type,
+    sys.ora_case_trans(t.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE WHEN con.contype = 'c'
+          THEN pg_catalog.pg_get_constraintdef(con.oid)
+          ELSE NULL
+     END)::varchar2(4000) AS search_condition,
+    (CASE WHEN con.contype = 'f' THEN
+        (CASE con.confdeltype
+            WHEN 'c' THEN 'CASCADE'
+            WHEN 'n' THEN 'SET NULL'
+            WHEN 'd' THEN 'SET DEFAULT'
+            ELSE 'NO ACTION'
+        END)
+     END)::varchar2(9) AS delete_rule,
+    'ENABLED'::varchar2(8) AS status
+FROM pg_constraint con
+JOIN pg_class t ON t.oid = con.conrelid
+JOIN pg_namespace n ON t.relnamespace = n.oid
+WHERE
+    pg_catalog.has_table_privilege(current_user, t.oid,
+         'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND con.contype IN ('p','u','f','c')
+    AND NOT t.relispartition;
+
+GRANT SELECT ON SYS.ALL_CONSTRAINTS TO PUBLIC;
+
+--
+-- DBA_CONSTRAINTS: the same rows without the privilege filter, like the
+-- other DBA_ views.  CONSTRAINT_TYPE
+-- maps the catalog codes to Oracle's letters (P primary key, U unique,
+-- R referential, C check), SEARCH_CONDITION carries the check expression
+-- and DELETE_RULE the referential action; STATUS is always ENABLED because
+-- the catalogs have no disabled constraints.
+--
+CREATE OR REPLACE VIEW SYS.DBA_CONSTRAINTS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(con.conname::varchar2)::varchar2(128) AS constraint_name,
+    (CASE con.contype
+        WHEN 'p' THEN 'P'
+        WHEN 'u' THEN 'U'
+        WHEN 'f' THEN 'R'
+        ELSE 'C'
+    END)::varchar2(1) AS constraint_type,
+    sys.ora_case_trans(t.relname::varchar2)::varchar2(128) AS table_name,
+    (CASE WHEN con.contype = 'c'
+          THEN pg_catalog.pg_get_constraintdef(con.oid)
+          ELSE NULL
+     END)::varchar2(4000) AS search_condition,
+    (CASE WHEN con.contype = 'f' THEN
+        (CASE con.confdeltype
+            WHEN 'c' THEN 'CASCADE'
+            WHEN 'n' THEN 'SET NULL'
+            WHEN 'd' THEN 'SET DEFAULT'
+            ELSE 'NO ACTION'
+        END)
+     END)::varchar2(9) AS delete_rule,
+    'ENABLED'::varchar2(8) AS status
+FROM pg_constraint con
+JOIN pg_class t ON t.oid = con.conrelid
+JOIN pg_namespace n ON t.relnamespace = n.oid
+WHERE
+n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND con.contype IN ('p','u','f','c')
+    AND NOT t.relispartition;
+
+
+GRANT SELECT ON SYS.DBA_CONSTRAINTS TO PUBLIC;
+
+--
+-- USER_TRIGGERS / ALL_TRIGGERS / DBA_TRIGGERS: the triggers of the
+-- relations, like Oracle's views of the same name.  TRIGGER_TYPE spells
+-- BEFORE/AFTER/INSTEAD OF with EACH ROW or STATEMENT, TRIGGERING_EVENT
+-- lists INSERT/UPDATE/DELETE and STATUS reports whether the trigger is
+-- enabled.
+--
+CREATE OR REPLACE VIEW SYS.USER_TRIGGERS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(tg.tgname::varchar2)::varchar2(128) AS trigger_name,
+    sys.ora_case_trans(t.relname::varchar2)::varchar2(128) AS table_name,
+    ((CASE WHEN tg.tgtype & 2 = 2 THEN 'BEFORE '
+           WHEN tg.tgtype & 64 = 64 THEN 'INSTEAD OF '
+           ELSE 'AFTER ' END) ||
+     (CASE WHEN tg.tgtype & 1 = 1 THEN 'EACH ROW' ELSE 'EACH STATEMENT' END)
+    )::varchar2(20) AS trigger_type,
+    ((CASE WHEN tg.tgtype & 4 = 4 THEN 'INSERT ' ELSE '' END) ||
+     (CASE WHEN tg.tgtype & 16 = 16 THEN 'UPDATE ' ELSE '' END) ||
+     (CASE WHEN tg.tgtype & 8 = 8 THEN 'DELETE ' ELSE '' END)
+    )::varchar2(25) AS triggering_event,
+    (CASE WHEN tg.tgenabled = 'D' THEN 'DISABLED' ELSE 'ENABLED' END)::varchar2(8) AS status
+FROM pg_trigger tg
+JOIN pg_class t ON t.oid = tg.tgrelid
+JOIN pg_namespace n ON t.relnamespace = n.oid
+WHERE
+    pg_catalog.pg_get_userbyid(t.relowner) = current_user
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND NOT tg.tgisinternal;
+
+GRANT SELECT ON SYS.USER_TRIGGERS TO PUBLIC;
+
+--
+-- ALL_TRIGGERS: the same triggers for every relation the current user
+-- may access, with the privilege filter the ALL_ views carry.  TRIGGER_TYPE
+-- BEFORE/AFTER/INSTEAD OF with EACH ROW or STATEMENT, TRIGGERING_EVENT
+-- lists INSERT/UPDATE/DELETE and STATUS reports whether the trigger is
+-- enabled.
+--
+CREATE OR REPLACE VIEW SYS.ALL_TRIGGERS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(tg.tgname::varchar2)::varchar2(128) AS trigger_name,
+    sys.ora_case_trans(t.relname::varchar2)::varchar2(128) AS table_name,
+    ((CASE WHEN tg.tgtype & 2 = 2 THEN 'BEFORE '
+           WHEN tg.tgtype & 64 = 64 THEN 'INSTEAD OF '
+           ELSE 'AFTER ' END) ||
+     (CASE WHEN tg.tgtype & 1 = 1 THEN 'EACH ROW' ELSE 'EACH STATEMENT' END)
+    )::varchar2(20) AS trigger_type,
+    ((CASE WHEN tg.tgtype & 4 = 4 THEN 'INSERT ' ELSE '' END) ||
+     (CASE WHEN tg.tgtype & 16 = 16 THEN 'UPDATE ' ELSE '' END) ||
+     (CASE WHEN tg.tgtype & 8 = 8 THEN 'DELETE ' ELSE '' END)
+    )::varchar2(25) AS triggering_event,
+    (CASE WHEN tg.tgenabled = 'D' THEN 'DISABLED' ELSE 'ENABLED' END)::varchar2(8) AS status
+FROM pg_trigger tg
+JOIN pg_class t ON t.oid = tg.tgrelid
+JOIN pg_namespace n ON t.relnamespace = n.oid
+WHERE
+    pg_catalog.has_table_privilege(current_user, t.oid,
+         'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND NOT tg.tgisinternal;
+
+GRANT SELECT ON SYS.ALL_TRIGGERS TO PUBLIC;
+
+--
+-- DBA_TRIGGERS: the same rows without the privilege filter, like the
+-- other DBA_ views.  TRIGGER_TYPE
+-- BEFORE/AFTER/INSTEAD OF with EACH ROW or STATEMENT, TRIGGERING_EVENT
+-- lists INSERT/UPDATE/DELETE and STATUS reports whether the trigger is
+-- enabled.
+--
+CREATE OR REPLACE VIEW SYS.DBA_TRIGGERS AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(tg.tgname::varchar2)::varchar2(128) AS trigger_name,
+    sys.ora_case_trans(t.relname::varchar2)::varchar2(128) AS table_name,
+    ((CASE WHEN tg.tgtype & 2 = 2 THEN 'BEFORE '
+           WHEN tg.tgtype & 64 = 64 THEN 'INSTEAD OF '
+           ELSE 'AFTER ' END) ||
+     (CASE WHEN tg.tgtype & 1 = 1 THEN 'EACH ROW' ELSE 'EACH STATEMENT' END)
+    )::varchar2(20) AS trigger_type,
+    ((CASE WHEN tg.tgtype & 4 = 4 THEN 'INSERT ' ELSE '' END) ||
+     (CASE WHEN tg.tgtype & 16 = 16 THEN 'UPDATE ' ELSE '' END) ||
+     (CASE WHEN tg.tgtype & 8 = 8 THEN 'DELETE ' ELSE '' END)
+    )::varchar2(25) AS triggering_event,
+    (CASE WHEN tg.tgenabled = 'D' THEN 'DISABLED' ELSE 'ENABLED' END)::varchar2(8) AS status
+FROM pg_trigger tg
+JOIN pg_class t ON t.oid = tg.tgrelid
+JOIN pg_namespace n ON t.relnamespace = n.oid
+WHERE
+n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND NOT tg.tgisinternal;
+
+
+GRANT SELECT ON SYS.DBA_TRIGGERS TO PUBLIC;
+
+--
+-- ALL_INDEXES / DBA_INDEXES: the index inventory of USER_INDEXES at the
+-- other two Oracle scopes.  The ALL_ view lists the indexes on every
+-- relation the current user may access and the DBA_ view every index in the
+-- database, so only the ALL_ one carries the privilege filter; both add the
+-- OWNER and TABLE_OWNER columns.
+--
+CREATE OR REPLACE VIEW SYS.ALL_INDEXES AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS index_name,
+    sys.ora_case_trans(tn.nspname::varchar2)::varchar2(128) AS table_owner,
+    sys.ora_case_trans(t.relname::varchar2)::varchar2(128) AS table_name,
+    sys.ora_case_trans(c.relam::regclass::text::varchar2)::varchar2(30) AS index_type,
+    (CASE WHEN i.indisunique THEN 'UNIQUE' ELSE 'NONUNIQUE' END)::varchar2(9) AS uniqueness,
+    'VALID'::varchar2(8) AS status,
+    NULL::varchar2(30) AS tablespace_name
+FROM pg_index i
+JOIN pg_class c ON c.oid = i.indexrelid
+JOIN pg_class t ON t.oid = i.indrelid
+JOIN pg_namespace n ON c.relnamespace = n.oid
+JOIN pg_namespace tn ON t.relnamespace = tn.oid
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND pg_catalog.has_table_privilege(current_user, t.oid,
+         'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+    AND NOT c.relispartition;
+
+GRANT SELECT ON SYS.ALL_INDEXES TO PUBLIC;
+
+--
+-- DBA_INDEXES: the same rows as ALL_INDEXES without the privilege filter,
+-- like the other DBA_ views.
+--
+CREATE OR REPLACE VIEW SYS.DBA_INDEXES AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS index_name,
+    sys.ora_case_trans(tn.nspname::varchar2)::varchar2(128) AS table_owner,
+    sys.ora_case_trans(t.relname::varchar2)::varchar2(128) AS table_name,
+    sys.ora_case_trans(c.relam::regclass::text::varchar2)::varchar2(30) AS index_type,
+    (CASE WHEN i.indisunique THEN 'UNIQUE' ELSE 'NONUNIQUE' END)::varchar2(9) AS uniqueness,
+    'VALID'::varchar2(8) AS status,
+    NULL::varchar2(30) AS tablespace_name
+FROM pg_index i
+JOIN pg_class c ON c.oid = i.indexrelid
+JOIN pg_class t ON t.oid = i.indrelid
+JOIN pg_namespace n ON c.relnamespace = n.oid
+JOIN pg_namespace tn ON t.relnamespace = tn.oid
+WHERE
+    n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND NOT c.relispartition;
+
+
+GRANT SELECT ON SYS.DBA_INDEXES TO PUBLIC;
+
+--
+-- USER_INDEXES: the indexes on the relations owned by the current user,
+-- like Oracle's USER_INDEXES view.  INDEX_TYPE maps the PostgreSQL access
+-- method (b-tree, hash, gin, ...) and UNIQUENESS the unique constraint;
+-- TABLESPACE_NAME stays NULL because PostgreSQL has no tablespaces to name
+-- in the Oracle sense here.
+--
+CREATE OR REPLACE VIEW SYS.USER_INDEXES AS
+SELECT
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS index_name,
+    sys.ora_case_trans(t.relname::varchar2)::varchar2(128) AS table_name,
+    sys.ora_case_trans(c.relam::regclass::text::varchar2)::varchar2(30) AS index_type,
+    (CASE WHEN i.indisunique THEN 'UNIQUE' ELSE 'NONUNIQUE' END)::varchar2(9) AS uniqueness,
+    'VALID'::varchar2(8) AS status,
+    NULL::varchar2(30) AS tablespace_name
+FROM pg_index i
+JOIN pg_class c ON c.oid = i.indexrelid
+JOIN pg_class t ON t.oid = i.indrelid
+JOIN pg_namespace n ON c.relnamespace = n.oid
+WHERE
+    pg_catalog.pg_get_userbyid(c.relowner) = current_user
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND NOT c.relispartition;
+
+GRANT SELECT ON SYS.USER_INDEXES TO PUBLIC;
+
+--
+-- DBA_TABLES / ALL_TABLES / USER_TABLES: the same table list at the three
+-- Oracle scopes.  The DBA_ views describe every table in the database
+-- (Oracle keeps them for users with the DBA role) and the ALL_ views every
+-- table the current user may access, so only that one carries the privilege
+-- filter; the USER_ view filters on the owner instead.  STATUS, NUM_ROWS,
+-- LAST_ANALYZED, TEMPORARY, PARTITIONED and TABLESPACE_NAME follow the data
+-- dictionary columns that map cleanly here.
+--
+CREATE OR REPLACE VIEW SYS.DBA_TABLES AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    NULL::varchar2(30) AS tablespace_name,
+    'VALID'::varchar2(8) AS status,
+    (CASE WHEN c.reltuples < 0 THEN NULL ELSE c.reltuples::numeric END) AS num_rows,
+    pg_catalog.pg_stat_get_last_analyze_time(c.oid) AS last_analyzed,
+    'N'::varchar2(1) AS temporary,
+    (CASE WHEN c.relkind = 'p' THEN 'YES' ELSE 'NO' END)::varchar2(3) AS partitioned
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+WHERE
+    c.relkind IN ('r','p')
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND NOT c.relispartition;
+
+GRANT SELECT ON SYS.DBA_TABLES TO PUBLIC;
+
+--
+-- ALL_TABLES: the same rows as USER_TABLES for every table the current user
+-- may access, with the OWNER column the ALL_ views carry.
+--
+CREATE OR REPLACE VIEW SYS.ALL_TABLES AS
+SELECT
+    sys.ora_case_trans(n.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    NULL::varchar2(30) AS tablespace_name,
+    'VALID'::varchar2(8) AS status,
+    (CASE WHEN c.reltuples < 0 THEN NULL ELSE c.reltuples::numeric END) AS num_rows,
+    pg_catalog.pg_stat_get_last_analyze_time(c.oid) AS last_analyzed,
+    'N'::varchar2(1) AS temporary,
+    (CASE WHEN c.relkind = 'p' THEN 'YES' ELSE 'NO' END)::varchar2(3) AS partitioned
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+WHERE
+    c.relkind IN ('r','p')
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND pg_catalog.has_table_privilege(current_user, c.oid,
+         'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+    AND NOT c.relispartition;
+
+GRANT SELECT ON SYS.ALL_TABLES TO PUBLIC;
+
+--
+-- USER_TABLES: the relations owned by the current user, like Oracle's
+-- USER_TABLES view.  PostgreSQL has no tablespace, LOGGING or storage
+-- clauses to report, so only the columns that map cleanly are filled in;
+-- NUM_ROWS and LAST_ANALYZED come from the statistics and stay NULL until
+-- the relation has been analyzed.
+--
+CREATE OR REPLACE VIEW SYS.USER_TABLES AS
+SELECT
+    sys.ora_case_trans(c.relname::varchar2)::varchar2(128) AS table_name,
+    NULL::varchar2(30) AS tablespace_name,
+    'VALID'::varchar2(8) AS status,
+    (CASE WHEN c.reltuples < 0 THEN NULL ELSE c.reltuples::numeric END) AS num_rows,
+    pg_catalog.pg_stat_get_last_analyze_time(c.oid) AS last_analyzed,
+    'N'::varchar2(1) AS temporary,
+    (CASE WHEN c.relkind = 'p' THEN 'YES' ELSE 'NO' END)::varchar2(3) AS partitioned
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+WHERE
+    pg_catalog.pg_get_userbyid(c.relowner) = current_user
+    AND c.relkind IN ('r','p')
+    AND n.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND NOT c.relispartition;
+
+GRANT SELECT ON SYS.USER_TABLES TO PUBLIC;
+
+--
+-- ALL_TAB_COMMENTS / ALL_COL_COMMENTS: the same comments as the USER_
+-- variants, for every relation the current user may access.  Like
+-- ALL_TAB_COLUMNS they carry the OWNER column and the privilege filter.
+--
+CREATE OR REPLACE VIEW SYS.ALL_TAB_COMMENTS AS
+SELECT
+    sys.ora_case_trans(pg_namespace.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(pg_class.relname::varchar2)::varchar2(128) AS table_name,
+    CASE pg_class.relkind
+        WHEN 'v' THEN 'VIEW'
+        WHEN 'm' THEN 'MATERIALIZED VIEW'
+        ELSE 'TABLE'
+    END::varchar2(11) AS table_type,
+    pg_catalog.obj_description(pg_class.oid, 'pg_class')::varchar2(4000) AS comments
+FROM pg_class
+JOIN pg_namespace ON pg_class.relnamespace = pg_namespace.oid
+WHERE
+    pg_class.relkind IN ('r','v','m','p','f')
+    AND pg_namespace.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND pg_catalog.has_table_privilege(current_user, pg_class.oid,
+         'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+    AND NOT pg_class.relispartition;
+
+CREATE OR REPLACE VIEW SYS.ALL_COL_COMMENTS AS
+SELECT
+    sys.ora_case_trans(pg_namespace.nspname::varchar2)::varchar2(128) AS owner,
+    sys.ora_case_trans(pg_class.relname::varchar2)::varchar2(128) AS table_name,
+    sys.ora_case_trans(pg_attribute.attname::varchar2)::varchar2(128) AS column_name,
+    pg_catalog.col_description(pg_class.oid, pg_attribute.attnum)::varchar2(4000) AS comments
+FROM pg_class
+JOIN pg_namespace ON pg_class.relnamespace = pg_namespace.oid
+JOIN pg_attribute ON pg_class.oid = pg_attribute.attrelid
+WHERE
+    pg_class.relkind IN ('r','v','m','p','f')
+    AND pg_attribute.attnum > 0
+    AND NOT pg_attribute.attisdropped
+    AND pg_namespace.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND pg_catalog.has_table_privilege(current_user, pg_class.oid,
+         'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+    AND NOT pg_class.relispartition;
+
+GRANT SELECT ON SYS.ALL_TAB_COMMENTS TO PUBLIC;
+GRANT SELECT ON SYS.ALL_COL_COMMENTS TO PUBLIC;
+
+--
+-- USER_TAB_COMMENTS / USER_COL_COMMENTS: the comments Oracle stores with
+-- COMMENT ON, for the relations owned by the current user and for their
+-- columns.  Like the other USER_ views they filter on the owner only.
+--
+CREATE OR REPLACE VIEW SYS.USER_TAB_COMMENTS AS
+SELECT
+    sys.ora_case_trans(pg_class.relname::varchar2)::varchar2(128) AS table_name,
+    CASE pg_class.relkind
+        WHEN 'v' THEN 'VIEW'
+        WHEN 'm' THEN 'MATERIALIZED VIEW'
+        ELSE 'TABLE'
+    END::varchar2(11) AS table_type,
+    pg_catalog.obj_description(pg_class.oid, 'pg_class')::varchar2(4000) AS comments
+FROM pg_class
+JOIN pg_namespace ON pg_class.relnamespace = pg_namespace.oid
+WHERE
+    pg_catalog.pg_get_userbyid(pg_class.relowner) = current_user
+    AND pg_class.relkind IN ('r','v','m','p','f')
+    AND pg_namespace.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND NOT pg_class.relispartition;
+
+CREATE OR REPLACE VIEW SYS.USER_COL_COMMENTS AS
+SELECT
+    sys.ora_case_trans(pg_class.relname::varchar2)::varchar2(128) AS table_name,
+    sys.ora_case_trans(pg_attribute.attname::varchar2)::varchar2(128) AS column_name,
+    pg_catalog.col_description(pg_class.oid, pg_attribute.attnum)::varchar2(4000) AS comments
+FROM pg_class
+JOIN pg_namespace ON pg_class.relnamespace = pg_namespace.oid
+JOIN pg_attribute ON pg_class.oid = pg_attribute.attrelid
+WHERE
+    pg_catalog.pg_get_userbyid(pg_class.relowner) = current_user
+    AND pg_class.relkind IN ('r','v','m','p','f')
+    AND pg_attribute.attnum > 0
+    AND NOT pg_attribute.attisdropped
+    AND pg_namespace.nspname NOT IN ('pg_catalog','pg_toast','information_schema')
+    AND NOT pg_class.relispartition;
+
+GRANT SELECT ON SYS.USER_TAB_COMMENTS TO PUBLIC;
+GRANT SELECT ON SYS.USER_COL_COMMENTS TO PUBLIC;
