@@ -196,6 +196,22 @@ binary_double_in_internal_opt_error(char *num, char **endptr_p,
 		{
 			if (ORA_PARSER == compatible_db && !isliteral)
 			{
+				char	   *tail = endptr;
+
+				/*
+				 * The IEEE-result returns below must not bypass the
+				 * trailing-junk check at the end of this function.
+				 */
+				while (*tail != '\0' && isspace((unsigned char) *tail))
+					tail++;
+				if (*tail != '\0')
+					RETURN_ERROR(ereport(ERROR,
+									 (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+									  errmsg("invalid input syntax for type "
+											 "%s: \"%s\"",
+											 type_name, orig_string))),
+							 have_error);
+
 				if (val >= HUGE_VAL)
 					return get_float8_infinity();
 				else if (val <= -HUGE_VAL)
