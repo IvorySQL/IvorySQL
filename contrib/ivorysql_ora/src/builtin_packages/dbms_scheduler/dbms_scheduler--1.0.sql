@@ -266,14 +266,30 @@ CREATE VIEW sys.user_scheduler_jobs AS
 	FROM sys.scheduler_jobs
 	WHERE job_owner = current_user::text;
 
+-- Oracle fills ARGUMENT_NAME/ARGUMENT_TYPE from the program a job runs; an
+-- inline job has no argument metadata, so those columns stay NULL there.
 CREATE VIEW sys.dba_scheduler_job_args AS
-	SELECT job_owner AS owner, job_name, argument_position, argument_value AS value
-	FROM sys.scheduler_job_args;
+	SELECT ja.job_owner AS owner, ja.job_name, pa.argument_name,
+		   ja.argument_position, pa.argument_type, ja.argument_value AS value
+	FROM sys.scheduler_job_args ja
+	JOIN sys.scheduler_jobs j
+	  ON j.job_owner = ja.job_owner AND j.job_name = ja.job_name
+	LEFT JOIN sys.scheduler_program_args pa
+	  ON pa.program_owner = j.program_owner
+	 AND pa.program_name = j.program_name
+	 AND pa.argument_position = ja.argument_position;
 
 CREATE VIEW sys.user_scheduler_job_args AS
-	SELECT job_name, argument_position, argument_value AS value
-	FROM sys.scheduler_job_args
-	WHERE job_owner = current_user::text;
+	SELECT ja.job_name, pa.argument_name, ja.argument_position,
+		   pa.argument_type, ja.argument_value AS value
+	FROM sys.scheduler_job_args ja
+	JOIN sys.scheduler_jobs j
+	  ON j.job_owner = ja.job_owner AND j.job_name = ja.job_name
+	LEFT JOIN sys.scheduler_program_args pa
+	  ON pa.program_owner = j.program_owner
+	 AND pa.program_name = j.program_name
+	 AND pa.argument_position = ja.argument_position
+	WHERE ja.job_owner = current_user::text;
 
 /* worker_pid is exposed under Oracle's column name for the same thing. */
 CREATE VIEW sys.dba_scheduler_job_run_details AS
@@ -715,3 +731,77 @@ CREATE OR REPLACE PACKAGE BODY dbms_scheduler IS
 END dbms_scheduler;
 
 GRANT EXECUTE ON PACKAGE dbms_scheduler TO PUBLIC;
+
+
+-- ALL_SCHEDULER_*: Oracle exposes every scheduler object both as USER_ (own
+-- objects) and ALL_ (objects the user may access).  IvorySQL has the USER_ and
+-- DBA_ variants; the ALL_ ones are added here so that code written against
+-- Oracle's ALL_SCHEDULER_* names resolves.  In this implementation scheduler
+-- objects carry no per-object grants, so ALL_ shows the objects of the current
+-- user plus everything for a superuser, which is the closest honest reading of
+-- Oracle's "accessible to you".
+CREATE OR REPLACE VIEW sys.all_scheduler_jobs AS
+	SELECT job_owner AS owner, job_name, job_id, program_owner, program_name,
+		   job_type, job_action, number_of_arguments, schedule_owner,
+		   schedule_name, start_date, repeat_interval, end_date, next_run_date,
+		   job_class, auto_drop, enabled, state, run_count, failure_count,
+		   last_start_date,
+		   (last_end_date - last_start_date) AS last_run_duration, comments
+	FROM sys.scheduler_jobs
+	WHERE job_owner = current_user::text
+	   OR (SELECT rolsuper FROM pg_catalog.pg_roles
+		   WHERE rolname = current_user);
+
+CREATE OR REPLACE VIEW sys.all_scheduler_programs AS
+	SELECT program_owner AS owner, program_name, program_type, program_action,
+		   number_of_arguments, enabled, comments
+	FROM sys.scheduler_programs
+	WHERE program_owner = current_user::text
+	   OR (SELECT rolsuper FROM pg_catalog.pg_roles
+		   WHERE rolname = current_user);
+
+CREATE OR REPLACE VIEW sys.all_scheduler_program_args AS
+	SELECT program_owner AS owner, program_name, argument_name,
+		   argument_position, argument_type, default_value, out_argument
+	FROM sys.scheduler_program_args
+	WHERE program_owner = current_user::text
+	   OR (SELECT rolsuper FROM pg_catalog.pg_roles
+		   WHERE rolname = current_user);
+
+CREATE OR REPLACE VIEW sys.all_scheduler_schedules AS
+	SELECT schedule_owner AS owner, schedule_name, start_date, repeat_interval,
+		   end_date, comments
+	FROM sys.scheduler_schedules
+	WHERE schedule_owner = current_user::text
+	   OR (SELECT rolsuper FROM pg_catalog.pg_roles
+		   WHERE rolname = current_user);
+
+CREATE OR REPLACE VIEW sys.all_scheduler_job_args AS
+	SELECT ja.job_owner AS owner, ja.job_name, pa.argument_name,
+		   ja.argument_position, pa.argument_type, ja.argument_value AS value
+	FROM sys.scheduler_job_args ja
+	JOIN sys.scheduler_jobs j
+	  ON j.job_owner = ja.job_owner AND j.job_name = ja.job_name
+	LEFT JOIN sys.scheduler_program_args pa
+	  ON pa.program_owner = j.program_owner
+	 AND pa.program_name = j.program_name
+	 AND pa.argument_position = ja.argument_position
+	WHERE ja.job_owner = current_user::text
+	   OR (SELECT rolsuper FROM pg_catalog.pg_roles
+		   WHERE rolname = current_user);
+
+CREATE OR REPLACE VIEW sys.all_scheduler_job_run_details AS
+	SELECT job_owner AS owner, log_id, log_date, job_name, job_id, status,
+		   error_no, error_message, req_start_date, actual_start_date,
+		   worker_pid AS slave_pid, run_duration
+	FROM sys.scheduler_job_run_details
+	WHERE job_owner = current_user::text
+	   OR (SELECT rolsuper FROM pg_catalog.pg_roles
+		   WHERE rolname = current_user);
+
+GRANT SELECT ON sys.all_scheduler_jobs TO PUBLIC;
+GRANT SELECT ON sys.all_scheduler_programs TO PUBLIC;
+GRANT SELECT ON sys.all_scheduler_program_args TO PUBLIC;
+GRANT SELECT ON sys.all_scheduler_schedules TO PUBLIC;
+GRANT SELECT ON sys.all_scheduler_job_args TO PUBLIC;
+GRANT SELECT ON sys.all_scheduler_job_run_details TO PUBLIC;

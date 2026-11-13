@@ -396,8 +396,16 @@ BEGIN
   dbms_scheduler.set_job_argument_value('reg_job_inline', 'y', 'x');
 END;
 /
-SELECT job_name, argument_position, value FROM user_scheduler_job_args
+SELECT job_name, argument_name, argument_position, argument_type, value
+  FROM user_scheduler_job_args
   ORDER BY argument_position;
+-- The ALL_ variant exposes the same metadata plus OWNER.
+SELECT COUNT(*) = 2 AS all_job_args_metadata
+  FROM all_scheduler_job_args
+  WHERE job_name = 'REG_JOB_NAMED'
+    AND owner = current_user
+    AND argument_name IS NOT NULL
+    AND argument_type IS NOT NULL;
 
 --
 -- ENABLE / DISABLE
@@ -815,3 +823,82 @@ DROP PROCEDURE sched_reg_proc;
 DELETE FROM sys.scheduler_job_run_details;
 DROP ROLE regress_dbms_scheduler;
 RESET timezone;
+
+-- Oracle-compatible ALL_SCHEDULER_* views
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_all_sched', job_type => 'PLSQL_BLOCK',
+      job_action => 'BEGIN NULL; END;');
+END;
+/
+SELECT COUNT(*) = 1 AS all_jobs
+FROM all_scheduler_jobs WHERE job_name = 'REG_ALL_SCHED';
+SELECT COUNT(*) = 1 AS user_jobs_match
+FROM user_scheduler_jobs WHERE job_name = 'REG_ALL_SCHED';
+-- OWNER is exposed as in Oracle, and a superuser sees every owner's jobs.
+SELECT COUNT(*) = 1 AS owner_matches
+FROM all_scheduler_jobs
+WHERE job_name = 'REG_ALL_SCHED' AND owner = current_user;
+CREATE USER sched_all_u1;
+SET SESSION AUTHORIZATION sched_all_u1;
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_all_other', job_type => 'PLSQL_BLOCK',
+      job_action => 'BEGIN NULL; END;');
+END;
+/
+RESET SESSION AUTHORIZATION;
+SELECT COUNT(*) = 1 AS superuser_sees_other_owner
+FROM all_scheduler_jobs
+WHERE job_name = 'REG_ALL_OTHER' AND owner = 'sched_all_u1';
+SET SESSION AUTHORIZATION sched_all_u1;
+SELECT COUNT(*) = 1 AS own_job_visible
+FROM all_scheduler_jobs WHERE job_name = 'REG_ALL_OTHER';
+SELECT COUNT(*) = 0 AS other_owner_hidden
+FROM all_scheduler_jobs WHERE job_name = 'REG_ALL_SCHED';
+BEGIN
+  dbms_scheduler.drop_job('reg_all_other');
+END;
+/
+RESET SESSION AUTHORIZATION;
+DROP USER sched_all_u1;
+-- The other ALL_ views expose the same objects: program, program argument,
+-- schedule and job argument metadata.  The run-details view has no rows for a
+-- job that never ran, which is also what Oracle reports.
+CREATE OR REPLACE PROCEDURE reg_all_proc(x NUMBER, y VARCHAR2) IS
+BEGIN
+  NULL;
+END;
+/
+BEGIN
+  dbms_scheduler.create_program('reg_all_prog', 'STORED_PROCEDURE', 'reg_all_proc', 2);
+  dbms_scheduler.define_program_argument('reg_all_prog', 1, 'p1', 'NUMBER');
+  dbms_scheduler.define_program_argument('reg_all_prog', 2, 'p2', 'VARCHAR2');
+  dbms_scheduler.enable('reg_all_prog');
+  dbms_scheduler.create_schedule('reg_all_schedule',
+      repeat_interval => 'FREQ=DAILY;BYHOUR=1;BYMINUTE=2;BYSECOND=3');
+  dbms_scheduler.create_job('reg_all_job', program_name => 'reg_all_prog',
+      schedule_name => 'reg_all_schedule');
+  dbms_scheduler.set_job_argument_value('reg_all_job', 1, '5');
+END;
+/
+SELECT COUNT(*) = 1 AS all_programs
+FROM all_scheduler_programs WHERE program_name = 'REG_ALL_PROG';
+SELECT COUNT(*) = 2 AS all_program_args
+FROM all_scheduler_program_args WHERE program_name = 'REG_ALL_PROG';
+SELECT COUNT(*) = 1 AS all_schedules
+FROM all_scheduler_schedules WHERE schedule_name = 'REG_ALL_SCHEDULE';
+SELECT COUNT(*) = 1 AS all_job_args
+FROM all_scheduler_job_args
+WHERE job_name = 'REG_ALL_JOB' AND argument_name = 'P1' AND value = '5';
+SELECT COUNT(*) = 0 AS all_run_details_empty
+FROM all_scheduler_job_run_details WHERE job_name = 'REG_ALL_JOB';
+BEGIN
+  dbms_scheduler.drop_job('reg_all_job');
+  dbms_scheduler.drop_program('reg_all_prog');
+  dbms_scheduler.drop_schedule('reg_all_schedule');
+END;
+/
+DROP PROCEDURE reg_all_proc;
+BEGIN
+  dbms_scheduler.drop_job('reg_all_sched');
+END;
+/
