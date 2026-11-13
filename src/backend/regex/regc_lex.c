@@ -156,23 +156,24 @@ prefixes(struct vars *v)
 				case CHR('m'):	/* Perloid synonym for n */
 				case CHR('n'):	/* \n affects ^ $ . [^ */
 					v->cflags |= REG_NEWLINE;
+					v->cflags &= ~REG_NLEND;
 					break;
 				case CHR('p'):	/* ~Perl, \n affects . [^ */
 					v->cflags |= REG_NLSTOP;
-					v->cflags &= ~REG_NLANCH;
+					v->cflags &= ~(REG_NLANCH | REG_NLEND);
 					break;
 				case CHR('q'):	/* literal string */
 					v->cflags |= REG_QUOTE;
 					v->cflags &= ~REG_ADVANCED;
 					break;
 				case CHR('s'):	/* single line, \n ordinary */
-					v->cflags &= ~REG_NEWLINE;
+					v->cflags &= ~(REG_NEWLINE | REG_NLEND);
 					break;
 				case CHR('t'):	/* tight syntax */
 					v->cflags &= ~REG_EXPANDED;
 					break;
 				case CHR('w'):	/* weird, \n affects ^ $ only */
-					v->cflags &= ~REG_NLSTOP;
+					v->cflags &= ~(REG_NLSTOP | REG_NLEND);
 					v->cflags |= REG_NLANCH;
 					break;
 				case CHR('x'):	/* expanded syntax */
@@ -759,6 +760,7 @@ lexescape(struct vars *v)
 			RETV(PLAIN, c);
 			break;
 		default:
+
 			/*
 			 * Throw an error for unrecognized ASCII alpha escape sequences,
 			 * which reserves them for future use if needed.

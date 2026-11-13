@@ -81,6 +81,7 @@
 #undef REG_FAKE
 #undef REG_PROGRESS
 #undef REG_NLDOT
+#undef REG_NLEND
 #undef REG_NOTBOL
 #undef REG_NOTEOL
 #undef REG_STARTEND
@@ -198,6 +199,7 @@ typedef struct
 #define REG_FAKE	010000		/* none of your business :-) */
 #define REG_PROGRESS	020000	/* none of your business :-) */
 #define REG_NLDOT	040000		/* \n doesn't match . */
+#define REG_NLEND	0100000		/* $ matches before \n, but ^ only at BOS */
 
 
 
@@ -284,29 +286,29 @@ extern bool RE_compile_and_execute(text *text_re, char *dat, int dat_len,
 extern regex_t *ora_re_compile_and_cache(text *text_re, int cflags, Oid collation);
 extern void ora_parse_re_flags(pg_re_flags *flags, text *opts);
 extern text *ora_replace_text_regexp(text *src_text, regex_t *regexp,
-				   text *replace_text, int start_posn,int occur_posn);
+									 text *replace_text, int start_posn, int occur_posn);
 extern bool
-ora_substr_text_regexp(text *src_text,text *pattern_arg ,text *match_para,
-								   Oid collation,int start_posn,
-								   int occur_posn,int subexpr_pos,
+			ora_substr_text_regexp(text *src_text, text *pattern_arg, text *match_para,
+								   Oid collation, int start_posn,
+								   int occur_posn, int subexpr_pos,
 								   Datum *substr);
 extern bool
-ora_setup_regexp_substr_matches(text *src_text, regex_t *re, pg_re_flags re_flags,
-											 int start_posn, int occur_posn,
-											 int subexpr_pos,Datum *substr,
-											 bool ignore_degenerate);
-extern int charlen_to_bytelen(const char *p, int n);
+			ora_setup_regexp_substr_matches(text *src_text, regex_t *re, pg_re_flags re_flags,
+											int start_posn, int occur_posn,
+											int subexpr_pos, Datum *substr,
+											bool ignore_degenerate);
+extern int	charlen_to_bytelen(const char *p, int n);
 
 extern bool
-ora_instr_text_regexp(text *src_text,text *pattern_arg ,text *match_para,
-								 Oid collation,int start_posn,
-								 int occur_posn,int ret_opt,
-								 int subexpr_pos,Datum *substr);
+			ora_instr_text_regexp(text *src_text, text *pattern_arg, text *match_para,
+								  Oid collation, int start_posn,
+								  int occur_posn, int ret_opt,
+								  int subexpr_pos, Datum *substr);
 extern bool
-ora_setup_regexp_instr_matches(text *src_text, regex_t *re, pg_re_flags re_flags,
+			ora_setup_regexp_instr_matches(text *src_text, regex_t *re, pg_re_flags re_flags,
 										   int start_posn, int occur_posn,
-										   int ret_opt,int subexpr_pos,
-										   Datum *substr,bool ignore_degenerate);
+										   int ret_opt, int subexpr_pos,
+										   Datum *substr, bool ignore_degenerate);
 
 
 #endif							/* _REGEX_H_ */
