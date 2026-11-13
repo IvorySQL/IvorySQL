@@ -535,6 +535,9 @@ CREATE OR REPLACE PACKAGE dbms_scheduler IS
 		argument_name VARCHAR2,
 		argument_value VARCHAR2);
 
+	/* Create a copy of an existing job under a new name. */
+	PROCEDURE copy_job(p_old_job VARCHAR2, p_new_job VARCHAR2);
+
 END dbms_scheduler;
 
 CREATE OR REPLACE PACKAGE BODY dbms_scheduler IS
@@ -710,6 +713,26 @@ CREATE OR REPLACE PACKAGE BODY dbms_scheduler IS
 	BEGIN
 		PERFORM sys.ora_dbms_scheduler_purge_log(log_history, which_log,
 			job_name);
+	END;
+
+	PROCEDURE copy_job(p_old_job VARCHAR2, p_new_job VARCHAR2) IS
+	BEGIN
+		INSERT INTO sys.scheduler_jobs
+		       (job_owner, job_name, job_type, job_action, number_of_arguments,
+		        program_owner, program_name, schedule_owner, schedule_name,
+		        start_date, repeat_interval, end_date, next_run_date, job_class,
+		        auto_drop, comments, enabled, state)
+		SELECT job_owner, pg_catalog.upper(pg_catalog.btrim(copy_job.p_new_job)), job_type,
+		       job_action, number_of_arguments, program_owner, program_name,
+		       schedule_owner, schedule_name, start_date, repeat_interval,
+		       end_date, next_run_date, job_class, auto_drop, comments, enabled,
+		       state
+		  FROM sys.scheduler_jobs
+		 WHERE lower(job_name) = lower(copy_job.p_old_job)
+		   AND job_owner = current_user::text;
+		IF NOT FOUND THEN
+			RAISE EXCEPTION 'job % does not exist', copy_job.p_old_job;
+		END IF;
 	END;
 
 END dbms_scheduler;

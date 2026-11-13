@@ -815,3 +815,24 @@ DROP PROCEDURE sched_reg_proc;
 DELETE FROM sys.scheduler_job_run_details;
 DROP ROLE regress_dbms_scheduler;
 RESET timezone;
+
+-- Oracle-compatible DBMS_SCHEDULER.COPY_JOB
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_copy_src', job_type => 'PLSQL_BLOCK',
+      job_action => 'BEGIN NULL; END;');
+END;
+/
+BEGIN
+  dbms_scheduler.copy_job('reg_copy_src', 'reg_copy_dst');
+END;
+/
+SELECT COUNT(*) = 2 AS both_rows
+FROM user_scheduler_jobs
+WHERE job_name IN ('REG_COPY_SRC', 'REG_COPY_DST');
+SELECT job_action = 'BEGIN NULL; END;' AS action_copied
+FROM user_scheduler_jobs WHERE job_name = 'REG_COPY_DST';
+BEGIN
+  dbms_scheduler.drop_job('reg_copy_dst');
+  dbms_scheduler.drop_job('reg_copy_src');
+END;
+/
