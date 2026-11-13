@@ -733,26 +733,19 @@ drop table some_tab cascade;
 NOTICE:  drop cascades to table some_tab_child
 /* Test multiple inheritance of column defaults */
 CREATE TABLE firstparent (tomorrow date default now()::date + 1);
-ERROR:  cannot cast type pg_catalog.timestamptz to date
-LINE 2: ...ATE TABLE firstparent (tomorrow date default now()::date + 1...
-                                                             ^
 CREATE TABLE secondparent (tomorrow date default  now() :: date  +  1);
-ERROR:  cannot cast type pg_catalog.timestamptz to date
-LINE 1: ... TABLE secondparent (tomorrow date default  now() :: date  +...
-                                                             ^
 CREATE TABLE jointchild () INHERITS (firstparent, secondparent);  -- ok
-ERROR:  relation "firstparent" does not exist
+NOTICE:  merging multiple inherited definitions of column "tomorrow"
 CREATE TABLE thirdparent (tomorrow date default now()::date - 1);
-ERROR:  cannot cast type pg_catalog.timestamptz to date
-LINE 1: ...ATE TABLE thirdparent (tomorrow date default now()::date - 1...
-                                                             ^
 CREATE TABLE otherchild () INHERITS (firstparent, thirdparent);  -- not ok
-ERROR:  relation "firstparent" does not exist
+NOTICE:  merging multiple inherited definitions of column "tomorrow"
+ERROR:  column "tomorrow" inherits conflicting default values
+HINT:  To resolve the conflict, specify a default explicitly.
 CREATE TABLE otherchild (tomorrow date default now())
   INHERITS (firstparent, thirdparent);  -- ok, child resolves ambiguous default
-ERROR:  relation "firstparent" does not exist
+NOTICE:  merging multiple inherited definitions of column "tomorrow"
+NOTICE:  merging column "tomorrow" with inherited definition
 DROP TABLE firstparent, secondparent, jointchild, thirdparent, otherchild;
-ERROR:  table "firstparent" does not exist
 -- Test changing the type of inherited columns
 insert into d values('test','one','two','three');
 alter table a alter column aa type integer using bit_length(aa);
