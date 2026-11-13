@@ -156,3 +156,39 @@ call dbms_session.reset_package();
 select sys_context('rp_ns', 'key') as ctx_after_reset;
 
 DROP PACKAGE rp_pkg;
+
+-- Oracle-compatible DBMS_SESSION.SET_NLS / IS_SESSION_ALIVE
+BEGIN
+  dbms_session.set_nls('nls_date_format', 'YYYY/MM/DD');
+END;
+/
+SELECT current_setting('nls_date_format') AS nls_after_set;
+RESET nls_date_format;
+
+SELECT dbms_session.is_session_alive(pg_backend_pid()) AS self_alive,
+       dbms_session.is_session_alive(999999) AS ghost_dead
+FROM DUAL;
+
+-- Oracle-compatible DBMS_SESSION.SET_ROLE
+DROP ROLE IF EXISTS reg_session_role;
+CREATE ROLE reg_session_role;
+GRANT reg_session_role TO CURRENT_USER;
+BEGIN
+  dbms_session.set_role('reg_session_role');
+END;
+/
+SELECT CURRENT_USER = 'reg_session_role' AS role_active;
+-- The role has no EXECUTE on the package, so reset through SQL.
+SET ROLE NONE;
+SELECT CURRENT_USER <> 'reg_session_role' AS role_reset;
+REVOKE reg_session_role FROM CURRENT_USER;
+DROP ROLE reg_session_role;
+
+-- Oracle-compatible DBMS_SESSION.UNIQUE_SESSION_ID / IS_ROLE_ENABLED
+SELECT DBMS_SESSION.UNIQUE_SESSION_ID() = DBMS_SESSION.UNIQUE_SESSION_ID() AS stable_id,
+       LENGTH(DBMS_SESSION.UNIQUE_SESSION_ID()) > 0 AS non_empty
+FROM DUAL;
+
+SELECT DBMS_SESSION.IS_ROLE_ENABLED(CURRENT_USER::TEXT) AS own_role_enabled,
+       DBMS_SESSION.IS_ROLE_ENABLED('no_such_role_xyz') AS missing_role_disabled
+FROM DUAL;
