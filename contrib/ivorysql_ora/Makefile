@@ -109,6 +109,10 @@ ORA_REGRESS = \
 	utl_match \
 	dbms_scheduler
 
+# The TAP tests start their own cluster, so there is nothing to run
+# against an already-installed server.
+NO_INSTALLCHECK = 1
+
 TAP_TESTS = 1
 
 # Include path for plisql.h (needed by dbms_utility)
