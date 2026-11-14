@@ -53,11 +53,14 @@
  *   * Only when that lookup does not yield an exact match are the
  *     argument types rewritten per Oracle numeric precedence -- ordinary
  *     numeric literals (int2/int4/int8/numeric, or an unknown string
- *     literal in this numeric context) behave as NUMBER values and a
- *     common target type is chosen with BINARY_DOUBLE > BINARY_FLOAT >
- *     NUMBER -- and the lookup is retried.  The real argument types are
- *     kept for the actual call so that the arguments are coerced to the
- *     selected overload.
+ *     literal in this numeric context) behave as NUMBER values, nonnumeric
+ *     arguments that IvorySQL can implicitly coerce to a numeric type
+ *     (typed CHAR/VARCHAR2 values and columns among them) join the call
+ *     without raising the precedence themselves, and a common target type
+ *     is chosen with BINARY_DOUBLE > BINARY_FLOAT > NUMBER (NUMBER being
+ *     the default when every argument is nonnumeric) -- and the lookup is
+ *     retried.  The real argument types are kept for the actual call so
+ *     that the arguments are coerced to the selected overload.
  *
  * Observed consequences (all asserted in the regression suite, verified
  * against Oracle Database 23ai):
@@ -74,6 +77,15 @@
  *     REMAINDER(7, 0) reaches the NUMBER body and raises
  *     division_by_zero (ORA-01476), and a wide literal keeps its exact
  *     decimal digits (REMAINDER(10000000000000000001, 2) = 1).
+ *
+ *   * Nonnumeric arguments that implicitly convert to a numeric type
+ *     follow the typed numeric argument: REMAINDER(varchar2_value, 2)
+ *     resolves to NUMBER, REMAINDER(varchar2_value, binary_float_value)
+ *     to BINARY_FLOAT, and the all-string REMAINDER('7', '2') computes
+ *     the exact NUMBER result 1.  The NUMBER semantics ride along: a zero
+ *     divisor hidden in a string raises division_by_zero (not NaN) and a
+ *     wide integer hidden in a string keeps its exact digits
+ *     (REMAINDER('10000000000000000001'::varchar2, 2) = 1).
  *
  *   * Mixed families follow the precedence rule:
  *     REMAINDER(number, binary_float) resolves to BINARY_FLOAT;

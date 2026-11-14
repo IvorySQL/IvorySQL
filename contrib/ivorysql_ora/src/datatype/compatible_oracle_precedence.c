@@ -29,11 +29,26 @@
 #include "postgres.h"
 #include "catalog/pg_type.h"
 #include "fmgr.h"
+#include "parser/parse_coerce.h"
 #include "utils/lsyscache.h"
 
 #include "../include/ivorysql_ora.h"
 
 #define	ORACLE_DATATYPE_MUMBER		15
+
+/* Oracle numeric precedence levels used by the funcarg resolver below */
+#define ORA_PREC_NUMBER				3
+#define ORA_PREC_BFLOAT				4
+#define ORA_PREC_BDOUBLE			5
+
+/*
+ * Bitmask flags for the Oracle numeric targets an argument can reach
+ * through an implicit coercion, as returned by
+ * oracle_numeric_reachability().
+ */
+#define ORA_TARGET_NUMBER			(1 << 0)
+#define ORA_TARGET_BFLOAT			(1 << 1)
+#define ORA_TARGET_BDOUBLE			(1 << 2)
 
 /* Oracle data type precedence array */
 static const int OracleDataTypePriority[ORACLE_DATATYPE_MUMBER][2] =
@@ -95,6 +110,37 @@ get_precedence(Oid datatype)
 	}
 
 	return result;
+}
+
+
+/*
+ * oracle_numeric_reachability()
+ * Return the bitmask of Oracle numeric types (sys.number,
+ * sys.binary_float, sys.binary_double) that the given type can reach
+ * through an implicit coercion, i.e. what find_coercion_pathway() admits
+ * in the COERCION_IMPLICIT context -- the same judgement that the
+ * coercion applied to the rewritten arguments will use.  IvorySQL
+ * registers implicit casts from the CHAR/VARCHAR2 family to all three
+ * numeric targets, so typed string values reach every one of them.
+ */
+static int
+oracle_numeric_reachability(Oid argtype)
+{
+	static const Oid targets[3] = {NUMBEROID, BINARY_FLOATOID, BINARY_DOUBLEOID};
+	static const int bits[3] = {ORA_TARGET_NUMBER, ORA_TARGET_BFLOAT, ORA_TARGET_BDOUBLE};
+	int			mask = 0;
+	int			i;
+
+	for (i = 0; i < 3; i++)
+	{
+		Oid			castfunc;
+
+		if (find_coercion_pathway(targets[i], argtype,
+								  COERCION_IMPLICIT, &castfunc) != COERCION_PATH_NONE)
+			mask |= bits[i];
+	}
+
+	return mask;
 }
 
 
@@ -359,20 +405,34 @@ pg_compatible_oracle_precedence(Oid arg1, Oid arg2, char *opname_p, Oid *result_
  * the regular PostgreSQL overload resolution runs, implementing Oracle's
  * numeric precedence for the arguments:
  *
- *   1. Integral and numeric literals/values (int2/int4/int8/numeric, and
- *      unknown literals in the numeric context of these functions) are
- *      treated as sys.number; float4 maps to sys.binary_float and float8
- *      to sys.binary_double.
- *   2. A common target type is chosen with the priority
+ *   1. Numeric arguments (int2/int4/int8/numeric mapped onto sys.number,
+ *      float4 onto sys.binary_float, float8 onto sys.binary_double, and
+ *      unknown literals in the numeric context of these functions) drive
+ *      the precedence.
+ *   2. Nonnumeric arguments that IvorySQL can implicitly coerce to a
+ *      numeric type also take part, but they never raise the precedence
+ *      themselves: Oracle documents for REMAINDER that the arguments "can
+ *      be any numeric datatype or any nonnumeric datatype that can be
+ *      implicitly converted to a numeric datatype", and the nonnumeric
+ *      argument is converted to the family of the highest-precedence
+ *      numeric argument.  Typed CHAR/VARCHAR2 values and columns are the
+ *      common case.
+ *   3. When every argument is implicitly numeric nonnumeric, NUMBER is
+ *      the family (Oracle's lowest numeric precedence as the default).
+ *   4. A common target type is chosen with the priority
  *      BINARY_DOUBLE > BINARY_FLOAT > NUMBER, and every argument is
  *      retargeted to it.
  *
  * On success rewritten_arg_types[0..nargs-1] holds the types to look the
  * function up with; the caller keeps the real argument types so that
  * make_fn_arguments() coerces them to the declared types of the overload
- * that the lookup selects.  Returns false (no rewrite) when any argument
- * is not one of the numeric types above, leaving the call to the regular
- * PostgreSQL resolution.
+ * that the lookup selects.  Returns false (no rewrite) when some argument
+ * cannot take part in the precedence rewrite -- either it cannot reach any
+ * numeric type through an implicit coercion, or an implicitly numeric
+ * argument cannot reach the target type the numeric arguments selected,
+ * in which case coercing it onto the selected overload would fail anyway.
+ * The caller then leaves the call to the regular PostgreSQL resolution:
+ * the rewrite is a preference, not a mandate.
  *
  * It is the caller's responsibility to ensure that proname_p is not NULL
  * and that rewritten_arg_types has room for nargs Oids.
@@ -383,19 +443,26 @@ pg_compatible_oracle_funcarg_precedence(const char *proname_p, int nargs,
 										Oid *rewritten_arg_types)
 {
 	int			i;
-	int			target_precedence = 0;
-	Oid			target_type = InvalidOid;
+	int			typed_precedence = 0;
+	int			implicit_targets = (ORA_TARGET_NUMBER | ORA_TARGET_BFLOAT |
+									ORA_TARGET_BDOUBLE);
+	Oid			target_type;
+	int			target_bit;
 
 	(void) proname_p;			/* the name gate lives in the caller */
 
 	/*
-	 * Step 1: map each argument onto its Oracle numeric type.  Any other
-	 * type makes us bail out: only wholly numeric calls take part in the
-	 * precedence rewrite.
+	 * Step 1: classify each argument.  Numeric arguments keep their
+	 * precedence level; a nonnumeric argument contributes the set of
+	 * numeric types it can implicitly reach (intersected across all such
+	 * arguments) instead of raising the precedence.  An argument that
+	 * cannot implicitly reach any numeric type leaves the call to the
+	 * regular PostgreSQL resolution.
 	 */
 	for (i = 0; i < nargs; i++)
 	{
 		Oid			argtype = getBaseType(actual_arg_types[i]);
+		int			prec = 0;
 
 		switch (argtype)
 		{
@@ -405,22 +472,26 @@ pg_compatible_oracle_funcarg_precedence(const char *proname_p, int nargs,
 			case INT2OID:
 			case INT4OID:
 			case INT8OID:
-				argtype = NUMBEROID;
+				prec = ORA_PREC_NUMBER;
 				break;
 
 			case FLOAT4OID:
 			case BINARY_FLOATOID:
-				argtype = BINARY_FLOATOID;
+				prec = ORA_PREC_BFLOAT;
 				break;
 
 			case FLOAT8OID:
 			case BINARY_DOUBLEOID:
-				argtype = BINARY_DOUBLEOID;
+				prec = ORA_PREC_BDOUBLE;
 				break;
 
 			default:
-				return false;
+				implicit_targets &= oracle_numeric_reachability(argtype);
+				break;
 		}
+
+		if (prec > typed_precedence)
+			typed_precedence = prec;
 
 		rewritten_arg_types[i] = argtype;
 	}
@@ -428,17 +499,37 @@ pg_compatible_oracle_funcarg_precedence(const char *proname_p, int nargs,
 	/*
 	 * Step 2: choose the common target type with the Oracle numeric
 	 * precedence BINARY_DOUBLE (5) > BINARY_FLOAT (4) > NUMBER (3).
+	 * Implicitly numeric nonnumeric arguments never raise the precedence,
+	 * so NUMBER is the target when only such arguments take part.
 	 */
-	for (i = 0; i < nargs; i++)
-	{
-		int			prec = get_precedence(rewritten_arg_types[i]);
+	if (typed_precedence == 0)
+		typed_precedence = ORA_PREC_NUMBER;
 
-		if (prec > target_precedence)
-		{
-			target_precedence = prec;
-			target_type = rewritten_arg_types[i];
-		}
+	switch (typed_precedence)
+	{
+		case ORA_PREC_BDOUBLE:
+			target_type = BINARY_DOUBLEOID;
+			target_bit = ORA_TARGET_BDOUBLE;
+			break;
+
+		case ORA_PREC_BFLOAT:
+			target_type = BINARY_FLOATOID;
+			target_bit = ORA_TARGET_BFLOAT;
+			break;
+
+		default:
+			target_type = NUMBEROID;
+			target_bit = ORA_TARGET_NUMBER;
+			break;
 	}
+
+	/*
+	 * Bail out if an implicitly numeric argument cannot reach the target
+	 * type: the coercion onto the selected overload would fail, so leave
+	 * the call to the regular PostgreSQL resolution.
+	 */
+	if ((implicit_targets & target_bit) == 0)
+		return false;
 
 	for (i = 0; i < nargs; i++)
 		rewritten_arg_types[i] = target_type;
