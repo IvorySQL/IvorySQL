@@ -1558,3 +1558,170 @@ select to_single_byte('１．２');
 select to_single_byte(１．２);
 select to_single_byte(3.4);
 select to_single_byte(NULL);
+
+/*
+ * instrc / substrc
+ *
+ * The Unicode-complete-character ("*C") variants of INSTR and SUBSTR.
+ * Their counting unit is the one lengthc() counts: the code points of the
+ * NFC-normalized string, so a base character plus combining marks and a
+ * 4-byte supplementary character each count as one complete character.
+ */
+SELECT INSTRC('CORPORATE FLOOR','OR',5,2) "Instring in chars" FROM DUAL;
+SELECT INSTRC('CORPORATE FLOOR','OR',5) "Instring in chars" FROM DUAL;
+SELECT INSTRC('CORPORATE FLOOR','OR') "Instring in chars" FROM DUAL;
+
+-- multibyte: 'å' is one complete character, two bytes
+SELECT INSTRC('åbcd','c'), INSTRB('åbcd','c') FROM DUAL;
+SELECT SUBSTRC('åbcd',2), SUBSTRB('åbcd',2) FROM DUAL;
+SELECT SUBSTRC('åbcd',2,2) FROM DUAL;
+
+-- Chinese: three UTF-8 bytes per character, one complete character each
+SELECT INSTRC('今天明天','天') FROM DUAL;
+SELECT INSTRC('今天明天','天',3) FROM DUAL;
+SELECT INSTRC('今天明天','明天') FROM DUAL;
+SELECT SUBSTRC('今天明天',2,2) FROM DUAL;
+SELECT SUBSTRC('今天明天',-2) FROM DUAL;
+SELECT SUBSTRC('今天明天',-2,1) FROM DUAL;
+
+-- combining marks: NFC folds 'e'+U+0301 into one complete character
+SELECT INSTRC('cafe'||chr(769), 'e'||chr(769)) FROM DUAL;
+SELECT lengthc('cafe'||chr(769)) FROM DUAL;
+SELECT SUBSTRC('cafe'||chr(769),4,1) FROM DUAL;
+SELECT SUBSTRC('café',4,1) FROM DUAL;
+
+-- supplementary plane: a 4-byte UTF-8 character is still one complete character
+SELECT INSTRC(chr(119070)||'xy','y') FROM DUAL;
+SELECT INSTRB(chr(119070)||'xy','y') FROM DUAL;
+SELECT SUBSTRC(chr(119070)||'xy',1,1) FROM DUAL;
+SELECT SUBSTRC(chr(119070)||'xy',2,2) FROM DUAL;
+
+-- position and length edges; Oracle's empty string is null
+SELECT SUBSTRC('abcdef',0,3) FROM DUAL;
+SELECT SUBSTRC('abcdef',2) FROM DUAL;
+SELECT SUBSTRC('abcdef',-3,2) FROM DUAL;
+SELECT SUBSTRC('abcdef',-10,2) FROM DUAL;
+SELECT SUBSTRC('abcdef',2,0) FROM DUAL;
+SELECT SUBSTRC('abcdef',2,-1) FROM DUAL;
+SELECT SUBSTRC('abcdef',10) FROM DUAL;
+SELECT INSTRC('abc','z') FROM DUAL;
+SELECT INSTRC(NULL,'a') FROM DUAL;
+SELECT SUBSTRC(NULL,1) FROM DUAL;
+
+-- a position with a fractional part is cut to a whole number before use,
+-- the way Oracle cuts it: 2.9 reads as 2, not as 3
+SELECT sys.instrc('CORPORATE FLOOR', 'OR', 5, 2) FROM DUAL;
+SELECT sys.instrc('今天明天', '天', 1.9) FROM DUAL;
+SELECT sys.substrc('今天明天', 2.4, 2.9) FROM DUAL;
+
+-- A negative position that reaches past the beginning of the string has no
+-- answer in Oracle: SUBSTRC('abcdef', -10, 2) is null there, not the whole
+-- string.  -6 is the last negative position that still has an answer.
+SELECT SUBSTRC('abcdef',-10) FROM DUAL;
+SELECT SUBSTRC('abcdef',-6,2) FROM DUAL;
+
+-- The character types keep their blank padding.  The CHAR -> text and the
+-- CHAR -> varchar casts are both implemented by rtrim(), so the overloads
+-- have to take the character types directly; Oracle counts the padding of
+-- a CHAR value, so SUBSTRC has to answer 'b   ' here and not 'b'.
+SELECT
+    LENGTHC(CAST('ab' AS CHAR(5 BYTE))) AS input_len,
+    LENGTHC(SUBSTRC(CAST('ab' AS CHAR(5 BYTE)), 2)) AS output_len,
+    REPLACE(
+        SUBSTRC(CAST('ab' AS CHAR(5 BYTE)), 2),
+        ' ',
+        '_'
+    ) AS visible_result,
+    INSTRC(CAST('ab' AS CHAR(5 BYTE)), ' ') AS first_blank
+FROM dual;
+
+-- CLOB and NCLOB are not character types: Oracle refuses them with
+-- ORA-00932.
+SELECT SUBSTRC(CAST('abc' AS CLOB), 1, 2) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS CLOB), 'b') FROM DUAL;
+SELECT SUBSTRC(CAST('abc' AS NCLOB), 1, 2) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS NCLOB), 'b') FROM DUAL;
+
+-- The occurrence must be positive and the position must not be zero: a zero
+-- position starts the search before the first character, so nothing can
+-- match.
+SELECT INSTRC('abc','c',0,1) FROM DUAL;
+SELECT INSTRC('abc','c',0) FROM DUAL;
+SELECT INSTRC('abc','a',2,-1) FROM DUAL;
+SELECT INSTRC('abc','a',1,0) FROM DUAL;
+
+-- The exact-match rejection overloads have to cover implicitly convertible
+-- argument combinations, not just the plain same-type calls: sys.clob and
+-- sys.nclob are domains over text, and the optimizer folds a constant
+-- argument -- together with its domain coercion -- away to a plain text
+-- constant before the C function runs, so a CLOB source written next to a
+-- typed pattern or NUMBER positions must be refused while parsing.
+SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS VARCHAR2(1 BYTE))) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS NCLOB), CAST('b' AS VARCHAR2(1 BYTE))) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS TEXT)) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS CLOB), 'b', CAST(1 AS NUMBER), CAST(1 AS NUMBER)) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS CLOB), 'b', CAST(1 AS NUMERIC)) FROM DUAL;
+SELECT SUBSTRC(CAST('abc' AS CLOB), CAST(1 AS NUMBER)) FROM DUAL;
+
+-- Oracle refuses a CLOB or NCLOB source, but the pattern may be a CLOB or an
+-- NCLOB: only the source argument is checked.
+CREATE TABLE instrc_pattern_lob (c clob);
+INSERT INTO instrc_pattern_lob VALUES ('b');
+SELECT INSTRC(CAST('abc' AS TEXT), c) FROM instrc_pattern_lob;
+SELECT INSTRC(CAST('ab' AS CHAR(5 BYTE)), c) FROM instrc_pattern_lob;
+SELECT INSTRC('abc', CAST('b' AS CLOB)) FROM DUAL;
+SELECT INSTRC('abc', CAST('b' AS NCLOB)) FROM DUAL;
+DROP TABLE instrc_pattern_lob;
+
+-- Oracle lets the source and the pattern use different character types; the
+-- exact (source, pattern) pairs win the resolution instead of ending in
+-- "function instrc(...) is not unique".
+SELECT INSTRC(CAST('ab' AS CHAR(5 BYTE)), CAST('b' AS VARCHAR2(1 BYTE))) FROM DUAL;
+SELECT INSTRC(CAST('ab' AS CHAR(5 BYTE)), CAST(' ' AS VARCHAR2(1 BYTE))) FROM DUAL;
+SELECT INSTRC(CAST(' ' AS VARCHAR2(1 BYTE)), CAST('ab' AS CHAR(5 BYTE))) FROM DUAL;
+SELECT INSTRC(CAST('ab' AS CHAR(5 CHAR)), CAST('b' AS VARCHAR2(1 CHAR))) FROM DUAL;
+SELECT INSTRC(CAST('ab' AS TEXT), CAST('b' AS CHAR(2 BYTE))) FROM DUAL;
+SELECT INSTRC(CAST('ab' AS VARCHAR2(5 CHAR)), CAST('b' AS CHAR(1 BYTE))) FROM DUAL;
+
+-- position and occurrence are NUMBER in Oracle: the direct character-type
+-- overloads accept sys.number too, so a CHAR source does not fall onto the
+-- varchar2 wrapper and lose its blank padding.
+SELECT INSTRC(CAST('ab' AS CHAR(5 BYTE)), CAST(' ' AS CHAR(1 BYTE)), CAST(1 AS NUMBER), CAST(1 AS NUMBER)) FROM DUAL;
+SELECT INSTRC(CAST('ab' AS CHAR(5 BYTE)), CAST(' ' AS CHAR(1 BYTE)), CAST(2 AS NUMBER)) FROM DUAL;
+SELECT INSTRC(CAST('ab' AS CHAR(5 BYTE)), CAST(' ' AS CHAR(1 BYTE)), CAST(1 AS NUMBER), CAST(0 AS NUMBER)) FROM DUAL;
+SELECT INSTRC(CAST('ab' AS CHAR(5 BYTE)), CAST(' ' AS CHAR(1 BYTE)), CAST(0 AS NUMBER)) FROM DUAL;
+SELECT INSTRC(CAST('ab' AS CHAR(5 BYTE)), CAST(' ' AS CHAR(1 BYTE)), CAST(1 AS NUMBER), CAST(-1 AS NUMBER)) FROM DUAL;
+SELECT LENGTHC(SUBSTRC(CAST('ab' AS CHAR(5 BYTE)), CAST(2 AS NUMBER))) FROM DUAL;
+SELECT REPLACE(SUBSTRC(CAST('ab' AS CHAR(5 BYTE)), CAST(2 AS NUMBER)), ' ', '_') FROM DUAL;
+SELECT SUBSTRC(CAST('今天明天' AS VARCHAR2(12 BYTE)), CAST(2 AS NUMBER), CAST(2 AS NUMBER)) FROM DUAL;
+
+-- Positions written as smallint, bigint or plain numeric are NUMBER
+-- arguments all the same: they must not lose the CHAR padding of the
+-- source, and a CLOB or NCLOB source is refused whatever spelling the
+-- positions use.
+SELECT INSTRC('abc','b', 2::bigint) FROM DUAL;
+SELECT INSTRC('abc','b', 2::bigint, 2::bigint) FROM DUAL;
+SELECT INSTRC('abc','b', 2::smallint) FROM DUAL;
+SELECT INSTRC(CAST('ab' AS CHAR(5 BYTE)), CAST(' ' AS CHAR(1 BYTE)), 1::bigint) FROM DUAL;
+SELECT INSTRC(CAST('ab' AS CHAR(5 BYTE)), CAST(' ' AS CHAR(1 BYTE)), CAST(2 AS NUMERIC)) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS CLOB), 'b', 1::bigint, 1::bigint) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS NCLOB), 'b', 1::bigint) FROM DUAL;
+SELECT SUBSTRC('今天明天', 2::bigint, 2::bigint) FROM DUAL;
+SELECT SUBSTRC('今天明天', 2::smallint) FROM DUAL;
+SELECT LENGTHC(SUBSTRC(CAST('ab' AS CHAR(5 BYTE)), 2::bigint)) FROM DUAL;
+SELECT LENGTHC(SUBSTRC(CAST('ab' AS CHAR(5 BYTE)), 2.4)) FROM DUAL;
+SELECT SUBSTRC(CAST('abc' AS CLOB), 1::bigint, 2::bigint) FROM DUAL;
+SELECT SUBSTRC(CAST('abc' AS NCLOB), 1::smallint) FROM DUAL;
+SELECT SUBSTRC(CAST('abc' AS CLOB), CAST(1 AS NUMERIC), CAST(2 AS NUMERIC)) FROM DUAL;
+SELECT SUBSTRC(CAST('abc' AS NCLOB), CAST(1 AS NUMERIC)) FROM DUAL;
+
+-- A NULL source and a NULL position answer null on the numeric-position
+-- spellings as on every other shape, and a fractional position is cut to a
+-- whole number, the way Oracle cuts it: SUBSTRC('abcdef', 2.9) reads as
+-- SUBSTRC('abcdef', 2), and INSTRC('ababa', 'a', 1, 1.9) reads its 1.9 as
+-- the first occurrence.
+SELECT sys.substrc(NULL::text, 1::numeric) FROM DUAL;
+SELECT sys.substrc('abc', NULL::numeric) FROM DUAL;
+SELECT sys.substrc(NULL::text, 1::numeric, 2::numeric) FROM DUAL;
+SELECT SUBSTRC('abcdef', 2.9) FROM DUAL;
+SELECT INSTRC('ababa','a',1,1.9) FROM DUAL;

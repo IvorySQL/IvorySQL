@@ -36,6 +36,8 @@
 #include "lib/stringinfo.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
+#include "nodes/nodeFuncs.h"
+#include "nodes/primnodes.h"
 #include "regex/regex.h"
 #include "utils/builtins.h"
 #include "utils/fmgrprotos.h"
@@ -47,6 +49,7 @@
 
 #include "catalog/pg_type.h"
 #include "utils/date.h"
+#include "utils/lsyscache.h"
 #include "utils/timestamp.h"
 
 #include "utils/guc.h"
@@ -78,6 +81,15 @@ PG_FUNCTION_INFO_V1(ora_instrb);
 PG_FUNCTION_INFO_V1(oracle_instr_2);
 PG_FUNCTION_INFO_V1(oracle_instr_3);
 PG_FUNCTION_INFO_V1(oracle_instr_4);
+PG_FUNCTION_INFO_V1(ora_instrc_2);
+PG_FUNCTION_INFO_V1(ora_instrc_3);
+PG_FUNCTION_INFO_V1(ora_instrc_4);
+PG_FUNCTION_INFO_V1(ora_instrc_3_number);
+PG_FUNCTION_INFO_V1(ora_instrc_4_number);
+PG_FUNCTION_INFO_V1(ora_instrc_unsupported);
+PG_FUNCTION_INFO_V1(ora_substrc);
+PG_FUNCTION_INFO_V1(ora_substrc_no_length);
+PG_FUNCTION_INFO_V1(ora_substrc_unsupported);
 PG_FUNCTION_INFO_V1(ora_asciistr);
 PG_FUNCTION_INFO_V1(ora_to_multi_byte);
 PG_FUNCTION_INFO_V1(ora_to_single_byte);
@@ -105,6 +117,9 @@ typedef struct
 
 static text *ora_substr_internal(Datum str, int32 start, int32 length, bool length_not_specified);
 static text *text_substring_byte(Datum str, int32 start, int32 length, bool length_not_specified);
+static text *text_substring_complete_chars(text *str, int32 start, int32 length,
+										   bool length_not_specified);
+static text *ora_nfc_normalize(text *arg);
 static void text_position_setup(text *t1, text *t2, TextPositionState *state, bool isbyte);
 static void text_position_cleanup(TextPositionState *state);
 static int	text_position_next(int start_pos, TextPositionState *state);
@@ -112,6 +127,10 @@ static int text_instring(text *str, text *search_str, int32 position, int32 occu
 static int	text_position_prev(int start_pos, TextPositionState *state);
 static void appendStringInfoText(StringInfo str, const text *t);
 static int getindex(const char **map, char *mbchar, int mblen);
+static Oid	ora_call_argtype(FunctionCallInfo fcinfo, int argnum);
+static void ora_reject_lob_args(FunctionCallInfo fcinfo, int nargs,
+								const char *fname);
+static int32 ora_position_arg(FunctionCallInfo fcinfo, int argnum);
 
 /*
  * Oracle LIKE has no default escape character.  Let the PostgreSQL pattern
@@ -396,6 +415,135 @@ ora_lengthc_unsupported(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
 				 errmsg("inconsistent datatypes: lengthc() does not accept this data type"),
 				 errdetail("Oracle's LENGTHC accepts only CHAR, VARCHAR2, NCHAR and NVARCHAR2.")));
+
+	PG_RETURN_NULL();			/* keep the compiler quiet */
+}
+
+/*
+ * ora_call_argtype --- the type of a call argument as the caller wrote it.
+ *
+ * The parser wraps an argument whose type differs from the function's
+ * declared parameter type in an implicit coercion, so what the function sees
+ * through get_fn_expr_argtype() is the *declared* type, not the type of the
+ * expression the caller wrote.  That matters for the LOB types, which are
+ * domains over text: the domain-to-base coercion is a relabel, so the LOB
+ * type is still visible one level below the relabel.
+ *
+ * Anything we cannot inspect (no expression, not a plain function call, an
+ * argument out of range) answers InvalidOid, which no caller treats as a
+ * LOB.
+ */
+static Oid
+ora_call_argtype(FunctionCallInfo fcinfo, int argnum)
+{
+	FmgrInfo   *flinfo = fcinfo->flinfo;
+	FuncExpr   *fexpr;
+	Node	   *arg;
+
+	if (flinfo == NULL || flinfo->fn_expr == NULL)
+		return InvalidOid;
+
+	fexpr = (FuncExpr *) flinfo->fn_expr;
+	if (!IsA(fexpr, FuncExpr) ||
+		argnum < 0 || argnum >= list_length(fexpr->args))
+		return InvalidOid;
+
+	arg = (Node *) list_nth(fexpr->args, argnum);
+
+	/*
+	 * An implicit coercion to the declared parameter type wraps the original
+	 * expression; peel it off so that the caller's own type is what we see.
+	 */
+	if (IsA(arg, RelabelType))
+		arg = (Node *) ((RelabelType *) arg)->arg;
+
+	return exprType(arg);
+}
+
+/*
+ * ora_reject_lob_args --- refuse the LOB types Oracle's SUBSTRC and INSTRC
+ * refuse.
+ *
+ * Oracle's SUBSTRC and INSTRC take character types only: a CLOB or an NCLOB
+ * argument is answered with ORA-00932 (inconsistent datatypes).  sys.clob
+ * and sys.nclob are domains over text, so plain resolution folds them onto
+ * the text overloads and the exact-match rejection overloads alone would
+ * only catch the calls whose remaining arguments happen to match exactly;
+ * this check catches the rest.
+ */
+static void
+ora_reject_lob_args(FunctionCallInfo fcinfo, int nargs, const char *fname)
+{
+	int			i;
+
+	for (i = 0; i < nargs; i++)
+	{
+		Oid			argtype = ora_call_argtype(fcinfo, i);
+
+		if (argtype == CLOBOID || argtype == NCLOBOID)
+			ereport(ERROR,
+					(errcode(ERRCODE_DATATYPE_MISMATCH),
+					 errmsg("inconsistent datatypes: %s() does not accept %s",
+							fname, format_type_be(argtype)),
+					 errdetail("Oracle's %s accepts only character types, not CLOB or NCLOB.",
+							   fname)));
+	}
+}
+
+/*
+ * ora_instrc_unsupported --- reject the LOB types Oracle's INSTRC rejects.
+ *
+ * Bound to the exact-match overloads of sys.instrc() for the CLOB and NCLOB
+ * argument types; see ora_reject_lob_args() for the reasoning.
+ *
+ * Deliberately not STRICT: Oracle rejects the type while parsing, so a NULL
+ * of a rejected type has to error out too rather than quietly return NULL.
+ */
+Datum
+ora_instrc_unsupported(PG_FUNCTION_ARGS)
+{
+	Oid			argtype = get_fn_expr_argtype(fcinfo->flinfo, 0);
+
+	if (OidIsValid(argtype))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+				 errmsg("inconsistent datatypes: instrc() does not accept %s",
+						format_type_be(argtype)),
+				 errdetail("Oracle's INSTRC accepts only character types, not CLOB or NCLOB.")));
+	else
+		ereport(ERROR,
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+				 errmsg("inconsistent datatypes: instrc() does not accept this data type"),
+				 errdetail("Oracle's INSTRC accepts only character types, not CLOB or NCLOB.")));
+
+	PG_RETURN_NULL();			/* keep the compiler quiet */
+}
+
+/*
+ * ora_substrc_unsupported --- reject the LOB types Oracle's SUBSTRC rejects.
+ *
+ * Bound to the exact-match overloads of sys.substrc() for the CLOB and NCLOB
+ * argument types; see ora_reject_lob_args() for the reasoning.
+ *
+ * Deliberately not STRICT: Oracle rejects the type while parsing, so a NULL
+ * of a rejected type has to error out too rather than quietly return NULL.
+ */
+Datum
+ora_substrc_unsupported(PG_FUNCTION_ARGS)
+{
+	Oid			argtype = get_fn_expr_argtype(fcinfo->flinfo, 0);
+
+	if (OidIsValid(argtype))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+				 errmsg("inconsistent datatypes: substrc() does not accept %s",
+						format_type_be(argtype)),
+				 errdetail("Oracle's SUBSTRC accepts only character types, not CLOB or NCLOB.")));
+	else
+		ereport(ERROR,
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+				 errmsg("inconsistent datatypes: substrc() does not accept this data type"),
+				 errdetail("Oracle's SUBSTRC accepts only character types, not CLOB or NCLOB.")));
 
 	PG_RETURN_NULL();			/* keep the compiler quiet */
 }
@@ -1839,6 +1987,19 @@ text_instring(text *str, text *search_str, int32 position, int32 occurrence, boo
 	}
 
 	/*
+	 * A negative position counts backward from the end of the string, so a
+	 * position that reaches past the beginning of the string has no answer.
+	 * The bound has to be checked before the position is negated: both
+	 * -position and abs() overflow for INT32_MIN, and the overflowed value
+	 * would be used as a string index below.
+	 */
+	if (position < 0 && position < -src_text_len)
+	{
+		text_position_cleanup(&state);
+		return 0;
+	}
+
+	/*
 	 * If occurrence is greater than 1, then the database searches for the
 	 * second occurrence beginning with the second character in the first
 	 * occurrence of string. So, if position is positive, then the maxinum
@@ -1857,7 +2018,8 @@ text_instring(text *str, text *search_str, int32 position, int32 occurrence, boo
 	else
 		maxTimes = src_text_len - Max(sub_text_len, -position) + 1;
 
-	if (abs(position) > src_text_len || src_text_len < sub_text_len || occurrence > maxTimes)
+	if ((position > 0 ? position : -position) > src_text_len ||
+		src_text_len < sub_text_len || occurrence > maxTimes)
 	{
 		text_position_cleanup(&state);
 		return 0;
@@ -2073,6 +2235,463 @@ oracle_instr_4 (PG_FUNCTION_ARGS)
 	int arg4 = PG_GETARG_INT32(3);
 
 	PG_RETURN_INT32(text_instring(arg1, arg2, arg3, arg4, false));
+}
+
+/*
+ * ora_nfc_normalize --- return arg in NFC form, for the Oracle *C string
+ * functions (LENGTHC, INSTRC, SUBSTRC) that measure "Unicode complete
+ * characters".  INSTRC/SUBSTRC share LENGTHC's counting unit: a base
+ * character followed by combining marks is one complete character, and the
+ * code points of the NFC-normalized string are that unit.  See ora_lengthc()
+ * above for the full rationale.
+ *
+ * The encoding gates mirror ora_lengthc() exactly: canonical composition is
+ * only defined for Unicode, so single-byte and legacy multibyte server
+ * encodings get the string back unchanged (there, complete characters are
+ * just pg_mbstrlen characters).  For UTF-8 input that is already in NFC --
+ * including every pure ASCII string -- the input pointer is returned as-is.
+ *
+ * The return value may therefore be the caller's own pointer; callers must
+ * not pfree it.  Any palloc'd copy lives in the fcinfo context and is
+ * reclaimed when the function returns.
+ *
+ * This is deliberately not folded into ora_lengthc(): that function needs
+ * the intermediate char32_t array (not a re-encoded text) to count the
+ * normalization output, and sharing would force a char32_t -> UTF-8 ->
+ * count round-trip on its hot path.
+ */
+static text *
+ora_nfc_normalize(text *arg)
+{
+	const unsigned char *str = (const unsigned char *) VARDATA_ANY(arg);
+	int			nbytes = VARSIZE_ANY_EXHDR(arg);
+	int			nchars;
+	int			i;
+	char32_t   *input_chars;
+	char32_t   *output_chars;
+	const unsigned char *p;
+
+	/* single-byte and non-Unicode multibyte encodings: NFC is a no-op */
+	if (pg_database_encoding_max_length() == 1 || GetDatabaseEncoding() != PG_UTF8)
+		return arg;
+
+	/* fast path: pure ASCII is NFC-invariant (covers the empty string) */
+	for (i = 0; i < nbytes; i++)
+	{
+		if (str[i] >= 0x80)
+			break;
+	}
+	if (i == nbytes)
+		return arg;
+
+	nchars = pg_mbstrlen_with_len((const char *) str, nbytes);
+
+	if ((Size) nchars + 1 > MaxAllocSize / sizeof(char32_t))
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("string is too long for the *C string functions"),
+				 errdetail("These functions can normalize at most %zu characters.",
+						   MaxAllocSize / sizeof(char32_t) - 1)));
+
+	/* convert to char32_t, same as unicode_normalize_func() does */
+	input_chars = (char32_t *) palloc((nchars + 1) * sizeof(char32_t));
+	p = str;
+	for (i = 0; i < nchars; i++)
+	{
+		input_chars[i] = utf8_to_unicode(p);
+		p += pg_utf_mblen(p);
+	}
+	input_chars[i] = (char32_t) '\0';
+
+	/* UAX #15 quick check: text already in NFC needs no normalization */
+	if (unicode_is_normalized_quickcheck(UNICODE_NFC, input_chars) == UNICODE_NORM_QC_YES)
+	{
+		pfree(input_chars);
+		return arg;
+	}
+
+	output_chars = unicode_normalize(UNICODE_NFC, input_chars);
+	pfree(input_chars);
+
+	/* re-encode the normalized code points to UTF-8 */
+	{
+		StringInfoData buf;
+		char32_t   *wp;
+
+		initStringInfo(&buf);
+		for (wp = output_chars; *wp; wp++)
+		{
+			unsigned char utf8[4];
+
+			unicode_to_utf8(*wp, utf8);
+			appendBinaryStringInfo(&buf, (const char *) utf8, unicode_utf8len(*wp));
+		}
+
+		pfree(output_chars);
+		return cstring_to_text_with_len(buf.data, buf.len);
+	}
+}
+
+/****************************************************************
+ * instrc
+ *
+ * Oracle's INSTRC: like INSTR (oracle_instr_2/3/4 above) but positions are
+ * counted in Unicode complete characters -- the code points of the
+ * NFC-normalized string, the same unit sys.lengthc() counts.  The search
+ * itself is the character-based text_instring(): in a UTF-8 database
+ * pg_mb2wchar yields one pg_wchar per code point, so matching and position
+ * arithmetic operate on complete characters once both inputs are NFC.
+ * The same degradation as ora_lengthc() applies on non-Unicode server
+ * encodings, where INSTRC simply behaves like INSTR.
+ *
+ * Syntax:
+ *   instrc (string TEXT, substring TEXT)
+ *   instrc (string TEXT, substring TEXT, position INTEGER)
+ *   instrc (string TEXT, substring TEXT, position INTEGER, occurrence INTEGER)
+ *
+ * position and occurrence are NUMBER in Oracle, so the number-position
+ * variants ora_instrc_3_number()/ora_instrc_4_number() read them through
+ * ora_position_arg(), the same accessor the number-position overloads of
+ * sys.substrc() use.
+ *
+ * Argument rules, as Oracle has them:
+ *
+ *   - the occurrence must be positive; a non-positive occurrence is refused
+ *     with ORA-01428 ("Argument -1 is out of range");
+ *   - the position must not be zero: a zero position starts the search
+ *     before the first character, so nothing can match and the answer is 0.
+ *
+ ****************************************************************/
+Datum
+ora_instrc_2(PG_FUNCTION_ARGS)
+{
+	text	   *arg1;
+	text	   *arg2;
+
+	/*
+	 * Oracle's INSTRC refuses the LOB types for the source string only; the
+	 * pattern may be a CLOB or an NCLOB, so only argument 0 is checked here.
+	 */
+	ora_reject_lob_args(fcinfo, 1, "instrc");
+
+	arg1 = ora_nfc_normalize(PG_GETARG_TEXT_PP(0));
+	arg2 = ora_nfc_normalize(PG_GETARG_TEXT_PP(1));
+
+	PG_RETURN_INT32(text_instring(arg1, arg2, 1, 1, false));
+}
+
+Datum
+ora_instrc_3(PG_FUNCTION_ARGS)
+{
+	text	   *arg1;
+	text	   *arg2;
+	int			arg3;
+
+	/* Oracle's INSTRC refuses the LOB types for the source string only */
+	ora_reject_lob_args(fcinfo, 1, "instrc");
+
+	arg3 = PG_GETARG_INT32(2);
+
+	/* a zero position starts before the first character: nothing matches */
+	if (arg3 == 0)
+		PG_RETURN_INT32(0);
+
+	arg1 = ora_nfc_normalize(PG_GETARG_TEXT_PP(0));
+	arg2 = ora_nfc_normalize(PG_GETARG_TEXT_PP(1));
+
+	PG_RETURN_INT32(text_instring(arg1, arg2, arg3, 1, false));
+}
+
+Datum
+ora_instrc_4(PG_FUNCTION_ARGS)
+{
+	text	   *arg1;
+	text	   *arg2;
+	int			arg3;
+	int			arg4;
+
+	/* Oracle's INSTRC refuses the LOB types for the source string only */
+	ora_reject_lob_args(fcinfo, 1, "instrc");
+
+	arg3 = PG_GETARG_INT32(2);
+	arg4 = PG_GETARG_INT32(3);
+
+	/* the occurrence must be positive */
+	if (arg4 < 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+				 errmsg("argument '%d' is out of range", arg4),
+				 errdetail("Oracle raises ORA-01428 here: the occurrence"
+						   " argument of INSTRC must be a positive number.")));
+
+	/* a zero position starts before the first character: nothing matches */
+	if (arg3 == 0)
+		PG_RETURN_INT32(0);
+
+	arg1 = ora_nfc_normalize(PG_GETARG_TEXT_PP(0));
+	arg2 = ora_nfc_normalize(PG_GETARG_TEXT_PP(1));
+
+	PG_RETURN_INT32(text_instring(arg1, arg2, arg3, arg4, false));
+}
+
+/*
+ * ora_instrc_3_number / ora_instrc_4_number --- the number-position variants
+ * of ora_instrc_3 / ora_instrc_4.
+ *
+ * Oracle declares position and occurrence as NUMBER, so the direct
+ * character-type overloads accept sys.number as well as integer: with only
+ * the integer-position overloads in the set, a call with NUMBER arguments
+ * resolved onto the varchar2 wrapper, whose casts strip the blank padding
+ * of a CHAR source.  The positions are read through the shared accessor,
+ * exactly as ora_substrc() reads them.
+ */
+Datum
+ora_instrc_3_number(PG_FUNCTION_ARGS)
+{
+	text	   *arg1;
+	text	   *arg2;
+	int			arg3;
+
+	/* Oracle's INSTRC refuses the LOB types for the source string only */
+	ora_reject_lob_args(fcinfo, 1, "instrc");
+
+	arg3 = ora_position_arg(fcinfo, 2);
+
+	/* a zero position starts before the first character: nothing matches */
+	if (arg3 == 0)
+		PG_RETURN_INT32(0);
+
+	arg1 = ora_nfc_normalize(PG_GETARG_TEXT_PP(0));
+	arg2 = ora_nfc_normalize(PG_GETARG_TEXT_PP(1));
+
+	PG_RETURN_INT32(text_instring(arg1, arg2, arg3, 1, false));
+}
+
+Datum
+ora_instrc_4_number(PG_FUNCTION_ARGS)
+{
+	text	   *arg1;
+	text	   *arg2;
+	int			arg3;
+	int			arg4;
+
+	/* Oracle's INSTRC refuses the LOB types for the source string only */
+	ora_reject_lob_args(fcinfo, 1, "instrc");
+
+	arg3 = ora_position_arg(fcinfo, 2);
+	arg4 = ora_position_arg(fcinfo, 3);
+
+	/* the occurrence must be positive */
+	if (arg4 < 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+				 errmsg("argument '%d' is out of range", arg4),
+				 errdetail("Oracle raises ORA-01428 here: the occurrence"
+						   " argument of INSTRC must be a positive number.")));
+
+	/* a zero position starts before the first character: nothing matches */
+	if (arg3 == 0)
+		PG_RETURN_INT32(0);
+
+	arg1 = ora_nfc_normalize(PG_GETARG_TEXT_PP(0));
+	arg2 = ora_nfc_normalize(PG_GETARG_TEXT_PP(1));
+
+	PG_RETURN_INT32(text_instring(arg1, arg2, arg3, arg4, false));
+}
+
+/*
+ * ora_position_arg --- the position/length/occurrence argument as an integer.
+ *
+ * These arguments are declared as sys.number in the number-position overloads
+ * of sys.substrc() and sys.instrc(), as integer in the integer-position ones
+ * and as smallint/bigint in the smallint- and bigint-position ones, and the
+ * fmgr contract hands us the datum of the declared type -- so the accessor
+ * depends on which one was called.  A bigint position outside the int4 range
+ * is answered with the standard integer-out-of-range error, like a sys.number
+ * position with the same value is.
+ */
+static int32
+ora_position_arg(FunctionCallInfo fcinfo, int argnum)
+{
+	Oid			argtype = get_fn_expr_argtype(fcinfo->flinfo, argnum);
+
+	if (OidIsValid(argtype))
+	{
+		switch (getBaseType(argtype))
+		{
+			case INT2OID:
+				return (int32) PG_GETARG_INT16(argnum);
+			case INT4OID:
+				return PG_GETARG_INT32(argnum);
+			case INT8OID:
+				return DatumGetInt32(DirectFunctionCall1(int84,
+														 PG_GETARG_DATUM(argnum)));
+		}
+	}
+
+	/*
+	 * The numeric spellings (sys.number and plain numeric) cut the
+	 * fractional part off instead of rounding: Oracle's SUBSTR and INSTR
+	 * read their position arguments as whole numbers, the same convention
+	 * ora_instrb() applies to its numeric arguments.
+	 */
+	return DatumGetInt32(DirectFunctionCall1(numeric_int4,
+											 DirectFunctionCall2(numeric_trunc,
+																 PG_GETARG_DATUM(argnum),
+																 Int32GetDatum(0))));
+}
+
+/****************************************************************
+ * substrc
+ *
+ * Oracle's SUBSTRC: like SUBSTR but position and length are counted in
+ * Unicode complete characters -- the code points of the NFC-normalized
+ * string, the same unit sys.lengthc() counts.  On top of the NFC
+ * normalization this implements Oracle's documented SUBSTR position
+ * semantics (pg_catalog.substr clamps a negative start instead of counting
+ * back from the end, and errors on a negative length):
+ *
+ *   - position 0 is treated as 1;
+ *   - a negative position counts backward from the end of the string; one
+ *     that reaches past the beginning of the string has no answer and
+ *     yields null;
+ *   - a length less than 1, or a start past the end, yields the empty
+ *     string, which the callers turn into NULL (Oracle: empty string is
+ *     NULL -- same convention as ora_substrb()).
+ *
+ ****************************************************************/
+static text *
+text_substring_complete_chars(text *str, int32 start, int32 length,
+							  bool length_not_specified)
+{
+	int32		eml = pg_database_encoding_max_length();
+	int32		char_len;		/* number of complete characters */
+	int32		L1;				/* adjusted substring length */
+	const char *p;
+	const char *s;
+	text	   *ret;
+
+	if (!length_not_specified && length < 1)
+		return cstring_to_text("");
+
+	/* position 0 is treated as 1; a negative one counts back from the end */
+	if (start == 0)
+		start = 1;
+	else if (start < 0)
+	{
+		char_len = (eml == 1) ?
+			VARSIZE_ANY_EXHDR(str) :
+			pg_mbstrlen_with_len(VARDATA_ANY(str), VARSIZE_ANY_EXHDR(str));
+
+		/*
+		 * A negative position that reaches past the beginning of the string
+		 * has no answer in Oracle: SUBSTRC('abcdef', -10, 2) is null there,
+		 * not the whole string.  Compare before adding, so that a huge
+		 * negative start cannot overflow.
+		 */
+		if (start < -char_len)
+			return cstring_to_text("");
+
+		start = char_len + start + 1;
+	}
+
+	if (eml == 1)
+	{
+		char_len = VARSIZE_ANY_EXHDR(str);
+		if (start > char_len)
+			return cstring_to_text("");
+
+		L1 = length_not_specified ? char_len - start + 1 :
+			Min(length, char_len - start + 1);
+
+		return DatumGetTextPSlice(PointerGetDatum(str), start - 1, L1);
+	}
+	else if (eml > 1)
+	{
+		int32		i;
+		int			last_len;
+
+		char_len = pg_mbstrlen_with_len(VARDATA_ANY(str), VARSIZE_ANY_EXHDR(str));
+		if (start > char_len)
+			return cstring_to_text("");
+
+		L1 = length_not_specified ? char_len - start + 1 :
+			Min(length, char_len - start + 1);
+
+		/* walk to the first character of the substring */
+		p = s = VARDATA_ANY(str);
+		for (i = 1; i < start; i++)
+			p += pg_mblen(p);
+		s = p;
+
+		/* walk onto the last character and record its byte length */
+		for (i = 1; i < L1; i++)
+			p += pg_mblen(p);
+		last_len = pg_mblen(p);
+
+		ret = (text *) palloc(VARHDRSZ + (p - s) + last_len);
+		SET_VARSIZE(ret, VARHDRSZ + (p - s) + last_len);
+		memcpy(VARDATA(ret), s, (p - s) + last_len);
+
+		return ret;
+	}
+	else
+		elog(ERROR, "invalid backend encoding: encoding max length < 1");
+
+	/* not reached: suppress compiler warning */
+	return NULL;
+}
+
+Datum
+ora_substrc(PG_FUNCTION_ARGS)
+{
+	text	   *res;
+	int32		len;
+	int32		start;
+	int32		length;
+
+	/* Oracle's SUBSTRC refuses the LOB types */
+	ora_reject_lob_args(fcinfo, 1, "substrc");
+
+	start = ora_position_arg(fcinfo, 1);
+	length = ora_position_arg(fcinfo, 2);
+
+	res = text_substring_complete_chars(ora_nfc_normalize(PG_GETARG_TEXT_PP(0)),
+										start, length, false);
+	len = VARSIZE_ANY_EXHDR(res);
+
+	if (len == 0)
+	{
+		pfree(res);
+		PG_RETURN_NULL();
+	}
+
+	PG_RETURN_TEXT_P(res);
+}
+
+Datum
+ora_substrc_no_length(PG_FUNCTION_ARGS)
+{
+	text	   *res;
+	int32		len;
+	int32		start;
+
+	/* Oracle's SUBSTRC refuses the LOB types */
+	ora_reject_lob_args(fcinfo, 1, "substrc");
+
+	start = ora_position_arg(fcinfo, 1);
+
+	res = text_substring_complete_chars(ora_nfc_normalize(PG_GETARG_TEXT_PP(0)),
+										start, -1, true);
+	len = VARSIZE_ANY_EXHDR(res);
+
+	if (len == 0)
+	{
+		pfree(res);
+		PG_RETURN_NULL();
+	}
+
+	PG_RETURN_TEXT_P(res);
 }
 
 /********************************************************************
