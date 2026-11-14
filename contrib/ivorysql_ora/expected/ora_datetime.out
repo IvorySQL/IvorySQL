@@ -1260,3 +1260,13 @@ select 25::number <= to_char('1990-01-01'::oradate, 'yyyy');
  t
 (1 row)
 
+-- Verify date-to-oradate cast helper is parallel safe.
+SELECT count(*) = 1 AS date_oradate_parallel_safe
+FROM pg_catalog.pg_proc
+WHERE oid = 'sys.date_oradate(pg_catalog.date)'::regprocedure
+  AND proparallel = 's';
+ date_oradate_parallel_safe 
+----------------------------
+ t
+(1 row)
+

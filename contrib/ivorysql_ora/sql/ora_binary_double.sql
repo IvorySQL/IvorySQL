@@ -279,3 +279,10 @@ SELECT 2d * 3d;
 SELECT 7d / 2d;
 SELECT (0d - 1e308d) * 10;
 
+
+
+-- Verify numeric-to-binary_double cast helper is parallel safe.
+SELECT count(*) = 1 AS numeric_binary_double_parallel_safe
+FROM pg_catalog.pg_proc
+WHERE oid = 'sys.numeric_binary_double(numeric)'::regprocedure
+  AND proparallel = 's';
