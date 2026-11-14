@@ -2393,7 +2393,16 @@ ora_position_arg(FunctionCallInfo fcinfo, int argnum)
 		}
 	}
 
-	return DatumGetInt32(DirectFunctionCall1(numeric_int4, PG_GETARG_DATUM(argnum)));
+	/*
+	 * The numeric spellings (sys.number and plain numeric) cut the
+	 * fractional part off instead of rounding: Oracle's SUBSTR and INSTR
+	 * read their position arguments as whole numbers, the same convention
+	 * ora_instrb() applies to its numeric arguments.
+	 */
+	return DatumGetInt32(DirectFunctionCall1(numeric_int4,
+											 DirectFunctionCall2(numeric_trunc,
+																 PG_GETARG_DATUM(argnum),
+																 Int32GetDatum(0))));
 }
 
 /****************************************************************

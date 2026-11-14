@@ -4283,7 +4283,7 @@ SELECT sys.instrc('今天明天', '天', 1.9) FROM DUAL;
 SELECT sys.substrc('今天明天', 2.4, 2.9) FROM DUAL;
  substrc 
 ---------
- 天明天
+ 天明
 (1 row)
 
 -- A negative position that reaches past the beginning of the string has no
