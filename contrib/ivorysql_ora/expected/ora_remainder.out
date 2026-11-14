@@ -27,6 +27,13 @@
 --   * ordinary numeric literals (integer, decimal, or an unknown string
 --     literal in this numeric context) behave as NUMBER values, so the
 --     all-literal form reaches the NUMBER body;
+--   * nonnumeric arguments that IvorySQL can implicitly coerce to a
+--     numeric type (typed CHAR/VARCHAR2 values and columns among them;
+--     Oracle accepts "any nonnumeric datatype that can be implicitly
+--     converted to a numeric datatype") join the call without raising
+--     the numeric precedence themselves: they follow the typed numeric
+--     argument, and NUMBER is the family when every argument is
+--     nonnumeric;
 --   * a common target type is chosen with the Oracle numeric precedence
 --     BINARY_DOUBLE > BINARY_FLOAT > NUMBER, which resolves the mixed
 --     NUMBER/BINARY_FLOAT spellings to BINARY_FLOAT;
@@ -854,3 +861,153 @@ SELECT pg_typeof(remainder_shadow.remainder(11, 4)) AS type,
 ALTER SESSION SET search_path = sys, pg_catalog;
 DROP FUNCTION remainder_shadow.remainder(a integer, b integer);
 DROP SCHEMA remainder_shadow;
+--
+-- implicitly numeric nonnumeric arguments (typed CHAR/VARCHAR2)
+--
+-- Oracle accepts REMAINDER arguments that are "any nonnumeric datatype
+-- that can be implicitly converted to a numeric datatype".  Unlike the
+-- unknown string literal of REMAINDER('7', 2), a typed CHAR/VARCHAR2
+-- value or column carries a real type, and IvorySQL registers implicit
+-- casts from these types to sys.number, sys.binary_float and
+-- sys.binary_double.  The precedence hook folds such arguments into the
+-- call without letting them raise the numeric precedence themselves:
+-- they follow the typed numeric argument, and NUMBER is the family when
+-- every argument is nonnumeric.  The NUMBER semantics ride along, so a
+-- zero divisor raises ORA-01476 (not NaN) and a wide integer keeps its
+-- exact digits regardless of whether it arrives as a NUMBER or as a
+-- numeric text.
+--
+-- two VARCHAR2 values select NUMBER and compute the exact result
+SELECT pg_typeof(REMAINDER(CAST('7' AS VARCHAR2), CAST('2' AS VARCHAR2))) FROM DUAL;
+ pg_typeof 
+-----------
+ number
+(1 row)
+
+SELECT REMAINDER(CAST('7' AS VARCHAR2), CAST('2' AS VARCHAR2)) FROM DUAL;
+ remainder 
+-----------
+ -1
+(1 row)
+
+-- a VARCHAR2 value next to a typed NUMBER stays on NUMBER
+SELECT pg_typeof(REMAINDER(CAST('7' AS VARCHAR2), CAST(2 AS NUMBER))) FROM DUAL;
+ pg_typeof 
+-----------
+ number
+(1 row)
+
+SELECT pg_typeof(REMAINDER(CAST(7 AS NUMBER), CAST('2' AS VARCHAR2))) FROM DUAL;
+ pg_typeof 
+-----------
+ number
+(1 row)
+
+-- ... next to BINARY_FLOAT / BINARY_DOUBLE it follows that family
+SELECT pg_typeof(REMAINDER(CAST('7' AS VARCHAR2), CAST(2 AS BINARY_FLOAT))) FROM DUAL;
+  pg_typeof   
+--------------
+ binary_float
+(1 row)
+
+SELECT pg_typeof(REMAINDER(CAST(2 AS BINARY_FLOAT), CAST('7' AS VARCHAR2))) FROM DUAL;
+  pg_typeof   
+--------------
+ binary_float
+(1 row)
+
+SELECT pg_typeof(REMAINDER(CAST('7' AS VARCHAR2), CAST(2 AS BINARY_DOUBLE))) FROM DUAL;
+   pg_typeof   
+---------------
+ binary_double
+(1 row)
+
+SELECT pg_typeof(REMAINDER(CAST(2 AS BINARY_DOUBLE), CAST('7' AS VARCHAR2))) FROM DUAL;
+   pg_typeof   
+---------------
+ binary_double
+(1 row)
+
+-- typed CHAR values behave the same (and mix with VARCHAR2)
+SELECT pg_typeof(REMAINDER(CAST('7' AS CHAR), CAST('2' AS CHAR))) FROM DUAL;
+ pg_typeof 
+-----------
+ number
+(1 row)
+
+SELECT pg_typeof(REMAINDER(CAST('7' AS CHAR), CAST('2' AS VARCHAR2))) FROM DUAL;
+ pg_typeof 
+-----------
+ number
+(1 row)
+
+SELECT REMAINDER(CAST('7' AS CHAR), CAST('2' AS CHAR)) FROM DUAL;
+ remainder 
+-----------
+ -1
+(1 row)
+
+-- NUMBER semantics ride along on the VARCHAR2 spelling: a zero divisor
+-- raises ORA-01476 instead of returning NaN
+SELECT REMAINDER(CAST('7' AS VARCHAR2), 0) FROM DUAL;
+ERROR:  division by zero
+CONTEXT:  SQL function "remainder" statement 1
+SELECT REMAINDER(CAST(7 AS NUMBER), CAST('0' AS VARCHAR2)) FROM DUAL;
+ERROR:  division by zero
+CONTEXT:  SQL function "remainder" statement 1
+-- a wide integer hidden in a VARCHAR2 keeps its exact digits
+SELECT REMAINDER(CAST('10000000000000000001' AS VARCHAR2), 2) FROM DUAL;
+ remainder 
+-----------
+ 1
+(1 row)
+
+SELECT pg_typeof(REMAINDER(CAST('10000000000000000001' AS VARCHAR2), 2)) FROM DUAL;
+ pg_typeof 
+-----------
+ number
+(1 row)
+
+-- invalid numeric text fails when the value is converted
+SELECT REMAINDER(CAST('abc' AS VARCHAR2), CAST('2' AS VARCHAR2)) FROM DUAL;
+ERROR:  invalid input syntax for type numeric: "abc"
+--
+-- table column scenario for typed CHAR/VARCHAR2
+--
+CREATE TABLE remainder_str_tbl (v VARCHAR2(20), c CHAR(1), n NUMBER, f BINARY_FLOAT);
+INSERT INTO remainder_str_tbl VALUES ('7', '2', 4, CAST(2 AS BINARY_FLOAT));
+-- varchar2 column + char column -> NUMBER
+SELECT pg_typeof(REMAINDER(v, c)) AS type, REMAINDER(v, c) AS r
+FROM remainder_str_tbl;
+  type  | r  
+--------+----
+ number | -1
+(1 row)
+
+-- varchar2 column + number column -> NUMBER
+SELECT pg_typeof(REMAINDER(v, n)) AS type, REMAINDER(v, n) AS r
+FROM remainder_str_tbl;
+  type  | r  
+--------+----
+ number | -1
+(1 row)
+
+-- varchar2 column + binary_float column -> BINARY_FLOAT
+SELECT pg_typeof(REMAINDER(v, f)) AS type, REMAINDER(v, f) AS r
+FROM remainder_str_tbl;
+     type     | r  
+--------------+----
+ binary_float | -1
+(1 row)
+
+-- a zero divisor hidden in a CHAR column raises ORA-01476 on the NUMBER
+-- path
+INSERT INTO remainder_str_tbl VALUES ('7', '0', 4, CAST(2 AS BINARY_FLOAT));
+SELECT REMAINDER(v, c) FROM remainder_str_tbl WHERE c = '0';
+ERROR:  division by zero
+CONTEXT:  SQL function "remainder" statement 1
+-- a non-numeric varchar2 column value raises a conversion error
+INSERT INTO remainder_str_tbl VALUES ('abc', '2', 4, CAST(2 AS BINARY_FLOAT));
+SELECT REMAINDER(v, c) FROM remainder_str_tbl WHERE v = 'abc';
+ERROR:  invalid input syntax for type numeric: "abc"
+DROP TABLE remainder_str_tbl;
