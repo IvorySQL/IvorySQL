@@ -77,6 +77,7 @@ ORA_REGRESS = \
 	ora_interval \
 	ora_number \
 	ora_to_number_hex \
+	ora_to_char_default \
 	ora_binary_float \
 	ora_binary_double \
 	ora_nanvl \
