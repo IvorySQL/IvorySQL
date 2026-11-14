@@ -29,11 +29,12 @@ IvorySQL 项目采用 Apache 2.0 许可协议发布，并鼓励各种形式的�
 ## 安装
 建议参考[快速入门](https://docs.ivorysql.org/cn/ivorysql-doc/v5.6/3.1#快速安装)了解如何安装和运行IvorySQL。
 
-此外，关于更详细的安装说明，请参阅[安装文档](https://docs.ivorysql.org/cn/ivorysql-doc/v5.6/4.1#概述)。我们提供以下四种 IvorySQL 的安装方法：
+此外，关于更详细的安装说明，请参阅[安装文档](https://docs.ivorysql.org/cn/ivorysql-doc/v5.6/4.1#概述)。我们提供以下五种 IvorySQL 的安装方法：
 - [Yum 安装](https://docs.ivorysql.org/cn/ivorysql-doc/v5.6/4.1#yum源安装)
 - [Docker 安装](https://docs.ivorysql.org/cn/ivorysql-doc/v5.6/4.1#docker安装)
 - [RPM 安装](https://docs.ivorysql.org/cn/ivorysql-doc/v5.6/4.1#rpm安装)
 - [源代码安装](https://docs.ivorysql.org/cn/ivorysql-doc/v5.6/4.1#源码安装)
+- [DEB 安装](https://docs.ivorysql.org/cn/ivorysql-doc/v5.6/4.1#deb安装)
 
 ## 为IvorySQL做贡献
 有许多方式可以为 IvorySQL 做出贡献。您可以通过更新文档或提供文档翻译来贡献。如果您具备设计技能，还可以参与 IvorySQL 官网项目的建设。
