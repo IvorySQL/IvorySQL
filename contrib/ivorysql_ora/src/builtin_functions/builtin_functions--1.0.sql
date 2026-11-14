@@ -892,20 +892,26 @@ IMMUTABLE;
  * A CLOB or NCLOB source with numeric positions is refused at parse time by
  * the rejection overloads further down, which the parser picks from the raw
  * argument types before any of this scoring runs.
+ *
+ * These rows are STRICT like every other row of the set: a NULL source or a
+ * NULL position answers null instead of reaching ora_substrc() with an
+ * unchecked argument.
  */
 CREATE OR REPLACE FUNCTION sys.substrc(text, numeric)
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc_no_length'
 LANGUAGE C
-IMMUTABLE
-PARALLEL SAFE;
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION sys.substrc(text, numeric, numeric)
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc'
 LANGUAGE C
-IMMUTABLE
-PARALLEL SAFE;
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION sys.substrc(sys.oracharchar, smallint)
 RETURNS text
