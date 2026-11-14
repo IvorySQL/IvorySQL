@@ -1608,7 +1608,8 @@ SELECT INSTRC('abc','z') FROM DUAL;
 SELECT INSTRC(NULL,'a') FROM DUAL;
 SELECT SUBSTRC(NULL,1) FROM DUAL;
 
--- the varchar2/number wrappers: numeric arguments resolve onto them
+-- a position with a fractional part is cut to a whole number before use,
+-- the way Oracle cuts it: 2.9 reads as 2, not as 3
 SELECT sys.instrc('CORPORATE FLOOR', 'OR', 5, 2) FROM DUAL;
 SELECT sys.instrc('今天明天', '天', 1.9) FROM DUAL;
 SELECT sys.substrc('今天明天', 2.4, 2.9) FROM DUAL;
@@ -1713,3 +1714,14 @@ SELECT SUBSTRC(CAST('abc' AS CLOB), 1::bigint, 2::bigint) FROM DUAL;
 SELECT SUBSTRC(CAST('abc' AS NCLOB), 1::smallint) FROM DUAL;
 SELECT SUBSTRC(CAST('abc' AS CLOB), CAST(1 AS NUMERIC), CAST(2 AS NUMERIC)) FROM DUAL;
 SELECT SUBSTRC(CAST('abc' AS NCLOB), CAST(1 AS NUMERIC)) FROM DUAL;
+
+-- A NULL source and a NULL position answer null on the numeric-position
+-- spellings as on every other shape, and a fractional position is cut to a
+-- whole number, the way Oracle cuts it: SUBSTRC('abcdef', 2.9) reads as
+-- SUBSTRC('abcdef', 2), and INSTRC('ababa', 'a', 1, 1.9) reads its 1.9 as
+-- the first occurrence.
+SELECT sys.substrc(NULL::text, 1::numeric) FROM DUAL;
+SELECT sys.substrc('abc', NULL::numeric) FROM DUAL;
+SELECT sys.substrc(NULL::text, 1::numeric, 2::numeric) FROM DUAL;
+SELECT SUBSTRC('abcdef', 2.9) FROM DUAL;
+SELECT INSTRC('ababa','a',1,1.9) FROM DUAL;

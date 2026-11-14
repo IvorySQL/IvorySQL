@@ -4267,7 +4267,8 @@ SELECT SUBSTRC(NULL,1) FROM DUAL;
  
 (1 row)
 
--- the varchar2/number wrappers: numeric arguments resolve onto them
+-- a position with a fractional part is cut to a whole number before use,
+-- the way Oracle cuts it: 2.9 reads as 2, not as 3
 SELECT sys.instrc('CORPORATE FLOOR', 'OR', 5, 2) FROM DUAL;
  instrc 
 --------
@@ -4568,3 +4569,38 @@ DETAIL:  Oracle's SUBSTRC accepts only character types, not CLOB or NCLOB.
 SELECT SUBSTRC(CAST('abc' AS NCLOB), CAST(1 AS NUMERIC)) FROM DUAL;
 ERROR:  inconsistent datatypes: substrc() does not accept nclob
 DETAIL:  Oracle's SUBSTRC accepts only character types, not CLOB or NCLOB.
+-- A NULL source and a NULL position answer null on the numeric-position
+-- spellings as on every other shape, and a fractional position is cut to a
+-- whole number, the way Oracle cuts it: SUBSTRC('abcdef', 2.9) reads as
+-- SUBSTRC('abcdef', 2), and INSTRC('ababa', 'a', 1, 1.9) reads its 1.9 as
+-- the first occurrence.
+SELECT sys.substrc(NULL::text, 1::numeric) FROM DUAL;
+ substrc 
+---------
+ 
+(1 row)
+
+SELECT sys.substrc('abc', NULL::numeric) FROM DUAL;
+ substrc 
+---------
+ 
+(1 row)
+
+SELECT sys.substrc(NULL::text, 1::numeric, 2::numeric) FROM DUAL;
+ substrc 
+---------
+ 
+(1 row)
+
+SELECT SUBSTRC('abcdef', 2.9) FROM DUAL;
+ substrc 
+---------
+ bcdef
+(1 row)
+
+SELECT INSTRC('ababa','a',1,1.9) FROM DUAL;
+ instrc 
+--------
+      1
+(1 row)
+
