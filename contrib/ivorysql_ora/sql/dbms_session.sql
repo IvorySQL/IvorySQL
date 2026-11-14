@@ -156,3 +156,11 @@ call dbms_session.reset_package();
 select sys_context('rp_ns', 'key') as ctx_after_reset;
 
 DROP PACKAGE rp_pkg;
+
+---
+-- SYS_CONTEXT('USERENV','TERMINAL') is a VARCHAR2 in Oracle.  The helper that
+-- backs it must therefore be a text function, not a numeric one: declaring it
+-- numeric made the value unreadable as a string.
+---
+SELECT pg_typeof(sys.get_terminal()) AS terminal_fn_type;
+SELECT coalesce(sys_context('USERENV', 'TERMINAL'), '<NULL>') AS terminal_ctx;
