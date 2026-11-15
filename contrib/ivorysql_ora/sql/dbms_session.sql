@@ -164,3 +164,7 @@ DROP PACKAGE rp_pkg;
 ---
 SELECT pg_typeof(sys.get_terminal()) AS terminal_fn_type;
 SELECT coalesce(sys_context('USERENV', 'TERMINAL'), '<NULL>') AS terminal_ctx;
+-- the value has to be usable as a string, which is the whole point of the type
+SELECT length(sys_context('USERENV', 'TERMINAL')) AS terminal_len;
+SELECT sys_context('USERENV', 'TERMINAL') || 'x' AS terminal_concat;
+SELECT sys_context('USERENV', 'TERMINAL') IS NULL AS terminal_is_null;
