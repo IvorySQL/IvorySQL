@@ -42,15 +42,16 @@
 PG_FUNCTION_INFO_V1(ora_format_error_backtrace);
 PG_FUNCTION_INFO_V1(ora_format_error_stack);
 PG_FUNCTION_INFO_V1(ora_format_call_stack);
+PG_FUNCTION_INFO_V1(ora_get_endianness);
 
 /*
  * Function pointer types for plisql API functions.
  * We use dynamic lookup to avoid link-time dependency on plisql.so.
  */
-typedef const char *(*plisql_get_context_fn)(void);
-typedef const char *(*plisql_get_message_fn)(void);
-typedef int (*plisql_get_sqlerrcode_fn)(void);
-typedef char *(*plisql_get_call_stack_fn)(void);
+typedef const char *(*plisql_get_context_fn) (void);
+typedef const char *(*plisql_get_message_fn) (void);
+typedef int (*plisql_get_sqlerrcode_fn) (void);
+typedef char *(*plisql_get_call_stack_fn) (void);
 
 /*
  * Cached function pointers for plisql functions.
@@ -77,11 +78,12 @@ lookup_plisql_functions(void)
 #ifndef WIN32
 	{
 		/*
-		* Use RTLD_DEFAULT to search all loaded shared objects.
-		* plisql.so should already be loaded when these functions are called
-		* from within a PL/iSQL context.
-		*/
-		void *fn = dlsym(RTLD_DEFAULT, "plisql_get_current_exception_context");
+		 * Use RTLD_DEFAULT to search all loaded shared objects. plisql.so
+		 * should already be loaded when these functions are called from
+		 * within a PL/iSQL context.
+		 */
+		void	   *fn = dlsym(RTLD_DEFAULT, "plisql_get_current_exception_context");
+
 		if (fn != NULL)
 			get_exception_context_fn = (plisql_get_context_fn) fn;
 
@@ -158,11 +160,11 @@ transform_and_append_line(StringInfo result, const char *line)
 	const char *func_end;
 	const char *line_num_start;
 	const char *line_marker;
-	int line_num;
-	char *func_name;
-	char *schema_name;
-	char *func_cased;
-	char *schema_cased;
+	int			line_num;
+	char	   *func_name;
+	char	   *schema_name;
+	char	   *func_cased;
+	char	   *schema_cased;
 
 	/* Skip SQL statement lines */
 	if (strncmp(line, "SQL statement", 13) == 0)
@@ -174,15 +176,21 @@ transform_and_append_line(StringInfo result, const char *line)
 	else if (strncmp(p, "PL/iSQL function ", 17) == 0)
 		p += 17;
 	else
-		return false;	/* Unknown format, skip */
+		return false;			/* Unknown format, skip */
 
 	func_start = p;
 
-	/* Find the end of the function name (before the opening parenthesis or space for inline blocks) */
+	/*
+	 * Find the end of the function name (before the opening parenthesis or
+	 * space for inline blocks)
+	 */
 	func_end = strchr(p, '(');
 	if (!func_end)
 	{
-		/* No parenthesis - might be inline_code_block which has format "inline_code_block line N" */
+		/*
+		 * No parenthesis - might be inline_code_block which has format
+		 * "inline_code_block line N"
+		 */
 		func_end = strstr(p, " line ");
 		if (!func_end)
 			return false;
@@ -203,7 +211,7 @@ transform_and_append_line(StringInfo result, const char *line)
 			return false;
 		}
 
-		line_num_start = line_marker + 6; /* Skip " line " */
+		line_num_start = line_marker + 6;	/* Skip " line " */
 		line_num = atoi(line_num_start);
 
 		appendStringInfo(result, "ORA-06512: at line %d\n", line_num);
@@ -220,7 +228,7 @@ transform_and_append_line(StringInfo result, const char *line)
 		return false;
 	}
 
-	line_num_start = line_marker + 6; /* Skip " line " */
+	line_num_start = line_marker + 6;	/* Skip " line " */
 	line_num = atoi(line_num_start);
 
 	func_cased = apply_identifier_case_switch(func_name);
@@ -228,9 +236,9 @@ transform_and_append_line(StringInfo result, const char *line)
 	if (strchr(func_name, '.') != NULL)
 	{
 		/*
-		 * Already schema- (or schema.package-) qualified: either a
-		 * top-level routine called with an explicit schema, or a package
-		 * member (whose context line is schema.package.routine -- see
+		 * Already schema- (or schema.package-) qualified: either a top-level
+		 * routine called with an explicit schema, or a package member (whose
+		 * context line is schema.package.routine -- see
 		 * plisql_package_qualified_signature() in pl_exec.c). Use as-is;
 		 * prepending another schema below would double it up.
 		 */
@@ -240,14 +248,13 @@ transform_and_append_line(StringInfo result, const char *line)
 	else
 	{
 		/*
-		 * Unqualified: the routine was visible via search_path, so we
-		 * don't actually know its owning schema here.
-		 * TODO: look up the real schema from pg_proc instead of assuming
-		 * public.
+		 * Unqualified: the routine was visible via search_path, so we don't
+		 * actually know its owning schema here. TODO: look up the real schema
+		 * from pg_proc instead of assuming public.
 		 *
 		 * Use the real (lowercase) catalog spelling here, not "PUBLIC" --
-		 * apply_identifier_case_switch() expects its input already in
-		 * genuine stored-identifier case, same as func_name above.
+		 * apply_identifier_case_switch() expects its input already in genuine
+		 * stored-identifier case, same as func_name above.
 		 */
 		schema_name = pstrdup("public");
 		schema_cased = apply_identifier_case_switch(schema_name);
@@ -329,26 +336,27 @@ static const char *
 sqlstate_to_ora_errnum(int sqlerrcode)
 {
 	/*
-	 * Map some common PostgreSQL SQLSTATE codes to Oracle error numbers.
-	 * For most cases, we use a generic error number.
+	 * Map some common PostgreSQL SQLSTATE codes to Oracle error numbers. For
+	 * most cases, we use a generic error number.
 	 */
 	switch (sqlerrcode)
 	{
 		case ERRCODE_DIVISION_BY_ZERO:
-			return "ORA-01476";		/* divisor is equal to zero */
+			return "ORA-01476"; /* divisor is equal to zero */
 		case ERRCODE_NO_DATA_FOUND:
 		case ERRCODE_NO_DATA:
-			return "ORA-01403";		/* no data found */
+			return "ORA-01403"; /* no data found */
 		case ERRCODE_TOO_MANY_ROWS:
-			return "ORA-01422";		/* exact fetch returns more than requested number of rows */
+			return "ORA-01422"; /* exact fetch returns more than requested
+								 * number of rows */
 		case ERRCODE_NULL_VALUE_NOT_ALLOWED:
-			return "ORA-06502";		/* PL/SQL: numeric or value error */
+			return "ORA-06502"; /* PL/SQL: numeric or value error */
 		case ERRCODE_INVALID_CURSOR_STATE:
-			return "ORA-01001";		/* invalid cursor */
+			return "ORA-01001"; /* invalid cursor */
 		case ERRCODE_RAISE_EXCEPTION:
-			return "ORA-06510";		/* PL/SQL: unhandled user-defined exception */
+			return "ORA-06510"; /* PL/SQL: unhandled user-defined exception */
 		default:
-			return "ORA-06502";		/* PL/SQL: numeric or value error (generic) */
+			return "ORA-06502"; /* PL/SQL: numeric or value error (generic) */
 	}
 }
 
@@ -366,7 +374,7 @@ Datum
 ora_format_error_stack(PG_FUNCTION_ARGS)
 {
 	const char *message;
-	int sqlerrcode;
+	int			sqlerrcode;
 	StringInfoData result;
 
 	/* Look up the PL/iSQL functions dynamically */
@@ -410,13 +418,13 @@ ora_format_error_stack(PG_FUNCTION_ARGS)
 Datum
 ora_format_call_stack(PG_FUNCTION_ARGS)
 {
-	char *raw_stack;
-	char *stack_copy;
-	char *line;
-	char *saveptr;
+	char	   *raw_stack;
+	char	   *stack_copy;
+	char	   *line;
+	char	   *saveptr;
 	StringInfoData result;
-	int frame_count = 0;
-	bool found_any = false;
+	int			frame_count = 0;
+	bool		found_any = false;
 
 	/* Look up the PL/iSQL functions dynamically */
 	lookup_plisql_functions();
@@ -441,8 +449,8 @@ ora_format_call_stack(PG_FUNCTION_ARGS)
 	appendStringInfo(&result, "  handle    number  name\n");
 
 	/*
-	 * Parse the raw stack returned by plisql_get_call_stack.
-	 * Format from plisql: "handle\tlineno\tsignature" per line
+	 * Parse the raw stack returned by plisql_get_call_stack. Format from
+	 * plisql: "handle\tlineno\tsignature" per line
 	 *
 	 * Skip the first frame which is the FORMAT_CALL_STACK package function.
 	 */
@@ -451,12 +459,12 @@ ora_format_call_stack(PG_FUNCTION_ARGS)
 
 	while (line != NULL)
 	{
-		char *handle_str;
-		char *lineno_str;
-		char *signature;
-		char *tab1;
-		char *tab2;
-		char *func_cased;
+		char	   *handle_str;
+		char	   *lineno_str;
+		char	   *signature;
+		char	   *tab1;
+		char	   *tab2;
+		char	   *func_cased;
 
 		frame_count++;
 
@@ -512,4 +520,20 @@ ora_format_call_stack(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_TEXT_P(cstring_to_text(result.data));
+}
+
+/*
+ * ora_get_endianness - byte order of the database server.
+ *
+ * Oracle uses 1 for big-endian platforms and 2 for little-endian platforms.
+ * WORDS_BIGENDIAN describes the server build, independently of the client.
+ */
+Datum
+ora_get_endianness(PG_FUNCTION_ARGS)
+{
+#ifdef WORDS_BIGENDIAN
+	PG_RETURN_INT32(1);
+#else
+	PG_RETURN_INT32(2);
+#endif
 }
