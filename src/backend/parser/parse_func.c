@@ -39,10 +39,62 @@
 #include "utils/lsyscache.h"
 #include "utils/ora_compatible.h"
 #include "utils/syscache.h"
-#include "utils/typcache.h"
 #include "commands/packagecmds.h"
 #include "parser/parse_param.h"
 #include "commands/proclang.h"
+
+/*
+ * Oracle-mode function argument precedence hook (see parse_func.h).  Left
+ * NULL, the lookup argument types are never rewritten.
+ */
+oracle_funcarg_precedence_hook_type oracle_funcarg_precedence_hook = NULL;
+
+/*
+ * Oracle built-in function names that take part in the Oracle-mode
+ * function argument precedence rewrite.  Only names whose pg_proc
+ * overloads form a homogeneous family across the Oracle numeric types
+ * (sys.number / sys.binary_float / sys.binary_double) belong here: the
+ * rewrite maps literals onto those types and assumes that, for the
+ * highest-precedence target, an exact overload exists.
+ *
+ * Temporary: expected to grow along with the STANDARD package effort.
+ */
+static const char *const oracle_funcarg_precedence_names[] = {
+	"remainder",
+	"nanvl",
+	NULL						/* sentinel */
+};
+
+static bool
+is_oracle_funcarg_precedence_name(const char *fname)
+{
+	for (int i = 0; oracle_funcarg_precedence_names[i] != NULL; i++)
+	{
+		if (strcmp(oracle_funcarg_precedence_names[i], fname) == 0)
+			return true;
+	}
+	return false;
+}
+
+/*
+ * Return true when every actual argument type exactly equals the declared
+ * type of the overload selected by the lookup (base types are compared, so
+ * a domain over the declared type counts as exact).
+ */
+static bool
+oracle_funcarg_exact_match(int nargs,
+						   const Oid *actual_arg_types,
+						   const Oid *declared_arg_types)
+{
+	int			i;
+
+	for (i = 0; i < nargs; i++)
+	{
+		if (getBaseType(actual_arg_types[i]) != getBaseType(declared_arg_types[i]))
+			return false;
+	}
+	return true;
+}
 
 
 /* Possible error codes from LookupFuncNameInternal */
@@ -424,103 +476,107 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 			function_from = FUNC_FROM_PACKAGE;
 	}
 
-	/*
-	 * Resolve object.method(args) as method(object, args) in Oracle mode.
-	 * Member routines use the object's composite value as their first (SELF)
-	 * argument.  Package-qualified lookup has already failed at this point.
-	 * An existing schema still takes precedence over member notation.
-	 *
-	 * The object expression may itself be qualified (for example,
-	 * table_alias.object_column.method()).
-	 */
-	if (fdresult == FUNCDETAIL_NOTFOUND &&
-		ORA_PARSER == compatible_db &&
-		list_length(funcname) >= 2 && list_length(funcname) <= 4 &&
-		agg_order == NIL && agg_filter == NULL &&
-		!agg_star && !agg_distinct && over == NULL &&
-		!func_variadic && nargs < FUNC_MAX_ARGS)
-	{
-		Node	   *self;
-		ColumnRef  *selfref;
-		bool		explicit_namespace;
-
-		explicit_namespace = list_length(funcname) == 2 &&
-			OidIsValid(LookupExplicitNamespace(strVal(linitial(funcname)), true));
-		self = NULL;
-		selfref = NULL;
-		if (!explicit_namespace)
-		{
-			selfref = makeNode(ColumnRef);
-			selfref->fields = list_copy_head(funcname,
-											 list_length(funcname) - 1);
-			selfref->location = location;
-			self = transformColumnRefForObjectMethod(pstate, selfref);
-		}
-		if (self != NULL && ISCOMPLEX(exprType(self)) &&
-			get_typisobject(exprType(self)))
-		{
-			HeapTuple	typeTuple;
-			Form_pg_type typeForm;
-			List	   *methodname;
-			List	   *methodargs = lcons(self, list_copy(fargs));
-			Oid			method_arg_types[FUNC_MAX_ARGS];
-			FuncDetailCode method_result;
-			int			i;
-
-			typeTuple = SearchSysCache1(TYPEOID,
-									ObjectIdGetDatum(exprType(self)));
-			if (!HeapTupleIsValid(typeTuple))
-				elog(ERROR, "cache lookup failed for type %u", exprType(self));
-			typeForm = (Form_pg_type) GETSTRUCT(typeTuple);
-			methodname = list_make3(
-				makeString(get_namespace_name(typeForm->typnamespace)),
-				makeString(pstrdup(NameStr(typeForm->typname))),
-				copyObject(llast(funcname)));
-			ReleaseSysCache(typeTuple);
-
-			method_arg_types[0] = exprType(self);
-			for (i = 0; i < nargs; i++)
-				method_arg_types[i + 1] = actual_arg_types[i];
-
-			method_result = LookupPkgFunc(pstate, methodname, &methodargs,
-											  argnames, nargs + 1,
-											  method_arg_types,
-											  !func_variadic, true, proc_call,
-											  &funcid, &rettype, &retset,
-											  &nvargs, &vatype,
-											  &declared_arg_types, &argdefaults,
-											  &pfunc, &pkgoid, true);
-			if (method_result != FUNCDETAIL_NOTFOUND)
-			{
-				fdresult = method_result;
-				function_from = FUNC_FROM_PACKAGE;
-				funcname = methodname;
-				fargs = methodargs;
-				nargs++;
-				for (i = 0; i < nargs; i++)
-					actual_arg_types[i] = method_arg_types[i];
-				first_arg = self;
-			}
-			else
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_UNDEFINED_FUNCTION),
-						 errmsg("method \"%s\" does not exist for object type %s",
-								strVal(llast(funcname)),
-								format_type_be(exprType(self))),
-						 parser_errposition(pstate, location)));
-			}
-		}
-	}
-
 	if (fdresult == FUNCDETAIL_NOTFOUND)
+	{
+		Oid			lookup_arg_types[FUNC_MAX_ARGS];
+		bool		rewritten = false;
+
+		/*
+		 * Oracle-mode function argument precedence hook: let the
+		 * compatible-mode module rewrite the argument types used to select
+		 * the overload when the lookup with the real argument types does
+		 * not yield an exact match (literals are treated as sys.number, and
+		 * a common target type is chosen with
+		 * BINARY_DOUBLE > BINARY_FLOAT > NUMBER).
+		 *
+		 * The exact lookup with the caller's real argument types always
+		 * runs first, so an exact user-defined overload visible through the
+		 * search_path is never shadowed by the homogeneous sys overloads
+		 * that the rewritten types would select.  Only when that lookup
+		 * finds no usable overload at all, or finds one that relies on
+		 * coercion instead of an exact signature match (e.g. the
+		 * preferred-type fallback that pulls plain integer literals onto
+		 * the BINARY_DOUBLE family), is the Oracle numeric precedence
+		 * applied.
+		 *
+		 * The rewrite applies to a lookup-only copy: actual_arg_types must
+		 * keep the real argument types so that make_fn_arguments() below
+		 * sees actual != declared and coerces the arguments to the declared
+		 * types of the selected overload.  If the rewritten lookup also
+		 * finds no unique overload, the result of the real-argument-types
+		 * lookup is kept: the rewrite is a preference, not a mandate.  It
+		 * only applies to unqualified names or names qualified with "sys",
+		 * so that a schema-qualified call to a user-defined function of the
+		 * same name keeps its normal resolution.
+		 */
+		if (oracle_funcarg_precedence_hook != NULL &&
+			ORA_PARSER == compatible_db &&
+			nargs > 0 && nargs <= FUNC_MAX_ARGS &&
+			is_oracle_funcarg_precedence_name(strVal(llast(funcname))) &&
+			(list_length(funcname) == 1 ||
+			 (list_length(funcname) == 2 &&
+			  strcmp(strVal(linitial(funcname)), "sys") == 0)))
+		{
+			memcpy(lookup_arg_types, actual_arg_types, nargs * sizeof(Oid));
+
+			if ((*oracle_funcarg_precedence_hook) (strVal(llast(funcname)),
+												   nargs,
+												   actual_arg_types,
+												   lookup_arg_types))
+				rewritten = true;
+		}
+
 		fdresult = func_get_detail(funcname, fargs, argnames, nargs,
 								   actual_arg_types,
 								   !func_variadic, true, proc_call,
-                                   &fgc_flags,
+								   &fgc_flags,
 								   &funcid, &rettype, &retset,
 								   &nvargs, &vatype,
 								   &declared_arg_types, &argdefaults);
+
+		if (rewritten &&
+			(fdresult == FUNCDETAIL_NOTFOUND ||
+			 fdresult == FUNCDETAIL_MULTIPLE ||
+			 (fdresult == FUNCDETAIL_NORMAL &&
+			  !oracle_funcarg_exact_match(nargs, actual_arg_types,
+										  declared_arg_types))))
+		{
+			FuncDetailCode fallback_result = fdresult;
+			Oid			fallback_funcid = funcid;
+			Oid			fallback_rettype = rettype;
+			bool		fallback_retset = retset;
+			int			fallback_nvargs = nvargs;
+			Oid			fallback_vatype = vatype;
+			Oid		   *fallback_declared = declared_arg_types;
+			List	   *fallback_argdefaults = argdefaults;
+
+			fdresult = func_get_detail(funcname, fargs, argnames, nargs,
+									   lookup_arg_types,
+									   !func_variadic, true, proc_call,
+									   &fgc_flags,
+									   &funcid, &rettype, &retset,
+									   &nvargs, &vatype,
+									   &declared_arg_types, &argdefaults);
+
+			if (fdresult == FUNCDETAIL_NOTFOUND ||
+				fdresult == FUNCDETAIL_MULTIPLE)
+			{
+				/*
+				 * The rewritten lookup found no unique overload either, so
+				 * keep the result of the real-argument-types lookup: the
+				 * rewrite is a preference, not a mandate.
+				 */
+				fdresult = fallback_result;
+				funcid = fallback_funcid;
+				rettype = fallback_rettype;
+				retset = fallback_retset;
+				nvargs = fallback_nvargs;
+				vatype = fallback_vatype;
+				declared_arg_types = fallback_declared;
+				argdefaults = fallback_argdefaults;
+			}
+		}
+	}
 
 	/*
 	 * A user-declared constructor is stored as a routine in the object's
@@ -2712,8 +2768,8 @@ BuildObjectConstructorSelf(ParseState *pstate, Oid typeOid, int location)
 			continue;
 		args = lappend(args,
 					   makeNullConst(attribute->atttypid,
-								 attribute->atttypmod,
-								 attribute->attcollation));
+									 attribute->atttypmod,
+									 attribute->attcollation));
 	}
 	ReleaseTupleDesc(tupdesc);
 
@@ -3550,3 +3606,4 @@ check_srf_call_placement(ParseState *pstate, Node *last_srf, int location)
 						ParseExprKindName(pstate->p_expr_kind)),
 				 parser_errposition(pstate, location)));
 }
+
