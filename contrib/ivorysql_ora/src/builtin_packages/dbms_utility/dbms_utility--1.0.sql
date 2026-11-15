@@ -7,6 +7,13 @@
  ***************************************************************/
 
 -- C function wrappers
+CREATE FUNCTION sys.ora_get_endianness() RETURNS INTEGER
+AS 'MODULE_PATHNAME', 'ora_get_endianness'
+LANGUAGE C IMMUTABLE PARALLEL SAFE;
+
+COMMENT ON FUNCTION sys.ora_get_endianness() IS
+'Internal function for DBMS_UTILITY.GET_ENDIANNESS: 1 = big-endian, 2 = little-endian';
+
 CREATE FUNCTION sys.ora_format_error_backtrace() RETURNS TEXT
 AS 'MODULE_PATHNAME', 'ora_format_error_backtrace'
 LANGUAGE C VOLATILE;
@@ -25,12 +32,20 @@ COMMENT ON FUNCTION sys.ora_format_call_stack() IS 'Internal function for DBMS_U
 
 -- DBMS_UTILITY Package Definition
 CREATE OR REPLACE PACKAGE dbms_utility IS
+  -- Return the database server byte order as NUMBER:
+  -- 1 = big-endian, 2 = little-endian.
+  FUNCTION GET_ENDIANNESS RETURN NUMBER;
   FUNCTION FORMAT_ERROR_BACKTRACE RETURN TEXT;
   FUNCTION FORMAT_ERROR_STACK RETURN TEXT;
   FUNCTION FORMAT_CALL_STACK RETURN TEXT;
 END dbms_utility;
 
 CREATE OR REPLACE PACKAGE BODY dbms_utility IS
+  FUNCTION GET_ENDIANNESS RETURN NUMBER IS
+  BEGIN
+    RETURN sys.ora_get_endianness();
+  END;
+
   FUNCTION FORMAT_ERROR_BACKTRACE RETURN TEXT IS
   BEGIN
     RETURN sys.ora_format_error_backtrace();
