@@ -1705,6 +1705,90 @@ SELECT SUBSTRB('ABCDEFG',5) "Substring with bytes" FROM DUAL;
  EFG
 (1 row)
 
+-- A subunit byte length is NULL before integer rounding.
+SELECT SUBSTRB('abcdef', 1, 0.49) IS NULL AS subunit_length FROM DUAL;
+ subunit_length 
+----------------
+ t
+(1 row)
+
+SELECT SUBSTRB('abcdef', 1, 0.5) IS NULL AS subunit_length FROM DUAL;
+ subunit_length 
+----------------
+ t
+(1 row)
+
+SELECT SUBSTRB('abcdef', 1, 0.6) IS NULL AS subunit_length FROM DUAL;
+ subunit_length 
+----------------
+ t
+(1 row)
+
+SELECT SUBSTRB('abcdef', 1, 0.9) IS NULL AS subunit_length FROM DUAL;
+ subunit_length 
+----------------
+ t
+(1 row)
+
+SELECT SUBSTRB('abcdef', 1, 0.99999999999999999999) IS NULL AS subunit_length FROM DUAL;
+ subunit_length 
+----------------
+ t
+(1 row)
+
+SELECT SUBSTRB('中文', 1, 0.9) IS NULL AS subunit_length FROM DUAL;
+ subunit_length 
+----------------
+ t
+(1 row)
+
+SELECT SUBSTRB('abcdef', 1, 0) IS NULL AS zero_length FROM DUAL;
+ zero_length 
+-------------
+ t
+(1 row)
+
+SELECT SUBSTRB('abcdef', 1, -0.9) IS NULL AS negative_length FROM DUAL;
+ negative_length 
+-----------------
+ t
+(1 row)
+
+SELECT SUBSTRB('abcdef', 1, 1) AS one_byte FROM DUAL;
+ one_byte 
+----------
+ a
+(1 row)
+
+SELECT SUBSTRB('abcdef', 1, NULL) IS NULL AS null_length FROM DUAL;
+ null_length 
+-------------
+ t
+(1 row)
+
+SELECT SUBSTRB(NULL, 1, 0.9) IS NULL AS null_string FROM DUAL;
+ null_string 
+-------------
+ t
+(1 row)
+
+SELECT SUBSTRB('abcdef', NULL, 0.9) IS NULL AS null_position FROM DUAL;
+ null_position 
+---------------
+ t
+(1 row)
+
+-- Preserve existing conversion errors; do not turn them into NULL.
+SELECT SUBSTRB('abcdef', 1, 'NaN'::numeric) FROM DUAL;
+ERROR:  cannot convert NaN to integer
+SELECT SUBSTRB('abcdef', 1, 'Infinity'::numeric) FROM DUAL;
+ERROR:  cannot convert infinity to integer
+SELECT SUBSTRB('abcdef', 1, '-Infinity'::numeric) FROM DUAL;
+ERROR:  cannot convert infinity to integer
+SELECT SUBSTRB('abcdef', 1, 2147483648) FROM DUAL;
+ERROR:  integer out of range
+SELECT SUBSTRB('abcdef', 2147483648, 0.9) FROM DUAL;
+ERROR:  integer out of range
 /*
  * instrb
  */
@@ -4074,3 +4158,54 @@ select to_single_byte(NULL);
  
 (1 row)
 
+-- Large SUBSTRB lengths must be clipped to the available bytes without overflow.
+select sys.substrb('abcdef', 1, 2147483647) = 'abcdef' as huge_length;
+ huge_length 
+-------------
+ t
+(1 row)
+
+select sys.substrb('abcdef', 2, 2147483647) = 'bcdef' as huge_suffix;
+ huge_suffix 
+-------------
+ t
+(1 row)
+
+select sys.substrb('abcdef', -2, 2147483647) = 'ef' as huge_negative_start;
+ huge_negative_start 
+---------------------
+ t
+(1 row)
+
+select sys.substrb('你好吗', 1, 2147483647) = '你好吗' as huge_utf8_length;
+ huge_utf8_length 
+------------------
+ t
+(1 row)
+
+select sys.substrb('abcdef', 2147483647, 1) is null as huge_start;
+ huge_start 
+------------
+ t
+(1 row)
+
+select sys.substrb('abcdef', 2, 3) = 'bcd' as ordinary_length;
+ ordinary_length 
+-----------------
+ t
+(1 row)
+
+-- Exercise the detoasting slice calculation as well as an inline datum.
+create table substrb_large_length_test (s text);
+alter table substrb_large_length_test alter column s set storage external;
+insert into substrb_large_length_test values (repeat('abcdef', 2000));
+select sys.substrb(s, 1, 2147483647) = s as huge_toasted_length,
+       sys.substrb(s, 1, 2147483643) = s as large_toasted_slice,
+       sys.substrb(s, 2147483647, 1) is null as huge_toasted_start
+from substrb_large_length_test;
+ huge_toasted_length | large_toasted_slice | huge_toasted_start 
+---------------------+---------------------+--------------------
+ t                   | t                   | t
+(1 row)
+
+drop table substrb_large_length_test;
