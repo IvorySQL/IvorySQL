@@ -19,6 +19,9 @@
 #include "pl_exception_type.h"
 #include "plisql.h"
 
+/* Exception declarations need unique identities within the backend. */
+static uint64 next_exception_id = 1;
+
 /*
  * plisql_build_exception
  *		Build a user-defined exception variable
@@ -36,6 +39,7 @@ plisql_build_exception(const char *refname, int lineno, bool add2namespace)
 	exc->refname = pstrdup(refname);
 	exc->lineno = lineno;
 	exc->sqlcode = ERRCODE_RAISE_EXCEPTION;  /* Default P0001 for user-defined exceptions */
+	exc->exception_id = next_exception_id++;
 	exc->pkgoid = InvalidOid;
 
 	/* Assign datum number and add to datum array */
@@ -109,6 +113,7 @@ plisql_exception_set_sqlcode(PLiSQL_exception_var *exc, int sqlcode)
 		return;
 
 	exc->sqlcode = sqlcode;
+	exc->exception_id = 0;
 }
 
 /*

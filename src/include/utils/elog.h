@@ -175,6 +175,7 @@ extern pg_attribute_cold bool errstart_cold(int elevel, const char *domain);
 extern void errfinish(const char *filename, int lineno, const char *funcname);
 
 extern int	errcode(int sqlerrcode);
+extern int	errplisql_exception(uint64 exception_id);
 
 extern int	errcode_for_file_access(void);
 extern int	errcode_for_socket_access(void);
@@ -464,6 +465,7 @@ typedef struct ErrorData
 
 	/* context containing associated non-constant strings */
 	struct MemoryContextData *assoc_context;
+	uint64		plisql_exception_id;	/* backend-local exception identity */
 } ErrorData;
 
 extern void EmitErrorReport(void);
