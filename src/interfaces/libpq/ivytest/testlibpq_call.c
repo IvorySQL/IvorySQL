@@ -177,7 +177,10 @@ main(int argc, char **argv)
 {
 	Ivyconn    *conn;
 	Ivyresult   *res;
-	char conninfo[100]="user=system dbname=postgres port=1521";
+	const char *pgport = getenv("PGPORT");
+	const char *conninfo = (pgport && pgport[0]) ?
+		"user=system dbname=postgres" :
+		"user=system dbname=postgres port=1521";
 	//const char *oraport = argv[1];
 
 	//strcat(conninfo, oraport);

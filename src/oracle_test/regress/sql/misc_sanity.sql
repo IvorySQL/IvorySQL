@@ -53,7 +53,7 @@ WHERE refclassid = 0 OR refobjid = 0 OR
 
 SELECT relname, attname, atttypid::regtype
 FROM pg_class c JOIN pg_attribute a ON c.oid = attrelid
-WHERE c.oid < 16384 AND
+WHERE c.relnamespace IN ('pg_catalog'::regnamespace, 'pg_toast'::regnamespace) AND
       reltoastrelid = 0 AND
       relkind = 'r' AND
       attstorage != 'p'

@@ -1329,7 +1329,7 @@ SELECT 'abc' LIKE 'abc' COLLATE ctest_det;
 SELECT 'abc' LIKE 'a\bc' COLLATE ctest_det;
  ?column? 
 ----------
- t
+ f
 (1 row)
 
 SELECT 'abc' LIKE 'abc' COLLATE ctest_nondet;
@@ -2754,7 +2754,11 @@ SELECT U&'\0061\0308bc' LIKE U&'_\00e4bc' COLLATE ignore_accents;
 
 -- escape character at end of pattern
 SELECT 'foox' LIKE 'foo\' COLLATE ignore_accents;
-ERROR:  LIKE pattern must not end with escape character
+ ?column? 
+----------
+ f
+(1 row)
+
 -- foreign keys (mixing different nondeterministic collations not allowed)
 CREATE TABLE test10pk (x text COLLATE case_sensitive PRIMARY KEY);
 CREATE TABLE test10fk (x text COLLATE case_insensitive REFERENCES test10pk (x) ON UPDATE CASCADE ON DELETE CASCADE);  -- error

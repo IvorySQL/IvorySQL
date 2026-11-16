@@ -57,7 +57,9 @@ step create_btree { CREATE INDEX kill_prior_tuple_btree ON kill_prior_tuple USIN
 ### steps for testing gist indexes ###
 # Creating the extensions takes time, so we don't want to do so when testing
 # other AMs
-step create_ext_btree_gist { CREATE EXTENSION btree_gist; }
+# The PostgreSQL extension uses bare INTERVAL declarations in its SQL script.
+# Load that fixture with the PostgreSQL parser, then test indexes in Oracle mode.
+step create_ext_btree_gist { SET ivorysql.compatible_mode = pg; CREATE EXTENSION btree_gist; RESET ivorysql.compatible_mode; }
 step drop_ext_btree_gist { DROP EXTENSION btree_gist; }
 step create_gist { CREATE INDEX kill_prior_tuple_gist ON kill_prior_tuple USING gist (key); }
 

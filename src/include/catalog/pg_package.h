@@ -49,6 +49,11 @@ CATALOG(pg_package,9111,PackageRelationId)
 	bool		define_invok BKI_DEFAULT(f);
 	bool		editable BKI_DEFAULT(t);
 	bool		use_collation BKI_DEFAULT(f);
+	Oid			pkgtypeoid BKI_DEFAULT(0) BKI_LOOKUP_OPT(pg_type);
+	bool		pkginstantiable BKI_DEFAULT(t);
+	bool		pkgfinal BKI_DEFAULT(t);
+	NameData	pkgmapmethod;
+	NameData	pkgordermethod;
 
 #ifdef CATALOG_VARLEN			/* variable-length fields start here */
 	aclitem	 	pkgacl[1] BKI_DEFAULT(_null_);
@@ -75,4 +80,3 @@ MAKE_SYSCACHE(PKGOID, pg_package_oid_index, 8);
 MAKE_SYSCACHE(PKGNAMEARGSNSP, pg_package_pkgname_nsp_index, 8);
 
 #endif			/* PG_PACKAGE_H */
-

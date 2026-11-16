@@ -161,6 +161,7 @@ void	   *referenced_functions[] =
 	ExecEvalParamExtern,
 	ExecEvalParamSet,
 	ExecEvalRow,
+	ExecEvalRownum,
 	ExecEvalRowNotNull,
 	ExecEvalRowNull,
 	ExecEvalCoerceViaIOSafe,

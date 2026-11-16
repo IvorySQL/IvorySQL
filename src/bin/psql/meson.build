@@ -100,6 +100,7 @@ tests += {
       't/020_cancel.pl',
       't/030_pager.pl',
       't/040_prompt.pl',
+      't/050_oracle_multiline.pl',
     ],
   },
 }

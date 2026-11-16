@@ -17,8 +17,12 @@
 #include "postgres.h"
 
 #include "access/hash.h"
+#include "access/heapam.h"
 #include "access/htup_details.h"
+#include "access/table.h"
+#include "access/tableam.h"
 #include "bootstrap/bootstrap.h"
+#include "catalog/dependency.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_amop.h"
@@ -43,6 +47,8 @@
 #include "catalog/pg_subscription.h"
 #include "catalog/pg_transform.h"
 #include "catalog/pg_type.h"
+#include "commands/extension.h"
+#include "common/md5.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "utils/array.h"
@@ -2376,6 +2382,71 @@ func_volatile(Oid funcid)
 }
 
 /*
+ * is_ora_builtin_expr_function
+ *
+ * Recognize reviewed Oracle functions that are safe in publication row filters
+ * and virtual generation expressions.  Unlike PostgreSQL's pinned functions,
+ * ivorysql_ora functions have dynamically assigned OIDs, which can exceed
+ * FirstNormalObjectId even when they are installed by initdb.
+ *
+ * For now, only length(text) is supported.  Extension membership alone is not
+ * sufficient: an extension can contain arbitrary SQL and mutable functions,
+ * and CREATE OR REPLACE can change a member's implementation.  Check the exact
+ * signature and C implementation as well.  Do not cache the result, since the
+ * definition and extension membership can change within the same transaction.
+ * This permission does not make the function pinned or exempt it from normal
+ * dependency tracking and plan invalidation.
+ */
+bool
+is_ora_builtin_expr_function(Oid funcid)
+{
+	HeapTuple	tp;
+	Form_pg_proc procform;
+	Oid			extoid;
+	char	   *prosrc;
+	char	   *probin;
+	bool		result = false;
+
+	if (compatible_db != ORA_PARSER)
+		return false;
+
+	tp = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
+	if (!HeapTupleIsValid(tp))
+		elog(ERROR, "cache lookup failed for function %u", funcid);
+	procform = (Form_pg_proc) GETSTRUCT(tp);
+
+	if (procform->pronamespace == PG_SYS_NAMESPACE &&
+		strcmp(NameStr(procform->proname), "length") == 0 &&
+		procform->pronargs == 1 &&
+		procform->proargtypes.values[0] == TEXTOID &&
+		procform->prorettype == INT4OID &&
+		procform->prokind == PROKIND_FUNCTION &&
+		procform->prolang == ClanguageId &&
+		procform->provolatile == PROVOLATILE_IMMUTABLE &&
+		procform->proisstrict && !procform->proretset &&
+		!procform->prosecdef &&
+		!OidIsValid(procform->prosupport))
+	{
+		prosrc = TextDatumGetCString(SysCacheGetAttrNotNull(PROCOID, tp,
+														 Anum_pg_proc_prosrc));
+		probin = TextDatumGetCString(SysCacheGetAttrNotNull(PROCOID, tp,
+														 Anum_pg_proc_probin));
+		if (strcmp(prosrc, "oracharlen") == 0 &&
+			strcmp(probin, "$libdir/ivorysql_ora") == 0)
+		{
+			extoid = get_extension_oid("ivorysql_ora", true);
+			result = OidIsValid(extoid) &&
+				getExtensionOfObject(ProcedureRelationId, funcid) == extoid;
+		}
+		pfree(prosrc);
+		pfree(probin);
+	}
+
+	ReleaseSysCache(tp);
+	return result;
+}
+
+/*
  * func_parallel
  *		Given procedure id, return the function's proparallel flag.
  */
@@ -2770,6 +2841,107 @@ get_typisdefined(Oid typid)
 	}
 	else
 		return false;
+}
+
+/*
+ * get_typisobject
+ *
+ *		Given the type OID, determine whether it is an Oracle object type.
+ */
+bool
+get_typisobject(Oid typid)
+{
+	HeapTuple	tp;
+
+	tp = SearchSysCache1(TYPEOID, ObjectIdGetDatum(typid));
+	if (HeapTupleIsValid(tp))
+	{
+		Form_pg_type typtup = (Form_pg_type) GETSTRUCT(tp);
+		bool		result;
+
+		result = typtup->typisobject;
+		ReleaseSysCache(tp);
+		return result;
+	}
+	else
+		return false;
+}
+
+Oid
+get_typrefbase(Oid typid)
+{
+	HeapTuple	tup = SearchSysCache1(TYPEOID, ObjectIdGetDatum(typid));
+	Oid		result;
+
+	if (!HeapTupleIsValid(tup))
+		return InvalidOid;
+	result = ((Form_pg_type) GETSTRUCT(tup))->typrefbase;
+	ReleaseSysCache(tup);
+	return result;
+}
+
+/* Keep the generated domain name independent of the current database OIDs. */
+char *
+get_object_ref_domain_name(const char *object_name)
+{
+	char		digest[MD5_PASSWD_LEN];
+	const char *errstr;
+
+	if (!pg_md5_hash(object_name, strlen(object_name), digest, &errstr))
+		ereport(ERROR, (errmsg("could not name object reference type: %s", errstr)));
+	return psprintf("__ivorysql_ref_%s", digest);
+}
+
+Oid
+get_object_ref_domain_oid(Oid object_type, bool missing_ok)
+{
+	HeapTuple	tup = SearchSysCache1(TYPEOID, ObjectIdGetDatum(object_type));
+	Form_pg_type typeform;
+	char	   *domain_name;
+	Oid		result;
+
+	if (!HeapTupleIsValid(tup))
+		elog(ERROR, "cache lookup failed for type %u", object_type);
+	typeform = (Form_pg_type) GETSTRUCT(tup);
+	if (!typeform->typisobject)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("type %s is not an Oracle object type", format_type_be(object_type))));
+	domain_name = get_object_ref_domain_name(NameStr(typeform->typname));
+	result = GetSysCacheOid2(TYPENAMENSP, Anum_pg_type_oid,
+						 CStringGetDatum(domain_name),
+						 ObjectIdGetDatum(typeform->typnamespace));
+	ReleaseSysCache(tup);
+	/* A renamed or schema-moved object retains its generated REF domain. */
+	if (!OidIsValid(result))
+	{
+		Relation	rel = table_open(TypeRelationId, AccessShareLock);
+		TableScanDesc scan = table_beginscan_catalog(rel, 0, NULL);
+		HeapTuple	row;
+
+		while ((row = heap_getnext(scan, ForwardScanDirection)) != NULL)
+		{
+			Form_pg_type candidate = (Form_pg_type) GETSTRUCT(row);
+
+			if (candidate->typrefbase == object_type)
+			{
+				result = candidate->oid;
+				break;
+			}
+		}
+		table_endscan(scan);
+		table_close(rel, AccessShareLock);
+	}
+	if (!OidIsValid(result) && !missing_ok)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("reference type for object type %u does not exist", object_type)));
+	if (OidIsValid(result) && get_typrefbase(result) != object_type)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("reference type for object type %u is invalid", object_type)));
+	pfree(domain_name);
+	return result;
 }
 
 /*

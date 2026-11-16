@@ -724,25 +724,6 @@ ora_psql_scan_slash_command_end(PsqlScanState state)
 }
 
 /*
- * Fetch current paren nesting depth
- */
-int
-ora_psql_scan_get_paren_depth(PsqlScanState state)
-{
-	return state->paren_depth;
-}
-
-/*
- * Set paren nesting depth
- */
-void
-ora_psql_scan_set_paren_depth(PsqlScanState state, int depth)
-{
-	Assert(depth >= 0);
-	state->paren_depth = depth;
-}
-
-/*
  * De-quote and optionally downcase a SQL identifier.
  *
  * The string at *str is modified in-place; it can become shorter,

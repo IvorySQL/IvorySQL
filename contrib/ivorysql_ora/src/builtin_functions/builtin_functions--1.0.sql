@@ -662,6 +662,23 @@ LANGUAGE C
 PARALLEL SAFE
 STABLE;
 
+/* SUBSTR uses character positions; SUBSTRB below uses byte positions. */
+CREATE FUNCTION sys.substr(text, pg_catalog.int4)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substr_no_length'
+LANGUAGE C
+STRICT
+IMMUTABLE
+PARALLEL SAFE;
+
+CREATE FUNCTION sys.substr(text, pg_catalog.int4, pg_catalog.int4)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substr'
+LANGUAGE C
+STRICT
+IMMUTABLE
+PARALLEL SAFE;
+
 /* SR */
 CREATE FUNCTION sys.substrb(varchar, number)
 RETURNS text
@@ -1547,12 +1564,12 @@ LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
 CREATE OR REPLACE FUNCTION sys.to_date(bigint)
 RETURNS sys.oradate
 AS 'select sys.to_date($1::text)'
-LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
 CREATE OR REPLACE FUNCTION sys.to_date(bigint, text)
 RETURNS sys.oradate
 AS 'select sys.to_date($1::text, $2)'
-LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
 --to_char
 CREATE OR REPLACE FUNCTION sys.to_char(number)
