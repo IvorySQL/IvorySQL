@@ -941,6 +941,15 @@ check_cluster_compatibility(void)
 	get_control_data(&new_cluster);
 	check_control_data(&old_cluster.controldata, &new_cluster.controldata);
 
+	/*
+	 * A cluster in PostgreSQL mode is dumped in PostgreSQL syntax, which only
+	 * the PostgreSQL port of an Oracle-mode cluster accepts.  Restore it
+	 * through that port, as --using-ora-pg does.
+	 */
+	if (!old_cluster.controldata.database_mode_is_oracle &&
+		new_cluster.controldata.database_mode_is_oracle)
+		pg_cluster_within_oracle_mode = true;
+
 	if (user_opts.live_check && old_cluster.port == new_cluster.port)
 		pg_fatal("When checking a live server, "
 				 "the old and new port numbers must be different.");
