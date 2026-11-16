@@ -160,6 +160,33 @@ binary_upgrade_set_next_toast_relfilenode(PG_FUNCTION_ARGS)
 	PG_RETURN_VOID();
 }
 
+/*
+ * CREATE TABLE ... WITH ROWID creates its ROWID sequence in the same
+ * command as the table, so the sequence's OIDs come through a slot of
+ * their own.
+ */
+Datum
+binary_upgrade_set_next_rowid_seq_pg_class_oid(PG_FUNCTION_ARGS)
+{
+	Oid			reloid = PG_GETARG_OID(0);
+
+	CHECK_IS_BINARY_UPGRADE;
+	binary_upgrade_next_rowid_seq_pg_class_oid = reloid;
+
+	PG_RETURN_VOID();
+}
+
+Datum
+binary_upgrade_set_next_rowid_seq_relfilenode(PG_FUNCTION_ARGS)
+{
+	RelFileNumber relfilenumber = PG_GETARG_OID(0);
+
+	CHECK_IS_BINARY_UPGRADE;
+	binary_upgrade_next_rowid_seq_pg_class_relfilenumber = relfilenumber;
+
+	PG_RETURN_VOID();
+}
+
 Datum
 binary_upgrade_set_next_pg_enum_oid(PG_FUNCTION_ARGS)
 {

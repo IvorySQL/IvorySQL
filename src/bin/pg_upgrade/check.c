@@ -119,7 +119,13 @@ static DataTypesUsageChecks data_types_usage_checks[] =
 		.base_query =
 		"SELECT t.oid FROM pg_catalog.pg_type t "
 		"LEFT JOIN pg_catalog.pg_namespace n ON t.typnamespace = n.oid "
-		" WHERE typtype = 'c' AND (t.oid < 16384 OR nspname = 'information_schema')",
+		" WHERE typtype = 'c' AND (t.oid < 16384 OR nspname = 'information_schema')"
+
+		/*
+		 * IvorySQL: sys.rowid, sys.urowid and sys.object_ref keep the OIDs
+		 * that pg_type.dat assigns them, so values of them stay readable.
+		 */
+		" AND NOT (nspname = 'sys' AND t.oid IN (9538, 9539, 9541))",
 		.report_text =
 		gettext_noop("Your installation contains system-defined composite types in user tables.\n"
 					 "These type OIDs are not stable across PostgreSQL versions,\n"

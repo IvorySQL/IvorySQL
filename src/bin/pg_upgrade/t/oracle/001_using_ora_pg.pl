@@ -96,6 +96,25 @@ ALTER SEQUENCE ora_unlogged_seq_id_seq SET UNLOGGED;
 INSERT INTO ora_always (v) VALUES (1), (2);
 INSERT INTO ora_default (v) VALUES (1);
 INSERT INTO ora_on_null (id, v) VALUES (NULL, 1);
+CREATE TABLE plain_rowid (id int) WITH ROWID;
+INSERT INTO plain_rowid VALUES (1), (2);
+CREATE INDEX user_rowid_idx ON plain_rowid (rowid);
+CREATE TYPE other_t AS OBJECT (name varchar2(10));
+/
+CREATE TABLE others OF other_t;
+INSERT INTO others VALUES (other_t('a')), (other_t('b'));
+CREATE TABLE holder (p REF other_t);
+INSERT INTO holder SELECT REF(o) FROM others o;
+CREATE TYPE has_ref AS OBJECT (p REF other_t);
+/
+CREATE TABLE ref_holder (v has_ref);
+INSERT INTO ref_holder SELECT has_ref(h.p) FROM holder h;
+CREATE TABLE prt (id int, k int) PARTITION BY RANGE (k) WITH ROWID;
+CREATE TABLE prt1 PARTITION OF prt FOR VALUES FROM (0) TO (10);
+INSERT INTO prt VALUES (1, 1), (2, 2);
+CREATE SEQUENCE coll_rowid_seq;
+CREATE TABLE coll (id int) WITH ROWID;
+INSERT INTO coll VALUES (1);
 },
 	connect_to_oraport => 1);
 
@@ -148,6 +167,29 @@ JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
 WHERE c.relnamespace = 'public'::regnamespace AND c.relkind = 'r'
   AND a.attnum > 0 AND NOT a.attisdropped
 ORDER BY 1, 2;
+SELECT 'plain_rowid', rowid::text, id FROM plain_rowid ORDER BY 3;
+SELECT 'others', o.rowid::text, o.name FROM others o ORDER BY 3;
+SELECT 'holder', h.p::text FROM holder h ORDER BY 2;
+SELECT 'ref_holder', x.v::text FROM ref_holder x ORDER BY 2;
+SELECT 'prt', rowid::text, id FROM prt ORDER BY 3;
+SELECT 'coll', rowid::text, id FROM coll ORDER BY 3;
+SELECT c.oid, c.relname, c.relkind, c.relfilenode, c.relhasrowid
+FROM pg_catalog.pg_class c
+WHERE c.relnamespace = 'public'::regnamespace
+  AND (c.relhasrowid OR c.relname LIKE '%rowid%')
+ORDER BY 1;
+SELECT d.objid::regclass::text, d.refobjid::regclass::text, d.refobjsubid
+FROM pg_catalog.pg_depend d
+JOIN pg_catalog.pg_class s ON s.oid = d.objid
+WHERE d.classid = 'pg_catalog.pg_class'::regclass AND s.relhasrowid
+  AND s.relkind = 'S' AND d.deptype = 'a'
+ORDER BY 1;
+SELECT 'rowid seq', last_value, is_called FROM plain_rowid_rowid_seq
+UNION ALL SELECT 'rowid seq', last_value, is_called FROM others_rowid_seq
+UNION ALL SELECT 'rowid seq', last_value, is_called FROM prt_rowid_seq
+UNION ALL SELECT 'rowid seq', last_value, is_called FROM prt1_rowid_seq
+UNION ALL SELECT 'rowid seq', last_value, is_called FROM coll_rowid_seq
+UNION ALL SELECT 'rowid seq', last_value, is_called FROM coll_rowid_seq1;
 SELECT 'ora_always', * FROM ora_always
 UNION ALL SELECT 'ora_default', * FROM ora_default
 UNION ALL SELECT 'ora_on_null', * FROM ora_on_null
@@ -228,10 +270,28 @@ SELECT count(*) FROM ora_on_null WHERE id IS NOT NULL;
 			connect_to_oraport => 1),
 		"3\n2",
 		"$label keeps identity columns generating values");
-	my ($ret) = $new->psql('postgres',
+	is( $new->safe_psql(
+			'postgres', q{
+INSERT INTO plain_rowid VALUES (3);
+INSERT INTO others VALUES (other_t('c'));
+INSERT INTO prt VALUES (3, 3);
+SELECT count(DISTINCT rowid) FROM plain_rowid;
+SELECT count(DISTINCT o.rowid) FROM others o;
+SELECT count(DISTINCT rowid) FROM prt;
+SELECT string_agg((DEREF(h.p)).name::text, ',' ORDER BY h.p::text) FROM holder h;
+SELECT string_agg((DEREF((x.v).p)).name::text, ',' ORDER BY (x.v).p::text)
+FROM ref_holder x;
+},
+			connect_to_oraport => 1),
+		"3\n3\n3\n(a),(b)\n(a),(b)",
+		"$label keeps ROWIDs unique for new rows and REFs pointing at their rows");
+	my ($ret, $stdout, $stderr) = $new->psql('postgres',
 		'INSERT INTO ora_always (id, v) VALUES (99, 4)',
 		connect_to_oraport => 1);
-	isnt($ret, 0, "$label keeps an ALWAYS identity refusing explicit values");
+	is($ret, 3, "$label fails an explicit value for an ALWAYS identity");
+	like($stderr,
+		qr/cannot insert a generated always identity column "id"/,
+		"$label keeps an ALWAYS identity refusing explicit values");
 
 	$new->stop;
 }
@@ -281,6 +341,9 @@ $ora_dst->start;
 is($ora_dst->safe_psql('postgres', $pg_query),
 	$pg_expected,
 	'upgrade into Oracle mode keeps sequences and identity columns');
+is($ora_dst->safe_psql('postgres',
+		'INSERT INTO pg_ident (v) VALUES (2) RETURNING id'),
+	'2', 'upgrade into Oracle mode keeps the identity generating values');
 $ora_dst->stop;
 
 # An Oracle-mode cluster cannot move into a PostgreSQL-mode one.
