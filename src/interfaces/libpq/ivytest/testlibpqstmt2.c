@@ -84,7 +84,7 @@ init_data(Ivyconn *conn)
 }
 
 static IvyPreparedStatement *
-init_statement()
+init_statement(void)
 {
 	IvyPreparedStatement *prestmt1;
 	const char *stmt1_name = "test1_stmt";
@@ -101,7 +101,7 @@ init_statement()
 }
 
 int
-main()
+main(void)
 {
 	char first_parameter[256];
 	char second_parameter[256];

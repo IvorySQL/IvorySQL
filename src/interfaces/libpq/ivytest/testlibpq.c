@@ -147,7 +147,7 @@ init_data(Ivyconn *conn)
 }
 
 static void
-init_statement()
+init_statement(void)
 {
 	IvyPreparedStatement *prestmt1;
 	IvyPreparedStatement *prestmt3;
@@ -180,7 +180,7 @@ init_statement()
 }
 
 int
-main()
+main(void)
 {
 	int i;
 

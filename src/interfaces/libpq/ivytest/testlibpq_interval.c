@@ -170,7 +170,7 @@ exec_prepare(Ivyconn *conn, int flag)
 }
 
 int
-main()
+main(void)
 {
 	Ivyconn    *conn;
 	Ivyresult   *res;
