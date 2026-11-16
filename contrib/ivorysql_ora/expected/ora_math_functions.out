@@ -222,6 +222,17 @@ SELECT POWER('10', 126) FROM DUAL;
 ERROR:  numeric overflow
 DETAIL:  A NUMBER value must be less than 1E126 in absolute value.
 CONTEXT:  SQL function "power" statement 1
+-- 40 significant digits fit; a 41st rounds the value up to 1E126
+SELECT POWER('9.999999999999999999999999999999999999999e125', 1) AS nines_40 FROM DUAL;
+                                                            nines_40                                                            
+--------------------------------------------------------------------------------------------------------------------------------
+ 999999999999999999999999999999999999999900000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+(1 row)
+
+SELECT POWER('9.9999999999999999999999999999999999999999e125', 1) FROM DUAL;
+ERROR:  numeric overflow
+DETAIL:  A NUMBER value must be less than 1E126 in absolute value.
+CONTEXT:  SQL function "power" statement 1
 --
 -- string arguments convert to NUMBER
 --
