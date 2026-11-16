@@ -1237,6 +1237,247 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
+/*
+ * Oracle SQRT, EXP, LN, LOG and POWER compute on NUMBER and return NUMBER.
+ * Without the integer versions below, an integer argument binds the float8
+ * versions in pg_catalog, float8 being the preferred numeric type, and the
+ * result keeps about 16 significant digits.
+ *
+ * varchar2 converts implicitly to the integer types as well as to float8, so
+ * with only the integer versions SQRT(varchar2) would be ambiguous and
+ * POWER('2.5', 3) would read '2.5' as an integer.  text is the preferred
+ * string type, so string arguments pick the text versions and convert to
+ * NUMBER, as in Oracle.  Arguments of other types still resolve to the
+ * pg_catalog versions.
+ */
+CREATE FUNCTION sys.ora_sqrt_number(numeric)
+RETURNS numeric
+AS 'MODULE_PATHNAME','ora_sqrt_number'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.ora_exp_number(numeric)
+RETURNS numeric
+AS 'MODULE_PATHNAME','ora_exp_number'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.ora_ln_number(numeric)
+RETURNS numeric
+AS 'MODULE_PATHNAME','ora_ln_number'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.ora_log_number(numeric)
+RETURNS numeric
+AS 'MODULE_PATHNAME','ora_log_number'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.ora_log_number(numeric, numeric)
+RETURNS numeric
+AS 'MODULE_PATHNAME','ora_log_number'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.ora_power_number(numeric, numeric)
+RETURNS numeric
+AS 'MODULE_PATHNAME','ora_power_number'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.sqrt(smallint)
+RETURNS numeric
+AS 'select sys.ora_sqrt_number($1::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.sqrt(integer)
+RETURNS numeric
+AS 'select sys.ora_sqrt_number($1::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.sqrt(bigint)
+RETURNS numeric
+AS 'select sys.ora_sqrt_number($1::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.sqrt(text)
+RETURNS numeric
+AS 'select sys.ora_sqrt_number($1::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.exp(smallint)
+RETURNS numeric
+AS 'select sys.ora_exp_number($1::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.exp(integer)
+RETURNS numeric
+AS 'select sys.ora_exp_number($1::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.exp(bigint)
+RETURNS numeric
+AS 'select sys.ora_exp_number($1::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.exp(text)
+RETURNS numeric
+AS 'select sys.ora_exp_number($1::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.ln(smallint)
+RETURNS numeric
+AS 'select sys.ora_ln_number($1::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.ln(integer)
+RETURNS numeric
+AS 'select sys.ora_ln_number($1::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.ln(bigint)
+RETURNS numeric
+AS 'select sys.ora_ln_number($1::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.ln(text)
+RETURNS numeric
+AS 'select sys.ora_ln_number($1::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.log(smallint)
+RETURNS numeric
+AS 'select sys.ora_log_number($1::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.log(integer)
+RETURNS numeric
+AS 'select sys.ora_log_number($1::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.log(bigint)
+RETURNS numeric
+AS 'select sys.ora_log_number($1::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.log(text)
+RETURNS numeric
+AS 'select sys.ora_log_number($1::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.log(smallint, smallint)
+RETURNS numeric
+AS 'select sys.ora_log_number($1::pg_catalog.numeric, $2::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.log(integer, integer)
+RETURNS numeric
+AS 'select sys.ora_log_number($1::pg_catalog.numeric, $2::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.log(bigint, bigint)
+RETURNS numeric
+AS 'select sys.ora_log_number($1::pg_catalog.numeric, $2::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.log(text, text)
+RETURNS numeric
+AS 'select sys.ora_log_number($1::pg_catalog.numeric, $2::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.log(text, smallint)
+RETURNS numeric
+AS 'select sys.ora_log_number($1::pg_catalog.numeric, $2::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.log(text, integer)
+RETURNS numeric
+AS 'select sys.ora_log_number($1::pg_catalog.numeric, $2::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.log(text, bigint)
+RETURNS numeric
+AS 'select sys.ora_log_number($1::pg_catalog.numeric, $2::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.log(smallint, text)
+RETURNS numeric
+AS 'select sys.ora_log_number($1::pg_catalog.numeric, $2::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.log(integer, text)
+RETURNS numeric
+AS 'select sys.ora_log_number($1::pg_catalog.numeric, $2::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.log(bigint, text)
+RETURNS numeric
+AS 'select sys.ora_log_number($1::pg_catalog.numeric, $2::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.power(smallint, smallint)
+RETURNS numeric
+AS 'select sys.ora_power_number($1::pg_catalog.numeric, $2::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.power(integer, integer)
+RETURNS numeric
+AS 'select sys.ora_power_number($1::pg_catalog.numeric, $2::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.power(bigint, bigint)
+RETURNS numeric
+AS 'select sys.ora_power_number($1::pg_catalog.numeric, $2::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.power(text, text)
+RETURNS numeric
+AS 'select sys.ora_power_number($1::pg_catalog.numeric, $2::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.power(text, smallint)
+RETURNS numeric
+AS 'select sys.ora_power_number($1::pg_catalog.numeric, $2::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.power(text, integer)
+RETURNS numeric
+AS 'select sys.ora_power_number($1::pg_catalog.numeric, $2::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.power(text, bigint)
+RETURNS numeric
+AS 'select sys.ora_power_number($1::pg_catalog.numeric, $2::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.power(smallint, text)
+RETURNS numeric
+AS 'select sys.ora_power_number($1::pg_catalog.numeric, $2::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.power(integer, text)
+RETURNS numeric
+AS 'select sys.ora_power_number($1::pg_catalog.numeric, $2::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.power(bigint, text)
+RETURNS numeric
+AS 'select sys.ora_power_number($1::pg_catalog.numeric, $2::pg_catalog.numeric)'
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+
 -- to_binary_float
 CREATE FUNCTION sys.to_binary_float(text,text)
 RETURNS sys.binary_float
