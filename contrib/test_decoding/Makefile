@@ -8,7 +8,7 @@ REGRESS = ddl xact rewrite toast permissions decoding_in_xact \
 	spill slot truncate stream stats twophase twophase_stream
 ORA_REGRESS = ivy_ddl xact ivy_rewrite ivy_toast permissions decoding_in_xact \
 	ivy_decoding_into_rel binary prepared replorigin ivy_time messages \
-	spill ivy_slot truncate stream stats twophase twophase_stream
+	spill ivy_slot truncate ivy_stream stats twophase twophase_stream
 ISOLATION = mxact delayed_startup ondisk_startup concurrent_ddl_dml \
 	oldest_xmin snapshot_transfer subxact_without_top concurrent_stream \
 	twophase_snapshot slot_creation_error catalog_change_snapshot \
