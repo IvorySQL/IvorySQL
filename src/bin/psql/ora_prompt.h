@@ -4,7 +4,7 @@
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  * Portions Copyright (c) 2000-2026, PostgreSQL Global Development Group
  *
- * src/bin/psql/prompt.h
+ * src/bin/psql/ora_prompt.h
  */
 
 #ifndef ORA_PROMPT_H
