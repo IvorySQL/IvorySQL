@@ -77,6 +77,19 @@ SELECT rowid, data FROM rowid_test ORDER BY rowid;
 -- Test 12: rowid as alias
 SELECT data rowid FROM rowid_test ORDER BY rowid;
 
+-- Primary keys make inherited rowid columns NOT NULL.
+CREATE TABLE rowid_child (PRIMARY KEY (rowid)) INHERITS (rowid_test);
+INSERT INTO rowid_child VALUES (3, 'third');
+INSERT INTO rowid_child VALUES (NULL, 'missing');
+DROP TABLE rowid_child;
+
+CREATE TABLE rowid_partitioned (rowid bigint, partkey int) PARTITION BY LIST (partkey);
+CREATE TABLE rowid_partition PARTITION OF rowid_partitioned (PRIMARY KEY (rowid))
+    FOR VALUES IN (1);
+INSERT INTO rowid_partitioned VALUES (42, 1);
+INSERT INTO rowid_partitioned VALUES (NULL, 1);
+DROP TABLE rowid_partitioned;
+
 -- Cleanup
 DROP FUNCTION test_rownum_param(int);
 DROP TABLE rownum_test;
