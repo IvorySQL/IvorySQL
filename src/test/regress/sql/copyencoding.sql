@@ -11,6 +11,8 @@ SELECT getdatabaseencoding() <> 'UTF8'
 
 -- directory paths are passed to us in environment variables
 \getenv abs_builddir PG_ABS_BUILDDIR
+-- Keep paths out of SQL sent while client_encoding differs from UTF8.
+\cd :abs_builddir
 
 \set utf8_csv :abs_builddir '/results/copyencoding_utf8.csv'
 
@@ -37,7 +39,7 @@ SET client_encoding TO UTF8;
 COPY (SELECT E'\u3042') TO :'utf8_csv' WITH (FORMAT csv);
 -- Read UTF8 data as LATIN1: no error
 SET client_encoding TO LATIN1;
-COPY copy_encoding_tab FROM :'utf8_csv' WITH (FORMAT csv);
+\copy copy_encoding_tab FROM 'results/copyencoding_utf8.csv' WITH (FORMAT csv)
 RESET client_encoding;
 
 -- Invalid cases
@@ -54,7 +56,7 @@ SET client_encoding TO UTF8;
 COPY (SELECT E'\u3042') TO :'utf8_csv' WITH (FORMAT csv);
 -- Read UTF8 data as EUC_JP: no error
 SET client_encoding TO EUC_JP;
-COPY copy_encoding_tab FROM :'utf8_csv' WITH (FORMAT csv);
+\copy copy_encoding_tab FROM 'results/copyencoding_utf8.csv' WITH (FORMAT csv)
 RESET client_encoding;
 
 -- JSON format encoding conversion
@@ -71,7 +73,7 @@ SELECT position('\xe9'::bytea  IN pg_read_binary_file(:'json_latin1')) > 0 AS ha
 -- runs COPY ... FORMAT json and would otherwise receive unconverted bytes.
 \set json_implicit :abs_builddir '/results/copyencoding_json_implicit_latin1.json'
 SET client_encoding TO LATIN1;
-COPY (SELECT E'\u00e9' AS c) TO :'json_implicit' WITH (FORMAT json);
+\copy (SELECT E'\u00e9' AS c) TO 'results/copyencoding_json_implicit_latin1.json' WITH (FORMAT json)
 RESET client_encoding;
 SELECT position('\xe9'::bytea  IN pg_read_binary_file(:'json_implicit')) > 0 AS has_latin1_e9,
        position('\xc3a9'::bytea IN pg_read_binary_file(:'json_implicit')) > 0 AS has_utf8_e9;
