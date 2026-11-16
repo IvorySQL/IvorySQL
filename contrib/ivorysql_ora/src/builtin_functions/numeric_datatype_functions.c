@@ -453,7 +453,8 @@ ora_number_exponent(Numeric num, int *exponent)
  *
  * A NUMBER keeps 20 base-100 digits, starting with the one that holds the
  * first nonzero decimal digit.  So a value in [1, 100) keeps 38 decimal
- * places: 39 significant digits below 10 and 40 from 10 up.
+ * places: 39 significant digits below 10 and 40 from 10 up.  Oracle raises
+ * an error when the absolute value of a result reaches 1E126.
  */
 static Numeric
 ora_number_round(Numeric num)
@@ -468,6 +469,14 @@ ora_number_round(Numeric num)
 		exponent100 = exponent >= 0 ? exponent / 2 : -((1 - exponent) / 2);
 		result = DirectFunctionCall2(numeric_round, result,
 									 Int32GetDatum(38 - 2 * exponent100));
+
+		/* Check after rounding, which can carry up to 1E126. */
+		if (ora_number_exponent(DatumGetNumeric(result), &exponent) &&
+			exponent >= 126)
+			ereport(ERROR,
+					(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+					 errmsg("numeric overflow"),
+					 errdetail("A NUMBER value must be less than 1E126 in absolute value.")));
 	}
 
 	return DatumGetNumeric(DirectFunctionCall1(numeric_trim_scale, result));

@@ -82,6 +82,16 @@ SELECT LOG(1, 8) FROM DUAL;
 SELECT POWER(0, -1) FROM DUAL;
 
 --
+-- NUMBER range: a result must be less than 1E126 in absolute value
+--
+SELECT POWER(10, 125) AS power_10_125 FROM DUAL;
+SELECT EXP(290) AS exp_290 FROM DUAL;
+SELECT POWER(10, 126) FROM DUAL;
+SELECT POWER(-10, 127) FROM DUAL;
+SELECT EXP(291) FROM DUAL;
+SELECT POWER('10', 126) FROM DUAL;
+
+--
 -- string arguments convert to NUMBER
 --
 SELECT SQRT('2.25') AS sqrt_lit, EXP('1') AS exp_lit, LN('2') AS ln_lit,
