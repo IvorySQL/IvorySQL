@@ -447,7 +447,7 @@ plisql_build_variable_from_funcargs(PLiSQL_subproc_function * subprocfunc, bool 
 	}
 
 	norigoutargs = noutargs;
-	/*Build a '_retval_' varaible for the function return value */
+	/*Build a '_retval_' variable for the function return value */
 	if (noutargs > 0)
 	{
 		if (subprocfunc->rettype != NULL &&
@@ -496,7 +496,7 @@ plisql_build_variable_from_funcargs(PLiSQL_subproc_function * subprocfunc, bool 
 			else
 				argitemtype = PLISQL_NSTYPE_REC;
 
-			/* the new builded variable for function return value is after all function OUT args */
+			/* the newly built variable for function return value is after all function OUT args */
 			outvar[noutargs] = argvariable;
 			noutargs++;
 
@@ -987,7 +987,7 @@ plisql_add_subproc_function(PLiSQL_subproc_function * new)
 
 
 /*
- * register some usefull functions
+ * register some useful functions
  * for SQL to used
  */
 void
@@ -1019,7 +1019,7 @@ plisql_register_internal_func(void)
 
 
 /*
- * unrgister some usefull functions from SQL
+ * unregister some useful functions from SQL
  */
 void
 plisql_unregister_internal_func(void)
@@ -2806,7 +2806,7 @@ build_subprocfunction_result_tupdesc_t(PLiSQL_subproc_function * subprocfunc)
 			outargtypes[i] = argitem->type->typoid;
 
 			/*
-			 * If the guc pararmeter out_parameter_column_position is set to be true,
+			 * If the guc parameter out_parameter_column_position is set to be true,
 			 * make out parameter column name to be special,
 			 * so we can distinguish it from the return value.
 			 */

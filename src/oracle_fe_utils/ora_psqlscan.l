@@ -1470,7 +1470,7 @@ ora_psql_scan(PsqlScanState state,
 					result = ORAPSCAN_INCOMPLETE;
 					*prompt = ORAPROMPT_DOLLARQUOTE;
 					break;
-				/* hanlde q escape */
+				/* handle q escape */
 				case xdq:
 					result = ORAPSCAN_INCOMPLETE;
 					*prompt = ORAPROMPT_QQUOTE;

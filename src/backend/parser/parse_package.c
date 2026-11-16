@@ -43,7 +43,7 @@
 #include "commands/dbcommands.h"
 #include "miscadmin.h"
 
-/* usefull functions */
+/* useful functions */
 static bool package_resolve_names(List *names, PackageCacheKey *pkey,
 									int *pkgname_startloc);
 static PkgType *parse_package_type(List *names, PackageCacheKey *pkey,
@@ -73,7 +73,7 @@ static FuncDetailCode parse_package_func(ParseState *pstate, PackageCacheKey *pk
 
 
 /*
- * reslove to find name in a package
+ * resolve to find name in a package
  * first:	we search for package.xxx
  * second: we search for schema.package.xxx
  * third: we search for database.schemaname.package.xx
@@ -116,7 +116,7 @@ package_resolve_names(List *names, PackageCacheKey *pkey, int *pkgname_startloc)
 
 	first_name = strVal(linitial(names));
 
-	/* treate first name as package name */
+	/* treat first name as package name */
 	pkgoid = PkgnameGetPkgid(first_name);
 	if (OidIsValid(pkgoid))
 	{
@@ -125,7 +125,7 @@ package_resolve_names(List *names, PackageCacheKey *pkey, int *pkgname_startloc)
 		return true;
 	}
 
-	/* treate first name as schema name and second as package name */
+	/* treat first name as schema name and second as package name */
 	tmp = lappend(list_make1(linitial(names)), lsecond(names));
 	pkgoid = LookupPackageByNames(tmp, true);
 	if (OidIsValid(pkgoid))

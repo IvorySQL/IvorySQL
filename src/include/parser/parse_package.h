@@ -68,7 +68,7 @@ typedef struct PkgEntry
 } PkgEntry;
 
 
-/* some usefull functions */
+/* some useful functions */
 extern PkgType *LookupPkgTypeByTypename(const List *names, bool missing_ok);
 extern PkgVar *LookupPkgVarByvarnames(const List *names, bool missing_ok);
 extern PkgEntry *LookupPkgEntryByTypename(const List *names, bool missing_ok);

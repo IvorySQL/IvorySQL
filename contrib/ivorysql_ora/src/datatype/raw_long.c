@@ -165,7 +165,7 @@ orabytea_to_raw_with_typmod(PG_FUNCTION_ARGS)
 
 	/*
 	 * Report error for implicit conversion
-	 * Truncate string for exlicit conversion
+	 * Truncate string for explicit conversion
 	 */
 	if (len > maxlen)
 	{
@@ -214,7 +214,7 @@ orachar_to_long_with_typmod(PG_FUNCTION_ARGS)
 
 	/*
 	 * Report error for implicit conversion 
-	 * Truncate string for exlicit conversion 
+	 * Truncate string for explicit conversion 
 	 */
 	if (len > maxlen)
 	{
