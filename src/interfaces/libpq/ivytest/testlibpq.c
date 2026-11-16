@@ -111,7 +111,7 @@ drop_data(Ivyconn *conn)
 	res = Ivyexec(conn, "drop table test_mds;");
 	if (IvyresultStatus(res) != PGRES_COMMAND_OK)
 	{
-		fprintf(stderr, "dorp table Ivyexec failed\n");
+		fprintf(stderr, "drop table Ivyexec failed\n");
 		Ivyclear(res);
 		exit_nicely();
 	}

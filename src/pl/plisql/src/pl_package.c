@@ -106,7 +106,7 @@ static void plisql_pop_compile_global_proper(void);
 
 
 /*
- * find var,type,func in package specifiction
+ * find var,type,func in package specification
  *
  */
 void *
@@ -560,7 +560,7 @@ plisql_free_package_function(PackageCacheItem *items)
 		PLiSQL_function *dfunc = (PLiSQL_function *) lfirst(lc);
 
 		/* remove function */
-		elog(DEBUG1, "realy free function %u", dfunc->fn_oid);
+		elog(DEBUG1, "really free function %u", dfunc->fn_oid);
 		delete_function(dfunc);
 	}
 
@@ -574,9 +574,9 @@ plisql_free_package_function(PackageCacheItem *items)
 		/* finally free itself */
 		if (psource->source.use_count == 0)
 		{
-			elog(DEBUG1, "realy free package %u start", pkgoid);
+			elog(DEBUG1, "really free package %u start", pkgoid);
 			plisql_free_function_memory(&psource->source, 0, 0);
-			elog(DEBUG1, "realy free package %u end", pkgoid);
+			elog(DEBUG1, "really free package %u end", pkgoid);
 		}
 		else
 		{
@@ -584,9 +584,9 @@ plisql_free_package_function(PackageCacheItem *items)
 			resolve_package_interdependence(item, itemlist, lnext(itemlist, lc));
 			if (psource->source.use_count == 0)
 			{
-				elog(DEBUG1, "realy free package %u start", pkgoid);
+				elog(DEBUG1, "really free package %u start", pkgoid);
 				plisql_free_function_memory(&psource->source, 0, 0);
-				elog(DEBUG1, "realy free package %u end", pkgoid);
+				elog(DEBUG1, "really free package %u end", pkgoid);
 			}
 			else
 			{
@@ -663,7 +663,7 @@ plisql_free_packagelist(List *pkglist)
 	{
 		dfunc = (PLiSQL_function *) lfirst(lc);
 
-		elog(DEBUG1, "realy free function %u", dfunc->fn_oid);
+		elog(DEBUG1, "really free function %u", dfunc->fn_oid);
 		delete_function(dfunc);
 	}
 
@@ -680,9 +680,9 @@ plisql_free_packagelist(List *pkglist)
 		/* finally free itself */
 		if (psource->source.use_count == 0)
 		{
-			elog(DEBUG1, "realy free package %u start", pkgoid);
+			elog(DEBUG1, "really free package %u start", pkgoid);
 			plisql_free_function_memory(&psource->source, 0, 0);
-			elog(DEBUG1, "realy free package %u end", pkgoid);
+			elog(DEBUG1, "really free package %u end", pkgoid);
 		}
 		else
 		{
@@ -690,9 +690,9 @@ plisql_free_packagelist(List *pkglist)
 			resolve_package_interdependence(item, pkglist, lnext(pkglist, lc));
 			if (psource->source.use_count == 0)
 			{
-				elog(DEBUG1, "realy free package %u start", pkgoid);
+				elog(DEBUG1, "really free package %u start", pkgoid);
 				plisql_free_function_memory(&psource->source, 0, 0);
-				elog(DEBUG1, "realy free package %u end", pkgoid);
+				elog(DEBUG1, "really free package %u end", pkgoid);
 			}
 			else
 				item->intable = false;
@@ -815,7 +815,7 @@ resolve_package_interdependence(PackageCacheItem *item,
 
 
 /*
- * find refernce function or package depands this functions
+ * find reference function or package depends this functions
  *
  * split package deplist and function deplist, so that we can
  * handle package rely on each other
@@ -1050,7 +1050,7 @@ package_body_doCompile(HeapTuple pkgbodyTup,
 				HeapTuple	tup;
 				bool		isduplicate = false;
 
-				/* Check duplicate dependencies already been built in CREATE PACKAGE statment */
+				/* Check duplicate dependencies already been built in CREATE PACKAGE statement */
 				ScanKeyInit(&key[0],
 						Anum_pg_depend_refclassid,
 						BTEqualStrategyNumber, F_OIDEQ,
@@ -1339,7 +1339,7 @@ package_doCompile(HeapTuple pkgTup, bool forValidator)
 				HeapTuple	tup;
 				bool		isduplicate = false;
 
-				/* Check duplicate dependencies that already been built in CREATE PACKAGE statment */
+				/* Check duplicate dependencies that already been built in CREATE PACKAGE statement */
 				ScanKeyInit(&key[0],
 						Anum_pg_depend_refclassid,
 						BTEqualStrategyNumber, F_OIDEQ,
@@ -1682,12 +1682,12 @@ plisql_exec_package_init(FunctionCallInfo fcinfo, PLiSQL_function *func)
 
 
 	/* Begin - SRS-PLSQL-SUBPROC */
-	/* rember current func in SPI */
+	/* remember current func in SPI */
 	SPI_remember_func(func);
 	/* End - SRS-PLSQL-SUBPROC */
 
 	/*
-	 * check wether invoke define, we should
+	 * check whether invoke define, we should
 	 * switch current user for package init
 	 */
 	pkgTup = SearchSysCache1(PKGOID, ObjectIdGetDatum(func->item->pkey));
@@ -1849,7 +1849,7 @@ plisql_check_package_status(PLiSQL_execstate *estate,
 
 
 /*
- * internel function to check subproc wether has define
+ * internal function to check subproc whether has define
  */
 static void
 plisql_check_subproc_define_recurse(PLiSQL_function *function, List **already_checks, yyscan_t yyscanner)
@@ -2181,7 +2181,7 @@ plisql_push_compile_global_proper(void)
 
 
 /*
- * pop global compile informations
+ * pop global compile information
  */
 static void
 plisql_pop_compile_global_proper(void)
@@ -2414,7 +2414,7 @@ plisql_parse_package_type(TypeName *typeName,
 		plisql_push_compile_global_proper();
 		/*
 		 *
-		 * when errors happen, we should recover gloabl
+		 * when errors happen, we should recover global
 		 * variables
 		 */
 		PG_TRY();
@@ -2575,7 +2575,7 @@ plisql_get_package_func(FunctionCallInfo fcinfo, bool forValidator)
 		func = plisql_subprocfunc_HashTableLookup(subprocfunc->poly_tab, &hashkey);
 		if (func == NULL)
 		{
-			/* function is not found, we shoud dynamic compile */
+			/* function is not found, we should dynamic compile */
 			Assert(subprocfunc->src != NULL);
 			func = plisql_dynamic_compile_subproc(fcinfo, subprocfunc, forValidator);
 		}
@@ -2622,7 +2622,7 @@ plisql_remove_function_relations(PLiSQL_function *func)
 
 
 /*
- * check package specification and body gloabl var doesn't allow
+ * check package specification and body global var doesn't allow
  * to have ref cursor vars
  */
 void
@@ -2750,7 +2750,7 @@ plisql_set_package_compile_status(void)
 /*
  * this function like exec_stmt_close
  * when we rebuild a package and free previous
- * pakcage instations, we should use this
+ * package instations, we should use this
  * function to close package open cursor and
  * release resource
  */
@@ -2780,7 +2780,7 @@ plisql_close_package_cursorvar(PLiSQL_var *var)
 
 
 /*
- * get current compile package cacheitem accroding
+ * get current compile package cacheitem according
  * PackageCacheKey
  */
 PackageCacheItem *
@@ -2807,7 +2807,7 @@ get_current_compile_package(PackageCacheKey key)
 		return NULL;
 
 	/*
-	 * init some usefull message
+	 * init some useful message
 	 * which plisql_package_parse
 	 * will use
 	 */
@@ -2982,7 +2982,7 @@ plisql_package_validator(Oid objectid, bool is_body)
 
 /*
  * search for a package item we should compile
- * package and store it to memroy
+ * package and store it to memory
  */
 PackageCacheItem *
 plisql_package_handle(Oid objectid, bool is_body)
@@ -3068,7 +3068,7 @@ plisql_get_datum(PLiSQL_execstate *estate, PLiSQL_datum *pkgdatum)
 
 
 /*
- * get package dno accroding package'oid and
+ * get package dno according package'oid and
  * variable dno
  */
 PLiSQL_datum *
@@ -3120,7 +3120,7 @@ plisql_get_relevantContext(Oid pkgoid, MemoryContext orig)
 }
 
 /*
- * given a var, return wether
+ * given a var, return whether
  * it is a global var in package
  */
 bool
@@ -3155,7 +3155,7 @@ is_package_global_var(PLiSQL_var *var)
 
 
 /*
- * decide wether datum is a const
+ * decide whether datum is a const
  */
 bool
 is_const_datum(PLiSQL_execstate *estate, PLiSQL_datum *datum)
@@ -3250,7 +3250,7 @@ plisql_expand_rec_field(PLiSQL_rec *rec)
 }
 
 /*
- * check wether subproc has a action
+ * check whether subproc has a action
  */
 void
 plisql_check_subproc_define(PLiSQL_function *function, yyscan_t yyscanner)
@@ -3313,7 +3313,7 @@ package_datumTransfer(Datum value, bool typByVal,
 
 /*
  * is compile standard package ?
- * standard package is speical, which can be referenced without
+ * standard package is special, which can be referenced without
  * package'name
  */
 bool

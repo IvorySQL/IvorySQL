@@ -39,7 +39,7 @@ typedef PLiSQL_function package_function;
 
 /*
  * package status
- * if package specificiation has only constants and types,
+ * if package specification has only constants and types,
  * then package has no status others package has status.
  * if package has status, first we reference package'variable or function
  * then we set the package status to PLSQL_PACKAGE_INIT if it has
@@ -51,8 +51,8 @@ typedef enum
 	PLISQL_PACKAGE_NO_STATUS = 0,		 /* package has no status */
 	PLISQL_PACKAGE_NO_STATUS_INIT,		 /* package has no status but init */
 	PLISQL_PACKAGE_NO_INIT, 			 /* package has status but hasn't init */
-	PLISQL_PACKAGE_INIT,				 /* pakcage has status and already init */
-	PLISQL_PACKAGE_STATUSED,			 /* package has status and accesed by its var
+	PLISQL_PACKAGE_INIT,				 /* package has status and already init */
+	PLISQL_PACKAGE_STATUSED,			 /* package has status and accessed by its var
 										  * and function
 										  */
 	PLISQL_PACKAGE_REBUILD,				 /* package has been rebuilt, but not init */

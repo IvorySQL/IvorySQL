@@ -531,7 +531,7 @@ CreatePackageBody_internal(const char *pkgname,
 
 	/*
 	 * pg_dump doesn't know the order of packages
-	 * so when we restore package, we doen't check its
+	 * so when we restore package, we don't check its
 	 * body and allow it to catalog
 	 */
 	if (check_function_bodies)
@@ -1152,7 +1152,7 @@ AlterPackage(AlterPackageStmt *stmt)
 			}
 			break;
 		case alter_compile_parameter:
-			/* do nothing, only support grammer */
+			/* do nothing, only support grammar */
 			break;
 		default:
 			elog(ERROR, "doesn't recognise alter flag:%d", stmt->alter_flag);

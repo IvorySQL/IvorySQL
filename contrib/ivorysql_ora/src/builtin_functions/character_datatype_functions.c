@@ -1841,7 +1841,7 @@ text_instring(text *str, text *search_str, int32 position, int32 occurrence, boo
 	/*
 	 * If occurrence is greater than 1, then the database searches for the
 	 * second occurrence beginning with the second character in the first
-	 * occurrence of string. So, if position is positive, then the maxinum
+	 * occurrence of string. So, if position is positive, then the maximum
 	 * occurrences is:
 	 *
 	 *     src_text_len = src_text_len - position + 1
