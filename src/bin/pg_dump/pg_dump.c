@@ -13552,7 +13552,20 @@ dumpCompositeType(Archive *fout, const TypeInfo *tyinfo)
 					  "EXECUTE dumpCompositeType('%u')",
 					  tyinfo->dobj.catId.oid);
 
-	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
+	/*
+	 * pg_restore runs CREATE TYPE ... AS OBJECT through the Oracle grammar,
+	 * which reads some PostgreSQL type names, such as date or character
+	 * varying, as Oracle types.  Name the attribute types the way Oracle mode
+	 * prints them, so that each one keeps its type.
+	 */
+	if (tyinfo->isObject && db_mode != DB_ORACLE)
+	{
+		ExecuteSqlStatement(fout, "SET ivorysql.compatible_mode = oracle");
+		res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
+		ExecuteSqlStatement(fout, "RESET ivorysql.compatible_mode");
+	}
+	else
+		res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
 
 	ntups = PQntuples(res);
 
@@ -17162,6 +17175,9 @@ dumpDefaultACL(Archive *fout, const DefaultACLInfo *daclinfo)
 			break;
 		case DEFACLOBJ_LARGEOBJECT:
 			type = "LARGE OBJECTS";
+			break;
+		case DEFACLOBJ_PACKAGE:
+			type = "PACKAGES";
 			break;
 		default:
 			/* shouldn't get here */
