@@ -1178,6 +1178,15 @@ exec_simple_query(const char *query_string)
 		const char *cmdtagname;
 		size_t		cmdtaglen;
 
+		/*
+		 * Refresh the Oracle statement start timestamp (used by SYSDATE/
+		 * CURRENT_DATE) for this statement.  A simple-query message can
+		 * contain several statements that share stmtStartTimestamp, and
+		 * PL/iSQL statements refresh their own timestamp; without this,
+		 * SYSDATE/CURRENT_DATE would be frozen for the whole message body.
+		 */
+		SetOracleStatementStartTimestamp();
+
 		if (parsetree->stmt->type == T_CallStmt &&
 			((CallStmt *) parsetree->stmt)->callinto != NULL)
 			ereport(ERROR,
