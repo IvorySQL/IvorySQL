@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------
  *
- * version.c
+ * ora_version.c
  *		Routine to retrieve information of PG_VERSION
  *
  * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  src/oracle_fe_utils/version.c
+ *	  src/oracle_fe_utils/ora_version.c
  *
  *-------------------------------------------------------------------------
  */

@@ -8,7 +8,7 @@
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
  *
  * IDENTIFICATION
- *		src/oracle_test/modules/test_bloomfilter/test_bloomfilter.c
+ *		src/oracle_test/modules/test_copy_callbacks/test_copy_callbacks.c
  *
  *	 add the file for requirement "SQL PARSER"
  *

@@ -30,7 +30,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  src/fe_utils/ora_psqlscan.l
+ *	  src/oracle_fe_utils/ora_psqlscan.l
  *
  *-------------------------------------------------------------------------
  */
