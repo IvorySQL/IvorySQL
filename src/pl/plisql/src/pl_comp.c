@@ -3356,8 +3356,8 @@ plisql_parse_err_condition(char *condname)
 	if (exc != NULL)
 	{
 		new = palloc0_object(PLiSQL_condition);
-		new->sqlerrstate = exc->sqlcode;
-		new->exception_id = exc->exception_id;
+		/* A later PRAGMA EXCEPTION_INIT can change the declaration. */
+		new->exception_var = exc;
 		new->condname = condname;
 		new->next = NULL;
 		return new;

@@ -509,7 +509,7 @@ typedef struct PLiSQL_stmt
 typedef struct PLiSQL_condition
 {
 	int			sqlerrstate;	/* SQLSTATE code, or PLISQL_OTHERS */
-	uint64		exception_id;	/* zero for SQLSTATE matching */
+	struct PLiSQL_exception_var *exception_var;	/* named declaration, if any */
 	char	   *condname;		/* condition name (for debugging) */
 	struct PLiSQL_condition *next;
 }			PLiSQL_condition;

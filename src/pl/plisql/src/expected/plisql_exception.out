@@ -400,10 +400,35 @@ BEGIN
         WHEN other_error THEN RAISE NOTICE 'wrong nested handler';
     END;
 EXCEPTION
-    WHEN expected_error THEN RAISE NOTICE 'caught declared exception';
+    WHEN expected_error THEN RAISE NOTICE 'caught declared exception with SQLSTATE %', SQLSTATE;
 END;
 /
-NOTICE:  caught declared exception
+NOTICE:  caught declared exception with SQLSTATE P0001
+-- A declared exception can also be caught explicitly by SQLSTATE.
+DECLARE
+    expected_error EXCEPTION;
+BEGIN
+    RAISE expected_error;
+EXCEPTION
+    WHEN SQLSTATE 'P0001' THEN RAISE NOTICE 'caught declared exception by SQLSTATE';
+END;
+/
+NOTICE:  caught declared exception by SQLSTATE
+-- A nested handler can precede the pragma in the enclosing declaration.
+DECLARE
+    mapped_error EXCEPTION;
+    PROCEDURE early_handler IS
+    BEGIN
+        RAISE mapped_error;
+    EXCEPTION
+        WHEN mapped_error THEN RAISE NOTICE 'caught mapped exception';
+    END;
+    PRAGMA EXCEPTION_INIT(mapped_error, -20001);
+BEGIN
+    early_handler();
+END;
+/
+NOTICE:  caught mapped exception
 -- Reraising an error retains the original declaration's identity.
 DECLARE
     first_error EXCEPTION;

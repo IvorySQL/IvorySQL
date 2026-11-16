@@ -1900,11 +1900,17 @@ exception_matches_conditions(ErrorData *edata, PLiSQL_condition * cond)
 	{
 		int			sqlerrstate = cond->sqlerrstate;
 
-		if (cond->exception_id != 0)
+		if (cond->exception_var != NULL)
 		{
-			if (edata->plisql_exception_id == cond->exception_id)
-				return true;
-			continue;
+			const PLiSQL_exception_var *exc = cond->exception_var;
+
+			if (exc->exception_id != 0)
+			{
+				if (edata->plisql_exception_id == exc->exception_id)
+					return true;
+				continue;
+			}
+			sqlerrstate = exc->sqlcode;
 		}
 
 		/*
