@@ -35,6 +35,7 @@
 #include "commands/sequence.h"
 #include "commands/sequence_xlog.h"
 #include "commands/tablecmds.h"
+#include "common/int.h"
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
@@ -2176,25 +2177,39 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	else if (noscale_flag && !isInit)
 	{
 		char		maxstr[MAXINT8LEN + 1];
-		int 		maxvalue_bits;
+		int			maxvalue_bits;
+		bool		was_scaled = seq_is_scale(seqform->flags);
+		bool		was_extended = seq_is_extend(seqform->flags);
 
 		maxvalue_bits = pg_lltoa(old_maxvalue, maxstr);
-		if (seq_is_scale(seqform->flags))
-			seqform->flags &= ~(SCALE_FLAG);
-		if (*is_called)
+		seqform->flags &= ~(SCALE_FLAG | EXTEND_FLAG);
+		if (was_scaled && *is_called)
 		{
-			if (seq_is_extend(seqform->flags))
+			if (was_extended)
 			{
-				if (*last_value >= 0 && !seqelm)
-					*last_value = 199999 * (int64)pow(10, maxvalue_bits) + *last_value;
-				else if (*last_value >= 0 && seqelm && seqelm->last != seqelm->cached)
-					*last_value = 199999 * (int64)pow(10, maxvalue_bits) + seqelm->last;
-				else if (*last_value < 0 && !seqelm)
-					*last_value = -199999 * (int64)pow(10, maxvalue_bits) + *last_value;
-				else if (*last_value < 0 && seqelm && seqelm->last != seqelm->cached)
-					*last_value = -199999 * (int64)pow(10, maxvalue_bits) + seqelm->last;
-				*is_called = true;
-				*reset_state = true;
+				/*
+				 * The on-disk value is the unscaled counter.  During a
+				 * rewrite, preserve the previous scaled-value conversion
+				 * where the result fits the sequence's bounds.  Otherwise
+				 * keep the stored counter, including any reserved values.
+				 * The prefix itself fits in int64 for widths up to 13.
+				 */
+				if (*need_seq_rewrite && maxvalue_bits <= 13 &&
+					(!seqelm || seqelm->last != seqelm->cached))
+				{
+					int64		prefix = 199999 * (int64) pow(10, maxvalue_bits);
+					int64		counter = seqelm ? seqelm->last : *last_value;
+					int64		scaled_value;
+
+					if (*last_value < 0)
+						prefix = -prefix;
+					if (!pg_add_s64_overflow(prefix, counter, &scaled_value) &&
+						scaled_value >= seqform->seqmin && scaled_value <= seqform->seqmax)
+					{
+						*last_value = scaled_value;
+						*reset_state = true;
+					}
+				}
 			}
 			else
 			{
