@@ -1,15 +1,14 @@
 SET ivorysql.compatible_mode = oracle;
 
--- A shadow of the wrapper's helper functions in an earlier schema must
--- not change the default conversion: the wrapper resolves strpos/rtrim/
--- regexp_replace and the width-fitting helpers (concat/ltrim/rtrim/length/
--- abs/substring/lpad/rpad) in pg_catalog explicitly.  The server refuses
--- pseudo-type "any" arguments for SQL and PL/pgSQL user functions, so the
--- concat shadow is declared over VARIADIC text[] instead: an unqualified
--- concat(some text) in the wrapper body would still bind to it ahead of
--- pg_catalog.concat given this search_path.  The drop-cascade notice is
--- silenced because its stderr arrival can race stdout on Oracle-wire
--- connections.
+-- The default conversion of to_char(number) lives in the C function
+-- ora_to_char_number, which lays out the whole TM9 text internally, so
+-- shadowing the SQL helpers (strpos/rtrim/regexp_replace and the
+-- width-fitting helpers concat/ltrim/rtrim/length/abs/substring/lpad/
+-- rpad) in an earlier search_path schema must not change its output.
+-- The server refuses pseudo-type "any" arguments for SQL and PL/pgSQL
+-- user functions, so the concat shadow is declared over VARIADIC text[]
+-- instead.  The drop-cascade notice is silenced because its stderr
+-- arrival can race stdout on Oracle-wire connections.
 CREATE SCHEMA tochar_shadow;
 /
 CREATE FUNCTION tochar_shadow.strpos(text, text) RETURNS int
