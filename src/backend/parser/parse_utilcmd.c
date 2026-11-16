@@ -2877,15 +2877,6 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 				else if (constraint->contype == CONSTR_PRIMARY)
 					Assert(column->is_not_null);
 			}
-			else if (SystemAttributeByName(key) != NULL)
-			{
-				/*
-				 * column will be a system column in the new table, so accept
-				 * it. System columns can't ever be null, so no need to worry
-				 * about PRIMARY/NOT NULL constraint.
-				 */
-				found = true;
-			}
 			else if (cxt->inhRelations)
 			{
 				/* try inherited tables */
@@ -2931,6 +2922,13 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 						break;
 				}
 			}
+
+			/*
+			 * An inherited rowid can be a regular column in PostgreSQL mode.
+			 * Resolve inherited columns first so primary keys can add NOT NULL.
+			 */
+			if (!found && SystemAttributeByName(key) != NULL)
+				found = true;
 
 			/*
 			 * In the ALTER TABLE case, don't complain about index keys not
