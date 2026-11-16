@@ -13565,6 +13565,31 @@ dumpCompositeType(Archive *fout, const TypeInfo *tyinfo)
 
 	if (dopt->binary_upgrade)
 	{
+		/*
+		 * CREATE TYPE AS OBJECT also creates a private REF domain.  Create
+		 * that first with its own OIDs; the CREATE TYPE adopts it.
+		 */
+		if (tyinfo->isObject && fout->remoteVersion >= 190000)
+		{
+			PGresult   *refRes;
+
+			printfPQExpBuffer(query,
+							  "SELECT t.oid, t.typname "
+							  "FROM pg_catalog.pg_type t "
+							  "WHERE t.typrefbase = '%u'::pg_catalog.oid "
+							  "AND t.typtype = 'd'",
+							  tyinfo->dobj.catId.oid);
+			refRes = ExecuteSqlQueryForSingleRow(fout, query->data);
+			binary_upgrade_set_type_oids_by_type_oid(fout, q,
+													 atooid(PQgetvalue(refRes, 0, 0)),
+													 false, false);
+			appendPQExpBuffer(q, "CREATE DOMAIN %s.",
+							  fmtId(tyinfo->dobj.namespace->dobj.name));
+			appendPQExpBuffer(q, "%s AS sys.object_ref;\n",
+							  fmtId(PQgetvalue(refRes, 0, 1)));
+			PQclear(refRes);
+		}
+
 		binary_upgrade_set_type_oids_by_type_oid(fout, q,
 												 tyinfo->dobj.catId.oid,
 												 false, false);
@@ -13699,9 +13724,14 @@ dumpCompositeType(Archive *fout, const TypeInfo *tyinfo)
 	{
 		if (actual_atts++ > 0)
 			appendPQExpBufferChar(q, ',');
-		appendPQExpBuffer(q, "\n\t%s", object_methods);
+		/*
+		 * The last method's stored source runs up to the closing parenthesis,
+		 * so put nothing between them.
+		 */
+		appendPQExpBuffer(q, "\n\t%s)", object_methods);
 	}
-	appendPQExpBufferStr(q, "\n)");
+	else
+		appendPQExpBufferStr(q, "\n)");
 	if (tyinfo->isObject)
 	{
 		if (!object_instantiable)
@@ -13712,8 +13742,13 @@ dumpCompositeType(Archive *fout, const TypeInfo *tyinfo)
 	appendPQExpBufferStr(q, ";\n");
 	if (object_body != NULL && object_body[0] != '\0')
 	{
-		appendPQExpBuffer(q, "CREATE TYPE BODY %s AS\n%s;\n",
-						  qualtypname, object_body);
+		/* Quote the body, so that no client splits it at a semicolon */
+		appendPQExpBuffer(q, "CREATE TYPE BODY %s AS ", qualtypname);
+		if (dopt->disable_dollar_quoting)
+			appendStringLiteralAH(q, object_body, fout);
+		else
+			appendStringLiteralDQ(q, object_body, NULL);
+		appendPQExpBufferStr(q, ";\n");
 		if (((ArchiveHandle *) fout)->format == archNull &&
 			db_mode == DB_ORACLE)
 			appendPQExpBufferStr(q, "/\n");

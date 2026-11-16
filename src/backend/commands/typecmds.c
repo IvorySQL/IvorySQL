@@ -2953,20 +2953,39 @@ DefineCompositeType(RangeVar *typevar, List *coldeflist, bool is_object,
 			refDomainOid = get_object_ref_domain_oid(old_type_oid, false);
 		else
 		{
-			CreateDomainStmt *domain = makeNode(CreateDomainStmt);
 			char	   *schemaName = get_namespace_name(typeNamespace);
-			ObjectAddress domainAddress;
 			StringInfoData sql;
 			int			spiResult;
 
-			domain->domainname = list_make2(makeString(schemaName),
-										makeString(domainName));
-			domain->typeName = makeTypeNameFromNameList(list_make2(
-										makeString("sys"),
-										makeString("object_ref")));
-			domainAddress = DefineDomain(NULL, domain);
-			refDomainOid = domainAddress.objectId;
-			CommandCounterIncrement();
+			/*
+			 * In binary upgrade, pg_dump has already created the REF domain
+			 * so that it keeps its pg_type OIDs; adopt it.
+			 */
+			if (IsBinaryUpgrade)
+				refDomainOid = GetSysCacheOid2(TYPENAMENSP, Anum_pg_type_oid,
+											   CStringGetDatum(domainName),
+											   ObjectIdGetDatum(typeNamespace));
+			if (OidIsValid(refDomainOid))
+			{
+				if (get_typtype(refDomainOid) != TYPTYPE_DOMAIN ||
+					OidIsValid(get_typrefbase(refDomainOid)))
+					elog(ERROR, "type \"%s\" is not an unused REF domain",
+						 domainName);
+			}
+			else
+			{
+				CreateDomainStmt *domain = makeNode(CreateDomainStmt);
+				ObjectAddress domainAddress;
+
+				domain->domainname = list_make2(makeString(schemaName),
+												makeString(domainName));
+				domain->typeName = makeTypeNameFromNameList(list_make2(
+											makeString("sys"),
+											makeString("object_ref")));
+				domainAddress = DefineDomain(NULL, domain);
+				refDomainOid = domainAddress.objectId;
+				CommandCounterIncrement();
+			}
 
 			/* Add the check before the object type depends on this domain. */
 			initStringInfo(&sql);
