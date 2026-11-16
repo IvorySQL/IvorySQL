@@ -518,26 +518,6 @@ ParseVarParamState(void *arg, Node *param, bool *isOut,
 	return;
 }
 
-/*
- * SetVarParamState
- */
-void
-SetVarParamState(void *arg, Param *param, int index)
-{
-	VarParamState *vps = (VarParamState *) arg;
-
-	/* set mask mode for parameter type */
-	if (vps && vps->paramTypeWithMask)
-	{
-		if (IsModeIn(vps->paramTypeWithMask[index]))
-			SetModeIn(param->paramtype);
-		if (IsModeOut(vps->paramTypeWithMask[index]))
-			SetModeOut(param->paramtype);
-	}
-
-	return;
-}
-
 void
 get_oraparam_level(int *top_level, int *cur_level)
 {
