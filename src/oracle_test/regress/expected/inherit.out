@@ -3214,27 +3214,27 @@ explain (costs off) select * from list_parted where a is not null;
 (7 rows)
 
 explain (costs off) select * from list_parted where a in ('ab', 'cd', 'ef');
-                      QUERY PLAN                      
-------------------------------------------------------
+                           QUERY PLAN                           
+----------------------------------------------------------------
  Append
    ->  Seq Scan on part_ab_cd list_parted_1
-         Filter: (a = ANY ('{ab,cd,ef}'::varchar2[]))
+         Filter: (a = ANY ('{ab,cd,ef}'::sys.oravarcharbyte[]))
    ->  Seq Scan on part_ef_gh list_parted_2
-         Filter: (a = ANY ('{ab,cd,ef}'::varchar2[]))
+         Filter: (a = ANY ('{ab,cd,ef}'::sys.oravarcharbyte[]))
 (5 rows)
 
 explain (costs off) select * from list_parted where a = 'ab' or a in (null, 'cd');
-                               QUERY PLAN                                
--------------------------------------------------------------------------
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
  Seq Scan on part_ab_cd list_parted
-   Filter: ((a = 'ab'::varchar2) OR (a = ANY ('{NULL,cd}'::varchar2[])))
+   Filter: ((a = 'ab'::sys.oravarcharbyte) OR (a = ANY ('{NULL,cd}'::sys.oravarcharbyte[])))
 (2 rows)
 
 explain (costs off) select * from list_parted where a = 'ab';
-             QUERY PLAN             
-------------------------------------
+                QUERY PLAN                
+------------------------------------------
  Seq Scan on part_ab_cd list_parted
-   Filter: (a = 'ab'::varchar2)
+   Filter: (a = 'ab'::sys.oravarcharbyte)
 (2 rows)
 
 create table range_list_parted (
@@ -3477,11 +3477,11 @@ explain (costs off) select min(a), max(a) from parted_minmax where b = '12345';
    InitPlan minmax_1
      ->  Limit
            ->  Index Only Scan using parted_minmax1i on parted_minmax1 parted_minmax
-                 Index Cond: ((a IS NOT NULL) AND (b = '12345'::varchar2))
+                 Index Cond: ((a IS NOT NULL) AND (b = '12345'::sys.oravarcharbyte))
    InitPlan minmax_2
      ->  Limit
            ->  Index Only Scan Backward using parted_minmax1i on parted_minmax1 parted_minmax_1
-                 Index Cond: ((a IS NOT NULL) AND (b = '12345'::varchar2))
+                 Index Cond: ((a IS NOT NULL) AND (b = '12345'::sys.oravarcharbyte))
 (10 rows)
 
 select min(a), max(a) from parted_minmax where b = '12345';

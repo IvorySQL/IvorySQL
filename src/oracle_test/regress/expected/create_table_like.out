@@ -628,7 +628,7 @@ Indexes:
     "ctl_table_pkey" PRIMARY KEY, btree (a)
     "ctl_table_a_key" btree (a)
 Check constraints:
-    "foo" CHECK (b = 'text'::varchar2)
+    "foo" CHECK (b = 'text'::sys.oravarcharbyte)
 Statistics objects:
     "public.ctl_table_stat" ON a, b FROM ctl_table
 Not-null constraints:
@@ -677,7 +677,7 @@ CREATE FOREIGN TABLE ctl_foreign_table2(LIKE ctl_table INCLUDING ALL) SERVER ctl
  d      | pg_catalog.int8 |           | not null |                                    |             | plain    |              | 
  e      | pg_catalog.int4 |           |          | 1                                  |             | plain    |              | 
 Check constraints:
-    "foo" CHECK (b = 'text'::varchar2)
+    "foo" CHECK (b = 'text'::sys.oravarcharbyte)
 Statistics objects:
     "public.ctl_foreign_table2_a_b_stat" ON a, b FROM ctl_foreign_table2
 Not-null constraints:

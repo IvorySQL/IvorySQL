@@ -3394,7 +3394,7 @@ WHERE depname = 'sales';
                ->  Sort
                      Sort Key: (((empsalary.depname)::text || 'A'::text))
                      ->  Seq Scan on empsalary
-                           Filter: (depname = 'sales'::varchar2)
+                           Filter: (depname = 'sales'::sys.oravarcharbyte)
 (9 rows)
 
 -- pushdown is unsafe because there's a PARTITION BY clause without depname:
@@ -3408,7 +3408,7 @@ WHERE depname = 'sales';
                              QUERY PLAN                             
 --------------------------------------------------------------------
  Subquery Scan on emp
-   Filter: (emp.depname = 'sales'::varchar2)
+   Filter: (emp.depname = 'sales'::sys.oravarcharbyte)
    ->  WindowAgg
          Window: w2 AS (PARTITION BY empsalary.enroll_date)
          ->  Sort
@@ -3964,7 +3964,7 @@ WHERE depname = 'sales';
                ->  Sort
                      Sort Key: empsalary.empno, empsalary.enroll_date
                      ->  Seq Scan on empsalary
-                           Filter: (depname = 'sales'::varchar2)
+                           Filter: (depname = 'sales'::sys.oravarcharbyte)
 (9 rows)
 
 -- Ensure that the evaluation order of the WindowAggs results in the WindowAgg

@@ -1004,7 +1004,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM sales_central WHERE sales_state = 'Warsaw';
                            QUERY PLAN                            
 -----------------------------------------------------------------
  Index Scan using sales_central_sales_state_idx on sales_central
-   Index Cond: (sales_state = 'Warsaw'::varchar2)
+   Index Cond: (sales_state = 'Warsaw'::sys.oravarcharbyte)
 (2 rows)
 
 SELECT * FROM sales_central WHERE sales_state = 'Warsaw';
@@ -1018,7 +1018,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM sales_list WHERE sales_state = 'Warsaw';
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
  Index Scan using sales_central_sales_state_idx on sales_central sales_list
-   Index Cond: (sales_state = 'Warsaw'::varchar2)
+   Index Cond: (sales_state = 'Warsaw'::sys.oravarcharbyte)
 (2 rows)
 
 SELECT * FROM sales_list WHERE sales_state = 'Warsaw';
@@ -1033,19 +1033,19 @@ EXPLAIN (COSTS OFF) SELECT * FROM sales_list WHERE salesperson_name = 'Ivanov';
 -----------------------------------------------------------------------------------------
  Append
    ->  Index Scan using sales_east_salesperson_name_idx on sales_east sales_list_1
-         Index Cond: (salesperson_name = 'Ivanov'::varchar2)
+         Index Cond: (salesperson_name = 'Ivanov'::sys.oravarcharbyte)
    ->  Index Scan using sales_central_salesperson_name_idx on sales_central sales_list_2
-         Index Cond: (salesperson_name = 'Ivanov'::varchar2)
+         Index Cond: (salesperson_name = 'Ivanov'::sys.oravarcharbyte)
    ->  Bitmap Heap Scan on sales_nord sales_list_3
-         Recheck Cond: (salesperson_name = 'Ivanov'::varchar2)
+         Recheck Cond: (salesperson_name = 'Ivanov'::sys.oravarcharbyte)
          ->  Bitmap Index Scan on sales_nord_salesperson_name_idx
-               Index Cond: (salesperson_name = 'Ivanov'::varchar2)
+               Index Cond: (salesperson_name = 'Ivanov'::sys.oravarcharbyte)
    ->  Index Scan using sales_west_salesperson_name_idx on sales_west sales_list_4
-         Index Cond: (salesperson_name = 'Ivanov'::varchar2)
+         Index Cond: (salesperson_name = 'Ivanov'::sys.oravarcharbyte)
    ->  Bitmap Heap Scan on sales_others sales_list_5
-         Recheck Cond: (salesperson_name = 'Ivanov'::varchar2)
+         Recheck Cond: (salesperson_name = 'Ivanov'::sys.oravarcharbyte)
          ->  Bitmap Index Scan on sales_others_salesperson_name_idx
-               Index Cond: (salesperson_name = 'Ivanov'::varchar2)
+               Index Cond: (salesperson_name = 'Ivanov'::sys.oravarcharbyte)
 (15 rows)
 
 SELECT * FROM sales_list WHERE salesperson_name = 'Ivanov';
