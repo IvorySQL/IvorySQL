@@ -56,7 +56,6 @@
 #include "utils/ora_compatible.h"
 #include "executor/spi.h"
 #include "utils/syscache.h"
-#include "catalog/pg_proc.h"
 #include "parser/parse_param.h"
 #include "oracle_parser/ora_with_function.h"
 

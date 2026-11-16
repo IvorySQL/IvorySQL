@@ -54,7 +54,6 @@
 #include "executor/spi.h"
 #include "executor/tablefunc.h"
 #include "lib/stringinfo.h"
-#include "libpq/pqformat.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "nodes/execnodes.h"
@@ -62,7 +61,6 @@
 #include "utils/datetime.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
-#include "utils/arrayaccess.h"
 #include "utils/xml.h"
 #include "utils/varlena.h"
 

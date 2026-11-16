@@ -17,7 +17,6 @@
 #include "libpq-ivy.h"
 #include <string.h>
 #include <stdint.h>
-#include <string.h>
 #include <sys/types.h>
 
 static void

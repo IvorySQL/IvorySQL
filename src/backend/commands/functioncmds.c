@@ -80,7 +80,6 @@
 #include "parser/parse_param.h"
 #include "access/printtup.h"
 #include "nodes/makefuncs.h"
-#include "access/xact.h"
 
 /*
  *	 Examine the RETURNS clause of the CREATE FUNCTION statement

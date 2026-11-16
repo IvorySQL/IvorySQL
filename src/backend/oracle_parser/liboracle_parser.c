@@ -34,7 +34,6 @@
 #include "parser/parser.h"
 #include "utils/builtins.h"
 #include "oracle_parser/ora_parser_hook.h"
-#include "parser/parser.h"
 #include "parser/scansup.h"
 #include "utils/ora_compatible.h"
 #include "parser/parse_param.h"

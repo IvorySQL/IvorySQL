@@ -9,7 +9,6 @@
 #include "libpq-ivy.h"
 #include <string.h>
 #include <stdint.h>
-#include <string.h>
 #include <netinet/in.h>
 #include <sys/types.h>
 
