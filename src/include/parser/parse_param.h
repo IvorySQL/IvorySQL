@@ -44,7 +44,6 @@ extern void GetParamMode(Oid *paramTypes, int numParams, char *modes);
 extern int push_oraparam_stack(void);
 extern void pop_oraparam_stack(int top, int cur);
 extern void get_oraparam_level(int *top, int *cur);
-extern void SetVarParamState(void *arg, Param *param, int index);
 
 extern void forward_oraparam_stack(void);
 extern void backward_oraparam_stack(void);
