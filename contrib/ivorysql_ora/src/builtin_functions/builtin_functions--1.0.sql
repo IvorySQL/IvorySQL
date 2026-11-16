@@ -1602,52 +1602,50 @@ LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 --   wins ties, so rounding 9.99..9e-5 either way yields '.0001' and
 --   9.99..9e-40 renders as the fixed '.000..1'.
 -- The body is plpgsql so the digit arithmetic is planned once per
--- session rather than once per call.
+-- session rather than once per call.  The fixed-point normalization runs
+-- first, and while its text fits the 40-character budget the answer is
+-- returned right away: the scientific-notation pipeline below is only
+-- reached by values that exceed the budget, so ordinary values never pay
+-- for the rounding and candidate-comparison work.
 CREATE OR REPLACE FUNCTION sys.to_char(number)
 RETURNS sys.oravarcharchar
 AS $$
 DECLARE
   v sys.oravarcharchar;
+  vfixed pg_catalog.text;
 BEGIN
-  WITH s0 AS (
-    SELECT $1::pg_catalog.text AS t
-  ),
-  s1 AS MATERIALIZED (
-    -- fixed-point text with trailing fraction zeros and any dangling
-    -- point dropped
-    SELECT CASE WHEN pg_catalog.strpos(t, '.') = 0
-                THEN t
-                ELSE pg_catalog.rtrim(pg_catalog.rtrim(t, '0'), '.')
-           END AS notrail
-    FROM s0
-  ),
-  s2 AS MATERIALIZED (
-    -- the integer zero is omitted between -1 and 1; this is the text
-    -- the 40-character budget applies to
-    SELECT pg_catalog.regexp_replace(notrail, '^(-?)0\.', '\1.') AS fixed
-    FROM s1
-  ),
-  s3 AS MATERIALIZED (
-    SELECT fixed,
-           CASE WHEN pg_catalog.substring(fixed, 1, 1) = '-' THEN 1 ELSE 0 END AS neg,
-           CASE WHEN pg_catalog.substring(fixed, 1, 1) = '-'
-                THEN pg_catalog.substring(fixed, 2)
-                ELSE fixed
+  -- fixed-point text with trailing fraction zeros and any dangling
+  -- point dropped, then the integer zero omitted between -1 and 1;
+  -- this is the text the 40-character budget applies to
+  vfixed := $1::pg_catalog.text;
+  IF pg_catalog.strpos(vfixed, '.') <> 0 THEN
+    vfixed := pg_catalog.rtrim(pg_catalog.rtrim(vfixed, '0'), '.');
+  END IF;
+  vfixed := pg_catalog.regexp_replace(vfixed, '^(-?)0\.', '\1.');
+  -- inside the budget the fixed-point text is the answer
+  IF pg_catalog.length(vfixed) <= 40 THEN
+    RETURN vfixed;
+  END IF;
+  WITH s3 AS (
+    SELECT vfixed AS fixed,
+           CASE WHEN pg_catalog.substring(vfixed, 1, 1) = '-' THEN 1 ELSE 0 END AS neg,
+           CASE WHEN pg_catalog.substring(vfixed, 1, 1) = '-'
+                THEN pg_catalog.substring(vfixed, 2)
+                ELSE vfixed
            END AS core
-    FROM s2
   ),
-  s4 AS MATERIALIZED (
+  s4 AS (
     SELECT fixed, neg, core,
            pg_catalog.strpos(core, '.') AS dotpos
     FROM s3
   ),
-  s5 AS MATERIALIZED (
+  s5 AS (
     SELECT fixed, neg, core, dotpos,
            CASE WHEN dotpos = 0 THEN pg_catalog.length(core) ELSE dotpos - 1 END AS intlen,
            CASE WHEN dotpos = 0 THEN 0 ELSE 1 END AS hasdot
     FROM s4
   ),
-  s6 AS MATERIALIZED (
+  s6 AS (
     SELECT fixed, neg, core, intlen, hasdot, dotpos,
            pg_catalog.concat(CASE WHEN hasdot = 0 THEN core END,
                   CASE WHEN hasdot = 0 THEN NULL
@@ -1660,13 +1658,13 @@ BEGIN
            END AS z
     FROM s5
   ),
-  s7 AS MATERIALIZED (
+  s7 AS (
     -- exponent of the first significant digit
     SELECT fixed, neg, intlen, hasdot, ds, z,
            CASE WHEN intlen >= 1 THEN intlen - 1 ELSE -(z + 1) END AS eval
     FROM s6
   ),
-  s8 AS MATERIALIZED (
+  s8 AS (
     -- exponent rendered with at least two digits, and the significant
     -- digits with a sentinel guarding the all-zero edge
     SELECT *, CASE WHEN pg_catalog.length(pg_catalog.abs(eval)::pg_catalog.text) > 2
@@ -1675,17 +1673,17 @@ BEGIN
            pg_catalog.ltrim(pg_catalog.concat(ds, 'X'), '0') AS sigx
     FROM s7
   ),
-  s9 AS MATERIALIZED (
+  s9 AS (
     SELECT *, pg_catalog.rtrim(pg_catalog.substring(sigx, 1, pg_catalog.length(sigx) - 1), '0') AS sig
     FROM s8
   ),
-  s10 AS MATERIALIZED (
+  s10 AS (
     -- scientific capacity: 40 characters minus sign, integer digit,
     -- point, E, exponent sign and exponent digits
     SELECT *, 37 - neg - explen AS sci_sig
     FROM s9
   ),
-  s11 AS MATERIALIZED (
+  s11 AS (
     SELECT *, CASE WHEN pg_catalog.length(sig) > sci_sig
                    THEN pg_catalog.substring(sig, 1, sci_sig)
                    ELSE pg_catalog.rpad(sig, sci_sig, '0')
@@ -1695,25 +1693,25 @@ BEGIN
            END AS sci_rd
     FROM s10
   ),
-  s12 AS MATERIALIZED (
+  s12 AS (
     SELECT *, CASE WHEN sci_rd >= '5'
                    THEN (sci_keep::pg_catalog.numeric + 1)::pg_catalog.text
                    ELSE sci_keep
               END AS sci_digits
     FROM s11
   ),
-  s13 AS MATERIALIZED (
+  s13 AS (
     SELECT *, eval + CASE WHEN pg_catalog.length(sci_digits) > sci_sig THEN 1 ELSE 0 END AS e_sci,
            CASE WHEN pg_catalog.length(sci_digits) > sci_sig THEN 1 ELSE 0 END AS sci_carry
     FROM s12
   ),
-  s14 AS MATERIALIZED (
+  s14 AS (
     SELECT *, 36 - neg - CASE WHEN pg_catalog.length(pg_catalog.abs(e_sci)::pg_catalog.text) > 2
                               THEN pg_catalog.length(pg_catalog.abs(e_sci)::pg_catalog.text)
                               ELSE 2 END AS capfin
     FROM s13
   ),
-  s15 AS MATERIALIZED (
+  s15 AS (
     -- a carried mantissa may span one digit more than the capacity, and
     -- a grown exponent costs one more: re-cut to the final width
     SELECT *, CASE WHEN sci_carry = 1
@@ -1722,25 +1720,25 @@ BEGIN
               END AS sci_mant
     FROM s14
   ),
-  s16 AS MATERIALIZED (
+  s16 AS (
     -- fingerprint of the scientific rounding: significant digits plus
     -- the decimal exponent of the value they spell
     SELECT *, pg_catalog.rtrim(sci_mant, '0') AS sci_key_d,
            e_sci + 1 - pg_catalog.length(pg_catalog.rtrim(sci_mant, '0')) AS sci_key_p
     FROM s15
   ),
-  s17 AS MATERIALIZED (
+  s17 AS (
     -- fixed-point candidate: the digits that fit the 40-character budget
     SELECT *, 40 - neg - intlen - hasdot AS ndec,
            intlen + CASE WHEN 40 - neg - intlen - hasdot > 0 THEN 40 - neg - intlen - hasdot ELSE 0 END AS fixcut
     FROM s16
   ),
-  s18 AS MATERIALIZED (
+  s18 AS (
     SELECT *, pg_catalog.substring(ds, 1, fixcut) AS fix_raw,
            pg_catalog.substring(ds, fixcut + 1, 1) AS fix_rd
     FROM s17
   ),
-  s19 AS MATERIALIZED (
+  s19 AS (
     SELECT *, CASE WHEN fix_rd >= '5'
                    THEN CASE WHEN pg_catalog.length((fix_raw::pg_catalog.numeric + 1)::pg_catalog.text) < fixcut
                             THEN pg_catalog.lpad((fix_raw::pg_catalog.numeric + 1)::pg_catalog.text, fixcut, '0')
@@ -1749,27 +1747,27 @@ BEGIN
               END AS fix_digits
     FROM s18
   ),
-  s20 AS MATERIALIZED (
+  s20 AS (
     -- a rounding carry may push one digit into the integer part
     SELECT *, intlen + CASE WHEN pg_catalog.length(fix_digits) > fixcut THEN 1 ELSE 0 END AS intlen2
     FROM s19
   ),
-  s21 AS MATERIALIZED (
+  s21 AS (
     SELECT *, pg_catalog.rtrim(pg_catalog.substring(fix_digits, intlen2 + 1), '0') AS fix_frac
     FROM s20
   ),
-  s22 AS MATERIALIZED (
+  s22 AS (
     SELECT *, pg_catalog.concat(CASE WHEN neg = 1 THEN '-' END,
                      pg_catalog.substring(fix_digits, 1, intlen2),
                      CASE WHEN pg_catalog.length(fix_frac) > 0 THEN '.' END,
                      fix_frac) AS fix_render
     FROM s21
   ),
-  s23 AS MATERIALIZED (
+  s23 AS (
     SELECT *, pg_catalog.rtrim(pg_catalog.ltrim(fix_digits, '0'), '0') AS fix_key_d
     FROM s22
   ),
-  s24 AS MATERIALIZED (
+  s24 AS (
     -- fingerprint of the fixed rounding, spelled the same way as the
     -- scientific one so equal values compare equal across the two forms
     SELECT *, pg_catalog.concat(fix_key_d, '@',
@@ -1778,11 +1776,11 @@ BEGIN
                       - pg_catalog.length(fix_key_d))::pg_catalog.text) AS fix_canon
     FROM s23
   ),
-  s25 AS MATERIALIZED (
+  s25 AS (
     SELECT *, pg_catalog.concat(sci_key_d, '@', sci_key_p::pg_catalog.text) AS sci_canon
     FROM s24
   ),
-  s26 AS MATERIALIZED (
+  s26 AS (
     -- exponent digits, zero-padded to two but never truncated
     SELECT *, CASE WHEN pg_catalog.length(pg_catalog.abs(e_sci)::pg_catalog.text) < 2
                    THEN pg_catalog.concat('0', pg_catalog.abs(e_sci)::pg_catalog.text)
@@ -1791,8 +1789,6 @@ BEGIN
     FROM s25
   )
   SELECT CASE
-           WHEN pg_catalog.length(fixed) <= 40
-             THEN fixed
            WHEN pg_catalog.length(fix_render) > 40 THEN
              pg_catalog.concat(CASE WHEN neg = 1 THEN '-' END,
                     pg_catalog.substring(sci_mant, 1, 1),
