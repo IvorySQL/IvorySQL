@@ -20,7 +20,6 @@
 #include "access/relation.h"
 #include "access/table.h"
 #include "access/tsmapi.h"
-#include "access/relation.h"
 #include "catalog/catalog.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_amproc.h"

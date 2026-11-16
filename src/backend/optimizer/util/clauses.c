@@ -67,7 +67,6 @@
 #include "utils/typcache.h"
 #include "commands/proclang.h"
 #include "utils/guc.h"
-#include "utils/ora_compatible.h"
 
 
 typedef struct
