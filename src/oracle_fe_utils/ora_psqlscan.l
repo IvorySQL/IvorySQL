@@ -1570,27 +1570,6 @@ ora_psql_scan_reset(PsqlScanState state)
 }
 
 /*
- * Reselect this lexer (psqlscan.l) after using another one.
- *
- * Currently and for foreseeable uses, it's sufficient to reset to INITIAL
- * state, because we'd never switch to another lexer in a different state.
- * However, we don't want to reset e.g. paren_depth, so this can't be
- * the same as psql_scan_reset().
- *
- * Note: psql setjmp error recovery just calls psql_scan_reset(), so that
- * must be a superset of this.
- *
- * Note: it seems likely that other lexers could just assign INITIAL for
- * themselves, since that probably has the value zero in every flex-generated
- * lexer.  But let's not assume that.
- */
-void
-ora_psql_scan_reselect_sql_lexer(PsqlScanState state)
-{
-	state->start_state = INITIAL;
-}
-
-/*
  * Return true if lexer is currently in an "inside quotes" state.
  *
  * This is pretty grotty but is needed to preserve the old behavior
