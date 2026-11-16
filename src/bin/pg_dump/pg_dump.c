@@ -8366,8 +8366,16 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 						  "ON (inh.inhrelid = indexrelid) "
 						  "WHERE (i.indisvalid OR t2.relkind = 'p') "
 						  "AND i.indisready "
+						  "%s"
 						  "ORDER BY i.indrelid, indexname",
-						  tbloids->data);
+						  tbloids->data,
+		/*
+		 * CREATE TABLE ... WITH ROWID builds the index on the ROWID column
+		 * (attribute -7) itself, except in binary upgrade.
+		 */
+						  fout->dopt->binary_upgrade ? "" :
+						  "AND NOT (i.indnatts = 1 AND i.indkey[0] = -7 AND "
+						  "t.relname = t2.relname || '_' || i.indrelid || '_rowid_idx') ");
 	}
 	else
 	{
@@ -9706,11 +9714,22 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 						 "a.attlen,\n"
 						 "a.attalign,\n"
 						 "a.attislocal,\n");
-	if (hasOracleRefTypeCatalog(fout))
+
+	/*
+	 * Only the Oracle grammar accepts REF in a column type.  A dump in
+	 * PostgreSQL mode names the REF domain itself, which is the column's type.
+	 */
+	if (hasOracleRefTypeCatalog(fout) && db_mode == DB_ORACLE)
 		appendPQExpBufferStr(q,
 							 "CASE WHEN t.typrefbase <> 0 THEN "
 							 "'REF \"' || replace(refn.nspname, '\"', '\"\"') || "
 							 "'\".\"' || replace(reft.typname, '\"', '\"\"') || '\"' "
+							 "ELSE pg_catalog.format_type(t.oid, a.atttypmod) "
+							 "END AS atttypname,\n");
+	else if (hasOracleRefTypeCatalog(fout))
+		appendPQExpBufferStr(q,
+							 "CASE WHEN t.typrefbase <> 0 THEN "
+							 "pg_catalog.format_type(t.oid, NULL) "
 							 "ELSE pg_catalog.format_type(t.oid, a.atttypmod) "
 							 "END AS atttypname,\n");
 	else
@@ -18032,6 +18051,8 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 	char	   *qualrelname;
 	int			numParents;
 	TableInfo **parents;
+	char	   *rowid_seqname = NULL;	/* binary upgrade: name to restore */
+	Oid			rowid_seqoid = InvalidOid;
 	int			actual_atts;	/* number of attrs in this CREATE statement */
 	const char *reltypename;
 	char	   *storage;
@@ -18213,6 +18234,42 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 		if (dopt->binary_upgrade)
 			binary_upgrade_set_pg_class_oids(fout, q,
 											 tbinfo->dobj.catId.oid);
+
+		/*
+		 * CREATE TABLE ... WITH ROWID also creates the table's ROWID
+		 * sequence.  Preserve its OID and relfilenumber, so that the upgrade
+		 * carries its position.  The sequence is the one marked with
+		 * relhasrowid that depends on the whole table; its name may carry a
+		 * suffix when another relation already had the usual one.
+		 */
+		if (dopt->binary_upgrade && tbinfo->relhasrowid &&
+			(tbinfo->relkind == RELKIND_RELATION ||
+			 tbinfo->relkind == RELKIND_PARTITIONED_TABLE))
+		{
+			PQExpBuffer seqquery = createPQExpBuffer();
+			PGresult   *seqres;
+
+			appendPQExpBufferStr(seqquery,
+								 "SELECT s.oid, s.relfilenode, s.relname "
+								 "FROM pg_catalog.pg_depend d "
+								 "JOIN pg_catalog.pg_class s ON s.oid = d.objid "
+								 "WHERE d.classid = 'pg_catalog.pg_class'::pg_catalog.regclass "
+								 "AND d.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass "
+								 "AND d.refobjsubid = 0 AND d.deptype = 'a' "
+								 "AND s.relkind = 'S' AND s.relhasrowid "
+								 "AND d.refobjid = ");
+			appendPQExpBuffer(seqquery, "'%u'::pg_catalog.oid",
+							  tbinfo->dobj.catId.oid);
+			seqres = ExecuteSqlQueryForSingleRow(fout, seqquery->data);
+			appendPQExpBuffer(q,
+							  "SELECT pg_catalog.binary_upgrade_set_next_rowid_seq_pg_class_oid('%s'::pg_catalog.oid);\n"
+							  "SELECT pg_catalog.binary_upgrade_set_next_rowid_seq_relfilenode('%s'::pg_catalog.oid);\n\n",
+							  PQgetvalue(seqres, 0, 0), PQgetvalue(seqres, 0, 1));
+			rowid_seqoid = atooid(PQgetvalue(seqres, 0, 0));
+			rowid_seqname = pg_strdup(PQgetvalue(seqres, 0, 2));
+			PQclear(seqres);
+			destroyPQExpBuffer(seqquery);
+		}
 
 		/*
 		 * PostgreSQL 18 has disabled UNLOGGED for partitioned tables, so
@@ -18454,17 +18511,31 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 				appendPQExpBuffer(q, "\nSERVER %s", fmtId(srvname));
 		}
 
-		if (tbinfo->relhasrowid)
+		/*
+		 * Only the Oracle grammar has WITH ROWID, and it cannot be combined
+		 * with WITH (...).  Both grammars accept rowid as a WITH (...)
+		 * option, which the server reads the same way.
+		 */
+		if (tbinfo->relhasrowid && db_mode == DB_ORACLE &&
+			!nonemptyReloptions(tbinfo->reloptions) &&
+			!nonemptyReloptions(tbinfo->toast_reloptions))
 			appendPQExpBuffer(q, " WITH ROWID");
-
-		if (nonemptyReloptions(tbinfo->reloptions) ||
-			nonemptyReloptions(tbinfo->toast_reloptions))
+		else if (tbinfo->relhasrowid ||
+				 nonemptyReloptions(tbinfo->reloptions) ||
+				 nonemptyReloptions(tbinfo->toast_reloptions))
 		{
 			bool		addcomma = false;
 
 			appendPQExpBufferStr(q, "\nWITH (");
+			if (tbinfo->relhasrowid)
+			{
+				addcomma = true;
+				appendPQExpBufferStr(q, "rowid = true");
+			}
 			if (nonemptyReloptions(tbinfo->reloptions))
 			{
+				if (addcomma)
+					appendPQExpBufferStr(q, ", ");
 				addcomma = true;
 				appendReloptionsArrayAH(q, tbinfo->reloptions, "", fout);
 			}
@@ -18801,6 +18872,21 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 								  tbinfo->toast_frozenxid,
 								  tbinfo->toast_minmxid, tbinfo->toast_oid);
 			}
+		}
+
+		/*
+		 * The ROWID sequence is named when the table is created, and another
+		 * relation may take that name only later in the restore.  Give it the
+		 * name it had, by its preserved OID.
+		 */
+		if (rowid_seqname != NULL)
+		{
+			appendPQExpBufferStr(q, "\n-- For binary upgrade, set the ROWID sequence's name\n");
+			appendPQExpBufferStr(q, "UPDATE pg_catalog.pg_class SET relname = ");
+			appendStringLiteralAH(q, rowid_seqname, fout);
+			appendPQExpBuffer(q, " WHERE oid = '%u'::pg_catalog.oid;\n", rowid_seqoid);
+			free(rowid_seqname);
+			rowid_seqname = NULL;
 		}
 
 		/*

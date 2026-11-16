@@ -29,6 +29,8 @@ extern PGDLLIMPORT Oid binary_upgrade_next_index_pg_class_oid;
 extern PGDLLIMPORT RelFileNumber binary_upgrade_next_index_pg_class_relfilenumber;
 extern PGDLLIMPORT Oid binary_upgrade_next_toast_pg_class_oid;
 extern PGDLLIMPORT RelFileNumber binary_upgrade_next_toast_pg_class_relfilenumber;
+extern PGDLLIMPORT Oid binary_upgrade_next_rowid_seq_pg_class_oid;
+extern PGDLLIMPORT RelFileNumber binary_upgrade_next_rowid_seq_pg_class_relfilenumber;
 
 extern PGDLLIMPORT Oid binary_upgrade_next_pg_enum_oid;
 extern PGDLLIMPORT Oid binary_upgrade_next_pg_authid_oid;

@@ -2508,17 +2508,14 @@ process_owned_by(Relation seqrel, List *owned_by, bool for_identity)
 					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 					 errmsg("sequence must be in same schema as table it is linked to")));
 
-		/* Now, fetch the attribute number from the system cache */
-		if (compatible_db == ORA_PARSER && strcmp(seqname, attrname) != 0)
-		{
-			attnum = get_attnum(RelationGetRelid(tablerel), attrname);
-			if (attnum == InvalidAttrNumber)
-				ereport(ERROR,
-						(errcode(ERRCODE_UNDEFINED_COLUMN),
-						 errmsg("column \"%s\" of relation \"%s\" does not exist",
-								attrname, RelationGetRelationName(tablerel))));
-		}
-		else if (compatible_db == PG_PARSER)
+		/*
+		 * Now, fetch the attribute number from the system cache.  The ROWID
+		 * sequence of a table is named in place of a column, and is owned by
+		 * the table itself, whichever parser created the table.
+		 */
+		if (strcmp(seqname, attrname) == 0 && seqrel->rd_rel->relhasrowid)
+			;
+		else
 		{
 			attnum = get_attnum(RelationGetRelid(tablerel), attrname);
 			if (attnum == InvalidAttrNumber)
@@ -2828,3 +2825,4 @@ get_sessionid(void)
 	result = elm->last;
 	PG_RETURN_INT64(result);
 }
+

@@ -17,6 +17,15 @@ CREATE TABLE sequence_test_table (a int);
 CREATE SEQUENCE sequence_testx OWNED BY sequence_test_table.b;  -- wrong column
 DROP TABLE sequence_test_table;
 
+-- A sequence named like the column it is owned by depends on that column.
+CREATE TABLE sequence_test_table (seq_own_col int, b int);
+CREATE SEQUENCE seq_own_col OWNED BY sequence_test_table.seq_own_col;
+SELECT refobjsubid FROM pg_depend
+  WHERE objid = 'seq_own_col'::regclass AND refobjid = 'sequence_test_table'::regclass;
+ALTER TABLE sequence_test_table DROP COLUMN seq_own_col;
+SELECT count(*) FROM pg_class WHERE relname = 'seq_own_col';
+DROP TABLE sequence_test_table;
+
 -- sequence data types
 CREATE SEQUENCE sequence_test5 AS integer NOCACHE;
 CREATE SEQUENCE sequence_test6 AS smallint NOCACHE;

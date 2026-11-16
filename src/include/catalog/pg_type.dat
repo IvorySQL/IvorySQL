@@ -837,6 +837,15 @@
   typoutput => 'shell_out', typreceive => '-', typsend => '-', typmodin => '-', typmodout => '-',
   typanalyze => '-', typalign => 'i', typstorage => 'p',  typnotnull => 'f', typbasetype => '0',
   typtypmod => '-1', typndims => '0', typcollation => '0'},
+## Support Oracle REF values; preload_ora_misc.sql defines it as a composite
+## type, so stored REF values keep this OID through pg_upgrade
+{ oid => '9541', descr => 'Compatible Oracle REF value',
+  typname => 'object_ref', typnamespace => 'sys', typlen => '4', typbyval => 't', typtype => 'p',
+  typcategory => 'P', typispreferred => 'f', typisdefined => 'f', typdelim => ',', typrelid => '0',
+  typsubscript => '-', typelem => '0', typarray => '0', typinput => 'shell_in',
+  typoutput => 'shell_out', typreceive => '-', typsend => '-', typmodin => '-', typmodout => '-',
+  typanalyze => '-', typalign => 'i', typstorage => 'p',  typnotnull => 'f', typbasetype => '0',
+  typtypmod => '-1', typndims => '0', typcollation => '0'},
 
 /*END Oracle Compatibility Metadatas*/
 
