@@ -1203,6 +1203,76 @@ select seq.currval from dual;
 (1 row)
 
 DROP SEQUENCE seq;
+-- Leaving SCALE EXTEND lifts its MAXVALUE cap, unless MAXVALUE is given;
+-- a sequence that was not SCALE EXTEND keeps its MAXVALUE.
+CREATE SEQUENCE seq_ext SCALE EXTEND;
+ALTER SEQUENCE seq_ext SCALE NOEXTEND;
+CREATE SEQUENCE seq_ext_max SCALE EXTEND;
+ALTER SEQUENCE seq_ext_max SCALE NOEXTEND MAXVALUE 9999999999999;
+CREATE SEQUENCE seq_max MAXVALUE 9999999999999;
+ALTER SEQUENCE seq_max SCALE NOEXTEND;
+SELECT c.relname, s.seqmax, s.flags FROM pg_sequence s
+  JOIN pg_class c ON c.oid = s.seqrelid
+  WHERE c.relname IN ('seq_ext', 'seq_ext_max', 'seq_max') ORDER BY 1;
+   relname   |       seqmax        | flags 
+-------------+---------------------+-------
+ seq_ext     | 9223372036854775807 |    16
+ seq_ext_max |       9999999999999 |    16
+ seq_max     |       9999999999999 |    16
+(3 rows)
+
+DROP SEQUENCE seq_ext, seq_ext_max, seq_max;
+-- After the ALTER, currval keeps the value already issued, and nextval in
+-- the same session follows the new settings.
+CREATE SEQUENCE seq_ext_used SCALE EXTEND NOCACHE;
+SELECT seq_ext_used.nextval FROM dual;
+       nextval       
+---------------------
+ 1999990000000000001
+(1 row)
+
+ALTER SEQUENCE seq_ext_used SCALE NOEXTEND MAXVALUE 9999999999999;
+SELECT seq_ext_used.currval FROM dual;
+       currval       
+---------------------
+ 1999990000000000001
+(1 row)
+
+SELECT seq_ext_used.nextval FROM dual;
+    nextval    
+---------------
+ 1999990000002
+(1 row)
+
+SELECT seq_ext_used.currval FROM dual;
+    currval    
+---------------
+ 1999990000002
+(1 row)
+
+DROP SEQUENCE seq_ext_used;
+-- An ALTER that leaves a sequence SCALE EXTEND keeps the MAXVALUE cap.
+CREATE SEQUENCE seq_ext_alter SCALE EXTEND NOCACHE;
+SELECT seq_ext_alter.nextval FROM dual;
+       nextval       
+---------------------
+ 1999990000000000001
+(1 row)
+
+ALTER SEQUENCE seq_ext_alter MAXVALUE 99999999999999;
+SELECT seqmax FROM pg_sequence WHERE seqrelid = 'seq_ext_alter'::regclass;
+    seqmax     
+---------------
+ 9999999999999
+(1 row)
+
+SELECT seq_ext_alter.nextval FROM dual;
+       nextval       
+---------------------
+ 1999990000000000002
+(1 row)
+
+DROP SEQUENCE seq_ext_alter;
 CREATE SEQUENCE scale_err_seq START WITH 1 MAXVALUE 999 SCALE;
 SELECT scale_err_seq.nextval FROM dual;--ERROR
 ERROR:  NEXTVAL cannot be instantiated for scale_err_seq. Widen the sequence by 4 digits or alter sequence with SCALE EXTEND

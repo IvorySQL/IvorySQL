@@ -3252,7 +3252,8 @@ _tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH)
 					 strcmp(te->desc, "MATERIALIZED VIEW") == 0 ||
 					 strcmp(te->desc, "MATERIALIZED VIEW DATA") == 0 ||
 					 strcmp(te->desc, "SEQUENCE") == 0 ||
-					 strcmp(te->desc, "SEQUENCE SET") == 0)
+					 strcmp(te->desc, "SEQUENCE SET") == 0 ||
+					 strcmp(te->desc, "SEQUENCE ORACLE OPTIONS") == 0)
 			{
 				if (!ropt->selTable)
 					return 0;
@@ -3434,15 +3435,17 @@ _tocEntryIsACL(TocEntry *te)
 /*
  * Does this TOC entry hold commands that only the Oracle grammar accepts?
  *
- * Packages (and comments, labels, grants and default privileges on them)
- * and object types are written in Oracle syntax.  A restore through the
- * PostgreSQL port, as pg_upgrade --using-ora-pg does, must switch the parser
- * for these entries.
+ * Packages (and comments, labels, grants and default privileges on them),
+ * object types and the Oracle-only options of sequences and identity
+ * columns are written in Oracle syntax.  A restore through the PostgreSQL
+ * port, as pg_upgrade --using-ora-pg does, must switch the parser for these
+ * entries.
  */
 static bool
 _tocEntryNeedsOraParser(TocEntry *te)
 {
-	if (strcmp(te->desc, "PACKAGE") == 0)
+	if (strcmp(te->desc, "PACKAGE") == 0 ||
+		strcmp(te->desc, "SEQUENCE ORACLE OPTIONS") == 0)
 		return true;
 	if ((strcmp(te->desc, "COMMENT") == 0 ||
 		 strcmp(te->desc, "SECURITY LABEL") == 0 ||

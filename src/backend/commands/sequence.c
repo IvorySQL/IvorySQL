@@ -81,6 +81,9 @@ typedef struct SeqTableData
 	int64		increment;		/* copy of sequence's increment field */
 	/* note that increment is zero until we first do nextval_internal() */
 	int64		scale_value;
+	/* SCALE settings that scale_value was built from */
+	bool		scale_extend;
+	int			scale_bits;
 } SeqTableData;
 
 typedef SeqTableData *SeqTable;
@@ -664,6 +667,9 @@ nextval_internal(Oid relid, bool check_permissions)
 	int		minvalue_bits = 0;
 	char		maxstr[MAXINT8LEN + 1];
 
+	/* open and lock sequence */
+	init_sequence(relid, &elm, &seqrel);
+
 	pgstuple = SearchSysCache1(SEQRELID, ObjectIdGetDatum(relid));
 	if (!HeapTupleIsValid(pgstuple))
 		elog(ERROR, "cache lookup failed for sequence %u", relid);
@@ -674,9 +680,6 @@ nextval_internal(Oid relid, bool check_permissions)
 	maxvalue_bits = pg_lltoa((int64)Abs(pgsform->seqmax), maxstr);
 	minvalue_bits = pg_lltoa((int64)Abs(pgsform->seqmin), maxstr);
 	maxvalue_bits = minvalue_bits > maxvalue_bits ? minvalue_bits : maxvalue_bits;
-
-	/* open and lock sequence */
-	init_sequence(relid, &elm, &seqrel);
 
 	if(isSession)
 	{
@@ -746,9 +749,15 @@ nextval_internal(Oid relid, bool check_permissions)
 			char	str[MAXINT8LEN + 1];
 			int		len;
 		
-			/* Check whether the scale value is cached */
-			if (!elm->scale_value)
+			/*
+			 * Check whether the scale value is cached, and was built from
+			 * the current SCALE settings
+			 */
+			if (!elm->scale_value || elm->scale_extend != isExtend ||
+				elm->scale_bits != maxvalue_bits)
 			{
+				elm->scale_extend = isExtend;
+				elm->scale_bits = maxvalue_bits;
 				if (!scale_value)
 				{
 					instanc_id = GetSystemIdentifier();
@@ -1010,9 +1019,15 @@ nextval_internal(Oid relid, bool check_permissions)
 		char	str[MAXINT8LEN + 1];
 		int		len;
 
-		/* Check whether the scale value is cached */
-		if (!elm->scale_value)
+		/*
+		 * Check whether the scale value is cached, and was built from the
+		 * current SCALE settings
+		 */
+		if (!elm->scale_value || elm->scale_extend != isExtend ||
+			elm->scale_bits != maxvalue_bits)
 		{
+			elm->scale_extend = isExtend;
+			elm->scale_bits = maxvalue_bits;
 			if (!scale_value)
 			{
 				instanc_id = GetSystemIdentifier();
@@ -1450,6 +1465,8 @@ init_sequence(Oid relid, SeqTable *p_elm, Relation *p_rel)
 		elm->last_valid = false;
 		elm->last = elm->cached = 0;
 		elm->scale_value = 0;
+		elm->scale_extend = false;
+		elm->scale_bits = 0;
 	}
 
 	/*
@@ -2162,8 +2179,16 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 		}
 		else if (!isInit && !extend_flag)
 		{
+			/*
+			 * Only SCALE EXTEND caps MAXVALUE at PG_SCALE_MAX, so lift the
+			 * cap only when leaving SCALE EXTEND, and never over an explicit
+			 * MAXVALUE.
+			 */
+			bool		was_extend = seq_is_extend(seqform->flags);
+
 			seqform->flags &= ~(EXTEND_FLAG);
-			if(seqform->seqmax == PG_SCALE_MAX && seqform->seqincrement > 0)
+			if (was_extend && max_value == NULL &&
+				seqform->seqmax == PG_SCALE_MAX && seqform->seqincrement > 0)
 				seqform->seqmax = PG_INT64_MAX;
 			else if(seqform->seqmin < PG_SCALE_MIN && seqform->seqincrement < 0)
 				seqform->seqmin = PG_SCALE_MIN;
@@ -2211,6 +2236,29 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 			}
 		}
 	}
+	else if (!isInit && seq_is_scale(seqform->flags) &&
+			 seq_is_extend(seqform->flags))
+	{
+		/* A sequence that stays SCALE EXTEND keeps its MAXVALUE/MINVALUE cap */
+		if (seqform->seqmax > PG_SCALE_MAX && seqform->seqincrement > 0)
+		{
+			if (internal_warning)
+				ereport(WARNING,
+						(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+						 errmsg("Scale extend value is greater than 9999999999999")));
+
+			seqform->seqmax = PG_SCALE_MAX;
+		}
+		else if (seqform->seqmin < PG_SCALE_MIN && seqform->seqincrement < 0)
+		{
+			if (internal_warning)
+				ereport(WARNING,
+						(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+						 errmsg("Scale extend value is less than -9999999999999")));
+
+			seqform->seqmin = PG_SCALE_MIN;
+		}
+	}
 
 	if (session_flag)
 	{
@@ -2255,6 +2303,8 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 				else
 					seqelm->scale_value = -(scale_value * (int64)pow(10, maxvalue_bits - 6));
 			}
+			seqelm->scale_extend = seq_is_extend(seqform->flags);
+			seqelm->scale_bits = maxvalue_bits;
 			seqelm->last += seqelm->scale_value;
 		}
 	}
@@ -2778,4 +2828,3 @@ get_sessionid(void)
 	result = elm->last;
 	PG_RETURN_INT64(result);
 }
-

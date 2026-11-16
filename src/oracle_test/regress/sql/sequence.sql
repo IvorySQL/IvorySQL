@@ -577,6 +577,37 @@ select seq.nextval from dual;
 select seq.currval from dual;
 DROP SEQUENCE seq;
 
+-- Leaving SCALE EXTEND lifts its MAXVALUE cap, unless MAXVALUE is given;
+-- a sequence that was not SCALE EXTEND keeps its MAXVALUE.
+CREATE SEQUENCE seq_ext SCALE EXTEND;
+ALTER SEQUENCE seq_ext SCALE NOEXTEND;
+CREATE SEQUENCE seq_ext_max SCALE EXTEND;
+ALTER SEQUENCE seq_ext_max SCALE NOEXTEND MAXVALUE 9999999999999;
+CREATE SEQUENCE seq_max MAXVALUE 9999999999999;
+ALTER SEQUENCE seq_max SCALE NOEXTEND;
+SELECT c.relname, s.seqmax, s.flags FROM pg_sequence s
+  JOIN pg_class c ON c.oid = s.seqrelid
+  WHERE c.relname IN ('seq_ext', 'seq_ext_max', 'seq_max') ORDER BY 1;
+DROP SEQUENCE seq_ext, seq_ext_max, seq_max;
+
+-- After the ALTER, currval keeps the value already issued, and nextval in
+-- the same session follows the new settings.
+CREATE SEQUENCE seq_ext_used SCALE EXTEND NOCACHE;
+SELECT seq_ext_used.nextval FROM dual;
+ALTER SEQUENCE seq_ext_used SCALE NOEXTEND MAXVALUE 9999999999999;
+SELECT seq_ext_used.currval FROM dual;
+SELECT seq_ext_used.nextval FROM dual;
+SELECT seq_ext_used.currval FROM dual;
+DROP SEQUENCE seq_ext_used;
+
+-- An ALTER that leaves a sequence SCALE EXTEND keeps the MAXVALUE cap.
+CREATE SEQUENCE seq_ext_alter SCALE EXTEND NOCACHE;
+SELECT seq_ext_alter.nextval FROM dual;
+ALTER SEQUENCE seq_ext_alter MAXVALUE 99999999999999;
+SELECT seqmax FROM pg_sequence WHERE seqrelid = 'seq_ext_alter'::regclass;
+SELECT seq_ext_alter.nextval FROM dual;
+DROP SEQUENCE seq_ext_alter;
+
 CREATE SEQUENCE scale_err_seq START WITH 1 MAXVALUE 999 SCALE;
 SELECT scale_err_seq.nextval FROM dual;--ERROR
 DROP SEQUENCE scale_err_seq;
