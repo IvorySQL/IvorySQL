@@ -28,6 +28,12 @@ CREATE TABLE ref_reg_people OF ref_reg_person;
 CREATE TABLE ref_reg_others OF ref_reg_other;
 CREATE TABLE ref_reg_holder (person REF ref_reg_person NOT NULL);
 
+-- Describing raw REF columns must work for both grammar productions.
+\pset format unaligned
+SELECT person FROM ref_reg_holder;
+SELECT parent FROM ref_reg_people;
+\pset format aligned
+
 INSERT INTO ref_reg_people (name) VALUES ('root'), ('child');
 INSERT INTO ref_reg_others (name) VALUES ('other');
 UPDATE ref_reg_people p SET parent =
