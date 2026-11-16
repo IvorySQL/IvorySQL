@@ -37,9 +37,4 @@ extern Datum plisql_exec_autonomous_function(PLiSQL_function *func,
 											 EState *simple_eval_estate,
 											 ResourceOwner simple_eval_resowner);
 
-/*
- * Check if dblink extension is available
- */
-extern bool plisql_check_dblink_available(void);
-
 #endif							/* PL_AUTONOMOUS_H */

@@ -10,10 +10,8 @@
 
 #include "access/xact.h"
 #include "catalog/namespace.h"
-#include "catalog/pg_extension.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
-#include "commands/extension.h"
 #include "executor/spi.h"
 #include "fmgr.h"
 #include "libpq/libpq-be.h"
@@ -180,17 +178,6 @@ plisql_mark_autonomous_transaction(PLiSQL_function *func, int location, void *yy
 	 */
 
 	func->fn_is_autonomous = true;
-}
-
-/**
- * Check whether the dblink extension is installed in the current database.
- *
- * @returns `true` if the dblink extension is installed in the current database, `false` otherwise.
- */
-bool
-plisql_check_dblink_available(void)
-{
-	return OidIsValid(get_extension_oid("dblink", true));
 }
 
 /**
