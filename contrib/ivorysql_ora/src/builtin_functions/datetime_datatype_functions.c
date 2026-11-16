@@ -1713,7 +1713,12 @@ ora_date_round(Timestamp day, int f)
 	{
 			CASE_fmt_CC
 				if (y > 0)
-				result = DATE2J((y / 100) * 100 + (day < DATE2J((y / 100) * 100 + 50, 1, 1) ? 1 : 101), 1, 1);
+				/*
+				 * The last two digits of the year decide: 01..50 stay in the
+				 * century, 51..00 round up to the next one, so the switch
+				 * date is January 1st of the century's 51st year.
+				 */
+				result = DATE2J((y / 100) * 100 + (day < DATE2J((y / 100) * 100 + 51, 1, 1) ? 1 : 101), 1, 1);
 			else
 				result = DATE2J((y / 100) * 100 + (day < DATE2J((y / 100) * 100 - 50 + 1, 1, 1) ? -99 : 1), 1, 1);
 			break;
@@ -1722,48 +1727,17 @@ ora_date_round(Timestamp day, int f)
 			break;
 			CASE_fmt_IYYY
 			{
+				/*
+				 * Dates before July 1st round to the start of the ISO year
+				 * they belong to, later dates to the next one. The result is
+				 * always the Monday that starts an ISO year, so dates in the
+				 * final days of a year can legitimately round forward to the
+				 * ISO year that begins around New Year.
+				 */
 				if (day < DATE2J(y, 7, 1))
-				{
 					result = iso_year(y, m, d);
-				}
 				else
-				{
-					Timestamp	iy1 = iso_year(y + 1, 1, 8);
-
-					result = iy1;
-
-					if (((day - DATE2J(y, 1, 1)) / 7 + 1) >= 52)
-					{
-						bool		overl = ((date2j(y + 2, 1, 1) - date2j(y + 1, 1, 1)) == 366);
-						bool		isSaturday = (J2DAY(day) == 6);
-
-						Timestamp	iy2 = iso_year(y + 2, 1, 8);
-						Timestamp	day1 = DATE2J(y + 1, 1, 1);
-
-						/* exception saturdays  */
-						if (iy1 >= (day1) && day >= day1 - 2 && isSaturday)
-						{
-							result = overl ? iy2 : iy1;
-						}
-						/* iso year stars in last year and day >= iso year  */
-						else if (iy1 <= (day1) && day >= iy1 - 3)
-						{
-							Timestamp	cmp = iy1 - (iy1 < day1 ? 0 : 1);
-							int			d1 = J2DAY(day1);
-
-							/* some exceptions  */
-							if ((day >= cmp - 2) && (!(d1 == 3 && overl)))
-							{
-								/* if year don't starts in thursday */
-								if ((d1 < 4 && J2DAY(day) != 5 && !isSaturday)
-									|| (d1 == 2 && isSaturday && overl))
-								{
-									result = iy2;
-								}
-							}
-						}
-					}
-				}
+					result = iso_year(y + 1, 1, 8);
 				break;
 			}
 			CASE_fmt_MON
@@ -1775,21 +1749,11 @@ ora_date_round(Timestamp day, int f)
 			break;
 			CASE_fmt_IW
 			{
+				/* Round to the Monday of the ISO week, Thursday is the last
+				 * day that stays within its own week (tie goes downwards,
+				 * three days back versus four days forward). */
 				z = (day - iso_year(y, m, d)) % 7;
 				result = day - z + (z < 4 ? 0 : 7);
-				if (((day - DATE2J(y, 1, 1)) / 7 + 1) >= 52)
-				{
-					/* only for last iso week  */
-					Timestamp	isoyear = iso_year(y + 1, 1, 8);
-
-					if (isoyear > (DATE2J(y + 1, 1, 1) - 1))
-						if (day > isoyear - 7)
-						{
-							int			tmpd = J2DAY(day);
-
-							result -= (tmpd == 0 || tmpd > 4 ? 7 : 0);
-						}
-				}
 				break;
 			}
 			CASE_fmt_W
