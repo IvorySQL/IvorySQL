@@ -147,7 +147,7 @@ exec_prepare(Ivyconn *conn)
 }
 
 int
-main()
+main(void)
 {
 	Ivyconn    *conn;
 	Ivyresult   *res;

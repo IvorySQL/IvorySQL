@@ -69,7 +69,7 @@ init_data(Ivyconn *conn)
 }
 
 static IvyPreparedStatement *
-init_statement()
+init_statement(void)
 {
 	IvyPreparedStatement *prestmt1;
 	const char *stmt1_name = "test1_stmt";

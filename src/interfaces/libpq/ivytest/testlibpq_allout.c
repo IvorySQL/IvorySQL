@@ -37,7 +37,7 @@ exit_nicely(Ivyconn *conn)
 }
 
 int
-main()
+main(void)
 {
 	int   nFields;
 	int   i,j;
