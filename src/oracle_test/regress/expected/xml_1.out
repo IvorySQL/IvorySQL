@@ -225,10 +225,11 @@ SELECT xmlelement(name foo, xmlattributes('2009-04-09 00:24:37'::timestamp as ba
 (1 row)
 
 SELECT xmlelement(name foo, xmlattributes('infinity'::timestamp as bar));
-ERROR:  invalid value "infi" for "YYYY"
-LINE 1: SELECT xmlelement(name foo, xmlattributes('infinity'::timest...
-                                                  ^
-DETAIL:  Value must be an integer.
+      xmlelement       
+-----------------------
+ <foo bar="infinity"/>
+(1 row)
+
 SELECT xmlelement(name foo, xmlattributes('<>&"''' as funny, xml 'b<a/>r' as funnier));
                          xmlelement                         
 ------------------------------------------------------------
@@ -248,10 +249,11 @@ SELECT xmlelement(foo, xmlattributes('2009-04-09 00:24:37'::timestamp as bar));
 (1 row)
 
 SELECT xmlelement(foo, xmlattributes('infinity'::timestamp as bar));
-ERROR:  invalid value "infi" for "YYYY"
-LINE 1: SELECT xmlelement(foo, xmlattributes('infinity'::timestamp a...
-                                             ^
-DETAIL:  Value must be an integer.
+      xmlelement       
+-----------------------
+ <foo bar="infinity"/>
+(1 row)
+
 SELECT xmlelement(foo, xmlattributes('<>&"''' as funny, xml 'b<a/>r' as funnier));
                          xmlelement                         
 ------------------------------------------------------------

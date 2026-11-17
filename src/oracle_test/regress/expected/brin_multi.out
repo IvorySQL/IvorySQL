@@ -888,10 +888,6 @@ RESET enable_seqscan;
 -- test handling of infinite timestamp values
 CREATE TABLE brin_timestamp_test(a TIMESTAMP);
 INSERT INTO brin_timestamp_test VALUES ('-infinity'), ('infinity');
-ERROR:  invalid value "-inf" for "YYYY"
-LINE 1: INSERT INTO brin_timestamp_test VALUES ('-infinity'), ('infi...
-                                                ^
-DETAIL:  Value must be an integer.
 INSERT INTO brin_timestamp_test
 SELECT i FROM generate_series('2000-01-01'::timestamp, '2000-02-09'::timestamp, '1 day'::interval) s(i);
 ERROR:  missing or invalid datetime field.
@@ -904,7 +900,8 @@ SELECT * FROM brin_timestamp_test WHERE a = '2023-01-01'::timestamp;
  Seq Scan on brin_timestamp_test (actual rows=0.00 loops=1)
    Disabled: true
    Filter: (a = '2023-01-01 00:00:00.000000'::timestamp(6))
-(3 rows)
+   Rows Removed by Filter: 2
+(4 rows)
 
 EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF, SUMMARY OFF, BUFFERS OFF)
 SELECT * FROM brin_timestamp_test WHERE a = '1900-01-01'::timestamp;
@@ -913,17 +910,14 @@ SELECT * FROM brin_timestamp_test WHERE a = '1900-01-01'::timestamp;
  Seq Scan on brin_timestamp_test (actual rows=0.00 loops=1)
    Disabled: true
    Filter: (a = '1900-01-01 00:00:00.000000'::timestamp(6))
-(3 rows)
+   Rows Removed by Filter: 2
+(4 rows)
 
 DROP TABLE brin_timestamp_test;
 RESET enable_seqscan;
 -- test handling of infinite date values
 CREATE TABLE brin_date_test(a DATE);
 INSERT INTO brin_date_test VALUES ('-infinity'), ('infinity');
-ERROR:  invalid value "-inf" for "YYYY"
-LINE 1: INSERT INTO brin_date_test VALUES ('-infinity'), ('infinity'...
-                                           ^
-DETAIL:  Value must be an integer.
 INSERT INTO brin_date_test SELECT '2000-01-01'::date + i FROM generate_series(1, 40) s(i);
 CREATE INDEX ON brin_date_test USING brin (a date_minmax_multi_ops) WITH (pages_per_range=1);
 ERROR:  operator class "date_minmax_multi_ops" does not accept data type date
@@ -935,7 +929,7 @@ SELECT * FROM brin_date_test WHERE a = '2023-01-01'::date;
  Seq Scan on brin_date_test (actual rows=0.00 loops=1)
    Disabled: true
    Filter: (a = '2023-01-01'::date)
-   Rows Removed by Filter: 40
+   Rows Removed by Filter: 42
 (4 rows)
 
 EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF, SUMMARY OFF, BUFFERS OFF)
@@ -945,7 +939,7 @@ SELECT * FROM brin_date_test WHERE a = '1900-01-01'::date;
  Seq Scan on brin_date_test (actual rows=0.00 loops=1)
    Disabled: true
    Filter: (a = '1900-01-01'::date)
-   Rows Removed by Filter: 40
+   Rows Removed by Filter: 42
 (4 rows)
 
 DROP TABLE brin_date_test;

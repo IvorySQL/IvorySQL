@@ -1,0 +1,235 @@
+--
+-- Test that PostgreSQL special datetime keywords keep working in Oracle
+-- mode.
+--
+-- In Oracle mode the datetime types map to sys.oratimestamp /
+-- sys.oratimestamptz / sys.oratimestampltz / sys.oradate, whose input
+-- routines normally parse every string with the NLS format mask, which
+-- does not understand the PostgreSQL special datetime keywords:
+--
+--     epoch, now, today, yesterday, tomorrow, infinity, +infinity and
+--     -infinity
+--
+-- These keywords must still be accepted exactly like in PostgreSQL mode,
+-- and ordinary date/time strings must continue to be parsed with the NLS
+-- format mask.  The explicit conversion functions (to_date/to_timestamp/
+-- to_char) keep their format-driven semantics.
+--
+SET ivorysql.compatible_mode = oracle;
+-- ---------------------------------------------------------------------------
+-- Typed literal input of the special keywords
+-- ---------------------------------------------------------------------------
+SELECT timestamp 'epoch';
+        oratimestamp        
+----------------------------
+ 1970-01-01 00:00:00.000000
+(1 row)
+
+SELECT date 'epoch';
+  oradate   
+------------
+ 1970-01-01
+(1 row)
+
+SELECT timestamptz 'epoch';
+         timestamptz          
+------------------------------
+ Wed Dec 31 16:00:00 1969 PST
+(1 row)
+
+SELECT timestamp 'infinity', timestamp '-infinity', timestamp '+infinity';
+ oratimestamp | oratimestamp | oratimestamp 
+--------------+--------------+--------------
+ infinity     | -infinity    | infinity
+(1 row)
+
+SELECT date 'infinity', date '-infinity';
+ oradate  |  oradate  
+----------+-----------
+ infinity | -infinity
+(1 row)
+
+SELECT timestamptz 'infinity';
+ timestamptz 
+-------------
+ infinity
+(1 row)
+
+-- ---------------------------------------------------------------------------
+-- Casts on every Oracle datetime type
+-- ---------------------------------------------------------------------------
+SELECT 'epoch'::timestamp, 'epoch'::timestamptz, 'epoch'::date;
+        oratimestamp        |          oratimestamptz           |  oradate   
+----------------------------+-----------------------------------+------------
+ 1970-01-01 00:00:00.000000 | 1969-12-31 16:00:00.000000 -08:00 | 1970-01-01
+(1 row)
+
+SELECT 'epoch'::"sys".oratimestampltz;
+      oratimestampltz       
+----------------------------
+ 1970-01-01 00:00:00.000000
+(1 row)
+
+SELECT 'infinity'::timestamp, '+infinity'::timestamp, '-infinity'::timestamp;
+ oratimestamp | oratimestamp | oratimestamp 
+--------------+--------------+--------------
+ infinity     | infinity     | -infinity
+(1 row)
+
+SELECT 'infinity'::timestamptz, 'infinity'::date;
+ oratimestamptz | oradate  
+----------------+----------
+ infinity       | infinity
+(1 row)
+
+-- ---------------------------------------------------------------------------
+-- Value semantics match PostgreSQL
+-- ---------------------------------------------------------------------------
+SELECT timestamp 'yesterday' < timestamp 'today'
+       AND timestamp 'today' < timestamp 'tomorrow';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT timestamp 'yesterday' < timestamp 'now'
+       AND timestamp 'now' < timestamp 'tomorrow';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT timestamp '-infinity' < timestamp 'epoch'
+       AND timestamp 'epoch' < timestamp 'infinity';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT timestamp 'epoch' = '1970-01-01 00:00:00'::timestamp;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT date 'now' >= date 'epoch';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT 'now'::timestamp IS NOT NULL, 'now'::timestamptz IS NOT NULL;
+ ?column? | ?column? 
+----------+----------
+ t        | t
+(1 row)
+
+-- ---------------------------------------------------------------------------
+-- typmod still applies on the special values
+-- ---------------------------------------------------------------------------
+SELECT 'epoch'::timestamp(3), 'epoch'::timestamp(0);
+        oratimestamp        |        oratimestamp        
+----------------------------+----------------------------
+ 1970-01-01 00:00:00.000000 | 1970-01-01 00:00:00.000000
+(1 row)
+
+SELECT 'infinity'::timestamp(3);
+ oratimestamp 
+--------------
+ infinity
+(1 row)
+
+-- ---------------------------------------------------------------------------
+-- Keyword matching is case- and whitespace-insensitive, as in PostgreSQL
+-- ---------------------------------------------------------------------------
+SELECT 'EPOCH'::timestamp, 'Epoch'::timestamp, '  epoch  '::timestamp;
+        oratimestamp        |        oratimestamp        |        oratimestamp        
+----------------------------+----------------------------+----------------------------
+ 1970-01-01 00:00:00.000000 | 1970-01-01 00:00:00.000000 | 1970-01-01 00:00:00.000000
+(1 row)
+
+SELECT 'INFINITY'::timestamp, 'Infinity'::timestamp;
+ oratimestamp | oratimestamp 
+--------------+--------------
+ infinity     | infinity
+(1 row)
+
+-- ---------------------------------------------------------------------------
+-- Round trip through a table (input and output of finite and infinite
+-- values, deterministically ordered: -infinity < epoch < infinity)
+-- ---------------------------------------------------------------------------
+CREATE TEMP TABLE epoch_oracle_tbl (ts timestamp, tstz timestamptz, d date);
+INSERT INTO epoch_oracle_tbl VALUES
+    ('-infinity', '-infinity', '-infinity'),
+    ('epoch',     'epoch',     'epoch'),
+    ('infinity',  'infinity',  'infinity');
+SELECT ts, tstz, d FROM epoch_oracle_tbl ORDER BY ts;
+             ts             |               tstz                |     d      
+----------------------------+-----------------------------------+------------
+ -infinity                  | -infinity                         | -infinity
+ 1970-01-01 00:00:00.000000 | 1969-12-31 16:00:00.000000 -08:00 | 1970-01-01
+ infinity                   | infinity                          | infinity
+(3 rows)
+
+DROP TABLE epoch_oracle_tbl;
+-- ---------------------------------------------------------------------------
+-- Keywords are independent of the NLS format mask configuration
+-- ---------------------------------------------------------------------------
+SET nls_timestamp_format TO 'YYYY/MM/DD HH24:MI:SS';
+SELECT timestamp 'epoch', '2024/01/01 10:30:00'::timestamp;
+    oratimestamp     |    oratimestamp     
+---------------------+---------------------
+ 1970/01/01 00:00:00 | 2024/01/01 10:30:00
+(1 row)
+
+RESET nls_timestamp_format;
+-- ...and keep working when NLS input parsing is bypassed entirely
+-- (ORATIMESTAMP_MASK: nls input is ignored for oratimestamp)
+SET ivorysql.datetime_ignore_nls_mask = 2;
+SELECT 'epoch'::timestamp, '2024-01-01 10:30:00'::timestamp;
+        oratimestamp        |        oratimestamp        
+----------------------------+----------------------------
+ 1970-01-01 00:00:00.000000 | 2024-01-01 10:30:00.000000
+(1 row)
+
+RESET ivorysql.datetime_ignore_nls_mask;
+-- ---------------------------------------------------------------------------
+-- Ordinary strings are still parsed with the (default) NLS format mask
+-- ---------------------------------------------------------------------------
+SELECT '2024-01-01 10:30:00'::timestamp;
+        oratimestamp        
+----------------------------
+ 2024-01-01 10:30:00.000000
+(1 row)
+
+-- ---------------------------------------------------------------------------
+-- A keyword embedded in a larger string is NOT special-cased
+-- ---------------------------------------------------------------------------
+SELECT timestamp '1995-08-06 epoch';
+ERROR:  datetime string and format model does not match
+SELECT 'epoch 01:01:01'::timestamp;
+ERROR:  invalid value "epoc" for "YYYY"
+LINE 1: SELECT 'epoch 01:01:01'::timestamp;
+               ^
+DETAIL:  Value must be an integer.
+-- ---------------------------------------------------------------------------
+-- Explicit conversion functions are unaffected
+-- ---------------------------------------------------------------------------
+SELECT to_timestamp('epoch', 'YYYY-MM-DD HH24:MI:SS');
+ERROR:  invalid value "epoc" for "YYYY"
+DETAIL:  Value must be an integer.
+SELECT to_date('epoch', 'YYYY-MM-DD');
+ERROR:  invalid value "epoc" for "YYYY"
+DETAIL:  Value must be an integer.
+SELECT to_char('infinity'::timestamptz, 'YYYY-MM-DD');
+ERROR:  the infinite value isn't supported by "to_char"
+-- ---------------------------------------------------------------------------
+-- PostgreSQL mode is unaffected: the same keywords work natively there
+-- ---------------------------------------------------------------------------
+SET ivorysql.compatible_mode = pg;
+SELECT timestamp 'epoch', date 'epoch', timestamp 'infinity';
+        timestamp         |    date    | timestamp 
+--------------------------+------------+-----------
+ Thu Jan 01 00:00:00 1970 | 01-01-1970 | infinity
+(1 row)
+
