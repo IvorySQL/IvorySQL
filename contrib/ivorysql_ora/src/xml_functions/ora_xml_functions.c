@@ -729,18 +729,12 @@ ivy_xml_xpathobjtoxmltype(xmlXPathObjectPtr xpathobj)
 			for (i = 0; i < num; i++)
 			{
 				cur = xpathobj->nodesetval->nodeTab[i];
-				if (cur->type == XML_TEXT_NODE)
-				{
-					str = (char *)xmlNodeGetContent(cur);
-					appendStringInfoString(&buf, str);
-				}
-				else
-				{
-					str = text_to_cstring(ivy_xml_xmlnode2xmltype(cur));
-					appendStringInfoString(&buf, str);
-					appendStringInfoString(&buf, "\n");
-					pfree(str);
-				}
+				str = text_to_cstring(ivy_xml_xmlnode2xmltype(cur));
+				appendStringInfoString(&buf, str);
+				/* Separate markup nodes without trimming text-node content. */
+				if (cur->type != XML_TEXT_NODE && i + 1 < num)
+					appendStringInfoChar(&buf, '\n');
+				pfree(str);
 			}
 		}
 	}
@@ -1222,7 +1216,6 @@ ivy_extract(PG_FUNCTION_ARGS)
 
 	if (ret)
 	{
-		ret = (xmltype *)rv_newline((text *)ret);
 		PG_RETURN_XML_P(ret);
 	}
 	else
@@ -1279,7 +1272,6 @@ ivy_extract2(PG_FUNCTION_ARGS)
 
 	if (ret)
 	{
-		ret = (xmltype *)rv_newline((text *)ret);
 		PG_RETURN_XML_P(ret);
 	}
 	else
