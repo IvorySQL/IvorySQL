@@ -693,30 +693,38 @@ IMMUTABLE;
  * answers null (Oracle: the empty string is null, the same convention
  * substrb uses).
  *
- * All the character types bind the C symbol directly and none of them goes
- * through a cast: sys.oracharchar -> text and sys.oracharbyte -> text are
- * both implemented by rtrim(), so routing CHAR through either of them would
- * silently drop the blank padding that Oracle counts.  This is the same
- * overload set -- and the same reason -- as sys.lengthc()'s.  (The varchar
- * overload is the VARCHAR2 byte type, sys.oravarcharbyte.)
+ * The overload set is deliberately small: one row per character family and
+ * per numeric spelling, and nothing else.  The character families bind the
+ * C function directly for one reason only -- sys.oracharchar -> text and
+ * sys.oracharbyte -> text are both implemented by rtrim(), so routing a
+ * CHAR source through either of them would silently drop the blank padding
+ * that Oracle counts.  This is the same reason -- and the same set -- as
+ * sys.lengthc()'s.  Every other character type (plain varchar, bpchar and
+ * the VARCHAR2 families sys.oravarcharchar/sys.oravarcharbyte, which carry
+ * no padding) is binary-coercible to text and resolves onto the text row
+ * with its contents unchanged.
  *
- * Every first-argument type has an integer-position overload as well as a
- * number-position one, and both are needed.  func_get_detail() picks the
- * candidate with the most exact matches, so a call with an integer position
- * prefers the integer-position overloads; with only the number-position ones
- * in the set, the CLOB/NCLOB rejection overloads below would win that count
- * and every substrc('abcdef', 2) would end up "not unique".  With both
- * position types present the text overload -- the preferred type of the
- * string category -- wins the tie, exactly as it does for sys.lengthc().
+ * position and substring_length are NUMBER in Oracle.  The sys.number rows
+ * are the canonical shape and take every numeric input by implicit cast
+ * (numeric and the floating types all cast to sys.number).  The integer,
+ * plain-numeric, smallint and bigint rows exist for the spellings the
+ * parser or an explicit cast can produce for a position -- 1 is integer,
+ * 1.9 is numeric, 2::smallint is smallint -- so that such a call still
+ * finds an exact candidate ahead of the CLOB/NCLOB rejection rows below
+ * instead of being left to the preferred-type heuristics, which cannot
+ * break a tie between numeric spellings.  Fractional positions are cut to
+ * whole numbers, the way Oracle cuts them.
  *
- * sys.clob and sys.nclob are domains over text, so plain resolution folds
- * them onto the text overload; the exact-match overloads below are what
- * stops them, the same way sys.lengthc()'s are.  They are what makes
- * substrc(TO_CLOB('abc'), 1, 2) an error instead of a silent answer: the
- * exact match happens while the call is parsed, before the optimizer folds
- * the constant away.
+ * sys.clob and sys.nclob are domains over text, and Oracle refuses them
+ * for SUBSTRC with ORA-00932.  The rejection rows at the end of this
+ * section catch the calls whose raw argument types match exactly, which is
+ * what a constant CLOB literal produces -- the only place a constant LOB
+ * source can still be caught, because the planner folds a constant's
+ * domain coercion away to plain text before the function runs.  A LOB
+ * source that is not a compile-time constant is refused at run time by
+ * ora_reject_lob_args(), whatever the positions look like.
  */
-CREATE FUNCTION sys.substrc(text, number)
+CREATE FUNCTION sys.substrc(sys.oracharbyte, sys.number)
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc_no_length'
 LANGUAGE C
@@ -724,7 +732,15 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE FUNCTION sys.substrc(varchar, number)
+CREATE FUNCTION sys.substrc(sys.oracharbyte, sys.number, sys.number)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(sys.oracharchar, sys.number)
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc_no_length'
 LANGUAGE C
@@ -732,7 +748,15 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE FUNCTION sys.substrc(sys.oracharchar, number)
+CREATE FUNCTION sys.substrc(sys.oracharchar, sys.number, sys.number)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(text, sys.number)
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc_no_length'
 LANGUAGE C
@@ -740,121 +764,24 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE FUNCTION sys.substrc(sys.oracharbyte, number)
+CREATE FUNCTION sys.substrc(text, sys.number, sys.number)
 RETURNS text
-AS 'MODULE_PATHNAME','ora_substrc_no_length'
+AS 'MODULE_PATHNAME','ora_substrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE FUNCTION sys.substrc(sys.oravarcharchar, number)
-RETURNS text
-AS 'MODULE_PATHNAME','ora_substrc_no_length'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
+COMMENT ON FUNCTION sys.substrc(text, sys.number, sys.number) IS 'Return part of a string, position and length counted in Unicode complete characters';
 
-CREATE FUNCTION sys.substrc(text, integer)
-RETURNS text
-AS 'MODULE_PATHNAME','ora_substrc_no_length'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE FUNCTION sys.substrc(varchar, integer)
-RETURNS text
-AS 'MODULE_PATHNAME','ora_substrc_no_length'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE FUNCTION sys.substrc(sys.oracharchar, integer)
-RETURNS text
-AS 'MODULE_PATHNAME','ora_substrc_no_length'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
+-- Bare integer and bare decimal literals are typed integer and numeric by
+-- the parser, and explicit smallint/bigint casts stay smallint/bigint;
+-- give every spelling exact candidates of its own so such calls outrank
+-- the rejection rows in the exact-match stage instead of falling through
+-- to the preferred-type heuristics.
 CREATE FUNCTION sys.substrc(sys.oracharbyte, integer)
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc_no_length'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE FUNCTION sys.substrc(sys.oravarcharchar, integer)
-RETURNS text
-AS 'MODULE_PATHNAME','ora_substrc_no_length'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE FUNCTION sys.substrc(text, number, number)
-RETURNS text
-AS 'MODULE_PATHNAME','ora_substrc'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE FUNCTION sys.substrc(varchar, number, number)
-RETURNS text
-AS 'MODULE_PATHNAME','ora_substrc'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE FUNCTION sys.substrc(sys.oracharchar, number, number)
-RETURNS text
-AS 'MODULE_PATHNAME','ora_substrc'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE FUNCTION sys.substrc(sys.oracharbyte, number, number)
-RETURNS text
-AS 'MODULE_PATHNAME','ora_substrc'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE FUNCTION sys.substrc(sys.oravarcharchar, number, number)
-RETURNS text
-AS 'MODULE_PATHNAME','ora_substrc'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE FUNCTION sys.substrc(text, integer, integer)
-RETURNS text
-AS 'MODULE_PATHNAME','ora_substrc'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE FUNCTION sys.substrc(varchar, integer, integer)
-RETURNS text
-AS 'MODULE_PATHNAME','ora_substrc'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE FUNCTION sys.substrc(sys.oracharchar, integer, integer)
-RETURNS text
-AS 'MODULE_PATHNAME','ora_substrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
@@ -868,36 +795,7 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE FUNCTION sys.substrc(sys.oravarcharchar, integer, integer)
-RETURNS text
-AS 'MODULE_PATHNAME','ora_substrc'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-
-/*
- * Every first-argument type has numeric-position overloads as well, for the
- * same reason it has sys.number- and integer-position ones: with only the
- * sys.number shapes in the set, a call whose positions are written as plain
- * pg_catalog.numeric ties between the integer-, sys.number- and
- * numeric-position families and ends in "function substrc(...) is not
- * unique".  The oracharchar and oracharbyte rows bind the C symbols directly
- * so that a CHAR source keeps its blank padding; the text row is what an
- * unknown-source call resolves onto (text is the preferred type of the
- * string category, so the preferred-type heuristics pick it over the
- * rejection overloads' pos-1/2 exact matches).
- *
- * A CLOB or NCLOB source with numeric positions is refused at parse time by
- * the rejection overloads further down, which the parser picks from the raw
- * argument types before any of this scoring runs.
- *
- * These rows are STRICT like every other row of the set: a NULL source or a
- * NULL position answers null instead of reaching ora_substrc() with an
- * unchecked argument.
- */
-CREATE OR REPLACE FUNCTION sys.substrc(text, numeric)
+CREATE FUNCTION sys.substrc(sys.oracharchar, integer)
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc_no_length'
 LANGUAGE C
@@ -905,7 +803,7 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.substrc(text, numeric, numeric)
+CREATE FUNCTION sys.substrc(sys.oracharchar, integer, integer)
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc'
 LANGUAGE C
@@ -913,7 +811,7 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.substrc(sys.oracharchar, smallint)
+CREATE FUNCTION sys.substrc(text, integer)
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc_no_length'
 LANGUAGE C
@@ -921,7 +819,7 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.substrc(sys.oracharchar, smallint, smallint)
+CREATE FUNCTION sys.substrc(text, integer, integer)
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc'
 LANGUAGE C
@@ -929,7 +827,7 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.substrc(sys.oracharbyte, smallint)
+CREATE FUNCTION sys.substrc(sys.oracharbyte, numeric)
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc_no_length'
 LANGUAGE C
@@ -937,7 +835,7 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.substrc(sys.oracharbyte, smallint, smallint)
+CREATE FUNCTION sys.substrc(sys.oracharbyte, numeric, numeric)
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc'
 LANGUAGE C
@@ -945,7 +843,7 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.substrc(text, bigint)
+CREATE FUNCTION sys.substrc(sys.oracharchar, numeric)
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc_no_length'
 LANGUAGE C
@@ -953,7 +851,7 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.substrc(text, bigint, bigint)
+CREATE FUNCTION sys.substrc(sys.oracharchar, numeric, numeric)
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc'
 LANGUAGE C
@@ -961,7 +859,7 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.substrc(sys.oracharchar, bigint)
+CREATE FUNCTION sys.substrc(text, numeric)
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc_no_length'
 LANGUAGE C
@@ -969,7 +867,7 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.substrc(sys.oracharchar, bigint, bigint)
+CREATE FUNCTION sys.substrc(text, numeric, numeric)
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc'
 LANGUAGE C
@@ -977,7 +875,7 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.substrc(sys.oracharbyte, bigint)
+CREATE FUNCTION sys.substrc(sys.oracharbyte, smallint)
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc_no_length'
 LANGUAGE C
@@ -985,7 +883,7 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.substrc(sys.oracharbyte, bigint, bigint)
+CREATE FUNCTION sys.substrc(sys.oracharbyte, smallint, smallint)
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc'
 LANGUAGE C
@@ -993,91 +891,7 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.substrc(sys.clob, smallint)
-RETURNS text
-AS 'MODULE_PATHNAME','ora_substrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.substrc(sys.clob, smallint, smallint)
-RETURNS text
-AS 'MODULE_PATHNAME','ora_substrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.substrc(sys.nclob, smallint)
-RETURNS text
-AS 'MODULE_PATHNAME','ora_substrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.substrc(sys.nclob, smallint, smallint)
-RETURNS text
-AS 'MODULE_PATHNAME','ora_substrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.substrc(sys.clob, bigint)
-RETURNS text
-AS 'MODULE_PATHNAME','ora_substrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.substrc(sys.clob, bigint, bigint)
-RETURNS text
-AS 'MODULE_PATHNAME','ora_substrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.substrc(sys.nclob, bigint)
-RETURNS text
-AS 'MODULE_PATHNAME','ora_substrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.substrc(sys.nclob, bigint, bigint)
-RETURNS text
-AS 'MODULE_PATHNAME','ora_substrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.substrc(sys.clob, numeric)
-RETURNS text
-AS 'MODULE_PATHNAME','ora_substrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.substrc(sys.clob, numeric, numeric)
-RETURNS text
-AS 'MODULE_PATHNAME','ora_substrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.substrc(sys.nclob, numeric)
-RETURNS text
-AS 'MODULE_PATHNAME','ora_substrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.substrc(sys.nclob, numeric, numeric)
-RETURNS text
-AS 'MODULE_PATHNAME','ora_substrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.substrc(sys.oracharchar, numeric)
+CREATE FUNCTION sys.substrc(sys.oracharchar, smallint)
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc_no_length'
 LANGUAGE C
@@ -1085,7 +899,7 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.substrc(sys.oracharchar, numeric, numeric)
+CREATE FUNCTION sys.substrc(sys.oracharchar, smallint, smallint)
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc'
 LANGUAGE C
@@ -1093,7 +907,7 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.substrc(sys.oracharbyte, numeric)
+CREATE FUNCTION sys.substrc(text, smallint)
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc_no_length'
 LANGUAGE C
@@ -1101,7 +915,7 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.substrc(sys.oracharbyte, numeric, numeric)
+CREATE FUNCTION sys.substrc(text, smallint, smallint)
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc'
 LANGUAGE C
@@ -1109,77 +923,136 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
+CREATE FUNCTION sys.substrc(sys.oracharbyte, bigint)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc_no_length'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(sys.oracharbyte, bigint, bigint)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(sys.oracharchar, bigint)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc_no_length'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(sys.oracharchar, bigint, bigint)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(text, bigint)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc_no_length'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(text, bigint, bigint)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
 
 /*
  * The LOB types Oracle's SUBSTRC refuses; see ora_substrc_unsupported().
- * NOT STRICT on purpose -- Oracle rejects the type while parsing, so a NULL
- * of a rejected type has to error out too.
- *
- * Same reasoning as for instrc above: without an exact candidate for every
- * position shape, a call whose position is written as numeric instead of
- * sys.number resolves onto the text overload and a constant CLOB source
- * reaches it folded to plain text.  The integer- and number-position
- * overloads are needed as well: func_get_detail() picks the candidate with
- * the most exact matches, so an integer position still prefers the
- * integer-position text overloads, exactly as it does for sys.lengthc().
+ * NOT STRICT on purpose -- Oracle rejects the type while parsing, so a
+ * NULL of a rejected type has to error out too rather than quietly answer
+ * null.  The defaulted second position lets one row serve both the
+ * 2-argument and the 3-argument call shapes; a one-argument call finds no
+ * candidate at all, as before.  The spellings are the same five the accept
+ * rows use, so a constant CLOB call is refused whatever numeric spelling
+ * its positions carry; a LOB source that is not a compile-time constant
+ * (a column, a function result) is refused at run time by
+ * ora_reject_lob_args() under every spelling there is.
  */
-CREATE FUNCTION sys.substrc(sys.clob, integer)
+CREATE FUNCTION sys.substrc(sys.clob, sys.number, sys.number default '1')
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE FUNCTION sys.substrc(sys.clob, integer, integer)
+CREATE FUNCTION sys.substrc(sys.nclob, sys.number, sys.number default '1')
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE FUNCTION sys.substrc(sys.clob, sys.number)
+CREATE FUNCTION sys.substrc(sys.clob, integer, integer default '1')
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE FUNCTION sys.substrc(sys.clob, sys.number, sys.number)
+CREATE FUNCTION sys.substrc(sys.nclob, integer, integer default '1')
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE FUNCTION sys.substrc(sys.nclob, integer)
+CREATE FUNCTION sys.substrc(sys.clob, numeric, numeric default '1')
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE FUNCTION sys.substrc(sys.nclob, integer, integer)
+CREATE FUNCTION sys.substrc(sys.nclob, numeric, numeric default '1')
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE FUNCTION sys.substrc(sys.nclob, sys.number)
+CREATE FUNCTION sys.substrc(sys.clob, smallint, smallint default '1')
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE FUNCTION sys.substrc(sys.nclob, sys.number, sys.number)
+CREATE FUNCTION sys.substrc(sys.nclob, smallint, smallint default '1')
 RETURNS text
 AS 'MODULE_PATHNAME','ora_substrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-COMMENT ON FUNCTION sys.substrc(text, number, number) IS 'Return part of a string, position and length counted in Unicode complete characters';
+CREATE FUNCTION sys.substrc(sys.clob, bigint, bigint default '1')
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.substrc(sys.nclob, bigint, bigint default '1')
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
 
 CREATE FUNCTION sys.replace(varchar, varchar, varchar default NULL)
 RETURNS text
@@ -2123,32 +1996,124 @@ $$ LANGUAGE SQL
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
-
 /*
  * instrc --- Oracle's INSTRC: INSTR with the search position and the
  * returned position counted in Unicode complete characters, the same
  * counting unit as sys.lengthc(): the code points of the NFC-normalized
- * string.  The overload shape mirrors sys.instr() above: the text/int
- * overloads bind the C symbols and the varchar2/number ones are thin
- * wrappers, so unknown literals and Oracle-side NUMBER arguments keep
- * resolving the way they do for INSTR.
+ * string.  Oracle's argument rules are enforced by the C symbols: the
+ * occurrence must be positive (a non-positive one is refused with
+ * ORA-01428) and the position must not be zero (a zero position starts the
+ * search before the first character, so the answer is 0).
  *
- * Oracle's argument rules are enforced by the C symbols: the occurrence
- * must be positive (a non-positive one is refused with ORA-01428) and the
- * position must not be zero (a zero position starts the search before the
- * first character, so the answer is 0).
+ * The overload set: one row per (source, pattern) character-family pair
+ * and per numeric spelling, and nothing else.  All of the rows bind the C
+ * function directly and none of them goes through a cast on the source or
+ * the pattern, for one reason -- sys.oracharchar -> text and
+ * sys.oracharbyte -> text are both implemented by rtrim(), so routing a
+ * CHAR value through either of them would silently drop the blank padding
+ * that Oracle counts: INSTRC(CAST('ab' AS CHAR(5 BYTE)), ' ') has to find
+ * the first blank at position 3, and INSTRC('ab', CAST('b' AS CHAR(2)))
+ * has to miss because the pattern reads 'b ' once padded.  The CHAR
+ * families keep rows for their own source, and every family keeps rows
+ * whose pattern is of each family's type so a mixed-family call finds one
+ * row matching both sides exactly; without it, PostgreSQL's resolution
+ * would tie two rows that each match one position and answer "function
+ * instrc(...) is not unique".
+ *
+ * The VARCHAR2 source families (sys.oravarcharchar and sys.oravarcharbyte,
+ * which carry no padding and are binary-coercible to text) keep no rows of
+ * their own: they resolve onto the text-source rows, whose pattern side
+ * already exact-matches every family, with their contents unchanged.
+ *
+ * position and occurrence are NUMBER in Oracle.  The sys.number rows are
+ * the canonical shape; the integer, plain-numeric, smallint and bigint
+ * rows exist for the spellings a position can carry when written as a bare
+ * literal (1 is integer, 1.9 is numeric) or with an explicit cast, so such
+ * a call finds an exact candidate instead of being left to the preferred
+ * type heuristics.  Fractional positions are cut to whole numbers, the way
+ * Oracle cuts them.
+ *
+ * The defaulted fourth argument lets one row serve both the 3-argument and
+ * the 4-argument call shape (an omitted occurrence reads as 1, Oracle's
+ * own default) while a 2-argument call, needing two more arguments than a
+ * single default supplies, never sees these rows at all and keeps rows of
+ * its own.
  */
-CREATE FUNCTION sys.instrc(str text, patt text, sta int, nth int)
+CREATE FUNCTION sys.instrc(str sys.oracharbyte, patt text)
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE FUNCTION sys.instrc(str text, patt text, sta int)
+CREATE FUNCTION sys.instrc(str sys.oracharbyte, patt sys.oracharchar)
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3'
+AS 'MODULE_PATHNAME','ora_instrc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(str sys.oracharbyte, patt sys.oracharbyte)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(str sys.oracharbyte, patt sys.oravarcharchar)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(str sys.oracharbyte, patt sys.oravarcharbyte)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(str sys.oracharchar, patt text)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(str sys.oracharchar, patt sys.oracharchar)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(str sys.oracharchar, patt sys.oracharbyte)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(str sys.oracharchar, patt sys.oravarcharchar)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(str sys.oracharchar, patt sys.oravarcharbyte)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
@@ -2156,7 +2121,39 @@ IMMUTABLE;
 
 CREATE FUNCTION sys.instrc(str text, patt text)
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_2'
+AS 'MODULE_PATHNAME','ora_instrc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(str text, patt sys.oracharchar)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(str text, patt sys.oracharbyte)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(str text, patt sys.oravarcharchar)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc'
+LANGUAGE C
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(str text, patt sys.oravarcharbyte)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
@@ -2164,3259 +2161,795 @@ IMMUTABLE;
 
 COMMENT ON FUNCTION sys.instrc(str text, patt text) IS 'Return the position of a substring, positions counted in Unicode complete characters';
 
-CREATE FUNCTION sys.instrc(str varchar2, patt varchar2, sta number, nth number)
-RETURNS int
-AS $$
-  select sys.instrc(str::text, patt::text, sta::integer, nth::integer);
-$$ LANGUAGE SQL
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE FUNCTION sys.instrc(str varchar2, patt varchar2, sta number)
-RETURNS int
-AS $$
-  select sys.instrc(str::text, patt::text, sta::integer);
-$$ LANGUAGE SQL
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE FUNCTION sys.instrc(str varchar2, patt varchar2)
-RETURNS int
-AS $$
-  select sys.instrc(str::text, patt::text);
-$$ LANGUAGE SQL
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
 /*
- * The Oracle character types bind the C symbols directly and none of them
- * goes through a cast: sys.oracharchar -> text and sys.oracharbyte -> text
- * are both implemented by rtrim(), so routing CHAR through either of them
- * would silently drop the blank padding that Oracle counts --
- * INSTRC(CAST('ab' AS CHAR(5 BYTE)), ' ') has to find the first blank at
- * position 3.  This is the same overload set -- and the same reason -- as
- * sys.lengthc()'s.  (The varchar2 overload is the VARCHAR2 byte type,
- * sys.oravarcharbyte.)
- *
- * The text overload is not optional: with more than one candidate in the
- * same namespace, func_select_candidate() cannot break the tie by search
- * path position and fails with "function ... is not unique" for an
- * unknown-type literal such as instrc('abc', 'c').  text is the preferred
- * type of the string category, so it wins that tie.
+ * The 3-argument and 4-argument shapes: the defaulted occurrence lets one
+ * row serve both (an omitted occurrence reads as 1, Oracle's own default),
+ * while a 2-argument call needs two more arguments than a single default
+ * supplies and so never reaches these rows.
  */
-CREATE FUNCTION sys.instrc(sys.oracharchar, sys.oracharchar)
+-- positions as sys.number
+CREATE FUNCTION sys.instrc(str sys.oracharbyte, patt text, sta sys.number, nth sys.number default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_2'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE FUNCTION sys.instrc(sys.oracharbyte, sys.oracharbyte)
+CREATE FUNCTION sys.instrc(str sys.oracharbyte, patt sys.oracharchar, sta sys.number, nth sys.number default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_2'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE FUNCTION sys.instrc(sys.oravarcharchar, sys.oravarcharchar)
+CREATE FUNCTION sys.instrc(str sys.oracharbyte, patt sys.oracharbyte, sta sys.number, nth sys.number default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_2'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE FUNCTION sys.instrc(sys.oracharchar, sys.oracharchar, int)
+CREATE FUNCTION sys.instrc(str sys.oracharbyte, patt sys.oravarcharchar, sta sys.number, nth sys.number default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE FUNCTION sys.instrc(sys.oracharbyte, sys.oracharbyte, int)
+CREATE FUNCTION sys.instrc(str sys.oracharbyte, patt sys.oravarcharbyte, sta sys.number, nth sys.number default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE FUNCTION sys.instrc(sys.oravarcharchar, sys.oravarcharchar, int)
+CREATE FUNCTION sys.instrc(str sys.oracharchar, patt text, sta sys.number, nth sys.number default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE FUNCTION sys.instrc(sys.oracharchar, sys.oracharchar, int, int)
+CREATE FUNCTION sys.instrc(str sys.oracharchar, patt sys.oracharchar, sta sys.number, nth sys.number default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE FUNCTION sys.instrc(sys.oracharbyte, sys.oracharbyte, int, int)
+CREATE FUNCTION sys.instrc(str sys.oracharchar, patt sys.oracharbyte, sta sys.number, nth sys.number default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE FUNCTION sys.instrc(sys.oravarcharchar, sys.oravarcharchar, int, int)
+CREATE FUNCTION sys.instrc(str sys.oracharchar, patt sys.oravarcharchar, sta sys.number, nth sys.number default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-/*
- * Oracle lets the source and the pattern of INSTRC use different character
- * types, so every (source, pattern) combination over the supported character
- * types is declared, and every one of them binds the C symbols directly.
- * With only the same-type pairs in the set, a mixed call had more than one
- * implicit path to choose from -- both arguments convert to text, and each
- * one converts to the other's type -- so func_select_candidate() had no
- * winner and answered "function instrc(...) is not unique".  The exact pair
- * wins the resolution instead, and no argument goes through a cast, so the
- * blank padding of a CHAR source survives.
- *
- * Every pair also has number-position overloads: Oracle declares position
- * and occurrence as NUMBER, and with integer-only direct overloads a call
- * with NUMBER arguments resolved onto the varchar2 wrapper, whose casts
- * strip the blank padding of a CHAR source.  The pairs that take a CHAR
- * type bind ora_instrc_3_number()/ora_instrc_4_number() for that; the
- * plain varchar2 pair keeps its existing wrapper overloads, which already
- * take sys.number and have no padding to keep.  The integer-position
- * overloads stay as well, because func_get_detail() picks the candidate
- * with the most exact matches, so an integer position still prefers them.
- */
-CREATE FUNCTION sys.instrc(text, text, number)
+CREATE FUNCTION sys.instrc(str sys.oracharchar, patt sys.oravarcharbyte, sta sys.number, nth sys.number default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE FUNCTION sys.instrc(text, text, number, number)
+CREATE FUNCTION sys.instrc(str text, patt text, sta sys.number, nth sys.number default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oracharchar, number)
+CREATE FUNCTION sys.instrc(str text, patt sys.oracharchar, sta sys.number, nth sys.number default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oracharchar, number, number)
+CREATE FUNCTION sys.instrc(str text, patt sys.oracharbyte, sta sys.number, nth sys.number default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oracharbyte, number)
+CREATE FUNCTION sys.instrc(str text, patt sys.oravarcharchar, sta sys.number, nth sys.number default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oracharbyte, number, number)
+CREATE FUNCTION sys.instrc(str text, patt sys.oravarcharbyte, sta sys.number, nth sys.number default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, sys.oravarcharchar, number)
+-- positions as integer
+CREATE FUNCTION sys.instrc(str sys.oracharbyte, patt text, sta integer, nth integer default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, sys.oravarcharchar, number, number)
+CREATE FUNCTION sys.instrc(str sys.oracharbyte, patt sys.oracharchar, sta integer, nth integer default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oracharchar)
+CREATE FUNCTION sys.instrc(str sys.oracharbyte, patt sys.oracharbyte, sta integer, nth integer default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_2'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oracharchar, int)
+CREATE FUNCTION sys.instrc(str sys.oracharbyte, patt sys.oravarcharchar, sta integer, nth integer default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oracharchar, int, int)
+CREATE FUNCTION sys.instrc(str sys.oracharbyte, patt sys.oravarcharbyte, sta integer, nth integer default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oracharchar, number)
+CREATE FUNCTION sys.instrc(str sys.oracharchar, patt text, sta integer, nth integer default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oracharchar, number, number)
+CREATE FUNCTION sys.instrc(str sys.oracharchar, patt sys.oracharchar, sta integer, nth integer default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oracharbyte)
+CREATE FUNCTION sys.instrc(str sys.oracharchar, patt sys.oracharbyte, sta integer, nth integer default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_2'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oracharbyte, int)
+CREATE FUNCTION sys.instrc(str sys.oracharchar, patt sys.oravarcharchar, sta integer, nth integer default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oracharbyte, int, int)
+CREATE FUNCTION sys.instrc(str sys.oracharchar, patt sys.oravarcharbyte, sta integer, nth integer default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oracharbyte, number)
+CREATE FUNCTION sys.instrc(str text, patt text, sta integer, nth integer default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oracharbyte, number, number)
+CREATE FUNCTION sys.instrc(str text, patt sys.oracharchar, sta integer, nth integer default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oravarcharchar)
+CREATE FUNCTION sys.instrc(str text, patt sys.oracharbyte, sta integer, nth integer default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_2'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oravarcharchar, int)
+CREATE FUNCTION sys.instrc(str text, patt sys.oravarcharchar, sta integer, nth integer default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oravarcharchar, int, int)
+CREATE FUNCTION sys.instrc(str text, patt sys.oravarcharbyte, sta integer, nth integer default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oravarcharchar, number)
+-- positions as numeric
+CREATE FUNCTION sys.instrc(str sys.oracharbyte, patt text, sta numeric, nth numeric default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oravarcharchar, number, number)
+CREATE FUNCTION sys.instrc(str sys.oracharbyte, patt sys.oracharchar, sta numeric, nth numeric default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oravarcharbyte)
+CREATE FUNCTION sys.instrc(str sys.oracharbyte, patt sys.oracharbyte, sta numeric, nth numeric default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_2'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oravarcharbyte, int)
+CREATE FUNCTION sys.instrc(str sys.oracharbyte, patt sys.oravarcharchar, sta numeric, nth numeric default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oravarcharbyte, int, int)
+CREATE FUNCTION sys.instrc(str sys.oracharbyte, patt sys.oravarcharbyte, sta numeric, nth numeric default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oravarcharbyte, number)
+CREATE FUNCTION sys.instrc(str sys.oracharchar, patt text, sta numeric, nth numeric default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oravarcharbyte, number, number)
+CREATE FUNCTION sys.instrc(str sys.oracharchar, patt sys.oracharchar, sta numeric, nth numeric default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, text)
+CREATE FUNCTION sys.instrc(str sys.oracharchar, patt sys.oracharbyte, sta numeric, nth numeric default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_2'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, text, int)
+CREATE FUNCTION sys.instrc(str sys.oracharchar, patt sys.oravarcharchar, sta numeric, nth numeric default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, text, int, int)
+CREATE FUNCTION sys.instrc(str sys.oracharchar, patt sys.oravarcharbyte, sta numeric, nth numeric default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, text, number)
+CREATE FUNCTION sys.instrc(str text, patt text, sta numeric, nth numeric default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, text, number, number)
+CREATE FUNCTION sys.instrc(str text, patt sys.oracharchar, sta numeric, nth numeric default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oracharbyte)
+CREATE FUNCTION sys.instrc(str text, patt sys.oracharbyte, sta numeric, nth numeric default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_2'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oracharbyte, int)
+CREATE FUNCTION sys.instrc(str text, patt sys.oravarcharchar, sta numeric, nth numeric default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oracharbyte, int, int)
+CREATE FUNCTION sys.instrc(str text, patt sys.oravarcharbyte, sta numeric, nth numeric default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oracharbyte, number)
+-- positions as smallint
+CREATE FUNCTION sys.instrc(str sys.oracharbyte, patt text, sta smallint, nth smallint default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oracharbyte, number, number)
+CREATE FUNCTION sys.instrc(str sys.oracharbyte, patt sys.oracharchar, sta smallint, nth smallint default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oravarcharchar)
+CREATE FUNCTION sys.instrc(str sys.oracharbyte, patt sys.oracharbyte, sta smallint, nth smallint default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_2'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oravarcharchar, int)
+CREATE FUNCTION sys.instrc(str sys.oracharbyte, patt sys.oravarcharchar, sta smallint, nth smallint default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oravarcharchar, int, int)
+CREATE FUNCTION sys.instrc(str sys.oracharbyte, patt sys.oravarcharbyte, sta smallint, nth smallint default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oravarcharchar, number)
+CREATE FUNCTION sys.instrc(str sys.oracharchar, patt text, sta smallint, nth smallint default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oravarcharchar, number, number)
+CREATE FUNCTION sys.instrc(str sys.oracharchar, patt sys.oracharchar, sta smallint, nth smallint default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oravarcharbyte)
+CREATE FUNCTION sys.instrc(str sys.oracharchar, patt sys.oracharbyte, sta smallint, nth smallint default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_2'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oravarcharbyte, int)
+CREATE FUNCTION sys.instrc(str sys.oracharchar, patt sys.oravarcharchar, sta smallint, nth smallint default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oravarcharbyte, int, int)
+CREATE FUNCTION sys.instrc(str sys.oracharchar, patt sys.oravarcharbyte, sta smallint, nth smallint default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oravarcharbyte, number)
+CREATE FUNCTION sys.instrc(str text, patt text, sta smallint, nth smallint default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oravarcharbyte, number, number)
+CREATE FUNCTION sys.instrc(str text, patt sys.oracharchar, sta smallint, nth smallint default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, text)
+CREATE FUNCTION sys.instrc(str text, patt sys.oracharbyte, sta smallint, nth smallint default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_2'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, text, int)
+CREATE FUNCTION sys.instrc(str text, patt sys.oravarcharchar, sta smallint, nth smallint default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, text, int, int)
+CREATE FUNCTION sys.instrc(str text, patt sys.oravarcharbyte, sta smallint, nth smallint default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, text, number)
+-- positions as bigint
+CREATE FUNCTION sys.instrc(str sys.oracharbyte, patt text, sta bigint, nth bigint default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, text, number, number)
+CREATE FUNCTION sys.instrc(str sys.oracharbyte, patt sys.oracharchar, sta bigint, nth bigint default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oracharchar)
+CREATE FUNCTION sys.instrc(str sys.oracharbyte, patt sys.oracharbyte, sta bigint, nth bigint default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_2'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oracharchar, int)
+CREATE FUNCTION sys.instrc(str sys.oracharbyte, patt sys.oravarcharchar, sta bigint, nth bigint default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oracharchar, int, int)
+CREATE FUNCTION sys.instrc(str sys.oracharbyte, patt sys.oravarcharbyte, sta bigint, nth bigint default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oracharchar, number)
+CREATE FUNCTION sys.instrc(str sys.oracharchar, patt text, sta bigint, nth bigint default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oracharchar, number, number)
+CREATE FUNCTION sys.instrc(str sys.oracharchar, patt sys.oracharchar, sta bigint, nth bigint default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oravarcharchar)
+CREATE FUNCTION sys.instrc(str sys.oracharchar, patt sys.oracharbyte, sta bigint, nth bigint default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_2'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oravarcharchar, int)
+CREATE FUNCTION sys.instrc(str sys.oracharchar, patt sys.oravarcharchar, sta bigint, nth bigint default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oravarcharchar, int, int)
+CREATE FUNCTION sys.instrc(str sys.oracharchar, patt sys.oravarcharbyte, sta bigint, nth bigint default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oravarcharchar, number)
+CREATE FUNCTION sys.instrc(str text, patt text, sta bigint, nth bigint default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oravarcharchar, number, number)
+CREATE FUNCTION sys.instrc(str text, patt sys.oracharchar, sta bigint, nth bigint default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oravarcharbyte)
+CREATE FUNCTION sys.instrc(str text, patt sys.oracharbyte, sta bigint, nth bigint default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_2'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oravarcharbyte, int)
+CREATE FUNCTION sys.instrc(str text, patt sys.oravarcharchar, sta bigint, nth bigint default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oravarcharbyte, int, int)
+CREATE FUNCTION sys.instrc(str text, patt sys.oravarcharbyte, sta bigint, nth bigint default '1')
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oravarcharbyte, number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oravarcharbyte, number, number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, text)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_2'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, text, int)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, text, int, int)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, text, number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, text, number, number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, sys.oracharchar)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_2'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, sys.oracharchar, int)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, sys.oracharchar, int, int)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, sys.oracharchar, number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, sys.oracharchar, number, number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, sys.oracharbyte)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_2'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, sys.oracharbyte, int)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, sys.oracharbyte, int, int)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, sys.oracharbyte, number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, sys.oracharbyte, number, number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, sys.oravarcharbyte)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_2'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, sys.oravarcharbyte, int)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, sys.oravarcharbyte, int, int)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, sys.oravarcharbyte, number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, sys.oravarcharbyte, number, number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, text)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_2'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, text, int)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, text, int, int)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, text, number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, text, number, number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, sys.oracharchar)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_2'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, sys.oracharchar, int)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, sys.oracharchar, int, int)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, sys.oracharchar, number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, sys.oracharchar, number, number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, sys.oracharbyte)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_2'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, sys.oracharbyte, int)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, sys.oracharbyte, int, int)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, sys.oracharbyte, number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, sys.oracharbyte, number, number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, sys.oravarcharchar)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_2'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, sys.oravarcharchar, int)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, sys.oravarcharchar, int, int)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, sys.oravarcharchar, number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, sys.oravarcharchar, number, number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, sys.oravarcharbyte, int)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, sys.oravarcharbyte, int, int)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(text, text, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(text, text, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oracharchar, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oracharchar, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oracharbyte, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oracharbyte, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oravarcharchar, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oravarcharchar, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oravarcharbyte, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oravarcharbyte, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, text, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, text, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oracharchar, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oracharchar, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oracharbyte, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oracharbyte, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oravarcharchar, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oravarcharchar, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oravarcharbyte, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oravarcharbyte, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, text, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, text, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oracharchar, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oracharchar, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oracharbyte, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oracharbyte, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oravarcharchar, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oravarcharchar, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oravarcharbyte, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oravarcharbyte, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, text, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, text, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, sys.oracharchar, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, sys.oracharchar, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, sys.oracharbyte, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, sys.oracharbyte, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, sys.oravarcharchar, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, sys.oravarcharchar, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, sys.oravarcharbyte, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharchar, sys.oravarcharbyte, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, text, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, text, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, sys.oracharchar, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, sys.oracharchar, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, sys.oracharbyte, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, sys.oracharbyte, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, sys.oravarcharchar, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, sys.oravarcharchar, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, sys.oravarcharbyte, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oravarcharbyte, sys.oravarcharbyte, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(text, text, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
+AS 'MODULE_PATHNAME','ora_instrc'
 LANGUAGE C
 STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
 /*
- * smallint- and bigint-position shapes for every (source, pattern) pair:
- * a position written as 2::smallint or 2::bigint converts implicitly to
- * integer, sys.number and numeric alike, so without exact candidates for
- * those spellings the integer-, number- and numeric-position families tie
- * in the resolver and the call ends in "function instrc(...) is not
- * unique".  They bind the same C symbols as the number-position shapes;
- * ora_position_arg() converts the smallint and bigint datums.
+ * The LOB types Oracle's INSTRC refuses for the source argument; see
+ * ora_instrc_unsupported().  NOT STRICT on purpose -- Oracle rejects the
+ * type while parsing, so a NULL of a rejected type has to error out too
+ * rather than quietly answer null.  The pattern may be a CLOB or an NCLOB
+ * (Oracle only refuses them for the source), so the pattern spellings
+ * listed here are the ones a constant-LOB source call realistically
+ * carries: an untyped literal or text.  The defaulted fourth argument
+ * serves both the 3-argument and the 4-argument shapes.  The rows are what
+ * stops a constant CLOB source from silently answering as text: sys.clob
+ * and sys.nclob are domains over text, and the planner folds a constant's
+ * domain coercion away before the function runs, so the run-time check in
+ * ora_instrc() never sees it.  A LOB source that is not a compile-time
+ * constant (a column, a function result) is refused at run time by
+ * ora_reject_lob_args(), whatever the pattern and the positions look like.
  */
-CREATE OR REPLACE FUNCTION sys.instrc(text, text, smallint, smallint)
+CREATE FUNCTION sys.instrc(sys.clob, unknown)
 RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oracharchar, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oracharchar, smallint, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oracharbyte, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oracharbyte, smallint, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oravarcharchar, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oravarcharchar, smallint, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oravarcharbyte, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oravarcharbyte, smallint, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, text, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, text, smallint, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oracharchar, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oracharchar, smallint, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oracharbyte, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oracharbyte, smallint, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oravarcharchar, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oravarcharchar, smallint, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oravarcharbyte, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oravarcharbyte, smallint, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, text, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, text, smallint, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oracharchar, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oracharchar, smallint, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oracharbyte, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oracharbyte, smallint, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oravarcharchar, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oravarcharchar, smallint, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oravarcharbyte, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oravarcharbyte, smallint, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(text, text, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(text, text, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oracharchar, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oracharchar, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oracharbyte, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oracharbyte, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oravarcharchar, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oravarcharchar, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oravarcharbyte, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(text, sys.oravarcharbyte, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, text, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, text, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oracharchar, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oracharchar, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oracharbyte, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oracharbyte, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oravarcharchar, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oravarcharchar, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oravarcharbyte, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharchar, sys.oravarcharbyte, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, text, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, text, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oracharchar, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oracharchar, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oracharbyte, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oracharbyte, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oravarcharchar, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oravarcharchar, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oravarcharbyte, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_3_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.oracharbyte, sys.oravarcharbyte, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_4_number'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, text, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, text, smallint, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oracharchar, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oracharchar, smallint, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oracharbyte, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oracharbyte, smallint, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oravarcharchar, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oravarcharchar, smallint, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oravarcharbyte, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oravarcharbyte, smallint, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.clob, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.clob, smallint, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.nclob, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.nclob, smallint, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, unknown, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, unknown, smallint, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, text, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, text, smallint, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oracharchar, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oracharchar, smallint, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oracharbyte, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oracharbyte, smallint, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oravarcharchar, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oravarcharchar, smallint, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oravarcharbyte, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oravarcharbyte, smallint, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.clob, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.clob, smallint, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.nclob, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.nclob, smallint, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, unknown, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, unknown, smallint, smallint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, text, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, text, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oracharchar, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oracharchar, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oracharbyte, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oracharbyte, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oravarcharchar, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oravarcharchar, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oravarcharbyte, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oravarcharbyte, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.clob, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.clob, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.nclob, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.nclob, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, unknown, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, unknown, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, text, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, text, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oracharchar, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oracharchar, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oracharbyte, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oracharbyte, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oravarcharchar, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oravarcharchar, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oravarcharbyte, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oravarcharbyte, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.clob, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.clob, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.nclob, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.nclob, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, unknown, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, unknown, bigint, bigint)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.substrc(text, smallint)
-RETURNS text
-AS 'MODULE_PATHNAME','ora_substrc_no_length'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.substrc(text, smallint, smallint)
-RETURNS text
-AS 'MODULE_PATHNAME','ora_substrc'
-LANGUAGE C
-STRICT
-PARALLEL SAFE
-IMMUTABLE;
-
-/*
- * The LOB types Oracle's INSTRC refuses; see ora_instrc_unsupported().
- * NOT STRICT on purpose -- Oracle rejects the type while parsing, so a NULL
- * of a rejected type has to error out too.
- *
- * Oracle refuses a CLOB or NCLOB *source*, while the pattern may be a CLOB
- * or an NCLOB -- the C symbols check argument 0 only (ora_reject_lob_args()
- * is called with 1 for instrc).  The overloads below are what makes the
- * parse-time refusal airtight: sys.clob and sys.nclob are domains over text,
- * so plain resolution folds them onto the text overloads, and the optimizer
- * folds a constant argument -- together with its domain coercion -- away to
- * a plain text constant before the C function ever runs, which is how
- * instrc(CAST('abc' AS CLOB), CAST('b' AS VARCHAR2(1 BYTE))) used to answer
- * 2 instead of raising ORA-00932.  The matrix gives every (clob|nclob
- * source, <any pattern>, <any position shape>) call an exact candidate,
- * which func_get_detail() resolves straight from the raw argument types,
- * before any coercion is planned: the pattern column covers every character
- * type a pattern can carry, the position column covers integer, smallint,
- * bigint, sys.number and numeric in the one- and two-position shapes, and
- * the unknown pattern is what catches the common instrc(TO_CLOB('abc'),
- * 'b') call.
- */
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, text)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, text, integer)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, text, sys.number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, text, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, text, integer, integer)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, text, sys.number, sys.number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, text, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, varchar, integer)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, varchar, sys.number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, varchar, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, varchar, integer, integer)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, varchar, sys.number, sys.number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, varchar, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oracharchar)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oracharchar, integer)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oracharchar, sys.number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oracharchar, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oracharchar, integer, integer)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oracharchar, sys.number, sys.number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oracharchar, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oracharbyte)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oracharbyte, integer)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oracharbyte, sys.number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oracharbyte, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oracharbyte, integer, integer)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oracharbyte, sys.number, sys.number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oracharbyte, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oravarcharchar)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oravarcharchar, integer)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oravarcharchar, sys.number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oravarcharchar, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oravarcharchar, integer, integer)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oravarcharchar, sys.number, sys.number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oravarcharchar, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oravarcharbyte)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oravarcharbyte, integer)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oravarcharbyte, sys.number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oravarcharbyte, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oravarcharbyte, integer, integer)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oravarcharbyte, sys.number, sys.number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.oravarcharbyte, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.clob)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.clob, integer)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.clob, sys.number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.clob, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.clob, integer, integer)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.clob, sys.number, sys.number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.clob, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.nclob)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.nclob, integer)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.nclob, sys.number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.nclob, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.nclob, integer, integer)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.nclob, sys.number, sys.number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, sys.nclob, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, unknown)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, unknown, integer)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, unknown, sys.number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, unknown, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, unknown, integer, integer)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, unknown, sys.number, sys.number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.clob, unknown, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, text)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, text, integer)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, text, sys.number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, text, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, text, integer, integer)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, text, sys.number, sys.number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, text, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, varchar, integer)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, varchar, sys.number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, varchar, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, varchar, integer, integer)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, varchar, sys.number, sys.number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, varchar, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oracharchar)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oracharchar, integer)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oracharchar, sys.number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oracharchar, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oracharchar, integer, integer)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oracharchar, sys.number, sys.number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oracharchar, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oracharbyte)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oracharbyte, integer)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oracharbyte, sys.number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oracharbyte, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oracharbyte, integer, integer)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oracharbyte, sys.number, sys.number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oracharbyte, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oravarcharchar)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oravarcharchar, integer)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oravarcharchar, sys.number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oravarcharchar, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oravarcharchar, integer, integer)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oravarcharchar, sys.number, sys.number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oravarcharchar, numeric, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oravarcharbyte)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oravarcharbyte, integer)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oravarcharbyte, sys.number)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oravarcharbyte, numeric)
-RETURNS int
-AS 'MODULE_PATHNAME','ora_instrc_unsupported'
-LANGUAGE C
-PARALLEL SAFE
-IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oravarcharbyte, integer, integer)
-RETURNS int
 AS 'MODULE_PATHNAME','ora_instrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oravarcharbyte, sys.number, sys.number)
+CREATE FUNCTION sys.instrc(sys.clob, unknown, sta sys.number, nth sys.number default '1')
 RETURNS int
 AS 'MODULE_PATHNAME','ora_instrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.oravarcharbyte, numeric, numeric)
+CREATE FUNCTION sys.instrc(sys.clob, unknown, sta integer, nth integer default '1')
 RETURNS int
 AS 'MODULE_PATHNAME','ora_instrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.clob)
+CREATE FUNCTION sys.instrc(sys.clob, unknown, sta numeric, nth numeric default '1')
 RETURNS int
 AS 'MODULE_PATHNAME','ora_instrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.clob, integer)
+CREATE FUNCTION sys.instrc(sys.clob, unknown, sta smallint, nth smallint default '1')
 RETURNS int
 AS 'MODULE_PATHNAME','ora_instrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.clob, sys.number)
+CREATE FUNCTION sys.instrc(sys.clob, unknown, sta bigint, nth bigint default '1')
 RETURNS int
 AS 'MODULE_PATHNAME','ora_instrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.clob, numeric)
+CREATE FUNCTION sys.instrc(sys.clob, text)
 RETURNS int
 AS 'MODULE_PATHNAME','ora_instrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.clob, integer, integer)
+CREATE FUNCTION sys.instrc(sys.clob, text, sta sys.number, nth sys.number default '1')
 RETURNS int
 AS 'MODULE_PATHNAME','ora_instrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.clob, sys.number, sys.number)
+CREATE FUNCTION sys.instrc(sys.clob, text, sta integer, nth integer default '1')
 RETURNS int
 AS 'MODULE_PATHNAME','ora_instrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.clob, numeric, numeric)
+CREATE FUNCTION sys.instrc(sys.clob, text, sta numeric, nth numeric default '1')
 RETURNS int
 AS 'MODULE_PATHNAME','ora_instrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.nclob)
+CREATE FUNCTION sys.instrc(sys.clob, text, sta smallint, nth smallint default '1')
 RETURNS int
 AS 'MODULE_PATHNAME','ora_instrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.nclob, integer)
+CREATE FUNCTION sys.instrc(sys.clob, text, sta bigint, nth bigint default '1')
 RETURNS int
 AS 'MODULE_PATHNAME','ora_instrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.nclob, sys.number)
+CREATE FUNCTION sys.instrc(sys.nclob, unknown)
 RETURNS int
 AS 'MODULE_PATHNAME','ora_instrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.nclob, numeric)
+CREATE FUNCTION sys.instrc(sys.nclob, unknown, sta sys.number, nth sys.number default '1')
 RETURNS int
 AS 'MODULE_PATHNAME','ora_instrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.nclob, integer, integer)
+CREATE FUNCTION sys.instrc(sys.nclob, unknown, sta integer, nth integer default '1')
 RETURNS int
 AS 'MODULE_PATHNAME','ora_instrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.nclob, sys.number, sys.number)
+CREATE FUNCTION sys.instrc(sys.nclob, unknown, sta numeric, nth numeric default '1')
 RETURNS int
 AS 'MODULE_PATHNAME','ora_instrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, sys.nclob, numeric, numeric)
+CREATE FUNCTION sys.instrc(sys.nclob, unknown, sta smallint, nth smallint default '1')
 RETURNS int
 AS 'MODULE_PATHNAME','ora_instrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, unknown)
+CREATE FUNCTION sys.instrc(sys.nclob, unknown, sta bigint, nth bigint default '1')
 RETURNS int
 AS 'MODULE_PATHNAME','ora_instrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, unknown, integer)
+CREATE FUNCTION sys.instrc(sys.nclob, text)
 RETURNS int
 AS 'MODULE_PATHNAME','ora_instrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, unknown, sys.number)
+CREATE FUNCTION sys.instrc(sys.nclob, text, sta sys.number, nth sys.number default '1')
 RETURNS int
 AS 'MODULE_PATHNAME','ora_instrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, unknown, numeric)
+CREATE FUNCTION sys.instrc(sys.nclob, text, sta integer, nth integer default '1')
 RETURNS int
 AS 'MODULE_PATHNAME','ora_instrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, unknown, integer, integer)
+CREATE FUNCTION sys.instrc(sys.nclob, text, sta numeric, nth numeric default '1')
 RETURNS int
 AS 'MODULE_PATHNAME','ora_instrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, unknown, sys.number, sys.number)
+CREATE FUNCTION sys.instrc(sys.nclob, text, sta smallint, nth smallint default '1')
 RETURNS int
 AS 'MODULE_PATHNAME','ora_instrc_unsupported'
 LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION sys.instrc(sys.nclob, unknown, numeric, numeric)
+CREATE FUNCTION sys.instrc(sys.nclob, text, sta bigint, nth bigint default '1')
 RETURNS int
 AS 'MODULE_PATHNAME','ora_instrc_unsupported'
 LANGUAGE C

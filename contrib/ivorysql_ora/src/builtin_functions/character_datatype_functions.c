@@ -78,11 +78,7 @@ PG_FUNCTION_INFO_V1(ora_instrb);
 PG_FUNCTION_INFO_V1(oracle_instr_2);
 PG_FUNCTION_INFO_V1(oracle_instr_3);
 PG_FUNCTION_INFO_V1(oracle_instr_4);
-PG_FUNCTION_INFO_V1(ora_instrc_2);
-PG_FUNCTION_INFO_V1(ora_instrc_3);
-PG_FUNCTION_INFO_V1(ora_instrc_4);
-PG_FUNCTION_INFO_V1(ora_instrc_3_number);
-PG_FUNCTION_INFO_V1(ora_instrc_4_number);
+PG_FUNCTION_INFO_V1(ora_instrc);
 PG_FUNCTION_INFO_V1(ora_instrc_unsupported);
 PG_FUNCTION_INFO_V1(ora_substrc);
 PG_FUNCTION_INFO_V1(ora_substrc_no_length);
@@ -361,8 +357,10 @@ ora_lengthc_unsupported(PG_FUNCTION_ARGS)
  * declared parameter type in an implicit coercion, so what the function sees
  * through get_fn_expr_argtype() is the *declared* type, not the type of the
  * expression the caller wrote.  That matters for the LOB types, which are
- * domains over text: the domain-to-base coercion is a relabel, so the LOB
- * type is still visible one level below the relabel.
+ * domains over text: the domain-to-base coercion is a relabel, and a further
+ * coercion to one of the Oracle character types stacks a second relabel on
+ * top of it, so the coercion chain has to be peeled all the way down before
+ * the caller's own type is visible.
  *
  * Anything we cannot inspect (no expression, not a plain function call, an
  * argument out of range) answers InvalidOid, which no caller treats as a
@@ -387,12 +385,16 @@ ora_call_argtype(FunctionCallInfo fcinfo, int argnum)
 
 	/*
 	 * An implicit coercion to the declared parameter type wraps the original
-	 * expression; peel it off so that the caller's own type is what we see.
+	 * expression; peel the whole stack of binary-coercion relabels off so
+	 * that the caller's own type is what we see.  (The peeling only helps
+	 * for non-constant arguments: the planner folds a RelabelType over a
+	 * Const into a bare Const of the target type, which is why the LOB
+	 * rejection overloads below are still needed for constant LOB sources.)
 	 */
-	if (IsA(arg, RelabelType))
+	while (arg != NULL && IsA(arg, RelabelType))
 		arg = (Node *) ((RelabelType *) arg)->arg;
 
-	return exprType(arg);
+	return arg ? exprType(arg) : InvalidOid;
 }
 
 /*
@@ -2208,15 +2210,23 @@ ora_nfc_normalize(text *arg)
  * The same degradation as ora_lengthc() applies on non-Unicode server
  * encodings, where INSTRC simply behaves like INSTR.
  *
- * Syntax:
- *   instrc (string TEXT, substring TEXT)
- *   instrc (string TEXT, substring TEXT, position INTEGER)
- *   instrc (string TEXT, substring TEXT, position INTEGER, occurrence INTEGER)
+ * ora_instrc() is the single C entry behind every sys.instrc() overload:
+ * the SQL layer declares the source and the pattern for the character
+ * families that count blanks (CHAR) or need no cast at all (text and the
+ * VARCHAR2 families, which resolve onto the text rows), and
+ * position/occurrence for the numeric spellings (sys.number, integer,
+ * numeric, smallint, bigint).  The 3-argument overloads default the
+ * omitted occurrence to 1 in the SQL declarations and reach here with four
+ * arguments; the 2-argument overloads carry no defaults and reach here
+ * with two, in which case both position and occurrence keep Oracle's
+ * default of 1.
  *
- * position and occurrence are NUMBER in Oracle, so the number-position
- * variants ora_instrc_3_number()/ora_instrc_4_number() read them through
- * ora_position_arg(), the same accessor the number-position overloads of
- * sys.substrc() use.
+ * The source datum arrives byte-identical to what the caller wrote: the
+ * CHAR families bind their own overloads, and every other character type
+ * is binary-coercible to the declared parameter types, so no cast runs
+ * first and no blank padding is stripped.  Whatever family the caller
+ * used, the datum is a varlena string, which is all the counting below
+ * needs.
  *
  * Argument rules, as Oracle has them:
  *
@@ -2227,123 +2237,36 @@ ora_nfc_normalize(text *arg)
  *
  ****************************************************************/
 Datum
-ora_instrc_2(PG_FUNCTION_ARGS)
+ora_instrc(PG_FUNCTION_ARGS)
 {
 	text	   *arg1;
 	text	   *arg2;
+	int			nargs = PG_NARGS();
+	int			arg3;
+	int			arg4;
 
 	/*
 	 * Oracle's INSTRC refuses the LOB types for the source string only; the
 	 * pattern may be a CLOB or an NCLOB, so only argument 0 is checked here.
+	 * A non-constant LOB source is caught here at run time.
 	 */
 	ora_reject_lob_args(fcinfo, 1, "instrc");
 
-	arg1 = ora_nfc_normalize(PG_GETARG_TEXT_PP(0));
-	arg2 = ora_nfc_normalize(PG_GETARG_TEXT_PP(1));
-
-	PG_RETURN_INT32(text_instring(arg1, arg2, 1, 1, false));
-}
-
-Datum
-ora_instrc_3(PG_FUNCTION_ARGS)
-{
-	text	   *arg1;
-	text	   *arg2;
-	int			arg3;
-
-	/* Oracle's INSTRC refuses the LOB types for the source string only */
-	ora_reject_lob_args(fcinfo, 1, "instrc");
-
-	arg3 = PG_GETARG_INT32(2);
-
-	/* a zero position starts before the first character: nothing matches */
-	if (arg3 == 0)
-		PG_RETURN_INT32(0);
-
-	arg1 = ora_nfc_normalize(PG_GETARG_TEXT_PP(0));
-	arg2 = ora_nfc_normalize(PG_GETARG_TEXT_PP(1));
-
-	PG_RETURN_INT32(text_instring(arg1, arg2, arg3, 1, false));
-}
-
-Datum
-ora_instrc_4(PG_FUNCTION_ARGS)
-{
-	text	   *arg1;
-	text	   *arg2;
-	int			arg3;
-	int			arg4;
-
-	/* Oracle's INSTRC refuses the LOB types for the source string only */
-	ora_reject_lob_args(fcinfo, 1, "instrc");
-
-	arg3 = PG_GETARG_INT32(2);
-	arg4 = PG_GETARG_INT32(3);
-
-	/* the occurrence must be positive */
-	if (arg4 < 1)
-		ereport(ERROR,
-				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-				 errmsg("argument '%d' is out of range", arg4),
-				 errdetail("Oracle raises ORA-01428 here: the occurrence"
-						   " argument of INSTRC must be a positive number.")));
-
-	/* a zero position starts before the first character: nothing matches */
-	if (arg3 == 0)
-		PG_RETURN_INT32(0);
-
-	arg1 = ora_nfc_normalize(PG_GETARG_TEXT_PP(0));
-	arg2 = ora_nfc_normalize(PG_GETARG_TEXT_PP(1));
-
-	PG_RETURN_INT32(text_instring(arg1, arg2, arg3, arg4, false));
-}
-
-/*
- * ora_instrc_3_number / ora_instrc_4_number --- the number-position variants
- * of ora_instrc_3 / ora_instrc_4.
- *
- * Oracle declares position and occurrence as NUMBER, so the direct
- * character-type overloads accept sys.number as well as integer: with only
- * the integer-position overloads in the set, a call with NUMBER arguments
- * resolved onto the varchar2 wrapper, whose casts strip the blank padding
- * of a CHAR source.  The positions are read through the shared accessor,
- * exactly as ora_substrc() reads them.
- */
-Datum
-ora_instrc_3_number(PG_FUNCTION_ARGS)
-{
-	text	   *arg1;
-	text	   *arg2;
-	int			arg3;
-
-	/* Oracle's INSTRC refuses the LOB types for the source string only */
-	ora_reject_lob_args(fcinfo, 1, "instrc");
-
-	arg3 = ora_position_arg(fcinfo, 2);
-
-	/* a zero position starts before the first character: nothing matches */
-	if (arg3 == 0)
-		PG_RETURN_INT32(0);
-
-	arg1 = ora_nfc_normalize(PG_GETARG_TEXT_PP(0));
-	arg2 = ora_nfc_normalize(PG_GETARG_TEXT_PP(1));
-
-	PG_RETURN_INT32(text_instring(arg1, arg2, arg3, 1, false));
-}
-
-Datum
-ora_instrc_4_number(PG_FUNCTION_ARGS)
-{
-	text	   *arg1;
-	text	   *arg2;
-	int			arg3;
-	int			arg4;
-
-	/* Oracle's INSTRC refuses the LOB types for the source string only */
-	ora_reject_lob_args(fcinfo, 1, "instrc");
-
-	arg3 = ora_position_arg(fcinfo, 2);
-	arg4 = ora_position_arg(fcinfo, 3);
+	/*
+	 * The 2-argument overloads carry no defaulted position arguments, so
+	 * the call reaches this function with two arguments and both position
+	 * and occurrence keep Oracle's default of 1.  The 3- and 4-argument
+	 * overloads always deliver four arguments (the parser fills in the
+	 * defaulted occurrence).
+	 */
+	if (nargs >= 3)
+		arg3 = ora_position_arg(fcinfo, 2);
+	else
+		arg3 = 1;
+	if (nargs >= 4)
+		arg4 = ora_position_arg(fcinfo, 3);
+	else
+		arg4 = 1;
 
 	/* the occurrence must be positive */
 	if (arg4 < 1)
@@ -2366,13 +2289,12 @@ ora_instrc_4_number(PG_FUNCTION_ARGS)
 /*
  * ora_position_arg --- the position/length/occurrence argument as an integer.
  *
- * These arguments are declared as sys.number in the number-position overloads
- * of sys.substrc() and sys.instrc(), as integer in the integer-position ones
- * and as smallint/bigint in the smallint- and bigint-position ones, and the
- * fmgr contract hands us the datum of the declared type -- so the accessor
- * depends on which one was called.  A bigint position outside the int4 range
- * is answered with the standard integer-out-of-range error, like a sys.number
- * position with the same value is.
+ * These arguments are declared as sys.number, integer or plain numeric by
+ * the sys.substrc()/sys.instrc() overloads, and the fmgr contract hands us
+ * the datum of the declared type -- so the accessor switches on the declared
+ * type to read it.  A numeric position outside the int4 range is answered
+ * with the standard integer-out-of-range error, the same convention
+ * ora_instrb() applies to its numeric arguments.
  */
 static int32
 ora_position_arg(FunctionCallInfo fcinfo, int argnum)
