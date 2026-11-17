@@ -717,11 +717,13 @@ IMMUTABLE;
  *
  * sys.clob and sys.nclob are domains over text, and Oracle refuses them
  * for SUBSTRC with ORA-00932.  The rejection rows at the end of this
- * section catch the calls whose raw argument types match exactly, which is
- * what a constant CLOB literal produces -- the only place a constant LOB
- * source can still be caught, because the planner folds a constant's
- * domain coercion away to plain text before the function runs.  A LOB
- * source that is not a compile-time constant is refused at run time by
+ * section catch the calls whose raw argument types match exactly.  They
+ * are the only place a constant LOB source can be caught, and they are
+ * needed because the resolution picks the text rows for such a call: the
+ * constant's domain coercion is then folded away and the argument reaches
+ * the C function as plain text, so the run-time check in
+ * ora_reject_lob_args() cannot see the LOB type any more.  A LOB source
+ * that is not a compile-time constant is refused at run time by
  * ora_reject_lob_args(), whatever the positions look like.
  */
 CREATE FUNCTION sys.substrc(sys.oracharbyte, sys.number)
@@ -980,7 +982,7 @@ IMMUTABLE;
  * candidate at all, as before.  The spellings are the same five the accept
  * rows use, so a constant CLOB call is refused whatever numeric spelling
  * its positions carry; a LOB source that is not a compile-time constant
- * (a column, a function result) is refused at run time by
+ * (a column, or an expression that produces one) is refused at run time by
  * ora_reject_lob_args() under every spelling there is.
  */
 CREATE FUNCTION sys.substrc(sys.clob, sys.number, sys.number default '1')
@@ -2776,16 +2778,27 @@ IMMUTABLE;
  * The LOB types Oracle's INSTRC refuses for the source argument; see
  * ora_instrc_unsupported().  NOT STRICT on purpose -- Oracle rejects the
  * type while parsing, so a NULL of a rejected type has to error out too
- * rather than quietly answer null.  The pattern may be a CLOB or an NCLOB
- * (Oracle only refuses them for the source), so the pattern spellings
- * listed here are the ones a constant-LOB source call realistically
- * carries: an untyped literal or text.  The defaulted fourth argument
- * serves both the 3-argument and the 4-argument shapes.  The rows are what
- * stops a constant CLOB source from silently answering as text: sys.clob
- * and sys.nclob are domains over text, and the planner folds a constant's
- * domain coercion away before the function runs, so the run-time check in
- * ora_instrc() never sees it.  A LOB source that is not a compile-time
- * constant (a column, a function result) is refused at run time by
+ * rather than quietly answer null.
+ *
+ * The pattern may be a CLOB or an NCLOB (Oracle refuses the LOB types only
+ * for the source argument), so the pattern column below covers every
+ * pattern type a call can carry: the four Oracle character families, the
+ * two LOB types themselves, an untyped literal and plain text.  The
+ * position column covers the numeric spellings a position can be written
+ * in, and the defaulted fourth argument serves both the 3-argument and
+ * the 4-argument shape.
+ *
+ * These rows are what refuses a LOB source while the call is still being
+ * resolved.  sys.clob and sys.nclob are domains over text, and the planner
+ * folds a constant -- together with its domain coercion -- away to a plain
+ * text constant before the function runs, so a constant LOB source is
+ * invisible to the run-time check in ora_instrc().  The exact-match rows
+ * below are the only place a constant LOB source can be caught, and they
+ * are what make the refusal independent of what the pattern and the
+ * positions happen to be spelled as.
+ *
+ * A LOB source that is not a compile-time constant (a column, or an
+ * expression that produces one) is refused at run time by
  * ora_reject_lob_args(), whatever the pattern and the positions look like.
  */
 CREATE FUNCTION sys.instrc(sys.clob, unknown)
@@ -2872,6 +2885,258 @@ LANGUAGE C
 PARALLEL SAFE
 IMMUTABLE;
 
+CREATE FUNCTION sys.instrc(sys.clob, sys.oravarcharbyte)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.oravarcharbyte, sta sys.number, nth sys.number default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.oravarcharbyte, sta integer, nth integer default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.oravarcharbyte, sta numeric, nth numeric default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.oravarcharbyte, sta smallint, nth smallint default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.oravarcharbyte, sta bigint, nth bigint default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.oravarcharchar)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.oravarcharchar, sta sys.number, nth sys.number default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.oravarcharchar, sta integer, nth integer default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.oravarcharchar, sta numeric, nth numeric default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.oravarcharchar, sta smallint, nth smallint default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.oravarcharchar, sta bigint, nth bigint default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.oracharbyte)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.oracharbyte, sta sys.number, nth sys.number default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.oracharbyte, sta integer, nth integer default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.oracharbyte, sta numeric, nth numeric default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.oracharbyte, sta smallint, nth smallint default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.oracharbyte, sta bigint, nth bigint default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.oracharchar)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.oracharchar, sta sys.number, nth sys.number default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.oracharchar, sta integer, nth integer default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.oracharchar, sta numeric, nth numeric default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.oracharchar, sta smallint, nth smallint default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.oracharchar, sta bigint, nth bigint default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.clob)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.clob, sta sys.number, nth sys.number default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.clob, sta integer, nth integer default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.clob, sta numeric, nth numeric default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.clob, sta smallint, nth smallint default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.clob, sta bigint, nth bigint default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.nclob)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.nclob, sta sys.number, nth sys.number default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.nclob, sta integer, nth integer default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.nclob, sta numeric, nth numeric default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.nclob, sta smallint, nth smallint default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.clob, sys.nclob, sta bigint, nth bigint default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
 CREATE FUNCTION sys.instrc(sys.nclob, unknown)
 RETURNS int
 AS 'MODULE_PATHNAME','ora_instrc_unsupported'
@@ -2950,6 +3215,258 @@ PARALLEL SAFE
 IMMUTABLE;
 
 CREATE FUNCTION sys.instrc(sys.nclob, text, sta bigint, nth bigint default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.oravarcharbyte)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.oravarcharbyte, sta sys.number, nth sys.number default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.oravarcharbyte, sta integer, nth integer default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.oravarcharbyte, sta numeric, nth numeric default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.oravarcharbyte, sta smallint, nth smallint default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.oravarcharbyte, sta bigint, nth bigint default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.oravarcharchar)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.oravarcharchar, sta sys.number, nth sys.number default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.oravarcharchar, sta integer, nth integer default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.oravarcharchar, sta numeric, nth numeric default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.oravarcharchar, sta smallint, nth smallint default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.oravarcharchar, sta bigint, nth bigint default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.oracharbyte)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.oracharbyte, sta sys.number, nth sys.number default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.oracharbyte, sta integer, nth integer default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.oracharbyte, sta numeric, nth numeric default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.oracharbyte, sta smallint, nth smallint default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.oracharbyte, sta bigint, nth bigint default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.oracharchar)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.oracharchar, sta sys.number, nth sys.number default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.oracharchar, sta integer, nth integer default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.oracharchar, sta numeric, nth numeric default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.oracharchar, sta smallint, nth smallint default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.oracharchar, sta bigint, nth bigint default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.clob)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.clob, sta sys.number, nth sys.number default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.clob, sta integer, nth integer default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.clob, sta numeric, nth numeric default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.clob, sta smallint, nth smallint default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.clob, sta bigint, nth bigint default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.nclob)
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.nclob, sta sys.number, nth sys.number default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.nclob, sta integer, nth integer default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.nclob, sta numeric, nth numeric default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.nclob, sta smallint, nth smallint default '1')
+RETURNS int
+AS 'MODULE_PATHNAME','ora_instrc_unsupported'
+LANGUAGE C
+PARALLEL SAFE
+IMMUTABLE;
+
+CREATE FUNCTION sys.instrc(sys.nclob, sys.nclob, sta bigint, nth bigint default '1')
 RETURNS int
 AS 'MODULE_PATHNAME','ora_instrc_unsupported'
 LANGUAGE C

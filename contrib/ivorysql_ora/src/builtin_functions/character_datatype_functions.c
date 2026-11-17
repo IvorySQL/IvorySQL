@@ -387,9 +387,11 @@ ora_call_argtype(FunctionCallInfo fcinfo, int argnum)
 	 * An implicit coercion to the declared parameter type wraps the original
 	 * expression; peel the whole stack of binary-coercion relabels off so
 	 * that the caller's own type is what we see.  (The peeling only helps
-	 * for non-constant arguments: the planner folds a RelabelType over a
-	 * Const into a bare Const of the target type, which is why the LOB
-	 * rejection overloads below are still needed for constant LOB sources.)
+	 * for non-constant arguments: when the resolution picks a text-typed
+	 * row, a constant argument is coerced to that row's type and the
+	 * planner folds the coercion into a bare Const of the target type, so
+	 * the domain identity is gone by then.  That is why the LOB rejection
+	 * overloads are needed for constant LOB sources.)
 	 */
 	while (arg != NULL && IsA(arg, RelabelType))
 		arg = (Node *) ((RelabelType *) arg)->arg;
@@ -403,10 +405,10 @@ ora_call_argtype(FunctionCallInfo fcinfo, int argnum)
  *
  * Oracle's SUBSTRC and INSTRC take character types only: a CLOB or an NCLOB
  * argument is answered with ORA-00932 (inconsistent datatypes).  sys.clob
- * and sys.nclob are domains over text, so plain resolution folds them onto
- * the text overloads and the exact-match rejection overloads alone would
- * only catch the calls whose remaining arguments happen to match exactly;
- * this check catches the rest.
+ * and sys.nclob are domains over text, so a call whose arguments do not
+ * match a rejection row exactly is resolved onto a text-typed row, and
+ * the argument is coerced to that row's type; this check catches what the
+ * exact-match rejection overloads cannot.
  */
 static void
 ora_reject_lob_args(FunctionCallInfo fcinfo, int nargs, const char *fname)
