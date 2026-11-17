@@ -129,7 +129,6 @@ static char *ivy_xmlnode_getcontent(xmlNodePtr cur);
 static char *ivy_xml_xpathobjtostring(xmlXPathObjectPtr xpathobj);
 static text *ivy_xml_xmlnode2xmltype(xmlNodePtr cur);
 static xmltype *ivy_xml_xpathobjtoxmltype(xmlXPathObjectPtr xpathobj);
-static void ivy_xml_setnodecontent(xmlXPathObjectPtr xpathobj, xmlChar *var);
 static void ivy_xml_delenode(xmlXPathObjectPtr xpathobj);
 static void ivy_xml_addchildnode(xmlXPathObjectPtr xpathobj, xmlNodePtr cnode);
 static void ivy_xml_addprevsiblingnode(xmlXPathObjectPtr xpathobj, const xmlChar* new_node);
@@ -749,37 +748,6 @@ ivy_xml_xpathobjtoxmltype(xmlXPathObjectPtr xpathobj)
 }
 
 static void
-ivy_xml_setnodecontent(xmlXPathObjectPtr xpathobj, xmlChar *var)
-{
-	xmlNodePtr	cur = NULL;
-	int			num = 0;
-	int			i;
-
-	if (xpathobj->type == XPATH_NODESET)
-	{
-		if (xpathobj->nodesetval != NULL)
-		{
-			num = xpathobj->nodesetval->nodeNr;
-			for (i = 0; i < num; i++)
-			{
-				cur = xpathobj->nodesetval->nodeTab[i];
-				if (strcmp((char *)var, "") == 0 && cur->type == XML_ELEMENT_NODE)
-				{
-					xmlUnlinkNode(cur->children);
-					xmlFreeNode(cur->children);
-				}
-				else
-				{
-					if (cur->type == XML_TEXT_NODE)
-						xmlNodeSetContent(cur, var);
-				}
-			}
-		}
-	}
-
-}
-
-static void
 ivy_xml_delenode(xmlXPathObjectPtr xpathobj)
 {
 	int			num = 0;
@@ -900,6 +868,17 @@ ivy_xml_replacenode(xmlXPathObjectPtr xpathobj, const xmlChar* new_node)
 			for (i = 0; i < num; i++)
 			{
 				cur = xpathobj->nodesetval->nodeTab[i];
+				/* Values of attributes and text nodes are character data. */
+				if (cur->type == XML_ATTRIBUTE_NODE)
+				{
+					xmlSetNsProp(cur->parent, cur->ns, cur->name, new_node);
+					continue;
+				}
+				if (cur->type == XML_TEXT_NODE || cur->type == XML_CDATA_SECTION_NODE)
+				{
+					xmlNodeSetContent(cur, new_node);
+					continue;
+				}
 				if (strcmp((char *)new_node, "") == 0)
 				{
 						xmlUnlinkNode(cur->children);
@@ -2364,7 +2343,6 @@ updatexml(List *args)
 		char	   *varstr = NULL;
 		char	   *cxpath = NULL;
 		xmlChar	   *string = NULL;
-		xmlDocPtr	vdoc = NULL;
 		text	   *xpath = NULL;
 		text	   *var = NULL;
 		int			len2 = 0;
@@ -2406,19 +2384,8 @@ updatexml(List *args)
 		else
 			res = ivy_xml_xpath2(&ws, xpath, ws.doc, NULL);
 
-		vdoc = xmlParseDoc(string);
-		/* update the node value */
-		if (vdoc == NULL && strstr(cxpath, "text()"))
-		{
-			ivy_xml_setnodecontent(res, string);
-			ret = (xmltype *)ivy_xml_xmlnode2xmltype((xmlNodePtr)ws.doc);
-		}
-		else /* replace a node */
-		{
-			ivy_xml_replacenode(res, string);
-			ret = (xmltype *)ivy_xml_xmlnode2xmltype((xmlNodePtr)ws.doc);
-			xmlFreeDoc(vdoc);
-		}
+		/* Dispatch by the selected node type, not the XPath spelling. */
+		ivy_xml_replacenode(res, string);
 
 		ret = (xmltype *)ivy_xml_xmlnode2xmltype((xmlNodePtr)ws.doc);
 		ret = (xmltype *)rv_newline((text *)ret);
