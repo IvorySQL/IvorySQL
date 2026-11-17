@@ -10616,6 +10616,91 @@ LANGUAGE SQL
 STRICT
 IMMUTABLE;
 
+/*
+ * Exact-match NUMBER overloads so calls do not fall back to pg_catalog's
+ * float8 variants (float8 is the preferred type of category N) and lose
+ * precision past ~15 significant digits.
+ */
+CREATE FUNCTION sys.round(sys.number)
+RETURNS sys.number
+AS $$SELECT pg_catalog.round($1::pg_catalog.numeric, 0)::sys.number;$$
+LANGUAGE SQL
+PARALLEL SAFE
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION sys.trunc(sys.number)
+RETURNS sys.number
+AS $$SELECT pg_catalog.trunc($1::pg_catalog.numeric, 0)::sys.number;$$
+LANGUAGE SQL
+PARALLEL SAFE
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION sys.trunc(sys.number, integer)
+RETURNS sys.number
+AS 'numeric_trunc'
+LANGUAGE internal
+PARALLEL SAFE
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION sys.ceil(sys.number)
+RETURNS sys.number
+AS 'numeric_ceil'
+LANGUAGE internal
+PARALLEL SAFE
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION sys.ceiling(sys.number)
+RETURNS sys.number
+AS 'numeric_ceil'
+LANGUAGE internal
+PARALLEL SAFE
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION sys.floor(sys.number)
+RETURNS sys.number
+AS 'numeric_floor'
+LANGUAGE internal
+PARALLEL SAFE
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION sys.sign(sys.number)
+RETURNS sys.number
+AS 'numeric_sign'
+LANGUAGE internal
+PARALLEL SAFE
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION sys.abs(sys.number)
+RETURNS sys.number
+AS 'numeric_abs'
+LANGUAGE internal
+PARALLEL SAFE
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION sys.width_bucket(sys.number, sys.number, sys.number, integer)
+RETURNS integer
+AS 'width_bucket_numeric'
+LANGUAGE internal
+PARALLEL SAFE
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION sys.to_char(sys.number, text)
+RETURNS text
+AS 'numeric_to_char'
+LANGUAGE internal
+PARALLEL SAFE
+STRICT
+STABLE;
+
 CREATE CAST (sys.oravarcharchar AS float8)
 WITH INOUT
 AS IMPLICIT;
