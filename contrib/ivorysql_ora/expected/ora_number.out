@@ -1307,6 +1307,16 @@ SELECT to_number(' USD1234','C9999') AS number_C_usd_leading_blank;
  1234
 (1 row)
 
+-- The ISO symbol may be omitted, but a non-matching prefix is an error.
+SELECT to_number('1234','C9999') AS number_C_without_symbol;
+ number_c_without_symbol 
+-------------------------
+ 1234
+(1 row)
+
+-- A non-matching prefix must not be skipped.
+SELECT to_number('XYZ1234','C9999') AS number_C_garbage;
+ERROR:  invalid number
 -- Only the territories known to the NLS check hook are accepted.
 SET nls_iso_currency = 'CNY';
 ERROR:  Cannot access NLS data files or invalid environment specified

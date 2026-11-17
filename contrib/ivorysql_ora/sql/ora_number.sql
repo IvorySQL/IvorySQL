@@ -802,6 +802,10 @@ SET nls_iso_currency = 'AMERICA';
 SELECT to_char(1234.56::number, 'C9G999D99') AS currency_C_america;
 SELECT to_number('USD1234','C9999') AS number_C_usd;
 SELECT to_number(' USD1234','C9999') AS number_C_usd_leading_blank;
+-- The ISO symbol may be omitted, but a non-matching prefix is an error.
+SELECT to_number('1234','C9999') AS number_C_without_symbol;
+-- A non-matching prefix must not be skipped.
+SELECT to_number('XYZ1234','C9999') AS number_C_garbage;
 -- Only the territories known to the NLS check hook are accepted.
 SET nls_iso_currency = 'CNY';
 RESET nls_currency;

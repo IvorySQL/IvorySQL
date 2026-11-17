@@ -7292,13 +7292,32 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 					}
 					else
 					{
-						/* Skip leading blanks before the ISO currency symbol. */
+						const char *iso = Np->L_iso_currency_symbol;
+						size_t		iso_len = strlen(iso);
+
+						/*
+						 * Skip leading blanks before the ISO currency symbol,
+						 * then consume it only when the input really starts
+						 * with it.  Skipping arbitrary non-numeric characters
+						 * would let input such as "XYZ1234" pass as a valid
+						 * number.
+						 */
 						while (Np->inout_p < Np->inout + from_char_input_len &&
 							   *Np->inout_p == ' ')
 							Np->inout_p++;
-						NUM_eat_non_data_chars(Np, pg_mbstrlen(Np->L_iso_currency_symbol),
-											   from_char_input_len);
-						continue;
+
+						if ((size_t) (Np->inout + from_char_input_len - Np->inout_p) >= iso_len &&
+							strncmp(Np->inout_p, iso, iso_len) == 0)
+							Np->inout_p += iso_len - 1;
+						else if (Np->inout_p < Np->inout + from_char_input_len &&
+								 (isdigit((unsigned char) *Np->inout_p) ||
+								  *Np->inout_p == '-' || *Np->inout_p == '+' ||
+								  *Np->inout_p == '.'))
+							continue;	/* the ISO symbol may be omitted */
+						else
+							ereport(ERROR,
+									(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+									 errmsg("invalid number")));
 					}
 					break;
 
