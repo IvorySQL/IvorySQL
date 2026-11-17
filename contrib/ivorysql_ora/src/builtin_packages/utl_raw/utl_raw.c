@@ -34,6 +34,7 @@
 #include "varatt.h"
 #include "mb/pg_wchar.h"
 #include "utils/builtins.h"
+#include "utils/memutils.h"
 #include "utils/numeric.h"
 
 PG_FUNCTION_INFO_V1(ora_utl_raw_cast_to_varchar2);
