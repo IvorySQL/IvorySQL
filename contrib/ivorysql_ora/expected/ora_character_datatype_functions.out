@@ -4462,7 +4462,7 @@ ERROR:  inconsistent datatypes: substrc() does not accept clob
 DETAIL:  Oracle's SUBSTRC accepts only character types, not CLOB or NCLOB.
 SELECT SUBSTRC(c, 1.5::float8, 2.5::float8) FROM instrc_pattern_lob;
 ERROR:  inconsistent datatypes: substrc() does not accept clob
-DETAIL:  Oracle's substrc accepts only character types, not CLOB or NCLOB.
+DETAIL:  Oracle's SUBSTRC accepts only character types, not CLOB or NCLOB.
 -- A source whose type is written by an expression is refused as well: the
 -- domain identity of the column is still visible at run time.
 CREATE TABLE instrc_expr_lob (c text);
@@ -4647,6 +4647,90 @@ DETAIL:  Oracle's SUBSTRC accepts only character types, not CLOB or NCLOB.
 SELECT SUBSTRC(CAST('abc' AS NCLOB), CAST(1 AS NUMERIC)) FROM DUAL;
 ERROR:  inconsistent datatypes: substrc() does not accept nclob
 DETAIL:  Oracle's SUBSTRC accepts only character types, not CLOB or NCLOB.
+-- Positions written as float8 or float4 are NUMBER arguments all the same:
+-- they must not lose the CHAR padding of the source, and a CLOB or NCLOB
+-- source is refused whatever spelling the positions use.
+SELECT INSTRC('abc','b', 2::float8) FROM DUAL;
+ instrc 
+--------
+      2
+(1 row)
+
+SELECT INSTRC('abc','b', 2::float8, 2::float8) FROM DUAL;
+ instrc 
+--------
+      0
+(1 row)
+
+SELECT INSTRC('abc','b', 2::float4) FROM DUAL;
+ instrc 
+--------
+      2
+(1 row)
+
+SELECT INSTRC('abc','b', 2::float4, 2::float4) FROM DUAL;
+ instrc 
+--------
+      0
+(1 row)
+
+SELECT INSTRC(CAST('ab' AS CHAR(5 BYTE)), CAST(' ' AS CHAR(1 BYTE)), 1::float8) FROM DUAL;
+ instrc 
+--------
+      3
+(1 row)
+
+SELECT INSTRC(CAST('ab' AS CHAR(5 BYTE)), CAST(' ' AS CHAR(1 BYTE)), 1::float4) FROM DUAL;
+ instrc 
+--------
+      3
+(1 row)
+
+SELECT INSTRC(CAST('abc' AS CLOB), 'b', 1::float8, 1::float8) FROM DUAL;
+ERROR:  inconsistent datatypes: instrc() does not accept clob
+DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
+SELECT INSTRC(CAST('abc' AS CLOB), 'b', 1::float4) FROM DUAL;
+ERROR:  inconsistent datatypes: instrc() does not accept clob
+DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
+SELECT INSTRC(CAST('abc' AS NCLOB), 'b', 1::float8) FROM DUAL;
+ERROR:  inconsistent datatypes: instrc() does not accept nclob
+DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
+SELECT INSTRC(CAST('abc' AS NCLOB), 'b', 1::float4, 1::float4) FROM DUAL;
+ERROR:  inconsistent datatypes: instrc() does not accept nclob
+DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
+SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS VARCHAR2(1 BYTE)), 1::float8) FROM DUAL;
+ERROR:  inconsistent datatypes: instrc() does not accept clob
+DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
+SELECT INSTRC(CAST('abc' AS NCLOB), CAST('b' AS CHAR(1 BYTE)), 1::float4) FROM DUAL;
+ERROR:  inconsistent datatypes: instrc() does not accept nclob
+DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
+SELECT SUBSTRC('今天明天', 2::float8, 2::float8) FROM DUAL;
+ substrc 
+---------
+ 天明
+(1 row)
+
+SELECT SUBSTRC('今天明天', 2::float4) FROM DUAL;
+ substrc 
+---------
+ 天明天
+(1 row)
+
+SELECT LENGTHC(SUBSTRC(CAST('ab' AS CHAR(5 BYTE)), 2::float8)) FROM DUAL;
+ lengthc 
+---------
+       4
+(1 row)
+
+SELECT SUBSTRC(CAST('abc' AS CLOB), 1::float8, 2::float8) FROM DUAL;
+ERROR:  inconsistent datatypes: substrc() does not accept clob
+DETAIL:  Oracle's SUBSTRC accepts only character types, not CLOB or NCLOB.
+SELECT SUBSTRC(CAST('abc' AS NCLOB), 1::float4) FROM DUAL;
+ERROR:  inconsistent datatypes: substrc() does not accept nclob
+DETAIL:  Oracle's SUBSTRC accepts only character types, not CLOB or NCLOB.
+SELECT SUBSTRC(CAST('abc' AS CLOB), 1::float4, 2::float4) FROM DUAL;
+ERROR:  inconsistent datatypes: substrc() does not accept clob
+DETAIL:  Oracle's SUBSTRC accepts only character types, not CLOB or NCLOB.
 -- A NULL source and a NULL position answer null on the numeric-position
 -- spellings as on every other shape, and a fractional position is cut to a
 -- whole number, the way Oracle cuts it: SUBSTRC('abcdef', 2.9) reads as
@@ -4677,6 +4761,25 @@ SELECT SUBSTRC('abcdef', 2.9) FROM DUAL;
 (1 row)
 
 SELECT INSTRC('ababa','a',1,1.9) FROM DUAL;
+ instrc 
+--------
+      1
+(1 row)
+
+-- The floating-point spellings cut the fractional part off as well.
+SELECT SUBSTRC('abcdef', 2.9::float8) FROM DUAL;
+ substrc 
+---------
+ bcdef
+(1 row)
+
+SELECT INSTRC('ababa','a',1,1.9::float8) FROM DUAL;
+ instrc 
+--------
+      1
+(1 row)
+
+SELECT INSTRC('ababa','a',1,1.9::float4) FROM DUAL;
  instrc 
 --------
       1

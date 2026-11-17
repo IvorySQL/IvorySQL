@@ -1749,6 +1749,28 @@ SELECT SUBSTRC(CAST('abc' AS NCLOB), 1::smallint) FROM DUAL;
 SELECT SUBSTRC(CAST('abc' AS CLOB), CAST(1 AS NUMERIC), CAST(2 AS NUMERIC)) FROM DUAL;
 SELECT SUBSTRC(CAST('abc' AS NCLOB), CAST(1 AS NUMERIC)) FROM DUAL;
 
+-- Positions written as float8 or float4 are NUMBER arguments all the same:
+-- they must not lose the CHAR padding of the source, and a CLOB or NCLOB
+-- source is refused whatever spelling the positions use.
+SELECT INSTRC('abc','b', 2::float8) FROM DUAL;
+SELECT INSTRC('abc','b', 2::float8, 2::float8) FROM DUAL;
+SELECT INSTRC('abc','b', 2::float4) FROM DUAL;
+SELECT INSTRC('abc','b', 2::float4, 2::float4) FROM DUAL;
+SELECT INSTRC(CAST('ab' AS CHAR(5 BYTE)), CAST(' ' AS CHAR(1 BYTE)), 1::float8) FROM DUAL;
+SELECT INSTRC(CAST('ab' AS CHAR(5 BYTE)), CAST(' ' AS CHAR(1 BYTE)), 1::float4) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS CLOB), 'b', 1::float8, 1::float8) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS CLOB), 'b', 1::float4) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS NCLOB), 'b', 1::float8) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS NCLOB), 'b', 1::float4, 1::float4) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS VARCHAR2(1 BYTE)), 1::float8) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS NCLOB), CAST('b' AS CHAR(1 BYTE)), 1::float4) FROM DUAL;
+SELECT SUBSTRC('今天明天', 2::float8, 2::float8) FROM DUAL;
+SELECT SUBSTRC('今天明天', 2::float4) FROM DUAL;
+SELECT LENGTHC(SUBSTRC(CAST('ab' AS CHAR(5 BYTE)), 2::float8)) FROM DUAL;
+SELECT SUBSTRC(CAST('abc' AS CLOB), 1::float8, 2::float8) FROM DUAL;
+SELECT SUBSTRC(CAST('abc' AS NCLOB), 1::float4) FROM DUAL;
+SELECT SUBSTRC(CAST('abc' AS CLOB), 1::float4, 2::float4) FROM DUAL;
+
 -- A NULL source and a NULL position answer null on the numeric-position
 -- spellings as on every other shape, and a fractional position is cut to a
 -- whole number, the way Oracle cuts it: SUBSTRC('abcdef', 2.9) reads as
@@ -1759,3 +1781,7 @@ SELECT sys.substrc('abc', NULL::numeric) FROM DUAL;
 SELECT sys.substrc(NULL::text, 1::numeric, 2::numeric) FROM DUAL;
 SELECT SUBSTRC('abcdef', 2.9) FROM DUAL;
 SELECT INSTRC('ababa','a',1,1.9) FROM DUAL;
+-- The floating-point spellings cut the fractional part off as well.
+SELECT SUBSTRC('abcdef', 2.9::float8) FROM DUAL;
+SELECT INSTRC('ababa','a',1,1.9::float8) FROM DUAL;
+SELECT INSTRC('ababa','a',1,1.9::float4) FROM DUAL;
