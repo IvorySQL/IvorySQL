@@ -4325,15 +4325,23 @@ FROM dual;
 -- ORA-00932.
 SELECT SUBSTRC(CAST('abc' AS CLOB), 1, 2) FROM DUAL;
 ERROR:  inconsistent datatypes: substrc() does not accept clob
+LINE 1: SELECT SUBSTRC(CAST('abc' AS CLOB), 1, 2) FROM DUAL;
+               ^
 DETAIL:  Oracle's SUBSTRC accepts only character types, not CLOB or NCLOB.
 SELECT INSTRC(CAST('abc' AS CLOB), 'b') FROM DUAL;
 ERROR:  inconsistent datatypes: instrc() does not accept clob
+LINE 1: SELECT INSTRC(CAST('abc' AS CLOB), 'b') FROM DUAL;
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 SELECT SUBSTRC(CAST('abc' AS NCLOB), 1, 2) FROM DUAL;
 ERROR:  inconsistent datatypes: substrc() does not accept nclob
+LINE 1: SELECT SUBSTRC(CAST('abc' AS NCLOB), 1, 2) FROM DUAL;
+               ^
 DETAIL:  Oracle's SUBSTRC accepts only character types, not CLOB or NCLOB.
 SELECT INSTRC(CAST('abc' AS NCLOB), 'b') FROM DUAL;
 ERROR:  inconsistent datatypes: instrc() does not accept nclob
+LINE 1: SELECT INSTRC(CAST('abc' AS NCLOB), 'b') FROM DUAL;
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 -- The occurrence must be positive and the position must not be zero: a zero
 -- position starts the search before the first character, so nothing can
@@ -4356,66 +4364,101 @@ DETAIL:  Oracle raises ORA-01428 here: the occurrence argument of INSTRC must be
 SELECT INSTRC('abc','a',1,0) FROM DUAL;
 ERROR:  argument '0' is out of range
 DETAIL:  Oracle raises ORA-01428 here: the occurrence argument of INSTRC must be a positive number.
--- The exact-match rejection overloads cover the argument combinations a
--- constant LOB call realistically carries.  sys.clob and sys.nclob are
--- domains over text, and the resolution picks a text-typed row for such a
--- call, so the argument is coerced to that row's type and the optimizer
--- folds the coercion away before the C function runs.  A CLOB source
--- written next to any pattern type or any position spelling must
--- therefore be refused while parsing.
+-- The parse-time LOB source hook refuses a LOB source while the call is
+-- still being resolved, before any overload wins: sys.clob and sys.nclob
+-- are domains over text, and a call that resolved onto a text-typed row
+-- would coerce the argument to that row's type and fold a constant --
+-- domain coercion included -- away before the C function runs.  A CLOB
+-- source written next to any pattern type or any position spelling is
+-- therefore refused while parsing, and no rejection row per combination
+-- needs to exist for that.
 SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS TEXT)) FROM DUAL;
 ERROR:  inconsistent datatypes: instrc() does not accept clob
+LINE 1: SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS TEXT)) FROM D...
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 SELECT INSTRC(CAST('abc' AS CLOB), 'b', CAST(1 AS NUMBER), CAST(1 AS NUMBER)) FROM DUAL;
 ERROR:  inconsistent datatypes: instrc() does not accept clob
+LINE 1: SELECT INSTRC(CAST('abc' AS CLOB), 'b', CAST(1 AS NUMBER), C...
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 SELECT INSTRC(CAST('abc' AS CLOB), 'b', CAST(1 AS NUMERIC)) FROM DUAL;
 ERROR:  inconsistent datatypes: instrc() does not accept clob
+LINE 1: SELECT INSTRC(CAST('abc' AS CLOB), 'b', CAST(1 AS NUMERIC)) ...
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 SELECT SUBSTRC(CAST('abc' AS CLOB), CAST(1 AS NUMBER)) FROM DUAL;
 ERROR:  inconsistent datatypes: substrc() does not accept clob
+LINE 1: SELECT SUBSTRC(CAST('abc' AS CLOB), CAST(1 AS NUMBER)) FROM ...
+               ^
 DETAIL:  Oracle's SUBSTRC accepts only character types, not CLOB or NCLOB.
 -- The pattern may be any of the Oracle character families, and the
 -- position may be any of the numeric spellings: the refusal does not
 -- depend on how either of them is written.
 SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS VARCHAR2(1 BYTE))) FROM DUAL;
 ERROR:  inconsistent datatypes: instrc() does not accept clob
+LINE 1: SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS VARCHAR2(1 BY...
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS VARCHAR2(1 CHAR))) FROM DUAL;
 ERROR:  inconsistent datatypes: instrc() does not accept clob
+LINE 1: SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS VARCHAR2(1 CH...
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS CHAR(1 BYTE))) FROM DUAL;
 ERROR:  inconsistent datatypes: instrc() does not accept clob
+LINE 1: SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS CHAR(1 BYTE))...
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS CHAR(1 CHAR))) FROM DUAL;
 ERROR:  inconsistent datatypes: instrc() does not accept clob
+LINE 1: SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS CHAR(1 CHAR))...
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 SELECT INSTRC(CAST('abc' AS NCLOB), CAST('b' AS VARCHAR2(1 BYTE))) FROM DUAL;
 ERROR:  inconsistent datatypes: instrc() does not accept nclob
+LINE 1: SELECT INSTRC(CAST('abc' AS NCLOB), CAST('b' AS VARCHAR2(1 B...
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 SELECT INSTRC(CAST('abc' AS NCLOB), CAST('b' AS CHAR(1 BYTE))) FROM DUAL;
 ERROR:  inconsistent datatypes: instrc() does not accept nclob
+LINE 1: SELECT INSTRC(CAST('abc' AS NCLOB), CAST('b' AS CHAR(1 BYTE)...
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS CLOB)) FROM DUAL;
 ERROR:  inconsistent datatypes: instrc() does not accept clob
+LINE 1: SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS CLOB)) FROM D...
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS NCLOB)) FROM DUAL;
 ERROR:  inconsistent datatypes: instrc() does not accept clob
+LINE 1: SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS NCLOB)) FROM ...
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 SELECT INSTRC(CAST('abc' AS NCLOB), CAST('b' AS CLOB)) FROM DUAL;
 ERROR:  inconsistent datatypes: instrc() does not accept nclob
+LINE 1: SELECT INSTRC(CAST('abc' AS NCLOB), CAST('b' AS CLOB)) FROM ...
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 SELECT INSTRC(CAST('abc' AS NCLOB), CAST('b' AS NCLOB)) FROM DUAL;
 ERROR:  inconsistent datatypes: instrc() does not accept nclob
+LINE 1: SELECT INSTRC(CAST('abc' AS NCLOB), CAST('b' AS NCLOB)) FROM...
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS VARCHAR2(1 BYTE)), CAST(1 AS NUMBER)) FROM DUAL;
 ERROR:  inconsistent datatypes: instrc() does not accept clob
+LINE 1: SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS VARCHAR2(1 BY...
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS CHAR(1 BYTE)), 1::bigint) FROM DUAL;
 ERROR:  inconsistent datatypes: instrc() does not accept clob
+LINE 1: SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS CHAR(1 BYTE))...
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS VARCHAR2(1 BYTE)), CAST(1 AS NUMERIC), CAST(1 AS NUMERIC)) FROM DUAL;
 ERROR:  inconsistent datatypes: instrc() does not accept clob
+LINE 1: SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS VARCHAR2(1 BY...
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 -- Oracle refuses a CLOB or NCLOB source, but the pattern may be a CLOB or an
 -- NCLOB: only the source argument is checked.
@@ -4445,45 +4488,68 @@ SELECT INSTRC('abc', CAST('b' AS NCLOB)) FROM DUAL;
       2
 (1 row)
 
--- A LOB source that is not a compile-time constant is refused at run time
--- by ora_reject_lob_args(), whatever the pattern and the positions look
--- like -- including spellings the parse-time rejection rows do not cover.
+-- A LOB source that is not a compile-time constant is refused by the same
+-- hook, whatever the pattern and the positions look like: the hook reads
+-- the argument's own type, so a column and an expression that produces a
+-- LOB are refused exactly like a constant is.
 SELECT INSTRC(c, CAST('b' AS VARCHAR2(1 BYTE))) FROM instrc_pattern_lob;
 ERROR:  inconsistent datatypes: instrc() does not accept clob
+LINE 1: SELECT INSTRC(c, CAST('b' AS VARCHAR2(1 BYTE))) FROM instrc_...
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 SELECT INSTRC(c, CAST('b' AS VARCHAR2(1 CHAR)), 1, 1) FROM instrc_pattern_lob;
 ERROR:  inconsistent datatypes: instrc() does not accept clob
+LINE 1: SELECT INSTRC(c, CAST('b' AS VARCHAR2(1 CHAR)), 1, 1) FROM i...
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 SELECT SUBSTRC(c, 1::bigint, 2::bigint) FROM instrc_pattern_lob;
 ERROR:  inconsistent datatypes: substrc() does not accept clob
+LINE 1: SELECT SUBSTRC(c, 1::bigint, 2::bigint) FROM instrc_pattern_...
+               ^
 DETAIL:  Oracle's SUBSTRC accepts only character types, not CLOB or NCLOB.
 SELECT SUBSTRC(c, 1::smallint) FROM instrc_pattern_lob;
 ERROR:  inconsistent datatypes: substrc() does not accept clob
+LINE 1: SELECT SUBSTRC(c, 1::smallint) FROM instrc_pattern_lob;
+               ^
 DETAIL:  Oracle's SUBSTRC accepts only character types, not CLOB or NCLOB.
 SELECT SUBSTRC(c, 1.5::float8, 2.5::float8) FROM instrc_pattern_lob;
 ERROR:  inconsistent datatypes: substrc() does not accept clob
+LINE 1: SELECT SUBSTRC(c, 1.5::float8, 2.5::float8) FROM instrc_patt...
+               ^
 DETAIL:  Oracle's SUBSTRC accepts only character types, not CLOB or NCLOB.
 -- A source whose type is written by an expression is refused as well: the
--- domain identity of the column is still visible at run time.
+-- expression's own type is what the hook sees.
 CREATE TABLE instrc_expr_lob (c text);
 INSERT INTO instrc_expr_lob VALUES ('abc');
 SELECT INSTRC(CAST(c AS CLOB), CAST('b' AS VARCHAR2(1 BYTE))) FROM instrc_expr_lob;
 ERROR:  inconsistent datatypes: instrc() does not accept clob
+LINE 1: SELECT INSTRC(CAST(c AS CLOB), CAST('b' AS VARCHAR2(1 BYTE))...
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 SELECT INSTRC(TO_CLOB(c), CAST('b' AS VARCHAR2(1 BYTE))) FROM instrc_expr_lob;
 ERROR:  inconsistent datatypes: instrc() does not accept clob
+LINE 1: SELECT INSTRC(TO_CLOB(c), CAST('b' AS VARCHAR2(1 BYTE))) FRO...
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 SELECT INSTRC(TO_CLOB(c), 'b') FROM instrc_expr_lob;
 ERROR:  inconsistent datatypes: instrc() does not accept clob
+LINE 1: SELECT INSTRC(TO_CLOB(c), 'b') FROM instrc_expr_lob;
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 SELECT INSTRC(CAST(c AS CLOB), 'b') FROM instrc_expr_lob;
 ERROR:  inconsistent datatypes: instrc() does not accept clob
+LINE 1: SELECT INSTRC(CAST(c AS CLOB), 'b') FROM instrc_expr_lob;
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 SELECT SUBSTRC(CAST(c AS CLOB), 1, 2) FROM instrc_expr_lob;
 ERROR:  inconsistent datatypes: substrc() does not accept clob
+LINE 1: SELECT SUBSTRC(CAST(c AS CLOB), 1, 2) FROM instrc_expr_lob;
+               ^
 DETAIL:  Oracle's SUBSTRC accepts only character types, not CLOB or NCLOB.
 SELECT SUBSTRC(TO_CLOB(c), 1, 2) FROM instrc_expr_lob;
 ERROR:  inconsistent datatypes: substrc() does not accept clob
+LINE 1: SELECT SUBSTRC(TO_CLOB(c), 1, 2) FROM instrc_expr_lob;
+               ^
 DETAIL:  Oracle's SUBSTRC accepts only character types, not CLOB or NCLOB.
 DROP TABLE instrc_expr_lob;
 DROP TABLE instrc_pattern_lob;
@@ -4571,9 +4637,9 @@ SELECT SUBSTRC(CAST('今天明天' AS VARCHAR2(12 BYTE)), CAST(2 AS NUMBER), CAS
  天明
 (1 row)
 
--- Positions written as smallint, bigint or plain numeric are NUMBER
--- arguments all the same: they must not lose the CHAR padding of the
--- source, and a CLOB or NCLOB source is refused whatever spelling the
+-- Positions written as smallint, bigint or plain numeric resolve onto the
+-- sys.number rows by implicit cast: they must not lose the CHAR padding of
+-- the source, and a CLOB or NCLOB source is refused whatever spelling the
 -- positions use.
 SELECT INSTRC('abc','b', 2::bigint) FROM DUAL;
  instrc 
@@ -4607,9 +4673,13 @@ SELECT INSTRC(CAST('ab' AS CHAR(5 BYTE)), CAST(' ' AS CHAR(1 BYTE)), CAST(2 AS N
 
 SELECT INSTRC(CAST('abc' AS CLOB), 'b', 1::bigint, 1::bigint) FROM DUAL;
 ERROR:  inconsistent datatypes: instrc() does not accept clob
+LINE 1: SELECT INSTRC(CAST('abc' AS CLOB), 'b', 1::bigint, 1::bigint...
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 SELECT INSTRC(CAST('abc' AS NCLOB), 'b', 1::bigint) FROM DUAL;
 ERROR:  inconsistent datatypes: instrc() does not accept nclob
+LINE 1: SELECT INSTRC(CAST('abc' AS NCLOB), 'b', 1::bigint) FROM DUA...
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 SELECT SUBSTRC('今天明天', 2::bigint, 2::bigint) FROM DUAL;
  substrc 
@@ -4637,19 +4707,29 @@ SELECT LENGTHC(SUBSTRC(CAST('ab' AS CHAR(5 BYTE)), 2.4)) FROM DUAL;
 
 SELECT SUBSTRC(CAST('abc' AS CLOB), 1::bigint, 2::bigint) FROM DUAL;
 ERROR:  inconsistent datatypes: substrc() does not accept clob
+LINE 1: SELECT SUBSTRC(CAST('abc' AS CLOB), 1::bigint, 2::bigint) FR...
+               ^
 DETAIL:  Oracle's SUBSTRC accepts only character types, not CLOB or NCLOB.
 SELECT SUBSTRC(CAST('abc' AS NCLOB), 1::smallint) FROM DUAL;
 ERROR:  inconsistent datatypes: substrc() does not accept nclob
+LINE 1: SELECT SUBSTRC(CAST('abc' AS NCLOB), 1::smallint) FROM DUAL;
+               ^
 DETAIL:  Oracle's SUBSTRC accepts only character types, not CLOB or NCLOB.
 SELECT SUBSTRC(CAST('abc' AS CLOB), CAST(1 AS NUMERIC), CAST(2 AS NUMERIC)) FROM DUAL;
 ERROR:  inconsistent datatypes: substrc() does not accept clob
+LINE 1: SELECT SUBSTRC(CAST('abc' AS CLOB), CAST(1 AS NUMERIC), CAST...
+               ^
 DETAIL:  Oracle's SUBSTRC accepts only character types, not CLOB or NCLOB.
 SELECT SUBSTRC(CAST('abc' AS NCLOB), CAST(1 AS NUMERIC)) FROM DUAL;
 ERROR:  inconsistent datatypes: substrc() does not accept nclob
+LINE 1: SELECT SUBSTRC(CAST('abc' AS NCLOB), CAST(1 AS NUMERIC)) FRO...
+               ^
 DETAIL:  Oracle's SUBSTRC accepts only character types, not CLOB or NCLOB.
--- Positions written as float8 or float4 are NUMBER arguments all the same:
--- they must not lose the CHAR padding of the source, and a CLOB or NCLOB
--- source is refused whatever spelling the positions use.
+-- Positions written as float8 or float4 round the way Oracle reads a
+-- BINARY_FLOAT or BINARY_DOUBLE position: to the nearest whole number, an
+-- exact half to the even neighbor.  They must not lose the CHAR padding of
+-- the source, and a CLOB or NCLOB source is refused whatever spelling the
+-- positions use.
 SELECT INSTRC('abc','b', 2::float8) FROM DUAL;
  instrc 
 --------
@@ -4688,21 +4768,33 @@ SELECT INSTRC(CAST('ab' AS CHAR(5 BYTE)), CAST(' ' AS CHAR(1 BYTE)), 1::float4) 
 
 SELECT INSTRC(CAST('abc' AS CLOB), 'b', 1::float8, 1::float8) FROM DUAL;
 ERROR:  inconsistent datatypes: instrc() does not accept clob
+LINE 1: SELECT INSTRC(CAST('abc' AS CLOB), 'b', 1::float8, 1::float8...
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 SELECT INSTRC(CAST('abc' AS CLOB), 'b', 1::float4) FROM DUAL;
 ERROR:  inconsistent datatypes: instrc() does not accept clob
+LINE 1: SELECT INSTRC(CAST('abc' AS CLOB), 'b', 1::float4) FROM DUAL...
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 SELECT INSTRC(CAST('abc' AS NCLOB), 'b', 1::float8) FROM DUAL;
 ERROR:  inconsistent datatypes: instrc() does not accept nclob
+LINE 1: SELECT INSTRC(CAST('abc' AS NCLOB), 'b', 1::float8) FROM DUA...
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 SELECT INSTRC(CAST('abc' AS NCLOB), 'b', 1::float4, 1::float4) FROM DUAL;
 ERROR:  inconsistent datatypes: instrc() does not accept nclob
+LINE 1: SELECT INSTRC(CAST('abc' AS NCLOB), 'b', 1::float4, 1::float...
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS VARCHAR2(1 BYTE)), 1::float8) FROM DUAL;
 ERROR:  inconsistent datatypes: instrc() does not accept clob
+LINE 1: SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS VARCHAR2(1 BY...
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 SELECT INSTRC(CAST('abc' AS NCLOB), CAST('b' AS CHAR(1 BYTE)), 1::float4) FROM DUAL;
 ERROR:  inconsistent datatypes: instrc() does not accept nclob
+LINE 1: SELECT INSTRC(CAST('abc' AS NCLOB), CAST('b' AS CHAR(1 BYTE)...
+               ^
 DETAIL:  Oracle's INSTRC accepts only character types, not CLOB or NCLOB.
 SELECT SUBSTRC('今天明天', 2::float8, 2::float8) FROM DUAL;
  substrc 
@@ -4724,18 +4816,24 @@ SELECT LENGTHC(SUBSTRC(CAST('ab' AS CHAR(5 BYTE)), 2::float8)) FROM DUAL;
 
 SELECT SUBSTRC(CAST('abc' AS CLOB), 1::float8, 2::float8) FROM DUAL;
 ERROR:  inconsistent datatypes: substrc() does not accept clob
+LINE 1: SELECT SUBSTRC(CAST('abc' AS CLOB), 1::float8, 2::float8) FR...
+               ^
 DETAIL:  Oracle's SUBSTRC accepts only character types, not CLOB or NCLOB.
 SELECT SUBSTRC(CAST('abc' AS NCLOB), 1::float4) FROM DUAL;
 ERROR:  inconsistent datatypes: substrc() does not accept nclob
+LINE 1: SELECT SUBSTRC(CAST('abc' AS NCLOB), 1::float4) FROM DUAL;
+               ^
 DETAIL:  Oracle's SUBSTRC accepts only character types, not CLOB or NCLOB.
 SELECT SUBSTRC(CAST('abc' AS CLOB), 1::float4, 2::float4) FROM DUAL;
 ERROR:  inconsistent datatypes: substrc() does not accept clob
+LINE 1: SELECT SUBSTRC(CAST('abc' AS CLOB), 1::float4, 2::float4) FR...
+               ^
 DETAIL:  Oracle's SUBSTRC accepts only character types, not CLOB or NCLOB.
 -- A NULL source and a NULL position answer null on the numeric-position
--- spellings as on every other shape, and a fractional position is cut to a
--- whole number, the way Oracle cuts it: SUBSTRC('abcdef', 2.9) reads as
--- SUBSTRC('abcdef', 2), and INSTRC('ababa', 'a', 1, 1.9) reads its 1.9 as
--- the first occurrence.
+-- spellings as on every other shape, and a fractional sys.number position
+-- is cut to a whole number, the way Oracle cuts it: SUBSTRC('abcdef', 2.9)
+-- reads as SUBSTRC('abcdef', 2), INSTRC('ababa', 'a', 1, 1.9) reads its
+-- 1.9 as the first occurrence, and -2.5 reads as -2.
 SELECT sys.substrc(NULL::text, 1::numeric) FROM DUAL;
  substrc 
 ---------
@@ -4766,22 +4864,76 @@ SELECT INSTRC('ababa','a',1,1.9) FROM DUAL;
       1
 (1 row)
 
--- The floating-point spellings cut the fractional part off as well.
+SELECT SUBSTRC('abcdef', -2.5) FROM DUAL;
+ substrc 
+---------
+ ef
+(1 row)
+
+-- A floating-point position rounds to the nearest whole number instead, an
+-- exact half to the even neighbor, the way Oracle reads a BINARY_FLOAT or
+-- BINARY_DOUBLE position: 2.9::float8 reads as 3, 2.5::float8 as 2, 0.5 as
+-- 0 and -2.5 as -2; an occurrence of 1.5::float8 reads as the second one.
 SELECT SUBSTRC('abcdef', 2.9::float8) FROM DUAL;
  substrc 
 ---------
- bcdef
+ cdef
+(1 row)
+
+SELECT SUBSTRC('abcdef', -2.9::float4) FROM DUAL;
+ substrc 
+---------
+ def
+(1 row)
+
+SELECT INSTRC('abcabc','b', 2.5::float8) FROM DUAL;
+ instrc 
+--------
+      2
+(1 row)
+
+SELECT INSTRC('abcabc','b', 0.5::float8) FROM DUAL;
+ instrc 
+--------
+      0
+(1 row)
+
+SELECT SUBSTRC('abcdef', -2.5::float8) FROM DUAL;
+ substrc 
+---------
+ ef
 (1 row)
 
 SELECT INSTRC('ababa','a',1,1.9::float8) FROM DUAL;
  instrc 
 --------
-      1
+      3
+(1 row)
+
+SELECT INSTRC('ababa','a',1,1.5::float8) FROM DUAL;
+ instrc 
+--------
+      3
 (1 row)
 
 SELECT INSTRC('ababa','a',1,1.9::float4) FROM DUAL;
  instrc 
 --------
-      1
+      3
 (1 row)
 
+-- A NaN position cannot be read as a number at all, and neither can an
+-- infinite one: Oracle raises ORA-03087 for the NaN and ORA-01426 for the
+-- infinity.
+SELECT SUBSTRC('abcdef', 'NaN'::float8) FROM DUAL;
+ERROR:  cannot convert NaN to integer
+DETAIL:  Oracle raises ORA-03087 here: a NaN position cannot be read as a number.
+SELECT INSTRC('abcabc','b', 'NaN'::float4) FROM DUAL;
+ERROR:  cannot convert NaN to integer
+DETAIL:  Oracle raises ORA-03087 here: a NaN position cannot be read as a number.
+SELECT SUBSTRC('abcdef', 'Infinity'::float8) FROM DUAL;
+ERROR:  integer out of range
+DETAIL:  Oracle raises ORA-01426 here: an infinite position overflows.
+SELECT INSTRC('abcabc','b', '-Infinity'::float4) FROM DUAL;
+ERROR:  integer out of range
+DETAIL:  Oracle raises ORA-01426 here: an infinite position overflows.

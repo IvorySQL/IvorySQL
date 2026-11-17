@@ -1650,13 +1650,14 @@ SELECT INSTRC('abc','c',0) FROM DUAL;
 SELECT INSTRC('abc','a',2,-1) FROM DUAL;
 SELECT INSTRC('abc','a',1,0) FROM DUAL;
 
--- The exact-match rejection overloads cover the argument combinations a
--- constant LOB call realistically carries.  sys.clob and sys.nclob are
--- domains over text, and the resolution picks a text-typed row for such a
--- call, so the argument is coerced to that row's type and the optimizer
--- folds the coercion away before the C function runs.  A CLOB source
--- written next to any pattern type or any position spelling must
--- therefore be refused while parsing.
+-- The parse-time LOB source hook refuses a LOB source while the call is
+-- still being resolved, before any overload wins: sys.clob and sys.nclob
+-- are domains over text, and a call that resolved onto a text-typed row
+-- would coerce the argument to that row's type and fold a constant --
+-- domain coercion included -- away before the C function runs.  A CLOB
+-- source written next to any pattern type or any position spelling is
+-- therefore refused while parsing, and no rejection row per combination
+-- needs to exist for that.
 SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS TEXT)) FROM DUAL;
 SELECT INSTRC(CAST('abc' AS CLOB), 'b', CAST(1 AS NUMBER), CAST(1 AS NUMBER)) FROM DUAL;
 SELECT INSTRC(CAST('abc' AS CLOB), 'b', CAST(1 AS NUMERIC)) FROM DUAL;
@@ -1686,16 +1687,17 @@ SELECT INSTRC(CAST('abc' AS TEXT), c) FROM instrc_pattern_lob;
 SELECT INSTRC(CAST('ab' AS CHAR(5 BYTE)), c) FROM instrc_pattern_lob;
 SELECT INSTRC('abc', CAST('b' AS CLOB)) FROM DUAL;
 SELECT INSTRC('abc', CAST('b' AS NCLOB)) FROM DUAL;
--- A LOB source that is not a compile-time constant is refused at run time
--- by ora_reject_lob_args(), whatever the pattern and the positions look
--- like -- including spellings the parse-time rejection rows do not cover.
+-- A LOB source that is not a compile-time constant is refused by the same
+-- hook, whatever the pattern and the positions look like: the hook reads
+-- the argument's own type, so a column and an expression that produces a
+-- LOB are refused exactly like a constant is.
 SELECT INSTRC(c, CAST('b' AS VARCHAR2(1 BYTE))) FROM instrc_pattern_lob;
 SELECT INSTRC(c, CAST('b' AS VARCHAR2(1 CHAR)), 1, 1) FROM instrc_pattern_lob;
 SELECT SUBSTRC(c, 1::bigint, 2::bigint) FROM instrc_pattern_lob;
 SELECT SUBSTRC(c, 1::smallint) FROM instrc_pattern_lob;
 SELECT SUBSTRC(c, 1.5::float8, 2.5::float8) FROM instrc_pattern_lob;
 -- A source whose type is written by an expression is refused as well: the
--- domain identity of the column is still visible at run time.
+-- expression's own type is what the hook sees.
 CREATE TABLE instrc_expr_lob (c text);
 INSERT INTO instrc_expr_lob VALUES ('abc');
 SELECT INSTRC(CAST(c AS CLOB), CAST('b' AS VARCHAR2(1 BYTE))) FROM instrc_expr_lob;
@@ -1729,9 +1731,9 @@ SELECT LENGTHC(SUBSTRC(CAST('ab' AS CHAR(5 BYTE)), CAST(2 AS NUMBER))) FROM DUAL
 SELECT REPLACE(SUBSTRC(CAST('ab' AS CHAR(5 BYTE)), CAST(2 AS NUMBER)), ' ', '_') FROM DUAL;
 SELECT SUBSTRC(CAST('今天明天' AS VARCHAR2(12 BYTE)), CAST(2 AS NUMBER), CAST(2 AS NUMBER)) FROM DUAL;
 
--- Positions written as smallint, bigint or plain numeric are NUMBER
--- arguments all the same: they must not lose the CHAR padding of the
--- source, and a CLOB or NCLOB source is refused whatever spelling the
+-- Positions written as smallint, bigint or plain numeric resolve onto the
+-- sys.number rows by implicit cast: they must not lose the CHAR padding of
+-- the source, and a CLOB or NCLOB source is refused whatever spelling the
 -- positions use.
 SELECT INSTRC('abc','b', 2::bigint) FROM DUAL;
 SELECT INSTRC('abc','b', 2::bigint, 2::bigint) FROM DUAL;
@@ -1749,9 +1751,11 @@ SELECT SUBSTRC(CAST('abc' AS NCLOB), 1::smallint) FROM DUAL;
 SELECT SUBSTRC(CAST('abc' AS CLOB), CAST(1 AS NUMERIC), CAST(2 AS NUMERIC)) FROM DUAL;
 SELECT SUBSTRC(CAST('abc' AS NCLOB), CAST(1 AS NUMERIC)) FROM DUAL;
 
--- Positions written as float8 or float4 are NUMBER arguments all the same:
--- they must not lose the CHAR padding of the source, and a CLOB or NCLOB
--- source is refused whatever spelling the positions use.
+-- Positions written as float8 or float4 round the way Oracle reads a
+-- BINARY_FLOAT or BINARY_DOUBLE position: to the nearest whole number, an
+-- exact half to the even neighbor.  They must not lose the CHAR padding of
+-- the source, and a CLOB or NCLOB source is refused whatever spelling the
+-- positions use.
 SELECT INSTRC('abc','b', 2::float8) FROM DUAL;
 SELECT INSTRC('abc','b', 2::float8, 2::float8) FROM DUAL;
 SELECT INSTRC('abc','b', 2::float4) FROM DUAL;
@@ -1772,16 +1776,32 @@ SELECT SUBSTRC(CAST('abc' AS NCLOB), 1::float4) FROM DUAL;
 SELECT SUBSTRC(CAST('abc' AS CLOB), 1::float4, 2::float4) FROM DUAL;
 
 -- A NULL source and a NULL position answer null on the numeric-position
--- spellings as on every other shape, and a fractional position is cut to a
--- whole number, the way Oracle cuts it: SUBSTRC('abcdef', 2.9) reads as
--- SUBSTRC('abcdef', 2), and INSTRC('ababa', 'a', 1, 1.9) reads its 1.9 as
--- the first occurrence.
+-- spellings as on every other shape, and a fractional sys.number position
+-- is cut to a whole number, the way Oracle cuts it: SUBSTRC('abcdef', 2.9)
+-- reads as SUBSTRC('abcdef', 2), INSTRC('ababa', 'a', 1, 1.9) reads its
+-- 1.9 as the first occurrence, and -2.5 reads as -2.
 SELECT sys.substrc(NULL::text, 1::numeric) FROM DUAL;
 SELECT sys.substrc('abc', NULL::numeric) FROM DUAL;
 SELECT sys.substrc(NULL::text, 1::numeric, 2::numeric) FROM DUAL;
 SELECT SUBSTRC('abcdef', 2.9) FROM DUAL;
 SELECT INSTRC('ababa','a',1,1.9) FROM DUAL;
--- The floating-point spellings cut the fractional part off as well.
+SELECT SUBSTRC('abcdef', -2.5) FROM DUAL;
+-- A floating-point position rounds to the nearest whole number instead, an
+-- exact half to the even neighbor, the way Oracle reads a BINARY_FLOAT or
+-- BINARY_DOUBLE position: 2.9::float8 reads as 3, 2.5::float8 as 2, 0.5 as
+-- 0 and -2.5 as -2; an occurrence of 1.5::float8 reads as the second one.
 SELECT SUBSTRC('abcdef', 2.9::float8) FROM DUAL;
+SELECT SUBSTRC('abcdef', -2.9::float4) FROM DUAL;
+SELECT INSTRC('abcabc','b', 2.5::float8) FROM DUAL;
+SELECT INSTRC('abcabc','b', 0.5::float8) FROM DUAL;
+SELECT SUBSTRC('abcdef', -2.5::float8) FROM DUAL;
 SELECT INSTRC('ababa','a',1,1.9::float8) FROM DUAL;
+SELECT INSTRC('ababa','a',1,1.5::float8) FROM DUAL;
 SELECT INSTRC('ababa','a',1,1.9::float4) FROM DUAL;
+-- A NaN position cannot be read as a number at all, and neither can an
+-- infinite one: Oracle raises ORA-03087 for the NaN and ORA-01426 for the
+-- infinity.
+SELECT SUBSTRC('abcdef', 'NaN'::float8) FROM DUAL;
+SELECT INSTRC('abcabc','b', 'NaN'::float4) FROM DUAL;
+SELECT SUBSTRC('abcdef', 'Infinity'::float8) FROM DUAL;
+SELECT INSTRC('abcabc','b', '-Infinity'::float4) FROM DUAL;
