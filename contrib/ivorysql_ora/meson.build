@@ -75,7 +75,7 @@ ivorysql_ora_merge_inputs = files(
 
 custom_target('ivorysql_ora--1.0.sql',
   output: 'ivorysql_ora--1.0.sql',
-  depend_files: ivorysql_ora_merge_inputs,
+  depend_files: ivorysql_ora_merge_inputs + files('gensql.pl', 'ivorysql_ora_merge_sqls'),
   command: [perl, '../contrib/ivorysql_ora/gensql.pl', 'meson', '1.0'],
   capture: true,
   install: true,
