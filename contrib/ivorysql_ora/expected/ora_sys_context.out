@@ -37,3 +37,6 @@ SELECT current_setting('nls_date_language') AS session_language,
  AMERICAN         | AMERICAN
 (1 row)
 
+-- An invalid value must be rejected by the NLS parameter check hook.
+SET nls_date_language = '123';
+ERROR:  Cannot access NLS data files or invalid environment specified

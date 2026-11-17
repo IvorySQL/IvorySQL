@@ -22,3 +22,6 @@ RESET nls_date_language;
 -- Reset restores both the session setting and SYS_CONTEXT to AMERICAN.
 SELECT current_setting('nls_date_language') AS session_language,
        sys_context('USERENV', 'NLS_DATE_LANGUAGE') AS context_language;
+
+-- An invalid value must be rejected by the NLS parameter check hook.
+SET nls_date_language = '123';

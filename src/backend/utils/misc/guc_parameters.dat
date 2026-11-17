@@ -2408,6 +2408,7 @@
   flags => 'GUC_NOT_IN_SAMPLE',
   variable => 'nls_date_language',
   boot_val => '"AMERICAN"',
+  check_hook => 'nls_length_check',
 },
 
 { name => 'nls_iso_currency', type => 'string', context => 'PGC_USERSET', group => 'COMPAT_ORACLE_OPTIONS',
