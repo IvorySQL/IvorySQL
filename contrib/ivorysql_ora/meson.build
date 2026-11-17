@@ -49,8 +49,33 @@ if host_system == 'windows'
     '--FILEDESC', 'ivorysql_ora - Oracle Compatible extension on Postgres Database',])
 endif
 
+# gensql.pl concatenates one <module>--1.0.sql file for every module named in
+# ivorysql_ora_merge_sqls.  List those scripts as dependencies so that an
+# incremental build regenerates the merged extension script when a module
+# script changes; otherwise the installed script silently drifts from the
+# sources.  Keep this list in sync with ivorysql_ora_merge_sqls.
+ivorysql_ora_merge_inputs = files(
+  'src/datatype/datatype--1.0.sql',
+  'src/builtin_functions/builtin_functions--1.0.sql',
+  'src/builtin_packages/dbms_output/dbms_output--1.0.sql',
+  'src/builtin_packages/utl_file/utl_file--1.0.sql',
+  'src/sysview/sysview--1.0.sql',
+  'src/xml_functions/xml_functions--1.0.sql',
+  'src/builtin_packages/dbms_utility/dbms_utility--1.0.sql',
+  'src/builtin_packages/dbms_lock/dbms_lock--1.0.sql',
+  'src/builtin_packages/utl_raw/utl_raw--1.0.sql',
+  'src/builtin_packages/utl_encode/utl_encode--1.0.sql',
+  'src/builtin_packages/utl_url/utl_url--1.0.sql',
+  'src/builtin_packages/dbms_session/dbms_session--1.0.sql',
+  'src/builtin_packages/dbms_transaction/dbms_transaction--1.0.sql',
+  'src/builtin_packages/dbms_random/dbms_random--1.0.sql',
+  'src/builtin_packages/utl_match/utl_match--1.0.sql',
+  'src/builtin_packages/dbms_scheduler/dbms_scheduler--1.0.sql'
+)
+
 custom_target('ivorysql_ora--1.0.sql',
   output: 'ivorysql_ora--1.0.sql',
+  depend_files: ivorysql_ora_merge_inputs,
   command: [perl, '../contrib/ivorysql_ora/gensql.pl', 'meson', '1.0'],
   capture: true,
   install: true,
