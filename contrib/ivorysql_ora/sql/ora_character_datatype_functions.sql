@@ -1652,14 +1652,31 @@ SELECT INSTRC('abc','a',1,0) FROM DUAL;
 
 -- The exact-match rejection overloads cover the argument combinations a
 -- constant LOB call realistically carries.  sys.clob and sys.nclob are
--- domains over text, and the optimizer folds a constant argument --
--- together with its domain coercion -- away to a plain text constant
--- before the C function runs, so a CLOB source written next to a typed
--- pattern or NUMBER positions must be refused while parsing.
+-- domains over text, and the resolution picks a text-typed row for such a
+-- call, so the argument is coerced to that row's type and the optimizer
+-- folds the coercion away before the C function runs.  A CLOB source
+-- written next to any pattern type or any position spelling must
+-- therefore be refused while parsing.
 SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS TEXT)) FROM DUAL;
 SELECT INSTRC(CAST('abc' AS CLOB), 'b', CAST(1 AS NUMBER), CAST(1 AS NUMBER)) FROM DUAL;
 SELECT INSTRC(CAST('abc' AS CLOB), 'b', CAST(1 AS NUMERIC)) FROM DUAL;
 SELECT SUBSTRC(CAST('abc' AS CLOB), CAST(1 AS NUMBER)) FROM DUAL;
+-- The pattern may be any of the Oracle character families, and the
+-- position may be any of the numeric spellings: the refusal does not
+-- depend on how either of them is written.
+SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS VARCHAR2(1 BYTE))) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS VARCHAR2(1 CHAR))) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS CHAR(1 BYTE))) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS CHAR(1 CHAR))) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS NCLOB), CAST('b' AS VARCHAR2(1 BYTE))) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS NCLOB), CAST('b' AS CHAR(1 BYTE))) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS CLOB)) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS NCLOB)) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS NCLOB), CAST('b' AS CLOB)) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS NCLOB), CAST('b' AS NCLOB)) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS VARCHAR2(1 BYTE)), CAST(1 AS NUMBER)) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS CHAR(1 BYTE)), 1::bigint) FROM DUAL;
+SELECT INSTRC(CAST('abc' AS CLOB), CAST('b' AS VARCHAR2(1 BYTE)), CAST(1 AS NUMERIC), CAST(1 AS NUMERIC)) FROM DUAL;
 
 -- Oracle refuses a CLOB or NCLOB source, but the pattern may be a CLOB or an
 -- NCLOB: only the source argument is checked.
@@ -1677,6 +1694,17 @@ SELECT INSTRC(c, CAST('b' AS VARCHAR2(1 CHAR)), 1, 1) FROM instrc_pattern_lob;
 SELECT SUBSTRC(c, 1::bigint, 2::bigint) FROM instrc_pattern_lob;
 SELECT SUBSTRC(c, 1::smallint) FROM instrc_pattern_lob;
 SELECT SUBSTRC(c, 1.5::float8, 2.5::float8) FROM instrc_pattern_lob;
+-- A source whose type is written by an expression is refused as well: the
+-- domain identity of the column is still visible at run time.
+CREATE TABLE instrc_expr_lob (c text);
+INSERT INTO instrc_expr_lob VALUES ('abc');
+SELECT INSTRC(CAST(c AS CLOB), CAST('b' AS VARCHAR2(1 BYTE))) FROM instrc_expr_lob;
+SELECT INSTRC(TO_CLOB(c), CAST('b' AS VARCHAR2(1 BYTE))) FROM instrc_expr_lob;
+SELECT INSTRC(TO_CLOB(c), 'b') FROM instrc_expr_lob;
+SELECT INSTRC(CAST(c AS CLOB), 'b') FROM instrc_expr_lob;
+SELECT SUBSTRC(CAST(c AS CLOB), 1, 2) FROM instrc_expr_lob;
+SELECT SUBSTRC(TO_CLOB(c), 1, 2) FROM instrc_expr_lob;
+DROP TABLE instrc_expr_lob;
 DROP TABLE instrc_pattern_lob;
 
 -- Oracle lets the source and the pattern use different character types; the
