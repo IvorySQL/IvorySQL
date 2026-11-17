@@ -41,3 +41,9 @@ uninstall:
 	rm -f '$(DESTDIR)$(pgxsdir)/$(subdir)/PostgreSQL/Version.pm'
 
 endif
+
+check:
+	$(prove_check)
+
+installcheck:
+	$(prove_installcheck)
