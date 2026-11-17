@@ -4689,6 +4689,13 @@ exec_stmt_execsql(PLiSQL_execstate * estate,
 	int			rc;
 	PLiSQL_expr *expr = stmt->sqlstmt;
 	int			too_many_rows_level = 0;
+	bool		ora_mode = (compatible_db == ORA_PARSER);
+
+	/*
+	 * Oracle's implicit-cursor SELECT ... INTO raises NO_DATA_FOUND or
+	 * TOO_MANY_ROWS instead of silently assigning NULL or the first row.
+	 * Keep PostgreSQL's lax behavior when the session is in PG mode.
+	 */
 
 	if (plisql_extra_errors & PLISQL_XCHECK_TOOMANYROWS)
 		too_many_rows_level = ERROR;
@@ -4818,7 +4825,7 @@ exec_stmt_execsql(PLiSQL_execstate * estate,
 	 */
 	if (stmt->into)
 	{
-		if (stmt->strict || stmt->mod_stmt || too_many_rows_level)
+		if (stmt->strict || stmt->mod_stmt || too_many_rows_level || ora_mode)
 			tcount = 2;
 		else
 			tcount = 1;
@@ -4917,7 +4924,7 @@ exec_stmt_execsql(PLiSQL_execstate * estate,
 		 */
 		if (n == 0)
 		{
-			if (stmt->strict)
+			if (stmt->strict || ora_mode)
 			{
 				char	   *errdetail;
 
@@ -4936,7 +4943,7 @@ exec_stmt_execsql(PLiSQL_execstate * estate,
 		}
 		else
 		{
-			if (n > 1 && (stmt->strict || stmt->mod_stmt || too_many_rows_level))
+			if (n > 1 && (stmt->strict || stmt->mod_stmt || too_many_rows_level || ora_mode))
 			{
 				char	   *errdetail;
 				int			errlevel;
@@ -4946,7 +4953,7 @@ exec_stmt_execsql(PLiSQL_execstate * estate,
 				else
 					errdetail = NULL;
 
-				errlevel = (stmt->strict || stmt->mod_stmt) ? ERROR : too_many_rows_level;
+				errlevel = (stmt->strict || stmt->mod_stmt || ora_mode) ? ERROR : too_many_rows_level;
 
 				ereport(errlevel,
 						(errcode(ERRCODE_TOO_MANY_ROWS),
