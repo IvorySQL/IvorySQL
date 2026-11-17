@@ -81,10 +81,8 @@ PG_FUNCTION_INFO_V1(oracle_instr_2);
 PG_FUNCTION_INFO_V1(oracle_instr_3);
 PG_FUNCTION_INFO_V1(oracle_instr_4);
 PG_FUNCTION_INFO_V1(ora_instrc);
-PG_FUNCTION_INFO_V1(ora_instrc_unsupported);
 PG_FUNCTION_INFO_V1(ora_substrc);
 PG_FUNCTION_INFO_V1(ora_substrc_no_length);
-PG_FUNCTION_INFO_V1(ora_substrc_unsupported);
 PG_FUNCTION_INFO_V1(ora_asciistr);
 PG_FUNCTION_INFO_V1(ora_to_multi_byte);
 PG_FUNCTION_INFO_V1(ora_to_single_byte);
@@ -388,12 +386,11 @@ ora_call_argtype(FunctionCallInfo fcinfo, int argnum)
 	/*
 	 * An implicit coercion to the declared parameter type wraps the original
 	 * expression; peel the whole stack of binary-coercion relabels off so
-	 * that the caller's own type is what we see.  (The peeling only helps
-	 * for non-constant arguments: when the resolution picks a text-typed
-	 * row, a constant argument is coerced to that row's type and the
-	 * planner folds the coercion into a bare Const of the target type, so
-	 * the domain identity is gone by then.  That is why the LOB rejection
-	 * overloads are needed for constant LOB sources.)
+	 * that the caller's own type is what we see.  (This is a backstop for
+	 * arguments that reach this function without having gone through the
+	 * parse-time LOB source hook in oracle_lob_source.c; the hook is what
+	 * refuses a LOB source, and it sees the argument's own type before any
+	 * coercion is imposed.)
 	 */
 	while (arg != NULL && IsA(arg, RelabelType))
 		arg = (Node *) ((RelabelType *) arg)->arg;
@@ -406,11 +403,12 @@ ora_call_argtype(FunctionCallInfo fcinfo, int argnum)
  * refuse.
  *
  * Oracle's SUBSTRC and INSTRC take character types only: a CLOB or an NCLOB
- * argument is answered with ORA-00932 (inconsistent datatypes).  sys.clob
- * and sys.nclob are domains over text, so a call whose arguments do not
- * match a rejection row exactly is resolved onto a text-typed row, and
- * the argument is coerced to that row's type; this check catches what the
- * exact-match rejection overloads cannot.
+ * argument is answered with ORA-00932 (inconsistent datatypes).  The
+ * parse-time LOB source hook (oracle_lob_source.c) refuses such an argument
+ * while the call is being resolved, whether it is a constant, a column or
+ * an expression; this run-time check is the backstop behind it, for any
+ * argument that reaches the C function without the hook having seen the
+ * call.
  */
 static void
 ora_reject_lob_args(FunctionCallInfo fcinfo, int nargs, const char *fname)
@@ -429,64 +427,6 @@ ora_reject_lob_args(FunctionCallInfo fcinfo, int nargs, const char *fname)
 					 errdetail("Oracle's %s accepts only character types, not CLOB or NCLOB.",
 							   fname)));
 	}
-}
-
-/*
- * ora_instrc_unsupported --- reject the LOB types Oracle's INSTRC rejects.
- *
- * Bound to the exact-match overloads of sys.instrc() for the CLOB and NCLOB
- * argument types; see ora_reject_lob_args() for the reasoning.
- *
- * Deliberately not STRICT: Oracle rejects the type while parsing, so a NULL
- * of a rejected type has to error out too rather than quietly return NULL.
- */
-Datum
-ora_instrc_unsupported(PG_FUNCTION_ARGS)
-{
-	Oid			argtype = get_fn_expr_argtype(fcinfo->flinfo, 0);
-
-	if (OidIsValid(argtype))
-		ereport(ERROR,
-				(errcode(ERRCODE_DATATYPE_MISMATCH),
-				 errmsg("inconsistent datatypes: instrc() does not accept %s",
-						format_type_be(argtype)),
-				 errdetail("Oracle's INSTRC accepts only character types, not CLOB or NCLOB.")));
-	else
-		ereport(ERROR,
-				(errcode(ERRCODE_DATATYPE_MISMATCH),
-				 errmsg("inconsistent datatypes: instrc() does not accept this data type"),
-				 errdetail("Oracle's INSTRC accepts only character types, not CLOB or NCLOB.")));
-
-	PG_RETURN_NULL();			/* keep the compiler quiet */
-}
-
-/*
- * ora_substrc_unsupported --- reject the LOB types Oracle's SUBSTRC rejects.
- *
- * Bound to the exact-match overloads of sys.substrc() for the CLOB and NCLOB
- * argument types; see ora_reject_lob_args() for the reasoning.
- *
- * Deliberately not STRICT: Oracle rejects the type while parsing, so a NULL
- * of a rejected type has to error out too rather than quietly return NULL.
- */
-Datum
-ora_substrc_unsupported(PG_FUNCTION_ARGS)
-{
-	Oid			argtype = get_fn_expr_argtype(fcinfo->flinfo, 0);
-
-	if (OidIsValid(argtype))
-		ereport(ERROR,
-				(errcode(ERRCODE_DATATYPE_MISMATCH),
-				 errmsg("inconsistent datatypes: substrc() does not accept %s",
-						format_type_be(argtype)),
-				 errdetail("Oracle's SUBSTRC accepts only character types, not CLOB or NCLOB.")));
-	else
-		ereport(ERROR,
-				(errcode(ERRCODE_DATATYPE_MISMATCH),
-				 errmsg("inconsistent datatypes: substrc() does not accept this data type"),
-				 errdetail("Oracle's SUBSTRC accepts only character types, not CLOB or NCLOB.")));
-
-	PG_RETURN_NULL();			/* keep the compiler quiet */
 }
 
 Datum
@@ -2218,12 +2158,15 @@ ora_nfc_normalize(text *arg)
  * the SQL layer declares the source and the pattern for the character
  * families that count blanks (CHAR) or need no cast at all (text and the
  * VARCHAR2 families, which resolve onto the text rows), and
- * position/occurrence for the numeric spellings (sys.number, integer,
- * numeric, smallint, bigint).  The 3-argument overloads default the
- * omitted occurrence to 1 in the SQL declarations and reach here with four
- * arguments; the 2-argument overloads carry no defaults and reach here
- * with two, in which case both position and occurrence keep Oracle's
- * default of 1.
+ * position/occurrence for sys.number plus the two floating-point spellings
+ * float8 and float4 -- a position of any other numeric spelling resolves
+ * onto the sys.number rows by implicit cast, while a floating-point
+ * position keeps its own row so the datum reaches here with its float type
+ * intact and is rounded the way Oracle rounds a BINARY_FLOAT/BINARY_DOUBLE
+ * position.  The 3-argument overloads default the omitted occurrence to 1
+ * in the SQL declarations and reach here with four arguments; the
+ * 2-argument overloads carry no defaults and reach here with two, in which
+ * case both position and occurrence keep Oracle's default of 1.
  *
  * The source datum arrives byte-identical to what the caller wrote: the
  * CHAR families bind their own overloads, and every other character type
@@ -2252,7 +2195,8 @@ ora_instrc(PG_FUNCTION_ARGS)
 	/*
 	 * Oracle's INSTRC refuses the LOB types for the source string only; the
 	 * pattern may be a CLOB or an NCLOB, so only argument 0 is checked here.
-	 * A non-constant LOB source is caught here at run time.
+	 * The parse-time LOB source hook refuses such a source while the call
+	 * is being resolved; this run-time check is the backstop behind it.
 	 */
 	ora_reject_lob_args(fcinfo, 1, "instrc");
 
@@ -2293,12 +2237,14 @@ ora_instrc(PG_FUNCTION_ARGS)
 /*
  * ora_position_arg --- the position/length/occurrence argument as an integer.
  *
- * These arguments are declared as sys.number, integer, plain numeric, float8
- * or float4 by the sys.substrc()/sys.instrc() overloads, and the fmgr
- * contract hands us the datum of the declared type -- so the accessor
- * switches on the declared type to read it.  A numeric position outside the
- * int4 range is answered with the standard integer-out-of-range error, the
- * same convention ora_instrb() applies to its numeric arguments.
+ * These arguments are declared as sys.number, float8 or float4 by the
+ * sys.substrc()/sys.instrc() overloads, and the fmgr contract hands us the
+ * datum of the declared type -- so the accessor switches on the declared
+ * type to read it.  Every other numeric spelling a caller writes resolves
+ * onto the sys.number rows by implicit cast, and arrives here as a numeric.
+ * A numeric position outside the int4 range is answered with the standard
+ * integer-out-of-range error, the same convention ora_instrb() applies to
+ * its numeric arguments.
  */
 static int32
 ora_position_arg(FunctionCallInfo fcinfo, int argnum)
@@ -2309,13 +2255,6 @@ ora_position_arg(FunctionCallInfo fcinfo, int argnum)
 	{
 		switch (getBaseType(argtype))
 		{
-			case INT2OID:
-				return (int32) PG_GETARG_INT16(argnum);
-			case INT4OID:
-				return PG_GETARG_INT32(argnum);
-			case INT8OID:
-				return DatumGetInt32(DirectFunctionCall1(int84,
-														 PG_GETARG_DATUM(argnum)));
 			case FLOAT4OID:
 			case FLOAT8OID:
 				{
@@ -2327,15 +2266,28 @@ ora_position_arg(FunctionCallInfo fcinfo, int argnum)
 						d = PG_GETARG_FLOAT8(argnum);
 
 					/*
-					 * The floating-point spellings cut the fractional part
-					 * off instead of rounding, the same convention the
-					 * numeric spellings below follow.
+					 * A floating-point position rounds to the nearest whole
+					 * number, with an exact half going to the even neighbor:
+					 * on a real Oracle server 2.5::BINARY_DOUBLE reads as 2,
+					 * 1.5::BINARY_DOUBLE as 2 and 0.5::BINARY_DOUBLE as 0,
+					 * while 2.9::BINARY_DOUBLE reads as 3.  A NUMBER position
+					 * drops the fraction instead: 2.9 reads as 2 and -2.5
+					 * as -2.  rint() rounds the way the float spelling
+					 * rounds, under the default rounding mode.
 					 */
 					if (isnan(d))
 						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-								 errmsg("cannot convert NaN to integer")));
-					d = trunc(d);
+								 errmsg("cannot convert NaN to integer"),
+								 errdetail("Oracle raises ORA-03087 here: a NaN"
+										   " position cannot be read as a number.")));
+					if (isinf(d))
+						ereport(ERROR,
+								(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+								 errmsg("integer out of range"),
+								 errdetail("Oracle raises ORA-01426 here: an"
+										   " infinite position overflows.")));
+					d = rint(d);
 					if (d < (double) PG_INT32_MIN || d > (double) PG_INT32_MAX)
 						ereport(ERROR,
 								(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
@@ -2347,9 +2299,10 @@ ora_position_arg(FunctionCallInfo fcinfo, int argnum)
 
 	/*
 	 * The numeric spellings (sys.number and plain numeric) cut the
-	 * fractional part off instead of rounding: Oracle's SUBSTR and INSTR
-	 * read their position arguments as whole numbers, the same convention
-	 * ora_instrb() applies to its numeric arguments.
+	 * fractional part off instead of rounding: Oracle reads a NUMBER
+	 * position as a whole number and drops the fraction -- 2.9 reads as 2,
+	 * -2.5 reads as -2 -- the same convention ora_instrb() applies to its
+	 * numeric arguments.
 	 */
 	return DatumGetInt32(DirectFunctionCall1(numeric_int4,
 											 DirectFunctionCall2(numeric_trunc,
