@@ -27,4 +27,19 @@ begin
 end
 $$;
 
+-- DML ... RETURNING INTO is not an implicit cursor: zero affected rows
+-- still sets the target to NULL instead of raising NO_DATA_FOUND.
+create table plisql_sio_dml (id int);
+insert into plisql_sio_dml values (1);
+
+do $$
+declare
+  v int := -99;
+begin
+  update plisql_sio_dml set id = id + 1 where id = 42 returning id into v;
+  raise notice 'dml zero rows: v=%', v;
+end
+$$;
+
+drop table plisql_sio_dml;
 drop table plisql_sio_t;

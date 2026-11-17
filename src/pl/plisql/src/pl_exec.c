@@ -4694,7 +4694,9 @@ exec_stmt_execsql(PLiSQL_execstate * estate,
 	/*
 	 * Oracle's implicit-cursor SELECT ... INTO raises NO_DATA_FOUND or
 	 * TOO_MANY_ROWS instead of silently assigning NULL or the first row.
-	 * Keep PostgreSQL's lax behavior when the session is in PG mode.
+	 * Keep PostgreSQL's lax behavior when the session is in PG mode, and
+	 * keep DML ... RETURNING INTO setting the target to NULL when no row is
+	 * affected.
 	 */
 
 	if (plisql_extra_errors & PLISQL_XCHECK_TOOMANYROWS)
@@ -4924,7 +4926,7 @@ exec_stmt_execsql(PLiSQL_execstate * estate,
 		 */
 		if (n == 0)
 		{
-			if (stmt->strict || ora_mode)
+			if (stmt->strict || (ora_mode && !stmt->mod_stmt))
 			{
 				char	   *errdetail;
 
