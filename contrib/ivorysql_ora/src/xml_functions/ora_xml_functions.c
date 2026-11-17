@@ -832,6 +832,36 @@ ivy_xml_addchildnode(xmlXPathObjectPtr xpathobj, xmlNodePtr cnode)
 	}
 }
 
+/*
+ * Validate all INSERTXMLBEFORE targets before modifying the document.
+ * Testing the XPath text for "/" is insufficient: expressions such as
+ * "/." and "/r/.." also select a document node, which has no parent.
+ * Namespace-axis results are xmlNs objects, not ordinary xmlNode objects.
+ */
+static void
+ivy_xml_check_before_targets(xpath_ws * ws)
+{
+	xmlXPathObjectPtr result = ws->xpathobj;
+	int			i;
+
+	if (result->type != XPATH_NODESET || result->nodesetval == NULL)
+		return;
+
+	for (i = 0; i < result->nodesetval->nodeNr; i++)
+	{
+		xmlNodePtr	node = result->nodesetval->nodeTab[i];
+
+		if (node->type == XML_NAMESPACE_DECL || node->parent == NULL ||
+			node->parent->type == XML_DOCUMENT_NODE)
+		{
+			cleanup_ws(ws);
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("invalid XPath expression")));
+		}
+	}
+}
+
 static void
 ivy_xml_addprevsiblingnode(xmlXPathObjectPtr xpathobj, const xmlChar* new_node)
 {
@@ -1586,13 +1616,7 @@ ivy_insertxmlbefore(PG_FUNCTION_ARGS)
 
 	res = ivy_xml_xpath(&ws, xpath_expr_text, data, NULL);
 
-	if (res->nodesetval && res->nodesetval->nodeNr == 1 && /* Bug#Z205 */
-		res->nodesetval->nodeTab && res->nodesetval->nodeTab[0]->parent->type == XML_DOCUMENT_NODE)
-	{
-		cleanup_ws(&ws);
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-				errmsg("invalid XPath expression")));
-	}
+	ivy_xml_check_before_targets(&ws);
 
 	ivy_xml_addprevsiblingnode(res, nodestring);
 	ret = (xmltype *)ivy_xml_xmlnode2xmltype((xmlNodePtr)ws.doc);
@@ -1654,13 +1678,7 @@ ivy_insertxmlbefore2(PG_FUNCTION_ARGS)
 
 	res = ivy_xml_xpath(&ws, xpath_expr_text, data, cns);
 
-	if (res->nodesetval && res->nodesetval->nodeNr == 1 && /* Bug#Z205 */
-		res->nodesetval->nodeTab && res->nodesetval->nodeTab[0]->parent->type == XML_DOCUMENT_NODE)
-	{
-		cleanup_ws(&ws);
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-				errmsg("invalid XPath expression")));
-	}
+	ivy_xml_check_before_targets(&ws);
 
 	ivy_xml_addprevsiblingnode(res, nodestring);
 	ret = (xmltype *)ivy_xml_xmlnode2xmltype((xmlNodePtr)ws.doc);
