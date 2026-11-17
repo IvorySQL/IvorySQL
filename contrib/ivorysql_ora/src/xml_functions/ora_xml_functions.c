@@ -891,32 +891,55 @@ ivy_xml_replacenode(xmlXPathObjectPtr xpathobj, const xmlChar* new_node)
 	int			i;
 	xmlDocPtr	n_node = NULL;
 	xmlNodePtr	cur = NULL;
+	List	   *volatile replaced = NIL;
 
-	if (xpathobj->type == XPATH_NODESET)
+	PG_TRY();
 	{
-		if (xpathobj->nodesetval != NULL)
+		if (xpathobj->type == XPATH_NODESET)
 		{
-			num = xpathobj->nodesetval->nodeNr;
-			for (i = 0; i < num; i++)
+			if (xpathobj->nodesetval != NULL)
 			{
-				cur = xpathobj->nodesetval->nodeTab[i];
-				if (strcmp((char *)new_node, "") == 0)
+				num = xpathobj->nodesetval->nodeNr;
+				for (i = 0; i < num; i++)
 				{
+					cur = xpathobj->nodesetval->nodeTab[i];
+					if (strcmp((char *) new_node, "") == 0)
+					{
 						xmlUnlinkNode(cur->children);
 						xmlFreeNode(cur->children);
-				}
-				else
-				{
-					n_node = xmlParseDoc(new_node);
-					if (n_node == NULL)
-						ereport(ERROR, (errcode(ERRCODE_INVALID_XML_DOCUMENT),
-								errmsg("could not parse XML new node")));
-					xmlReplaceNode(cur, (xmlNodePtr)n_node->children);
-					xmlFreeDoc(n_node);
+					}
+					else
+					{
+						xmlNodePtr	old;
+
+						n_node = xmlParseDoc(new_node);
+						if (n_node == NULL)
+							ereport(ERROR, (errcode(ERRCODE_INVALID_XML_DOCUMENT),
+											errmsg("could not parse XML new node")));
+						old = xmlReplaceNode(cur, (xmlNodePtr) n_node->children);
+						if (old != NULL)
+							replaced = lappend((List *) replaced, old);
+						xmlFreeDoc(n_node);
+					}
 				}
 			}
 		}
+
 	}
+	PG_FINALLY();
+	{
+		ListCell   *lc;
+
+		/*
+		 * xmlReplaceNode detaches the old node; xmlFreeDoc cannot free it.
+		 * Delay freeing until all targets have been visited, since a later
+		 * XPath match can still be a descendant of a detached target.
+		 */
+		foreach(lc, (List *) replaced)
+			xmlFreeNode((xmlNodePtr) lfirst(lc));
+		list_free((List *) replaced);
+	}
+	PG_END_TRY();
 
 }
 
