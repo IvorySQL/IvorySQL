@@ -31,6 +31,8 @@
 #include "fmgr.h"
 #include "varatt.h"
 
+#include <math.h>
+
 #include "access/detoast.h"
 #include "common/unicode_norm.h"
 #include "lib/stringinfo.h"
@@ -2291,12 +2293,12 @@ ora_instrc(PG_FUNCTION_ARGS)
 /*
  * ora_position_arg --- the position/length/occurrence argument as an integer.
  *
- * These arguments are declared as sys.number, integer or plain numeric by
- * the sys.substrc()/sys.instrc() overloads, and the fmgr contract hands us
- * the datum of the declared type -- so the accessor switches on the declared
- * type to read it.  A numeric position outside the int4 range is answered
- * with the standard integer-out-of-range error, the same convention
- * ora_instrb() applies to its numeric arguments.
+ * These arguments are declared as sys.number, integer, plain numeric, float8
+ * or float4 by the sys.substrc()/sys.instrc() overloads, and the fmgr
+ * contract hands us the datum of the declared type -- so the accessor
+ * switches on the declared type to read it.  A numeric position outside the
+ * int4 range is answered with the standard integer-out-of-range error, the
+ * same convention ora_instrb() applies to its numeric arguments.
  */
 static int32
 ora_position_arg(FunctionCallInfo fcinfo, int argnum)
@@ -2314,6 +2316,32 @@ ora_position_arg(FunctionCallInfo fcinfo, int argnum)
 			case INT8OID:
 				return DatumGetInt32(DirectFunctionCall1(int84,
 														 PG_GETARG_DATUM(argnum)));
+			case FLOAT4OID:
+			case FLOAT8OID:
+				{
+					double		d;
+
+					if (getBaseType(argtype) == FLOAT4OID)
+						d = (double) PG_GETARG_FLOAT4(argnum);
+					else
+						d = PG_GETARG_FLOAT8(argnum);
+
+					/*
+					 * The floating-point spellings cut the fractional part
+					 * off instead of rounding, the same convention the
+					 * numeric spellings below follow.
+					 */
+					if (isnan(d))
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+								 errmsg("cannot convert NaN to integer")));
+					d = trunc(d);
+					if (d < (double) PG_INT32_MIN || d > (double) PG_INT32_MAX)
+						ereport(ERROR,
+								(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+								 errmsg("integer out of range")));
+					return (int32) d;
+				}
 		}
 	}
 
