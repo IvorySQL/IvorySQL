@@ -24,6 +24,7 @@
  */
 #include "postgres.h"
 #include "fmgr.h"
+#include "mb/pg_wchar.h"
 #include "varatt.h"
 #include "utils/builtins.h"
 #include "common/base64.h"
@@ -441,4 +442,5 @@ ora_utl_encode_text_decode(PG_FUNCTION_ARGS)
 															  DirectFunctionCall1(namein, CStringGetDatum(GetDatabaseEncodingName()))));
 
 	PG_RETURN_TEXT_P(result);
+	}
 }
