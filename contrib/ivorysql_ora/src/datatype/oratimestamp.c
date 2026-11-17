@@ -36,6 +36,7 @@
 #include "access/hash.h"
 #include "access/xact.h"
 #include "catalog/pg_type.h"
+#include "common/int.h"
 #include "funcapi.h"
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
@@ -276,7 +277,8 @@ timestamp2timestamptz(Timestamp timestamp)
  *	 USER I/O ROUTINES														 *
  *****************************************************************************/
 
-/* oratimestamp_in()
+/*
+ * oratimestamp_in()
  * Convert a string to internal form.
  */
 Datum
@@ -316,7 +318,8 @@ oratimestamp_in(PG_FUNCTION_ARGS)
 	}
 }
 
-/* oratimestamp_out()
+/*
+ * oratimestamp_out()
  * Convert a oradate to external form.
  */
 Datum
@@ -783,7 +786,8 @@ oratimestamp(PG_FUNCTION_ARGS)
 /*****************************************************************************
  *	 Cast Function															 *
  *****************************************************************************/
-/* oratimestamp_oradate()
+/*
+ * oratimestamp_oradate()
  * Convert oratimestamp to oradate
  */
 Datum
@@ -815,7 +819,8 @@ oratimestamp_oradate(PG_FUNCTION_ARGS)
 
 
 
-/* oratimestamp_oratimestamptz()
+/*
+ * oratimestamp_oratimestamptz()
  * Convert oratimestamp to oratimestamptz
  */
 Datum
@@ -826,7 +831,8 @@ oratimestamp_oratimestamptz(PG_FUNCTION_ARGS)
 	PG_RETURN_TIMESTAMPTZ(timestamp2timestamptz(timestamp));
 }
 
-/* oratimestamp_oratimestampltz()
+/*
+ * oratimestamp_oratimestampltz()
  * Convert oratimestamp to oratimestampltz
  */
 Datum
@@ -842,7 +848,8 @@ oratimestamp_oratimestampltz(PG_FUNCTION_ARGS)
  * Datetime/Interval Arithmetic
  *
  *****************************************************************************/
-/* oradate - oratimestampltz
+/*
+ * oradate - oratimestampltz
  * oradate - oratimestamptz
  * oratimestamp - oratimestampltz
  * oratimestamp - oratimestampltz
@@ -877,7 +884,10 @@ oradate_mi_oratimestampltz(PG_FUNCTION_ARGS)
 					 errmsg("timestamp out of range")));
 	}
 
-	result->time = dt1 - timestamp;
+	if (pg_sub_s64_overflow(dt1, timestamp, &result->time))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("interval out of range")));
 
 	result->month = 0;
 	result->day = 0;
@@ -924,7 +934,10 @@ oratimestampltz_mi_oradate(PG_FUNCTION_ARGS)
 					 errmsg("timestamp out of range")));
 	}
 
-	result->time = timestamp - dt2;
+	if (pg_sub_s64_overflow(timestamp, dt2, &result->time))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("interval out of range")));
 
 	result->month = 0;
 	result->day = 0;
@@ -940,8 +953,8 @@ oratimestampltz_mi_oradate(PG_FUNCTION_ARGS)
  * The arithmetic operation of oradate minus oradate, Result
  * type is NUMBER.
  *
- * Because Operates internally using float8 data type, so the
- * number type to be returned maximum significant digits is 15.
+ * Differences representable in int64 use float8 internally, limiting the
+ * result to 15 significant digits.  Wider differences use numeric arithmetic.
  *
  */
 Datum
@@ -949,6 +962,7 @@ oradate_mi(PG_FUNCTION_ARGS)
 {
 	Timestamp	dt1 = PG_GETARG_TIMESTAMP(0);
 	Timestamp	dt2 = PG_GETARG_TIMESTAMP(1);
+	int64		difference;
 	double		result;
 
 	if (TIMESTAMP_NOT_FINITE(dt1) || TIMESTAMP_NOT_FINITE(dt2))
@@ -956,8 +970,15 @@ oradate_mi(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("cannot subtract infinite timestamps")));
 
-	result = dt1 - dt2;
+	/* Avoid integer overflow and loss of precision in wide differences. */
+	if (pg_sub_s64_overflow(dt1, dt2, &difference))
+		PG_RETURN_NUMERIC(numeric_div_safe(numeric_sub_safe(int64_to_numeric(dt1),
+															int64_to_numeric(dt2),
+															NULL),
+										   int64_to_numeric(USECS_PER_DAY),
+										   NULL));
 
+	result = (double) difference;
 	result = result / USECS_PER_DAY;
 
 	PG_RETURN_DATUM(DirectFunctionCall1(float8_numeric, Float8GetDatum(result)));
@@ -989,7 +1010,10 @@ oratimestamp_mi(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("cannot subtract infinite timestamps")));
 
-	result->time = dt1 - dt2;
+	if (pg_sub_s64_overflow(dt1, dt2, &result->time))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("interval out of range")));
 
 	result->month = 0;
 	result->day = 0;
