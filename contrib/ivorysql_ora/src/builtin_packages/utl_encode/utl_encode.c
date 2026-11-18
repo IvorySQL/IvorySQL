@@ -349,6 +349,49 @@ PG_FUNCTION_INFO_V1(ora_utl_encode_text_decode);
  * A NULL charset means the database encoding; scheme NULL sends the raw
  * converted bytes, 1 applies base64, 2 applies quoted-printable.
  */
+/*
+ * Oracle character-set name aliases (shared semantics with UTL_URL's
+ * table): Oracle's documented TEXT_DECODE example passes WE8ISO8859P1,
+ * and migrated code spells character sets the Oracle way.  Resolve the
+ * documented Oracle names before handing the charset to the conversion
+ * functions; unknown names keep their error path.
+ */
+static const struct
+{
+	const char *ora_name;
+	const char *pg_name;
+}			utl_encode_charset_aliases[] = {
+	{"AL32UTF8", "UTF8"},
+	{"WE8ISO8859P1", "LATIN1"},
+	{"WE8ISO8859P15", "LATIN9"},
+	{"WE8MSWIN1252", "WIN1252"},
+	{"EE8ISO8859P2", "LATIN2"},
+	{"JA16SJIS", "SJIS"},
+	{"JA16EUC", "EUC_JP"},
+	{"ZHS16GBK", "GBK"},
+	{"ZHT16BIG5", "BIG5"},
+	{"KO16KSC5601", "EUC_KR"},
+	{"KO16MSWIN949", "UHC"},
+	{"CL8ISO8859P5", "ISO_8859_5"},
+};
+
+/*
+ * Return a palloc'd copy of charset with Oracle aliases resolved to the
+ * PostgreSQL encoding name they denote.
+ */
+static char *
+utl_encode_resolve_charset(const char *charset)
+{
+	int			i;
+
+	for (i = 0; i < lengthof(utl_encode_charset_aliases); i++)
+	{
+		if (pg_strcasecmp(charset, utl_encode_charset_aliases[i].ora_name) == 0)
+			return pstrdup(utl_encode_charset_aliases[i].pg_name);
+	}
+	return pstrdup(charset);
+}
+
 Datum
 ora_utl_encode_text_encode(PG_FUNCTION_ARGS)
 {
@@ -364,7 +407,7 @@ ora_utl_encode_text_encode(PG_FUNCTION_ARGS)
 
 		if (PG_NARGS() > 1 && !PG_ARGISNULL(1))
 		{
-			char	   *charset = text_to_cstring(PG_GETARG_TEXT_PP(1));
+			char	   *charset = utl_encode_resolve_charset(text_to_cstring(PG_GETARG_TEXT_PP(1)));
 
 			encname = DirectFunctionCall1(namein, CStringGetDatum(charset));
 		}
@@ -430,7 +473,7 @@ ora_utl_encode_text_decode(PG_FUNCTION_ARGS)
 
 	if (PG_NARGS() > 1 && !PG_ARGISNULL(1))
 	{
-		char	   *charset = text_to_cstring(PG_GETARG_TEXT_PP(1));
+		char	   *charset = utl_encode_resolve_charset(text_to_cstring(PG_GETARG_TEXT_PP(1)));
 
 		result = (text *) DatumGetPointer(DirectFunctionCall2(pg_convert_from,
 															  PointerGetDatum(raw),
