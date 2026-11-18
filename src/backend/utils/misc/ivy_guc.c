@@ -32,6 +32,7 @@
 
 int			identifier_case_switch = INTERCHANGE;
 bool		identifier_case_from_pg_dump = false;
+bool		preserve_absent_typmod = false;
 bool		enable_case_switch = true;
 
 static char	   *nls_territory = "AMERICA";
