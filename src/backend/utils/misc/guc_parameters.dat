@@ -1547,6 +1547,14 @@
   max => '65535',
 },
 
+{ name => 'ivorysql.preserve_absent_typmod', type => 'bool', context => 'PGC_USERSET', group => 'DEVELOPER_OPTIONS',
+  short_desc => 'Prints Oracle types that have no type modifier so that re-parsing keeps it absent.',
+  long_desc => 'When on, Oracle-mode type names that would otherwise get a default precision or length on re-parse are printed schema-qualified. pg_dump turns this on for its own session.',
+  flags => 'GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE',
+  variable => 'preserve_absent_typmod',
+  boot_val => 'false',
+},
+
 { name => 'ivorysql.rowid_seq_cache', type => 'int', context => 'PGC_USERSET', group => 'DEVELOPER_OPTIONS',
   short_desc => 'Sets rowid Sequence cache number.',
   long_desc => 'Sets the number of cached sequence values for rowid generation.',

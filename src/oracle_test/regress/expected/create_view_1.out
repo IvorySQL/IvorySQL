@@ -414,8 +414,8 @@ CREATE VIEW tt1 AS
                                View "testviewschm2.tt1"
  Column |        Type        | Collation | Nullable | Default | Storage  | Description 
 --------+--------------------+-----------+----------+---------+----------+-------------
- a      | sys.oravarcharbyte |           |          |         | extended | 
- b      | sys.oravarcharbyte |           |          |         | extended | 
+ a      | varchar2           |           |          |         | extended | 
+ b      | varchar2           |           |          |         | extended | 
  c      | pg_catalog.numeric |           |          |         | main     | 
  d      | varchar2(4)        |           |          |         | extended | 
 View definition:
@@ -423,7 +423,7 @@ View definition:
     b,
     c,
     d
-   FROM ( VALUES ('abc'::varchar2(3),'0123456789'::sys.oravarcharbyte,42,'abcd'::varchar2(4)), ('0123456789'::sys.oravarcharbyte,'abc'::varchar2(3),42.12,'abc'::varchar2(4))) vv(a, b, c, d);
+   FROM ( VALUES ('abc'::varchar2(3),'0123456789'::varchar2,42,'abcd'::varchar2(4)), ('0123456789'::varchar2,'abc'::varchar2(3),42.12,'abc'::varchar2(4))) vv(a, b, c, d);
 
 SELECT * FROM tt1;
      a      |     b      |   c   |  d   
@@ -1909,12 +1909,12 @@ select pg_get_viewdef('tt201v', true);
      SUBSTRING('foo'::text FROM 2 FOR 3) AS s,                                                  +
      SUBSTRING('foo'::text SIMILAR 'f'::text ESCAPE '#'::text) AS ss,                           +
      "substring"('foo'::text, 'oo'::text) AS ssf,                                               +
-     "trim"(' foo '::sys.oravarcharchar, ' '::sys.oravarcharchar) AS bt,                        +
-     ltrim(' foo '::sys.oravarcharchar, ' '::sys.oravarcharchar) AS lt,                         +
-     rtrim(' foo '::sys.oravarcharchar) AS rt,                                                  +
+     "trim"(' foo '::varchar2, ' '::varchar2) AS bt,                                            +
+     ltrim(' foo '::varchar2, ' '::varchar2) AS lt,                                             +
+     rtrim(' foo '::varchar2) AS rt,                                                            +
      "trim"('\x00546f6d00'::bytea, '\x00'::bytea) AS btb,                                       +
-     ltrim('\x00546f6d00'::bytea::sys.oravarcharchar, '\x00'::bytea::sys.oravarcharchar) AS ltb,+
-     rtrim('\x00546f6d00'::bytea::sys.oravarcharchar, '\x00'::bytea::sys.oravarcharchar) AS rtb;
+     ltrim('\x00546f6d00'::bytea::varchar2, '\x00'::bytea::varchar2) AS ltb,                    +
+     rtrim('\x00546f6d00'::bytea::varchar2, '\x00'::bytea::varchar2) AS rtb;
 (1 row)
 
 -- corner cases with empty join conditions

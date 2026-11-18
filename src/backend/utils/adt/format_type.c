@@ -176,8 +176,16 @@ format_type_extended(Oid type_oid, int32 typemod, uint16 flags)
 		is_array = false;
 
 	with_typemod = (flags & FORMAT_TYPE_TYPEMOD_GIVEN) != 0 && (typemod >= 0);
-	/* A known absence of a typmod must survive parsing the output. */
-	preserve_no_typemod = (flags & FORMAT_TYPE_TYPEMOD_GIVEN) != 0 && typemod == -1;
+	/*
+	 * In Oracle mode, bare TIMESTAMP and VARCHAR2 get a default precision or
+	 * length when parsed again.  When ivorysql.preserve_absent_typmod is on
+	 * (pg_dump sets it for its session), print such types schema-qualified
+	 * if the caller says the typmod is known to be absent, so that a dump
+	 * restored through the Oracle port keeps it absent.  Interactive output
+	 * such as psql's \d and view definitions keeps the familiar names.
+	 */
+	preserve_no_typemod = preserve_absent_typmod &&
+		(flags & FORMAT_TYPE_TYPEMOD_GIVEN) != 0 && typemod == -1;
 
 	/*
 	 * See if we want to special-case the output for certain built-in types.

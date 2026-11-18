@@ -572,10 +572,10 @@ SELECT tableoid::regclass, * FROM sales_list ORDER BY tableoid::regclass::text C
 -- Use indexscan for testing indexes after merging partitions
 SET enable_seqscan = OFF;
 EXPLAIN (COSTS OFF) SELECT * FROM sales_all WHERE sales_state = 'Warsaw';
-                         QUERY PLAN                         
-------------------------------------------------------------
+                       QUERY PLAN                        
+---------------------------------------------------------
  Index Scan using sales_all_sales_state_idx on sales_all
-   Index Cond: (sales_state = 'Warsaw'::sys.oravarcharbyte)
+   Index Cond: (sales_state = 'Warsaw'::varchar2)
 (2 rows)
 
 SELECT * FROM sales_all WHERE sales_state = 'Warsaw';
@@ -589,7 +589,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM sales_list WHERE sales_state = 'Warsaw';
                              QUERY PLAN                             
 --------------------------------------------------------------------
  Index Scan using sales_all_sales_state_idx on sales_all sales_list
-   Index Cond: (sales_state = 'Warsaw'::sys.oravarcharbyte)
+   Index Cond: (sales_state = 'Warsaw'::varchar2)
 (2 rows)
 
 SELECT * FROM sales_list WHERE sales_state = 'Warsaw';
@@ -604,15 +604,15 @@ EXPLAIN (COSTS OFF) SELECT * FROM sales_list WHERE salesperson_name = 'Ivanov';
 ---------------------------------------------------------------------------------
  Append
    ->  Index Scan using sales_all_salesperson_name_idx on sales_all sales_list_1
-         Index Cond: (salesperson_name = 'Ivanov'::sys.oravarcharbyte)
+         Index Cond: (salesperson_name = 'Ivanov'::varchar2)
    ->  Bitmap Heap Scan on sales_nord sales_list_2
-         Recheck Cond: (salesperson_name = 'Ivanov'::sys.oravarcharbyte)
+         Recheck Cond: (salesperson_name = 'Ivanov'::varchar2)
          ->  Bitmap Index Scan on sales_nord_salesperson_name_idx
-               Index Cond: (salesperson_name = 'Ivanov'::sys.oravarcharbyte)
+               Index Cond: (salesperson_name = 'Ivanov'::varchar2)
    ->  Bitmap Heap Scan on sales_others sales_list_3
-         Recheck Cond: (salesperson_name = 'Ivanov'::sys.oravarcharbyte)
+         Recheck Cond: (salesperson_name = 'Ivanov'::varchar2)
          ->  Bitmap Index Scan on sales_others_salesperson_name_idx
-               Index Cond: (salesperson_name = 'Ivanov'::sys.oravarcharbyte)
+               Index Cond: (salesperson_name = 'Ivanov'::varchar2)
 (11 rows)
 
 SELECT * FROM sales_list WHERE salesperson_name = 'Ivanov';

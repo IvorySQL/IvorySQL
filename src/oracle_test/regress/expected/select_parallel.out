@@ -1451,14 +1451,14 @@ explain (costs off) select count(*) from para_ora where sys.length(name) > 5;
 
 -- datetime datatype functions
 explain (costs off) select count(*) from para_ora where sys.to_char(d, 'YYYY') > '1900';
-                                     QUERY PLAN                                      
--------------------------------------------------------------------------------------
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
  Finalize Aggregate
    ->  Gather
          Workers Planned: 2
          ->  Partial Aggregate
                ->  Parallel Seq Scan on para_ora
-                     Filter: (to_char(d, 'YYYY'::text) > '1900'::sys.oravarcharbyte)
+                     Filter: (to_char(d, 'YYYY'::text) > '1900'::varchar2)
 (6 rows)
 
 -- number datatype functions
@@ -1475,14 +1475,14 @@ explain (costs off) select count(*) from para_ora where sys.to_number(name) > 10
 
 -- raw/blob/clob datatype functions
 explain (costs off) select count(*) from para_ora where sys.rawtohex(name) > '0';
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
+                              QUERY PLAN                              
+----------------------------------------------------------------------
  Finalize Aggregate
    ->  Gather
          Workers Planned: 2
          ->  Partial Aggregate
                ->  Parallel Seq Scan on para_ora
-                     Filter: (rawtohex((name)::text) > '0'::sys.oravarcharbyte)
+                     Filter: (rawtohex((name)::text) > '0'::varchar2)
 (6 rows)
 
 -- misc functions

@@ -1526,6 +1526,26 @@ setup_connection(Archive *AH, const char *dumpencoding,
 		ExecuteSqlStatement(AH, "SET quote_all_identifiers = true");
 
 	/*
+	 * Make the server print Oracle types whose type modifier is absent in a
+	 * form that the Oracle parser reads back without supplying a default
+	 * precision or length.  Older servers lack this setting, and since
+	 * ivorysql_ora reserves the "ivorysql" prefix, setting it there would
+	 * fail, so check that it exists first.
+	 */
+	if (AH->remoteVersion >= 90600)
+	{
+		PGresult   *res;
+
+		res = ExecuteSqlQueryForSingleRow(AH,
+										  "SELECT pg_catalog.current_setting("
+										  "'ivorysql.preserve_absent_typmod', true) "
+										  "IS NOT NULL");
+		if (strcmp(PQgetvalue(res, 0, 0), "t") == 0)
+			ExecuteSqlStatement(AH, "SET ivorysql.preserve_absent_typmod = on");
+		PQclear(res);
+	}
+
+	/*
 	 * Adjust row-security mode, if supported.
 	 */
 	if (AH->remoteVersion >= 90500)

@@ -1872,10 +1872,10 @@ create temp table tmptz (f1 timestamptz primary key);
 insert into tmptz values ('2017-01-18 00:00+00');
 explain (costs off)
 select * from tmptz where f1 at time zone 'utc' = '2017-01-18 00:00';
-                                       QUERY PLAN                                       
-----------------------------------------------------------------------------------------
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
  Seq Scan on tmptz
-   Filter: (timezone('utc'::text, f1) = '2017-01-18 00:00:00.000000'::sys.oratimestamp)
+   Filter: (timezone('utc'::text, f1) = '2017-01-18 00:00:00.000000'::timestamp)
 (2 rows)
 
 select * from tmptz where f1 at time zone 'utc' = '2017-01-18 00:00';

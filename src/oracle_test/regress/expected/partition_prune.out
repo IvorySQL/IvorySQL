@@ -362,31 +362,31 @@ explain (costs off) select * from rlp where a <= 15;
 (17 rows)
 
 explain (costs off) select * from rlp where a > 15 and b = 'ab';
-                          QUERY PLAN                           
----------------------------------------------------------------
+                     QUERY PLAN                      
+-----------------------------------------------------
  Append
    ->  Seq Scan on rlp3abcd rlp_1
-         Filter: ((a > 15) AND (b = 'ab'::sys.oravarcharbyte))
+         Filter: ((a > 15) AND (b = 'ab'::varchar2))
    ->  Seq Scan on rlp3efgh rlp_2
-         Filter: ((a > 15) AND (b = 'ab'::sys.oravarcharbyte))
+         Filter: ((a > 15) AND (b = 'ab'::varchar2))
    ->  Seq Scan on rlp3nullxy rlp_3
-         Filter: ((a > 15) AND (b = 'ab'::sys.oravarcharbyte))
+         Filter: ((a > 15) AND (b = 'ab'::varchar2))
    ->  Seq Scan on rlp3_default rlp_4
-         Filter: ((a > 15) AND (b = 'ab'::sys.oravarcharbyte))
+         Filter: ((a > 15) AND (b = 'ab'::varchar2))
    ->  Seq Scan on rlp4_1 rlp_5
-         Filter: ((a > 15) AND (b = 'ab'::sys.oravarcharbyte))
+         Filter: ((a > 15) AND (b = 'ab'::varchar2))
    ->  Seq Scan on rlp4_2 rlp_6
-         Filter: ((a > 15) AND (b = 'ab'::sys.oravarcharbyte))
+         Filter: ((a > 15) AND (b = 'ab'::varchar2))
    ->  Seq Scan on rlp4_default rlp_7
-         Filter: ((a > 15) AND (b = 'ab'::sys.oravarcharbyte))
+         Filter: ((a > 15) AND (b = 'ab'::varchar2))
    ->  Seq Scan on rlp5_1 rlp_8
-         Filter: ((a > 15) AND (b = 'ab'::sys.oravarcharbyte))
+         Filter: ((a > 15) AND (b = 'ab'::varchar2))
    ->  Seq Scan on rlp5_default rlp_9
-         Filter: ((a > 15) AND (b = 'ab'::sys.oravarcharbyte))
+         Filter: ((a > 15) AND (b = 'ab'::varchar2))
    ->  Seq Scan on rlp_default_30 rlp_10
-         Filter: ((a > 15) AND (b = 'ab'::sys.oravarcharbyte))
+         Filter: ((a > 15) AND (b = 'ab'::varchar2))
    ->  Seq Scan on rlp_default_default rlp_11
-         Filter: ((a > 15) AND (b = 'ab'::sys.oravarcharbyte))
+         Filter: ((a > 15) AND (b = 'ab'::varchar2))
 (23 rows)
 
 explain (costs off) select * from rlp where a = 16;
@@ -404,45 +404,45 @@ explain (costs off) select * from rlp where a = 16;
 (9 rows)
 
 explain (costs off) select * from rlp where a = 16 and b in ('not', 'in', 'here');
-                                    QUERY PLAN                                    
-----------------------------------------------------------------------------------
+                               QUERY PLAN                               
+------------------------------------------------------------------------
  Append
    ->  Seq Scan on rlp3abcd rlp_1
-         Filter: ((a = 16) AND (b = ANY ('{not,in,here}'::sys.oravarcharbyte[])))
+         Filter: ((a = 16) AND (b = ANY ('{not,in,here}'::varchar2[])))
    ->  Seq Scan on rlp3efgh rlp_2
-         Filter: ((a = 16) AND (b = ANY ('{not,in,here}'::sys.oravarcharbyte[])))
+         Filter: ((a = 16) AND (b = ANY ('{not,in,here}'::varchar2[])))
    ->  Seq Scan on rlp3nullxy rlp_3
-         Filter: ((a = 16) AND (b = ANY ('{not,in,here}'::sys.oravarcharbyte[])))
+         Filter: ((a = 16) AND (b = ANY ('{not,in,here}'::varchar2[])))
    ->  Seq Scan on rlp3_default rlp_4
-         Filter: ((a = 16) AND (b = ANY ('{not,in,here}'::sys.oravarcharbyte[])))
+         Filter: ((a = 16) AND (b = ANY ('{not,in,here}'::varchar2[])))
 (9 rows)
 
 explain (costs off) select * from rlp where a = 16 and b < 'ab';
-                          QUERY PLAN                           
----------------------------------------------------------------
+                     QUERY PLAN                      
+-----------------------------------------------------
  Append
    ->  Seq Scan on rlp3abcd rlp_1
-         Filter: ((b < 'ab'::sys.oravarcharbyte) AND (a = 16))
+         Filter: ((b < 'ab'::varchar2) AND (a = 16))
    ->  Seq Scan on rlp3efgh rlp_2
-         Filter: ((b < 'ab'::sys.oravarcharbyte) AND (a = 16))
+         Filter: ((b < 'ab'::varchar2) AND (a = 16))
    ->  Seq Scan on rlp3nullxy rlp_3
-         Filter: ((b < 'ab'::sys.oravarcharbyte) AND (a = 16))
+         Filter: ((b < 'ab'::varchar2) AND (a = 16))
    ->  Seq Scan on rlp3_default rlp_4
-         Filter: ((b < 'ab'::sys.oravarcharbyte) AND (a = 16))
+         Filter: ((b < 'ab'::varchar2) AND (a = 16))
 (9 rows)
 
 explain (costs off) select * from rlp where a = 16 and b <= 'ab';
-                           QUERY PLAN                           
-----------------------------------------------------------------
+                      QUERY PLAN                      
+------------------------------------------------------
  Append
    ->  Seq Scan on rlp3abcd rlp_1
-         Filter: ((b <= 'ab'::sys.oravarcharbyte) AND (a = 16))
+         Filter: ((b <= 'ab'::varchar2) AND (a = 16))
    ->  Seq Scan on rlp3efgh rlp_2
-         Filter: ((b <= 'ab'::sys.oravarcharbyte) AND (a = 16))
+         Filter: ((b <= 'ab'::varchar2) AND (a = 16))
    ->  Seq Scan on rlp3nullxy rlp_3
-         Filter: ((b <= 'ab'::sys.oravarcharbyte) AND (a = 16))
+         Filter: ((b <= 'ab'::varchar2) AND (a = 16))
    ->  Seq Scan on rlp3_default rlp_4
-         Filter: ((b <= 'ab'::sys.oravarcharbyte) AND (a = 16))
+         Filter: ((b <= 'ab'::varchar2) AND (a = 16))
 (9 rows)
 
 explain (costs off) select * from rlp where a = 16 and b is null;
@@ -566,39 +566,39 @@ explain (costs off) select * from rlp where a = 1 or a = 7;
 (2 rows)
 
 explain (costs off) select * from rlp where a = 1 or b = 'ab';
-                         QUERY PLAN                          
--------------------------------------------------------------
+                    QUERY PLAN                     
+---------------------------------------------------
  Append
    ->  Seq Scan on rlp1 rlp_1
-         Filter: ((a = 1) OR (b = 'ab'::sys.oravarcharbyte))
+         Filter: ((a = 1) OR (b = 'ab'::varchar2))
    ->  Seq Scan on rlp2 rlp_2
-         Filter: ((a = 1) OR (b = 'ab'::sys.oravarcharbyte))
+         Filter: ((a = 1) OR (b = 'ab'::varchar2))
    ->  Seq Scan on rlp3abcd rlp_3
-         Filter: ((a = 1) OR (b = 'ab'::sys.oravarcharbyte))
+         Filter: ((a = 1) OR (b = 'ab'::varchar2))
    ->  Seq Scan on rlp3efgh rlp_4
-         Filter: ((a = 1) OR (b = 'ab'::sys.oravarcharbyte))
+         Filter: ((a = 1) OR (b = 'ab'::varchar2))
    ->  Seq Scan on rlp3nullxy rlp_5
-         Filter: ((a = 1) OR (b = 'ab'::sys.oravarcharbyte))
+         Filter: ((a = 1) OR (b = 'ab'::varchar2))
    ->  Seq Scan on rlp3_default rlp_6
-         Filter: ((a = 1) OR (b = 'ab'::sys.oravarcharbyte))
+         Filter: ((a = 1) OR (b = 'ab'::varchar2))
    ->  Seq Scan on rlp4_1 rlp_7
-         Filter: ((a = 1) OR (b = 'ab'::sys.oravarcharbyte))
+         Filter: ((a = 1) OR (b = 'ab'::varchar2))
    ->  Seq Scan on rlp4_2 rlp_8
-         Filter: ((a = 1) OR (b = 'ab'::sys.oravarcharbyte))
+         Filter: ((a = 1) OR (b = 'ab'::varchar2))
    ->  Seq Scan on rlp4_default rlp_9
-         Filter: ((a = 1) OR (b = 'ab'::sys.oravarcharbyte))
+         Filter: ((a = 1) OR (b = 'ab'::varchar2))
    ->  Seq Scan on rlp5_1 rlp_10
-         Filter: ((a = 1) OR (b = 'ab'::sys.oravarcharbyte))
+         Filter: ((a = 1) OR (b = 'ab'::varchar2))
    ->  Seq Scan on rlp5_default rlp_11
-         Filter: ((a = 1) OR (b = 'ab'::sys.oravarcharbyte))
+         Filter: ((a = 1) OR (b = 'ab'::varchar2))
    ->  Seq Scan on rlp_default_10 rlp_12
-         Filter: ((a = 1) OR (b = 'ab'::sys.oravarcharbyte))
+         Filter: ((a = 1) OR (b = 'ab'::varchar2))
    ->  Seq Scan on rlp_default_30 rlp_13
-         Filter: ((a = 1) OR (b = 'ab'::sys.oravarcharbyte))
+         Filter: ((a = 1) OR (b = 'ab'::varchar2))
    ->  Seq Scan on rlp_default_null rlp_14
-         Filter: ((a = 1) OR (b = 'ab'::sys.oravarcharbyte))
+         Filter: ((a = 1) OR (b = 'ab'::varchar2))
    ->  Seq Scan on rlp_default_default rlp_15
-         Filter: ((a = 1) OR (b = 'ab'::sys.oravarcharbyte))
+         Filter: ((a = 1) OR (b = 'ab'::varchar2))
 (31 rows)
 
 explain (costs off) select * from rlp where a > 20 and a < 27;
@@ -1528,12 +1528,12 @@ create table coercepart_ab partition of coercepart for values in ('ab');
 create table coercepart_bc partition of coercepart for values in ('bc');
 create table coercepart_cd partition of coercepart for values in ('cd');
 explain (costs off) select * from coercepart where a in ('ab', to_char(125, '999'));
-                                                  QUERY PLAN                                                  
---------------------------------------------------------------------------------------------------------------
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
  Append
    Subplans Removed: 2
    ->  Seq Scan on coercepart_ab coercepart_1
-         Filter: (a = ANY (ARRAY['ab'::sys.oravarcharbyte, (to_char(125, '999'::text))::sys.oravarcharbyte]))
+         Filter: (a = ANY (ARRAY['ab'::varchar2, (to_char(125, '999'::text))::varchar2]))
 (4 rows)
 
 explain (costs off) select * from coercepart where a ~ any ('{ab}');
@@ -1585,20 +1585,20 @@ explain (costs off) select * from coercepart where a !~ all ('{ab,bc}');
 (7 rows)
 
 explain (costs off) select * from coercepart where a = any ('{ab,bc}');
-                         QUERY PLAN                          
--------------------------------------------------------------
+                    QUERY PLAN                     
+---------------------------------------------------
  Append
    ->  Seq Scan on coercepart_ab coercepart_1
-         Filter: (a = ANY ('{ab,bc}'::sys.oravarcharbyte[]))
+         Filter: (a = ANY ('{ab,bc}'::varchar2[]))
    ->  Seq Scan on coercepart_bc coercepart_2
-         Filter: (a = ANY ('{ab,bc}'::sys.oravarcharbyte[]))
+         Filter: (a = ANY ('{ab,bc}'::varchar2[]))
 (5 rows)
 
 explain (costs off) select * from coercepart where a = any ('{ab,null}');
-                       QUERY PLAN                        
----------------------------------------------------------
+                  QUERY PLAN                   
+-----------------------------------------------
  Seq Scan on coercepart_ab coercepart
-   Filter: (a = ANY ('{ab,NULL}'::sys.oravarcharbyte[]))
+   Filter: (a = ANY ('{ab,NULL}'::varchar2[]))
 (2 rows)
 
 explain (costs off) select * from coercepart where a = any (null::text[]);
@@ -1614,10 +1614,10 @@ explain (costs off) select * from coercepart where a = any (null::text[]);
 (7 rows)
 
 explain (costs off) select * from coercepart where a = all ('{ab}');
-                     QUERY PLAN                     
-----------------------------------------------------
+                QUERY PLAN                
+------------------------------------------
  Seq Scan on coercepart_ab coercepart
-   Filter: (a = ALL ('{ab}'::sys.oravarcharbyte[]))
+   Filter: (a = ALL ('{ab}'::varchar2[]))
 (2 rows)
 
 explain (costs off) select * from coercepart where a = all ('{ab,bc}');
@@ -1842,17 +1842,17 @@ explain (costs off) select * from lp where (a <> 'a' and a <> 'd') or a is null;
 -- which in this case are partitions of rlp that are themselves
 -- list-partitioned on b
 explain (costs off) select * from rlp where a = 15 and b <> 'ab' and b <> 'cd' and b <> 'xy' and b is not null;
-                                                                         QUERY PLAN                                                                         
-------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                          QUERY PLAN                                                          
+------------------------------------------------------------------------------------------------------------------------------
  Append
    ->  Seq Scan on rlp3abcd rlp_1
-         Filter: ((b IS NOT NULL) AND (b <> 'ab'::sys.oravarcharbyte) AND (b <> 'cd'::sys.oravarcharbyte) AND (b <> 'xy'::sys.oravarcharbyte) AND (a = 15))
+         Filter: ((b IS NOT NULL) AND (b <> 'ab'::varchar2) AND (b <> 'cd'::varchar2) AND (b <> 'xy'::varchar2) AND (a = 15))
    ->  Seq Scan on rlp3efgh rlp_2
-         Filter: ((b IS NOT NULL) AND (b <> 'ab'::sys.oravarcharbyte) AND (b <> 'cd'::sys.oravarcharbyte) AND (b <> 'xy'::sys.oravarcharbyte) AND (a = 15))
+         Filter: ((b IS NOT NULL) AND (b <> 'ab'::varchar2) AND (b <> 'cd'::varchar2) AND (b <> 'xy'::varchar2) AND (a = 15))
    ->  Seq Scan on rlp3nullxy rlp_3
-         Filter: ((b IS NOT NULL) AND (b <> 'ab'::sys.oravarcharbyte) AND (b <> 'cd'::sys.oravarcharbyte) AND (b <> 'xy'::sys.oravarcharbyte) AND (a = 15))
+         Filter: ((b IS NOT NULL) AND (b <> 'ab'::varchar2) AND (b <> 'cd'::varchar2) AND (b <> 'xy'::varchar2) AND (a = 15))
    ->  Seq Scan on rlp3_default rlp_4
-         Filter: ((b IS NOT NULL) AND (b <> 'ab'::sys.oravarcharbyte) AND (b <> 'cd'::sys.oravarcharbyte) AND (b <> 'xy'::sys.oravarcharbyte) AND (a = 15))
+         Filter: ((b IS NOT NULL) AND (b <> 'ab'::varchar2) AND (b <> 'cd'::varchar2) AND (b <> 'xy'::varchar2) AND (a = 15))
 (9 rows)
 
 --
@@ -3439,7 +3439,7 @@ select * from stable_qual_pruning where a < '2000-02-01'::timestamptz;
  Append (actual rows=0.00 loops=1)
    Subplans Removed: 2
    ->  Seq Scan on stable_qual_pruning1 stable_qual_pruning_1 (actual rows=0.00 loops=1)
-         Filter: (a < '2000-02-01 00:00:00.000000 -08:00'::sys.oratimestamptz)
+         Filter: (a < '2000-02-01 00:00:00.000000 -08:00'::timestamp with time zone)
 (4 rows)
 
 -- check ScalarArrayOp cases
@@ -3485,12 +3485,12 @@ select * from stable_qual_pruning
 explain (analyze, costs off, summary off, timing off, buffers off)
 select * from stable_qual_pruning
   where a = any(array['2000-02-01', '2010-01-01']::timestamptz[]);
-                                                          QUERY PLAN                                                           
--------------------------------------------------------------------------------------------------------------------------------
+                                                             QUERY PLAN                                                              
+-------------------------------------------------------------------------------------------------------------------------------------
  Append (actual rows=0.00 loops=1)
    Subplans Removed: 2
    ->  Seq Scan on stable_qual_pruning2 stable_qual_pruning_1 (actual rows=0.00 loops=1)
-         Filter: (a = ANY ('{"2000-02-01 00:00:00.000000 -08:00","2010-01-01 00:00:00.000000 -08:00"}'::sys.oratimestamptz[]))
+         Filter: (a = ANY ('{"2000-02-01 00:00:00.000000 -08:00","2010-01-01 00:00:00.000000 -08:00"}'::timestamp with time zone[]))
 (4 rows)
 
 explain (analyze, costs off, summary off, timing off, buffers off)
@@ -3500,11 +3500,11 @@ select * from stable_qual_pruning
 -----------------------------------------------------------------------------------------
  Append (actual rows=0.00 loops=1)
    ->  Seq Scan on stable_qual_pruning1 stable_qual_pruning_1 (actual rows=0.00 loops=1)
-         Filter: (a = ANY (NULL::sys.oratimestamptz[]))
+         Filter: (a = ANY (NULL::timestamp with time zone[]))
    ->  Seq Scan on stable_qual_pruning2 stable_qual_pruning_2 (actual rows=0.00 loops=1)
-         Filter: (a = ANY (NULL::sys.oratimestamptz[]))
+         Filter: (a = ANY (NULL::timestamp with time zone[]))
    ->  Seq Scan on stable_qual_pruning3 stable_qual_pruning_3 (actual rows=0.00 loops=1)
-         Filter: (a = ANY (NULL::sys.oratimestamptz[]))
+         Filter: (a = ANY (NULL::timestamp with time zone[]))
 (7 rows)
 
 drop table stable_qual_pruning;
@@ -4315,10 +4315,10 @@ create table rp_prefix_test1_p2 partition of rp_prefix_test1 for values from (2,
 -- Don't call get_steps_using_prefix() with the last partition key b plus
 -- an empty prefix
 explain (costs off) select * from rp_prefix_test1 where a <= 1 and b = 'a';
-                       QUERY PLAN                       
---------------------------------------------------------
+                   QUERY PLAN                   
+------------------------------------------------
  Seq Scan on rp_prefix_test1_p1 rp_prefix_test1
-   Filter: ((a <= 1) AND (b = 'a'::sys.oravarcharbyte))
+   Filter: ((a <= 1) AND (b = 'a'::varchar2))
 (2 rows)
 
 create table rp_prefix_test2 (a int, b int, c int) partition by range(a, b, c);

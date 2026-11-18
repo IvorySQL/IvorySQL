@@ -47,6 +47,53 @@ like($expected_types, qr/^tz\|oratimestamptz\|-1$/m,
 like($expected_types, qr/^precise_tz\|oratimestamptz\|3$/m,
 	'source timestamp with explicit precision has a type modifier');
 
+# Interactive output (\d, view definitions, plans) keeps the familiar Oracle
+# names; only a session that turns on ivorysql.preserve_absent_typmod, as
+# pg_dump does, gets the schema-qualified names.
+my $formatted_types = q{
+	SELECT a.attname || '|' || format_type(a.atttypid, a.atttypmod)
+	FROM pg_attribute a
+	WHERE a.attrelid = 'restore_typmods'::regclass AND a.attnum > 0
+	ORDER BY a.attnum
+};
+is( $node->safe_psql($source, $formatted_types, connect_to_oraport => 1),
+	join("
+",
+		'tz|timestamp with time zone',
+		'ts|timestamp',
+		'ltz|timestamp with local time zone',
+		'byte_string|varchar2',
+		'char_string|varchar2',
+		'precise_tz|timestamp(3) with time zone',
+		'address|varchar2(10)'),
+	'Oracle session prints familiar type names by default');
+is( $node->safe_psql(
+		$source,
+		"SET ivorysql.preserve_absent_typmod = on;
+$formatted_types",
+		connect_to_oraport => 1),
+	join("
+",
+		'tz|sys.oratimestamptz',
+		'ts|sys.oratimestamp',
+		'ltz|sys.oratimestampltz',
+		'byte_string|sys.oravarcharbyte',
+		'char_string|sys.oravarcharchar',
+		'precise_tz|timestamp(3) with time zone',
+		'address|varchar2(10)'),
+	'preserve_absent_typmod qualifies only types without a type modifier');
+
+unlike($expected_view, qr/sys\./,
+	'view definition keeps familiar names by default');
+like(
+	$node->safe_psql(
+		$source,
+		"SET ivorysql.preserve_absent_typmod = on;
+$view_definition",
+		connect_to_oraport => 1),
+	qr/'US'::sys\.oravarchar(byte|char)/,
+	'preserve_absent_typmod qualifies the view cast');
+
 foreach my $format ('custom', 'plain')
 {
 	my $target = "typmod_$format";
@@ -57,6 +104,15 @@ foreach my $format ('custom', 'plain')
 	$node->command_ok(
 		['pg_dump', '-p', $port, "--format=$format", '-f', $dump, $source],
 		"dump through the Oracle port ($format)");
+
+	if ($format eq 'plain')
+	{
+		my $sql = slurp_file($dump);
+		like($sql, qr/tz sys\.oratimestamptz/,
+			'plain dump qualifies a timestamp without precision');
+		like($sql, qr/precise_tz timestamp\(3\) with time zone/,
+			'plain dump keeps an explicit precision');
+	}
 
 	my $restore = $format eq 'custom'
 	  ? ['pg_restore', '--exit-on-error', '-p', $port, '-d', $target, $dump]
