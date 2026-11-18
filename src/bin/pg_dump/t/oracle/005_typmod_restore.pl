@@ -127,9 +127,9 @@ foreach my $format ('custom', 'plain')
 		"qualified view casts survive $format restore");
 }
 
-# pg_dump only probes for ivorysql.preserve_absent_typmod; a role that may
-# not call current_setting() must still be able to dump, just without the
-# qualified names.
+# The probe for ivorysql.preserve_absent_typmod must not need any privilege:
+# a role that may not call current_setting() still gets the qualified names,
+# and its dump restores without adding type modifiers.
 $node->safe_psql($source, q{
 	CREATE ROLE typmod_dumper LOGIN;
 	GRANT SELECT ON restore_typmods, restore_view TO typmod_dumper;
@@ -143,9 +143,19 @@ $node->command_ok(
 		'-f', $noexec_dump, $source
 	],
 	'dump succeeds without EXECUTE on current_setting');
-my $noexec_sql = slurp_file($noexec_dump);
-like($noexec_sql, qr/\btz timestamp with time zone\b/,
-	'dump without the probe keeps the default type names');
+like(slurp_file($noexec_dump), qr/\btz sys\.oratimestamptz\b/,
+	'dump without EXECUTE on current_setting qualifies the type');
+$node->safe_psql('postgres', 'CREATE DATABASE typmod_noexec',
+	connect_to_oraport => 1);
+$node->command_ok(
+	[
+		'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-p', $port,
+		'-d', 'typmod_noexec', '-f', $noexec_dump
+	],
+	'restore the dump made without EXECUTE on current_setting');
+is($node->safe_psql('typmod_noexec', $column_types, connect_to_oraport => 1),
+	$expected_types,
+	'column types and modifiers survive a dump without EXECUTE on current_setting');
 $node->safe_psql($source, q{
 	GRANT EXECUTE ON FUNCTION pg_catalog.current_setting(text, boolean)
 		TO PUBLIC;
