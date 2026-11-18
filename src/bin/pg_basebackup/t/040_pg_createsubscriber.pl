@@ -107,6 +107,17 @@ command_fails(
 	],
 	'wrong number of replication slot names');
 
+# Companion program versions are checked before the data directory.
+command_fails_like(
+	[
+		'pg_createsubscriber',
+		'--pgdata' => "$datadir/nonexistent",
+		'--publisher-server' => 'dbname=postgres',
+		'--dry-run',
+	],
+	qr/data directory .* does not exist/,
+	'companion version checks pass before checking the data directory');
+
 # Set up node P as primary
 my $node_p = PostgreSQL::Test::Cluster->new('node_p');
 my $pconnstr = $node_p->connstr;
