@@ -30,6 +30,11 @@ CREATE TABLE ref_reg_holder (person REF ref_reg_person NOT NULL);
 
 -- Describing raw REF columns must work for both grammar productions.
 \pset format unaligned
+SELECT attrelid::regclass, attname, atttypmod
+  FROM pg_attribute
+ WHERE (attrelid = 'ref_reg_holder'::regclass AND attname = 'person')
+    OR (attrelid = 'ref_reg_people'::regclass AND attname = 'parent')
+ ORDER BY attrelid::regclass::text;
 SELECT person FROM ref_reg_holder;
 SELECT parent FROM ref_reg_people;
 \pset format aligned
