@@ -11,7 +11,7 @@ EXTENSION = injection_points
 DATA = injection_points--1.0.sql
 PGFILEDESC = "injection_points - facility for injection points"
 
-ORA_REGRESS = injection_points hashagg reindex_conc vacuum
+ORA_REGRESS = injection_points hashagg portal_bind reindex_conc vacuum
 ORACLE_REGRESS_OPTS = --dlpath=$(top_builddir)/src/oracle_test/regress
 
 # wait_cleanup terminates another backend, whose FATAL message can be lost
