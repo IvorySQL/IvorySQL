@@ -37,10 +37,16 @@ my $column_types = q{
 	ORDER BY a.attnum
 };
 my $view_definition = q{SELECT pg_get_viewdef('restore_view'::regclass)};
+# The default display prints both VARCHAR2 flavours as plain varchar2, so
+# compare view definitions with the qualified names turned on as well.
+my $preserve = "SET ivorysql.preserve_absent_typmod = on;\n";
+my $preserved_view_definition = $preserve . $view_definition;
 my $expected_types = $node->safe_psql($source, $column_types,
 	connect_to_oraport => 1);
 my $expected_view = $node->safe_psql($source, $view_definition,
 	connect_to_oraport => 1);
+my $expected_preserved_view = $node->safe_psql($source,
+	$preserved_view_definition, connect_to_oraport => 1);
 
 like($expected_types, qr/^tz\|oratimestamptz\|-1$/m,
 	'source timestamp with time zone has no type modifier');
@@ -57,8 +63,7 @@ my $formatted_types = q{
 	ORDER BY a.attnum
 };
 is( $node->safe_psql($source, $formatted_types, connect_to_oraport => 1),
-	join("
-",
+	join("\n",
 		'tz|timestamp with time zone',
 		'ts|timestamp',
 		'ltz|timestamp with local time zone',
@@ -69,11 +74,9 @@ is( $node->safe_psql($source, $formatted_types, connect_to_oraport => 1),
 	'Oracle session prints familiar type names by default');
 is( $node->safe_psql(
 		$source,
-		"SET ivorysql.preserve_absent_typmod = on;
-$formatted_types",
+		"$preserve$formatted_types",
 		connect_to_oraport => 1),
-	join("
-",
+	join("\n",
 		'tz|sys.oratimestamptz',
 		'ts|sys.oratimestamp',
 		'ltz|sys.oratimestampltz',
@@ -85,13 +88,7 @@ $formatted_types",
 
 unlike($expected_view, qr/sys\./,
 	'view definition keeps familiar names by default');
-like(
-	$node->safe_psql(
-		$source,
-		"SET ivorysql.preserve_absent_typmod = on;
-$view_definition",
-		connect_to_oraport => 1),
-	qr/'US'::sys\.oravarchar(byte|char)/,
+like($expected_preserved_view, qr/'US'::sys\.oravarchar(byte|char)/,
 	'preserve_absent_typmod qualifies the view cast');
 
 foreach my $format ('custom', 'plain')
@@ -124,7 +121,35 @@ foreach my $format ('custom', 'plain')
 		$expected_types, "column types and modifiers survive $format restore");
 	is($node->safe_psql($target, $view_definition, connect_to_oraport => 1),
 		$expected_view, "view expression casts survive $format restore");
+	is( $node->safe_psql($target, $preserved_view_definition,
+			connect_to_oraport => 1),
+		$expected_preserved_view,
+		"qualified view casts survive $format restore");
 }
+
+# pg_dump only probes for ivorysql.preserve_absent_typmod; a role that may
+# not call current_setting() must still be able to dump, just without the
+# qualified names.
+$node->safe_psql($source, q{
+	CREATE ROLE typmod_dumper LOGIN;
+	GRANT SELECT ON restore_typmods, restore_view TO typmod_dumper;
+	REVOKE EXECUTE ON FUNCTION pg_catalog.current_setting(text, boolean)
+		FROM PUBLIC;
+});
+my $noexec_dump = "$tempdir/noexec.sql";
+$node->command_ok(
+	[
+		'pg_dump', '-p', $port, '-U', 'typmod_dumper', '--schema-only',
+		'-f', $noexec_dump, $source
+	],
+	'dump succeeds without EXECUTE on current_setting');
+my $noexec_sql = slurp_file($noexec_dump);
+like($noexec_sql, qr/\btz timestamp with time zone\b/,
+	'dump without the probe keeps the default type names');
+$node->safe_psql($source, q{
+	GRANT EXECUTE ON FUNCTION pg_catalog.current_setting(text, boolean)
+		TO PUBLIC;
+});
 
 $node->stop('fast');
 done_testing();

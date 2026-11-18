@@ -1530,17 +1530,20 @@ setup_connection(Archive *AH, const char *dumpencoding,
 	 * form that the Oracle parser reads back without supplying a default
 	 * precision or length.  Older servers lack this setting, and since
 	 * ivorysql_ora reserves the "ivorysql" prefix, setting it there would
-	 * fail, so check that it exists first.
+	 * fail, so check that it exists first.  The check is not essential, so
+	 * if it fails (say, for lack of privilege on current_setting()), just
+	 * leave the setting off; we are not inside a transaction yet, so the
+	 * error does not affect later queries.
 	 */
 	if (AH->remoteVersion >= 90600)
 	{
 		PGresult   *res;
 
-		res = ExecuteSqlQueryForSingleRow(AH,
-										  "SELECT pg_catalog.current_setting("
-										  "'ivorysql.preserve_absent_typmod', true) "
-										  "IS NOT NULL");
-		if (strcmp(PQgetvalue(res, 0, 0), "t") == 0)
+		res = PQexec(conn,
+					 "SELECT pg_catalog.current_setting("
+					 "'ivorysql.preserve_absent_typmod', true) IS NOT NULL");
+		if (PQresultStatus(res) == PGRES_TUPLES_OK && PQntuples(res) == 1 &&
+			strcmp(PQgetvalue(res, 0, 0), "t") == 0)
 			ExecuteSqlStatement(AH, "SET ivorysql.preserve_absent_typmod = on");
 		PQclear(res);
 	}
