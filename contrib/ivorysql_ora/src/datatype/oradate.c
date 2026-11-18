@@ -248,7 +248,8 @@ oradate_recv(PG_FUNCTION_ARGS)
 	/* rangecheck: see if timestamp_out would like it */
 	if (TIMESTAMP_NOT_FINITE(timestamp))
 		 /* ok */ ;
-	else if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) != 0)
+	else if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) != 0 ||
+			 !IS_VALID_TIMESTAMP(timestamp))
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("date out of range")));
