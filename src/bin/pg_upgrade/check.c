@@ -37,6 +37,8 @@ static void check_new_cluster_subscription_configuration(void);
 static void check_old_cluster_for_valid_slots(void);
 static void check_old_cluster_subscription_state(void);
 static void check_old_cluster_global_names(ClusterInfo *cluster);
+static void get_old_xmltype_array_usage(ClusterInfo *cluster);
+static void check_for_xmltype_array_usage(void);
 
 /*
  * DataTypesUsageChecks - definitions of data type checks for the old cluster
@@ -652,6 +654,7 @@ check_and_dump_old_cluster(void)
 	}
 
 	check_for_data_types_usage(&old_cluster);
+	get_old_xmltype_array_usage(&old_cluster);
 
 	/*
 	 * Unicode updates can affect some objects that use expressions with
@@ -746,6 +749,8 @@ check_new_cluster(void)
 	check_new_cluster_is_empty();
 
 	check_loadable_libraries();
+
+	check_for_xmltype_array_usage();
 
 	switch (user_opts.transfer_mode)
 	{
@@ -2639,6 +2644,265 @@ check_old_cluster_global_names(ClusterInfo *cluster)
 				 "with invalid characters (newline or carriage return).  To fix this,\n"
 				 "rename these objects.\n"
 				 "A list of all objects with invalid names is in the file:\n"
+				 "    %s", output_path);
+	}
+	else
+		check_ok();
+}
+
+/*
+ * SQL predicate matching an un-dumped sys.xmltype base type.
+ *
+ * In Oracle mode, initdb installs ivorysql_ora (with pg_extension.oid < 16384),
+ * which creates sys.xmltype with a dynamically assigned OID that can even
+ * exceed FirstNormalObjectId (16384).  Because neither the sys schema nor a
+ * built-in extension is dumped by pg_dump --binary-upgrade, sys.xmltype's OID
+ * is not preserved across upgrades; instead, the new cluster uses whatever OID
+ * its own initdb assigned.  Scalar sys.xmltype values do not store a type OID
+ * on disk, but array values (ArrayType) embed their element type OID on disk.
+ */
+#define SYS_XMLTYPE_NOT_DUMPED_WHERE \
+	"n.nspname = 'sys' AND " \
+	"t.typname = 'xmltype' AND " \
+	"t.typtype = 'b' AND " \
+	"NOT EXISTS ( " \
+	"  SELECT 1 " \
+	"  FROM pg_catalog.pg_depend d " \
+	"  JOIN pg_catalog.pg_extension e ON e.oid = d.refobjid " \
+	"  WHERE d.classid = 'pg_catalog.pg_type'::pg_catalog.regclass AND " \
+	"        d.objid = t.oid AND " \
+	"        d.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass AND " \
+	"        d.deptype = 'e' AND " \
+	"        e.oid >= 16384 " \
+	")"
+
+/*
+ * Private state for tracking stored columns in the old cluster that depend on
+ * the array type of an un-dumped sys.xmltype.
+ */
+struct xmltype_array_usage_state
+{
+	PGresult  **ress;			/* results for each database in old_cluster */
+	int			totaltups;		/* number of tuples across all databases */
+};
+
+static struct xmltype_array_usage_state old_xmltype_array_usage;
+
+/*
+ * Callback function for get_old_xmltype_array_usage()'s UpgradeTask.
+ */
+static void
+process_old_xmltype_array_usage(DbInfo *dbinfo, PGresult *res, void *arg)
+{
+	struct xmltype_array_usage_state *state = (struct xmltype_array_usage_state *) arg;
+
+	state->ress[dbinfo - old_cluster.dbarr.dbs] = res;
+	state->totaltups += PQntuples(res);
+}
+
+/*
+ * get_old_xmltype_array_usage()
+ *
+ * Collect all stored user columns in the old cluster whose data type is, or
+ * recursively contains, a true array over an un-dumped sys.xmltype.  The
+ * actual compatibility decision is deferred to check_for_xmltype_array_usage()
+ * once the new cluster is running and its sys.xmltype OID can be queried.
+ */
+static void
+get_old_xmltype_array_usage(ClusterInfo *cluster)
+{
+	UpgradeTask *task = upgrade_task_create();
+	const char *multirange_branch = "";
+	char	   *query;
+
+	old_xmltype_array_usage.ress =
+		pg_malloc0_array(PGresult *, cluster->dbarr.ndbs);
+	old_xmltype_array_usage.totaltups = 0;
+
+	if (GET_MAJOR_VERSION(cluster->major_version) >= 1400)
+		multirange_branch =
+			"			UNION ALL "
+			"			SELECT x.xmltype_oid, t.oid "
+			"			FROM pg_catalog.pg_type t, pg_catalog.pg_range r, x "
+			"			WHERE t.typtype = 'm' AND r.rngmultitypid = t.oid AND r.rngtypid = x.oid ";
+
+	query = psprintf("WITH RECURSIVE oids(xmltype_oid, oid) AS ( "
+	/* start with the array type directly over sys.xmltype */
+					 "	SELECT t.oid, arr.oid "
+					 "	FROM pg_catalog.pg_type t "
+					 "	JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace "
+					 "	JOIN pg_catalog.pg_type arr ON arr.typelem = t.oid AND arr.typtype = 'b' "
+					 "	WHERE " SYS_XMLTYPE_NOT_DUMPED_WHERE " "
+					 "	UNION "
+					 "	SELECT * FROM ( "
+					 "		WITH x AS (SELECT xmltype_oid, oid FROM oids) "
+	/* domains on any type selected so far */
+					 "			SELECT x.xmltype_oid, t.oid FROM pg_catalog.pg_type t, x "
+					 "			WHERE t.typbasetype = x.oid AND t.typtype = 'd' "
+					 "			UNION ALL "
+	/* arrays over any type selected so far */
+					 "			SELECT x.xmltype_oid, t.oid FROM pg_catalog.pg_type t, x "
+					 "			WHERE t.typelem = x.oid AND t.typtype = 'b' "
+					 "			UNION ALL "
+	/* composite types containing any type selected so far */
+					 "			SELECT x.xmltype_oid, t.oid "
+					 "			FROM pg_catalog.pg_type t, pg_catalog.pg_class c, pg_catalog.pg_attribute a, x "
+					 "			WHERE t.typtype = 'c' AND "
+					 "				  t.oid = c.reltype AND "
+					 "				  c.oid = a.attrelid AND "
+					 "				  NOT a.attisdropped AND "
+					 "				  a.atttypid = x.oid "
+					 "			UNION ALL "
+	/* ranges containing any type selected so far */
+					 "			SELECT x.xmltype_oid, t.oid "
+					 "			FROM pg_catalog.pg_type t, pg_catalog.pg_range r, x "
+					 "			WHERE t.typtype = 'r' AND r.rngtypid = t.oid AND r.rngsubtype = x.oid "
+					 "%s"
+					 "	) foo "
+					 ") "
+	/* now look for stored columns of any such type */
+					 "SELECT DISTINCT o.xmltype_oid, n.nspname, c.relname, a.attname, a.attnum "
+					 "FROM	pg_catalog.pg_class c, "
+					 "		pg_catalog.pg_namespace n, "
+					 "		pg_catalog.pg_attribute a, "
+					 "		oids o "
+					 "WHERE	c.oid = a.attrelid AND "
+					 "		a.attnum > 0 AND "
+					 "		NOT a.attisdropped AND "
+					 "		a.atttypid = o.oid AND "
+					 "		c.relkind IN ("
+					 CppAsString2(RELKIND_RELATION) ", "
+					 CppAsString2(RELKIND_MATVIEW) ", "
+					 CppAsString2(RELKIND_INDEX) ") AND "
+					 "		c.relnamespace = n.oid AND "
+	/* exclude possible orphaned temp tables */
+					 "		n.nspname !~ '^pg_temp_' AND "
+					 "		n.nspname !~ '^pg_toast_temp_' AND "
+	/* exclude system catalogs, too */
+					 "		n.nspname NOT IN ('pg_catalog', 'information_schema') "
+					 "ORDER BY n.nspname, c.relname, a.attnum",
+					 multirange_branch);
+
+	upgrade_task_add_step(task, query, process_old_xmltype_array_usage,
+						  false, &old_xmltype_array_usage);
+	upgrade_task_run(task, cluster);
+	upgrade_task_free(task);
+	pg_free(query);
+}
+
+/*
+ * check_for_xmltype_array_usage()
+ *
+ * If the old cluster has stored columns using arrays of sys.xmltype, verify
+ * that the new cluster's template1 defines sys.xmltype with the exact same OID.
+ * Otherwise, on-disk ArrayType headers would carry a stale element OID after
+ * upgrade.
+ */
+static void
+check_for_xmltype_array_usage(void)
+{
+	PGconn	   *conn;
+	PGresult   *new_res;
+	Oid			new_xmltype_oid = InvalidOid;
+	FILE	   *script = NULL;
+	char		output_path[MAXPGPATH];
+
+	if (!old_cluster.controldata.database_mode_is_oracle &&
+		old_xmltype_array_usage.totaltups == 0)
+	{
+		for (int dbnum = 0; dbnum < old_cluster.dbarr.ndbs; dbnum++)
+			PQclear(old_xmltype_array_usage.ress[dbnum]);
+		pg_free(old_xmltype_array_usage.ress);
+		old_xmltype_array_usage.ress = NULL;
+		return;
+	}
+
+	prep_status("Checking for incompatible \"sys.xmltype\" arrays in user tables");
+
+	if (old_xmltype_array_usage.totaltups == 0)
+	{
+		for (int dbnum = 0; dbnum < old_cluster.dbarr.ndbs; dbnum++)
+			PQclear(old_xmltype_array_usage.ress[dbnum]);
+		pg_free(old_xmltype_array_usage.ress);
+		old_xmltype_array_usage.ress = NULL;
+		check_ok();
+		return;
+	}
+
+	snprintf(output_path, sizeof(output_path), "%s/%s",
+			 log_opts.basedir,
+			 "tables_using_xmltype_array.txt");
+
+	conn = connectToServer(&new_cluster, "template1");
+	new_res = executeQueryOrDie(conn,
+								"SELECT t.oid AS xmltype_oid "
+								"FROM pg_catalog.pg_type t "
+								"JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace "
+								"WHERE " SYS_XMLTYPE_NOT_DUMPED_WHERE);
+	if (PQntuples(new_res) == 1)
+		new_xmltype_oid = atooid(PQgetvalue(new_res, 0, 0));
+	PQclear(new_res);
+	PQfinish(conn);
+
+	for (int dbnum = 0; dbnum < old_cluster.dbarr.ndbs; dbnum++)
+	{
+		PGresult   *res = old_xmltype_array_usage.ress[dbnum];
+		int			ntups;
+		int			i_xmltype_oid;
+		int			i_nspname;
+		int			i_relname;
+		int			i_attname;
+		bool		db_header_written = false;
+
+		if (res == NULL)
+			continue;
+
+		ntups = PQntuples(res);
+		i_xmltype_oid = PQfnumber(res, "xmltype_oid");
+		i_nspname = PQfnumber(res, "nspname");
+		i_relname = PQfnumber(res, "relname");
+		i_attname = PQfnumber(res, "attname");
+
+		for (int rowno = 0; rowno < ntups; rowno++)
+		{
+			Oid			old_xmltype_oid = atooid(PQgetvalue(res, rowno, i_xmltype_oid));
+
+			if (old_xmltype_oid == new_xmltype_oid)
+				continue;
+
+			if (script == NULL &&
+				(script = fopen_priv(output_path, "w")) == NULL)
+				pg_fatal("could not open file \"%s\": %m", output_path);
+
+			if (!db_header_written)
+			{
+				fprintf(script, "In database: %s\n",
+						old_cluster.dbarr.dbs[dbnum].db_name);
+				db_header_written = true;
+			}
+
+			fprintf(script, "  %s.%s.%s\n",
+					PQgetvalue(res, rowno, i_nspname),
+					PQgetvalue(res, rowno, i_relname),
+					PQgetvalue(res, rowno, i_attname));
+		}
+
+		PQclear(res);
+	}
+
+	pg_free(old_xmltype_array_usage.ress);
+	old_xmltype_array_usage.ress = NULL;
+
+	if (script)
+	{
+		fclose(script);
+		pg_log(PG_REPORT, "fatal");
+		pg_fatal("Your installation contains arrays of \"sys.xmltype\" in user tables,\n"
+				 "and the OID of \"sys.xmltype\" differs between the old and new clusters.\n"
+				 "Array values store their element type OID on disk, so this cluster\n"
+				 "cannot currently be upgraded.  You can drop the problem columns\n"
+				 "and restart the upgrade.\n"
+				 "A list of the problem columns is in the file:\n"
 				 "    %s", output_path);
 	}
 	else
