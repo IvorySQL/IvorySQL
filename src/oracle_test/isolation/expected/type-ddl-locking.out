@@ -30,9 +30,9 @@ step s1_create_testview_with_domain: CREATE VIEW testview AS SELECT 123::testdom
 step s2_drop_domain: DROP DOMAIN testdom; <waiting ...>
 step s1_commit: COMMIT;
 step s2_drop_domain: <... completed>
-ERROR:  cannot drop type testdom because other objects depend on it
 step s1_drop_testview: DROP VIEW testview;
 step s1_drop_domain: DROP DOMAIN testdom;
+ERROR:  type "testdom" does not exist
 
 starting permutation: s1_create_rowtype_tbl s1_begin s1_create_testtab_with_rowtype s2_drop_rowtype_tbl s1_commit s1_drop_testtab s1_drop_rowtype_tbl
 step s1_create_rowtype_tbl: CREATE TABLE rowtype(a int8, b text);
@@ -52,9 +52,9 @@ step s1_create_testview_with_rowtype_top: CREATE VIEW testview AS SELECT '(1,b)'
 step s2_drop_rowtype_tbl: DROP TABLE rowtype; <waiting ...>
 step s1_commit: COMMIT;
 step s2_drop_rowtype_tbl: <... completed>
-ERROR:  cannot drop table rowtype because other objects depend on it
 step s1_drop_testview: DROP VIEW testview;
 step s1_drop_rowtype_tbl: DROP TABLE rowtype;
+ERROR:  table "rowtype" does not exist
 
 starting permutation: s1_create_rowtype_tbl s1_begin s1_create_testview_with_rowtype_sub s2_drop_rowtype_tbl s1_commit s1_drop_testview s1_drop_rowtype_tbl
 step s1_create_rowtype_tbl: CREATE TABLE rowtype(a int8, b text);
@@ -63,9 +63,9 @@ step s1_create_testview_with_rowtype_sub: CREATE VIEW testview AS SELECT '(1,b)'
 step s2_drop_rowtype_tbl: DROP TABLE rowtype; <waiting ...>
 step s1_commit: COMMIT;
 step s2_drop_rowtype_tbl: <... completed>
-ERROR:  cannot drop table rowtype because other objects depend on it
 step s1_drop_testview: DROP VIEW testview;
 step s1_drop_rowtype_tbl: DROP TABLE rowtype;
+ERROR:  table "rowtype" does not exist
 
 starting permutation: s1_create_rowtype_comp s1_begin s1_create_testtab_with_rowtype s2_alter_rowtype_comp_to_text s1_commit s1_drop_testtab s1_drop_rowtype_comp
 step s1_create_rowtype_comp: CREATE TYPE rowtype AS(a int8, b text);

@@ -34,6 +34,7 @@
 #include "rewrite/rewriteHandler.h"
 #include "rewrite/rewriteSupport.h"
 #include "utils/builtins.h"
+#include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/lsyscache.h"
 #include "utils/guc.h"
@@ -1049,6 +1050,7 @@ make_view_invalid(Oid viewid)
 	StringInfo	buf;
 	Form_pg_class classForm;
 	Datum		viewdef;
+	Snapshot	snapshot;
 	Oid			ruleoid = InvalidOid;
 	bool		isnull;
 
@@ -1060,8 +1062,21 @@ make_view_invalid(Oid viewid)
 	 * This interface cannot be used directly, because the definition
 	 * of this view must be with a schema, otherwise other sessions
 	 * cannot compile the view, except the session that created the view.
+	 *
+	 * The view might have been created by a concurrent transaction that
+	 * committed while we were waiting for a lock (e.g. a DROP that is
+	 * about to invalidate the view).  pg_get_viewdef() reads pg_rewrite
+	 * via SPI, which uses the entry-time active snapshot, so push a
+	 * snapshot that is up-to-date to make sure we can see the view's
+	 * _RETURN rule.  Otherwise pg_get_viewdef() would return NULL and
+	 * DirectFunctionCall1() would fail with "function returned NULL".
 	 */
+	snapshot = RegisterSnapshot(GetLatestSnapshot());
+	PushActiveSnapshot(snapshot);
 	viewdef = DirectFunctionCall1(pg_get_viewdef, ObjectIdGetDatum(viewid));
+	PopActiveSnapshot();
+	UnregisterSnapshot(snapshot);
+
 	viewrel = relation_open(viewid, AccessExclusiveLock);
 	CheckTableNotInUse(viewrel, "INVALID VIEW");
 
@@ -1111,9 +1126,19 @@ make_view_invalid(Oid viewid)
 
 	/*
 	 * 4.pg_depend
-	 * Get rid of old dependencies for the rule of this force view.
+	 * Get rid of old dependencies for the rule of this force view, and
+	 * the dependencies recorded on the view itself and its columns (e.g.
+	 * the type dependencies of view columns).  A concurrent DROP of a
+	 * referenced object re-scans pg_depend after invalidating the view;
+	 * if we leave the column dependencies behind, it would collect the
+	 * columns as objects to drop, but their pg_attribute rows are already
+	 * gone.
+	 *
+	 * Keep extension membership dependencies, so that a view belonging
+	 * to an extension is not silently detached from it.
 	 */
 	deleteDependencyRecordsFor(RewriteRelationId, ruleoid, false);
+	deleteDependencyRecordsFor(RelationRelationId, viewid, true);
 
 	/*
 	 * 5.pg_force_view
