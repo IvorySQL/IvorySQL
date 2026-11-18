@@ -42,3 +42,23 @@ WHERE name like 'test_dsm_registry%' ORDER BY name;
  test_dsm_registry_hash | hash    | t
 (3 rows)
 
+
+-- NULL keys are rejected by the STRICT declarations instead of reaching
+-- the C functions (get_val_in_hash(NULL) used to crash the session)
+SELECT set_val_in_hash(NULL, 'x');
+ set_val_in_hash 
+-----------------
+ 
+(1 row)
+
+SELECT get_val_in_hash(NULL);
+ get_val_in_hash 
+-----------------
+ 
+(1 row)
+
+SELECT get_val_in_hash('test');
+ get_val_in_hash 
+-----------------
+ 1414
+(1 row)

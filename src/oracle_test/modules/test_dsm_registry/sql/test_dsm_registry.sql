@@ -11,3 +11,9 @@ SELECT get_val_in_hash('test');
 SELECT name, type, size > 0 AS size_ok
 FROM pg_dsm_registry_allocations
 WHERE name like 'test_dsm_registry%' ORDER BY name;
+
+-- NULL keys are rejected by the STRICT declarations instead of reaching
+-- the C functions (get_val_in_hash(NULL) used to crash the session)
+SELECT set_val_in_hash(NULL, 'x');
+SELECT get_val_in_hash(NULL);
+SELECT get_val_in_hash('test');
