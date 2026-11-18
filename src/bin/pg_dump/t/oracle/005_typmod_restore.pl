@@ -108,9 +108,9 @@ foreach my $format ('custom', 'plain')
 	if ($format eq 'plain')
 	{
 		my $sql = slurp_file($dump);
-		like($sql, qr/tz sys\.oratimestamptz/,
+		like($sql, qr/\btz sys\.oratimestamptz\b/,
 			'plain dump qualifies a timestamp without precision');
-		like($sql, qr/precise_tz timestamp\(3\) with time zone/,
+		like($sql, qr/\bprecise_tz timestamp\(3\) with time zone\b/,
 			'plain dump keeps an explicit precision');
 	}
 
