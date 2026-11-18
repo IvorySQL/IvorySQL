@@ -493,3 +493,36 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- DATA_TYPE mapping for character-semantics and zoned timestamp columns
+DROP TABLE IF EXISTS TEST_TAB_COLUMNS_DATA_TYPE;
+NOTICE:  table "test_tab_columns_data_type" does not exist, skipping
+CREATE TABLE TEST_TAB_COLUMNS_DATA_TYPE (
+    C_VARCHAR2_CHAR  VARCHAR2(10 CHAR),
+    C_CHAR_CHAR      CHAR(5 CHAR),
+    C_VARCHAR2_BYTE  VARCHAR2(10 BYTE),
+    C_CHAR_BYTE      CHAR(5 BYTE),
+    C_TIMESTAMPTZ    TIMESTAMP WITH TIME ZONE,
+    C_TIMESTAMPLTZ   TIMESTAMP WITH LOCAL TIME ZONE,
+    C_LONG_RAW       LONG RAW,
+    C_BOOLEAN        BOOLEAN,
+    C_TIMESTAMP      TIMESTAMP
+);
+SELECT COLUMN_NAME, DATA_TYPE, CHAR_USED, CHAR_LENGTH
+FROM SYS.ALL_TAB_COLUMNS
+WHERE TABLE_NAME = 'TEST_TAB_COLUMNS_DATA_TYPE'
+AND OWNER = SYS.ORA_CASE_TRANS(CURRENT_SCHEMA::VARCHAR2)
+ORDER BY COLUMN_ID;
+   column_name   |           data_type            | char_used | char_length 
+-----------------+--------------------------------+-----------+-------------
+ C_VARCHAR2_CHAR | VARCHAR2                       | C         |          10
+ C_CHAR_CHAR     | CHAR                           | C         |           5
+ C_VARCHAR2_BYTE | VARCHAR2                       | B         |          10
+ C_CHAR_BYTE     | CHAR                           | B         |           5
+ C_TIMESTAMPTZ   | TIMESTAMP WITH TIME ZONE       |           |            
+ C_TIMESTAMPLTZ  | TIMESTAMP WITH LOCAL TIME ZONE |           |            
+ C_LONG_RAW      | LONG RAW                       |           |            
+ C_BOOLEAN       | BOOLEAN                        |           |            
+ C_TIMESTAMP     | TIMESTAMP                      |           |            
+(9 rows)
+
+DROP TABLE IF EXISTS TEST_TAB_COLUMNS_DATA_TYPE;
