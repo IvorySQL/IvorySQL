@@ -338,6 +338,10 @@ insert into datetest values (ADD_MONTHS(date '2018-01-23',13));
 insert into datetest values (ADD_MONTHS(timestamp '2018-01-23 13:12:14',2));
 insert into datetest values (ADD_MONTHS(timestamp '2018-01-23 12:34:45',13));
 insert into datetest values (ADD_MONTHS(date'2017-1-30',1.1));
+-- February 28 is month-end only in a non-leap year.
+insert into datetest values (ADD_MONTHS(date '2023-02-28', 1));
+insert into datetest values (ADD_MONTHS(date '2024-02-28', 1));
+insert into datetest values (ADD_MONTHS(date '2024-02-29', -1));
 select * from datetest;
          aa          
 ---------------------
@@ -346,7 +350,10 @@ select * from datetest;
  2018-03-23 13:12:14
  2019-02-23 12:34:45
  2017-02-28 00:00:00
-(5 rows)
+ 2023-03-31 00:00:00
+ 2024-03-28 00:00:00
+ 2024-01-31 00:00:00
+(8 rows)
 
 drop table datetest;
 --LAST_DAY
