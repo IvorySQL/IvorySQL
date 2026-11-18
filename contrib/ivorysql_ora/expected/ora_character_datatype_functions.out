@@ -1705,6 +1705,12 @@ SELECT SUBSTRB('ABCDEFG',5) "Substring with bytes" FROM DUAL;
  EFG
 (1 row)
 
+SELECT SUBSTRB('你好',1,6) = '你好' AS complete_boundary FROM DUAL;
+ complete_boundary 
+-------------------
+ t
+(1 row)
+
 /*
  * instrb
  */
