@@ -1531,9 +1531,10 @@ setup_connection(Archive *AH, const char *dumpencoding,
 	 * precision or length.  Older servers lack this setting, and since
 	 * ivorysql_ora reserves the "ivorysql" prefix, setting it there would
 	 * fail, so check that it exists first.  Use SHOW rather than a function
-	 * so that the check needs no privileges; it fails only when the setting
-	 * does not exist, and as we are not inside a transaction yet, that error
-	 * does not affect later queries.
+	 * so that the check needs no privileges.  Only an unknown parameter means
+	 * the server lacks the setting; as we are not inside a transaction yet,
+	 * that error does not affect later queries.  Any other error is reported,
+	 * rather than silently producing a dump that adds type modifiers.
 	 */
 	{
 		PGresult   *res;
@@ -1541,6 +1542,14 @@ setup_connection(Archive *AH, const char *dumpencoding,
 		res = PQexec(conn, "SHOW ivorysql.preserve_absent_typmod");
 		if (PQresultStatus(res) == PGRES_TUPLES_OK)
 			ExecuteSqlStatement(AH, "SET ivorysql.preserve_absent_typmod = on");
+		else
+		{
+			const char *sqlstate = PQresultErrorField(res, PG_DIAG_SQLSTATE);
+
+			if (sqlstate == NULL || strcmp(sqlstate, "42704") != 0)
+				pg_fatal("could not check for ivorysql.preserve_absent_typmod: %s",
+						 PQerrorMessage(conn));
+		}
 		PQclear(res);
 	}
 
