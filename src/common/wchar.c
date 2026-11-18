@@ -405,15 +405,17 @@ pg_wchar2gb18030_with_len(const pg_wchar *from, unsigned char *to, int len)
 
 	while (len > 0 && *from)
 	{
-		unsigned char c1 = *from;
-		unsigned char c2 = (*from >> 16) & 0xff;
-
-		if (!IS_HIGHBIT_SET(c1))
+		/*
+		 * These values contain packed GB18030 bytes, not Unicode code points.
+		 * A multibyte character can end in an ASCII-range byte, so its width
+		 * must be determined from the whole value rather than the low byte.
+		 */
+		if (*from <= 0x7f)
 		{
 			*to++ = *from;
 			cnt += 1;
 		}
-		else if (c2 >= 0x30 && c2 <= 0x39)
+		else if (*from > 0xffff)
 		{
 			*to++ = (*from >> 24) & 0xff;
 			*to++ = (*from >> 16) & 0xff;

@@ -45,6 +45,7 @@ tests += {
     'sql': [
       'gb18030_2022_and_utf8',
       'copy',
+      'wchar_roundtrip',
     ],
   },
 }
