@@ -37,6 +37,8 @@ jobs:
               pkg-config llvm-dev clang liblz4-dev libzstd-dev lz4 zstd \
               libsystemd-dev libselinux1-dev tzdata systemtap-sdt-dev \
               libcurl4-openssl-dev liburing-dev
+    - name: PL/iSQL explicit Make dependency regression
+      run: python3 src/pl/plisql/src/t/test_make_dependencies.py
     - name: Setup ccache
       uses: hendrikmuhs/ccache-action@v1.2.23
       with:
