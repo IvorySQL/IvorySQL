@@ -16,11 +16,15 @@
 # Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
 
 CATALOG_NAME     = plisql
-GETTEXT_FILES    = pl_comp.c \
+GETTEXT_FILES    = pl_autonomous.c \
+                   pl_comp.c \
+                   pl_exception_type.c \
                    pl_exec.c \
                    pl_gram.c \
                    pl_funcs.c \
                    pl_handler.c \
-                   pl_scanner.c
+                   pl_package.c \
+                   pl_scanner.c \
+                   pl_subproc_function.c
 GETTEXT_TRIGGERS = $(BACKEND_COMMON_GETTEXT_TRIGGERS) yyerror:4 plisql_yyerror:4
 GETTEXT_FLAGS    = $(BACKEND_COMMON_GETTEXT_FLAGS)
