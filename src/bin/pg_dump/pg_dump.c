@@ -11218,6 +11218,17 @@ getAdditionalACLs(Archive *fout)
 					daobj->dacl.privtype = privtype;
 					daobj->dacl.initprivs = pstrdup(initprivs);
 				}
+
+				/*
+				 * IvorySQL: packages carry ACLs too, but PkgInfo is not
+				 * layout-compatible with DumpableObjectWithAcl, so it needs its
+				 * own case here.
+				 */
+				else if (dobj->objType == DO_PACKAGE)
+				{
+					((PkgInfo *) dobj)->dacl.privtype = privtype;
+					((PkgInfo *) dobj)->dacl.initprivs = pstrdup(initprivs);
+				}
 				else
 					pg_log_warning("unsupported pg_init_privs entry: %u %u %d",
 								   classoid, objoid, objsubid);
