@@ -50,6 +50,7 @@
 #include "utils/timestamp.h"
 
 #include "utils/guc.h"
+#include "utils/ora_compatible.h"
 
 PG_FUNCTION_INFO_V1(oracharlen);
 PG_FUNCTION_INFO_V1(oracharoctetlen);
@@ -400,6 +401,16 @@ ora_lengthc_unsupported(PG_FUNCTION_ARGS)
 	PG_RETURN_NULL();			/* keep the compiler quiet */
 }
 
+/*
+ * Oracle has no distinct empty string, so its TRIM/LTRIM/RTRIM return NULL
+ * once the whole input is trimmed away.  See oracle_compat.c.
+ */
+static bool
+ora_trim_result_is_empty(text *result)
+{
+	return ORA_PARSER == compatible_db && VARSIZE_ANY_EXHDR(result) == 0;
+}
+
 Datum
 rtrim1(PG_FUNCTION_ARGS)
 {
@@ -409,6 +420,9 @@ rtrim1(PG_FUNCTION_ARGS)
 	ret = ora_dotrim(VARDATA_ANY(string), VARSIZE_ANY_EXHDR(string),
 					" ", 1,
 					false, true);
+
+	if (ora_trim_result_is_empty(ret))
+		PG_RETURN_NULL();
 
 	PG_RETURN_VARCHAR_P(ret);
 }
@@ -424,6 +438,9 @@ rtrim2(PG_FUNCTION_ARGS)
 					VARDATA_ANY(set), VARSIZE_ANY_EXHDR(set),
 					false, true);
 
+	if (ora_trim_result_is_empty(ret))
+		PG_RETURN_NULL();
+
 	PG_RETURN_VARCHAR_P(ret);
 }
 
@@ -438,6 +455,9 @@ ltrim2(PG_FUNCTION_ARGS)
 					VARDATA_ANY(set), VARSIZE_ANY_EXHDR(set),
 					true, false);
 
+	if (ora_trim_result_is_empty(ret))
+		PG_RETURN_NULL();
+
 	PG_RETURN_VARCHAR_P(ret);
 }
 
@@ -450,6 +470,9 @@ ltrim1(PG_FUNCTION_ARGS)
 	ret = ora_dotrim(VARDATA_ANY(string), VARSIZE_ANY_EXHDR(string),
 					" ", 1,
 					true, false);
+
+	if (ora_trim_result_is_empty(ret))
+		PG_RETURN_NULL();
 
 	PG_RETURN_VARCHAR_P(ret);
 }
@@ -465,6 +488,9 @@ trim2(PG_FUNCTION_ARGS)
 					VARDATA_ANY(set), VARSIZE_ANY_EXHDR(set),
 					true, true);
 
+	if (ora_trim_result_is_empty(ret))
+		PG_RETURN_NULL();
+
 	PG_RETURN_VARCHAR_P(ret);
 }
 
@@ -477,6 +503,9 @@ trim1(PG_FUNCTION_ARGS)
 	ret = ora_dotrim(VARDATA_ANY(string), VARSIZE_ANY_EXHDR(string),
 					" ", 1,
 					true, true);
+
+	if (ora_trim_result_is_empty(ret))
+		PG_RETURN_NULL();
 
 	PG_RETURN_VARCHAR_P(ret);
 }
