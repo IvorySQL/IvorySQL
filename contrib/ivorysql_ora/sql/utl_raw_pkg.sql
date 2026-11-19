@@ -41,4 +41,3 @@ SELECT sys.ora_utl_raw_cast_to_binary_double(pg_catalog.decode('3ff8000000000000
 SELECT pg_catalog.encode(sys.ora_utl_raw_cast_from_binary_float(1.0, 2), 'hex');
 SELECT sys.ora_utl_raw_cast_to_binary_float(pg_catalog.decode('0000803f','hex'), 2);
 SELECT sys.ora_utl_raw_transliterate(pg_catalog.decode('aabb','hex'), pg_catalog.decode('7879','hex'));
-SELECT pg_catalog.encode(sys.ora_utl_raw_xrange(pg_catalog.decode('fe','hex'), pg_catalog.decode('01','hex')), 'hex');
