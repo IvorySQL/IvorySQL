@@ -14258,6 +14258,7 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 	const char *funcargs;
 	const char *funciargs;
 	const char *funcresult;
+	char	   *table_result = NULL;
 	char	   *protrftypes;
 	char	   *prokind;
 	char	   *provolatile;
@@ -14384,27 +14385,47 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 	funcresult = PQgetvalue(res, 0, PQfnumber(res, "funcresult"));
 
 	/*
-	 * Oracle deparsing emits the same spelling for BYTE and CHAR.
-	 * Reuse the catalog deparser's qualified types for the whole
-	 * signature so argument types, RETURNS, and identity agree.
+	 * Keep Oracle deparsing for non-VARCHAR2 types and defaults. In
+	 * particular, bare date from the PostgreSQL deparser would resolve
+	 * to a different type with the Oracle parser.
 	 */
 	if (strcmp(PQgetvalue(res, 0, PQfnumber(res, "qualify_routine_types")), "t") == 0)
 	{
-		ExecuteSqlStatement(fout, "SET ivorysql.compatible_mode = pg");
 		printfPQExpBuffer(query,
-						  "SELECT pg_catalog.pg_get_function_arguments(%u), "
-						  "pg_catalog.pg_get_function_identity_arguments(%u), "
-						  "pg_catalog.pg_get_function_result(%u)",
-						  finfo->dobj.catId.oid, finfo->dobj.catId.oid,
-						  finfo->dobj.catId.oid);
+						  "WITH args AS ("
+						  "SELECT a.n, p.proargmodes[a.n] AS argmode, "
+						  "pg_catalog.concat("
+						  "CASE p.proargmodes[a.n] WHEN 'o' THEN 'OUT ' "
+						  "WHEN 'b' THEN 'INOUT ' WHEN 'v' THEN 'VARIADIC ' "
+						  "WHEN 't' THEN NULL "
+						  "ELSE CASE WHEN p.prokind = 'p' THEN 'IN ' END END, "
+						  "CASE WHEN pg_catalog.length(p.proargnames[a.n]) > 0 "
+						  "THEN pg_catalog.quote_ident(p.proargnames[a.n]) || ' ' END, "
+						  "CASE a.argtype WHEN %u THEN 'sys.oravarcharchar' "
+						  "WHEN %u THEN 'sys.oravarcharbyte' "
+						  "ELSE pg_catalog.format_type(a.argtype, NULL) END) AS declaration, "
+						  "pg_catalog.pg_get_function_arg_default(p.oid, a.n::int) AS argdefault "
+						  "FROM pg_catalog.pg_proc p, "
+						  "pg_catalog.unnest(COALESCE(p.proallargtypes, p.proargtypes::pg_catalog.oid[])) "
+						  "WITH ORDINALITY AS a(argtype, n) WHERE p.oid = %u) "
+						  "SELECT pg_catalog.string_agg(pg_catalog.concat(declaration, "
+						  "CASE WHEN argdefault IS NOT NULL THEN ' DEFAULT ' || argdefault END), ', ' ORDER BY n) "
+						  "FILTER (WHERE argmode IS DISTINCT FROM 't'), "
+						  "pg_catalog.string_agg(declaration, ', ' ORDER BY n) "
+						  "FILTER (WHERE argmode IS DISTINCT FROM 't'), "
+						  "pg_catalog.string_agg(declaration, ', ' ORDER BY n) FILTER (WHERE argmode = 't') "
+						  "FROM args",
+						  ORAVARCHARCHAROID, ORAVARCHARBYTEOID, finfo->dobj.catId.oid);
 		type_res = ExecuteSqlQueryForSingleRow(fout, query->data);
-		ExecuteSqlStatement(fout, "SET ivorysql.compatible_mode = oracle");
-
 		funcargs = PQgetvalue(type_res, 0, 0);
 		funciargs = PQgetvalue(type_res, 0, 1);
-		funcresult = PQgetvalue(type_res, 0, 2);
+		if (!PQgetisnull(type_res, 0, 2))
+		{
+			table_result = psprintf("TABLE(%s)", PQgetvalue(type_res, 0, 2));
+			funcresult = table_result;
+		}
 	}
-	else if (finfo->prorettype == ORAVARCHARCHAROID)
+	if (finfo->prorettype == ORAVARCHARCHAROID)
 	{
 		if (strcmp(funcresult, "varchar2") == 0)
 			funcresult = "sys.oravarcharchar";
@@ -14686,6 +14707,7 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 				finfo->dobj.namespace->dobj.name,
 				NULL, finfo->rolname, &finfo->dacl);
 
+	free(table_result);
 	PQclear(type_res);
 	PQclear(res);
 

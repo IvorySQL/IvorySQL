@@ -31,6 +31,10 @@ $node->safe_psql('source_db', q{
 	SET nls_length_semantics = char;
 	ALTER TABLE lengths ADD COLUMN implicit_char varchar2(10);
 	UPDATE lengths SET implicit_char = 'char';
+	CREATE FUNCTION restore_char_pg_date(v sys.oravarcharchar,
+		d pg_catalog.date DEFAULT CAST('2026-01-02' AS pg_catalog.date),
+		"label, text" pg_catalog.text DEFAULT 'date, varchar2')
+		RETURNS pg_catalog.date LANGUAGE sql AS 'SELECT d';
 	CREATE FUNCTION restore_char_input(v varchar2) RETURNS integer
 		LANGUAGE sql AS 'SELECT 1';
 	CREATE FUNCTION restore_char_input_with_byte_out(v varchar2,
@@ -57,11 +61,14 @@ sub snapshot
 		FROM pg_proc p JOIN pg_type t ON t.oid = p.prorettype
 		WHERE p.proname IN ('restore_char_result', 'restore_char_out',
 							'restore_char_input', 'restore_char_input_with_byte_out',
+							'restore_char_pg_date',
 							'restore_mixed_out')
 		ORDER BY p.proname;
 		SELECT a.attname, t.typname, a.atttypmod
 		FROM pg_attribute a JOIN pg_type t ON t.oid = a.atttypid
 		WHERE a.attrelid = 'lengths_byte_cast'::regclass AND a.attnum = 1;
+		SELECT pg_get_function_arguments(p.oid) FROM pg_proc p
+		WHERE p.proname = 'restore_char_pg_date';
 		SELECT * FROM lengths ORDER BY id;
 	}, connect_to_oraport => 1);
 }
@@ -77,6 +84,8 @@ like($expected, qr/^restore_char_input\|int4\|9502\|$/m,
 	'source input-only function has a CHAR argument');
 like($expected, qr/^restore_char_input_with_byte_out\|oravarcharbyte\|9502\|\{9502,9503\}$/m,
 	'source mixed function has CHAR input and BYTE output');
+like($expected, qr/^restore_char_pg_date\|date\|9502 1082 25\|$/m,
+	'source function has CHAR input and PostgreSQL DATE input and result');
 like($expected, qr/^explicit_byte\|oravarcharbyte\|12$/m,
 	'source expression index key has an 8-byte typmod');
 
