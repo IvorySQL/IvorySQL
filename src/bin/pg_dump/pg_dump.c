@@ -3947,7 +3947,9 @@ dumpSearchPath(Archive *AH)
 	 * which seems like a prudent exclusion.
 	 */
 	res = ExecuteSqlQueryForSingleRow(AH,
-									  "SELECT pg_catalog.current_schemas(false)");
+									  "SELECT pg_catalog.current_schemas(false), "
+									  "EXISTS (SELECT 1 FROM pg_catalog.pg_settings "
+									  "WHERE name = 'ivorysql.compatible_mode' AND setting = 'oracle')");
 
 	if (!parsePGArray(PQgetvalue(res, 0, 0), &schemanames, &nschemanames))
 		pg_fatal("could not parse result of current_schemas()");
@@ -3968,6 +3970,17 @@ dumpSearchPath(Archive *AH)
 	appendPQExpBufferStr(qry, "SELECT pg_catalog.set_config('search_path', ");
 	appendStringLiteralAH(qry, path->data, AH);
 	appendPQExpBufferStr(qry, ", false);\n");
+
+	/*
+	 * Keep the restore settings with newly written Oracle archives.
+	 * Older archives may have bare CHAR-semantic routine declarations,
+	 * so pg_restore must continue to use their destination defaults.
+	 * Like search_path, the setting must reach every restore worker.
+	 */
+	if (strcmp(PQgetvalue(res, 0, 1), "t") == 0)
+		appendPQExpBufferStr(qry,
+							 "SELECT pg_catalog.set_config('nls_length_semantics', 'byte', false) "
+							 "WHERE pg_catalog.current_setting('ivorysql.database_mode', true) = 'oracle';\n");
 
 	pg_log_info("saving \"search_path = %s\"", path->data);
 
@@ -14233,6 +14246,7 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 	PQExpBuffer delqry;
 	PQExpBuffer asPart;
 	PGresult   *res;
+	PGresult   *type_res = NULL;
 	char	   *funcsig;		/* identity signature */
 	char	   *funcfullsig = NULL; /* full signature */
 	char	   *funcsig_tag;
@@ -14241,8 +14255,8 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 	char	   *prosrc;
 	char	   *probin;
 	char	   *prosqlbody;
-	char	   *funcargs;
-	char	   *funciargs;
+	const char *funcargs;
+	const char *funciargs;
 	const char *funcresult;
 	char	   *protrftypes;
 	char	   *prokind;
@@ -14291,6 +14305,17 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 							 "pg_catalog.pg_get_function_identity_arguments(p.oid) AS funciargs,\n"
 							 "pg_catalog.pg_get_function_result(p.oid) AS funcresult,\n"
 							 "proleakproof,\n");
+
+		appendPQExpBuffer(query,
+						  "(l.lanname <> 'plisql' AND EXISTS "
+						  "(SELECT 1 FROM pg_catalog.pg_settings "
+						  "WHERE name = 'ivorysql.compatible_mode' AND setting = 'oracle') "
+						  "AND EXISTS (SELECT 1 "
+						  "FROM pg_catalog.generate_subscripts(p.proallargtypes, 1) AS s(n) "
+						  "WHERE p.proallargtypes[s.n] = %u "
+						  "AND p.proargmodes[s.n] IN ('o', 'b', 't'))) "
+						  "AS qualify_routine_types,\n",
+						  ORAVARCHARCHAROID);
 
 		if (fout->remoteVersion >= 90500)
 			appendPQExpBufferStr(query,
@@ -14361,17 +14386,34 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 	funcresult = PQgetvalue(res, 0, PQfnumber(res, "funcresult"));
 
 	/*
-	 * Bare varchar2 is resolved using the restore session's length
-	 * semantics. Keep the stored CHAR type when the result deparser
-	 * returns that spelling, without changing TABLE or package types.
+	 * Oracle deparsing emits the same spelling for BYTE and CHAR.
+	 * Reuse the catalog deparser's qualified types for the whole
+	 * signature so OUT parameters, RETURNS, and identity agree.
 	 */
-	if (finfo->prorettype == ORAVARCHARCHAROID)
+	if (strcmp(PQgetvalue(res, 0, PQfnumber(res, "qualify_routine_types")), "t") == 0)
+	{
+		ExecuteSqlStatement(fout, "SET ivorysql.compatible_mode = pg");
+		printfPQExpBuffer(query,
+						  "SELECT pg_catalog.pg_get_function_arguments(%u), "
+						  "pg_catalog.pg_get_function_identity_arguments(%u), "
+						  "pg_catalog.pg_get_function_result(%u)",
+						  finfo->dobj.catId.oid, finfo->dobj.catId.oid,
+						  finfo->dobj.catId.oid);
+		type_res = ExecuteSqlQueryForSingleRow(fout, query->data);
+		ExecuteSqlStatement(fout, "SET ivorysql.compatible_mode = oracle");
+
+		funcargs = PQgetvalue(type_res, 0, 0);
+		funciargs = PQgetvalue(type_res, 0, 1);
+		funcresult = PQgetvalue(type_res, 0, 2);
+	}
+	else if (finfo->prorettype == ORAVARCHARCHAROID)
 	{
 		if (strcmp(funcresult, "varchar2") == 0)
 			funcresult = "sys.oravarcharchar";
 		else if (strcmp(funcresult, "SETOF varchar2") == 0)
 			funcresult = "SETOF sys.oravarcharchar";
 	}
+
 	protrftypes = PQgetvalue(res, 0, PQfnumber(res, "protrftypes"));
 	prokind = PQgetvalue(res, 0, PQfnumber(res, "prokind"));
 	provolatile = PQgetvalue(res, 0, PQfnumber(res, "provolatile"));
@@ -14646,6 +14688,7 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 				finfo->dobj.namespace->dobj.name,
 				NULL, finfo->rolname, &finfo->dacl);
 
+	PQclear(type_res);
 	PQclear(res);
 
 	destroyPQExpBuffer(query);

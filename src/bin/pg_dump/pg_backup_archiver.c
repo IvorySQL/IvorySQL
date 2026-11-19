@@ -3474,14 +3474,6 @@ _doSetFixedOutputState(ArchiveHandle *AH)
 	ahprintf(AH, "SET ivorysql.enable_emptystring_to_NULL = off;\n");
 
 	/*
-	 * Oracle type deparsing omits the unit for BYTE-semantic lengths.
-	 * Restore those definitions with BYTE semantics. Native PG clusters
-	 * reject changes to nls_length_semantics.
-	 */
-	ahprintf(AH, "SELECT pg_catalog.set_config('nls_length_semantics', 'byte', false) "
-			 "WHERE pg_catalog.current_setting('ivorysql.database_mode', true) = 'oracle';\n");
-
-	/*
 	 * In --transaction-size mode, we should always be in a transaction when
 	 * we begin to restore objects.
 	 */

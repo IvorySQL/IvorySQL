@@ -33,6 +33,11 @@ $node->safe_psql('source_db', q{
 	UPDATE lengths SET implicit_char = 'char';
 	CREATE FUNCTION restore_char_result() RETURNS varchar2
 		LANGUAGE sql AS 'SELECT CAST(''kept'' AS sys.oravarcharchar)';
+	CREATE FUNCTION restore_char_out(OUT answer varchar2) RETURNS varchar2
+		LANGUAGE sql AS 'SELECT CAST(''kept'' AS sys.oravarcharchar)';
+	CREATE FUNCTION restore_mixed_out(v sys.oravarcharbyte,
+		OUT a varchar2, OUT b sys.oravarcharbyte)
+		LANGUAGE sql AS 'SELECT CAST(''kept'' AS sys.oravarcharchar), v';
 }, connect_to_oraport => 1);
 
 sub snapshot
@@ -43,9 +48,11 @@ sub snapshot
 		FROM pg_attribute a JOIN pg_type t ON t.oid = a.atttypid
 		WHERE a.attrelid = 'lengths'::regclass AND a.attnum > 0
 		ORDER BY a.attnum;
-		SELECT p.proname, t.typname
+		SELECT p.proname, t.typname, p.proallargtypes
 		FROM pg_proc p JOIN pg_type t ON t.oid = p.prorettype
-		WHERE p.oid = 'restore_char_result()'::regprocedure;
+		WHERE p.proname IN ('restore_char_result', 'restore_char_out',
+							'restore_mixed_out')
+		ORDER BY p.proname;
 		SELECT a.attname, t.typname, a.atttypmod
 		FROM pg_attribute a JOIN pg_type t ON t.oid = a.atttypid
 		WHERE a.attrelid = 'lengths_byte_cast'::regclass AND a.attnum = 1;
@@ -56,8 +63,10 @@ sub snapshot
 my $expected = snapshot('source_db');
 like($expected, qr/^explicit_byte\|oravarcharbyte\|/m,
 	'source contains a BYTE-semantic column');
-like($expected, qr/^restore_char_result\|oravarcharchar$/m,
+like($expected, qr/^restore_char_result\|oravarcharchar\|$/m,
 	'source function returns a CHAR-semantic type');
+like($expected, qr/^restore_char_out\|oravarcharchar\|\{9502\}$/m,
+	'source OUT parameter and return type both use CHAR semantics');
 like($expected, qr/^explicit_byte\|oravarcharbyte\|12$/m,
 	'source expression index key has an 8-byte typmod');
 
