@@ -75,7 +75,7 @@ oracle-check: all
 # Non-default tests.  It only makes sense to run these if set up to use
 # prepared transactions, via TEMP_CONFIG for the check case, or via the
 # postgresql.conf for the installcheck case.
-oracle-installcheck-prepared-txns: all oracle-temp-install
+oracle-installcheck-prepared-txns: all
 	$(oracle_isolation_regress_installcheck) --schedule=$(srcdir)/isolation_schedule prepared-transactions prepared-transactions-cic
 
 oracle-check-prepared-txns: all oracle-temp-install
