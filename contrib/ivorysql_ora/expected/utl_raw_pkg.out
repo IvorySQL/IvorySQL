@@ -1,0 +1,222 @@
+-- Test the UTL_RAW package functions (direct sys-level entry points)
+SET ivorysql.compatible_mode = oracle;
+SELECT sys.ora_utl_raw_cast_to_varchar2(UTL_RAW.CAST_TO_RAW('hello'));
+ ora_utl_raw_cast_to_varchar2 
+------------------------------
+ hello
+(1 row)
+
+SELECT sys.ora_utl_raw_cast_to_varchar2(NULL) IS NULL AS null_input;
+ null_input 
+------------
+ t
+(1 row)
+
+SELECT sys.ora_utl_raw_length(UTL_RAW.CAST_TO_RAW('你好'));
+ ora_utl_raw_length 
+--------------------
+                  6
+(1 row)
+
+SELECT sys.ora_utl_raw_length(NULL) IS NULL AS null_input;
+ null_input 
+------------
+ t
+(1 row)
+
+SELECT sys.ora_utl_raw_substr(UTL_RAW.CAST_TO_RAW('hello'), 2);
+ ora_utl_raw_substr 
+--------------------
+ \x656c6c6f
+(1 row)
+
+SELECT sys.ora_utl_raw_substr(UTL_RAW.CAST_TO_RAW('hello'), 2, 3);
+ ora_utl_raw_substr 
+--------------------
+ \x656c6c
+(1 row)
+
+SELECT sys.ora_utl_raw_substr(UTL_RAW.CAST_TO_RAW('hello'), 10) IS NULL AS past_end;
+ERROR:  SUBSTR: position 0 or beyond the end of r
+SELECT sys.ora_utl_raw_substr(UTL_RAW.CAST_TO_RAW('hello'), 0);
+ERROR:  SUBSTR: position 0 or beyond the end of r
+SELECT sys.ora_utl_raw_substr(UTL_RAW.CAST_TO_RAW('hello'), 1, -1);
+ERROR:  SUBSTR: length must be >= 1
+SELECT sys.ora_utl_raw_concat(UTL_RAW.CAST_TO_RAW('ab'), UTL_RAW.CAST_TO_RAW('cd'));
+ ora_utl_raw_concat 
+--------------------
+ \x61626364
+(1 row)
+
+SELECT sys.ora_utl_raw_concat(NULL, UTL_RAW.CAST_TO_RAW('cd'));
+ ora_utl_raw_concat 
+--------------------
+ \x6364
+(1 row)
+
+SELECT sys.ora_utl_raw_concat(UTL_RAW.CAST_TO_RAW('ab'), NULL);
+ ora_utl_raw_concat 
+--------------------
+ \x6162
+(1 row)
+
+SELECT sys.ora_utl_raw_concat(NULL, NULL) IS NULL AS both_null;
+ both_null 
+-----------
+ f
+(1 row)
+
+SELECT sys.ora_utl_raw_copies(UTL_RAW.CAST_TO_RAW('ab'), 3);
+ ora_utl_raw_copies 
+--------------------
+ \x616261626162
+(1 row)
+
+SELECT sys.ora_utl_raw_copies(UTL_RAW.CAST_TO_RAW('ab'), -1);
+ERROR:  COPIES: count must be positive
+SELECT sys.ora_utl_raw_reverse(UTL_RAW.CAST_TO_RAW('abcd'));
+ ora_utl_raw_reverse 
+---------------------
+ \x64636261
+(1 row)
+
+SELECT sys.ora_utl_raw_reverse(NULL) IS NULL AS null_input;
+ null_input 
+------------
+ t
+(1 row)
+
+SELECT pg_catalog.encode(sys.ora_utl_raw_bit_and(pg_catalog.decode('f0','hex'), pg_catalog.decode('0f','hex')), 'hex');
+ encode 
+--------
+ 00
+(1 row)
+
+SELECT pg_catalog.encode(sys.ora_utl_raw_bit_or(pg_catalog.decode('f0','hex'), pg_catalog.decode('0f00','hex')), 'hex');
+ encode 
+--------
+ ff00
+(1 row)
+
+SELECT pg_catalog.encode(sys.ora_utl_raw_bit_xor(pg_catalog.decode('ff','hex'), pg_catalog.decode('0f','hex')), 'hex');
+ encode 
+--------
+ f0
+(1 row)
+
+SELECT pg_catalog.encode(sys.ora_utl_raw_bit_complement(pg_catalog.decode('0f','hex')), 'hex');
+ encode 
+--------
+ f0
+(1 row)
+
+SELECT sys.ora_utl_raw_compare(pg_catalog.decode('0102','hex'), pg_catalog.decode('0102','hex'));
+ ora_utl_raw_compare 
+---------------------
+                   0
+(1 row)
+
+SELECT sys.ora_utl_raw_compare(pg_catalog.decode('01','hex'), pg_catalog.decode('0102','hex'));
+ ora_utl_raw_compare 
+---------------------
+                   2
+(1 row)
+
+SELECT sys.ora_utl_raw_compare(pg_catalog.decode('0102','hex'), pg_catalog.decode('01','hex'));
+ ora_utl_raw_compare 
+---------------------
+                   2
+(1 row)
+
+SELECT sys.ora_utl_raw_compare(pg_catalog.decode('01ff','hex'), pg_catalog.decode('0102','hex'));
+ ora_utl_raw_compare 
+---------------------
+                   2
+(1 row)
+
+SELECT sys.ora_utl_raw_compare(pg_catalog.decode('01','hex'), pg_catalog.decode('0102','hex'), pg_catalog.decode('ff','hex'));
+ ora_utl_raw_compare 
+---------------------
+                   2
+(1 row)
+
+SELECT sys.ora_utl_raw_compare(NULL, pg_catalog.decode('01','hex')) IS NULL AS null_left;
+ null_left 
+-----------
+ f
+(1 row)
+
+SELECT pg_catalog.encode(sys.ora_utl_raw_translate(pg_catalog.decode('aabbcc','hex'), pg_catalog.decode('616263','hex'), pg_catalog.decode('7879','hex')), 'hex');
+ encode 
+--------
+ aabbcc
+(1 row)
+
+SELECT pg_catalog.encode(sys.ora_utl_raw_overlay(pg_catalog.decode('ff','hex'), pg_catalog.decode('aabbcc','hex'), 2), 'hex');
+ encode 
+--------
+ aaffcc
+(1 row)
+
+SELECT pg_catalog.encode(sys.ora_utl_raw_overlay(pg_catalog.decode('','hex'), pg_catalog.decode('aabb','hex'), 1, 4), 'hex');
+ERROR:  OVERLAY: overlay_str must not be NULL or empty
+SELECT pg_catalog.encode(sys.ora_utl_raw_cast_from_binary_integer(1, 1), 'hex');
+  encode  
+----------
+ 00000001
+(1 row)
+
+SELECT pg_catalog.encode(sys.ora_utl_raw_cast_from_binary_integer(-1, 1), 'hex');
+  encode  
+----------
+ ffffffff
+(1 row)
+
+SELECT sys.ora_utl_raw_cast_to_binary_integer(pg_catalog.decode('ff','hex'), 1);
+ ora_utl_raw_cast_to_binary_integer 
+------------------------------------
+                                 -1
+(1 row)
+
+SELECT sys.ora_utl_raw_cast_to_binary_integer(pg_catalog.decode('0102','hex'), 1);
+ ora_utl_raw_cast_to_binary_integer 
+------------------------------------
+                                258
+(1 row)
+
+SELECT sys.ora_utl_raw_cast_to_binary_integer(pg_catalog.decode('0102030405','hex'), 1);
+ERROR:  CAST_TO_BINARY_INTEGER: input must be 1 to 4 bytes
+SELECT pg_catalog.encode(sys.ora_utl_raw_cast_from_binary_double(1.5, 1), 'hex');
+      encode      
+------------------
+ 3ff8000000000000
+(1 row)
+
+SELECT sys.ora_utl_raw_cast_to_binary_double(pg_catalog.decode('3ff8000000000000','hex'), 1);
+ ora_utl_raw_cast_to_binary_double 
+-----------------------------------
+                               1.5
+(1 row)
+
+SELECT pg_catalog.encode(sys.ora_utl_raw_cast_from_binary_float(1.0, 2), 'hex');
+  encode  
+----------
+ 0000803f
+(1 row)
+
+SELECT sys.ora_utl_raw_cast_to_binary_float(pg_catalog.decode('0000803f','hex'), 2);
+ ora_utl_raw_cast_to_binary_float 
+----------------------------------
+                                1
+(1 row)
+
+SELECT sys.ora_utl_raw_transliterate(pg_catalog.decode('aabb','hex'), pg_catalog.decode('7879','hex'));
+ ora_utl_raw_transliterate 
+---------------------------
+ \x0000
+(1 row)
+
+SELECT pg_catalog.encode(sys.ora_utl_raw_xrange(pg_catalog.decode('fe','hex'), pg_catalog.decode('01','hex')), 'hex');
+ERROR:  function sys.ora_utl_raw_xrange(bytea, bytea) does not exist
+LINE 1: SELECT pg_catalog.encode(sys.ora_utl_raw_xrange(pg_catalog.d...
+                                 ^
