@@ -14310,10 +14310,8 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 						  "(l.lanname <> 'plisql' AND EXISTS "
 						  "(SELECT 1 FROM pg_catalog.pg_settings "
 						  "WHERE name = 'ivorysql.compatible_mode' AND setting = 'oracle') "
-						  "AND EXISTS (SELECT 1 "
-						  "FROM pg_catalog.generate_subscripts(p.proallargtypes, 1) AS s(n) "
-						  "WHERE p.proallargtypes[s.n] = %u "
-						  "AND p.proargmodes[s.n] IN ('o', 'b', 't'))) "
+						  "AND %u = ANY(COALESCE(p.proallargtypes, "
+						  "p.proargtypes::pg_catalog.oid[]))) "
 						  "AS qualify_routine_types,\n",
 						  ORAVARCHARCHAROID);
 
@@ -14388,7 +14386,7 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 	/*
 	 * Oracle deparsing emits the same spelling for BYTE and CHAR.
 	 * Reuse the catalog deparser's qualified types for the whole
-	 * signature so OUT parameters, RETURNS, and identity agree.
+	 * signature so argument types, RETURNS, and identity agree.
 	 */
 	if (strcmp(PQgetvalue(res, 0, PQfnumber(res, "qualify_routine_types")), "t") == 0)
 	{

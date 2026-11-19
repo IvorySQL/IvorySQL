@@ -31,6 +31,11 @@ $node->safe_psql('source_db', q{
 	SET nls_length_semantics = char;
 	ALTER TABLE lengths ADD COLUMN implicit_char varchar2(10);
 	UPDATE lengths SET implicit_char = 'char';
+	CREATE FUNCTION restore_char_input(v varchar2) RETURNS integer
+		LANGUAGE sql AS 'SELECT 1';
+	CREATE FUNCTION restore_char_input_with_byte_out(v varchar2,
+		OUT answer sys.oravarcharbyte) RETURNS sys.oravarcharbyte
+		LANGUAGE sql AS 'SELECT CAST(''kept'' AS sys.oravarcharbyte)';
 	CREATE FUNCTION restore_char_result() RETURNS varchar2
 		LANGUAGE sql AS 'SELECT CAST(''kept'' AS sys.oravarcharchar)';
 	CREATE FUNCTION restore_char_out(OUT answer varchar2) RETURNS varchar2
@@ -48,9 +53,10 @@ sub snapshot
 		FROM pg_attribute a JOIN pg_type t ON t.oid = a.atttypid
 		WHERE a.attrelid = 'lengths'::regclass AND a.attnum > 0
 		ORDER BY a.attnum;
-		SELECT p.proname, t.typname, p.proallargtypes
+		SELECT p.proname, t.typname, p.proargtypes, p.proallargtypes
 		FROM pg_proc p JOIN pg_type t ON t.oid = p.prorettype
 		WHERE p.proname IN ('restore_char_result', 'restore_char_out',
+							'restore_char_input', 'restore_char_input_with_byte_out',
 							'restore_mixed_out')
 		ORDER BY p.proname;
 		SELECT a.attname, t.typname, a.atttypmod
@@ -63,10 +69,14 @@ sub snapshot
 my $expected = snapshot('source_db');
 like($expected, qr/^explicit_byte\|oravarcharbyte\|/m,
 	'source contains a BYTE-semantic column');
-like($expected, qr/^restore_char_result\|oravarcharchar\|$/m,
+like($expected, qr/^restore_char_result\|oravarcharchar\|\|$/m,
 	'source function returns a CHAR-semantic type');
-like($expected, qr/^restore_char_out\|oravarcharchar\|\{9502\}$/m,
+like($expected, qr/^restore_char_out\|oravarcharchar\|\|\{9502\}$/m,
 	'source OUT parameter and return type both use CHAR semantics');
+like($expected, qr/^restore_char_input\|int4\|9502\|$/m,
+	'source input-only function has a CHAR argument');
+like($expected, qr/^restore_char_input_with_byte_out\|oravarcharbyte\|9502\|\{9502,9503\}$/m,
+	'source mixed function has CHAR input and BYTE output');
 like($expected, qr/^explicit_byte\|oravarcharbyte\|12$/m,
 	'source expression index key has an 8-byte typmod');
 
