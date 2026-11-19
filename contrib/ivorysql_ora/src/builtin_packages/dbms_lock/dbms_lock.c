@@ -136,17 +136,48 @@ dbms_lock_record_acquire(int64 key, int8 mode)
 static bool
 dbms_lock_check(int64 key, int8 mode)
 {
-   bool        found;
-   lock_entry *entry;
+	lock_entry *entry;
+	LOCKTAG		tag;
+	LOCKMODE	lockmode;
+	LOCALLOCK  *locallock;
+	bool		held = false;
+	int			i;
 
-   entry = (lock_entry *) hash_search(dbms_lock_hash_table,
-                                          (void *) &key,
-                                          HASH_FIND,
-                                          &found);
-   if (found  && entry->mode == mode)
-        return true;
+	entry = (lock_entry *) hash_search(dbms_lock_hash_table, &key,
+									   HASH_FIND, NULL);
+	if (entry == NULL || entry->mode != mode)
+		return false;
 
-    return false;
+	SET_LOCKTAG_ADVISORY(tag, MyDatabaseId,
+						 (uint32) (key >> 32), (uint32) key, 1);
+	lockmode = mode == DBMS_LOCK_S_MODE ? ShareLock : ExclusiveLock;
+	if (LockHeldByMe(&tag, lockmode, false))
+	{
+		/*
+		 * LockHeldByMe also includes transaction locks. Take a temporary
+		 * session reference to inspect its owner count, then balance it. An
+		 * already-held lock of this mode cannot block this acquisition.
+		 */
+		(void) LockAcquireExtended(&tag, lockmode, true, true, true,
+								   &locallock, false);
+		for (i = 0; i < locallock->numLockOwners; i++)
+		{
+			if (locallock->lockOwners[i].owner == NULL &&
+				locallock->lockOwners[i].nLocks > 1)
+			{
+				held = true;
+				break;
+			}
+		}
+		LockRelease(&tag, lockmode, true);
+	}
+
+	if (!held)
+	{
+		/* Advisory unlock functions can invalidate the package record. */
+		hash_search(dbms_lock_hash_table, &key, HASH_REMOVE, NULL);
+	}
+	return held;
 }
 
 /*

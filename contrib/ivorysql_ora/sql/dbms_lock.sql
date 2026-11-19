@@ -180,3 +180,68 @@ begin
 end;
 /
 commit;
+-- External advisory unlocks must not leave stale DBMS_LOCK ownership.
+DO LANGUAGE plpgsql $$
+DECLARE
+  first_mode integer;
+  second_mode integer;
+  rc integer;
+  h text;
+BEGIN
+  FOREACH first_mode IN ARRAY ARRAY[4, 6] LOOP
+    FOREACH second_mode IN ARRAY ARRAY[4, 6] LOOP
+      h := format('stale-owner-%s-%s', first_mode, second_mode);
+      rc := sys.dbms_lock_request(h, first_mode, 0);
+      IF rc <> 0 THEN RAISE EXCEPTION 'initial request returned %', rc; END IF;
+      PERFORM pg_advisory_unlock_all();
+      rc := sys.dbms_lock_request(h, second_mode, 0);
+      IF rc <> 0 THEN RAISE EXCEPTION 'request after unlock % -> % returned %', first_mode, second_mode, rc; END IF;
+      IF (SELECT count(*) FROM pg_locks WHERE pid=pg_backend_pid() AND locktype='advisory') <> 1 THEN
+        RAISE EXCEPTION 'reacquisition did not hold exactly one lock';
+      END IF;
+      rc := sys.dbms_lock_request(h, first_mode, 0);
+      IF rc <> 4 THEN RAISE EXCEPTION 'duplicate request returned %', rc; END IF;
+      rc := sys.dbms_lock_release(h);
+      IF rc <> 0 THEN RAISE EXCEPTION 'release returned %', rc; END IF;
+      IF EXISTS (SELECT FROM pg_locks WHERE pid=pg_backend_pid() AND locktype='advisory') THEN
+        RAISE EXCEPTION 'release left an advisory lock';
+      END IF;
+    END LOOP;
+  END LOOP;
+END;
+$$;
+-- A transaction lock must not be mistaken for session ownership.
+DO LANGUAGE plpgsql $$
+DECLARE
+  m integer;
+  rc integer;
+  h text;
+  k bigint;
+BEGIN
+  FOREACH m IN ARRAY ARRAY[4, 6] LOOP
+    h := format('stale-xact-%s', m);
+    rc := sys.dbms_lock_request(h, m, 0);
+    IF rc <> 0 THEN RAISE EXCEPTION 'initial request returned %', rc; END IF;
+    SELECT (classid::bigint << 32) | objid::bigint INTO STRICT k
+      FROM pg_locks WHERE pid=pg_backend_pid() AND locktype='advisory'
+        AND mode=CASE WHEN m=4 THEN 'ShareLock' ELSE 'ExclusiveLock' END;
+    IF m=4 THEN
+      PERFORM pg_advisory_xact_lock_shared(k);
+    ELSE
+      PERFORM pg_advisory_xact_lock(k);
+    END IF;
+    PERFORM pg_advisory_unlock_all();
+    rc := sys.dbms_lock_request(h, m, 0);
+    IF rc <> 0 THEN RAISE EXCEPTION 'transaction lock masked stale ownership: %', rc; END IF;
+    rc := sys.dbms_lock_release(h);
+    IF rc <> 0 THEN RAISE EXCEPTION 'session release returned %', rc; END IF;
+  END LOOP;
+END;
+$$;
+DO LANGUAGE plpgsql $$
+BEGIN
+  IF EXISTS (SELECT FROM pg_locks WHERE pid=pg_backend_pid() AND locktype='advisory') THEN
+    RAISE EXCEPTION 'advisory lock remained after transaction end';
+  END IF;
+END;
+$$;
