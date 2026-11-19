@@ -27,9 +27,12 @@ $node->safe_psql('source_db', q{
 		implicit_byte varchar2(10)
 	);
 	INSERT INTO lengths VALUES (1, 'char', 'byte', 'implicit');
+	CREATE INDEX lengths_byte_cast ON lengths ((CAST(explicit_byte AS varchar2(8))));
 	SET nls_length_semantics = char;
 	ALTER TABLE lengths ADD COLUMN implicit_char varchar2(10);
 	UPDATE lengths SET implicit_char = 'char';
+	CREATE FUNCTION restore_char_result() RETURNS varchar2
+		LANGUAGE sql AS 'SELECT CAST(''kept'' AS sys.oravarcharchar)';
 }, connect_to_oraport => 1);
 
 sub snapshot
@@ -40,6 +43,12 @@ sub snapshot
 		FROM pg_attribute a JOIN pg_type t ON t.oid = a.atttypid
 		WHERE a.attrelid = 'lengths'::regclass AND a.attnum > 0
 		ORDER BY a.attnum;
+		SELECT p.proname, t.typname
+		FROM pg_proc p JOIN pg_type t ON t.oid = p.prorettype
+		WHERE p.oid = 'restore_char_result()'::regprocedure;
+		SELECT a.attname, t.typname, a.atttypmod
+		FROM pg_attribute a JOIN pg_type t ON t.oid = a.atttypid
+		WHERE a.attrelid = 'lengths_byte_cast'::regclass AND a.attnum = 1;
 		SELECT * FROM lengths ORDER BY id;
 	}, connect_to_oraport => 1);
 }
@@ -47,6 +56,10 @@ sub snapshot
 my $expected = snapshot('source_db');
 like($expected, qr/^explicit_byte\|oravarcharbyte\|/m,
 	'source contains a BYTE-semantic column');
+like($expected, qr/^restore_char_result\|oravarcharchar$/m,
+	'source function returns a CHAR-semantic type');
+like($expected, qr/^explicit_byte\|oravarcharbyte\|12$/m,
+	'source expression index key has an 8-byte typmod');
 
 my $plain = "$tempdir/lengths.sql";
 my $custom = "$tempdir/lengths.dump";

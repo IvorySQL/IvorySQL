@@ -14243,7 +14243,7 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 	char	   *prosqlbody;
 	char	   *funcargs;
 	char	   *funciargs;
-	char	   *funcresult;
+	const char *funcresult;
 	char	   *protrftypes;
 	char	   *prokind;
 	char	   *provolatile;
@@ -14359,6 +14359,19 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 	funcargs = PQgetvalue(res, 0, PQfnumber(res, "funcargs"));
 	funciargs = PQgetvalue(res, 0, PQfnumber(res, "funciargs"));
 	funcresult = PQgetvalue(res, 0, PQfnumber(res, "funcresult"));
+
+	/*
+	 * Bare varchar2 is resolved using the restore session's length
+	 * semantics. Keep the stored CHAR type when the result deparser
+	 * returns that spelling, without changing TABLE or package types.
+	 */
+	if (finfo->prorettype == ORAVARCHARCHAROID)
+	{
+		if (strcmp(funcresult, "varchar2") == 0)
+			funcresult = "sys.oravarcharchar";
+		else if (strcmp(funcresult, "SETOF varchar2") == 0)
+			funcresult = "SETOF sys.oravarcharchar";
+	}
 	protrftypes = PQgetvalue(res, 0, PQfnumber(res, "protrftypes"));
 	prokind = PQgetvalue(res, 0, PQfnumber(res, "prokind"));
 	provolatile = PQgetvalue(res, 0, PQfnumber(res, "provolatile"));
