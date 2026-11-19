@@ -30,3 +30,14 @@ FROM pg_catalog.regexp_split_to_table(
        pg_catalog.convert_from(sys.utl_encode_quoted_printable_encode(
          pg_catalog.convert_to(pg_catalog.repeat(pg_catalog.chr(1), 60), 'UTF8')), 'UTF8'),
        E'\\r\\n') AS l;
+
+-- Oracle character-set names are accepted alongside PostgreSQL names
+SELECT sys.utl_encode_text_decode(
+         sys.utl_encode_text_encode('ä', 'WE8ISO8859P1'), 'WE8ISO8859P1') = 'ä'
+       AS oracle_alias_round;
+SELECT sys.utl_encode_text_decode(
+         sys.utl_encode_text_encode('hello', 'AL32UTF8'), 'AL32UTF8') = 'hello'
+       AS al32utf8_round;
+SELECT sys.utl_encode_text_decode(
+         sys.utl_encode_text_encode('hello', 'AL32UTF8', 1), 'AL32UTF8', 1) = 'hello'
+       AS al32utf8_base64_round;
