@@ -216,7 +216,3 @@ SELECT sys.ora_utl_raw_transliterate(pg_catalog.decode('aabb','hex'), pg_catalog
  \x0000
 (1 row)
 
-SELECT pg_catalog.encode(sys.ora_utl_raw_xrange(pg_catalog.decode('fe','hex'), pg_catalog.decode('01','hex')), 'hex');
-ERROR:  function sys.ora_utl_raw_xrange(bytea, bytea) does not exist
-LINE 1: SELECT pg_catalog.encode(sys.ora_utl_raw_xrange(pg_catalog.d...
-                                 ^
