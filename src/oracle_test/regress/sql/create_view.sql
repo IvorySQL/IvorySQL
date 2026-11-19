@@ -742,6 +742,16 @@ select x + y + z as c1,
 from (values(1,2,3)) v(x,y,z);
 select pg_get_viewdef('tt26v', true);
 
+-- xml IS DOCUMENT needs to be treated specially
+create operator ||
+  (function = xmlconcat2, leftarg=xml, rightarg=xml);
+create view tt261v as
+select x is document as c1,
+       (x || x) is document as c2,
+       f = (x is document) as c3
+from (values(false,null::xml)) v(f,x);
+select pg_get_viewdef('tt261v', true);
+
 -- clean up all the random objects we made above
 DROP SCHEMA temp_view_test CASCADE;
 DROP SCHEMA testviewschm2 CASCADE;
