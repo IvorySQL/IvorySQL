@@ -3075,11 +3075,40 @@ BEGIN
 	trigger := 1;
 end;
 /
---oracle failed,but we succeed
+--oracle fails, we too
 DECLARE
 	type integer;
 begin
 	type := 1;
+end;
+/
+ERROR:  syntax error at or near ";"
+LINE 2:  type integer;
+                     ^
+QUERY:  DECLARE
+	type integer;
+begin
+	type := 1;
+end
+--oracle succeed, we too
+DECLARE
+	"type" integer;
+begin
+	"type" := 1;
+end;
+/
+--ok
+DECLARE
+	of integer;
+BEGIN
+	of := 1;
+end;
+/
+--ok
+DECLARE
+	record integer;
+BEGIN
+	record := 1;
 end;
 /
 ---
@@ -3996,11 +4025,6 @@ begin
 end;
 /
 INFO:  var1 = 2
-ERROR:  schema "dbms_output" does not exist
-LINE 1: CALL dbms_output.put_line('xiexie')
-             ^
-QUERY:  CALL dbms_output.put_line('xiexie')
-CONTEXT:  PL/iSQL function inline_code_block line 5 at CALL
 create or replace function test.test_f(id integer) return integer is
   var1 integer;
   function test_f(id integer) return integer;

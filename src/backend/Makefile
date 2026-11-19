@@ -146,7 +146,9 @@ $(top_builddir)/src/include/storage/lwlocknames.h: storage/lmgr/lwlocknames.h
 	  cd '$(dir $@)' && rm -f $(notdir $@) && \
 	  $(LN_S) "$$prereqdir/$(notdir $<)" .
 
+# SystemTap generates semaphore definitions without prior declarations.
 utils/probes.o: utils/probes.d $(SUBDIROBJS)
+	CFLAGS="$(filter-out -Wmissing-variable-declarations -Werror=missing-variable-declarations,$(CFLAGS))" \
 	$(DTRACE) $(DTRACEFLAGS) -C -G -s $(call expand_subsys,$^) -o $@
 
 

@@ -29,11 +29,98 @@
 
 #include "postgres.h"
 #include "fmgr.h"
+#include "varatt.h"
+#include "utils/builtins.h"
 #include "utils/formatting.h"
 #include "utils/numeric.h"
 
 PG_FUNCTION_INFO_V1(number_bitand);
 PG_FUNCTION_INFO_V1(ora_to_number);
+
+static int ora_to_number_hex_width(text *fmt);
+static Numeric ora_to_number_hex(text *value, int width);
+
+/*
+ * Recognize the hexadecimal number format separately from the shared decimal
+ * formatter, which has no X token.  Other format models retain their existing
+ * parsing, including quoted literals containing X.
+ */
+static int
+ora_to_number_hex_width(text *fmt)
+{
+	const char *p = VARDATA_ANY(fmt);
+	const char *end = p + VARSIZE_ANY_EXHDR(fmt);
+	const char *first_x;
+	int			width = 0;
+
+	if (end - p >= 2 && pg_strncasecmp(p, "FM", 2) == 0)
+		p += 2;
+	if (p < end && *p == '0')
+	{
+		width++;
+		p++;
+	}
+	first_x = p;
+	while (p < end && (*p == 'X' || *p == 'x'))
+	{
+		width++;
+		p++;
+	}
+
+	if (p != end || p == first_x)
+		return 0;
+	return width;
+}
+
+static Numeric
+ora_to_number_hex(text *value, int width)
+{
+	const char *start = VARDATA_ANY(value);
+	const char *end = start + VARSIZE_ANY_EXHDR(value);
+	int			len;
+	int			i;
+	char	   *hexstr;
+	Numeric		result;
+
+	/* Ignore surrounding blanks, including padding from CHAR inputs. */
+	while (start < end && *start == ' ')
+		start++;
+	while (end > start && end[-1] == ' ')
+		end--;
+	len = end - start;
+
+	if (len == 0 || len > width)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+				 errmsg("invalid number")));
+
+	/* Reject signs, prefixes, separators, and non-ASCII hexadecimal digits. */
+	for (i = 0; i < len; i++)
+	{
+		unsigned char c = start[i];
+
+		if (!((c >= '0' && c <= '9') ||
+			  (c >= 'A' && c <= 'F') ||
+			  (c >= 'a' && c <= 'f')))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+					 errmsg("invalid number")));
+	}
+
+	/* numeric_in handles base-16 integers without int64 or float overflow. */
+	hexstr = palloc(len + 3);
+	hexstr[0] = '0';
+	hexstr[1] = 'x';
+	memcpy(hexstr + 2, start, len);
+	hexstr[len + 2] = '\0';
+	result = DatumGetNumeric(DirectFunctionCall3(numeric_in,
+											   CStringGetDatum(hexstr),
+											   ObjectIdGetDatum(InvalidOid),
+											   Int32GetDatum(-1)));
+	pfree(hexstr);
+
+	return result;
+}
 
 
 Datum
@@ -54,15 +141,22 @@ ora_to_number(PG_FUNCTION_ARGS)
 {
 	text	   *value = PG_GETARG_TEXT_P(0);
 	text	   *fmt = NULL;
-	Numeric	result;
-	int num = PG_NARGS();
+	Numeric		result;
+	int			num = PG_NARGS();
+	int			hex_width = 0;
 
-	if(num > 1)
+	if (num > 1)
+	{
 		fmt = PG_GETARG_TEXT_P(1);
+		hex_width = ora_to_number_hex_width(fmt);
+	}
 
-	result = ora_to_number_internal(value, fmt);
+	if (hex_width > 0)
+		result = ora_to_number_hex(value, hex_width);
+	else
+		result = ora_to_number_internal(value, fmt);
 
-	if(result == NULL)
+	if (result == NULL)
 		PG_RETURN_NULL();
 	else
 		PG_RETURN_NUMERIC(result);

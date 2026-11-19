@@ -49,7 +49,7 @@ local all test oauth issuer="$issuer" scope="$scope"
 });
 $node->reload;
 
-my $log_start = -s $node->logfile;
+$node->wait_for_log(qr/reloading configuration files/);
 
 $ENV{PGOAUTHDEBUG} = "UNSAFE";
 
@@ -75,7 +75,7 @@ sub test
 	my @cmd = ("oauth_hook_client", @{$flags}, $common_connstr);
 	note "running '" . join("' '", @cmd) . "'";
 
-    my $log_start = -s $node->logfile;
+	my $log_start = -s $node->logfile;
 	my ($stdout, $stderr) = run_command(\@cmd);
 
 	if (defined($params{expected_stdout}))
@@ -95,9 +95,9 @@ sub test
 	if (defined($params{log_like}))
 	{
 		# See Cluster::connect_fails(). To avoid races, we have to wait for the
-		# postmaster to flush the log for finished connection.
+		# postmaster to flush the log for the finished connection.
 		$node->wait_for_log(
-			qr/DEBUG:  (?:00000: )?forked new client backend, pid=(\d+) socket.*DEBUG:  (?:00000: )?client backend \(PID \d\) exited with exit code \d/s,
+			qr/DEBUG:  (?:00000: )?forked new client backend, pid=(\d+) socket.*DEBUG:  (?:00000: )?client backend \(PID \1\) exited with exit code \d/s,
 			$log_start);
 
 		$node->log_check("$test_name: log matches",

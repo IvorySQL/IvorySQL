@@ -1,0 +1,152 @@
+SET ivorysql.compatible_mode = oracle;
+-- Reported case, and the same input explicitly typed as CHAR or VARCHAR2.
+SELECT to_number('f', 'xx') FROM dual;
+ to_number 
+-----------
+ 15
+(1 row)
+
+SELECT to_number(CAST('f' AS char(1)), 'xx') AS char_value,
+       to_number(CAST('f' AS varchar2(10)), 'xx') AS varchar2_value,
+       pg_typeof(to_number('f', 'xx')) AS result_type;
+ char_value | varchar2_value | result_type 
+------------+----------------+-------------
+ 15         | 15             | number
+(1 row)
+
+-- Both input digits and format elements accept either letter case.
+SELECT to_number('F', 'xx') AS upper_digit,
+       to_number('f', 'XX') AS upper_format,
+       to_number('aB', 'xX') AS mixed_case,
+       to_number('0', 'X') AS zero_value,
+       to_number('10', 'XX') AS hex_ten,
+       to_number('000f', 'XXXX') AS leading_zeroes;
+ upper_digit | upper_format | mixed_case | zero_value | hex_ten | leading_zeroes 
+-------------+--------------+------------+------------+---------+----------------
+ 15          | 15           | 171        | 0          | 16      | 15
+(1 row)
+
+-- Supported hexadecimal prefixes and inputs shorter than the format width.
+SELECT to_number('ff', 'FMXXXX') AS fill_mode,
+       to_number('0f', '0X') AS zero_prefix,
+       to_number('ff', 'fm0xx') AS both_prefixes,
+       to_number('f', 'XXXXXXXX') AS short_input;
+ fill_mode | zero_prefix | both_prefixes | short_input 
+-----------+-------------+---------------+-------------
+ 255       | 15          | 255           | 15
+(1 row)
+
+-- Padded CHAR values and column-based format models must work at runtime.
+CREATE TABLE ora_number_hex(id int, c char(4), v varchar2(40), fmt varchar2(40));
+INSERT INTO ora_number_hex VALUES (1, 'f', 'f', 'xx'),
+                                 (2, 'aB', 'Ab', 'XXXX'),
+                                 (3, '0', '0', 'X');
+SELECT id, to_number(c, fmt) AS char_value,
+       to_number(v, fmt) AS varchar2_value
+FROM ora_number_hex ORDER BY id;
+ id | char_value | varchar2_value 
+----+------------+----------------
+  1 | 15         | 15
+  2 | 171        | 171
+  3 | 0          | 0
+(3 rows)
+
+DROP TABLE ora_number_hex;
+SELECT to_number('  f  ', 'XX') AS surrounding_blanks;
+ surrounding_blanks 
+--------------------
+ 15
+(1 row)
+
+-- Preserve precision for numbers larger than signed or unsigned int64.
+SELECT to_number('7fffffffffffffff', 'XXXXXXXXXXXXXXXX') AS signed_max,
+       to_number('ffffffffffffffff', 'XXXXXXXXXXXXXXXX') AS unsigned_max,
+       to_number('10000000000000000', 'XXXXXXXXXXXXXXXXX') AS beyond_int64;
+     signed_max      |     unsigned_max     |     beyond_int64     
+---------------------+----------------------+----------------------
+ 9223372036854775807 | 18446744073709551615 | 18446744073709551616
+(1 row)
+
+-- NULL and empty strings keep the existing strict-function behavior.
+SELECT to_number(NULL, 'XX') IS NULL AS null_value,
+       to_number('f', NULL) IS NULL AS null_format,
+       to_number('', 'XX') IS NULL AS empty_value,
+       to_number('f', '') IS NULL AS empty_format;
+ null_value | null_format | empty_value | empty_format 
+------------+-------------+-------------+--------------
+ t          | t           | t           | t
+(1 row)
+
+-- Invalid data must not be accepted by numeric_in's more permissive syntax.
+SELECT to_number('g', 'XX');
+ERROR:  invalid number
+SELECT to_number('-f', 'XX');
+ERROR:  invalid number
+SELECT to_number('+f', 'XX');
+ERROR:  invalid number
+SELECT to_number('0xf', 'XXX');
+ERROR:  invalid number
+SELECT to_number('f_f', 'XXX');
+ERROR:  invalid number
+SELECT to_number('f.f', 'XXX');
+ERROR:  invalid number
+SELECT to_number('f f', 'XXX');
+ERROR:  invalid number
+SELECT to_number('Ｆ', 'XX');
+ERROR:  invalid number
+SELECT to_number('fff', 'XX');
+ERROR:  invalid number
+SELECT to_number(' ', 'XX');
+ERROR:  invalid number
+-- Prepared calls exercise nonconstant values and format models as well.
+PREPARE ora_hex_number(text, text) AS SELECT to_number($1, $2) AS result;
+SELECT $$EXECUTE ora_hex_number('f', 'xx');$$ \gexec
+EXECUTE ora_hex_number('f', 'xx');
+ result 
+--------
+ 15
+(1 row)
+
+SELECT $$EXECUTE ora_hex_number('ff', 'XX');$$ \gexec
+EXECUTE ora_hex_number('ff', 'XX');
+ result 
+--------
+ 255
+(1 row)
+
+SELECT $$EXECUTE ora_hex_number('g', 'XX');$$ \gexec
+EXECUTE ora_hex_number('g', 'XX');
+ERROR:  invalid number
+SELECT $$EXECUTE ora_hex_number('15', '99');$$ \gexec
+EXECUTE ora_hex_number('15', '99');
+ result 
+--------
+ 15
+(1 row)
+
+DEALLOCATE ora_hex_number;
+-- Decimal formats and the one-argument function retain their behavior.
+SELECT to_number('15', '99') AS decimal_format,
+       to_number('12.34', '99.99') AS decimal_fraction,
+       to_number('-1122.34') AS no_format;
+ decimal_format | decimal_fraction | no_format 
+----------------+------------------+-----------
+ 15             | 12.34            | -1122.34
+(1 row)
+
+SET ivorysql.compatible_mode = pg;
+-- Only the Oracle implementation gains hexadecimal format support.
+SELECT pg_catalog.to_number('15', '99') AS pg_decimal;
+ pg_decimal 
+------------
+         15
+(1 row)
+
+SELECT pg_catalog.to_number('f', 'xx');
+ERROR:  invalid input syntax for type numeric: " "
+SELECT sys.to_number('f', 'xx') AS oracle_hex;
+ oracle_hex 
+------------
+ 15
+(1 row)
+

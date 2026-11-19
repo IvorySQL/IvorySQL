@@ -32,6 +32,7 @@
 #include "miscadmin.h"
 #include "utils/formatting.h"
 #include "utils/numeric.h"
+#include "varatt.h"
 
 PG_FUNCTION_INFO_V1(uid);
 

@@ -783,7 +783,7 @@ SELECT * FROM pg_class WHERE relname ~ '^pg_class$' COLLATE "POSIX";
 (3 rows)
 
 EXPLAIN (COSTS OFF)
-SELECT * FROM pg_class WHERE relname LIKE 'pg\_class' COLLATE "POSIX";
+SELECT * FROM pg_class WHERE relname LIKE 'pg\_class' COLLATE "POSIX" ESCAPE '\';
                         QUERY PLAN                        
 ----------------------------------------------------------
  Index Scan using pg_class_relname_nsp_index on pg_class

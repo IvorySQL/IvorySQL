@@ -14,6 +14,10 @@ test: case_conversion
 # required setup steps
 test: test_setup
 
+# Changes to extension objects must not overlap other tests.  All changes made
+# by this test are rolled back before the parallel groups start.
+test: oracle_builtin_oid
+
 # ----------
 # The first group of parallel tests
 # ----------
@@ -52,6 +56,13 @@ test: create_index create_index_spgist create_view index_including index_includi
 # Another group of parallel tests
 # ----------
 test: create_aggregate create_function_sql create_cast constraints triggers select inherit typed_table vacuum drop_if_exists updatable_views roleattributes create_am hash_func errors infinite_recurse
+
+# ----------
+# invisible uses generic table names (t1, t2, ...) that collide with
+# updatable_views when run in the same parallel group, so it runs on
+# its own line.
+# ----------
+test: invisible
 
 # ----------
 # sanity_check does a vacuum, affecting the sort order of SELECT *
@@ -171,6 +182,4 @@ test: ora_package
 
 test: ora_force_view
 
-# invisible uses table names (t1, t2, ...) that also appear in tests such as
-# updatable_views, so it must not run concurrently with them.
-test: invisible
+test: ora_listagg

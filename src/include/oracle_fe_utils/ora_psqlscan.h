@@ -91,7 +91,7 @@ extern void ora_psql_scan_reselect_sql_lexer(PsqlScanState state);
 extern int	ora_psql_scan_count_copy_from_stdin(PsqlScanState state);
 
 extern bool ora_psql_scan_in_quote(PsqlScanState state);
-extern bool is_oracle_slash(PsqlScanState state, const char *line);
+extern bool is_oracle_slash(PsqlScanState state, const char *line, int offset);
 
 
 #endif							/* PSQLSCAN_H */

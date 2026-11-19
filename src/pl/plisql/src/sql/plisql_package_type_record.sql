@@ -1,0 +1,646 @@
+--
+-- Tests for "TYPE ... IS RECORD" declarations inside a package spec/body:
+-- declaration, bare and package-qualified reference (including from a
+-- *different* package), use as a local variable / return type / IN and
+-- OUT parameters, and the compile-time checks that reject the field-level
+-- syntax this first cut doesn't support (NOT NULL and DEFAULT).
+--
+
+--
+-- Basic declaration and use as a bare (unqualified) return type. This
+-- exercises the grammar action that builds and blesses a TupleDesc for
+-- the type at declaration time, so it carries a real typmod usable
+-- without a prior full-row assignment; a missing TupleDescFinalize()
+-- call before BlessTupleDesc() here used to crash the backend with a
+-- failed assertion.
+--
+CREATE OR REPLACE PACKAGE test_pkgrecord AS
+    TYPE rec_t IS RECORD(a NUMBER, b VARCHAR2(50), c FLOAT);
+
+    FUNCTION make_rec(p_a NUMBER, p_b VARCHAR2, p_c FLOAT) RETURN rec_t;
+END test_pkgrecord;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_pkgrecord AS
+    FUNCTION make_rec(p_a NUMBER, p_b VARCHAR2, p_c FLOAT) RETURN rec_t IS
+        res rec_t;
+    BEGIN
+        res.a := p_a;
+        res.b := p_b;
+        res.c := p_c;
+        RETURN res;
+    END;
+END test_pkgrecord;
+/
+
+-- no column alias list needed: the planner must resolve the composite
+-- return type from the blessed typmod on its own
+SELECT * FROM test_pkgrecord.make_rec(1, 'Alice', 50000);
+
+DROP PACKAGE test_pkgrecord;
+
+--
+-- The declaration is also allowed directly in a package BODY, not just
+-- the spec -- a type private to the package, with no visibility (or
+-- qualified-reference support) outside it, used only by the body's own
+-- member functions.
+--
+CREATE OR REPLACE PACKAGE test_bodyonly_record AS
+    FUNCTION make_rec(p_a NUMBER, p_b VARCHAR2) RETURN VARCHAR2;
+END test_bodyonly_record;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_bodyonly_record AS
+    TYPE rec_t IS RECORD(a NUMBER, b VARCHAR2(50));
+
+    FUNCTION make_rec(p_a NUMBER, p_b VARCHAR2) RETURN VARCHAR2 IS
+        res rec_t;
+    BEGIN
+        res.a := p_a;
+        res.b := p_b;
+        RETURN 'a=' || res.a || ', b=' || res.b;
+    END;
+END test_bodyonly_record;
+/
+
+SELECT test_bodyonly_record.make_rec(1, 'hello');
+
+DROP PACKAGE test_bodyonly_record;
+
+--
+-- A record variable of an ordinary named composite type (i.e. NOT
+-- declared via "TYPE ... IS RECORD") inside a package. get_plisql_rec_tupdesc()
+-- returns two different kinds of TupleDesc: a refcounted one (for package
+-- record types, via lookup_rowtype_tupdesc_noerror) that must be
+-- released, and a type-cache-owned one (for ordinary named composite
+-- types, via typcache.c's TypeCacheEntry->tupDesc) that must never be
+-- released; conflating the two used to crash with "tupdesc reference ...
+-- is not owned by resource owner Portal".
+--
+CREATE TYPE test_composite_t AS (x INT, y TEXT);
+
+CREATE OR REPLACE PACKAGE test_pkgcomposite AS
+    PROCEDURE show_it;
+END test_pkgcomposite;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_pkgcomposite AS
+    PROCEDURE show_it IS
+        v test_composite_t;
+    BEGIN
+        v.x := 1;
+        v.y := 'hi';
+        RAISE NOTICE 'x=%, y=%', v.x, v.y;
+    END;
+END test_pkgcomposite;
+/
+
+CALL test_pkgcomposite.show_it();
+
+DROP PACKAGE test_pkgcomposite;
+DROP TYPE test_composite_t;
+
+--
+-- Writing "typename.field", using the name of a "TYPE ... IS RECORD"
+-- declaration where a record variable was meant, must raise a normal
+-- "invalid identifier" error, not crash. A TYPE declaration is namespaced
+-- as PLISQL_NSTYPE_ROWTYPE (PLiSQL_row) and a record variable as
+-- PLISQL_NSTYPE_REC (PLiSQL_rec) -- distinct namespace item types, kept
+-- separate specifically so code can't accidentally cast one namespace
+-- entry's datum to the other struct type; an earlier version of this
+-- change shared a single namespace type between the two and relied on a
+-- reactive check at each call site, which used to crash instead of
+-- erroring cleanly wherever a call site's check was missing or missed.
+--
+CREATE OR REPLACE PACKAGE test_typeconfusion AS
+    TYPE rec_t IS RECORD(a NUMBER);
+
+    FUNCTION bad_ref RETURN NUMBER;
+END test_typeconfusion;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_typeconfusion AS
+    FUNCTION bad_ref RETURN NUMBER IS
+        res rec_t;
+    BEGIN
+        res.a := 1;
+        -- mistakenly dots into the TYPE name instead of the variable
+        -- "res"; should raise a normal error, not crash the backend
+        RETURN rec_t.a;
+    END;
+END test_typeconfusion;
+/
+
+SELECT test_typeconfusion.bad_ref();
+
+DROP PACKAGE test_typeconfusion;
+
+--
+-- Package-qualified references to a package's own record type
+-- ("RETURN mypkg.rec_t" instead of "RETURN rec_t"), including
+-- self-qualification from within the declaring package.
+--
+CREATE OR REPLACE PACKAGE test_pkgqualified AS
+    TYPE rec_t IS RECORD(a NUMBER, b VARCHAR2(50), c FLOAT);
+
+    FUNCTION make_rec(p_a NUMBER, p_b VARCHAR2, p_c FLOAT)
+        RETURN test_pkgqualified.rec_t;
+END test_pkgqualified;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_pkgqualified AS
+    FUNCTION make_rec(p_a NUMBER, p_b VARCHAR2, p_c FLOAT)
+        RETURN test_pkgqualified.rec_t
+    IS
+        res rec_t;
+    BEGIN
+        res.a := p_a;
+        res.b := p_b;
+        res.c := p_c;
+        RETURN res;
+    END;
+END test_pkgqualified;
+/
+
+SELECT * FROM test_pkgqualified.make_rec(1, 'Alice', 50000);
+
+DROP PACKAGE test_pkgqualified;
+
+--
+-- Cross-package usage: a package record type declared in one package,
+-- referenced with package qualification from a *different* package (both
+-- as a local variable's type and as a function's return type) -- the
+-- more realistic Oracle usage pattern of a shared "types" package.
+--
+CREATE OR REPLACE PACKAGE test_crosspkg_types AS
+    TYPE rec_t IS RECORD(a NUMBER, b VARCHAR2(50));
+END test_crosspkg_types;
+/
+
+CREATE OR REPLACE PACKAGE test_crosspkg_user AS
+    FUNCTION make_it(p_a NUMBER, p_b VARCHAR2)
+        RETURN test_crosspkg_types.rec_t;
+END test_crosspkg_user;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_crosspkg_user AS
+    FUNCTION make_it(p_a NUMBER, p_b VARCHAR2)
+        RETURN test_crosspkg_types.rec_t
+    IS
+        res test_crosspkg_types.rec_t;
+    BEGIN
+        res.a := p_a;
+        res.b := p_b;
+        RETURN res;
+    END;
+END test_crosspkg_user;
+/
+
+SELECT * FROM test_crosspkg_user.make_it(1, 'cross-pkg');
+
+DROP PACKAGE test_crosspkg_user;
+DROP PACKAGE test_crosspkg_types;
+
+--
+-- Same type-confusion hazard as test_typeconfusion above, but via a
+-- package-qualified three-part name ("pkg.rec_t.field") instead of a bare
+-- two-part name -- exercises plisql_parse_tripword()'s namespace-item-type
+-- handling specifically (the two-part case above only exercises
+-- plisql_parse_dblword() and the runtime column-ref resolver).
+--
+CREATE OR REPLACE PACKAGE test_tripword_typeconfusion AS
+    TYPE rec_t IS RECORD(a NUMBER);
+
+    FUNCTION bad_ref RETURN NUMBER;
+END test_tripword_typeconfusion;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_tripword_typeconfusion AS
+    FUNCTION bad_ref RETURN NUMBER IS
+        res rec_t;
+    BEGIN
+        res.a := 1;
+        -- mistakenly dots into the package-qualified TYPE name instead of
+        -- the variable "res"; should raise a normal error, not crash
+        RETURN test_tripword_typeconfusion.rec_t.a;
+    END;
+END test_tripword_typeconfusion;
+/
+
+SELECT test_tripword_typeconfusion.bad_ref();
+
+DROP PACKAGE test_tripword_typeconfusion;
+
+--
+-- Same type-confusion hazard again, but via "%TYPE" (plisql_parse_wordtype()
+-- and, block-qualified, plisql_parse_cwordtype()) instead of a plain
+-- expression reference. "rec_t%TYPE" names the TYPE declaration itself, not
+-- a variable of that type, so it must raise a normal compile-time error;
+-- this call site used to cast unconditionally to PLiSQL_rec* and misread a
+-- PLiSQL_row's TupleDesc pointer as PLiSQL_type fields (undefined
+-- behavior), because it wasn't covered by the reactive per-call-site check
+-- the earlier version of this change used elsewhere.
+--
+CREATE OR REPLACE PACKAGE test_wordtype_typeconfusion AS
+    TYPE rec_t IS RECORD(a NUMBER);
+
+    FUNCTION bad_ref RETURN NUMBER;
+END test_wordtype_typeconfusion;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_wordtype_typeconfusion AS
+    FUNCTION bad_ref RETURN NUMBER IS
+        -- mistakenly dots %TYPE onto the TYPE name itself, not a variable
+        v rec_t%TYPE;
+    BEGIN
+        RETURN 1;
+    END;
+END test_wordtype_typeconfusion;
+/
+
+DROP PACKAGE test_wordtype_typeconfusion;
+
+-- block-qualified form: "pkg.rec_t%TYPE"
+CREATE OR REPLACE PACKAGE test_cwordtype_typeconfusion AS
+    TYPE rec_t IS RECORD(a NUMBER);
+END test_cwordtype_typeconfusion;
+/
+
+CREATE OR REPLACE PACKAGE test_cwordtype_typeconfusion_use AS
+    FUNCTION bad_ref RETURN NUMBER;
+END test_cwordtype_typeconfusion_use;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_cwordtype_typeconfusion_use AS
+    FUNCTION bad_ref RETURN NUMBER IS
+        v test_cwordtype_typeconfusion.rec_t%TYPE;
+    BEGIN
+        RETURN 1;
+    END;
+END test_cwordtype_typeconfusion_use;
+/
+
+DROP PACKAGE test_cwordtype_typeconfusion_use;
+DROP PACKAGE test_cwordtype_typeconfusion;
+
+-- session and package cache must stay usable after both errors above
+CREATE OR REPLACE PACKAGE test_wordtype_sanity AS
+    FUNCTION f RETURN NUMBER;
+END test_wordtype_sanity;
+/
+CREATE OR REPLACE PACKAGE BODY test_wordtype_sanity AS
+    FUNCTION f RETURN NUMBER IS
+        a NUMBER := 41;
+        b a%TYPE;
+    BEGIN
+        b := a + 1;
+        RETURN b;
+    END;
+END test_wordtype_sanity;
+/
+SELECT test_wordtype_sanity.f();
+DROP PACKAGE test_wordtype_sanity;
+
+--
+-- Package record type passed as an IN parameter and written via an OUT
+-- parameter, not just used as a RETURN type or a locally-declared
+-- variable -- exercises parameter-list type resolution, a different code
+-- path from declaration/return-type handling, for record types built
+-- from a blessed TupleDesc typmod.
+--
+CREATE OR REPLACE PACKAGE test_pkgtype_params AS
+    TYPE rec_t IS RECORD(a NUMBER, b VARCHAR2(50));
+
+    -- package-level (session-persistent) variable of the package's own
+    -- record type, exercising PLiSQL_pkg_datum resolution for a
+    -- record-typed package var, not just a function-local one
+    state rec_t;
+
+    FUNCTION describe(p_rec rec_t) RETURN VARCHAR2;
+    PROCEDURE fill_out(p_a NUMBER, p_b VARCHAR2, p_rec OUT rec_t);
+    PROCEDURE stash(p_a NUMBER, p_b VARCHAR2);
+END test_pkgtype_params;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_pkgtype_params AS
+    FUNCTION describe(p_rec rec_t) RETURN VARCHAR2 IS
+    BEGIN
+        RETURN 'a=' || p_rec.a || ', b=' || p_rec.b;
+    END;
+
+    PROCEDURE fill_out(p_a NUMBER, p_b VARCHAR2, p_rec OUT rec_t) IS
+    BEGIN
+        p_rec.a := p_a;
+        p_rec.b := p_b;
+    END;
+
+    PROCEDURE stash(p_a NUMBER, p_b VARCHAR2) IS
+    BEGIN
+        fill_out(p_a, p_b, state);
+    END;
+END test_pkgtype_params;
+/
+
+DECLARE
+    v test_pkgtype_params.rec_t;
+BEGIN
+    test_pkgtype_params.fill_out(9, 'out-param', v);
+    RAISE NOTICE '%', test_pkgtype_params.describe(v);
+END;
+/
+
+-- the package-level "state" variable must retain its value across
+-- separate top-level statements within the session
+CALL test_pkgtype_params.stash(21, 'pkg-state');
+BEGIN
+    RAISE NOTICE '%', test_pkgtype_params.describe(test_pkgtype_params.state);
+END;
+/
+
+DROP PACKAGE test_pkgtype_params;
+
+--
+-- "TYPE ... IS RECORD" is also usable outside any package, declared
+-- directly in a plain anonymous block's own DECLARE section.
+--
+DECLARE
+    TYPE rec_t IS RECORD(a NUMBER, b VARCHAR2(50));
+    v rec_t;
+BEGIN
+    v.a := 1;
+    v.b := 'hello';
+    RAISE NOTICE 'a=%, b=%', v.a, v.b;
+END;
+/
+
+--
+-- "NOT NULL" on a record field is not supported: since per-field DEFAULT
+-- values aren't supported either (see below), a NOT NULL field could
+-- never be satisfied. This must be rejected with a clear compile-time
+-- error, not silently accepted (which used to crash the backend the
+-- first time a variable of the type was instantiated -- a failed
+-- assertion, "parser should have rejected NOT NULL").
+--
+CREATE OR REPLACE PACKAGE test_recfield_notnull AS
+    TYPE rec_t IS RECORD(a NUMBER, b VARCHAR2(50) NOT NULL);
+END test_recfield_notnull;
+/
+
+--
+-- "DEFAULT" on a record field is not supported (a PLiSQL_row -- the TYPE
+-- declaration -- has no per-field default storage). Must be rejected
+-- with a clear compile-time error, not silently accepted and then
+-- ignored (which used to leave every instantiated variable's field NULL
+-- regardless of the declared default, with no error or warning at all).
+--
+CREATE OR REPLACE PACKAGE test_recfield_default AS
+    TYPE rec_t IS RECORD(a NUMBER DEFAULT 42);
+END test_recfield_default;
+/
+
+-- session and package cache must stay usable after both errors above
+SELECT 1 AS session_still_usable_after_notnull_default_errors;
+
+--
+-- A record field whose own declared type is itself composite now
+-- carries its real type/typmod through into the outer type's blessed
+-- TupleDesc, instead of degrading to a structureless RECORDOID/-1. For
+-- a field whose type is a real, catalog-backed named composite type
+-- (CREATE TYPE ... AS (...), not another package TYPE ... IS RECORD),
+-- this makes nested reads (e.g. "res.addr.street" as an expression)
+-- AND field-by-field nested writes (e.g. "res.addr.street := ...")
+-- both work, since core SQL already has full field-assignment support
+-- for any type with a real pg_type.typrelid.
+--
+CREATE TYPE test_recfield_address_t AS (street VARCHAR2(50), city VARCHAR2(50));
+
+CREATE OR REPLACE PACKAGE test_recfield_named_composite AS
+    TYPE person_t IS RECORD(name VARCHAR2(50), addr test_recfield_address_t);
+
+    FUNCTION make_person(p_name VARCHAR2, p_street VARCHAR2, p_city VARCHAR2)
+        RETURN VARCHAR2;
+END test_recfield_named_composite;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_recfield_named_composite AS
+    FUNCTION make_person(p_name VARCHAR2, p_street VARCHAR2, p_city VARCHAR2)
+        RETURN VARCHAR2
+    IS
+        res person_t;
+        s VARCHAR2(50);
+    BEGIN
+        res.name := p_name;
+        -- field-by-field write into a nested field of a real named
+        -- composite type: works
+        res.addr.street := p_street;
+        res.addr.city := p_city;
+        -- nested read
+        s := res.addr.street;
+        RETURN 'name=' || res.name || ' street=' || s || ' city=' || res.addr.city;
+    END;
+END test_recfield_named_composite;
+/
+
+SELECT test_recfield_named_composite.make_person('Alice', '123 Main St', 'Portland');
+
+DROP PACKAGE test_recfield_named_composite;
+DROP TYPE test_recfield_address_t;
+
+--
+-- Known limitation: field-by-field WRITE into a field that is itself a
+-- RECORDOID-typed package record type (as opposed to reading it, or
+-- writing the whole field at once) is not supported. Core PostgreSQL's
+-- FieldStore node -- used to build the "assign one field of a composite
+-- value" expression -- has no slot to carry a typmod through to
+-- execution time (its own comment: "Like RowExpr, we deliberately omit
+-- a typmod and collation here"), and unconditionally looks the type up
+-- with typmod -1 when the plan runs (execExpr.c). That's fine for named
+-- composite types (typmod is always -1 for those anyway) but can never
+-- resolve an anonymous/package record type, which is only ever
+-- registered under a specific positive typmod. Fixing this for real
+-- would mean adding a resulttypmod field to FieldStore itself and
+-- threading it through core's parse and executor code shared by every
+-- composite field assignment in the system -- out of scope here.
+-- Whole-field assignment (not field-by-field) and reads both work fine
+-- regardless; only this one combination is affected, and it fails with
+-- a clean, non-crashing error rather than silently corrupting anything.
+--
+CREATE OR REPLACE PACKAGE test_recfield_pkgtype_nested AS
+    TYPE inner_t IS RECORD(x NUMBER, y VARCHAR2(20));
+    TYPE outer_t IS RECORD(id NUMBER, inner inner_t);
+
+    FUNCTION make_it RETURN NUMBER;
+END test_recfield_pkgtype_nested;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_recfield_pkgtype_nested AS
+    FUNCTION make_it RETURN NUMBER IS
+        v outer_t;
+        w inner_t;
+        n NUMBER;
+    BEGIN
+        v.id := 1;
+        w.x := 10;
+        w.y := 'nested';
+        v.inner := w;       -- whole-field write: works
+        n := v.inner.x;     -- nested read: works
+        RETURN n;
+    END;
+END test_recfield_pkgtype_nested;
+/
+
+SELECT test_recfield_pkgtype_nested.make_it();
+
+-- field-by-field write into the nested package-record-type field:
+-- fails cleanly (not a crash), per the known limitation above
+CREATE OR REPLACE PACKAGE BODY test_recfield_pkgtype_nested AS
+    FUNCTION make_it RETURN NUMBER IS
+        v outer_t;
+    BEGIN
+        v.id := 1;
+        v.inner.x := 10;
+        RETURN v.inner.x;
+    END;
+END test_recfield_pkgtype_nested;
+/
+
+SELECT test_recfield_pkgtype_nested.make_it();
+
+-- session and package cache must stay usable after that error
+SELECT 1 AS session_still_usable_after_nested_write_error;
+
+DROP PACKAGE test_recfield_pkgtype_nested;
+
+--
+-- Sanity check: an ordinary, all-scalar-field record type (no NOT NULL,
+-- no DEFAULT) must still compile and work normally -- the two checks
+-- above must reject only the unsupported combinations, not record types
+-- in general.
+--
+CREATE OR REPLACE PACKAGE test_recfield_plain AS
+    TYPE rec_t IS RECORD(a NUMBER, b VARCHAR2(50), c FLOAT);
+
+    FUNCTION make_rec(p_a NUMBER, p_b VARCHAR2, p_c FLOAT) RETURN rec_t;
+END test_recfield_plain;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_recfield_plain AS
+    FUNCTION make_rec(p_a NUMBER, p_b VARCHAR2, p_c FLOAT) RETURN rec_t IS
+        res rec_t;
+    BEGIN
+        res.a := p_a;
+        res.b := p_b;
+        res.c := p_c;
+        RETURN res;
+    END;
+END test_recfield_plain;
+/
+
+SELECT * FROM test_recfield_plain.make_rec(1, 'Alice', 50000);
+
+DROP PACKAGE test_recfield_plain;
+
+--
+-- "TYPE ... IS TABLE OF" is parsed but not implemented; it must raise a
+-- clear "not supported" error (naming the type) rather than a confusing
+-- generic syntax error, and the session/package cache must stay fully
+-- usable afterward.
+--
+CREATE OR REPLACE PACKAGE test_tableof_stub AS
+    TYPE t IS TABLE OF NUMBER;
+END test_tableof_stub;
+/
+
+SELECT 1 AS session_still_usable_after_tableof_error;
+
+--
+-- Field names inside "TYPE ... IS RECORD(...)" must be scoped to the
+-- declaration itself, not leak into the enclosing package/block namespace
+-- as if they were real declared variables (record_attr_list parsing must
+-- push its own private namespace, matching the K_CURSOR argument list
+-- production a few lines up in the grammar).
+--
+CREATE OR REPLACE PACKAGE test_field_namespace_isolation AS
+    TYPE rec_t IS RECORD(a NUMBER, b VARCHAR2(50));
+
+    FUNCTION shadow_ok RETURN NUMBER;
+    FUNCTION bare_field_unresolved RETURN NUMBER;
+END test_field_namespace_isolation;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_field_namespace_isolation AS
+    -- a real local variable named the same as a record field ("a") from
+    -- rec_t's declaration above must not conflict with it
+    FUNCTION shadow_ok RETURN NUMBER IS
+        a NUMBER := 42;
+    BEGIN
+        RETURN a;
+    END;
+
+    -- bare "a" was never a real block-local variable, only ever a field
+    -- name inside a TYPE declaration, so it must not resolve here
+    FUNCTION bare_field_unresolved RETURN NUMBER IS
+    BEGIN
+        RETURN a;
+    END;
+END test_field_namespace_isolation;
+/
+
+SELECT test_field_namespace_isolation.shadow_ok();
+SELECT test_field_namespace_isolation.bare_field_unresolved();
+
+DROP PACKAGE test_field_namespace_isolation;
+
+--
+-- A "TYPE ... IS RECORD" declaration is a namespace item like any other
+-- package member (PLISQL_NSTYPE_ROWTYPE), so it must participate in the
+-- same duplicate-declaration checks as ordinary variables: two TYPEs of
+-- the same name, and a TYPE and a variable sharing a name, in either
+-- declaration order.
+--
+CREATE OR REPLACE PACKAGE test_dup_type AS
+    TYPE rec_t IS RECORD(a NUMBER);
+    TYPE rec_t IS RECORD(b VARCHAR2(50));
+END test_dup_type;
+/
+
+CREATE OR REPLACE PACKAGE test_type_var_collide AS
+    foo NUMBER;
+    TYPE foo IS RECORD(a NUMBER);
+END test_type_var_collide;
+/
+
+CREATE OR REPLACE PACKAGE test_type_var_collide2 AS
+    TYPE foo IS RECORD(a NUMBER);
+    foo NUMBER;
+END test_type_var_collide2;
+/
+
+--
+-- A "TYPE ... IS RECORD" declaration has no fields to dot into further,
+-- unlike a record variable. A package-qualified reference to one with a
+-- bogus trailing name component ("pkg.rec_t.bogus") must be rejected as
+-- invalid, not silently resolved as if the trailing component were not
+-- there at all.
+--
+CREATE OR REPLACE PACKAGE test_rowtype_trailing_types AS
+    TYPE rec_t IS RECORD(a NUMBER, b VARCHAR2(50));
+END test_rowtype_trailing_types;
+/
+
+CREATE OR REPLACE PACKAGE test_rowtype_trailing_user AS
+    FUNCTION bad_ref RETURN NUMBER;
+END test_rowtype_trailing_user;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_rowtype_trailing_user AS
+    FUNCTION bad_ref RETURN NUMBER IS
+        v test_rowtype_trailing_types.rec_t.bogus;
+    BEGIN
+        RETURN 1;
+    END;
+END test_rowtype_trailing_user;
+/
+
+DROP PACKAGE test_rowtype_trailing_user;
+DROP PACKAGE test_rowtype_trailing_types;

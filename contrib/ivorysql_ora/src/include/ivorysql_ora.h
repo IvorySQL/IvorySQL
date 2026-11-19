@@ -50,4 +50,7 @@ extern Query* IvytransformMergeStmt(ParseState *pstate, MergeStmt *stmt);
 extern xmltype* updatexml(List *args);
 /* End - ReqID:SRS-SQL-XML */
 
+/* DBMS_OUTPUT */
+extern void ora_dbms_output_reset(void);
+
 #endif	/* IVORYSQL_ORA_H_ */

@@ -1,0 +1,189 @@
+-- Oracle built-ins must not depend on the number of OIDs consumed by initdb.
+-- Keep the original extension objects and roll back all catalog changes.
+BEGIN;
+SET LOCAL client_min_messages = error;
+ALTER FUNCTION sys.length(text) RENAME TO length_before_oid_test;
+CREATE FUNCTION sys.length(text) RETURNS integer
+AS '$libdir/ivorysql_ora', 'oracharlen'
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+/
+ALTER EXTENSION ivorysql_ora ADD FUNCTION sys.length(text);
+SELECT 'sys.length(text)'::regprocedure::oid >= 16384 AS high_oid;
+ high_oid 
+----------
+ t
+(1 row)
+
+CREATE TABLE builtin_oid_data (g text);
+INSERT INTO builtin_oid_data VALUES ('hello'), ('longer'), (NULL);
+CREATE PUBLICATION builtin_oid_pub FOR TABLE builtin_oid_data
+  WHERE (length(g) < 6) WITH (publish = 'insert');
+ALTER PUBLICATION builtin_oid_pub SET TABLE builtin_oid_data
+  WHERE (length(g) < 5);
+SELECT pg_get_expr(prqual, prrelid) FROM pg_publication_rel
+WHERE prpubid = (SELECT oid FROM pg_publication WHERE pubname = 'builtin_oid_pub');
+   pg_get_expr   
+-----------------
+ (length(g) < 5)
+(1 row)
+
+CREATE TABLE builtin_oid_generated
+  (g text, n integer GENERATED ALWAYS AS (length(g)) VIRTUAL);
+INSERT INTO builtin_oid_generated(g) VALUES ('hello'), ('数据库'), (NULL);
+SELECT g, n FROM builtin_oid_generated ORDER BY g COLLATE "C" NULLS LAST;
+   g    | n 
+--------+---
+ hello  | 5
+ 数据库 | 3
+        |  
+(3 rows)
+
+-- The extension dependency must still be recorded for this high-OID function.
+SELECT count(*) AS function_dependencies FROM pg_depend
+WHERE refclassid = 'pg_proc'::regclass
+  AND refobjid = 'sys.length(text)'::regprocedure
+  AND classid IN ('pg_publication_rel'::regclass, 'pg_attrdef'::regclass);
+ function_dependencies 
+-----------------------
+                     2
+(1 row)
+
+-- Identical C implementations outside the extension must not be admitted.
+SAVEPOINT rejected;
+ALTER EXTENSION ivorysql_ora DROP FUNCTION sys.length(text);
+CREATE PUBLICATION builtin_oid_bad FOR TABLE builtin_oid_data
+  WHERE (length(g) < 6) WITH (publish = 'insert');
+ERROR:  invalid publication WHERE expression
+LINE 2:   WHERE (length(g) < 6) WITH (publish = 'insert');
+                 ^
+DETAIL:  User-defined or built-in mutable functions are not allowed.
+ROLLBACK TO rejected;
+SAVEPOINT rejected;
+ALTER EXTENSION ivorysql_ora DROP FUNCTION sys.length(text);
+CREATE TABLE builtin_oid_bad (g text, n integer GENERATED ALWAYS AS (length(g)) VIRTUAL);
+ERROR:  generation expression uses user-defined function
+LINE 1: ...n_oid_bad (g text, n integer GENERATED ALWAYS AS (length(g))...
+                                                             ^
+DETAIL:  Virtual generated columns that make use of user-defined functions are not yet supported.
+ROLLBACK TO rejected;
+-- Even an immutable SQL replacement of an extension member is not trusted.
+SAVEPOINT rejected;
+CREATE OR REPLACE FUNCTION sys.length(text) RETURNS integer
+LANGUAGE SQL IMMUTABLE STRICT SET search_path = pg_catalog
+AS 'SELECT pg_catalog.length($1)';
+/
+CREATE PUBLICATION builtin_oid_bad FOR TABLE builtin_oid_data
+  WHERE (length(g) < 6) WITH (publish = 'insert');
+ERROR:  invalid publication WHERE expression
+LINE 2:   WHERE (length(g) < 6) WITH (publish = 'insert');
+                 ^
+DETAIL:  User-defined or built-in mutable functions are not allowed.
+ROLLBACK TO rejected;
+SAVEPOINT rejected;
+CREATE OR REPLACE FUNCTION sys.length(text) RETURNS integer
+LANGUAGE SQL IMMUTABLE STRICT SET search_path = pg_catalog
+AS 'SELECT pg_catalog.length($1)';
+/
+CREATE TABLE builtin_oid_bad (g text, n integer GENERATED ALWAYS AS (length(g)) VIRTUAL);
+ERROR:  generation expression uses user-defined function
+LINE 1: ...n_oid_bad (g text, n integer GENERATED ALWAYS AS (length(g))...
+                                                             ^
+DETAIL:  Virtual generated columns that make use of user-defined functions are not yet supported.
+ROLLBACK TO rejected;
+-- Extension membership and signature do not authorize another C entry point.
+SAVEPOINT rejected;
+CREATE OR REPLACE FUNCTION sys.length(text) RETURNS integer
+AS '$libdir/ivorysql_ora', 'oracharoctetlen'
+LANGUAGE C IMMUTABLE STRICT;
+/
+CREATE PUBLICATION builtin_oid_bad FOR TABLE builtin_oid_data
+  WHERE (length(g) < 6) WITH (publish = 'insert');
+ERROR:  invalid publication WHERE expression
+LINE 2:   WHERE (length(g) < 6) WITH (publish = 'insert');
+                 ^
+DETAIL:  User-defined or built-in mutable functions are not allowed.
+ROLLBACK TO rejected;
+SAVEPOINT rejected;
+CREATE OR REPLACE FUNCTION sys.length(text) RETURNS integer
+AS '$libdir/ivorysql_ora', 'oracharoctetlen'
+LANGUAGE C IMMUTABLE STRICT;
+/
+CREATE TABLE builtin_oid_bad (g text, n integer GENERATED ALWAYS AS (length(g)) VIRTUAL);
+ERROR:  generation expression uses user-defined function
+LINE 1: ...n_oid_bad (g text, n integer GENERATED ALWAYS AS (length(g))...
+                                                             ^
+DETAIL:  Virtual generated columns that make use of user-defined functions are not yet supported.
+ROLLBACK TO rejected;
+-- Mutability checks still apply independently of the function's identity.
+SAVEPOINT rejected;
+ALTER FUNCTION sys.length(text) VOLATILE;
+CREATE PUBLICATION builtin_oid_bad FOR TABLE builtin_oid_data
+  WHERE (length(g) < 6) WITH (publish = 'insert');
+ERROR:  invalid publication WHERE expression
+LINE 2:   WHERE (length(g) < 6) WITH (publish = 'insert');
+                 ^
+DETAIL:  User-defined or built-in mutable functions are not allowed.
+ROLLBACK TO rejected;
+SAVEPOINT rejected;
+ALTER FUNCTION sys.length(text) VOLATILE;
+CREATE TABLE builtin_oid_bad (g text, n integer GENERATED ALWAYS AS (length(g)) VIRTUAL);
+ERROR:  generation expression is not immutable
+ROLLBACK TO rejected;
+-- The same signature in another schema is not an Oracle built-in.
+CREATE FUNCTION public.length(text) RETURNS integer
+AS '$libdir/ivorysql_ora', 'oracharlen'
+LANGUAGE C IMMUTABLE STRICT;
+/
+SAVEPOINT rejected;
+CREATE PUBLICATION builtin_oid_bad FOR TABLE builtin_oid_data
+  WHERE (public.length(g) < 6) WITH (publish = 'insert');
+ERROR:  invalid publication WHERE expression
+LINE 2:   WHERE (public.length(g) < 6) WITH (publish = 'insert');
+                 ^
+DETAIL:  User-defined or built-in mutable functions are not allowed.
+ROLLBACK TO rejected;
+SAVEPOINT rejected;
+CREATE TABLE builtin_oid_bad (g text, n integer GENERATED ALWAYS AS (public.length(g)) VIRTUAL);
+ERROR:  generation expression uses user-defined function
+LINE 1: ...n_oid_bad (g text, n integer GENERATED ALWAYS AS (public.len...
+                                                             ^
+DETAIL:  Virtual generated columns that make use of user-defined functions are not yet supported.
+ROLLBACK TO rejected;
+-- PostgreSQL mode keeps its existing restrictions on extension functions.
+SAVEPOINT rejected;
+SET LOCAL ivorysql.compatible_mode = pg;
+CREATE PUBLICATION builtin_oid_bad FOR TABLE builtin_oid_data
+  WHERE (sys.length(g) < 6) WITH (publish = 'insert');
+ERROR:  invalid publication WHERE expression
+LINE 2:   WHERE (sys.length(g) < 6) WITH (publish = 'insert');
+                 ^
+DETAIL:  User-defined or built-in mutable functions are not allowed.
+ROLLBACK TO rejected;
+SAVEPOINT rejected;
+SET LOCAL ivorysql.compatible_mode = pg;
+CREATE TABLE builtin_oid_bad (g text, n integer GENERATED ALWAYS AS (sys.length(g)) VIRTUAL);
+ERROR:  generation expression uses user-defined function
+LINE 1: ...n_oid_bad (g text, n integer GENERATED ALWAYS AS (sys.length...
+                                                             ^
+DETAIL:  Virtual generated columns that make use of user-defined functions are not yet supported.
+ROLLBACK TO rejected;
+-- Extension result types must be checked even when their relation OIDs are high.
+ALTER TYPE sys.dbms_output_line RENAME TO dbms_output_line_before_oid_test;
+ALTER TYPE sys.dbms_output_lines RENAME TO dbms_output_lines_before_oid_test;
+CREATE TYPE sys.dbms_output_line AS (line text, status integer);
+CREATE TYPE sys.dbms_output_lines AS (lines text[], numlines integer);
+SELECT c.relname, c.oid >= 16384 AS high_oid,
+       bool_and(a.attcollation = t.typcollation) AS default_collation
+FROM pg_class c JOIN pg_attribute a ON a.attrelid = c.oid
+     JOIN pg_type t ON t.oid = a.atttypid
+WHERE c.relnamespace = 'sys'::regnamespace AND
+      c.relname IN ('dbms_output_line', 'dbms_output_lines') AND
+      a.attnum > 0 AND NOT a.attisdropped
+GROUP BY c.relname, c.oid ORDER BY c.relname;
+      relname      | high_oid | default_collation 
+-------------------+----------+-------------------
+ dbms_output_line  | t        | t
+ dbms_output_lines | t        | t
+(2 rows)
+
+ROLLBACK;

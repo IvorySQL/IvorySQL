@@ -31,7 +31,7 @@ $node->safe_psql('postgres', q(CREATE EXTENSION test_slru));
 
 # Create the first multixact
 my $bg_psql = $node->background_psql('postgres');
-my $multi1 = $bg_psql->query_safe(q(SELECT test_create_multixact());));
+my $multi1 = $bg_psql->query_safe(q(SELECT test_create_multixact();));
 
 # Assign the middle multixact. Use an injection point to prevent it
 # from being fully recorded.
@@ -41,7 +41,7 @@ $node->safe_psql('postgres',
 
 $bg_psql->query_until(
 	qr/assigning lost multi/, q(
-+\echo assigning lost multi
+\echo assigning lost multi
 	SELECT test_create_multixact();
 ));
 

@@ -37,17 +37,17 @@ CREATE VIEW ro_view20 AS SELECT a, b, generate_series(1, a) g FROM base_tbl; -- 
 
 SELECT table_name, is_insertable_into
   FROM information_schema.tables
- WHERE table_name LIKE E'r_\\_view%'
+ WHERE table_name LIKE E'r_\\_view%' ESCAPE '\'
  ORDER BY table_name;
 
 SELECT table_name, is_updatable, is_insertable_into
   FROM information_schema.views
- WHERE table_name LIKE E'r_\\_view%'
+ WHERE table_name LIKE E'r_\\_view%' ESCAPE '\'
  ORDER BY table_name;
 
 SELECT table_name, column_name, is_updatable
   FROM information_schema.columns
- WHERE table_name LIKE E'r_\\_view%'
+ WHERE table_name LIKE E'r_\\_view%' ESCAPE '\'
  ORDER BY table_name, ordinal_position;
 
 -- Read-only views
@@ -880,17 +880,17 @@ SELECT * FROM base_tbl ORDER BY a;
 
 SELECT table_name, is_insertable_into
   FROM information_schema.tables
- WHERE table_name LIKE E'r_\\_view%'
+ WHERE table_name LIKE E'r_\\_view%' ESCAPE '\'
  ORDER BY table_name;
 
 SELECT table_name, is_updatable, is_insertable_into
   FROM information_schema.views
- WHERE table_name LIKE E'r_\\_view%'
+ WHERE table_name LIKE E'r_\\_view%' ESCAPE '\'
  ORDER BY table_name;
 
 SELECT table_name, column_name, is_updatable
   FROM information_schema.columns
- WHERE table_name LIKE E'r_\\_view%'
+ WHERE table_name LIKE E'r_\\_view%' ESCAPE '\'
  ORDER BY table_name, ordinal_position;
 
 SELECT events & 4 != 0 AS upd,
@@ -1035,7 +1035,7 @@ CREATE TABLE base_tbl (a int);
 CREATE VIEW rw_view1 AS SELECT * FROM base_tbl WITH CHECK OPTION;
 CREATE VIEW rw_view2 AS SELECT * FROM rw_view1 WHERE a > 0;
 CREATE VIEW rw_view3 AS SELECT * FROM rw_view2 WITH CHECK OPTION;
-SELECT * FROM information_schema.views WHERE table_name LIKE E'rw\\_view_' ORDER BY table_name;
+SELECT * FROM information_schema.views WHERE table_name LIKE E'rw\\_view_' ESCAPE '\' ORDER BY table_name;
 
 INSERT INTO rw_view1 VALUES (-1); -- ok
 INSERT INTO rw_view1 VALUES (1); -- ok

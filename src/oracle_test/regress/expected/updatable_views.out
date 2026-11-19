@@ -32,7 +32,7 @@ CREATE VIEW ro_view19 AS SELECT * FROM uv_seq; -- View based on a sequence
 CREATE VIEW ro_view20 AS SELECT a, b, generate_series(1, a) g FROM base_tbl; -- SRF in targetlist not supported
 SELECT table_name, is_insertable_into
   FROM information_schema.tables
- WHERE table_name LIKE E'r_\\_view%'
+ WHERE table_name LIKE E'r_\\_view%' ESCAPE '\'
  ORDER BY table_name;
  table_name | is_insertable_into 
 ------------+--------------------
@@ -60,7 +60,7 @@ SELECT table_name, is_insertable_into
 
 SELECT table_name, is_updatable, is_insertable_into
   FROM information_schema.views
- WHERE table_name LIKE E'r_\\_view%'
+ WHERE table_name LIKE E'r_\\_view%' ESCAPE '\'
  ORDER BY table_name;
  table_name | is_updatable | is_insertable_into 
 ------------+--------------+--------------------
@@ -88,7 +88,7 @@ SELECT table_name, is_updatable, is_insertable_into
 
 SELECT table_name, column_name, is_updatable
   FROM information_schema.columns
- WHERE table_name LIKE E'r_\\_view%'
+ WHERE table_name LIKE E'r_\\_view%' ESCAPE '\'
  ORDER BY table_name, ordinal_position;
  table_name | column_name | is_updatable 
 ------------+-------------+--------------
@@ -1679,7 +1679,7 @@ SELECT * FROM base_tbl ORDER BY a;
 
 SELECT table_name, is_insertable_into
   FROM information_schema.tables
- WHERE table_name LIKE E'r_\\_view%'
+ WHERE table_name LIKE E'r_\\_view%' ESCAPE '\'
  ORDER BY table_name;
  table_name | is_insertable_into 
 ------------+--------------------
@@ -1690,7 +1690,7 @@ SELECT table_name, is_insertable_into
 
 SELECT table_name, is_updatable, is_insertable_into
   FROM information_schema.views
- WHERE table_name LIKE E'r_\\_view%'
+ WHERE table_name LIKE E'r_\\_view%' ESCAPE '\'
  ORDER BY table_name;
  table_name | is_updatable | is_insertable_into 
 ------------+--------------+--------------------
@@ -1701,7 +1701,7 @@ SELECT table_name, is_updatable, is_insertable_into
 
 SELECT table_name, column_name, is_updatable
   FROM information_schema.columns
- WHERE table_name LIKE E'r_\\_view%'
+ WHERE table_name LIKE E'r_\\_view%' ESCAPE '\'
  ORDER BY table_name, ordinal_position;
  table_name | column_name | is_updatable 
 ------------+-------------+--------------
@@ -2097,7 +2097,7 @@ CREATE TABLE base_tbl (a int);
 CREATE VIEW rw_view1 AS SELECT * FROM base_tbl WITH CHECK OPTION;
 CREATE VIEW rw_view2 AS SELECT * FROM rw_view1 WHERE a > 0;
 CREATE VIEW rw_view3 AS SELECT * FROM rw_view2 WITH CHECK OPTION;
-SELECT * FROM information_schema.views WHERE table_name LIKE E'rw\\_view_' ORDER BY table_name;
+SELECT * FROM information_schema.views WHERE table_name LIKE E'rw\\_view_' ESCAPE '\' ORDER BY table_name;
  table_catalog | table_schema | table_name |  view_definition  | check_option | is_updatable | is_insertable_into | is_trigger_updatable | is_trigger_deletable | is_trigger_insertable_into 
 ---------------+--------------+------------+-------------------+--------------+--------------+--------------------+----------------------+----------------------+----------------------------
  regression    | public       | rw_view1   |  SELECT a        +| CASCADED     | YES          | YES                | NO                   | NO                   | NO

@@ -2894,12 +2894,36 @@ BEGIN
 	trigger := 1;
 end; $$ language plisql;
 
---oracle failed,but we succeed
+--oracle fails, we too
 do $$
 DECLARE
 	type integer;
 begin
 	type := 1;
+end; $$ language plisql;
+
+--oracle succeed, we too
+do $$
+DECLARE
+	"type" integer;
+begin
+	"type" := 1;
+end; $$ language plisql;
+
+--ok
+do $$
+DECLARE
+	of integer;
+BEGIN
+	of := 1;
+end; $$ language plisql;
+
+--ok
+do $$
+DECLARE
+	record integer;
+BEGIN
+	record := 1;
 end; $$ language plisql;
 
 ---
