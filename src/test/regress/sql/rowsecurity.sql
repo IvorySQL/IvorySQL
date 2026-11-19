@@ -121,6 +121,10 @@ SELECT * FROM document NATURAL JOIN category WHERE f_leak(dtitle) ORDER BY did;
 SELECT * FROM document TABLESAMPLE BERNOULLI(50) REPEATABLE(0)
   WHERE f_leak(dtitle) ORDER BY did;
 
+-- a rel with RLS quals can still be removed by outer-join removal
+EXPLAIN (COSTS OFF)
+SELECT c.cid FROM category c LEFT JOIN document d ON c.cid = d.did;
+
 -- viewpoint from regress_rls_carol
 SET SESSION AUTHORIZATION regress_rls_carol;
 SELECT * FROM document WHERE f_leak(dtitle) ORDER BY did;
@@ -809,6 +813,33 @@ INSERT INTO document VALUES (4, (SELECT cid from category WHERE cname = 'novel')
 -- Fails, since ALL WCO are enforced:
 INSERT INTO document VALUES (1, (SELECT cid from category WHERE cname = 'novel'), 1, 'regress_rls_bob', 'my first novel')
     ON CONFLICT (did) DO UPDATE SET dauthor = 'regress_rls_carol';
+-- The ON CONFLICT WHERE clause must not be evaluated against an existing row
+-- that fails the USING policy clauses, so f_leak must not emit a NOTICE here
+INSERT INTO document VALUES (3, (SELECT cid from category WHERE cname = 'novel'), 1, 'regress_rls_bob', 'another novel')
+    ON CONFLICT (did) DO UPDATE SET dtitle = EXCLUDED.dtitle
+    WHERE f_leak(document.dtitle) RETURNING did, dtitle;
+-- Nor may the outcome depend on the WHERE clause's result
+INSERT INTO document VALUES (3, (SELECT cid from category WHERE cname = 'novel'), 1, 'regress_rls_bob', 'another novel')
+    ON CONFLICT (did) DO UPDATE SET dtitle = EXCLUDED.dtitle
+    WHERE document.dlevel = 2 RETURNING did, dtitle;
+INSERT INTO document VALUES (3, (SELECT cid from category WHERE cname = 'novel'), 1, 'regress_rls_bob', 'another novel')
+    ON CONFLICT (did) DO UPDATE SET dtitle = EXCLUDED.dtitle
+    WHERE document.dlevel = 99 RETURNING did, dtitle;
+
+-- The USING policy clauses are checked before the WHERE quals of a view,
+-- as they are before the ON CONFLICT WHERE clause, so f_leak must not emit
+-- a NOTICE for an existing row that fails them
+CREATE VIEW leaky_document_view AS SELECT * FROM document WHERE f_leak(dtitle);
+INSERT INTO leaky_document_view VALUES (3, (SELECT cid from category WHERE cname = 'novel'), 1, 'regress_rls_bob', 'another novel')
+    ON CONFLICT (did) DO UPDATE SET dtitle = excluded.dtitle RETURNING did, dtitle;
+
+-- The view's quals are evaluated against an existing row that passes the
+-- USING policy clauses, so f_leak does emit a NOTICE here, even though the
+-- ON CONFLICT WHERE clause then rejects the update
+INSERT INTO leaky_document_view VALUES (1, (SELECT cid from category WHERE cname = 'novel'), 1, 'regress_rls_bob', 'another novel')
+    ON CONFLICT (did) DO UPDATE SET dtitle = excluded.dtitle WHERE leaky_document_view.dlevel = 99 RETURNING did, dtitle;
+
+DROP VIEW leaky_document_view;
 
 --
 -- MERGE
@@ -2164,6 +2195,13 @@ CREATE POLICY p1 ON dob_t2 TO regress_rls_dob_role1,regress_rls_dob_role2 USING 
 DROP OWNED BY regress_rls_dob_role1;
 DROP POLICY p1 ON dob_t2; -- should succeed
 
+-- only owner can change policies
+CREATE POLICY p1 ON dob_t1 TO regress_rls_dob_role1 USING (true);
+SET SESSION AUTHORIZATION regress_rls_dob_role1;
+DROP OWNED BY regress_rls_dob_role1; -- should warn
+RESET SESSION AUTHORIZATION;
+DROP POLICY p1 ON dob_t1; -- should succeed
+
 DROP USER regress_rls_dob_role1;
 DROP USER regress_rls_dob_role2;
 
@@ -2171,7 +2209,7 @@ DROP USER regress_rls_dob_role2;
 CREATE TABLE ref_tbl (a int);
 INSERT INTO ref_tbl VALUES (1);
 
-CREATE TABLE rls_tbl (a int);
+CREATE TABLE rls_tbl (a int PRIMARY KEY);
 INSERT INTO rls_tbl VALUES (10);
 ALTER TABLE rls_tbl ENABLE ROW LEVEL SECURITY;
 CREATE POLICY p1 ON rls_tbl USING (EXISTS (SELECT 1 FROM ref_tbl));
@@ -2184,9 +2222,24 @@ ALTER VIEW rls_view OWNER TO regress_rls_bob;
 GRANT SELECT ON rls_view TO regress_rls_alice;
 
 SET SESSION AUTHORIZATION regress_rls_alice;
+
 SELECT * FROM ref_tbl; -- Permission denied
 SELECT * FROM rls_tbl; -- Permission denied
 SELECT * FROM rls_view; -- OK
+EXPLAIN (COSTS OFF) -- check that RLS enforcement is actually happening
+SELECT * FROM rls_view;
+
+-- Use the same view+table to test interaction of SJE with RLS
+SET enable_self_join_elimination = on;
+-- We can do SJE here, although presently an unused InitPlan survives
+EXPLAIN (COSTS OFF)
+SELECT * FROM rls_view r1, rls_view r2 WHERE r1.a = r2.a;
+SET SESSION AUTHORIZATION regress_rls_bob;
+-- No SJE here, because the two rls_tbl RTEs have different checkAsUser values
+EXPLAIN (COSTS OFF)
+SELECT * FROM rls_tbl r1, rls_view r2 WHERE r1.a = r2.a;
+
+RESET enable_self_join_elimination;
 RESET SESSION AUTHORIZATION;
 
 DROP VIEW rls_view;

@@ -105,7 +105,8 @@ static TupleTableSlot *ExecPrepareTupleRouting(ModifyTableState *mtstate,
 											   PartitionTupleRouting *proute,
 											   ResultRelInfo *targetRelInfo,
 											   TupleTableSlot *slot,
-											   ResultRelInfo **partRelInfo);
+											   ResultRelInfo **partRelInfo,
+											   TupleTableSlot **tcs_original_insert_tuple);
 
 static TupleTableSlot *ExecMerge(IvyModifyTableContext *context,
 								 ResultRelInfo *resultRelInfo,
@@ -784,10 +785,6 @@ ExecGetUpdateNewTuple(ResultRelInfo *relinfo,
  *		*inserted_tuple is the tuple that's effectively inserted;
  *		*insert_destrel is the relation where it was inserted.
  *		These are only set on success.
- *
- *		This may change the currently active tuple conversion map in
- *		mtstate->mt_transition_capture, so the callers must take care to
- *		save the previous value to avoid losing track of it.
  * ----------------------------------------------------------------
  */
 static TupleTableSlot *
@@ -805,6 +802,7 @@ ExecInsert(IvyModifyTableContext *context,
 	TupleTableSlot *planSlot = context->planSlot;
 	TupleTableSlot *result = NULL;
 	TransitionCaptureState *ar_insert_trig_tcs;
+	TupleTableSlot *tcs_original_insert_tuple = NULL;
 	ModifyTable *node = (ModifyTable *) mtstate->ps.plan;
 	OnConflictAction onconflict = node->onConflictAction;
 	PartitionTupleRouting *proute = mtstate->mt_partition_tuple_routing;
@@ -820,7 +818,8 @@ ExecInsert(IvyModifyTableContext *context,
 
 		slot = ExecPrepareTupleRouting(mtstate, estate, proute,
 									   resultRelInfo, slot,
-									   &partRelInfo);
+									   &partRelInfo,
+									   &tcs_original_insert_tuple);
 		resultRelInfo = partRelInfo;
 	}
 
@@ -1196,7 +1195,12 @@ ExecInsert(IvyModifyTableContext *context,
 	 * tuple to a new partition, put this row into the transition NEW TABLE,
 	 * if there is one. We need to do this separately for DELETE and INSERT
 	 * because they happen on different tables.
+	 *
+	 * Pass the original unconverted tuple in 'tcs_original_insert_tuple', if
+	 * any, to allow the ExecAR* functions to save some work.
 	 */
+	if (mtstate->mt_transition_capture)
+		mtstate->mt_transition_capture->tcs_original_insert_tuple = tcs_original_insert_tuple;
 	ar_insert_trig_tcs = mtstate->mt_transition_capture;
 	if (mtstate->operation == CMD_UPDATE && mtstate->mt_transition_capture
 		&& mtstate->mt_transition_capture->tcs_update_new_table)
@@ -1220,6 +1224,8 @@ ExecInsert(IvyModifyTableContext *context,
 	/* AFTER ROW INSERT Triggers */
 	ExecARInsertTriggers(estate, resultRelInfo, slot, recheckIndexes,
 						 ar_insert_trig_tcs);
+	if (mtstate->mt_transition_capture)
+		mtstate->mt_transition_capture->tcs_original_insert_tuple = NULL;
 
 	list_free(recheckIndexes);
 
@@ -1329,6 +1335,15 @@ ExecBatchInsert(ModifyTableState *mtstate,
 																  slots,
 																  planSlots,
 																  &numInserted);
+
+	/*
+	 * XXX An FDW may report more rows than we gave it, which would lead to
+	 * buffer overruns in the loop below.  We clamp the count so that
+	 * statements that happen to work today keep working, at the cost of
+	 * misreporting the number of rows.  This is a stopgap; a proper fix means
+	 * reworking the batch insert API.
+	 */
+	numInserted = Min(numInserted, numSlots);
 
 	for (i = 0; i < numInserted; i++)
 	{
@@ -2013,13 +2028,6 @@ ExecCrossPartitionUpdate(IvyModifyTableContext *context,
 	context->cpUpdateReturningSlot =
 		ExecInsert(context, mtstate->rootResultRelInfo, slot, canSetTag,
 				   inserted_tuple, insert_destrel);
-
-	/*
-	 * Reset the transition state that may possibly have been written by
-	 * INSERT.
-	 */
-	if (mtstate->mt_transition_capture)
-		mtstate->mt_transition_capture->tcs_original_insert_tuple = NULL;
 
 	/* We're done moving. */
 	return true;
@@ -2813,6 +2821,43 @@ ExecOnConflictUpdate(IvyModifyTableContext *context,
 	 */
 	ExecCheckTupleVisible(context->estate, relation, existing);
 
+	if (resultRelInfo->ri_WithCheckOptions != NIL)
+	{
+		/*
+		 * Check target's existing tuple against the security quals that
+		 * determine whether the user is allowed to see and update it.  This
+		 * must happen before the ON CONFLICT WHERE clause is evaluated below,
+		 * since that clause is supplied by the user and could otherwise be
+		 * used to read a row that the user has no right to see.
+		 *
+		 * The rewriter creates UPDATE RLS checks/WCOs for UPDATE security
+		 * quals, and stores them as WCOs of "kind" WCO_RLS_CONFLICT_CHECK,
+		 * but that's almost the extent of its special handling for ON
+		 * CONFLICT DO UPDATE.
+		 *
+		 * The rewriter also creates WCOs of "kind" WCO_VIEW_CONFLICT_CHECK
+		 * from the quals of any auto-updatable view the target relation was
+		 * reached through, so that the existing tuple must be visible through
+		 * each such view.  The checks run from the inside out: RLS first,
+		 * then each view's quals, innermost first (the rewriter lists them in
+		 * that order), and then finally the ON CONFLICT WHERE clause.  That
+		 * way a view's quals never see a row that the base relation or an
+		 * inner view hides, and the WHERE clause won't either.
+		 *
+		 * The rewriter will also have associated UPDATE applicable straight
+		 * RLS checks/WCOs for the benefit of the ExecUpdate() call that
+		 * follows.  INSERTs and UPDATEs naturally have mutually exclusive WCO
+		 * kinds, so there is no danger of spurious over-enforcement in the
+		 * INSERT or UPDATE path.
+		 */
+		ExecWithCheckOptions(WCO_RLS_CONFLICT_CHECK, resultRelInfo,
+							 existing,
+							 mtstate->ps.state);
+		ExecWithCheckOptions(WCO_VIEW_CONFLICT_CHECK, resultRelInfo,
+							 existing,
+							 mtstate->ps.state);
+	}
+
 	/*
 	 * Make tuple and any needed join variables available to ExecQual and
 	 * ExecProject.  The EXCLUDED tuple is installed in ecxt_innertuple, while
@@ -2829,28 +2874,6 @@ ExecOnConflictUpdate(IvyModifyTableContext *context,
 		ExecClearTuple(existing);	/* see return below */
 		InstrCountFiltered1(&mtstate->ps, 1);
 		return true;			/* done with the tuple */
-	}
-
-	if (resultRelInfo->ri_WithCheckOptions != NIL)
-	{
-		/*
-		 * Check target's existing tuple against UPDATE-applicable USING
-		 * security barrier quals (if any), enforced here as RLS checks/WCOs.
-		 *
-		 * The rewriter creates UPDATE RLS checks/WCOs for UPDATE security
-		 * quals, and stores them as WCOs of "kind" WCO_RLS_CONFLICT_CHECK,
-		 * but that's almost the extent of its special handling for ON
-		 * CONFLICT DO UPDATE.
-		 *
-		 * The rewriter will also have associated UPDATE applicable straight
-		 * RLS checks/WCOs for the benefit of the ExecUpdate() call that
-		 * follows.  INSERTs and UPDATEs naturally have mutually exclusive WCO
-		 * kinds, so there is no danger of spurious over-enforcement in the
-		 * INSERT or UPDATE path.
-		 */
-		ExecWithCheckOptions(WCO_RLS_CONFLICT_CHECK, resultRelInfo,
-							 existing,
-							 mtstate->ps.state);
 	}
 
 	/* Project the new tuple version */
@@ -3003,10 +3026,11 @@ ExecMerge(IvyModifyTableContext *context, ResultRelInfo *resultRelInfo,
  * Otherwise, we execute the qualifying action and return its RETURNING
  * result, if any, or NULL.
  *
- * On entry, "*matched" is assumed to be true.  If a concurrent update or
- * delete is detected that causes the join quals to no longer pass, we set it
- * to false, indicating that the caller should process any NOT MATCHED [BY
- * TARGET] actions.
+ * On entry, "*matched" is assumed to be true.  If the join quals originally
+ * passed (MATCHED case) and a concurrent update or delete is detected that
+ * causes the join quals to no longer pass, we set "*matched" to false,
+ * indicating that the caller should process any NOT MATCHED [BY TARGET]
+ * actions.
  *
  * After a concurrent update, we restart from the first action to look for a
  * new qualifying action to execute. If the join quals originally passed, and
@@ -3303,10 +3327,16 @@ lmerge_matched:
 							 errmsg("could not serialize access due to concurrent delete")));
 
 				/*
-				 * If the tuple was already deleted, set matched to false to
-				 * let caller handle it under NOT MATCHED [BY TARGET] clauses.
+				 * The target tuple was concurrently deleted by some other
+				 * transaction.  If this was a MATCHED action, the source row
+				 * still exists, so set *matched to false, to let the caller
+				 * handle it using any NOT MATCHED [BY TARGET] actions.
+				 * Otherwise, for a NOT MATCHED BY SOURCE action, neither the
+				 * source row nor the target row now exists, so there is no
+				 * futher action to execute.
 				 */
-				*matched = false;
+				if (relaction->mas_action->matchKind == MERGE_WHEN_MATCHED)
+					*matched = false;
 				goto out;
 
 			case TM_Updated:
@@ -3459,10 +3489,18 @@ lmerge_matched:
 						case TM_Deleted:
 
 							/*
-							 * tuple already deleted; tell caller to run NOT
-							 * MATCHED [BY TARGET] actions
+							 * The target tuple was concurrently deleted by
+							 * some other transaction.  If this was a MATCHED
+							 * action, the source row still exists, so set
+							 * *matched to false, to let the caller handle it
+							 * using any NOT MATCHED [BY TARGET] actions.
+							 * Otherwise, for a NOT MATCHED BY SOURCE action,
+							 * neither the source row nor the target row now
+							 * exists, so there is no futher action to
+							 * execute.
 							 */
-							*matched = false;
+							if (was_matched)
+								*matched = false;
 							goto out;
 
 						case TM_SelfModified:
@@ -4076,7 +4114,8 @@ ExecPrepareTupleRouting(ModifyTableState *mtstate,
 						PartitionTupleRouting *proute,
 						ResultRelInfo *targetRelInfo,
 						TupleTableSlot *slot,
-						ResultRelInfo **partRelInfo)
+						ResultRelInfo **partRelInfo,
+						TupleTableSlot **tcs_original_insert_tuple)
 {
 	ResultRelInfo *partrel;
 	TupleConversionMap *map;
@@ -4104,7 +4143,7 @@ ExecPrepareTupleRouting(ModifyTableState *mtstate,
 		has_before_insert_row_trig = (partrel->ri_TrigDesc &&
 									  partrel->ri_TrigDesc->trig_insert_before_row);
 
-		mtstate->mt_transition_capture->tcs_original_insert_tuple =
+		*tcs_original_insert_tuple =
 			!has_before_insert_row_trig ? slot : NULL;
 	}
 

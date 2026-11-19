@@ -28,6 +28,24 @@ test_install_data += files(
   'injection_points--1.0.sql',
 )
 
+injection_points_isolation = [
+  'basic',
+  'inplace',
+  'reindex_concurrently_deferred',
+  'reindex_concurrently_toast',
+  'syscache-update-pruned',
+  'heap_lock_update',
+  'on_conflict_probe_window',
+  'multixact-aborted-updater',
+]
+
+# wait_cleanup terminates another backend, whose FATAL message can be lost
+# on Windows, making the test unstable there.
+# See https://postgr.es/m/088AB35D-0860-494A-A9CF-8B301543AA51@yandex-team.ru
+if host_system != 'windows'
+  injection_points_isolation += 'wait_cleanup'
+endif
+
 tests += {
   'name': 'injection_points',
   'sd': meson.current_source_dir(),
@@ -36,6 +54,7 @@ tests += {
     'sql': [
       'injection_points',
       'hashagg',
+      'portal_bind',
       'reindex_conc',
       'vacuum',
     ],
@@ -44,14 +63,7 @@ tests += {
     'runningcheck': false,
   },
   'isolation': {
-    'specs': [
-      'basic',
-      'inplace',
-      'reindex_concurrently_deferred',
-      'syscache-update-pruned',
-      'wait_cleanup',
-      'heap_lock_update',
-    ],
+    'specs': injection_points_isolation,
     'runningcheck': false, # see syscache-update-pruned
   },
   'tap': {

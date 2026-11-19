@@ -1321,7 +1321,9 @@ create_append_path(PlannerInfo *root,
 	 * to apply get_baserel_parampathinfo to construct a full ParamPathInfo
 	 * for the path.  This supports building a Memoize path atop this path,
 	 * and if this is a partitioned table the info may be useful for run-time
-	 * pruning (cf make_partition_pruneinfo()).
+	 * pruning (cf make_partition_pruneinfo()).  Note that its ppi_clauses and
+	 * ppi_serials may include clauses that the child paths cannot enforce;
+	 * see comments for ParamPathInfo.
 	 *
 	 * However, if we don't have "root" then that won't work and we fall back
 	 * on the simpler get_appendrel_parampathinfo.  There's no point in doing
@@ -1392,9 +1394,9 @@ create_append_path(PlannerInfo *root,
 	 * child's pathkeys if any, overriding whatever the caller might've said.
 	 * Furthermore, if the child's parallel awareness matches the Append's,
 	 * then the Append is a no-op and will be discarded later (in setrefs.c).
-	 * Then we can inherit the child's size and cost too, effectively charging
-	 * zero for the Append.  Otherwise, we must do the normal costsize
-	 * calculation.
+	 * Then we can inherit the child's size, cost and disabled-node count too,
+	 * effectively charging zero for the Append.  Otherwise, we must do the
+	 * normal costsize calculation.
 	 */
 	if (list_length(pathnode->subpaths) == 1)
 	{
@@ -1403,6 +1405,7 @@ create_append_path(PlannerInfo *root,
 		if (child->parallel_aware == parallel_aware)
 		{
 			pathnode->path.rows = child->rows;
+			pathnode->path.disabled_nodes = child->disabled_nodes;
 			pathnode->path.startup_cost = child->startup_cost;
 			pathnode->path.total_cost = child->total_cost;
 		}
@@ -1643,7 +1646,7 @@ create_material_path(RelOptInfo *rel, Path *subpath)
 	pathnode->path.pathtype = T_Material;
 	pathnode->path.parent = rel;
 	pathnode->path.pathtarget = rel->reltarget;
-	pathnode->path.param_info = subpath->param_info;
+	pathnode->path.param_info = get_wrapper_parampathinfo(subpath);
 	pathnode->path.parallel_aware = false;
 	pathnode->path.parallel_safe = rel->consider_parallel &&
 		subpath->parallel_safe;
@@ -1678,7 +1681,7 @@ create_memoize_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 	pathnode->path.pathtype = T_Memoize;
 	pathnode->path.parent = rel;
 	pathnode->path.pathtarget = rel->reltarget;
-	pathnode->path.param_info = subpath->param_info;
+	pathnode->path.param_info = get_wrapper_parampathinfo(subpath);
 	pathnode->path.parallel_aware = false;
 	pathnode->path.parallel_safe = rel->consider_parallel &&
 		subpath->parallel_safe;
@@ -1907,7 +1910,7 @@ create_unique_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 	pathnode->path.pathtype = T_Unique;
 	pathnode->path.parent = rel;
 	pathnode->path.pathtarget = rel->reltarget;
-	pathnode->path.param_info = subpath->param_info;
+	pathnode->path.param_info = get_wrapper_parampathinfo(subpath);
 	pathnode->path.parallel_aware = false;
 	pathnode->path.parallel_safe = rel->consider_parallel &&
 		subpath->parallel_safe;
@@ -3477,7 +3480,7 @@ create_groupingsets_path(PlannerInfo *root,
 	pathnode->path.pathtype = T_Agg;
 	pathnode->path.parent = rel;
 	pathnode->path.pathtarget = target;
-	pathnode->path.param_info = subpath->param_info;
+	pathnode->path.param_info = get_wrapper_parampathinfo(subpath);
 	pathnode->path.parallel_aware = false;
 	pathnode->path.parallel_safe = rel->consider_parallel &&
 		subpath->parallel_safe;

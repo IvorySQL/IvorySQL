@@ -256,6 +256,7 @@ BernoulliSamplerData
 BgWorkerStartTime
 BgwHandleStatus
 BinaryArithmFunc
+BinaryUpgradeAttributeVersions
 BinaryUpgradeClassOidItem
 BindParamCbData
 BipartiteMatchState
@@ -478,6 +479,7 @@ CompareScalarsContext
 CompareType
 CompiledExprState
 CompositeIOData
+CompositeTypeMismatchOptions
 CompositeTypeStmt
 CompoundAffixFlag
 CompressFileHandle
@@ -2144,6 +2146,7 @@ PatternInfo
 PatternInfoArray
 Pattern_Prefix_Status
 Pattern_Type
+PendingCancelRequest
 PendingFsyncEntry
 PendingRelDelete
 PendingRelSync
@@ -3097,6 +3100,7 @@ TupStoreStatus
 TupleConstr
 TupleConversionMap
 TupleDesc
+TupleDescVersionData
 TupleHashEntry
 TupleHashEntryData
 TupleHashIterator
@@ -3952,6 +3956,7 @@ post_parse_analyze_hook_type
 postprocess_result_function
 pqbool
 pqsigfunc
+preprocess_subquery_phvs_context
 printQueryOpt
 printTableContent
 printTableFooter
