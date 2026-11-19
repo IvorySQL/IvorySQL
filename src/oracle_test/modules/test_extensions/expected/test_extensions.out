@@ -284,7 +284,6 @@ CREATE OR REPLACE FUNCTION create_extension_with_temp_schema()
     EXECUTE query;
   END; $$ LANGUAGE plpgsql;
 /
-BEGIN;
 SELECT create_extension_with_temp_schema();
 NOTICE:  00000
 NOTICE:  00000

@@ -39,7 +39,6 @@ CREATE FUNCTION int_custom_typanalyze_false_target(internal)
 RETURNS boolean
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT;
-/
 
 --
 -- Typanalyze function that fails on its second non-negative attstattarget
@@ -48,7 +47,6 @@ CREATE FUNCTION int_custom_typanalyze_false_second(internal)
 RETURNS boolean
 AS 'MODULE_PATHNAME'
 LANGUAGE C STRICT;
-/
 
 --
 -- The int_custom type definition
