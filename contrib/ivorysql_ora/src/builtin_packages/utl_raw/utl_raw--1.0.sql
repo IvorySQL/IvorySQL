@@ -11,9 +11,9 @@
 -- UTL_RAW Package Header
 CREATE OR REPLACE PACKAGE UTL_RAW IS
     -- Endianness constants (used by future CAST_FROM/TO_BINARY_* functions)
-    big_endian      CONSTANT INTEGER := 1;
-    little_endian   CONSTANT INTEGER := 2;
-    machine_endian  CONSTANT INTEGER := 3;
+    big_endian      CONSTANT NUMBER := 1;
+    little_endian   CONSTANT NUMBER := 2;
+    machine_endian  CONSTANT NUMBER := 3;
 
     FUNCTION CAST_TO_RAW(c IN VARCHAR2) RETURN RAW;
     FUNCTION CAST_TO_VARCHAR2(r IN RAW) RETURN VARCHAR2;
@@ -42,105 +42,110 @@ CREATE OR REPLACE PACKAGE UTL_RAW IS
 END;
 
 -- C implementations registered as sys-level functions
-CREATE FUNCTION sys.ora_utl_raw_cast_to_varchar2(r bytea)
+CREATE FUNCTION sys.ora_utl_raw_cast_to_varchar2(r sys.raw)
 RETURNS text
 AS 'MODULE_PATHNAME', 'ora_utl_raw_cast_to_varchar2'
 LANGUAGE C IMMUTABLE STRICT;
 
-CREATE FUNCTION sys.ora_utl_raw_length(r bytea)
+CREATE FUNCTION sys.ora_utl_raw_length(r sys.raw)
 RETURNS integer
 AS 'MODULE_PATHNAME', 'ora_utl_raw_length'
 LANGUAGE C IMMUTABLE STRICT;
 
-CREATE FUNCTION sys.ora_utl_raw_substr(r bytea, pos integer, len integer DEFAULT NULL)
-RETURNS bytea
+CREATE FUNCTION sys.ora_utl_raw_substr(r sys.raw, pos sys.number, len sys.number DEFAULT NULL)
+RETURNS sys.raw
 AS 'MODULE_PATHNAME', 'ora_utl_raw_substr'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION sys.ora_utl_raw_concat(r1 bytea DEFAULT NULL, r2 bytea DEFAULT NULL, r3 bytea DEFAULT NULL, r4 bytea DEFAULT NULL, r5 bytea DEFAULT NULL, r6 bytea DEFAULT NULL, r7 bytea DEFAULT NULL, r8 bytea DEFAULT NULL, r9 bytea DEFAULT NULL, r10 bytea DEFAULT NULL, r11 bytea DEFAULT NULL, r12 bytea DEFAULT NULL)
-RETURNS bytea
+CREATE FUNCTION sys.ora_utl_raw_concat(r1 sys.raw DEFAULT NULL, r2 sys.raw DEFAULT NULL, r3 sys.raw DEFAULT NULL, r4 sys.raw DEFAULT NULL, r5 sys.raw DEFAULT NULL, r6 sys.raw DEFAULT NULL, r7 sys.raw DEFAULT NULL, r8 sys.raw DEFAULT NULL, r9 sys.raw DEFAULT NULL, r10 sys.raw DEFAULT NULL, r11 sys.raw DEFAULT NULL, r12 sys.raw DEFAULT NULL)
+RETURNS sys.raw
 AS 'MODULE_PATHNAME', 'ora_utl_raw_concat'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION sys.ora_utl_raw_copies(r bytea, n integer)
-RETURNS bytea
+CREATE FUNCTION sys.ora_utl_raw_copies(r sys.raw, n sys.number)
+RETURNS sys.raw
 AS 'MODULE_PATHNAME', 'ora_utl_raw_copies'
 LANGUAGE C IMMUTABLE STRICT;
 
-CREATE FUNCTION sys.ora_utl_raw_reverse(r bytea)
-RETURNS bytea
+CREATE FUNCTION sys.ora_utl_raw_reverse(r sys.raw)
+RETURNS sys.raw
 AS 'MODULE_PATHNAME', 'ora_utl_raw_reverse'
 LANGUAGE C IMMUTABLE STRICT;
 
-CREATE FUNCTION sys.ora_utl_raw_bit_and(r1 bytea, r2 bytea)
-RETURNS bytea
+CREATE FUNCTION sys.ora_utl_raw_bit_and(r1 sys.raw, r2 sys.raw)
+RETURNS sys.raw
 AS 'MODULE_PATHNAME', 'ora_utl_raw_bit_and'
 LANGUAGE C IMMUTABLE STRICT;
 
-CREATE FUNCTION sys.ora_utl_raw_bit_or(r1 bytea, r2 bytea)
-RETURNS bytea
+CREATE FUNCTION sys.ora_utl_raw_bit_or(r1 sys.raw, r2 sys.raw)
+RETURNS sys.raw
 AS 'MODULE_PATHNAME', 'ora_utl_raw_bit_or'
 LANGUAGE C IMMUTABLE STRICT;
 
-CREATE FUNCTION sys.ora_utl_raw_bit_xor(r1 bytea, r2 bytea)
-RETURNS bytea
+CREATE FUNCTION sys.ora_utl_raw_bit_xor(r1 sys.raw, r2 sys.raw)
+RETURNS sys.raw
 AS 'MODULE_PATHNAME', 'ora_utl_raw_bit_xor'
 LANGUAGE C IMMUTABLE STRICT;
 
-CREATE FUNCTION sys.ora_utl_raw_bit_complement(r bytea)
-RETURNS bytea
+CREATE FUNCTION sys.ora_utl_raw_bit_complement(r sys.raw)
+RETURNS sys.raw
 AS 'MODULE_PATHNAME', 'ora_utl_raw_bit_complement'
 LANGUAGE C IMMUTABLE STRICT;
 
-CREATE FUNCTION sys.ora_utl_raw_compare(r1 bytea DEFAULT NULL, r2 bytea DEFAULT NULL, pad bytea DEFAULT NULL)
+CREATE FUNCTION sys.ora_utl_raw_compare(r1 sys.raw DEFAULT NULL, r2 sys.raw DEFAULT NULL, pad sys.raw DEFAULT NULL)
 RETURNS integer
 AS 'MODULE_PATHNAME', 'ora_utl_raw_compare'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION sys.ora_utl_raw_translate(r bytea, from_set bytea, to_set bytea)
-RETURNS bytea
+CREATE FUNCTION sys.ora_utl_raw_translate(r sys.raw, from_set sys.raw, to_set sys.raw)
+RETURNS sys.raw
 AS 'MODULE_PATHNAME', 'ora_utl_raw_translate'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION sys.ora_utl_raw_overlay(overlay_str bytea, target bytea, pos integer DEFAULT 1, len integer DEFAULT NULL, pad bytea DEFAULT NULL)
-RETURNS bytea
+CREATE FUNCTION sys.ora_utl_raw_overlay(overlay_str sys.raw, target sys.raw, pos sys.number DEFAULT 1, len sys.number DEFAULT NULL, pad sys.raw DEFAULT NULL)
+RETURNS sys.raw
 AS 'MODULE_PATHNAME', 'ora_utl_raw_overlay'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION sys.ora_utl_raw_cast_from_binary_integer(n integer, endianness integer)
-RETURNS bytea
+CREATE FUNCTION sys.ora_utl_raw_cast_from_binary_integer(n sys.number, endianness sys.number)
+RETURNS sys.raw
 AS 'MODULE_PATHNAME', 'ora_utl_raw_cast_from_binary_integer'
 LANGUAGE C IMMUTABLE STRICT;
 
-CREATE FUNCTION sys.ora_utl_raw_cast_to_binary_integer(r bytea, endianness integer)
+CREATE FUNCTION sys.ora_utl_raw_cast_to_binary_integer(r sys.raw, endianness sys.number)
 RETURNS integer
 AS 'MODULE_PATHNAME', 'ora_utl_raw_cast_to_binary_integer'
 LANGUAGE C IMMUTABLE STRICT;
 
-CREATE FUNCTION sys.ora_utl_raw_transliterate(r bytea, to_set bytea DEFAULT NULL, from_set bytea DEFAULT NULL, pad bytea DEFAULT NULL)
-RETURNS bytea
+CREATE FUNCTION sys.ora_utl_raw_transliterate(r sys.raw, to_set sys.raw DEFAULT NULL, from_set sys.raw DEFAULT NULL, pad sys.raw DEFAULT NULL)
+RETURNS sys.raw
 AS 'MODULE_PATHNAME', 'ora_utl_raw_transliterate'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION sys.ora_utl_raw_cast_from_binary_double(n double precision, endianness integer)
-RETURNS bytea
+CREATE FUNCTION sys.ora_utl_raw_cast_from_binary_double(n double precision, endianness sys.number)
+RETURNS sys.raw
 AS 'MODULE_PATHNAME', 'ora_utl_raw_cast_from_binary_double'
 LANGUAGE C IMMUTABLE STRICT;
 
-CREATE FUNCTION sys.ora_utl_raw_cast_to_binary_double(r bytea, endianness integer)
+CREATE FUNCTION sys.ora_utl_raw_cast_to_binary_double(r sys.raw, endianness sys.number)
 RETURNS double precision
 AS 'MODULE_PATHNAME', 'ora_utl_raw_cast_to_binary_double'
 LANGUAGE C IMMUTABLE STRICT;
 
-CREATE FUNCTION sys.ora_utl_raw_cast_from_binary_float(n real, endianness integer)
-RETURNS bytea
+CREATE FUNCTION sys.ora_utl_raw_cast_from_binary_float(n real, endianness sys.number)
+RETURNS sys.raw
 AS 'MODULE_PATHNAME', 'ora_utl_raw_cast_from_binary_float'
 LANGUAGE C IMMUTABLE STRICT;
 
-CREATE FUNCTION sys.ora_utl_raw_cast_to_binary_float(r bytea, endianness integer)
+CREATE FUNCTION sys.ora_utl_raw_cast_to_binary_float(r sys.raw, endianness sys.number)
 RETURNS real
 AS 'MODULE_PATHNAME', 'ora_utl_raw_cast_to_binary_float'
 LANGUAGE C IMMUTABLE STRICT;
+
+CREATE FUNCTION sys.ora_utl_raw_xrange(start_byte sys.raw DEFAULT NULL, end_byte sys.raw DEFAULT NULL)
+RETURNS sys.raw
+AS 'MODULE_PATHNAME', 'ora_utl_raw_xrange'
+LANGUAGE C IMMUTABLE;
 
 -- UTL_RAW Package Body
 CREATE OR REPLACE PACKAGE BODY UTL_RAW IS
