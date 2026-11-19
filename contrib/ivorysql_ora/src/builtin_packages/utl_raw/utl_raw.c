@@ -37,6 +37,28 @@
 #include "utils/memutils.h"
 #include "utils/numeric.h"
 
+
+
+/*
+ * Narrow a NUMBER argument to int32.  In Oracle mode the registration
+ * parser maps the SQL type name INTEGER onto the Oracle NUMBER type
+ * (a by-reference datum), so the entry points read arguments as numbers
+ * and narrow explicitly.  NULL yields 0; callers that need NULL
+ * semantics check PG_ARGISNULL themselves first.
+ */
+static int32
+utl_raw_num_arg(PG_FUNCTION_ARGS, int argno)
+{
+	Numeric		num;
+
+	if (PG_ARGISNULL(argno))
+		return 0;
+
+	num = PG_GETARG_NUMERIC(argno);
+	return DatumGetInt32(DirectFunctionCall1(numeric_int4,
+											 NumericGetDatum(num)));
+}
+
 PG_FUNCTION_INFO_V1(ora_utl_raw_cast_to_varchar2);
 PG_FUNCTION_INFO_V1(ora_utl_raw_length);
 PG_FUNCTION_INFO_V1(ora_utl_raw_substr);
@@ -86,15 +108,16 @@ ora_utl_raw_length(PG_FUNCTION_ARGS)
 Datum
 ora_utl_raw_substr(PG_FUNCTION_ARGS)
 {
+
 	bytea	   *r = PG_GETARG_BYTEA_PP(0);
 	int			len = VARSIZE_ANY_EXHDR(r);
 	const char *data = VARDATA_ANY(r);
-	int32		pos = PG_GETARG_INT32(1);
+	int32		pos = utl_raw_num_arg(fcinfo, 1);
 	int32		sublen;
 
 	if (PG_NARGS() > 2 && !PG_ARGISNULL(2))
 	{
-		sublen = PG_GETARG_INT32(2);
+		sublen = utl_raw_num_arg(fcinfo, 2);
 		if (sublen < 1)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -183,7 +206,7 @@ ora_utl_raw_copies(PG_FUNCTION_ARGS)
 {
 	bytea	   *r = PG_GETARG_BYTEA_PP(0);
 	int			len = VARSIZE_ANY_EXHDR(r);
-	int32		n = PG_GETARG_INT32(1);
+	int32		n = utl_raw_num_arg(fcinfo, 1);
 	bytea	   *result;
 	int			i;
 
@@ -443,13 +466,13 @@ ora_utl_raw_translate(PG_FUNCTION_ARGS)
 Datum
 ora_utl_raw_overlay(PG_FUNCTION_ARGS)
 {
-	bytea	   *ov = PG_GETARG_BYTEA_PP(0);
-	bytea	   *target = PG_GETARG_BYTEA_PP(1);
-	int			ovlen = VARSIZE_ANY_EXHDR(ov);
-	const char *ovdata = VARDATA_ANY(ov);
-	int			tlen = VARSIZE_ANY_EXHDR(target);
-	const char *tdata = VARDATA_ANY(target);
-	int32		pos = PG_GETARG_INT32(2);
+	bytea	   *ov;
+	bytea	   *target;
+	int			ovlen;
+	const char *ovdata;
+	int			tlen;
+	const char *tdata;
+	int32		pos;
 	int32		len;
 	const char *pdata = NULL;
 	int			padlen = 1;
@@ -457,7 +480,26 @@ ora_utl_raw_overlay(PG_FUNCTION_ARGS)
 	bytea	   *result;
 	int			i;
 
-	/* Oracle raises VALUE_ERROR for a NULL or empty overlay_str */
+	/*
+	 * The function is not STRICT (pad may be omitted), so a NULL
+	 * overlay_str must be rejected explicitly before any detoast: in
+	 * Oracle mode an empty string literal is NULL, and Oracle raises
+	 * VALUE_ERROR for a NULL or empty overlay_str.
+	 */
+	if (PG_ARGISNULL(0))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("OVERLAY: overlay_str must not be NULL or empty")));
+
+	ov = PG_GETARG_BYTEA_PP(0);
+	target = PG_GETARG_BYTEA_PP(1);
+	ovlen = VARSIZE_ANY_EXHDR(ov);
+	ovdata = VARDATA_ANY(ov);
+	tlen = VARSIZE_ANY_EXHDR(target);
+	tdata = VARDATA_ANY(target);
+	pos = utl_raw_num_arg(fcinfo, 2);
+
+	/* Oracle raises VALUE_ERROR for an empty overlay_str as well */
 	if (ovlen <= 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -470,7 +512,7 @@ ora_utl_raw_overlay(PG_FUNCTION_ARGS)
 
 	if (PG_NARGS() > 3 && !PG_ARGISNULL(3))
 	{
-		len = PG_GETARG_INT32(3);
+		len = utl_raw_num_arg(fcinfo, 3);
 		if (len < 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -490,10 +532,6 @@ ora_utl_raw_overlay(PG_FUNCTION_ARGS)
 		}
 	}
 
-	/*
-	 * Default pad is 0x00 when the argument is omitted, NULL, or an
-	 * empty RAW.
-	 */
 	if (pdata == NULL || padlen <= 0)
 	{
 		static const char zero = 0;
@@ -502,11 +540,6 @@ ora_utl_raw_overlay(PG_FUNCTION_ARGS)
 		padlen = 1;
 	}
 
-	/*
-	 * Compute the result size in 64 bits and clamp it to the maximum
-	 * allocatable size: large pos/len must not wrap the 32-bit
-	 * arithmetic or hand a negative length to palloc.
-	 */
 	{
 		int64		need = (int64) (pos - 1) + (int64) len;
 
@@ -523,10 +556,6 @@ ora_utl_raw_overlay(PG_FUNCTION_ARGS)
 
 	result = (bytea *) palloc(VARHDRSZ + (Size) outlen);
 
-	/*
-	 * Copy target, padding the region between its end and pos with pad
-	 * when pos extends past the target (Oracle pads target up to pos).
-	 */
 	memcpy(VARDATA(result), tdata, tlen);
 	for (i = tlen; i < pos - 1 && i < outlen; i++)
 		VARDATA(result)[i] = pdata[(i - tlen) % padlen];
@@ -578,8 +607,8 @@ utl_raw_effective_endian(int32 endianness)
 Datum
 ora_utl_raw_cast_from_binary_integer(PG_FUNCTION_ARGS)
 {
-	int32		n = PG_GETARG_INT32(0);
-	int32		endianness = PG_GETARG_INT32(1);
+	int32		n = utl_raw_num_arg(fcinfo, 0);
+	int32		endianness = utl_raw_num_arg(fcinfo, 1);
 	int			order = utl_raw_effective_endian(endianness);
 	bytea	   *result;
 	unsigned char *out;
@@ -617,7 +646,7 @@ ora_utl_raw_cast_to_binary_integer(PG_FUNCTION_ARGS)
 	bytea	   *r = PG_GETARG_BYTEA_PP(0);
 	int			len = VARSIZE_ANY_EXHDR(r);
 	const char *data = VARDATA_ANY(r);
-	int32		endianness = PG_GETARG_INT32(1);
+	int32		endianness = utl_raw_num_arg(fcinfo, 1);
 	int			order = utl_raw_effective_endian(endianness);
 	uint32		u = 0;
 	int			i;
@@ -657,7 +686,7 @@ Datum
 ora_utl_raw_cast_from_binary_double(PG_FUNCTION_ARGS)
 {
 	float8		n = PG_GETARG_FLOAT8(0);
-	int32		endianness = PG_GETARG_INT32(1);
+	int32		endianness = utl_raw_num_arg(fcinfo, 1);
 	int			order = utl_raw_effective_endian(endianness);
 	union
 	{
@@ -691,7 +720,7 @@ ora_utl_raw_cast_to_binary_double(PG_FUNCTION_ARGS)
 	bytea	   *r = PG_GETARG_BYTEA_PP(0);
 	int			len = VARSIZE_ANY_EXHDR(r);
 	const char *data = VARDATA_ANY(r);
-	int32		endianness = PG_GETARG_INT32(1);
+	int32		endianness = utl_raw_num_arg(fcinfo, 1);
 	int			order = utl_raw_effective_endian(endianness);
 	union
 	{
@@ -729,7 +758,7 @@ Datum
 ora_utl_raw_cast_from_binary_float(PG_FUNCTION_ARGS)
 {
 	float4		n = PG_GETARG_FLOAT4(0);
-	int32		endianness = PG_GETARG_INT32(1);
+	int32		endianness = utl_raw_num_arg(fcinfo, 1);
 	int			order = utl_raw_effective_endian(endianness);
 	union
 	{
@@ -763,7 +792,7 @@ ora_utl_raw_cast_to_binary_float(PG_FUNCTION_ARGS)
 	bytea	   *r = PG_GETARG_BYTEA_PP(0);
 	int			len = VARSIZE_ANY_EXHDR(r);
 	const char *data = VARDATA_ANY(r);
-	int32		endianness = PG_GETARG_INT32(1);
+	int32		endianness = utl_raw_num_arg(fcinfo, 1);
 	int			order = utl_raw_effective_endian(endianness);
 	union
 	{
