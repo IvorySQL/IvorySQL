@@ -47,7 +47,8 @@ sub wait_for_autovacuum_complete
 }
 
 my $node = PostgreSQL::Test::Cluster->new('main');
-$node->init;
+
+$node->init('auth_extra' => [ '--create-role', 'regress_dbowner' ]);
 
 # Limit to one autovacuum worker and disable autovacuum logging globally
 # (enabled only on the test table) so that log checks below match only
