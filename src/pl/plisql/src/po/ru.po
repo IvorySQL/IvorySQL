@@ -2,13 +2,13 @@
 # Copyright (C) 2012-2016 PostgreSQL Global Development Group
 # Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
 # This file is distributed under the same license as the PostgreSQL package.
-# Alexander Lakhin <exclusion@gmail.com>, 2012-2017, 2018, 2019, 2020, 2021.
+# SPDX-FileCopyrightText: 2012-2017, 2018, 2019, 2020, 2021, 2022, 2024, 2026 Alexander Lakhin <exclusion@gmail.com>
 msgid ""
 msgstr ""
 "Project-Id-Version: plisql (PostgreSQL current)\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2026-02-21 05:19+0200\n"
-"PO-Revision-Date: 2021-09-04 12:39+0300\n"
+"POT-Creation-Date: 2026-11-07 09:43+0200\n"
+"PO-Revision-Date: 2026-10-10 19:56+0300\n"
 "Last-Translator: Alexander Lakhin <exclusion@gmail.com>\n"
 "Language-Team: Russian <pgsql-ru-general@postgresql.org>\n"
 "Language: ru\n"
@@ -78,6 +78,16 @@ msgstr "неоднозначная ссылка на столбец \"%s\""
 #, c-format
 msgid "It could refer to either a PL/iSQL variable or a table column."
 msgstr "Подразумевается ссылка на переменную PL/iSQL или столбец таблицы."
+
+#: pl_comp.c:1939
+#, c-format
+msgid "field name \"%s\" is a reserved key word"
+msgstr "имя поля \"%s\" является зарезервированным ключевым словом"
+
+#: pl_comp.c:1941
+#, c-format
+msgid "Use double quotes to quote it."
+msgstr "Заключите его в двойные кавычки."
 
 #: pl_comp.c:1324 pl_exec.c:5190 pl_exec.c:5363 pl_exec.c:5450 pl_exec.c:5541
 #: pl_exec.c:6562
@@ -193,6 +203,11 @@ msgstr "функция PL/iSQL %s, строка %d, оператор %s"
 #, c-format
 msgid "PL/iSQL function %s"
 msgstr "функция PL/iSQL %s"
+
+#: pl_exec.c:1581
+#, c-format
+msgid "SQL statement \"%s\""
+msgstr "SQL-оператор: \"%s\""
 
 #: pl_exec.c:1633
 msgid "during statement block local variable initialization"
@@ -532,6 +547,11 @@ msgstr "записи \"%s\" не присвоено значение"
 msgid "The tuple structure of a not-yet-assigned record is indeterminate."
 msgstr ""
 "Для записи, которой не присвоено значение, структура кортежа не определена."
+
+#: pl_exec.c:9079
+#, c-format
+msgid "cannot cast type %s to %s"
+msgstr "привести тип %s к %s нельзя"
 
 #: pl_funcs.c:237
 msgid "statement block"

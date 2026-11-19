@@ -13,7 +13,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: plisql (PostgreSQL) 14\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2026-02-06 23:09+0000\n"
+"POT-Creation-Date: 2026-11-07 12:39+0000\n"
 "PO-Revision-Date: 2021-10-14 10:18-0500\n"
 "Last-Translator: Carlos Chapi <carloswaldo@babelruins.org>\n"
 "Language-Team: PgSQL-es-Ayuda <pgsql-es-ayuda@lists.postgresql.org>\n"
@@ -78,6 +78,18 @@ msgstr "la referencia a la columna «%s» es ambigua"
 #, c-format
 msgid "It could refer to either a PL/iSQL variable or a table column."
 msgstr "Podría referirse tanto a una variable PL/iSQL como a una columna de una tabla."
+
+#: pl_comp.c:1939
+#, fuzzy, c-format
+#| msgid "role name \"%s\" is reserved"
+msgid "field name \"%s\" is a reserved key word"
+msgstr "el nombre de rol «%s» está reservado"
+
+#: pl_comp.c:1941
+#, fuzzy, c-format
+#| msgid "Use \\q to quit."
+msgid "Use double quotes to quote it."
+msgstr "Use \\q para salir."
 
 #: pl_comp.c:1324 pl_exec.c:5190 pl_exec.c:5363 pl_exec.c:5450 pl_exec.c:5541
 #: pl_exec.c:6562
@@ -189,6 +201,11 @@ msgstr "función PL/iSQL %s en la línea %d en %s"
 #, c-format
 msgid "PL/iSQL function %s"
 msgstr "función PL/iSQL %s"
+
+#: pl_exec.c:1581
+#, c-format
+msgid "SQL statement \"%s\""
+msgstr "sentencia SQL: «%s»"
 
 #: pl_exec.c:1633
 msgid "during statement block local variable initialization"
@@ -502,6 +519,11 @@ msgstr "el registro «%s» no ha sido asignado aún"
 #, c-format
 msgid "The tuple structure of a not-yet-assigned record is indeterminate."
 msgstr "La estructura de fila de un registro aún no asignado no está determinado."
+
+#: pl_exec.c:9079
+#, c-format
+msgid "cannot cast type %s to %s"
+msgstr "no se puede convertir el tipo %s a %s"
 
 #: pl_funcs.c:237
 msgid "statement block"
