@@ -15,6 +15,7 @@ ivorysql_ora_sources = files(
   'src/datatype/yminterval.c',
   'src/datatype/dsinterval.c',
   'src/datatype/compatible_oracle_precedence.c',
+  'src/datatype/oracle_lob_source.c',
   'src/datatype/common_datatypes.c',
   'src/datatype/raw_long.c',
   'src/datatype/binary_float.c',

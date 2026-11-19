@@ -17,6 +17,7 @@ OBJS = \
 	src/datatype/yminterval.o \
 	src/datatype/dsinterval.o \
 	src/datatype/compatible_oracle_precedence.o \
+	src/datatype/oracle_lob_source.o \
 	src/datatype/common_datatypes.o \
 	src/datatype/raw_long.o \
 	src/datatype/binary_float.o \
