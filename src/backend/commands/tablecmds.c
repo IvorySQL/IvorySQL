@@ -120,6 +120,7 @@
 #include "utils/packagecache.h"
 #include "funcapi.h"
 #include "catalog/pg_proc.h"
+#include "catalog/pg_package.h"
 #include "catalog/pg_package_body.h"
 #include "lib/qunique.h"
 #include "catalog/pg_package_d.h"
@@ -7507,6 +7508,32 @@ check_composite_type_dependency(ObjectAddress *depobj, Oid typeOid,
 			 * object, so we might see these.
 			 */
 			report_type_used_in_expr(depobj, origRelation, origTypeName);
+			break;
+
+		case PackageRelationId:
+			{
+				HeapTuple	pkgTup;
+
+				/*
+				 * IvorySQL: an object type's method-namespace package is an
+					 * internal implementation detail of the type itself.  It is
+					 * replaced together with the type during CREATE OR REPLACE
+					 * TYPE, so its own dependency must not block altering the
+					 * type.  Dependencies from other packages still forbid the
+					 * ALTER, matching the upstream rule for stored expressions.
+				 */
+				pkgTup = SearchSysCache1(PKGOID, ObjectIdGetDatum(objid));
+				if (HeapTupleIsValid(pkgTup))
+				{
+					Form_pg_package pkgForm = (Form_pg_package) GETSTRUCT(pkgTup);
+					bool		isSelfPackage = (pkgForm->pkgtypeoid == typeOid);
+
+					ReleaseSysCache(pkgTup);
+					if (isSelfPackage)
+						break;
+				}
+				report_type_used_in_expr(depobj, origRelation, origTypeName);
+			}
 			break;
 
 		case RewriteRelationId:
