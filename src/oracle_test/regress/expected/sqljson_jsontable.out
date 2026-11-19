@@ -1209,3 +1209,33 @@ ERROR:  invalid ON ERROR behavior for column "a"
 LINE 1: ...M JSON_TABLE(jsonb '1', '$' COLUMNS (a int exists empty obje...
                                                              ^
 DETAIL:  Only ERROR, TRUE, FALSE, or UNKNOWN is allowed in ON ERROR for EXISTS columns.
+-- Collations must be assigned to expressions in the context item and in
+-- the PASSING arguments (bug #19768)
+SELECT * FROM JSON_TABLE(jsonb_build_object('k', ROW(1, 2) < ROW(3, 4)), '$'
+	COLUMNS (a bool PATH '$.k'));
+ a 
+---
+ t
+(1 row)
+
+SELECT * FROM JSON_TABLE(jsonb_build_object('k', 'a' < 'b' COLLATE "C"), '$'
+	COLUMNS (a bool PATH '$.k'));
+ a 
+---
+ t
+(1 row)
+
+SELECT * FROM JSON_TABLE(jsonb '{}', '$' PASSING 'a' < 'b' COLLATE "C" AS x
+	COLUMNS (a bool PATH '$x'));
+ a 
+---
+ t
+(1 row)
+
+SELECT * FROM JSON_TABLE(jsonb '{}', '$' PASSING ROW(1, 2) < ROW(3, 4) AS x
+	COLUMNS (a bool PATH '$x'));
+ a 
+---
+ t
+(1 row)
+
