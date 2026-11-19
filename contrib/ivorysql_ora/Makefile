@@ -102,6 +102,7 @@ ORA_REGRESS = \
 	utl_file_putf \
 	utl_raw \
 	utl_encode \
+	utl_encode_qp \
 	utl_url \
 	dbms_session \
 	dbms_transaction \
