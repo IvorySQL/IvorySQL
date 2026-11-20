@@ -129,3 +129,72 @@ END;
 
 SELECT test_bug1124_order() AS result FROM dual;
 DROP FUNCTION test_bug1124_order;
+
+--
+-- Subprograms without a pg_proc entry and track_functions
+--
+-- Package members, nested subprograms and WITH clause functions are called
+-- through an id that is not a pg_proc OID.  With track_functions = pl or
+-- all, function usage tracking looked that id up in pg_proc and failed the
+-- call with "function call to dropped function".
+--
+SET track_functions = 'all';
+
+CREATE OR REPLACE PACKAGE test_trackfunc_pkg IS
+    FUNCTION f(p_val NUMBER) RETURN NUMBER;
+    PROCEDURE p;
+END;
+/
+
+CREATE OR REPLACE PACKAGE BODY test_trackfunc_pkg IS
+    FUNCTION f(p_val NUMBER) RETURN NUMBER IS
+    BEGIN
+        RETURN p_val + 1;
+    END;
+    PROCEDURE p IS
+    BEGIN
+        RAISE NOTICE 'test_trackfunc_pkg.p called';
+    END;
+END;
+/
+
+SELECT test_trackfunc_pkg.f(1) AS result FROM dual;
+CALL test_trackfunc_pkg.p();
+
+BEGIN
+    test_trackfunc_pkg.p();
+END;
+/
+
+DECLARE
+    FUNCTION nested_f(p_val NUMBER) RETURN NUMBER IS
+    BEGIN
+        RETURN p_val * 2;
+    END;
+BEGIN
+    RAISE NOTICE 'nested_f(21) = %', nested_f(21);
+END;
+/
+
+WITH FUNCTION with_f(p_val NUMBER) RETURN NUMBER IS
+BEGIN
+    RETURN p_val * 3;
+END;
+SELECT with_f(2) AS result FROM dual
+/
+
+-- functions with a pg_proc entry are still tracked
+CREATE OR REPLACE FUNCTION test_trackfunc_plain RETURN NUMBER IS
+BEGIN
+    RETURN 1;
+END;
+/
+
+BEGIN;
+SELECT test_trackfunc_plain() AS result FROM dual;
+SELECT pg_stat_get_xact_function_calls('test_trackfunc_plain'::regproc) AS calls FROM dual;
+COMMIT;
+
+RESET track_functions;
+DROP FUNCTION test_trackfunc_plain;
+DROP PACKAGE test_trackfunc_pkg;
