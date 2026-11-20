@@ -18,6 +18,9 @@ begin
  v_rc := dbms_lock.request(v_handle, dbms_lock.s_mode, 0);  
  raise notice 'request rc=%', v_rc;
  assert v_rc = 0, format('DBMS_LOCK.request failed: rc=%s', v_rc);
+ v_rc := dbms_lock.request(v_handle, dbms_lock.s_mode, 0);
+ raise notice 'second request rc=%', v_rc;
+ assert v_rc = 4, format('DBMS_LOCK.request should report already owned: rc=%s', v_rc);
  insert into handle values(v_handle);
 end;
 /
@@ -72,6 +75,9 @@ begin
  v_rc := dbms_lock.request(v_handle, dbms_lock.x_mode, 0);  
  raise notice 'request rc=%', v_rc;
  assert v_rc = 0, format('DBMS_LOCK.request failed: rc=%s', v_rc);
+ v_rc := dbms_lock.request(v_handle, dbms_lock.x_mode, 0);
+ raise notice 'second request rc=%', v_rc;
+ assert v_rc = 4, format('DBMS_LOCK.request should report already owned: rc=%s', v_rc);
  insert into handle values(v_handle);
 end;
 /
@@ -112,3 +118,130 @@ begin
 end
 $$;
 commit;
+--
+-- test DBMS_LOCK cross-mode reacquisition (S then X)
+--
+begin;
+declare
+ v_lockname varchar2(10) = 'LOCKSX';
+ v_handle text;
+ v_rc int;
+ v_lockcount int;
+begin
+ dbms_lock.allocate_unique(v_lockname, v_handle);
+ v_rc := dbms_lock.request(v_handle, dbms_lock.s_mode, 0);
+ raise notice 'request rc=%', v_rc;
+ assert v_rc = 0, format('DBMS_LOCK.request failed: rc=%s', v_rc);
+ v_rc := dbms_lock.request(v_handle, dbms_lock.x_mode, 0);
+ raise notice 'cross-mode request rc=%', v_rc;
+ assert v_rc = 4, format('DBMS_LOCK.request should report already owned: rc=%s', v_rc);
+ select count(*) into v_lockcount from pg_locks
+  where pid = pg_backend_pid() and locktype = 'advisory';
+ raise notice 'advisory locks held=%', v_lockcount;
+ assert v_lockcount = 1, format('expected exactly one advisory lock: %s', v_lockcount);
+ v_rc := dbms_lock.release(v_handle);
+ raise notice 'release rc=%', v_rc;
+ assert v_rc = 0, format('DBMS_LOCK.release failed: rc=%s', v_rc);
+ select count(*) into v_lockcount from pg_locks
+  where pid = pg_backend_pid() and locktype = 'advisory';
+ raise notice 'advisory locks held=%', v_lockcount;
+ assert v_lockcount = 0, format('release must leave no advisory locks: %s', v_lockcount);
+end;
+/
+commit;
+--
+-- test DBMS_LOCK cross-mode reacquisition (X then S)
+--
+begin;
+declare
+ v_lockname varchar2(10) = 'LOCKXS';
+ v_handle text;
+ v_rc int;
+ v_lockcount int;
+begin
+ dbms_lock.allocate_unique(v_lockname, v_handle);
+ v_rc := dbms_lock.request(v_handle, dbms_lock.x_mode, 0);
+ raise notice 'request rc=%', v_rc;
+ assert v_rc = 0, format('DBMS_LOCK.request failed: rc=%s', v_rc);
+ v_rc := dbms_lock.request(v_handle, dbms_lock.s_mode, 0);
+ raise notice 'cross-mode request rc=%', v_rc;
+ assert v_rc = 4, format('DBMS_LOCK.request should report already owned: rc=%s', v_rc);
+ select count(*) into v_lockcount from pg_locks
+  where pid = pg_backend_pid() and locktype = 'advisory';
+ raise notice 'advisory locks held=%', v_lockcount;
+ assert v_lockcount = 1, format('expected exactly one advisory lock: %s', v_lockcount);
+ v_rc := dbms_lock.release(v_handle);
+ raise notice 'release rc=%', v_rc;
+ assert v_rc = 0, format('DBMS_LOCK.release failed: rc=%s', v_rc);
+ select count(*) into v_lockcount from pg_locks
+  where pid = pg_backend_pid() and locktype = 'advisory';
+ raise notice 'advisory locks held=%', v_lockcount;
+ assert v_lockcount = 0, format('release must leave no advisory locks: %s', v_lockcount);
+end;
+/
+commit;
+-- External advisory unlocks must not leave stale DBMS_LOCK ownership.
+DO LANGUAGE plpgsql $$
+DECLARE
+  first_mode integer;
+  second_mode integer;
+  rc integer;
+  h text;
+BEGIN
+  FOREACH first_mode IN ARRAY ARRAY[4, 6] LOOP
+    FOREACH second_mode IN ARRAY ARRAY[4, 6] LOOP
+      h := format('stale-owner-%s-%s', first_mode, second_mode);
+      rc := sys.dbms_lock_request(h, first_mode, 0);
+      IF rc <> 0 THEN RAISE EXCEPTION 'initial request returned %', rc; END IF;
+      PERFORM pg_advisory_unlock_all();
+      rc := sys.dbms_lock_request(h, second_mode, 0);
+      IF rc <> 0 THEN RAISE EXCEPTION 'request after unlock % -> % returned %', first_mode, second_mode, rc; END IF;
+      IF (SELECT count(*) FROM pg_locks WHERE pid=pg_backend_pid() AND locktype='advisory') <> 1 THEN
+        RAISE EXCEPTION 'reacquisition did not hold exactly one lock';
+      END IF;
+      rc := sys.dbms_lock_request(h, first_mode, 0);
+      IF rc <> 4 THEN RAISE EXCEPTION 'duplicate request returned %', rc; END IF;
+      rc := sys.dbms_lock_release(h);
+      IF rc <> 0 THEN RAISE EXCEPTION 'release returned %', rc; END IF;
+      IF EXISTS (SELECT FROM pg_locks WHERE pid=pg_backend_pid() AND locktype='advisory') THEN
+        RAISE EXCEPTION 'release left an advisory lock';
+      END IF;
+    END LOOP;
+  END LOOP;
+END;
+$$;
+-- A transaction lock must not be mistaken for session ownership.
+DO LANGUAGE plpgsql $$
+DECLARE
+  m integer;
+  rc integer;
+  h text;
+  k bigint;
+BEGIN
+  FOREACH m IN ARRAY ARRAY[4, 6] LOOP
+    h := format('stale-xact-%s', m);
+    rc := sys.dbms_lock_request(h, m, 0);
+    IF rc <> 0 THEN RAISE EXCEPTION 'initial request returned %', rc; END IF;
+    SELECT (classid::bigint << 32) | objid::bigint INTO STRICT k
+      FROM pg_locks WHERE pid=pg_backend_pid() AND locktype='advisory'
+        AND mode=CASE WHEN m=4 THEN 'ShareLock' ELSE 'ExclusiveLock' END;
+    IF m=4 THEN
+      PERFORM pg_advisory_xact_lock_shared(k);
+    ELSE
+      PERFORM pg_advisory_xact_lock(k);
+    END IF;
+    PERFORM pg_advisory_unlock_all();
+    rc := sys.dbms_lock_request(h, m, 0);
+    IF rc <> 0 THEN RAISE EXCEPTION 'transaction lock masked stale ownership: %', rc; END IF;
+    rc := sys.dbms_lock_release(h);
+    IF rc <> 0 THEN RAISE EXCEPTION 'session release returned %', rc; END IF;
+  END LOOP;
+END;
+$$;
+DO LANGUAGE plpgsql $$
+BEGIN
+  IF EXISTS (SELECT FROM pg_locks WHERE pid=pg_backend_pid() AND locktype='advisory') THEN
+    RAISE EXCEPTION 'advisory lock remained after transaction end';
+  END IF;
+END;
+$$;
