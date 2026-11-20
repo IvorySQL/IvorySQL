@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PostgreSQL 15\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2026-08-21 04:09+0000\n"
+"POT-Creation-Date: 2026-11-11 15:39+0000\n"
 "PO-Revision-Date: 2022-04-08 14:40+0200\n"
 "Last-Translator: Peter Eisentraut <peter@eisentraut.org>\n"
 "Language-Team: German <pgsql-translators@postgresql.org>\n"
@@ -455,6 +455,11 @@ msgstr "nicht zusammengesetzter Wert kann nicht einer Zeilenvariable zugewiesen 
 msgid "cannot assign non-composite value to a record variable"
 msgstr "nicht zusammengesetzter Wert kann nicht einer Record-Variable zugewiesen werden"
 
+#: pl_exec.c:5406
+#, c-format
+msgid "record \"%s\" field \"%s\" changed type during assignment"
+msgstr "Feld »%2$s« von Record »%1$s« hat bei der Zuweisung den Typ geändert"
+
 #: pl_exec.c:5225
 #, c-format
 msgid "cannot assign to system column \"%s\""
@@ -507,6 +512,16 @@ msgstr "Check »%s« aus »%s« ist aktiv."
 #, c-format
 msgid "Make sure the query returns the exact list of columns."
 msgstr "Stellen Sie sicher, dass die Anfrage die genaue Spaltenliste zurückgibt."
+
+#: pl_exec.c:7767
+#, c-format
+msgid "assigned value is incompatible with the variable's type"
+msgstr "zugewiesener Wert ist mit dem Typ der Variable inkompatibel"
+
+#: pl_exec.c:7768
+#, c-format
+msgid "A variable can retain the type definition established when it was first used."
+msgstr "Eine Variable kann die Typdefinition behalten, die bei ihrer ersten Verwendung festgelegt wurde."
 
 #: pl_exec.c:7620
 #, c-format
