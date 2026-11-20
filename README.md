@@ -16,7 +16,7 @@ One of the highlights of IvorySQL is PL/iSQL procedural language that supports o
 
 The IvorySQL project is released under the Apache 2 license and encourages all types of contributions. For IvorySQL community no contribution is too small, and we want to thank all our community contributors.
 
-</br>
+<br/>
 
 ## We are committed to following the principles of the open source way
 We are committed to abiding by the principles of [open-source ways](https://opensource.com/open-source-way) and we strongly believe in building a healthy and inclusive community. We maintain that good ideas can come from anywhere, and the best ideas should win. Only by including diverse perspectives, we can reach the best decision. While the first version of IvorySQL is mainly focused on Oracle Compatibility features, going forward the future road map and feature set will be determined by the community in an open-source way.
