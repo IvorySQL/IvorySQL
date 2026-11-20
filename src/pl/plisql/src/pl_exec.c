@@ -8667,6 +8667,34 @@ check_record_tupdescs_match(ExpandedRecordHeader *srcerh, ExpandedRecordHeader *
 }
 
 /*
+ * rec_erh_outdated_for		Can rec->erh's cached tuple descriptor not be
+ *							reused for the given composite datum?
+ *
+ * Package-owned records (package variables, object-type method namespaces)
+ * persist across calls, so an expanded record cached in such a variable can
+ * predate a later type change (e.g. CREATE OR REPLACE TYPE evolving an
+ * attribute of an object type).  Versioned composite datums carry the
+ * version of the descriptor that formed them; when that is newer than the
+ * cached descriptor's version, reusing rec->erh would fail the version
+ * check inside expanded_record_set_tuple().  Rebuilding the expanded
+ * record from the current catalog definition instead matches Oracle's
+ * behavior of discarding package state after the type is replaced.
+ *
+ * Plain function-local records keep the upstream behavior of erroring out
+ * in that situation, as documented by PG's rowtypes_alter test.
+ */
+static bool
+rec_erh_outdated_for(PLiSQL_rec *rec, HeapTupleHeader td)
+{
+	if (OidIsValid(rec->pkgoid) &&
+		HeapTupleHeaderIsVersionedDatum(td) &&
+		TupleDescGetVersion(rec->erh->er_tupdesc) < HeapTupleHeaderGetVersion(td))
+		return true;
+
+	return false;
+}
+
+/*
  * exec_move_row_from_datum		Move a composite Datum into a record or row
  *
  * This is equivalent to deconstruct_composite_datum() followed by
@@ -8862,13 +8890,18 @@ exec_move_row_from_datum(PLiSQL_execstate * estate,
 			 * with expanded_record_set_tuple.  We consider that there's a
 			 * rowtype match only if it's the same named composite type or
 			 * same registered rowtype.  (Checking to reject an anonymous
-			 * rowtype here should be redundant, but let's be safe.)
+			 * rowtype here should be redundant, but let's be safe.)  The
+			 * cached descriptor of a package-owned record must also not be
+			 * outdated for the datum: package state persists across calls and
+			 * could have cached a descriptor from before the rowtype was
+			 * altered.
 			 */
 			if (rec->erh &&
 				tupType == rec->erh->er_typeid &&
 				(tupType != RECORDOID ||
 				 (tupTypmod == rec->erh->er_typmod &&
-				  tupTypmod >= 0)))
+				  tupTypmod >= 0)) &&
+				!rec_erh_outdated_for(rec, td))
 			{
 				expanded_record_set_tuple(rec->erh, &tmptup,
 										  true, !estate->atomic);
