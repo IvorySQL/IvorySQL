@@ -1720,7 +1720,7 @@ rollback;
 -- likewise, altering a referenced column's type is prohibited ...
 alter table tt14t alter column f4 type integer using f4::integer;  -- fail
 ERROR:  cannot alter type of a column used by a view or rule
-DETAIL:  rule _RETURN on view tt14v depends on column "f4"
+DETAIL:  rule _RETURN on view tt14v depends on column "f4".
 -- ... but some bug might let it happen, so check defenses
 begin;
 -- destroy the dependency entry that prevents the ALTER:

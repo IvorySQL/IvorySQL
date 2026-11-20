@@ -97,6 +97,7 @@ typedef struct reduce_outer_joins_pass2_state
 {
 	Relids		inner_reduced;	/* OJ relids reduced to plain inner joins */
 	List	   *partial_reduced;	/* List of partially reduced FULL joins */
+	Relids		anti_reduced;	/* OJ relids reduced to antijoins */
 } reduce_outer_joins_pass2_state;
 
 typedef struct reduce_outer_joins_partial_state
@@ -143,6 +144,8 @@ static bool is_safe_append_member(Query *subquery);
 static bool jointree_contains_lateral_outer_refs(PlannerInfo *root,
 												 Node *jtnode, bool restricted,
 												 Relids safe_upper_varnos);
+static void flatten_join_alias_vars_in_jointree(PlannerInfo *root,
+												Node *jtnode);
 static void perform_pullup_replace_vars(PlannerInfo *root,
 										pullup_replace_vars_context *rvcontext,
 										AppendRelInfo *containing_appendrel);
@@ -163,16 +166,21 @@ static void reduce_outer_joins_pass2(Node *jtnode,
 									 List *forced_null_vars);
 static void report_reduced_full_join(reduce_outer_joins_pass2_state *state2,
 									 int rtindex, Relids relids);
+static void remove_redundant_nullability_quals(Node *jtnode,
+											   Relids antijoins);
+static Node *strip_redundant_nullability_quals(Node *quals, Relids antijoins);
 static bool has_notnull_forced_var(PlannerInfo *root, List *forced_null_vars,
 								   reduce_outer_joins_pass1_state *right_state);
 static Node *remove_useless_results_recurse(PlannerInfo *root, Node *jtnode,
+											Relids baserels,
 											Node **parent_quals,
 											Relids *dropped_outer_joins);
 static int	get_result_relid(PlannerInfo *root, Node *jtnode);
 static void remove_result_refs(PlannerInfo *root, int varno, Node *newjtloc);
-static bool find_dependent_phvs(PlannerInfo *root, int varno);
+static bool find_dependent_phvs(PlannerInfo *root, int varno, Relids baserels);
 static bool find_dependent_phvs_in_jointree(PlannerInfo *root,
-											Node *node, int varno);
+											Node *node, int varno,
+											Relids baserels);
 static void substitute_phv_relids(Node *node,
 								  int varno, Relids subrelids);
 static void fix_append_rel_relids(PlannerInfo *root, int varno,
@@ -1515,6 +1523,26 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 	pull_up_subqueries(subroot);
 
 	/*
+	 * We must flatten any join alias Vars in the subquery's targetlist,
+	 * because pulling up the subquery's subqueries might have changed their
+	 * expansions into arbitrary expressions.  That could affect
+	 * pullup_replace_vars' decisions about whether PlaceHolderVar wrappers
+	 * are needed for tlist entries, and if the subquery is LATERAL, the
+	 * expansions might contain lateral references that the is_simple_subquery
+	 * recheck below has to see.  The latter also requires flattening join
+	 * alias Vars in the jointree quals of a LATERAL subquery.  (Likely it'd
+	 * be better to do flatten_join_alias_vars on the whole query tree at some
+	 * earlier stage, maybe even in the rewriter; but for now let's just fix
+	 * these cases here.)
+	 */
+	subquery->targetList = (List *)
+		flatten_join_alias_vars(subroot, subroot->parse,
+								(Node *) subquery->targetList);
+	if (rte->lateral)
+		flatten_join_alias_vars_in_jointree(subroot,
+											(Node *) subquery->jointree);
+
+	/*
 	 * Now we must recheck whether the subquery is still simple enough to pull
 	 * up.  If not, abandon processing it.
 	 *
@@ -1539,19 +1567,6 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 		 */
 		return jtnode;
 	}
-
-	/*
-	 * We must flatten any join alias Vars in the subquery's targetlist,
-	 * because pulling up the subquery's subqueries might have changed their
-	 * expansions into arbitrary expressions, which could affect
-	 * pullup_replace_vars' decisions about whether PlaceHolderVar wrappers
-	 * are needed for tlist entries.  (Likely it'd be better to do
-	 * flatten_join_alias_vars on the whole query tree at some earlier stage,
-	 * maybe even in the rewriter; but for now let's just fix this case here.)
-	 */
-	subquery->targetList = (List *)
-		flatten_join_alias_vars(subroot, subroot->parse,
-								(Node *) subquery->targetList);
 
 	/*
 	 * Adjust level-0 varnos in subquery so that we can append its rangetable
@@ -1650,10 +1665,6 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 				case RTE_RESULT:
 				case RTE_GROUP:
 					/* these can't contain any lateral references */
-					break;
-				case RTE_GRAPH_TABLE:
-					/* shouldn't happen here */
-					Assert(false);
 					break;
 			}
 		}
@@ -2546,6 +2557,40 @@ jointree_contains_lateral_outer_refs(PlannerInfo *root, Node *jtnode,
 }
 
 /*
+ * flatten_join_alias_vars_in_jointree
+ *		Apply flatten_join_alias_vars to all quals in the given jointree,
+ *		replacing them in place.  The jointree must belong to root->parse.
+ */
+static void
+flatten_join_alias_vars_in_jointree(PlannerInfo *root, Node *jtnode)
+{
+	if (jtnode == NULL)
+		return;
+	if (IsA(jtnode, RangeTblRef))
+		return;
+	else if (IsA(jtnode, FromExpr))
+	{
+		FromExpr   *f = (FromExpr *) jtnode;
+		ListCell   *l;
+
+		foreach(l, f->fromlist)
+			flatten_join_alias_vars_in_jointree(root, lfirst(l));
+		f->quals = flatten_join_alias_vars(root, root->parse, f->quals);
+	}
+	else if (IsA(jtnode, JoinExpr))
+	{
+		JoinExpr   *j = (JoinExpr *) jtnode;
+
+		flatten_join_alias_vars_in_jointree(root, j->larg);
+		flatten_join_alias_vars_in_jointree(root, j->rarg);
+		j->quals = flatten_join_alias_vars(root, root->parse, j->quals);
+	}
+	else
+		elog(ERROR, "unrecognized node type: %d",
+			 (int) nodeTag(jtnode));
+}
+
+/*
  * Perform pullup_replace_vars everyplace it's needed in the query tree.
  *
  * Caller has already filled *rvcontext with data describing what to
@@ -2718,10 +2763,6 @@ replace_vars_in_jointree(Node *jtnode,
 					case RTE_RESULT:
 					case RTE_GROUP:
 						/* these shouldn't be marked LATERAL */
-						Assert(false);
-						break;
-					case RTE_GRAPH_TABLE:
-						/* shouldn't happen here */
 						Assert(false);
 						break;
 				}
@@ -3239,8 +3280,7 @@ flatten_simple_union_all(PlannerInfo *root)
  * could pass the upper WHERE, and we can conclude that what the query is
  * really specifying is an anti-semijoin.  We change the join type from
  * JOIN_LEFT to JOIN_ANTI.  The IS NULL clause then becomes redundant, and
- * must be removed to prevent bogus selectivity calculations, but we leave
- * it to distribute_qual_to_rels to get rid of such clauses.
+ * is removed at the end of this phase; see remove_redundant_nullability_quals.
  *
  * Also, we get rid of JOIN_RIGHT cases by flipping them around to become
  * JOIN_LEFT.  This saves some code here and in some later planner routines;
@@ -3277,6 +3317,7 @@ reduce_outer_joins(PlannerInfo *root)
 
 	state2.inner_reduced = NULL;
 	state2.partial_reduced = NIL;
+	state2.anti_reduced = NULL;
 
 	reduce_outer_joins_pass2((Node *) root->parse->jointree,
 							 state1, &state2,
@@ -3319,6 +3360,74 @@ reduce_outer_joins(PlannerInfo *root)
 								  full_join_relids,
 								  statep->unreduced_side);
 	}
+
+	/*
+	 * Finally, remove any quals made redundant by reducing outer joins to
+	 * antijoins.
+	 */
+	if (!bms_is_empty(state2.anti_reduced))
+		remove_redundant_nullability_quals((Node *) root->parse->jointree,
+										   state2.anti_reduced);
+}
+
+/*
+ * remove_redundant_nullability_quals
+ *		Remove quals made redundant by reducing outer joins to antijoins.
+ *
+ * An IS NULL qual on a Var from the nullable side of a lower antijoin is
+ * necessarily true.  Keeping such a qual would not be wrong, but it would
+ * generate bogus selectivity estimates, and it could prevent join removal
+ * from later removing the rel(s) it references.
+ */
+static void
+remove_redundant_nullability_quals(Node *jtnode, Relids antijoins)
+{
+	if (jtnode == NULL)
+		return;
+	if (IsA(jtnode, RangeTblRef))
+	{
+		/* nothing to do here */
+	}
+	else if (IsA(jtnode, FromExpr))
+	{
+		FromExpr   *f = (FromExpr *) jtnode;
+		ListCell   *l;
+
+		foreach(l, f->fromlist)
+			remove_redundant_nullability_quals(lfirst(l), antijoins);
+		f->quals = strip_redundant_nullability_quals(f->quals, antijoins);
+	}
+	else if (IsA(jtnode, JoinExpr))
+	{
+		JoinExpr   *j = (JoinExpr *) jtnode;
+
+		remove_redundant_nullability_quals(j->larg, antijoins);
+		remove_redundant_nullability_quals(j->rarg, antijoins);
+		j->quals = strip_redundant_nullability_quals(j->quals, antijoins);
+	}
+	else
+		elog(ERROR, "unrecognized jointree node type: %d",
+			 (int) nodeTag(jtnode));
+}
+
+/*
+ * strip_redundant_nullability_quals
+ *		Strip redundant IS NULL quals from one implicit-AND qual list.
+ */
+static Node *
+strip_redundant_nullability_quals(Node *quals, Relids antijoins)
+{
+	List	   *newquals = NIL;
+
+	foreach_ptr(Node, clause, castNode(List, quals))
+	{
+		Var		   *var = find_forced_null_var(clause);
+
+		if (var && bms_overlap(var->varnullingrels, antijoins))
+			continue;
+		newquals = lappend(newquals, clause);
+	}
+	return (Node *) newquals;
 }
 
 /*
@@ -3433,9 +3542,10 @@ reduce_outer_joins_pass1(Node *jtnode)
  *
  * Returns info in state2 about outer joins that were successfully simplified.
  * Joins that were fully reduced to inner joins are all added to
- * state2->inner_reduced.  If a full join is reduced to a left join,
- * it needs its own entry in state2->partial_reduced, since that will
- * require custom processing to remove only the correct nullingrel markers.
+ * state2->inner_reduced, and joins that became antijoins are all added to
+ * state2->anti_reduced.  If a full join is reduced to a left join, it also
+ * needs its own entry in state2->partial_reduced, since that will require
+ * custom processing to remove only the correct nullingrel markers.
  */
 static void
 reduce_outer_joins_pass2(Node *jtnode,
@@ -3598,7 +3708,8 @@ reduce_outer_joins_pass2(Node *jtnode,
 
 		/*
 		 * Apply the jointype change, if any, to both jointree node and RTE.
-		 * Also, if we changed an RTE to INNER, add its RTI to inner_reduced.
+		 * Also, if we changed an RTE to INNER, add its RTI to inner_reduced;
+		 * if we changed it to ANTI, add its RTI to anti_reduced.
 		 */
 		if (rtindex && jointype != j->jointype)
 		{
@@ -3610,6 +3721,9 @@ reduce_outer_joins_pass2(Node *jtnode,
 			if (jointype == JOIN_INNER)
 				state2->inner_reduced = bms_add_member(state2->inner_reduced,
 													   rtindex);
+			else if (jointype == JOIN_ANTI)
+				state2->anti_reduced = bms_add_member(state2->anti_reduced,
+													  rtindex);
 		}
 		j->jointype = jointype;
 
@@ -3886,8 +4000,18 @@ has_notnull_forced_var(PlannerInfo *root, List *forced_null_vars,
 void
 remove_useless_result_rtes(PlannerInfo *root)
 {
+	Relids		baserels = NULL;
 	Relids		dropped_outer_joins = NULL;
 	ListCell   *cell;
+
+	/*
+	 * We'll need the set of baserels in the jointree to perform
+	 * find_dependent_phvs() checks.  But if there are no PHVs anywhere in the
+	 * query, those checks are no-ops, so we can skip the work.
+	 */
+	if (root->glob->lastPHId != 0)
+		baserels = get_relids_in_jointree((Node *) root->parse->jointree,
+										  false, false);
 
 	/* Top level of jointree must always be a FromExpr */
 	Assert(IsA(root->parse->jointree, FromExpr));
@@ -3895,6 +4019,7 @@ remove_useless_result_rtes(PlannerInfo *root)
 	root->parse->jointree = (FromExpr *)
 		remove_useless_results_recurse(root,
 									   (Node *) root->parse->jointree,
+									   baserels,
 									   NULL,
 									   &dropped_outer_joins);
 	/* We should still have a FromExpr */
@@ -3955,9 +4080,13 @@ remove_useless_result_rtes(PlannerInfo *root)
  * the parent's quals list; otherwise, pass NULL for parent_quals.
  * (Note that in some cases, parent_quals points to the quals of a parent
  * more than one level up in the tree.)
+ *
+ * baserels is the set of base (non-join) RT indexes in the whole jointree;
+ * it can be NULL if the query contains no PHVs.
  */
 static Node *
 remove_useless_results_recurse(PlannerInfo *root, Node *jtnode,
+							   Relids baserels,
 							   Node **parent_quals,
 							   Relids *dropped_outer_joins)
 {
@@ -3988,6 +4117,7 @@ remove_useless_results_recurse(PlannerInfo *root, Node *jtnode,
 
 			/* Recursively transform child, allowing it to push up quals ... */
 			child = remove_useless_results_recurse(root, child,
+												   baserels,
 												   &f->quals,
 												   dropped_outer_joins);
 			/* ... and stick it back into the tree */
@@ -4001,7 +4131,8 @@ remove_useless_results_recurse(PlannerInfo *root, Node *jtnode,
 			 */
 			if (list_length(f->fromlist) > 1 &&
 				(varno = get_result_relid(root, child)) != 0 &&
-				!find_dependent_phvs_in_jointree(root, (Node *) f, varno))
+				!find_dependent_phvs_in_jointree(root, (Node *) f, varno,
+												 baserels))
 			{
 				f->fromlist = foreach_delete_current(f->fromlist, cell);
 				result_relids = bms_add_member(result_relids, varno);
@@ -4070,12 +4201,14 @@ remove_useless_results_recurse(PlannerInfo *root, Node *jtnode,
 		 * quals up, or at least there's no particular reason to.
 		 */
 		j->larg = remove_useless_results_recurse(root, j->larg,
+												 baserels,
 												 (j->jointype == JOIN_INNER) ?
 												 &j->quals :
 												 (j->jointype == JOIN_LEFT) ?
 												 parent_quals : NULL,
 												 dropped_outer_joins);
 		j->rarg = remove_useless_results_recurse(root, j->rarg,
+												 baserels,
 												 (j->jointype == JOIN_INNER ||
 												  j->jointype == JOIN_LEFT) ?
 												 &j->quals : NULL,
@@ -4103,7 +4236,8 @@ remove_useless_results_recurse(PlannerInfo *root, Node *jtnode,
 				 * allowed to have such refs.
 				 */
 				if ((varno = get_result_relid(root, j->larg)) != 0 &&
-					!find_dependent_phvs_in_jointree(root, j->rarg, varno))
+					!find_dependent_phvs_in_jointree(root, j->rarg, varno,
+													 baserels))
 				{
 					remove_result_refs(root, varno, j->rarg);
 					if (j->quals != NULL && parent_quals == NULL)
@@ -4158,7 +4292,7 @@ remove_useless_results_recurse(PlannerInfo *root, Node *jtnode,
 				 */
 				if ((varno = get_result_relid(root, j->rarg)) != 0 &&
 					(j->quals == NULL ||
-					 !find_dependent_phvs(root, varno)))
+					 !find_dependent_phvs(root, varno, baserels)))
 				{
 					remove_result_refs(root, varno, j->larg);
 					*dropped_outer_joins = bms_add_member(*dropped_outer_joins,
@@ -4280,8 +4414,18 @@ remove_result_refs(PlannerInfo *root, int varno, Node *newjtloc)
 
 
 /*
- * find_dependent_phvs - are there any PlaceHolderVars whose relids are
+ * find_dependent_phvs - are there any PlaceHolderVars whose base relids are
  * exactly the given varno?
+ *
+ * We ignore outer-join relids present in a PHV's phrels, by intersecting
+ * with the caller-supplied "baserels" set.  This is necessary in part
+ * because some of the OJ relids may be stale, that is we may have
+ * already decided to remove those joins in remove_useless_result_rtes
+ * and not yet have cleaned their relid bits out of upper PHVs.
+ * But in general, it's the set of baserels that identify possible places
+ * to evaluate a PHV, and we mustn't let that go to empty.  (The caller is
+ * allowed to pass baserels as NULL if the query contains no PHVs at all,
+ * since then there is no work to do anyway.)
  *
  * find_dependent_phvs should be used when we want to see if there are
  * any such PHVs anywhere in the Query.  Another use-case is to see if
@@ -4292,8 +4436,9 @@ remove_result_refs(PlannerInfo *root, int varno, Node *newjtloc)
 
 typedef struct
 {
-	Relids		relids;
-	int			sublevels_up;
+	Relids		relids;			/* target relid, represented as a relid set */
+	Relids		baserels;		/* base RT indexes in query, NULL if no PHVs */
+	int			sublevels_up;	/* current nesting level */
 } find_dependent_phvs_context;
 
 static bool
@@ -4306,9 +4451,16 @@ find_dependent_phvs_walker(Node *node,
 	{
 		PlaceHolderVar *phv = (PlaceHolderVar *) node;
 
-		if (phv->phlevelsup == context->sublevels_up &&
-			bms_equal(context->relids, phv->phrels))
-			return true;
+		if (phv->phlevelsup == context->sublevels_up)
+		{
+			Relids		phbaserels = bms_intersect(phv->phrels,
+												   context->baserels);
+			bool		match = bms_equal(context->relids, phbaserels);
+
+			bms_free(phbaserels);
+			if (match)
+				return true;
+		}
 		/* fall through to examine children */
 	}
 	if (IsA(node, Query))
@@ -4332,7 +4484,7 @@ find_dependent_phvs_walker(Node *node,
 }
 
 static bool
-find_dependent_phvs(PlannerInfo *root, int varno)
+find_dependent_phvs(PlannerInfo *root, int varno, Relids baserels)
 {
 	find_dependent_phvs_context context;
 
@@ -4341,6 +4493,7 @@ find_dependent_phvs(PlannerInfo *root, int varno)
 		return false;
 
 	context.relids = bms_make_singleton(varno);
+	context.baserels = baserels;
 	context.sublevels_up = 0;
 
 	if (query_tree_walker(root->parse, find_dependent_phvs_walker, &context, 0))
@@ -4354,7 +4507,8 @@ find_dependent_phvs(PlannerInfo *root, int varno)
 }
 
 static bool
-find_dependent_phvs_in_jointree(PlannerInfo *root, Node *node, int varno)
+find_dependent_phvs_in_jointree(PlannerInfo *root, Node *node, int varno,
+								Relids baserels)
 {
 	find_dependent_phvs_context context;
 	Relids		subrelids;
@@ -4365,6 +4519,7 @@ find_dependent_phvs_in_jointree(PlannerInfo *root, Node *node, int varno)
 		return false;
 
 	context.relids = bms_make_singleton(varno);
+	context.baserels = baserels;
 	context.sublevels_up = 0;
 
 	/*

@@ -48,7 +48,10 @@ REASSIGN OWNED BY { <replaceable class="parameter">old_role</replaceable> | CURR
       The name of a role. The ownership of all the objects within the
       current database, and of all shared objects (databases, tablespaces),
       owned by this role will be reassigned to
-      <replaceable class="parameter">new_role</replaceable>.
+      <replaceable class="parameter">new_role</replaceable>. Subscriptions,
+      although stored in a shared catalog, belong to a specific database
+      and are reassigned only when <command>REASSIGN OWNED</command> is executed
+      in that database.
      </para>
     </listitem>
    </varlistentry>

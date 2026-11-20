@@ -260,7 +260,7 @@ extern bool ExecCheckPermissions(List *rangeTable,
 extern bool ExecCheckOneRelPerms(RTEPermissionInfo *perminfo);
 extern void CheckValidResultRel(ResultRelInfo *resultRelInfo, CmdType operation,
 								OnConflictAction onConflictAction,
-								List *mergeActions, ModifyTable *mtnode);
+								List *mergeActions);
 extern void InitResultRelInfo(ResultRelInfo *resultRelInfo,
 							  Relation resultRelationDesc,
 							  Index resultRelationIndex,
@@ -729,6 +729,7 @@ extern void ExecInitRangeTable(EState *estate, List *rangeTable, List *permInfos
 							   Bitmapset *unpruned_relids);
 extern void ExecCloseRangeTableRelations(EState *estate);
 extern void ExecCloseResultRelations(EState *estate);
+extern void ExecCloseTrigTargetRelations(EState *estate);
 
 static inline RangeTblEntry *
 exec_rt_fetch(Index rti, EState *estate)
@@ -800,18 +801,20 @@ extern void check_exclusion_constraint(Relation heap, Relation index,
  * prototypes from functions in execReplication.c
  */
 extern bool RelationFindReplTupleByIndex(Relation rel, Oid idxoid,
+										 bool skipduplicates,
 										 LockTupleMode lockmode,
 										 TupleTableSlot *searchslot,
 										 TupleTableSlot *outslot);
 extern bool RelationFindReplTupleSeq(Relation rel, LockTupleMode lockmode,
 									 TupleTableSlot *searchslot, TupleTableSlot *outslot);
-extern bool RelationFindDeletedTupleInfoSeq(Relation rel,
+extern bool RelationFindDeletedTupleInfoSeq(Relation rel, Oid identidxoid,
 											TupleTableSlot *searchslot,
 											TransactionId oldestxmin,
 											TransactionId *delete_xid,
 											ReplOriginId *delete_origin,
 											TimestampTz *delete_time);
 extern bool RelationFindDeletedTupleInfoByIndex(Relation rel, Oid idxoid,
+												bool skipduplicates,
 												TupleTableSlot *searchslot,
 												TransactionId oldestxmin,
 												TransactionId *delete_xid,

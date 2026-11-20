@@ -110,7 +110,6 @@ typedef struct WindowStatePerFuncData
 
 	bool		plain_agg;		/* is it just a plain aggregate function? */
 	int			aggno;			/* if so, index of its WindowStatePerAggData */
-	uint8		ignore_nulls;	/* ignore nulls */
 
 	WindowObject winobj;		/* object used in window function API */
 } WindowStatePerFuncData;
@@ -1085,6 +1084,20 @@ eval_windowfunction(WindowAggState *winstate, WindowStatePerFunc perfuncstate,
 	MemoryContext oldContext;
 
 	oldContext = MemoryContextSwitchTo(winstate->ss.ps.ps_ExprContext->ecxt_per_tuple_memory);
+
+	/*
+	 * Protect fixed-size fcinfo.  Ordinarily this would have been checked
+	 * while creating the WindowFunc, but it's possible that we are looking at
+	 * a parsetree from a stored view that was made by a server executable
+	 * with a different value of FUNC_MAX_ARGS.
+	 */
+	if (perfuncstate->numArguments > FUNC_MAX_ARGS)
+		ereport(ERROR,
+				(errcode(ERRCODE_TOO_MANY_ARGUMENTS),
+				 errmsg_plural("cannot pass more than %d argument to a function",
+							   "cannot pass more than %d arguments to a function",
+							   FUNC_MAX_ARGS,
+							   FUNC_MAX_ARGS)));
 
 	/*
 	 * We don't pass any normal arguments to a window function, but we do pass
@@ -2737,17 +2750,14 @@ ExecInitWindowAgg(WindowAgg *node, EState *estate, int eflags)
 			elog(ERROR, "WindowFunc with winref %u assigned to WindowAgg with winref %u",
 				 wfunc->winref, node->winref);
 
-		/*
-		 * Look for a previous duplicate window function, which needs the same
-		 * ignore_nulls value
-		 */
+		/* Look for a previous duplicate window function */
 		for (i = 0; i <= wfuncno; i++)
 		{
 			if (equal(wfunc, perfunc[i].wfunc) &&
 				!contain_volatile_functions((Node *) wfunc))
 				break;
 		}
-		if (i <= wfuncno && wfunc->ignore_nulls == perfunc[i].ignore_nulls)
+		if (i <= wfuncno)
 		{
 			/* Found a match to an existing entry, so just mark it */
 			wfuncstate->wfuncno = i;
@@ -2958,6 +2968,25 @@ initialize_peragg(WindowAggState *winstate, WindowFunc *wfunc,
 	ListCell   *lc;
 
 	numArguments = list_length(wfunc->args);
+
+	/*
+	 * Check the number of arguments, to protect fixed-size arrays here and
+	 * later in node execution.
+	 *
+	 * Aggregates can have at most FUNC_MAX_ARGS-1 args (compare
+	 * AggregateCreate, whose error message we want to match).  Ordinarily
+	 * this would have been checked while creating the WindowFunc, but it's
+	 * possible that we are looking at a parsetree from a stored view that was
+	 * made by a server executable with a different value of FUNC_MAX_ARGS, or
+	 * an executable in which parse_func.c didn't enforce the correct limit.
+	 */
+	if (numArguments > FUNC_MAX_ARGS - 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_TOO_MANY_ARGUMENTS),
+				 errmsg_plural("aggregates cannot have more than %d argument",
+							   "aggregates cannot have more than %d arguments",
+							   FUNC_MAX_ARGS - 1,
+							   FUNC_MAX_ARGS - 1)));
 
 	i = 0;
 	foreach(lc, wfunc->args)

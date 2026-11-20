@@ -578,13 +578,11 @@
   max => '1.0',
 },
 
-{ name => 'data_checksums', type => 'enum', context => 'PGC_INTERNAL', group => 'PRESET_OPTIONS',
+{ name => 'data_checksums', type => 'bool', context => 'PGC_INTERNAL', group => 'PRESET_OPTIONS',
   short_desc => 'Shows whether data checksums are turned on for this cluster.',
   flags => 'GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE | GUC_RUNTIME_COMPUTED',
   variable => 'data_checksums',
-  boot_val => 'PG_DATA_CHECKSUM_OFF',
-  options => 'data_checksums_options',
-  show_hook => 'show_data_checksums',
+  boot_val => 'false',
 },
 
 # Can't be set by ALTER SYSTEM as it can lead to recursive definition
@@ -1297,6 +1295,7 @@
 
 { name => 'idle_replication_slot_timeout', type => 'int', context => 'PGC_SIGHUP', group => 'REPLICATION_SENDING',
   short_desc => 'Sets the duration a replication slot can remain idle before it is invalidated.',
+  long_desc => '0 disables the timeout.',
   flags => 'GUC_UNIT_S',
   variable => 'idle_replication_slot_timeout_secs',
   boot_val => '0',
@@ -1383,6 +1382,7 @@
 
 { name => 'io_max_concurrency', type => 'int', context => 'PGC_POSTMASTER', group => 'RESOURCES_IO',
   short_desc => 'Max number of IOs that one process can execute simultaneously.',
+  long_desc => '-1 means use a value based on "shared_buffers" and the maximum number of processes.',
   variable => 'io_max_concurrency',
   boot_val => '-1',
   min => '-1',
@@ -2478,6 +2478,15 @@
   ifdef => 'DEBUG_BOUNDED_SORT',
 },
 
+{ name => 'output_plugin_libraries', type => 'string', context => 'PGC_SUSET', group => 'REPLICATION_SENDING',
+  short_desc => 'Lists libraries that may be named as logical decoding output plugins.',
+  long_desc => 'Users with REPLICATION privileges may only use plugins in this list when creating logical replication slots.',
+  # Note that src/bin/pg_upgrade/check.c assumes GUC_LIST_QUOTE here.
+  flags => 'GUC_LIST_INPUT | GUC_LIST_QUOTE | GUC_SUPERUSER_ONLY',
+  variable => 'output_plugin_libraries_string',
+  boot_val => '"pgoutput, test_decoding"',
+},
+
 { name => 'parallel_leader_participation', type => 'bool', context => 'PGC_USERSET', group => 'RESOURCES_WORKER_PROCESSES',
   short_desc => 'Controls whether Gather and Gather Merge also run subplans.',
   long_desc => 'Should gather nodes also run subplans or just gather tuples?',
@@ -2513,7 +2522,7 @@
 
 { name => 'password_expiration_warning_threshold', type => 'int', context => 'PGC_SIGHUP', group => 'CONN_AUTH_AUTH',
   short_desc => 'Threshold for password expiration warnings.',
-  long_desc => '0 means not to emit these warnings.',
+  long_desc => '0 disables these warnings.',
   flags => 'GUC_UNIT_S',
   variable => 'password_expiration_warning_threshold',
   boot_val => '604800',
@@ -3728,7 +3737,7 @@
 
 { name => 'wal_sender_shutdown_timeout', type => 'int', context => 'PGC_USERSET', group => 'REPLICATION_SENDING',
   short_desc => 'Sets the maximum time the server waits during shutdown for all WAL data to be replicated to the receiver.',
-  long_desc => '-1 disables the timeout',
+  long_desc => '-1 means wait indefinitely. 0 means do not wait.',
   flags => 'GUC_UNIT_MS',
   variable => 'wal_sender_shutdown_timeout',
   boot_val => '-1',
@@ -3738,6 +3747,7 @@
 
 { name => 'wal_sender_timeout', type => 'int', context => 'PGC_USERSET', group => 'REPLICATION_SENDING',
   short_desc => 'Sets the maximum time to wait for WAL replication.',
+  long_desc => '0 disables the timeout.',
   flags => 'GUC_UNIT_MS',
   variable => 'wal_sender_timeout',
   boot_val => '60 * 1000',

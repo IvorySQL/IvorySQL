@@ -240,6 +240,10 @@ $node->command_fails_like(
 	[ 'vacuumdb', '--all', 'postgres' ],
 	qr/cannot vacuum all databases and a specific one at the same time/,
 	'cannot use option --all and a dbname as argument at the same time');
+$node->command_fails_like(
+	[ 'vacuumdb', 'postgres', '--jobs' ],
+	qr/requires an argument/,
+	'option missing its argument after a non-option');
 
 $node->safe_psql(
 	'postgres', q|
@@ -362,12 +366,16 @@ $node->safe_psql('postgres',
 	  . "INSERT INTO parent_table VALUES (1);\n");
 $node->issues_sql_like(
 	[ 'vacuumdb', '--analyze-only', 'postgres' ],
-	qr/statement: ANALYZE public.parent_table/s,
+	qr/statement: ANALYZE ONLY public.parent_table/s,
 	'--analyze-only updates statistics for partitioned tables');
 $node->issues_sql_like(
 	[ 'vacuumdb', '--analyze-in-stages', 'postgres' ],
-	qr/statement: ANALYZE public.parent_table/s,
+	qr/statement: ANALYZE ONLY public.parent_table/s,
 	'--analyze-in-stages updates statistics for partitioned tables');
+$node->issues_sql_like(
+	[ 'vacuumdb', '--analyze-only', '-t', 'parent_table', 'postgres' ],
+	qr/statement: ANALYZE public.parent_table/s,
+	'--analyze-only with --table keeps normal ANALYZE recursion');
 $node->issues_sql_unlike(
 	[ 'vacuumdb', '--analyze-only', 'postgres' ],
 	qr/statement:\ VACUUM/sx,

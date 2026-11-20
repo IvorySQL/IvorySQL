@@ -713,6 +713,3 @@ msgstr "მონაცემების ამ ტიპისთვის მ
 msgid "multidimensional arrays for structures are not supported"
 msgstr "სტრუქტურების მრავალგანზომილებიანი მასივები მხარდაუჭერელია"
 
-#, c-format
-#~ msgid "subquery in FROM must have an alias"
-#~ msgstr "ქვემოთხოვნას \"FROM\"-ში მეტსახელი უნდა ჰქონდეს"

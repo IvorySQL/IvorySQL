@@ -1,0 +1,302 @@
+--
+-- The test uses a GIN index over int[].  The table contains arrays
+-- with integers from 1 to :next_i.  Each integer occurs exactly once,
+-- no gaps or duplicates, although the index does contain some
+-- duplicate elements because some of the inserting transactions are
+-- rolled back during the test. The exact contents of the table depend
+-- on the physical layout of the index, which in turn depends at least
+-- on the block size, so instead of check for the exact contents, we
+-- check those invariants.  :next_i psql variable is maintained at all
+-- times to hold the last inserted integer + 1.
+--
+-- This uses injection points to cause errors that leave some page
+-- splits in "incomplete" state
+create extension injection_points;
+-- Make all injection points local to this process, for concurrency.
+SELECT injection_points_set_local();
+ injection_points_set_local 
+----------------------------
+ 
+(1 row)
+
+set enable_seqscan=off;
+-- Print a NOTICE whenever an incomplete split gets fixed
+SELECT injection_points_attach('gin-finish-incomplete-split', 'notice');
+ injection_points_attach 
+-------------------------
+ 
+(1 row)
+
+--
+-- First create the test table and some helper functions
+--
+create table gin_incomplete_splits(i int4[]) with (autovacuum_enabled = off);
+create index on gin_incomplete_splits using gin (i) with (fastupdate = off);
+-- Creates an array with all integers from $1 (inclusive) $2 (exclusive)
+create function range_array(int, int) returns int[] language sql immutable as $$
+  select array_agg(g) from generate_series($1, $2 - 1) g
+$$;
+-- Inserts an array with 'n' rows to the test table. Pass :next_i as
+-- the first argument, returns the new value for :next_i.
+create function insert_n(first_i int, n int) returns int language plpgsql as $$
+begin
+  insert into gin_incomplete_splits values (range_array(first_i, first_i+n));
+  return first_i + n;
+end;
+$$;
+-- Inserts to the table until an insert fails. Like insert_n(), returns the
+-- new value for :next_i.
+create function insert_until_fail(next_i int, step int default 1) returns int language plpgsql as $$
+declare
+  i integer;
+begin
+  -- Insert arrays with 'step' elements each, until an error occurs.
+  i := 0;
+  loop
+    begin
+      select insert_n(next_i, step) into next_i;
+    exception when others then
+      raise notice 'failed with: %', sqlerrm;
+      exit;
+    end;
+
+    -- The caller is expected to set an injection point that eventually
+    -- causes an error. But bail out if still no error after 10000
+    -- attempts, so that we don't get stuck in an infinite loop.
+    i := i + 1;
+    if i = 10000 then
+      raise 'no error on inserts after % iterations', i;
+    end if;
+  end loop;
+
+  return next_i;
+end;
+$$;
+-- Check the invariants.
+create function verify(next_i int) returns bool language plpgsql as $$
+declare
+  a integer[];
+  elem integer;
+  c integer;
+begin
+  -- Perform a scan over the trailing part of the index, where the
+  -- possible incomplete splits are. (We don't check the whole table,
+  -- because that'd be pretty slow.)
+  c := 0;
+  -- Find all arrays that overlap with the last 200 inserted integers. Or
+  -- the next 100, which shouldn't exist.
+  for a in select i from gin_incomplete_splits where i && range_array(next_i - 200, next_i + 100)
+  loop
+    -- count all elements in those arrays in the window.
+    foreach elem in ARRAY a loop
+      if elem >= next_i then
+        raise 'unexpected value % in array', elem;
+      end if;
+      if elem >= next_i - 200 then
+        c := c + 1;
+      end if;
+    end loop;
+  end loop;
+  if c <> 200 then
+    raise 'unexpected count % ', c;
+  end if;
+
+  return true;
+end;
+$$;
+-- Insert one array to get started.
+select insert_n(1, 1000) as next_i
+\gset
+select verify(:next_i);
+ verify 
+--------
+ t
+(1 row)
+
+--
+-- Test incomplete leaf split
+--
+SELECT injection_points_attach('gin-leave-leaf-split-incomplete', 'error');
+ injection_points_attach 
+-------------------------
+ 
+(1 row)
+
+select insert_until_fail(:next_i) as next_i
+\gset
+NOTICE:  failed with: error triggered for injection point gin-leave-leaf-split-incomplete
+SELECT injection_points_detach('gin-leave-leaf-split-incomplete');
+ injection_points_detach 
+-------------------------
+ 
+(1 row)
+
+-- Verify that a scan works even though there's an incomplete split
+select verify(:next_i);
+ verify 
+--------
+ t
+(1 row)
+
+-- Insert some more rows, finishing the split
+select insert_n(:next_i, 10) as next_i
+\gset
+NOTICE:  notice triggered for injection point gin-finish-incomplete-split
+-- Verify that a scan still works
+select verify(:next_i);
+ verify 
+--------
+ t
+(1 row)
+
+--
+-- Test incomplete internal page split
+--
+SELECT injection_points_attach('gin-leave-internal-split-incomplete', 'error');
+ injection_points_attach 
+-------------------------
+ 
+(1 row)
+
+select insert_until_fail(:next_i, 100) as next_i
+\gset
+NOTICE:  failed with: error triggered for injection point gin-leave-internal-split-incomplete
+SELECT injection_points_detach('gin-leave-internal-split-incomplete');
+ injection_points_detach 
+-------------------------
+ 
+(1 row)
+
+ -- Verify that a scan works even though there's an incomplete split
+select verify(:next_i);
+ verify 
+--------
+ t
+(1 row)
+
+-- Insert some more rows, finishing the split
+select insert_n(:next_i, 10) as next_i
+\gset
+NOTICE:  notice triggered for injection point gin-finish-incomplete-split
+-- Verify that a scan still works
+select verify(:next_i);
+ verify 
+--------
+ t
+(1 row)
+
+SELECT injection_points_detach('gin-finish-incomplete-split');
+ injection_points_detach 
+-------------------------
+ 
+(1 row)
+
+--
+-- Test that VACUUM does not delete the right sibling of an incompletely
+-- split posting tree leaf page
+--
+create extension pageinspect;
+-- Create a GIN index with a posting tree that has several leaf pages
+create temp table gin_posting_tree(id int4, i int4[]);
+insert into gin_posting_tree select g, '{1}' from generate_series(1, 55000) g;
+create index gin_posting_tree_idx on gin_posting_tree using gin (i) with (fastupdate = off);
+-- Free space in the middle of the index key space/heap.  The later inserts
+-- will get TIDs in the middle of the posting tree's key space, splitting a
+-- leaf page that is neither the leftmost nor rightmost of the posting tree.
+delete from gin_posting_tree where id between 10001 and 27500;
+vacuum (index_cleanup on) gin_posting_tree;
+-- Insert rows until a leaf page split fails, leaving the split incomplete
+SELECT injection_points_attach('gin-leave-leaf-split-incomplete', 'error');
+ injection_points_attach 
+-------------------------
+ 
+(1 row)
+
+do $$
+begin
+  for n in 1..200000 loop
+    begin
+      insert into gin_posting_tree values (n, '{1}');
+    exception when others then
+      return;
+    end;
+  end loop;
+  raise 'no leaf split after 200000 inserts';
+end;
+$$;
+SELECT injection_points_detach('gin-leave-leaf-split-incomplete');
+ injection_points_detach 
+-------------------------
+ 
+(1 row)
+
+-- Locate the incompletely split page's new right half (reachable only
+-- through its left sibling's rightlink), and the leaf to the right of
+-- that (the page that VACUUM will delete).  Errors out unless there is
+-- exactly one incomplete split.
+select o.rightlink::int as righthalf,
+       (gin_page_opaque_info(get_raw_page('gin_posting_tree_idx',
+                                          o.rightlink::int))).rightlink::int
+         as nextleaf
+  from generate_series(0, pg_relation_size('gin_posting_tree_idx') /
+                          current_setting('block_size')::int - 1) blkno,
+       lateral gin_page_opaque_info(get_raw_page('gin_posting_tree_idx',
+                                                 blkno::int)) o
+ where o.flags @> '{incomplete_split}'
+\gset
+-- Sanity check: scan will miss nothing if the right half held no live rows,
+-- and VACUUM never deletes the rightmost page
+select exists (select from gin_posting_tree
+               where ctid in (select unnest(tids) from gin_leafpage_items(
+                                get_raw_page('gin_posting_tree_idx', :righthalf))))
+         as righthalf_has_live_rows,
+       (gin_page_opaque_info(get_raw_page('gin_posting_tree_idx',
+                                          :nextleaf))).rightlink <> 4294967295
+         as nextleaf_is_not_rightmost;
+ righthalf_has_live_rows | nextleaf_is_not_rightmost 
+-------------------------+---------------------------
+ t                       | t
+(1 row)
+
+-- Empty the page to the right of the right half, and have VACUUM consider
+-- deleting it
+delete from gin_posting_tree
+ where ctid in (select unnest(tids) from gin_leafpage_items(
+                  get_raw_page('gin_posting_tree_idx', :nextleaf)));
+vacuum (index_cleanup on) gin_posting_tree;
+-- Count the remaining rows through a bitmap scan
+explain (costs off)
+select count(*) as bitmapscan_count from gin_posting_tree where i @> '{1}';
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on gin_posting_tree
+         Recheck Cond: (i @> '{1}'::pg_catalog.int4[])
+         ->  Bitmap Index Scan on gin_posting_tree_idx
+               Index Cond: (i @> '{1}'::pg_catalog.int4[])
+(5 rows)
+
+select count(*) as bitmapscan_count from gin_posting_tree where i @> '{1}'
+\gset
+-- Verify that a sequential scan finds the same rows
+set enable_seqscan=on;
+set enable_bitmapscan=off;
+explain (costs off)
+select count(*) from gin_posting_tree where i @> '{1}';
+                   QUERY PLAN                    
+-------------------------------------------------
+ Aggregate
+   ->  Seq Scan on gin_posting_tree
+         Filter: (i @> '{1}'::pg_catalog.int4[])
+(3 rows)
+
+select count(*) = :bitmapscan_count as seqscan_agrees
+  from gin_posting_tree where i @> '{1}';
+ seqscan_agrees 
+----------------
+ t
+(1 row)
+
+drop table gin_posting_tree;
+drop extension pageinspect;
+drop extension injection_points;

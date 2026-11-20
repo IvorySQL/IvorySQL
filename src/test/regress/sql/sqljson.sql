@@ -152,6 +152,17 @@ SELECT JSON_OBJECT(1: 1, '2': NULL, '1': 1 ABSENT ON NULL WITH UNIQUE RETURNING 
 SELECT JSON_OBJECT(1: 1, '2': NULL, '1': 1 ABSENT ON NULL WITHOUT UNIQUE RETURNING jsonb);
 SELECT JSON_OBJECT(1: 1, '2': NULL, '3': 1, 4: NULL, '5': 'a' ABSENT ON NULL WITH UNIQUE RETURNING jsonb);
 
+-- the RETURNING coercion must not pick up the test value of an enclosing CASE
+SELECT CASE 'x' WHEN JSON_OBJECT('a': 'b' RETURNING text) THEN 1 ELSE 0 END;
+
+-- the RETURNING coercion must not prevent inlining of a SQL function
+CREATE FUNCTION json_object_inline_test(text) RETURNS text
+LANGUAGE sql IMMUTABLE AS $$ SELECT $1 || '!' $$;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT json_object_inline_test(JSON_OBJECT('a': 'b' RETURNING text));
+SELECT json_object_inline_test(JSON_OBJECT('a': 'b' RETURNING text));
+DROP FUNCTION json_object_inline_test(text);
+
 -- BUG: https://postgr.es/m/CADXhmgTJtJZK9A3Na_ry%2BXrq-ghjcejBRhcRMzWZvbd__QdgJA%40mail.gmail.com
 -- datum_to_jsonb_internal() didn't catch keys that are casts instead of a simple scalar
 CREATE TYPE mood AS ENUM ('happy', 'sad', 'neutral');
@@ -443,6 +454,14 @@ SELECT JSON_ARRAY(SELECT i FROM (VALUES (1), (2), (NULL), (4)) foo(i) RETURNING 
 
 DROP VIEW json_array_subquery_view;
 
+-- JSON_ARRAY(subquery) with an input FORMAT clause
+CREATE VIEW json_array_subquery_view AS
+SELECT JSON_ARRAY(SELECT '{"a": 1}'::text FORMAT JSON);
+
+\sv json_array_subquery_view
+
+DROP VIEW json_array_subquery_view;
+
 -- Test mutability of JSON_OBJECTAGG, JSON_ARRAYAGG, JSON_ARRAY, JSON_OBJECT
 create type comp1 as (a int, b date);
 create domain d_comp1 as comp1;
@@ -706,3 +725,44 @@ SELECT JSON_OBJECT('a': JSON_OBJECTAGG('b': stable_one() RETURNING text) FORMAT 
 EXPLAIN (VERBOSE, COSTS OFF) SELECT JSON_OBJECT('a': JSON_OBJECTAGG('b': 1 RETURNING text) FORMAT JSON);
 SELECT JSON_OBJECT('a': JSON_OBJECTAGG('b': 1 RETURNING text) FORMAT JSON);
 DROP FUNCTION volatile_one, stable_one;
+
+-- Test deparsing of JSON aggregates that are computed below a WindowAgg
+-- node.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT i % 2 AS g,
+	JSON_ARRAYAGG(i ORDER BY i RETURNING jsonb) AS ja,
+	JSON_ARRAYAGG(i ORDER BY i RETURNING text) AS ja_text,
+	JSON_ARRAYAGG(i ORDER BY i NULL ON NULL RETURNING jsonb) AS ja_null,
+	JSON_OBJECTAGG(i: i ABSENT ON NULL RETURNING jsonb) AS jo_absent,
+	JSON_OBJECTAGG(i: i WITH UNIQUE RETURNING jsonb) AS jo_unique,
+	row_number() OVER (ORDER BY i % 2) AS rn
+FROM generate_series(1, 3) i
+GROUP BY i % 2;
+SELECT i % 2 AS g,
+	JSON_ARRAYAGG(i ORDER BY i RETURNING jsonb) AS ja,
+	JSON_ARRAYAGG(i ORDER BY i RETURNING text) AS ja_text,
+	JSON_ARRAYAGG(i ORDER BY i NULL ON NULL RETURNING jsonb) AS ja_null,
+	JSON_OBJECTAGG(i: i ABSENT ON NULL RETURNING jsonb) AS jo_absent,
+	JSON_OBJECTAGG(i: i WITH UNIQUE RETURNING jsonb) AS jo_unique,
+	row_number() OVER (ORDER BY i % 2) AS rn
+FROM generate_series(1, 3) i
+GROUP BY i % 2;
+
+-- The same, but with the JSON aggregate used as a window function that is
+-- computed below another WindowAgg node.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT JSON_ARRAYAGG(i NULL ON NULL RETURNING jsonb) OVER (ORDER BY i DESC) AS ja,
+	row_number() OVER (ORDER BY i) AS rn
+FROM generate_series(1, 3) i;
+SELECT JSON_ARRAYAGG(i NULL ON NULL RETURNING jsonb) OVER (ORDER BY i DESC) AS ja,
+	row_number() OVER (ORDER BY i) AS rn
+FROM generate_series(1, 3) i;
+
+-- The same, but with the expression containing the JSON aggregate postponed
+-- to above the final sort due to being volatile.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT i % 2 AS g,
+	   JSON_ARRAYAGG(i RETURNING text) || random()::text AS ja
+FROM generate_series(1, 3) i
+GROUP BY i % 2
+ORDER BY count(*);

@@ -105,6 +105,14 @@ SELECT JSON_VALUE(jsonb '[" "]', '$[*]' RETURNING int DEFAULT 2 + 3 ON ERROR);
 SELECT JSON_VALUE(jsonb '["1"]', '$[*]' RETURNING int DEFAULT 2 + 3 ON ERROR);
 SELECT JSON_VALUE(jsonb '["1"]', '$[*]' RETURNING int FORMAT JSON); -- RETURNING FORMAT not allowed
 
+-- A DEFAULT expression must be coerced to the RETURNING type's typmod even
+-- when its base type already matches, but a matching NULL needs no coercion.
+SELECT JSON_VALUE(jsonb '{}', '$.a' RETURNING numeric(4,1) DEFAULT 99999.999 ON EMPTY);
+SELECT JSON_VALUE(jsonb '{}', '$.a' RETURNING varchar(3) DEFAULT 'toolong'::varchar(10) ON EMPTY);
+SELECT JSON_VALUE(jsonb '{}', '$.a' RETURNING numeric(4,1) DEFAULT NULL::numeric ON EMPTY);
+SELECT JSON_VALUE(jsonb '{}', '$.a' RETURNING bit(3) DEFAULT b'10101' ON EMPTY);
+SELECT JSON_VALUE(jsonb '{}', '$.a' RETURNING numeric(4,1) DEFAULT abs(NULL::numeric) ON EMPTY);
+
 -- RETUGNING pseudo-types not allowed
 SELECT JSON_VALUE(jsonb '["1"]', '$[*]' RETURNING record);
 
@@ -479,6 +487,22 @@ SELECT JSON_QUERY(jsonb 'null', '$xyz' PASSING 1 AS xyz);
 SELECT JSON_QUERY(jsonb 'null', '$Xyz' PASSING 1 AS Xyz);
 SELECT JSON_QUERY(jsonb 'null', '$Xyz' PASSING 1 AS "Xyz");
 SELECT JSON_QUERY(jsonb 'null', '$"Xyz"' PASSING 1 AS "Xyz");
+
+-- Test PASSING and toasted values
+CREATE TABLE test_passing_toast (t text);
+ALTER TABLE test_passing_toast ALTER COLUMN t SET STORAGE EXTENDED;
+INSERT INTO test_passing_toast(t)
+  SELECT repeat(string_agg(to_char(g.i, 'FM0000'), ''), 50)
+  FROM generate_series(1, 500) g(i);
+ALTER TABLE test_passing_toast ALTER COLUMN t SET STORAGE EXTERNAL;
+INSERT INTO test_passing_toast(t)
+  SELECT repeat(string_agg(to_char(g.i, 'FM0000'), ''), 50)
+  FROM generate_series(1, 500) g(i);
+SELECT count(*) AS toasted_chunks
+  FROM test_passing_toast WHERE pg_column_toast_chunk_id(t) IS NOT NULL;
+SELECT JSON_VALUE(jsonb 'null', '$a' PASSING t AS a) = t AS ok
+  FROM test_passing_toast;
+DROP TABLE test_passing_toast;
 
 -- Test ON ERROR / EMPTY value validity for the function; all fail.
 SELECT JSON_EXISTS(jsonb '1', '$' DEFAULT 1 ON ERROR);

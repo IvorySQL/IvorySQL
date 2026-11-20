@@ -849,6 +849,17 @@ generate_union_paths(SetOperationStmt *op, PlannerInfo *root,
 	((AppendPath *) apath)->is_union = true;
 
 	/*
+	 * Although we told create_append_path to assign NIL pathkeys to the
+	 * AppendPath, it may have overridden that (if there's just one surviving
+	 * child path, it will use that path's pathkeys).  However, createplan.c
+	 * will fail because the append relation's tlist contains "varno 0" Vars
+	 * (cf. generate_append_tlist), which won't match what is in the pathkeys.
+	 * We need to fix that someday, but for now, just force the AppendPath's
+	 * pathkeys back to NIL.
+	 */
+	apath->pathkeys = NIL;
+
+	/*
 	 * Estimate number of groups.  For now we just assume the output is unique
 	 * --- this is certainly true for the UNION case, and we want worst-case
 	 * estimates anyway.
@@ -894,6 +905,9 @@ generate_union_paths(SetOperationStmt *op, PlannerInfo *root,
 			create_append_path(root, result_rel, partial,
 							   NIL, NULL, parallel_workers,
 							   enable_parallel_append, -1);
+		/* See comment above about pathkeys vs. "varno 0" Vars */
+		papath->pathkeys = NIL;
+
 		/* Mark as UNION for ROWNUM reset between branches (Oracle compatibility) */
 		((AppendPath *) papath)->is_union = true;
 		gpath = (Path *)
@@ -1238,6 +1252,8 @@ generate_nonunion_paths(SetOperationStmt *op, PlannerInfo *root,
 				apath = (Path *) create_append_path(root, result_rel,
 													append, NIL, NULL, 0,
 													false, -1);
+				/* See comment in generate_union_paths about "varno 0" Vars */
+				apath->pathkeys = NIL;
 
 				add_path(result_rel, apath);
 

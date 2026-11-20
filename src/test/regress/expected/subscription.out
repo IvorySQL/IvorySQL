@@ -173,14 +173,12 @@ ERROR:  permission denied for foreign server test_server
 RESET SESSION AUTHORIZATION;
 GRANT USAGE ON FOREIGN SERVER test_server TO regress_subscription_user3;
 SET SESSION AUTHORIZATION regress_subscription_user3;
--- fail, need user mapping
+-- warn, need user mapping, then fail, FDW doesn't support connections
 CREATE SUBSCRIPTION regress_testsub6 SERVER test_server PUBLICATION testpub WITH (slot_name = NONE, connect = false);
-ERROR:  user mapping not found for user "regress_subscription_user3", server "test_server"
+WARNING:  user mapping not found for user "regress_subscription_user3", server "test_server"
+ERROR:  foreign-data wrapper "test_fdw" does not support subscription connections
+DETAIL:  Foreign-data wrapper must be defined with CONNECTION specified.
 CREATE USER MAPPING FOR regress_subscription_user3 SERVER test_server OPTIONS(user 'foo', password 'secret');
--- fail, need CONNECTION clause
-CREATE SUBSCRIPTION regress_testsub6 SERVER test_server PUBLICATION testpub WITH (slot_name = NONE, connect = false);
-ERROR:  foreign data wrapper "test_fdw" does not support subscription connections
-DETAIL:  Foreign data wrapper must be defined with CONNECTION specified.
 RESET SESSION AUTHORIZATION;
 ALTER FOREIGN DATA WRAPPER test_fdw CONNECTION test_fdw_connection;
 SET SESSION AUTHORIZATION regress_subscription_user3;
@@ -189,12 +187,24 @@ CREATE SUBSCRIPTION regress_testsub6 SERVER test_server
 WARNING:  subscription was created, but is not connected
 HINT:  To initiate replication, you must manually create the replication slot, enable the subscription, and alter the subscription to refresh publications.
 RESET SESSION AUTHORIZATION;
+-- fail, subscription depends on the server and cannot be dropped by CASCADE
+DROP SERVER test_server CASCADE;
+ERROR:  cannot drop server test_server because subscription regress_testsub6 depends on it
+HINT:  Drop subscription regress_testsub6 first.
+-- ok, USAGE privilege on server not checked for OWNER TO, but warn
+-- about user mapping
+ALTER SUBSCRIPTION regress_testsub6 OWNER TO regress_subscription_user2;
+WARNING:  user mapping not found for user "regress_subscription_user2", server "test_server"
+ALTER SUBSCRIPTION regress_testsub6 OWNER TO regress_subscription_user3;
 REVOKE USAGE ON FOREIGN SERVER test_server FROM regress_subscription_user3;
 SET SESSION AUTHORIZATION regress_subscription_user3;
 -- ok, lacks USAGE on test_server, but replacing connection anyway
 BEGIN;
 ALTER SUBSCRIPTION regress_testsub6 CONNECTION 'dbname=regress_doesnotexist password=secret';
 ABORT;
+-- fail, connecting forms recheck USAGE on the foreign server
+ALTER SUBSCRIPTION regress_testsub6 REFRESH PUBLICATION;
+ERROR:  subscription owner "regress_subscription_user3" does not have permission on foreign server "test_server"
 -- fails, cannot drop slot
 DROP SUBSCRIPTION regress_testsub6;
 ERROR:  could not connect to publisher when attempting to drop replication slot "dummy": subscription owner "regress_subscription_user3" does not have permission on foreign server "test_server"
@@ -209,6 +219,14 @@ CREATE SUBSCRIPTION regress_testsub6 SERVER test_server
 WARNING:  subscription was created, but is not connected
 HINT:  To initiate replication, you must manually create the replication slot, enable the subscription, and alter the subscription to refresh publications.
 DROP USER MAPPING FOR regress_subscription_user3 SERVER test_server;
+-- ok, catalog-only forms don't construct conninfo
+ALTER SUBSCRIPTION regress_testsub6 ENABLE;
+ALTER SUBSCRIPTION regress_testsub6 DISABLE;
+ALTER SUBSCRIPTION regress_testsub6 SET (synchronous_commit = local);
+ALTER SUBSCRIPTION regress_testsub6 SET (synchronous_commit = off);
+ALTER SUBSCRIPTION regress_testsub6 SET (disable_on_error = true);
+ALTER SUBSCRIPTION regress_testsub6 SET (disable_on_error = false);
+ALTER SUBSCRIPTION regress_testsub6 SET PUBLICATION testpub WITH (refresh = false);
 -- ok, test_server lacks user mapping, but replacing connection anyway
 BEGIN;
 ALTER SUBSCRIPTION regress_testsub6 CONNECTION 'dbname=regress_doesnotexist password=secret';
@@ -542,7 +560,7 @@ CREATE SUBSCRIPTION regress_testsub CONNECTION 'dbname=regress_doesnotexist' PUB
 ERROR:  max_retention_duration requires an integer value
 -- fail - max_retention_duration must be non-negative
 CREATE SUBSCRIPTION regress_testsub CONNECTION 'dbname=regress_doesnotexist' PUBLICATION testpub WITH (connect = false, max_retention_duration = -1);
-ERROR:  max_retention_duration cannot be negative
+ERROR:  option "max_retention_duration" cannot be negative
 -- ok
 CREATE SUBSCRIPTION regress_testsub CONNECTION 'dbname=regress_doesnotexist' PUBLICATION testpub WITH (connect = false, max_retention_duration = 1000);
 NOTICE:  max_retention_duration is ineffective when retain_dead_tuples is disabled
@@ -557,7 +575,7 @@ HINT:  To initiate replication, you must manually create the replication slot, e
 
 -- fail - max_retention_duration must be non-negative
 ALTER SUBSCRIPTION regress_testsub SET (max_retention_duration = -1);
-ERROR:  max_retention_duration cannot be negative
+ERROR:  option "max_retention_duration" cannot be negative
 -- ok
 ALTER SUBSCRIPTION regress_testsub SET (max_retention_duration = 0);
 \dRs+

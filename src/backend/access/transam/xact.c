@@ -65,6 +65,7 @@
 #include "utils/builtins.h"
 #include "utils/combocid.h"
 #include "utils/guc.h"
+#include "utils/injection_point.h"
 #include "utils/inval.h"
 #include "utils/memutils.h"
 #include "utils/relmapper.h"
@@ -1377,6 +1378,9 @@ RecordTransactionCommit(void)
 													 &RelcacheInitFileInval);
 	wrote_xlog = (XactLastRecEnd != 0);
 
+	/* Load the injection point before entering the critical section */
+	INJECTION_POINT_LOAD("commit-before-clog-update");
+
 	/*
 	 * If we haven't been assigned an XID yet, we neither can, nor do we want
 	 * to write a COMMIT record.
@@ -1542,6 +1546,12 @@ RecordTransactionCommit(void)
 		forceSyncCommit || nrels > 0)
 	{
 		XLogFlush(XactLastRecEnd);
+
+		/*
+		 * The commit record is on disk, but not in CLOG yet.  A test can stop
+		 * here to see what others make of the transaction meanwhile.
+		 */
+		INJECTION_POINT_CACHED("commit-before-clog-update", NULL);
 
 		/*
 		 * Now we may update the CLOG, if we wrote a COMMIT record above
@@ -3045,7 +3055,6 @@ AbortTransaction(void)
 		AtEOXact_PgStat(false, is_parallel_worker);
 		AtEOXact_ApplyLauncher(false);
 		AtEOXact_LogicalRepWorkers(false);
-		AtEOXact_LogicalCtl();
 		pgstat_report_xact_timestamp(0);
 	}
 
@@ -3097,6 +3106,17 @@ CleanupTransaction(void)
 
 	XactTopFullTransactionId = InvalidFullTransactionId;
 	nParallelCurrentXids = 0;
+
+	/*
+	 * Apply any pending XLogLogicalInfo update.  This must be done here
+	 * rather than in AbortTransaction(), because a failed transaction block
+	 * keeps its XID until ROLLBACK, so a barrier absorbed meanwhile is
+	 * deferred. Unlike CommitTransaction() and PrepareTransaction(), we are
+	 * not necessarily holding interrupts here, so do this after resetting the
+	 * top-level XID; otherwise a barrier absorbed in between would be left
+	 * pending into the next transaction.
+	 */
+	AtEOXact_LogicalCtl();
 
 	/*
 	 * done with abort processing, set current transaction state back to
@@ -4903,6 +4923,8 @@ RollbackAndReleaseCurrentSubTransaction(void)
 		   s->blockState == TBLOCK_INPROGRESS ||
 		   s->blockState == TBLOCK_IMPLICIT_INPROGRESS ||
 		   s->blockState == TBLOCK_PARALLEL_INPROGRESS ||
+		   s->blockState == TBLOCK_END ||
+		   s->blockState == TBLOCK_PREPARE ||
 		   s->blockState == TBLOCK_STARTED);
 }
 

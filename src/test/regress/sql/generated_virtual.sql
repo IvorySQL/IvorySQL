@@ -216,10 +216,13 @@ COPY gtest1 FROM stdin;
 \.
 
 COPY gtest1 (a, b) FROM stdin;
+\.
 
 COPY gtest1 FROM stdin WHERE b <> 10;
+\.
 
 COPY gtest1 FROM stdin WHERE gtest1 IS NULL;
+\.
 
 SELECT * FROM gtest1 ORDER BY a;
 
@@ -236,6 +239,7 @@ COPY gtest3 FROM stdin;
 \.
 
 COPY gtest3 (a, b) FROM stdin;
+\.
 
 SELECT * FROM gtest3 ORDER BY a;
 
@@ -347,6 +351,16 @@ CREATE TABLE gtest20c (a int, b int GENERATED ALWAYS AS (a * 2) VIRTUAL);
 ALTER TABLE gtest20c ADD CONSTRAINT whole_row_check CHECK (gtest20c IS NOT NULL);
 INSERT INTO gtest20c VALUES (1);  -- ok
 INSERT INTO gtest20c VALUES (NULL);  -- fails
+ALTER TABLE gtest20c ALTER COLUMN b SET EXPRESSION AS (NULL::int);  -- violates constraint
+
+-- index with whole-row reference needs rebuild
+CREATE TABLE gtest20d (a int, b int GENERATED ALWAYS AS (a * 2) VIRTUAL);
+INSERT INTO gtest20d VALUES (1), (1);
+CREATE INDEX gtest20d_idx1 ON gtest20d (a) WHERE gtest20d = ROW (1, 2);
+
+ALTER TABLE gtest20d ALTER COLUMN b SET EXPRESSION AS (a * 2::bigint);  -- index rebuild
+CREATE INDEX gtest20d_idx2 ON gtest20d ((gtest20d = ROW (1, 2)));
+ALTER TABLE gtest20d ALTER COLUMN b SET EXPRESSION AS (a * 3);  -- index rebuild
 
 -- not-null constraints
 CREATE TABLE gtest21a (a int PRIMARY KEY, b int GENERATED ALWAYS AS (nullif(a, 0)) VIRTUAL NOT NULL);
@@ -990,3 +1004,13 @@ select * from gtest_cursor order by id;
 commit;
 
 drop table gtest_cursor;
+
+-- NOT NULL on a partitioned table's virtual column does not prove non-nullness,
+-- because a partition can have a different generation expression
+CREATE TABLE gtestnn_parent2 (a int NOT NULL, b int GENERATED ALWAYS AS (nullif(a, 0)) VIRTUAL NOT NULL) PARTITION BY LIST (a);
+CREATE TABLE gtestnn_child2 PARTITION OF gtestnn_parent2 (b GENERATED ALWAYS AS (a + 1) VIRTUAL) FOR VALUES IN (0);
+INSERT INTO gtestnn_parent2 VALUES (0);
+EXPLAIN (COSTS OFF)
+SELECT a FROM gtestnn_parent2 WHERE a NOT IN (SELECT b FROM gtestnn_parent2);
+SELECT a FROM gtestnn_parent2 WHERE a NOT IN (SELECT b FROM gtestnn_parent2);
+DROP TABLE gtestnn_parent2;

@@ -712,7 +712,7 @@ SPI_execute_plan(SPIPlanPtr plan, const Datum *Values, const char *Nulls,
 
 /* Obsolete version of SPI_execute_plan */
 int
-SPI_execp(SPIPlanPtr plan, Datum *Values, const char *Nulls, long tcount)
+SPI_execp(SPIPlanPtr plan, const Datum *Values, const char *Nulls, long tcount)
 {
 	return SPI_execute_plan(plan, Values, Nulls, false, tcount);
 }
@@ -1115,7 +1115,7 @@ SPI_returntuple(HeapTuple tuple, TupleDesc tupdesc)
 
 HeapTuple
 SPI_modifytuple(Relation rel, HeapTuple tuple, int natts, int *attnum,
-				Datum *Values, const char *Nulls)
+				const Datum *Values, const char *Nulls)
 {
 	MemoryContext oldcxt;
 	HeapTuple	mtuple;
@@ -1500,7 +1500,7 @@ Portal
 SPI_cursor_open_with_args(const char *name,
 						  const char *src,
 						  int nargs, Oid *argtypes,
-						  Datum *Values, const char *Nulls,
+						  const Datum *Values, const char *Nulls,
 						  bool read_only, int cursorOptions)
 {
 	Portal		result;

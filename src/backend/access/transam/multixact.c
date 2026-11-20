@@ -997,9 +997,7 @@ GetNewMultiXactId(int nmembers, MultiXactOffset *offset)
 	 * against catastrophic data loss due to multixact wraparound.  The basic
 	 * rules are:
 	 *
-	 * If we're past multiVacLimit or the safe threshold for member storage
-	 * space, or we don't know what the safe threshold for member storage is,
-	 * start trying to force autovacuum cycles.
+	 * If we're past multiVacLimit, start trying to force autovacuum cycles.
 	 * If we're past multiWarnLimit, start issuing warnings.
 	 * If we're past multiStopLimit, refuse to create new MultiXactIds.
 	 *
@@ -1040,14 +1038,14 @@ GetNewMultiXactId(int nmembers, MultiXactOffset *offset)
 						 errmsg("database is not accepting commands that assign new MultiXactIds to avoid wraparound data loss in database \"%s\"",
 								oldest_datname),
 						 errhint("Execute a database-wide VACUUM in that database.\n"
-								 "You might also need to commit or roll back old prepared transactions, or drop stale replication slots.")));
+								 "You might also need to commit or roll back old prepared transactions.")));
 			else
 				ereport(ERROR,
 						(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 						 errmsg("database is not accepting commands that assign new MultiXactIds to avoid wraparound data loss in database with OID %u",
 								oldest_datoid),
 						 errhint("Execute a database-wide VACUUM in that database.\n"
-								 "You might also need to commit or roll back old prepared transactions, or drop stale replication slots.")));
+								 "You might also need to commit or roll back old prepared transactions.")));
 		}
 
 		/*
@@ -1070,10 +1068,10 @@ GetNewMultiXactId(int nmembers, MultiXactOffset *offset)
 									   multiWrapLimit - result,
 									   oldest_datname,
 									   multiWrapLimit - result),
-						 errdetail("Approximately %.2f%% of MultiXactIds are available for use.",
+						 errdetail("Approximately %.2f%% of MultiXactId space remains before wraparound.",
 								   (double) (multiWrapLimit - result) / (MaxMultiXactId / 2) * 100),
 						 errhint("Execute a database-wide VACUUM in that database.\n"
-								 "You might also need to commit or roll back old prepared transactions, or drop stale replication slots.")));
+								 "You might also need to commit or roll back old prepared transactions.")));
 			else
 				ereport(WARNING,
 						(errmsg_plural("database with OID %u must be vacuumed before %u more MultiXactId is used",
@@ -1081,10 +1079,10 @@ GetNewMultiXactId(int nmembers, MultiXactOffset *offset)
 									   multiWrapLimit - result,
 									   oldest_datoid,
 									   multiWrapLimit - result),
-						 errdetail("Approximately %.2f%% of MultiXactIds are available for use.",
+						 errdetail("Approximately %.2f%% of MultiXactId space remains before wraparound.",
 								   (double) (multiWrapLimit - result) / (MaxMultiXactId / 2) * 100),
 						 errhint("Execute a database-wide VACUUM in that database.\n"
-								 "You might also need to commit or roll back old prepared transactions, or drop stale replication slots.")));
+								 "You might also need to commit or roll back old prepared transactions.")));
 		}
 
 		/* Re-acquire lock and start over */
@@ -2167,7 +2165,7 @@ SetMultiXactIdLimit(MultiXactId oldest_datminmxid, Oid oldest_datoid)
 	 * Offsets are 64-bits wide and never wrap around, so we don't need to
 	 * consider them for emergency autovacuum purposes.  But now that we're in
 	 * a consistent state, determine MultiXactState->oldestOffset.  It will be
-	 * used to adjust the freezing cutoff, to keep the offsets disk usage in
+	 * used to adjust the freezing cutoff, to keep the members disk usage in
 	 * check.
 	 */
 	SetOldestOffset();
@@ -2208,10 +2206,10 @@ SetMultiXactIdLimit(MultiXactId oldest_datminmxid, Oid oldest_datoid)
 								   multiWrapLimit - curMulti,
 								   oldest_datname,
 								   multiWrapLimit - curMulti),
-					 errdetail("Approximately %.2f%% of MultiXactIds are available for use.",
+					 errdetail("Approximately %.2f%% of MultiXactId space remains before wraparound.",
 							   (double) (multiWrapLimit - curMulti) / (MaxMultiXactId / 2) * 100),
 					 errhint("To avoid MultiXactId assignment failures, execute a database-wide VACUUM in that database.\n"
-							 "You might also need to commit or roll back old prepared transactions, or drop stale replication slots.")));
+							 "You might also need to commit or roll back old prepared transactions.")));
 		else
 			ereport(WARNING,
 					(errmsg_plural("database with OID %u must be vacuumed before %u more MultiXactId is used",
@@ -2219,10 +2217,10 @@ SetMultiXactIdLimit(MultiXactId oldest_datminmxid, Oid oldest_datoid)
 								   multiWrapLimit - curMulti,
 								   oldest_datoid,
 								   multiWrapLimit - curMulti),
-					 errdetail("Approximately %.2f%% of MultiXactIds are available for use.",
+					 errdetail("Approximately %.2f%% of MultiXactId space remains before wraparound.",
 							   (double) (multiWrapLimit - curMulti) / (MaxMultiXactId / 2) * 100),
 					 errhint("To avoid MultiXactId assignment failures, execute a database-wide VACUUM in that database.\n"
-							 "You might also need to commit or roll back old prepared transactions, or drop stale replication slots.")));
+							 "You might also need to commit or roll back old prepared transactions.")));
 	}
 }
 
@@ -2642,8 +2640,16 @@ MultiXactMemberFreezeThreshold(void)
 static void
 PerformMembersTruncation(MultiXactOffset newOldestOffset)
 {
+	/*
+	 * We step back one entry to avoid passing a cutoff page that hasn't been
+	 * created yet in the rare case that oldestOffset would be the first item
+	 * on a page and oldestOffset == nextOffset.  In that case, if we didn't
+	 * subtract one, we'd trigger SimpleLruTruncate's wraparound detection.
+	 */
+	if (newOldestOffset <= 1)
+		return;
 	SimpleLruTruncate(MultiXactMemberCtl,
-					  MXOffsetToMemberPage(newOldestOffset));
+					  MXOffsetToMemberPage(newOldestOffset - 1));
 }
 
 /*
@@ -2653,11 +2659,8 @@ static void
 PerformOffsetsTruncation(MultiXactId newOldestMulti)
 {
 	/*
-	 * We step back one multixact to avoid passing a cutoff page that hasn't
-	 * been created yet in the rare case that oldestMulti would be the first
-	 * item on a page and oldestMulti == nextMulti.  In that case, if we
-	 * didn't subtract one, we'd trigger SimpleLruTruncate's wraparound
-	 * detection.
+	 * Like in PerformMembersTruncation(), step back one entry to avoid
+	 * passing a cutoff page that hasn't been created yet.
 	 */
 	SimpleLruTruncate(MultiXactOffsetCtl,
 					  MultiXactIdToOffsetPage(PreviousMultiXactId(newOldestMulti)));
@@ -2853,34 +2856,6 @@ MultiXactMemberIoErrorDetail(const void *opaque_data)
 	else
 		return errdetail("Could not access multixact member at offset %" PRIu64 ".",
 						 context->offset);
-}
-
-/*
- * Decide which of two MultiXactIds is earlier.
- *
- * XXX do we need to do something special for InvalidMultiXactId?
- * (Doesn't look like it.)
- */
-bool
-MultiXactIdPrecedes(MultiXactId multi1, MultiXactId multi2)
-{
-	int32		diff = (int32) (multi1 - multi2);
-
-	return (diff < 0);
-}
-
-/*
- * MultiXactIdPrecedesOrEquals -- is multi1 logically <= multi2?
- *
- * XXX do we need to do something special for InvalidMultiXactId?
- * (Doesn't look like it.)
- */
-bool
-MultiXactIdPrecedesOrEquals(MultiXactId multi1, MultiXactId multi2)
-{
-	int32		diff = (int32) (multi1 - multi2);
-
-	return (diff <= 0);
 }
 
 

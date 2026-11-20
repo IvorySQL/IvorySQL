@@ -75,8 +75,8 @@
 
 static TupleDesc ExecTypeFromTLInternal(List *targetList, bool hasrowid, 
 										bool skipjunk);
-static pg_attribute_always_inline void slot_deform_heap_tuple(TupleTableSlot *slot, HeapTuple tuple, uint32 *offp,
-															  int reqnatts, bool support_cstring);
+static pg_always_inline void slot_deform_heap_tuple(TupleTableSlot *slot, HeapTuple tuple, uint32 *offp,
+													int reqnatts, bool support_cstring);
 static inline void tts_buffer_heap_store_tuple(TupleTableSlot *slot,
 											   HeapTuple tuple,
 											   Buffer buffer,
@@ -1016,7 +1016,7 @@ tts_buffer_heap_store_tuple(TupleTableSlot *slot, HeapTuple tuple,
  * emit code during inlining for cstring deforming when it's required.
  * cstrings can exist in MinimalTuples, but not in HeapTuples.
  */
-static pg_attribute_always_inline void
+static pg_always_inline void
 slot_deform_heap_tuple(TupleTableSlot *slot, HeapTuple tuple, uint32 *offp,
 					   int reqnatts, bool support_cstring)
 {
@@ -1262,7 +1262,17 @@ slot_deform_heap_tuple(TupleTableSlot *slot, HeapTuple tuple, uint32 *offp,
 		 * to implement a tail-call optimization
 		 */
 		*offp = off;
-		slot_getmissingattrs(slot, attnum, reqnatts);
+
+		Assert(HeapTupleHeaderGetNatts(tup) <= attnum);
+
+		/*
+		 * Fetch all missing attributes.  We pass natts rather than attnum as
+		 * if we're deforming attributes after having already deformed some
+		 * missing attributes, then the call to populate_isnull_array() may
+		 * have overwritten the previous tts_isnull values from what was
+		 * stored in the previous call to slot_getmissingattrs().
+		 */
+		slot_getmissingattrs(slot, HeapTupleHeaderGetNatts(tup), reqnatts);
 		return;
 	}
 done:

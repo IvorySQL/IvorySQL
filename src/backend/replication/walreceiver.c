@@ -54,6 +54,7 @@
 #include "access/htup_details.h"
 #include "access/timeline.h"
 #include "access/transam.h"
+#include "access/xlog.h"
 #include "access/xlog_internal.h"
 #include "access/xlogarchive.h"
 #include "access/xlogrecovery.h"
@@ -157,10 +158,13 @@ WalReceiverMain(const void *startup_data, size_t startup_data_len)
 	char	   *tmp_conninfo;
 	char		slotname[NAMEDATALEN];
 	bool		is_temp_slot;
+	bool		temp_slot_created = false;
 	XLogRecPtr	startpoint;
 	TimeLineID	startpointTLI;
 	TimeLineID	primaryTLI;
 	bool		first_stream;
+	bool		upstream_catchup_logged = false;
+	TimestampTz upstream_catchup_deadline = 0;
 	WalRcvData *walrcv;
 	TimestampTz now;
 	char	   *err;
@@ -318,13 +322,15 @@ WalReceiverMain(const void *startup_data, size_t startup_data_len)
 	{
 		char	   *primary_sysid;
 		char		standby_sysid[32];
+		XLogRecPtr	primaryFlushPtr;
 		WalRcvStreamOptions options;
 
 		/*
 		 * Check that we're connected to a valid server using the
 		 * IDENTIFY_SYSTEM replication command.
 		 */
-		primary_sysid = walrcv_identify_system(wrconn, &primaryTLI);
+		primary_sysid = walrcv_identify_system(wrconn, &primaryTLI,
+											   &primaryFlushPtr);
 
 		snprintf(standby_sysid, sizeof(standby_sysid), UINT64_FORMAT,
 				 GetSystemIdentifier());
@@ -349,6 +355,71 @@ WalReceiverMain(const void *startup_data, size_t startup_data_len)
 							primaryTLI, startpointTLI)));
 
 		/*
+		 * If our requested startpoint is ahead of the upstream server's
+		 * current WAL flush position, we cannot start streaming yet.  (We say
+		 * "upstream" here and not "primary" because this condition can only
+		 * happen on a cascading standby.)  This can happen when such a
+		 * cascading standby has advanced past the upstream via archive
+		 * recovery but the intermediate standby has not caught up with that
+		 * yet.  In this case, wait for the upstream to catch up before
+		 * attempting START_REPLICATION, because that would fail with
+		 * "requested starting point is ahead of the WAL flush position".
+		 *
+		 * We only perform this check when we're on the same timeline as the
+		 * primary; when timelines differ, let START_REPLICATION handle the
+		 * timeline negotiation.
+		 *
+		 * We also only wait if the gap is within one WAL segment.  This is
+		 * the expected case because archive recovery processes whole segment
+		 * files: the cascade's next read position lands at the start of the
+		 * following segment while the upstream's flush position is still
+		 * inside the just-replayed one, producing at most a sub-segment gap.
+		 * A larger gap means the upstream is genuinely behind, so we let
+		 * START_REPLICATION fail normally and allow the startup process to
+		 * fall back to other WAL sources.
+		 *
+		 * Honor wal_receiver_timeout so the walreceiver doesn't wait
+		 * indefinitely: if the upstream hasn't caught up within the timeout,
+		 * exit and let the startup process retry normally.
+		 */
+		if (startpointTLI == primaryTLI &&
+			startpoint > primaryFlushPtr &&
+			startpoint - primaryFlushPtr <= wal_segment_size)
+		{
+			/* Set deadline on first iteration */
+			if (!upstream_catchup_logged && wal_receiver_timeout > 0)
+				upstream_catchup_deadline =
+					TimestampTzPlusMilliseconds(GetCurrentTimestamp(),
+												wal_receiver_timeout);
+
+			ereport(upstream_catchup_logged ? DEBUG1 : LOG,
+					errmsg("walreceiver requested start point %X/%08X on timeline %u is ahead of the upstream server's flush position %X/%08X, waiting",
+						   LSN_FORMAT_ARGS(startpoint), startpointTLI,
+						   LSN_FORMAT_ARGS(primaryFlushPtr)));
+			upstream_catchup_logged = true;
+
+			(void) WaitLatch(MyLatch,
+							 WL_EXIT_ON_PM_DEATH | WL_TIMEOUT | WL_LATCH_SET,
+							 wal_retrieve_retry_interval,
+							 WAIT_EVENT_WAL_RECEIVER_UPSTREAM_CATCHUP);
+			ResetLatch(MyLatch);
+
+			if (upstream_catchup_deadline > 0 &&
+				GetCurrentTimestamp() >= upstream_catchup_deadline)
+				ereport(ERROR,
+						(errcode(ERRCODE_CONNECTION_FAILURE),
+						 errmsg("terminating walreceiver due to timeout while waiting for upstream to catch up")));
+
+			CHECK_FOR_INTERRUPTS();
+			continue;
+		}
+		else
+		{
+			upstream_catchup_logged = false;
+			upstream_catchup_deadline = 0;
+		}
+
+		/*
 		 * Get any missing history files. We do this always, even when we're
 		 * not interested in that timeline, so that if we're promoted to
 		 * become the primary later on, we don't select the same timeline that
@@ -361,17 +432,25 @@ WalReceiverMain(const void *startup_data, size_t startup_data_len)
 		WalRcvFetchTimeLineHistoryFiles(startpointTLI, primaryTLI);
 
 		/*
-		 * Create temporary replication slot if requested, and update slot
-		 * name in shared memory.  (Note the slot name cannot already be set
-		 * in this case.)
+		 * Create a temporary replication slot if requested.  This only needs
+		 * to be done for the first streaming attempt on this connection
+		 * because the slot remains available while this connection is reused
+		 * for later streaming attempts.  Update the slot name in shared
+		 * memory each time because RequestXLogStreaming() clears it when
+		 * restarting streaming.
 		 */
 		if (is_temp_slot)
 		{
-			snprintf(slotname, sizeof(slotname),
-					 "pg_walreceiver_%lld",
-					 (long long int) walrcv_get_backend_pid(wrconn));
+			if (!temp_slot_created)
+			{
+				snprintf(slotname, sizeof(slotname),
+						 "pg_walreceiver_%lld",
+						 (long long int) walrcv_get_backend_pid(wrconn));
 
-			walrcv_create_slot(wrconn, slotname, true, false, false, 0, NULL);
+				walrcv_create_slot(wrconn, slotname, true, false, false, 0, NULL);
+
+				temp_slot_created = true;
+			}
 
 			SpinLockAcquire(&walrcv->mutex);
 			strlcpy(walrcv->slotname, slotname, NAMEDATALEN);
@@ -1117,8 +1196,8 @@ XLogWalRcvClose(XLogRecPtr recptr, TimeLineID tli)
  * The message is sent if 'force' is set, if enough time has passed since the
  * last update to reach wal_receiver_status_interval, or if WAL locations have
  * advanced since the previous status update. If wal_receiver_status_interval
- * is disabled and 'force' is false, this function does nothing. Set 'force' to
- * send the message unconditionally.
+ * is disabled and neither 'force' nor 'checkApply' is set, this function does
+ * nothing. Set 'force' to send the message unconditionally.
  *
  * Whether WAL locations are considered "advanced" depends on 'checkApply'.
  * If 'checkApply' is false, only the write and flush locations are checked.
@@ -1143,10 +1222,11 @@ XLogWalRcvSendReply(bool force, bool requestReply, bool checkApply)
 	TimestampTz now;
 
 	/*
-	 * If the user doesn't want status to be reported to the primary, be sure
-	 * to exit before doing anything at all.
+	 * If status reporting is disabled, skip non-forced replies unless the
+	 * startup process has requested an apply notification.  Backends waiting
+	 * with synchronous_commit = remote_apply depend on these notifications.
 	 */
-	if (!force && wal_receiver_status_interval <= 0)
+	if (!force && !checkApply && wal_receiver_status_interval <= 0)
 		return;
 
 	/* Get current timestamp. */

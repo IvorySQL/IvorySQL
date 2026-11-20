@@ -50,6 +50,7 @@ typedef struct process_sublinks_context
 {
 	PlannerInfo *root;
 	bool		isTopQual;
+	bool		skipPHVs;		/* don't descend into PlaceHolderVars? */
 } process_sublinks_context;
 
 typedef struct finalize_primnode_context
@@ -92,6 +93,7 @@ static bool contain_outer_selfref_walker(Node *node, Index *depth);
 static void inline_cte(PlannerInfo *root, CommonTableExpr *cte);
 static bool inline_cte_walker(Node *node, inline_cte_walker_context *context);
 static bool sublink_testexpr_is_not_nullable(PlannerInfo *root, SubLink *sublink);
+static int	add_antijoin_rte(Query *parse);
 static bool simplify_EXISTS_query(PlannerInfo *root, Query *query);
 static Query *convert_EXISTS_to_ANY(PlannerInfo *root, Query *subselect,
 									Node **testexpr, List **paramIds);
@@ -271,8 +273,12 @@ make_subplan(PlannerInfo *root, Query *orig_subquery,
 		{
 			char	   *plan_name;
 
-			/* Generate Paths for the ANY subquery; we'll need all rows */
-			plan_name = choose_plan_name(root->glob, sublinkstr, true);
+			/*
+			 * Generate Paths for the ANY subquery; we'll need all rows. Use a
+			 * distinct prefix for this user-visible name, since this is an
+			 * ANY implementation of the original EXISTS subplan.
+			 */
+			plan_name = choose_plan_name(root->glob, "exists_to_any", true);
 			subroot = subquery_planner(root->glob, subquery, plan_name,
 									   root, subroot, false, 0.0, NULL);
 
@@ -367,16 +373,25 @@ build_subplan(PlannerInfo *root, Plan *plan, Path *path,
 		 * already been adjusted to have the correct varlevelsup, phlevelsup,
 		 * agglevelsup, or retlevelsup.
 		 *
-		 * If it's a PlaceHolderVar, Aggref, GroupingFunc, or ReturningExpr,
-		 * its arguments might contain SubLinks, which have not yet been
-		 * processed (see the comments for SS_replace_correlation_vars).  Do
-		 * that now.
+		 * If it's an Aggref, GroupingFunc, or ReturningExpr, its arguments
+		 * might contain SubLinks, which have not yet been processed (see the
+		 * comments for SS_replace_correlation_vars).  Do that now.  A
+		 * PlaceHolderVar needs no such treatment: subquery_planner already
+		 * preprocessed the PHVs of its owning level, so its expression is
+		 * fully processed and may already contain SubPlans.  The same goes
+		 * for any PlaceHolderVars within the arguments, so skip those.
 		 */
-		if (IsA(arg, PlaceHolderVar) ||
-			IsA(arg, Aggref) ||
+		if (IsA(arg, Aggref) ||
 			IsA(arg, GroupingFunc) ||
 			IsA(arg, ReturningExpr))
-			arg = SS_process_sublinks(root, arg, false);
+		{
+			process_sublinks_context context;
+
+			context.root = root;
+			context.isTopQual = false;
+			context.skipPHVs = true;
+			arg = process_sublinks_mutator(arg, &context);
+		}
 
 		splan->parParam = lappend_int(splan->parParam, pitem->paramId);
 		splan->args = lappend(splan->args, arg);
@@ -1455,7 +1470,8 @@ convert_ANY_sublink_to_join(PlannerInfo *root, SubLink *sublink,
 	result->join_using_alias = NULL;
 	result->quals = quals;
 	result->alias = NULL;
-	result->rtindex = 0;		/* we don't need an RTE for it */
+	/* a semijoin doesn't need an RTE, but see add_antijoin_rte() */
+	result->rtindex = under_not ? add_antijoin_rte(parse) : 0;
 
 	return result;
 }
@@ -1767,9 +1783,54 @@ convert_EXISTS_sublink_to_join(PlannerInfo *root, SubLink *sublink,
 	result->join_using_alias = NULL;
 	result->quals = whereClause;
 	result->alias = NULL;
-	result->rtindex = 0;		/* we don't need an RTE for it */
+	/* a semijoin doesn't need an RTE, but see add_antijoin_rte() */
+	result->rtindex = under_not ? add_antijoin_rte(parse) : 0;
 
 	return result;
+}
+
+/*
+ * add_antijoin_rte: make a join RTE for an antijoin built from a sublink
+ *
+ * Giving the antijoin a relid, like an antijoin made by reducing a left join
+ * has, is what tells the rest of the planner that anything coming from above
+ * the join must not be evaluated within its RHS.  Normally nothing above can
+ * reference the RHS at all, but a PlaceHolderVar whose phrels cover the whole
+ * join can make a qual appear to; the join's relid in phrels then keeps such
+ * a qual from being pushed down into the RHS, where it would have the
+ * opposite of the intended effect.  (For a semijoin that would be harmless,
+ * so those are left without a relid.)
+ *
+ * Returns the new RTE's index.
+ */
+static int
+add_antijoin_rte(Query *parse)
+{
+	RangeTblEntry *rte;
+
+	/* Manufacture a join RTE to use. */
+	rte = makeNode(RangeTblEntry);
+	rte->rtekind = RTE_JOIN;
+	rte->jointype = JOIN_ANTI;
+	rte->joinmergedcols = 0;
+	rte->joinaliasvars = NIL;	/* nothing can reference the join's output */
+	rte->joinleftcols = NIL;	/* so it has no columns */
+	rte->joinrightcols = NIL;	/* ditto */
+	rte->join_using_alias = NULL;
+
+	rte->alias = NULL;
+	rte->eref = makeAlias("*ANTI*", NIL);
+	rte->lateral = false;
+	rte->inh = false;
+	rte->inFromCl = false;		/* not something the user wrote in FROM */
+
+	/*
+	 * Add completed RTE to the query's range table list, so that we know its
+	 * index.
+	 */
+	parse->rtable = lappend(parse->rtable, rte);
+
+	return list_length(parse->rtable);
 }
 
 /*
@@ -2212,6 +2273,7 @@ SS_process_sublinks(PlannerInfo *root, Node *expr, bool isQual)
 
 	context.root = root;
 	context.isTopQual = isQual;
+	context.skipPHVs = false;
 	return process_sublinks_mutator(expr, &context);
 }
 
@@ -2221,6 +2283,7 @@ process_sublinks_mutator(Node *node, process_sublinks_context *context)
 	process_sublinks_context locContext;
 
 	locContext.root = context->root;
+	locContext.skipPHVs = context->skipPHVs;
 
 	if (node == NULL)
 		return NULL;
@@ -2250,13 +2313,15 @@ process_sublinks_mutator(Node *node, process_sublinks_context *context)
 	/*
 	 * Don't recurse into the arguments of an outer PHV, Aggref, GroupingFunc,
 	 * or ReturningExpr here.  Any SubLinks in the arguments have to be dealt
-	 * with at the outer query level; they'll be handled when build_subplan
-	 * collects the PHV, Aggref, GroupingFunc, or ReturningExpr into the
-	 * arguments to be passed down to the current subplan.
+	 * with at the outer query level; for an Aggref, GroupingFunc, or
+	 * ReturningExpr they'll be handled when build_subplan collects it into
+	 * the arguments to be passed down to the current subplan, while an outer
+	 * PHV's expression has already been preprocessed by its owning level.
+	 * That also holds for a PHV within such an argument (skipPHVs).
 	 */
 	if (IsA(node, PlaceHolderVar))
 	{
-		if (((PlaceHolderVar *) node)->phlevelsup > 0)
+		if (((PlaceHolderVar *) node)->phlevelsup > 0 || context->skipPHVs)
 			return node;
 	}
 	else if (IsA(node, Aggref))

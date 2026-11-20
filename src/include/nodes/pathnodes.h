@@ -2723,7 +2723,6 @@ typedef struct ModifyTablePath
 	List	   *returningLists; /* per-target-table RETURNING tlists */
 	List	   *rowMarks;		/* PlanRowMarks (non-locking only) */
 	OnConflictExpr *onconflict; /* ON CONFLICT clause, or NULL */
-	ForPortionOfExpr *forPortionOf; /* FOR PORTION OF clause for UPDATE/DELETE */
 	int			epqParam;		/* ID of Param for EvalPlanQual re-eval */
 	List	   *mergeActionLists;	/* per-target-table lists of actions for
 									 * MERGE */
@@ -2824,7 +2823,7 @@ typedef struct LimitPath
  * clause and null Vars that it uses.  In practice we only bother to populate
  * it for "clone" clauses, as it's currently only needed to prevent multiple
  * clones of the same clause from being accepted for evaluation at the same
- * join level.
+ * plan level, whether at a join or within a parameterized path.
  *
  * There is also an outer_relids field, which is NULL except for outer join
  * clauses; for those, it is the set of relids on the outer side of the
@@ -3167,8 +3166,7 @@ typedef struct PlaceHolderVar
  * join_info_list member are only LEFT, FULL, SEMI, or ANTI.
  *
  * ojrelid is the RT index of the join RTE representing this outer join,
- * if there is one.  It is zero when jointype is INNER or SEMI, and can be
- * zero for jointype ANTI (if the join was transformed from a SEMI join).
+ * if there is one.  It is zero when jointype is INNER or SEMI.
  * One use for this field is that when constructing the output targetlist of a
  * join relation that implements this OJ, we add ojrelid to the varnullingrels
  * and phnullingrels fields of nullable (RHS) output columns, so that the

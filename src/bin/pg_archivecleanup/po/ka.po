@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pg_archivecleanup (PostgreSQL) 19\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2026-05-13 06:27+0000\n"
-"PO-Revision-Date: 2026-05-13 09:04+0200\n"
+"POT-Creation-Date: 2026-07-04 00:25+0000\n"
+"PO-Revision-Date: 2026-07-04 07:36+0200\n"
 "Last-Translator: Temuri Doghonadze <temuri.doghonadze@gmail.com>\n"
 "Language-Team: Georgian <nothing>\n"
 "Language: ka\n"
@@ -218,23 +218,20 @@ msgstr "დატოვებული უძველესი WAL ფაილ
 msgid "too many command-line arguments"
 msgstr "მეტისმეტად ბევრი ბრძანების-სტრიქონის არგუმენტი"
 
-#: pg_archivecleanup.c:379
+#: pg_archivecleanup.c:380
 #, c-format
-msgid ""
-"Executing in dry-run mode.\n"
-"No files will be removed."
-msgstr ""
-"შესრულება მშრალი გაშვების რეჟიმში.\n"
-"ფაილების წაშლა არ მოხდება."
+msgid "executing in dry-run mode"
+msgstr "შესრულება მშრალი გაშვების რეჟიმში"
+
+#: pg_archivecleanup.c:381
+#, c-format
+msgid "No files will be removed."
+msgstr "ფაილები არ წაიშლება."
 
 #, c-format
-#~ msgid "  -?, --help     show this help, then exit\n"
-#~ msgstr "  -?, --help     ამ დახმარების ჩვენება და გასვლა\n"
-
-#, c-format
-#~ msgid "  -V, --version  output version information, then exit\n"
-#~ msgstr "  -V, --version              ვერსიის ჩვენება და გასვლა\n"
-
-#, c-format
-#~ msgid "  -x EXT         clean up files if they have this extension\n"
-#~ msgstr "  -x EXT         ფაილების გასუფთავება, თუ მათ ეს გაფართოება გააჩნიათ\n"
+#~ msgid ""
+#~ "Executing in dry-run mode.\n"
+#~ "No files will be removed."
+#~ msgstr ""
+#~ "შესრულება მშრალი გაშვების რეჟიმში.\n"
+#~ "ფაილების წაშლა არ მოხდება."

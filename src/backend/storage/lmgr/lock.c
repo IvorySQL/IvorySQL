@@ -674,6 +674,38 @@ LockHeldByMe(const LOCKTAG *locktag,
 	return false;
 }
 
+/*
+ * GetAnyGrantedHeavyweightLock -- find some heavyweight lock this backend owns
+ *
+ * Returns true and stores the tag of an arbitrary granted lock in *locktag if
+ * the local lock table represents any lock we own, false otherwise.  Which
+ * lock is reported is unspecified when we hold several; callers use it only to
+ * give the user a starting point.
+ *
+ * A LOCALLOCK entry can remain after an unsuccessful lock acquisition, so only
+ * entries with a positive local hold count represent locks we own.
+ */
+bool
+GetAnyGrantedHeavyweightLock(LOCKTAG *locktag)
+{
+	HASH_SEQ_STATUS status;
+	LOCALLOCK  *locallock;
+
+	hash_seq_init(&status, LockMethodLocalHash);
+
+	while ((locallock = (LOCALLOCK *) hash_seq_search(&status)) != NULL)
+	{
+		if (locallock->nLocks > 0)
+		{
+			*locktag = locallock->tag.lock;
+			hash_seq_term(&status);
+			return true;
+		}
+	}
+
+	return false;
+}
+
 #ifdef USE_ASSERT_CHECKING
 /*
  * GetLockMethodLocalHash -- return the hash of local locks, for modules that
@@ -2083,6 +2115,7 @@ RemoveFromWaitQueue(PGPROC *proc, uint32 hashcode)
 	proc->waitLock = NULL;
 	proc->waitProcLock = NULL;
 	proc->waitStatus = PROC_WAIT_STATUS_ERROR;
+	pg_atomic_write_u64(&proc->waitStart, 0);
 
 	/*
 	 * Delete the proclock immediately if it represents no already-held locks.

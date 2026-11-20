@@ -1,6 +1,6 @@
 # src/oracle_test/modules/gin/Makefile
 
-EXTRA_INSTALL = src/oracle_test/modules/injection_points
+EXTRA_INSTALL = src/oracle_test/modules/injection_points contrib/pageinspect
 
 REGRESS = gin_incomplete_splits
 

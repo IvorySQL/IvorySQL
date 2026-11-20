@@ -46,6 +46,9 @@
  * from the constraint to the things it depends on.
  *
  * The new constraint's OID is returned.
+ *
+ * NB: Caller is responsible for ensuring the user has USAGE on all types
+ * conExpr depends on.
  */
 Oid
 CreateConstraintEntry(const char *constraintName,
@@ -892,7 +895,7 @@ RelationGetNotNullConstraints(Oid relid, bool cooked, bool include_noinh)
 															 false)));
 			constr->is_enforced = true;
 			constr->skip_validation = !conForm->convalidated;
-			constr->initially_valid = conForm->convalidated;
+			constr->initially_valid = true;
 			constr->is_no_inherit = conForm->connoinherit;
 			notnulls = lappend(notnulls, constr);
 		}

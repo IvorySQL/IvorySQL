@@ -51,6 +51,22 @@ SELECT * FROM rpk_missing;
 (3 rows)
 
 DROP TABLE rpk_missing;
+-- Verify handling of !indisready indexes
+CREATE TABLE repack_conc_invidx (i int PRIMARY KEY, j int);
+INSERT INTO repack_conc_invidx VALUES (1, 0), (2, 0);
+CREATE UNIQUE INDEX CONCURRENTLY repack_conc_invidx_uq ON repack_conc_invidx (j);
+ERROR:  could not create unique index "repack_conc_invidx_uq"
+DETAIL:  Key (j)=(0) is duplicated.
+CREATE INDEX CONCURRENTLY repack_conc_invalid_expr ON repack_conc_invidx ((1/j));
+ERROR:  division by zero
+REPACK repack_conc_invidx;
+ERROR:  cannot execute REPACK on relation "repack_conc_invidx"
+DETAIL:  Some invalid indexes cannot be processed correctly: "repack_conc_invidx_uq", "repack_conc_invalid_expr".
+HINT:  Use DROP INDEX or REINDEX.
+REPACK (CONCURRENTLY) repack_conc_invidx;
+ERROR:  cannot execute REPACK on relation "repack_conc_invidx"
+DETAIL:  Some invalid indexes cannot be processed correctly: "repack_conc_invidx_uq", "repack_conc_invalid_expr".
+HINT:  Use DROP INDEX or REINDEX.
 -- Error cases for concurrent mode
 -- Doesn't like partitioned tables
 CREATE TABLE clstrpart (a int) PARTITION BY RANGE (a);
@@ -60,7 +76,13 @@ HINT:  Consider running the command on individual partitions.
 -- Disallowed in catalogs
 REPACK (CONCURRENTLY) pg_class;
 ERROR:  cannot execute REPACK (CONCURRENTLY) on relation "pg_class"
-HINT:  REPACK (CONCURRENTLY) is not supported for catalog relations.
+DETAIL:  This operation is not supported for system catalogs.
+-- Doesn't support tables used as catalog tables
+CREATE TABLE repack_conc_user_catalog (i int) WITH (user_catalog_table = true);
+REPACK (CONCURRENTLY) repack_conc_user_catalog;
+ERROR:  cannot execute REPACK (CONCURRENTLY) on relation "repack_conc_user_catalog"
+DETAIL:  This operation is not supported for user catalog tables.
+DROP TABLE repack_conc_user_catalog;
 -- Doesn't support TOAST tables directly
 CREATE TABLE repack_conc_toast (t text);
 SELECT reltoastrelid::regclass AS toast_rel
@@ -74,31 +96,47 @@ DROP TABLE repack_conc_toast;
 CREATE TEMP TABLE repack_conc_temp (i int PRIMARY KEY);
 REPACK (CONCURRENTLY) repack_conc_temp;
 ERROR:  cannot execute REPACK (CONCURRENTLY) on relation "repack_conc_temp"
-HINT:  REPACK (CONCURRENTLY) is only allowed for permanent relations.
+DETAIL:  This operation is only supported for permanent relations.
 DROP TABLE repack_conc_temp;
 CREATE UNLOGGED TABLE repack_conc_unlogged (i int PRIMARY KEY);
 REPACK (CONCURRENTLY) repack_conc_unlogged;
 ERROR:  cannot execute REPACK (CONCURRENTLY) on relation "repack_conc_unlogged"
-HINT:  REPACK (CONCURRENTLY) is only allowed for permanent relations.
+DETAIL:  This operation is only supported for permanent relations.
 DROP TABLE repack_conc_unlogged;
+-- Doesn't support materialized views
+CREATE MATERIALIZED VIEW repack_conc_matview AS SELECT 1 AS i;
+REPACK (CONCURRENTLY) repack_conc_matview;
+ERROR:  cannot execute REPACK (CONCURRENTLY) on relation "repack_conc_matview"
+DETAIL:  This operation is not supported for materialized views.
+DROP MATERIALIZED VIEW repack_conc_matview;
 -- Doesn't support tables with REPLICA IDENTITY NOTHING, even if they have a primary key
 CREATE TABLE repack_conc_replident (i int PRIMARY KEY);
 ALTER TABLE repack_conc_replident REPLICA IDENTITY NOTHING;
 REPACK (CONCURRENTLY) repack_conc_replident;
 ERROR:  cannot execute REPACK (CONCURRENTLY) on relation "repack_conc_replident"
-DETAIL:  REPACK (CONCURRENTLY) does not support tables with REPLICA IDENTITY NOTHING.
+DETAIL:  This operation does not support tables with REPLICA IDENTITY NOTHING.
 -- Doesn't support tables without a primary key or replica identity index
 ALTER TABLE repack_conc_replident DROP CONSTRAINT repack_conc_replident_pkey;
 ALTER TABLE repack_conc_replident REPLICA IDENTITY DEFAULT;
 REPACK (CONCURRENTLY) repack_conc_replident;
 ERROR:  cannot execute REPACK (CONCURRENTLY) on relation "repack_conc_replident"
-HINT:  Relation "repack_conc_replident" has no identity index.
+DETAIL:  Relation "repack_conc_replident" has no identity index.
 -- Doesn't support tables with deferrable primary keys
 ALTER TABLE repack_conc_replident ADD PRIMARY KEY (i) DEFERRABLE;
 REPACK (CONCURRENTLY) repack_conc_replident;
 ERROR:  cannot execute REPACK (CONCURRENTLY) on relation "repack_conc_replident"
-DETAIL:  REPACK (CONCURRENTLY) does not support deferrable primary keys.
+DETAIL:  This operation does not support deferrable primary keys.
 HINT:  Use ALTER TABLE ... REPLICA IDENTITY USING INDEX to designate another index as replica identity.
+-- Doesn't support tables whose replica identity indexes were dropped, even
+-- if a workable primary key is present.
+ALTER TABLE repack_conc_replident DROP CONSTRAINT repack_conc_replident_pkey,
+	ADD PRIMARY KEY (i);
+CREATE UNIQUE INDEX replidx ON repack_conc_replident (i);
+ALTER TABLE repack_conc_replident REPLICA IDENTITY USING INDEX replidx;
+DROP INDEX replidx;
+REPACK (CONCURRENTLY) repack_conc_replident;
+ERROR:  cannot execute REPACK (CONCURRENTLY) on relation "repack_conc_replident"
+DETAIL:  Relation "repack_conc_replident" has no identity index.
 -- clean up
 DROP TABLE repack_conc_replident, clstrpart;
 -- verify that the pgrepack plugin cannot be called directly
@@ -106,7 +144,6 @@ CREATE TABLE repack_plugin (a int);
 SELECT * FROM pg_create_logical_replication_slot('s_repack', 'pgrepack');
 ERROR:  unsupported use of logical decoding plugin "pgrepack"
 DETAIL:  This plugin can only be used by REPACK (CONCURRENTLY).
-CONTEXT:  slot "s_repack", output plugin "pgrepack", in the startup callback
 INSERT INTO repack_plugin VALUES (1);
 SELECT * FROM pg_logical_slot_get_binary_changes('s_repack', NULL, NULL);
 ERROR:  replication slot "s_repack" does not exist

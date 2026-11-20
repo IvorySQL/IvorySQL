@@ -521,7 +521,7 @@ static void
 pgss_shmem_request(void *arg)
 {
 	ShmemRequestHash(.name = "pg_stat_statements hash",
-					 .nelems = pgss_max,
+					 .nelems = (int64) pgss_max,
 					 .hash_info.keysize = sizeof(pgssHashKey),
 					 .hash_info.entrysize = sizeof(pgssEntry),
 					 .hash_flags = HASH_ELEM | HASH_BLOBS,
@@ -548,9 +548,8 @@ pgss_shmem_init(void *arg)
 	FILE	   *file = NULL;
 	FILE	   *qfile = NULL;
 	uint32		header;
-	int32		num;
+	int64		num;
 	int32		pgver;
-	int32		i;
 	int			buffer_size;
 	char	   *buffer = NULL;
 
@@ -627,14 +626,14 @@ pgss_shmem_init(void *arg)
 
 	if (fread(&header, sizeof(uint32), 1, file) != 1 ||
 		fread(&pgver, sizeof(uint32), 1, file) != 1 ||
-		fread(&num, sizeof(int32), 1, file) != 1)
+		fread(&num, sizeof(int64), 1, file) != 1)
 		goto read_error;
 
 	if (header != PGSS_FILE_HEADER ||
 		pgver != PGSS_PG_MAJOR_VERSION)
 		goto data_error;
 
-	for (i = 0; i < num; i++)
+	for (int64 i = 0; i < num; i++)
 	{
 		pgssEntry	temp;
 		pgssEntry  *entry;
@@ -752,7 +751,7 @@ pgss_shmem_shutdown(int code, Datum arg)
 	char	   *qbuffer = NULL;
 	Size		qbuffer_size = 0;
 	HASH_SEQ_STATUS hash_seq;
-	int32		num_entries;
+	int64		num_entries;
 	pgssEntry  *entry;
 
 	/* Don't try to dump during a crash. */
@@ -776,7 +775,7 @@ pgss_shmem_shutdown(int code, Datum arg)
 	if (fwrite(&PGSS_PG_MAJOR_VERSION, sizeof(uint32), 1, file) != 1)
 		goto error;
 	num_entries = hash_get_num_entries(pgss_hash);
-	if (fwrite(&num_entries, sizeof(int32), 1, file) != 1)
+	if (fwrite(&num_entries, sizeof(int64), 1, file) != 1)
 		goto error;
 
 	qbuffer = qtext_load_file(&qbuffer_size);
@@ -2101,7 +2100,7 @@ entry_alloc(pgssHashKey *key, Size query_offset, int query_len, int encoding,
 	bool		found;
 
 	/* Make space if needed */
-	while (hash_get_num_entries(pgss_hash) >= pgss_max)
+	while (hash_get_num_entries(pgss_hash) >= (int64) pgss_max)
 		entry_dealloc();
 
 	/* Find or create an entry with desired hash code */
@@ -2828,16 +2827,21 @@ static char *
 generate_normalized_query(const JumbleState *jstate, const char *query,
 						  int query_loc, int *query_len_p)
 {
-	char	   *norm_query;
+	StringInfoData norm_query;
 	int			query_len = *query_len_p;
-	int			norm_query_buflen,	/* Space allowed for norm_query */
-				len_to_wrt,		/* Length (in bytes) to write */
+	int			len_to_wrt,		/* Length (in bytes) to write */
 				quer_loc = 0,	/* Source query byte location */
-				n_quer_loc = 0, /* Normalized query byte location */
 				last_off = 0,	/* Offset from start for previous tok */
 				last_tok_len = 0;	/* Length (in bytes) of that tok */
 	int			num_constants_replaced = 0;
 	LocationLen *locs = NULL;
+
+	/*
+	 * Our output buffer is an expansible StringInfo, but avoid enlarging it
+	 * in most cases by reserving extra space for each constant location.
+	 */
+	Assert(jstate->clocations_count > 0);
+	initStringInfoExt(&norm_query, query_len + jstate->clocations_count * 10);
 
 	/*
 	 * Determine constants' lengths (core system only gives us locations), and
@@ -2846,18 +2850,6 @@ generate_normalized_query(const JumbleState *jstate, const char *query,
 	 * Oracle compatible mode can use the Oracle parser's scanner.
 	 */
 	locs = fill_in_constant_lengths(jstate, query, query_loc);
-
-	/*
-	 * Allow for $n symbols to be longer than the constants they replace.
-	 * Constants must take at least one byte in text form, while a $n symbol
-	 * certainly isn't more than 11 bytes, even if n reaches INT_MAX.  We
-	 * could refine that limit based on the max value of n for the current
-	 * query, but it hardly seems worth any extra effort to do so.
-	 */
-	norm_query_buflen = query_len + jstate->clocations_count * 10;
-
-	/* Allocate result buffer */
-	norm_query = palloc(norm_query_buflen + 1);
 
 	for (int i = 0; i < jstate->clocations_count; i++)
 	{
@@ -2888,17 +2880,16 @@ generate_normalized_query(const JumbleState *jstate, const char *query,
 		len_to_wrt = off - last_off;
 		len_to_wrt -= last_tok_len;
 		Assert(len_to_wrt >= 0);
-		memcpy(norm_query + n_quer_loc, query + quer_loc, len_to_wrt);
-		n_quer_loc += len_to_wrt;
+		appendBinaryStringInfo(&norm_query, query + quer_loc, len_to_wrt);
 
 		/*
 		 * And insert a param symbol in place of the constant token; and, if
 		 * we have a squashable list, insert a placeholder comment starting
 		 * from the list's second value.
 		 */
-		n_quer_loc += sprintf(norm_query + n_quer_loc, "$%d%s",
-							  num_constants_replaced + 1 + jstate->highest_extern_param_id,
-							  locs[i].squashed ? " /*, ... */" : "");
+		appendStringInfo(&norm_query, "$%d%s",
+						 num_constants_replaced + 1 + jstate->highest_extern_param_id,
+						 locs[i].squashed ? " /*, ... */" : "");
 		num_constants_replaced++;
 
 		/* move forward */
@@ -2918,14 +2909,10 @@ generate_normalized_query(const JumbleState *jstate, const char *query,
 	len_to_wrt = query_len - quer_loc;
 
 	Assert(len_to_wrt >= 0);
-	memcpy(norm_query + n_quer_loc, query + quer_loc, len_to_wrt);
-	n_quer_loc += len_to_wrt;
+	appendBinaryStringInfo(&norm_query, query + quer_loc, len_to_wrt);
 
-	Assert(n_quer_loc <= norm_query_buflen);
-	norm_query[n_quer_loc] = '\0';
-
-	*query_len_p = n_quer_loc;
-	return norm_query;
+	*query_len_p = norm_query.len;
+	return norm_query.data;
 }
 
 /*

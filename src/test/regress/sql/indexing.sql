@@ -1005,3 +1005,17 @@ insert into test_pg_wholerow_index values (2, 'addition', 0);
 drop index row_image_index;
 drop function row_image(test_pg_wholerow_index);
 drop table test_pg_wholerow_index;
+
+-- Test of a partitioned index attach, when there are exclusion constraints.
+create table idx_excl_part (a int4range, b int4range) partition by list (a);
+create table idx_excl_part_1 (a int4range, b int4range);
+alter table only idx_excl_part attach partition idx_excl_part_1 for values in ('[0,1)'::int4range);
+alter table only idx_excl_part add constraint idxpart_id_data_excl exclude using gist (a with =, b with &&);
+alter table idx_excl_part_1 add constraint idxpart_1_id_data_excl exclude using gist (a with &&, b with &&);
+-- This should be disallowed, because the constraints don't match.
+alter index idxpart_id_data_excl attach partition idxpart_1_id_data_excl;
+-- but if we recreate the constraint differently, it's allowed:
+alter table idx_excl_part_1 drop constraint idxpart_1_id_data_excl;
+alter table idx_excl_part_1 add constraint idxpart_1_id_data_excl exclude using gist (a with =, b with &&);
+alter index idxpart_id_data_excl attach partition idxpart_1_id_data_excl;
+-- leave these tables around, for pg_upgrade testing

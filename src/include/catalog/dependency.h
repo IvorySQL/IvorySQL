@@ -120,8 +120,6 @@ extern void ReleaseDeletionLock(const ObjectAddress *object);
 extern void performDeletion(const ObjectAddress *object,
 							DropBehavior behavior, int flags);
 
-extern void performDeletionCheck(const ObjectAddress *object,
-								 DropBehavior behavior, int flags);
 extern void performMultipleDeletions(const ObjectAddresses *objects,
 									 DropBehavior behavior, int flags);
 
@@ -137,6 +135,10 @@ extern void recordDependencyOnSingleRelExpr(const ObjectAddress *depender,
 											DependencyType behavior,
 											DependencyType self_behavior,
 											bool reverse_self);
+
+extern void CheckUsageOnTypesInExpr(Node *expr, List *rtable, Oid roleid);
+
+extern void CheckUsageOnTypesInSingleRelExpr(Node *expr, Oid relId, Oid roleid);
 
 extern bool find_temp_object(const ObjectAddresses *addrs,
 							 bool local_temp_okay,

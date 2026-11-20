@@ -72,8 +72,6 @@ static size_t strupper_icu_utf8(char *dest, size_t destsize, const char *src,
 								size_t srclen, pg_locale_t locale);
 static size_t strfold_icu_utf8(char *dest, size_t destsize, const char *src,
 							   size_t srclen, pg_locale_t locale);
-static size_t downcase_ident_icu(char *dst, size_t dstsize, const char *src,
-								 size_t srclen, pg_locale_t locale);
 static int	strncoll_icu(const char *arg1, size_t len1,
 						 const char *arg2, size_t len2,
 						 pg_locale_t locale);
@@ -145,7 +143,7 @@ static int32_t foldcase_options(const char *locale);
 
 /*
  * XXX: many of the functions below rely on casts directly from pg_wchar to
- * UChar32, which is correct for UTF-8 and LATIN1, but not in general.
+ * UChar32, which is correct for the UTF-8 encoding, but not in general.
  */
 
 static pg_wchar
@@ -248,6 +246,20 @@ wc_isxdigit_icu(pg_wchar wc, pg_locale_t locale)
 static bool
 wc_iscased_icu(pg_wchar wc, pg_locale_t locale)
 {
+	/*
+	 * For non-UTF8 encodings (single or multibyte), pg_wchar may not be a
+	 * codepoint, so we conservatively assume that any non-ASCII character
+	 * could be case-varying.
+	 */
+	if (wc > (pg_wchar) 127)
+		return true;
+
+	return u_hasBinaryProperty(wc, UCHAR_CASED);
+}
+
+static bool
+wc_iscased_icu_utf8(pg_wchar wc, pg_locale_t locale)
+{
 	return u_hasBinaryProperty(wc, UCHAR_CASED);
 }
 
@@ -256,7 +268,6 @@ static const struct ctype_methods ctype_methods_icu = {
 	.strtitle = strtitle_icu,
 	.strupper = strupper_icu,
 	.strfold = strfold_icu,
-	.downcase_ident = downcase_ident_icu,
 	.wc_isdigit = wc_isdigit_icu,
 	.wc_isalpha = wc_isalpha_icu,
 	.wc_isalnum = wc_isalnum_icu,
@@ -277,8 +288,6 @@ static const struct ctype_methods ctype_methods_icu_utf8 = {
 	.strtitle = strtitle_icu_utf8,
 	.strupper = strupper_icu_utf8,
 	.strfold = strfold_icu_utf8,
-	/* uses plain ASCII semantics for historical reasons */
-	.downcase_ident = NULL,
 	.wc_isdigit = wc_isdigit_icu,
 	.wc_isalpha = wc_isalpha_icu,
 	.wc_isalnum = wc_isalnum_icu,
@@ -289,33 +298,11 @@ static const struct ctype_methods ctype_methods_icu_utf8 = {
 	.wc_ispunct = wc_ispunct_icu,
 	.wc_isspace = wc_isspace_icu,
 	.wc_isxdigit = wc_isxdigit_icu,
-	.wc_iscased = wc_iscased_icu,
+	.wc_iscased = wc_iscased_icu_utf8,
 	.wc_toupper = toupper_icu,
 	.wc_tolower = tolower_icu,
 };
 
-/*
- * ICU still depends on libc for compatibility with certain historical
- * behavior for single-byte encodings.  See downcase_ident_icu().
- *
- * XXX: consider fixing by decoding the single byte into a code point, and
- * using u_tolower().
- */
-static locale_t
-make_libc_ctype_locale(const char *ctype)
-{
-	locale_t	loc;
-
-#ifndef WIN32
-	loc = newlocale(LC_CTYPE_MASK, ctype, NULL);
-#else
-	loc = _create_locale(LC_ALL, ctype);
-#endif
-	if (!loc)
-		report_newlocale_failure(ctype);
-
-	return loc;
-}
 #endif
 
 pg_locale_t
@@ -326,7 +313,6 @@ create_pg_locale_icu(Oid collid, MemoryContext context)
 	const char *iculocstr;
 	const char *icurules = NULL;
 	UCollator  *collator;
-	locale_t	loc = (locale_t) 0;
 	pg_locale_t result;
 
 	if (collid == DEFAULT_COLLATION_OID)
@@ -348,18 +334,6 @@ create_pg_locale_icu(Oid collid, MemoryContext context)
 								Anum_pg_database_daticurules, &isnull);
 		if (!isnull)
 			icurules = TextDatumGetCString(datum);
-
-		/* libc only needed for default locale and single-byte encoding */
-		if (pg_database_encoding_max_length() == 1)
-		{
-			const char *ctype;
-
-			datum = SysCacheGetAttrNotNull(DATABASEOID, tp,
-										   Anum_pg_database_datctype);
-			ctype = TextDatumGetCString(datum);
-
-			loc = make_libc_ctype_locale(ctype);
-		}
 
 		ReleaseSysCache(tp);
 	}
@@ -391,7 +365,6 @@ create_pg_locale_icu(Oid collid, MemoryContext context)
 	result = MemoryContextAllocZero(context, sizeof(struct pg_locale_struct));
 	result->icu.locale = MemoryContextStrdup(context, iculocstr);
 	result->icu.ucol = collator;
-	result->icu.lt = loc;
 	result->deterministic = deterministic;
 	result->collate_is_c = false;
 	result->ctype_is_c = false;
@@ -703,43 +676,9 @@ strfold_icu_utf8(char *dest, size_t destsize, const char *src, size_t srclen,
 }
 
 /*
- * For historical compatibility, behavior is not multibyte-aware.
+ * strncoll_icu_utf8()
  *
- * NB: uses libc tolower() for single-byte encodings (also for historical
- * compatibility), and therefore relies on the global LC_CTYPE setting.
- */
-static size_t
-downcase_ident_icu(char *dst, size_t dstsize, const char *src,
-				   size_t srclen, pg_locale_t locale)
-{
-	int			i;
-	bool		libc_lower;
-	locale_t	lt = locale->icu.lt;
-
-	libc_lower = lt && (pg_database_encoding_max_length() == 1);
-
-	for (i = 0; i < srclen && i < dstsize; i++)
-	{
-		unsigned char ch = (unsigned char) src[i];
-
-		if (ch >= 'A' && ch <= 'Z')
-			ch = pg_ascii_tolower(ch);
-		else if (libc_lower && IS_HIGHBIT_SET(ch) && isupper_l(ch, lt))
-			ch = tolower_l(ch, lt);
-		dst[i] = (char) ch;
-	}
-
-	if (i < dstsize)
-		dst[i] = '\0';
-
-	return srclen;
-}
-
-/*
- * strncoll_icu_utf8
- *
- * Call ucol_strcollUTF8() or ucol_strcoll() as appropriate for the given
- * database encoding.
+ * Wrapper for ucol_strcollUTF8().
  */
 #ifdef HAVE_UCOL_STRCOLLUTF8
 int
@@ -927,13 +866,11 @@ icu_to_uchar(UChar **buff_uchar, const char *buff, size_t nbytes)
 /*
  * Convert a string of UChars into the database encoding.
  *
- * The source string at buff_uchar is of length len_uchar
- * (it needn't be nul-terminated)
+ * The source string at buff_uchar is of length len_uchar (it needn't be
+ * nul-terminated)
  *
- * *result receives a pointer to the palloc'd result string, and the
- * function's result is the number of bytes generated (not counting nul).
- *
- * The result string is nul-terminated.
+ * If the result length is less than destsize, the NUL-terminated result is
+ * stored in dest. Otherwise the contents of dest are undefined.
  */
 static size_t
 icu_from_uchar(char *dest, size_t destsize, const UChar *buff_uchar, int32_t len_uchar)

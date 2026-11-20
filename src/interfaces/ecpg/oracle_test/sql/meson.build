@@ -28,7 +28,6 @@ pgc_files = [
   'sqlda',
   'sqljson',
   'sqljson_jsontable',
-  'sqlpgq',
   'twophase',
 ]
 

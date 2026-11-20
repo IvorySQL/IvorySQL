@@ -58,6 +58,10 @@ case $testhost in
 		;;
 esac
 
+# Note: oracle-mode servers also listen on ivorysql.listen_addresses.
+# Mirror $LISTEN_ADDRESSES into it to keep the oracle listener consistent
+# with the PostgreSQL listener (both bind no TCP addresses when empty).
+# The oracle TCP port is selected dynamically below.
 POSTMASTER_OPTS="-F -c listen_addresses=$LISTEN_ADDRESSES -c ivorysql.listen_addresses=$LISTEN_ADDRESSES -k \"$PGHOST\""
 export PGHOST
 

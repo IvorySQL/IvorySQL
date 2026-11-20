@@ -968,7 +968,7 @@ IvytransformMergeStmt(ParseState *pstate, MergeStmt *stmt)
 					char		*rname = NULL;
 
 					action->targetList =
-						transformUpdateTargetList(pstate, mergeWhenClause->targetList, NULL);
+						transformUpdateTargetList(pstate, mergeWhenClause->targetList);
 					/*
 					 * Prevent the columns referenced in the ON clause can be updated.
 					 */

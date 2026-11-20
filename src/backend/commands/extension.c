@@ -3496,7 +3496,7 @@ AlterExtensionNamespace(const char *extensionName, const char *newschema, Oid *o
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("extension \"%s\" does not support SET SCHEMA",
 							NameStr(extForm->extname)),
-					 errdetail("%s is not in the extension's schema \"%s\"",
+					 errdetail("%s is not in the extension's schema \"%s\".",
 							   getObjectDescription(&dep, false),
 							   get_namespace_name(oldNspOid))));
 	}

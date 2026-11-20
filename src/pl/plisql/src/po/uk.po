@@ -2,7 +2,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: postgresql\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2025-12-31 02:09+0000\n"
+"POT-Creation-Date: 2026-09-05 00:39+0000\n"
 "PO-Revision-Date: 2021-08-17 10:54\n"
 "Last-Translator: \n"
 "Language-Team: Ukrainian\n"
@@ -71,6 +71,16 @@ msgstr "посилання на стовпець \"%s\" є неоднознач�
 #, c-format
 msgid "It could refer to either a PL/iSQL variable or a table column."
 msgstr "Це може відноситися до змінної PL/iSQL або стовпця таблиці."
+
+#: pl_comp.c:1939
+#, c-format
+msgid "field name \"%s\" is a reserved key word"
+msgstr "назва поля \"%s\" є зарезервованим ключовим словом"
+
+#: pl_comp.c:1941
+#, c-format
+msgid "Use double quotes to quote it."
+msgstr "Візьміть її в подвійні лапки."
 
 #: pl_comp.c:1322 pl_exec.c:5189 pl_exec.c:5362 pl_exec.c:5449 pl_exec.c:5540
 #: pl_exec.c:6547
@@ -182,6 +192,11 @@ msgstr "Функція PL/iSQL %s рядок %d в %s"
 #, c-format
 msgid "PL/iSQL function %s"
 msgstr "Функція PL/iSQL %s"
+
+#: pl_exec.c:1581
+#, c-format
+msgid "SQL statement \"%s\""
+msgstr "SQL-оператор \"%s\""
 
 #: pl_exec.c:1633
 msgid "during statement block local variable initialization"
@@ -493,6 +508,11 @@ msgstr "запис \"%s\" ще не призначено"
 msgid "The tuple structure of a not-yet-assigned record is indeterminate."
 msgstr "Для запису, котрому не призначене значення, структура кортежа не визначена."
 
+#: pl_exec.c:9079
+#, c-format
+msgid "cannot cast type %s to %s"
+msgstr "неможливо транслювати тип %s в %s"
+
 #: pl_funcs.c:237
 msgid "statement block"
 msgstr "блок операторів"
@@ -683,6 +703,10 @@ msgstr "пропущено вираз"
 #: pl_gram.y:2776
 msgid "missing SQL statement"
 msgstr "пропущений оператор SQL"
+
+#: pl_gram.y:3858
+msgid "syntax error, expected \"]\""
+msgstr "помилка синтаксису, очікувалось \"]\""
 
 #: pl_gram.y:2905
 msgid "incomplete data type declaration"

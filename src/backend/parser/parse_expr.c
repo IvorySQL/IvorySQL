@@ -31,7 +31,6 @@
 #include "parser/parse_collate.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_func.h"
-#include "parser/parse_graphtable.h"
 #include "parser/parse_oper.h"
 #include "parser/parse_relation.h"
 #include "parser/parse_target.h"
@@ -697,7 +696,6 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 		case EXPR_KIND_COPY_WHERE:
 		case EXPR_KIND_GENERATED_COLUMN:
 		case EXPR_KIND_CYCLE_MARK:
-		case EXPR_KIND_PROPGRAPH_PROPERTY:
 			/* okay */
 			break;
 
@@ -706,9 +704,6 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 			break;
 		case EXPR_KIND_PARTITION_BOUND:
 			err = _("cannot use column reference in partition bound expression");
-			break;
-		case EXPR_KIND_FOR_PORTION:
-			err = _("cannot use column reference in FOR PORTION OF expression");
 			break;
 
 			/*
@@ -735,16 +730,6 @@ transformColumnRefInternal(ParseState *pstate, ColumnRef *cref, bool missing_ok)
 		if (node != NULL)
 			return node;
 	}
-
-	/*
-	 * Element pattern variables in a GRAPH_TABLE clause form the innermost
-	 * namespace since we do not allow subqueries in GRAPH_TABLE patterns. Try
-	 * to resolve the column reference as a graph table property reference
-	 * before trying to resolve it as a regular column reference.
-	 */
-	node = transformGraphTablePropertyRef(pstate, cref);
-	if (node != NULL)
-		return node;
 
 	/*----------
 	 * The allowed syntaxes are:
@@ -2682,12 +2667,6 @@ transformSubLink(ParseState *pstate, SubLink *sublink)
 		case EXPR_KIND_GENERATED_COLUMN:
 			err = _("cannot use subquery in column generation expression");
 			break;
-		case EXPR_KIND_PROPGRAPH_PROPERTY:
-			err = _("cannot use subquery in property definition expression");
-			break;
-		case EXPR_KIND_FOR_PORTION:
-			err = _("cannot use subquery in FOR PORTION OF expression");
-			break;
 
 			/*
 			 * There is intentionally no default: case here, so that the
@@ -4056,10 +4035,6 @@ ParseExprKindName(ParseExprKind exprKind)
 			return "GENERATED AS";
 		case EXPR_KIND_CYCLE_MARK:
 			return "CYCLE";
-		case EXPR_KIND_PROPGRAPH_PROPERTY:
-			return "property definition expression";
-		case EXPR_KIND_FOR_PORTION:
-			return "FOR PORTION OF";
 
 			/*
 			 * There is intentionally no default: case here, so that the
@@ -4613,6 +4588,8 @@ transformJsonObjectConstructor(ParseState *pstate, JsonObjectConstructor *ctor)
  *  - orig_query: the transformed Query of the user's original subquery, so
  *    that ruleutils.c can deparse the original JSON_ARRAY(SELECT ...) syntax
  *    for view definitions.
+ *
+ *  - format: the input FORMAT clause, so that ruleutils.c can deparse it.
  */
 static Node *
 transformJsonArrayQueryConstructor(ParseState *pstate,
@@ -4749,6 +4726,7 @@ transformJsonArrayQueryConstructor(ParseState *pstate,
 									 false, ctor->absent_on_null,
 									 ctor->location);
 	((JsonConstructorExpr *) result)->orig_query = (Node *) query;
+	((JsonConstructorExpr *) result)->format = ctor->format;
 
 	return result;
 }
@@ -5736,8 +5714,17 @@ transformJsonBehavior(ParseState *pstate, JsonExpr *jsexpr,
 	 *
 	 * For other non-NULL expressions, try to find a cast and error out if one
 	 * is not found.
+	 *
+	 * The DEFAULT expression's base type may already match the RETURNING type
+	 * yet still need coercion: when the RETURNING type carries a type
+	 * modifier (e.g. numeric(4,1)), the cast below is what enforces it, so
+	 * skipping it here would let the DEFAULT yield a value that violates its
+	 * declared RETURNING type.  A NULL constant needs no such enforcement.
 	 */
-	if (expr && exprType(expr) != returning->typid)
+	if (expr &&
+		(exprType(expr) != returning->typid ||
+		 (returning->typmod >= 0 &&
+		  !(IsA(expr, Const) && ((Const *) expr)->constisnull))))
 	{
 		bool		isnull = (IsA(expr, Const) && ((Const *) expr)->constisnull);
 

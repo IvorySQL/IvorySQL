@@ -127,6 +127,19 @@ SELECT array_agg(id ORDER BY guid_field) FROM guid3;
 -- byte-wise ordering.
 SELECT array_agg(id ORDER BY guid_encoded COLLATE "C") FROM guid3;
 
+-- uuidv7: infinite intervals are rejected
+SELECT uuidv7('infinity'::interval);
+SELECT uuidv7('-infinity'::interval);
+
+-- uuidv7: timestamps before Unix epoch are rejected
+SELECT uuidv7('-1000 years'::interval);
+
+-- uuidv7: timestamps beyond 48-bit ms field (~year 10889) are rejected
+SELECT uuidv7('9000 years'::interval);
+
+-- uuidv7: a large but in-range forward shift is accepted
+SELECT uuid_extract_timestamp(uuidv7('1000 years'::interval)) > now() + '999 years'::interval;
+
 -- extract functions
 
 -- version

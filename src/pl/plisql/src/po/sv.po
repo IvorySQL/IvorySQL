@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PostgreSQL 15\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2022-04-11 13:39+0000\n"
+"POT-Creation-Date: 2026-08-28 01:39+0000\n"
 "PO-Revision-Date: 2022-04-11 16:02+0200\n"
 "Last-Translator: Dennis Björklund <db@zigo.dhs.org>\n"
 "Language-Team: Swedish <pgsql-translators@postgresql.org>\n"
@@ -73,6 +73,16 @@ msgstr "kolumnreferens \"%s\" är tvetydig"
 msgid "It could refer to either a PL/iSQL variable or a table column."
 msgstr "Det kan referera till antingen en PL/iSQL-variabel eller en tabellkolumn."
 
+#: pl_comp.c:1939
+#, c-format
+msgid "field name \"%s\" is a reserved key word"
+msgstr "fältnamnet \"%s\" är ett reserverat nyckelord"
+
+#: pl_comp.c:1941
+#, c-format
+msgid "Use double quotes to quote it."
+msgstr "Använd dubbla citattecken för skriva det."
+
 #: pl_comp.c:1324 pl_exec.c:5216 pl_exec.c:5389 pl_exec.c:5476 pl_exec.c:5567
 #: pl_exec.c:6588
 #, c-format
@@ -108,11 +118,6 @@ msgstr "typen %s är inte composite"
 #, c-format
 msgid "unrecognized exception condition \"%s\""
 msgstr "okänt avbrottsvillkor \"%s\""
-
-#: pl_comp.c:2526
-#, c-format
-msgid "could not determine actual argument type for polymorphic function \"%s\""
-msgstr "kunde inte bestämma argumenttyp för polymorfisk funktion function \"%s\""
 
 #: pl_exec.c:500 pl_exec.c:939 pl_exec.c:1174
 msgid "during initialization of execution state"
@@ -193,6 +198,11 @@ msgstr "PL/iSQL-funktion %s rad %d vid %s"
 #, c-format
 msgid "PL/iSQL function %s"
 msgstr "PL/iSQL-funktion %s"
+
+#: pl_exec.c:1581
+#, c-format
+msgid "SQL statement \"%s\""
+msgstr "SQL-sats: \"%s\""
 
 #: pl_exec.c:1647
 msgid "during statement block local variable initialization"
@@ -506,6 +516,11 @@ msgstr "posten \"%s\" är inte tilldelad än"
 #, c-format
 msgid "The tuple structure of a not-yet-assigned record is indeterminate."
 msgstr "Tuple-strukturen av en ej-ännu-tilldelad post är obestämd."
+
+#: pl_exec.c:9079
+#, c-format
+msgid "cannot cast type %s to %s"
+msgstr "kan inte omvandla typ %s till %s"
 
 #: pl_funcs.c:237
 msgid "statement block"

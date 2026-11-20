@@ -218,6 +218,9 @@ typedef struct Expr
  * row identity information during UPDATE/DELETE/MERGE.  This value should
  * never be seen outside the planner.
  *
+ * INVALID_VAR should never appear as anything's varno.  We use it in a
+ * few APIs to denote removal of an RTE.
+ *
  * varnullingrels is the set of RT indexes of outer joins that can force
  * the Var's value to null (at the point where it appears in the query).
  * See optimizer/README for discussion of that.
@@ -245,6 +248,7 @@ typedef struct Expr
 #define    OUTER_VAR		(-2)	/* reference to outer subplan */
 #define    INDEX_VAR		(-3)	/* reference to index column */
 #define    ROWID_VAR		(-4)	/* row identity column during planning */
+#define    INVALID_VAR		(-5)	/* this is not a valid varno! */
 
 #define IS_SPECIAL_VARNO(varno)		((int) (varno) < 0)
 
@@ -1380,11 +1384,11 @@ typedef struct CaseWhen
  *	* Placeholder for intermediate results in some SQL/JSON expression nodes,
  *	  such as JsonConstructorExpr.
  *
- * The uses in CaseExpr and ArrayCoerceExpr are safe only to the extent that
- * there is not any other CaseExpr or ArrayCoerceExpr between the value source
- * node and its child CaseTestExpr(s).  This is true in the parse analysis
- * output, but the planner's function-inlining logic has to be careful not to
- * break it.
+ * The uses in CaseExpr, ArrayCoerceExpr, and JsonConstructorExpr are safe
+ * only to the extent that there is not any other such node between the
+ * value source node and its child CaseTestExpr(s).  This is true in the
+ * parse analysis output, but the planner's constant-folding of simple CASE
+ * and its function-inlining logic have to be careful not to break it.
  *
  * The nested-assignment-expression case is safe because the only node types
  * that can be above such CaseTestExprs are FieldStore and SubscriptingRef.
@@ -1743,6 +1747,10 @@ typedef enum JsonConstructorType
  * orig_query holds the user's original subquery for JSON_ARRAY(query), used
  * only by ruleutils.c for deparsing; it is not walked because func is
  * authoritative for all other purposes.
+ *
+ * format likewise holds the input FORMAT clause of JSON_ARRAY(query), which
+ * is otherwise only represented inside func; it is used only by ruleutils.c
+ * for deparsing.
  */
 typedef struct JsonConstructorExpr
 {
@@ -1753,6 +1761,7 @@ typedef struct JsonConstructorExpr
 	Expr	   *coercion;		/* coercion to RETURNING type */
 	JsonReturning *returning;	/* RETURNING clause */
 	Node	   *orig_query;		/* original subquery for deparsing */
+	JsonFormat *format;			/* input FORMAT for JSON_ARRAY(query) */
 	bool		absent_on_null; /* ABSENT ON NULL? */
 	bool		unique;			/* WITH UNIQUE KEYS? (JSON_OBJECT[AGG] only) */
 	ParseLoc	location;
@@ -2214,30 +2223,6 @@ typedef struct ReturningExpr
 	Expr	   *retexpr;		/* expression to be returned */
 } ReturningExpr;
 
-/*
- * GraphLabelRef - label reference in label expression inside GRAPH_TABLE clause
- */
-typedef struct GraphLabelRef
-{
-	NodeTag		type;
-	Oid			labelid;
-	ParseLoc	location;
-} GraphLabelRef;
-
-/*
- * GraphPropertyRef - property reference inside GRAPH_TABLE clause
- */
-typedef struct GraphPropertyRef
-{
-	Expr		xpr;
-	const char *elvarname;
-	Oid			propid;
-	Oid			typeId;
-	int32		typmod;
-	Oid			collation;
-	ParseLoc	location;
-} GraphPropertyRef;
-
 /*--------------------
  * TargetEntry -
  *	   a target entry (used in query target lists)
@@ -2380,8 +2365,9 @@ typedef struct RangeTblRef
  * During parse analysis, an RTE is created for the Join, and its index
  * is filled into rtindex.  This RTE is present mainly so that Vars can
  * be created that refer to the outputs of the join.  The planner sometimes
- * generates JoinExprs internally; these can have rtindex = 0 if there are
- * no join alias variables referencing such joins.
+ * generates JoinExprs internally.  Those for semijoins have rtindex = 0,
+ * since no join alias variables can reference them; but an antijoin is
+ * given an RTE anyway, because it needs a relid as other outer joins do.
  *----------
  */
 typedef struct JoinExpr
@@ -2452,40 +2438,5 @@ typedef struct OnConflictExpr
 } OnConflictExpr;
 
 typedef Expr NonDefValNode;
-
-/*----------
- * ForPortionOfExpr - represents a FOR PORTION OF ... expression
- *
- * We set up an expression to make a range from the FROM/TO bounds,
- * so that we can use range operators with it.
- *
- * Then we set up an overlaps expression between that and the range column,
- * so that we can find the rows we need to update/delete.
- *
- * If the user used the FROM ... TO ... syntax, we save the individual
- * expressions so that we can deparse them.
- *
- * In the executor we'll also build an intersect expression between the
- * targeted range and the range column, so that we can update the start/end
- * bounds of the UPDATE'd record.
- *----------
- */
-typedef struct ForPortionOfExpr
-{
-	NodeTag		type;
-	Var		   *rangeVar;		/* Range column */
-	char	   *range_name;		/* Range name */
-	Node	   *targetFrom;		/* FOR PORTION OF FROM bound, if given */
-	Node	   *targetTo;		/* FOR PORTION OF TO bound, if given */
-	Node	   *targetRange;	/* FOR PORTION OF bounds as a range/multirange */
-	Oid			rangeType;		/* (base)type of targetRange */
-	bool		isDomain;		/* Is rangeVar a domain? */
-	Node	   *overlapsExpr;	/* range && targetRange */
-	List	   *rangeTargetList;	/* List of TargetEntrys to set the time
-									 * column(s) */
-	Oid			withoutPortionProc; /* SRF proc for old_range - target_range */
-	ParseLoc	location;		/* token location, or -1 if unknown */
-	ParseLoc	targetLocation; /* token location, or -1 if unknown */
-} ForPortionOfExpr;
 
 #endif							/* PRIMNODES_H */

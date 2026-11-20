@@ -6871,7 +6871,7 @@ main(int argc, char **argv)
 				break;
 			case 'c':
 				benchmarking_option_set = true;
-				if (!option_parse_int(optarg, "-c/--clients", 1, INT_MAX,
+				if (!option_parse_int(optarg, "-c/--client", 1, INT_MAX,
 									  &nclients))
 				{
 					exit(1);

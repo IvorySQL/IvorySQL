@@ -1867,7 +1867,7 @@ MatchNamedCall(HeapTuple proctup, int nargs, List *argnames,
 	Oid		   *p_argtypes;
 	char	  **p_argnames;
 	char	   *p_argmodes;
-	bool		arggiven[FUNC_MAX_ARGS];
+	bool	   *arggiven;
 	bool		arg_filled_twice = false;
 	bool		isnull;
 	int			ap;				/* call args position */
@@ -1892,8 +1892,8 @@ MatchNamedCall(HeapTuple proctup, int nargs, List *argnames,
 	Assert(include_out_arguments ? (pronargs == pronallargs) : (pronargs <= pronallargs));
 
 	/* initialize state for matching */
-	*argnumbers = (int *) palloc(pronargs * sizeof(int));
-	memset(arggiven, false, pronargs * sizeof(bool));
+	*argnumbers = palloc_array(int, pronargs);
+	arggiven = palloc0_array(bool, pronallargs);
 
 	/* there are numposargs positional args before the named args */
 	for (ap = 0; ap < numposargs; ap++)
@@ -4992,7 +4992,15 @@ RemoveTempRelationsCallback(int code, Datum arg)
 		/* Need to ensure we have a usable transaction. */
 		AbortOutOfAnyTransaction();
 		StartTransactionCommand();
-		PushActiveSnapshot(GetTransactionSnapshot());
+
+		/*
+		 * Need an active snapshot for toast fetches during deletion.  Do not
+		 * use GetTransactionSnapshot(): under SERIALIZABLE READ ONLY
+		 * DEFERRABLE it may wait in GetSafeSnapshot(), and proc_exit holds
+		 * off interrupts so that wait cannot be cancelled.  A catalog
+		 * snapshot is enough and avoids that path.
+		 */
+		PushActiveSnapshot(GetCatalogSnapshot(RelationRelationId));
 
 		RemoveTempRelations(myTempNamespace);
 

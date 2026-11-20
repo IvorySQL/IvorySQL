@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PostgreSQL 15\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2026-04-09 18:39+0000\n"
+"POT-Creation-Date: 2026-08-21 04:09+0000\n"
 "PO-Revision-Date: 2022-04-08 14:40+0200\n"
 "Last-Translator: Peter Eisentraut <peter@eisentraut.org>\n"
 "Language-Team: German <pgsql-translators@postgresql.org>\n"
@@ -517,6 +517,11 @@ msgstr "Record »%s« hat noch keinen Wert"
 #, c-format
 msgid "The tuple structure of a not-yet-assigned record is indeterminate."
 msgstr "Die Tupelstruktur eines Records ohne Wert ist unbestimmt."
+
+#: pl_exec.c:9079
+#, c-format
+msgid "cannot cast type %s to %s"
+msgstr "kann Typ %s nicht in Typ %s umwandeln"
 
 #: pl_funcs.c:237
 msgid "statement block"

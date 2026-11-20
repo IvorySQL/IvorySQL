@@ -57,20 +57,12 @@ CREATE TABLE "S 1"."T 4" (
 	c3 varchar2(1024),
 	CONSTRAINT t4_pkey PRIMARY KEY (c1)
 );
-CREATE TABLE "S 1"."T 5" (
-	c1 int4range NOT NULL,
-	c2 number(38,0) NOT NULL,
-	c3 varchar2(1024),
-	c4 daterange NOT NULL,
-	CONSTRAINT t5_pkey PRIMARY KEY (c1, c4 WITHOUT OVERLAPS)
-);
 
 -- Disable autovacuum for these tables to avoid unexpected effects of that
 ALTER TABLE "S 1"."T 1" SET (autovacuum_enabled = 'false');
 ALTER TABLE "S 1"."T 2" SET (autovacuum_enabled = 'false');
 ALTER TABLE "S 1"."T 3" SET (autovacuum_enabled = 'false');
 ALTER TABLE "S 1"."T 4" SET (autovacuum_enabled = 'false');
-ALTER TABLE "S 1"."T 5" SET (autovacuum_enabled = 'false');
 
 INSERT INTO "S 1"."T 1"
 	SELECT id,
@@ -98,18 +90,11 @@ INSERT INTO "S 1"."T 4"
 	       'AAA' || to_char(id, 'FM000')
 	FROM generate_series(1, 100) id;
 DELETE FROM "S 1"."T 4" WHERE c1 % 3 != 0;	-- delete for outer join tests
-INSERT INTO "S 1"."T 5"
-	SELECT int4range(id, id + 1),
-	       id + 1,
-	       'AAA' || to_char(id, 'FM000'),
-        '[2000-01-01,2020-01-01)'
-	FROM generate_series(1, 100) id;
 
 ANALYZE "S 1"."T 1";
 ANALYZE "S 1"."T 2";
 ANALYZE "S 1"."T 3";
 ANALYZE "S 1"."T 4";
-ANALYZE "S 1"."T 5";
 
 -- ===================================================================
 -- create foreign tables
@@ -163,14 +148,6 @@ CREATE FOREIGN TABLE ft7 (
 	c2 number(38,0) NOT NULL,
 	c3 varchar2(1024)
 ) SERVER loopback3 OPTIONS (schema_name 'S 1', table_name 'T 4');
-
-CREATE FOREIGN TABLE ft8 (
-	c1 int4range NOT NULL,
-	c2 number(38,0) NOT NULL,
-	c3 varchar2(1024),
-	c4 daterange NOT NULL
-) SERVER loopback OPTIONS (schema_name 'S 1', table_name 'T 5');
-
 
 -- ===================================================================
 -- tests interval
@@ -550,6 +527,42 @@ EXECUTE s(ARRAY['1','2']);
 EXECUTE s(ARRAY['1','2']);
 DEALLOCATE s;
 RESET plan_cache_mode;
+
+-- An ArrayCoerceExpr is pushed down only when its per-element coercion is
+-- a plain relabeling.  An element cast function, an I/O conversion, or a
+-- domain coercion is instead evaluated locally.
+CREATE TABLE loct_acx (id int, ta text[], f8 float8[], txt text[], t text, ia int[], vc pg_catalog.varchar[]);
+INSERT INTO loct_acx VALUES (1, '{12345}', '{0.30000000000000004}', '{0.3}', '5', '{5}', '{5}');
+CREATE FOREIGN TABLE ft_acx (id int, ta text[], f8 float8[], txt text[], t text, ia int[], vc pg_catalog.varchar[])
+  SERVER loopback OPTIONS (table_name 'loct_acx');
+-- element coercion via a cast function: not shippable, stays local
+CREATE FUNCTION acx_text2int(text) RETURNS int
+  LANGUAGE plpgsql IMMUTABLE STRICT AS 'BEGIN RETURN length($1); END';
+/
+CREATE CAST (text AS integer) WITH FUNCTION acx_text2int(text);
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT id FROM ft_acx WHERE ta::int[] = ARRAY[5];
+DROP CAST (text AS integer);
+DROP FUNCTION acx_text2int(text);
+-- implicit-format element coercion (a cast function): stays local, and the
+-- coercion is not silently dropped from an otherwise pushed-down qual
+CREATE CAST (integer AS text) WITH FUNCTION pg_catalog.to_hex(integer) AS IMPLICIT;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT id FROM ft_acx WHERE t = ANY (ia);
+DROP CAST (integer AS text);
+-- element coercion via a GUC-sensitive I/O conversion: stays local, so the
+-- result matches local evaluation despite the forced remote extra_float_digits
+SET extra_float_digits = 0;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT id FROM ft_acx WHERE f8::text[] = txt;
+SELECT id FROM ft_acx WHERE f8::text[] = txt;
+RESET extra_float_digits;
+-- a plain relabeling element coercion (varchar[] to text[]) is still pushed down
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT id FROM ft_acx WHERE t = ANY (vc);
+SELECT id FROM ft_acx WHERE t = ANY (vc);
+DROP FOREIGN TABLE ft_acx;
+DROP TABLE loct_acx;
 
 -- a regconfig constant referring to this text search configuration
 -- is initially unshippable
@@ -1223,6 +1236,11 @@ explain (verbose, costs off)
 select sum(q.a), count(q.b) from ft4 left join (select 13, avg(ft1.c1), sum(ft2.c1) from ft1 right join ft2 on (ft1.c1 = ft2.c1)) q(a, b, c) on (ft4.c1 <= q.b);
 select sum(q.a), count(q.b) from ft4 left join (select 13, avg(ft1.c1), sum(ft2.c1) from ft1 right join ft2 on (ft1.c1 = ft2.c1)) q(a, b, c) on (ft4.c1 <= q.b);
 
+-- Eager aggregation: a partially grouped rel must not be joined remotely
+explain (verbose, costs off)
+select t1.c2, sum(t2.c1) from ft1 t1 inner join ft2 t2 on (t1.c2 = t2.c2) where t1.c1 < 20 group by t1.c2 order by 1;
+select t1.c2, sum(t2.c1) from ft1 t1 inner join ft2 t2 on (t1.c2 = t2.c2) where t1.c1 < 20 group by t1.c2 order by 1;
+
 
 -- Not supported cases
 -- Grouping sets
@@ -1644,41 +1662,6 @@ UPDATE ft2 SET c3 = 'bar' WHERE c1 = 1200 RETURNING tableoid::regclass;
 EXPLAIN (verbose, costs off)
 DELETE FROM ft2 WHERE c1 = 1200 RETURNING tableoid::regclass;                       -- can be pushed down
 DELETE FROM ft2 WHERE c1 = 1200 RETURNING tableoid::regclass;
-
--- Test UPDATE FOR PORTION OF
-UPDATE ft8 FOR PORTION OF c4 FROM '2005-01-01' TO '2006-01-01'
-  SET c2 = c2 + 1
-  WHERE c1 = '[1,2)'; -- error
-SELECT * FROM ft8 WHERE c1 = '[1,2)' ORDER BY c1, c4;
-
--- Test DELETE FOR PORTION OF
-DELETE FROM ft8 FOR PORTION OF c4 FROM '2005-01-01' TO '2006-01-01'
-  WHERE c1 = '[2,3)'; -- error
-SELECT * FROM ft8 WHERE c1 = '[2,3)' ORDER BY c1, c4;
-
--- FOR PORTION OF fails if a child partition is a foreign table, even if the
--- root is not. But a child partition that is pruned doesn't cause an error.
-CREATE TABLE fpo_part_parent (
-  c1 int4range NOT NULL,
-  c2 int NOT NULL,
-  c3 text,
-  c4 daterange NOT NULL
-) PARTITION BY LIST (c2);
-CREATE TABLE fpo_part_local PARTITION OF fpo_part_parent FOR VALUES IN (1);
-INSERT INTO fpo_part_local VALUES ('[1,2)', 1, 'one', '[2024-01-01,2024-12-31)');
-CREATE FOREIGN TABLE fpo_part_foreign
-  PARTITION OF fpo_part_parent FOR VALUES IN (6)
-  SERVER loopback OPTIONS (schema_name 'S 1', table_name 'T 5');
-DELETE FROM fpo_part_parent
-  FOR PORTION OF c4 FROM '2001-01-01' TO '2001-02-01' WHERE c2 = 6; -- error
-UPDATE fpo_part_parent
-  FOR PORTION OF c4 FROM '2001-01-01' TO '2001-02-01' SET c3 = 'x' WHERE c2 = 6; -- error
-UPDATE fpo_part_parent
-  FOR PORTION OF c4 FROM '2024-06-01' TO '2024-07-01' SET c3 = 'edited' WHERE c2 = 1; -- okay
-DELETE FROM fpo_part_parent
-  FOR PORTION OF c4 FROM '2024-06-01' TO '2024-06-15' WHERE c2 = 1; -- okay
-SELECT c1, c2, c3, c4 FROM fpo_part_local ORDER BY c4;
-DROP TABLE fpo_part_parent;
 
 -- Test UPDATE/DELETE with RETURNING on a three-table join
 INSERT INTO ft2 (c1,c2,c3)
@@ -4163,6 +4146,16 @@ INSERT INTO result_tbl SELECT * FROM async_pt WHERE b === 505;
 SELECT * FROM result_tbl ORDER BY a;
 DELETE FROM result_tbl;
 
+-- Test ExecAppendAsyncReset code path that drains outstanding async requests
+-- (case where subplans are re-scanned with parameter changes)
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT o.x FROM (VALUES (2505), (3505)) o(x), LATERAL (SELECT a FROM async_pt WHERE a = o.x OR a = 1505 LIMIT 1) s ORDER BY o.x;
+SELECT o.x FROM (VALUES (2505), (3505)) o(x), LATERAL (SELECT a FROM async_pt WHERE a = o.x OR a = 1505 LIMIT 1) s ORDER BY o.x;
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT o.x FROM (VALUES (2505), (3505)) o(x), LATERAL (SELECT a FROM async_pt WHERE a = o.x OR (a = 1505 AND o.x = 2505) LIMIT 1) s ORDER BY o.x;
+SELECT o.x FROM (VALUES (2505), (3505)) o(x), LATERAL (SELECT a FROM async_pt WHERE a = o.x OR (a = 1505 AND o.x = 2505) LIMIT 1) s ORDER BY o.x;
+
 -- Test COPY TO when foreign table is partition
 COPY async_pt TO stdout; --error
 
@@ -4404,8 +4397,8 @@ DROP TABLE base_tbl2;
 DROP TABLE result_tbl;
 DROP TABLE join_tbl;
 
--- Test that an asynchronous fetch is processed before restarting the scan in
--- ReScanForeignScan
+-- Test ExecAppendAsyncReset code path that drains outstanding async requests
+-- (case where subplans are re-scanned without parameter changes)
 CREATE TABLE base_tbl (a number(38,0), b number(38,0));
 INSERT INTO base_tbl VALUES (1, 11), (2, 22), (3, 33);
 CREATE FOREIGN TABLE foreign_tbl (b number(38,0))
@@ -4500,6 +4493,8 @@ DROP VIEW my_application_name;
 -- test read-only and/or deferrable transactions
 -- ===================================================================
 CREATE TABLE loct (f1 number(38,0), f2 varchar2(1024));
+INSERT INTO loct VALUES (1, 'foo'), (2, 'bar');
+
 CREATE FUNCTION locf() RETURNS SETOF loct LANGUAGE SQL AS
   'UPDATE public.loct SET f2 = f2 || f2 RETURNING *';
 /
@@ -4508,7 +4503,6 @@ CREATE FOREIGN TABLE remt (f1 number(38,0), f2 varchar2(1024))
   SERVER loopback OPTIONS (table_name 'locv');
 CREATE FOREIGN TABLE remt2 (f1 number(38,0), f2 varchar2(1024))
   SERVER loopback2 OPTIONS (table_name 'locv');
-INSERT INTO loct VALUES (1, 'foo'), (2, 'bar');
 
 START TRANSACTION READ ONLY;
 SAVEPOINT s;
@@ -4554,9 +4548,32 @@ SET transaction_read_only = on;
 SELECT * FROM remt2;  -- should fail
 ROLLBACK;
 
+-- Clean up
 DROP FOREIGN TABLE remt;
+DROP FOREIGN TABLE remt2;
+DROP VIEW locv;
+DROP FUNCTION locf();
+
 CREATE FOREIGN TABLE remt (f1 number(38,0), f2 varchar2(1024))
   SERVER loopback OPTIONS (table_name 'loct');
+
+CREATE FUNCTION defer_trig_func() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.f2 IS NOT NULL THEN
+    UPDATE public.loct SET f2 = f2 || f2 WHERE f1 = NEW.f1;
+  END IF;
+  RETURN NULL;
+END;
+$$;
+/
+CREATE CONSTRAINT TRIGGER defer_trig AFTER INSERT ON loct
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW EXECUTE PROCEDURE defer_trig_func();
+
+START TRANSACTION;
+INSERT INTO remt VALUES (3, 'baz');
+SET TRANSACTION READ ONLY;
+COMMIT;
 
 START TRANSACTION ISOLATION LEVEL SERIALIZABLE READ ONLY;
 SELECT * FROM remt;
@@ -4572,9 +4589,8 @@ COMMIT;
 
 -- Clean up
 DROP FOREIGN TABLE remt;
-DROP FOREIGN TABLE remt2;
-DROP VIEW locv;
-DROP FUNCTION locf();
+DROP TRIGGER defer_trig ON loct;
+DROP FUNCTION defer_trig_func;
 DROP TABLE loct;
 
 -- ===================================================================
@@ -4692,13 +4708,18 @@ CREATE TABLE simport_table (c1 int, c2 text);
 CREATE FOREIGN TABLE simport_ftable (c1 int, c2 text, cx int)
        SERVER loopback OPTIONS (table_name 'simport_table');
 ALTER FOREIGN TABLE simport_ftable ALTER COLUMN cx OPTIONS (ADD column_name 'c1');
-ALTER FOREIGN TABLE simport_ftable OPTIONS (ADD restore_stats 'true');
+ALTER FOREIGN TABLE simport_ftable OPTIONS (ADD import_stats 'true');
 
 ANALYZE simport_ftable;                   -- should fail
 
 ANALYZE simport_table;
 
+SELECT pg_stat_reset_single_table_counters('public.simport_ftable'::regclass);
 ANALYZE VERBOSE simport_ftable;           -- should work
+SELECT pg_stat_force_next_flush();
+SELECT pg_stat_get_live_tuples('public.simport_ftable'::regclass),
+       pg_stat_get_dead_tuples('public.simport_ftable'::regclass),
+       pg_stat_get_analyze_count('public.simport_ftable'::regclass);
 
 ALTER TABLE simport_table ALTER COLUMN c1 SET STATISTICS 0;
 ALTER TABLE simport_table ALTER COLUMN c2 SET STATISTICS 0;
@@ -4715,7 +4736,12 @@ ANALYZE simport_ftable;                   -- should fail
 ALTER TABLE simport_table ALTER COLUMN c2 SET STATISTICS DEFAULT;
 ANALYZE simport_table;
 
+SELECT pg_stat_reset_single_table_counters('public.simport_ftable'::regclass);
 ANALYZE VERBOSE simport_ftable;           -- should work
+SELECT pg_stat_force_next_flush();
+SELECT pg_stat_get_live_tuples('public.simport_ftable'::regclass),
+       pg_stat_get_dead_tuples('public.simport_ftable'::regclass),
+       pg_stat_get_analyze_count('public.simport_ftable'::regclass);
 
 ANALYZE VERBOSE simport_ftable (c1);      -- should work
 
@@ -4738,26 +4764,71 @@ ANALYZE simport_ftable (c1, c1);          -- should fail
 CREATE VIEW simport_view AS SELECT * FROM simport_table;
 CREATE FOREIGN TABLE simport_fview (c1 int, c2 text)
        SERVER loopback OPTIONS (table_name 'simport_view');
-ALTER FOREIGN TABLE simport_fview OPTIONS (ADD restore_stats 'true');
+ALTER FOREIGN TABLE simport_fview OPTIONS (ADD import_stats 'true');
 
 ANALYZE simport_fview;                    -- should fail
+
+CREATE TABLE simport_pt (c1 int not null, c2 text) PARTITION BY LIST (c1);
+CREATE TABLE simport_p1 PARTITION OF simport_pt FOR VALUES IN (1);
+CREATE TABLE simport_p2 PARTITION OF simport_pt FOR VALUES IN (2);
+CREATE FOREIGN TABLE simport_fpt (c1 int not null, c2 text)
+       SERVER loopback OPTIONS (table_name 'simport_pt');
+INSERT INTO simport_pt VALUES (1, 'foo'), (1, 'foo'), (2, 'bar'), (2, 'bar');
+
+-- Check that we have relpages = 0 for simport_fpt regardless of the method
+ANALYZE simport_fpt;
+SELECT relpages FROM pg_class WHERE oid = 'public.simport_fpt'::regclass;
+ALTER FOREIGN TABLE simport_fpt OPTIONS (ADD import_stats 'true');
+ANALYZE simport_pt;
+ANALYZE VERBOSE simport_fpt;              -- should work
+SELECT relpages FROM pg_class WHERE oid = 'public.simport_fpt'::regclass;
 
 -- This tests build_remattrmap()'s deparsing of column names that include
 -- single quotes or backslashes
 CREATE TABLE dtest_table ("col'quote" int, "col\backslash" int);
 CREATE FOREIGN TABLE dtest_ftable ("col'quote" int, "col\backslash" int)
-       SERVER loopback OPTIONS (table_name 'dtest_table', restore_stats 'true');
+       SERVER loopback OPTIONS (table_name 'dtest_table', import_stats 'true');
 
 INSERT INTO dtest_table SELECT g, g FROM generate_series(1, 10) g;
 ANALYZE dtest_table;
 
 ANALYZE VERBOSE dtest_ftable;             -- should work
 
+-- dtest_ftable's stats should now exactly match dtest_table's
+-- compare values, should match
+SELECT relpages, reltuples FROM pg_class
+WHERE oid = 'public.dtest_table'::regclass
+EXCEPT
+SELECT relpages, reltuples FROM pg_class
+WHERE oid = 'public.dtest_ftable'::regclass;
+
+-- compare the rowcounts, should get 0 rows back
+SELECT COUNT(*) FROM pg_stats
+WHERE schemaname = 'public' AND tablename = 'dtest_table'
+EXCEPT
+SELECT COUNT(*) FROM pg_stats
+WHERE schemaname = 'public' AND tablename = 'dtest_ftable';
+
+-- test only a few stats columns common to integer types
+SELECT attname, inherited, null_frac, avg_width, n_distinct,
+  most_common_vals::text as mcv, most_common_freqs,
+  histogram_bounds::text as hb, correlation
+FROM pg_stats
+WHERE schemaname = 'public' AND tablename = 'dtest_table'
+EXCEPT
+SELECT attname, inherited, null_frac, avg_width, n_distinct,
+  most_common_vals::text as mcv, most_common_freqs,
+  histogram_bounds::text as hb, correlation
+FROM pg_stats
+WHERE schemaname = 'public' AND tablename = 'dtest_ftable';
+
 -- cleanup
 DROP FOREIGN TABLE simport_ftable;
 DROP FOREIGN TABLE simport_fview;
 DROP VIEW simport_view;
 DROP TABLE simport_table;
+DROP FOREIGN TABLE simport_fpt;
+DROP TABLE simport_pt;
 DROP FOREIGN TABLE dtest_ftable;
 DROP TABLE dtest_table;
 
@@ -4786,18 +4857,48 @@ SELECT server_name,
   WHERE application_name = 'fdw_conn_check') AS remote_backend_pid
   FROM postgres_fdw_get_connections(true);
 
--- After terminating the remote backend, since the connection is closed,
--- "closed" should be TRUE, or NULL if the connection status check
--- is not available. Despite the termination, remote_backend_pid should
--- still show the non-zero PID of the terminated remote backend.
+-- After terminating the remote backend, if the connection entry is still in
+-- the cache, "closed" should be TRUE, or NULL if the connection status check
+-- is not available, and remote_backend_pid should still show the non-zero PID
+-- of the terminated remote backend. Concurrent invalidation can remove the
+-- idle cached connection before the next statement, in which case
+-- postgres_fdw_get_connections(true) can legitimately return no rows.
 DO $$ BEGIN
 PERFORM pg_terminate_backend(pid, 180000) FROM pg_stat_activity
   WHERE application_name = 'fdw_conn_check';
 END $$;
-SELECT server_name,
+WITH terminated_conn AS (
+  SELECT server_name,
+    CASE WHEN closed IS NOT false THEN true ELSE false END AS closed,
+    remote_backend_pid <> 0 AS remote_backend_pid
+    FROM postgres_fdw_get_connections(true)
+)
+SELECT CASE
+  WHEN count(*) = 0 THEN true
+  WHEN count(*) = 1 THEN bool_and(server_name = 'loopback'
+                                  AND closed
+                                  AND remote_backend_pid)
+  ELSE false
+END AS ok
+FROM terminated_conn;
+
+-- In an explicit transaction, concurrent invalidation may mark the
+-- connection invalid but cannot discard it before transaction end, so the
+-- terminated connection should remain visible in the cache.
+SELECT 1 FROM postgres_fdw_disconnect_all();
+SET client_min_messages = 'ERROR';
+BEGIN;
+SELECT 1 FROM ft1 LIMIT 1;
+DO $$ BEGIN
+PERFORM pg_terminate_backend(pid, 180000) FROM pg_stat_activity
+  WHERE application_name = 'fdw_conn_check';
+END $$;
+SELECT server_name, used_in_xact,
   CASE WHEN closed IS NOT false THEN true ELSE false END AS closed,
   remote_backend_pid <> 0 AS remote_backend_pid
   FROM postgres_fdw_get_connections(true);
+ABORT;
+RESET client_min_messages;
 
 -- Clean up
 \set VERBOSITY default

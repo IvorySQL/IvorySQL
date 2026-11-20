@@ -38,7 +38,6 @@
 #include "access/transam.h"
 #include "access/twophase.h"
 #include "access/xlogutils.h"
-#include "access/xlogwait.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "postmaster/autovacuum.h"
@@ -869,6 +868,9 @@ LockErrorCleanup(void)
 			GrantAwaitedLock();
 	}
 
+	/* An error can bypass ProcSleep()'s reset, so clear waitStart here */
+	pg_atomic_write_u64(&MyProc->waitStart, 0);
+
 	ResetAwaitedLock();
 
 	LWLockRelease(partitionLock);
@@ -955,11 +957,6 @@ ProcKill(int code, Datum arg)
 	 * facility by releasing our PGPROC ...
 	 */
 	LWLockReleaseAll();
-
-	/*
-	 * Cleanup waiting for LSN if any.
-	 */
-	WaitLSNCleanup();
 
 	/* Cancel any pending condition variable sleep, too */
 	ConditionVariableCancelSleep();
@@ -1609,12 +1606,13 @@ ProcSleep(LOCALLOCK *locallock)
 			TimestampDifference(get_timeout_start_time(DEADLOCK_TIMEOUT),
 								GetCurrentTimestamp(),
 								&secs, &usecs);
-			msecs = secs * 1000 + usecs / 1000;
-			usecs = usecs % 1000;
-
 			/* Increment the lock statistics counters if done waiting. */
 			if (myWaitStatus == PROC_WAIT_STATUS_OK)
-				pgstat_count_lock_waits(locallock->tag.lock.locktag_type, msecs);
+				pgstat_count_lock_waits(locallock->tag.lock.locktag_type,
+										(PgStat_Counter) secs * 1000000 + usecs);
+
+			msecs = secs * 1000 + usecs / 1000;
+			usecs = usecs % 1000;
 
 			if (log_lock_waits)
 			{
@@ -1725,6 +1723,12 @@ ProcSleep(LOCALLOCK *locallock)
 			deadlock_state = DS_NO_DEADLOCK;
 		}
 	} while (myWaitStatus == PROC_WAIT_STATUS_WAITING);
+
+	/*
+	 * Clear waitStart after the wait, as we may have set it after
+	 * ProcWakeup() cleared it.
+	 */
+	pg_atomic_write_u64(&MyProc->waitStart, 0);
 
 	/*
 	 * Disable the timers, if they are still running.  As in LockErrorCleanup,

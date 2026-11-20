@@ -6,7 +6,7 @@
 
  <formalpara>
   <title>Release date:</title>
-  <para>2026-??-??, AS OF 2026-06-17</para>
+  <para>2026-??-??, AS OF 2026-10-09</para>
  </formalpara>
 
   <sect2 id="release-19-highlights">
@@ -19,7 +19,58 @@
 
    <itemizedlist>
     <listitem>
-     <para><emphasis>fill in later</emphasis></para>
+     <para>
+      New <xref linkend="sql-repack"/> command that reclaims disk space and
+      reorganizes table contents, which can improve query performance.
+      <command>REPACK (CONCURRENTLY)</command> allows repacking without
+      blocking reads and writes to the table.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      <xref linkend="pgplanadvice"/> extension for controlling query planner
+      decisions and <xref linkend="pgstashadvice"/> extension that applies plan
+      advice automatically based on the query.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      Better performance in many areas, including automatic scaling of the
+      number of I/O worker processes, quicker foreign-key checks, and further
+      planning and execution optimizations.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      Logical replication can now be enabled without a server restart when
+      <xref linkend="guc-wal-level"/> is set to <literal>replica</literal>.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      Logical replication of
+      <link linkend="logical-replication-sequences">sequence values</link>.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      Support for <quote>read-your-writes</quote> consistency on standbys via
+      the new <xref linkend="sql-wait"/> command.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      <link linkend="guc-autovacuum-max-parallel-workers">Parallel autovacuum of table indexes</link>
+      and
+      <link linkend="autovacuum-priority">autovacuum prioritization</link>
+      through a new scoring system.
+     </para>
     </listitem>
    </itemizedlist>
 
@@ -157,25 +208,6 @@ The <xref linkend="btree-gist"/> <type>inet</type>/<type>cidr</type> opclasses a
 
 <!--
 Author: Tom Lane <tgl@sss.pgh.pa.us>
-2026-04-06 [a9c350d9e] Don't try to re-order the subcommands of CREATE SCHEMA.
-Author: Tom Lane <tgl@sss.pgh.pa.us>
-2026-04-06 [404db8f9e] Execute foreign key constraints in CREATE SCHEMA at the
--->
-
-<listitem>
-<para>
-Stop reordering non-schema objects created by <link linkend="sql-createschema"><command>CREATE SCHEMA</command></link> (Tom Lane, Jian He)
-<ulink url="&commit_baseurl;a9c350d9e">&sect;</ulink>
-<ulink url="&commit_baseurl;404db8f9e">&sect;</ulink>
-</para>
-
-<para>
-The goal of the reordering was to avoid dependencies, but it was imperfect.  <productname>PostgreSQL</productname> now uses the specified object ordering, except for foreign keys which are created last.
-</para>
-</listitem>
-
-<!--
-Author: Tom Lane <tgl@sss.pgh.pa.us>
 2026-04-06 [21c69dc73] Disallow system columns in COPY FROM WHERE conditions.
 -->
 
@@ -304,6 +336,18 @@ Author: Robert Haas <rhaas@postgresql.org>
 <para>
 Remove optimizer hook get_relation_info_hook and add better-placed hook build_simple_rel_hook (Robert Haas)
 <ulink url="&commit_baseurl;91f33a2ae">&sect;</ulink>
+</para>
+</listitem>
+
+<!--
+Author: Álvaro Herrera <alvherre@kurilemu.de>
+2026-06-26 [4df5fe383] 2026-06-26 Make crosstabview honor boolean/null display
+-->
+
+<listitem>
+<para>
+Change <link linkend="app-psql"><application>psql</application></link>'s <literal>\crosstabview</literal> command to honor the <literal>\pset null</literal> setting (Chao Li)
+<ulink url="&commit_baseurl;4df5fe383">&sect;</ulink>
 </para>
 </listitem>
 
@@ -618,10 +662,6 @@ Author: Amit Langote <amitlan@postgresql.org>
 2026-03-31 [2da86c1ef] Add fast path for foreign key constraint checks
 Author: Amit Langote <amitlan@postgresql.org>
 2026-04-01 [e484b0eea] Fix two issues in fast-path FK check introduced by commi
-Author: Amit Langote <amitlan@postgresql.org>
-2026-04-03 [b7b27eb41] Optimize fast-path FK checks with batched index probes
-Author: Amit Langote <amitlan@postgresql.org>
-2026-04-07 [5c54c3ed1] Fix deferred FK check batching introduced by commit b7b2
 -->
 
 <listitem>
@@ -629,8 +669,6 @@ Author: Amit Langote <amitlan@postgresql.org>
 Improve performance of foreign key constraint checks (Junwang Zhao, Amit Langote, Chao Li)
 <ulink url="&commit_baseurl;2da86c1ef">&sect;</ulink>
 <ulink url="&commit_baseurl;e484b0eea">&sect;</ulink>
-<ulink url="&commit_baseurl;b7b27eb41">&sect;</ulink>
-<ulink url="&commit_baseurl;5c54c3ed1">&sect;</ulink>
 </para>
 </listitem>
 
@@ -741,6 +779,22 @@ Improve <link linkend="sql-notify"><command>NOTIFY</command></link> to only wake
 
 <para>
 Previously most backends were woken by <link linkend="sql-notify"><command>NOTIFY</command></link>.
+</para>
+</listitem>
+
+<!--
+Author: Tomas Vondra <tomas.vondra@postgresql.org>
+2026-08-12 [5838806ce] Change wal_compression=on to the
+-->
+
+<listitem>
+<para>
+Change <link linkend="guc-wal-compression"><varname>wal_compression</varname></link> equals <literal>on</literal> to use the best WAL compression method available (wenhui qiu)
+<ulink url="&commit_baseurl;5838806ce">&sect;</ulink>
+</para>
+
+<para>
+Previously this always used <literal>pglz</literal>.
 </para>
 </listitem>
 
@@ -1230,12 +1284,15 @@ Add IO wait events for <link linkend="sql-copy"><command>COPY FROM/TO</command><
 <!--
 Author: Alexander Korotkov <akorotkov@postgresql.org>
 2026-01-05 [7a39f43d8] Extend xlogwait infrastructure with write and flush wait
+Author: Heikki Linnakangas <heikki.linnakangas@iki.fi>
+2025-12-09 [3cb5808bd] Add wait event for the group commit delay before WAL flu
 -->
 
 <listitem>
 <para>
-Add wait events for <acronym>WAL</acronym> write and flush <link linkend="wal-internals">LSN</link>s (Xuneng Zhou)
+Add wait events for <xref linkend="guc-commit-delay"/> and for <acronym>WAL</acronym> write and flush <link linkend="wal-internals">LSN</link>s (Xuneng Zhou)
 <ulink url="&commit_baseurl;7a39f43d8">&sect;</ulink>
+<ulink url="&commit_baseurl;3cb5808bd">&sect;</ulink>
 </para>
 </listitem>
 
@@ -1287,24 +1344,6 @@ The previous warning was 40 million.  Warnings are issued to clients and in the 
      <title>Server Configuration</title>
 
      <itemizedlist>
-<!--
-Author: Daniel Gustafsson <dgustafsson@postgresql.org>
-2026-04-03 [f19c0ecca] Online enabling and disabling of data checksums
-Author: Daniel Gustafsson <dgustafsson@postgresql.org>
-2026-04-08 [b364828f8] doc: Fix data_checksums data type
--->
-
-<listitem>
-<para>
-Allow <link linkend="functions-admin-checksum">online enabling</link> and disabling of <link linkend="checksums">data checksums</link> (Daniel Gustafsson, Magnus Hagander, Tomas Vondra)
-<ulink url="&commit_baseurl;f19c0ecca">&sect;</ulink>
-<ulink url="&commit_baseurl;b364828f8">&sect;</ulink>
-</para>
-
-<para>
-Previously the checksum status could only be changed while the cluster was offline using <link linkend="app-pgchecksums"><application>pg_checksums</application></link>.
-</para>
-</listitem>
 
 <!--
 Author: Nathan Bossart <nathan@postgresql.org>
@@ -1318,7 +1357,7 @@ Add scoring system to control the order that tables are processed by <link linke
 </para>
 
 <para>
-The new server variables are <link linkend="guc-autovacuum-freeze-score-weight"><varname>autovacuum_freeze_score_weight</varname></link>, <link linkend="guc-autovacuum-multixact-freeze-score-weight"><varname>autovacuum_multixact_freeze_score_weight</varname></link>, <link linkend="guc-autovacuum-vacuum-score-weight"><varname>autovacuum_vacuum_score_weight</varname></link>, <link linkend="guc-autovacuum-vacuum-insert-score-weight"><varname>vacuum_insert_score_weight</varname></link>, and
+The new server variables are <link linkend="guc-autovacuum-freeze-score-weight"><varname>autovacuum_freeze_score_weight</varname></link>, <link linkend="guc-autovacuum-multixact-freeze-score-weight"><varname>autovacuum_multixact_freeze_score_weight</varname></link>, <link linkend="guc-autovacuum-vacuum-score-weight"><varname>autovacuum_vacuum_score_weight</varname></link>, <link linkend="guc-autovacuum-vacuum-insert-score-weight"><varname>autovacuum_vacuum_insert_score_weight</varname></link>, and
 <link linkend="guc-autovacuum-analyze-score-weight"><varname>autovacuum_analyze_score_weight</varname></link>.
 </para>
 </listitem>
@@ -1341,20 +1380,13 @@ New configuration file <link linkend="guc-hosts-file"><filename>PGDATA/pg_hosts.
 
 <!--
 Author: Jacob Champion <jchampion@postgresql.org>
-2026-03-06 [e982331b5] libpq: Introduce PQAUTHDATA_OAUTH_BEARER_TOKEN_V2
-Author: Jacob Champion <jchampion@postgresql.org>
-2026-03-31 [0af4d402c] libpq: Poison the v2 part of a v1 Bearer request
+2026-04-07 [b977bd308] oauth: Allow validators to register custom HBA options
 -->
 
 <listitem>
 <para>
-Add a new <acronym>OAUTH</acronym> flow hook <link linkend="libpq-oauth-authdata-oauth-bearer-token-v2"><literal>PQAUTHDATA_OAUTH_BEARER_TOKEN_V2</literal></link> (Jacob Champion)
-<ulink url="&commit_baseurl;e982331b5">&sect;</ulink>
-<ulink url="&commit_baseurl;0af4d402c">&sect;</ulink>
-</para>
-
-<para>
-This is an improved version of <link linkend="libpq-oauth-authdata-oauth-bearer-token"><literal>PQAUTHDATA_OAUTH_BEARER_TOKEN</literal></link> by adding the issuer identifier and error message specification.
+Allow OAuth validators to register custom <link linkend="auth-pg-hba-conf"><filename>pg_hba.conf</filename></link> authentication options (Jacob Champion, Zsolt Parragi)
+<ulink url="&commit_baseurl;b977bd308">&sect;</ulink>
 </para>
 </listitem>
 
@@ -1435,7 +1467,7 @@ Author: Alexander Korotkov <akorotkov@postgresql.org>
 
 <listitem>
 <para>
-Add <link linkend="sql-wait-for"><command>WAIT FOR</command></link> command to allow standbys to wait for <link linkend="wal-internals"><acronym>LSN</acronym></link> values to be written, flushed, or replayed (Kartyshov Ivan, Alexander Korotkov, Xuneng Zhou)
+Add <link linkend="sql-wait"><command>WAIT</command></link> command to allow standbys to wait for <link linkend="wal-internals"><acronym>LSN</acronym></link> values to be written, flushed, or replayed (Kartyshov Ivan, Alexander Korotkov, Xuneng Zhou)
 <ulink url="&commit_baseurl;447aae13b">&sect;</ulink>
 <ulink url="&commit_baseurl;49a181b5d">&sect;</ulink>
 </para>
@@ -1470,37 +1502,6 @@ Add server variable <link linkend="guc-wal-sender-shutdown-timeout"><varname>wal
 
 <para>
 By default, senders still wait forever for synchronization.
-</para>
-</listitem>
-
-<!--
-Author: Fujii Masao <fujii@postgresql.org>
-2026-02-20 [8a6af3ad0] Make GUC wal_receiver_timeout user-settable.
-Author: Fujii Masao <fujii@postgresql.org>
-2026-02-20 [fb80f388f] Add per-subscription wal_receiver_timeout setting.
--->
-
-<listitem>
-<para>
-Allow <link linkend="guc-wal-receiver-timeout"><varname>wal_receiver_timeout</varname></link> to be set per-subscription and user (Fujii Masao)
-<ulink url="&commit_baseurl;8a6af3ad0">&sect;</ulink>
-<ulink url="&commit_baseurl;fb80f388f">&sect;</ulink>
-</para>
-
-<para>
-This allows subscribers to use different <link linkend="guc-wal-receiver-timeout"><varname>wal_receiver_timeout</varname></link> values.
-</para>
-</listitem>
-
-<!--
-Author: Amit Kapila <akapila@postgresql.org>
-2025-09-19 [5b148706c] Add optional pid parameter to pg_replication_origin_sess
--->
-
-<listitem>
-<para>
-Add optional pid parameter to <link linkend="pg-replication-origin-session-setup"><function>pg_replication_origin_session_setup()</function></link> to allow parallelization of <acronym>SQL</acronym>-level replication solutions (Doruk Yilmaz, Hayato Kuroda)
-<ulink url="&commit_baseurl;5b148706c">&sect;</ulink>
 </para>
 </listitem>
 
@@ -1603,7 +1604,7 @@ Author: Amit Kapila <akapila@postgresql.org>
 
 <listitem>
 <para>
-Add <link linkend="sql-createpublication"><command>CREATE</command></link>/<link linkend="sql-alterpublication"><command>ALTER PUBLICATION</command></link> setting <link linkend="sql-createsubscription-params-with-retain-dead-tuples"><varname>retain_dead_tuples</varname></link> to retain information needed for conflict resolution (Zhijie Hou)
+Add <link linkend="sql-createsubscription"><command>CREATE</command></link>/<link linkend="sql-altersubscription"><command>ALTER SUBSCRIPTION</command></link> setting <link linkend="sql-createsubscription-params-with-retain-dead-tuples"><varname>retain_dead_tuples</varname></link> to retain information needed for conflict detection (Zhijie Hou)
 <ulink url="&commit_baseurl;228c37086">&sect;</ulink>
 <ulink url="&commit_baseurl;0d48d393d">&sect;</ulink>
 <ulink url="&commit_baseurl;a850be2fe">&sect;</ulink>
@@ -1642,7 +1643,39 @@ When server variable <link linkend="guc-wal-level"><varname>wal_level</varname><
 </para>
 
 <para>
-New server variable <link linkend="guc-effective-wal-level"><varname>effective_wal_level</varname></link> reports the effective <acronym>WAL</acronym> level.
+New server variable <link linkend="guc-effective-wal-level"><varname>effective_wal_level</varname></link>, application <link linkend="app-pgcontroldata"><application>pg_controldata</application></link>,
+and function <link linkend="functions-pg-control-checkpoint"><function>pg_control_checkpoint()</function></link> report the effective <acronym>WAL</acronym> level.
+</para>
+</listitem>
+
+<!--
+Author: Fujii Masao <fujii@postgresql.org>
+2026-02-20 [8a6af3ad0] Make GUC wal_receiver_timeout user-settable.
+Author: Fujii Masao <fujii@postgresql.org>
+2026-02-20 [fb80f388f] Add per-subscription wal_receiver_timeout setting.
+-->
+
+<listitem>
+<para>
+Allow <link linkend="guc-wal-receiver-timeout"><varname>wal_receiver_timeout</varname></link> to be set per-subscription and user (Fujii Masao)
+<ulink url="&commit_baseurl;8a6af3ad0">&sect;</ulink>
+<ulink url="&commit_baseurl;fb80f388f">&sect;</ulink>
+</para>
+
+<para>
+This allows subscribers to use different <link linkend="guc-wal-receiver-timeout"><varname>wal_receiver_timeout</varname></link> values.
+</para>
+</listitem>
+
+<!--
+Author: Amit Kapila <akapila@postgresql.org>
+2025-09-19 [5b148706c] Add optional pid parameter to pg_replication_origin_sess
+-->
+
+<listitem>
+<para>
+Add optional pid parameter to <link linkend="pg-replication-origin-session-setup"><function>pg_replication_origin_session_setup()</function></link> to allow parallelization of <acronym>SQL</acronym>-level replication solutions (Doruk Yilmaz, Hayato Kuroda)
+<ulink url="&commit_baseurl;5b148706c">&sect;</ulink>
 </para>
 </listitem>
 
@@ -1656,59 +1689,6 @@ New server variable <link linkend="guc-effective-wal-level"><varname>effective_w
     <title>Query Commands</title>
 
     <itemizedlist>
-<!--
-Author: Peter Eisentraut <peter@eisentraut.org>
-2026-03-16 [2f094e7ac] SQL Property Graph Queries (SQL/PGQ)
-Author: Peter Eisentraut <peter@eisentraut.org>
-2026-03-31 [c5b3253b8] Property references are preferred over regular column re
-Author: Peter Eisentraut <peter@eisentraut.org>
-2026-03-31 [a0dd0702e] Fix cross variable references in graph pattern causing s
--->
-
-<listitem>
-<para>
-Add support for <acronym>SQL</acronym> Property Graph Queries (<acronym>SQL</acronym>/<acronym>PGQ</acronym>) (Peter Eisentraut, Ashutosh Bapat)
-<ulink url="&commit_baseurl;2f094e7ac">&sect;</ulink>
-<ulink url="&commit_baseurl;c5b3253b8">&sect;</ulink>
-<ulink url="&commit_baseurl;a0dd0702e">&sect;</ulink>
-</para>
-
-<para>
-Internally these are processed like views so are written as standard relational queries.
-</para>
-</listitem>
-
-<!--
-Author: Peter Eisentraut <peter@eisentraut.org>
-2026-04-01 [8e72d914c] Add UPDATE/DELETE FOR PORTION OF
-Author: Peter Eisentraut <peter@eisentraut.org>
-2026-04-07 [b6ccd30d8] Add isolation tests for UPDATE/DELETE FOR PORTION OF
--->
-
-<listitem>
-<para>
-Add <literal>FOR PORTION OF</literal> clause to <link linkend="sql-update"><command>UPDATE</command></link> and <link linkend="sql-delete"><command>DELETE</command></link> (Paul A. Jungwirth)
-<ulink url="&commit_baseurl;8e72d914c">&sect;</ulink>
-<ulink url="&commit_baseurl;b6ccd30d8">&sect;</ulink>
-</para>
-
-<para>
-This allows operations on temporal ranges.
-</para>
-</listitem>
-
-<!--
-Author: Tom Lane <tgl@sss.pgh.pa.us>
-2025-09-29 [ef38a4d97] Add GROUP BY ALL.
--->
-
-<listitem>
-<para>
-Add <literal>GROUP BY ALL</literal> syntax to <link linkend="sql-select"><command>SELECT</command></link> to automatically group all non-aggregate and non-window-function target list parameters (David Christensen)
-<ulink url="&commit_baseurl;ef38a4d97">&sect;</ulink>
-</para>
-</listitem>
-
 <!--
 Author: Tom Lane <tgl@sss.pgh.pa.us>
 2026-03-06 [415100aa6] Support grouping-expression references and GROUPING() in
@@ -1804,21 +1784,6 @@ This is enabled via the <literal>CONCURRENTLY</literal> option.  Server variable
 </listitem>
 
 <!--
-Author: Alexander Korotkov <akorotkov@postgresql.org>
-2025-12-14 [f2e4cc427] Implement ALTER TABLE ... MERGE PARTITIONS ... command
-Author: Alexander Korotkov <akorotkov@postgresql.org>
-2025-12-14 [4b3d17362] Implement ALTER TABLE ... SPLIT PARTITION ... command
--->
-
-<listitem>
-<para>
-Allow partitions to be merged and split using <link linkend="sql-altertable"><command>ALTER TABLE ... MERGE/SPLIT PARTITIONS</command></link> (Dmitry Koval, Alexander Korotkov, Tender Wang, Richard Guo, Dagfinn Ilmari Mannsåker, Fujii Masao, Jian He)
-<ulink url="&commit_baseurl;f2e4cc427">&sect;</ulink>
-<ulink url="&commit_baseurl;4b3d17362">&sect;</ulink>
-</para>
-</listitem>
-
-<!--
 Author: Nathan Bossart <nathan@postgresql.org>
 2026-03-19 [dd1398f13] Allow choosing specific grantors via GRANT/REVOKE ... GR
 -->
@@ -1836,13 +1801,13 @@ The <literal>GRANTED BY</literal> clause controls this.
 
 <!--
 Author: Tom Lane <tgl@sss.pgh.pa.us>
-2026-04-06 [d51697484] Support more object types within CREATE SCHEMA.
+2026-04-06 [404db8f9e] Execute foreign key constraints in CREATE SCHEMA at the
 -->
 
 <listitem>
 <para>
-Allow <link linkend="sql-createschema"><command>CREATE SCHEMA</command></link> to create more types of objects in newly-created schemas (Kirill Reshke, Jian He, Tom Lane)
-<ulink url="&commit_baseurl;d51697484">&sect;</ulink>
+Support forward references in <literal>FOREIGN KEY</literal> constraint clauses within <link linkend="sql-createschema"><command>CREATE SCHEMA</command></link> (Jian He, Tom Lane)
+<ulink url="&commit_baseurl;404db8f9e">&sect;</ulink>
 </para>
 </listitem>
 
@@ -1880,6 +1845,18 @@ Author: Jeff Davis <jdavis@postgresql.org>
 Add <literal>CONNECTION</literal> clause to <link linkend="sql-createforeigndatawrapper"><command>CREATE FOREIGN DATA WRAPPER</command></link> to specify a function to be called for subscription connection parameters (Jeff Davis, Noriyoshi Shinoda)
 <ulink url="&commit_baseurl;8185bb534">&sect;</ulink>
 <ulink url="&commit_baseurl;90630ec42">&sect;</ulink>
+</para>
+</listitem>
+
+<!--
+Author: Tom Lane <tgl@sss.pgh.pa.us>
+2026-08-23 [165aa5040] Allow an aggregate's planner support function
+-->
+
+<listitem>
+<para>
+Add <literal>SUPPORT</literal> clause to <link linkend="sql-createaggregate"><command>CREATE AGGREGATE</command></link> so extensions can specify support functions to optimize aggregate calls (Tom Lane)
+<ulink url="&commit_baseurl;165aa5040">&sect;</ulink>
 </para>
 </listitem>
 
@@ -2123,7 +2100,7 @@ Author: Nathan Bossart <nathan@postgresql.org>
 
 <listitem>
 <para>
-Add ability to cast between database names and <link linkend="datatype-oid"><type>oid8</type></link>s using <link linkend="datatype-oid"><type>regdatabase</type></link> (Ian Lawrence Barwick)
+Add ability to cast between database names and <link linkend="datatype-oid"><type>oid</type></link>s using <link linkend="datatype-oid"><type>regdatabase</type></link> (Ian Lawrence Barwick)
 <ulink url="&commit_baseurl;bd09f024a">&sect;</ulink>
 </para>
 </listitem>
@@ -2246,42 +2223,6 @@ The Dutch stemmer has also been updated.  The old Dutch stemmer is available via
 </listitem>
 
 <!--
-Author: Andrew Dunstan <andrew@dunslane.net>
-2026-04-05 [76e514ebb] Add pg_get_role_ddl() function
--->
-
-<listitem>
-<para>
-Add function <link linkend="functions-get-object-ddl-table"><function>pg_get_role_ddl()</function></link> to output role creation commands (Mario Gonzalez, Bryan Green, Andrew Dunstan, Euler Taveira)
-<ulink url="&commit_baseurl;76e514ebb">&sect;</ulink>
-</para>
-</listitem>
-
-<!--
-Author: Andrew Dunstan <andrew@dunslane.net>
-2026-04-05 [b99fd9fd7] Add pg_get_tablespace_ddl() function
--->
-
-<listitem>
-<para>
-Add function <link linkend="functions-get-object-ddl-table"><function>pg_get_tablespace_ddl()</function></link> to output tablespace creation commands (Nishant Sharma, Manni Wood, Andrew Dunstan, Euler Taveira)
-<ulink url="&commit_baseurl;b99fd9fd7">&sect;</ulink>
-</para>
-</listitem>
-
-<!--
-Author: Andrew Dunstan <andrew@dunslane.net>
-2026-04-05 [a4f774cf1] Add pg_get_database_ddl() function
--->
-
-<listitem>
-<para>
-Add function <link linkend="functions-get-object-ddl-table"><function>pg_get_database_ddl()</function></link> to output database creation commands (Akshay Joshi, Andrew Dunstan, Euler Taveira)
-<ulink url="&commit_baseurl;a4f774cf1">&sect;</ulink>
-</para>
-</listitem>
-
-<!--
 Author: Peter Eisentraut <peter@eisentraut.org>
 2025-08-21 [53eff471c] PL/Python: Add event trigger support
 -->
@@ -2320,20 +2261,12 @@ Author: Jacob Champion <jchampion@postgresql.org>
 
 <listitem>
 <para>
-Add special libpq protocol version 3.9999 for version testing (Jelte Fennema-Nio)
+Add special libpq protocol parameters for compatibility testing (Jelte Fennema-Nio, Jacob Champion)
 <ulink url="&commit_baseurl;d8d7c5dc8">&sect;</ulink>
 </para>
-</listitem>
 
-<!--
-Author: Jacob Champion <jchampion@postgresql.org>
-2026-03-05 [b8d768583] libpq: Add PQgetThreadLock() to mirror PQregisterThreadL
--->
-
-<listitem>
 <para>
-Add libpq function <link linkend="libpq-threading"><function>PQgetThreadLock()</function></link> to retrieve the current locking callback (Jacob Champion)
-<ulink url="&commit_baseurl;b8d768583">&sect;</ulink>
+Otherwise known as <ulink url="https://wiki.postgresql.org/wiki/Grease">protocol grease</ulink>, which was active during the 19 beta period. These will no longer be sent as of the <productname>PostgreSQL</productname> 19 official release, but the parameter reservations will remain for potential use in the future.
 </para>
 </listitem>
 
@@ -2344,40 +2277,12 @@ Author: Jacob Champion <jchampion@postgresql.org>
 
 <listitem>
 <para>
-Add libpq connection parameter <link linkend="libpq-connect-oauth-ca-file"><varname>oauth_ca_file</varname></link> to specify the <acronym>OAUTH</acronym> certificate authority file (Jonathan Gonzalez V., Jacob Champion)
+Add libpq connection parameter <link linkend="libpq-connect-oauth-ca-file"><varname>oauth_ca_file</varname></link> to specify an alternate certificate authority when communicating with OAuth providers (Jonathan Gonzalez V., Jacob Champion)
 <ulink url="&commit_baseurl;993368113">&sect;</ulink>
 </para>
 
 <para>
 This can also be set via the <link linkend="libpq-envars"><envar>PGOAUTHCAFILE</envar></link> environment variable.  The default is to use <application>curl</application>'s built-in certificates.
-</para>
-</listitem>
-
-<!--
-Author: Jacob Champion <jchampion@postgresql.org>
-2026-04-07 [b977bd308] oauth: Allow validators to register custom HBA options
--->
-
-<listitem>
-<para>
-Allow custom <acronym>OAUTH</acronym> validators to register custom <link linkend="auth-pg-hba-conf"><filename>pg_hba.conf</filename></link> authentication options (Jacob Champion)
-<ulink url="&commit_baseurl;b977bd308">&sect;</ulink>
-</para>
-</listitem>
-
-<!--
-Author: Jacob Champion <jchampion@postgresql.org>
-2026-04-03 [d438a3659] oauth: Let validators provide failure DETAILs
--->
-
-<listitem>
-<para>
-Allow <acronym>OAUTH</acronym> validators to supply failure details (Jacob Champion)
-<ulink url="&commit_baseurl;d438a3659">&sect;</ulink>
-</para>
-
-<para>
-This is done by setting the <link linkend="oauth-validator-callback-validate"><structname>ValidatorModuleResult</structname></link> structure member error_detail.
 </para>
 </listitem>
 
@@ -2394,6 +2299,37 @@ Allow libpq environment variable <link linkend="libpq-envars"><envar>PGOAUTHDEBU
 
 <para>
 The <literal>UNSAFE</literal> option still generates all debugging output.
+</para>
+</listitem>
+
+<!--
+Author: Jacob Champion <jchampion@postgresql.org>
+2026-03-06 [e982331b5] libpq: Introduce PQAUTHDATA_OAUTH_BEARER_TOKEN_V2
+Author: Jacob Champion <jchampion@postgresql.org>
+2026-03-31 [0af4d402c] libpq: Poison the v2 part of a v1 Bearer request
+-->
+
+<listitem>
+<para>
+Improve custom OAuth client flows (Jacob Champion)
+<ulink url="&commit_baseurl;e982331b5">&sect;</ulink>
+<ulink url="&commit_baseurl;0af4d402c">&sect;</ulink>
+</para>
+
+<para>
+Previously, libpq reported only a generic error message during custom flow failures, and each flow implementation was required to calculate the issuer identifier independently. Add a new authdata hook type <link linkend="libpq-oauth-authdata-oauth-bearer-token-v2"><literal>PQAUTHDATA_OAUTH_BEARER_TOKEN_V2</literal></link> that precomputes the issuer ID and lets hooks provide error details.
+</para>
+</listitem>
+
+<!--
+Author: Jacob Champion <jchampion@postgresql.org>
+2026-03-05 [b8d768583] libpq: Add PQgetThreadLock() to mirror PQregisterThreadL
+-->
+
+<listitem>
+<para>
+Add libpq function <link linkend="libpq-threading"><function>PQgetThreadLock()</function></link> to retrieve the current locking callback (Jacob Champion)
+<ulink url="&commit_baseurl;b8d768583">&sect;</ulink>
 </para>
 </listitem>
 
@@ -2549,6 +2485,18 @@ Add or improve <link linkend="app-psql"><application>psql</application></link> t
 
     <itemizedlist>
 <!--
+Author: Michael Paquier <michael@paquier.xyz>
+2026-01-27 [c32fb29e9] Include extended statistics data in pg_dump
+-->
+
+<listitem>
+<para>
+Allow <link linkend="app-pgdump"><application>pg_dump</application></link> to include restorable extended statistics (Corey Huinker)
+<ulink url="&commit_baseurl;c32fb29e9">&sect;</ulink>
+</para>
+</listitem>
+
+<!--
 Author: Fujii Masao <fujii@postgresql.org>
 2025-08-20 [6429e5b77] vacuumdb: Make vacuumdb - -analyze-only process partition
 Author: Fujii Masao <fujii@postgresql.org>
@@ -2679,30 +2627,7 @@ Report nanoseconds instead of microseconds.  In addition to histogram output, ou
 </para>
 </listitem>
 
-    </itemizedlist>
-
-    <sect4 id="release-19-pgdump">
-     <title><link
-     linkend="app-pgdump"><application>pg_dump</application></link>/<link
-     linkend="app-pg-dumpall"><application>pg_dumpall</application></link>/<link
-     linkend="app-pgrestore"><application>pg_restore</application></link></title>
-
-     <itemizedlist>
-<!--
-Author: Michael Paquier <michael@paquier.xyz>
-2026-01-27 [c32fb29e9] Include extended statistics data in pg_dump
--->
-
-<listitem>
-<para>
-Allow <link linkend="app-pgdump"><application>pg_dump</application></link> to include restorable extended statistics (Corey Huinker)
-<ulink url="&commit_baseurl;c32fb29e9">&sect;</ulink>
-</para>
-</listitem>
-
      </itemizedlist>
-
-    </sect4>
 
     <sect4 id="release-19-pg-createsubscriber">
      <title><link linkend="app-pgcreatesubscriber"><application>pg_createsubscriber</application></link></title>
@@ -3000,14 +2925,18 @@ Change function prototypes to use <literal>uint*</literal> instead of <literal>b
 </listitem>
 
 <!--
-Author: Álvaro Herrera <alvherre@kurilemu.de>
-2026-04-07 [0d3dba38c] Allow logical replication snapshots to be database-speci
+Author: Jacob Champion <jchampion@postgresql.org>
+2026-04-03 [d438a3659] oauth: Let validators provide failure DETAILs
 -->
 
 <listitem>
 <para>
-Allow <link linkend="logicaldecoding-pgoutput">logical decoding plugins</link> to specify if they do not access shared catalogs (Antonin Houska)
-<ulink url="&commit_baseurl;0d3dba38c">&sect;</ulink>
+Allow OAuth validators to supply failure details (Jacob Champion)
+<ulink url="&commit_baseurl;d438a3659">&sect;</ulink>
+</para>
+
+<para>
+This is done by setting the <link linkend="oauth-validator-callback-validate"><structname>ValidatorModuleResult</structname></link> structure member error_detail.
 </para>
 </listitem>
 
@@ -3189,16 +3118,19 @@ Allow pushdown of array comparisons in <link linkend="sql-prepare">prepared stat
 <!--
 Author: Etsuro Fujita <efujita@postgresql.org>
 2026-04-08 [28972b6fc] Add support for importing statistics from remote servers
+Author: Etsuro Fujita <efujita@postgresql.org>
+2026-08-14 [48965e146] postgres_fdw: Rename option "restore_stats" to
 -->
 
 <listitem>
 <para>
 Allow the retrieval of statistics from <link linkend="sql-createforeigndatawrapper">foreign data wrapper servers</link> (Corey Huinker, Etsuro Fujita)
 <ulink url="&commit_baseurl;28972b6fc">&sect;</ulink>
+<ulink url="&commit_baseurl;48965e146">&sect;</ulink>
 </para>
 
 <para>
-This is enabled for <xref linkend="postgres-fdw"/> by using the option <literal>restore_stats</literal>.  The default is for <link linkend="sql-analyze"><command>ANALYZE</command></link> to retrieve rows from the remote server to locally generate statistics.
+This is enabled for <xref linkend="postgres-fdw"/> by using the option <literal>import_stats</literal>.  The default is for <link linkend="sql-analyze"><command>ANALYZE</command></link> to retrieve rows from the remote server to locally generate statistics.
 </para>
 </listitem>
 
@@ -3323,7 +3255,651 @@ Modify <link linkend="oid2name"><application>oid2name</application></link> <opti
    </para>
 
    <simplelist>
-    <member><emphasis>fill in later</emphasis></member>
+    <member>Adam Lee</member>
+    <member>Adam Pickering</member>
+    <member>Adam Warland</member>
+    <member>Aditya Gollamudi</member>
+    <member>Aditya Kamath</member>
+    <member>Afrah Razzak</member>
+    <member>Aidar Imamov</member>
+    <member>Ajay Pal</member>
+    <member>Ajin Cherian</member>
+    <member>Akshay Joshi</member>
+    <member>Alberto Piai</member>
+    <member>Aleksander Alekseev</member>
+    <member>Aleksey Solovev</member>
+    <member>Alex Guo</member>
+    <member>Alex Shapalov</member>
+    <member>Alex Young</member>
+    <member>Alexander Borisov</member>
+    <member>Alexander Kjäll</member>
+    <member>Alexander Korotkov</member>
+    <member>Alexander Kozhemyakin</member>
+    <member>Alexander Kukushkin</member>
+    <member>Alexander Kuzmenkov</member>
+    <member>Alexander Kuznetsov</member>
+    <member>Alexander Lakhin</member>
+    <member>Alexander Pyhalov</member>
+    <member>Alexandra Wang</member>
+    <member>Alexandre Felipe</member>
+    <member>Alexey Makhmutov</member>
+    <member>Alexey Shishkin</member>
+    <member>Ali Akbar</member>
+    <member>Altan Birler</member>
+    <member>Álvaro Herrera</member>
+    <member>Alyona Vinter</member>
+    <member>Amit Kapila</member>
+    <member>Amit Langote</member>
+    <member>Amjad Shahzad</member>
+    <member>Amul Sul</member>
+    <member>Amy Burnett</member>
+    <member>Andreas Karlsson</member>
+    <member>Andreas Lind</member>
+    <member>Andrei Klychkov</member>
+    <member>Andrei Lepikhov</member>
+    <member>Andrei Varashen</member>
+    <member>Andres Freund</member>
+    <member>Andrew Bille</member>
+    <member>Andrew Dunstan</member>
+    <member>Andrew Gierth</member>
+    <member>Andrew Jackson</member>
+    <member>Andrew Kim</member>
+    <member>Andrew Krylosov</member>
+    <member>Andrew Watkins</member>
+    <member>Andrey Borodin</member>
+    <member>Andrey Chernyy</member>
+    <member>Andrey Rachitskiy</member>
+    <member>Andrey Rudometov</member>
+    <member>Andrey Silitskiy</member>
+    <member>Andrzej Doros</member>
+    <member>Andy Fan</member>
+    <member>Anh Khoa</member>
+    <member>Ante Kresic</member>
+    <member>Anthonin Bonnefoy</member>
+    <member>Antoine Violin</member>
+    <member>Anton Voloshin</member>
+    <member>Antonin Houska</member>
+    <member>Ants Aasma</member>
+    <member>Arne Roland</member>
+    <member>Arseniy Mukhin</member>
+    <member>Artem Gavrilov</member>
+    <member>Arthur Nascimento</member>
+    <member>Artur Zakirov</member>
+    <member>Ashutosh Bapat</member>
+    <member>Ashutosh Sharma</member>
+    <member>Atsuo Yamaguchi</member>
+    <member>Atsushi Torikoshi</member>
+    <member>Aya Iwata</member>
+    <member>Ayoub Kazar</member>
+    <member>Ayush Tiwari</member>
+    <member>Ayush Vatsa</member>
+    <member>Baji Shaik</member>
+    <member>Ben Morris</member>
+    <member>Benoit Lobréau</member>
+    <member>Bernd Helmle</member>
+    <member>Bernd Reiß</member>
+    <member>Bernice Southey</member>
+    <member>Bertrand Drouvot</member>
+    <member>Bharath Rupireddy</member>
+    <member>Bihua Wang</member>
+    <member>Bill Kim</member>
+    <member>Bing Tian</member>
+    <member>Bing’e Jin</member>
+    <member>Bob Kline</member>
+    <member>Bowen Shi</member>
+    <member>Brian Carpenter</member>
+    <member>Bruce Dang</member>
+    <member>Bruce Momjian</member>
+    <member>Bryan Fox</member>
+    <member>Bryan Green</member>
+    <member>Bykov Ivan</member>
+    <member>Cai Mengjuan</member>
+    <member>Cándido Antonio Martínez Descalzo</member>
+    <member>Cary Huang</member>
+    <member>Casey Shobe</member>
+    <member>Chaitanya Choudhary</member>
+    <member>ChangAo Chen</member>
+    <member>Changhong Fei</member>
+    <member>Chao Li</member>
+    <member>Charles Samborski</member>
+    <member>Chee Wooson</member>
+    <member>Chengpeng Yan</member>
+    <member>Chengxi Sun</member>
+    <member>Chi Zhang</member>
+    <member>Chiranmoy Bhattacharya</member>
+    <member>Chong Peng</member>
+    <member>Christian Ullrich</member>
+    <member>Christoph Berg</member>
+    <member>Christophe Pettus</member>
+    <member>Chuanwen Hu</member>
+    <member>Corey Huinker</member>
+    <member>DaeMyung Kang</member>
+    <member>Dagfinn Ilmari Mannsåker</member>
+    <member>Daisuke Higuchi</member>
+    <member>Damien Clochard</member>
+    <member>Dan Stefura</member>
+    <member>Daniel Bakker</member>
+    <member>Daniel Bauman</member>
+    <member>Daniel Farkaš</member>
+    <member>Daniel Firer</member>
+    <member>Daniel Gustafsson</member>
+    <member>Daniel Vérité</member>
+    <member>Daniel Woelfel</member>
+    <member>Daniele Varrazzo</member>
+    <member>Daniil Davydov</member>
+    <member>Dapeng Wang</member>
+    <member>Daria Shanina</member>
+    <member>Dave Cramer</member>
+    <member>David Bidoc</member>
+    <member>David Christensen</member>
+    <member>David Fetter</member>
+    <member>David G. Johnston</member>
+    <member>David Geier</member>
+    <member>David Rowley</member>
+    <member>David Steele</member>
+    <member>David Wheeler</member>
+    <member>Davin Shearer</member>
+    <member>Dean Rasheed</member>
+    <member>Devanga Susmitha</member>
+    <member>Devrim Gündüz</member>
+    <member>Dewei Dai</member>
+    <member>Dharin Shah</member>
+    <member>Dhruv Chauhan</member>
+    <member>Dian Fay</member>
+    <member>Diego Frias</member>
+    <member>Dilip Kumar</member>
+    <member>Dimitre Radoulov</member>
+    <member>Dimitri Fontaine</member>
+    <member>Dimitrios Apostolou</member>
+    <member>Dipesh Dhameliya</member>
+    <member>Dmitriy Kuzmin</member>
+    <member>Dmitry Astapov</member>
+    <member>Dmitry Dolgov</member>
+    <member>Dmitry Fomin</member>
+    <member>Dmitry Igrishin</member>
+    <member>Dmitry Koval</member>
+    <member>Dmitry Kovalenko</member>
+    <member>Dmitry Mityugov</member>
+    <member>Dmitry Yurichev</member>
+    <member>Dominique Devienne</member>
+    <member>Donghang Lin</member>
+    <member>Doruk Yilmaz</member>
+    <member>Egor Chindyaskin</member>
+    <member>Ekaterina Sokolova</member>
+    <member>Emmanuel Sibi</member>
+    <member>Emmanuel Touzery</member>
+    <member>Eric Ridge</member>
+    <member>Erik Nordström</member>
+    <member>Erik Rijkers</member>
+    <member>Erik Wienhold</member>
+    <member>Ethan Mertz</member>
+    <member>Etsuro Fujita</member>
+    <member>Eugene Morgunov</member>
+    <member>Euler Taveira</member>
+    <member>Evan Montgomery-Recht</member>
+    <member>Evan Si</member>
+    <member>Evgeniy Gorbanev</member>
+    <member>Evgeny Voropaev</member>
+    <member>Ewan Young</member>
+    <member>Fabrice Chapuis</member>
+    <member>Fabrízio de Royes Mello</member>
+    <member>Feilong Meng</member>
+    <member>Feng Wu</member>
+    <member>Filip Janus</member>
+    <member>Florents Tselai</member>
+    <member>Florin Irion</member>
+    <member>Francesco Verardi</member>
+    <member>François Jehl</member>
+    <member>Frédéric Yhuel</member>
+    <member>Fredrik Widlert</member>
+    <member>Gaurav Singh</member>
+    <member>Gavin Panella</member>
+    <member>George Tarasov</member>
+    <member>Gilles Darold</member>
+    <member>Gilles Parc</member>
+    <member>Giovanni Fabris</member>
+    <member>Glauber Batista</member>
+    <member>Gleb Kashkin</member>
+    <member>Greg Burd</member>
+    <member>Greg Sabino Mullane</member>
+    <member>Gregory Smith</member>
+    <member>Grem Snoort</member>
+    <member>Grigorev Jurij</member>
+    <member>Grigory Smolkin</member>
+    <member>Guillaume Lelarge</member>
+    <member>Gunnar Morling</member>
+    <member>Guoqing Yang</member>
+    <member>Gurjeet Singh</member>
+    <member>Gyan Sreejith</member>
+    <member>Haibo Yan</member>
+    <member>Haiyang Li</member>
+    <member>Hang Ammmkilo</member>
+    <member>Hannu Krosing</member>
+    <member>Hans Buschmann</member>
+    <member>Haowu Ge</member>
+    <member>Haoyan Wang</member>
+    <member>Haruka Takatsuka</member>
+    <member>Haruna Miwa</member>
+    <member>Hayato Kuroda</member>
+    <member>Heewon Song</member>
+    <member>Heikki Linnakangas</member>
+    <member>Henrik TJ</member>
+    <member>Henson Choi</member>
+    <member>Hillai Ben Sasson</member>
+    <member>Holger Hoffstätte</member>
+    <member>Hubert Lubaczewski</member>
+    <member>Hugo Dubois</member>
+    <member>Hüseyin Demir</member>
+    <member>Ian Barwick</member>
+    <member>Ignat Remizov</member>
+    <member>Igor Stepansky</member>
+    <member>Ilia Evdokimov</member>
+    <member>Ilia Kashintsev</member>
+    <member>Ilya Cherdakov</member>
+    <member>Ilya Portnov</member>
+    <member>Ilya Staroverov</member>
+    <member>Ilyasov Ian</member>
+    <member>Imran Zaheer</member>
+    <member>Ivan Kush</member>
+    <member>Izumi Igi</member>
+    <member>Jack Bonatakis</member>
+    <member>Jacob Brazeal</member>
+    <member>Jacob Champion</member>
+    <member>Jacques Combrink</member>
+    <member>Jakob Egger</member>
+    <member>Jakub Wartak</member>
+    <member>Jan Nidzwetzki</member>
+    <member>Japin Li</member>
+    <member>Jasper Smit</member>
+    <member>Javier Maestro</member>
+    <member>Jeevan Chalke</member>
+    <member>Jeff Davis</member>
+    <member>Jeff Janes</member>
+    <member>Jehan-Guillaume de Rorthais</member>
+    <member>Jelte Fennema-Nio</member>
+    <member>Jérémie Hodnik</member>
+    <member>Jeroen Gui</member>
+    <member>Ji Xu</member>
+    <member>Jian He</member>
+    <member>Jianghua Yang</member>
+    <member>Jiao Shuntian</member>
+    <member>Jie Wang</member>
+    <member>Jihe Wang</member>
+    <member>Jim Jones</member>
+    <member>Jim Nasby</member>
+    <member>Jingtang Zhang</member>
+    <member>Jingzhou Fu</member>
+    <member>Jinhui Lai</member>
+    <member>Jinyang Liu</member>
+    <member>Jochen Bandhauer</member>
+    <member>Joe Conway</member>
+    <member>Joel Jacobson</member>
+    <member>John Hsu</member>
+    <member>John Naylor</member>
+    <member>Jonas Boberg</member>
+    <member>Jonathan Gonzalez V.</member>
+    <member>Jonathan S. Katz</member>
+    <member>Jorge Solórzano</member>
+    <member>Josef Šimánek</member>
+    <member>Joseph Koshakow</member>
+    <member>Joshua Shanks</member>
+    <member>Julien Rouhaud</member>
+    <member>Julien Tachoires</member>
+    <member>Junwang Zhao</member>
+    <member>Junwen An</member>
+    <member>Justin Kwan</member>
+    <member>Justin Pryzby</member>
+    <member>Kamil Monicz</member>
+    <member>Karavaev Alexey</member>
+    <member>Karina Litskevich</member>
+    <member>Karthik S</member>
+    <member>Kartyshov Ivan</member>
+    <member>Ke Lan</member>
+    <member>Keisuke Kuroda</member>
+    <member>Keith Paskett</member>
+    <member>Kenny Chen</member>
+    <member>Kentaro Sato</member>
+    <member>Kevin K Biju</member>
+    <member>Kevin Oommen Anish</member>
+    <member>Kiran Kaki</member>
+    <member>Kirill Reshke</member>
+    <member>Konstantin Knizhnik</member>
+    <member>Krasiyan Andreev</member>
+    <member>Kristian Lejao</member>
+    <member>Kuan-Ting Kuo</member>
+    <member>Kunpeng Yi</member>
+    <member>Kuntal Ghosh</member>
+    <member>Kyotaro Horiguchi</member>
+    <member>Lakshmi G</member>
+    <member>Lakshmi N</member>
+    <member>Lars Kanis</member>
+    <member>Laurenz Albe</member>
+    <member>Lauri Siltanen</member>
+    <member>Lev Nikolaev</member>
+    <member>Lihui Zhang</member>
+    <member>Lori Corbani</member>
+    <member>Lu Feng</member>
+    <member>Lucas Velgus</member>
+    <member>Lucio Chiessi</member>
+    <member>Lukas Eder</member>
+    <member>Lukas Fittl</member>
+    <member>Maciek Sakrejda</member>
+    <member>Madhukar Prasad</member>
+    <member>Magnus Hagander</member>
+    <member>Mahendra Singh Thalor</member>
+    <member>Maksim Logvinenko</member>
+    <member>Maksim Melnikov</member>
+    <member>Maksim Milyutin</member>
+    <member>Man Zeng</member>
+    <member>Manni Wood</member>
+    <member>Manuel Reyes Bravo</member>
+    <member>Marco Nenciarini</member>
+    <member>Marcos Pegoraro</member>
+    <member>Marcus Gartner</member>
+    <member>Marian Muller Rebeyrol</member>
+    <member>Mario González</member>
+    <member>Mark Callaghan</member>
+    <member>Mark Dilger</member>
+    <member>Mark Frost</member>
+    <member>Mark Wong</member>
+    <member>Marko Grujic</member>
+    <member>Marko Tiikkaja</member>
+    <member>Martin Heistermann</member>
+    <member>Martin Rakhmanov</member>
+    <member>Masahiko Sawada</member>
+    <member>Masahiro Ikeda</member>
+    <member>Masao Fujii</member>
+    <member>Masashi Kamura</member>
+    <member>Matheus Alcantara</member>
+    <member>Mats Kindahl</member>
+    <member>Matt Long</member>
+    <member>Matthew Sterrett</member>
+    <member>Matthias van de Meent</member>
+    <member>Matthieu Denais</member>
+    <member>Matthijs van der Vleuten</member>
+    <member>Maxim Boguk</member>
+    <member>Maxim Orlov</member>
+    <member>Maxime Schoemans</member>
+    <member>Mehmet D. Ince</member>
+    <member>Melanie Plageman</member>
+    <member>Melih Mutlu</member>
+    <member>Meng Zhang</member>
+    <member>Merlin Moncure</member>
+    <member>Mert Alev</member>
+    <member>Michael Banck</member>
+    <member>Michael Malis</member>
+    <member>Michael Paquier</member>
+    <member>Michael Schönitzer</member>
+    <member>Mikael Gustavsson</member>
+    <member>Mikhail Gribkov</member>
+    <member>Mikhail Kot</member>
+    <member>Mikhail Litsarev</member>
+    <member>Mikhail Nikalayeu</member>
+    <member>Milosz Bieniek</member>
+    <member>Mingyang Zhen</member>
+    <member>Mircea Cadariu</member>
+    <member>Mohamed Ali</member>
+    <member>Moritz Sanft</member>
+    <member>Muhammad Taha Naveed</member>
+    <member>Mutaamba Maasha</member>
+    <member>Naga Appani</member>
+    <member>Natalya Aksman</member>
+    <member>Nathan Bossart</member>
+    <member>Nazir Bilal Yavuz</member>
+    <member>Neil Chen</member>
+    <member>Neil Conway</member>
+    <member>Niall Newman</member>
+    <member>Niccolò Fei</member>
+    <member>Nick Ivanov</member>
+    <member>Nicolas Adenis-Lamarre</member>
+    <member>Nikhil Kumar Veldanda</member>
+    <member>Nikhil Sontakke</member>
+    <member>Nikita Kalinin</member>
+    <member>Nikolay Samokhvalov</member>
+    <member>Nikolay Shaplov</member>
+    <member>Ning Sun</member>
+    <member>Ning Wu</member>
+    <member>Nisha Moond</member>
+    <member>Nishant Sharma</member>
+    <member>Nitin Jadhav</member>
+    <member>Nitin Motiani</member>
+    <member>Niyas Sait</member>
+    <member>Noah Misch</member>
+    <member>Noboru Saito</member>
+    <member>Noriyoshi Shinoda</member>
+    <member>Oleg Ivanov</member>
+    <member>Oleg Samoylov</member>
+    <member>Oleg Sibiryakov</member>
+    <member>Oleg Tkachenko</member>
+    <member>Oleg Tselebrovskiy</member>
+    <member>Oli Sennhauser</member>
+    <member>Oliver Ford</member>
+    <member>Oreo Yang</member>
+    <member>Orestis Markou</member>
+    <member>Osama Abdul Qader</member>
+    <member>Palak Chaturvedi</member>
+    <member>Palayret Jacques</member>
+    <member>Patrick Reynolds</member>
+    <member>Patrick Stählin</member>
+    <member>Paul Bunn</member>
+    <member>Paul Gerste</member>
+    <member>Paul Jungwirth</member>
+    <member>Paul Kim</member>
+    <member>Paul Ramsey</member>
+    <member>Pavel Borisov</member>
+    <member>Pavel Kohout</member>
+    <member>Pavel Kopylov</member>
+    <member>Pavel Luzanov</member>
+    <member>Pavel Seleznev</member>
+    <member>Pavel Stehule</member>
+    <member>Pavel Tyslacki</member>
+    <member>Pavlo Golub</member>
+    <member>Peng Wang</member>
+    <member>Peter Eisentraut</member>
+    <member>Peter Geoghegen</member>
+    <member>Peter Mitteregger</member>
+    <member>Peter Smith</member>
+    <member>Pierre Ducroquet</member>
+    <member>Pierre Forstmann</member>
+    <member>Pierre Senellart</member>
+    <member>Pierrick Chovelon</member>
+    <member>Potapov Alexander</member>
+    <member>Pradeep Kumar</member>
+    <member>Przemyslaw Sztoch</member>
+    <member>Qifan Liu</member>
+    <member>Qing Zhang</member>
+    <member>Quan Zongliang</member>
+    <member>Radim Marek</member>
+    <member>Rafia Sabih</member>
+    <member>Rahila Syed</member>
+    <member>Rambabu V</member>
+    <member>Ran Benita</member>
+    <member>Ranier Vilela</member>
+    <member>Renli Zou</member>
+    <member>Renzo Dani</member>
+    <member>Richard Guo</member>
+    <member>Richard Neill</member>
+    <member>Rick de Jager</member>
+    <member>Rintaro Ikeda</member>
+    <member>Rithvika Devisetti</member>
+    <member>Robert Haas</member>
+    <member>Robert Pang</member>
+    <member>Robert Treat</member>
+    <member>Rogers Wang</member>
+    <member>Rohit Prasad</member>
+    <member>Roman Khapov</member>
+    <member>Ronan Dunklau</member>
+    <member>Ruben Ruiz</member>
+    <member>Rui Zhao</member>
+    <member>Ruikai Peng</member>
+    <member>Runyuan He</member>
+    <member>Rustam Allakov</member>
+    <member>Rustam Khamidullin</member>
+    <member>Ryan Bird</member>
+    <member>Ryo Kanbayashi</member>
+    <member>Ryo Matsumura</member>
+    <member>Sadhuprasad Patro</member>
+    <member>Sahitya Chandra</member>
+    <member>Sajeeb Lohani</member>
+    <member>Sami Imseih</member>
+    <member>Samuel Thibault</member>
+    <member>Sandeep Thakkar</member>
+    <member>Sandro Santilli</member>
+    <member>Sanjaya Waruna</member>
+    <member>Sarath Kumar</member>
+    <member>Satya Narlapuram</member>
+    <member>Satyanarayana Narlapuram</member>
+    <member>Sehrope Sarkuni</member>
+    <member>Semih Dogan</member>
+    <member>Sergei Glukhov</member>
+    <member>Sergei Kornilov</member>
+    <member>Sergei Patiakin</member>
+    <member>Sergey Fukanchik</member>
+    <member>Sergey Koposov</member>
+    <member>Sergey Prokhorenko</member>
+    <member>Sergey Shinderuk</member>
+    <member>Sergey Soloviev</member>
+    <member>Sergey Tatarintsev</member>
+    <member>Sergey Zhuravlev</member>
+    <member>Shengbin Zhao</member>
+    <member>Shenhao Wang</member>
+    <member>Shihao Zhong</member>
+    <member>Shinya Kato</member>
+    <member>Shinya Sugamoto</member>
+    <member>Shishir Sharma</member>
+    <member>Shixin Wang</member>
+    <member>Shiyu Qin</member>
+    <member>Shlok Kyal</member>
+    <member>Shruthi Gowda</member>
+    <member>Shubham Khanna</member>
+    <member>Shveta Malik</member>
+    <member>Siddharth Kothari</member>
+    <member>Sirisha Chamarthi</member>
+    <member>Solaimurugan V</member>
+    <member>Songjin Zhou</member>
+    <member>Sophie Alpert</member>
+    <member>Soumya S Murali</member>
+    <member>Srinath Reddy Sadipiralla</member>
+    <member>Srirama Kucherlapati</member>
+    <member>Stepan Neretin</member>
+    <member>Stephan Springl</member>
+    <member>Stéphane Schildknecht</member>
+    <member>Stephane Tachoires</member>
+    <member>Stephen Frost</member>
+    <member>Steve Baldwin</member>
+    <member>Steve Lau</member>
+    <member>Steven Niu</member>
+    <member>Stolpovskikh Danil</member>
+    <member>Sungwoo Chang</member>
+    <member>Sunil S</member>
+    <member>Surya Poondla</member>
+    <member>Suyang Zhong</member>
+    <member>Sven Klemm</member>
+    <member>Swirl Smog Dowry</member>
+    <member>Sylvie Mayer</member>
+    <member>Taiki Koshino</member>
+    <member>Takamichi Osumi</member>
+    <member>Tan Yang</member>
+    <member>Tan Zhen</member>
+    <member>Tatsuhito Kasahara</member>
+    <member>Tatsuo Ishii</member>
+    <member>Tatsuro Yamada</member>
+    <member>Tatsuya Kawata</member>
+    <member>Tender Wang</member>
+    <member>Tenglong Gu</member>
+    <member>Thom Brown</member>
+    <member>Thomas Kellerer</member>
+    <member>Thomas Munro</member>
+    <member>Tianchen Zhang</member>
+    <member>Tiancheng Ge</member>
+    <member>Tim Wood</member>
+    <member>Timur Magomedov</member>
+    <member>Tingchuan Sun</member>
+    <member>Tobias Bussmann</member>
+    <member>Todd Lang</member>
+    <member>Todd Liebenschutz-Jones</member>
+    <member>Tom Lane</member>
+    <member>Tomas Vondra</member>
+    <member>Tomer Fichman</member>
+    <member>Torsten Förtsch</member>
+    <member>Torsten Rupp</member>
+    <member>Tristan Partin</member>
+    <member>Tushar Ahuja</member>
+    <member>Tyler Smart</member>
+    <member>Vaibhav Dalvi</member>
+    <member>Vaibhav Jain</member>
+    <member>Vaibhave Sekar</member>
+    <member>Valery Gubanov</member>
+    <member>Varik Matevosyan</member>
+    <member>Vasuki M</member>
+    <member>Victor Yegorov</member>
+    <member>Vignesh C</member>
+    <member>Vik Fearing</member>
+    <member>Viktor Holmberg</member>
+    <member>Viktor Leis</member>
+    <member>Vinod Sridharan</member>
+    <member>Vishal Prasanna</member>
+    <member>Vismay Tiwari</member>
+    <member>Vitaly Davydov</member>
+    <member>Vlad Lesin</member>
+    <member>Vladimir Tokarev</member>
+    <member>Walid Ibrahim</member>
+    <member>Wenhui Qiu</member>
+    <member>Xiangyu Liang</member>
+    <member>Xiaohui Liu</member>
+    <member>Xiaopeng Wang</member>
+    <member>Xing Guo</member>
+    <member>Xingbin She</member>
+    <member>Xingwang Xiang</member>
+    <member>Xueyu Gao</member>
+    <member>Xuneng Zhou</member>
+    <member>Xunqi Hu</member>
+    <member>Yang Zhu</member>
+    <member>Yanjie Zhao</member>
+    <member>Yanliang Lei</member>
+    <member>Yaroslav Saburov</member>
+    <member>Yaroslav Syrytsia</member>
+    <member>Yasuo Honda</member>
+    <member>Yi Ding</member>
+    <member>Yilin Zhang</member>
+    <member>Yingying Chen</member>
+    <member>Yiyang Liu</member>
+    <member>Yonghao Lee</member>
+    <member>Yonghwa Lee</member>
+    <member>Yu Wang</member>
+    <member>Yuan Li</member>
+    <member>Yuanchao Zhang</member>
+    <member>Yuanzhou Yang</member>
+    <member>Yuchen Li</member>
+    <member>Yuefei Shi</member>
+    <member>Yuelin Wang</member>
+    <member>Yugo Nagata</member>
+    <member>Yuhang Qiu</member>
+    <member>Yuhang Wu</member>
+    <member>Yura Sokolov</member>
+    <member>Yuri Zamyatin</member>
+    <member>Yuxiao Guo</member>
+    <member>Zane Duffield</member>
+    <member>Zechman, Derek S</member>
+    <member>Zengqi Gao</member>
+    <member>Zepeng Zhang</member>
+    <member>Zexin Li</member>
+    <member>Zhang Hu</member>
+    <member>Zhang Mingli</member>
+    <member>Zheng Tao</member>
+    <member>Zheng Wang</member>
+    <member>Zheng Yu</member>
+    <member>Zhenpeng Lin</member>
+    <member>Zhenwei Shang</member>
+    <member>Zhibai Song</member>
+    <member>Zhibin Wang</member>
+    <member>Zhihong Yu</member>
+    <member>Zhijie Hou</member>
+    <member>Zhiyuan Su</member>
+    <member>Zhou Digoal</member>
+    <member>Zizhen Qiao</member>
+    <member>Zizhuan Liu</member>
+    <member>Zsolt Parragi</member>
    </simplelist>
   </sect2>
 

@@ -528,3 +528,11 @@ SELECT '-92233720368547758.08'::money::numeric;
  -92233720368547758.08
 (1 row)
 
+SELECT '-92233720368547758.08'::money * -1::int8;
+ERROR:  money out of range
+SELECT '-92233720368547758.08'::money / -1::int8;
+ERROR:  money out of range
+SELECT '-92233720368547758.08'::money / -1::int4;
+ERROR:  money out of range
+SELECT '-92233720368547758.08'::money / -1::int2;
+ERROR:  money out of range
