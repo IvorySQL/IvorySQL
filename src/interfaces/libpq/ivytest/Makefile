@@ -18,7 +18,12 @@ PROGS = testlibpq testlibpqstmt2 testlibpq_nullstmt testlibpq_allout testlibpq_p
         testlibpq_binary_double testlibpq_binary_float testlibpq_interval testlibpq_number testlibpq_prepare_call \
 		testlibpq_call testlibpqstmt2_call
 
+PROGS += testlibpq_result_bounds
+
 all: $(PROGS)
+
+check: testlibpq_result_bounds
+	$(call add_to_path,$(strip $(ld_library_path_var)),$(abspath $(libpq_builddir))) ./testlibpq_result_bounds
 
 clean distclean maintainer-clean:
 	rm -f *.o
