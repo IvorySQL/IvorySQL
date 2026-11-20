@@ -3115,6 +3115,21 @@ exec_stmt_fori(PLiSQL_execstate * estate, PLiSQL_stmt_fori * stmt)
 	exec_eval_cleanup(estate);
 
 	/*
+	 * Oracle writes REVERSE loop bounds in ascending order (lower..upper) and
+	 * iterates from the upper bound down to the lower bound, with no
+	 * iterations when the first bound exceeds the second.  Swap the evaluated
+	 * bounds so the decrementing loop below matches that ordering; each bound
+	 * was already evaluated once, in written order.
+	 */
+	if (stmt->reverse)
+	{
+		int32		tmp = loop_value;
+
+		loop_value = end_value;
+		end_value = tmp;
+	}
+
+	/*
 	 * Get the step value
 	 */
 	if (stmt->step)
