@@ -21,16 +21,16 @@ begin
     raise notice '1..0 by 3: i = %', i;
   end loop;
   -- REVERSE
-  for i in reverse 10..0 by 3 loop
-    raise notice 'reverse 10..0 by 3: i = %', i;
+  for i in reverse 0..10 by 3 loop
+    raise notice 'reverse 0..10 by 3: i = %', i;
   end loop;
   -- potential overflow
   for i in 2147483620..2147483647 by 10 loop
     raise notice '2147483620..2147483647 by 10: i = %', i;
   end loop;
   -- potential overflow, reverse direction
-  for i in reverse -2147483620..-2147483647 by 10 loop
-    raise notice 'reverse -2147483620..-2147483647 by 10: i = %', i;
+  for i in reverse -2147483647..-2147483620 by 10 loop
+    raise notice 'reverse -2147483647..-2147483620 by 10: i = %', i;
   end loop;
 end$$;
 NOTICE:  1..3: i = 1
@@ -44,16 +44,16 @@ NOTICE:  1..11 by 3: i = 1
 NOTICE:  1..11 by 3: i = 4
 NOTICE:  1..11 by 3: i = 7
 NOTICE:  1..11 by 3: i = 10
-NOTICE:  reverse 10..0 by 3: i = 10
-NOTICE:  reverse 10..0 by 3: i = 7
-NOTICE:  reverse 10..0 by 3: i = 4
-NOTICE:  reverse 10..0 by 3: i = 1
+NOTICE:  reverse 0..10 by 3: i = 10
+NOTICE:  reverse 0..10 by 3: i = 7
+NOTICE:  reverse 0..10 by 3: i = 4
+NOTICE:  reverse 0..10 by 3: i = 1
 NOTICE:  2147483620..2147483647 by 10: i = 2147483620
 NOTICE:  2147483620..2147483647 by 10: i = 2147483630
 NOTICE:  2147483620..2147483647 by 10: i = 2147483640
-NOTICE:  reverse -2147483620..-2147483647 by 10: i = -2147483620
-NOTICE:  reverse -2147483620..-2147483647 by 10: i = -2147483630
-NOTICE:  reverse -2147483620..-2147483647 by 10: i = -2147483640
+NOTICE:  reverse -2147483647..-2147483620 by 10: i = -2147483620
+NOTICE:  reverse -2147483647..-2147483620 by 10: i = -2147483630
+NOTICE:  reverse -2147483647..-2147483620 by 10: i = -2147483640
 -- BY can't be zero or negative
 do $$
 begin
@@ -79,6 +79,85 @@ begin
 end$$;
 ERROR:  BY value of FOR loop must be greater than zero
 CONTEXT:  PL/iSQL function inline_code_block line 3 at FOR with integer loop variable
+-- REVERSE loops use Oracle bound ordering: bounds are written in ascending
+-- order and iteration runs from the upper bound down to the lower bound
+do $$
+declare n integer;
+begin
+  -- ascending bounds iterate downward
+  n := 0;
+  for i in reverse 1..3 loop
+    raise notice 'reverse 1..3: i = %', i;
+    n := n + 1;
+  end loop;
+  raise notice 'reverse 1..3 iterations: %', n;
+
+  -- lower bound above upper bound: no iterations
+  n := 0;
+  for i in reverse 3..1 loop
+    raise notice 'reverse 3..1: i = %', i;
+    n := n + 1;
+  end loop;
+  raise notice 'reverse 3..1 iterations: %', n;
+
+  -- equal bounds: one iteration
+  n := 0;
+  for i in reverse 2..2 loop
+    raise notice 'reverse 2..2: i = %', i;
+    n := n + 1;
+  end loop;
+  raise notice 'reverse 2..2 iterations: %', n;
+
+  -- step larger than the range: one iteration
+  n := 0;
+  for i in reverse 1..3 by 10 loop
+    raise notice 'reverse 1..3 by 10: i = %', i;
+    n := n + 1;
+  end loop;
+  raise notice 'reverse 1..3 by 10 iterations: %', n;
+
+  -- decrement down to INT32_MIN
+  for i in reverse (-2147483647 - 1)..-2147483646 loop
+    raise notice 'reverse min..min+1: i = %', i;
+  end loop;
+
+  -- decrement from INT32_MAX
+  for i in reverse 2147483645..2147483647 loop
+    raise notice 'reverse max-2..max: i = %', i;
+  end loop;
+end$$;
+NOTICE:  reverse 1..3: i = 3
+NOTICE:  reverse 1..3: i = 2
+NOTICE:  reverse 1..3: i = 1
+NOTICE:  reverse 1..3 iterations: 3
+NOTICE:  reverse 3..1 iterations: 0
+NOTICE:  reverse 2..2: i = 2
+NOTICE:  reverse 2..2 iterations: 1
+NOTICE:  reverse 1..3 by 10: i = 3
+NOTICE:  reverse 1..3 by 10 iterations: 1
+NOTICE:  reverse min..min+1: i = -2147483646
+NOTICE:  reverse min..min+1: i = -2147483647
+NOTICE:  reverse min..min+1: i = -2147483648
+NOTICE:  reverse max-2..max: i = 2147483647
+NOTICE:  reverse max-2..max: i = 2147483646
+NOTICE:  reverse max-2..max: i = 2147483645
+-- bounds are evaluated once each, in written order
+create sequence fori_reverse_seq;
+do $$
+begin
+  for i in reverse nextval('fori_reverse_seq')..nextval('fori_reverse_seq') loop
+    raise notice 'reverse seq: i = %', i;
+  end loop;
+end$$;
+NOTICE:  reverse seq: i = 2
+NOTICE:  reverse seq: i = 1
+select currval('fori_reverse_seq');
+ currval 
+---------
+       2
+(1 row)
+
+drop sequence fori_reverse_seq;
 -- CONTINUE statement
 create table conttesttbl(idx serial, v integer);
 insert into conttesttbl(v) values(10);
