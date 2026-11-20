@@ -1,0 +1,45 @@
+-- Oracle-mode SELECT ... INTO must raise NO_DATA_FOUND / TOO_MANY_ROWS
+create table plisql_sio_t (id int);
+insert into plisql_sio_t values (1), (2);
+
+do $$
+declare
+  v int := -99;
+begin
+  begin
+    select id into v from plisql_sio_t where id = 42;
+    raise notice 'zero rows: no error, v=%', v;
+  exception
+    when no_data_found then
+      raise notice 'zero rows: caught NO_DATA_FOUND';
+  end;
+
+  begin
+    select id into v from plisql_sio_t order by id;
+    raise notice 'many rows: no error, v=%', v;
+  exception
+    when too_many_rows then
+      raise notice 'many rows: caught TOO_MANY_ROWS';
+  end;
+
+  select id into v from plisql_sio_t where id = 2;
+  raise notice 'one row: v=%', v;
+end
+$$;
+
+-- DML ... RETURNING INTO is not an implicit cursor: zero affected rows
+-- still sets the target to NULL instead of raising NO_DATA_FOUND.
+create table plisql_sio_dml (id int);
+insert into plisql_sio_dml values (1);
+
+do $$
+declare
+  v int := -99;
+begin
+  update plisql_sio_dml set id = id + 1 where id = 42 returning id into v;
+  raise notice 'dml zero rows: v=%', v;
+end
+$$;
+
+drop table plisql_sio_dml;
+drop table plisql_sio_t;
