@@ -2098,11 +2098,11 @@ FROM v;
 ------------+---------+--------+--------
           0 |    .00  |    .00 |    .00
        -4.2 | - 4.20  | - 4.20 | - 4.20
- 4200000000 |  ##.##  |  ##.## |  ##.
+ 4200000000 | ######  | ###### | ####
    0.000012 |    .00  |    .00 |    .00
-   Infinity |  ##.##  |  ##.## |  ##.
-  -Infinity | -##.##  | -##.## | -##.
-        NaN |  ##.##  |  ##.## |  ##.##
+   Infinity | ######  | ###### | ####
+  -Infinity | ######  | ###### | ####
+        NaN | ######  | ###### | ######
 (7 rows)
 
 SELECT to_char('100'::numeric, 'FM999.9');
@@ -2126,7 +2126,7 @@ SELECT to_char('100'::numeric, 'FM999');
 SELECT to_char('12345678901'::float8, 'FM9999999999D9999900000000000000000');
      to_char     
 -----------------
- ##########.####
+ ###############
 (1 row)
 
 SELECT to_char('100'::numeric, 'rn');
@@ -3739,3 +3739,26 @@ ERROR:  pg_lsn out of range
 SELECT pg_lsn('NaN'::numeric);
 ERROR:  cannot convert NaN to pg_lsn
 reset ivorysql.enable_emptystring_to_null;
+--
+-- TO_CHAR() overflow fills the whole output field with '#'
+-- in Oracle mode, including the sign and the decimal point
+-- (https://github.com/IvorySQL/IvorySQL/issues/3349)
+--
+SELECT '[' || TO_CHAR(12345, '999') || ']'  AS pos,
+       '[' || TO_CHAR(-12345, '999') || ']' AS neg,
+       '[' || TO_CHAR(12.5, '9.9')   || ']' AS dec,
+       '[' || TO_CHAR(1000, '99')    || ']' AS small;
+  pos   |  neg   |  dec   | small 
+--------+--------+--------+-------
+ [####] | [####] | [####] | [###]
+(1 row)
+
+SELECT '[' || TO_CHAR(12345::int8, '999') || ']'    AS int8,
+       '[' || TO_CHAR(12.5::float8, '9.9') || ']'   AS float8,
+       '[' || TO_CHAR(12345::float4, '999') || ']'  AS float4,
+       '[' || TO_CHAR(123, '999') || ']'            AS no_overflow;
+  int8  | float8 | float4 | no_overflow 
+--------+--------+--------+-------------
+ [####] | [####] | [####] | [ 123]
+(1 row)
+

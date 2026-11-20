@@ -1551,3 +1551,17 @@ SELECT pg_lsn(-1::numeric);
 SELECT pg_lsn(18446744073709551616::numeric);
 SELECT pg_lsn('NaN'::numeric);
 reset ivorysql.enable_emptystring_to_null;
+
+--
+-- TO_CHAR() overflow fills the whole output field with '#'
+-- in Oracle mode, including the sign and the decimal point
+-- (https://github.com/IvorySQL/IvorySQL/issues/3349)
+--
+SELECT '[' || TO_CHAR(12345, '999') || ']'  AS pos,
+       '[' || TO_CHAR(-12345, '999') || ']' AS neg,
+       '[' || TO_CHAR(12.5, '9.9')   || ']' AS dec,
+       '[' || TO_CHAR(1000, '99')    || ']' AS small;
+SELECT '[' || TO_CHAR(12345::int8, '999') || ']'    AS int8,
+       '[' || TO_CHAR(12.5::float8, '9.9') || ']'   AS float8,
+       '[' || TO_CHAR(12345::float4, '999') || ']'  AS float4,
+       '[' || TO_CHAR(123, '999') || ']'            AS no_overflow;

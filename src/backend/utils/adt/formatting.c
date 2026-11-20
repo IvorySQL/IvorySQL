@@ -8105,6 +8105,13 @@ do { \
 									\
 	NUM_processor(format, &Num, VARDATA(result), numstr, 0, out_pre_spaces, sign, true, PG_GET_COLLATION()); \
 									\
+	/* In Oracle mode, a numeric overflow fills the whole output \
+	 * field with '#', including the sign and the decimal point, \
+	 * matching Oracle's TO_CHAR().  In PostgreSQL mode only the \
+	 * digit positions are filled, as before. */ \
+	if (num_overflow) \
+		memset(VARDATA(result), '#', strlen(VARDATA(result))); \
+									\
 	if (shouldFree)					\
 		pfree(format);				\
 									\
@@ -8189,6 +8196,7 @@ numeric_to_char(PG_FUNCTION_ARGS)
 	bool		shouldFree;
 	int			out_pre_spaces = 0,
 				sign = 0;
+	bool		num_overflow = false;
 	char	   *numstr,
 			   *orgnum,
 			   *p;
@@ -8292,6 +8300,11 @@ numeric_to_char(PG_FUNCTION_ARGS)
 		/* overflowed prefix digit format? */
 		else if (numstr_pre_len > Num.pre)
 		{
+			/* In Oracle mode, NUM_TOCHAR_finish fills the whole
+			 * output field with '#', including the sign and the
+			 * decimal point, as in Oracle's TO_CHAR(). */
+			if (database_mode == DB_ORACLE)
+				num_overflow = true;
 			numstr = (char *) palloc(Num.pre + Num.post + 2);
 			fill_str(numstr, '#', Num.pre + Num.post + 1);
 			*(numstr + Num.pre) = '.';
@@ -8316,6 +8329,7 @@ int4_to_char(PG_FUNCTION_ARGS)
 	bool		shouldFree;
 	int			out_pre_spaces = 0,
 				sign = 0;
+	bool		num_overflow = false;
 	char	   *numstr,
 			   *orgnum;
 
@@ -8385,6 +8399,11 @@ int4_to_char(PG_FUNCTION_ARGS)
 		/* overflowed prefix digit format? */
 		else if (numstr_pre_len > Num.pre)
 		{
+			/* In Oracle mode, NUM_TOCHAR_finish fills the whole
+			 * output field with '#', including the sign and the
+			 * decimal point, as in Oracle's TO_CHAR(). */
+			if (database_mode == DB_ORACLE)
+				num_overflow = true;
 			numstr = (char *) palloc(Num.pre + Num.post + 2);
 			fill_str(numstr, '#', Num.pre + Num.post + 1);
 			*(numstr + Num.pre) = '.';
@@ -8409,6 +8428,7 @@ int8_to_char(PG_FUNCTION_ARGS)
 	bool		shouldFree;
 	int			out_pre_spaces = 0,
 				sign = 0;
+	bool		num_overflow = false;
 	char	   *numstr,
 			   *orgnum;
 
@@ -8496,6 +8516,11 @@ int8_to_char(PG_FUNCTION_ARGS)
 		/* overflowed prefix digit format? */
 		else if (numstr_pre_len > Num.pre)
 		{
+			/* In Oracle mode, NUM_TOCHAR_finish fills the whole
+			 * output field with '#', including the sign and the
+			 * decimal point, as in Oracle's TO_CHAR(). */
+			if (database_mode == DB_ORACLE)
+				num_overflow = true;
 			numstr = (char *) palloc(Num.pre + Num.post + 2);
 			fill_str(numstr, '#', Num.pre + Num.post + 1);
 			*(numstr + Num.pre) = '.';
@@ -8520,6 +8545,7 @@ float4_to_char(PG_FUNCTION_ARGS)
 	bool		shouldFree;
 	int			out_pre_spaces = 0,
 				sign = 0;
+	bool		num_overflow = false;
 	char	   *numstr,
 			   *p;
 
@@ -8608,6 +8634,11 @@ float4_to_char(PG_FUNCTION_ARGS)
 		/* overflowed prefix digit format? */
 		else if (numstr_pre_len > Num.pre)
 		{
+			/* In Oracle mode, NUM_TOCHAR_finish fills the whole
+			 * output field with '#', including the sign and the
+			 * decimal point, as in Oracle's TO_CHAR(). */
+			if (database_mode == DB_ORACLE)
+				num_overflow = true;
 			numstr = (char *) palloc(Num.pre + Num.post + 2);
 			fill_str(numstr, '#', Num.pre + Num.post + 1);
 			*(numstr + Num.pre) = '.';
@@ -8632,6 +8663,7 @@ float8_to_char(PG_FUNCTION_ARGS)
 	bool		shouldFree;
 	int			out_pre_spaces = 0,
 				sign = 0;
+	bool		num_overflow = false;
 	char	   *numstr,
 			   *p;
 
@@ -8720,6 +8752,11 @@ float8_to_char(PG_FUNCTION_ARGS)
 		/* overflowed prefix digit format? */
 		else if (numstr_pre_len > Num.pre)
 		{
+			/* In Oracle mode, NUM_TOCHAR_finish fills the whole
+			 * output field with '#', including the sign and the
+			 * decimal point, as in Oracle's TO_CHAR(). */
+			if (database_mode == DB_ORACLE)
+				num_overflow = true;
 			numstr = (char *) palloc(Num.pre + Num.post + 2);
 			fill_str(numstr, '#', Num.pre + Num.post + 1);
 			*(numstr + Num.pre) = '.';
