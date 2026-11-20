@@ -60,6 +60,7 @@
 #include "parser/parse_func.h"
 #include "parser/parse_oper.h"
 #include "parser/parse_relation.h"
+#include "parser/scansup.h"
 #include "parser/parser.h"
 #include "parser/parsetree.h"
 #include "parser/parse_type.h"
@@ -14410,6 +14411,33 @@ generate_qualified_relation_name(Oid relid)
 }
 
 /*
+ * Quote names used in generated function calls.  In interchange mode,
+ * compensate for the Oracle lexer only when the identifier needs quotes.
+ * Generic quoting is also used to store GUC values such as search_path,
+ * whose identifiers have already been through the lexer.
+ */
+static const char *
+quote_function_identifier(const char *ident)
+{
+	const char *quoted = quote_identifier(ident);
+
+	if (quoted != ident && compatible_db == ORA_PARSER &&
+		enable_case_switch && identifier_case_switch == INTERCHANGE &&
+		!identifier_case_from_pg_dump)
+	{
+		char	   *switched = identifier_case_transform(ident, strlen(ident));
+
+		pfree(unconstify(char *, quoted));
+		quoted = quote_identifier(switched);
+		if (quoted == switched)
+			quoted = psprintf("\"%s\"", switched);
+		pfree(switched);
+	}
+
+	return quoted;
+}
+
+/*
  * generate_function_name
  *		Compute the name to display for a function specified by OID,
  *		given that it is being called with the specified actual arg names and
@@ -14515,7 +14543,11 @@ generate_function_name(Oid funcid, int nargs, List *argnames, Oid *argtypes,
 	else
 		nspname = get_namespace_name_or_temp(procform->pronamespace);
 
-	result = quote_qualified_identifier(nspname, proname);
+	if (nspname)
+		result = psprintf("%s.%s", quote_function_identifier(nspname),
+						  quote_function_identifier(proname));
+	else
+		result = pstrdup(quote_function_identifier(proname));
 
 	ReleaseSysCache(proctup);
 

@@ -335,3 +335,43 @@ DROP TABLE t_48;
 
 RESET ivorysql.identifier_case_switch;
 RESET ivorysql.enable_case_switch;
+
+-- Replaying SQL must not bind to a different function that differs only by case.
+SET ivorysql.identifier_case_switch = interchange;
+CREATE SCHEMA oracle_index_functions;
+CREATE FUNCTION oracle_index_functions."replay"(integer) RETURNS integer
+    LANGUAGE sql IMMUTABLE AS 'SELECT $1 + 1';
+CREATE FUNCTION oracle_index_functions."REPLAY"(integer) RETURNS integer
+    LANGUAGE sql IMMUTABLE AS 'SELECT $1 + 2';
+CREATE TEMP TABLE oracle_index_bindings (value integer);
+CREATE INDEX oracle_index_binding_orig ON oracle_index_bindings
+    (oracle_index_functions."replay"(value));
+SELECT replace(pg_get_indexdef('oracle_index_binding_orig'::regclass),
+               'INDEX oracle_index_binding_orig', 'INDEX oracle_index_binding_copy')
+    \gexec
+SELECT c.relname AS index_name, p.proname AS bound_function
+  FROM pg_depend AS d
+  JOIN pg_class AS c ON c.oid = d.objid
+  JOIN pg_proc AS p ON p.oid = d.refobjid
+ WHERE d.classid = 'pg_class'::regclass AND d.refclassid = 'pg_proc'::regclass
+   AND c.oid IN ('oracle_index_binding_orig'::regclass, 'oracle_index_binding_copy'::regclass)
+ ORDER BY c.relname;
+DROP TABLE oracle_index_bindings;
+DROP FUNCTION oracle_index_functions."replay"(integer);
+DROP FUNCTION oracle_index_functions."REPLAY"(integer);
+DROP SCHEMA oracle_index_functions;
+RESET ivorysql.identifier_case_switch;
+
+-- Replay a deparsed expression index under Oracle interchange rules.
+SET ivorysql.identifier_case_switch = interchange;
+CREATE TEMP TABLE oracle_index_probe (payload text, "MiXeD" text, "MiX""ed" text);
+CREATE INDEX oracle_index_orig ON oracle_index_probe
+    (left(payload, 10), "MiXeD", "MiX""ed");
+SELECT replace(pg_get_indexdef('oracle_index_orig'::regclass),
+               'INDEX oracle_index_orig', 'INDEX oracle_index_copy')
+    \gexec
+SELECT replace(pg_get_indexdef('oracle_index_orig'::regclass),
+               'INDEX oracle_index_orig', 'INDEX oracle_index_copy') =
+       pg_get_indexdef('oracle_index_copy'::regclass) AS same_definition;
+DROP TABLE oracle_index_probe;
+RESET ivorysql.identifier_case_switch;
