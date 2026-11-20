@@ -1479,6 +1479,13 @@ setup_connection(Archive *AH, const char *dumpencoding,
 			AH->use_role = pg_strdup(use_role);
 	}
 
+	/*
+	 * Match the Oracle restore default so deparsing retains an explicit
+	 * CHAR unit for length modifiers that need it.
+	 */
+	if (db_mode == DB_ORACLE && dopt->dumpSchema)
+		ExecuteSqlStatement(AH, "SET nls_length_semantics = byte");
+
 	/* Set the datestyle to ISO to ensure the dump's portability */
 	ExecuteSqlStatement(AH, "SET DATESTYLE = ISO");
 
@@ -3947,7 +3954,9 @@ dumpSearchPath(Archive *AH)
 	 * which seems like a prudent exclusion.
 	 */
 	res = ExecuteSqlQueryForSingleRow(AH,
-									  "SELECT pg_catalog.current_schemas(false)");
+									  "SELECT pg_catalog.current_schemas(false), "
+									  "EXISTS (SELECT 1 FROM pg_catalog.pg_settings "
+									  "WHERE name = 'ivorysql.compatible_mode' AND setting = 'oracle')");
 
 	if (!parsePGArray(PQgetvalue(res, 0, 0), &schemanames, &nschemanames))
 		pg_fatal("could not parse result of current_schemas()");
@@ -3968,6 +3977,15 @@ dumpSearchPath(Archive *AH)
 	appendPQExpBufferStr(qry, "SELECT pg_catalog.set_config('search_path', ");
 	appendStringLiteralAH(qry, path->data, AH);
 	appendPQExpBufferStr(qry, ", false);\n");
+
+	/*
+	 * Keep the restore settings with newly written Oracle archives.
+	 * Older archives may have bare CHAR-semantic routine declarations,
+	 * so pg_restore must continue to use their destination defaults.
+	 * Like search_path, the setting must reach every restore worker.
+	 */
+	if (AH->dopt->dumpSchema && strcmp(PQgetvalue(res, 0, 1), "t") == 0)
+		appendPQExpBufferStr(qry, ORACLE_DUMP_LENGTH_SEMANTICS_SQL);
 
 	pg_log_info("saving \"search_path = %s\"", path->data);
 
@@ -14233,6 +14251,7 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 	PQExpBuffer delqry;
 	PQExpBuffer asPart;
 	PGresult   *res;
+	PGresult   *type_res = NULL;
 	char	   *funcsig;		/* identity signature */
 	char	   *funcfullsig = NULL; /* full signature */
 	char	   *funcsig_tag;
@@ -14241,9 +14260,10 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 	char	   *prosrc;
 	char	   *probin;
 	char	   *prosqlbody;
-	char	   *funcargs;
-	char	   *funciargs;
-	char	   *funcresult;
+	const char *funcargs;
+	const char *funciargs;
+	const char *funcresult;
+	char	   *result_decl = NULL;
 	char	   *protrftypes;
 	char	   *prokind;
 	char	   *provolatile;
@@ -14291,6 +14311,16 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 							 "pg_catalog.pg_get_function_identity_arguments(p.oid) AS funciargs,\n"
 							 "pg_catalog.pg_get_function_result(p.oid) AS funcresult,\n"
 							 "proleakproof,\n");
+
+		appendPQExpBuffer(query,
+						  "(l.lanname <> 'plisql' AND EXISTS "
+						  "(SELECT 1 FROM pg_catalog.pg_settings "
+						  "WHERE name = 'ivorysql.compatible_mode' AND setting = 'oracle') "
+						  "AND COALESCE(p.proallargtypes, p.proargtypes::pg_catalog.oid[]) "
+						  "&& ARRAY[%u, %u, %u, %u]::pg_catalog.oid[]) "
+						  "AS qualify_routine_types,\n",
+						  ORAVARCHARCHAROID, ORACHARCHAROID,
+						  ORAVARCHARCHARARRAYOID, ORACHARCHARARRAYOID);
 
 		if (fout->remoteVersion >= 90500)
 			appendPQExpBufferStr(query,
@@ -14359,6 +14389,94 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 	funcargs = PQgetvalue(res, 0, PQfnumber(res, "funcargs"));
 	funciargs = PQgetvalue(res, 0, PQfnumber(res, "funciargs"));
 	funcresult = PQgetvalue(res, 0, PQfnumber(res, "funcresult"));
+
+	/*
+	 * Keep Oracle deparsing for other types and defaults. In
+	 * particular, bare date from the PostgreSQL deparser would resolve
+	 * to a different type with the Oracle parser.
+	 */
+	if (strcmp(PQgetvalue(res, 0, PQfnumber(res, "qualify_routine_types")), "t") == 0)
+	{
+		printfPQExpBuffer(query,
+						  "WITH args AS ("
+						  "SELECT a.n, p.proargmodes[a.n] AS argmode, "
+						  "pg_catalog.concat("
+						  "CASE p.proargmodes[a.n] WHEN 'o' THEN 'OUT ' "
+						  "WHEN 'b' THEN 'INOUT ' WHEN 'v' THEN 'VARIADIC ' "
+						  "WHEN 't' THEN NULL "
+						  "ELSE CASE WHEN p.prokind = 'p' THEN 'IN ' END END, "
+						  "CASE WHEN pg_catalog.length(p.proargnames[a.n]) > 0 "
+						  "THEN pg_catalog.quote_ident(p.proargnames[a.n]) || ' ' END, "
+						  "CASE COALESCE(e.oid, a.argtype) "
+						  "WHEN %u THEN pg_catalog.concat('sys.oravarcharchar', e.suffix) "
+						  "WHEN %u THEN pg_catalog.concat('sys.oravarcharbyte', e.suffix) "
+						  "WHEN %u THEN pg_catalog.concat('sys.oracharchar', e.suffix) "
+						  "WHEN %u THEN pg_catalog.concat('sys.oracharbyte', e.suffix) "
+						  "ELSE pg_catalog.format_type(a.argtype, NULL) END) AS declaration, "
+						  "pg_catalog.pg_get_function_arg_default(p.oid, a.n::int) AS argdefault "
+						  "FROM pg_catalog.pg_proc p, "
+						  "pg_catalog.unnest(COALESCE(p.proallargtypes, p.proargtypes::pg_catalog.oid[])) "
+						  "WITH ORDINALITY AS a(argtype, n) "
+						  "LEFT JOIN (SELECT oid, typarray, '[]' AS suffix "
+						  "FROM pg_catalog.pg_type WHERE typarray <> 0) e "
+						  "ON e.typarray = a.argtype WHERE p.oid = %u) "
+						  "SELECT pg_catalog.string_agg(pg_catalog.concat(declaration, "
+						  "CASE WHEN argdefault IS NOT NULL THEN ' DEFAULT ' || argdefault END), ', ' ORDER BY n) "
+						  "FILTER (WHERE argmode IS DISTINCT FROM 't'), "
+						  "pg_catalog.string_agg(declaration, ', ' ORDER BY n) "
+						  "FILTER (WHERE argmode IS DISTINCT FROM 't'), "
+						  "pg_catalog.string_agg(declaration, ', ' ORDER BY n) FILTER (WHERE argmode = 't') "
+						  "FROM args",
+						  ORAVARCHARCHAROID, ORAVARCHARBYTEOID,
+						  ORACHARCHAROID, ORACHARBYTEOID, finfo->dobj.catId.oid);
+		type_res = ExecuteSqlQueryForSingleRow(fout, query->data);
+		funcargs = PQgetvalue(type_res, 0, 0);
+		funciargs = PQgetvalue(type_res, 0, 1);
+		if (!PQgetisnull(type_res, 0, 2))
+		{
+			result_decl = psprintf("TABLE(%s)", PQgetvalue(type_res, 0, 2));
+			funcresult = result_decl;
+		}
+	}
+	/*
+	 * A bare Oracle CHAR type in a scalar or SETOF result is resolved
+	 * under BYTE on restore. Keep explicit, package, and TABLE result
+	 * declarations, and qualify just the ambiguous CHAR aliases.
+	 */
+	if (result_decl == NULL)
+	{
+		const char *bare = NULL;
+		const char *qualified = NULL;
+		const char *prefix = proretset[0] == 't' ? "SETOF " : "";
+
+		switch (finfo->prorettype)
+		{
+			case ORACHARCHAROID:
+				bare = "char";
+				qualified = "sys.oracharchar";
+				break;
+			case ORAVARCHARCHAROID:
+				bare = "varchar2";
+				qualified = "sys.oravarcharchar";
+				break;
+			case ORACHARCHARARRAYOID:
+				bare = "char[]";
+				qualified = "sys.oracharchar[]";
+				break;
+			case ORAVARCHARCHARARRAYOID:
+				bare = "varchar2[]";
+				qualified = "sys.oravarcharchar[]";
+				break;
+		}
+		if (bare &&
+			strncmp(funcresult, prefix, strlen(prefix)) == 0 &&
+			strcmp(funcresult + strlen(prefix), bare) == 0)
+		{
+			result_decl = psprintf("%s%s", prefix, qualified);
+			funcresult = result_decl;
+		}
+	}
+
 	protrftypes = PQgetvalue(res, 0, PQfnumber(res, "protrftypes"));
 	prokind = PQgetvalue(res, 0, PQfnumber(res, "prokind"));
 	provolatile = PQgetvalue(res, 0, PQfnumber(res, "provolatile"));
@@ -14633,6 +14751,8 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 				finfo->dobj.namespace->dobj.name,
 				NULL, finfo->rolname, &finfo->dacl);
 
+	free(result_decl);
+	PQclear(type_res);
 	PQclear(res);
 
 	destroyPQExpBuffer(query);

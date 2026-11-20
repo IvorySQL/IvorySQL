@@ -3450,9 +3450,22 @@ _doSetFixedOutputState(ArchiveHandle *AH)
 	if (ropt && ropt->use_role)
 		ahprintf(AH, "SET ROLE %s;\n", fmtId(ropt->use_role));
 
-	/* Select the dump-time search_path */
+	/*
+	 * Select the dump-time search_path. Data-only restores do not
+	 * recreate type declarations, and destination triggers must keep
+	 * their session's length semantics.
+	 */
 	if (AH->public.searchpath)
-		ahprintf(AH, "%s", AH->public.searchpath);
+	{
+		const char *path = AH->public.searchpath;
+
+		if (!ropt->dumpSchema && pg_str_endswith(path, ORACLE_DUMP_LENGTH_SEMANTICS_SQL))
+			ahprintf(AH, "%.*s",
+					 (int) (strlen(path) - (sizeof(ORACLE_DUMP_LENGTH_SEMANTICS_SQL) - 1)),
+					 path);
+		else
+			ahprintf(AH, "%s", path);
+	}
 
 	/* Make sure function checking is disabled */
 	ahprintf(AH, "SET check_function_bodies = false;\n");
