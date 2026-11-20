@@ -22,19 +22,54 @@ begin
   for i in 1..0 by 3 loop
     raise notice '1..0 by 3: i = %', i;
   end loop;
-  -- REVERSE
-  for i in reverse 10..0 by 3 loop
-    raise notice 'reverse 10..0 by 3: i = %', i;
+  -- REVERSE (bounds written in ascending order, per Oracle semantics)
+  for i in reverse 0..10 by 3 loop
+    raise notice 'reverse 0..10 by 3: i = %', i;
+  end loop;
+  -- REVERSE iterates from the upper bound down to the lower bound
+  for i in reverse 1..3 loop
+    raise notice 'reverse 1..3: i = %', i;
+  end loop;
+  -- REVERSE with upper bound below lower bound: zero iterations
+  for i in reverse 3..1 loop
+    raise notice 'reverse 3..1: i = %', i;
+  end loop;
+  -- REVERSE with equal bounds: one iteration
+  for i in reverse 2..2 loop
+    raise notice 'reverse 2..2: i = %', i;
+  end loop;
+  -- REVERSE reaching INT32_MIN exactly
+  for i in reverse (-2147483647 - 1)..-2147483646 loop
+    raise notice 'reverse int32 min: i = %', i;
+  end loop;
+  -- REVERSE starting at INT32_MAX
+  for i in reverse 2147483645..2147483647 loop
+    raise notice 'reverse int32 max: i = %', i;
+  end loop;
+  -- REVERSE with BY larger than the range
+  for i in reverse 1..3 by 10 loop
+    raise notice 'reverse 1..3 by 10: i = %', i;
   end loop;
   -- potential overflow
   for i in 2147483620..2147483647 by 10 loop
     raise notice '2147483620..2147483647 by 10: i = %', i;
   end loop;
   -- potential overflow, reverse direction
-  for i in reverse -2147483620..-2147483647 by 10 loop
-    raise notice 'reverse -2147483620..-2147483647 by 10: i = %', i;
+  for i in reverse -2147483647..-2147483620 by 10 loop
+    raise notice 'reverse -2147483647..-2147483620 by 10: i = %', i;
   end loop;
 end$$;
+
+-- REVERSE bounds are evaluated exactly once, in written order
+create sequence fori_reverse_seq;
+do $$
+begin
+  for i in reverse nextval('fori_reverse_seq')..nextval('fori_reverse_seq') loop
+    raise notice 'reverse seq bounds: i = %', i;
+  end loop;
+  raise notice 'currval = %', currval('fori_reverse_seq');
+end$$;
+drop sequence fori_reverse_seq;
 
 -- BY can't be zero or negative
 do $$
