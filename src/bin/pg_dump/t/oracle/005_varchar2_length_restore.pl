@@ -27,6 +27,8 @@ $node->safe_psql('source_db', q{
 		implicit_byte varchar2(10)
 	);
 	INSERT INTO lengths VALUES (1, 'char', 'byte', 'implicit');
+	CREATE TABLE restore_data_probe (seen text);
+	INSERT INTO restore_data_probe VALUES ('source');
 	CREATE INDEX lengths_byte_cast ON lengths ((CAST(explicit_byte AS varchar2(8))));
 	SET nls_length_semantics = char;
 	ALTER TABLE lengths ADD COLUMN implicit_char varchar2(10);
@@ -153,6 +155,52 @@ my $port = $node->oraport;
 for my $db (qw(plain_db custom_db parallel_db))
 {
 	is(snapshot($db), $expected, "$db preserves types, lengths and rows");
+}
+
+# Existing destination triggers must use the destination's length semantics
+# when the restore does not recreate any schema objects.
+for my $db (qw(data_plain data_custom data_parallel))
+{
+	$node->safe_psql('postgres', "CREATE DATABASE $db",
+		connect_to_oraport => 1);
+	$node->safe_psql($db, q{
+		CREATE TABLE restore_data_probe (seen text);
+		CREATE FUNCTION record_restore_semantics() RETURNS trigger
+			LANGUAGE plpgsql AS $$
+		BEGIN
+			NEW.seen := current_setting('nls_length_semantics');
+			RETURN NEW;
+		END
+		$$;
+		CREATE TRIGGER capture_semantics BEFORE INSERT ON restore_data_probe
+			FOR EACH ROW EXECUTE FUNCTION record_restore_semantics();
+	}, connect_to_oraport => 1);
+}
+my $data_sql = "$tempdir/data_only.sql";
+{
+	local $ENV{PGOPTIONS} = '-c nls_length_semantics=char';
+	$node->command_ok(
+		['pg_dump', '-p', $port, '--data-only', '-t', 'restore_data_probe',
+		 '-f', $data_sql, 'source_db'],
+		'create plain data-only dump');
+	$node->command_ok(
+		['psql', '-X', '-v', 'ON_ERROR_STOP=1', '-p', $port,
+		 '-d', 'data_plain', '-f', $data_sql],
+		'restore plain data-only dump');
+	$node->command_ok(
+		['pg_restore', '--exit-on-error', '--data-only', '-t', 'restore_data_probe',
+		 '-p', $port, '-d', 'data_custom', $custom],
+		'restore only data from a full custom dump');
+	$node->command_ok(
+		['pg_restore', '--exit-on-error', '--data-only', '-t', 'restore_data_probe',
+		 '-j', '2', '-p', $port, '-d', 'data_parallel', $custom],
+		'restore only data from a full custom dump in parallel');
+}
+for my $db (qw(data_plain data_custom data_parallel))
+{
+	is($node->safe_psql($db, 'SELECT seen FROM restore_data_probe',
+			connect_to_oraport => 1),
+		'char', "$db preserves the destination trigger's length semantics");
 }
 
 done_testing();

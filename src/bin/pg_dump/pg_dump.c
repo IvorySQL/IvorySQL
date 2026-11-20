@@ -1483,7 +1483,7 @@ setup_connection(Archive *AH, const char *dumpencoding,
 	 * Match the Oracle restore default so deparsing retains an explicit
 	 * CHAR unit for length modifiers that need it.
 	 */
-	if (db_mode == DB_ORACLE)
+	if (db_mode == DB_ORACLE && dopt->dumpSchema)
 		ExecuteSqlStatement(AH, "SET nls_length_semantics = byte");
 
 	/* Set the datestyle to ISO to ensure the dump's portability */
@@ -3984,10 +3984,8 @@ dumpSearchPath(Archive *AH)
 	 * so pg_restore must continue to use their destination defaults.
 	 * Like search_path, the setting must reach every restore worker.
 	 */
-	if (strcmp(PQgetvalue(res, 0, 1), "t") == 0)
-		appendPQExpBufferStr(qry,
-							 "SELECT pg_catalog.set_config('nls_length_semantics', 'byte', false) "
-							 "WHERE pg_catalog.current_setting('ivorysql.database_mode', true) = 'oracle';\n");
+	if (AH->dopt->dumpSchema && strcmp(PQgetvalue(res, 0, 1), "t") == 0)
+		appendPQExpBufferStr(qry, ORACLE_DUMP_LENGTH_SEMANTICS_SQL);
 
 	pg_log_info("saving \"search_path = %s\"", path->data);
 

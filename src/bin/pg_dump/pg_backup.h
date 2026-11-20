@@ -28,6 +28,11 @@
 #include "fe_utils/simple_list.h"
 #include "libpq-fe.h"
 
+/* The Oracle restore suffix is stored in SEARCHPATH for existing readers. */
+#define ORACLE_DUMP_LENGTH_SEMANTICS_SQL \
+	"SELECT pg_catalog.set_config('nls_length_semantics', 'byte', false) " \
+	"WHERE pg_catalog.current_setting('ivorysql.database_mode', true) = 'oracle';\n"
+
 
 typedef enum trivalue
 {
