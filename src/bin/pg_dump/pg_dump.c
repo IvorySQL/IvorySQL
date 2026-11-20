@@ -1479,6 +1479,13 @@ setup_connection(Archive *AH, const char *dumpencoding,
 			AH->use_role = pg_strdup(use_role);
 	}
 
+	/*
+	 * Match the Oracle restore default so deparsing retains an explicit
+	 * CHAR unit for length modifiers that need it.
+	 */
+	if (db_mode == DB_ORACLE)
+		ExecuteSqlStatement(AH, "SET nls_length_semantics = byte");
+
 	/* Set the datestyle to ISO to ensure the dump's portability */
 	ExecuteSqlStatement(AH, "SET DATESTYLE = ISO");
 

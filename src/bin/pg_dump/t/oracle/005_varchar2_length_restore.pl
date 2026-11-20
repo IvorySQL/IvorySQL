@@ -105,12 +105,15 @@ like($expected, qr/^explicit_byte\|oravarcharbyte\|12$/m,
 my $plain = "$tempdir/lengths.sql";
 my $custom = "$tempdir/lengths.dump";
 my $port = $node->oraport;
-$node->command_ok(
-	['pg_dump', '-p', $port, '-Fp', '-f', $plain, 'source_db'],
-	'create plain dump');
-$node->command_ok(
-	['pg_dump', '-p', $port, '-Fc', '-f', $custom, 'source_db'],
-	'create custom dump');
+{
+	local $ENV{PGOPTIONS} = '-c nls_length_semantics=char';
+	$node->command_ok(
+		['pg_dump', '-p', $port, '-Fp', '-f', $plain, 'source_db'],
+		'create plain dump with CHAR source default');
+	$node->command_ok(
+		['pg_dump', '-p', $port, '-Fc', '-f', $custom, 'source_db'],
+		'create custom dump with CHAR source default');
+}
 
 {
 	local $ENV{PGOPTIONS} = '-c nls_length_semantics=char';
