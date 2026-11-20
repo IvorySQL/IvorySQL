@@ -41,6 +41,14 @@ $node->safe_psql('source_db', q{
 		b sys.oravarcharbyte[]) RETURNS integer LANGUAGE sql AS 'SELECT 1';
 	CREATE FUNCTION restore_only_char_array(a sys.oravarcharchar[])
 		RETURNS integer LANGUAGE sql AS 'SELECT 1';
+	CREATE FUNCTION restore_fixed_result() RETURNS sys.oracharchar
+		LANGUAGE sql AS 'SELECT CAST(NULL AS sys.oracharchar)';
+	CREATE FUNCTION restore_varchar_array_result() RETURNS sys.oravarcharchar[]
+		LANGUAGE sql AS 'SELECT CAST(NULL AS sys.oravarcharchar[])';
+	CREATE FUNCTION restore_char_array_result() RETURNS sys.oracharchar[]
+		LANGUAGE sql AS 'SELECT CAST(NULL AS sys.oracharchar[])';
+	CREATE FUNCTION restore_char_set_result() RETURNS SETOF sys.oracharchar
+		LANGUAGE sql AS 'SELECT CAST(NULL AS sys.oracharchar)';
 	CREATE FUNCTION restore_char_input(v varchar2) RETURNS integer
 		LANGUAGE sql AS 'SELECT 1';
 	CREATE FUNCTION restore_char_input_with_byte_out(v varchar2,
@@ -69,6 +77,8 @@ sub snapshot
 							'restore_char_input', 'restore_char_input_with_byte_out',
 							'restore_char_pg_date', 'restore_fixed_char',
 							'restore_varchar_arrays', 'restore_only_char_array',
+							'restore_fixed_result', 'restore_varchar_array_result',
+							'restore_char_array_result', 'restore_char_set_result',
 							'restore_mixed_out')
 		ORDER BY p.proname;
 		SELECT a.attname, t.typname, a.atttypmod
@@ -76,6 +86,7 @@ sub snapshot
 		WHERE a.attrelid = 'lengths_byte_cast'::regclass AND a.attnum = 1;
 		SELECT pg_get_function_arguments(p.oid) FROM pg_proc p
 		WHERE p.proname = 'restore_char_pg_date';
+		SELECT proretset FROM pg_proc WHERE proname = 'restore_char_set_result';
 		SELECT * FROM lengths ORDER BY id;
 	}, connect_to_oraport => 1);
 }
@@ -99,6 +110,14 @@ like($expected, qr/^restore_varchar_arrays\|int4\|9502 9506 9507\|$/m,
 	'source mixed function has CHAR and BYTE VARCHAR2 arrays');
 like($expected, qr/^restore_only_char_array\|int4\|9506\|$/m,
 	'source array-only function has a CHAR VARCHAR2 array');
+like($expected, qr/^restore_fixed_result\|oracharchar\|\|$/m,
+	'source function returns fixed-length CHAR');
+like($expected, qr/^restore_varchar_array_result\|_oravarcharchar\|\|$/m,
+	'source function returns a CHAR VARCHAR2 array');
+like($expected, qr/^restore_char_array_result\|_oracharchar\|\|$/m,
+	'source function returns a fixed-length CHAR array');
+like($expected, qr/^restore_char_set_result\|oracharchar\|\|$/m,
+	'source set-returning function has a fixed-length CHAR result');
 like($expected, qr/^explicit_byte\|oravarcharbyte\|12$/m,
 	'source expression index key has an 8-byte typmod');
 

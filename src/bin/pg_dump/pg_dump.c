@@ -14265,7 +14265,7 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 	const char *funcargs;
 	const char *funciargs;
 	const char *funcresult;
-	char	   *table_result = NULL;
+	char	   *result_decl = NULL;
 	char	   *protrftypes;
 	char	   *prokind;
 	char	   *provolatile;
@@ -14436,16 +14436,47 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 		funciargs = PQgetvalue(type_res, 0, 1);
 		if (!PQgetisnull(type_res, 0, 2))
 		{
-			table_result = psprintf("TABLE(%s)", PQgetvalue(type_res, 0, 2));
-			funcresult = table_result;
+			result_decl = psprintf("TABLE(%s)", PQgetvalue(type_res, 0, 2));
+			funcresult = result_decl;
 		}
 	}
-	if (finfo->prorettype == ORAVARCHARCHAROID)
+	/*
+	 * A bare Oracle CHAR type in a scalar or SETOF result is resolved
+	 * under BYTE on restore. Keep explicit, package, and TABLE result
+	 * declarations, and qualify just the ambiguous CHAR aliases.
+	 */
+	if (result_decl == NULL)
 	{
-		if (strcmp(funcresult, "varchar2") == 0)
-			funcresult = "sys.oravarcharchar";
-		else if (strcmp(funcresult, "SETOF varchar2") == 0)
-			funcresult = "SETOF sys.oravarcharchar";
+		const char *bare = NULL;
+		const char *qualified = NULL;
+		const char *prefix = proretset[0] == 't' ? "SETOF " : "";
+
+		switch (finfo->prorettype)
+		{
+			case ORACHARCHAROID:
+				bare = "char";
+				qualified = "sys.oracharchar";
+				break;
+			case ORAVARCHARCHAROID:
+				bare = "varchar2";
+				qualified = "sys.oravarcharchar";
+				break;
+			case ORACHARCHARARRAYOID:
+				bare = "char[]";
+				qualified = "sys.oracharchar[]";
+				break;
+			case ORAVARCHARCHARARRAYOID:
+				bare = "varchar2[]";
+				qualified = "sys.oravarcharchar[]";
+				break;
+		}
+		if (bare &&
+			strncmp(funcresult, prefix, strlen(prefix)) == 0 &&
+			strcmp(funcresult + strlen(prefix), bare) == 0)
+		{
+			result_decl = psprintf("%s%s", prefix, qualified);
+			funcresult = result_decl;
+		}
 	}
 
 	protrftypes = PQgetvalue(res, 0, PQfnumber(res, "protrftypes"));
@@ -14722,7 +14753,7 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 				finfo->dobj.namespace->dobj.name,
 				NULL, finfo->rolname, &finfo->dacl);
 
-	free(table_result);
+	free(result_decl);
 	PQclear(type_res);
 	PQclear(res);
 
