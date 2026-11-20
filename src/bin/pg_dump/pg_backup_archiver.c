@@ -77,6 +77,8 @@ static void processSearchPathEntry(ArchiveHandle *AH, TocEntry *te);
 static int	_tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH);
 static RestorePass _tocEntryRestorePass(TocEntry *te);
 static bool _tocEntryIsACL(TocEntry *te);
+static bool _tocEntryNeedsOraParser(TocEntry *te);
+static void _setOraParser(ArchiveHandle *AH, bool on);
 static void _disableTriggersIfNecessary(ArchiveHandle *AH, TocEntry *te);
 static void _enableTriggersIfNecessary(ArchiveHandle *AH, TocEntry *te);
 static bool is_load_via_partition_root(TocEntry *te);
@@ -573,6 +575,11 @@ RestoreArchive(Archive *AHX)
 				}
 				else if (*te->dropStmt != '\0')
 				{
+					bool		ora_parser = _tocEntryNeedsOraParser(te);
+
+					if (ora_parser)
+						_setOraParser(AH, true);
+
 					if (!ropt->if_exists ||
 						strncmp(te->dropStmt, "--", 2) == 0)
 					{
@@ -673,6 +680,9 @@ RestoreArchive(Archive *AHX)
 							pg_free(dropStmtOrig);
 						}
 					}
+
+					if (ora_parser)
+						_setOraParser(AH, false);
 				}
 
 				/*
@@ -3242,7 +3252,8 @@ _tocEntryRequired(TocEntry *te, teSection curSection, ArchiveHandle *AH)
 					 strcmp(te->desc, "MATERIALIZED VIEW") == 0 ||
 					 strcmp(te->desc, "MATERIALIZED VIEW DATA") == 0 ||
 					 strcmp(te->desc, "SEQUENCE") == 0 ||
-					 strcmp(te->desc, "SEQUENCE SET") == 0)
+					 strcmp(te->desc, "SEQUENCE SET") == 0 ||
+					 strcmp(te->desc, "SEQUENCE ORACLE OPTIONS") == 0)
 			{
 				if (!ropt->selTable)
 					return 0;
@@ -3419,6 +3430,48 @@ _tocEntryIsACL(TocEntry *te)
 		strcmp(te->desc, "DEFAULT ACL") == 0)
 		return true;
 	return false;
+}
+
+/*
+ * Does this TOC entry hold commands that only the Oracle grammar accepts?
+ *
+ * Packages (and comments, labels, grants and default privileges on them),
+ * object types and the Oracle-only options of sequences and identity
+ * columns are written in Oracle syntax.  A restore through the PostgreSQL
+ * port, as pg_upgrade --using-ora-pg does, must switch the parser for these
+ * entries.
+ */
+static bool
+_tocEntryNeedsOraParser(TocEntry *te)
+{
+	if (strcmp(te->desc, "PACKAGE") == 0 ||
+		strcmp(te->desc, "SEQUENCE ORACLE OPTIONS") == 0)
+		return true;
+	if ((strcmp(te->desc, "COMMENT") == 0 ||
+		 strcmp(te->desc, "SECURITY LABEL") == 0 ||
+		 strcmp(te->desc, "ACL") == 0) &&
+		strncmp(te->tag, "PACKAGE ", 8) == 0)
+		return true;
+	if (strcmp(te->desc, "DEFAULT ACL") == 0 &&
+		strcmp(te->tag, "DEFAULT PRIVILEGES FOR PACKAGES") == 0)
+		return true;
+	if (strcmp(te->desc, "TYPE") == 0 &&
+		te->defn && strstr(te->defn, " AS OBJECT (") != NULL)
+		return true;
+	return false;
+}
+
+/*
+ * Parse the following commands with the Oracle grammar, or go back to the
+ * grammar of the port the session came in on.
+ */
+static void
+_setOraParser(ArchiveHandle *AH, bool on)
+{
+	if (on)
+		ahprintf(AH, "SET ivorysql.compatible_mode = oracle;\n");
+	else
+		ahprintf(AH, "RESET ivorysql.compatible_mode;\n");
 }
 
 /*
@@ -3935,6 +3988,7 @@ static void
 _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 {
 	RestoreOptions *ropt = AH->public.ropt;
+	bool		ora_parser = _tocEntryNeedsOraParser(te);
 
 	/*
 	 * Select owner, schema, tablespace and default AM as necessary. The
@@ -3997,6 +4051,9 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 			AH->PrintExtraTocPtr(AH, te);
 		ahprintf(AH, "--\n\n");
 	}
+
+	if (ora_parser)
+		_setOraParser(AH, true);
 
 	/*
 	 * Actually print the definition.  Normally we can just print the defn
@@ -4134,6 +4191,9 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 			termPQExpBuffer(&temp);
 		}
 	}
+
+	if (ora_parser)
+		_setOraParser(AH, false);
 
 	/*
 	 * Select a partitioned table's default AM, once the table definition has

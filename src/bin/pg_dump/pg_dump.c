@@ -140,10 +140,32 @@ static const char *const SeqTypeInternalNames[] =
 StaticAssertDecl(lengthof(SeqTypeNames) == (SEQTYPE_BIGINT + 1),
 				 "array length mismatch");
 
+/*
+ * In Oracle mode a sequence may also be declared AS a numeric type.  It takes
+ * bigint limits but keeps its type, which is written back schema-qualified.
+ * format_type() names these types differently through each port.
+ */
+static const struct
+{
+	const char *name;			/* as format_type() prints it */
+	const char *as;				/* AS clause to write back */
+}			OraSeqTypeNames[] =
+{
+	{"number", "sys.number"},
+	{"sys.number", "sys.number"},
+	{"numeric", "pg_catalog.numeric"},
+	{"pg_catalog.numeric", "pg_catalog.numeric"},
+	{"real", "pg_catalog.float4"},
+	{"pg_catalog.float4", "pg_catalog.float4"},
+	{"double precision", "pg_catalog.float8"},
+	{"pg_catalog.float8", "pg_catalog.float8"},
+};
+
 typedef struct
 {
 	Oid			oid;			/* sequence OID */
 	SeqType		seqtype;		/* data type of sequence */
+	const char *ora_as;			/* Oracle-mode numeric type, or NULL */
 	bool		cycled;			/* whether sequence cycles */
 	int64		minv;			/* minimum value */
 	int64		maxv;			/* maximum value */
@@ -7333,10 +7355,6 @@ getPackages(Archive *fout, int *numPkgs)
 					"p.pkgacl,"
 					"acldefault('P', p.pkgowner) AS acldefault "
 					"FROM pg_package p "
-					"LEFT JOIN pg_init_privs pip ON "
-					"(p.oid = pip.objoid "
-					"AND pip.classoid = 'pg_package'::regclass "
-					"AND pip.objsubid = 0) "
 					" where  p.pkgnamespace != "
 					"(SELECT oid FROM pg_namespace "
 					"WHERE nspname = 'pg_catalog')"
@@ -7364,20 +7382,18 @@ getPackages(Archive *fout, int *numPkgs)
 		pkginfo[i].dobj.name = pg_strdup(PQgetvalue(res, i, i_pkgname));
 		pkginfo[i].dobj.namespace =
 			findNamespace(atooid(PQgetvalue(res, i, i_pkgnamespace)));
-		pkginfo[i].rolname = pg_strdup(PQgetvalue(res, i, i_rolname));
-		pkginfo[i].pkgacl = pg_strdup(PQgetvalue(res, i, i_pkgacl));
+		pkginfo[i].rolname = getRoleName(PQgetvalue(res, i, i_rolname));
+		pkginfo[i].dacl.acl = pg_strdup(PQgetvalue(res, i, i_pkgacl));
 		pkginfo[i].dacl.acldefault = pg_strdup(PQgetvalue(res, i, i_acldefault));
 		pkginfo[i].dacl.privtype = 0;
 		pkginfo[i].dacl.initprivs = NULL;
 
 		/* Decide whether we want to dump it */
 		selectDumpableObject(&(pkginfo[i].dobj), fout);
-		/* Do not try to dump ACL if no ACL exists. */
+
+		/* Mark whether package has an ACL */
 		if (!PQgetisnull(res, i, i_pkgacl))
-			pkginfo[i].dobj.dump &= ~DUMP_COMPONENT_ACL;
-		if (strlen(pkginfo[i].rolname) == 0)
-			pg_log_warning("WARNING: owner of package \"%s\" appears to be invalid\n",
-					  pkginfo[i].dobj.name);
+			pkginfo[i].dobj.components |= DUMP_COMPONENT_ACL;
 	}
 	PQclear(res);
 	destroyPQExpBuffer(query);
@@ -8350,8 +8366,16 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 						  "ON (inh.inhrelid = indexrelid) "
 						  "WHERE (i.indisvalid OR t2.relkind = 'p') "
 						  "AND i.indisready "
+						  "%s"
 						  "ORDER BY i.indrelid, indexname",
-						  tbloids->data);
+						  tbloids->data,
+		/*
+		 * CREATE TABLE ... WITH ROWID builds the index on the ROWID column
+		 * (attribute -7) itself, except in binary upgrade.
+		 */
+						  fout->dopt->binary_upgrade ? "" :
+						  "AND NOT (i.indnatts = 1 AND i.indkey[0] = -7 AND "
+						  "t.relname = t2.relname || '_' || i.indrelid || '_rowid_idx') ");
 	}
 	else
 	{
@@ -9690,11 +9714,22 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 						 "a.attlen,\n"
 						 "a.attalign,\n"
 						 "a.attislocal,\n");
-	if (hasOracleRefTypeCatalog(fout))
+
+	/*
+	 * Only the Oracle grammar accepts REF in a column type.  A dump in
+	 * PostgreSQL mode names the REF domain itself, which is the column's type.
+	 */
+	if (hasOracleRefTypeCatalog(fout) && db_mode == DB_ORACLE)
 		appendPQExpBufferStr(q,
 							 "CASE WHEN t.typrefbase <> 0 THEN "
 							 "'REF \"' || replace(refn.nspname, '\"', '\"\"') || "
 							 "'\".\"' || replace(reft.typname, '\"', '\"\"') || '\"' "
+							 "ELSE pg_catalog.format_type(t.oid, a.atttypmod) "
+							 "END AS atttypname,\n");
+	else if (hasOracleRefTypeCatalog(fout))
+		appendPQExpBufferStr(q,
+							 "CASE WHEN t.typrefbase <> 0 THEN "
+							 "pg_catalog.format_type(t.oid, NULL) "
 							 "ELSE pg_catalog.format_type(t.oid, a.atttypmod) "
 							 "END AS atttypname,\n");
 	else
@@ -11250,6 +11285,7 @@ getAdditionalACLs(Archive *fout)
 					dobj->objType == DO_TYPE ||
 					dobj->objType == DO_FUNC ||
 					dobj->objType == DO_AGG ||
+					dobj->objType == DO_PACKAGE ||
 					dobj->objType == DO_TABLE ||
 					dobj->objType == DO_PROCLANG ||
 					dobj->objType == DO_FDW ||
@@ -13557,7 +13593,20 @@ dumpCompositeType(Archive *fout, const TypeInfo *tyinfo)
 					  "EXECUTE dumpCompositeType('%u')",
 					  tyinfo->dobj.catId.oid);
 
-	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
+	/*
+	 * pg_restore runs CREATE TYPE ... AS OBJECT through the Oracle grammar,
+	 * which reads some PostgreSQL type names, such as date or character
+	 * varying, as Oracle types.  Name the attribute types the way Oracle mode
+	 * prints them, so that each one keeps its type.
+	 */
+	if (tyinfo->isObject && db_mode != DB_ORACLE)
+	{
+		ExecuteSqlStatement(fout, "SET ivorysql.compatible_mode = oracle");
+		res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
+		ExecuteSqlStatement(fout, "RESET ivorysql.compatible_mode");
+	}
+	else
+		res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
 
 	ntups = PQntuples(res);
 
@@ -13570,6 +13619,31 @@ dumpCompositeType(Archive *fout, const TypeInfo *tyinfo)
 
 	if (dopt->binary_upgrade)
 	{
+		/*
+		 * CREATE TYPE AS OBJECT also creates a private REF domain.  Create
+		 * that first with its own OIDs; the CREATE TYPE adopts it.
+		 */
+		if (tyinfo->isObject && fout->remoteVersion >= 190000)
+		{
+			PGresult   *refRes;
+
+			printfPQExpBuffer(query,
+							  "SELECT t.oid, t.typname "
+							  "FROM pg_catalog.pg_type t "
+							  "WHERE t.typrefbase = '%u'::pg_catalog.oid "
+							  "AND t.typtype = 'd'",
+							  tyinfo->dobj.catId.oid);
+			refRes = ExecuteSqlQueryForSingleRow(fout, query->data);
+			binary_upgrade_set_type_oids_by_type_oid(fout, q,
+													 atooid(PQgetvalue(refRes, 0, 0)),
+													 false, false);
+			appendPQExpBuffer(q, "CREATE DOMAIN %s.",
+							  fmtId(tyinfo->dobj.namespace->dobj.name));
+			appendPQExpBuffer(q, "%s AS sys.object_ref;\n",
+							  fmtId(PQgetvalue(refRes, 0, 1)));
+			PQclear(refRes);
+		}
+
 		binary_upgrade_set_type_oids_by_type_oid(fout, q,
 												 tyinfo->dobj.catId.oid,
 												 false, false);
@@ -13704,9 +13778,14 @@ dumpCompositeType(Archive *fout, const TypeInfo *tyinfo)
 	{
 		if (actual_atts++ > 0)
 			appendPQExpBufferChar(q, ',');
-		appendPQExpBuffer(q, "\n\t%s", object_methods);
+		/*
+		 * The last method's stored source runs up to the closing parenthesis,
+		 * so put nothing between them.
+		 */
+		appendPQExpBuffer(q, "\n\t%s)", object_methods);
 	}
-	appendPQExpBufferStr(q, "\n)");
+	else
+		appendPQExpBufferStr(q, "\n)");
 	if (tyinfo->isObject)
 	{
 		if (!object_instantiable)
@@ -13717,8 +13796,13 @@ dumpCompositeType(Archive *fout, const TypeInfo *tyinfo)
 	appendPQExpBufferStr(q, ";\n");
 	if (object_body != NULL && object_body[0] != '\0')
 	{
-		appendPQExpBuffer(q, "CREATE TYPE BODY %s AS\n%s;\n",
-						  qualtypname, object_body);
+		/* Quote the body, so that no client splits it at a semicolon */
+		appendPQExpBuffer(q, "CREATE TYPE BODY %s AS ", qualtypname);
+		if (dopt->disable_dollar_quoting)
+			appendStringLiteralAH(q, object_body, fout);
+		else
+			appendStringLiteralDQ(q, object_body, NULL);
+		appendPQExpBufferStr(q, ";\n");
 		if (((ArchiveHandle *) fout)->format == archNull &&
 			db_mode == DB_ORACLE)
 			appendPQExpBufferStr(q, "/\n");
@@ -17133,6 +17217,9 @@ dumpDefaultACL(Archive *fout, const DefaultACLInfo *daclinfo)
 		case DEFACLOBJ_LARGEOBJECT:
 			type = "LARGE OBJECTS";
 			break;
+		case DEFACLOBJ_PACKAGE:
+			type = "PACKAGES";
+			break;
 		default:
 			/* shouldn't get here */
 			pg_fatal("unrecognized object type in default privileges: %d",
@@ -17963,8 +18050,9 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 	char	   *qrelname;
 	char	   *qualrelname;
 	int			numParents;
-	bool		is_ora_identity = false;
 	TableInfo **parents;
+	char	   *rowid_seqname = NULL;	/* binary upgrade: name to restore */
+	Oid			rowid_seqoid = InvalidOid;
 	int			actual_atts;	/* number of attrs in this CREATE statement */
 	const char *reltypename;
 	char	   *storage;
@@ -18148,6 +18236,42 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 											 tbinfo->dobj.catId.oid);
 
 		/*
+		 * CREATE TABLE ... WITH ROWID also creates the table's ROWID
+		 * sequence.  Preserve its OID and relfilenumber, so that the upgrade
+		 * carries its position.  The sequence is the one marked with
+		 * relhasrowid that depends on the whole table; its name may carry a
+		 * suffix when another relation already had the usual one.
+		 */
+		if (dopt->binary_upgrade && tbinfo->relhasrowid &&
+			(tbinfo->relkind == RELKIND_RELATION ||
+			 tbinfo->relkind == RELKIND_PARTITIONED_TABLE))
+		{
+			PQExpBuffer seqquery = createPQExpBuffer();
+			PGresult   *seqres;
+
+			appendPQExpBufferStr(seqquery,
+								 "SELECT s.oid, s.relfilenode, s.relname "
+								 "FROM pg_catalog.pg_depend d "
+								 "JOIN pg_catalog.pg_class s ON s.oid = d.objid "
+								 "WHERE d.classid = 'pg_catalog.pg_class'::pg_catalog.regclass "
+								 "AND d.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass "
+								 "AND d.refobjsubid = 0 AND d.deptype = 'a' "
+								 "AND s.relkind = 'S' AND s.relhasrowid "
+								 "AND d.refobjid = ");
+			appendPQExpBuffer(seqquery, "'%u'::pg_catalog.oid",
+							  tbinfo->dobj.catId.oid);
+			seqres = ExecuteSqlQueryForSingleRow(fout, seqquery->data);
+			appendPQExpBuffer(q,
+							  "SELECT pg_catalog.binary_upgrade_set_next_rowid_seq_pg_class_oid('%s'::pg_catalog.oid);\n"
+							  "SELECT pg_catalog.binary_upgrade_set_next_rowid_seq_relfilenode('%s'::pg_catalog.oid);\n\n",
+							  PQgetvalue(seqres, 0, 0), PQgetvalue(seqres, 0, 1));
+			rowid_seqoid = atooid(PQgetvalue(seqres, 0, 0));
+			rowid_seqname = pg_strdup(PQgetvalue(seqres, 0, 2));
+			PQclear(seqres);
+			destroyPQExpBuffer(seqquery);
+		}
+
+		/*
 		 * PostgreSQL 18 has disabled UNLOGGED for partitioned tables, so
 		 * ignore it when dumping if it was set in this case.
 		 */
@@ -18184,18 +18308,13 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 					bool		print_default;
 					bool		print_notnull;
 
-					if (tbinfo->attidentity[j] == ATTRIBUTE_IDENTITY_DEFAULT_ON_NULL
-							|| tbinfo->attidentity[j] == ATTRIBUTE_ORA_IDENTITY_ALWAYS
-								|| tbinfo->attidentity[j] == ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT)
-						is_ora_identity = true;
-
 					/*
 					 * Default value --- suppress if to be printed separately
 					 * or not at all.
 					 */
 					print_default = ((tbinfo->attrdefs[j] != NULL &&
 									 tbinfo->attrdefs[j]->dobj.dump &&
-									 !tbinfo->attrdefs[j]->separate) || is_ora_identity);
+									 !tbinfo->attrdefs[j]->separate));
 
 					/*
 					 * Not Null constraint --- print it if it is locally
@@ -18256,8 +18375,6 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 						if (tbinfo->attgenerated[j] == ATTRIBUTE_GENERATED_STORED)
 							appendPQExpBuffer(q, " GENERATED ALWAYS AS (%s) STORED",
 											  tbinfo->attrdefs[j]->adef_expr);
-						else if (is_ora_identity)
-							appendPQExpBuffer(q, " GENERATED BY DEFAULT AS IDENTITY");
 						else if (tbinfo->attgenerated[j] == ATTRIBUTE_GENERATED_VIRTUAL)
 							appendPQExpBuffer(q, " GENERATED ALWAYS AS (%s)",
 											  tbinfo->attrdefs[j]->adef_expr);
@@ -18266,7 +18383,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 											  tbinfo->attrdefs[j]->adef_expr);
 					}
 
-					if (print_notnull&& !is_ora_identity)
+					if (print_notnull)
 					{
 						if (tbinfo->notnull_constrs[j][0] == '\0')
 							appendPQExpBufferStr(q, " NOT NULL");
@@ -18291,8 +18408,6 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 
 					if (tbinfo->attisinvisible[j])
 						appendPQExpBufferStr(q, " INVISIBLE");
-
-					is_ora_identity = false;
 				}
 
 				/*
@@ -18396,17 +18511,31 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 				appendPQExpBuffer(q, "\nSERVER %s", fmtId(srvname));
 		}
 
-		if (tbinfo->relhasrowid)
+		/*
+		 * Only the Oracle grammar has WITH ROWID, and it cannot be combined
+		 * with WITH (...).  Both grammars accept rowid as a WITH (...)
+		 * option, which the server reads the same way.
+		 */
+		if (tbinfo->relhasrowid && db_mode == DB_ORACLE &&
+			!nonemptyReloptions(tbinfo->reloptions) &&
+			!nonemptyReloptions(tbinfo->toast_reloptions))
 			appendPQExpBuffer(q, " WITH ROWID");
-
-		if (nonemptyReloptions(tbinfo->reloptions) ||
-			nonemptyReloptions(tbinfo->toast_reloptions))
+		else if (tbinfo->relhasrowid ||
+				 nonemptyReloptions(tbinfo->reloptions) ||
+				 nonemptyReloptions(tbinfo->toast_reloptions))
 		{
 			bool		addcomma = false;
 
 			appendPQExpBufferStr(q, "\nWITH (");
+			if (tbinfo->relhasrowid)
+			{
+				addcomma = true;
+				appendPQExpBufferStr(q, "rowid = true");
+			}
 			if (nonemptyReloptions(tbinfo->reloptions))
 			{
+				if (addcomma)
+					appendPQExpBufferStr(q, ", ");
 				addcomma = true;
 				appendReloptionsArrayAH(q, tbinfo->reloptions, "", fout);
 			}
@@ -18743,6 +18872,21 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 								  tbinfo->toast_frozenxid,
 								  tbinfo->toast_minmxid, tbinfo->toast_oid);
 			}
+		}
+
+		/*
+		 * The ROWID sequence is named when the table is created, and another
+		 * relation may take that name only later in the restore.  Give it the
+		 * name it had, by its preserved OID.
+		 */
+		if (rowid_seqname != NULL)
+		{
+			appendPQExpBufferStr(q, "\n-- For binary upgrade, set the ROWID sequence's name\n");
+			appendPQExpBufferStr(q, "UPDATE pg_catalog.pg_class SET relname = ");
+			appendStringLiteralAH(q, rowid_seqname, fout);
+			appendPQExpBuffer(q, " WHERE oid = '%u'::pg_catalog.oid;\n", rowid_seqoid);
+			free(rowid_seqname);
+			rowid_seqname = NULL;
 		}
 
 		/*
@@ -20085,8 +20229,19 @@ dumpTableConstraintComment(Archive *fout, const ConstraintInfo *coninfo)
 }
 
 static inline SeqType
-parse_sequence_type(const char *name)
+parse_sequence_type(const char *name, const char **ora_as)
 {
+	*ora_as = NULL;
+
+	for (int i = 0; i < lengthof(OraSeqTypeNames); i++)
+	{
+		if (strcmp(OraSeqTypeNames[i].name, name) == 0)
+		{
+			*ora_as = OraSeqTypeNames[i].as;
+			return SEQTYPE_BIGINT;
+		}
+	}
+
 	/* Oracle format_type can return a schema-qualified internal type name. */
 	if (strncmp(name, "pg_catalog.", strlen("pg_catalog.")) == 0)
 		name += strlen("pg_catalog.");
@@ -20124,7 +20279,8 @@ static void
 collectSequences(Archive *fout)
 {
 	PGresult   *res;
-	const char *query;
+	PQExpBuffer query;
+	bool		has_flags;
 
 	/*
 	 * Before Postgres 10, sequence metadata is in the sequence itself.  With
@@ -20136,26 +20292,37 @@ collectSequences(Archive *fout)
 	 */
 	if (fout->remoteVersion < 100000)
 		return;
-	else if (fout->remoteVersion < 180000 ||
-			 (!fout->dopt->dumpData && !fout->dopt->sequence_data))
-		query = "SELECT seqrelid, format_type(seqtypid, NULL), "
-			"seqstart, seqincrement, "
-			"seqmax, seqmin, "
-			"seqcache, seqcycle, "
-			"NULL, 'f' "
-			"FROM pg_catalog.pg_sequence "
-			"ORDER BY seqrelid";
-	else
-		query = "SELECT seqrelid, format_type(seqtypid, NULL), "
-			"seqstart, seqincrement, "
-			"seqmax, seqmin, "
-			"seqcache, seqcycle, "
-			"last_value, is_called "
-			"FROM pg_catalog.pg_sequence, "
-			"pg_get_sequence_data(seqrelid) "
-			"ORDER BY seqrelid;";
 
-	res = ExecuteSqlQuery(fout, query, PGRES_TUPLES_OK);
+	/* Only IvorySQL keeps the Oracle options (SCALE etc.) in "flags". */
+	res = ExecuteSqlQueryForSingleRow(fout,
+									  "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_attribute "
+									  "WHERE attrelid = 'pg_catalog.pg_sequence'::pg_catalog.regclass "
+									  "AND attname = 'flags' AND NOT attisdropped)");
+	has_flags = strcmp(PQgetvalue(res, 0, 0), "t") == 0;
+	PQclear(res);
+
+	query = createPQExpBuffer();
+	appendPQExpBuffer(query,
+					  "SELECT seqrelid, format_type(seqtypid, NULL), "
+					  "seqstart, seqincrement, "
+					  "seqmax, seqmin, "
+					  "seqcache, seqcycle, %s, ",
+					  has_flags ? "flags" : "0");
+	if (fout->remoteVersion < 180000 ||
+		(!fout->dopt->dumpData && !fout->dopt->sequence_data))
+		appendPQExpBufferStr(query,
+							 "NULL, 'f' "
+							 "FROM pg_catalog.pg_sequence "
+							 "ORDER BY seqrelid");
+	else
+		appendPQExpBufferStr(query,
+							 "last_value, is_called "
+							 "FROM pg_catalog.pg_sequence, "
+							 "pg_get_sequence_data(seqrelid) "
+							 "ORDER BY seqrelid");
+
+	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
+	destroyPQExpBuffer(query);
 
 	nsequences = PQntuples(res);
 	sequences = pg_malloc_array(SequenceItem, nsequences);
@@ -20163,17 +20330,18 @@ collectSequences(Archive *fout)
 	for (int i = 0; i < nsequences; i++)
 	{
 		sequences[i].oid = atooid(PQgetvalue(res, i, 0));
-		sequences[i].seqtype = parse_sequence_type(PQgetvalue(res, i, 1));
+		sequences[i].seqtype = parse_sequence_type(PQgetvalue(res, i, 1),
+												   &sequences[i].ora_as);
 		sequences[i].startv = strtoi64(PQgetvalue(res, i, 2), NULL, 10);
 		sequences[i].incby = strtoi64(PQgetvalue(res, i, 3), NULL, 10);
 		sequences[i].maxv = strtoi64(PQgetvalue(res, i, 4), NULL, 10);
 		sequences[i].minv = strtoi64(PQgetvalue(res, i, 5), NULL, 10);
 		sequences[i].cache = strtoi64(PQgetvalue(res, i, 6), NULL, 10);
 		sequences[i].cycled = (strcmp(PQgetvalue(res, i, 7), "t") == 0);
-		sequences[i].flags = atoi(PQgetvalue(res, 0, 7));
-		sequences[i].last_value = strtoi64(PQgetvalue(res, i, 8), NULL, 10);
-		sequences[i].is_called = (strcmp(PQgetvalue(res, i, 9), "t") == 0);
-		sequences[i].null_seqtuple = (PQgetisnull(res, i, 8) || PQgetisnull(res, i, 9));
+		sequences[i].flags = atoi(PQgetvalue(res, i, 8));
+		sequences[i].last_value = strtoi64(PQgetvalue(res, i, 9), NULL, 10);
+		sequences[i].is_called = (strcmp(PQgetvalue(res, i, 10), "t") == 0);
+		sequences[i].null_seqtuple = (PQgetisnull(res, i, 9) || PQgetisnull(res, i, 10));
 	}
 
 	PQclear(res);
@@ -20196,10 +20364,8 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 	PQExpBuffer delqry = createPQExpBuffer();
 	char	   *qseqname;
 	TableInfo  *owning_tab = NULL;
-	bool 		is_scale = false;
-	bool		is_extend = false;
-	bool		is_session = false;
-	
+	PQExpBuffer cmd;
+	bool		ora_syntax;
 
 	if (tbinfo->relhasrowid)
 		return;
@@ -20234,7 +20400,7 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 		appendPQExpBuffer(query,
 						  "SELECT 'bigint' AS sequence_type, "
 						  "start_value, increment_by, max_value, min_value, "
-						  "cache_value, is_cycled, flags FROM %s",
+						  "cache_value, is_cycled, 0 AS flags FROM %s",
 						  fmtQualifiedDumpable(tbinfo));
 
 		res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
@@ -20246,7 +20412,7 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 					 tbinfo->dobj.name, PQntuples(res));
 
 		seq = pg_malloc0_object(SequenceItem);
-		seq->seqtype = parse_sequence_type(PQgetvalue(res, 0, 0));
+		seq->seqtype = parse_sequence_type(PQgetvalue(res, 0, 0), &seq->ora_as);
 		seq->startv = strtoi64(PQgetvalue(res, 0, 1), NULL, 10);
 		seq->incby = strtoi64(PQgetvalue(res, 0, 2), NULL, 10);
 		seq->maxv = strtoi64(PQgetvalue(res, 0, 3), NULL, 10);
@@ -20290,6 +20456,10 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 						  fmtQualifiedDumpable(tbinfo));
 	}
 
+	/* the command that creates the sequence, written in Oracle syntax if needed */
+	cmd = createPQExpBuffer();
+	ora_syntax = (db_mode == DB_ORACLE || seq->ora_as != NULL);
+
 	resetPQExpBuffer(query);
 
 	if (dopt->binary_upgrade)
@@ -20305,108 +20475,114 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 	
 	if (tbinfo->is_identity_sequence)
 	{
-		owning_tab = findTableByOid(tbinfo->owning_tab);
+		char		identity;
 
-		if (owning_tab->attidentity[tbinfo->owning_col - 1] == ATTRIBUTE_IDENTITY_DEFAULT_ON_NULL
-				|| owning_tab->attidentity[tbinfo->owning_col - 1] == ATTRIBUTE_ORA_IDENTITY_ALWAYS
-					|| owning_tab->attidentity[tbinfo->owning_col - 1] == ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT)
+		owning_tab = findTableByOid(tbinfo->owning_tab);
+		identity = owning_tab->attidentity[tbinfo->owning_col - 1];
+
+		/*
+		 * An Oracle-style identity is first attached like a PostgreSQL one,
+		 * so that binary upgrade can preserve its sequence's OIDs; its own
+		 * kind is set afterwards, through Oracle syntax.
+		 */
+		if (identity == ATTRIBUTE_IDENTITY_DEFAULT_ON_NULL ||
+			identity == ATTRIBUTE_ORA_IDENTITY_ALWAYS ||
+			identity == ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT)
 			is_ora_identity = true;
 
-		if (!is_ora_identity)
-		{
-			appendPQExpBuffer(query,
-							  "ALTER TABLE %s ",
-							  fmtQualifiedDumpable(owning_tab));
-			appendPQExpBuffer(query,
-							  "ALTER COLUMN %s ADD GENERATED ",
-							  fmtId(owning_tab->attnames[tbinfo->owning_col - 1]));
-			if (owning_tab->attidentity[tbinfo->owning_col - 1] == ATTRIBUTE_IDENTITY_ALWAYS)
-				appendPQExpBufferStr(query, "ALWAYS");
-			else if (owning_tab->attidentity[tbinfo->owning_col - 1] == ATTRIBUTE_IDENTITY_BY_DEFAULT)
-				appendPQExpBufferStr(query, "BY DEFAULT");
-			appendPQExpBuffer(query, " AS IDENTITY (\n    SEQUENCE NAME %s\n",
-							  fmtQualifiedDumpable(tbinfo));
-							  
-			/*
-			* Emit persistence option only if it's different from the owning
-			* table's.  This avoids using this new syntax unnecessarily.
-			*/
-			if (tbinfo->relpersistence != owning_tab->relpersistence)
-				appendPQExpBuffer(query, "    %s\n",
-								tbinfo->relpersistence == RELPERSISTENCE_UNLOGGED ?
-								"UNLOGGED" : "LOGGED");
-		}
+		appendPQExpBuffer(cmd,
+						  "ALTER TABLE %s ",
+						  fmtQualifiedDumpable(owning_tab));
+		appendPQExpBuffer(cmd,
+						  "ALTER COLUMN %s ADD GENERATED ",
+						  fmtId(owning_tab->attnames[tbinfo->owning_col - 1]));
+		if (identity == ATTRIBUTE_IDENTITY_ALWAYS)
+			appendPQExpBufferStr(cmd, "ALWAYS");
 		else
-		{
-			appendPQExpBuffer(query,
-							"ALTER TABLE %s ",
-							fmtQualifiedDumpable(owning_tab));
-			appendPQExpBuffer(query,
-							"MODIFY %s GENERATED ",
-							fmtId(owning_tab->attnames[tbinfo->owning_col - 1]));
-			if (owning_tab->attidentity[tbinfo->owning_col - 1] == ATTRIBUTE_ORA_IDENTITY_ALWAYS)
-				appendPQExpBufferStr(query, "ALWAYS");
-			else if (owning_tab->attidentity[tbinfo->owning_col - 1] == ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT)
-				appendPQExpBufferStr(query, "BY DEFAULT");
-			else if (owning_tab->attidentity[tbinfo->owning_col - 1] == ATTRIBUTE_IDENTITY_DEFAULT_ON_NULL)
-				appendPQExpBufferStr(query, "BY DEFAULT ON NULL");
-			appendPQExpBuffer(query, " AS IDENTITY (\n");
-		}
+			appendPQExpBufferStr(cmd, "BY DEFAULT");
+		appendPQExpBuffer(cmd, " AS IDENTITY (\n    SEQUENCE NAME %s\n",
+						  fmtQualifiedDumpable(tbinfo));
+
+		/*
+		 * Emit persistence option only if it's different from the owning
+		 * table's.  This avoids using this new syntax unnecessarily.
+		 */
+		if (tbinfo->relpersistence != owning_tab->relpersistence)
+			appendPQExpBuffer(cmd, "    %s\n",
+							  tbinfo->relpersistence == RELPERSISTENCE_UNLOGGED ?
+							  "UNLOGGED" : "LOGGED");
 	}
 	else
 	{
-		appendPQExpBuffer(query,
+		appendPQExpBuffer(cmd,
 						  "CREATE %sSEQUENCE %s\n",
 						  tbinfo->relpersistence == RELPERSISTENCE_UNLOGGED ?
 						  "UNLOGGED " : "",
 						  fmtQualifiedDumpable(tbinfo));
 
-		if (seq->seqtype != SEQTYPE_BIGINT)
-			appendPQExpBuffer(query, "    AS %s\n", SeqTypeNames[seq->seqtype]);
+		if (seq->ora_as != NULL)
+			appendPQExpBuffer(cmd, "    AS %s\n", seq->ora_as);
+		else if (seq->seqtype != SEQTYPE_BIGINT)
+			appendPQExpBuffer(cmd, "    AS %s\n", SeqTypeNames[seq->seqtype]);
 	}
 
-	appendPQExpBuffer(query, "    START WITH " INT64_FORMAT "\n", seq->startv);
+	appendPQExpBuffer(cmd, "    START WITH " INT64_FORMAT "\n", seq->startv);
 
-	appendPQExpBuffer(query, "    INCREMENT BY " INT64_FORMAT "\n", seq->incby);
+	appendPQExpBuffer(cmd, "    INCREMENT BY " INT64_FORMAT "\n", seq->incby);
 
 	if (seq->minv != default_minv)
-		appendPQExpBuffer(query, "    MINVALUE " INT64_FORMAT "\n", seq->minv);
-	else if (db_mode == DB_ORACLE)
-		appendPQExpBufferStr(query, "    NOMINVALUE\n");
+		appendPQExpBuffer(cmd, "    MINVALUE " INT64_FORMAT "\n", seq->minv);
+	else if (ora_syntax)
+		appendPQExpBufferStr(cmd, "    NOMINVALUE\n");
 	else
-		appendPQExpBufferStr(query, "    NO MINVALUE\n");
+		appendPQExpBufferStr(cmd, "    NO MINVALUE\n");
 
 	if (seq->maxv != default_maxv)
-		appendPQExpBuffer(query, "    MAXVALUE " INT64_FORMAT "\n", seq->maxv);
-	else if (db_mode == DB_ORACLE)
-		appendPQExpBufferStr(query, "    NOMAXVALUE\n");
+		appendPQExpBuffer(cmd, "    MAXVALUE " INT64_FORMAT "\n", seq->maxv);
+	else if (ora_syntax)
+		appendPQExpBufferStr(cmd, "    NOMAXVALUE\n");
 	else
-        appendPQExpBufferStr(query, "    NO MAXVALUE\n");
+		appendPQExpBufferStr(cmd, "    NO MAXVALUE\n");
 
-
-	if ( seq->cache && db_mode == DB_ORACLE)
-		appendPQExpBuffer(query,
-						"    NOCACHE %s",
-						(seq->cycled ? "\n    CYCLE" : ""));
+	/* Oracle mode refuses CACHE 1 and stores NOCACHE as a cache of 1 */
+	if (seq->cache == 1 && ora_syntax)
+		appendPQExpBufferStr(cmd, "    NOCACHE");
 	else
-		appendPQExpBuffer(query,
-					  "    CACHE " INT64_FORMAT "%s",
-					  seq->cache, (seq->cycled ? "\n    CYCLE" : ""));
-	is_scale = (seq->flags & SCALE_FLAG) == SCALE_FLAG ? true : false;
-	if(is_scale)
-		is_extend = (seq->flags & EXTEND_FLAG) == EXTEND_FLAG ? true : false;
-	is_session = (seq->flags & SESSION_FLAG) == SESSION_FLAG ? true : false;
-	if (is_scale && is_extend)
-		appendPQExpBuffer(query, " SCALE EXTEND");
-	else if (is_scale && !is_extend)
-		appendPQExpBuffer(query, " SCALE NOEXTEND");
-	if (is_session)
-		appendPQExpBuffer(query, " SESSION");
+		appendPQExpBuffer(cmd, "    CACHE " INT64_FORMAT, seq->cache);
+	if (seq->cycled)
+		appendPQExpBufferStr(cmd, "\n    CYCLE");
 
 	if (tbinfo->is_identity_sequence)
-		appendPQExpBufferStr(query, "\n);\n");
+		appendPQExpBufferStr(cmd, "\n)");
+
+	/*
+	 * Only Oracle mode creates a sequence of a numeric type.  A dump in
+	 * PostgreSQL mode runs that one command in Oracle mode; it must stay a
+	 * single command, which keeps the OIDs that binary upgrade presets.
+	 */
+	if (ora_syntax && db_mode != DB_ORACLE)
+	{
+		PQExpBuffer body = createPQExpBuffer();
+
+		appendPQExpBufferStr(body,
+							 "DECLARE\n"
+							 "    saved_mode text := pg_catalog.current_setting('ivorysql.compatible_mode');\n"
+							 "BEGIN\n"
+							 "    PERFORM pg_catalog.set_config('ivorysql.compatible_mode', 'oracle', true);\n"
+							 "    EXECUTE ");
+		appendStringLiteralAH(body, cmd->data, fout);
+		appendPQExpBufferStr(body,
+							 ";\n"
+							 "    PERFORM pg_catalog.set_config('ivorysql.compatible_mode', saved_mode, true);\n"
+							 "END;");
+		appendPQExpBufferStr(query, "DO ");
+		appendStringLiteralAH(query, body->data, fout);
+		appendPQExpBufferStr(query, " LANGUAGE plpgsql;\n");
+		destroyPQExpBuffer(body);
+	}
 	else
-		appendPQExpBufferStr(query, ";\n");
+		appendPQExpBuffer(query, "%s;\n", cmd->data);
+	destroyPQExpBuffer(cmd);
 
 	/* binary_upgrade:	no need to clear TOAST table oid */
 
@@ -20424,6 +20600,52 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 								  .section = SECTION_PRE_DATA,
 								  .createStmt = query->data,
 								  .dropStmt = delqry->data));
+
+	/*
+	 * The kind of an Oracle-style identity and the SCALE, EXTEND and SESSION
+	 * options exist only in Oracle syntax.  They go in a TOC entry of their
+	 * own, which pg_restore runs through the Oracle grammar whichever port
+	 * it restores through.
+	 */
+	if ((is_ora_identity ||
+		 (seq->flags & (SCALE_FLAG | SESSION_FLAG)) != 0) &&
+		(tbinfo->dobj.dump & DUMP_COMPONENT_DEFINITION))
+	{
+		resetPQExpBuffer(query);
+		if (is_ora_identity)
+		{
+			char		identity = owning_tab->attidentity[tbinfo->owning_col - 1];
+
+			appendPQExpBuffer(query, "ALTER TABLE %s ",
+							  fmtQualifiedDumpable(owning_tab));
+			appendPQExpBuffer(query, "MODIFY %s GENERATED %s AS IDENTITY;\n",
+							  fmtId(owning_tab->attnames[tbinfo->owning_col - 1]),
+							  identity == ATTRIBUTE_ORA_IDENTITY_ALWAYS ? "ALWAYS" :
+							  identity == ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT ? "BY DEFAULT" :
+							  "BY DEFAULT ON NULL");
+		}
+		if ((seq->flags & (SCALE_FLAG | SESSION_FLAG)) != 0)
+		{
+			appendPQExpBuffer(query, "ALTER SEQUENCE %s",
+							  fmtQualifiedDumpable(tbinfo));
+			if (seq->flags & SCALE_FLAG)
+				appendPQExpBufferStr(query, (seq->flags & EXTEND_FLAG) ?
+									 " SCALE EXTEND" : " SCALE NOEXTEND");
+			if (seq->flags & SESSION_FLAG)
+				appendPQExpBufferStr(query, " SESSION");
+			appendPQExpBufferStr(query, ";\n");
+		}
+
+		ArchiveEntry(fout, nilCatalogId, createDumpId(),
+					 ARCHIVE_OPTS(.tag = tbinfo->dobj.name,
+								  .namespace = tbinfo->dobj.namespace->dobj.name,
+								  .owner = tbinfo->rolname,
+								  .description = "SEQUENCE ORACLE OPTIONS",
+								  .section = SECTION_PRE_DATA,
+								  .createStmt = query->data,
+								  .deps = &(tbinfo->dobj.dumpId),
+								  .nDeps = 1));
+	}
 
 	/*
 	 * If the sequence is owned by a table column, emit the ALTER for it as a

@@ -776,8 +776,13 @@ check_control_data(ControlData *oldctrl,
 	else if (oldctrl->data_checksum_version != newctrl->data_checksum_version)
 		pg_fatal("old and new cluster pg_controldata checksum versions do not match");
 
-//	if (oldctrl->database_mode_is_oracle != newctrl->database_mode_is_oracle)
-//		pg_fatal("old and new pg_controldata database mode do not match\n");
+	/*
+	 * A PostgreSQL cluster may move into an Oracle-mode cluster, but not the
+	 * other way: the new cluster would lack the Oracle-compatible catalog
+	 * objects, packages and object types that the old one can hold.
+	 */
+	if (oldctrl->database_mode_is_oracle && !newctrl->database_mode_is_oracle)
+		pg_fatal("old cluster was initialized in Oracle mode but the new one was not");
 }
 
 
