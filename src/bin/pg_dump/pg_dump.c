@@ -14311,10 +14311,11 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 						  "(l.lanname <> 'plisql' AND EXISTS "
 						  "(SELECT 1 FROM pg_catalog.pg_settings "
 						  "WHERE name = 'ivorysql.compatible_mode' AND setting = 'oracle') "
-						  "AND %u = ANY(COALESCE(p.proallargtypes, "
-						  "p.proargtypes::pg_catalog.oid[]))) "
+						  "AND COALESCE(p.proallargtypes, p.proargtypes::pg_catalog.oid[]) "
+						  "&& ARRAY[%u, %u, %u, %u]::pg_catalog.oid[]) "
 						  "AS qualify_routine_types,\n",
-						  ORAVARCHARCHAROID);
+						  ORAVARCHARCHAROID, ORACHARCHAROID,
+						  ORAVARCHARCHARARRAYOID, ORACHARCHARARRAYOID);
 
 		if (fout->remoteVersion >= 90500)
 			appendPQExpBufferStr(query,
@@ -14385,7 +14386,7 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 	funcresult = PQgetvalue(res, 0, PQfnumber(res, "funcresult"));
 
 	/*
-	 * Keep Oracle deparsing for non-VARCHAR2 types and defaults. In
+	 * Keep Oracle deparsing for other types and defaults. In
 	 * particular, bare date from the PostgreSQL deparser would resolve
 	 * to a different type with the Oracle parser.
 	 */
@@ -14401,13 +14402,19 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 						  "ELSE CASE WHEN p.prokind = 'p' THEN 'IN ' END END, "
 						  "CASE WHEN pg_catalog.length(p.proargnames[a.n]) > 0 "
 						  "THEN pg_catalog.quote_ident(p.proargnames[a.n]) || ' ' END, "
-						  "CASE a.argtype WHEN %u THEN 'sys.oravarcharchar' "
-						  "WHEN %u THEN 'sys.oravarcharbyte' "
+						  "CASE COALESCE(e.oid, a.argtype) "
+						  "WHEN %u THEN pg_catalog.concat('sys.oravarcharchar', e.suffix) "
+						  "WHEN %u THEN pg_catalog.concat('sys.oravarcharbyte', e.suffix) "
+						  "WHEN %u THEN pg_catalog.concat('sys.oracharchar', e.suffix) "
+						  "WHEN %u THEN pg_catalog.concat('sys.oracharbyte', e.suffix) "
 						  "ELSE pg_catalog.format_type(a.argtype, NULL) END) AS declaration, "
 						  "pg_catalog.pg_get_function_arg_default(p.oid, a.n::int) AS argdefault "
 						  "FROM pg_catalog.pg_proc p, "
 						  "pg_catalog.unnest(COALESCE(p.proallargtypes, p.proargtypes::pg_catalog.oid[])) "
-						  "WITH ORDINALITY AS a(argtype, n) WHERE p.oid = %u) "
+						  "WITH ORDINALITY AS a(argtype, n) "
+						  "LEFT JOIN (SELECT oid, typarray, '[]' AS suffix "
+						  "FROM pg_catalog.pg_type WHERE typarray <> 0) e "
+						  "ON e.typarray = a.argtype WHERE p.oid = %u) "
 						  "SELECT pg_catalog.string_agg(pg_catalog.concat(declaration, "
 						  "CASE WHEN argdefault IS NOT NULL THEN ' DEFAULT ' || argdefault END), ', ' ORDER BY n) "
 						  "FILTER (WHERE argmode IS DISTINCT FROM 't'), "
@@ -14415,7 +14422,8 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 						  "FILTER (WHERE argmode IS DISTINCT FROM 't'), "
 						  "pg_catalog.string_agg(declaration, ', ' ORDER BY n) FILTER (WHERE argmode = 't') "
 						  "FROM args",
-						  ORAVARCHARCHAROID, ORAVARCHARBYTEOID, finfo->dobj.catId.oid);
+						  ORAVARCHARCHAROID, ORAVARCHARBYTEOID,
+						  ORACHARCHAROID, ORACHARBYTEOID, finfo->dobj.catId.oid);
 		type_res = ExecuteSqlQueryForSingleRow(fout, query->data);
 		funcargs = PQgetvalue(type_res, 0, 0);
 		funciargs = PQgetvalue(type_res, 0, 1);

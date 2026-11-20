@@ -35,6 +35,12 @@ $node->safe_psql('source_db', q{
 		d pg_catalog.date DEFAULT CAST('2026-01-02' AS pg_catalog.date),
 		"label, text" pg_catalog.text DEFAULT 'date, varchar2')
 		RETURNS pg_catalog.date LANGUAGE sql AS 'SELECT d';
+	CREATE FUNCTION restore_fixed_char(v sys.oravarcharchar, c sys.oracharchar,
+		b sys.oracharbyte, d pg_catalog.date) RETURNS integer LANGUAGE sql AS 'SELECT 1';
+	CREATE FUNCTION restore_varchar_arrays(v sys.oravarcharchar, a sys.oravarcharchar[],
+		b sys.oravarcharbyte[]) RETURNS integer LANGUAGE sql AS 'SELECT 1';
+	CREATE FUNCTION restore_only_char_array(a sys.oravarcharchar[])
+		RETURNS integer LANGUAGE sql AS 'SELECT 1';
 	CREATE FUNCTION restore_char_input(v varchar2) RETURNS integer
 		LANGUAGE sql AS 'SELECT 1';
 	CREATE FUNCTION restore_char_input_with_byte_out(v varchar2,
@@ -61,7 +67,8 @@ sub snapshot
 		FROM pg_proc p JOIN pg_type t ON t.oid = p.prorettype
 		WHERE p.proname IN ('restore_char_result', 'restore_char_out',
 							'restore_char_input', 'restore_char_input_with_byte_out',
-							'restore_char_pg_date',
+							'restore_char_pg_date', 'restore_fixed_char',
+							'restore_varchar_arrays', 'restore_only_char_array',
 							'restore_mixed_out')
 		ORDER BY p.proname;
 		SELECT a.attname, t.typname, a.atttypmod
@@ -86,6 +93,12 @@ like($expected, qr/^restore_char_input_with_byte_out\|oravarcharbyte\|9502\|\{95
 	'source mixed function has CHAR input and BYTE output');
 like($expected, qr/^restore_char_pg_date\|date\|9502 1082 25\|$/m,
 	'source function has CHAR input and PostgreSQL DATE input and result');
+like($expected, qr/^restore_fixed_char\|int4\|9502 9500 9501 1082\|$/m,
+	'source function has CHAR and BYTE fixed-length arguments');
+like($expected, qr/^restore_varchar_arrays\|int4\|9502 9506 9507\|$/m,
+	'source mixed function has CHAR and BYTE VARCHAR2 arrays');
+like($expected, qr/^restore_only_char_array\|int4\|9506\|$/m,
+	'source array-only function has a CHAR VARCHAR2 array');
 like($expected, qr/^explicit_byte\|oravarcharbyte\|12$/m,
 	'source expression index key has an 8-byte typmod');
 
