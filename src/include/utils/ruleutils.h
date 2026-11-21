@@ -24,6 +24,7 @@ typedef struct PlannedStmt PlannedStmt;
 #define RULE_INDEXDEF_PRETTY		0x01
 #define RULE_INDEXDEF_KEYS_ONLY		0x02	/* ignore included attributes */
 
+extern char *get_viewdef_for_storage(Oid viewoid);
 extern char *pg_get_indexdef_string(Oid indexrelid);
 extern char *pg_get_indexdef_columns(Oid indexrelid, bool pretty);
 extern char *pg_get_indexdef_columns_extended(Oid indexrelid,
