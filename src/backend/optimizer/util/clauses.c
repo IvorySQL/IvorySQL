@@ -559,6 +559,10 @@ xmlexpr_is_immutable(XmlExpr *xexpr)
 			 */
 			return false;
 
+		case IS_UPDATEXML:	/* IvorySQL: updatexml(args) */
+			/* Conservatively treat as not immutable (IvorySQL addition). */
+			return false;
+
 			/* There is intentionally no default: case here */
 	}
 	/* We shouldn't get here, but if we do, say "not immutable" */
