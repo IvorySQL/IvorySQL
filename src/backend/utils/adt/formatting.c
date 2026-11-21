@@ -8593,6 +8593,7 @@ float4_to_char(PG_FUNCTION_ARGS)
 		float4		val = value;
 		char	   *orgnum;
 		size_t		numstr_pre_len;
+		int			orig_post;
 
 		if (IS_MULTI(&Num))
 		{
@@ -8604,6 +8605,10 @@ float4_to_char(PG_FUNCTION_ARGS)
 
 		orgnum = psprintf("%.0f", fabs(val));
 		numstr_pre_len = strlen(orgnum);
+
+		/* Remember the requested fractional width before the
+		 * precision adjustment below shrinks it. */
+		orig_post = Num.post;
 
 		/* adjust post digits to fit max float digits */
 		if (numstr_pre_len >= FLT_DIG)
@@ -8638,7 +8643,13 @@ float4_to_char(PG_FUNCTION_ARGS)
 			 * output field with '#', including the sign and the
 			 * decimal point, as in Oracle's TO_CHAR(). */
 			if (database_mode == DB_ORACLE)
+			{
 				num_overflow = true;
+				/* Restore the requested fractional width, which the
+				 * precision adjustment above may have shrunk, so the
+				 * overflow output spans the whole field. */
+				Num.post = orig_post;
+			}
 			numstr = (char *) palloc(Num.pre + Num.post + 2);
 			fill_str(numstr, '#', Num.pre + Num.post + 1);
 			*(numstr + Num.pre) = '.';
@@ -8711,6 +8722,7 @@ float8_to_char(PG_FUNCTION_ARGS)
 		float8		val = value;
 		char	   *orgnum;
 		size_t		numstr_pre_len;
+		int			orig_post;
 
 		if (IS_MULTI(&Num))
 		{
@@ -8722,6 +8734,10 @@ float8_to_char(PG_FUNCTION_ARGS)
 
 		orgnum = psprintf("%.0f", fabs(val));
 		numstr_pre_len = strlen(orgnum);
+
+		/* Remember the requested fractional width before the
+		 * precision adjustment below shrinks it. */
+		orig_post = Num.post;
 
 		/* adjust post digits to fit max double digits */
 		if (numstr_pre_len >= DBL_DIG)
@@ -8756,7 +8772,13 @@ float8_to_char(PG_FUNCTION_ARGS)
 			 * output field with '#', including the sign and the
 			 * decimal point, as in Oracle's TO_CHAR(). */
 			if (database_mode == DB_ORACLE)
+			{
 				num_overflow = true;
+				/* Restore the requested fractional width, which the
+				 * precision adjustment above may have shrunk, so the
+				 * overflow output spans the whole field. */
+				Num.post = orig_post;
+			}
 			numstr = (char *) palloc(Num.pre + Num.post + 2);
 			fill_str(numstr, '#', Num.pre + Num.post + 1);
 			*(numstr + Num.pre) = '.';
