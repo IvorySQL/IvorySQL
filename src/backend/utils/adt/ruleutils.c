@@ -60,6 +60,7 @@
 #include "parser/parse_func.h"
 #include "parser/parse_oper.h"
 #include "parser/parse_relation.h"
+#include "parser/scansup.h"
 #include "parser/parser.h"
 #include "parser/parsetree.h"
 #include "parser/parse_type.h"
@@ -101,6 +102,7 @@
 #define PRETTYFLAG_PAREN		0x0001
 #define PRETTYFLAG_INDENT		0x0002
 #define PRETTYFLAG_SCHEMA		0x0004
+#define PRETTYFLAG_CATALOG_FUNCTION_NAMES 0x0008
 
 /* Standard conversion of a "bool pretty" option to detailed flags */
 #define GET_PRETTY_FLAGS(pretty) \
@@ -550,7 +552,7 @@ static char *generate_qualified_relation_name(Oid relid);
 static char *generate_function_name(Oid funcid, int nargs,
 									List *argnames, Oid *argtypes,
 									bool has_variadic, bool *use_variadic_p,
-									bool inGroupBy);
+									bool inGroupBy, int prettyFlags);
 static char *generate_operator_name(Oid operid, Oid arg1, Oid arg2);
 static void add_cast_to(StringInfo buf, Oid typid);
 static char *generate_qualified_type_name(Oid typid);
@@ -811,6 +813,23 @@ pg_get_viewdef_name_ext(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 
 	PG_RETURN_TEXT_P(string_to_text(res));
+}
+
+/*
+ * Deparse a view definition for storage with IDENT_CASE_UNDEFINE, which
+ * pg_dump restores in normal identifier case mode.
+ */
+char *
+get_viewdef_for_storage(Oid viewoid)
+{
+	char	   *viewdef;
+
+	viewdef = pg_get_viewdef_worker(viewoid,
+								   PRETTYFLAG_INDENT | PRETTYFLAG_CATALOG_FUNCTION_NAMES,
+								   WRAP_COLUMN_DEFAULT);
+	if (viewdef == NULL)
+		elog(ERROR, "could not get definition of view %u", viewoid);
+	return viewdef;
 }
 
 /*
@@ -1161,7 +1180,7 @@ pg_get_triggerdef_worker(Oid trigid, bool pretty)
 	appendStringInfo(&buf, "EXECUTE FUNCTION %s(",
 					 generate_function_name(trigrec->tgfoid, 0,
 											NIL, NULL,
-											false, NULL, false));
+											false, NULL, false, 0));
 
 	if (trigrec->tgnargs > 0)
 	{
@@ -3453,7 +3472,7 @@ pg_get_functiondef_internal(PG_FUNCTION_ARGS)
 		appendStringInfo(&buf, " SUPPORT %s",
 						 generate_function_name(proc->prosupport, 1,
 												NIL, argtypes,
-												false, NULL, false));
+												false, NULL, false, 0));
 	}
 
 	if (oldlen != buf.len)
@@ -3749,7 +3768,7 @@ ivy_get_plisql_functiondef(PG_FUNCTION_ARGS)
 		appendStringInfo(&buf, " SUPPORT %s",
 						 generate_function_name(proc->prosupport, 1,
 												NIL, argtypes,
-												false, NULL, EXPR_KIND_NONE));
+												false, NULL, EXPR_KIND_NONE, 0));
 	}
 
 	if (oldlen != buf.len)
@@ -11922,7 +11941,8 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 												argnames, argtypes,
 												expr->funcvariadic,
 												&use_variadic,
-												context->inGroupBy));
+												context->inGroupBy,
+												context->prettyFlags));
 	else
 		appendStringInfo(buf, "%s(",
 						 get_internal_function_name(expr));
@@ -11996,7 +12016,7 @@ get_agg_expr_helper(Aggref *aggref, deparse_context *context,
 		funcname = generate_function_name(aggref->aggfnoid, nargs, NIL,
 										  argtypes, aggref->aggvariadic,
 										  &use_variadic,
-										  context->inGroupBy);
+										  context->inGroupBy, context->prettyFlags);
 
 	/* Print the aggregate name, schema-qualified if needed */
 	appendStringInfo(buf, "%s(%s", funcname,
@@ -12137,7 +12157,7 @@ get_windowfunc_expr_helper(WindowFunc *wfunc, deparse_context *context,
 	if (!funcname)
 		funcname = generate_function_name(wfunc->winfnoid, nargs, argnames,
 										  argtypes, false, NULL,
-										  context->inGroupBy);
+										  context->inGroupBy, context->prettyFlags);
 
 	appendStringInfo(buf, "%s(", funcname);
 
@@ -13993,7 +14013,8 @@ get_tablesample_def(TableSampleClause *tablesample, deparse_context *context)
 	appendStringInfo(buf, " TABLESAMPLE %s (",
 					 generate_function_name(tablesample->tsmhandler, 1,
 											NIL, argtypes,
-											false, NULL, false));
+											false, NULL, false,
+											context->prettyFlags));
 
 	nargs = 0;
 	foreach(l, tablesample->args)
@@ -14410,6 +14431,33 @@ generate_qualified_relation_name(Oid relid)
 }
 
 /*
+ * Quote names used in generated function calls.  In interchange mode,
+ * compensate for the Oracle lexer only when the identifier needs quotes.
+ * Generic quoting is also used to store GUC values such as search_path,
+ * whose identifiers have already been through the lexer.
+ */
+static const char *
+quote_function_identifier(const char *ident)
+{
+	const char *quoted = quote_identifier(ident);
+
+	if (quoted != ident && compatible_db == ORA_PARSER &&
+		enable_case_switch && identifier_case_switch == INTERCHANGE &&
+		!identifier_case_from_pg_dump)
+	{
+		char	   *switched = identifier_case_transform(ident, strlen(ident));
+
+		pfree(unconstify(char *, quoted));
+		quoted = quote_identifier(switched);
+		if (quoted == switched)
+			quoted = psprintf("\"%s\"", switched);
+		pfree(switched);
+	}
+
+	return quoted;
+}
+
+/*
  * generate_function_name
  *		Compute the name to display for a function specified by OID,
  *		given that it is being called with the specified actual arg names and
@@ -14425,11 +14473,12 @@ generate_qualified_relation_name(Oid relid)
  * inGroupBy must be true if we're deparsing a GROUP BY clause.
  *
  * The result includes all necessary quoting and schema-prefixing.
+ * Use catalog spelling when the deparse flags request it.
  */
 static char *
 generate_function_name(Oid funcid, int nargs, List *argnames, Oid *argtypes,
 					   bool has_variadic, bool *use_variadic_p,
-					   bool inGroupBy)
+					   bool inGroupBy, int prettyFlags)
 {
 	char	   *result;
 	HeapTuple	proctup;
@@ -14515,7 +14564,13 @@ generate_function_name(Oid funcid, int nargs, List *argnames, Oid *argtypes,
 	else
 		nspname = get_namespace_name_or_temp(procform->pronamespace);
 
-	result = quote_qualified_identifier(nspname, proname);
+	if (prettyFlags & PRETTYFLAG_CATALOG_FUNCTION_NAMES)
+		result = quote_qualified_identifier(nspname, proname);
+	else if (nspname)
+		result = psprintf("%s.%s", quote_function_identifier(nspname),
+						  quote_function_identifier(proname));
+	else
+		result = pstrdup(quote_function_identifier(proname));
 
 	ReleaseSysCache(proctup);
 
