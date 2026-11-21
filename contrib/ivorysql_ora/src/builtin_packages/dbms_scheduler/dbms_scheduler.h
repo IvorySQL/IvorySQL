@@ -149,7 +149,13 @@ extern char *scheduler_purge_schedule;
 
 extern void SchedulerLauncherRegister(void);
 
-/* bgworker entry points, looked up by name in the shared library */
+/* bgworker entry points, looked up by name in the shared library.
+ *
+ * pg_noreturn must precede extern PGDLLEXPORT here: the macro expands
+ * to a function-type attribute, and attribute-before-declaration is the
+ * only form accepted across all build configurations (same canonical
+ * order as ExceptionalCondition in c.h and PostgresMain in tcopprot.h).
+ */
 pg_noreturn extern PGDLLEXPORT void SchedulerLauncherMain(Datum main_arg);
 pg_noreturn extern PGDLLEXPORT void SchedulerDatabaseWorkerMain(Datum main_arg);
 pg_noreturn extern PGDLLEXPORT void SchedulerJobWorkerMain(Datum main_arg);
