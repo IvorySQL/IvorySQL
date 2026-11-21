@@ -137,6 +137,13 @@ foreach my $oid (@sortedoids)
 	}
 }
 
+# Stop the suggested block at IvorySQL's reserved type OID range.
+if ($suggestion < $MinTypeObjectId
+	&& $navailable > $MinTypeObjectId - $suggestion)
+{
+	$navailable = $MinTypeObjectId - $suggestion;
+}
+
 printf "Patches should use a more-or-less consecutive range of OIDs.\n";
 printf
   "Best practice is to start with a random choice in the range 8000-9999.\n";
