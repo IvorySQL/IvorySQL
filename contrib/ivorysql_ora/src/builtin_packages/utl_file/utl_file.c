@@ -525,8 +525,11 @@ ora_utl_file_fcopy(PG_FUNCTION_ARGS)
 
 	copy_result = copy_text_file(srcfile, dstfile, start_line, end_line);
 
-	fclose(srcfile);
-	fclose(dstfile);
+	/* Writes buffered by stdio can fail only when the destination is closed. */
+	if (fclose(srcfile) != 0 && copy_result == 0)
+		copy_result = errno;
+	if (fclose(dstfile) != 0 && copy_result == 0)
+		copy_result = errno;
 
 	if (copy_result)
 	{
