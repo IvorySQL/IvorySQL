@@ -1563,7 +1563,8 @@ ora_setup_regexp_substr_matches(text *src_text,
 	int			array_idx;
 	int			prev_match_end = 0;
 	int			src_text_len = VARSIZE_ANY_EXHDR(src_text);
-	regmatch_t		pmatch[10];
+	regmatch_t *pmatch;
+	int			pmatch_len;
 	pg_wchar		*data;
 	size_t			data_len;
 	int			search_start;
@@ -1578,13 +1579,16 @@ ora_setup_regexp_substr_matches(text *src_text,
 		use_subpatterns = true;
 		matchctx->use_subpatterns = true;
 		matchctx->npatterns = re->re_nsub;
+		pmatch_len = re->re_nsub + 1;
 	}
 	else
 	{
 		use_subpatterns = false;
 		matchctx->use_subpatterns = false;
 		matchctx->npatterns = 1;
+		pmatch_len = 1;
 	}
+	pmatch = palloc_array(regmatch_t, pmatch_len);
 
 	/* the real output space (grown dynamically if needed) */
 	array_len = re_flags.glob ? 256 : 32;
@@ -1601,7 +1605,7 @@ ora_setup_regexp_substr_matches(text *src_text,
 	if(start_posn > 1)
 		search_start = start_posn - 1;
 	while (RE_wchar_execute(re, data, data_len, search_start,
-							10, pmatch))
+							pmatch_len, pmatch))
 	{
 		matchctx->nmatches++;
 
@@ -1650,6 +1654,8 @@ ora_setup_regexp_substr_matches(text *src_text,
 			}
 		}
 	}
+
+	pfree(pmatch);
 
 	/*
 	 * If the substring position of the regular expression is not specified,
@@ -1735,7 +1741,8 @@ ora_setup_regexp_instr_matches(text *src_text,
 	int			array_idx;
 	int			prev_match_end = 0;
 	int			src_text_len = VARSIZE_ANY_EXHDR(src_text);
-	regmatch_t	pmatch[10];
+	regmatch_t *pmatch;
+	int			pmatch_len;
 	pg_wchar   *data;
 	size_t		data_len;
 	int			search_start;
@@ -1750,13 +1757,16 @@ ora_setup_regexp_instr_matches(text *src_text,
 		use_subpatterns = true;
 		matchctx->use_subpatterns = true;
 		matchctx->npatterns = re->re_nsub;
+		pmatch_len = re->re_nsub + 1;
 	}
 	else
 	{
 		use_subpatterns = false;
 		matchctx->use_subpatterns = false;
 		matchctx->npatterns = 1;
+		pmatch_len = 1;
 	}
+	pmatch = palloc_array(regmatch_t, pmatch_len);
 
 	/* the real output space (grown dynamically if needed) */
 	array_len = re_flags.glob ? 256 : 32;
@@ -1773,7 +1783,7 @@ ora_setup_regexp_instr_matches(text *src_text,
 	if(start_posn > 1)
 		search_start = start_posn - 1;
 	while (RE_wchar_execute(re, data, data_len, search_start,
-							10, pmatch))
+							pmatch_len, pmatch))
 	{
 		matchctx->nmatches++;
 
@@ -1822,6 +1832,8 @@ ora_setup_regexp_instr_matches(text *src_text,
 			}
 		}
 	}
+
+	pfree(pmatch);
 
 	if (occur_posn > matchctx->nmatches)
 		return false;

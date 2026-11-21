@@ -561,6 +561,10 @@ select regexp_substr('123456789010', '(1(2)3)(4(5(6))(7(8))(9(0)(10)))', 1, 1, '
 
 select regexp_substr('123456789010', '(1(2)3)(4(5(6))(7(8))(9(0)(10)))', 1, 1, 'i',9) from dual;
 
+select regexp_substr('abcdefghijkl', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)(l)', 1, 1, 'c',1) from dual;
+
+select regexp_substr('abcdefghijkl', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)(l)', 1, 1, 'c',9) from dual;
+
 --The number of submodes is more than 9 and returns empty
 
 select regexp_substr('123456789010', '(1(2)3)(4(5(6))(7(8))(9(0)(10)))', 1, 1, 'i',10) from dual;
@@ -749,6 +753,10 @@ select regexp_instr('345 REGEXP_instr 789', '[A-Z]+', 1, 1, 0, 'ic')  from dual;
 select regexp_instr('123456789010', '(1(2)3)(4(5(6))(7(8))(9(0)(10)))', 1, 1, 0, 'i',8) from dual;
 
 select regexp_instr('123456789010', '(1(2)3)(4(5(6))(7(8))(9(0)(10)))', 1, 1, 0, 'i',9) from dual;
+
+select regexp_instr('abcdefghijkl', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)(l)', 1, 1, 0, 'c',1) from dual;
+
+select regexp_instr('abcdefghijkl', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)(l)', 1, 1, 0, 'c',9) from dual;
 
 /*
  * regexp_like
