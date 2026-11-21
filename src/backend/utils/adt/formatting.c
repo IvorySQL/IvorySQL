@@ -8097,13 +8097,90 @@ do { \
 } while (0)
 
 /*
+ * Oracle replaces a value that does not fit the format model with a string of
+ * '#', including the positions of the sign and of the decimal character.
+ *
+ * The number of '#' is the width of the field described by the format model,
+ * with fill mode (FM) disabled: FM only suppresses the padding, while Oracle
+ * still reserves the sign position when a value overflows.  Rendering the
+ * field once more without FM therefore yields the number of characters to
+ * fill.  The number string is extended to the length of the format model
+ * first, because for float4/float8 the fractional positions may have been
+ * clamped to the precision of the C double.
+ *
+ * "overflow" is set by the callers when the value did not fit the format
+ * model; the number string itself cannot be used for that, since the overflow
+ * fill is overwritten by the decimal character when the format model has no
+ * digit position before it (e.g. '.99').
+ *
+ * "num" must be the number descriptor as parsed from the format model, i.e.
+ * its state before NUM_processor() has run, because that routine modifies it.
+ */
+static void
+ora_fill_overflow(char *result, NUMDesc *num, FormatNode *format, char *numstr,
+				  int out_pre_spaces, int sign, Oid collid, int fmt_len,
+				  bool overflow)
+{
+	NUMDesc		num_no_fm;
+	char	   *padded;
+	char	   *numerals;
+	size_t		numstr_len;
+	int			width;
+
+	/* Only Oracle mode replaces the whole field. */
+	if (ORA_PARSER != compatible_db)
+		return;
+
+	if (!overflow)
+		return;
+
+	/*
+	 * Scientific notation is handled separately by NUM_processor(): the '#'
+	 * it produces there stand for non-finite input rather than for an
+	 * overflowed prefix, so leave that rendering alone.
+	 */
+	if (IS_EEEE(num))
+		return;
+
+	num_no_fm = *num;
+	num_no_fm.flag &= ~NUM_F_FILLMODE;
+
+	/* Give every position of the format model a digit to consume. */
+	numstr_len = strlen(numstr);
+	if (numstr_len >= (size_t) fmt_len)
+		numerals = numstr;
+	else
+	{
+		numerals = (char *) palloc(fmt_len + 1);
+		memcpy(numerals, numstr, numstr_len);
+		memset(numerals + numstr_len, '#', fmt_len - numstr_len);
+		numerals[fmt_len] = '\0';
+	}
+
+	padded = (char *) palloc(fmt_len * NUM_MAX_ITEM_SIZ + 1);
+	NUM_processor(format, &num_no_fm, padded, numerals, 0,
+				  out_pre_spaces, sign, true, collid);
+	/* Count characters, not bytes: the format model may contain multibyte text. */
+	width = pg_mbstrlen(padded);
+	pfree(padded);
+	if (numerals != numstr)
+		pfree(numerals);
+
+	memset(result, '#', width);
+	result[width] = '\0';
+}
+
+/*
  * MACRO: Finish part of NUM
  */
 #define NUM_TOCHAR_finish \
 do { \
 	size_t	len; \
+	NUMDesc	num_before_processing; \
 									\
+	num_before_processing = Num; \
 	NUM_processor(format, &Num, VARDATA(result), numstr, 0, out_pre_spaces, sign, true, PG_GET_COLLATION()); \
+	ora_fill_overflow(VARDATA(result), &num_before_processing, format, numstr, out_pre_spaces, sign, PG_GET_COLLATION(), VARSIZE_ANY_EXHDR(fmt), overflow); \
 									\
 	if (shouldFree)					\
 		pfree(format);				\
@@ -8189,6 +8266,7 @@ numeric_to_char(PG_FUNCTION_ARGS)
 	bool		shouldFree;
 	int			out_pre_spaces = 0,
 				sign = 0;
+	bool		overflow = false;
 	char	   *numstr,
 			   *orgnum,
 			   *p;
@@ -8292,6 +8370,7 @@ numeric_to_char(PG_FUNCTION_ARGS)
 		/* overflowed prefix digit format? */
 		else if (numstr_pre_len > Num.pre)
 		{
+			overflow = true;
 			numstr = (char *) palloc(Num.pre + Num.post + 2);
 			fill_str(numstr, '#', Num.pre + Num.post + 1);
 			*(numstr + Num.pre) = '.';
@@ -8316,6 +8395,7 @@ int4_to_char(PG_FUNCTION_ARGS)
 	bool		shouldFree;
 	int			out_pre_spaces = 0,
 				sign = 0;
+	bool		overflow = false;
 	char	   *numstr,
 			   *orgnum;
 
@@ -8385,6 +8465,7 @@ int4_to_char(PG_FUNCTION_ARGS)
 		/* overflowed prefix digit format? */
 		else if (numstr_pre_len > Num.pre)
 		{
+			overflow = true;
 			numstr = (char *) palloc(Num.pre + Num.post + 2);
 			fill_str(numstr, '#', Num.pre + Num.post + 1);
 			*(numstr + Num.pre) = '.';
@@ -8409,6 +8490,7 @@ int8_to_char(PG_FUNCTION_ARGS)
 	bool		shouldFree;
 	int			out_pre_spaces = 0,
 				sign = 0;
+	bool		overflow = false;
 	char	   *numstr,
 			   *orgnum;
 
@@ -8496,6 +8578,7 @@ int8_to_char(PG_FUNCTION_ARGS)
 		/* overflowed prefix digit format? */
 		else if (numstr_pre_len > Num.pre)
 		{
+			overflow = true;
 			numstr = (char *) palloc(Num.pre + Num.post + 2);
 			fill_str(numstr, '#', Num.pre + Num.post + 1);
 			*(numstr + Num.pre) = '.';
@@ -8520,6 +8603,7 @@ float4_to_char(PG_FUNCTION_ARGS)
 	bool		shouldFree;
 	int			out_pre_spaces = 0,
 				sign = 0;
+	bool		overflow = false;
 	char	   *numstr,
 			   *p;
 
@@ -8608,6 +8692,7 @@ float4_to_char(PG_FUNCTION_ARGS)
 		/* overflowed prefix digit format? */
 		else if (numstr_pre_len > Num.pre)
 		{
+			overflow = true;
 			numstr = (char *) palloc(Num.pre + Num.post + 2);
 			fill_str(numstr, '#', Num.pre + Num.post + 1);
 			*(numstr + Num.pre) = '.';
@@ -8632,6 +8717,7 @@ float8_to_char(PG_FUNCTION_ARGS)
 	bool		shouldFree;
 	int			out_pre_spaces = 0,
 				sign = 0;
+	bool		overflow = false;
 	char	   *numstr,
 			   *p;
 
@@ -8720,6 +8806,7 @@ float8_to_char(PG_FUNCTION_ARGS)
 		/* overflowed prefix digit format? */
 		else if (numstr_pre_len > Num.pre)
 		{
+			overflow = true;
 			numstr = (char *) palloc(Num.pre + Num.post + 2);
 			fill_str(numstr, '#', Num.pre + Num.post + 1);
 			*(numstr + Num.pre) = '.';
