@@ -493,3 +493,59 @@ LINE 1: SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_N...
                ^
 \set ON_ERROR_STOP on
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- USER_TAB_COLUMNS
+-- Same column list as ALL_TAB_COLUMNS, restricted to the relations owned
+-- by the current user (Oracle's USER_ views describe own objects only).
+DROP TABLE IF EXISTS TEST_USER_TAB_COLUMNS;
+NOTICE:  table "test_user_tab_columns" does not exist, skipping
+DROP TABLE IF EXISTS TEST_USER_TAB_COLUMNS_OTHER;
+NOTICE:  table "test_user_tab_columns_other" does not exist, skipping
+CREATE TABLE TEST_USER_TAB_COLUMNS (
+    ID INT PRIMARY KEY,
+    NAME VARCHAR2(50) NOT NULL,
+    AGE NUMERIC(5,2)
+);
+CREATE ROLE regress_orasysview_other;
+CREATE TABLE TEST_USER_TAB_COLUMNS_OTHER (ID INT);
+ALTER TABLE TEST_USER_TAB_COLUMNS_OTHER OWNER TO regress_orasysview_other;
+ANALYZE TEST_USER_TAB_COLUMNS;
+SELECT
+    TABLE_NAME,
+    COLUMN_NAME,
+    COLUMN_ID,
+    DATA_TYPE,
+    DATA_LENGTH,
+    DATA_PRECISION,
+    DATA_SCALE,
+    NULLABLE
+FROM SYS.USER_TAB_COLUMNS
+WHERE TABLE_NAME = 'TEST_USER_TAB_COLUMNS'
+ORDER BY COLUMN_ID;
+      table_name       | column_name | column_id | data_type | data_length | data_precision | data_scale | nullable 
+-----------------------+-------------+-----------+-----------+-------------+----------------+------------+----------
+ TEST_USER_TAB_COLUMNS | ID          |         1 | NUMBER    |           4 |             10 |          0 | N
+ TEST_USER_TAB_COLUMNS | NAME        |         2 | VARCHAR2  |          50 |                |            | N
+ TEST_USER_TAB_COLUMNS | AGE         |         3 | NUMBER    |          22 |              5 |          2 | Y
+(3 rows)
+
+-- A table owned by another role is visible through ALL_TAB_COLUMNS
+-- but not through USER_TAB_COLUMNS.
+SELECT COUNT(*) AS OTHER_TABLE_IN_USER_VIEW
+FROM SYS.USER_TAB_COLUMNS
+WHERE TABLE_NAME = 'TEST_USER_TAB_COLUMNS_OTHER';
+ other_table_in_user_view 
+--------------------------
+                        0
+(1 row)
+
+SELECT COUNT(*) AS OTHER_TABLE_IN_ALL_VIEW
+FROM SYS.ALL_TAB_COLUMNS
+WHERE TABLE_NAME = 'TEST_USER_TAB_COLUMNS_OTHER';
+ other_table_in_all_view 
+-------------------------
+                       1
+(1 row)
+
+DROP TABLE IF EXISTS TEST_USER_TAB_COLUMNS;
+DROP TABLE IF EXISTS TEST_USER_TAB_COLUMNS_OTHER;
+DROP ROLE IF EXISTS regress_orasysview_other;
