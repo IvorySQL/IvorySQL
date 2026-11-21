@@ -17,6 +17,15 @@ SELECT to_char(
 	to_date('2001-02-03', 'YYYY-MM-DD', repeat('x', 0)),
 	'YYYY-MM-DD HH24:MI:SS') AS empty_nls_to_date FROM DUAL;
 
+-- julian day must be between 1 and 5373484 (ORA-01854); 0 must not
+-- fall back to the default date
+SELECT to_date('0', 'J') FROM DUAL;	--ERROR
+SELECT to_date('0 10:30', 'J HH24:MI') FROM DUAL;	--ERROR
+SELECT to_timestamp('0', 'J') FROM DUAL;	--ERROR
+SELECT to_date('5373485', 'J') FROM DUAL;	--ERROR
+SELECT to_char(to_date('2460636', 'J'), 'YYYY-MM-DD') FROM DUAL;
+SELECT to_char(to_date('5373484', 'J'), 'YYYY-MM-DD') FROM DUAL;
+
 /*
  * to_timestamp
  */

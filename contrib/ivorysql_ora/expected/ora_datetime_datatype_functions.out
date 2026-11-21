@@ -34,6 +34,28 @@ SELECT to_char(
  2001-02-03 00:00:00
 (1 row)
 
+-- julian day must be between 1 and 5373484 (ORA-01854); 0 must not
+-- fall back to the default date
+SELECT to_date('0', 'J') FROM DUAL;	--ERROR
+ERROR:  julian date must be between 1 and 5373484
+SELECT to_date('0 10:30', 'J HH24:MI') FROM DUAL;	--ERROR
+ERROR:  julian date must be between 1 and 5373484
+SELECT to_timestamp('0', 'J') FROM DUAL;	--ERROR
+ERROR:  julian date must be between 1 and 5373484
+SELECT to_date('5373485', 'J') FROM DUAL;	--ERROR
+ERROR:  julian date must be between 1 and 5373484
+SELECT to_char(to_date('2460636', 'J'), 'YYYY-MM-DD') FROM DUAL;
+  to_char   
+------------
+ 2024-11-21
+(1 row)
+
+SELECT to_char(to_date('5373484', 'J'), 'YYYY-MM-DD') FROM DUAL;
+  to_char   
+------------
+ 9999-12-31
+(1 row)
+
 /*
  * to_timestamp
  */
