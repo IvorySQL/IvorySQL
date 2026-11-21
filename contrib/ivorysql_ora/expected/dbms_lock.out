@@ -120,3 +120,22 @@ end
 $$;
 NOTICE:  mode=not found
 commit;
+--
+-- DBMS_LOCK.ALLOCATE_UNIQUE rejects names longer than Oracle's VARCHAR2(128)
+--
+select length(sys.dbms_lock_allocate_unique(repeat('x', 128))) as len_128;
+ len_128 
+---------
+      19
+(1 row)
+
+select sys.dbms_lock_allocate_unique(repeat('x', 129)) as too_long;
+ERROR:  lock name must not exceed 128 characters
+select length(sys.dbms_lock_allocate_unique(repeat('x', 127) || chr(233))) as len_128_multibyte;
+ len_128_multibyte 
+-------------------
+                19
+(1 row)
+
+select sys.dbms_lock_allocate_unique(repeat(chr(233), 129)) as too_long_multibyte;
+ERROR:  lock name must not exceed 128 characters

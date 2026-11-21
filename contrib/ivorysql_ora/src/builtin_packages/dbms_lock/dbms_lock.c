@@ -33,6 +33,7 @@
 #include "utils/elog.h"
 #include "utils/timeout.h"
 #include "utils/uuid.h"
+#include "mb/pg_wchar.h"
 #include "access/hash.h"
 #include "storage/lock.h"
 #include "storage/lmgr.h"
@@ -56,7 +57,8 @@
 #define DBMS_LOCK_ALREADY_OWNED   4 
 #define DBMS_LOCK_INVALID_HANDLE  5 
 
-#define DBMS_LOCK_HANDLE_LENGTH 64	
+#define DBMS_LOCK_HANDLE_LENGTH 64
+#define DBMS_LOCK_NAME_MAX_LENGTH 128	/* Oracle documents lockname as VARCHAR2(128) */
 /*
  * 0x9e3779b9 = 2654435769 
  * derived from 2**32/PHI(golden ratio)
@@ -217,6 +219,15 @@ ivorysql_dbms_lock_allocate_unique(PG_FUNCTION_ARGS)
 {
     char *lockname_text = text_to_cstring(PG_GETARG_TEXT_PP(0));
     char handle[DBMS_LOCK_HANDLE_LENGTH + 1];
+
+    /* Oracle documents the lock name as VARCHAR2(128); reject longer names.
+     * Count characters, not bytes, so multibyte names are not over-rejected. */
+    if (pg_mbstrlen_with_len(lockname_text, (int) strlen(lockname_text)) >
+        DBMS_LOCK_NAME_MAX_LENGTH)
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("lock name must not exceed %d characters",
+                        DBMS_LOCK_NAME_MAX_LENGTH)));
 
     /* Use PostgreSQL 64-bit stable hash */
     uint64 hash =

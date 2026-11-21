@@ -112,3 +112,13 @@ begin
 end
 $$;
 commit;
+
+--
+-- DBMS_LOCK.ALLOCATE_UNIQUE rejects names longer than Oracle's VARCHAR2(128)
+--
+select length(sys.dbms_lock_allocate_unique(repeat('x', 128))) as len_128;
+
+select sys.dbms_lock_allocate_unique(repeat('x', 129)) as too_long;
+select length(sys.dbms_lock_allocate_unique(repeat('x', 127) || chr(233))) as len_128_multibyte;
+
+select sys.dbms_lock_allocate_unique(repeat(chr(233), 129)) as too_long_multibyte;
