@@ -803,6 +803,40 @@ END;
 SELECT job_owner, job_name, status FROM sys.scheduler_job_run_details
   ORDER BY job_owner, job_name;
 
+-- STORED_PROCEDURE job_action is parsed and quoted as a procedure identifier,
+-- preventing SQL injection while still supporting quoted mixed-case names
+CREATE OR REPLACE PROCEDURE "Sched_MixedCase_Proc"() IS
+BEGIN
+  INSERT INTO sched_reg_t VALUES (94, 'mixed_case_ok');
+END;
+/
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_job_mixed_proc',
+      job_type => 'STORED_PROCEDURE',
+      job_action => '"Sched_MixedCase_Proc"');
+  dbms_scheduler.run_job('reg_job_mixed_proc');
+  dbms_scheduler.drop_job('reg_job_mixed_proc');
+END;
+/
+SELECT note FROM sched_reg_t WHERE id = 94;
+DROP PROCEDURE "Sched_MixedCase_Proc"();
+
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_job_inj',
+      job_type => 'STORED_PROCEDURE',
+      job_action => 'sched_reg_proc(1, ''x''); INSERT INTO sched_reg_t VALUES (95, ''injected''); --');
+END;
+/
+BEGIN
+  dbms_scheduler.run_job('reg_job_inj');
+END;
+/
+SELECT count(*) AS injected_rows FROM sched_reg_t WHERE id = 95;
+BEGIN
+  dbms_scheduler.drop_job('reg_job_inj', force => TRUE);
+END;
+/
+
 -- cleanup
 RESET SESSION AUTHORIZATION;
 DROP USER sched_regress_u1;
