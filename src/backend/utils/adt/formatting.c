@@ -4216,7 +4216,7 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 				 */
 				if (ORA_PARSER == compatible_db &&
 					(out->j < 1 || out->j > 5373484))
-					ereport(ERROR,
+					ereturn(escontext,,
 							(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
 							 errmsg("julian date must be between 1 and 5373484")));
 				SKIP_THth(s, n->suffix);

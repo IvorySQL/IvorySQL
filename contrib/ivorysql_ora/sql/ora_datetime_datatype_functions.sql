@@ -22,8 +22,14 @@ SELECT to_char(
 SELECT to_date('0', 'J') FROM DUAL;	--ERROR
 SELECT to_date('0 10:30', 'J HH24:MI') FROM DUAL;	--ERROR
 SELECT to_timestamp('0', 'J') FROM DUAL;	--ERROR
+SELECT to_timestamp_tz('0', 'J') FROM DUAL;	--ERROR
+SELECT to_date('-1', 'J') FROM DUAL;	--ERROR
 SELECT to_date('5373485', 'J') FROM DUAL;	--ERROR
+-- the range check is a soft error, so silent jsonpath does not throw
+SELECT jsonb_path_query('"0"', '$.datetime("J")', '{}', true) FROM DUAL;
+SELECT jsonb_path_query('"0"', '$.datetime("J")') FROM DUAL;	--ERROR
 SELECT to_char(to_date('2460636', 'J'), 'YYYY-MM-DD') FROM DUAL;
+SELECT to_char(to_date('1721426', 'J'), 'YYYY-MM-DD') FROM DUAL;
 SELECT to_char(to_date('5373484', 'J'), 'YYYY-MM-DD') FROM DUAL;
 
 /*
