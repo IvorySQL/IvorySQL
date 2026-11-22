@@ -26,6 +26,7 @@ OBJS = \
 	src/builtin_functions/numeric_datatype_functions.o \
 	src/builtin_functions/misc_functions.o \
 	src/builtin_packages/dbms_output/dbms_output.o \
+	src/builtin_packages/dbms_application_info/dbms_application_info.o \
 	src/builtin_packages/utl_file/utl_file.o \
 	src/merge/ora_merge.o \
 	src/sysview/sysview_functions.o \
@@ -107,7 +108,8 @@ ORA_REGRESS = \
 	dbms_transaction \
 	dbms_random \
 	utl_match \
-	dbms_scheduler
+	dbms_scheduler \
+	dbms_application_info
 
 TAP_TESTS = 1
 
