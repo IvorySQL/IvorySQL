@@ -40,3 +40,20 @@ BEGIN
   dbms_application_info.read_client_info(c);
   RAISE NOTICE 'plisql: %/%/%', m, a, c;
 END;
+
+-- SET_SESSION_LONGOPS: row allocation, update, and V$SESSION_LONGOPS view
+DECLARE
+  r int;
+  s int;
+BEGIN
+  r := 0; s := 0;
+  dbms_application_info.set_session_longops(r, s, 'backup', 0, 0, 40, 100, 'blocks');
+  dbms_application_info.set_session_longops(r, s, 'backup', 0, 0, 100, 100, 'blocks');
+END;
+
+SELECT rindex, slno, op_name, sofar, totalwork, units,
+       time_remaining IS NULL AS tr_null, message
+FROM sys.v$session_longops ORDER BY rindex;
+
+-- NULL clears the longops row? No: rows persist for the session lifetime
+SELECT count(*) AS rows_after_clear FROM sys.v$session_longops;

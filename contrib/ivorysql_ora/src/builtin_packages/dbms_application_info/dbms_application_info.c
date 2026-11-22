@@ -29,8 +29,10 @@
 #include "postgres.h"
 
 #include "fmgr.h"
+#include "miscadmin.h"
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
+#include "utils/timestamp.h"
 #include "utils/builtins.h"
 
 #include "../../include/ivorysql_ora.h"
@@ -264,6 +266,225 @@ ora_dbms_application_info_read_module(PG_FUNCTION_ARGS)
 
 	tuple = heap_form_tuple(tupdesc, values, nulls);
 	PG_RETURN_DATUM(HeapTupleGetDatum(tuple));
+}
+
+/*
+ * SET_SESSION_LONGOPS support: per-backend progress rows. Rows live in
+ * the dedicated memory context (session lifetime); rindex 0 allocates a
+ * new row, an existing rindex updates it and bumps slno.
+ */
+typedef struct DaiLongopsRow
+{
+	int			rindex;
+	int			slno;
+	char	   *op_name;
+	int			target;
+	int			context;
+	double		sofar;
+	double		totalwork;
+	char	   *units;
+	TimestampTz start_time;
+} DaiLongopsRow;
+
+static DaiLongopsRow *dai_lrows = NULL;
+static int	dai_lrows_n = 0;
+static int	dai_lrows_cap = 0;
+static int	dai_lrows_next_rindex = 0;
+
+PG_FUNCTION_INFO_V1(ora_set_session_longops);
+PG_FUNCTION_INFO_V1(ora_session_longops);
+
+static char *
+dai_lstr(const char *src)
+{
+	int			len = (int) strlen(src);
+	char	   *dst = (char *) palloc(len + 1);
+
+	memcpy(dst, src, len + 1);
+	return dst;
+}
+
+/*
+ * ora_set_session_longops
+ *
+ * Oracle SET_SESSION_LONGOPS(rindex IN OUT, slno IN OUT, ...): rindex = 0
+ * allocates a row; an existing rindex updates it and bumps slno. Returns
+ * the composite (rindex, slno) so the PL/iSQL wrapper can write the OUT
+ * parameters back.
+ */
+Datum
+ora_set_session_longops(PG_FUNCTION_ARGS)
+{
+	int			rindex = PG_GETARG_INT32(0);
+	int			slno;
+	char	   *op_name = PG_ARGISNULL(2) ? NULL : text_to_cstring(PG_GETARG_TEXT_PP(2));
+	int			target = PG_ARGISNULL(3) ? 0 : PG_GETARG_INT32(3);
+	int			context = PG_ARGISNULL(4) ? 0 : PG_GETARG_INT32(4);
+	double		sofar = PG_ARGISNULL(5) ? 0 : PG_GETARG_FLOAT8(5);
+	double		totalwork = PG_ARGISNULL(6) ? 0 : PG_GETARG_FLOAT8(6);
+	char	   *units = PG_ARGISNULL(7) ? NULL : text_to_cstring(PG_GETARG_TEXT_PP(7));
+	DaiLongopsRow *row = NULL;
+	int			i;
+	MemoryContext oldcontext;
+	TupleDesc	tupdesc;
+	HeapTuple	tuple;
+	Datum		values[2];
+	bool		nulls[2] = {false, false};
+
+	dai_ensure_context();
+
+	/* Find or allocate the row */
+	if (rindex > 0)
+	{
+		for (i = 0; i < dai_lrows_n; i++)
+		{
+			if (dai_lrows[i].rindex == rindex)
+			{
+				row = &dai_lrows[i];
+				break;
+			}
+		}
+	}
+
+	oldcontext = MemoryContextSwitchTo(app_info->mcxt);
+
+	if (row == NULL)
+	{
+		/* Allocate a new row */
+		if (dai_lrows_n >= dai_lrows_cap)
+		{
+			dai_lrows_cap = dai_lrows_cap ? dai_lrows_cap * 2 : 8;
+			if (dai_lrows == NULL)
+				dai_lrows = (DaiLongopsRow *) palloc(dai_lrows_cap * sizeof(DaiLongopsRow));
+			else
+				dai_lrows = (DaiLongopsRow *) repalloc(dai_lrows,
+													   dai_lrows_cap * sizeof(DaiLongopsRow));
+		}
+		row = &dai_lrows[dai_lrows_n++];
+		row->rindex = ++dai_lrows_next_rindex;
+		row->slno = 0;
+		row->op_name = NULL;
+		row->units = NULL;
+		row->start_time = GetCurrentTimestamp();
+	}
+
+	if (row->slno < INT_MAX)
+		row->slno++;
+
+	if (row->op_name)
+		pfree(row->op_name);
+	row->op_name = op_name ? dai_lstr(op_name) : NULL;
+	row->target = target;
+	row->context = context;
+	row->sofar = sofar;
+	row->totalwork = totalwork;
+	if (row->units)
+		pfree(row->units);
+	row->units = units ? dai_lstr(units) : NULL;
+
+	MemoryContextSwitchTo(oldcontext);
+
+	slno = row->slno;
+
+	/* Return the composite (rindex, slno) */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("function returning record called in context that cannot accept type record")));
+	tupdesc = BlessTupleDesc(tupdesc);
+	values[0] = Int32GetDatum(row->rindex);
+	values[1] = Int32GetDatum(row->slno);
+	tuple = heap_form_tuple(tupdesc, values, nulls);
+	PG_RETURN_DATUM(HeapTupleGetDatum(tuple));
+}
+
+/*
+ * ora_session_longops
+ *
+ * Set-returning function listing all progress rows of the current
+ * session; backs the compatibility view sys.v$session_longops.
+ */
+Datum
+ora_session_longops(PG_FUNCTION_ARGS)
+{
+	FuncCallContext *funcctx;
+	int			i;
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		MemoryContext oldcontext;
+		TupleDesc	tupdesc;
+
+		funcctx = SRF_FIRSTCALL_INIT();
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+		tupdesc = CreateTemplateTupleDesc(12);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "sid", INT8OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "rindex", INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "slno", INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 4, "op_name", TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 5, "target", INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 6, "context", INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 7, "sofar", FLOAT8OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 8, "totalwork", FLOAT8OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 9, "units", TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 10, "start_time", TIMESTAMPTZOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 11, "time_remaining", FLOAT8OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 12, "message", TEXTOID, -1, 0);
+		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	funcctx = SRF_PERCALL_SETUP();
+
+	if (app_info == NULL || funcctx->call_cntr >= dai_lrows_n)
+		SRF_RETURN_DONE(funcctx);
+
+	i = funcctx->call_cntr;
+	{
+		Datum		values[12];
+		bool		nulls[12] = {false};
+		HeapTuple	tuple;
+		DaiLongopsRow *row = &dai_lrows[i];
+		double		elapsed_sec;
+		char		msg[1024];
+
+		values[0] = Int64GetDatum(MyProcPid);
+		values[1] = Int32GetDatum(row->rindex);
+		values[2] = Int32GetDatum(row->slno);
+		if (row->op_name)
+			values[3] = PointerGetDatum(cstring_to_text(row->op_name));
+		else
+			nulls[3] = true;
+		values[4] = Int32GetDatum(row->target);
+		values[5] = Int32GetDatum(row->context);
+		values[6] = Float8GetDatum(row->sofar);
+		values[7] = Float8GetDatum(row->totalwork);
+		if (row->units)
+			values[8] = PointerGetDatum(cstring_to_text(row->units));
+		else
+			nulls[8] = true;
+		values[9] = TimestampTzGetDatum(row->start_time);
+
+		/* time_remaining: extrapolate from progress so far (Oracle semantics) */
+		if (row->totalwork > 0 && row->sofar > 0 && row->sofar < row->totalwork)
+		{
+			elapsed_sec =
+				(double) (GetCurrentTimestamp() - row->start_time) / 1000000.0;
+			values[10] = Float8GetDatum(elapsed_sec * (row->totalwork - row->sofar) / row->sofar);
+		}
+		else
+			nulls[10] = true;
+
+		/* message: "op_name: sofar/totalwork units" (Oracle format) */
+		snprintf(msg, sizeof(msg), "%s: %g/%g %s",
+				 row->op_name ? row->op_name : "",
+				 row->sofar, row->totalwork,
+				 row->units ? row->units : "");
+		values[11] = PointerGetDatum(cstring_to_text(msg));
+
+		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
+		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
+	}
 }
 
 /*
