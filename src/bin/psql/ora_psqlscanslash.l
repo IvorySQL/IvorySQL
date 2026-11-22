@@ -380,7 +380,7 @@ other			.
 
 :{variable_char}+	{
 					/* Possible psql variable substitution */
-					if (cur_state->callbacks->get_variable == NULL)
+					if (cur_state->oracallbacks->get_variable == NULL)
 						ECHO;
 					else
 					{
