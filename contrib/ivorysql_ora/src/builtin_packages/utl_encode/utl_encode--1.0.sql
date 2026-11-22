@@ -22,6 +22,27 @@ RETURNS bytea
 AS 'MODULE_PATHNAME', 'ivorysql_utl_encode_base64_decode'
 LANGUAGE C IMMUTABLE PARALLEL SAFE STRICT;
 
+-- QUOTED_PRINTABLE support (RFC 2045 section 6.7, 76-character lines)
+CREATE FUNCTION sys.utl_encode_quoted_printable_encode(bytea)
+RETURNS bytea
+AS 'MODULE_PATHNAME', 'ora_utl_encode_qp_encode'
+LANGUAGE C IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.utl_encode_quoted_printable_decode(bytea)
+RETURNS bytea
+AS 'MODULE_PATHNAME', 'ora_utl_encode_qp_decode'
+LANGUAGE C IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.utl_encode_text_encode(s varchar2, charset varchar2 DEFAULT NULL, encoding integer DEFAULT NULL)
+RETURNS bytea
+AS 'MODULE_PATHNAME', 'ora_utl_encode_text_encode'
+LANGUAGE C IMMUTABLE;
+
+CREATE FUNCTION sys.utl_encode_text_decode(r bytea, charset varchar2 DEFAULT NULL, encoding integer DEFAULT NULL)
+RETURNS varchar2
+AS 'MODULE_PATHNAME', 'ora_utl_encode_text_decode'
+LANGUAGE C IMMUTABLE;
+
 -- PL/iSQL package declaration
 CREATE PACKAGE utl_encode AS
 
@@ -49,6 +70,33 @@ CREATE PACKAGE utl_encode AS
      */
     FUNCTION base64_decode(r IN RAW) RETURN RAW;
 
+    /*
+     * QUOTED_PRINTABLE_ENCODE
+     * RFC 2045 quoted-printable; 76-character lines with '=' soft breaks.
+     */
+    FUNCTION quoted_printable_encode(r IN RAW) RETURN RAW;
+
+    /*
+     * QUOTED_PRINTABLE_DECODE
+     * Decodes quoted-printable; strips soft line breaks.
+     */
+    FUNCTION quoted_printable_decode(r IN RAW) RETURN RAW;
+
+    /*
+     * TEXT_ENCODE
+     * Convert a VARCHAR2 to the target character set and optionally apply
+     * an encoding scheme: NULL = none, 1 = base64, 2 = quoted-printable.
+     */
+    FUNCTION text_encode(s IN VARCHAR2, charset IN VARCHAR2 DEFAULT NULL, encoding IN INTEGER DEFAULT NULL) RETURN RAW;
+
+    /*
+     * TEXT_DECODE
+     * Inverse of TEXT_ENCODE.
+     */
+    FUNCTION text_decode(r IN RAW, charset IN VARCHAR2 DEFAULT NULL, encoding IN INTEGER DEFAULT NULL) RETURN VARCHAR2;
+    FUNCTION mimeheader_encode(buf IN VARCHAR2, encode_type IN VARCHAR2 DEFAULT NULL, encode_charset IN VARCHAR2 DEFAULT NULL) RETURN VARCHAR2;
+    FUNCTION mimeheader_decode(buf IN VARCHAR2) RETURN VARCHAR2;
+
 END utl_encode;
 
 CREATE PACKAGE BODY utl_encode AS
@@ -61,6 +109,71 @@ CREATE PACKAGE BODY utl_encode AS
     FUNCTION base64_decode(r IN RAW) RETURN RAW IS
     BEGIN
         RETURN utl_encode_base64_decode(r);
+    END;
+
+    FUNCTION quoted_printable_encode(r IN RAW) RETURN RAW IS
+    BEGIN
+        RETURN sys.utl_encode_quoted_printable_encode(r);
+    END;
+
+    FUNCTION quoted_printable_decode(r IN RAW) RETURN RAW IS
+    BEGIN
+        RETURN sys.utl_encode_quoted_printable_decode(r);
+    END;
+
+    FUNCTION text_encode(s IN VARCHAR2, charset IN VARCHAR2 DEFAULT NULL, encoding IN INTEGER DEFAULT NULL) RETURN RAW IS
+    BEGIN
+        RETURN sys.utl_encode_text_encode(s, charset, encoding);
+    END;
+
+    FUNCTION text_decode(r IN RAW, charset IN VARCHAR2 DEFAULT NULL, encoding IN INTEGER DEFAULT NULL) RETURN VARCHAR2 IS
+    BEGIN
+        RETURN sys.utl_encode_text_decode(r, charset, encoding);
+    END;
+
+    FUNCTION mimeheader_encode(buf IN VARCHAR2, encode_type IN VARCHAR2 DEFAULT NULL, encode_charset IN VARCHAR2 DEFAULT NULL) RETURN VARCHAR2 IS
+        v_enc VARCHAR2(1);
+        v_charset VARCHAR2(100);
+        v_raw RAW;
+    BEGIN
+        v_enc := UPPER(SUBSTR(COALESCE(encode_type, 'Q'), 1, 1));
+        IF v_enc NOT IN ('Q', 'B') THEN
+            v_enc := 'Q';
+        END IF;
+        v_charset := COALESCE(encode_charset, 'AL32UTF8');
+
+        -- TEXT_ENCODE converts buf into v_charset and applies the scheme
+        v_raw := sys.utl_encode_text_encode(buf, v_charset, NULL);
+
+        IF v_enc = 'B' THEN
+            RETURN '=?' || v_charset || '?B?' || RTRIM(sys.ora_utl_raw_cast_to_varchar2(sys.utl_encode_base64_encode(v_raw)), CHR(10)) || '?=';
+        ELSE
+            RETURN '=?' || v_charset || '?Q?' || sys.ora_utl_raw_cast_to_varchar2(sys.utl_encode_quoted_printable_encode(v_raw)) || '?=';
+        END IF;
+    END;
+
+    FUNCTION mimeheader_decode(buf IN VARCHAR2) RETURN VARCHAR2 IS
+        v_charset VARCHAR2(100);
+        v_enc VARCHAR2(1);
+        v_text VARCHAR2(4000);
+        v_raw RAW;
+    BEGIN
+        v_charset := REGEXP_SUBSTR(buf, '=\?([^?]*)\?([QBq])\?', 1, 1, NULL, 1);
+        v_enc := UPPER(REGEXP_SUBSTR(buf, '=\?[^?]*\?([QBq])\?', 1, 1, NULL, 1));
+        v_text := REGEXP_SUBSTR(buf, '=\?[^?]*\?[QBq]\?(.*)\?=', 1, 1, NULL, 1);
+
+        IF v_text IS NULL THEN
+            RETURN buf;
+        END IF;
+
+        IF v_enc = 'B' THEN
+            v_raw := sys.utl_encode_base64_decode(sys.utl_raw.cast_to_raw(v_text));
+        ELSE
+            v_raw := sys.utl_encode_quoted_printable_decode(sys.utl_raw.cast_to_raw(v_text));
+        END IF;
+
+        -- convert the decoded bytes from the mime charset to the DB encoding
+        RETURN sys.utl_encode_text_decode(v_raw, v_charset, NULL);
     END;
 
 END utl_encode;
