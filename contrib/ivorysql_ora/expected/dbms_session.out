@@ -153,6 +153,52 @@ select count(*) as remaining from sys.dbms_session_list_context();
          0
 (1 row)
 
+-- Explicit NULL context values must not expose an older GUC value.
+set fallback_ctx.user_id = 'legacy';
+select sys_context('fallback_ctx', 'user_id') as absent_uses_guc;
+ absent_uses_guc 
+-----------------
+ legacy
+(1 row)
+
+call dbms_session.set_context('fallback_ctx', 'user_id', 'current');
+select sys_context('fallback_ctx', 'user_id') as context_wins;
+ context_wins 
+--------------
+ current
+(1 row)
+
+call dbms_session.set_context('fallback_ctx', 'user_id', null);
+select sys_context('FALLBACK_CTX', 'USER_ID') is null as context_is_null,
+       sys.ora_dbms_session_get_context('fallback_ctx', 'user_id') is null
+         as direct_reader_is_null;
+ context_is_null | direct_reader_is_null 
+-----------------+-----------------------
+ t               | t
+(1 row)
+
+select value is null as stored_null from sys.dbms_session_list_context()
+  where namespace = 'FALLBACK_CTX' and attribute = 'USER_ID';
+ stored_null 
+-------------
+ t
+(1 row)
+
+call dbms_session.reset_package();
+select sys_context('fallback_ctx', 'user_id') is null as null_after_reset;
+ null_after_reset 
+------------------
+ t
+(1 row)
+
+call dbms_session.clear_context('Fallback_Ctx', 'User_Id');
+select sys_context('fallback_ctx', 'user_id') as cleared_uses_guc;
+ cleared_uses_guc 
+------------------
+ legacy
+(1 row)
+
+reset fallback_ctx.user_id;
 --
 -- Row-level security driven by application context.
 -- Queries run as a non-superuser role so RLS is actually enforced
@@ -208,6 +254,17 @@ select sys_context('app', 'usr') is null as after_discard;
  t
 (1 row)
 
+-- A stored NULL must not fall back to another user's GUC identity.
+set app.usr = 'alice';
+call dbms_session.set_context('app', 'usr', null);
+set role dbms_sess_rls;
+select * from docs order by id;          -- explicit NULL -> no rows
+ id | owner | body 
+----+-------+------
+(0 rows)
+
+reset role;
+reset app.usr;
 drop table docs;
 drop role dbms_sess_rls;
 --

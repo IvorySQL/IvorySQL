@@ -53,6 +53,11 @@ RETURNS TEXT
 AS 'MODULE_PATHNAME', 'ora_dbms_session_get_context'
 LANGUAGE C STABLE;
 
+CREATE FUNCTION sys.ora_dbms_session_context_exists(namespace TEXT, attribute TEXT)
+RETURNS BOOLEAN
+AS 'MODULE_PATHNAME', 'ora_dbms_session_context_exists'
+LANGUAGE C STABLE;
+
 CREATE FUNCTION sys.ora_dbms_session_list_context()
 RETURNS SETOF sys.dbms_session_context_record
 AS 'MODULE_PATHNAME', 'ora_dbms_session_list_context'
