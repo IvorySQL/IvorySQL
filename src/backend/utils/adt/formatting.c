@@ -7637,7 +7637,17 @@ NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("\"EEEE\" not supported for input")));
-		return strcpy(inout, number);
+		strcpy(inout, number);
+
+		/* Oracle writes the exponent marker in upper case: 1.2E+02 */
+		if (ORA_PARSER == compatible_db)
+		{
+			char	   *e = strchr(inout, 'e');
+
+			if (e)
+				*e = 'E';
+		}
+		return inout;
 	}
 
 	/*

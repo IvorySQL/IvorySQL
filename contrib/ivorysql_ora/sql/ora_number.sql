@@ -766,6 +766,11 @@ SELECT '' AS to_char_21, to_char(val, '999999SG9999999999') FROM num_data;
 SELECT '' AS to_char_22, to_char(val, 'FM9999999999999999.999999999999999')	FROM num_data;
 SELECT '' AS to_char_23, to_char(val, '9.999EEEE') FROM num_data;
 
+-- Oracle writes the EEEE exponent marker in upper case
+SELECT to_char(123.456, '9.9EEEE'), to_char(1E+123, '9.9EEEE'),
+       to_char(-0.00012, '9.99EEEE'), to_char(123.456::binary_double, '9.9EEEE'),
+       to_char(123.456::binary_float, '9.9EEEE'), to_char(123, '9.9EEEE');
+
 SELECT '' AS to_char_24, to_char('100'::number, 'FM999.9');
 SELECT '' AS to_char_25, to_char('100'::number, 'FM999.');
 SELECT '' AS to_char_26, to_char('100'::number, 'FM999');
