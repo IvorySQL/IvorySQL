@@ -25,30 +25,30 @@
 #ifndef HAVE_UNION_SEMUN
 union semun
 {
-	int	val;
+	int			val;
 	struct semid_ds *buf;
 	unsigned short *array;
 };
 #endif
 
 typedef key_t IpcSemaphoreKey;	/* semaphore key passed to semget(2) */
-typedef int IpcSemaphoreId;	/* semaphore ID returned by semget(2) */
+typedef int IpcSemaphoreId;		/* semaphore ID returned by semget(2) */
 
 
-#define IPCProtection	(0600)	
+#define IPCProtection	(0600)
 
-#define PGSemaMagic	537		/* must be less than SEMVMX */
+#define PGSemaMagic	537			/* must be less than SEMVMX */
 #ifdef SEMVMX
 StaticAssertDecl(PGSemaMagic < SEMVMX, "PGSemaMagic must be less than SEMVMX");
 #endif
 
-static IpcSemaphoreKey nextSemaKey;		/* next key to try */
+static IpcSemaphoreKey nextSemaKey; /* next key to try */
 
 
 static IpcSemaphoreId InternalIpcSemaphoreCreate(IpcSemaphoreKey semKey,
-						   int numSems);
+												 int numSems);
 static void IpcSemaphoreInitialize(IpcSemaphoreId semId, int semNum,
-					   int value);
+								   int value);
 static void IpcSemaphoreKill(IpcSemaphoreId semId);
 static int	IpcSemaphoreGetValue(IpcSemaphoreId semId, int semNum);
 static pid_t IpcSemaphoreGetLastPID(IpcSemaphoreId semId, int semNum);
@@ -68,13 +68,13 @@ static IpcSemaphoreId IpcSemaphoreCreate(int numSems);
 static IpcSemaphoreId
 InternalIpcSemaphoreCreate(IpcSemaphoreKey semKey, int numSems)
 {
-	int	semId;
+	int			semId;
 
 	semId = semget(semKey, numSems, IPC_CREAT | IPC_EXCL | IPCProtection);
 
 	if (semId < 0)
 	{
-		int	saved_errno = errno;
+		int			saved_errno = errno;
 
 		/*
 		 * Fail quietly if error indicates a collision with existing set. One
@@ -88,6 +88,7 @@ InternalIpcSemaphoreCreate(IpcSemaphoreKey semKey, int numSems)
 #endif
 			)
 			return -1;
+
 		/*
 		 * Else complain and abort
 		 */
@@ -117,11 +118,14 @@ IpcSemaphoreInitialize(IpcSemaphoreId semId, int semNum, int value)
 	{
 		int			saved_errno = errno;
 
-		fprintf(stderr, "semctl(%d, %d, SETVAL, %d) failed: %m", semId, semNum, value);
+		/* %m is a glibc extension; use strerror() so this also works on macOS */
+		fprintf(stderr, "semctl(%d, %d, SETVAL, %d) failed: %s\n",
+				semId, semNum, value, strerror(saved_errno));
 		if (saved_errno == ERANGE)
-			fprintf(stderr, "You possibly need to raise your kernel's SEMVMX value to be at least %d "
-					"Look into the PostgreSQL documentation for details.", value);
-		exit(-1);
+			fprintf(stderr, "You possibly need to raise your kernel's SEMVMX value to be at least %d. "
+					"Look into the PostgreSQL documentation for details.\n", value);
+		/* libpq must not call exit() (see libpq_check.pl); abort() instead. */
+		abort();
 	}
 }
 
@@ -137,7 +141,8 @@ IpcSemaphoreKill(IpcSemaphoreId semId)
 
 	if (semctl(semId, 0, IPC_RMID, semun) < 0)
 	{
-		fprintf(stderr, "semctl(%d, 0, IPC_RMID, ...) failed: %m", semId);
+		fprintf(stderr, "semctl(%d, 0, IPC_RMID, ...) failed: %s\n",
+				semId, strerror(errno));
 		return;
 	}
 }
@@ -317,8 +322,9 @@ PGSemaphoreLock(PGSemaphore sema)
 
 	if (errStatus < 0)
 	{
-		fprintf(stderr, "semop(id=%d) failed: %m", sema->semId);
-		exit(-1);
+		fprintf(stderr, "semop(id=%d) failed: %s\n",
+				sema->semId, strerror(errno));
+		abort();
 	}
 }
 
@@ -351,7 +357,8 @@ PGSemaphoreUnlock(PGSemaphore sema)
 
 	if (errStatus < 0)
 	{
-		fprintf(stderr, "semop(id=%d) failed: %m", sema->semId);
+		fprintf(stderr, "semop(id=%d) failed: %s\n",
+				sema->semId, strerror(errno));
 		return;
 	}
 }
