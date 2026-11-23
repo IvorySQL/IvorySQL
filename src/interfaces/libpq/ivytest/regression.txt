@@ -1,5 +1,6 @@
 testlibpq
 testlibpqstmt2
+testlibpq_deallocate_name
 testlibpqstmt2_call
 testlibpq_nullstmt
 testlibpq_allout
