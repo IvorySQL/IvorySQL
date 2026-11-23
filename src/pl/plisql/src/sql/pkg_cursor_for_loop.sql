@@ -1,0 +1,124 @@
+--
+-- Tests for PL/iSQL cursor FOR loops over a package cursor
+--
+-- A cursor declared in a package spec can be opened, fetched and closed from
+-- outside the package as pkg.cursor, but a cursor FOR loop over the same
+-- qualified name used to be rejected with a syntax error: the grammar only
+-- accepted a local cursor variable, while a package cursor referenced from
+-- outside the package arrives as a package datum wrapper.  These tests cover
+-- the qualified cursor FOR loop in every context that does not depend on
+-- package cursor parameter resolution at execution time (that machinery is
+-- covered by the pkg_cursor_args tests), plus the error paths.
+--
+
+CREATE TABLE pkg_for_loop_emp(id int, name varchar(20));
+INSERT INTO pkg_for_loop_emp VALUES (1, 'steven'), (2, 'nia'), (3, 'joe');
+
+-- a package with a spec-declared cursor and a plain package variable for
+-- the error-path tests
+CREATE OR REPLACE PACKAGE pkg_for_loop AS
+   pub_c CURSOR IS SELECT id, name FROM pkg_for_loop_emp ORDER BY id;
+   pub_noint int;
+   FUNCTION loop_inside RETURN int;
+END;
+/
+
+CREATE OR REPLACE PACKAGE BODY pkg_for_loop AS
+   FUNCTION loop_inside RETURN int IS
+      total int := 0;
+   BEGIN
+      -- qualified reference to the package's own cursor from a body
+      -- subprogram (used to take the query path; the cursor path now
+      -- matches what OPEN/FETCH/CLOSE do)
+      FOR r IN pkg_for_loop.pub_c LOOP
+         total := total + r.id;
+      END LOOP;
+      RETURN total;
+   END;
+END;
+/
+
+-- cursor FOR loop over a package cursor from an anonymous block (was a
+-- syntax error: "syntax error at or near \"pkg_for_loop\"")
+DECLARE
+   total int := 0;
+BEGIN
+   FOR r IN pkg_for_loop.pub_c LOOP
+      total := total + r.id;
+   END LOOP;
+   RAISE NOTICE 'anonymous block total = %', total;
+END;
+/
+
+-- cursor FOR loop over a package cursor from a standalone function (used
+-- to leave the function in invalid state with a compilation warning)
+CREATE OR REPLACE FUNCTION pkg_for_loop_total() RETURN int AS
+   total int := 0;
+BEGIN
+   FOR r IN pkg_for_loop.pub_c LOOP
+      total := total + r.id;
+   END LOOP;
+   RETURN total;
+END;
+/
+SELECT pkg_for_loop_total() AS standalone_total;
+DROP FUNCTION pkg_for_loop_total();
+
+-- calling the package's own function (the loop inside the body)
+SELECT pkg_for_loop.loop_inside() AS inside_total;
+
+-- OPEN/FETCH/CLOSE of the same cursor still works (behavior unchanged)
+DECLARE
+   v_id int;
+   v_name varchar(20);
+BEGIN
+   OPEN pkg_for_loop.pub_c;
+   FETCH pkg_for_loop.pub_c INTO v_id, v_name;
+   RAISE NOTICE 'fetch first row: % %', v_id, v_name;
+   CLOSE pkg_for_loop.pub_c;
+END;
+/
+
+-- control: local cursor FOR loop
+DECLARE
+   c1 CURSOR IS SELECT id FROM pkg_for_loop_emp ORDER BY id;
+   total int := 0;
+BEGIN
+   FOR r IN c1 LOOP
+      total := total + r.id;
+   END LOOP;
+   RAISE NOTICE 'local cursor total = %', total;
+END;
+/
+
+-- control: cursor FOR loop over a query (unaffected by the package case)
+DECLARE
+   total int := 0;
+BEGIN
+   FOR r IN SELECT id FROM pkg_for_loop_emp ORDER BY id LOOP
+      total := total + r.id;
+   END LOOP;
+   RAISE NOTICE 'query total = %', total;
+END;
+/
+
+-- error path: arguments supplied for a cursor without arguments keep the
+-- regular "has no arguments" message
+BEGIN
+   FOR r IN pkg_for_loop.pub_c(3) LOOP
+      NULL;
+   END LOOP;
+END;
+/
+
+-- error path: a package variable that is not a cursor still falls back to
+-- the query form, exactly as before (no cursor machinery is engaged)
+BEGIN
+   FOR r IN pkg_for_loop.pub_noint LOOP
+      NULL;
+   END LOOP;
+END;
+/
+
+DROP PACKAGE pkg_for_loop;
+DROP TABLE pkg_for_loop_emp;
