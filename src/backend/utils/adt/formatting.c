@@ -2706,10 +2706,17 @@ DCH_to_char(FormatNode *node, bool is_interval, TmToChar *in, char *out, Oid col
 				break;
 #undef DCH_to_char_fsec
 			case DCH_SSSS:
-				sprintf(s, "%lld",
-						(long long) (tm->tm_hour * SECS_PER_HOUR +
-									 tm->tm_min * SECS_PER_MINUTE +
-									 tm->tm_sec));
+				/* Oracle: SSSS is a five-character, zero-padded field */
+				if (ORA_PARSER == compatible_db && !IS_SUFFIX_FM(n->suffix))
+					sprintf(s, "%05lld",
+							(long long) (tm->tm_hour * SECS_PER_HOUR +
+										 tm->tm_min * SECS_PER_MINUTE +
+										 tm->tm_sec));
+				else
+					sprintf(s, "%lld",
+							(long long) (tm->tm_hour * SECS_PER_HOUR +
+										 tm->tm_min * SECS_PER_MINUTE +
+										 tm->tm_sec));
 				if (IS_SUFFIX_THth(n->suffix))
 					str_numth(s, s, SUFFIX_TH_TYPE(n->suffix));
 				s += strlen(s);
