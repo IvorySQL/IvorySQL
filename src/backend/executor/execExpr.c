@@ -5321,7 +5321,7 @@ ExecInitFuncWithOutParams(Expr *node, ExprState *state,
 			else
 			{
 				/*
-				 * a funciton in SQL, not in psql, is called. If
+				 * a function in SQL, not in psql, is called. If
 				 * allow_out_parameter_const is false, the out parameter of
 				 * the function must be variable. Else if
 				 * allow_out_parameter_const is true, the out parameter of the
