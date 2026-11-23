@@ -499,6 +499,27 @@ BEGIN
 END;
 /
 SELECT id, note FROM sched_reg_t ORDER BY id;
+-- An omitted argument uses its program default, but an explicit NULL overrides
+-- it, both when inserting an argument by position and updating one by name.
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_job_null', program_name => 'reg_prog',
+      schedule_name => 'reg_sched');
+  dbms_scheduler.set_job_argument_value('reg_job_null', 1, '22');
+  dbms_scheduler.run_job('reg_job_null');
+  dbms_scheduler.set_job_argument_value('reg_job_null', 1, '23');
+  dbms_scheduler.set_job_argument_value('reg_job_null', 2, NULL);
+  dbms_scheduler.run_job('reg_job_null');
+  dbms_scheduler.set_job_argument_value('reg_job_null', 1, '24');
+  dbms_scheduler.set_job_argument_value('reg_job_null', 'y', 'y-job');
+  dbms_scheduler.run_job('reg_job_null');
+  dbms_scheduler.set_job_argument_value('reg_job_null', 1, '25');
+  dbms_scheduler.set_job_argument_value('reg_job_null', 'y', NULL);
+  dbms_scheduler.run_job('reg_job_null');
+  dbms_scheduler.drop_job('reg_job_null');
+END;
+/
+SELECT id, note, note IS NULL AS note_is_null FROM sched_reg_t
+  WHERE id BETWEEN 22 AND 25 ORDER BY id;
 -- FG_JOB_ID and SCHEDULER_JOB are visible inside the running job
 BEGIN
   dbms_scheduler.create_job(job_name => 'reg_job_ctx', job_type => 'PLSQL_BLOCK',

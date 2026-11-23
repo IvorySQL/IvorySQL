@@ -1941,9 +1941,10 @@ sched_load_job_definition(const SchedName *job, SchedJobDef *def)
 		v5[4] = Int32GetDatum(def->number_of_arguments);
 		n5[4] = ' ';
 
-		/* job-level values override program defaults */
+		/* Job-level values, including NULL, override program defaults. */
 		nrows = sched_meta_select("SELECT pos.pos,"
-							 " COALESCE(ja.argument_value, pa.default_value),"
+							 " CASE WHEN ja.argument_position IS NOT NULL"
+							 " THEN ja.argument_value ELSE pa.default_value END,"
 							 " (ja.argument_position IS NOT NULL"
 							 "  OR COALESCE(pa.has_default, false)),"
 							 " pa.argument_type"
