@@ -31,7 +31,16 @@ SELECT NANVL(CAST('INF' AS BINARY_FLOAT), CAST(2.5 AS BINARY_FLOAT)) FROM DUAL;
 SELECT NANVL(CAST('-INF' AS BINARY_DOUBLE), CAST(2.5 AS BINARY_DOUBLE)) FROM DUAL;
 
 --
--- NULL handling: NANVL only inspects expr1.
+-- NULL handling
+-- NUMBER and BINARY_FLOAT are STRICT, so a NULL argument yields NULL.
+-- Oracle documents no per-type NULL rule for NANVL, so the BINARY_DOUBLE
+-- difference below is measured behaviour on Oracle Database 21c XE rather
+-- than documented behaviour. The probes that show it turn a NULL into a
+-- visible value so the result does not depend on client formatting:
+--   SELECT NVL(NANVL(1, NULL), 777) FROM dual;      -- 777: NUMBER
+--   SELECT NVL(NANVL(1.5f, NULL), 777) FROM dual;   -- 777: BINARY_FLOAT
+--   SELECT NVL(NANVL(1.5d, NULL), 777) FROM dual;   -- 1.5: BINARY_DOUBLE
+-- BINARY_DOUBLE therefore stays non-strict:
 -- * expr1 NULL            -> result is NULL, expr2 is never evaluated.
 -- * expr1 not NaN (and not NULL) -> expr1 is returned as-is, so a NULL
 --   expr2 does not matter.
