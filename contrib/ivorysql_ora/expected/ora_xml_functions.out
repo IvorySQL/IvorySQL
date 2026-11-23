@@ -1053,3 +1053,29 @@ select insertchildxml(XMLtype('<a>A<b>B</b></a>'), '/', 'c', XMLType('<c>C</c>')
  <a>A<b>B</b><c>C</c></a>
 (1 row)
 
+--
+-- multiple XPath/value pairs with more than one namespace declaration:
+-- the namespace string must be parsed afresh for every pair
+--
+SELECT updatexml(xmltype('<p:root xmlns:p="urn:p" xmlns:q="urn:q"><p:a>1</p:a><q:b>2</q:b></p:root>'),
+  'p:root/p:a/text()', '111', 'p:root/q:b/text()', '222',
+  'xmlns:p="urn:p" xmlns:q="urn:q"') FROM dual;
+                updatexml                 
+------------------------------------------
+ <p:root xmlns:p="urn:p" xmlns:q="urn:q">+
+   <p:a>111</p:a>                        +
+   <q:b>222</q:b>                        +
+ </p:root>
+(1 row)
+
+SELECT updatexml(xmltype('<p:root xmlns:p="urn:p" xmlns:q="urn:q"><p:a>1</p:a><q:b>2</q:b></p:root>'),
+  'p:root/q:b/text()', '222', 'p:root/p:a/text()', '111',
+  'xmlns:p="urn:p" xmlns:q="urn:q"') FROM dual;
+                updatexml                 
+------------------------------------------
+ <p:root xmlns:p="urn:p" xmlns:q="urn:q">+
+   <p:a>111</p:a>                        +
+   <q:b>222</q:b>                        +
+ </p:root>
+(1 row)
+
