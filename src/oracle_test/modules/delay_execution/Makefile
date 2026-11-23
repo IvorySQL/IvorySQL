@@ -9,6 +9,7 @@ OBJS = \
 
 ISOLATION = partition-addition \
 	    partition-removal-1
+ORA_ISOLATION = $(ISOLATION)
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config

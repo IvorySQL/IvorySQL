@@ -3,6 +3,8 @@
 
 REGRESS = commit_timestamp
 REGRESS_OPTS = --temp-config=$(top_srcdir)/src/oracle_test/modules/commit_ts/commit_ts.conf
+ORA_REGRESS = $(REGRESS)
+ORA_REGRESS_OPTS = $(REGRESS_OPTS)
 # Disabled because these tests require "track_commit_timestamp = on",
 # which typical installcheck users do not have (e.g. buildfarm clients).
 NO_INSTALLCHECK = 1
