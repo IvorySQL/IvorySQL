@@ -1,0 +1,134 @@
+--
+-- DBMS_RESOURCE_MANAGER
+--
+-- Regression tests for Oracle-compatible DBMS_RESOURCE_MANAGER package:
+--   - CREATE_PENDING_AREA / VALIDATE_PENDING_AREA / SUBMIT_PENDING_AREA
+--   - CREATE_PLAN / DELETE_PLAN
+--   - CREATE_CONSUMER_GROUP / DELETE_CONSUMER_GROUP
+--   - CREATE_PLAN_DIRECTIVE / DELETE_PLAN_DIRECTIVE
+--   - Catalog tables verification (sys.resource_plans, sys.resource_consumer_groups, sys.resource_plan_directives)
+--   - Error handling (pending area inactive validation, NULL parameters)
+--   - Internal function execute privilege revoked from PUBLIC (CWE-862)
+--
+-- Initial pending area workflow
+CALL dbms_resource_manager.create_pending_area();
+CALL dbms_resource_manager.validate_pending_area();
+-- Create resource plan
+CALL dbms_resource_manager.create_plan(
+    plan     => 'DAYTIME_PLAN',
+    comments => 'General daytime workload management plan'
+);
+-- Create consumer groups
+CALL dbms_resource_manager.create_consumer_group(
+    consumer_group => 'OLTP_GROUP',
+    comments       => 'Online transaction processing group'
+);
+CALL dbms_resource_manager.create_consumer_group(
+    consumer_group => 'REPORT_GROUP',
+    comments       => 'Batch reporting and analytics group'
+);
+-- Create plan directives
+CALL dbms_resource_manager.create_plan_directive(
+    plan             => 'DAYTIME_PLAN',
+    group_or_subplan => 'OLTP_GROUP',
+    comments         => 'OLTP group gets 75% CPU',
+    cpu_p1           => 75
+);
+CALL dbms_resource_manager.create_plan_directive(
+    plan             => 'DAYTIME_PLAN',
+    group_or_subplan => 'REPORT_GROUP',
+    comments         => 'Reporting group gets 25% CPU',
+    cpu_p1           => 25
+);
+-- Submit pending area
+CALL dbms_resource_manager.submit_pending_area();
+-- Verify catalog tables
+SELECT plan, num_plan_directives, comments, status
+  FROM sys.resource_plans
+ WHERE plan = 'DAYTIME_PLAN';
+     plan     | num_plan_directives |               comments                | status
+--------------+---------------------+---------------------------------------+--------
+ DAYTIME_PLAN |                   2 | General daytime workload management plan | ACTIVE
+(1 row)
+
+SELECT consumer_group, comments, status
+  FROM sys.resource_consumer_groups
+ WHERE consumer_group IN ('OLTP_GROUP', 'REPORT_GROUP')
+ ORDER BY consumer_group;
+ consumer_group |               comments                | status
+----------------+---------------------------------------+--------
+ OLTP_GROUP     | Online transaction processing group   | ACTIVE
+ REPORT_GROUP   | Batch reporting and analytics group   | ACTIVE
+(2 rows)
+
+SELECT plan, group_or_subplan, cpu_p1
+  FROM sys.resource_plan_directives
+ WHERE plan = 'DAYTIME_PLAN'
+ ORDER BY group_or_subplan;
+     plan     | group_or_subplan | cpu_p1
+--------------+------------------+--------
+ DAYTIME_PLAN | OLTP_GROUP       |     75
+ DAYTIME_PLAN | REPORT_GROUP     |     25
+(2 rows)
+
+-- Cleanup directives, groups, plans
+CALL dbms_resource_manager.create_pending_area();
+CALL dbms_resource_manager.delete_plan_directive('DAYTIME_PLAN', 'OLTP_GROUP');
+CALL dbms_resource_manager.delete_plan_directive('DAYTIME_PLAN', 'REPORT_GROUP');
+CALL dbms_resource_manager.delete_consumer_group('OLTP_GROUP');
+CALL dbms_resource_manager.delete_consumer_group('REPORT_GROUP');
+CALL dbms_resource_manager.delete_plan('DAYTIME_PLAN');
+CALL dbms_resource_manager.submit_pending_area();
+SELECT COUNT(*) FROM sys.resource_plans WHERE plan = 'DAYTIME_PLAN';
+ count
+-------
+     0
+(1 row)
+
+SELECT COUNT(*) FROM sys.resource_consumer_groups WHERE consumer_group IN ('OLTP_GROUP', 'REPORT_GROUP');
+ count
+-------
+     0
+(1 row)
+
+-- Error handling: validate or submit without active pending area
+SELECT sys.dbms_resource_manager_validate_pending_area_internal();
+ERROR:  DBMS_RESOURCE_MANAGER: pending area is not active
+SELECT sys.dbms_resource_manager_submit_pending_area_internal();
+ERROR:  DBMS_RESOURCE_MANAGER: pending area is not active
+-- Error handling: NULL parameters
+SELECT sys.dbms_resource_manager_create_plan_internal(NULL, 'c', 1, 1, 1, 1);
+ERROR:  DBMS_RESOURCE_MANAGER.CREATE_PLAN: plan must not be NULL
+SELECT sys.dbms_resource_manager_create_consumer_group_internal(NULL, 'c', 1);
+ERROR:  DBMS_RESOURCE_MANAGER.CREATE_CONSUMER_GROUP: consumer_group must not be NULL
+SELECT sys.dbms_resource_manager_create_plan_directive_internal(NULL, 'g', 'c', 1, 1, 1, 1, 1);
+ERROR:  DBMS_RESOURCE_MANAGER.CREATE_PLAN_DIRECTIVE: plan and group must not be NULL
+-- Verify internal functions execute privilege revoked from PUBLIC (CWE-862)
+SELECT p.proname, has_function_privilege('public', p.oid, 'EXECUTE') AS public_can_execute
+  FROM pg_catalog.pg_proc p
+  JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+ WHERE n.nspname = 'sys'
+   AND p.proname IN ('dbms_resource_manager_create_pending_area_internal',
+                     'dbms_resource_manager_clear_pending_area_internal',
+                     'dbms_resource_manager_validate_pending_area_internal',
+                     'dbms_resource_manager_submit_pending_area_internal',
+                     'dbms_resource_manager_create_plan_internal',
+                     'dbms_resource_manager_delete_plan_internal',
+                     'dbms_resource_manager_create_consumer_group_internal',
+                     'dbms_resource_manager_delete_consumer_group_internal',
+                     'dbms_resource_manager_create_plan_directive_internal',
+                     'dbms_resource_manager_delete_plan_directive_internal')
+ ORDER BY p.proname;
+                       proname                        | public_can_execute
+------------------------------------------------------+--------------------
+ dbms_resource_manager_clear_pending_area_internal    | f
+ dbms_resource_manager_create_consumer_group_internal  | f
+ dbms_resource_manager_create_pending_area_internal   | f
+ dbms_resource_manager_create_plan_directive_internal | f
+ dbms_resource_manager_create_plan_internal           | f
+ dbms_resource_manager_delete_consumer_group_internal  | f
+ dbms_resource_manager_delete_plan_directive_internal | f
+ dbms_resource_manager_delete_plan_internal           | f
+ dbms_resource_manager_submit_pending_area_internal   | f
+ dbms_resource_manager_validate_pending_area_internal | f
+(10 rows)
