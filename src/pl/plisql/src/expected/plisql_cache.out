@@ -24,7 +24,7 @@ alter table c_mutable add column f1 float8;
 -- currently, this fails due to cached plan for "r.f1 + 1" expression
 -- (but if debug_discard_caches is on, it will succeed)
 select c_sillyaddone(42);
-ERROR:  type of parameter 4 (pg_catalog.float8) does not match that when preparing the plan (pg_catalog.int4)
+ERROR:  type of parameter 8 (pg_catalog.float8) does not match that when preparing the plan (pg_catalog.int4)
 CONTEXT:  PL/iSQL function c_sillyaddone(pg_catalog.int4) line 1 at RETURN
 -- but it's OK if we force plan rebuilding
 discard plans;
@@ -56,7 +56,7 @@ select show_result_type('select 1 as a');
 -- currently this fails due to cached plan for pg_typeof expression
 -- (but if debug_discard_caches is on, it will succeed)
 select show_result_type('select 2.0 as a');
-ERROR:  type of parameter 5 (pg_catalog.numeric) does not match that when preparing the plan (pg_catalog.int4)
+ERROR:  type of parameter 9 (pg_catalog.numeric) does not match that when preparing the plan (pg_catalog.int4)
 CONTEXT:  SQL statement "select pg_typeof(r.a)"
 PL/iSQL function show_result_type(text) line 7 at SQL statement
 -- but it's OK if we force plan rebuilding

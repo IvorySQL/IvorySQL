@@ -64,7 +64,8 @@ REGRESS = plisql_array plisql_call plisql_control plisql_copy plisql_domain \
 	plisql_trap plisql_trigger plisql_varprops plisql_nested_subproc \
 	plisql_nested_subproc2 plisql_out_parameter plisql_type_rowtype \
 	plisql_exception plisql_for_loop_implicit plisql_autonomous plisql_bugs plisql_rownum \
-	plisql_package_type_record
+	plisql_package_type_record \
+	plisql_implicit_cursor_attr
 
 # where to find ora_gen_keywordlist.pl and subsidiary files
 TOOLSDIR = $(top_srcdir)/src/tools
