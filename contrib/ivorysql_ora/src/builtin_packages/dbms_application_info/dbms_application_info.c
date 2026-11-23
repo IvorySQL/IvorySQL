@@ -44,6 +44,8 @@
 #define DAI_MAX_MODULE_LEN		48
 #define DAI_MAX_ACTION_LEN		32
 #define DAI_MAX_CLIENT_INFO_LEN 64
+#define DAI_MAX_OPNAME_LEN		64
+#define DAI_MAX_UNITS_LEN		32
 
 typedef struct DbmsAppInfo
 {
@@ -121,6 +123,32 @@ dai_set_field(const char *value)
 }
 
 /*
+ * dai_free_stored
+ *
+ * Free a string previously stored in the session memory context by
+ * dai_set_field/dai_lstr. Callers must allocate the replacement first;
+ * dai_set_field/dai_lstr can raise out-of-memory, and the stored pointer
+ * would then point to freed memory if released before the replacement
+ * exists.
+ */
+static void
+dai_free_stored(char *old)
+{
+	MemoryContext oldcontext;
+
+	if (old == NULL)
+		return;
+
+	if (app_info->mcxt)
+		oldcontext = MemoryContextSwitchTo(app_info->mcxt);
+	else
+		oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+
+	pfree(old);
+	MemoryContextSwitchTo(oldcontext);
+}
+
+/*
  * dai_clip
  *
  * Copy src into a palloc'd string clipped to max_len bytes without
@@ -171,6 +199,8 @@ ora_dbms_application_info_set_module(PG_FUNCTION_ARGS)
 	else
 		action = dai_set_field(NULL);
 
+	dai_free_stored(app_info->module);
+	dai_free_stored(app_info->action);
 	app_info->module = module;
 	app_info->action = action;
 
@@ -200,6 +230,7 @@ ora_dbms_application_info_set_action(PG_FUNCTION_ARGS)
 	else
 		action = dai_set_field(NULL);
 
+	dai_free_stored(app_info->action);
 	app_info->action = action;
 
 	PG_RETURN_VOID();
@@ -228,6 +259,7 @@ ora_dbms_application_info_set_client_info(PG_FUNCTION_ARGS)
 	else
 		client_info = dai_set_field(NULL);
 
+	dai_free_stored(app_info->client_info);
 	app_info->client_info = client_info;
 
 	PG_RETURN_VOID();
@@ -282,6 +314,7 @@ typedef struct DaiLongopsRow
 	int			context;
 	double		sofar;
 	double		totalwork;
+	char	   *target_desc;
 	char	   *units;
 	TimestampTz start_time;
 } DaiLongopsRow;
@@ -295,12 +328,14 @@ PG_FUNCTION_INFO_V1(ora_set_session_longops);
 PG_FUNCTION_INFO_V1(ora_session_longops);
 
 static char *
-dai_lstr(const char *src)
+dai_lstr(const char *src, int max_len)
 {
-	int			len = (int) strlen(src);
+	char	   *clipped = dai_clip(src, max_len);
+	int			len = (int) strlen(clipped);
 	char	   *dst = (char *) palloc(len + 1);
 
-	memcpy(dst, src, len + 1);
+	memcpy(dst, clipped, len + 1);
+	pfree(clipped);
 	return dst;
 }
 
@@ -322,7 +357,8 @@ ora_set_session_longops(PG_FUNCTION_ARGS)
 	int			context = PG_ARGISNULL(4) ? 0 : PG_GETARG_INT32(4);
 	double		sofar = PG_ARGISNULL(5) ? 0 : PG_GETARG_FLOAT8(5);
 	double		totalwork = PG_ARGISNULL(6) ? 0 : PG_GETARG_FLOAT8(6);
-	char	   *units = PG_ARGISNULL(7) ? NULL : text_to_cstring(PG_GETARG_TEXT_PP(7));
+	char	   *target_desc = PG_ARGISNULL(7) ? NULL : text_to_cstring(PG_GETARG_TEXT_PP(7));
+	char	   *units = PG_ARGISNULL(8) ? NULL : text_to_cstring(PG_GETARG_TEXT_PP(8));
 	DaiLongopsRow *row = NULL;
 	int			i;
 	MemoryContext oldcontext;
@@ -330,6 +366,9 @@ ora_set_session_longops(PG_FUNCTION_ARGS)
 	HeapTuple	tuple;
 	Datum		values[2];
 	bool		nulls[2] = {false, false};
+	char	   *new_op;
+	char	   *new_units;
+	char	   *new_target_desc;
 
 	dai_ensure_context();
 
@@ -353,17 +392,22 @@ ora_set_session_longops(PG_FUNCTION_ARGS)
 		/* Allocate a new row */
 		if (dai_lrows_n >= dai_lrows_cap)
 		{
-			dai_lrows_cap = dai_lrows_cap ? dai_lrows_cap * 2 : 8;
+			int			newcap = dai_lrows_cap ? dai_lrows_cap * 2 : 8;
+			DaiLongopsRow *newrows;
+
 			if (dai_lrows == NULL)
-				dai_lrows = (DaiLongopsRow *) palloc(dai_lrows_cap * sizeof(DaiLongopsRow));
+				newrows = (DaiLongopsRow *) palloc(newcap * sizeof(DaiLongopsRow));
 			else
-				dai_lrows = (DaiLongopsRow *) repalloc(dai_lrows,
-													   dai_lrows_cap * sizeof(DaiLongopsRow));
+				newrows = (DaiLongopsRow *) repalloc(dai_lrows,
+													 newcap * sizeof(DaiLongopsRow));
+			dai_lrows = newrows;
+			dai_lrows_cap = newcap;
 		}
 		row = &dai_lrows[dai_lrows_n++];
 		row->rindex = ++dai_lrows_next_rindex;
 		row->slno = 0;
 		row->op_name = NULL;
+		row->target_desc = NULL;
 		row->units = NULL;
 		row->start_time = GetCurrentTimestamp();
 	}
@@ -371,16 +415,23 @@ ora_set_session_longops(PG_FUNCTION_ARGS)
 	if (row->slno < INT_MAX)
 		row->slno++;
 
+	new_op = op_name ? dai_lstr(op_name, DAI_MAX_OPNAME_LEN) : NULL;
+	new_target_desc = target_desc ? dai_lstr(target_desc, DAI_MAX_OPNAME_LEN) : NULL;
+	new_units = units ? dai_lstr(units, DAI_MAX_UNITS_LEN) : NULL;
+
 	if (row->op_name)
 		pfree(row->op_name);
-	row->op_name = op_name ? dai_lstr(op_name) : NULL;
+	row->op_name = new_op;
 	row->target = target;
 	row->context = context;
 	row->sofar = sofar;
 	row->totalwork = totalwork;
+	if (row->target_desc)
+		pfree(row->target_desc);
+	row->target_desc = new_target_desc;
 	if (row->units)
 		pfree(row->units);
-	row->units = units ? dai_lstr(units) : NULL;
+	row->units = new_units;
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -417,19 +468,20 @@ ora_session_longops(PG_FUNCTION_ARGS)
 
 		funcctx = SRF_FIRSTCALL_INIT();
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
-		tupdesc = CreateTemplateTupleDesc(12);
+		tupdesc = CreateTemplateTupleDesc(13);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "sid", INT8OID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "rindex", INT4OID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "slno", INT4OID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 4, "op_name", TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 4, "opname", TEXTOID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 5, "target", INT4OID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 6, "context", INT4OID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 7, "sofar", FLOAT8OID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 8, "totalwork", FLOAT8OID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 9, "units", TEXTOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 10, "start_time", TIMESTAMPTZOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 11, "time_remaining", FLOAT8OID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 12, "message", TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 9, "target_desc", TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 10, "units", TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 11, "start_time", TIMESTAMPTZOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 12, "time_remaining", FLOAT8OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 13, "message", TEXTOID, -1, 0);
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
 		MemoryContextSwitchTo(oldcontext);
 	}
@@ -441,8 +493,8 @@ ora_session_longops(PG_FUNCTION_ARGS)
 
 	i = funcctx->call_cntr;
 	{
-		Datum		values[12];
-		bool		nulls[12] = {false};
+		Datum		values[13];
+		bool		nulls[13] = {false};
 		HeapTuple	tuple;
 		DaiLongopsRow *row = &dai_lrows[i];
 		double		elapsed_sec;
@@ -459,28 +511,32 @@ ora_session_longops(PG_FUNCTION_ARGS)
 		values[5] = Int32GetDatum(row->context);
 		values[6] = Float8GetDatum(row->sofar);
 		values[7] = Float8GetDatum(row->totalwork);
-		if (row->units)
-			values[8] = PointerGetDatum(cstring_to_text(row->units));
+		if (row->target_desc)
+			values[8] = PointerGetDatum(cstring_to_text(row->target_desc));
 		else
 			nulls[8] = true;
-		values[9] = TimestampTzGetDatum(row->start_time);
+		if (row->units)
+			values[9] = PointerGetDatum(cstring_to_text(row->units));
+		else
+			nulls[9] = true;
+		values[10] = TimestampTzGetDatum(row->start_time);
 
 		/* time_remaining: extrapolate from progress so far (Oracle semantics) */
 		if (row->totalwork > 0 && row->sofar > 0 && row->sofar < row->totalwork)
 		{
 			elapsed_sec =
 				(double) (GetCurrentTimestamp() - row->start_time) / 1000000.0;
-			values[10] = Float8GetDatum(elapsed_sec * (row->totalwork - row->sofar) / row->sofar);
+			values[11] = Float8GetDatum(elapsed_sec * (row->totalwork - row->sofar) / row->sofar);
 		}
 		else
-			nulls[10] = true;
+			nulls[11] = true;
 
 		/* message: "op_name: sofar/totalwork units" (Oracle format) */
 		snprintf(msg, sizeof(msg), "%s: %g/%g %s",
 				 row->op_name ? row->op_name : "",
 				 row->sofar, row->totalwork,
 				 row->units ? row->units : "");
-		values[11] = PointerGetDatum(cstring_to_text(msg));
+		values[12] = PointerGetDatum(cstring_to_text(msg));
 
 		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
