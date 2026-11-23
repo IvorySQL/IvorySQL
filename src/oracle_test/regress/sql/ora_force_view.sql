@@ -136,3 +136,22 @@ insert into test193 values(1, 'abc');
 select * from vtest193;
 drop view vtest193;
 drop table test193;
+
+-- pg_force_view bookkeeping must not depend on the session's compatible mode.
+-- A view that was invalidated by a column type change and then dropped while the
+-- session ran in PG mode used to leave its pg_force_view row behind, so the
+-- catalog kept a row describing a relation that no longer exists.
+create table force_view_cleanup_t(a int);
+insert into force_view_cleanup_t values(1);
+create view force_view_cleanup_v as select * from force_view_cleanup_t;
+select count(*) as force_rows_before from pg_force_view f
+  join pg_class c on c.oid = f.fvoid where c.relname = 'force_view_cleanup_v';
+alter table force_view_cleanup_t alter column a type bigint;
+select count(*) as force_rows_after_alter from pg_force_view f
+  join pg_class c on c.oid = f.fvoid where c.relname = 'force_view_cleanup_v';
+set ivorysql.compatible_mode to pg;
+drop view force_view_cleanup_v;
+set ivorysql.compatible_mode to oracle;
+select count(*) as orphaned_force_view_rows from pg_force_view f
+  where not exists (select 1 from pg_class c where c.oid = f.fvoid);
+drop table force_view_cleanup_t;
