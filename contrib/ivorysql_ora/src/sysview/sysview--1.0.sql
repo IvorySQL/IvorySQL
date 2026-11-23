@@ -1262,6 +1262,7 @@ LEFT JOIN pg_stats ON
   pg_stats.schemaname = pg_namespace.nspname
   AND pg_stats.tablename = pg_class.relname
   AND pg_stats.attname = pg_attribute.attname
+  AND pg_stats.inherited = false
 
 LEFT JOIN LATERAL (
   SELECT
