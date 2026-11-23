@@ -63,6 +63,16 @@ RETURNS VOID
 AS 'MODULE_PATHNAME', 'ora_dbms_session_reset_package'
 LANGUAGE C VOLATILE;
 
+CREATE FUNCTION sys.ora_dbms_session_set_identifier(client_id TEXT)
+RETURNS VOID
+AS 'MODULE_PATHNAME', 'ora_dbms_session_set_identifier'
+LANGUAGE C VOLATILE;
+
+CREATE FUNCTION sys.ora_dbms_session_clear_identifier()
+RETURNS VOID
+AS 'MODULE_PATHNAME', 'ora_dbms_session_clear_identifier'
+LANGUAGE C VOLATILE;
+
 /*
  * LIST_CONTEXT entry point.
  *
@@ -82,6 +92,8 @@ CREATE OR REPLACE PACKAGE dbms_session IS
     PROCEDURE clear_context(namespace VARCHAR2, attribute VARCHAR2 DEFAULT NULL);
     PROCEDURE clear_all_context(namespace VARCHAR2);
     PROCEDURE reset_package;
+    PROCEDURE set_identifier(client_id VARCHAR2);
+    PROCEDURE clear_identifier;
 END dbms_session;
 
 CREATE OR REPLACE PACKAGE BODY dbms_session IS
@@ -104,6 +116,16 @@ CREATE OR REPLACE PACKAGE BODY dbms_session IS
     PROCEDURE reset_package IS
     BEGIN
         PERFORM sys.ora_dbms_session_reset_package();
+    END;
+
+    PROCEDURE set_identifier(client_id VARCHAR2) IS
+    BEGIN
+        PERFORM sys.ora_dbms_session_set_identifier(client_id);
+    END;
+
+    PROCEDURE clear_identifier IS
+    BEGIN
+        PERFORM sys.ora_dbms_session_clear_identifier();
     END;
 
 END dbms_session;
