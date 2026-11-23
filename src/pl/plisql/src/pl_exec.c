@@ -10393,7 +10393,7 @@ plisql_get_current_exception_sqlerrcode(void)
  * plisql_get_call_stack
  *
  * Returns the current PL/iSQL call stack as a formatted string, one frame
- * per line as "handle\tlineno\tsignature". Package members' signature is
+ * per line as "handle\tlineno\tprokind\tsignature". Package members' signature is
  * schema/package-qualified (see plisql_package_qualified_signature()), not
  * just the bare routine name.
  *
@@ -10450,9 +10450,10 @@ plisql_get_call_stack(void)
 			if (found_any)
 				appendStringInfoChar(&buf, '\n');
 
-			appendStringInfo(&buf, "%p\t%d\t%s",
+			appendStringInfo(&buf, "%p\t%d\t%c\t%s",
 							 (void *) estate->func,
 							 lineno,
+							 estate->func->fn_prokind,
 							 signature);
 			found_any = true;
 
