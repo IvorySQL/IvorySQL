@@ -47,6 +47,14 @@
  */
 #define DBMS_LOCK_S_MODE      4
 #define DBMS_LOCK_X_MODE      6
+/* Oracle exposes six lock modes (nl/ss/sx/s/ssx/x) */
+#define DBMS_LOCK_NL_MODE     1
+#define DBMS_LOCK_SS_MODE     2
+#define DBMS_LOCK_SX_MODE     3
+#define DBMS_LOCK_SSX_MODE    5
+
+/* Oracle reserved timeout value meaning "wait forever" */
+#define DBMS_LOCK_WAIT_FOREVER 32767
 
 /* Oracle compatible return codes */
 #define DBMS_LOCK_SUCCESS         0
@@ -196,8 +204,12 @@ is_exclusive_mode(int mode)
     switch (mode)
     {
         case DBMS_LOCK_X_MODE:
+        case DBMS_LOCK_SSX_MODE:
             return true;
 
+        case DBMS_LOCK_NL_MODE:
+        case DBMS_LOCK_SS_MODE:
+        case DBMS_LOCK_SX_MODE:
         case DBMS_LOCK_S_MODE:
             return false;
 
@@ -281,7 +293,7 @@ ivorysql_dbms_lock_request(PG_FUNCTION_ARGS)
         if (timeout == 0)
             PG_RETURN_INT32(DBMS_LOCK_TIMEOUT);
 
-        if (timeout > 0)
+        if (timeout > 0 && timeout != DBMS_LOCK_WAIT_FOREVER)
         {
             TimestampTz now = GetCurrentTimestamp();
             long elapsed = (long) ((now - start) / 1000000);
