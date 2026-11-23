@@ -1160,6 +1160,7 @@ IvyHandleAlloc(const void *parent,
 		case IVY_HANDLE_STMT:
 		{
 			IvyPreparedStatement *prepared = NULL;
+			char		stmt_name[sizeof("_ivy_name_stmt_") + 2 * sizeof(uintptr_t)];
 
 			*hndlpp = malloc(sizeof(IvyPreparedStatement));
 			if (*hndlpp == NULL)
@@ -1169,14 +1170,28 @@ IvyHandleAlloc(const void *parent,
 
 			prepared = (IvyPreparedStatement *) *hndlpp;
 			/* init s_lock */
-			if (PGSemaphoreCreate(&prepared->lock) == 0)
+			if (PGSemaphoreCreate(&prepared->lock) <= 0)
 			{
 				free(prepared);
+				*hndlpp = NULL;
 				return result;
 			}
 
 			prepared->query = NULL;
-			prepared->stmtName = strdup("_ivy_name_stmt");
+			/*
+			 * Live handles have distinct addresses.  Lower-case hex keeps the
+			 * generated name compatible with unquoted DEALLOCATE as well.
+			 */
+			snprintf(stmt_name, sizeof(stmt_name), "_ivy_name_stmt_%" PRIxPTR,
+					 (uintptr_t) prepared);
+			prepared->stmtName = strdup(stmt_name);
+			if (prepared->stmtName == NULL)
+			{
+				ReleaseSemaphores(&prepared->lock);
+				free(prepared);
+				*hndlpp = NULL;
+				return result;
+			}
 			prepared->nParams = -1;
 			prepared->paramTypes = NULL;
 			prepared->query_len = -1;
