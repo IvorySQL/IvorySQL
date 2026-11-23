@@ -37,6 +37,7 @@ ivorysql_ora_sources = files(
   'src/builtin_packages/dbms_transaction/dbms_transaction.c',
   'src/builtin_packages/dbms_random/dbms_random.c',
   'src/builtin_packages/utl_match/utl_match.c',
+  'src/builtin_packages/dbms_sql/dbms_sql.c',
   'src/builtin_packages/dbms_scheduler/dbms_scheduler.c',
   'src/builtin_packages/dbms_scheduler/scheduler_calendar.c',
   'src/builtin_packages/dbms_scheduler/scheduler_launcher.c',
