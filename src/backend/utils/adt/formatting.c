@@ -665,6 +665,7 @@ typedef enum
 	DCH_RM,
 	DCH_RRRR,
 	DCH_RR,
+	DCH_SCC,
 	DCH_SSSSS,
 	DCH_SSSS,
 	DCH_SS,
@@ -726,6 +727,7 @@ typedef enum
 	DCH_rm,
 	DCH_rrrr,
 	DCH_rr,
+	DCH_scc,
 	DCH_sssss,
 	DCH_ssss,
 	DCH_ss,
@@ -844,6 +846,7 @@ static const KeyWord DCH_keywords[] = {
 	{"RM", 2, DCH_RM, false, FROM_CHAR_DATE_GREGORIAN}, /* R */
 	{"RRRR",4, DCH_RRRR, true, FROM_CHAR_DATE_GREGORIAN},
 	{"RR", 2, DCH_RR, true, FROM_CHAR_DATE_GREGORIAN},
+	{"SCC", 3, DCH_SCC, true, FROM_CHAR_DATE_NONE},	/* S */
 	{"SSSSS", 5, DCH_SSSS, true, FROM_CHAR_DATE_NONE},	/* S */
 	{"SSSS", 4, DCH_SSSS, true, FROM_CHAR_DATE_NONE},
 	{"SS", 2, DCH_SS, true, FROM_CHAR_DATE_NONE},
@@ -905,6 +908,7 @@ static const KeyWord DCH_keywords[] = {
 	{"rm", 2, DCH_rm, false, FROM_CHAR_DATE_GREGORIAN}, /* r */
 	{"rrrr",4, DCH_RRRR, true, FROM_CHAR_DATE_GREGORIAN},
 	{"rr", 2, DCH_RR, true, FROM_CHAR_DATE_GREGORIAN},
+	{"scc", 3, DCH_SCC, true, FROM_CHAR_DATE_NONE},	/* s */
 	{"sssss", 5, DCH_SSSS, true, FROM_CHAR_DATE_NONE},	/* s */
 	{"ssss", 4, DCH_SSSS, true, FROM_CHAR_DATE_NONE},
 	{"ss", 2, DCH_SS, true, FROM_CHAR_DATE_NONE},
@@ -988,10 +992,10 @@ static const int DCH_index[KeyWord_INDEX_SIZE] = {
 	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 	-1, -1, -1, -1, -1, DCH_A_D, DCH_B_C, DCH_CC, DCH_DAY, -1,
 	DCH_FF1, -1, DCH_HH24, DCH_IDDD, DCH_J, -1, -1, DCH_MI, -1, DCH_OF,
-	DCH_P_M, DCH_Q, DCH_RM, DCH_SSSSS, DCH_TZH, DCH_US, -1, DCH_WW, -1, DCH_Y_YYY,
+	DCH_P_M, DCH_Q, DCH_RM, DCH_SCC, DCH_TZH, DCH_US, -1, DCH_WW, -1, DCH_Y_YYY,
 	-1, -1, -1, -1, -1, -1, -1, DCH_a_d, DCH_b_c, DCH_cc,
 	DCH_day, -1, DCH_ff1, -1, DCH_hh24, DCH_iddd, DCH_j, -1, -1, DCH_mi,
-	-1, DCH_of, DCH_p_m, DCH_q, DCH_rm, DCH_sssss, DCH_tzh, DCH_us, -1, DCH_ww,
+	-1, DCH_of, DCH_p_m, DCH_q, DCH_rm, DCH_scc, DCH_tzh, DCH_us, -1, DCH_ww,
 	-1, DCH_y_yyy, -1, -1, -1, -1
 
 	/*---- chars over 126 are skipped ----*/
@@ -3075,6 +3079,29 @@ DCH_to_char(FormatNode *node, bool is_interval, TmToChar *in, char *out, Oid col
 					str_numth(s, s, SUFFIX_TH_TYPE(n->suffix));
 				s += strlen(s);
 				break;
+			case DCH_SCC:
+				/* Oracle: SCC prefixes AD with a space, BC with a minus */
+				if (is_interval)	/* straight calculation */
+					i = tm->tm_year / 100;
+				else
+				{
+					if (tm->tm_year > 0)
+						/* Century 20 == 1901 - 2000 */
+						i = (tm->tm_year - 1) / 100 + 1;
+					else
+						/* Century 6BC == 600BC - 501BC */
+						i = tm->tm_year / 100 - 1;
+				}
+				if (i < 0)
+					sprintf(s, "-%02d", -i);
+				else if (IS_SUFFIX_FM(n->suffix))
+					sprintf(s, "%d", i);
+				else
+					sprintf(s, " %02d", i);
+				if (IS_SUFFIX_THth(n->suffix))
+					str_numth(s, s, SUFFIX_TH_TYPE(n->suffix));
+				s += strlen(s);
+				break;
 			case DCH_CC:
 				if (is_interval)	/* straight calculation */
 					i = tm->tm_year / 100;
@@ -3987,6 +4014,7 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 				SKIP_THth(s, n->suffix);
 				break;
 			case DCH_CC:
+			case DCH_SCC:
 				if (from_char_parse_int(&out->cc, &s, n, escontext) < 0)
 					return;
 				SKIP_THth(s, n->suffix);
