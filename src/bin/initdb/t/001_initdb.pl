@@ -8,6 +8,9 @@
 use strict;
 use warnings FATAL => 'all';
 use Fcntl ':mode';
+use File::Copy qw(copy);
+use File::Path qw(make_path);
+use File::Spec;
 use File::stat qw{lstat};
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
@@ -79,6 +82,69 @@ command_ok([ 'initdb', '--sync-only', $datadir ], 'sync only');
 command_ok([ 'initdb', '--sync-only', '--no-sync-data-files', $datadir ],
 	'--no-sync-data-files');
 command_fails([ 'initdb', $datadir ], 'existing data directory');
+
+# Test incomplete uuid-ossp installations without modifying files shared
+# with other tests. Preserve the layout so the copied binaries relocate.
+{
+	my $node = PostgreSQL::Test::Cluster->new('missing_uuid_ossp');
+	my ($bindir, $sharedir) = $node->config_data(qw(--bindir --sharedir));
+	my ($test_bin, $test_share) = map {
+		my (undef, $dir) = File::Spec->splitpath($_, 1);
+		File::Spec->catdir("$tempdir/uuid_install", $dir);
+	} ($bindir, $sharedir);
+	my $test_ext = "$test_share/extension";
+	make_path($test_bin, $test_ext);
+	my $exe = -f "$bindir/initdb.exe" ? '.exe' : '';
+	for my $program ("initdb$exe", "postgres$exe")
+	{
+		copy("$bindir/$program", "$test_bin/$program")
+		  or die "copy $program: $!";
+		chmod(0755, "$test_bin/$program") or die "chmod $program: $!"
+		  unless $windows_os;
+	}
+	for my $file (slurp_dir($sharedir))
+	{
+		next unless -f "$sharedir/$file";
+		copy("$sharedir/$file", "$test_share/$file") or die "copy $file: $!";
+	}
+
+	my $test_initdb = "$test_bin/initdb$exe";
+	my $test_data = "$tempdir/uuid_data";
+	my $test_wal = "$tempdir/uuid_wal";
+	my @init = ($test_initdb, '--no-clean', '-D', $test_data, '-X', $test_wal);
+	my $control = 'uuid-ossp.control';
+	my $script = 'uuid-ossp--1.1.sql';
+	my $required = qr/Oracle-compatible mode requires the "uuid-ossp" extension/;
+	my $hint = qr/Install the "uuid-ossp" extension, or use -m pg/;
+
+	command_fails_like(\@init, qr/$required.*\Q$control\E.*$hint/s,
+		'default mode reports missing uuid-ossp control file');
+	ok(!-e $test_data && !-e $test_wal,
+		'missing control file leaves no directories');
+
+	mkdir "$test_ext/$control" or die "mkdir $control: $!";
+	command_fails_like(\@init, qr/$required.*\Q$control\E" is not a regular file/s,
+		'a directory cannot substitute for the control file');
+	rmdir "$test_ext/$control" or die "rmdir $control: $!";
+	copy("$sharedir/extension/$control", "$test_ext/$control")
+	  or die "copy $control: $!";
+
+	command_fails_like([ @init, '-m', 'oracle' ], qr/$required.*\Q$script\E.*$hint/s,
+		'explicit Oracle mode reports missing uuid-ossp installation script');
+	ok(!-e $test_data && !-e $test_wal, 'missing script leaves no directories');
+	copy("$sharedir/extension/$script", "$test_ext/$script")
+	  or die "copy $script: $!";
+
+	command_fails_like(\@init, qr/$required.*uuid-ossp\.[[:alnum:]]+".*$hint/s,
+		'Oracle mode reports missing uuid-ossp shared library');
+	ok(!-e $test_data && !-e $test_wal, 'missing library leaves no directories');
+
+	# Use an existing cluster to tell that PG mode reaches the data directory
+	# check without doing another bootstrap in this partial installation.
+	command_fails_like([ $test_initdb, '-m', 'pg', $datadir ],
+		qr/exists but is not empty/,
+		'PostgreSQL mode does not require uuid-ossp');
+}
 
 if ($supports_syncfs)
 {

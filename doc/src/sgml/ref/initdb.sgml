@@ -41,6 +41,18 @@ PostgreSQL documentation
   </para>
 
   <para>
+   IvorySQL defaults to Oracle-compatible mode, which requires the
+   <xref linkend="uuid-ossp"/> extension.  With the standard configuration,
+   <command>initdb</command> checks that the extension's control file,
+   installation script, and shared library are present before creating the
+   cluster.  If any of these files are missing, install the extension for
+   this server or use <option>-m pg</option> to initialize in PostgreSQL mode.
+   For source builds, enable the extension with
+   <xref linkend="configure-option-with-uuid"/> or, with Meson,
+   <xref linkend="configure-with-uuid-meson"/>.
+  </para>
+
+  <para>
    Creating a database cluster consists of creating the
    <glossterm linkend="glossary-data-directory">directories</glossterm> in
    which the cluster data will live, generating the shared catalog
