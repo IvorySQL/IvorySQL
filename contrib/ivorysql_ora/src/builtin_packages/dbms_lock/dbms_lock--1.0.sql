@@ -28,13 +28,13 @@ LANGUAGE C STRICT;
 -- PL/iSQL package wrapper
 CREATE PACKAGE dbms_lock AS
 
-    -- lock modes (Oracle DBMS_LOCK constants, docs: NL=1 SS=2 SX=3 S=4 SSX=5 X=6)
-    nl_mode  CONSTANT INTEGER := 1;
-    ss_mode  CONSTANT INTEGER := 2;
-    sx_mode  CONSTANT INTEGER := 3;
-    s_mode   CONSTANT INTEGER := 4;
-    ssx_mode CONSTANT INTEGER := 5;
-    x_mode   CONSTANT INTEGER := 6;
+    -- lock modes
+    nl_mode   CONSTANT INTEGER := 1;
+    ss_mode   CONSTANT INTEGER := 2;
+    sx_mode   CONSTANT INTEGER := 3;
+    s_mode    CONSTANT INTEGER := 4;
+    ssx_mode  CONSTANT INTEGER := 5;
+    x_mode    CONSTANT INTEGER := 6;
 
     -- return codes
     success           CONSTANT INTEGER := 0;
@@ -44,11 +44,10 @@ CREATE PACKAGE dbms_lock AS
     already_owned     CONSTANT INTEGER := 4;
     illegal_handle    CONSTANT INTEGER := 5;
 
-    -- Oracle maxwait: request waits forever when timeout = maxwait (32767)
+    
+    PROCEDURE allocate_unique(lockname text, lockname_handle OUT text); 
 
-    PROCEDURE allocate_unique(lockname text, lockname_handle OUT text);
-
-    FUNCTION request(lockname_handle text, mode integer DEFAULT 6, timeout integer DEFAULT 32767)
+    FUNCTION request(lockname_handle text, mode integer, timeout integer)
         RETURN int;
 
     FUNCTION release(lockname_handle text)
