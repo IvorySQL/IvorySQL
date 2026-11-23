@@ -806,6 +806,41 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 		PG_END_TRY();
 	}
 
+	/*
+	 * An anonymous block carrying PRAGMA AUTONOMOUS_TRANSACTION runs in its
+	 * own session, like an autonomous named routine does.  A DO block has no
+	 * catalog entry the autonomous session could re-invoke, so its whole
+	 * source text is shipped over and re-run there with the recursion guard
+	 * set (the far copy then executes inline in the far session's own
+	 * transaction).
+	 *
+	 * Handle this before setting up the execution state: the block never
+	 * executes locally.  Without this, the fn_oid == InvalidOid fake fcinfo
+	 * makes plisql_exec_function() take the autonomous path and fail with a
+	 * raw "cache lookup failed for function 0".
+	 */
+	if (func->fn_is_autonomous && !plisql_inside_autonomous_transaction)
+	{
+		if (codeblock->params != NULL)
+		{
+			plisql_free_function_memory(func, 0, 0);
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("an anonymous block with parameters cannot run in an autonomous transaction"),
+					 errhint("A DO block with a USING clause cannot be delegated to the autonomous session.")));
+		}
+
+		plisql_exec_autonomous_do(codeblock->source_text);
+
+		plisql_free_function_memory(func, 0, 0);
+
+		/* Disconnect from SPI manager */
+		if ((rc = SPI_finish()) != SPI_OK_FINISH)
+			elog(ERROR, "SPI_finish failed: %s", SPI_result_code_string(rc));
+
+		PG_RETURN_VOID();
+	}
+
 	/* Mark the function as busy, just pro forma */
 	func->use_count++;
 

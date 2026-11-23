@@ -233,50 +233,47 @@ SELECT test_function_null() AS null_result;
 SELECT id, msg FROM autonomous_test WHERE id = 51;
 
 --
--- Test 12: Explicit COMMIT in autonomous transaction (EXPECTED TO FAIL)
+-- Test 12: Explicit COMMIT in autonomous transaction
 -- Reference: https://github.com/IvorySQL/IvorySQL/issues/985
--- PL/iSQL does not support COMMIT/ROLLBACK in procedures
+-- The CALL is sent to the autonomous session as a single statement, so the
+-- COMMIT ends only the autonomous session's transaction.
 --
-/*
 CREATE OR REPLACE PROCEDURE test_explicit_commit(p_id INT) AS
 DECLARE
     PRAGMA AUTONOMOUS_TRANSACTION;
 BEGIN
     INSERT INTO autonomous_test VALUES (p_id, 'explicit commit', 'committed');
-    COMMIT;  -- Would fail: ERROR: invalid transaction termination
+    COMMIT;
 END;
 /
 
-CALL test_explicit_commit(60);
-*/
+CALL test_explicit_commit(65);
+SELECT id, msg, tx_state FROM autonomous_test WHERE id = 65;
 
 --
--- Test 13: Explicit ROLLBACK in autonomous transaction (EXPECTED TO FAIL)
+-- Test 13: Explicit ROLLBACK in autonomous transaction
 -- Reference: https://github.com/IvorySQL/IvorySQL/issues/985
--- PL/iSQL does not support COMMIT/ROLLBACK in procedures
+-- id=71 survives (inserted after the rollback), id=70 is rolled back.
 --
-/*
 CREATE OR REPLACE PROCEDURE test_explicit_rollback(p_id INT) AS
 DECLARE
     PRAGMA AUTONOMOUS_TRANSACTION;
 BEGIN
     INSERT INTO autonomous_test VALUES (p_id, 'should rollback', 'rolled back');
-    ROLLBACK;  -- Would fail: ERROR: invalid transaction termination
+    ROLLBACK;
     INSERT INTO autonomous_test VALUES (p_id + 1, 'after rollback', 'committed');
 END;
 /
 
 CALL test_explicit_rollback(70);
--- Expected: id=71 survives, id=70 rolled back (if it worked)
--- Actual: ERROR: invalid transaction termination
-*/
+SELECT id, msg, tx_state FROM autonomous_test WHERE id IN (70, 71) ORDER BY id;
 
 --
--- Test 14: Conditional transaction control (EXPECTED TO FAIL)
+-- Test 14: Conditional transaction control
 -- Reference: https://github.com/IvorySQL/IvorySQL/issues/985
--- This pattern is common in Oracle but not supported in PL/iSQL
+-- This pattern is common in Oracle: the routine decides whether to keep its
+-- own work.  id=80 survives, id=81 (rolled back) does not.
 --
-/*
 CREATE OR REPLACE PROCEDURE test_conditional_tx(p_id INT, p_should_commit BOOLEAN) AS
 DECLARE
     PRAGMA AUTONOMOUS_TRANSACTION;
@@ -284,16 +281,16 @@ BEGIN
     INSERT INTO autonomous_test VALUES (p_id, 'conditional', 'unknown');
 
     IF p_should_commit THEN
-        COMMIT;  -- Would fail: ERROR: invalid transaction termination
+        COMMIT;
     ELSE
-        ROLLBACK;  -- Would fail: ERROR: invalid transaction termination
+        ROLLBACK;
     END IF;
 END;
 /
 
 CALL test_conditional_tx(80, true);
 CALL test_conditional_tx(81, false);
-*/
+SELECT id, msg, tx_state FROM autonomous_test WHERE id IN (80, 81) ORDER BY id;
 
 --
 -- Test 15: Error handling in autonomous function (triggers SPI error recovery)
@@ -452,6 +449,44 @@ CALL test_pkg.pkg_test_with_params(76, 'package procedure test');
 SELECT id, msg FROM autonomous_test WHERE id = 76;
 
 --
+-- Test 22: PRAGMA AUTONOMOUS_TRANSACTION in an anonymous block (DO).
+-- Oracle allows the pragma in anonymous blocks; the block must run in its
+-- own session: its INSERT and COMMIT survive the caller's ROLLBACK, the
+-- caller's uncommitted work must NOT be committed by the block's COMMIT,
+-- and a plain DO block is unaffected.
+--
+DO LANGUAGE plisql $$
+PRAGMA AUTONOMOUS_TRANSACTION;
+BEGIN
+  INSERT INTO autonomous_test VALUES (600, 'do-autonomous', 'committed');
+  COMMIT;
+END
+$$;
+SELECT id, msg, tx_state FROM autonomous_test WHERE id = 600;
+
+BEGIN;
+INSERT INTO autonomous_test VALUES (601, 'caller-uncommitted', 'no');
+DO LANGUAGE plisql $$
+PRAGMA AUTONOMOUS_TRANSACTION;
+BEGIN
+  INSERT INTO autonomous_test VALUES (602, 'do-in-caller-txn', 'committed');
+  COMMIT;
+END
+$$;
+ROLLBACK;
+-- id=601 is gone (the caller rolled back), id=602 survived (the block
+-- committed it in its own session).
+SELECT id, msg, tx_state FROM autonomous_test WHERE id >= 600 ORDER BY id;
+
+-- Control: a DO block without the pragma still runs inline as before.
+DO LANGUAGE plisql $$
+BEGIN
+  INSERT INTO autonomous_test VALUES (603, 'do-plain', 'inline');
+END
+$$;
+SELECT id, msg, tx_state FROM autonomous_test WHERE id = 603;
+
+--
 -- Summary: Show all test results
 --
 SELECT 'All autonomous transaction tests completed' AS status;
@@ -474,6 +509,9 @@ DROP FUNCTION outer_function(INT);
 DROP FUNCTION test_function_numeric(NUMERIC);
 DROP FUNCTION test_function_date(DATE, INT);
 DROP FUNCTION test_function_boolean(INT);
+DROP PROCEDURE test_explicit_commit(INT);
+DROP PROCEDURE test_explicit_rollback(INT);
+DROP PROCEDURE test_conditional_tx(INT, BOOLEAN);
 DROP PACKAGE BODY test_pkg;
 DROP PACKAGE test_pkg;
 DROP TABLE autonomous_test;
