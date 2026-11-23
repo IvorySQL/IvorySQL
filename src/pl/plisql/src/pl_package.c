@@ -560,7 +560,7 @@ plisql_free_package_function(PackageCacheItem *items)
 		PLiSQL_function *dfunc = (PLiSQL_function *) lfirst(lc);
 
 		/* remove function */
-		elog(DEBUG1, "realy free function %u", dfunc->fn_oid);
+		elog(DEBUG1, "really free function %u", dfunc->fn_oid);
 		delete_function(dfunc);
 	}
 
@@ -574,9 +574,9 @@ plisql_free_package_function(PackageCacheItem *items)
 		/* finally free itself */
 		if (psource->source.use_count == 0)
 		{
-			elog(DEBUG1, "realy free package %u start", pkgoid);
+			elog(DEBUG1, "really free package %u start", pkgoid);
 			plisql_free_function_memory(&psource->source, 0, 0);
-			elog(DEBUG1, "realy free package %u end", pkgoid);
+			elog(DEBUG1, "really free package %u end", pkgoid);
 		}
 		else
 		{
@@ -584,9 +584,9 @@ plisql_free_package_function(PackageCacheItem *items)
 			resolve_package_interdependence(item, itemlist, lnext(itemlist, lc));
 			if (psource->source.use_count == 0)
 			{
-				elog(DEBUG1, "realy free package %u start", pkgoid);
+				elog(DEBUG1, "really free package %u start", pkgoid);
 				plisql_free_function_memory(&psource->source, 0, 0);
-				elog(DEBUG1, "realy free package %u end", pkgoid);
+				elog(DEBUG1, "really free package %u end", pkgoid);
 			}
 			else
 			{
@@ -663,7 +663,7 @@ plisql_free_packagelist(List *pkglist)
 	{
 		dfunc = (PLiSQL_function *) lfirst(lc);
 
-		elog(DEBUG1, "realy free function %u", dfunc->fn_oid);
+		elog(DEBUG1, "really free function %u", dfunc->fn_oid);
 		delete_function(dfunc);
 	}
 
@@ -680,9 +680,9 @@ plisql_free_packagelist(List *pkglist)
 		/* finally free itself */
 		if (psource->source.use_count == 0)
 		{
-			elog(DEBUG1, "realy free package %u start", pkgoid);
+			elog(DEBUG1, "really free package %u start", pkgoid);
 			plisql_free_function_memory(&psource->source, 0, 0);
-			elog(DEBUG1, "realy free package %u end", pkgoid);
+			elog(DEBUG1, "really free package %u end", pkgoid);
 		}
 		else
 		{
@@ -690,9 +690,9 @@ plisql_free_packagelist(List *pkglist)
 			resolve_package_interdependence(item, pkglist, lnext(pkglist, lc));
 			if (psource->source.use_count == 0)
 			{
-				elog(DEBUG1, "realy free package %u start", pkgoid);
+				elog(DEBUG1, "really free package %u start", pkgoid);
 				plisql_free_function_memory(&psource->source, 0, 0);
-				elog(DEBUG1, "realy free package %u end", pkgoid);
+				elog(DEBUG1, "really free package %u end", pkgoid);
 			}
 			else
 				item->intable = false;

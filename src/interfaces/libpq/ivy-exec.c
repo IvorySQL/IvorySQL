@@ -1606,7 +1606,7 @@ get_field_number_from_coluname(PGresult *res, const char *column)
 }
 
 /*
- * use column name to get realy result of column, 
+ * use column name to get really result of column,
  * this is because OUT paramters are put before the result.
  */
 static int
