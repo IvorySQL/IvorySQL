@@ -4651,25 +4651,54 @@ exec_prepare_plan(PLiSQL_execstate * estate,
 {
 	SPIPlanPtr	plan;
 	SPIPrepareOptions options;
+	PLiSQL_execstate *save_cur_estate = NULL;
+	bool		published_cur_estate = false;
 
 	/*
-	 * Generate and save the plan
+	 * A package-level expression (for example the query of a cursor declared
+	 * in a package spec or body) is planned while another function's estate
+	 * is current.  The parser hooks reach the running estate through
+	 * expr->func->cur_estate, so publish the estate on the owning package
+	 * function for the duration of the analysis.  The prior value must be
+	 * restored afterwards (even on error): this estate may not outlive the
+	 * current statement, while the package function does.  Later uses of the
+	 * expression publish a fresh estate in setup_param_list() before any
+	 * revalidation could re-run the hooks.
 	 */
-	memset(&options, 0, sizeof(options));
-	options.parserSetup = (ParserSetupHook) plisql_parser_setup;
-	options.parserSetupArg = expr;
-	options.parseMode = expr->parseMode;
-	options.cursorOptions = cursorOptions;
-	plan = SPI_prepare_extended(expr->query, &options);
-	if (plan == NULL)
-		elog(ERROR, "SPI_prepare_extended failed for \"%s\": %s",
-			 expr->query, SPI_result_code_string(SPI_result));
+	if (plisql_func_is_package(expr->func) && expr->func != estate->func)
+	{
+		published_cur_estate = true;
+		save_cur_estate = expr->func->cur_estate;
+		expr->func->cur_estate = estate;
+	}
 
-	SPI_keepplan(plan);
-	expr->plan = plan;
+	PG_TRY();
+	{
+		/*
+		 * Generate and save the plan
+		 */
+		memset(&options, 0, sizeof(options));
+		options.parserSetup = (ParserSetupHook) plisql_parser_setup;
+		options.parserSetupArg = expr;
+		options.parseMode = expr->parseMode;
+		options.cursorOptions = cursorOptions;
+		plan = SPI_prepare_extended(expr->query, &options);
+		if (plan == NULL)
+			elog(ERROR, "SPI_prepare_extended failed for \"%s\": %s",
+				 expr->query, SPI_result_code_string(SPI_result));
 
-	/* Check to see if it's a simple expression */
-	exec_simple_check_plan(estate, expr);
+		SPI_keepplan(plan);
+		expr->plan = plan;
+
+		/* Check to see if it's a simple expression */
+		exec_simple_check_plan(estate, expr);
+	}
+	PG_FINALLY();
+	{
+		if (published_cur_estate)
+			expr->func->cur_estate = save_cur_estate;
+	}
+	PG_END_TRY();
 }
 
 
@@ -4743,7 +4772,19 @@ exec_stmt_execsql(PLiSQL_execstate * estate,
 	 */
 	if (expr->expr_simple_expr && stmt->into)
 	{
-		PLiSQL_datum *target = estate->datums[stmt->target->dno];
+		PLiSQL_datum *target;
+
+		/*
+		 * The target may be a package-owned row (the argument row of a
+		 * package cursor, set up by OPEN/FOR): its dno numbers the owning
+		 * package's datum array, and the estate has no copy of it, so use
+		 * the datum as-is (same routing as the SPI path below).
+		 */
+		if (stmt->target->dtype == PLISQL_DTYPE_ROW &&
+			OidIsValid(((PLiSQL_row *) stmt->target)->pkgoid))
+			target = (PLiSQL_datum *) stmt->target;
+		else
+			target = estate->datums[stmt->target->dno];
 
 		if (target->dtype == PLISQL_DTYPE_ROW)
 		{
@@ -4782,8 +4823,15 @@ exec_stmt_execsql(PLiSQL_execstate * estate,
 				error_context_stack = plerrcontext.previous;
 
 				/* Assign the result to the INTO target */
-				exec_assign_value(estate, estate->datums[row->varnos[0]],
-								  value, isnull, valtype, valtypmod);
+				if (OidIsValid(row->pkgoid))
+					exec_assign_value(estate,
+									  get_package_datum_bydno(estate,
+															  row->pkgoid,
+															  row->varnos[0]),
+									  value, isnull, valtype, valtypmod);
+				else
+					exec_assign_value(estate, estate->datums[row->varnos[0]],
+									  value, isnull, valtype, valtypmod);
 				exec_eval_cleanup(estate);
 
 				/*
@@ -4908,7 +4956,19 @@ exec_stmt_execsql(PLiSQL_execstate * estate,
 					 errmsg("INTO used with a command that cannot return data")));
 
 		/* Fetch target's datum entry */
-		target = (PLiSQL_variable *) plisql_get_datum(estate, estate->datums[stmt->target->dno]);
+		if (stmt->target->dtype == PLISQL_DTYPE_ROW &&
+			OidIsValid(((PLiSQL_row *) stmt->target)->pkgoid))
+		{
+			/*
+			 * The target is a package-owned row (the argument row of a
+			 * package cursor, set up by OPEN/FOR): its dno numbers the
+			 * owning package's datum array, and the estate has no copy
+			 * of it, so use the datum as-is.
+			 */
+			target = stmt->target;
+		}
+		else
+			target = (PLiSQL_variable *) plisql_get_datum(estate, estate->datums[stmt->target->dno]);
 
 		/*
 		 * If SELECT ... INTO specified STRICT, and the query didn't find
@@ -7088,22 +7148,76 @@ setup_param_list(PLiSQL_execstate * estate, PLiSQL_expr * expr)
 	 */
 	if (!bms_is_empty(expr->paramnos))
 	{
-		/* Use the common ParamListInfo */
-		paramLI = estate->paramLI;
-
 		/*
-		 * Set up link to active expr where the hook functions can find it.
-		 * Callers must save and restore parserSetupArg if there is any chance
-		 * that they are interrupting an active use of parameters.
+		 * A package-level expression (for example the query of a cursor
+		 * declared in a package) must keep pointing at its owning package:
+		 * its parameter dnos number the package's datum array, and both the
+		 * parse-time hooks and plisql_param_fetch() reach that array through
+		 * expr->func.  The executing estate is published through cur_estate
+		 * instead.
+		 *
+		 * Its dnos may exceed the executing estate's datum array, so the
+		 * estate's ParamListInfo - whose numParams is the estate's ndatums -
+		 * cannot be used as-is: a cursor portal copies the parameter list by
+		 * materializing numParams slots through paramFetch, and would drop
+		 * every argument beyond that.  Give the package expression its own
+		 * parameter list, sized to the package's datum array.
 		 */
-		paramLI->parserSetupArg = expr;
+		if (plisql_func_is_package(expr->func))
+		{
+			expr->func->cur_estate = estate;
 
-		/*
-		 * Also make sure this is set before parser hooks need it.  There is
-		 * no need to save and restore, since the value is always correct once
-		 * set.  (Should be set already, but let's make sure.)
-		 */
-		expr->func = estate->func;
+			if (expr->func->ndatums > estate->ndatums)
+			{
+				MemoryContext oldcontext;
+
+				/*
+				 * The list only has to outlive the current statement; it
+				 * carries no values of its own, the hook fetches them all
+				 * from the package.  A cursor portal copies (and thereby
+				 * materializes) it, and other SPI uses keep the pointer
+				 * only for the duration of the call.
+				 */
+				oldcontext = MemoryContextSwitchTo(estate->datum_context);
+				paramLI = makeParamList(expr->func->ndatums);
+				MemoryContextSwitchTo(oldcontext);
+
+				paramLI->paramFetch = plisql_param_fetch;
+				paramLI->paramFetchArg = estate;
+				paramLI->paramCompile = plisql_param_compile;
+				paramLI->paramCompileArg = NULL;	/* not needed */
+				paramLI->parserSetup = (ParserSetupHook) plisql_parser_setup;
+			}
+			else
+				paramLI = estate->paramLI;
+
+			/*
+			 * Set up link to active expr where the hook functions can find
+			 * it.  Callers must save and restore parserSetupArg if there is
+			 * any chance that they are interrupting an active use of
+			 * parameters.
+			 */
+			paramLI->parserSetupArg = expr;
+		}
+		else
+		{
+			/* Use the common ParamListInfo */
+			paramLI = estate->paramLI;
+
+			/*
+			 * Set up link to active expr where the hook functions can find it.
+			 * Callers must save and restore parserSetupArg if there is any chance
+			 * that they are interrupting an active use of parameters.
+			 */
+			paramLI->parserSetupArg = expr;
+
+			/*
+			 * Also make sure this is set before parser hooks need it.  There is
+			 * no need to save and restore, since the value is always correct once
+			 * set.  (Should be set already, but let's make sure.)
+			 */
+			expr->func = estate->func;
+		}
 	}
 	else
 	{
@@ -7142,15 +7256,53 @@ plisql_param_fetch(ParamListInfo params,
 
 	/* paramid's are 1-based, but dnos are 0-based */
 	dno = paramid - 1;
-	Assert(dno >= 0 && dno < params->numParams);
 
 	/* fetch back the hook data */
 	estate = (PLiSQL_execstate *) params->paramFetchArg;
 	expr = (PLiSQL_expr *) params->parserSetupArg;
-	Assert(params->numParams == estate->ndatums);
+
+	/*
+	 * The estate's shared ParamListInfo is sized to the estate's datum
+	 * array; a package-level expression whose dnos may exceed it gets a
+	 * dedicated list sized to the owning package's datum array instead
+	 * (see setup_param_list).
+	 */
+	Assert(params->numParams == estate->ndatums ||
+		   params->numParams == expr->func->ndatums);
 
 	/* now we can access the target datum */
-	datum = estate->datums[dno];
+	if (plisql_func_is_package(expr->func))
+	{
+		/*
+		 * A package-level expression (for example the query of a cursor
+		 * declared in a package spec or body): the dno numbers the owning
+		 * package's datum array, whose values live in the package itself
+		 * rather than in this estate.
+		 */
+		if (dno < 0 || dno >= expr->func->ndatums)
+		{
+			/*
+			 * Not used by this expression: return the same dummy param the
+			 * not-ok path below constructs.  (A dno that the expression
+			 * does use can never be out of range; make_datum_param checked
+			 * it at analysis time.)
+			 */
+			if (bms_is_member(dno, expr->paramnos))
+				elog(ERROR, "datum %d out of range in package \"%s\"",
+					 dno, expr->func->fn_signature);
+			prm->value = (Datum) 0;
+			prm->isnull = true;
+			prm->pflags = 0;
+			prm->ptype = InvalidOid;
+			return prm;
+		}
+		datum = expr->func->datums[dno];
+	}
+	else
+	{
+		Assert(dno >= 0 && dno < params->numParams);
+		datum = estate->datums[dno];
+	}
 
 	/*
 	 * Since copyParamList() or SerializeParamList() will try to materialize
@@ -7200,6 +7352,10 @@ plisql_param_fetch(ParamListInfo params,
 					/* maybe come from a package */
 					if (package != NULL)
 						rec = (PLiSQL_rec *) (package->source.datums[recfield->recparentno]);
+					else if (OidIsValid(recfield->pkgoid))
+						rec = (PLiSQL_rec *) get_package_datum_bydno(estate,
+																	  recfield->pkgoid,
+																	  recfield->recparentno);
 					else
 						rec = (PLiSQL_rec *) (estate->datums[recfield->recparentno]);
 
@@ -8370,7 +8526,19 @@ exec_move_row_from_fields(PLiSQL_execstate * estate,
 			Oid			valtype;
 			int32		valtypmod;
 
-			var = (PLiSQL_var *) (estate->datums[row->varnos[fnum]]);
+			if (OidIsValid(row->pkgoid))
+			{
+				/*
+				 * Package-owned row (e.g. the argument row of a package
+				 * cursor): the field varnos number the owning package's
+				 * datum array, not this estate's.
+				 */
+				var = (PLiSQL_var *) get_package_datum_bydno(estate,
+															  row->pkgoid,
+															  row->varnos[fnum]);
+			}
+			else
+				var = (PLiSQL_var *) (estate->datums[row->varnos[fnum]]);
 
 			while (anum < td_natts &&
 				   TupleDescAttr(tupdesc, anum)->attisdropped)

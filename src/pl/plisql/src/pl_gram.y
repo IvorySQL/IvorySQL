@@ -1145,6 +1145,16 @@ decl_cursor_args :
 						new->refname = "(unnamed row)";
 						new->lineno = plisql_location_to_lineno(@1, yyscanner);
 						new->rowtupdesc = NULL;
+						/*
+						 * A cursor declared at package level keeps its
+						 * argument row in the package's datum array, so
+						 * remember the owning package.  A cursor declared
+						 * inside a subprogram (or outside any package)
+						 * keeps everything in the local datum space.
+						 */
+						if (plisql_curr_compile != NULL &&
+							plisql_func_is_package(plisql_curr_compile))
+							new->pkgoid = plisql_compile_packageitem->source.fn_oid;
 						new->nfields = list_length($2);
 						new->fieldnames = palloc_array(char *, new->nfields);
 						new->varnos = palloc_array(int, new->nfields);

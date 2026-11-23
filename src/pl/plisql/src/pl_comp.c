@@ -1768,6 +1768,31 @@ plisql_param_ref(ParseState *pstate, ParamRef *pref)
 }
 
 /*
+ * Fetch the datum that an expression's namespace item "dno" refers to.
+ *
+ * A package-level expression (for example the query of a cursor declared
+ * in a package spec or body) is analyzed while one of the package's
+ * subprograms - or an outside caller - executes.  Its dnos number the
+ * owning package's own datum array, and the package function's cur_estate
+ * then belongs to another function (or may not be set at all), so the
+ * datum must be fetched from the package rather than from an estate.
+ */
+static PLiSQL_datum *
+expr_datum_by_dno(PLiSQL_expr *expr, int dno)
+{
+	if (plisql_func_is_package(expr->func))
+	{
+		if (dno < 0 || dno >= expr->func->ndatums)
+			elog(ERROR, "datum %d out of range in package \"%s\"",
+				 dno, expr->func->fn_signature);
+		return expr->func->datums[dno];
+	}
+
+	Assert(dno >= 0 && dno < expr->func->cur_estate->ndatums);
+	return expr->func->cur_estate->datums[dno];
+}
+
+/*
  * resolve_column_ref		attempt to resolve a ColumnRef as a plisql var
  *
  * Returns the translated node structure, or NULL if name not found
@@ -1906,14 +1931,14 @@ resolve_column_ref(ParseState *pstate, PLiSQL_expr * expr,
 			if (nnames == nnames_field)
 			{
 				/* colname could be a field in this record */
-				PLiSQL_rec *rec = (PLiSQL_rec *) estate->datums[nse->itemno];
+				PLiSQL_rec *rec = (PLiSQL_rec *) expr_datum_by_dno(expr, nse->itemno);
 				int			i;
 
 				/* search for a datum referencing this field */
 				i = rec->firstfield;
 				while (i >= 0)
 				{
-					PLiSQL_recfield *fld = (PLiSQL_recfield *) estate->datums[i];
+					PLiSQL_recfield *fld = (PLiSQL_recfield *) expr_datum_by_dno(expr, i);
 
 					Assert(fld->dtype == PLISQL_DTYPE_RECFIELD &&
 						   fld->recparentno == nse->itemno);
@@ -1961,13 +1986,13 @@ resolve_column_ref(ParseState *pstate, PLiSQL_expr * expr,
 				 * up (which would surface as a generic "invalid
 				 * identifier" even though the type is fully known).
 				 */
-				PLiSQL_rec *rec = (PLiSQL_rec *) estate->datums[nse->itemno];
+				PLiSQL_rec *rec = (PLiSQL_rec *) expr_datum_by_dno(expr, nse->itemno);
 				int			i;
 
 				i = rec->firstfield;
 				while (i >= 0)
 				{
-					PLiSQL_recfield *fld = (PLiSQL_recfield *) estate->datums[i];
+					PLiSQL_recfield *fld = (PLiSQL_recfield *) expr_datum_by_dno(expr, i);
 
 					Assert(fld->dtype == PLISQL_DTYPE_RECFIELD &&
 						   fld->recparentno == nse->itemno);
@@ -2060,8 +2085,12 @@ make_datum_param(PLiSQL_expr * expr, int dno, int location)
 
 	/* see comment in resolve_column_ref */
 	estate = expr->func->cur_estate;
-	Assert(dno >= 0 && dno < estate->ndatums);
-	datum = estate->datums[dno];
+
+	/*
+	 * A package-level expression's dnos number the owning package's datum
+	 * array; see expr_datum_by_dno().
+	 */
+	datum = expr_datum_by_dno(expr, dno);
 
 	/*
 	 * Bitmapset must be allocated in function's permanent memory context
