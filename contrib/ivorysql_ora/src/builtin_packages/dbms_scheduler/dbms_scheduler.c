@@ -2467,8 +2467,9 @@ sched_purge_log(TimestampTz cutoff, const char *owner, const char *job_name,
  * Delete rows from the job run log.
  *
  * Oracle's which_log chooses between the job log and the window log; there
- * are no windows here, so only the job half of a value has anything to do and
- * WINDOW_LOG on its own purges nothing.
+ * are no windows here, so only the job half of a value has anything to do.
+ * Naming a job implicitly includes the job log, even with WINDOW_LOG.  Without
+ * a job name, WINDOW_LOG on its own purges nothing.
  *
  * A superuser purges whatever the arguments select.  For anyone else the
  * purge is confined to their own jobs, the way the USER_SCHEDULER_* views
@@ -2570,7 +2571,7 @@ ora_dbms_scheduler_purge_log(PG_FUNCTION_ARGS)
 		cutoff = GetCurrentTimestamp() -
 			(TimestampTz) log_history * USECS_PER_DAY;
 
-	if (strcmp(which_log, "WINDOW_LOG") == 0)
+	if (raw_name == NULL && strcmp(which_log, "WINDOW_LOG") == 0)
 		ereport(WARNING,
 				(errmsg("there is no window log to purge"),
 				 errhint("Use JOB_LOG or JOB_AND_WINDOW_LOG to purge the job run log.")));

@@ -803,6 +803,46 @@ END;
 SELECT job_owner, job_name, status FROM sys.scheduler_job_run_details
   ORDER BY job_owner, job_name;
 
+-- A non-null job_name implicitly includes the job log, even with WINDOW_LOG.
+-- Keep retention, ownership, and running-job protection in that path too.
+INSERT INTO sys.scheduler_job_run_details
+    (job_owner, job_name, status, log_date)
+  VALUES
+    ('sched_regress_u1', 'WINDOW_TARGET', 's', now() - '30 days'::pg_catalog.interval),
+    ('sched_regress_u1', 'WINDOW_TARGET', 'f', now() - '1 day'::pg_catalog.interval),
+    ('sched_regress_u1', 'WINDOW_TARGET', 'r', now() - '40 days'::pg_catalog.interval),
+    ('sched_regress_u1', 'WINDOW_OTHER',  's', now() - '30 days'::pg_catalog.interval),
+    ('sched_regress_u2', 'WINDOW_TARGET', 's', now() - '30 days'::pg_catalog.interval);
+SET SESSION AUTHORIZATION sched_regress_u1;
+BEGIN
+  dbms_scheduler.purge_log(log_history => 25, which_log => 'window_log',
+      job_name => 'window_target');
+END;
+/
+SELECT job_name, status FROM user_scheduler_job_run_details
+  ORDER BY job_name, status;
+-- Zero retention removes the remaining completed run, but not the live one.
+BEGIN
+  dbms_scheduler.purge_log(which_log => 'WINDOW_LOG',
+      job_name => '"WINDOW_TARGET"');
+END;
+/
+-- A missing job must not widen the selection to all jobs.
+BEGIN
+  dbms_scheduler.purge_log(which_log => 'WINDOW_LOG', job_name => 'no_such_job');
+END;
+/
+SELECT job_name, status FROM user_scheduler_job_run_details
+  ORDER BY job_name, status;
+BEGIN
+  dbms_scheduler.purge_log(which_log => 'WINDOW_LOG',
+      job_name => 'sched_regress_u2.window_target');
+END;
+/
+SET SESSION AUTHORIZATION regress_dbms_scheduler;
+SELECT job_owner, job_name, status FROM sys.scheduler_job_run_details
+  WHERE job_name LIKE 'WINDOW_%' ORDER BY job_owner, job_name, status;
+
 -- cleanup
 RESET SESSION AUTHORIZATION;
 DROP USER sched_regress_u1;

@@ -24,9 +24,10 @@
  * Server does not.
  *
  * PURGE_LOG deviates from Oracle twice, both because of features this
- * implementation does not have: WINDOW_LOG purges nothing, there being no
- * windows, and job_name takes one name where Oracle takes a comma-separated
- * list that may also name job classes.
+ * implementation does not have: WINDOW_LOG without a job_name purges nothing,
+ * there being no windows, and job_name takes one name where Oracle takes a
+ * comma-separated list that may also name job classes.  A non-null job_name
+ * implicitly includes the job log regardless of which_log.
  *
  * Background scheduling is off by default.  Jobs run automatically only when
  * ivorysql_ora is preloaded (the oracle-mode default), ivorysql.scheduler
