@@ -1558,3 +1558,21 @@ select to_single_byte('１．２');
 select to_single_byte(１．２);
 select to_single_byte(3.4);
 select to_single_byte(NULL);
+
+-- Verify sys.length(integer) metadata.  It is a pure SQL wrapper around
+-- the immutable character length path, so it must be IMMUTABLE STRICT;
+-- VOLATILE would block constant folding and expression indexes.
+SELECT count(*) = 1 AS length_integer_metadata_ok
+FROM pg_catalog.pg_proc
+WHERE oid = 'sys.length(integer)'::regprocedure
+  AND provolatile = 'i'
+  AND proisstrict = true
+  AND proparallel = 's';
+
+-- Expression indexes must accept sys.length(integer) once it is IMMUTABLE.
+CREATE TABLE TEST_LENGTH_INT(n integer);
+CREATE INDEX TEST_LENGTH_INT_I ON TEST_LENGTH_INT (sys.length(n));
+DROP TABLE TEST_LENGTH_INT;
+
+-- STRICT: NULL input yields NULL without executing the wrapper body.
+SELECT sys.length(NULL::integer) IS NULL AS length_integer_null_ok;
