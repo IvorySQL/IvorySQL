@@ -245,6 +245,19 @@ drop table test_t;
 drop table test_lpad;
 
 /*
+ * Oracle LPAD()/RPAD() return NULL when the requested total length
+ * is not positive (n <= 0), instead of an empty string.
+ */
+select sys.lpad('hi', -1, 'xy') is null as t from dual;
+select sys.lpad('hi', 0, 'xy') is null as t from dual;
+select sys.lpad('hi', -1) is null as t from dual;
+select sys.lpad('hi', 0) is null as t from dual;
+select sys.rpad('hi', -1, 'xy') is null as t from dual;
+select sys.rpad('hi', 0, 'xy') is null as t from dual;
+select sys.rpad('hi', -1) is null as t from dual;
+select sys.rpad('hi', 0) is null as t from dual;
+
+/*
  * trim/ltrim/rtrim
  */
 select rtrim('123 '::number);	--bug#796

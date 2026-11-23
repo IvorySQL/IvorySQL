@@ -20,7 +20,9 @@
 #include "miscadmin.h"
 #include "utils/builtins.h"
 #include "utils/formatting.h"
+#include "utils/guc.h"
 #include "utils/memutils.h"
+#include "utils/ora_compatible.h"
 #include "varatt.h"
 
 
@@ -157,6 +159,14 @@ casefold(PG_FUNCTION_ARGS)
  *	 characters in string2.  If len is less than the length of string1,
  *	 instead truncate (on the right) to len.
  *
+ * Oracle compatibility:
+ *
+ *	 Oracle's LPAD() returns NULL when the requested total length "n" is
+ *	 not positive (n <= 0).  In Oracle an empty string is indistinguishable
+ *	 from NULL anyway, so migrated SQL expects a NULL result here.  In
+ *	 native PostgreSQL mode the historical behavior is kept: a negative
+ *	 length is silently taken as zero and an empty string is returned.
+ *
  ********************************************************************/
 
 Datum
@@ -175,6 +185,13 @@ lpad(PG_FUNCTION_ARGS)
 				s1len,
 				s2len;
 	int			bytelen;
+
+	/*
+	 * Oracle-compatible mode: a non-positive requested length yields NULL,
+	 * matching Oracle's LPAD() behavior (see the comment above).
+	 */
+	if (ORA_PARSER == compatible_db && len <= 0)
+		PG_RETURN_NULL();
 
 	/* Negative len is silently taken as zero */
 	if (len < 0)
@@ -255,6 +272,14 @@ lpad(PG_FUNCTION_ARGS)
  *	 characters in string2.  If len is less than the length of string1,
  *	 instead truncate (on the right) to len.
  *
+ * Oracle compatibility:
+ *
+ *	 Oracle's RPAD() returns NULL when the requested total length "n" is
+ *	 not positive (n <= 0).  In Oracle an empty string is indistinguishable
+ *	 from NULL anyway, so migrated SQL expects a NULL result here.  In
+ *	 native PostgreSQL mode the historical behavior is kept: a negative
+ *	 length is silently taken as zero and an empty string is returned.
+ *
  ********************************************************************/
 
 Datum
@@ -273,6 +298,13 @@ rpad(PG_FUNCTION_ARGS)
 				s1len,
 				s2len;
 	int			bytelen;
+
+	/*
+	 * Oracle-compatible mode: a non-positive requested length yields NULL,
+	 * matching Oracle's RPAD() behavior (see the comment above).
+	 */
+	if (ORA_PARSER == compatible_db && len <= 0)
+		PG_RETURN_NULL();
 
 	/* Negative len is silently taken as zero */
 	if (len < 0)
