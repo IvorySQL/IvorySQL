@@ -1,0 +1,6 @@
+comment = 'Oracle-style UTL_HTTP UTF-8 request/response package'
+default_version = '1.0'
+module_pathname = '$libdir/ivorysql_http'
+relocatable = false
+schema = 'sys'
+requires = 'ivorysql_ora'
