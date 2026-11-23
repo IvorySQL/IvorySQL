@@ -74,6 +74,14 @@ $$;
 -- Test 11: exactly 4000 bytes is allowed
 SELECT length(sys.ora_listagg_check(repeat('x', 4000)));
 
+-- Test 11a: LISTAGG accepts exactly 4000 bytes across multiple rows
+SELECT octet_length(LISTAGG(val, '') WITHIN GROUP (ORDER BY id)) AS result_bytes
+FROM (VALUES (1, repeat('x', 2000)), (2, repeat('x', 2000))) AS items(id, val);
+
+-- Test 11b: LISTAGG rejects 4001 bytes across multiple rows
+SELECT octet_length(LISTAGG(val, '') WITHIN GROUP (ORDER BY id)) AS result_bytes
+FROM (VALUES (1, repeat('x', 2000)), (2, repeat('x', 2001))) AS items(id, val);
+
 -- Test 12: LISTAGG with GROUP BY and multi-column ORDER BY
 SELECT deptno,
        LISTAGG(ename ORDER by ename ) WITHIN GROUP(ORDER BY ename) AS employees
