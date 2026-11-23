@@ -56,6 +56,13 @@ clean:
 distclean:
 	$(MAKE) -C doc $@
 	$(MAKE) -C contrib $@
+# Match the compatibility extensions built by the default build target;
+# the ones absent from contrib/Makefile SUBDIRS are skipped otherwise.
+	$(MAKE) -C contrib/gb18030_2022 $@
+	$(MAKE) -C contrib/ivorysql_ora $@
+	$(MAKE) -C contrib/uuid-ossp $@
+	$(MAKE) -C contrib/ora_btree_gist $@
+	$(MAKE) -C contrib/ora_btree_gin $@
 	$(MAKE) -C config $@
 	$(MAKE) -C src $@
 	rm -rf tmp_install/ portlock/
