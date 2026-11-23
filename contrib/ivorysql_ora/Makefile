@@ -86,6 +86,7 @@ ORA_REGRESS = \
 	ora_datetime_datatype_functions \
 	ora_misc_functions \
 	ora_vsize \
+	ora_dump \
 	ora_merge \
 	datatype_and_func_bugs \
 	ora_sysview \
