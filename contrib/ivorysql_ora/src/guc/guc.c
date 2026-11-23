@@ -62,6 +62,7 @@ static bool
 check_dbtimezone(char **newval, void **extra, GucSource source)
 {
 	char	   *str = *newval;
+	char	   *numeric = str;
 
 	/*
 	 * Oracle's DBTIMEZONE is fixed per-database via ALTER DATABASE ... SET
@@ -108,6 +109,27 @@ check_dbtimezone(char **newval, void **extra, GucSource source)
 		}
 
 		return true;
+	}
+
+	/*
+	 * A value that starts with '+', '-' or a digit is intended as a numeric
+	 * UTC offset, so it must match the +/-HH:MI format checked above
+	 * exactly.  Do not let such values fall through to pg_tzset():
+	 * pg_tzset() also accepts POSIX-style TZ specifications, which would
+	 * allow out-of-format or out-of-range offsets such as '+15:00:00' or
+	 * '+015:00' to be stored as "time zone names", violating the format
+	 * and range rules this parameter documents.  Skip leading whitespace
+	 * when classifying the value: pg_tzset() treats the space as part of
+	 * the POSIX abbreviation, so " +15:00" would otherwise be accepted.
+	 */
+	while (isspace((unsigned char) *numeric))
+		numeric++;
+
+	if (numeric[0] == '+' || numeric[0] == '-' ||
+		isdigit((unsigned char) numeric[0]))
+	{
+		GUC_check_errdetail("time zone offset \"%s\" must use +/-HH:MI format", str);
+		return false;
 	}
 
 	if (!pg_tzset(str))
