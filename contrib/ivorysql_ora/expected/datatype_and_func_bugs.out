@@ -94,3 +94,28 @@ drop function s1.f_alter(arg1 number, arg2 number);
 drop function s1.f_alter(arg1 OUT int);
 drop function s1.f_alter(arg1 text);
 drop function s1.f_alter(arg1 number, arg2 number, arg3 number);
+--
+-- Bug #2299: bounds-check multibyte decoding on truncated input.
+--
+-- A byte-length CHAR cast can split a UTF-8 character, leaving a legal text
+-- datum that ends in a truncated multibyte sequence.  The trim paths below
+-- must report an invalid byte sequence instead of reading past the end of
+-- that datum.  (The to_single_byte() and substrb() halves of the report are
+-- addressed separately.)
+--
+-- rtrim/ltrim/trim: truncated input compared against a set
+select rtrim(convert_from('\xe4bda0'::bytea, 'UTF8')::sys.oracharbyte(1), '你');
+ERROR:  invalid byte sequence for encoding "UTF8": 0xe4
+select ltrim(convert_from('\xe4bda0'::bytea, 'UTF8')::sys.oracharbyte(1), '你');
+ERROR:  invalid byte sequence for encoding "UTF8": 0xe4
+select trim(convert_from('\xe4bda0'::bytea, 'UTF8')::sys.oracharbyte(1), '你');
+ERROR:  invalid byte sequence for encoding "UTF8": 0xe4
+select rtrim(convert_from('\xf09f9880'::bytea, 'UTF8')::sys.oracharbyte(3), '😀');
+ERROR:  invalid byte sequence for encoding "UTF8": 0xf0 0x9f 0x98
+-- a byte-length cut on a character boundary still trims normally
+select rtrim(convert_from('\x41e4bda0'::bytea, 'UTF8')::sys.oracharbyte(4), '你');
+ rtrim 
+-------
+ A
+(1 row)
+
