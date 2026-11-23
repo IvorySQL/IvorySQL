@@ -2447,8 +2447,8 @@ Datum ivy_xmlisvalid(PG_FUNCTION_ARGS)
 	else
 	{
 		text *data = PG_GETARG_TEXT_PP(0);
-		char *datastr = VARDATA(data);
-		int32 len = VARSIZE(data) - VARHDRSZ;
+		char *datastr = VARDATA_ANY(data);
+		int32 len = VARSIZE_ANY_EXHDR(data);
 		xmlDocPtr doc = NULL;
 		if (len <= 0) /* Avoid crash */
 		{
