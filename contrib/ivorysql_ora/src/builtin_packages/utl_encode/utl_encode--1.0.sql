@@ -94,7 +94,11 @@ CREATE PACKAGE utl_encode AS
      * Inverse of TEXT_ENCODE.
      */
     FUNCTION text_decode(r IN RAW, charset IN VARCHAR2 DEFAULT NULL, encoding IN INTEGER DEFAULT NULL) RETURN VARCHAR2;
-    FUNCTION mimeheader_encode(buf IN VARCHAR2, encode_type IN VARCHAR2 DEFAULT NULL, encode_charset IN VARCHAR2 DEFAULT NULL) RETURN VARCHAR2;
+    -- Oracle encoding-scheme constants (see TEXT_ENCODE/MIMEHEADER_ENCODE)
+    BASE64           CONSTANT INTEGER := 1;
+    QUOTED_PRINTABLE CONSTANT INTEGER := 2;
+
+    FUNCTION mimeheader_encode(buf IN VARCHAR2, encode_charset IN VARCHAR2 DEFAULT NULL, encoding IN INTEGER DEFAULT NULL) RETURN VARCHAR2;
     FUNCTION mimeheader_decode(buf IN VARCHAR2) RETURN VARCHAR2;
 
 END utl_encode;
@@ -131,16 +135,18 @@ CREATE PACKAGE BODY utl_encode AS
         RETURN sys.utl_encode_text_decode(r, charset, encoding);
     END;
 
-    FUNCTION mimeheader_encode(buf IN VARCHAR2, encode_type IN VARCHAR2 DEFAULT NULL, encode_charset IN VARCHAR2 DEFAULT NULL) RETURN VARCHAR2 IS
+    FUNCTION mimeheader_encode(buf IN VARCHAR2, encode_charset IN VARCHAR2 DEFAULT NULL, encoding IN INTEGER DEFAULT NULL) RETURN VARCHAR2 IS
         v_enc VARCHAR2(1);
         v_charset VARCHAR2(100);
         v_raw RAW;
     BEGIN
-        v_enc := UPPER(SUBSTR(COALESCE(encode_type, 'Q'), 1, 1));
-        IF v_enc NOT IN ('Q', 'B') THEN
+        -- Oracle: encoding NULL defaults to quoted-printable; 1 = base64
+        IF encoding = 1 THEN
+            v_enc := 'B';
+        ELSE
             v_enc := 'Q';
         END IF;
-        v_charset := COALESCE(encode_charset, 'AL32UTF8');
+        v_charset := COALESCE(encode_charset, 'UTF8');
 
         -- TEXT_ENCODE converts buf into v_charset and applies the scheme
         v_raw := sys.utl_encode_text_encode(buf, v_charset, NULL);
