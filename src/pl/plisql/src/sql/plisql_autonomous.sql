@@ -452,6 +452,87 @@ CALL test_pkg.pkg_test_with_params(76, 'package procedure test');
 SELECT id, msg FROM autonomous_test WHERE id = 76;
 
 --
+-- Test 22: Special numeric values (NaN / Infinity) as arguments
+-- Tests that values whose text output is not a valid bare SQL literal
+-- (NaN, Infinity, -Infinity) survive the round trip through the
+-- autonomous session.
+--
+CREATE OR REPLACE PROCEDURE test_special_numbers(p_id INT, p_n NUMERIC, p_f FLOAT8) AS $$
+PRAGMA AUTONOMOUS_TRANSACTION;
+BEGIN
+    INSERT INTO autonomous_test VALUES (p_id,
+        'numeric: ' || p_n::TEXT || ' float: ' || p_f::TEXT,
+        'committed');
+END;
+$$ LANGUAGE plisql;
+/
+
+COMMIT;
+
+CALL test_special_numbers(90, 'NaN'::NUMERIC, 'Infinity'::FLOAT8);
+CALL test_special_numbers(91, 1.5, '-Infinity'::FLOAT8);
+CALL test_special_numbers(92, 'NaN'::NUMERIC, 'NaN'::FLOAT8);
+SELECT id, msg FROM autonomous_test WHERE id IN (90, 91, 92) ORDER BY id;
+
+--
+-- Test 23: Procedure with OUT parameter
+-- Tests that OUT parameters of an autonomous procedure are dispatched
+-- via CALL and the output value is returned to the caller.
+--
+CREATE OR REPLACE PROCEDURE test_out_param(IN p_id INT, OUT p_result INT) AS $$
+PRAGMA AUTONOMOUS_TRANSACTION;
+BEGIN
+    INSERT INTO autonomous_test VALUES (p_id, 'out param', 'committed');
+    p_result := p_id * 2;
+END;
+$$ LANGUAGE plisql;
+/
+
+COMMIT;
+
+CALL test_out_param(77, NULL);
+SELECT id, msg FROM autonomous_test WHERE id = 77;
+
+--
+-- Test 24: Procedure with INOUT parameter
+-- Tests that INOUT values are passed in and the modified value is
+-- returned through the autonomous CALL.
+--
+CREATE OR REPLACE PROCEDURE test_inout_param(INOUT p_value INT) AS $$
+PRAGMA AUTONOMOUS_TRANSACTION;
+BEGIN
+    INSERT INTO autonomous_test VALUES (p_value, 'inout param', 'committed');
+    p_value := p_value + 100;
+END;
+$$ LANGUAGE plisql;
+/
+
+COMMIT;
+
+CALL test_inout_param(7);
+SELECT id, msg FROM autonomous_test WHERE id = 7;
+
+--
+-- Test 25: Polymorphic (ANYELEMENT) function argument
+-- Tests that polymorphic parameter types are resolved against the
+-- actual call argument types instead of the declared pseudo-type.
+--
+CREATE OR REPLACE FUNCTION test_polymorphic(p_any ANYELEMENT) RETURN TEXT AS
+DECLARE
+    PRAGMA AUTONOMOUS_TRANSACTION;
+BEGIN
+    INSERT INTO autonomous_test VALUES (93, 'poly: ' || p_any::TEXT, 'committed');
+    RETURN p_any::TEXT;
+END;
+/
+
+COMMIT;
+
+SELECT test_polymorphic(5) AS poly_int;
+SELECT test_polymorphic('poly text'::TEXT) AS poly_text;
+SELECT id, msg FROM autonomous_test WHERE id = 93 ORDER BY id;
+
+--
 -- Summary: Show all test results
 --
 SELECT 'All autonomous transaction tests completed' AS status;
@@ -474,6 +555,10 @@ DROP FUNCTION outer_function(INT);
 DROP FUNCTION test_function_numeric(NUMERIC);
 DROP FUNCTION test_function_date(DATE, INT);
 DROP FUNCTION test_function_boolean(INT);
+DROP PROCEDURE test_special_numbers(INT, NUMERIC, FLOAT8);
+DROP PROCEDURE test_out_param(INT, INT);
+DROP PROCEDURE test_inout_param(INT);
+DROP FUNCTION test_polymorphic(ANYELEMENT);
 DROP PACKAGE BODY test_pkg;
 DROP PACKAGE test_pkg;
 DROP TABLE autonomous_test;
