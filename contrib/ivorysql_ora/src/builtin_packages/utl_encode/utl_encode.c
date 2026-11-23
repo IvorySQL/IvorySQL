@@ -29,18 +29,20 @@
 #include "common/base64.h"
 
 /*
- * Oracle UTL_ENCODE.BASE64_ENCODE uses 64-character lines (RFC 1521 MIME format).
+ * Oracle UTL_ENCODE.BASE64_ENCODE uses 64-character lines and CRLF line
+ * terminators (RFC 1521 MIME format).
  * PostgreSQL's built-in encode(bytea, 'base64') uses 76-character lines (RFC 2045),
  * so we implement our own wrapper to match Oracle's line-break convention.
  */
 #define UTL_ENCODE_B64_LINE_LEN 64
+#define UTL_ENCODE_B64_LINE_BREAK_LEN 2
 
 /*
  * ivorysql_utl_encode_base64_encode
  *
  * Oracle-compatible BASE64_ENCODE implementation:
  *   - Encodes binary (RAW/bytea) input to base64 ASCII bytes
- *   - Inserts a LF (\n) after every 64-character line, including the last
+ *   - Inserts a CRLF (\r\n) after every 64-character line, including the last
  *   - Empty input returns empty bytea
  *   - NULL input: handled by STRICT modifier in SQL registration
  *
@@ -79,8 +81,8 @@ ivorysql_utl_encode_base64_encode(PG_FUNCTION_ARGS)
 	/* Number of output lines: ceil(b64_len / 64) */
 	num_lines = (b64_len + UTL_ENCODE_B64_LINE_LEN - 1) / UTL_ENCODE_B64_LINE_LEN;
 
-	/* Total buffer: base64 characters + one LF per line */
-	result_len = b64_len + num_lines;
+	/* Total buffer: base64 characters + one CRLF per line */
+	result_len = b64_len + num_lines * UTL_ENCODE_B64_LINE_BREAK_LEN;
 
 	/* Encode input to raw base64 (no line breaks) */
 	raw_b64 = palloc(b64_len + 1);
@@ -104,6 +106,7 @@ ivorysql_utl_encode_base64_encode(PG_FUNCTION_ARGS)
 		dst += chunk;
 		p += chunk;
 		remaining -= chunk;
+		*dst++ = '\r';
 		*dst++ = '\n';
 	}
 
