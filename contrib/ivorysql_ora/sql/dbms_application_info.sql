@@ -3,15 +3,15 @@ SET ivorysql.compatible_mode = oracle;
 
 -- round trip: set_module + set_action + read_module
 CALL dbms_application_info.set_module('payroll', 'monthly');
-SELECT sys.dbms_application_info_read_module() AS after_set_module;
+SELECT sys.ora_dbms_application_info_read_module() AS after_set_module;
 
 -- set_action overrides only the action field
 CALL dbms_application_info.set_action('quarterly');
-SELECT sys.dbms_application_info_read_module() AS after_set_action;
+SELECT sys.ora_dbms_application_info_read_module() AS after_set_action;
 
 -- set_client_info + read_client_info
 CALL dbms_application_info.set_client_info('client-xyz');
-SELECT sys.dbms_application_info_read_client_info() AS after_set_client_info;
+SELECT sys.ora_dbms_application_info_read_client_info() AS after_set_client_info;
 
 -- truncation semantics: module 48, action 32, client_info 64 bytes
 CALL dbms_application_info.set_module(rpad('M', 60, 'x'), rpad('A', 40, 'y'));
@@ -21,6 +21,12 @@ SELECT length(module_name) AS module_len,
 FROM sys.ora_dbms_application_info_read_module();
 SELECT length(client_info) AS client_len
 FROM sys.ora_dbms_application_info_read_client_info();
+
+-- truncation semantics: multibyte boundary — 47 ASCII bytes + CJK chars
+-- must clip on a character boundary within the 48-byte module limit
+CALL dbms_application_info.set_module(rpad('M', 47, 'x') || '中中中', 'ok');
+SELECT length(module_name) AS module_multibyte_len
+FROM sys.ora_dbms_application_info_read_module();
 
 -- NULL clears the fields
 CALL dbms_application_info.set_module(NULL, NULL);
@@ -47,11 +53,13 @@ DECLARE
   s int;
 BEGIN
   r := 0; s := 0;
-  dbms_application_info.set_session_longops(r, s, 'backup', 0, 0, 40, 100, 'blocks');
-  dbms_application_info.set_session_longops(r, s, 'backup', 0, 0, 100, 100, 'blocks');
+  dbms_application_info.set_session_longops(r, s, 'backup', 0, 0, 40, 100, 'daily rollup', 'blocks');
+  -- observe incomplete progress before the completing update
+  RAISE NOTICE 'progress: %/%', 40, 100;
+  dbms_application_info.set_session_longops(r, s, 'backup', 0, 0, 100, 100, 'daily rollup', 'blocks');
 END;
 
-SELECT rindex, slno, op_name, sofar, totalwork, units,
+SELECT rindex, slno, opname, target_desc, sofar, totalwork, units,
        time_remaining IS NULL AS tr_null, message
 FROM sys.v$session_longops ORDER BY rindex;
 
