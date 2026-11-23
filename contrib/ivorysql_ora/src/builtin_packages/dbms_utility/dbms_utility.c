@@ -32,6 +32,9 @@
 #include "utils/errcodes.h"
 #include "utils/guc.h"
 #include "utils/ora_compatible.h"
+#include "utils/timestamp.h"
+#include "varatt.h"
+#include "common/hashfn.h"
 #include "parser/scansup.h"
 #include "port.h"
 
@@ -42,6 +45,10 @@
 PG_FUNCTION_INFO_V1(ora_format_error_backtrace);
 PG_FUNCTION_INFO_V1(ora_format_error_stack);
 PG_FUNCTION_INFO_V1(ora_format_call_stack);
+PG_FUNCTION_INFO_V1(ora_dbms_utility_get_time);
+PG_FUNCTION_INFO_V1(ora_dbms_utility_db_version);
+PG_FUNCTION_INFO_V1(ora_dbms_utility_db_compatibility);
+PG_FUNCTION_INFO_V1(ora_dbms_utility_get_hash_value);
 
 /*
  * Function pointer types for plisql API functions.
@@ -512,4 +519,85 @@ ora_format_call_stack(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_TEXT_P(cstring_to_text(result.data));
+}
+
+
+/*
+ * ora_dbms_utility_get_time
+ *
+ * DBMS_UTILITY.GET_TIME(): returns elapsed time in hundredths of a second
+ * (1/100s) since an arbitrary, fixed start point.  Like Oracle, the value
+ * is meant only for computing elapsed-time differences, not as a clock.
+ */
+Datum
+ora_dbms_utility_get_time(PG_FUNCTION_ARGS)
+{
+	/* GetCurrentTimestamp() counts microseconds since 2000-01-01 00:00:00 */
+	PG_RETURN_INT64(GetCurrentTimestamp() / 10000);
+}
+
+/*
+ * ora_dbms_utility_db_version / ora_dbms_utility_db_compatibility
+ *
+ * DBMS_UTILITY.DB_VERSION(version, compatibility): report the version of
+ * the database, formatted like Oracle's dotted version string, and the
+ * compatibility release, both derived from the build's PG_VERSION_NUM.
+ *
+ * Note: these map the underlying PostgreSQL/IvorySQL build version
+ * (e.g. "19.0.0.0.0"); they do not try to guess a fictitious Oracle
+ * release number.
+ */
+Datum
+ora_dbms_utility_db_version(PG_FUNCTION_ARGS)
+{
+	char		buf[64];
+	int			major = PG_VERSION_NUM / 10000;
+	int			minor = (PG_VERSION_NUM % 10000) / 100;
+
+	snprintf(buf, sizeof(buf), "%d.%d.0.0.0", major, minor);
+	PG_RETURN_TEXT_P(cstring_to_text(buf));
+}
+
+Datum
+ora_dbms_utility_db_compatibility(PG_FUNCTION_ARGS)
+{
+	char		buf[64];
+	int			major = PG_VERSION_NUM / 10000;
+	int			minor = (PG_VERSION_NUM % 10000) / 100;
+
+	snprintf(buf, sizeof(buf), "%d.%d.0", major, minor);
+	PG_RETURN_TEXT_P(cstring_to_text(buf));
+}
+
+/*
+ * ora_dbms_utility_get_hash_value
+ *
+ * DBMS_UTILITY.GET_HASH_VALUE(name, base, hash_size): compute a stable
+ * hash of the name and reduce it modulo hash_size, returning a value in
+ * [base, base + hash_size).  base must be >= 0 and hash_size > 0 (Oracle).
+ */
+Datum
+ora_dbms_utility_get_hash_value(PG_FUNCTION_ARGS)
+{
+	text	   *name;
+	int64		base;
+	int64		hash_size;
+	uint64		hash;
+
+	if (PG_ARGISNULL(0) || PG_ARGISNULL(1) || PG_ARGISNULL(2))
+		PG_RETURN_NULL();
+
+	base = PG_GETARG_INT64(1);
+	hash_size = PG_GETARG_INT64(2);
+
+	if (base < 0 || hash_size <= 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("DBMS_UTILITY.GET_HASH_VALUE: base must be non-negative and hash_size must be positive")));
+
+	name = PG_GETARG_TEXT_PP(0);
+	hash = hash_any_extended((const unsigned char *) VARDATA_ANY(name),
+							 VARSIZE_ANY_EXHDR(name), 0);
+
+	PG_RETURN_INT64((int64) (base + (int64) (hash % (uint64) hash_size)));
 }
