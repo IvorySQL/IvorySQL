@@ -31,6 +31,7 @@
 #include "postgres.h"
 
 #include "varatt.h"
+#include "mb/pg_wchar.h"
 
 #include "fmgr.h"
 #include "miscadmin.h"
@@ -41,6 +42,9 @@
 #include "utils/timestamp.h"
 
 #include "../../include/ivorysql_ora.h"
+
+/* Oracle's DBMS_RANDOM.SEED() maximum string length */
+#define DBMS_RANDOM_MAX_SEED_LEN	2000
 
 /* Oracle's DBMS_RANDOM.STRING() maximum length */
 #define DBMS_RANDOM_MAX_STRING_LEN	4000
@@ -127,6 +131,11 @@ ora_dbms_random_seed_text(PG_FUNCTION_ARGS)
 	const char *bytes = VARDATA_ANY(seed);
 	int			len = VARSIZE_ANY_EXHDR(seed);
 	uint64		hash;
+
+	if (pg_mbstrlen_with_len(bytes, len) > DBMS_RANDOM_MAX_SEED_LEN)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("seed string must not exceed 2000 characters")));
 
 	hash = DatumGetUInt64(hash_any_extended((const unsigned char *) bytes,
 											len, 0));

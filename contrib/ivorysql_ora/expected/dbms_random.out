@@ -34,6 +34,17 @@ select dbms_random.random() as from_text_seed;
  -1232974089
 (1 row)
 
+-- SEED accepts at most 2000 characters, including multibyte characters
+call dbms_random.seed(repeat(chr(120), 2000));
+call dbms_random.seed(repeat(chr(120), 2001));
+ERROR:  seed string must not exceed 2000 characters
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_random_seed_text(val)"
+PL/iSQL function sys.dbms_random.seed line 13 at PERFORM
+call dbms_random.seed(repeat(chr(233), 2000));
+call dbms_random.seed(repeat(chr(233), 2001));
+ERROR:  seed string must not exceed 2000 characters
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_random_seed_text(val)"
+PL/iSQL function sys.dbms_random.seed line 13 at PERFORM
 --
 -- VALUE: [0, 1)
 --
