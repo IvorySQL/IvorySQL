@@ -1,0 +1,167 @@
+--
+-- UTL_I18N
+--
+-- Regression tests for Oracle-compatible UTL_I18N package:
+--   - ESCAPE_REFERENCE
+--   - UNESCAPE_REFERENCE
+--   - STRING_TO_RAW
+--   - RAW_TO_CHAR
+--
+-- Basic ESCAPE_REFERENCE: standard XML/HTML character entities
+SELECT utl_i18n.escape_reference('a & b < c > d " e '' f');
+                     escape_reference
+----------------------------------------------------------
+ a &amp; b &lt; c &gt; d &quot; e &apos; f
+(1 row)
+
+SELECT utl_i18n.escape_reference('hello <b>world</b> & "test"');
+                   escape_reference
+------------------------------------------------------
+ hello &lt;b&gt;world&lt;/b&gt; &amp; &quot;test&quot;
+(1 row)
+
+-- ESCAPE_REFERENCE with page_cs_name 'us7ascii' (non-ASCII converted to &#x...;)
+SELECT utl_i18n.escape_reference('hello < é', 'us7ascii');
+   escape_reference
+----------------------
+ hello &lt; &#xe9;
+(1 row)
+
+SELECT utl_i18n.escape_reference('Chinese: 你好', 'us7ascii');
+        escape_reference
+--------------------------------
+ Chinese: &#x4f60;&#x597d;
+(1 row)
+
+-- Basic UNESCAPE_REFERENCE: decoding entity references
+SELECT utl_i18n.unescape_reference('a &amp; b &lt; c &gt; d &quot; e &apos; f');
+   unescape_reference
+------------------------
+ a & b < c > d " e ' f
+(1 row)
+
+SELECT utl_i18n.unescape_reference('hello &lt;b&gt;world&lt;/b&gt; &amp; &quot;test&quot;');
+     unescape_reference
+-----------------------------
+ hello <b>world</b> & "test"
+(1 row)
+
+-- UNESCAPE_REFERENCE with hex and decimal character references
+SELECT utl_i18n.unescape_reference('&#x61;&#x62;&#x63;');
+ unescape_reference
+--------------------
+ abc
+(1 row)
+
+SELECT utl_i18n.unescape_reference('&#97;&#98;&#99;');
+ unescape_reference
+--------------------
+ abc
+(1 row)
+
+SELECT utl_i18n.unescape_reference('hello &lt; &#xe9;');
+ unescape_reference
+--------------------
+ hello < é
+(1 row)
+
+-- Round-trip test: UNESCAPE_REFERENCE(ESCAPE_REFERENCE(str))
+SELECT utl_i18n.unescape_reference(utl_i18n.escape_reference('a & b < c > d " e '' f')) = 'a & b < c > d " e '' f' AS roundtrip_matched;
+ roundtrip_matched
+-------------------
+ t
+(1 row)
+
+SELECT utl_i18n.unescape_reference(utl_i18n.escape_reference('Chinese: 你好', 'us7ascii')) = 'Chinese: 你好' AS utf8_roundtrip_matched;
+ utf8_roundtrip_matched
+------------------------
+ t
+(1 row)
+
+-- STRING_TO_RAW and RAW_TO_CHAR
+SELECT utl_i18n.string_to_raw('hello');
+ string_to_raw
+---------------
+ \x68656c6c6f
+(1 row)
+
+SELECT utl_i18n.string_to_raw('ABC', 'utf8');
+ string_to_raw
+---------------
+ \x414243
+(1 row)
+
+SELECT utl_i18n.raw_to_char(utl_i18n.string_to_raw('hello'));
+ raw_to_char
+-------------
+ hello
+(1 row)
+
+SELECT utl_i18n.raw_to_char(utl_i18n.string_to_raw('你好世界', 'utf8'), 'utf8');
+ raw_to_char
+-------------
+ 你好世界
+(1 row)
+
+-- NULL and empty string handling (Oracle semantics)
+SELECT utl_i18n.escape_reference(NULL) IS NULL;
+ ?column?
+----------
+ t
+(1 row)
+
+SELECT utl_i18n.unescape_reference(NULL) IS NULL;
+ ?column?
+----------
+ t
+(1 row)
+
+SELECT utl_i18n.string_to_raw(NULL) IS NULL;
+ ?column?
+----------
+ t
+(1 row)
+
+SELECT utl_i18n.raw_to_char(NULL) IS NULL;
+ ?column?
+----------
+ t
+(1 row)
+
+SELECT utl_i18n.escape_reference('');
+ escape_reference
+------------------
+
+(1 row)
+
+SELECT utl_i18n.unescape_reference('');
+ unescape_reference
+--------------------
+
+(1 row)
+
+-- Invalid character set name error handling
+SELECT utl_i18n.escape_reference('abc', 'invalid_cs');
+ERROR:  UTL_I18N: invalid character set "invalid_cs"
+SELECT utl_i18n.string_to_raw('abc', 'invalid_cs');
+ERROR:  UTL_I18N: invalid character set "invalid_cs"
+SELECT utl_i18n.raw_to_char(E'\\x616263'::bytea, 'invalid_cs');
+ERROR:  UTL_I18N: invalid character set "invalid_cs"
+
+-- Verify internal functions execute privilege revoked from PUBLIC (CWE-862)
+SELECT p.proname, has_function_privilege('public', p.oid, 'EXECUTE') AS public_can_execute
+  FROM pg_catalog.pg_proc p
+  JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+ WHERE n.nspname = 'sys'
+   AND p.proname IN ('utl_i18n_escape_reference',
+                     'utl_i18n_unescape_reference',
+                     'utl_i18n_string_to_raw',
+                     'utl_i18n_raw_to_char')
+ ORDER BY p.proname;
+           proname            | public_can_execute
+------------------------------+--------------------
+ utl_i18n_escape_reference    | f
+ utl_i18n_raw_to_char         | f
+ utl_i18n_string_to_raw       | f
+ utl_i18n_unescape_reference  | f
+(4 rows)
