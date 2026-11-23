@@ -76,12 +76,21 @@ typedef struct
     int8        mode;        /* last mode we recorded */
 } lock_entry;
 
+typedef struct
+{
+    int64       key;        /* key derived from an allocated handle */
+} allocated_entry;
+
 static HTAB *dbms_lock_hash_table = NULL;
+static HTAB *dbms_lock_allocated_table = NULL;
 
 /*
  * static routines
  */
 static void dbms_lock_init_hash_table(void);
+static void dbms_lock_init_allocated_table(void);
+static void dbms_lock_record_allocate(int64 key);
+static bool dbms_lock_is_allocated(int64 key);
 static bool dbms_lock_record_acquire(int64, int8);
 static bool dbms_lock_check(int64, int8);
 static bool dbms_lock_record_release(int64, int8);
@@ -105,6 +114,55 @@ dbms_lock_init_hash_table(void)
                              DBMS_LOCK_MAX,         
                              &ctl,
                              HASH_ELEM | HASH_FUNCTION);
+}
+
+/*
+ * init private hash table of handles returned by ALLOCATE_UNIQUE
+ */
+static void
+dbms_lock_init_allocated_table(void)
+{
+    HASHCTL ctl;
+
+    MemSet(&ctl, 0, sizeof(ctl));
+    ctl.keysize = sizeof(int64);
+    ctl.entrysize = sizeof(allocated_entry);
+    ctl.hash = tag_hash;
+
+    dbms_lock_allocated_table = hash_create("pg_dbms_lock allocated table",
+                             DBMS_LOCK_MAX,
+                             &ctl,
+                             HASH_ELEM | HASH_FUNCTION);
+}
+
+/*
+ * remember a handle produced by ALLOCATE_UNIQUE
+ */
+static void
+dbms_lock_record_allocate(int64 key)
+{
+    bool        found;
+
+    hash_search(dbms_lock_allocated_table,
+                (void *) &key,
+                HASH_ENTER,
+                &found);
+}
+
+/*
+ * check whether a textual handle was produced by ALLOCATE_UNIQUE
+ */
+static bool
+dbms_lock_is_allocated(int64 key)
+{
+    bool        found;
+
+    hash_search(dbms_lock_allocated_table,
+                (void *) &key,
+                HASH_FIND,
+                &found);
+
+    return found;
 }
 
 /*
@@ -217,6 +275,7 @@ ivorysql_dbms_lock_allocate_unique(PG_FUNCTION_ARGS)
 {
     char *lockname_text = text_to_cstring(PG_GETARG_TEXT_PP(0));
     char handle[DBMS_LOCK_HANDLE_LENGTH + 1];
+    text *handle_text;
 
     /* Use PostgreSQL 64-bit stable hash */
     uint64 hash =
@@ -234,8 +293,17 @@ ivorysql_dbms_lock_allocate_unique(PG_FUNCTION_ARGS)
 
     if (dbms_lock_hash_table == NULL)
 	    dbms_lock_init_hash_table();
+    if (dbms_lock_allocated_table == NULL)
+	    dbms_lock_init_allocated_table();
 
-    PG_RETURN_TEXT_P(cstring_to_text(handle));
+    /*
+     * Remember the handle so that REQUEST and RELEASE can reject values that
+     * were never produced by ALLOCATE_UNIQUE.
+     */
+    handle_text = cstring_to_text(handle);
+    dbms_lock_record_allocate(lockname_to_key(handle_text));
+
+    PG_RETURN_TEXT_P(handle_text);
 
 }
 
@@ -258,9 +326,14 @@ ivorysql_dbms_lock_request(PG_FUNCTION_ARGS)
 
     if (dbms_lock_hash_table == NULL)
 	    dbms_lock_init_hash_table();
+    if (dbms_lock_allocated_table == NULL)
+	    dbms_lock_init_allocated_table();
 
     if (timeout < 0)
         PG_RETURN_INT32(DBMS_LOCK_PARAM_ERROR);
+
+    if (!dbms_lock_is_allocated(key))
+        PG_RETURN_INT32(DBMS_LOCK_INVALID_HANDLE);
 
     while (true)
     {
@@ -312,7 +385,12 @@ ivorysql_dbms_lock_release(PG_FUNCTION_ARGS)
 
     if (dbms_lock_hash_table == NULL)
 	    dbms_lock_init_hash_table();
-	
+    if (dbms_lock_allocated_table == NULL)
+	    dbms_lock_init_allocated_table();
+
+    if (!dbms_lock_is_allocated(key))
+        PG_RETURN_INT32(DBMS_LOCK_INVALID_HANDLE);
+
     lock_s_held = dbms_lock_check(key, DBMS_LOCK_S_MODE);
     if (lock_s_held) {
        lockmode = DBMS_LOCK_S_MODE;

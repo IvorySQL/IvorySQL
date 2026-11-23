@@ -112,3 +112,37 @@ begin
 end
 $$;
 commit;
+
+--
+-- a handle produced by ALLOCATE_UNIQUE remains valid after RELEASE
+--
+begin;
+declare
+ v_lockname varchar2(10) = 'REUSE';
+ v_handle text;
+ v_rc int;
+begin
+ dbms_lock.allocate_unique(v_lockname, v_handle);
+ v_rc := dbms_lock.request(v_handle, dbms_lock.s_mode, 0);
+ raise notice 'first request rc=%', v_rc;
+ assert v_rc = 0, format('DBMS_LOCK.request failed: rc=%s', v_rc);
+ v_rc := dbms_lock.release(v_handle);
+ raise notice 'release rc=%', v_rc;
+ assert v_rc = 0, format('DBMS_LOCK.release failed: rc=%s', v_rc);
+ v_rc := dbms_lock.request(v_handle, dbms_lock.s_mode, 0);
+ raise notice 'second request rc=%', v_rc;
+ assert v_rc = 0, format('DBMS_LOCK.request failed: rc=%s', v_rc);
+ v_rc := dbms_lock.release(v_handle);
+ raise notice 'second release rc=%', v_rc;
+ assert v_rc = 0, format('DBMS_LOCK.release failed: rc=%s', v_rc);
+end;
+/
+commit;
+
+--
+-- handles that ALLOCATE_UNIQUE never returned are rejected as ILLEGAL_HANDLE
+--
+select dbms_lock.request('not-a-lock-handle', 6, 0);
+select dbms_lock.release('not-a-lock-handle');
+select dbms_lock.request('123456', 4, 0);
+select dbms_lock.release('123456');
