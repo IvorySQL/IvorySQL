@@ -118,7 +118,9 @@ resource_cleanup_callback(ResourceReleasePhase phase,
                          bool isTopLevel,
                          void *arg);
 static FILE *free_slot(uint32 sid);
-static uint32 reserve_slot(FILE *fd, int max_linesize, int encoding);
+static uint32 reserve_slot(FILE *fd, int max_linesize, int encoding,
+							bool writable);
+static bool slot_is_writable(uint32 sid);
 
 /* Helper macros */
 #define IS_VALID_PTR(d) ((d) != (NULL))
@@ -191,6 +193,7 @@ typedef struct FileSlot
 	FILE	*fd;
 	int		max_linesize;
 	int		encoding;
+	bool		writable;
 	uint32	id;
 } FileSlot;
 
@@ -216,7 +219,7 @@ next_slotid(void)
  * Returns slot ID or INVALID_SLOTID if no free slot found
  */
 static uint32
-reserve_slot(FILE *fd, int max_linesize, int encoding)
+reserve_slot(FILE *fd, int max_linesize, int encoding, bool writable)
 {
 	if(fd == NULL)
 	{
@@ -233,6 +236,7 @@ reserve_slot(FILE *fd, int max_linesize, int encoding)
 		slots[i].fd = fd;
 		slots[i].max_linesize = max_linesize;
 		slots[i].encoding = encoding;
+		slots[i].writable = writable;
 
 		return slots[i].id;
 	}
@@ -260,12 +264,26 @@ free_slot(uint32 sid)
 			slots[i].fd = NULL;
 			slots[i].max_linesize = 0;
 			slots[i].encoding = 0;
+			slots[i].writable = false;
 
 			return fd;
 		}
 	}
 
 	return NULL;
+}
+
+static bool
+slot_is_writable(uint32 sid)
+{
+	for (int i = 0; i < MAX_SLOTS; i++)
+	{
+		if (slots[i].id == sid)
+			return slots[i].writable;
+	}
+
+	INVALID_FILEHANDLE_EXCEPTION();
+	pg_unreachable();
 }
 
 static void
@@ -377,7 +395,7 @@ ora_utl_file_fopen(PG_FUNCTION_ARGS)
 	if (fd == NULL)
 		IO_EXCEPTION();
 
-	sid = reserve_slot(fd, max_linesize, encoding);
+	sid = reserve_slot(fd, max_linesize, encoding, mode[0] != 'r');
 	if (sid == INVALID_SLOTID)
 	{
 		fclose(fd);
@@ -550,10 +568,14 @@ ora_utl_file_fcopy(PG_FUNCTION_ARGS)
 Datum
 ora_utl_file_fflush(PG_FUNCTION_ARGS)
 {
+	uint32 sid;
 	FILE *fd;
 
 	CHECK_FILE_HANDLE();
-	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL);
+	sid = PG_GETARG_UINT32(0);
+	fd = get_file_handle_from_slot(sid, NULL, NULL);
+	if (!slot_is_writable(sid))
+		CUSTOM_EXCEPTION(INVALID_OPERATION, "File is not open for writing.");
 	do_flush(fd);
 
 	PG_RETURN_VOID();
@@ -1143,6 +1165,7 @@ close_all_files(void)
 			slots[i].fd = NULL;
 			slots[i].max_linesize = 0;
 			slots[i].encoding = 0;
+			slots[i].writable = false;
 
 			/* 
 			 * Oracle documentation says: FCLOSE_ALL does not alter the state of the 
