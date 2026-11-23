@@ -343,6 +343,29 @@ begin
 end;
 /
 
+-- PUT_LINE counts its newline terminator in max_linesize
+declare
+    f UTL_FILE.FILE_TYPE;
+    rejected boolean := false;
+begin
+    f := utl_file.fopen('data_directory', 'regress_linesize.txt', 'w', 3);
+    -- two bytes plus the newline fit exactly in max_linesize = 3
+    utl_file.put_line(f, 'ab');
+    -- three bytes leave no room for the newline and must be rejected
+    begin
+        utl_file.put_line(f, 'abc');
+    exception
+        when others then
+            rejected := true;
+            raise notice 'rejected: %', sqlerrm;
+    end;
+    if not rejected then
+        raise exception 'PUT_LINE accepted a buffer that leaves no room for the newline';
+    end if;
+    utl_file.fclose(f);
+end;
+/
+
 -- clean up
 delete from sys.utl_file_directory where dirname = 'data_directory';
 /

@@ -96,7 +96,7 @@ static void close_all_files(void);
 static int copy_text_file(FILE *srcfile, FILE *dstfile,
 						  int start_line, int end_line);
 static void put_lines(FILE *fd, int lines);
-static FILE *do_put(PG_FUNCTION_ARGS);
+static FILE *do_put(PG_FUNCTION_ARGS, bool reserve_newline);
 static size_t
 do_write(PG_FUNCTION_ARGS, int n, FILE *fd,
 	size_t max_linesize, int encoding);
@@ -809,7 +809,7 @@ ora_utl_file_new_line(PG_FUNCTION_ARGS)
 Datum
 ora_utl_file_put(PG_FUNCTION_ARGS)
 {
-	do_put(fcinfo);
+	do_put(fcinfo, false);
 	PG_RETURN_BOOL(true);
 }
 
@@ -921,7 +921,7 @@ ora_utl_file_put_line(PG_FUNCTION_ARGS)
 	FILE   *fd;
 	bool	autoflush;
 
-	fd = do_put(fcinfo);
+	fd = do_put(fcinfo, true);
 
 	autoflush = PG_GETARG_IF_EXISTS(2, BOOL, false);
 
@@ -1263,7 +1263,7 @@ put_lines(FILE *fd, int lines)
 }
 
 static FILE *
-do_put(PG_FUNCTION_ARGS)
+do_put(PG_FUNCTION_ARGS, bool reserve_newline)
 {
 	FILE   *fd;
 	size_t	max_linesize = 0;
@@ -1275,6 +1275,15 @@ do_put(PG_FUNCTION_ARGS)
 	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), &max_linesize, &encoding);
 
 	NOT_NULL_ARG(1);
+
+	/*
+	 * UTL_FILE counts the line terminator in max_linesize, and PUT_LINE writes
+	 * the newline right after the buffer.  Reserve one byte for it so that a
+	 * buffer cannot consume the whole record.
+	 */
+	if (reserve_newline && max_linesize > 0)
+		max_linesize--;
+
 	do_write(fcinfo, 1, fd, max_linesize, encoding);
 	return fd;
 }
