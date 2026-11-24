@@ -136,3 +136,28 @@ insert into test193 values(1, 'abc');
 select * from vtest193;
 drop view vtest193;
 drop table test193;
+
+-- NOFORCE has the same semantics as NO FORCE and remains unreserved.
+\pset format unaligned
+CREATE TABLE noforce (noforce int);
+INSERT INTO noforce VALUES (1), (2);
+CREATE NOFORCE VIEW noforce_plain AS SELECT noforce noforce FROM noforce;
+SELECT * FROM noforce_plain ORDER BY noforce;
+
+CREATE OR REPLACE NOFORCE VIEW noforce_view AS SELECT * FROM noforce;
+CREATE ROLE regress_noforce_reader;
+GRANT SELECT ON noforce_view TO regress_noforce_reader;
+SELECT 'noforce_view'::regclass::oid AS noforce_view_oid \gset
+CREATE OR REPLACE NOFORCE VIEW noforce_view AS SELECT * FROM noforce WHERE noforce = 2;
+SELECT * FROM noforce_view;
+SELECT 'noforce_view'::regclass::oid = :'noforce_view_oid'::oid AS same_oid,
+       has_table_privilege('regress_noforce_reader', 'noforce_view', 'SELECT') AS keeps_grant;
+
+CREATE NOFORCE VIEW noforce_missing AS SELECT * FROM noforce_absent;
+CREATE OR REPLACE NOFORCE VIEW noforce_view AS SELECT * FROM noforce_absent;
+SELECT * FROM noforce_view;
+
+DROP VIEW noforce_plain, noforce_view;
+DROP TABLE noforce;
+DROP ROLE regress_noforce_reader;
+\pset format aligned
