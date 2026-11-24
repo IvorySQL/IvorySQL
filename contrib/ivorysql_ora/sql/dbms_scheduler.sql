@@ -66,6 +66,17 @@ SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
   ' freq = daily ; byhour = 7 ; byminute = 0 ; bysecond = 0 ',
   '2026-01-01 00:00:00+00', '2026-07-01 12:00:00+00') AS case_blank_insensitive;
 
+-- Weekly schedules must satisfy all date filters, not only BYMONTH.
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=WEEKLY;BYDAY=MON;BYMONTHDAY=19',
+  '2026-01-05 00:00:00+00', '2026-01-05 00:00:00+00') AS weekly_monthday;
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=WEEKLY;BYDAY=MON;BYDATE=20260119',
+  '2026-01-05 00:00:00+00', '2026-01-05 00:00:00+00') AS weekly_date;
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=WEEKLY;BYMONTHDAY=-1',
+  '2026-01-05 00:00:00+00', '2026-01-05 00:00:00+00') AS weekly_last_day;
+
 -- BYDATE: MMDD repeats every year, YYYYMMDD pins one absolute date
 SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
   'FREQ=YEARLY;BYDATE=0101;BYHOUR=0;BYMINUTE=0;BYSECOND=0',
