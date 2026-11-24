@@ -8186,8 +8186,7 @@ ATExecSetInvisible(Relation rel, const char *colName, LOCKMODE lockmode)
 		if (!has_visible_cols)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("relation \"%s\" can not have all columns invisible",
-							RelationGetRelationName(rel))));
+					 errmsg("table must have at least one column that is not invisible")));
 
 
 		/* Now we can update the catalog */
