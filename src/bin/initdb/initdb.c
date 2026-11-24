@@ -1071,6 +1071,37 @@ check_uuid_ossp_file(const char *path)
 	exit(1);
 }
 
+static bool
+uuid_ossp_library_exists(const char *pkglib_path)
+{
+	static const char *const library_names[] =
+	{
+		"uuid-ossp",
+		"libuuid-ossp",
+		"cyguuid-ossp",
+	};
+	char	   *path;
+	struct stat statbuf;
+	int		i;
+
+	/*
+	 * The prefixes cover the names produced by the Unix, Win32, and Cygwin
+	 * module build rules; the backend accepts the unprefixed name on Unix.
+	 */
+	for (i = 0; i < lengthof(library_names); i++)
+	{
+		path = psprintf("%s/%s%s", pkglib_path, library_names[i], DLSUFFIX);
+		if (stat(path, &statbuf) == 0 && S_ISREG(statbuf.st_mode))
+		{
+			pg_free(path);
+			return true;
+		}
+		pg_free(path);
+	}
+
+	return false;
+}
+
 static void
 check_uuid_ossp(void)
 {
@@ -1078,19 +1109,9 @@ check_uuid_ossp(void)
 	char		pkglib_path[MAXPGPATH];
 	char	   *path;
 
-	/*
-	 * Custom configuration can change where CREATE EXTENSION finds its
-	 * files.  Leave resolution to the backend in that case.
-	 */
+	/* Use the backend installation because CREATE EXTENSION resolves $libdir
+	 * and the default extension control path from that executable. */
 	get_share_path(backend_exec, installed_share_path);
-	if (strcmp(share_path, installed_share_path) != 0)
-		return;
-	for (_stringlist *name = extra_guc_names; name; name = name->next)
-	{
-		if (pg_strcasecmp(name->str, "extension_control_path") == 0 ||
-			pg_strcasecmp(name->str, "config_file") == 0)
-			return;
-	}
 
 	path = psprintf("%s/extension/uuid-ossp.control", installed_share_path);
 	check_uuid_ossp_file(path);
@@ -1103,9 +1124,12 @@ check_uuid_ossp(void)
 
 	/* The bundled control file refers to $libdir/uuid-ossp. */
 	get_pkglib_path(backend_exec, pkglib_path);
-	path = psprintf("%s/uuid-ossp%s", pkglib_path, DLSUFFIX);
-	check_uuid_ossp_file(path);
-	pg_free(path);
+	if (!uuid_ossp_library_exists(pkglib_path))
+	{
+		path = psprintf("%s/uuid-ossp%s", pkglib_path, DLSUFFIX);
+		check_uuid_ossp_file(path);
+		pg_free(path);
+	}
 }
 
 /*

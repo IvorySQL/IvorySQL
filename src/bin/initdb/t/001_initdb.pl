@@ -9,9 +9,11 @@ use strict;
 use warnings FATAL => 'all';
 use Fcntl ':mode';
 use File::Copy qw(copy);
+use File::Find qw(find);
 use File::Path qw(make_path);
 use File::Spec;
 use File::stat qw{lstat};
+use FindBin;
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
@@ -102,11 +104,27 @@ command_fails([ 'initdb', $datadir ], 'existing data directory');
 		chmod(0755, "$test_bin/$program") or die "chmod $program: $!"
 		  unless $windows_os;
 	}
-	for my $file (slurp_dir($sharedir))
-	{
-		next unless -f "$sharedir/$file";
-		copy("$sharedir/$file", "$test_share/$file") or die "copy $file: $!";
-	}
+	my $source_ext_dir = File::Spec->catdir($sharedir, 'extension');
+	find(
+		{
+			no_chdir => 1,
+			wanted => sub {
+				my $source = $File::Find::name;
+				my $relative = File::Spec->abs2rel($source, $sharedir);
+				my $destination = File::Spec->catfile($test_share, $relative);
+
+				if (-d $source)
+				{
+					$File::Find::prune = 1 if $source eq $source_ext_dir;
+					make_path($destination);
+				}
+				elsif (-f $source)
+				{
+					copy($source, $destination) or die "copy $relative: $!";
+				}
+			},
+		},
+		$sharedir);
 
 	my $test_initdb = "$test_bin/initdb$exe";
 	my $test_data = "$tempdir/uuid_data";
@@ -114,6 +132,7 @@ command_fails([ 'initdb', $datadir ], 'existing data directory');
 	my @init = ($test_initdb, '--no-clean', '-D', $test_data, '-X', $test_wal);
 	my $control = 'uuid-ossp.control';
 	my $script = 'uuid-ossp--1.1.sql';
+	my $source_ext = "$FindBin::Bin/../../../../contrib/uuid-ossp";
 	my $required = qr/Oracle-compatible mode requires the "uuid-ossp" extension/;
 	my $hint = qr/Install the "uuid-ossp" extension, or use -m pg/;
 
@@ -126,13 +145,13 @@ command_fails([ 'initdb', $datadir ], 'existing data directory');
 	command_fails_like(\@init, qr/$required.*\Q$control\E" is not a regular file/s,
 		'a directory cannot substitute for the control file');
 	rmdir "$test_ext/$control" or die "rmdir $control: $!";
-	copy("$sharedir/extension/$control", "$test_ext/$control")
+	copy("$source_ext/$control", "$test_ext/$control")
 	  or die "copy $control: $!";
 
 	command_fails_like([ @init, '-m', 'oracle' ], qr/$required.*\Q$script\E.*$hint/s,
 		'explicit Oracle mode reports missing uuid-ossp installation script');
 	ok(!-e $test_data && !-e $test_wal, 'missing script leaves no directories');
-	copy("$sharedir/extension/$script", "$test_ext/$script")
+	copy("$source_ext/$script", "$test_ext/$script")
 	  or die "copy $script: $!";
 
 	command_fails_like(\@init, qr/$required.*uuid-ossp\.[[:alnum:]]+".*$hint/s,
