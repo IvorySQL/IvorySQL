@@ -54,7 +54,14 @@ SELECT row_to_json(t) FROM htest0 t;
 -- inheritance, the invisible attribute is inherited
 CREATE TABLE htest1_1 () INHERITS (htest1);
 SELECT * FROM htest1_1;
+\pset format unaligned
 \d htest1_1
+SET COLINVISIBLE ON
+\d htest1_1
+SELECT * FROM htest1_1;
+SET colinvisible = off;
+\d htest1_1
+\pset format aligned
 INSERT INTO htest1_1 VALUES ('htest1 three');
 SELECT * FROM htest1_1;
 SELECT * FROM htest1;

@@ -145,6 +145,7 @@ typedef struct _psqlSettings
 	uint64		stmt_lineno;	/* line number inside the current statement */
 
 	bool		timing;			/* enable timing of all queries */
+	bool		show_invisible_columns; /* SQL*Plus COLINVISIBLE setting */
 
 	FILE	   *logfile;		/* session log file handle */
 
