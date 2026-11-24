@@ -7999,9 +7999,47 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 						  "LEFT JOIN pg_catalog.pg_inherits inh "
 						  "ON (inh.inhrelid = indexrelid) "
 						  "WHERE (i.indisvalid OR t2.relkind = 'p') "
-						  "AND i.indisready "
-						  "ORDER BY i.indrelid, indexname",
+						  "AND i.indisready ",
 						  tbloids->data);
+
+		/*
+		 * CREATE TABLE ... WITH ROWID builds its default ROWID index.
+		 * Only skip indexes with the default definition and properties.
+		 * Older servers did not record the whole-table dependency, so
+		 * also check the generated name for those indexes.  Cast to name
+		 * with the suffix first to clip the table name on a character
+		 * boundary using the server's identifier length limit.
+		 */
+		if (!fout->dopt->binary_upgrade)
+			appendPQExpBufferStr(query,
+							 "AND NOT (t2.relkind = 'r' AND NOT t2.relispartition "
+							 "AND i.indnatts = 1 AND i.indkey[0] = " CppAsString2(RowIdAttributeNumber) " "
+							 "AND NOT i.indisunique AND NOT i.indisclustered "
+							 "AND NOT i.indisreplident AND i.indpred IS NULL "
+							 "AND i.indoption[0] = 0 AND t.reltablespace = 0 "
+							 "AND t.reloptions IS NULL AND c.oid IS NULL "
+							 "AND EXISTS (SELECT 1 FROM pg_catalog.pg_opclass opc "
+							 "JOIN pg_catalog.pg_am am ON am.oid = opc.opcmethod "
+							 "WHERE opc.oid = i.indclass[0] AND opc.opcdefault "
+							 "AND am.amname = 'btree') "
+							 "AND pg_catalog.obj_description(t.oid, 'pg_class') IS NULL "
+							 "AND COALESCE((SELECT d.objid = t.oid "
+							 "FROM pg_catalog.pg_depend d "
+							 "JOIN pg_catalog.pg_index marked ON marked.indexrelid = d.objid "
+							 "WHERE d.classid = t.tableoid AND marked.indrelid = t2.oid "
+							 "AND d.objsubid = 0 AND d.refclassid = t2.tableoid "
+							 "AND d.refobjid = t2.oid AND d.refobjsubid = 0 "
+							 "AND d.deptype = 'a' AND marked.indisvalid "
+							 "AND marked.indnatts = 1 AND marked.indpred IS NULL "
+							 "AND marked.indkey[0] = " CppAsString2(RowIdAttributeNumber) " "
+							 "LIMIT 1), "
+							 "EXISTS (SELECT 1 FROM "
+							 "(SELECT '_' || t2.oid::text || '_rowid_idx' AS suffix) s "
+							 "WHERE t.relname::text = "
+							 "pg_catalog.substr((s.suffix || t2.relname)::pg_catalog.name::text, "
+							 "pg_catalog.length(s.suffix) + 1) || s.suffix))) ");
+
+		appendPQExpBufferStr(query, "ORDER BY i.indrelid, indexname");
 	}
 	else
 	{

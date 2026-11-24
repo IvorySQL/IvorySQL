@@ -1395,6 +1395,8 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 		IndexElem   *iparam;
 		const FormData_pg_attribute *from;
 		StringInfoData rowid_seq_name;
+		ObjectAddress index_address;
+		ObjectAddress table_address;
 
 		initStringInfo(&rowid_seq_name);
 		appendStringInfo(&rowid_seq_name, "%u", relationId);
@@ -1412,13 +1414,21 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 
 		rowid_index->indexParams = lappend(rowid_index->indexParams, iparam);
 
-		DefineIndex(relationId,
-					rowid_index,
-					InvalidOid,
-					InvalidOid,
-					InvalidOid,
-					-1, 
-					true, true, false, false, false);
+		index_address = DefineIndex(relationId,
+								   rowid_index,
+								   InvalidOid,
+								   InvalidOid,
+								   InvalidOid,
+								   -1,
+								   true, true, false, false, false);
+
+		/*
+		 * A plain user-created ROWID index depends on the column.  Also
+		 * depend on the whole table here so pg_dump can recognize the index
+		 * created by WITH ROWID even if its name changes.
+		 */
+		ObjectAddressSet(table_address, RelationRelationId, relationId);
+		recordDependencyOn(&index_address, &table_address, DEPENDENCY_AUTO);
 		pfree(rowid_seq_name.data);
 	}
 
