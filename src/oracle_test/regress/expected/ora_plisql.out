@@ -1825,3 +1825,42 @@ drop procedure ff_proc;
 drop procedure f_proc;
 drop function f_test;
 drop function ff_test;
+-- Preserve comments between IS or AS and the first token in the routine body.
+\pset format unaligned
+CREATE PROCEDURE proc_leading_comment(result OUT NUMBER)
+IS
+  /* before the first declaration */
+  value_to_return NUMBER := 11;
+BEGIN
+  result := value_to_return;
+END;
+/
+CALL proc_leading_comment(NULL);
+result
+11
+(1 row)
+SELECT strpos(prosrc, '/* before the first declaration */') = 1 AS keeps_comment,
+       strpos(pg_get_functiondef(oid), '/* before the first declaration */') > 0 AS shows_comment
+FROM pg_proc WHERE oid = 'proc_leading_comment'::regproc;
+keeps_comment|shows_comment
+t|t
+(1 row)
+CREATE OR REPLACE PROCEDURE proc_leading_comment(result OUT NUMBER)
+AS /* before BEGIN */
+-- another leading comment
+BEGIN
+  result := 12;
+END;
+/
+CALL proc_leading_comment(NULL);
+result
+12
+(1 row)
+SELECT strpos(prosrc, '/* before BEGIN */') = 1 AS keeps_block_comment,
+       strpos(prosrc, '-- another leading comment') > 0 AS keeps_line_comment
+FROM pg_proc WHERE oid = 'proc_leading_comment'::regproc;
+keeps_block_comment|keeps_line_comment
+t|t
+(1 row)
+DROP PROCEDURE proc_leading_comment;
+\pset format aligned
