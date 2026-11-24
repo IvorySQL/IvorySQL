@@ -69,3 +69,8 @@ arguments. PostgreSQL expressions retain their original behavior, including
 when a saved expression is read from a session using the other parser.
 Recreate stored Oracle expressions analyzed before this fix to apply the
 updated comparison and NULL rules.
+
+# Updating ALL_SEQUENCES
+
+Version 1.1 grants read access to `ALL_SEQUENCES` and limits its rows to
+sequences accessible to the current user.

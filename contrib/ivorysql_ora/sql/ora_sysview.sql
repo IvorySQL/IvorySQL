@@ -82,3 +82,53 @@ SELECT ARGUMENT_NAME, IN_OUT, POSITION, DEFAULTED FROM ALL_ARGUMENTS
 WHERE OBJECT_NAME = 'FUNC_WITH_DEFAULT';
 -- clean data
 DROP FUNCTION IF EXISTS FUNC_WITH_DEFAULT;
+
+-- ALL_SEQUENCES must follow the current user's schema and sequence privileges.
+\pset format unaligned
+CREATE USER regress_ora_seq_1;
+CREATE USER regress_ora_seq_2;
+CREATE SCHEMA regress_ora_seq_1 AUTHORIZATION regress_ora_seq_1;
+CREATE SCHEMA regress_ora_seq_2 AUTHORIZATION regress_ora_seq_2;
+
+SET SESSION AUTHORIZATION regress_ora_seq_1;
+CREATE SEQUENCE regress_ora_seq_1.visible_seq_1 START WITH 101 NOCACHE;
+SELECT nextval('regress_ora_seq_1.visible_seq_1');
+RESET SESSION AUTHORIZATION;
+
+SET SESSION AUTHORIZATION regress_ora_seq_2;
+CREATE SEQUENCE regress_ora_seq_2.visible_seq_2 START WITH 201 NOCACHE;
+SELECT nextval('regress_ora_seq_2.visible_seq_2');
+SELECT sequence_owner, sequence_name, last_number FROM all_sequences
+WHERE sequence_name IN ('visible_seq_1', 'visible_seq_2') ORDER BY sequence_name;
+RESET SESSION AUTHORIZATION;
+
+SET SESSION AUTHORIZATION regress_ora_seq_1;
+SELECT sequence_owner, sequence_name, last_number FROM all_sequences
+WHERE sequence_name IN ('visible_seq_1', 'visible_seq_2') ORDER BY sequence_name;
+GRANT SELECT ON SEQUENCE regress_ora_seq_1.visible_seq_1 TO regress_ora_seq_2;
+RESET SESSION AUTHORIZATION;
+
+SET SESSION AUTHORIZATION regress_ora_seq_2;
+SELECT sequence_name FROM all_sequences
+WHERE sequence_name = 'visible_seq_1';
+RESET SESSION AUTHORIZATION;
+
+GRANT USAGE ON SCHEMA regress_ora_seq_1 TO regress_ora_seq_2;
+SET SESSION AUTHORIZATION regress_ora_seq_2;
+SELECT sequence_owner, sequence_name, last_number FROM all_sequences
+WHERE sequence_name IN ('visible_seq_1', 'visible_seq_2') ORDER BY sequence_name;
+RESET SESSION AUTHORIZATION;
+
+REVOKE SELECT ON SEQUENCE regress_ora_seq_1.visible_seq_1 FROM regress_ora_seq_2;
+SET SESSION AUTHORIZATION regress_ora_seq_2;
+SELECT sequence_name FROM all_sequences
+WHERE sequence_name IN ('visible_seq_1', 'visible_seq_2') ORDER BY sequence_name;
+RESET SESSION AUTHORIZATION;
+
+DROP SEQUENCE regress_ora_seq_1.visible_seq_1;
+DROP SEQUENCE regress_ora_seq_2.visible_seq_2;
+DROP SCHEMA regress_ora_seq_1;
+DROP SCHEMA regress_ora_seq_2;
+DROP USER regress_ora_seq_1;
+DROP USER regress_ora_seq_2;
+\pset format aligned
