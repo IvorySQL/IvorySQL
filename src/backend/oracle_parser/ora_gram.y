@@ -327,9 +327,9 @@ static void determineLanguage(List *options);
 %type <node>	alter_column_default opclass_item opclass_drop alter_using
 %type <ival>	add_drop opt_asc_desc opt_nulls_order
 
-%type <node>	alter_table_cmd alter_type_cmd opt_collate_clause
+%type <node>	alter_table_cmd alter_type_cmd modify_column_visibility opt_collate_clause
 	   replica_identity partition_cmd index_partition_cmd
-%type <list>	alter_table_cmds alter_type_cmds
+%type <list>	alter_table_cmds alter_type_cmds modify_column_visibility_list
 %type <list>    alter_identity_column_option_list
 %type <defelt>  alter_identity_column_option
 %type <node>	set_statistics_value
@@ -2493,6 +2493,34 @@ alter_table_cmds:
 			alter_table_cmd							{ $$ = list_make1($1); }
 			| alter_table_cmds ',' alter_table_cmd	{ $$ = lappend($1, $3); }
 			| MODIFY identity_clause				{ $$ = $2; }
+			| MODIFY '(' modify_column_visibility_list ')'	{ $$ = $3; }
+			| alter_table_cmds ',' MODIFY '(' modify_column_visibility_list ')'
+													{ $$ = list_concat($1, $5); }
+		;
+
+modify_column_visibility_list:
+			modify_column_visibility				{ $$ = list_make1($1); }
+			| modify_column_visibility_list ',' modify_column_visibility
+													{ $$ = lappend($1, $3); }
+		;
+
+modify_column_visibility:
+			ColId INVISIBLE
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+
+					n->subtype = AT_SetInvisible;
+					n->name = $1;
+					$$ = (Node *) n;
+				}
+			| ColId VISIBLE
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+
+					n->subtype = AT_DropInvisible;
+					n->name = $1;
+					$$ = (Node *) n;
+				}
 		;
 
 ora_alter_view_cmds:
@@ -2666,20 +2694,7 @@ alter_table_cmd:
 					n->name = $3;
 					$$ = (Node *)n;
 				}
-			| MODIFY ColId INVISIBLE
-				{
-					AlterTableCmd *n = makeNode(AlterTableCmd);
-					n->subtype = AT_SetInvisible;
-					n->name = $2;
-					$$ = (Node *)n;
-				}
-			| MODIFY ColId VISIBLE
-				{
-					AlterTableCmd *n = makeNode(AlterTableCmd);
-					n->subtype = AT_DropInvisible;
-					n->name = $2;
-					$$ = (Node *)n;
-				}
+			| MODIFY modify_column_visibility		{ $$ = $2; }
 			/* ALTER TABLE <name> ALTER [COLUMN] <colname> DROP NOT NULL */
 			| ALTER opt_column ColId DROP NOT NULL_P
 				{
