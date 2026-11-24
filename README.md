@@ -25,11 +25,12 @@ We are committed to abiding by the principles of [open-source ways](https://open
 ## Installation
 We recommend following our [Quick Start](https://docs.ivorysql.org/en/ivorysql-doc/v5.6/3.1#quick-installation) for how to install and running IvorySQL.
 
-Furthermore, for more detailed installation instructions, please refer to the [Installation Docs](https://docs.ivorysql.org/en/ivorysql-doc/v5.6/4.1#introduction). We provide four installation methods for IvorySQL, as outlined below:
+Furthermore, for more detailed installation instructions, please refer to the [Installation Docs](https://docs.ivorysql.org/en/ivorysql-doc/v5.6/4.1#introduction). We provide five installation methods for IvorySQL, as outlined below:
 - [Yum installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.6/4.1#Yum-installation)
 - [Docker installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.6/4.1#Docker-installation)
 - [Rpm installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.6/4.1#Rpm-installation)
 - [Source code installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.6/4.1#Source-code-installation)
+- [DEB installation](https://docs.ivorysql.org/en/ivorysql-doc/v5.6/4.1#deb-installation)
 
 ## Development with Docker
 
