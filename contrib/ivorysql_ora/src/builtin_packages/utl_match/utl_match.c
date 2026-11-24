@@ -180,15 +180,14 @@ edit_distance_similarity(const unsigned char *s1, int n1, const unsigned char *s
 {
 	int			ed = edit_distance(s1, n1, s2, n2);
 	int			max = n1 > n2 ? n1 : n2;
-	double		sim;
+	int64		scaled;
 
 	if (max == 0)
 		return 100;
 
-	sim = (1.0 - (double) ed / (double) max) * 100.0;
-	if (sim < 0.0)
-		sim = 0.0;
-	return round_to_int(sim);
+	/* Round the byte-match ratio exactly, including half-percent ties. */
+	scaled = (int64) (max - ed) * 100;
+	return (int) ((scaled + max / 2) / max);
 }
 
 /* Jaro similarity (standard definition, range 0..1), byte-based. */

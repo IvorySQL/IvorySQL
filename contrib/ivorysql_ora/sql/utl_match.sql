@@ -235,3 +235,7 @@ SELECT sys.ora_utl_match_edit_distance(left_value, right_value) = 0 AS ed,
        sys.ora_utl_match_jaro_winkler_similarity(left_value, right_value) = 100 AS jws
 FROM utl_match_equal_input;
 DROP TABLE utl_match_equal_input;
+
+-- Exact half-percent results round up despite binary floating point error.
+SELECT sys.ora_utl_match_edit_distance_similarity(
+    repeat('a', 40), repeat('a', 23) || repeat('b', 17)) = 58 AS rounds_up;
