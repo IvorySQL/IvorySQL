@@ -66,6 +66,27 @@ SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
   ' freq = daily ; byhour = 7 ; byminute = 0 ; bysecond = 0 ',
   '2026-01-01 00:00:00+00', '2026-07-01 12:00:00+00') AS case_blank_insensitive;
 
+-- Yearly weekdays span the year; ordinals count within that year.
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=YEARLY;BYDAY=FRI',
+  '2026-01-01 00:00:00+00', '2026-02-01 00:00:00+00') AS yearly_friday;
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=YEARLY;BYDAY=-1FRI',
+  '2026-01-01 00:00:00+00', '2026-01-01 00:00:00+00') AS yearly_last_friday;
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=YEARLY;BYDAY=26FRI',
+  '2026-01-01 00:00:00+00', '2026-01-01 00:00:00+00') AS yearly_26th_friday;
+
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=YEARLY;BYDAY=53THU;BYMONTH=DEC;BYMONTHDAY=-1',
+  '2026-01-01 00:00:00+00', '2026-01-01 00:00:00+00') AS yearly_53rd_thursday;
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=YEARLY;BYDAY=-1FRI;BYDATE=1225',
+  '2026-01-01 00:00:00+00', '2026-01-01 00:00:00+00') AS yearly_filtered_friday;
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=MONTHLY;BYDAY=6FRI',
+  '2026-01-01 00:00:00+00', '2026-01-01 00:00:00+00');
+
 -- BYDATE: MMDD repeats every year, YYYYMMDD pins one absolute date
 SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
   'FREQ=YEARLY;BYDATE=0101;BYHOUR=0;BYMINUTE=0;BYSECOND=0',

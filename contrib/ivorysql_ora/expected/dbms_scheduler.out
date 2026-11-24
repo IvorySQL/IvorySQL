@@ -122,6 +122,52 @@ SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
  2026-07-02 07:00:00.000000 +00:00
 (1 row)
 
+-- Yearly weekdays span the year; ordinals count within that year.
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=YEARLY;BYDAY=FRI',
+  '2026-01-01 00:00:00+00', '2026-02-01 00:00:00+00') AS yearly_friday;
+           yearly_friday           
+-----------------------------------
+ 2026-02-06 00:00:00.000000 +00:00
+(1 row)
+
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=YEARLY;BYDAY=-1FRI',
+  '2026-01-01 00:00:00+00', '2026-01-01 00:00:00+00') AS yearly_last_friday;
+        yearly_last_friday         
+-----------------------------------
+ 2026-12-25 00:00:00.000000 +00:00
+(1 row)
+
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=YEARLY;BYDAY=26FRI',
+  '2026-01-01 00:00:00+00', '2026-01-01 00:00:00+00') AS yearly_26th_friday;
+        yearly_26th_friday         
+-----------------------------------
+ 2026-06-26 00:00:00.000000 +00:00
+(1 row)
+
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=YEARLY;BYDAY=53THU;BYMONTH=DEC;BYMONTHDAY=-1',
+  '2026-01-01 00:00:00+00', '2026-01-01 00:00:00+00') AS yearly_53rd_thursday;
+       yearly_53rd_thursday        
+-----------------------------------
+ 2026-12-31 00:00:00.000000 +00:00
+(1 row)
+
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=YEARLY;BYDAY=-1FRI;BYDATE=1225',
+  '2026-01-01 00:00:00+00', '2026-01-01 00:00:00+00') AS yearly_filtered_friday;
+      yearly_filtered_friday       
+-----------------------------------
+ 2026-12-25 00:00:00.000000 +00:00
+(1 row)
+
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=MONTHLY;BYDAY=6FRI',
+  '2026-01-01 00:00:00+00', '2026-01-01 00:00:00+00');
+ERROR:  invalid calendar string "FREQ=MONTHLY;BYDAY=6FRI"
+DETAIL:  monthly BYDAY ordinal must be -5 through -1 or 1 through 5.
 -- BYDATE: MMDD repeats every year, YYYYMMDD pins one absolute date
 SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
   'FREQ=YEARLY;BYDATE=0101;BYHOUR=0;BYMINUTE=0;BYSECOND=0',

@@ -64,7 +64,7 @@ typedef enum SchedFreq
 typedef struct SchedByDay
 {
 	int			dow;			/* 0 = Sunday .. 6 = Saturday */
-	int			ord;			/* 0 = every, else 1..5 / -1..-5 within month */
+	int			ord;			/* 0 = every; ordinal within month or year */
 } SchedByDay;
 
 typedef struct SchedByDate
@@ -285,8 +285,8 @@ byday_cb(const char *calendar, const char *item, int len, CalendarRule *rule)
 
 	if (len > 3)
 	{
-		if (!parse_int(item, len - 3, &ord) || ord == 0 || ord < -5 || ord > 5)
-			calendar_error(calendar, "BYDAY ordinal must be -5 through -1 or 1 through 5.");
+		if (!parse_int(item, len - 3, &ord) || ord == 0 || ord < -53 || ord > 53)
+			calendar_error(calendar, "BYDAY ordinal must be -53 through -1 or 1 through 53.");
 		item += len - 3;
 		len = 3;
 	}
@@ -530,10 +530,19 @@ parse_calendar(const char *calendar, CalendarRule *rule)
 	if (!has_freq)
 		calendar_error(calendar, "FREQ clause is required.");
 
-	/* Ordinal BYDAY (e.g. 2FRI) only makes sense within a month window. */
+	/* Ordinal BYDAY needs a month or year window. */
 	if (rule->byday_has_ord &&
 		rule->freq != FREQ_YEARLY && rule->freq != FREQ_MONTHLY)
 		calendar_error(calendar, "BYDAY ordinals are only supported with FREQ=YEARLY or FREQ=MONTHLY.");
+
+	if (rule->freq == FREQ_MONTHLY)
+	{
+		int			i;
+
+		for (i = 0; i < rule->n_byday; i++)
+			if (rule->byday[i].ord < -5 || rule->byday[i].ord > 5)
+				calendar_error(calendar, "monthly BYDAY ordinal must be -5 through -1 or 1 through 5.");
+	}
 
 	pfree(norm);
 }
@@ -615,7 +624,46 @@ month_day_list(const CalendarRule *rule, int year, int mon, int fallback_mday,
 	 * other clause that is present is then applied as an AND filter, matching
 	 * Oracle's rule that a date must satisfy all BY clauses given.
 	 */
-	if (rule->n_bymonthday > 0)
+	if (rule->freq == FREQ_YEARLY && rule->n_byday > 0)
+	{
+		int			first = date2j(year, 1, 1);
+		int			last = date2j(year, 12, 31);
+
+		/* Yearly ordinals count weekdays in the year, not in each month. */
+		for (d = 1; d <= dim; d++)
+		{
+			int			jd = date2j(year, mon, d);
+
+			for (i = 0; i < rule->n_byday; i++)
+			{
+				int			ord = rule->byday[i].ord;
+
+				if (j2day(jd) == rule->byday[i].dow &&
+					(ord == 0 ||
+					 (ord > 0 && (jd - first) / 7 + 1 == ord) ||
+					 (ord < 0 && (last - jd) / 7 + 1 == -ord)))
+				{
+					mark[d] = true;
+					break;
+				}
+			}
+			if (mark[d] && rule->n_bymonthday > 0)
+			{
+				for (i = 0; i < rule->n_bymonthday; i++)
+				{
+					int			md = rule->bymonthday[i];
+
+					if (md < 0)
+						md += dim + 1;
+					if (md == d)
+						break;
+				}
+				if (i == rule->n_bymonthday)
+					mark[d] = false;
+			}
+		}
+	}
+	else if (rule->n_bymonthday > 0)
 	{
 		for (i = 0; i < rule->n_bymonthday; i++)
 		{
@@ -960,10 +1008,10 @@ eval_calendar(const CalendarRule *rule, TimestampTz start, TimestampTz after,
 										   tm_start.tm_mon, months);
 						/* set_to_list over index 1..12 never yields index 0 */
 					}
-					else if (rule->n_bydate > 0)
+					else if (rule->n_bydate > 0 || rule->n_byday > 0)
 					{
 						/*
-						 * BYDATE carries its own month, so the whole year has
+						 * BYDATE and BYDAY select dates across the year, which has
 						 * to be scanned instead of inheriting start_date's
 						 * month the way the other BY clauses do.
 						 */
