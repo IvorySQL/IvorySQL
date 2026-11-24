@@ -109,6 +109,19 @@ ALTER TABLE htest3
     MODIFY b INVISIBLE; -- error
 DROP TABLE htest3;
 
+-- Parenthesized visibility changes are applied as one ALTER TABLE statement.
+\pset format unaligned
+CREATE TABLE htest3_modify (id int, name varchar2(30), age int);
+INSERT INTO htest3_modify VALUES (1, 'Alice', 30);
+ALTER TABLE htest3_modify MODIFY (id INVISIBLE, name INVISIBLE, age INVISIBLE); -- error
+SELECT * FROM htest3_modify;
+ALTER TABLE htest3_modify MODIFY (name INVISIBLE, age INVISIBLE);
+SELECT * FROM htest3_modify;
+ALTER TABLE htest3_modify MODIFY (name VISIBLE, age VISIBLE);
+SELECT * FROM htest3_modify;
+DROP TABLE htest3_modify;
+\pset format aligned
+
 -- inheritance with an additional single invisible column is possible
 CREATE TABLE htest3 (a serial INVISIBLE, b int);
 SELECT * FROM htest3;
