@@ -10165,10 +10165,12 @@ ora_func_is_or_as:
 			IS
 				{
 					set_oracle_plsql_body(yyscanner, OraBody_FUNC);
+					set_oracle_plsql_bodystart(yyscanner, @1 + 2, 0);
 				}
 			| AS
 				{
 					set_oracle_plsql_body(yyscanner, OraBody_FUNC);
+					set_oracle_plsql_bodystart(yyscanner, @1 + 2, 0);
 				}
 		;
 

@@ -1495,4 +1495,32 @@ END;
 
 -- Cleanup (may fail if function wasn't created)
 DROP FUNCTION IF EXISTS test_rownum_param;
+-- Preserve comments between IS or AS and the first token in the routine body.
+\pset format unaligned
+CREATE PROCEDURE proc_leading_comment(result OUT NUMBER)
+IS
+  /* before the first declaration */
+  value_to_return NUMBER := 11;
+BEGIN
+  result := value_to_return;
+END;
+/
+CALL proc_leading_comment(NULL);
+SELECT strpos(prosrc, '/* before the first declaration */') = 1 AS keeps_comment,
+       strpos(pg_get_functiondef(oid), '/* before the first declaration */') > 0 AS shows_comment
+FROM pg_proc WHERE oid = 'proc_leading_comment'::regproc;
+
+CREATE OR REPLACE PROCEDURE proc_leading_comment(result OUT NUMBER)
+AS /* before BEGIN */
+-- another leading comment
+BEGIN
+  result := 12;
+END;
+/
+CALL proc_leading_comment(NULL);
+SELECT strpos(prosrc, '/* before BEGIN */') = 1 AS keeps_block_comment,
+       strpos(prosrc, '-- another leading comment') > 0 AS keeps_line_comment
+FROM pg_proc WHERE oid = 'proc_leading_comment'::regproc;
+DROP PROCEDURE proc_leading_comment;
+\pset format aligned
 

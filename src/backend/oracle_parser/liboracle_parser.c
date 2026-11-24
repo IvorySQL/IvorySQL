@@ -445,6 +445,19 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 		bool found_foreign_begin = false;
 		int subproc_define_level = 0;
 
+		/*
+		 * Stored routine bodies start after IS or AS.  Skip whitespace
+		 * up to the first comment or token, which keeps leading comments
+		 * without changing the stored source of comment-free bodies.
+		 */
+		if (yyextra->body_style == OraBody_FUNC && beginpos >= 0)
+		{
+			const char *scanbuf = yyextra->core_yy_extra.scanbuf;
+
+			while (beginpos < *llocp && scanner_isspace(scanbuf[beginpos]))
+				beginpos++;
+		}
+
 		if (blocklevel > 0)
 		{
 			found_begin = true;
