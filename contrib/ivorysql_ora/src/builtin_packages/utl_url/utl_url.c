@@ -203,6 +203,20 @@ ivorysql_utl_url_escape(PG_FUNCTION_ARGS)
 	PG_RETURN_TEXT_P(cstring_to_text_with_len(buf.data, buf.len));
 }
 
+/* Append a percent-decoded run and release any separately allocated conversion. */
+static void
+utl_url_append_decoded(StringInfo out, char *pending, int len, int encoding)
+{
+	char	   *converted;
+
+	/* pg_any_to_server may return pending itself after validating it. */
+	pending[len] = '\0';
+	converted = pg_any_to_server(pending, len, encoding);
+	appendStringInfoString(out, converted);
+	if (converted != pending)
+		pfree(converted);
+}
+
 /*
  * ivorysql_utl_url_unescape
  *
@@ -315,25 +329,7 @@ ivorysql_utl_url_unescape(PG_FUNCTION_ARGS)
 			 */
 			if (pending_len > 0)
 			{
-				char	   *converted;
-				int			converted_len;
-
-				/*
-				 * pg_any_to_server() may return the input pointer
-				 * unchanged, so terminate the buffer for strlen().
-				 */
-				pending[pending_len] = '\0';
-
-				/*
-				 * pg_any_to_server() validates the byte string even when
-				 * no conversion is required, so a %XX group that does not
-				 * form a valid character in url_charset is reported rather
-				 * than silently stored.
-				 */
-				converted = pg_any_to_server(pending, pending_len,
-											 source_encoding);
-				converted_len = strlen(converted);
-				appendBinaryStringInfo(&out, converted, converted_len);
+				utl_url_append_decoded(&out, pending, pending_len, source_encoding);
 				pending_len = 0;
 			}
 			appendStringInfoChar(&out, src[i]);
@@ -343,16 +339,7 @@ ivorysql_utl_url_unescape(PG_FUNCTION_ARGS)
 
 	/* Flush any trailing %XX bytes */
 	if (pending_len > 0)
-	{
-		char	   *converted;
-		int			converted_len;
-
-		pending[pending_len] = '\0';
-		converted = pg_any_to_server(pending, pending_len,
-									 source_encoding);
-		converted_len = strlen(converted);
-		appendBinaryStringInfo(&out, converted, converted_len);
-	}
+		utl_url_append_decoded(&out, pending, pending_len, source_encoding);
 
 	PG_RETURN_TEXT_P(cstring_to_text_with_len(out.data, out.len));
 }
