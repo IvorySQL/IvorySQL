@@ -21,6 +21,7 @@
 
 #include "access/htup_details.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_namespace_d.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "funcapi.h"
@@ -371,7 +372,11 @@ do_compile(FunctionCallInfo fcinfo,
 	plisql_curr_compile = function;
 
     /* format_procedure leaks memory, so run it in temp context */
-	proc_signature = format_procedure(fcinfo->flinfo->fn_oid);
+	/* Preserve the owning schema when the routine is visible in search_path. */
+	if (procStruct->pronamespace == PG_PUBLIC_NAMESPACE)
+		proc_signature = format_procedure(fcinfo->flinfo->fn_oid);
+	else
+		proc_signature = format_procedure_qualified(fcinfo->flinfo->fn_oid);
 
 	/*
 	 * All the permanent output of compilation (e.g. parse tree) is kept in a

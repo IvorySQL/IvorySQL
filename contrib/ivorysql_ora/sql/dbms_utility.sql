@@ -480,6 +480,7 @@ DROP SCHEMA callstack_ns;
 -- spurious PUBLIC prefix.  Regression: before fix, schema_error() appeared as
 -- PUBLIC.SCHEMA_ERROR instead of BUG_SCHEMA.SCHEMA_ERROR.
 CREATE SCHEMA bug_schema;
+SET search_path TO bug_schema, public;
 
 CREATE OR REPLACE PROCEDURE bug_schema.schema_error IS
 BEGIN
@@ -503,6 +504,7 @@ END;
 /
 
 CALL bug_schema.schema_caller();
+RESET search_path;
 DROP SCHEMA bug_schema CASCADE;
 
 RESET ivorysql.identifier_case_switch;
