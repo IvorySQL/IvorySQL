@@ -1,0 +1,11 @@
+--
+-- ORA_TO_DATE_DOW
+-- Oracle TO_DATE / TO_TIMESTAMP must reject a D (day of week) value
+-- outside 1..7 (ORA-01846) instead of silently ignoring it.
+--
+SELECT to_date('2026-11-01 0', 'YYYY-MM-DD D');
+SELECT to_date('2026-11-01 8', 'YYYY-MM-DD D');
+SELECT to_timestamp('2026-11-01 9', 'YYYY-MM-DD D');
+-- valid values still parse
+SELECT to_char(to_date('2026-11-01 1', 'YYYY-MM-DD D'), 'YYYY-MM-DD');
+SELECT to_char(to_date('2026-11-01 7', 'YYYY-MM-DD D'), 'YYYY-MM-DD');
