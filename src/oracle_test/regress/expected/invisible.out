@@ -131,15 +131,29 @@ SELECT * FROM htest1_1;
 ---
 (0 rows)
 
+\pset format unaligned
 \d htest1_1
-                               Table "public.htest1_1"
- Column |      Type       | Collation | Nullable |              Default              
---------+-----------------+-----------+----------+-----------------------------------
- a      | pg_catalog.int8 |           | not null | nextval('htest1_a_seq'::regclass)
- b      | text            |           |          | 
-Inherits:
-    htest1
-
+Table "public.htest1_1"
+Column|Type|Collation|Nullable|Default
+b|text|||
+Inherits: htest1
+SET COLINVISIBLE ON
+\d htest1_1
+Table "public.htest1_1"
+Column|Type|Collation|Nullable|Default|Invisible
+a|pg_catalog.int8||not null|nextval('htest1_a_seq'::regclass)|invisible
+b|text||||
+Inherits: htest1
+SELECT * FROM htest1_1;
+b
+(0 rows)
+SET colinvisible = off;
+\d htest1_1
+Table "public.htest1_1"
+Column|Type|Collation|Nullable|Default
+b|text|||
+Inherits: htest1
+\pset format aligned
 INSERT INTO htest1_1 VALUES ('htest1 three');
 SELECT * FROM htest1_1;
       b       
