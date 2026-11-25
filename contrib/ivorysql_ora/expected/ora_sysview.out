@@ -199,4 +199,57 @@ DROP SCHEMA regress_ora_seq_1;
 DROP SCHEMA regress_ora_seq_2;
 DROP USER regress_ora_seq_1;
 DROP USER regress_ora_seq_2;
+-- Package source is available line by line, subject to schema and package access.
+CREATE USER regress_ora_source_owner;
+CREATE USER regress_ora_source_reader;
+CREATE SCHEMA regress_ora_source AUTHORIZATION regress_ora_source_owner;
+SET SESSION AUTHORIZATION regress_ora_source_owner;
+CREATE PACKAGE regress_ora_source.source_pkg IS
+  FUNCTION get_value RETURN integer;
+END;
+/
+CREATE PACKAGE BODY regress_ora_source.source_pkg IS
+  FUNCTION get_value RETURN integer IS
+  BEGIN
+    RETURN 42;
+  END;
+END;
+/
+SELECT line, text FROM all_source WHERE name = 'source_pkg' AND type = 'package' ORDER BY line;
+line|text
+1|FUNCTION get_value RETURN integer;
+2|END
+(2 rows)
+SELECT line, text FROM all_source WHERE name = 'source_pkg' AND type = 'package body' ORDER BY line;
+line|text
+1|FUNCTION get_value RETURN integer IS
+2|  BEGIN
+3|    RETURN 42;
+4|  END;
+5|END
+(5 rows)
+GRANT EXECUTE ON PACKAGE regress_ora_source.source_pkg TO regress_ora_source_reader;
+RESET SESSION AUTHORIZATION;
+SET SESSION AUTHORIZATION regress_ora_source_reader;
+SELECT DISTINCT type FROM all_source WHERE name = 'source_pkg' ORDER BY type;
+type
+(0 rows)
+RESET SESSION AUTHORIZATION;
+GRANT USAGE ON SCHEMA regress_ora_source TO regress_ora_source_reader;
+SET SESSION AUTHORIZATION regress_ora_source_reader;
+SELECT DISTINCT type FROM all_source WHERE name = 'source_pkg' ORDER BY type;
+type
+package
+(1 row)
+RESET SESSION AUTHORIZATION;
+REVOKE EXECUTE ON PACKAGE regress_ora_source.source_pkg FROM regress_ora_source_reader;
+SET SESSION AUTHORIZATION regress_ora_source_reader;
+SELECT DISTINCT type FROM all_source WHERE name = 'source_pkg' ORDER BY type;
+type
+(0 rows)
+RESET SESSION AUTHORIZATION;
+DROP PACKAGE regress_ora_source.source_pkg;
+DROP SCHEMA regress_ora_source;
+DROP USER regress_ora_source_reader;
+DROP USER regress_ora_source_owner;
 \pset format aligned
