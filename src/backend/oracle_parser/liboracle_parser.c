@@ -137,6 +137,7 @@ oracle_raw_parser(const char *str, RawParseMode mode)
 	yyextra.num_pushbacks = 0;
 	yyextra.loc_pushback = 0;
 	yyextra.lookahead_end = NULL;
+	yyextra.insert_target_state = ORA_INSERT_TARGET_NONE;
 
 	set_oracle_plsql_body(yyscanner, OraBody_UNKOWN);
 
@@ -318,6 +319,41 @@ token_is_col_id(int token)
 		OraScanKeywordCategories[i]== COL_NAME_KEYWORD))
 		return true;
 	return false;
+}
+
+/* Recognize a bare alias only after the name of an INSERT target. */
+static int
+insert_target_token(ora_base_yy_extra_type *yyextra, int token, YYSTYPE *lvalp)
+{
+	switch (yyextra->insert_target_state)
+	{
+		case ORA_INSERT_TARGET_NONE:
+			break;
+		case ORA_INSERT_TARGET_NAME:
+			yyextra->insert_target_state = ORA_INSERT_TARGET_AFTER_NAME;
+			break;
+		case ORA_INSERT_TARGET_AFTER_NAME:
+			if (token == '.')
+			{
+				yyextra->insert_target_state = ORA_INSERT_TARGET_NAME;
+				break;
+			}
+			yyextra->insert_target_state = ORA_INSERT_TARGET_NONE;
+
+			/* These tokens begin clauses that can follow a target name. */
+			if (token == VALUES || token == '(' || token == SELECT ||
+				token == AS || token == OVERRIDING)
+				break;
+
+			if (token_is_col_id(token))
+			{
+				if (token != IDENT)
+					lvalp->str = pstrdup(lvalp->keyword);
+				return INSERT_TARGET_ALIAS;
+			}
+			break;
+	}
+	return token;
 }
 
 
@@ -662,6 +698,16 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 
 	set_oracle_plsql_body(yyscanner, OraBody_UNKOWN);
 
+	/* Keep a target name and its alias separate from multiword tokens. */
+	if (yyextra->insert_target_state != ORA_INSERT_TARGET_NONE && cur_token != UIDENT)
+	{
+		bool		in_target_name = yyextra->insert_target_state == ORA_INSERT_TARGET_NAME;
+
+		cur_token = insert_target_token(yyextra, cur_token, lvalp);
+		if (in_target_name || cur_token == INSERT_TARGET_ALIAS)
+			return cur_token;
+	}
+
 	/*
 	 * If this token isn't one that requires lookahead, just return it.  If it
 	 * does, determine the token length.  (We could get that via strlen(), but
@@ -880,7 +926,7 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 			break;
 	}
 
-	return cur_token;
+	return insert_target_token(yyextra, cur_token, lvalp);
 }
 
 /*

@@ -896,6 +896,7 @@ static void determineLanguage(List *options);
 %token          MODE_PLISQL_ASSIGN1
 %token          MODE_PLISQL_ASSIGN2
 %token          MODE_PLISQL_ASSIGN3
+%token <str>	INSERT_TARGET_ALIAS
 
 
 /* Precedence: lowest to highest */
@@ -13499,23 +13500,20 @@ DeallocateStmt: DEALLOCATE name
  *****************************************************************************/
 
 InsertStmt:
-			opt_with_clause INSERT INTO insert_target insert_rest
+			opt_with_clause INSERT INTO
+				{ pg_yyget_extra(yyscanner)->insert_target_state = ORA_INSERT_TARGET_NAME; }
+			insert_target insert_rest
 			opt_on_conflict returning_clause
 				{
-					$5->relation = $4;
-					$5->onConflictClause = $6;
-					$5->returningClause = $7;
-					$5->withClause = $1;
-					$$ = (Node *) $5;
+					$6->relation = $5;
+					$6->onConflictClause = $7;
+					$6->returningClause = $8;
+					$6->withClause = $1;
+					$$ = (Node *) $6;
 				}
 		;
 
-/*
- * Can't easily make AS optional here, because VALUES in insert_rest would
- * have a shift/reduce conflict with VALUES as an optional alias.  We could
- * easily allow unreserved_keywords as optional aliases, but that'd be an odd
- * divergence from other places.  So just require AS for now.
- */
+/* The lexer marks a bare alias separately to avoid grammar conflicts. */
 insert_target:
 			qualified_name
 				{
@@ -13524,6 +13522,11 @@ insert_target:
 			| qualified_name AS ColId
 				{
 					$1->alias = makeAlias($3, NIL);
+					$$ = $1;
+				}
+			| qualified_name INSERT_TARGET_ALIAS
+				{
+					$1->alias = makeAlias($2, NIL);
 					$$ = $1;
 				}
 		;
