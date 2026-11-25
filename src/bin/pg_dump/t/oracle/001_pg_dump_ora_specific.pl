@@ -342,11 +342,12 @@ foreach my $run (sort keys %pgdump_runs)
 	}
 }
 
-# A custom archive must restore the package to its original owner by name.
+# A custom archive must restore the package owner and the body's edition property.
 my $package_owner = 'regress_dump_package_owner';
 my $package_archive = "$tempdir/package_owner.dump";
 $node->safe_psql('testdb',
 	"CREATE ROLE $package_owner;
+	 ALTER PACKAGE public.test_pkg NONEDITIONABLE;
 	 ALTER PACKAGE public.test_pkg OWNER TO $package_owner;",
 	connect_to_oraport => 1);
 $node->command_ok(
@@ -362,6 +363,12 @@ is($node->safe_psql('package_restore',
 	    WHERE pkgname = 'test_pkg' AND pkgnamespace = 'public'::regnamespace},
 	connect_to_oraport => 1),
 	$package_owner, 'restored package has the original owner');
+is($node->safe_psql('package_restore',
+	q{SELECT p.editable FROM pg_package p
+	    JOIN pg_package_body b ON b.pkgoid = p.oid
+	    WHERE p.pkgname = 'test_pkg' AND p.pkgnamespace = 'public'::regnamespace},
+	connect_to_oraport => 1),
+	'f', 'restored package body inherits NONEDITIONABLE');
 is($node->safe_psql('package_restore',
 	'SELECT public.test_pkg.hello() FROM dual', connect_to_oraport => 1),
 	'Hello from test package', 'function from restored package is callable');

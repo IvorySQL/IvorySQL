@@ -69,7 +69,7 @@ static ObjectAddress CreatePackage_internal(const char *pkgname,
 										bool use_collation);
 static ObjectAddress CreatePackageBody_internal(const char *pkgname,
 										Oid namespaceid, const char *bodysrc,
-										bool replace, bool editable);
+											bool replace, PackageBodyEdition edition);
 static bool package_source_nochange(HeapTuple tuple, const char *src,
 									bool define_invok, const char *access_source,
 									bool use_collation);
@@ -320,7 +320,7 @@ CreatePackage_internal(const char *pkgname,
 static ObjectAddress
 CreatePackageBody_internal(const char *pkgname,
 									Oid namespaceid, const char *bodysrc,
-									bool replace, bool editable)
+									bool replace, PackageBodyEdition edition)
 {
 	Relation	rel;
 	HeapTuple	tup;
@@ -339,7 +339,7 @@ CreatePackageBody_internal(const char *pkgname,
 	Oid			bodyid;
 	Form_pg_package  pkgForm;
 	Form_pg_package_body pkgbodyForm;
-	char		pkg_editable;
+	bool		pkg_editable;
 
 	/*
 	 * does package exist
@@ -358,8 +358,9 @@ CreatePackageBody_internal(const char *pkgname,
 	pkg_editable = pkgForm->editable;
 	ReleaseSysCache(pkgtup);
 
-	/* body editable must match its package */
-	if (pkg_editable != editable)
+	/* An omitted property inherits the specification's property. */
+	if (edition != PACKAGE_BODY_EDITION_INHERIT &&
+		pkg_editable != (edition == PACKAGE_BODY_EDITIONABLE))
 		elog(ERROR, "The EDITIONABLE property of a TYPE or PACKAGE specification and its"
 					" body must match");
 
@@ -653,7 +654,7 @@ CreatePackageBody(CreatePackageBodyStmt *stmt)
 									namespaceId,
 									stmt->bodysrc,
 									stmt->replace,
-									stmt->editable);
+									stmt->edition);
 }
 
 /*
