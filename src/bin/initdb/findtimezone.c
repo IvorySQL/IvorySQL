@@ -1571,6 +1571,39 @@ identify_system_timezone(void)
 	struct tm  *tm = localtime(&t);
 	HKEY		rootKey;
 	int			idx;
+	DYNAMIC_TIME_ZONE_INFORMATION dtzi;
+
+	/*
+	 * GetDynamicTimeZoneInformation() reports the registry key name of the
+	 * current time zone, such as "China Standard Time".  Unlike the name that
+	 * strftime("%Z") returns, it is not localized, and it is exactly what
+	 * win32_tzmap is keyed on, so try it first.  The fallbacks below match
+	 * localized names against the "Std" values in the registry, which fails
+	 * where those values are not localized the same way, for example on a
+	 * Chinese Windows whose registry holds the English names; initdb then
+	 * fell back to GMT.
+	 */
+	if (GetDynamicTimeZoneInformation(&dtzi) != TIME_ZONE_ID_INVALID &&
+		dtzi.TimeZoneKeyName[0] != L'\0')
+	{
+		char		keyname[128];
+
+		if (WideCharToMultiByte(CP_UTF8, 0, dtzi.TimeZoneKeyName, -1,
+								keyname, sizeof(keyname), NULL, NULL) > 0)
+		{
+			for (i = 0; win32_tzmap[i].stdname != NULL; i++)
+			{
+				if (strcmp(keyname, win32_tzmap[i].stdname) == 0)
+				{
+#ifdef DEBUG_IDENTIFY_TIMEZONE
+					fprintf(stderr, "TZ \"%s\" matches system time zone key \"%s\"\n",
+							win32_tzmap[i].pgtzname, keyname);
+#endif
+					return win32_tzmap[i].pgtzname;
+				}
+			}
+		}
+	}
 
 	if (!tm)
 	{
