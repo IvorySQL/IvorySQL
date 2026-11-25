@@ -83,15 +83,20 @@ for my $source_port ($node->port, $node->oraport)
 					$label);
 			}
 
-			$node->safe_psql(
-				$dbname,
-				q{SET ivorysql.identifier_case_switch = normal;
+			$node->safe_psql($dbname, q{
 CREATE TABLE public.binding_base(a integer);
 INSERT INTO public.binding_base VALUES (1);
-ALTER VIEW public.fv_binding COMPILE;},
-				connect_to_oraport => 1);
-			is($node->safe_psql($dbname, 'SELECT a FROM public.fv_binding'),
-				'11', "$label preserves the invalidated view's function binding");
+});
+
+			# Recompile in a fresh Oracle session after the restore.
+			is($node->safe_psql($dbname, q{
+SET ivorysql.identifier_case_switch = interchange;
+ALTER VIEW public.fv_binding COMPILE;
+SHOW ivorysql.identifier_case_switch;
+SELECT a FROM public.fv_binding;
+}, connect_to_oraport => 1),
+				"interchange\n11",
+				"$label retains the original function after interchange recompilation");
 			is($node->safe_psql(
 					$dbname, q{
 SELECT n.nspname, p.proname
