@@ -959,28 +959,45 @@ Datum ora_utl_file_put_raw(PG_FUNCTION_ARGS)
 }
 
 /*
+ * Is "path" inside directory "dir"?  Both must already be canonicalized
+ * with canonicalize_path().  A directory that still ends with a separator
+ * after canonicalization is a root ("/" or "C:/"), which contains every path
+ * starting with it.  File names are case-insensitive on Windows.
+ */
+static bool
+path_in_directory(const char *dir, const char *path)
+{
+	size_t		len = strlen(dir);
+
+	if (len == 0)
+		return false;
+#ifdef WIN32
+	if (pg_strncasecmp(dir, path, len) != 0)
+		return false;
+#else
+	if (strncmp(dir, path, len) != 0)
+		return false;
+#endif
+	if (IS_DIR_SEP(dir[len - 1]))
+		return true;
+	return IS_DIR_SEP(path[len]);
+}
+
+/*
  * sys.utl_file_directory security .. is solved with aux. table.
  *
- * Raise exception if don't find string in table.
+ * Raise exception if path is not inside one of the directories in the table.
+ * "path" has been canonicalized by the caller; canonicalize each directory
+ * the same way before comparing, so that a directory registered as, for
+ * example, 'C:\data\' or '/srv/files/' matches 'C:/data/a.txt' or
+ * '/srv/files/a.txt'.  (canonicalize_path() turns backslashes into slashes on
+ * Windows and removes trailing and duplicate separators.)
  */
 static void
 check_secure_locality(const char *path)
 {
 	static SPIPlanPtr	plan = NULL;
-
-	Datum	values[1];
-	char	nulls[1] = {' '};
-
-	values[0] = CStringGetTextDatum(path);
-
-	/*
-	 * SELECT 1 FROM sys.utl_file_directory
-	 *   WHERE CASE WHEN substring(dir from '.$') = '/' THEN
-	 *     substring($1, 1, length(dir)) = dir
-	 *   ELSE
-	 *     substring($1, 1, length(dir) + 1) = dir || '/'
-	 *   END
-	 */
+	bool		found = false;
 
 	if (SPI_connect() < 0)
 		ereport(ERROR,
@@ -989,21 +1006,8 @@ check_secure_locality(const char *path)
 
 	if (!plan)
 	{
-		Oid		argtypes[] = {TEXTOID};
-
-		/*
-		 * Directory names may contain '_' or '%' characters, 
-		 * so we prefer equality over LIKE operator to bypass
-		 * the '_' and '%' special handling.
-		 */
-		SPIPlanPtr p = SPI_prepare(
-		    "SELECT 1 FROM sys.utl_file_directory"
-	 	        " WHERE CASE WHEN substring(dir from '.$') = '/' THEN"
-	 	        "  substring($1, 1, length(dir)) = dir"
-	 	        " ELSE"
-	 	        "  substring($1, 1, length(dir) + 1) = dir || '/'"
-	 	        " END",
-		    1, argtypes);
+		SPIPlanPtr p = SPI_prepare("SELECT dir FROM sys.utl_file_directory",
+								   0, NULL);
 
 		if (p == NULL || (plan = SPI_saveplan(p)) == NULL)
 			ereport(ERROR,
@@ -1011,12 +1015,23 @@ check_secure_locality(const char *path)
 				errmsg("SPI_prepare_failed")));
 	}
 
-	if (SPI_OK_SELECT != SPI_execute_plan(plan, values, nulls, false, 1))
+	if (SPI_OK_SELECT != SPI_execute_plan(plan, NULL, NULL, false, 0))
 		ereport(ERROR,
 			(errcode(ERRCODE_INTERNAL_ERROR),
 			 errmsg("can't execute sql")));
 
-	if (SPI_processed == 0)
+	for (uint64 i = 0; i < SPI_processed && !found; i++)
+	{
+		char	   *dir = SPI_getvalue(SPI_tuptable->vals[i],
+									   SPI_tuptable->tupdesc, 1);
+
+		if (dir == NULL)
+			continue;
+		canonicalize_path(dir);
+		found = path_in_directory(dir, path);
+	}
+
+	if (!found)
 		ereport(ERROR,
 			(errcode(ERRCODE_RAISE_EXCEPTION),
 			 errmsg(INVALID_PATH),

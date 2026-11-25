@@ -343,6 +343,25 @@ begin
 end;
 /
 
+-- directories are compared in canonical form: trailing and duplicate
+-- separators and "." components (and, on Windows, backslashes) do not
+-- matter.  Keep only the non-canonical entry, since any matching row
+-- would do.
+delete from sys.utl_file_directory where dirname = 'data_directory';
+insert into sys.utl_file_directory(dirname, dir)
+select 'data_directory_alt', current_setting('data_directory') || '//./';
+declare
+    f UTL_FILE.FILE_TYPE;
+begin
+    f := utl_file.fopen('data_directory_alt', 'regress_alt.txt', 'w');
+    utl_file.put_line(f, 'ok');
+    utl_file.fclose(f);
+    utl_file.fremove('data_directory_alt', 'regress_alt.txt');
+    raise notice 'non-canonical directory entry accepted';
+end;
+/
+delete from sys.utl_file_directory where dirname = 'data_directory_alt';
+
 -- clean up
 delete from sys.utl_file_directory where dirname = 'data_directory';
 /
