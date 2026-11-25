@@ -79,10 +79,11 @@
 static HTAB *TypeCacheHash = NULL;
 
 /*
- * The mapping of relation's OID to the corresponding composite type OID.
- * We're keeping the map entry when the corresponding typentry has something
- * to clear i.e it has either TCFLAGS_HAVE_PG_TYPE_DATA, or
- * TCFLAGS_OPERATOR_FLAGS, or tupdesc.
+ * Mapping from pg_type.typrelid to pg_type.oid, for composite types only. We
+ * never delete entries from this hash table, so any code that uses it must
+ * account for the possibility of entries that no longer match TypeCacheHash.
+ * We do overwrite entries in this hash table when needed, for example when a
+ * relation OID is reused. See comments in InvalidateCompositeTypeCacheEntry.
  */
 static HTAB *RelIdToTypeIdCacheHash = NULL;
 
@@ -223,10 +224,6 @@ typedef struct SharedTypmodTableEntry
 	dsa_pointer shared_tupdesc;
 } SharedTypmodTableEntry;
 
-static Oid *in_progress_list;
-static int	in_progress_list_len;
-static int	in_progress_list_maxlen;
-
 /*
  * A comparator function for SharedRecordTableKey.
  */
@@ -349,7 +346,6 @@ static TupleDesc find_or_make_matching_shared_tupledesc(TupleDesc tupdesc);
 static dsa_pointer share_tupledesc(dsa_area *area, TupleDesc tupdesc,
 								   uint32 typmod);
 static void insert_rel_type_cache_if_needed(TypeCacheEntry *typentry);
-static void delete_rel_type_cache_if_needed(TypeCacheEntry *typentry);
 
 
 /*
@@ -387,13 +383,11 @@ lookup_type_cache(Oid type_id, int flags)
 {
 	TypeCacheEntry *typentry;
 	bool		found;
-	int			in_progress_offset;
 
 	if (TypeCacheHash == NULL)
 	{
 		/* First time through: initialize the hash table */
 		HASHCTL		ctl;
-		int			allocsize;
 
 		ctl.keysize = sizeof(Oid);
 		ctl.entrysize = sizeof(TypeCacheEntry);
@@ -424,36 +418,15 @@ lookup_type_cache(Oid type_id, int flags)
 		/* Also make sure CacheMemoryContext exists */
 		if (!CacheMemoryContext)
 			CreateCacheMemoryContext();
-
-		/*
-		 * reserve enough in_progress_list slots for many cases
-		 */
-		allocsize = 4;
-		in_progress_list =
-			MemoryContextAlloc(CacheMemoryContext,
-							   allocsize * sizeof(*in_progress_list));
-		in_progress_list_maxlen = allocsize;
 	}
 
 	Assert(TypeCacheHash != NULL && RelIdToTypeIdCacheHash != NULL);
-
-	/* Register to catch invalidation messages */
-	if (in_progress_list_len >= in_progress_list_maxlen)
-	{
-		int			allocsize;
-
-		allocsize = in_progress_list_maxlen * 2;
-		in_progress_list = repalloc(in_progress_list,
-									allocsize * sizeof(*in_progress_list));
-		in_progress_list_maxlen = allocsize;
-	}
-	in_progress_offset = in_progress_list_len++;
-	in_progress_list[in_progress_offset] = type_id;
 
 	/* Try to look up an existing entry */
 	typentry = (TypeCacheEntry *) hash_search(TypeCacheHash,
 											  &type_id,
 											  HASH_FIND, NULL);
+
 	if (typentry == NULL)
 	{
 		/*
@@ -501,6 +474,13 @@ lookup_type_cache(Oid type_id, int flags)
 		typentry->typelem = typtup->typelem;
 		typentry->typarray = typtup->typarray;
 		typentry->typcollation = typtup->typcollation;
+
+		/*
+		 * Add an entry to RelIdToTypeIdCacheHash, if needed, before setting
+		 * TCFLAGS_HAVE_PG_TYPE_DATA, so that if it fails, the next call to
+		 * this function for this type_id will try again to insert it.
+		 */
+		insert_rel_type_cache_if_needed(typentry);
 		typentry->flags |= TCFLAGS_HAVE_PG_TYPE_DATA;
 
 		/* If it's a domain, immediately thread it into the domain cache list */
@@ -547,6 +527,13 @@ lookup_type_cache(Oid type_id, int flags)
 		typentry->typelem = typtup->typelem;
 		typentry->typarray = typtup->typarray;
 		typentry->typcollation = typtup->typcollation;
+
+		/*
+		 * Add an entry to RelIdToTypeIdCacheHash, if needed, before setting
+		 * TCFLAGS_HAVE_PG_TYPE_DATA, so that if it fails, the next call to
+		 * this function for this type_id will try again to insert it.
+		 */
+		insert_rel_type_cache_if_needed(typentry);
 		typentry->flags |= TCFLAGS_HAVE_PG_TYPE_DATA;
 
 		ReleaseSysCache(tp);
@@ -944,13 +931,6 @@ lookup_type_cache(Oid type_id, int flags)
 	{
 		load_domaintype_info(typentry);
 	}
-
-	INJECTION_POINT("typecache-before-rel-type-cache-insert", NULL);
-
-	Assert(in_progress_offset + 1 == in_progress_list_len);
-	in_progress_list_len--;
-
-	insert_rel_type_cache_if_needed(typentry);
 
 	return typentry;
 }
@@ -2357,13 +2337,8 @@ SharedRecordTypmodRegistryAttach(SharedRecordTypmodRegistry *registry)
 static void
 InvalidateCompositeTypeCacheEntry(TypeCacheEntry *typentry)
 {
-	bool		hadTupDescOrOpclass;
-
 	Assert(typentry->typtype == TYPTYPE_COMPOSITE &&
 		   OidIsValid(typentry->typrelid));
-
-	hadTupDescOrOpclass = (typentry->tupDesc != NULL) ||
-		(typentry->flags & TCFLAGS_OPERATOR_FLAGS);
 
 	/* Delete tupdesc if we have it */
 	if (typentry->tupDesc != NULL)
@@ -2389,11 +2364,37 @@ InvalidateCompositeTypeCacheEntry(TypeCacheEntry *typentry)
 	typentry->flags &= ~TCFLAGS_OPERATOR_FLAGS;
 
 	/*
-	 * Call delete_rel_type_cache_if_needed() if we actually cleared
-	 * something.
+	 * Do not delete from RelIdToTypeIdCacheHash here! We can't be certain
+	 * that the relation OID -> type OID mapping stored there is still valid
+	 * until the next time we look up the pg_type row, but if it is still
+	 * valid and if there is a call to lookup_type_cache() on the call stack
+	 * for this same type OID, then removing the hash table entry here would
+	 * lead to that call returning without a RelIdToTypeIdCacheHash entry in
+	 * place. That, in turn, could lead to a future invalidation event on the
+	 * relevant relation OID being ignored.
+	 *
+	 * But what about the reverse scenario, where the relation OID -> type OID
+	 * mapping stored in RelIdToTypeIdCacheHash is no longer valid? That can
+	 * happen if the type OID is reused, or if a manual update to pg_type is
+	 * performed. The leftover hash table entry isn't a problem, because we'll
+	 * just ignore it, but you might fear that failing to immediately create a
+	 * replacement mapping for the new relation OID could lead to missing an
+	 * invalidation message in some other scenario. For that to happen, we've
+	 * got to be processing invalidation messages here from the middle of a
+	 * lookup_type_cache() call for the same OID that is being invalidated;
+	 * otherwise, the next call to lookup_type_cache() will establish the
+	 * proper mapping before returning the TypeCacheEntry.
+	 *
+	 * In the first scenario, where a pg_type OID is reused, the old type has
+	 * to be dropped before a new one can be created, and so invalidation
+	 * processing for the old type will have to complete prior to the first
+	 * lookup of the new type. In the second scenario, things will also be
+	 * fine as long as the manual catalog updates are happening at the top
+	 * level. If the user somehow manages to put a catalog update someplace
+	 * where it executes in the middle of a lookup_type_cache() call, they
+	 * might miss an invalidation, but it's unclear that this is even
+	 * possible, and the superuser has easier ways to break the system.
 	 */
-	if (hadTupDescOrOpclass)
-		delete_rel_type_cache_if_needed(typentry);
 }
 
 /*
@@ -2423,8 +2424,9 @@ TypeCacheRelCallback(Datum arg, Oid relid)
 		RelIdToTypeIdCacheEntry *relentry;
 
 		/*
-		 * Find an RelIdToTypeIdCacheHash entry, which should exist as soon as
-		 * corresponding typcache entry has something to clean.
+		 * If this relation OID is for a composite type,
+		 * RelIdToTypeIdCacheHash will give us the type OID whose
+		 * TypeCacheEntry must be invalidated.
 		 */
 		relentry = (RelIdToTypeIdCacheEntry *) hash_search(RelIdToTypeIdCacheHash,
 														   &relid,
@@ -2436,13 +2438,15 @@ TypeCacheRelCallback(Datum arg, Oid relid)
 													  &relentry->composite_typid,
 													  HASH_FIND, NULL);
 
-			if (typentry != NULL)
-			{
-				Assert(typentry->typtype == TYPTYPE_COMPOSITE);
-				Assert(relid == typentry->typrelid);
-
+			/*
+			 * If the RelIdToTypeIdCacheHash entry isn't stale, invalidate the
+			 * corresponding type. Don't try to clean up stale entries here;
+			 * see comments in InvalidateCompositeTypeCacheEntry.
+			 */
+			if (typentry != NULL &&
+				typentry->typtype == TYPTYPE_COMPOSITE &&
+				typentry->typrelid == relid)
 				InvalidateCompositeTypeCacheEntry(typentry);
-			}
 		}
 
 		/*
@@ -2525,8 +2529,6 @@ TypeCacheTypCallback(Datum arg, int cacheid, uint32 hashvalue)
 
 	while ((typentry = (TypeCacheEntry *) hash_seq_search(&status)) != NULL)
 	{
-		bool		hadPgTypeData = (typentry->flags & TCFLAGS_HAVE_PG_TYPE_DATA);
-
 		Assert(hashvalue == 0 || typentry->type_id_hash == hashvalue);
 
 		/*
@@ -2536,13 +2538,6 @@ TypeCacheTypCallback(Datum arg, int cacheid, uint32 hashvalue)
 		 */
 		typentry->flags &= ~(TCFLAGS_HAVE_PG_TYPE_DATA |
 							 TCFLAGS_CHECKED_DOMAIN_CONSTRAINTS);
-
-		/*
-		 * Call delete_rel_type_cache_if_needed() if we cleaned
-		 * TCFLAGS_HAVE_PG_TYPE_DATA flag previously.
-		 */
-		if (hadPgTypeData)
-			delete_rel_type_cache_if_needed(typentry);
 	}
 }
 
@@ -2572,17 +2567,8 @@ TypeCacheOpcCallback(Datum arg, int cacheid, uint32 hashvalue)
 	hash_seq_init(&status, TypeCacheHash);
 	while ((typentry = (TypeCacheEntry *) hash_seq_search(&status)) != NULL)
 	{
-		bool		hadOpclass = (typentry->flags & TCFLAGS_OPERATOR_FLAGS);
-
 		/* Reset equality/comparison/hashing validity information */
 		typentry->flags &= ~TCFLAGS_OPERATOR_FLAGS;
-
-		/*
-		 * Call delete_rel_type_cache_if_needed() if we actually cleared some
-		 * of TCFLAGS_OPERATOR_FLAGS.
-		 */
-		if (hadOpclass)
-			delete_rel_type_cache_if_needed(typentry);
 	}
 }
 
@@ -2914,12 +2900,13 @@ enum_oid_cmp(const void *left, const void *right)
 static dsa_pointer
 share_tupledesc(dsa_area *area, TupleDesc tupdesc, uint32 typmod)
 {
+	Size		size = TupleDescCopySize(tupdesc);
 	dsa_pointer shared_dp;
 	TupleDesc	shared;
 
-	shared_dp = dsa_allocate(area, TupleDescSize(tupdesc));
+	shared_dp = dsa_allocate(area, size);
 	shared = (TupleDesc) dsa_get_address(area, shared_dp);
-	TupleDescCopy(shared, tupdesc);
+	TupleDescCopySized(shared, size, tupdesc);
 	shared->tdtypmod = typmod;
 
 	return shared_dp;
@@ -2993,12 +2980,13 @@ find_or_make_matching_shared_tupledesc(TupleDesc tupdesc)
 	PG_END_TRY();
 	typmod_table_entry->typmod = typmod;
 	typmod_table_entry->shared_tupdesc = shared_dp;
-	dshash_release_lock(CurrentSession->shared_typmod_table,
-						typmod_table_entry);
 
 	/*
 	 * Finally create an entry in the record table so others with matching
 	 * tuple descriptors can reuse the typmod.
+	 *
+	 * Note that we're still holding the lock on typmod_table_entry.  Any code
+	 * that needs both locks must acquire them in this order.
 	 */
 	record_table_entry = (SharedRecordTableEntry *)
 		dshash_find_or_insert(CurrentSession->shared_record_table, &key,
@@ -3012,10 +3000,15 @@ find_or_make_matching_shared_tupledesc(TupleDesc tupdesc)
 		dshash_release_lock(CurrentSession->shared_record_table,
 							record_table_entry);
 
-		/* Might as well free up the space used by the one we created. */
-		found = dshash_delete_key(CurrentSession->shared_typmod_table,
-								  &typmod);
-		Assert(found);
+		/*
+		 * In general, it's unsafe to delete a TupleDesc once it's referenced
+		 * from either hash table, because other backends might already be
+		 * accessing it.  However, since we haven't released the lock on
+		 * typmod_table_entry, no one can have seen it yet, and thus no one
+		 * can have a pointer to shared_dp.
+		 */
+		dshash_delete_entry(CurrentSession->shared_typmod_table,
+							typmod_table_entry);
 		dsa_free(CurrentSession->area, shared_dp);
 
 		/* Return the one we found. */
@@ -3033,6 +3026,8 @@ find_or_make_matching_shared_tupledesc(TupleDesc tupdesc)
 	record_table_entry->key.u.shared_tupdesc = shared_dp;
 	dshash_release_lock(CurrentSession->shared_record_table,
 						record_table_entry);
+	dshash_release_lock(CurrentSession->shared_typmod_table,
+						typmod_table_entry);
 	result = (TupleDesc)
 		dsa_get_address(CurrentSession->area, shared_dp);
 	Assert(result->tdrefcount == -1);
@@ -3067,53 +3062,8 @@ shared_record_typmod_registry_detach(dsm_segment *segment, Datum datum)
 static void
 insert_rel_type_cache_if_needed(TypeCacheEntry *typentry)
 {
-	/* Immediately quit for non-composite types */
-	if (typentry->typtype != TYPTYPE_COMPOSITE)
-		return;
-
-	/* typrelid should be given for composite types */
-	Assert(OidIsValid(typentry->typrelid));
-
-	/*
-	 * Insert a RelIdToTypeIdCacheHash entry if the typentry have any
-	 * information indicating it should be here.
-	 */
-	if ((typentry->flags & TCFLAGS_HAVE_PG_TYPE_DATA) ||
-		(typentry->flags & TCFLAGS_OPERATOR_FLAGS) ||
-		typentry->tupDesc != NULL)
-	{
-		RelIdToTypeIdCacheEntry *relentry;
-		bool		found;
-
-		relentry = (RelIdToTypeIdCacheEntry *) hash_search(RelIdToTypeIdCacheHash,
-														   &typentry->typrelid,
-														   HASH_ENTER, &found);
-		relentry->relid = typentry->typrelid;
-		relentry->composite_typid = typentry->type_id;
-	}
-}
-
-/*
- * Delete entry RelIdToTypeIdCacheHash if needed after resetting of the
- * TCFLAGS_HAVE_PG_TYPE_DATA flag, or any of TCFLAGS_OPERATOR_FLAGS,
- * or tupDesc.
- */
-static void
-delete_rel_type_cache_if_needed(TypeCacheEntry *typentry)
-{
-#ifdef USE_ASSERT_CHECKING
-	int			i;
-	bool		is_in_progress = false;
-
-	for (i = 0; i < in_progress_list_len; i++)
-	{
-		if (in_progress_list[i] == typentry->type_id)
-		{
-			is_in_progress = true;
-			break;
-		}
-	}
-#endif
+	RelIdToTypeIdCacheEntry *relentry;
+	bool		found;
 
 	/* Immediately quit for non-composite types */
 	if (typentry->typtype != TYPTYPE_COMPOSITE)
@@ -3122,73 +3072,21 @@ delete_rel_type_cache_if_needed(TypeCacheEntry *typentry)
 	/* typrelid should be given for composite types */
 	Assert(OidIsValid(typentry->typrelid));
 
-	/*
-	 * Delete a RelIdToTypeIdCacheHash entry if the typentry doesn't have any
-	 * information indicating entry should be still there.
-	 */
-	if (!(typentry->flags & TCFLAGS_HAVE_PG_TYPE_DATA) &&
-		!(typentry->flags & TCFLAGS_OPERATOR_FLAGS) &&
-		typentry->tupDesc == NULL)
-	{
-		bool		found;
+	INJECTION_POINT("typecache-before-rel-type-cache-insert", NULL);
 
-		(void) hash_search(RelIdToTypeIdCacheHash,
-						   &typentry->typrelid,
-						   HASH_REMOVE, &found);
-		Assert(found || is_in_progress);
-	}
-	else
-	{
-#ifdef USE_ASSERT_CHECKING
-		/*
-		 * In assert-enabled builds otherwise check for RelIdToTypeIdCacheHash
-		 * entry if it should exist.
-		 */
-		bool		found;
-
-		if (!is_in_progress)
-		{
-			(void) hash_search(RelIdToTypeIdCacheHash,
-							   &typentry->typrelid,
-							   HASH_FIND, &found);
-			Assert(found);
-		}
-#endif
-	}
-}
-
-/*
- * Add possibly missing RelIdToTypeId entries related to TypeCacheHash
- * entries, marked as in-progress by lookup_type_cache().  It may happen
- * in case of an error or interruption during the lookup_type_cache() call.
- */
-static void
-finalize_in_progress_typentries(void)
-{
-	int			i;
-
-	for (i = 0; i < in_progress_list_len; i++)
-	{
-		TypeCacheEntry *typentry;
-
-		typentry = (TypeCacheEntry *) hash_search(TypeCacheHash,
-												  &in_progress_list[i],
-												  HASH_FIND, NULL);
-		if (typentry)
-			insert_rel_type_cache_if_needed(typentry);
-	}
-
-	in_progress_list_len = 0;
+	relentry = (RelIdToTypeIdCacheEntry *) hash_search(RelIdToTypeIdCacheHash,
+													   &typentry->typrelid,
+													   HASH_ENTER, &found);
+	relentry->relid = typentry->typrelid;
+	relentry->composite_typid = typentry->type_id;
 }
 
 void
 AtEOXact_TypeCache(void)
 {
-	finalize_in_progress_typentries();
 }
 
 void
 AtEOSubXact_TypeCache(void)
 {
-	finalize_in_progress_typentries();
 }

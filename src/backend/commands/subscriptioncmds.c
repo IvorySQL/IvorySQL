@@ -768,9 +768,9 @@ CreateSubscription(ParseState *pstate, CreateSubscriptionStmt *stmt,
 
 				relid = RangeVarGetRelid(rv, AccessShareLock, false);
 
-				/* Check for supported relkind. */
-				CheckSubscriptionRelkind(get_rel_relkind(relid),
-										 rv->schemaname, rv->relname);
+				/* Check that the relation can be replicated into. */
+				CheckSubscriptionTargetRel(relid, rv->schemaname,
+										   rv->relname);
 
 				AddSubscriptionRelState(subid, relid, table_state,
 										InvalidXLogRecPtr, true);
@@ -933,9 +933,8 @@ AlterSubscription_refresh(Subscription *sub, bool copy_data,
 
 			relid = RangeVarGetRelid(rv, AccessShareLock, false);
 
-			/* Check for supported relkind. */
-			CheckSubscriptionRelkind(get_rel_relkind(relid),
-									 rv->schemaname, rv->relname);
+			/* Check that the relation can be replicated into. */
+			CheckSubscriptionTargetRel(relid, rv->schemaname, rv->relname);
 
 			pubrel_local_oids[off++] = relid;
 
@@ -1326,12 +1325,19 @@ AlterSubscription(ParseState *pstate, AlterSubscriptionStmt *stmt,
 								 errmsg("cannot disable \"two_phase\" when prepared transactions exist"),
 								 errhint("Resolve these transactions and try again.")));
 
-					/* Change system catalog accordingly */
-					values[Anum_pg_subscription_subtwophasestate - 1] =
-						CharGetDatum(opts.twophase ?
-									 LOGICALREP_TWOPHASE_STATE_PENDING :
-									 LOGICALREP_TWOPHASE_STATE_DISABLED);
-					replaces[Anum_pg_subscription_subtwophasestate - 1] = true;
+					/*
+					 * Change system catalog accordingly, but do not reset the
+					 * state to PENDING if two_phase is already enabled.
+					 */
+					if (!(opts.twophase &&
+						  sub->twophasestate == LOGICALREP_TWOPHASE_STATE_ENABLED))
+					{
+						values[Anum_pg_subscription_subtwophasestate - 1] =
+							CharGetDatum(opts.twophase ?
+										 LOGICALREP_TWOPHASE_STATE_PENDING :
+										 LOGICALREP_TWOPHASE_STATE_DISABLED);
+						replaces[Anum_pg_subscription_subtwophasestate - 1] = true;
+					}
 				}
 
 				if (IsSet(opts.specified_opts, SUBOPT_FAILOVER))
@@ -2164,10 +2170,22 @@ check_publications_origin(WalReceiverConn *wrconn, List *publications,
 	for (i = 0; i < subrel_count; i++)
 	{
 		Oid			relid = subrel_local_oids[i];
-		char	   *schemaname = get_namespace_name(get_rel_namespace(relid));
-		char	   *tablename = get_rel_name(relid);
-		char	   *schemaname_lit = quote_literal_cstr(schemaname);
-		char	   *tablename_lit = quote_literal_cstr(tablename);
+		char	   *schemaname;
+		char	   *tablename;
+		char	   *schemaname_lit;
+		char	   *tablename_lit;
+
+		/* The table may have been dropped concurrently; skip if gone. */
+		tablename = get_rel_name(relid);
+		if (tablename == NULL)
+			continue;
+
+		schemaname = get_namespace_name(get_rel_namespace(relid));
+		if (schemaname == NULL)
+			continue;
+
+		schemaname_lit = quote_literal_cstr(schemaname);
+		tablename_lit = quote_literal_cstr(tablename);
 
 		appendStringInfo(&cmd, "AND NOT (N.nspname = %s AND C.relname = %s)\n",
 						 schemaname_lit, tablename_lit);

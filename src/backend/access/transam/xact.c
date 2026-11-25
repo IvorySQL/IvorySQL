@@ -64,6 +64,7 @@
 #include "utils/builtins.h"
 #include "utils/combocid.h"
 #include "utils/guc.h"
+#include "utils/injection_point.h"
 #include "utils/inval.h"
 #include "utils/memutils.h"
 #include "utils/relmapper.h"
@@ -1347,6 +1348,9 @@ RecordTransactionCommit(void)
 													 &RelcacheInitFileInval);
 	wrote_xlog = (XactLastRecEnd != 0);
 
+	/* Load the injection point before entering the critical section */
+	INJECTION_POINT_LOAD("commit-before-clog-update");
+
 	/*
 	 * If we haven't been assigned an XID yet, we neither can, nor do we want
 	 * to write a COMMIT record.
@@ -1500,6 +1504,12 @@ RecordTransactionCommit(void)
 		forceSyncCommit || nrels > 0)
 	{
 		XLogFlush(XactLastRecEnd);
+
+		/*
+		 * The commit record is on disk, but not in CLOG yet.  A test can stop
+		 * here to see what others make of the transaction meanwhile.
+		 */
+		INJECTION_POINT_CACHED("commit-before-clog-update", NULL);
 
 		/*
 		 * Now we may update the CLOG, if we wrote a COMMIT record above
@@ -1873,6 +1883,12 @@ RecordTransactionAbort(bool isSubXact)
 		pfree(rels);
 	if (ndroppedstats)
 		pfree(droppedstats);
+
+	/*
+	 * Test the window where the transaction is aborted in pg_xact but still
+	 * present in ProcArray.
+	 */
+	INJECTION_POINT("transaction-abort-after-clog", NULL);
 
 	return latestXid;
 }
@@ -2472,6 +2488,7 @@ CommitTransaction(void)
 	AtEOXact_Files(true);
 	AtEOXact_ComboCid();
 	AtEOXact_HashTables(true);
+	AtEOXact_RI(true);
 	AtEOXact_PgStat(true, is_parallel_worker);
 	AtEOXact_Snapshot(true, false);
 	AtEOXact_ApplyLauncher(true);
@@ -2766,6 +2783,7 @@ PrepareTransaction(void)
 	AtEOXact_Files(true);
 	AtEOXact_ComboCid();
 	AtEOXact_HashTables(true);
+	AtEOXact_RI(true);
 	/* don't call AtEOXact_PgStat here; we fixed pgstat state above */
 	AtEOXact_Snapshot(true, true);
 	/* we treat PREPARE as ROLLBACK so far as waking workers goes */
@@ -2990,6 +3008,7 @@ AbortTransaction(void)
 		AtEOXact_Files(false);
 		AtEOXact_ComboCid();
 		AtEOXact_HashTables(false);
+		AtEOXact_RI(false);
 		AtEOXact_PgStat(false, is_parallel_worker);
 		AtEOXact_ApplyLauncher(false);
 		AtEOXact_LogicalRepWorkers(false);
@@ -4849,6 +4868,8 @@ RollbackAndReleaseCurrentSubTransaction(void)
 		   s->blockState == TBLOCK_INPROGRESS ||
 		   s->blockState == TBLOCK_IMPLICIT_INPROGRESS ||
 		   s->blockState == TBLOCK_PARALLEL_INPROGRESS ||
+		   s->blockState == TBLOCK_END ||
+		   s->blockState == TBLOCK_PREPARE ||
 		   s->blockState == TBLOCK_STARTED);
 }
 

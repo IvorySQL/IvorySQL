@@ -2,14 +2,14 @@
 # Copyright (C) 2017 PostgreSQL Global Development Group
 # Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
 # This file is distributed under the same license as the PostgreSQL package.
-# Dennis Björklund <db@zigo.dhs.org>, 2017, 2018, 2019, 2020, 2021, 2022.
+# Dennis Björklund <db@zigo.dhs.org>, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026.
 #
 msgid ""
 msgstr ""
 "Project-Id-Version: PostgreSQL 15\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2022-04-11 13:39+0000\n"
-"PO-Revision-Date: 2022-04-11 16:02+0200\n"
+"POT-Creation-Date: 2026-08-28 14:32+0000\n"
+"PO-Revision-Date: 2026-08-28 06:37+0200\n"
 "Last-Translator: Dennis Björklund <db@zigo.dhs.org>\n"
 "Language-Team: Swedish <pgsql-translators@postgresql.org>\n"
 "Language: sv\n"
@@ -506,6 +506,11 @@ msgstr "posten \"%s\" är inte tilldelad än"
 #, c-format
 msgid "The tuple structure of a not-yet-assigned record is indeterminate."
 msgstr "Tuple-strukturen av en ej-ännu-tilldelad post är obestämd."
+
+#: pl_exec.c:8796
+#, c-format
+msgid "cannot cast type %s to %s"
+msgstr "kan inte omvandla typ %s till %s"
 
 #: pl_funcs.c:237
 msgid "statement block"

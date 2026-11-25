@@ -96,6 +96,39 @@ is( $contents,
 3|oauth|\{issuer=$issuer/param,"scope=openid postgres",validator=validator\}},
 	"pg_hba_file_rules recreates OAuth HBA settings");
 
+# An all-whitespace library list parses as an empty list.  Reject it without
+# crashing the postmaster during HBA reload.
+$node->append_conf('postgresql.conf', "oauth_validator_libraries = '   '");
+$node->reload;
+$log_start = $node->wait_for_log(
+	qr/oauth_validator_libraries must be set for authentication/,
+	$log_start);
+$bgconn->query_safe('SELECT 1');
+
+# The failed reload leaves the old HBA lines in place, but their validator is
+# no longer allowed.  In EXEC_BACKEND builds the backend will exit from not
+# being able to load the config.
+$node->connect_fails(
+	"user=test dbname=postgres oauth_issuer=$issuer oauth_client_id=f02c6361-0635",
+	"validator removed from oauth_validator_libraries is not used",
+	log_like => [
+		qr/oauth_validator_libraries must be set for authentication method oauth|FATAL:  could not load/
+	]);
+
+# Test that a quoted empty name is rejected
+$node->append_conf('postgresql.conf', "oauth_validator_libraries = 'validator,\"\"'");
+$node->reload;
+$log_start = $node->wait_for_log(
+	qr/invalid list syntax in parameter "oauth_validator_libraries"/,
+	$log_start);
+
+$node->append_conf('postgresql.conf',
+	"oauth_validator_libraries = 'validator'");
+$node->reload;
+$log_start = $node->wait_for_log(
+	qr/parameter "oauth_validator_libraries" changed to "validator"/,
+	$log_start);
+
 # To test against HTTP rather than HTTPS, we need to enable PGOAUTHDEBUG. But
 # first, check to make sure the client refuses such connections by default.
 $node->connect_fails(

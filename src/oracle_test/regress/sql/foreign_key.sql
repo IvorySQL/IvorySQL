@@ -243,6 +243,34 @@ DROP TABLE FKTABLE;
 DROP TABLE PKTABLE;
 
 --
+-- Check ACL on the cast function used to compare key values
+--
+-- Comparing the old and new key values to decide whether an UPDATE needs a
+-- check applies the FK column's cast function, as the user issuing the UPDATE.
+CREATE TYPE fk_acl_enum AS ENUM ('one');
+CREATE FUNCTION fk_acl_enum_to_int4(fk_acl_enum) RETURNS int4
+  AS 'SELECT 1' LANGUAGE sql IMMUTABLE STRICT;
+/
+CREATE CAST (fk_acl_enum AS int4) WITH FUNCTION fk_acl_enum_to_int4(fk_acl_enum) AS IMPLICIT;
+REVOKE EXECUTE ON FUNCTION fk_acl_enum_to_int4(fk_acl_enum) FROM PUBLIC;
+CREATE TABLE PKTABLE ( ptest1 int PRIMARY KEY );
+CREATE TABLE FKTABLE ( ftest1 fk_acl_enum REFERENCES PKTABLE, ftest2 int );
+INSERT INTO PKTABLE VALUES (1);
+INSERT INTO FKTABLE VALUES ('one', 1);
+CREATE USER regress_foreign_key_user NOLOGIN;
+GRANT UPDATE ON FKTABLE TO regress_foreign_key_user;
+SET ROLE regress_foreign_key_user;
+UPDATE FKTABLE SET ftest2 = 2; -- fails
+RESET ROLE;
+
+DROP TABLE FKTABLE;
+DROP TABLE PKTABLE;
+DROP USER regress_foreign_key_user;
+DROP CAST (fk_acl_enum AS int4);
+DROP FUNCTION fk_acl_enum_to_int4(fk_acl_enum);
+DROP TYPE fk_acl_enum;
+
+--
 -- Check initial check upon ALTER TABLE
 --
 CREATE TABLE PKTABLE ( ptest1 int, ptest2 int, PRIMARY KEY(ptest1, ptest2) );
@@ -521,7 +549,7 @@ CREATE TABLE FKTABLE (
   FOREIGN KEY (tid, fk_id_del_set_default) REFERENCES PKTABLE ON DELETE SET DEFAULT (fk_id_del_set_default, fk_id_del_set_default)
 );
 
-SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'fktable'::regclass::oid ORDER BY oid;
+SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'fktable'::regclass::oid ORDER BY conname COLLATE "C";
 
 INSERT INTO PKTABLE VALUES (1, 0), (1, 1), (1, 2);
 INSERT INTO FKTABLE VALUES
@@ -1385,14 +1413,14 @@ ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_1 FOR VALUES FR
 
 -- Child constraint will remain valid.
 SELECT conname, convalidated, conrelid::regclass FROM pg_constraint
-WHERE conrelid::regclass::text like 'fk_partitioned_fk%' ORDER BY oid::regclass::text;
+WHERE conrelid::regclass::text like 'fk_partitioned_fk%' ORDER BY conname COLLATE "C";
 
 -- Validate the constraint
 ALTER TABLE fk_partitioned_fk VALIDATE CONSTRAINT fk_partitioned_fk_a_b_fkey;
 
 -- All constraints are now valid.
 SELECT conname, convalidated, conrelid::regclass FROM pg_constraint
-WHERE conrelid::regclass::text like 'fk_partitioned_fk%' ORDER BY oid::regclass::text;
+WHERE conrelid::regclass::text like 'fk_partitioned_fk%' ORDER BY conname COLLATE "C";
 
 -- Attaching a child with a NOT VALID constraint.
 CREATE TABLE fk_partitioned_fk_2 (a int, b int);
@@ -1408,7 +1436,7 @@ ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_2 FOR VALUES FR
 
 -- The child constraint will also be valid.
 SELECT conname, convalidated FROM pg_constraint
-WHERE conrelid = 'fk_partitioned_fk_2'::regclass ORDER BY oid::regclass::text;
+WHERE conrelid = 'fk_partitioned_fk_2'::regclass ORDER BY conname COLLATE "C";
 
 -- Test case where the child constraint is invalid, the grandchild constraint
 -- is valid, and the validation for the grandchild should be skipped when a
@@ -1422,7 +1450,7 @@ ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_3 FOR VALUES FR
 
 -- All constraints are now valid.
 SELECT conname, convalidated, conrelid::regclass FROM pg_constraint
-WHERE conrelid::regclass::text like 'fk_partitioned_fk%' ORDER BY oid::regclass::text;
+WHERE conrelid::regclass::text like 'fk_partitioned_fk%' ORDER BY conname COLLATE "C";
 
 DROP TABLE fk_partitioned_fk, fk_notpartitioned_pk;
 
@@ -1441,14 +1469,14 @@ ALTER TABLE fk_notpartitioned_fk ADD CONSTRAINT fk_notpartitioned_fk_a_b_fkey2
 
 -- All constraints will be invalid, and _fkey2 constraints will not be enforced.
 SELECT conname, conenforced, convalidated FROM pg_constraint
-WHERE conrelid = 'fk_notpartitioned_fk'::regclass ORDER BY oid::regclass::text;
+WHERE conrelid = 'fk_notpartitioned_fk'::regclass ORDER BY conname COLLATE "C";
 
 ALTER TABLE fk_notpartitioned_fk VALIDATE CONSTRAINT fk_notpartitioned_fk_a_b_fkey;
 ALTER TABLE fk_notpartitioned_fk ALTER CONSTRAINT fk_notpartitioned_fk_a_b_fkey2 ENFORCED;
 
 -- All constraints are now valid and enforced.
 SELECT conname, conenforced, convalidated FROM pg_constraint
-WHERE conrelid = 'fk_notpartitioned_fk'::regclass ORDER BY oid::regclass::text;
+WHERE conrelid = 'fk_notpartitioned_fk'::regclass ORDER BY conname COLLATE "C";
 
 -- test a self-referential FK
 ALTER TABLE fk_partitioned_pk ADD CONSTRAINT selffk FOREIGN KEY (a, b) REFERENCES fk_partitioned_pk NOT VALID;
@@ -1457,12 +1485,12 @@ CREATE TABLE fk_partitioned_pk_3 PARTITION OF fk_partitioned_pk FOR VALUES FROM 
 CREATE TABLE fk_partitioned_pk_3_1 PARTITION OF fk_partitioned_pk_3 FOR VALUES FROM (2000) TO (2100);
 SELECT conname, conenforced, convalidated FROM pg_constraint
 WHERE conrelid = 'fk_partitioned_pk'::regclass AND contype = 'f'
-ORDER BY oid::regclass::text;
+ORDER BY conname COLLATE "C";
 ALTER TABLE fk_partitioned_pk_2 VALIDATE CONSTRAINT selffk;
 ALTER TABLE fk_partitioned_pk VALIDATE CONSTRAINT selffk;
 SELECT conname, conenforced, convalidated FROM pg_constraint
 WHERE conrelid = 'fk_partitioned_pk'::regclass AND contype = 'f'
-ORDER BY oid::regclass::text;
+ORDER BY conname COLLATE "C";
 
 DROP TABLE fk_notpartitioned_fk, fk_partitioned_pk;
 
@@ -2472,3 +2500,130 @@ WITH cte AS (
 
 DROP SCHEMA fkpart13 CASCADE;
 RESET search_path;
+
+-- Re-entrant ON DELETE CASCADE whose trigger invalidates the cached RI plan.
+-- The cascade for id = 2 runs a BEFORE DELETE trigger that does GRANT/REVOKE
+-- on the table, invalidating the cached plan the cascade is executing, and
+-- then deletes more rows, whose own cascade fetches that plan again.  The
+-- inner fetch must not free the plan out from under the outer cascade.
+-- This reproduces the crash without cache clobbering.
+CREATE TABLE fk_self_ref (
+    id int PRIMARY KEY,
+    parent_id int REFERENCES fk_self_ref (id) ON DELETE CASCADE
+);
+CREATE FUNCTION fk_self_ref_before_del() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF OLD.id = 2 THEN
+        GRANT SELECT ON fk_self_ref TO PUBLIC;
+        REVOKE SELECT ON fk_self_ref FROM PUBLIC;
+        DELETE FROM fk_self_ref WHERE parent_id = OLD.id;
+    ELSIF OLD.id = 4 AND current_setting('fk_self_ref.fail', true) = 'on' THEN
+        RAISE EXCEPTION 'fk_self_ref: deleting %', OLD.id;
+    END IF;
+    RETURN OLD;
+END$$;
+/
+CREATE TRIGGER fk_self_ref_before_del BEFORE DELETE ON fk_self_ref
+    FOR EACH ROW EXECUTE PROCEDURE fk_self_ref_before_del();
+INSERT INTO fk_self_ref VALUES
+    (1, NULL), (2, 1), (3, 2), (4, 3), (5, 4), (10, NULL), (11, 10);
+DELETE FROM fk_self_ref WHERE id = 1;
+SELECT * FROM fk_self_ref ORDER BY id;
+-- The same with the nested cascade raising an error while the plans are in
+-- use, repeatedly, then a normal delete after another invalidation.
+INSERT INTO fk_self_ref VALUES (1, NULL), (2, 1), (3, 2), (4, 3), (5, 4);
+SET fk_self_ref.fail = on;
+DO $$
+DECLARE
+    failures int := 0;
+BEGIN
+    FOR i IN 1..10 LOOP
+        BEGIN
+            DELETE FROM fk_self_ref WHERE id = 1;
+        EXCEPTION WHEN raise_exception THEN
+            failures := failures + 1;
+        END;
+    END LOOP;
+    RAISE NOTICE 'failures: %', failures;
+END$$;
+SELECT * FROM fk_self_ref ORDER BY id;
+RESET fk_self_ref.fail;
+GRANT SELECT ON fk_self_ref TO PUBLIC;
+REVOKE SELECT ON fk_self_ref FROM PUBLIC;
+DELETE FROM fk_self_ref WHERE id = 1;
+SELECT * FROM fk_self_ref ORDER BY id;
+DROP TABLE fk_self_ref;
+DROP FUNCTION fk_self_ref_before_del();
+
+-- Errors raised from inside an RI check's query, as opposed to by the check
+-- itself afterwards, must leave the stack of executing RI plans exact (an
+-- assertion at end of transaction checks that), and a subtransaction abort
+-- in the middle of all that must not disturb the plans queued to be freed.
+-- The cast raises for v = 97, so a check on row(97) errors out while its
+-- plan is being executed.  For v = 1 it first invalidates the plan of the
+-- check calling it, so that the nested check on row(97) finds that plan
+-- invalid while it is executing and queues it, and then errors out, which
+-- the cast catches: a subtransaction abort inside the outer check, with the
+-- outer check's plan queued.  The same error is then caught above every
+-- check, by a PL/pgSQL exception block and by ROLLBACK TO SAVEPOINT; more
+-- checks and a commit follow each.
+CREATE ROLE regress_fk_err_role;
+CREATE TABLE fk_err_pk (id int PRIMARY KEY);
+INSERT INTO fk_err_pk VALUES (1), (2);
+CREATE TYPE fk_err_vch AS (v int);
+CREATE FUNCTION fk_err_vcast(fk_err_vch) RETURNS int LANGUAGE plpgsql AS $$
+BEGIN
+    IF $1.v = 97 THEN
+        RAISE EXCEPTION 'fk_err_vcast: %', $1.v;
+    END IF;
+    IF $1.v = 1 THEN
+        IF current_setting('fk_err.flip', true) = 'on' THEN
+            GRANT SELECT ON fk_err_pk TO regress_fk_err_role;
+            PERFORM set_config('fk_err.flip', 'off', true);
+        ELSE
+            REVOKE SELECT ON fk_err_pk FROM regress_fk_err_role;
+            PERFORM set_config('fk_err.flip', 'on', true);
+        END IF;
+        BEGIN
+            INSERT INTO fk_err_fk VALUES (row(97)::fk_err_vch);
+        EXCEPTION WHEN raise_exception THEN NULL;
+        END;
+    END IF;
+    RETURN $1.v;
+END$$;
+/
+CREATE CAST (fk_err_vch AS int) WITH FUNCTION fk_err_vcast(fk_err_vch) AS IMPLICIT;
+CREATE TABLE fk_err_fk (a fk_err_vch REFERENCES fk_err_pk (id));
+-- caught inside the outer check
+INSERT INTO fk_err_fk SELECT row(1)::fk_err_vch FROM generate_series(1, 3);
+-- caught above every check, then more checks in the same transaction
+BEGIN;
+DO $$
+BEGIN
+    FOR i IN 1..3 LOOP
+        BEGIN
+            INSERT INTO fk_err_fk VALUES (row(97)::fk_err_vch);
+        EXCEPTION WHEN raise_exception THEN NULL;
+        END;
+    END LOOP;
+END$$;
+INSERT INTO fk_err_fk SELECT row(2)::fk_err_vch FROM generate_series(1, 3);
+COMMIT;
+-- the same with savepoints, including one rolled back after the check whose
+-- cast caught the error had already succeeded
+BEGIN;
+SAVEPOINT s1;
+INSERT INTO fk_err_fk VALUES (row(97)::fk_err_vch);
+ROLLBACK TO SAVEPOINT s1;
+INSERT INTO fk_err_fk SELECT row(2)::fk_err_vch FROM generate_series(1, 3);
+SAVEPOINT s2;
+INSERT INTO fk_err_fk SELECT row(1)::fk_err_vch FROM generate_series(1, 3);
+ROLLBACK TO SAVEPOINT s2;
+INSERT INTO fk_err_fk SELECT row(1)::fk_err_vch FROM generate_series(1, 3);
+COMMIT;
+SELECT a, count(*) FROM fk_err_fk GROUP BY a ORDER BY a;
+DROP TABLE fk_err_fk, fk_err_pk;
+DROP CAST (fk_err_vch AS int);
+DROP FUNCTION fk_err_vcast(fk_err_vch);
+DROP TYPE fk_err_vch;
+DROP ROLE regress_fk_err_role;

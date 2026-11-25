@@ -20,6 +20,7 @@
 #include "access/tableam.h"
 #include "access/transam.h"
 #include "access/xact.h"
+#include "catalog/catalog.h"
 #include "catalog/pg_am_d.h"
 #include "commands/trigger.h"
 #include "executor/executor.h"
@@ -37,6 +38,8 @@
 
 static bool tuples_equal(TupleTableSlot *slot1, TupleTableSlot *slot2,
 						 TypeCacheEntry **eq);
+static bool repl_index_key_equal(Relation idxrel, TupleTableSlot *slot1,
+								 TupleTableSlot *slot2, ScanKey skey);
 
 /*
  * Setup a ScanKey for a search in the relation 'rel' for a tuple 'key' that
@@ -174,12 +177,20 @@ should_refetch_tuple(TM_Result res, TM_FailureData *tmfd)
  *
  * If a matching tuple is found, lock it with lockmode, fill the slot with its
  * contents, and return true.  Return false otherwise.
+ *
+ * 'skipduplicates' specifies whether the first matching tuple can be used
+ * without comparing it against 'searchslot', unless the index scan sets
+ * xs_recheck (as with a lossy GiST index for WITHOUT OVERLAPS), in which case
+ * only the index key columns are compared, using the index's own equality
+ * semantics. If false, all matching tuples are compared against 'searchslot',
+ * which must contain a complete row.
  */
 bool
-RelationFindReplTupleByIndex(Relation rel, Oid idxoid,
-							 LockTupleMode lockmode,
-							 TupleTableSlot *searchslot,
-							 TupleTableSlot *outslot)
+RelationFindReplTupleByIndexExt(Relation rel, Oid idxoid,
+								bool skipduplicates,
+								LockTupleMode lockmode,
+								TupleTableSlot *searchslot,
+								TupleTableSlot *outslot)
 {
 	ScanKeyData skey[INDEX_MAX_KEYS];
 	int			skey_attoff;
@@ -189,12 +200,9 @@ RelationFindReplTupleByIndex(Relation rel, Oid idxoid,
 	Relation	idxrel;
 	bool		found;
 	TypeCacheEntry **eq = NULL;
-	bool		isIdxSafeToSkipDuplicates;
 
 	/* Open the index. */
 	idxrel = index_open(idxoid, RowExclusiveLock);
-
-	isIdxSafeToSkipDuplicates = (GetRelationIdentityOrPK(rel) == idxoid);
 
 	InitDirtySnapshot(snap);
 
@@ -214,9 +222,10 @@ retry:
 	{
 		/*
 		 * Avoid expensive equality check if the index is primary key or
-		 * replica identity index.
+		 * replica identity index, unless the index scan indicates that a
+		 * recheck is needed.
 		 */
-		if (!isIdxSafeToSkipDuplicates)
+		if (!skipduplicates)
 		{
 			if (eq == NULL)
 				eq = palloc0(sizeof(*eq) * outslot->tts_tupleDescriptor->natts);
@@ -224,6 +233,9 @@ retry:
 			if (!tuples_equal(outslot, searchslot, eq))
 				continue;
 		}
+		else if (scan->xs_recheck &&
+				 !repl_index_key_equal(idxrel, outslot, searchslot, skey))
+			continue;
 
 		ExecMaterializeSlot(outslot);
 
@@ -273,6 +285,25 @@ retry:
 	index_close(idxrel, NoLock);
 
 	return found;
+}
+
+/*
+ * ABI-compatible wrapper to emulate old version of the above function.
+ * Do not call this version in new code.
+ */
+bool
+RelationFindReplTupleByIndex(Relation rel, Oid idxoid,
+							 LockTupleMode lockmode,
+							 TupleTableSlot *searchslot,
+							 TupleTableSlot *outslot)
+{
+	bool		skipduplicates;
+
+	skipduplicates = (GetRelationIdentityOrPK(rel) == idxoid);
+
+	return RelationFindReplTupleByIndexExt(rel, idxoid,
+										   skipduplicates,
+										   lockmode, searchslot, outslot);
 }
 
 /*
@@ -335,6 +366,51 @@ tuples_equal(TupleTableSlot *slot1, TupleTableSlot *slot2,
 											att->attcollation,
 											slot1->tts_values[attrnum],
 											slot2->tts_values[attrnum])))
+			return false;
+	}
+
+	return true;
+}
+
+/*
+ * Compare the key columns of index 'idxrel' between the two slots, using the
+ * equality operators and collations of the scan key 'skey' built by
+ * build_replindex_scan_key().
+ */
+static bool
+repl_index_key_equal(Relation idxrel, TupleTableSlot *slot1,
+					 TupleTableSlot *slot2, ScanKey skey)
+{
+	Assert(slot1->tts_tupleDescriptor->natts ==
+		   slot2->tts_tupleDescriptor->natts);
+
+	for (int i = 0; i < idxrel->rd_index->indnkeyatts; i++)
+	{
+		AttrNumber	keycol = idxrel->rd_index->indkey.values[i];
+		Datum		value1;
+		Datum		value2;
+		bool		isnull1;
+		bool		isnull2;
+
+		value1 = slot_getattr(slot1, keycol, &isnull1);
+		value2 = slot_getattr(slot2, keycol, &isnull2);
+
+		/*
+		 * If one value is NULL and other is not, then they are certainly not
+		 * equal
+		 */
+		if (isnull1 != isnull2)
+			return false;
+
+		/*
+		 * If both are NULL, they can be considered equal.
+		 */
+		if (isnull1 || isnull2)
+			continue;
+
+		if (!DatumGetBool(FunctionCall2Coll(&skey[i].sk_func,
+											skey[i].sk_collation,
+											value1, value2)))
 			return false;
 	}
 
@@ -657,8 +733,8 @@ ExecSimpleRelationUpdate(ResultRelInfo *resultRelInfo,
 	ItemPointer tid = &(searchslot->tts_tid);
 
 	/*
-	 * We support only non-system tables, with
-	 * check_publication_add_relation() accountable.
+	 * Relations that must not be a logical replication target are rejected
+	 * before we get here; see CheckSubscriptionTargetRel().
 	 */
 	Assert(rel->rd_rel->relkind == RELKIND_RELATION);
 	Assert(!IsCatalogRelation(rel));
@@ -883,4 +959,41 @@ CheckSubscriptionRelkind(char relkind, const char *nspname,
 				 errmsg("cannot use relation \"%s.%s\" as logical replication target",
 						nspname, relname),
 				 errdetail_relkind_not_supported(relkind)));
+}
+
+/*
+ * Check that the local relation can be used as a logical replication target.
+ *
+ * Some relations must never be written by an apply worker.  System catalogs
+ * hold data that the server maintains for itself, and a temporary relation
+ * belongs to the session that created it.  A PostgreSQL publisher refuses to
+ * publish any of them, but the target relation is named by the publisher,
+ * which doesn't have to be a PostgreSQL server, so we can't rely on that.
+ *
+ * The nspname and relname are only needed for error reporting.
+ */
+void
+CheckSubscriptionTargetRel(Oid relid, const char *nspname,
+						   const char *relname)
+{
+	CheckSubscriptionRelkind(get_rel_relkind(relid), nspname, relname);
+
+	if (IsCatalogRelationOid(relid))
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("cannot use relation \"%s.%s\" as logical replication target",
+						nspname, relname),
+				 errdetail("This operation is not supported for system tables.")));
+
+	/*
+	 * Reject temporary relations.  Accessing a temporary relation of another
+	 * session is rejected when its buffers are read, but that is much later
+	 * than here, after we have already looked at its metadata.
+	 */
+	if (get_rel_persistence(relid) == RELPERSISTENCE_TEMP)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("cannot use relation \"%s.%s\" as logical replication target",
+						nspname, relname),
+				 errdetail("This operation is not supported for temporary tables.")));
 }

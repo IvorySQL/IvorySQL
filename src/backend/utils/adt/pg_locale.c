@@ -1277,7 +1277,7 @@ get_collation_actual_version(char collprovider, const char *collcollate)
 static size_t
 strlower_c(char *dst, size_t dstsize, const char *src, size_t srclen)
 {
-	int			i;
+	size_t		i;
 
 	for (i = 0; i < srclen && i < dstsize; i++)
 		dst[i] = pg_ascii_tolower(src[i]);
@@ -1291,7 +1291,7 @@ static size_t
 strtitle_c(char *dst, size_t dstsize, const char *src, size_t srclen)
 {
 	bool		wasalnum = false;
-	int			i;
+	size_t		i;
 
 	for (i = 0; i < srclen && i < dstsize; i++)
 	{
@@ -1315,7 +1315,7 @@ strtitle_c(char *dst, size_t dstsize, const char *src, size_t srclen)
 static size_t
 strupper_c(char *dst, size_t dstsize, const char *src, size_t srclen)
 {
-	int			i;
+	size_t		i;
 
 	for (i = 0; i < srclen && i < dstsize; i++)
 		dst[i] = pg_ascii_toupper(src[i]);
@@ -1324,10 +1324,29 @@ strupper_c(char *dst, size_t dstsize, const char *src, size_t srclen)
 	return srclen;
 }
 
+/*
+ * pg_strlower()
+ *
+ * Convert src to lowercase, and return the result length (not including
+ * terminating NUL).
+ *
+ * Lowercasing is intended for human-readable display.  If the goal is to
+ * convert to a canonical caseless form, see pg_strfold().
+ *
+ * src must be in the database encoding with no embedded NULs.  If srclen is
+ * -1, src must be NUL-terminated.  If dstsize is zero, dst may be NULL, which
+ * is useful for calculating the required buffer size before allocating.
+ *
+ * If the result length is less than dstsize, the NUL-terminated result is
+ * stored in dst.  Otherwise, the contents of dst are undefined, and the
+ * caller should use the return value to resize the buffer and retry.
+ */
 size_t
 pg_strlower(char *dst, size_t dstsize, const char *src, ssize_t srclen,
 			pg_locale_t locale)
 {
+	srclen = (srclen < 0) ? strlen(src) : srclen;
+
 	if (locale->ctype_is_c)
 		return strlower_c(dst, dstsize, src, srclen);
 	else if (locale->provider == COLLPROVIDER_BUILTIN)
@@ -1345,10 +1364,31 @@ pg_strlower(char *dst, size_t dstsize, const char *src, ssize_t srclen,
 	return 0;					/* keep compiler quiet */
 }
 
+/*
+ * pg_strtitle()
+ *
+ * Convert src to titlecase, and return the result length (not including
+ * terminating NUL).
+ *
+ * Titlecasing is intended for human-readable display.  A titlecase string has
+ * the initial letter of each word uppercased (or changed to a special
+ * titlecase form, if available), and all other characters lowercased.  Used
+ * to implement the SQL INITCAP() function.
+ *
+ * src must be in the database encoding with no embedded NULs.  If srclen is
+ * -1, src must be NUL-terminated.  If dstsize is zero, dst may be NULL, which
+ * is useful for calculating the required buffer size before allocating.
+ *
+ * If the result length is less than dstsize, the NUL-terminated result is
+ * stored in dst.  Otherwise, the contents of dst are undefined, and the
+ * caller should use the return value to resize the buffer and retry.
+ */
 size_t
 pg_strtitle(char *dst, size_t dstsize, const char *src, ssize_t srclen,
 			pg_locale_t locale)
 {
+	srclen = (srclen < 0) ? strlen(src) : srclen;
+
 	if (locale->ctype_is_c)
 		return strtitle_c(dst, dstsize, src, srclen);
 	else if (locale->provider == COLLPROVIDER_BUILTIN)
@@ -1366,10 +1406,29 @@ pg_strtitle(char *dst, size_t dstsize, const char *src, ssize_t srclen,
 	return 0;					/* keep compiler quiet */
 }
 
+/*
+ * pg_strupper()
+ *
+ * Convert src to uppercase, and return the result length (not including
+ * terminating NUL).
+ *
+ * Uppercasing is intended for human-readable display.  If the goal is to
+ * convert to a canonical caseless form, see pg_strfold().
+ *
+ * src must be in the database encoding with no embedded NULs.  If srclen is
+ * -1, src must be NUL-terminated.  If dstsize is zero, dst may be NULL, which
+ * is useful for calculating the required buffer size before allocating.
+ *
+ * If the result length is less than dstsize, the NUL-terminated result is
+ * stored in dst.  Otherwise, the contents of dst are undefined, and the
+ * caller should use the return value to resize the buffer and retry.
+ */
 size_t
 pg_strupper(char *dst, size_t dstsize, const char *src, ssize_t srclen,
 			pg_locale_t locale)
 {
+	srclen = (srclen < 0) ? strlen(src) : srclen;
+
 	if (locale->ctype_is_c)
 		return strupper_c(dst, dstsize, src, srclen);
 	else if (locale->provider == COLLPROVIDER_BUILTIN)
@@ -1387,10 +1446,35 @@ pg_strupper(char *dst, size_t dstsize, const char *src, ssize_t srclen,
 	return 0;					/* keep compiler quiet */
 }
 
+/*
+ * pg_strfold()
+ *
+ * Casefold src, and return the result length (not including terminating
+ * NUL).
+ *
+ * Casefolding produces a canonical string such that, iff the casefolded
+ * strings are equal, the original strings are a case-insensitive match (the
+ * strength of this guarantee depends on normalization, provider and locale).
+ * In practice the result is similar to lowercasing, but the purpose is
+ * different: lowercasing is for human-readable display; whereas casefolding
+ * is meant to canonicalize complex mappings reliably without regard for
+ * display.  Unicode guarantees that casefolding is stable across versions if
+ * the original string consists only of assigned code points.
+ *
+ * src must be in the database encoding with no embedded NULs.  If srclen is
+ * -1, src must be NUL-terminated.  If dstsize is zero, dst may be NULL, which
+ * is useful for calculating the required buffer size before allocating.
+ *
+ * If the result length is less than dstsize, the NUL-terminated result is
+ * stored in dst.  Otherwise, the contents of dst are undefined, and the
+ * caller should use the return value to resize the buffer and retry.
+ */
 size_t
 pg_strfold(char *dst, size_t dstsize, const char *src, ssize_t srclen,
 		   pg_locale_t locale)
 {
+	srclen = (srclen < 0) ? strlen(src) : srclen;
+
 	/* in the C locale, casefolding is the same as lowercasing */
 	if (locale->ctype_is_c)
 		return strlower_c(dst, dstsize, src, srclen);
@@ -1418,18 +1502,19 @@ pg_strfold(char *dst, size_t dstsize, const char *src, ssize_t srclen,
 int
 pg_strcoll(const char *arg1, const char *arg2, pg_locale_t locale)
 {
-	return locale->collate->strncoll(arg1, -1, arg2, -1, locale);
+	if (locale->collate == NULL)
+		return strcmp(arg1, arg2);
+	else
+		return locale->collate->strncoll(arg1, -1, arg2, -1, locale);
 }
 
 /*
  * pg_strncoll
  *
- * Call ucol_strcollUTF8(), ucol_strcoll(), strcoll_l() or wcscoll_l() as
- * appropriate for the given locale, platform, and database encoding. If the
- * locale is not specified, use the database collation.
+ * Compare strings according to the given locale.
  *
- * The input strings must be encoded in the database encoding. If an input
- * string is NUL-terminated, its length may be specified as -1.
+ * Strings must be encoded in the database encoding with no embedded NULs.  If
+ * an input string is NUL-terminated, its length may be specified as -1.
  *
  * The caller is responsible for breaking ties if the collation is
  * deterministic; this maintains consistency with pg_strnxfrm(), which cannot
@@ -1439,19 +1524,32 @@ int
 pg_strncoll(const char *arg1, ssize_t len1, const char *arg2, ssize_t len2,
 			pg_locale_t locale)
 {
-	return locale->collate->strncoll(arg1, len1, arg2, len2, locale);
+	if (locale->collate == NULL)
+	{
+		int			result;
+
+		len1 = (len1 < 0) ? strlen(arg1) : len1;
+		len2 = (len2 < 0) ? strlen(arg2) : len2;
+		result = memcmp(arg1, arg2, Min(len1, len2));
+
+		if ((result == 0) && (len1 != len2))
+			result = (len1 < len2) ? -1 : 1;
+		return result;
+	}
+	else
+		return locale->collate->strncoll(arg1, len1, arg2, len2, locale);
 }
 
 /*
- * Return true if the collation provider supports pg_strxfrm() and
- * pg_strnxfrm(); otherwise false.
- *
- *
- * No similar problem is known for the ICU provider.
+ * Return true if the locale supports pg_strxfrm() and pg_strnxfrm();
+ * otherwise false.
  */
 bool
 pg_strxfrm_enabled(pg_locale_t locale)
 {
+	if (locale->collate == NULL)
+		return true;
+
 	/*
 	 * locale->collate->strnxfrm is still a required method, even if it may
 	 * have the wrong behavior, because the planner uses it for estimates in
@@ -1468,7 +1566,10 @@ pg_strxfrm_enabled(pg_locale_t locale)
 size_t
 pg_strxfrm(char *dest, const char *src, size_t destsize, pg_locale_t locale)
 {
-	return locale->collate->strnxfrm(dest, destsize, src, -1, locale);
+	if (locale->collate == NULL)
+		return pg_strnxfrm(dest, destsize, src, strlen(src), locale);
+	else
+		return locale->collate->strnxfrm(dest, destsize, src, -1, locale);
 }
 
 /*
@@ -1478,33 +1579,50 @@ pg_strxfrm(char *dest, const char *src, size_t destsize, pg_locale_t locale)
  * ordinary strcmp() on transformed strings is equivalent to pg_strcoll() on
  * untransformed strings.
  *
- * The input string must be encoded in the database encoding. If the input
- * string is NUL-terminated, its length may be specified as -1. If 'destsize'
- * is zero, 'dest' may be NULL.
+ * String must be encoded in the database encoding with no embedded NULs.  If
+ * srclen is -1, src must be NUL-terminated.  If 'destsize' is zero, 'dest'
+ * may be NULL.
  *
  * Not all providers support pg_strnxfrm() safely. The caller should check
  * pg_strxfrm_enabled() first, otherwise this function may return wrong
  * results or an error.
  *
- * Returns the number of bytes needed (or more) to store the transformed
- * string, excluding the terminating nul byte. If the value returned is
- * 'destsize' or greater, the resulting contents of 'dest' are undefined.
+ * Returns the number of bytes needed (NB: or more; see comments above
+ * strnxfrm_libc()) to store the transformed string, excluding the terminating
+ * nul byte. If the value returned is 'destsize' or greater, the resulting
+ * contents of 'dest' are undefined, and the caller should use the return
+ * value to resize the buffer.
  */
 size_t
 pg_strnxfrm(char *dest, size_t destsize, const char *src, ssize_t srclen,
 			pg_locale_t locale)
 {
+	if (locale->collate == NULL)
+	{
+		srclen = (srclen < 0) ? strlen(src) : srclen;
+
+		if (destsize > srclen)
+		{
+			memcpy(dest, src, srclen);
+			dest[srclen] = '\0';
+		}
+
+		return srclen;
+	}
 	return locale->collate->strnxfrm(dest, destsize, src, srclen, locale);
 }
 
 /*
- * Return true if the collation provider supports pg_strxfrm_prefix() and
+ * Return true if the locale supports pg_strxfrm_prefix() and
  * pg_strnxfrm_prefix(); otherwise false.
  */
 bool
 pg_strxfrm_prefix_enabled(pg_locale_t locale)
 {
-	return (locale->collate->strnxfrm_prefix != NULL);
+	if (locale->collate == NULL)
+		return true;
+	else
+		return (locale->collate->strnxfrm_prefix != NULL);
 }
 
 /*
@@ -1516,7 +1634,10 @@ size_t
 pg_strxfrm_prefix(char *dest, const char *src, size_t destsize,
 				  pg_locale_t locale)
 {
-	return locale->collate->strnxfrm_prefix(dest, destsize, src, -1, locale);
+	if (locale->collate == NULL)
+		return pg_strnxfrm_prefix(dest, destsize, src, strlen(src), locale);
+	else
+		return locale->collate->strnxfrm_prefix(dest, destsize, src, -1, locale);
 }
 
 /*
@@ -1526,12 +1647,12 @@ pg_strxfrm_prefix(char *dest, const char *src, size_t destsize,
  * memcmp() on the byte sequence is equivalent to pg_strncoll() on
  * untransformed strings. The result is not nul-terminated.
  *
- * The input string must be encoded in the database encoding. If the input
- * string is NUL-terminated, its length may be specified as -1.
+ * String must be encoded in the database encoding with no embedded NULs. If
+ * the input string is NUL-terminated, its length may be specified as -1. If
+ * destsize is zero, dest may be NULL.
  *
- * Not all providers support pg_strnxfrm_prefix() safely. The caller should
- * check pg_strxfrm_prefix_enabled() first, otherwise this function may return
- * wrong results or an error.
+ * Not all providers support pg_strnxfrm_prefix() safely. The caller must
+ * check pg_strxfrm_prefix_enabled() first.
  *
  * If destsize is not large enough to hold the resulting byte sequence, stores
  * only the first destsize bytes in 'dest'. Returns the number of bytes
@@ -1541,7 +1662,19 @@ size_t
 pg_strnxfrm_prefix(char *dest, size_t destsize, const char *src,
 				   ssize_t srclen, pg_locale_t locale)
 {
-	return locale->collate->strnxfrm_prefix(dest, destsize, src, srclen, locale);
+	if (locale->collate == NULL)
+	{
+		size_t		len;
+
+		srclen = (srclen < 0) ? strlen(src) : srclen;
+		len = Min(srclen, destsize);
+
+		if (destsize > 0)
+			memcpy(dest, src, len);
+		return len;
+	}
+	else
+		return locale->collate->strnxfrm_prefix(dest, destsize, src, srclen, locale);
 }
 
 /*
