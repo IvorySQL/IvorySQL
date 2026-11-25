@@ -462,3 +462,27 @@ ora_dbms_session_reset(void)
 		DbmsSessionHash = NULL;
 	}
 }
+
+/*
+ * DBMS_SESSION.SLEEP
+ *
+ * Oracle treats a zero time limit as a no-op, accepts fractional seconds, and
+ * rejects a negative limit with ORA-38148 ("invalid time limit specified").
+ */
+PG_FUNCTION_INFO_V1(ora_dbms_session_sleep);
+
+Datum
+ora_dbms_session_sleep(PG_FUNCTION_ARGS)
+{
+	float8		seconds = PG_GETARG_FLOAT8(0);
+
+	if (seconds < 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("invalid time limit specified")));
+
+	if (seconds > 0)
+		pg_usleep((long) (seconds * 1000000.0));
+
+	PG_RETURN_VOID();
+}
