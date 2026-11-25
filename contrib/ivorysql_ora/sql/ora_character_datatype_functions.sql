@@ -859,6 +859,11 @@ FROM DUAL;
 -- A range that lands inside the character it skipped must not grow past the
 -- requested length.
 SELECT LENGTHB(SUBSTRB(U&'\6570\636E\5E93', 5, 1)) AS len FROM DUAL;
+-- A negative position that still reaches into the string pads the same way:
+-- two bytes before the start are padding, then one byte of the cut character.
+SELECT LENGTHB(SUBSTRB(U&'\6570\636E\5E93', -8, 3)) AS len,
+       ENCODE(CONVERT_TO(SUBSTRB(U&'\6570\636E\5E93', -8, 3), 'UTF8'), 'hex') AS hex
+FROM DUAL;
 
 /*
  * instrb
