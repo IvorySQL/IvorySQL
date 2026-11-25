@@ -414,6 +414,8 @@ static int	exec_for_query(PLiSQL_execstate * estate, PLiSQL_stmt_forq * stmt,
 						   Portal portal, bool prefetch_ok);
 static ParamListInfo setup_param_list(PLiSQL_execstate * estate,
 									  PLiSQL_expr * expr);
+static Portal exec_open_cursor_query(PLiSQL_execstate *estate, PLiSQL_expr *query,
+									 const char *name, int options);
 static ParamExternData *plisql_param_fetch(ParamListInfo params,
 										   int paramid, bool speculative,
 										   ParamExternData *prm);
@@ -3249,8 +3251,6 @@ exec_stmt_forc(PLiSQL_execstate * estate, PLiSQL_stmt_forc * stmt)
 	PLiSQL_var *curvar;
 	MemoryContext stmt_mcontext = NULL;
 	char	   *curname = NULL;
-	PLiSQL_expr *query;
-	ParamListInfo paramLI;
 	Portal		portal;
 	int			rc;
 
@@ -3323,26 +3323,8 @@ exec_stmt_forc(PLiSQL_execstate * estate, PLiSQL_stmt_forc * stmt)
 					 errmsg("arguments required for cursor")));
 	}
 
-	query = curvar->cursor_explicit_expr;
-	Assert(query);
-
-	if (query->plan == NULL)
-		exec_prepare_plan(estate, query, curvar->cursor_options);
-
-	/*
-	 * Set up ParamListInfo for this query
-	 */
-	paramLI = setup_param_list(estate, query);
-
-	/*
-	 * Open the cursor (the paramlist will get copied into the portal)
-	 */
-	portal = SPI_cursor_open_with_paramlist(curname, query->plan,
-											paramLI,
-											estate->readonly_func);
-	if (portal == NULL)
-		elog(ERROR, "could not open cursor: %s",
-			 SPI_result_code_string(SPI_result));
+	portal = exec_open_cursor_query(estate, curvar->cursor_explicit_expr,
+									curname, curvar->cursor_options);
 
 	/*
 	 * If cursor variable was NULL, store the generated portal name in it
@@ -4937,8 +4919,11 @@ exec_stmt_execsql(PLiSQL_execstate * estate,
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("INTO used with a command that cannot return data")));
 
-		/* Fetch target's datum entry */
-		target = (PLiSQL_variable *) plisql_get_datum(estate, estate->datums[stmt->target->dno]);
+		/* A package cursor's argument row has already been resolved by OPEN. */
+		if (stmt->target->dtype == PLISQL_DTYPE_ROW && OidIsValid(stmt->target->pkgoid))
+			target = stmt->target;
+		else
+			target = (PLiSQL_variable *) plisql_get_datum(estate, estate->datums[stmt->target->dno]);
 
 		/*
 		 * If SELECT ... INTO specified STRICT, and the query didn't find
@@ -5247,7 +5232,7 @@ exec_stmt_open(PLiSQL_execstate * estate, PLiSQL_stmt_open * stmt)
 	char	   *curname = NULL;
 	PLiSQL_expr *query;
 	Portal		portal;
-	ParamListInfo paramLI;
+	int			cursor_options;
 
 	/* ----------
 	 * Get the cursor variable and if it has an assigned name, check
@@ -5285,8 +5270,7 @@ exec_stmt_open(PLiSQL_execstate * estate, PLiSQL_stmt_open * stmt)
 		 * ----------
 		 */
 		query = stmt->query;
-		if (query->plan == NULL)
-			exec_prepare_plan(estate, query, stmt->cursor_options);
+		cursor_options = stmt->cursor_options;
 	}
 	else if (stmt->dynquery != NULL)
 	{
@@ -5367,24 +5351,10 @@ exec_stmt_open(PLiSQL_execstate * estate, PLiSQL_stmt_open * stmt)
 		}
 
 		query = curvar->cursor_explicit_expr;
-		if (query->plan == NULL)
-			exec_prepare_plan(estate, query, curvar->cursor_options);
+		cursor_options = curvar->cursor_options;
 	}
 
-	/*
-	 * Set up ParamListInfo for this query
-	 */
-	paramLI = setup_param_list(estate, query);
-
-	/*
-	 * Open the cursor (the paramlist will get copied into the portal)
-	 */
-	portal = SPI_cursor_open_with_paramlist(curname, query->plan,
-											paramLI,
-											estate->readonly_func);
-	if (portal == NULL)
-		elog(ERROR, "could not open cursor: %s",
-			 SPI_result_code_string(SPI_result));
+	portal = exec_open_cursor_query(estate, query, curname, cursor_options);
 
 	/*
 	 * If cursor variable was NULL, store the generated portal name in it,
@@ -5408,6 +5378,57 @@ exec_stmt_open(PLiSQL_execstate * estate, PLiSQL_stmt_open * stmt)
 		MemoryContextReset(stmt_mcontext);
 
 	return PLISQL_RC_OK;
+}
+
+
+/* Plan and bind a cursor query in the scope where it was declared. */
+static Portal
+exec_open_cursor_query(PLiSQL_execstate *estate, PLiSQL_expr *query,
+					   const char *name, int options)
+{
+	PLiSQL_function *func = query->func;
+	PLiSQL_execstate *saved_estate = func->cur_estate;
+	PLiSQL_execstate package_estate;
+	ParamListInfoData package_params;
+	bool		package_cursor = func != estate->func && func->item != NULL;
+	Portal		portal;
+
+	if (package_cursor)
+	{
+		package_estate = *estate;
+		package_estate.func = func;
+		package_estate.datums = func->datums;
+		package_estate.ndatums = func->ndatums;
+		package_params = *estate->paramLI;
+		package_params.paramFetchArg = &package_estate;
+		package_params.numParams = package_estate.ndatums;
+		package_estate.paramLI = &package_params;
+		estate = &package_estate;
+		func->cur_estate = estate;
+	}
+
+	PG_TRY();
+	{
+		ParamListInfo paramLI;
+
+		if (query->plan == NULL)
+			exec_prepare_plan(estate, query, options);
+		paramLI = setup_param_list(estate, query);
+		/* SPI copies the argument values into the new portal. */
+		portal = SPI_cursor_open_with_paramlist(name, query->plan, paramLI,
+											   estate->readonly_func);
+	}
+	PG_FINALLY();
+	{
+		if (package_cursor)
+			func->cur_estate = saved_estate;
+	}
+	PG_END_TRY();
+
+	if (portal == NULL)
+		elog(ERROR, "could not open cursor: %s",
+			 SPI_result_code_string(SPI_result));
+	return portal;
 }
 
 
@@ -8427,7 +8448,11 @@ exec_move_row_from_fields(PLiSQL_execstate * estate,
 			Oid			valtype;
 			int32		valtypmod;
 
-			var = (PLiSQL_var *) (estate->datums[row->varnos[fnum]]);
+			if (OidIsValid(row->pkgoid))
+				var = (PLiSQL_var *) get_package_datum_bydno(estate, row->pkgoid,
+																   row->varnos[fnum]);
+			else
+				var = (PLiSQL_var *) estate->datums[row->varnos[fnum]];
 
 			while (anum < td_natts &&
 				   TupleDescAttr(tupdesc, anum)->attisdropped)
