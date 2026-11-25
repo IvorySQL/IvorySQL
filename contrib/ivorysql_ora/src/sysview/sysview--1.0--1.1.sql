@@ -81,7 +81,7 @@ SELECT
 	p.pkgname::%1$s(128),
 	s.type::%1$s(12),
 	l.line::sys.number,
-	l.text::%1$s(4000) COLLATE pg_catalog."default",
+	l.text::%1$s(4000) COLLATE pg_catalog.default,
 	0::%1$s(256)
 FROM pg_catalog.pg_package p
 LEFT JOIN pg_catalog.pg_package_body b
