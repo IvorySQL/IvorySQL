@@ -506,7 +506,14 @@ ora_utl_file_fcopy(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				errmsg("end_line must be positive (%d passed)", end_line)));
 
-	srcfile = fopen(srcpath, "rt");
+	/*
+	 * Open both files the same way as UTL_FILE.FOPEN does, without "t".  On
+	 * Windows, "t" selects text mode, which would turn every LF into CR LF
+	 * in the copy, so that it would no longer match the source.  (Our
+	 * fopen() wrapper uses binary mode unless "t" is given; elsewhere "t" is
+	 * ignored.)
+	 */
+	srcfile = fopen(srcpath, "r");
 
 	if (srcfile == NULL)
 	{
@@ -514,7 +521,7 @@ ora_utl_file_fcopy(PG_FUNCTION_ARGS)
 		IO_EXCEPTION();
 	}
 
-	dstfile = fopen(dstpath, "wt");
+	dstfile = fopen(dstpath, "w");
 
 	if (dstfile == NULL)
 	{
