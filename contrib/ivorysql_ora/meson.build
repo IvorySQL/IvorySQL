@@ -41,6 +41,7 @@ foreach version : ['1.0', '1.0--1.1']
     output: 'ivorysql_ora--' + version + '.sql',
     command: [perl, '../contrib/ivorysql_ora/gensql.pl', 'meson', version],
     depend_files: version == '1.0--1.1' ? files(
+      'src/builtin_functions/builtin_functions--1.0--1.1.sql',
       'src/sysview/sysview--1.0--1.1.sql',
       'src/sysview/dual--1.0--1.1.sql',
     ) : [],
