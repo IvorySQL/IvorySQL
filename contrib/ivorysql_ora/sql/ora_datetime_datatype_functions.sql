@@ -818,3 +818,24 @@ drop table ds_tb;
 reset NLS_TIMESTAMP_FORMAT;
 reset NLS_TIMESTAMP_TZ_FORMAT;
 reset NLS_DATE_FORMAT;
+
+-- An Oracle timestamp column still uses NLS input after switching parsers.
+CREATE TEMP TABLE pg_parser_nls_timestamptz(a timestamp with time zone);
+SET ivorysql.compatible_mode = pg;
+SET NLS_TIMESTAMP_TZ_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF6 TZH:TZM';
+INSERT INTO pg_parser_nls_timestamptz VALUES ('2019-08-22 11:11:11');
+INSERT INTO pg_parser_nls_timestamptz VALUES ('08-19-22 11:11:11');
+\echo :SQLSTATE
+INSERT INTO pg_parser_nls_timestamptz VALUES ('08-19-2022 11:11:11');
+\echo :SQLSTATE
+INSERT INTO pg_parser_nls_timestamptz VALUES ('2019-02-29 11:11:11');
+SET NLS_TIMESTAMP_TZ_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF7 TZH:TZM';
+INSERT INTO pg_parser_nls_timestamptz VALUES ('2019-08-22 11:11:11');
+INSERT INTO pg_parser_nls_timestamptz VALUES ('08-19-22 11:11:11');
+INSERT INTO pg_parser_nls_timestamptz VALUES ('08-19-2022 11:11:11');
+\pset format unaligned
+SELECT count(*) FROM pg_parser_nls_timestamptz;
+\pset format aligned
+DROP TABLE pg_parser_nls_timestamptz;
+RESET NLS_TIMESTAMP_TZ_FORMAT;
+RESET ivorysql.compatible_mode;
