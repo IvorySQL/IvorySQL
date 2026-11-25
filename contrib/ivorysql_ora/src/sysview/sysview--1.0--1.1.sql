@@ -43,6 +43,36 @@ $$ LANGUAGE plpgsql;
 
 GRANT SELECT ON sys.all_sequences TO PUBLIC;
 
+CREATE OR REPLACE FUNCTION sys._ora_package_source(pkgname pg_catalog.name,
+	spec_source text, body_source text)
+RETURNS TABLE (type text, line bigint, text text)
+LANGUAGE sql IMMUTABLE PARALLEL SAFE
+SET search_path TO pg_catalog
+AS $$
+	SELECT s.type, l.line, l.text
+	FROM (VALUES ('package', 'PACKAGE ', spec_source),
+	             ('package body', 'PACKAGE BODY ', body_source)) AS s(type, heading, source)
+	CROSS JOIN LATERAL pg_catalog.string_to_table(
+		s.heading || CASE WHEN pg_catalog.quote_ident(pkgname::text) = pkgname::text
+		                  THEN pg_catalog.upper(pkgname::text COLLATE pg_catalog.U&"C")
+		                  ELSE pg_catalog.quote_ident(pkgname::text) END
+		|| ' IS' || pg_catalog.chr(10)
+		|| CASE WHEN pg_catalog.right(pg_catalog.rtrim(s.source, E' \t\r\n'), 1) = ';'
+		        THEN s.source ELSE pg_catalog.rtrim(s.source, E' \t\r\n') || ';' END,
+		pg_catalog.chr(10)) WITH ORDINALITY AS l(text, line)
+	WHERE s.source IS NOT NULL
+$$;
+
+/* The Oracle lexer stores unquoted package identifiers in lowercase. */
+CREATE OR REPLACE FUNCTION sys._ora_source_package_name_matches(
+	source_name text, requested_name text, source_type text)
+RETURNS boolean
+LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE
+RETURN source_name COLLATE pg_catalog.U&"C" = requested_name COLLATE pg_catalog.U&"C"
+	OR (source_type COLLATE pg_catalog.U&"C" IN ('package', 'package body')
+	    AND source_name COLLATE pg_catalog.U&"C" = pg_catalog.lower(source_name COLLATE pg_catalog.U&"C")
+	    AND requested_name COLLATE pg_catalog.U&"C" = pg_catalog.upper(source_name COLLATE pg_catalog.U&"C"));
+
 DO $$
 DECLARE
 	varchar2_type text;
@@ -76,6 +106,21 @@ WHERE p.prokind IN ('p', 'f')
   AND p.pronamespace NOT IN ('pg_catalog'::pg_catalog.regnamespace,
 							 'pg_toast'::pg_catalog.regnamespace,
 							 'information_schema'::pg_catalog.regnamespace)
+UNION ALL
+SELECT
+	sys.ora_case_trans(pg_catalog.pg_get_userbyid(p.pkgowner)::%1$s)::%1$s(128),
+	p.pkgname::%1$s(128),
+	s.type::%1$s(12),
+	s.line::sys.number,
+	s.text::%1$s(4000) COLLATE pg_catalog.U&"C",
+	0::%1$s(256)
+FROM pg_catalog.pg_package p
+/* DBA_SOURCE is publicly readable. Body access requires ownership or a data-reading role. */
+LEFT JOIN pg_catalog.pg_package_body b ON b.pkgoid = p.oid
+	AND (pg_catalog.pg_has_role(p.pkgowner, 'USAGE')
+	     OR pg_catalog.pg_has_role('pg_read_all_data', 'USAGE'))
+CROSS JOIN LATERAL sys._ora_package_source(p.pkgname, p.pkgsrc, b.bodysrc) s
+WHERE NOT pg_catalog.pg_is_other_temp_schema(p.pkgnamespace)
 	$view$, varchar2_type);
 
 	EXECUTE pg_catalog.format($view$
@@ -103,19 +148,47 @@ SELECT
 	sys.ora_case_trans(pg_catalog.pg_get_userbyid(p.pkgowner)::%1$s)::%1$s(128),
 	p.pkgname::%1$s(128),
 	s.type::%1$s(12),
-	l.line::sys.number,
-	l.text::%1$s(4000) COLLATE pg_catalog.default,
+	s.line::sys.number,
+	s.text::%1$s(4000) COLLATE pg_catalog.default,
 	0::%1$s(256)
 FROM pg_catalog.pg_package p
 LEFT JOIN pg_catalog.pg_package_body b
 	ON b.pkgoid = p.oid AND pg_catalog.pg_has_role(p.pkgowner, 'USAGE')
-/* Use catalog names and lowercase type labels for package lookups. */
-CROSS JOIN LATERAL (VALUES ('package', p.pkgsrc), ('package body', b.bodysrc)) AS s(type, source)
-CROSS JOIN LATERAL pg_catalog.string_to_table(s.source, pg_catalog.chr(10))
-	WITH ORDINALITY AS l(text, line)
+CROSS JOIN LATERAL sys._ora_package_source(p.pkgname, p.pkgsrc, b.bodysrc) s
 WHERE pg_catalog.has_schema_privilege(p.pkgnamespace, 'USAGE')
   AND pg_catalog.has_package_privilege(p.oid, 'EXECUTE')
   AND NOT pg_catalog.pg_is_other_temp_schema(p.pkgnamespace)
+	$view$, varchar2_type);
+
+	EXECUTE pg_catalog.format($view$
+CREATE OR REPLACE VIEW sys.user_source AS
+SELECT
+	sys.ora_case_trans(p.proname::%1$s)::%1$s(128) AS name,
+	(CASE WHEN p.prokind = 'f' THEN 'FUNCTION' ELSE 'PROCEDURE' END)::%1$s(12) AS type,
+	pg_catalog.generate_series(1, sys._ora_src_count(p.oid))::sys.number AS line,
+	pg_catalog.unnest(pg_catalog.string_to_array(
+		pg_catalog.substring(pg_catalog.pg_get_functiondef(p.oid),
+			pg_catalog.length('CREATE OR REPLACE ') + 1), pg_catalog.chr(10)))::%1$s(4000) AS text,
+	0::%1$s(256) AS origin_con_id
+FROM pg_catalog.pg_proc p
+LEFT JOIN pg_catalog.pg_trigger t ON p.oid = t.tgfoid
+WHERE p.prokind IN ('p', 'f')
+  AND t.oid IS NULL
+  AND p.pronamespace NOT IN ('pg_catalog'::pg_catalog.regnamespace,
+							 'pg_toast'::pg_catalog.regnamespace,
+							 'information_schema'::pg_catalog.regnamespace)
+  AND p.proowner = current_user::pg_catalog.regrole
+UNION ALL
+SELECT
+	p.pkgname::%1$s(128),
+	s.type::%1$s(12),
+	s.line::sys.number,
+	s.text::%1$s(4000) COLLATE pg_catalog.default,
+	0::%1$s(256)
+FROM pg_catalog.pg_package p
+LEFT JOIN pg_catalog.pg_package_body b ON b.pkgoid = p.oid
+CROSS JOIN LATERAL sys._ora_package_source(p.pkgname, p.pkgsrc, b.bodysrc) s
+WHERE p.pkgowner = current_user::pg_catalog.regrole
 	$view$, varchar2_type);
 END
 $$ LANGUAGE plpgsql;
