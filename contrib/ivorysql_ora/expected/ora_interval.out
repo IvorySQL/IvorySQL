@@ -349,3 +349,25 @@ CREATE INDEX test_dsinterval_brin on TEST_DSINTERVAL USING brin (a);
 -- drop table
 DROP TABLE TEST_YMINTERVAL;
 DROP TABLE TEST_DSINTERVAL;
+-- Fields that do not fit in an int are rejected, not silently truncated
+-- (4294967297 used to be read as 1)
+SELECT INTERVAL '4294967297' SECOND FROM DUAL;
+ERROR:  interval field value out of range: "4294967297"
+LINE 1: SELECT INTERVAL '4294967297' SECOND FROM DUAL;
+                        ^
+SELECT INTERVAL '4294967297:00:00' HOUR TO SECOND FROM DUAL;
+ERROR:  interval field value out of range: "4294967297:00:00"
+LINE 1: SELECT INTERVAL '4294967297:00:00' HOUR TO SECOND FROM DUAL;
+                        ^
+SELECT INTERVAL '0 4294967297:00:00' DAY TO SECOND FROM DUAL;
+ERROR:  interval field value out of range: "0 4294967297:00:00"
+LINE 1: SELECT INTERVAL '0 4294967297:00:00' DAY TO SECOND FROM DUAL...
+                        ^
+SELECT INTERVAL '-4294967297:00:00' HOUR TO SECOND FROM DUAL;
+ERROR:  interval field value out of range: "-4294967297:00:00"
+LINE 1: SELECT INTERVAL '-4294967297:00:00' HOUR TO SECOND FROM DUAL...
+                        ^
+SELECT CAST('+4294967297-0' AS INTERVAL YEAR(9) TO MONTH) FROM DUAL;
+ERROR:  interval field value out of range: "+4294967297-0"
+LINE 1: SELECT CAST('+4294967297-0' AS INTERVAL YEAR(9) TO MONTH) FR...
+                    ^

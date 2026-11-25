@@ -39,6 +39,7 @@
 #include "access/xact.h"
 #include "catalog/pg_type.h"
 #include "common/int128.h"
+#include "common/string.h"
 #include "funcapi.h"
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
@@ -82,20 +83,6 @@ PG_FUNCTION_INFO_V1(yminterval_larger);
 
 PG_FUNCTION_INFO_V1(yminterval);
 
-
-static int
-strtoi(const char *nptr, char **endptr, int base)
-{
-	long		val;
-
-	val = strtol(nptr, endptr, base);
-#ifdef HAVE_LONG_INT_64
-	if (val != (long) ((int32) val))
-		errno = ERANGE;
-#endif
-	return (int) val;
-}
-
 static int
 ParseFractionalSecond(char *cp, fsec_t *fsec)
 {
@@ -126,13 +113,13 @@ DecodeTime(char *str, int fmask, int range,
 	*tmask = DTK_TIME_M;
 
 	errno = 0;
-	tm->tm_hour = strtoi(str, &cp, 10);
+	tm->tm_hour = strtoint(str, &cp, 10);
 	if (errno == ERANGE)
 		return DTERR_FIELD_OVERFLOW;
 	if (*cp != ':')
 		return DTERR_BAD_FORMAT;
 	errno = 0;
-	tm->tm_min = strtoi(cp + 1, &cp, 10);
+	tm->tm_min = strtoint(cp + 1, &cp, 10);
 	if (errno == ERANGE)
 		return DTERR_FIELD_OVERFLOW;
 	if (*cp == '\0')
@@ -160,7 +147,7 @@ DecodeTime(char *str, int fmask, int range,
 	else if (*cp == ':')
 	{
 		errno = 0;
-		tm->tm_sec = strtoi(cp + 1, &cp, 10);
+		tm->tm_sec = strtoint(cp + 1, &cp, 10);
 		if (errno == ERANGE)
 			return DTERR_FIELD_OVERFLOW;
 		if (*cp == '\0')
@@ -554,14 +541,14 @@ DecodeYminterval(char **field, int *ftype, int nf, int range,
 				}
 
 				errno = 0;
-				val = strtoi(field[i], &cp, 10);
+				val = strtoint(field[i], &cp, 10);
 				if (errno == ERANGE)
 					return DTERR_FIELD_OVERFLOW;
 
 				if (*cp == '-')
 				{
 					/* SQL "years-months" syntax */
-					val2 = strtoi(cp + 1, &cp, 10);
+					val2 = strtoint(cp + 1, &cp, 10);
 					if (errno == ERANGE || val2 < 0 || val2 >= MONTHS_PER_YEAR)
 						return DTERR_FIELD_OVERFLOW;
 					if (*cp != '\0')
