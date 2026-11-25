@@ -270,3 +270,36 @@ SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'TEST_ALL_TAB_
 \set ON_ERROR_STOP on
 
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+
+--
+-- USER_* views and SYS_CONTEXT must work for roles whose names are not
+-- plain lowercase identifiers.  They used to cast CURRENT_USER to regrole,
+-- which parses the name as an identifier (or as an OID if it is all digits).
+--
+CREATE ROLE "1234567";
+CREATE ROLE "regress_Mixed-Case";
+GRANT CREATE ON SCHEMA public TO "1234567", "regress_Mixed-Case";
+SET ROLE "1234567";
+CREATE TABLE test_numeric_role (id int PRIMARY KEY);
+SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, POSITION
+FROM SYS.USER_CONS_COLUMNS
+WHERE TABLE_NAME = 'TEST_NUMERIC_ROLE';
+SELECT SYS_CONTEXT('USERENV', 'CURRENT_USERID') =
+       (SELECT oid::text FROM pg_roles WHERE rolname = '1234567') AS userid_ok
+FROM DUAL;
+DROP TABLE test_numeric_role;
+RESET ROLE;
+SET ROLE "regress_Mixed-Case";
+CREATE TABLE test_mixed_role (id int PRIMARY KEY);
+SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, POSITION
+FROM SYS.USER_CONS_COLUMNS
+WHERE TABLE_NAME = 'TEST_MIXED_ROLE';
+SELECT SYS_CONTEXT('USERENV', 'CURRENT_USERID') =
+       (SELECT oid::text FROM pg_roles WHERE rolname = 'regress_Mixed-Case') AS userid_ok,
+       SYS_CONTEXT('SYS_SESSION_ROLES', 'LOGIN') AS can_login
+FROM DUAL;
+DROP TABLE test_mixed_role;
+RESET ROLE;
+REVOKE CREATE ON SCHEMA public FROM "1234567", "regress_Mixed-Case";
+DROP ROLE "1234567";
+DROP ROLE "regress_Mixed-Case";

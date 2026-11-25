@@ -1654,15 +1654,15 @@ BEGIN
 		  WHEN 'SESSION_USER' THEN
 			SELECT session_user INTO res;
 		  WHEN 'SESSION_USERID' THEN
-			SELECT session_user::regrole::oid INTO res;
+			SELECT oid INTO res FROM pg_catalog.pg_roles WHERE rolname = session_user;
 		  WHEN 'PROXY_USER' THEN
 			SELECT session_user INTO res;
 		  WHEN 'PROXY_USERID' THEN
-			SELECT session_user::regrole::oid INTO res;
+			SELECT oid INTO res FROM pg_catalog.pg_roles WHERE rolname = session_user;
 		  WHEN 'CURRENT_USER' THEN
 		    SELECT current_user INTO res;
 		  WHEN 'CURRENT_USERID' THEN
-			SELECT current_user::regrole::oid INTO res;
+			SELECT oid INTO res FROM pg_catalog.pg_roles WHERE rolname = current_user;
 		  WHEN 'CURRENT_EDITION_NAME' THEN
 			SELECT version() INTO res;
 		  WHEN 'CLIENT_PROGRAM_NAME' THEN
@@ -1773,11 +1773,11 @@ BEGIN
 			WHEN 'DBA' THEN
 				SELECT sys.get_isdba() INTO res;
 			WHEN 'LOGIN' THEN
-				SELECT CASE WHEN rolcanlogin = 't' THEN 'TRUE' ELSE 'FALSE' END INTO res FROM pg_roles WHERE oid = current_user::regrole::oid;
+				SELECT CASE WHEN rolcanlogin = 't' THEN 'TRUE' ELSE 'FALSE' END INTO res FROM pg_catalog.pg_roles WHERE rolname = current_user;
 			WHEN 'CREATEROLE' THEN
-				SELECT CASE WHEN rolcreaterole = 't' THEN 'TRUE' ELSE 'FALSE' END INTO res FROM pg_roles WHERE oid = current_user::regrole::oid;
+				SELECT CASE WHEN rolcreaterole = 't' THEN 'TRUE' ELSE 'FALSE' END INTO res FROM pg_catalog.pg_roles WHERE rolname = current_user;
 			WHEN 'CREATEDB' THEN
-				SELECT CASE WHEN rolcreatedb = 't' THEN 'TRUE' ELSE 'FALSE' END INTO res FROM pg_roles WHERE oid = current_user::regrole::oid;
+				SELECT CASE WHEN rolcreatedb = 't' THEN 'TRUE' ELSE 'FALSE' END INTO res FROM pg_catalog.pg_roles WHERE rolname = current_user;
 			ELSE
 				RAISE EXCEPTION 'invalid SYS_SESSION_ROLES parameter: %', b;
 		END CASE;
