@@ -13,6 +13,51 @@ SHOW IVORYSQL.IDENTIFIER_CASE_SWITCH;
  interchange
 (1 row)
 
+-- Protect SYS.DUAL from writes by both superusers and ordinary users.
+\pset format unaligned
+INSERT INTO dual VALUES ('a');
+ERROR:  SYS.DUAL is read-only
+CONTEXT:  PL/pgSQL function _ora_dual_read_only() line 3 at RAISE
+UPDATE sys.dual SET dummy = 'a';
+ERROR:  SYS.DUAL is read-only
+CONTEXT:  PL/pgSQL function _ora_dual_read_only() line 3 at RAISE
+DELETE FROM sys.dual;
+ERROR:  SYS.DUAL is read-only
+CONTEXT:  PL/pgSQL function _ora_dual_read_only() line 3 at RAISE
+TRUNCATE TABLE sys.dual;
+ERROR:  SYS.DUAL is read-only
+CONTEXT:  PL/pgSQL function _ora_dual_read_only() line 3 at RAISE
+SET session_replication_role = replica;
+INSERT INTO sys.dual VALUES ('a');
+ERROR:  SYS.DUAL is read-only
+CONTEXT:  PL/pgSQL function _ora_dual_read_only() line 3 at RAISE
+RESET session_replication_role;
+CREATE USER regress_ora_dual;
+SET SESSION AUTHORIZATION regress_ora_dual;
+SELECT dummy FROM dual;
+dummy
+X
+(1 row)
+INSERT INTO dual VALUES ('a');
+ERROR:  permission denied for table dual
+RESET SESSION AUTHORIZATION;
+DROP USER regress_ora_dual;
+CREATE TEMP TABLE dual (dummy char(1));
+INSERT INTO pg_temp.dual VALUES ('a');
+SELECT dummy FROM pg_temp.dual;
+dummy
+a
+(1 row)
+DROP TABLE pg_temp.dual;
+SELECT dummy FROM sys.dual;
+dummy
+X
+(1 row)
+SELECT 1 AS one FROM dual;
+one
+1
+(1 row)
+\pset format aligned
 -- create a procedure
 CREATE TABLE TB_TODEL(ID INT);
 CREATE OR REPLACE PROCEDURE PROC_DEL_TB(I INT) IS

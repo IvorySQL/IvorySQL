@@ -5,6 +5,31 @@ SHOW IVORYSQL.COMPATIBLE_MODE;
 SET IVORYSQL.IDENTIFIER_CASE_SWITCH = INTERCHANGE;
 SHOW IVORYSQL.IDENTIFIER_CASE_SWITCH;
 
+-- Protect SYS.DUAL from writes by both superusers and ordinary users.
+\pset format unaligned
+INSERT INTO dual VALUES ('a');
+UPDATE sys.dual SET dummy = 'a';
+DELETE FROM sys.dual;
+TRUNCATE TABLE sys.dual;
+SET session_replication_role = replica;
+INSERT INTO sys.dual VALUES ('a');
+RESET session_replication_role;
+
+CREATE USER regress_ora_dual;
+SET SESSION AUTHORIZATION regress_ora_dual;
+SELECT dummy FROM dual;
+INSERT INTO dual VALUES ('a');
+RESET SESSION AUTHORIZATION;
+DROP USER regress_ora_dual;
+
+CREATE TEMP TABLE dual (dummy char(1));
+INSERT INTO pg_temp.dual VALUES ('a');
+SELECT dummy FROM pg_temp.dual;
+DROP TABLE pg_temp.dual;
+SELECT dummy FROM sys.dual;
+SELECT 1 AS one FROM dual;
+\pset format aligned
+
 -- create a procedure
 CREATE TABLE TB_TODEL(ID INT);
 CREATE OR REPLACE PROCEDURE PROC_DEL_TB(I INT) IS

@@ -1,0 +1,14 @@
+CREATE OR REPLACE FUNCTION sys._ora_dual_read_only()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+	RAISE EXCEPTION 'SYS.DUAL is read-only' USING ERRCODE = '55000';
+END;
+$$;
+
+CREATE OR REPLACE TRIGGER ora_dual_read_only
+BEFORE INSERT OR UPDATE OR DELETE OR TRUNCATE ON sys.dual
+FOR EACH STATEMENT EXECUTE FUNCTION sys._ora_dual_read_only();
+
+ALTER TABLE sys.dual ENABLE ALWAYS TRIGGER ora_dual_read_only;
