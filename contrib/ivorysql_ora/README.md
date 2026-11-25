@@ -74,3 +74,18 @@ updated comparison and NULL rules.
 
 Version 1.1 grants read access to `ALL_SEQUENCES` and limits its rows to
 sequences accessible to the current user.
+
+# Protecting SYS.DUAL
+
+New Oracle-mode clusters and databases upgraded from extension version 1.0
+install a trigger that rejects writes to `SYS.DUAL`, including writes by
+superusers.
+
+For a database already using an earlier build of version 1.1, apply the guard
+as a superuser in that database using the SQL fragment from this source tree.
+
+```sh
+psql -X -v ON_ERROR_STOP=1 --single-transaction -d "$database" \
+  -f contrib/ivorysql_ora/src/sysview/dual--1.0--1.1.sql \
+  -c 'ALTER EXTENSION ivorysql_ora ADD FUNCTION sys._ora_dual_read_only()'
+```

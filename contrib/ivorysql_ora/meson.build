@@ -40,7 +40,10 @@ foreach version : ['1.0', '1.0--1.1']
   custom_target('ivorysql_ora--' + version + '.sql',
     output: 'ivorysql_ora--' + version + '.sql',
     command: [perl, '../contrib/ivorysql_ora/gensql.pl', 'meson', version],
-    depend_files: version == '1.0--1.1' ? files('src/sysview/sysview--1.0--1.1.sql') : [],
+    depend_files: version == '1.0--1.1' ? files(
+      'src/sysview/sysview--1.0--1.1.sql',
+      'src/sysview/dual--1.0--1.1.sql',
+    ) : [],
     capture: true,
     install: true,
     install_dir: contrib_data_args['install_dir'],
