@@ -890,6 +890,7 @@ static bool oracleJoinOpExists(const Node *expr);
 %type <ival>	opt_unit_kind
 %type <str>	any_identifier
 %type <boolean> opt_ora_editioned ora_editioned
+%type <ival>	opt_package_body_edition
 
 %type <node>	ivy_routine_body accessor_item sql_macro_options implementation_package_type
 							ora_streaming_type opt_parallel_enable_partiton_clause
@@ -10785,16 +10786,20 @@ package_is_or_as:
 package_src:	Sconst	{ $$ = $1; }
 		;
 CreatePackageBodyStmt:
-			CREATE opt_or_replace opt_ora_editioned PACKAGE_BODY BODY package_names
+			CREATE opt_or_replace opt_package_body_edition PACKAGE_BODY BODY package_names
 			opt_ora_sharing_clause package_body_is_or_as package_src
 				{
 					CreatePackageBodyStmt *n = makeNode(CreatePackageBodyStmt);
 					n->replace = $2;
-					n->editable = $3;
+					n->edition = $3;
 					n->pkgname = $6;
 					n->bodysrc = $9;
 					$$ = (Node *)n;
 				}
+			;
+opt_package_body_edition:
+			ora_editioned		{ $$ = $1 ? PACKAGE_BODY_EDITIONABLE : PACKAGE_BODY_NONEDITIONABLE; }
+			| /* EMPTY */		{ $$ = PACKAGE_BODY_EDITION_INHERIT; }
 			;
 package_body_is_or_as:
 				IS	{ set_oracle_plsql_body(yyscanner, OraBody_PACKAGEBODY); }

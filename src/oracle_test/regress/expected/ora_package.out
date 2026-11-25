@@ -838,6 +838,30 @@ create or replace package body pkg is
 end;
 /
 drop package pkg;
+-- A package body without an edition clause uses the specification's property.
+CREATE NONEDITIONABLE PACKAGE regress_pkg_body_edition IS
+  FUNCTION f RETURN integer;
+END;
+/
+CREATE PACKAGE BODY regress_pkg_body_edition IS
+  FUNCTION f RETURN integer IS BEGIN RETURN 1; END;
+END;
+/
+CREATE OR REPLACE PACKAGE BODY regress_pkg_body_edition IS
+  FUNCTION f RETURN integer IS BEGIN RETURN 2; END;
+END;
+/
+CREATE OR REPLACE EDITIONABLE PACKAGE BODY regress_pkg_body_edition IS
+  FUNCTION f RETURN integer IS BEGIN RETURN 3; END;
+END;
+/
+ERROR:  The EDITIONABLE property of a TYPE or PACKAGE specification and its body must match
+BEGIN
+  RAISE NOTICE 'package function = %', regress_pkg_body_edition.f();
+END;
+/
+NOTICE:  package function = 2
+DROP PACKAGE regress_pkg_body_edition;
 -- Oracle-style explicit cursor definitions in package specifications and bodies.
 CREATE PACKAGE regress_cursor_prefix IS
   CURSOR c IS SELECT 18 AS n FROM dual;
