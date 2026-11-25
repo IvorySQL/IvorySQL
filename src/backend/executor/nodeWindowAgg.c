@@ -3415,8 +3415,8 @@ ignorenulls_getfuncarginframe(WindowObject winobj, int argno,
 	Datum		datum;
 	int64		abs_pos;
 	int64		mark_pos;
-	int			notnull_offset;
-	int			notnull_relpos;
+	int64		notnull_offset;
+	int64		notnull_relpos;
 	int			forward;
 
 	Assert(WindowObjectIsValid(winobj));
@@ -3425,7 +3425,7 @@ ignorenulls_getfuncarginframe(WindowObject winobj, int argno,
 	slot = winstate->temp_slot_1;
 	datum = (Datum) 0;
 	notnull_offset = 0;
-	notnull_relpos = abs(relpos);
+	notnull_relpos = pg_abs_s32(relpos);
 
 	switch (seektype)
 	{
@@ -3466,12 +3466,27 @@ ignorenulls_getfuncarginframe(WindowObject winobj, int argno,
 		int			inframe;
 		int			v;
 
+		/* we may skip many rows without fetching any of them */
+		CHECK_FOR_INTERRUPTS();
+
 		/*
 		 * Check apparent out of frame case.  We need to do this because we
 		 * may not call window_gettupleslot before row_is_in_frame, which
 		 * supposes abs_pos is never negative.
 		 */
 		if (abs_pos < 0)
+			goto out_of_frame;
+
+		/*
+		 * Likewise, stop at the end of the partition, which row_is_in_frame
+		 * expects its caller to have checked.  It cannot always detect that
+		 * itself: for a frame ending at UNBOUNDED FOLLOWING with EXCLUDE
+		 * GROUP or EXCLUDE TIES and no ORDER BY, it reports every row other
+		 * than the current one as excluded, wherever it is, so we would never
+		 * reach the end of the loop.
+		 */
+		spool_tuples(winstate, abs_pos);
+		if (abs_pos >= winstate->spooled_rows)
 			goto out_of_frame;
 
 		/* check whether row is in frame */
@@ -3859,8 +3874,8 @@ WinGetFuncArgInPartition(WindowObject winobj, int argno,
 	int64		mark_pos;
 	Datum		datum;
 	bool		null_treatment;
-	int			notnull_offset;
-	int			notnull_relpos;
+	int64		notnull_offset;
+	int64		notnull_relpos;
 	int			forward;
 	bool		myisout;
 	bool		got_datum;
@@ -3909,7 +3924,7 @@ WinGetFuncArgInPartition(WindowObject winobj, int argno,
 
 	/* Prepare for loop */
 	notnull_offset = 0;
-	notnull_relpos = abs(relpos);
+	notnull_relpos = pg_abs_s32(relpos);
 	forward = relpos > 0 ? 1 : -1;
 	myisout = false;
 	got_datum = false;

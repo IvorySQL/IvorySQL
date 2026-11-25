@@ -80,6 +80,9 @@ CREATE TYPE rainbow AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple
 CREATE DOMAIN rgb AS rainbow CHECK (VALUE IN ('red', 'green', 'blue'));
 SELECT JSON_VALUE('"purple"'::jsonb, 'lax $[*]' RETURNING rgb);
 SELECT JSON_VALUE('"purple"'::jsonb, 'lax $[*]' RETURNING rgb ERROR ON ERROR);
+SELECT x IS NULL AS is_null,
+       json_value(x, 'strict $.a' RETURNING sqljsonb_int_not_null DEFAULT 1 ON ERROR) AS jv
+FROM (VALUES ('1'::jsonb), (NULL), ('1'::jsonb)) v(x);
 
 SELECT JSON_VALUE(jsonb '[]', '$');
 SELECT JSON_VALUE(jsonb '[]', '$' ERROR ON ERROR);
@@ -127,6 +130,32 @@ SELECT
 	) y
 FROM
 	generate_series(0, 2) x;
+
+-- Check that a NULL context item or path doesn't return a previous row's
+-- ON EMPTY / ON ERROR result (bug #19621).
+SELECT x IS NULL AS is_null,
+       json_value(x, '$.a' RETURNING int DEFAULT 42 ON EMPTY) AS jv
+FROM (VALUES ('{}'), (NULL), ('{}')) v(x);
+
+SELECT x IS NULL AS is_null,
+       json_value(x, 'strict $.a' RETURNING int DEFAULT 42 ON ERROR) AS jv
+FROM (VALUES ('1'), (NULL), ('1')) v(x);
+
+SELECT p IS NULL AS is_null,
+       json_value('{}', p RETURNING int DEFAULT 42 ON EMPTY) AS jv
+FROM (VALUES ('$.a'::jsonpath), (NULL), ('$.a'::jsonpath)) v(p);
+
+SELECT x IS NULL AS is_null,
+       json_query(x, '$.a' DEFAULT '"empty"' ON EMPTY) AS jq
+FROM (VALUES ('{}'::jsonb), (NULL), ('{}'::jsonb)) v(x);
+
+SELECT x IS NULL AS is_null,
+       json_exists(x, 'strict $.a' TRUE ON ERROR) AS je
+FROM (VALUES ('1'::jsonb), (NULL), ('1'::jsonb)) v(x);
+-- the default FALSE ON ERROR is affected too
+SELECT x IS NULL AS is_null,
+       json_exists(x, 'strict $.a') AS je
+FROM (VALUES ('1'::jsonb), (NULL), ('1'::jsonb)) v(x);
 
 SELECT JSON_VALUE(jsonb 'null', '$a' PASSING point ' (1, 2 )' AS a);
 SELECT JSON_VALUE(jsonb 'null', '$a' PASSING point ' (1, 2 )' AS a RETURNING point);
@@ -505,10 +534,63 @@ SELECT JSON_VALUE(jsonb 'null', '$a' PASSING t AS a) = t AS ok
   FROM test_passing_toast;
 DROP TABLE test_passing_toast;
 
+-- Test PASSING of string types other than text and varchar; they are
+-- converted the same way as by to_jsonb(), so char(n) keeps its padding
+CREATE DOMAIN queryfuncs_text AS text;
+CREATE DOMAIN queryfuncs_char3 AS char(3);
+SELECT JSON_EXISTS(jsonb '["abc"]', '$[*] ? (@ == $c)' PASSING 'abc'::char(3) AS c);
+SELECT JSON_QUERY(jsonb 'null', '$c' PASSING 'ab'::char(3) AS c),
+       to_jsonb('ab'::char(3));
+SELECT JSON_VALUE(jsonb 'null', '$c' PASSING 'abc'::name AS c);
+SELECT JSON_QUERY(jsonb 'null', '$c' PASSING 'abc'::queryfuncs_text AS c);
+SELECT JSON_QUERY(jsonb 'null', '$c' PASSING 'ab'::queryfuncs_char3 AS c);
+SELECT * FROM JSON_TABLE(jsonb '[1]', '$[*]' PASSING 'abc'::char(3) AS c
+  COLUMNS (v text PATH '$c'));
+DROP DOMAIN queryfuncs_text;
+DROP DOMAIN queryfuncs_char3;
+-- ... including a non-built-in string type, which uses its output function
+CREATE TYPE queryfuncs_str;
+CREATE FUNCTION queryfuncs_str_in(cstring) RETURNS queryfuncs_str
+  AS 'textin' LANGUAGE internal IMMUTABLE STRICT;
+/
+CREATE FUNCTION queryfuncs_str_out(queryfuncs_str) RETURNS cstring
+  AS 'textout' LANGUAGE internal IMMUTABLE STRICT;
+/
+CREATE TYPE queryfuncs_str (INPUT = queryfuncs_str_in, OUTPUT = queryfuncs_str_out,
+  LIKE = text, CATEGORY = 'S');
+SELECT JSON_QUERY(jsonb 'null', '$c' PASSING 'abc'::queryfuncs_str AS c);
+DROP TYPE queryfuncs_str CASCADE;
+
 -- Test ON ERROR / EMPTY value validity for the function; all fail.
 SELECT JSON_EXISTS(jsonb '1', '$' DEFAULT 1 ON ERROR);
 SELECT JSON_VALUE(jsonb '1', '$' EMPTY ON ERROR);
 SELECT JSON_QUERY(jsonb '1', '$' TRUE ON ERROR);
+
+-- soft errors raised by the ON ERROR or ON EMPTY DEFAULT expression must always
+-- be rethrown
+SELECT JSON_VALUE('"a"', '$' RETURNING sqljsonb_int_not_null DEFAULT NULL ON ERROR);
+SELECT JSON_VALUE('"a"', '$' RETURNING int DEFAULT (NULL::sqljsonb_int_not_null + 0) ON ERROR);
+SELECT JSON_QUERY('"a"', '$' RETURNING int DEFAULT (NULL::sqljsonb_int_not_null + 0) ON ERROR);
+SELECT JSON_VALUE('"a"', '$' RETURNING int DEFAULT (('a' || (random() * 0)::int)::int + 0) ON ERROR);
+SELECT JSON_QUERY('"a"', '$' RETURNING int DEFAULT (('a' || (random() * 0)::int)::int + 0) ON ERROR);
+-- error. should report that the DEFAULT expression cannot be coerced to the
+-- RETURNING type, not a NOT NULL violation
+SELECT JSON_VALUE(jsonb '{"a": 1}', '$' RETURNING sqljsonb_int_not_null DEFAULT concat('y') ON ERROR);
+
+-- domain constraints must not be checked once a soft error has already occurred
+CREATE DOMAIN queryfuncs_int AS int CHECK (1 / coalesce(VALUE, 0) = 0);
+SELECT JSON_VALUE(jsonb '"x"', '$' RETURNING int DEFAULT 11 ON ERROR);
+SELECT JSON_QUERY(jsonb '["x"]', '$' RETURNING int[] DEFAULT '{11}' ON ERROR);
+SELECT JSON_VALUE(jsonb '"x"', '$' RETURNING queryfuncs_int DEFAULT 11 ON ERROR);
+SELECT JSON_QUERY(jsonb '["x"]', '$' RETURNING queryfuncs_int[] DEFAULT '{11}' ON ERROR);
+
+CREATE TYPE compcoalesce AS (a int, b queryfuncs_int);
+SELECT JSON_QUERY(jsonb '{"a": "x"}', '$' RETURNING compcoalesce);
+SELECT JSON_QUERY(jsonb '{"a": 1, "b": 11}', '$' RETURNING compcoalesce);
+SELECT JSON_QUERY(jsonb '{"a": 1, "b": "B"}', '$' RETURNING compcoalesce);
+SELECT JSON_QUERY(jsonb '{"a": 1, "b": 0}', '$' RETURNING compcoalesce); -- error
+DROP TYPE compcoalesce;
+DROP DOMAIN queryfuncs_int;
 
 -- Test implicit coercion to a domain over fixed-length type specified in
 -- RETURNING
@@ -536,3 +618,13 @@ SELECT JSON_VALUE(jsonb '1234', '$' RETURNING bit(3)  DEFAULT 1 ON ERROR);
 SELECT JSON_VALUE(jsonb '1234', '$' RETURNING bit(3)  DEFAULT 1::bit(3) ON ERROR);
 SELECT JSON_VALUE(jsonb '"111"', '$.a'  RETURNING bit(3) DEFAULT '1111' ON EMPTY);
 DROP DOMAIN queryfuncs_d_varbit3;
+
+-- Check that a NULL result from a previous evaluation of JSON_VALUE()
+-- RETURNING json or jsonb doesn't leak into the next one (bug #19695).
+SELECT JSON_VALUE('null', '$' RETURNING jsonb), JSON_VALUE('123', '$' RETURNING jsonb);
+SELECT JSON_VALUE(x, '$' RETURNING jsonb) FROM (VALUES ('1'::jsonb), ('null'), ('2')) v(x);
+SELECT JSON_VALUE(x, '$' RETURNING json) FROM (VALUES ('1'::json), ('null'), ('2')) v(x);
+-- same, with the NULL coming from ON EMPTY, ON ERROR, and a NULL input
+SELECT JSON_VALUE(x, '$.a' RETURNING jsonb) FROM (VALUES ('{"a": 1}'::jsonb), ('{}'), ('{"a": 2}')) v(x);
+SELECT JSON_VALUE(x, 'strict $.a' RETURNING jsonb) FROM (VALUES ('{"a": 1}'::jsonb), ('[]'), ('{"a": 2}')) v(x);
+SELECT JSON_VALUE(x, '$' RETURNING jsonb) FROM (VALUES ('1'::jsonb), (NULL), ('2')) v(x);

@@ -1329,6 +1329,11 @@ vacuum_xid_failsafe_check(const struct VacuumCutoffs *cutoffs)
  *		the old value of pg_class.reltuples/pg_class.relpages as a measurement
  *		of the tuple density in the unscanned pages.
  *
+ *		scanned_new_pages is the number of scanned PageIsNew blocks. Such
+ *		blocks contain no tuples and are not a representative sample, so
+ *		exclude them from the sampled pages and sampleable population used to
+ *		extrapolate reltuples.
+ *
  *		Note: scanned_tuples should count only *live* tuples, since
  *		pg_class.reltuples is defined that way.
  */
@@ -1336,17 +1341,40 @@ double
 vac_estimate_reltuples(Relation relation,
 					   BlockNumber total_pages,
 					   BlockNumber scanned_pages,
+					   BlockNumber scanned_new_pages,
 					   double scanned_tuples)
 {
 	BlockNumber old_rel_pages = relation->rd_rel->relpages;
+	BlockNumber sampled_pages;
+	BlockNumber sampleable_pages;
 	double		old_rel_tuples = relation->rd_rel->reltuples;
 	double		old_density;
 	double		unscanned_pages;
 	double		total_tuples;
 
+	Assert(scanned_new_pages <= scanned_pages);
+	Assert(scanned_new_pages <= total_pages);
+
 	/* If we did scan the whole table, just use the count as-is */
 	if (scanned_pages >= total_pages)
 		return scanned_tuples;
+
+	sampled_pages = scanned_pages - scanned_new_pages;
+	sampleable_pages = total_pages - scanned_new_pages;
+
+	/*
+	 * With no prior density, a tiny non-random sample is not sufficient to
+	 * estimate the relation's tuple count. This can happen when on-access
+	 * pruning marks most pages all-visible before the first VACUUM.
+	 */
+	if (old_rel_tuples < 0 || old_rel_pages == 0)
+	{
+		if (sampled_pages <= 1 ||
+			sampled_pages < (double) sampleable_pages * 0.02)
+			return -1;
+
+		return floor((scanned_tuples / sampled_pages) * sampleable_pages + 0.5);
+	}
 
 	/*
 	 * When successive VACUUM commands scan the same few pages again and
@@ -1358,22 +1386,14 @@ vac_estimate_reltuples(Relation relation,
 	 * If the relation is _exactly_ the same size according to the existing
 	 * pg_class entry, and only a few of its pages (less than 2%) were
 	 * scanned, keep the existing value of reltuples.  Also keep the existing
-	 * value when only a subset of rel's pages <= a single page were scanned.
-	 *
-	 * (Note: we might be returning -1 here.)
+	 * value when at most one page was scanned.  When the relation size has
+	 * changed, use the old density to account for the added or removed pages
+	 * instead of preserving a stale tuple count.
 	 */
 	if (old_rel_pages == total_pages &&
-		scanned_pages < (double) total_pages * 0.02)
+		(sampled_pages <= 1 ||
+		 sampled_pages < (double) sampleable_pages * 0.02))
 		return old_rel_tuples;
-	if (scanned_pages <= 1)
-		return old_rel_tuples;
-
-	/*
-	 * If old density is unknown, we can't do much except scale up
-	 * scanned_tuples to match total_pages.
-	 */
-	if (old_rel_tuples < 0 || old_rel_pages == 0)
-		return floor((scanned_tuples / scanned_pages) * total_pages + 0.5);
 
 	/*
 	 * Okay, we've covered the corner cases.  The normal calculation is to
@@ -1382,7 +1402,7 @@ vac_estimate_reltuples(Relation relation,
 	 * and finally add on the number of tuples in the scanned pages.
 	 */
 	old_density = old_rel_tuples / old_rel_pages;
-	unscanned_pages = (double) total_pages - (double) scanned_pages;
+	unscanned_pages = (double) sampleable_pages - (double) sampled_pages;
 	total_tuples = old_density * unscanned_pages + scanned_tuples;
 	return floor(total_tuples + 0.5);
 }
@@ -2499,15 +2519,21 @@ vacuum_delay_point(bool is_analyze)
 	if (VacuumSharedCostBalance != NULL)
 		msec = compute_parallel_delay();
 	else if (VacuumCostBalance >= vacuum_cost_limit)
+	{
 		msec = vacuum_cost_delay * VacuumCostBalance / vacuum_cost_limit;
+
+		/*
+		 * Avoid uselessly long delays. The cost can accumulate far higher
+		 * than the limit, as delays are not applied while critical locks are
+		 * held or interrupts are pending.
+		 */
+		msec = Min(msec, vacuum_cost_delay * 4);
+	}
 
 	/* Nap if appropriate */
 	if (msec > 0)
 	{
 		instr_time	delay_start;
-
-		if (msec > vacuum_cost_delay * 4)
-			msec = vacuum_cost_delay * 4;
 
 		if (track_cost_delay_timing)
 			INSTR_TIME_SET_CURRENT(delay_start);
@@ -2603,10 +2629,11 @@ vacuum_delay_point(bool is_analyze)
  * We allow each worker to update it as and when it has incurred any cost and
  * then based on that decide whether it needs to sleep.  We compute the time
  * to sleep for a worker based on the cost it has incurred
- * (VacuumCostBalanceLocal) and then reduce the VacuumSharedCostBalance by
- * that amount.  This avoids putting to sleep those workers which have done less
- * I/O than other workers and therefore ensure that workers
- * which are doing more I/O got throttled more.
+ * (VacuumCostBalanceLocal) and the number of active workers, as the cost
+ * limit is for the whole vacuum and not for each worker, and then reduce the
+ * VacuumSharedCostBalance by that amount. This avoids putting to sleep those
+ * workers which have done less I/O than other workers and therefore ensure
+ * that workers which are doing more I/O got throttled more.
  *
  * We allow a worker to sleep only if it has performed I/O above a certain
  * threshold, which is calculated based on the number of active workers
@@ -2639,8 +2666,18 @@ compute_parallel_delay(void)
 	if ((shared_balance >= vacuum_cost_limit) &&
 		(VacuumCostBalanceLocal > 0.5 * ((double) vacuum_cost_limit / nworkers)))
 	{
-		/* Compute sleep time based on the local cost balance */
-		msec = vacuum_cost_delay * VacuumCostBalanceLocal / vacuum_cost_limit;
+		/* Compute sleep time based on the local cost balance and nworkers */
+		msec = vacuum_cost_delay * VacuumCostBalanceLocal * nworkers /
+			vacuum_cost_limit;
+
+		/*
+		 * Avoid uselessly long delays, as in a non-parallel vacuum. Also
+		 * never sleep more than 1s at once, as sleeping any longer in
+		 * pg_usleep() keeps the process from responding to latches and
+		 * signals promptly.
+		 */
+		msec = Min(msec, Min(vacuum_cost_delay * 4 * nworkers, 1000));
+
 		pg_atomic_sub_fetch_u32(VacuumSharedCostBalance, VacuumCostBalanceLocal);
 		VacuumCostBalanceLocal = 0;
 	}

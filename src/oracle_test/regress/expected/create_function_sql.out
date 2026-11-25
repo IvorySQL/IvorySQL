@@ -53,6 +53,60 @@ SELECT functest_A_3();
  f
 (1 row)
 
+-- pseudo-types are rejected as parameter types, output parameters included
+CREATE FUNCTION functest_A_4(x "any") RETURNS int LANGUAGE 'sql'
+       AS 'SELECT 1';
+/
+ERROR:  SQL functions cannot have arguments of type "any"
+CREATE FUNCTION functest_A_5(OUT a "any", OUT b int) LANGUAGE 'sql'
+       AS 'SELECT 1, 2';
+/
+ERROR:  SQL functions cannot have arguments of type "any"
+CREATE FUNCTION functest_A_6() RETURNS TABLE(a "any", b int) LANGUAGE 'sql'
+       AS 'SELECT 1, 2';
+/
+ERROR:  SQL functions cannot have arguments of type "any"
+-- the check does not depend on the function body being validated
+SET check_function_bodies = off;
+CREATE FUNCTION functest_A_7(OUT a cstring, OUT b int) LANGUAGE 'sql'
+       AS 'SELECT ''x'', 2';
+/
+ERROR:  SQL functions cannot have arguments of type cstring
+RESET check_function_bodies;
+-- polymorphic parameters and record/record[] output columns are allowed
+CREATE FUNCTION functest_A_8(x anyelement, OUT a anyelement, OUT b int)
+       LANGUAGE 'sql' AS 'SELECT $1, 2';
+/
+SELECT * FROM functest_A_8(42);
+ a  | b 
+----+---
+ 42 | 2
+(1 row)
+
+CREATE FUNCTION functest_A_9(OUT a record, OUT b int) LANGUAGE 'sql'
+       AS 'SELECT ROW(1, 2), 3';
+/
+SELECT * FROM functest_A_9();
+   a   | b 
+-------+---
+ (1,2) | 3
+(1 row)
+
+CREATE FUNCTION functest_A_10(OUT a record[], OUT b int) LANGUAGE 'sql'
+       AS 'SELECT ARRAY[ROW(1, 2)], 3';
+/
+SELECT * FROM functest_A_10();
+     a     | b 
+-----------+---
+ {"(1,2)"} | 3
+(1 row)
+
+-- record is accepted as an output column type, but, unlike in PL/pgSQL, it is
+-- rejected as an input parameter type, for historical reasons
+CREATE FUNCTION functest_A_11(x record) RETURNS int LANGUAGE 'sql'
+       AS 'SELECT 1';
+/
+ERROR:  SQL functions cannot have arguments of type record
 --
 -- IMMUTABLE | STABLE | VOLATILE
 --
@@ -464,6 +518,79 @@ SELECT pg_get_functiondef('functest_S_16'::regproc);
 
 DROP TABLE functest1 CASCADE;
 NOTICE:  drop cascades to function functest_s_16(pg_catalog.int4,pg_catalog.int4)
+-- check cases with OUT parameters before IN ones
+CREATE FUNCTION functest_out_point(OUT p point, x float8, y float8)
+LANGUAGE sql AS $$ select point(x,y); $$;
+/
+SELECT functest_out_point(11,22);
+ functest_out_point 
+--------------------
+ (11,22)
+(1 row)
+
+CREATE FUNCTION functest_out_point2(OUT p point, float8, y float8)
+LANGUAGE sql AS $$ select point($1,y); $$;
+/
+SELECT functest_out_point2(11,22);
+ functest_out_point2 
+---------------------
+ (11,22)
+(1 row)
+
+CREATE FUNCTION functest_out_point_sql(OUT p point, x float8, y float8)
+BEGIN ATOMIC SELECT point(x,y); END;
+/
+SELECT functest_out_point_sql(11,22);
+ functest_out_point_sql 
+------------------------
+ (11,22)
+(1 row)
+
+SELECT pg_get_functiondef('functest_out_point_sql'::regproc);
+                                                   pg_get_functiondef                                                    
+-------------------------------------------------------------------------------------------------------------------------
+ CREATE OR REPLACE FUNCTION temp_func_test.functest_out_point_sql(OUT p point, x pg_catalog.float8, y pg_catalog.float8)+
+  RETURNS point                                                                                                         +
+  LANGUAGE sql                                                                                                          +
+ BEGIN ATOMIC                                                                                                           +
+  SELECT point(x, y) AS point;                                                                                          +
+ END                                                                                                                    +
+ 
+(1 row)
+
+CREATE FUNCTION functest_out_point2_sql(OUT p point, float8, y float8)
+BEGIN ATOMIC SELECT point($1,y); END;
+/
+SELECT functest_out_point2_sql(11,22);
+ functest_out_point2_sql 
+-------------------------
+ (11,22)
+(1 row)
+
+SELECT pg_get_functiondef('functest_out_point2_sql'::regproc);
+                                                   pg_get_functiondef                                                   
+------------------------------------------------------------------------------------------------------------------------
+ CREATE OR REPLACE FUNCTION temp_func_test.functest_out_point2_sql(OUT p point, pg_catalog.float8, y pg_catalog.float8)+
+  RETURNS point                                                                                                        +
+  LANGUAGE sql                                                                                                         +
+ BEGIN ATOMIC                                                                                                          +
+  SELECT point($1, y) AS point;                                                                                        +
+ END                                                                                                                   +
+ 
+(1 row)
+
+CREATE FUNCTION functest_out_error(OUT p point, x float8, y float8)
+LANGUAGE sql AS $$ select point(p,x); $$;
+/
+ERROR:  "p": invalid identifier
+LINE 2: LANGUAGE sql AS $$ select point(p,x); $$;
+                                        ^
+CREATE FUNCTION functest_out_error_sql(OUT p point, x float8, y float8)
+BEGIN ATOMIC SELECT point(p,x); END;
+/
+ERROR:  "p": invalid identifier
+LINE 2: BEGIN ATOMIC SELECT point(p,x); END;
+                                  ^
 -- test with views
 CREATE TABLE functest3 (a int);
 INSERT INTO functest3 VALUES (1), (2);
@@ -837,10 +964,13 @@ CONTEXT:  SQL function "test1" during startup
 RESET check_function_bodies;
 -- Cleanup
 DROP SCHEMA temp_func_test CASCADE;
-NOTICE:  drop cascades to 35 other objects
+NOTICE:  drop cascades to 42 other objects
 DETAIL:  drop cascades to function functest_a_1(text,date)
 drop cascades to function functest_a_2(text[])
 drop cascades to function functest_a_3()
+drop cascades to function functest_a_8(anyelement)
+drop cascades to function functest_a_9()
+drop cascades to function functest_a_10()
 drop cascades to function functest_b_2(pg_catalog.int4)
 drop cascades to function functest_b_3(pg_catalog.int4)
 drop cascades to function functest_b_4(pg_catalog.int4)
@@ -860,6 +990,10 @@ drop cascades to function functest_s_3a()
 drop cascades to function functest_s_10(text,date)
 drop cascades to function functest_s_13()
 drop cascades to function functest_s_15(pg_catalog.int4)
+drop cascades to function functest_out_point(pg_catalog.float8,pg_catalog.float8)
+drop cascades to function functest_out_point2(pg_catalog.float8,pg_catalog.float8)
+drop cascades to function functest_out_point_sql(pg_catalog.float8,pg_catalog.float8)
+drop cascades to function functest_out_point2_sql(pg_catalog.float8,pg_catalog.float8)
 drop cascades to function functest_b_2(pg_catalog.int8)
 drop cascades to function functest_srf0()
 drop cascades to function functest_sri1()

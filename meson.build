@@ -9,7 +9,7 @@
 
 project('postgresql',
   ['c'],
-  version: '19rc1',
+  version: '19.0',
   license: 'PostgreSQL',
 
   # We want < 0.62 for python 3.6 compatibility on old platforms.
@@ -30,7 +30,7 @@ project('postgresql',
 )
 
 # IvorySQL version
-ivorysql_version = '5beta1'
+ivorysql_version = '6.0'
 
 
 ###############################################################
@@ -3920,13 +3920,30 @@ meson_install_args = meson_args + ['install'] + {
 # setup tests should be run first,
 # so define priority for these
 setup_tests_priority = 100
+
+# Depend on a single stamp custom_target rather than on installed_targets
+# directly.  On Windows, meson adds the build directory of every target in a
+# test's 'depends:' to the test's PATH, and with NLS enabled installed_targets
+# includes hundreds of per-locale .mo targets, pushing PATH past the Windows
+# length limit.  A custom_target's own dependencies are not walked for this
+# purpose, so the stamp adds at most one entry, while still forcing
+# installed_targets to be built first.  This indirection can be removed once
+# we mandate a meson version with the upstream fix
+# (https://github.com/mesonbuild/meson/pull/16039, expected in 1.13).
+installed_targets_stamp = custom_target('installed-targets-stamp',
+  output: 'installed-targets-stamp',
+  command: [python, '-c', 'pass'],
+  depends: installed_targets,
+  build_always_stale: true,
+)
+
 test('tmp_install',
     meson_bin, args: meson_install_args ,
     env: {'DESTDIR':test_install_destdir},
     priority: setup_tests_priority,
     timeout: 300,
     is_parallel: false,
-    depends: installed_targets,
+    depends: installed_targets_stamp,
     suite: ['setup'])
 
 test('install_test_files',
@@ -4285,12 +4302,24 @@ add_test_setup('running',
 ###############################################################
 
 headerscheck = files('src/tools/pginclude/headerscheck')
+
+# These checks compile headers, so all the headers they might include
+# need to have been generated.
+headerscheck_depends = [
+  generated_headers_stamp,
+  generated_backend_headers_stamp,
+  backend_parser,
+  jsonpath_gram,
+]
+
 run_target('headerscheck',
-  command: [headerscheck, meson.project_source_root(), meson.project_build_root()]
+  command: [headerscheck, meson.project_source_root(), meson.project_build_root()],
+  depends: headerscheck_depends,
 )
 
 run_target('cpluspluscheck',
-  command: [headerscheck, '--cplusplus', meson.project_source_root(), meson.project_build_root()]
+  command: [headerscheck, '--cplusplus', meson.project_source_root(), meson.project_build_root()],
+  depends: headerscheck_depends,
 )
 
 

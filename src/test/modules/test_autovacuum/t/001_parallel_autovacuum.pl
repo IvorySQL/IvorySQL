@@ -28,7 +28,8 @@ sub prepare_for_next_test
 }
 
 my $node = PostgreSQL::Test::Cluster->new('main');
-$node->init;
+
+$node->init('auth_extra' => [ '--create-role', 'regress_dbowner' ]);
 
 # Limit to one autovacuum worker and disable autovacuum logging globally
 # (enabled only on the test table) so that log checks below match only
@@ -253,6 +254,48 @@ $node->safe_psql('postgres',
 	"SELECT injection_points_wakeup('autovacuum-worker-cost-balanced')");
 $node->safe_psql('postgres',
 	"SELECT injection_points_detach('autovacuum-worker-cost-balanced')");
+
+# Test 4:
+# Check that DROP DATABASE FORCE run by a non-superuser terminates both an
+# autovacuum worker and its parallel workers.
+$node->safe_psql(
+	'postgres', qq{
+	DROP TABLE test_autovac;
+	CREATE ROLE regress_dbowner LOGIN IN ROLE pg_signal_backend;
+	ALTER DATABASE regress_db2 OWNER TO regress_dbowner;
+	SELECT injection_points_attach('parallel-vacuum-worker-start', 'wait');
+});
+
+$node->safe_psql(
+	'regress_db2', qq{
+	CREATE TABLE tbl_fddb (a int, b int)
+	  WITH (autovacuum_parallel_workers = 1, autovacuum_vacuum_threshold = 1);
+	INSERT INTO tbl_fddb SELECT g, g FROM generate_series(1, 100) g;
+	CREATE INDEX tbl_fddb_a ON tbl_fddb (a);
+	CREATE INDEX tbl_fddb_b ON tbl_fddb (b);
+	DELETE FROM tbl_fddb;
+});
+
+$node->wait_for_event('parallel worker', 'parallel-vacuum-worker-start');
+
+$log_offset = -s $node->logfile;
+
+my $psql_err = '';
+$node->psql(
+	'postgres',
+	'DROP DATABASE regress_db2 WITH (FORCE)',
+	connstr => $node->connstr('postgres') . ' user=regress_dbowner',
+	stderr => \$psql_err);
+is($psql_err, '', 'no error from DROP DATABASE FORCE');
+
+ok( $node->log_contains(
+		qr/FATAL: .*terminating background worker "parallel worker" due to administrator command/,
+		$log_offset),
+	'DROP DATABASE FORCE terminates parallel autovacuum workers');
+
+# No wakeup, the held worker is already gone.
+$node->safe_psql('postgres',
+	"SELECT injection_points_detach('parallel-vacuum-worker-start')");
 
 $node->stop;
 done_testing();

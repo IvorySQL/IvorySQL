@@ -982,7 +982,8 @@ find_ec_member_matching_expr(EquivalenceClass *ec,
  * compute an expression in this way, setrefs.c is going to insist on exact
  * matches of Vars to the source tlist.
  *
- * Child EC members are ignored unless they belong to given 'relids'.
+ * If 'relids' is given, EC members are ignored unless they belong to it.  If
+ * 'relids' is NULL, all child members are ignored.
  * Also, non-parallel-safe expressions are ignored if 'require_parallel_safe'.
  *
  * Note: some callers pass root == NULL for notational reasons.  This is OK
@@ -1024,9 +1025,13 @@ find_computable_ec_member(PlannerInfo *root,
 			continue;
 
 		/*
-		 * Ignore child members unless they belong to the requested rel.
+		 * Ignore child members unless they belong to the requested rel.  If
+		 * 'relids' is given, ignore parent members that don't belong to it
+		 * either: for a child rel, a parent member's PlaceHolderVars would
+		 * otherwise match the translated ones in "exprs", since equal()
+		 * ignores phexpr and phrels when comparing PlaceHolderVars.
 		 */
-		if (em->em_is_child &&
+		if ((em->em_is_child || relids != NULL) &&
 			!bms_is_subset(em->em_relids, relids))
 			continue;
 
@@ -2152,6 +2157,12 @@ create_join_clause(PlannerInfo *root,
  * We handle this by generating a constant-TRUE clause that is marked with
  * the same required_relids etc as the removed outer-join clause, thus
  * making it a join clause between the correct relations.
+ *
+ * However, we can't do that for a clone clause, since it may be applied
+ * above a commuted outer join that has already null-extended OUTERVAR but
+ * whose relid has not yet been added to the joinrel.  The original strict
+ * clause is needed there to reject the null-extended rows, so we throw
+ * back a clone as-is, marked redundant for selectivity estimation.
  */
 void
 reconsider_outer_join_clauses(PlannerInfo *root)
@@ -2177,6 +2188,15 @@ reconsider_outer_join_clauses(PlannerInfo *root)
 				/* remove it from the list */
 				root->left_join_clauses =
 					foreach_delete_current(root->left_join_clauses, cell);
+				/* throw back a clone as-is (see notes above) */
+				if (rinfo->has_clone || rinfo->is_clone)
+				{
+					/* but the thrown-back clause has no extra selectivity */
+					rinfo->norm_selec = 2.0;
+					rinfo->outer_selec = 1.0;
+					distribute_restrictinfo_to_rels(root, rinfo);
+					continue;
+				}
 				/* throw back a dummy replacement clause (see notes above) */
 				rinfo = make_restrictinfo(root,
 										  (Expr *) makeBoolConst(true, false),
@@ -2205,6 +2225,15 @@ reconsider_outer_join_clauses(PlannerInfo *root)
 				/* remove it from the list */
 				root->right_join_clauses =
 					foreach_delete_current(root->right_join_clauses, cell);
+				/* throw back a clone as-is (see notes above) */
+				if (rinfo->has_clone || rinfo->is_clone)
+				{
+					/* but the thrown-back clause has no extra selectivity */
+					rinfo->norm_selec = 2.0;
+					rinfo->outer_selec = 1.0;
+					distribute_restrictinfo_to_rels(root, rinfo);
+					continue;
+				}
 				/* throw back a dummy replacement clause (see notes above) */
 				rinfo = make_restrictinfo(root,
 										  (Expr *) makeBoolConst(true, false),
@@ -2416,6 +2445,8 @@ reconsider_full_join_clause(PlannerInfo *root, OuterJoinClauseInfo *ojcinfo)
 				right_type;
 	Relids		left_relids,
 				right_relids;
+	JoinDomain *left_jdomain,
+			   *right_jdomain;
 	ListCell   *lc1;
 
 	/* Extract needed info from the clause */
@@ -2427,6 +2458,29 @@ reconsider_full_join_clause(PlannerInfo *root, OuterJoinClauseInfo *ojcinfo)
 	rightvar = (Expr *) get_rightop(rinfo->clause);
 	left_relids = rinfo->left_relids;
 	right_relids = rinfo->right_relids;
+
+	/*
+	 * Identify the child JoinDomains within which LEFTVAR = CONSTANT and
+	 * RIGHTVAR = CONSTANT would hold.  We mustn't assume that LEFTVAR comes
+	 * from the join's lefthand input, since the clause might have been
+	 * written as, say, "a FULL JOIN b ON b.y = a.x".  If the clause doesn't
+	 * relate an expression of one input to an expression of the other, we
+	 * can't deduce anything from it.
+	 */
+	if (bms_is_subset(left_relids, sjinfo->syn_lefthand) &&
+		bms_is_subset(right_relids, sjinfo->syn_righthand))
+	{
+		left_jdomain = find_join_domain(root, sjinfo->syn_lefthand);
+		right_jdomain = find_join_domain(root, sjinfo->syn_righthand);
+	}
+	else if (bms_is_subset(left_relids, sjinfo->syn_righthand) &&
+			 bms_is_subset(right_relids, sjinfo->syn_lefthand))
+	{
+		left_jdomain = find_join_domain(root, sjinfo->syn_righthand);
+		right_jdomain = find_join_domain(root, sjinfo->syn_lefthand);
+	}
+	else
+		return false;
 
 	foreach(lc1, root->eq_classes)
 	{
@@ -2519,7 +2573,6 @@ reconsider_full_join_clause(PlannerInfo *root, OuterJoinClauseInfo *ojcinfo)
 			EquivalenceMember *cur_em = (EquivalenceMember *) lfirst(lc2);
 			Oid			eq_op;
 			RestrictInfo *newrinfo;
-			JoinDomain *jdomain;
 
 			if (!cur_em->em_is_const)
 				continue;		/* ignore non-const members */
@@ -2535,9 +2588,8 @@ reconsider_full_join_clause(PlannerInfo *root, OuterJoinClauseInfo *ojcinfo)
 													   cur_em->em_expr,
 													   bms_copy(left_relids),
 													   cur_ec->ec_min_security);
-				/* This equality holds within the lefthand child JoinDomain */
-				jdomain = find_join_domain(root, sjinfo->syn_lefthand);
-				if (process_equivalence(root, &newrinfo, jdomain))
+				/* This equality holds within LEFTVAR's child JoinDomain */
+				if (process_equivalence(root, &newrinfo, left_jdomain))
 					matchleft = true;
 			}
 			eq_op = select_equality_operator(cur_ec,
@@ -2552,9 +2604,8 @@ reconsider_full_join_clause(PlannerInfo *root, OuterJoinClauseInfo *ojcinfo)
 													   cur_em->em_expr,
 													   bms_copy(right_relids),
 													   cur_ec->ec_min_security);
-				/* This equality holds within the righthand child JoinDomain */
-				jdomain = find_join_domain(root, sjinfo->syn_righthand);
-				if (process_equivalence(root, &newrinfo, jdomain))
+				/* This equality holds within RIGHTVAR's child JoinDomain */
+				if (process_equivalence(root, &newrinfo, right_jdomain))
 					matchright = true;
 			}
 		}
@@ -2860,7 +2911,6 @@ add_child_rel_equivalences(PlannerInfo *root,
 			{
 				/* OK, generate transformed child version */
 				Expr	   *child_expr;
-				Relids		new_relids;
 
 				if (parent_rel->reloptkind == RELOPT_BASEREL)
 				{
@@ -2881,20 +2931,17 @@ add_child_rel_equivalences(PlannerInfo *root,
 				}
 
 				/*
-				 * Transform em_relids to match.  Note we do *not* do
+				 * The member's relids are all within the parent, so the child
+				 * version's relids are just the child's.  Note we do *not* do
 				 * pull_varnos(child_expr) here, as for example the
 				 * transformation might have substituted a constant, but we
 				 * don't want the child member to be marked as constant.
 				 */
-				new_relids = bms_difference(cur_em->em_relids,
-											top_parent_relids);
-				new_relids = bms_add_members(new_relids, child_relids);
-
 				add_child_eq_member(root,
 									cur_ec,
 									i,
 									child_expr,
-									new_relids,
+									bms_copy(child_relids),
 									cur_em->em_jdomain,
 									cur_em,
 									cur_em->em_datatype,
@@ -2972,12 +3019,14 @@ add_child_join_rel_equivalences(PlannerInfo *root,
 			if (bms_membership(cur_em->em_relids) != BMS_MULTIPLE)
 				continue;
 
-			/* Does this member reference child's topmost parent rel? */
-			if (bms_overlap(cur_em->em_relids, top_parent_relids))
+			/*
+			 * Consider only members that can be computed at child's topmost
+			 * parent joinrel, as in add_child_rel_equivalences.
+			 */
+			if (bms_is_subset(cur_em->em_relids, top_parent_relids))
 			{
-				/* Yes, generate transformed child version */
+				/* OK, generate transformed child version */
 				Expr	   *child_expr;
-				Relids		new_relids;
 
 				if (parent_joinrel->reloptkind == RELOPT_JOINREL)
 				{
@@ -2999,16 +3048,6 @@ add_child_join_rel_equivalences(PlannerInfo *root,
 				}
 
 				/*
-				 * Transform em_relids to match.  Note we do *not* do
-				 * pull_varnos(child_expr) here, as for example the
-				 * transformation might have substituted a constant, but we
-				 * don't want the child member to be marked as constant.
-				 */
-				new_relids = bms_difference(cur_em->em_relids,
-											top_parent_relids);
-				new_relids = bms_add_members(new_relids, child_relids);
-
-				/*
 				 * Add new child member to the EquivalenceClass.  Because this
 				 * is a RELOPT_OTHER_JOINREL which has multiple component
 				 * relids, there is no ideal place to store these members in
@@ -3027,12 +3066,15 @@ add_child_join_rel_equivalences(PlannerInfo *root,
 				 * for all the component relids, then that would just result
 				 * in eclass_member_iterator_next() finding the member
 				 * multiple times, which is a waste of effort.
+				 *
+				 * As in add_child_rel_equivalences, the child member's relids
+				 * are just the child's.
 				 */
 				add_child_eq_member(root,
 									cur_ec,
 									-1,
 									child_expr,
-									new_relids,
+									bms_copy(child_relids),
 									cur_em->em_jdomain,
 									cur_em,
 									cur_em->em_datatype,

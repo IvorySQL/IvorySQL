@@ -182,6 +182,32 @@ SELECT corr(0.1, 'NaN'), regr_r2(0.1, 'NaN') FROM generate_series(1, 30) g;
 SELECT corr('NaN', 0.1), regr_r2('NaN', 0.1) FROM generate_series(1, 30) g;
 SELECT corr('NaN', 'NaN'), regr_r2('NaN', 'NaN') FROM generate_series(1, 30) g;
 
+-- float8_regr_combine must treat constant inputs, and Inf/NaN with a
+-- constant other input, the same way float8_regr_accum does, so that
+-- partial aggregation gives the same results as a serial plan
+CREATE TABLE regr_part (k int, x float8, y float8) PARTITION BY LIST (k);
+CREATE TABLE regr_part_1 PARTITION OF regr_part FOR VALUES IN (1);
+CREATE TABLE regr_part_2 PARTITION OF regr_part FOR VALUES IN (2);
+CREATE TABLE regr_part_3 PARTITION OF regr_part FOR VALUES IN (3);
+INSERT INTO regr_part SELECT 1 + g % 3, 1.0 / 3, g FROM generate_series(1, 80) g;
+ANALYZE regr_part;
+SET enable_partitionwise_aggregate = on;
+EXPLAIN (COSTS OFF)
+SELECT corr(x, x) FROM regr_part;
+SELECT corr(x, x), regr_r2(x, x), regr_slope(y, x), regr_sxx(y, x), covar_pop(x, y)
+FROM regr_part;
+-- an Inf or NaN in one partition, the other input constant
+INSERT INTO regr_part VALUES (2, 'Infinity', 1);
+SELECT covar_pop(x, 0::float8), covar_pop(0::float8, x) FROM regr_part;
+UPDATE regr_part SET x = 'NaN' WHERE x = 'Infinity';
+SELECT covar_pop(x, 0::float8), covar_pop(0::float8, x) FROM regr_part;
+RESET enable_partitionwise_aggregate;
+SELECT covar_pop(x, 0::float8), covar_pop(0::float8, x) FROM regr_part;
+DELETE FROM regr_part WHERE x = 'NaN';
+SELECT corr(x, x), regr_r2(x, x), regr_slope(y, x), regr_sxx(y, x), covar_pop(x, y)
+FROM regr_part;
+DROP TABLE regr_part;
+
 -- test accum and combine functions directly
 CREATE TABLE regr_test (x float8, y float8);
 INSERT INTO regr_test VALUES (10,150),(20,250),(30,350),(80,540),(100,200);
@@ -202,8 +228,16 @@ SELECT float8_regr_combine('{3,60,200,750,20000,2000,1,NaN}'::float8[],
                            '{0,0,0,0,0,0,0,0}'::float8[]);
 SELECT float8_regr_combine('{0,0,0,0,0,0,0,0}'::float8[],
                            '{2,180,200,740,57800,-3400,NaN,1}'::float8[]);
-SELECT float8_regr_combine('{3,60,200,750,20000,2000,7,8}'::float8[],
-                           '{2,180,200,740,57800,-3400,7,9}'::float8[]);
+SELECT float8_regr_combine('{3,60,200,750,20000,2000,NaN,NaN}'::float8[],
+                           '{2,180,200,740,57800,-3400,NaN,NaN}'::float8[]);
+-- overflow of Sx, and of the Sxx correction term, must be reported
+SELECT float8_regr_combine('{1,1e308,0,1,0,0,1e308,1}'::float8[],
+                           '{1,1e308,0,1,0,0,1e308,1}'::float8[]);
+SELECT float8_regr_combine('{1,1e308,0,1,0,0,1e308,1}'::float8[],
+                           '{1,-1e308,0,1,0,0,-1e308,1}'::float8[]);
+-- but an infinite input is not an overflow
+SELECT float8_regr_combine('{1,Infinity,NaN,1,0,NaN,Infinity,1}'::float8[],
+                           '{1,1,0,1,0,0,1,1}'::float8[]);
 DROP TABLE regr_test;
 
 -- test count, distinct
@@ -601,6 +635,11 @@ alter table t2 alter column z drop not null;
 create unique index t2_z_uidx on t2(z) nulls not distinct;
 explain (costs off) select y,z from t2 group by y,z;
 
+-- But not if the table is nullable by an outer join, as null-extended rows
+-- would be conflated with the row having a NULL in the indexed column.
+explain (costs off)
+select t2.y,t2.z from t1 left join t2 on true group by t2.y,t2.z;
+
 drop table t1 cascade;
 drop table t2;
 drop table t3;
@@ -824,6 +863,23 @@ select aggfns(distinct a,a,c order by a)
 select aggfns(distinct a,b,c order by a,c using ~<~,b)
   from (values (1,3,'foo'),(0,null,null),(2,2,'bar'),(3,1,'baz')) v(a,b,c),
        generate_series(1,2) i;
+
+-- single input sorted on two keys; 0 and -0 differ only for *<
+select array_agg(distinct r order by r using <, r using *<)
+  from (values (row(-0.0::float8)), (row(0.0::float8))) v(r),
+       generate_series(1,2) i;
+
+-- check again for the non-presorted aggregate code
+set enable_presorted_aggregate to off;
+select array_agg(distinct r order by r using <, r using *<)
+  from (values (row(-0.0::float8)), (row(0.0::float8))) v(r),
+       generate_series(1,2) i;
+
+-- likewise, but without DISTINCT; the second sort key must not be ignored
+select array_agg(r order by r using <, r using *<)
+  from (values (row(-0.0::float8)), (row(0.0::float8))) v(r);
+
+reset enable_presorted_aggregate;
 
 -- test a more complex permutation that has previous caused issues
 select

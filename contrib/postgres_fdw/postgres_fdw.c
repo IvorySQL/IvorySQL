@@ -5979,10 +5979,10 @@ remattrmap_cmp(const void *v1, const void *v2)
 /*
  * Match local columns to result set rows.
  *
- * As the result set consists of the attribute stats for some/all of distinct
- * mapped remote columns in the RemoteAttributeMapping, every entry in it
- * should have at most one match in the result set; which is also ordered by
- * remote_attname, so we find such pairs by doing a merge join.
+ * As the result set consists of the attribute stats for distinct mapped
+ * remote columns, every entry in the RemoteAttributeMapping should have at
+ * most one match in the result set; which is also ordered by remote_attname,
+ * so we find such pairs by doing a merge join.
  *
  * Returns true if every entry in it has a match, and false if not.
  */
@@ -6041,8 +6041,8 @@ match_attrmap(PGresult *res,
 		row += 1;
 
 		/*
-		 * If the attname in the entry is less than that in the next stats
-		 * row, it means the stats for the entry are missing.
+		 * If the remote_attname in the entry is less than that in the next
+		 * stats row, it means the stats for the entry are missing.
 		 */
 		if (strcmp(remattrmap[mapidx].remote_attname,
 				   PQgetvalue(res, row, ATTSTATS_ATTNAME)) < 0)
@@ -6074,7 +6074,7 @@ match_attrmap(PGresult *res,
 }
 
 /*
- * Import fetched statistics into the local statistics tables.
+ * Attempt to import fetched statistics into the local statistics tables.
  */
 static bool
 import_fetched_statistics(Relation relation,
@@ -6084,6 +6084,12 @@ import_fetched_statistics(Relation relation,
 						  const RemoteAttributeMapping *remattrmap,
 						  int attrcnt)
 {
+	/*
+	 * ATTSTATS_NUM_FIELDS corresponds to the number of NullableDatum
+	 * arguments for import_attribute_statistics(), which is larger than that
+	 * for import_relation_statistics().  Therefore, a NullableDatum array of
+	 * that length is used to store data for each argument in both functions.
+	 */
 	NullableDatum args[ATTSTATS_NUM_FIELDS];
 
 	/* Set the 'version' parameter, which is common to both statistics. */
@@ -7746,20 +7752,20 @@ add_foreign_ordered_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	merge_fdw_options(fpinfo, ifpinfo, NULL);
 
 	/*
-	 * If the input_rel is a base or join relation, we would already have
-	 * considered pushing down the final sort to the remote server when
-	 * creating pre-sorted foreign paths for that relation, because the
-	 * query_pathkeys is set to the root->sort_pathkeys in that case (see
-	 * standard_qp_callback()).
+	 * If the input_rel is a base or join relation,
+	 * add_paths_with_pathkeys_for_rel() already considered the creation of
+	 * paths to suit query_pathkeys.  sort_pathkeys can be NIL here despite
+	 * the query having an ORDER BY clause, and query_pathkeys can be set to
+	 * setop_pathkeys (see standard_qp_callback()).
 	 */
 	if (input_rel->reloptkind == RELOPT_BASEREL ||
 		input_rel->reloptkind == RELOPT_JOINREL)
 	{
-		Assert(root->query_pathkeys == root->sort_pathkeys);
+		Assert(root->query_pathkeys == root->sort_pathkeys ||
+			   root->sort_pathkeys == NIL);
 
-		/* Safe to push down if the query_pathkeys is safe to push down */
+		/* Safe to push down if the query_pathkeys are safe to push down */
 		fpinfo->pushdown_safe = ifpinfo->qp_is_pushdown_safe;
-
 		return;
 	}
 

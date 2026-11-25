@@ -1,14 +1,15 @@
 # Simplified Chinese message translation file for plisql
-# Copyright (C) 2010 PostgreSQL Global Development Group
+# Copyright (C) 2026 PostgreSQL Global Development Group
 # Portions Copyright (c) 2023-2025, IvorySQL Global Development Team
 # This file is distributed under the same license as the PostgreSQL package.
-# Ruohang Feng <rh@vonng.com>, 2026.
+#
+# Ruohang Feng (vonng@pigsty) <rh@vonng.com>, 2026.
 #
 msgid ""
 msgstr ""
 "Project-Id-Version: plisql (PostgreSQL) 14\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2026-09-17 05:39+0000\n"
+"POT-Creation-Date: 2026-11-11 19:39+0000\n"
 "PO-Revision-Date: 2021-08-15 18:20+0800\n"
 "Last-Translator: Jie Zhang <zhangjie2@fujitsu.com>\n"
 "Language-Team: Chinese (Simplified) <zhangjie2@fujitsu.com>\n"
@@ -465,6 +466,11 @@ msgstr "不能向行变量赋非复合类型的值"
 msgid "cannot assign non-composite value to a record variable"
 msgstr "不能向 record 变量赋非复合类型的值"
 
+#: pl_exec.c:5406
+#, c-format
+msgid "record \"%s\" field \"%s\" changed type during assignment"
+msgstr "记录 \"%s\" 的字段 \"%s\" 在赋值期间更改了类型"
+
 #: pl_exec.c:5198
 #, c-format
 msgid "cannot assign to system column \"%s\""
@@ -516,6 +522,16 @@ msgstr "%2$s 中的 %1$s 检查已启用。"
 #, c-format
 msgid "Make sure the query returns the exact list of columns."
 msgstr "确保查询返回准确的列列表。"
+
+#: pl_exec.c:7767
+#, c-format
+msgid "assigned value is incompatible with the variable's type"
+msgstr "赋给变量的值与其类型不兼容"
+
+#: pl_exec.c:7768
+#, c-format
+msgid "A variable can retain the type definition established when it was first used."
+msgstr "变量可以保留首次使用时建立的类型定义。"
 
 #: pl_exec.c:7579
 #, c-format

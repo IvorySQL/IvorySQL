@@ -17,6 +17,7 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
+#include "access/relation.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_collation_d.h"
@@ -165,7 +166,7 @@ static bool key_in_expr_argnames(JsonbValue *key);
 static bool check_all_expr_argnames_valid(JsonbContainer *cont, AttrNumber exprnum);
 static Datum array_in_safe(FmgrInfo *array_in, const char *s, Oid typid,
 						   int32 typmod, AttrNumber exprnum,
-						   const char *element_name, bool *ok);
+						   const char *element_name, bool allow_empty, bool *ok);
 static Datum import_pg_statistic(Relation pgsd, JsonbContainer *cont,
 								 AttrNumber exprnum, FmgrInfo *array_in_fn,
 								 Oid typid, int32 typmod, Oid typcoll,
@@ -320,6 +321,7 @@ extended_statistics_update(FunctionCallInfo fcinfo)
 	char	   *stxname;
 	bool		inherited;
 	Relation	pg_stext = NULL;
+	Relation	targetrel = NULL;
 	HeapTuple	tup = NULL;
 
 	StakindFlags enabled = {false, false, false, false};
@@ -395,6 +397,16 @@ extended_statistics_update(FunctionCallInfo fcinfo)
 	relid = RangeVarGetRelidExtended(makeRangeVar(relnspname, relname, -1),
 									 ShareUpdateExclusiveLock, 0,
 									 RangeVarCallbackForStats, &locked_table);
+
+	/*
+	 * Parsing the MCV and expression inputs below can run user-defined code
+	 * (such as a domain's CHECK constraint) that alters a column's type
+	 * within our own transaction, which our lock does not prevent.  Hold the
+	 * relation open so that such a reentrant ALTER TABLE is rejected by
+	 * CheckTableNotInUse().  NoLock is fine here as we already hold
+	 * ShareUpdateExclusiveLock on it.
+	 */
+	targetrel = relation_open(relid, NoLock);
 
 	nspoid = get_namespace_oid(nspname, true);
 	if (nspoid == InvalidOid)
@@ -749,9 +761,22 @@ extended_statistics_update(FunctionCallInfo fcinfo)
 			success = false;
 	}
 
+	/*
+	 * The user-defined code run while parsing the inputs above can also drop
+	 * the statistics object itself, which holding the relation open does not
+	 * prevent.  The object must not go away in the middle of restoring its
+	 * statistics, so error out, which also rolls back the drop.
+	 */
+	if (!SearchSysCacheExists1(STATEXTOID, ObjectIdGetDatum(stxform->oid)))
+		ereport(ERROR,
+				errcode(ERRCODE_UNDEFINED_OBJECT),
+				errmsg("could not restore extended statistics object \"%s.%s\": it was dropped during the import",
+					   nspname, stxname));
+
 	upsert_pg_statistic_ext_data(values, nulls, replaces);
 
 cleanup:
+	relation_close(targetrel, NoLock);
 	if (HeapTupleIsValid(tup))
 		heap_freetuple(tup);
 	if (pg_stext != NULL)
@@ -945,8 +970,8 @@ check_all_expr_argnames_valid(JsonbContainer *cont, AttrNumber exprnum)
 		Assert(jitok == WJB_KEY);
 		Assert(jkey.type == jbvString);
 
-		/* A value must follow the key */
-		jitok = JsonbIteratorNext(&jbit, &jval, false);
+		/* A value must follow the key.  Skip nested containers. */
+		jitok = JsonbIteratorNext(&jbit, &jval, true);
 		Assert(jitok == WJB_VALUE);
 
 		/*
@@ -960,14 +985,10 @@ check_all_expr_argnames_valid(JsonbContainer *cont, AttrNumber exprnum)
 
 		if (!key_in_expr_argnames(&jkey))
 		{
-			char	   *bad_element_name = jbv_string_get_cstr(&jkey);
-
 			ereport(WARNING,
 					errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					errmsg("could not import element in expression %d: invalid key name",
 						   exprnum));
-
-			pfree(bad_element_name);
 			all_keys_valid = false;
 		}
 	}
@@ -1038,13 +1059,18 @@ jbv_to_infunc_datum(JsonbValue *jval, PGFunction func, AttrNumber exprnum,
  *
  * If an error is encountered, capture it, and reduce the elevel to WARNING.
  *
+ * The array must be one-dimensional.  If "allow_empty" is true, an empty
+ * array is also accepted.
+ *
  * This is an adaptation of statatt_build_stavalues().
  */
 static Datum
 array_in_safe(FmgrInfo *array_in, const char *s, Oid typid, int32 typmod,
-			  AttrNumber exprnum, const char *element_name, bool *ok)
+			  AttrNumber exprnum, const char *element_name, bool allow_empty,
+			  bool *ok)
 {
 	Datum		result;
+	int			ndim;
 
 	ErrorSaveContext escontext = {
 		.type = T_ErrorSaveContext,
@@ -1075,12 +1101,19 @@ array_in_safe(FmgrInfo *array_in, const char *s, Oid typid, int32 typmod,
 		return (Datum) 0;
 	}
 
-	if (ARR_NDIM(DatumGetArrayTypeP(result)) != 1)
+	ndim = ARR_NDIM(DatumGetArrayTypeP(result));
+	if (ndim != 1 && !(allow_empty && ndim == 0))
 	{
-		ereport(WARNING,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("could not import element \"%s\" in expression %d: must be a one-dimensional array",
-						element_name, exprnum)));
+		if (allow_empty)
+			ereport(WARNING,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("could not import element \"%s\" in expression %d: must be an empty or one-dimensional array",
+							element_name, exprnum)));
+		else
+			ereport(WARNING,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("could not import element \"%s\" in expression %d: must be a one-dimensional array",
+							element_name, exprnum)));
 		return (Datum) 0;
 	}
 
@@ -1175,10 +1208,10 @@ import_pg_statistic(Relation pgsd, JsonbContainer *cont,
 		goto pg_statistic_error;
 
 	/*
-	 * There are two arg pairs, MCV+MCF and MCEV+MCEF.  Both values must
-	 * either be found or not be found.  Any disagreement is a warning.  Once
-	 * we have ruled out disagreeing pairs, we can use either found flag as a
-	 * proxy for the other.
+	 * There are three arg pairs, MCV+MCF, MCEV+MCEF, and RLH+REF.  Both
+	 * values must either be found or not be found.  Any disagreement is a
+	 * warning.  Once we have ruled out disagreeing pairs, we can use either
+	 * found flag as a proxy for the other.
 	 */
 	if (found[MOST_COMMON_VALS_ELEM] != found[MOST_COMMON_FREQS_ELEM])
 	{
@@ -1203,21 +1236,15 @@ import_pg_statistic(Relation pgsd, JsonbContainer *cont,
 		goto pg_statistic_error;
 	}
 
-	/*
-	 * Range types may expect three values to be set.  All three of them must
-	 * either be found or not be found.  Any disagreement is a warning.
-	 */
-	if (found[RANGE_LENGTH_HISTOGRAM_ELEM] != found[RANGE_EMPTY_FRAC_ELEM] ||
-		found[RANGE_LENGTH_HISTOGRAM_ELEM] != found[RANGE_BOUNDS_HISTOGRAM_ELEM])
+	if (found[RANGE_LENGTH_HISTOGRAM_ELEM] != found[RANGE_EMPTY_FRAC_ELEM])
 	{
 		ereport(WARNING,
 				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				errmsg("could not parse \"%s\": invalid element in expression %d",
 					   argname, exprnum),
-				errhint("\"%s\", \"%s\", and \"%s\" must be all either strings or all nulls.",
+				errhint("\"%s\" and \"%s\" must be both either strings or nulls.",
 						extexprargname[RANGE_LENGTH_HISTOGRAM_ELEM],
-						extexprargname[RANGE_EMPTY_FRAC_ELEM],
-						extexprargname[RANGE_BOUNDS_HISTOGRAM_ELEM]));
+						extexprargname[RANGE_EMPTY_FRAC_ELEM]));
 		goto pg_statistic_error;
 	}
 
@@ -1339,14 +1366,14 @@ import_pg_statistic(Relation pgsd, JsonbContainer *cont,
 		s = jbv_string_get_cstr(&val[MOST_COMMON_VALS_ELEM]);
 		stavalues = array_in_safe(array_in_fn, s, typid, typmod, exprnum,
 								  extexprargname[MOST_COMMON_VALS_ELEM],
-								  &val_ok);
+								  false, &val_ok);
 
 		pfree(s);
 
 		s = jbv_string_get_cstr(&val[MOST_COMMON_FREQS_ELEM]);
 		stanumbers = array_in_safe(array_in_fn, s, FLOAT4OID, -1, exprnum,
 								   extexprargname[MOST_COMMON_FREQS_ELEM],
-								   &num_ok);
+								   false, &num_ok);
 		pfree(s);
 
 		/* Only set the slot if both datums have been built */
@@ -1385,7 +1412,7 @@ import_pg_statistic(Relation pgsd, JsonbContainer *cont,
 
 		stavalues = array_in_safe(array_in_fn, s, typid, typmod, exprnum,
 								  extexprargname[HISTOGRAM_BOUNDS_ELEM],
-								  &val_ok);
+								  false, &val_ok);
 		pfree(s);
 
 		if (val_ok)
@@ -1429,14 +1456,14 @@ import_pg_statistic(Relation pgsd, JsonbContainer *cont,
 		s = jbv_string_get_cstr(&val[MOST_COMMON_ELEMS_ELEM]);
 		stavalues = array_in_safe(array_in_fn, s, elemtypid, typmod, exprnum,
 								  extexprargname[MOST_COMMON_ELEMS_ELEM],
-								  &val_ok);
+								  true, &val_ok);
 		pfree(s);
 
 
 		s = jbv_string_get_cstr(&val[MOST_COMMON_ELEM_FREQS_ELEM]);
 		stanumbers = array_in_safe(array_in_fn, s, FLOAT4OID, -1, exprnum,
 								   extexprargname[MOST_COMMON_ELEM_FREQS_ELEM],
-								   &num_ok);
+								   false, &num_ok);
 		pfree(s);
 
 		/* Only set the slot if both datums have been built */
@@ -1459,7 +1486,7 @@ import_pg_statistic(Relation pgsd, JsonbContainer *cont,
 		s = jbv_string_get_cstr(&val[ELEM_COUNT_HISTOGRAM_ELEM]);
 		stanumbers = array_in_safe(array_in_fn, s, FLOAT4OID, -1, exprnum,
 								   extexprargname[ELEM_COUNT_HISTOGRAM_ELEM],
-								   &num_ok);
+								   false, &num_ok);
 		pfree(s);
 
 		if (num_ok)
@@ -1488,7 +1515,7 @@ import_pg_statistic(Relation pgsd, JsonbContainer *cont,
 
 		stavalues = array_in_safe(array_in_fn, s, rtypid, typmod, exprnum,
 								  extexprargname[RANGE_BOUNDS_HISTOGRAM_ELEM],
-								  &val_ok);
+								  false, &val_ok);
 
 		if (val_ok)
 			statatt_set_slot(values, nulls, replaces,
@@ -1521,7 +1548,7 @@ import_pg_statistic(Relation pgsd, JsonbContainer *cont,
 		s = jbv_string_get_cstr(&val[RANGE_LENGTH_HISTOGRAM_ELEM]);
 		stavalues = array_in_safe(array_in_fn, s, FLOAT8OID, -1, exprnum,
 								  extexprargname[RANGE_LENGTH_HISTOGRAM_ELEM],
-								  &val_ok);
+								  true, &val_ok);
 
 		if (val_ok)
 			statatt_set_slot(values, nulls, replaces,

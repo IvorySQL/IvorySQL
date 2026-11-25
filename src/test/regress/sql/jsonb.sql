@@ -922,6 +922,14 @@ SELECT count(*) FROM testjsonb WHERE j @? '$';
 SELECT count(*) FROM testjsonb WHERE j @? '$.public';
 SELECT count(*) FROM testjsonb WHERE j @? '$.bar';
 
+-- check indexed lookup of root scalars
+INSERT INTO testjsonb VALUES('"a scalar"');
+SELECT count(*) FROM testjsonb WHERE j @@ 'strict $ == "a scalar"';
+SELECT count(*) FROM testjsonb WHERE j @? 'strict $ ? (@ == "a scalar")';
+SELECT count(*) FROM testjsonb WHERE j @@ 'lax $ == "a scalar"';
+SELECT count(*) FROM testjsonb WHERE j @? 'lax $ ? (@ == "a scalar")';
+DELETE FROM testjsonb WHERE j = '"a scalar"';
+
 -- array exists - array elements should behave as keys (for GIN index scans too)
 CREATE INDEX jidx_array ON testjsonb USING gin((j->'array'));
 SELECT count(*) from testjsonb  WHERE j->'array' ? 'bar';
@@ -1293,6 +1301,16 @@ select jsonb_set_lax('{"a":1,"b":2}', '{b}', null, null_value_treatment => 'rais
 select jsonb_set_lax('{"a":1,"b":2}', '{b}', null, null_value_treatment => 'return_target') as return_target;
 select jsonb_set_lax('{"a":1,"b":2}', '{b}', null, null_value_treatment => 'delete_key') as delete_key;
 select jsonb_set_lax('{"a":1,"b":2}', '{b}', null, null_value_treatment => 'use_json_null') as use_json_null;
+
+-- multi-row cases with a constant NULL new_value
+select jsonb_set_lax(j, '{a}', null, true, t)
+from (values ('{"a":1}'::jsonb, 'use_json_null'),
+             ('{"a":1}'::jsonb, 'delete_key')) v(j, t);
+select jsonb_set_lax(j, '{a}', null, true, t)
+from (values ('{"a":1}'::jsonb, 'use_json_null'),
+             ('{"a":1}'::jsonb, 'return_target')) v(j, t);
+select jsonb_set_lax(j, '{a}', null)
+from (values ('{"a":1}'::jsonb), ('{"a":2}'::jsonb), ('{"a":3}'::jsonb)) v(j);
 
 \pset null ''
 

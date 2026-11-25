@@ -271,6 +271,7 @@ BernoulliSamplerData
 BgWorkerStartTime
 BgwHandleStatus
 BinaryArithmFunc
+BinaryUpgradeAttributeVersions
 BinaryUpgradeClassOidItem
 BindParamCbData
 BipartiteMatchState
@@ -496,6 +497,7 @@ CompareScalarsContext
 CompareType
 CompiledExprState
 CompositeIOData
+CompositeTypeMismatchOptions
 CompositeTypeStmt
 CompoundAffixFlag
 CompressFileHandle
@@ -2051,6 +2053,8 @@ PLyResultObject
 PLySRFState
 PLySavedArgs
 PLyScalarToOb
+PLyStaticsEntry
+PLyStaticsKey
 PLySubtransactionData
 PLySubtransactionObject
 PLyTransformToOb
@@ -2217,6 +2221,7 @@ PatternInfo
 PatternInfoArray
 Pattern_Prefix_Status
 Pattern_Type
+PendingCancelRequest
 PendingFsyncEntry
 PendingListenAction
 PendingListenEntry
@@ -3235,6 +3240,7 @@ TupStoreStatus
 TupleConstr
 TupleConversionMap
 TupleDesc
+TupleDescVersionData
 TupleHashEntry
 TupleHashEntryData
 TupleHashIterator
@@ -4060,6 +4066,7 @@ pgp_armor_headers_state
 pgpa_advice_item
 pgpa_advice_tag_type
 pgpa_advice_target
+pgpa_baserel_state
 pgpa_identifier
 pgpa_index_target
 pgpa_itm_type

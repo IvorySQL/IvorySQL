@@ -760,7 +760,8 @@ do_compile(FunctionCallInfo fcinfo,
 					else if (rettypeid == ANYRANGEOID ||
 							 rettypeid == ANYCOMPATIBLERANGEOID)
 						rettypeid = INT4RANGEOID;
-					else if (rettypeid == ANYMULTIRANGEOID)
+					else if (rettypeid == ANYMULTIRANGEOID ||
+							 rettypeid == ANYCOMPATIBLEMULTIRANGEOID)
 						rettypeid = INT4MULTIRANGEOID;
 					else		/* ANYELEMENT or ANYNONARRAY or ANYCOMPATIBLE */
 						rettypeid = INT4OID;
@@ -3812,6 +3813,7 @@ plisql_resolve_polymorphic_argtypes(int numargs,
 					argtypes[i] = INT4RANGEOID;
 					break;
 				case ANYMULTIRANGEOID:
+				case ANYCOMPATIBLEMULTIRANGEOID:
 					argtypes[i] = INT4MULTIRANGEOID;
 					break;
 				default:

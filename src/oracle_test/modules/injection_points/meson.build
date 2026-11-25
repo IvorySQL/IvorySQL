@@ -30,6 +30,7 @@ injection_points_isolation = [
   'basic',
   'inplace',
   'reindex_concurrently_deferred',
+  'reindex_concurrently_toast',
   'repack',
   'repack_commit_race',
   'repack_decode',
@@ -43,6 +44,7 @@ injection_points_isolation = [
   'syscache-update-pruned',
   'heap_lock_update',
   'on_conflict_probe_window',
+  'multixact-aborted-updater',
 ]
 
 # wait_cleanup terminates another backend, whose FATAL message can be lost
@@ -60,6 +62,7 @@ tests += {
     'sql': [
       'injection_points',
       'hashagg',
+      'portal_bind',
       'reindex_conc',
       'vacuum',
     ],

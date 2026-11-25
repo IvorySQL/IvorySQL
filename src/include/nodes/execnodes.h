@@ -1052,6 +1052,7 @@ typedef struct SubPlanState
 	TupleHashTable hashnulls;	/* hash table for rows with null(s) */
 	bool		havehashrows;	/* true if hashtable is not empty */
 	bool		havenullrows;	/* true if hashnulls is not empty */
+	bool		hashtablestale; /* hash tables must be rebuilt before use */
 	MemoryContext tuplesContext;	/* context containing hash tables' tuples */
 	ExprContext *innerecontext; /* econtext for computing inner tuples */
 	int			numCols;		/* number of columns being hashed */
@@ -2230,7 +2231,8 @@ typedef struct MergeJoinState
  *								outer joins
  *		hj_NullInnerTupleSlot	prepared null tuple for left/full outer joins
  *		hj_NullOuterTupleStore	tuplestore holding outer tuples that have
- *								null join keys (but must be emitted anyway)
+ *								null join keys (but must be emitted anyway);
+ *								used only in multi-batch parallel joins
  *		hj_FirstOuterTupleSlot	first tuple retrieved from outer plan
  *		hj_JoinState			current state of ExecHashJoin state machine
  *		hj_KeepNullTuples		true to keep outer tuples with null join keys
@@ -2329,8 +2331,7 @@ typedef struct MemoizeState
 								 * by bit, false when using hash equality ops */
 	MemoizeInstrumentation stats;	/* execution statistics */
 	SharedMemoizeInfo *shared_info; /* statistics for parallel workers */
-	Bitmapset  *keyparamids;	/* Param->paramids of expressions belonging to
-								 * param_exprs */
+	Bitmapset  *keyparamids;	/* copy of Memoize.keyparamids */
 } MemoizeState;
 
 /* ----------------

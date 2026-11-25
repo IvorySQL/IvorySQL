@@ -100,6 +100,18 @@ static StatsBuildData *make_build_data(Relation rel, StatExtEntry *stat,
 									   int numrows, HeapTuple *rows,
 									   VacAttrStats **stats, int stattarget);
 
+static inline void
+report_ext_stats_not_computed(Relation onerel, StatExtEntry *stat)
+{
+	if (!AmAutoVacuumWorkerProcess())
+		ereport(WARNING,
+				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+				 errmsg("statistics object \"%s.%s\" could not be computed for relation \"%s.%s\"",
+						stat->schema, stat->name,
+						get_namespace_name(onerel->rd_rel->relnamespace),
+						RelationGetRelationName(onerel)),
+				 errtable(onerel)));
+}
 
 /*
  * Compute requested extended stats, using the rows sampled for the plain
@@ -170,14 +182,7 @@ BuildRelationExtStatistics(Relation onerel, bool inh, double totalrows,
 									  natts, vacattrstats);
 		if (!stats)
 		{
-			if (!AmAutoVacuumWorkerProcess())
-				ereport(WARNING,
-						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("statistics object \"%s.%s\" could not be computed for relation \"%s.%s\"",
-								stat->schema, stat->name,
-								get_namespace_name(onerel->rd_rel->relnamespace),
-								RelationGetRelationName(onerel)),
-						 errtable(onerel)));
+			report_ext_stats_not_computed(onerel, stat);
 			continue;
 		}
 
@@ -196,6 +201,11 @@ BuildRelationExtStatistics(Relation onerel, bool inh, double totalrows,
 
 		/* evaluate expressions (if the statistics object has any) */
 		data = make_build_data(onerel, stat, numrows, rows, stats, stattarget);
+		if (!data)
+		{
+			report_ext_stats_not_computed(onerel, stat);
+			continue;
+		}
 
 		/* compute statistic of each requested type */
 		foreach(lc2, stat->types)
@@ -218,6 +228,12 @@ BuildRelationExtStatistics(Relation onerel, bool inh, double totalrows,
 					elog(ERROR, "requested expression stats, but there are no expressions");
 
 				exprdata = build_expr_data(stat->exprs, stattarget);
+				if (!exprdata)
+				{
+					report_ext_stats_not_computed(onerel, stat);
+					data = NULL;
+					break;
+				}
 				nexprs = list_length(stat->exprs);
 
 				compute_expr_stats(onerel, exprdata, nexprs, rows, numrows);
@@ -225,6 +241,9 @@ BuildRelationExtStatistics(Relation onerel, bool inh, double totalrows,
 				exprstats = serialize_expr_stats(exprdata, nexprs);
 			}
 		}
+
+		if (!data)
+			continue;
 
 		/* store the statistics in the catalog */
 		statext_store(stat->statOid, inh,
@@ -2309,20 +2328,24 @@ build_expr_data(List *exprs, int stattarget)
 
 		thisdata->expr = expr;
 		thisdata->vacattrstat = examine_expression(expr, stattarget);
+		if (thisdata->vacattrstat == NULL)
+		{
+			pfree(exprdata);
+			return NULL;
+		}
 		idx++;
 	}
 
 	return exprdata;
 }
 
-/* form an array of pg_statistic rows (per update_attstats) */
+/* form an array of pg_statistic rows, one per expression */
 static Datum
 serialize_expr_stats(AnlExprData *exprdata, int nexprs)
 {
 	int			exprno;
 	Oid			typOid;
 	Relation	sd;
-
 	ArrayBuildState *astate = NULL;
 
 	sd = table_open(StatisticRelationId, RowExclusiveLock);
@@ -2337,12 +2360,7 @@ serialize_expr_stats(AnlExprData *exprdata, int nexprs)
 
 	for (exprno = 0; exprno < nexprs; exprno++)
 	{
-		int			i,
-					k;
 		VacAttrStats *stats = exprdata[exprno].vacattrstat;
-
-		Datum		values[Natts_pg_statistic];
-		bool		nulls[Natts_pg_statistic];
 		HeapTuple	stup;
 
 		if (!stats->stats_valid)
@@ -2355,80 +2373,9 @@ serialize_expr_stats(AnlExprData *exprdata, int nexprs)
 			continue;
 		}
 
-		/*
-		 * Construct a new pg_statistic tuple
-		 */
-		for (i = 0; i < Natts_pg_statistic; ++i)
-		{
-			nulls[i] = false;
-		}
-
-		values[Anum_pg_statistic_starelid - 1] = ObjectIdGetDatum(InvalidOid);
-		values[Anum_pg_statistic_staattnum - 1] = Int16GetDatum(InvalidAttrNumber);
-		values[Anum_pg_statistic_stainherit - 1] = BoolGetDatum(false);
-		values[Anum_pg_statistic_stanullfrac - 1] = Float4GetDatum(stats->stanullfrac);
-		values[Anum_pg_statistic_stawidth - 1] = Int32GetDatum(stats->stawidth);
-		values[Anum_pg_statistic_stadistinct - 1] = Float4GetDatum(stats->stadistinct);
-		i = Anum_pg_statistic_stakind1 - 1;
-		for (k = 0; k < STATISTIC_NUM_SLOTS; k++)
-		{
-			values[i++] = Int16GetDatum(stats->stakind[k]); /* stakindN */
-		}
-		i = Anum_pg_statistic_staop1 - 1;
-		for (k = 0; k < STATISTIC_NUM_SLOTS; k++)
-		{
-			values[i++] = ObjectIdGetDatum(stats->staop[k]);	/* staopN */
-		}
-		i = Anum_pg_statistic_stacoll1 - 1;
-		for (k = 0; k < STATISTIC_NUM_SLOTS; k++)
-		{
-			values[i++] = ObjectIdGetDatum(stats->stacoll[k]);	/* stacollN */
-		}
-		i = Anum_pg_statistic_stanumbers1 - 1;
-		for (k = 0; k < STATISTIC_NUM_SLOTS; k++)
-		{
-			int			nnum = stats->numnumbers[k];
-
-			if (nnum > 0)
-			{
-				int			n;
-				Datum	   *numdatums = (Datum *) palloc(nnum * sizeof(Datum));
-				ArrayType  *arry;
-
-				for (n = 0; n < nnum; n++)
-					numdatums[n] = Float4GetDatum(stats->stanumbers[k][n]);
-				arry = construct_array_builtin(numdatums, nnum, FLOAT4OID);
-				values[i++] = PointerGetDatum(arry);	/* stanumbersN */
-			}
-			else
-			{
-				nulls[i] = true;
-				values[i++] = (Datum) 0;
-			}
-		}
-		i = Anum_pg_statistic_stavalues1 - 1;
-		for (k = 0; k < STATISTIC_NUM_SLOTS; k++)
-		{
-			if (stats->numvalues[k] > 0)
-			{
-				ArrayType  *arry;
-
-				arry = construct_array(stats->stavalues[k],
-									   stats->numvalues[k],
-									   stats->statypid[k],
-									   stats->statyplen[k],
-									   stats->statypbyval[k],
-									   stats->statypalign[k]);
-				values[i++] = PointerGetDatum(arry);	/* stavaluesN */
-			}
-			else
-			{
-				nulls[i] = true;
-				values[i++] = (Datum) 0;
-			}
-		}
-
-		stup = heap_form_tuple(RelationGetDescr(sd), values, nulls);
+		stup = build_statistic_tuple(InvalidOid, InvalidAttrNumber, false,
+									 stats,
+									 RelationGetDescr(sd), NULL);
 
 		astate = accumArrayResult(astate,
 								  heap_copy_tuple_as_datum(stup, RelationGetDescr(sd)),
@@ -2502,6 +2449,8 @@ statext_expressions_load(Oid stxoid, bool inh, int idx)
  * Evaluate the expressions, so that we can use the results to build
  * all the requested statistics types. This matters especially for
  * expensive expressions, of course.
+ *
+ * Returns NULL if an expression cannot be analyzed.
  */
 static StatsBuildData *
 make_build_data(Relation rel, StatExtEntry *stat, int numrows, HeapTuple *rows,
@@ -2590,6 +2539,12 @@ make_build_data(Relation rel, StatExtEntry *stat, int numrows, HeapTuple *rows,
 
 		result->attnums[idx] = k;
 		result->stats[idx] = examine_expression(expr, stattarget);
+
+		if (result->stats[idx] == NULL)
+		{
+			pfree(result);
+			return NULL;
+		}
 
 		idx++;
 		k--;

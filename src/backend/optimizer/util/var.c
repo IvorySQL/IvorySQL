@@ -77,6 +77,7 @@ static bool pull_vars_walker(Node *node, pull_vars_context *context);
 static bool contain_var_clause_walker(Node *node, void *context);
 static bool contain_vars_of_level_walker(Node *node, int *sublevels_up);
 static bool contain_vars_returning_old_or_new_walker(Node *node, void *context);
+static bool contain_var_or_representative_walker(Node *node, void *context);
 static bool locate_var_of_level_walker(Node *node,
 									   locate_var_of_level_context *context);
 static bool pull_var_clause_walker(Node *node,
@@ -532,6 +533,69 @@ contain_vars_returning_old_or_new_walker(Node *node, void *context)
 		return false;
 	}
 	return expression_tree_walker(node, contain_vars_returning_old_or_new_walker,
+								  context);
+}
+
+
+/*
+ * contain_var_or_representative
+ *	  Recursively scan a clause to discover whether it contains any Var nodes
+ *	  (of the current query level), or CaseTestExpr or Param nodes.
+ *
+ *	  Returns true if any such node found.
+ *
+ * This is like contain_var_clause, but additionally returns true if we find
+ * a node that might represent the value of a Var from elsewhere in the query.
+ * We don't inquire into whether it actually does represent one; this is used
+ * for leakproofness checks in which it's better to report false positives
+ * than false negatives.
+ *
+ * You might think this needs to return true for upper-level Vars too,
+ * but at least in current usage it's better to match contain_var_clause.
+ * The caller is considering whether to push the clause below an RLS qual, so
+ * we need only restrict access to Vars of the relation with the RLS policy.
+ *
+ * Does not examine subqueries, therefore must only be used after reduction
+ * of sublinks to subplans!
+ */
+bool
+contain_var_or_representative(Node *node)
+{
+	return contain_var_or_representative_walker(node, NULL);
+}
+
+static bool
+contain_var_or_representative_walker(Node *node, void *context)
+{
+	/* This part must match contain_var_clause ... */
+	if (node == NULL)
+		return false;
+	if (IsA(node, Var))
+	{
+		if (((Var *) node)->varlevelsup == 0)
+			return true;		/* abort the tree traversal and return true */
+		return false;
+	}
+	if (IsA(node, CurrentOfExpr))
+		return true;
+	if (IsA(node, PlaceHolderVar))
+	{
+		if (((PlaceHolderVar *) node)->phlevelsup == 0)
+			return true;		/* abort the tree traversal and return true */
+		/* else fall through to check the contained expr */
+	}
+	/* ... and here's the additional part */
+	if (IsA(node, CaseTestExpr))
+		return true;
+	if (IsA(node, Param))
+	{
+		/* We don't consider PARAM_EXTERN Params dangerous for this purpose */
+		if (((Param *) node)->paramkind == PARAM_EXTERN)
+			return false;
+		else
+			return true;
+	}
+	return expression_tree_walker(node, contain_var_or_representative_walker,
 								  context);
 }
 
@@ -1238,6 +1302,10 @@ mark_nullable_by_grouping(PlannerInfo *root, Node *newnode, Var *oldvar)
 /*
  * Add oldvar's varnullingrels, if any, to a flattened join alias expression.
  * The newnode has been copied, so we can modify it freely.
+ *
+ * If we need a PlaceHolderVar, we reuse any PHV already made for the same
+ * expression with this root, so that all expansions of the same alias get
+ * the same phid, much as pullup_replace_vars_callback does with its rv_cache.
  */
 static Node *
 add_nullingrels_if_needed(PlannerInfo *root, Node *newnode, Var *oldvar)
@@ -1257,7 +1325,7 @@ add_nullingrels_if_needed(PlannerInfo *root, Node *newnode, Var *oldvar)
 		 * join; but if that leaves nothing, fall back to evaluating it at the
 		 * join that the oldvar is an alias Var for.
 		 */
-		PlaceHolderVar *newphv;
+		PlaceHolderVar *newphv = NULL;
 		Index		levelsup = oldvar->varlevelsup;
 		Relids		joinrelids;
 		Relids		phrels;
@@ -1271,9 +1339,29 @@ add_nullingrels_if_needed(PlannerInfo *root, Node *newnode, Var *oldvar)
 			/* Keep the join's own OJ relid: this set spans both its sides */
 			phrels = joinrelids;
 		}
-		newphv = make_placeholder_expr(root, (Expr *) newnode, phrels);
+
+		/* Look for an existing PHV, comparing at level zero */
+		if (levelsup != 0)
+			IncrementVarSublevelsUp(newnode, -((int) levelsup), 0);
+		foreach_node(PlaceHolderVar, phv, root->join_alias_phvs)
+		{
+			if (bms_equal(phv->phrels, phrels) &&
+				equal(phv->phexpr, newnode))
+			{
+				newphv = copyObject(phv);
+				break;
+			}
+		}
+		if (newphv == NULL)
+		{
+			newphv = make_placeholder_expr(root, (Expr *) newnode, phrels);
+			root->join_alias_phvs = lappend(root->join_alias_phvs,
+											copyObject(newphv));
+		}
+
 		/* newphv has zero phlevelsup and NULL phnullingrels; fix it */
-		newphv->phlevelsup = levelsup;
+		if (levelsup != 0)
+			IncrementVarSublevelsUp((Node *) newphv, levelsup, 0);
 		newphv->phnullingrels = bms_copy(oldvar->varnullingrels);
 		newnode = (Node *) newphv;
 	}

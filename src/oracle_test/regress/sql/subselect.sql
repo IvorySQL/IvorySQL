@@ -743,6 +743,19 @@ select sum(ss.tst::int) from
 where o.ten = 0;
 
 --
+-- Test rescan of a hashed subplan that is referenced more than once (here
+-- the equivalence class produces two copies of it in the scan filter)
+--
+explain (costs off)
+select i4.f1, (select count(*) from onek
+               where two = four and two = (0 in (select i4.f1))::int)
+from int4_tbl i4 order by i4.f1;
+
+select i4.f1, (select count(*) from onek
+               where two = four and two = (0 in (select i4.f1))::int)
+from int4_tbl i4 order by i4.f1;
+
+--
 -- Test rescan of a hashed SetOp node
 --
 begin;
@@ -817,6 +830,23 @@ select sum(o.four), sum(ss.a) from
     select * from x
   ) ss
 where o.ten = 1;
+
+--
+-- Test rescan of an initplan moved to a lower plan node by setrefs.c, here
+-- from a removed single-child Append
+--
+create temp table rescan_ptbl (a int) partition by list (a);
+create temp table rescan_ptbl_1 partition of rescan_ptbl for values in (1);
+insert into rescan_ptbl values (1);
+
+explain (costs off)
+select v.x, s.y from (values (1), (2)) v(x),
+  lateral (select (select v.x) as y from rescan_ptbl offset 0) s
+  where s.y > 0;
+
+select v.x, s.y from (values (1), (2)) v(x),
+  lateral (select (select v.x) as y from rescan_ptbl offset 0) s
+  where s.y > 0;
 
 --
 -- Check we don't misoptimize a NOT IN where the subquery returns no rows.
@@ -1796,6 +1826,19 @@ WHERE COALESCE(t1.id, -1) NOT IN
 SELECT * FROM null_tab t1
 WHERE COALESCE(t1.id, -1) NOT IN
     (SELECT t1.val FROM not_null_tab t2 WHERE t2.val IS NOT NULL);
+
+-- No ANTI JOIN: the inner operand is coerced by a cast function that can
+-- return NULL for a non-null input
+CREATE FUNCTION int4_to_text_nullable(int4) RETURNS text
+    AS 'SELECT CASE WHEN $1 <> 0 THEN $1::varchar END'
+    LANGUAGE sql IMMUTABLE STRICT;
+/
+CREATE CAST (int4 AS text) WITH FUNCTION int4_to_text_nullable(int4) AS IMPLICIT;
+CREATE TEMP TABLE not_null_text_tab (t text NOT NULL);
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM not_null_text_tab
+WHERE t NOT IN (SELECT id FROM not_null_tab);
 
 ROLLBACK;
 

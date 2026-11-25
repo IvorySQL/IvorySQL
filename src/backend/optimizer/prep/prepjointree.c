@@ -344,27 +344,35 @@ transform_MERGE_to_join(Query *parse)
 	 */
 	if (jointype == JOIN_LEFT || jointype == JOIN_FULL)
 	{
+		Relids		sourcerelids;
+
+		/*
+		 * If the source relation is a join, we must mark any Vars referring
+		 * to relations under the join as well as the join relation itself.
+		 */
+		sourcerelids = get_relids_in_jointree(source, true, true);
+
 		parse->mergeJoinCondition =
 			add_nulling_relids(parse->mergeJoinCondition,
-							   bms_make_singleton(sourcerti),
+							   sourcerelids,
 							   bms_make_singleton(joinrti));
 
 		foreach_node(MergeAction, action, parse->mergeActionList)
 		{
 			action->qual =
 				add_nulling_relids(action->qual,
-								   bms_make_singleton(sourcerti),
+								   sourcerelids,
 								   bms_make_singleton(joinrti));
 
 			action->targetList = (List *)
 				add_nulling_relids((Node *) action->targetList,
-								   bms_make_singleton(sourcerti),
+								   sourcerelids,
 								   bms_make_singleton(joinrti));
 		}
 
 		parse->returningList = (List *)
 			add_nulling_relids((Node *) parse->returningList,
-							   bms_make_singleton(sourcerti),
+							   sourcerelids,
 							   bms_make_singleton(joinrti));
 	}
 
@@ -1462,6 +1470,7 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 	subroot->append_rel_list = NIL;
 	subroot->row_identity_vars = NIL;
 	subroot->rowMarks = NIL;
+	subroot->join_alias_phvs = NIL;
 	memset(subroot->upper_rels, 0, sizeof(subroot->upper_rels));
 	memset(subroot->upper_targets, 0, sizeof(subroot->upper_targets));
 	subroot->processed_groupClause = NIL;
@@ -1570,12 +1579,13 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 
 	/*
 	 * Adjust level-0 varnos in subquery so that we can append its rangetable
-	 * to upper query's.  We have to fix the subquery's append_rel_list as
-	 * well.
+	 * to upper query's.  We have to fix the subquery's append_rel_list and
+	 * join_alias_phvs as well.
 	 */
 	rtoffset = list_length(parse->rtable);
 	OffsetVarNodes((Node *) subquery, rtoffset, 0);
 	OffsetVarNodes((Node *) subroot->append_rel_list, rtoffset, 0);
+	OffsetVarNodes((Node *) subroot->join_alias_phvs, rtoffset, 0);
 
 	/*
 	 * Upper-level vars in subquery are now one level closer to their parent
@@ -1583,6 +1593,7 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 	 */
 	IncrementVarSublevelsUp((Node *) subquery, -1, 1);
 	IncrementVarSublevelsUp((Node *) subroot->append_rel_list, -1, 1);
+	IncrementVarSublevelsUp((Node *) subroot->join_alias_phvs, -1, 1);
 
 	/*
 	 * The subquery's targetlist items are now in the appropriate form to
@@ -1711,6 +1722,14 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 	 */
 	root->append_rel_list = list_concat(root->append_rel_list,
 										subroot->append_rel_list);
+
+	/*
+	 * Also add the PHVs made while flattening the subquery's join alias Vars,
+	 * so that the parent's flattening of the rest of the subquery reuses them
+	 * rather than making new PHVs with different phids.
+	 */
+	root->join_alias_phvs = list_concat(root->join_alias_phvs,
+										subroot->join_alias_phvs);
 
 	/*
 	 * We don't have to do the equivalent bookkeeping for outer-join info,
@@ -4429,15 +4448,18 @@ remove_result_refs(PlannerInfo *root, int varno, Node *newjtloc)
  *
  * find_dependent_phvs should be used when we want to see if there are
  * any such PHVs anywhere in the Query.  Another use-case is to see if
- * a subtree of the join tree contains such PHVs; but for that, we have
+ * a subtree of the join tree needs such PHVs; but for that, we have
  * to look not only at the join tree nodes themselves but at the
- * referenced RTEs.  For that, use find_dependent_phvs_in_jointree.
+ * referenced RTEs, and also inside any PHVs elsewhere in the Query that
+ * are evaluated within the subtree.  For that, use
+ * find_dependent_phvs_in_jointree.
  */
 
 typedef struct
 {
 	Relids		relids;			/* target relid, represented as a relid set */
 	Relids		baserels;		/* base RT indexes in query, NULL if no PHVs */
+	Relids		siblingrels;	/* base RT indexes of target's sibling rels */
 	int			sublevels_up;	/* current nesting level */
 } find_dependent_phvs_context;
 
@@ -4483,6 +4505,53 @@ find_dependent_phvs_walker(Node *node,
 	return expression_tree_walker(node, find_dependent_phvs_walker, context);
 }
 
+/*
+ * Look for PlaceHolderVars that are to be evaluated at some but not all of
+ * context->siblingrels and contain a dependent PHV in their expressions.
+ */
+static bool
+find_nested_dependent_phvs_walker(Node *node,
+								  find_dependent_phvs_context *context)
+{
+	if (node == NULL)
+		return false;
+	if (IsA(node, PlaceHolderVar))
+	{
+		PlaceHolderVar *phv = (PlaceHolderVar *) node;
+
+		if (phv->phlevelsup == context->sublevels_up)
+		{
+			Relids		phbaserels = bms_intersect(phv->phrels,
+												   context->baserels);
+			bool		match;
+
+			match = (!bms_is_subset(context->relids, phbaserels) &&
+					 bms_overlap(phbaserels, context->siblingrels) &&
+					 !bms_is_subset(context->siblingrels, phbaserels));
+			bms_free(phbaserels);
+			if (match &&
+				find_dependent_phvs_walker((Node *) phv->phexpr, context))
+				return true;
+		}
+		/* fall through to examine children */
+	}
+	if (IsA(node, Query))
+	{
+		/* Recurse into subselects */
+		bool		result;
+
+		context->sublevels_up++;
+		result = query_tree_walker((Query *) node,
+								   find_nested_dependent_phvs_walker,
+								   context, 0);
+		context->sublevels_up--;
+		return result;
+	}
+
+	return expression_tree_walker(node, find_nested_dependent_phvs_walker,
+								  context);
+}
+
 static bool
 find_dependent_phvs(PlannerInfo *root, int varno, Relids baserels)
 {
@@ -4494,6 +4563,7 @@ find_dependent_phvs(PlannerInfo *root, int varno, Relids baserels)
 
 	context.relids = bms_make_singleton(varno);
 	context.baserels = baserels;
+	context.siblingrels = NULL;
 	context.sublevels_up = 0;
 
 	if (query_tree_walker(root->parse, find_dependent_phvs_walker, &context, 0))
@@ -4520,6 +4590,7 @@ find_dependent_phvs_in_jointree(PlannerInfo *root, Node *node, int varno,
 
 	context.relids = bms_make_singleton(varno);
 	context.baserels = baserels;
+	context.siblingrels = NULL;
 	context.sublevels_up = 0;
 
 	/*
@@ -4545,6 +4616,19 @@ find_dependent_phvs_in_jointree(PlannerInfo *root, Node *node, int varno,
 			range_table_entry_walker(rte, find_dependent_phvs_walker, &context, 0))
 			return true;
 	}
+
+	/*
+	 * Lastly, check for PHVs that are evaluated at some but not all of the
+	 * sibling rels and contain a dependent PHV.  Removing the RTE_RESULT
+	 * would move the dependent PHV up to the join of all the sibling rels, so
+	 * it would not yet be available where the outer PHV is evaluated.  The
+	 * outer PHV can appear anywhere in the query (e.g., in the targetlist),
+	 * so search the whole query.
+	 */
+	context.siblingrels = bms_del_member(subrelids, varno);
+	if (query_tree_walker(root->parse, find_nested_dependent_phvs_walker,
+						  &context, 0))
+		return true;
 
 	return false;
 }

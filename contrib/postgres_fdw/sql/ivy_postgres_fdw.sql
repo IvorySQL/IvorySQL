@@ -279,6 +279,11 @@ ALTER USER MAPPING FOR public SERVER testserver1
 ALTER USER MAPPING FOR public SERVER testserver1
 	OPTIONS (ADD oauth_client_id 'myID');
 
+-- Nor is sslkeylogfile
+ALTER SERVER testserver1 OPTIONS (ADD sslkeylogfile './noexist/log');
+ALTER USER MAPPING FOR public SERVER testserver1
+	OPTIONS (ADD sslkeylogfile './noexist/log');
+
 ALTER FOREIGN TABLE ft1 OPTIONS (schema_name 'S 1', table_name 'T 1');
 ALTER FOREIGN TABLE ft2 OPTIONS (schema_name 'S 1', table_name 'T 1');
 ALTER FOREIGN TABLE ft1 ALTER COLUMN c1 OPTIONS (column_name 'C 1');
@@ -608,6 +613,15 @@ SELECT * FROM (
     UNION ALL
     SELECT 2 AS type,c1 FROM ft2
 ) a ORDER BY type;
+
+-- Ensure the code works correctly when sort_pathkeys is empty due to
+-- a redundant pathkey.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM (
+    (SELECT c1, c2 FROM ft1 WHERE c1 = 0 ORDER BY c1 LIMIT 1)
+    UNION
+    (SELECT c1, c2 FROM ft1 WHERE c1 = 0 ORDER BY c1)
+) a;
 
 -- ===================================================================
 -- JOIN queries
@@ -3223,6 +3237,19 @@ delete from rem2;
 
 alter server loopback options (drop batch_size);
 
+
+-- ===================================================================
+-- test COPY TO
+-- ===================================================================
+
+-- test that COPY ... TO ... (FORMAT json) works
+
+-- once with a projection (due to dropped cols)
+COPY (SELECT * FROM ft1 ORDER BY c1 LIMIT 1) TO STDOUT (FORMAT json);
+-- and once without
+COPY (SELECT * FROM ft4 ORDER BY c1 LIMIT 1) TO STDOUT (FORMAT json);
+
+
 -- ===================================================================
 -- test for TRUNCATE
 -- ===================================================================
@@ -3884,6 +3911,21 @@ SELECT COUNT(*) FROM ftable;
 DROP TRIGGER trig_row_before ON ftable;
 DROP FOREIGN TABLE ftable;
 DROP TABLE batch_table;
+
+-- The remote server can report more rows than we sent, for example when a
+-- rule on the remote table rewrites the INSERT.
+CREATE TABLE batch_table ( x number(38,0) );
+CREATE TABLE batch_rule_table ( x number(38,0) );
+CREATE RULE batch_rule AS ON INSERT TO batch_table
+	DO INSTEAD INSERT INTO batch_rule_table SELECT i FROM generate_series(1, 3) i;
+CREATE FOREIGN TABLE ftable ( x number(38,0) ) SERVER loopback OPTIONS ( table_name 'batch_table', batch_size '10' );
+INSERT INTO ftable VALUES (1), (2);
+SELECT COUNT(*) FROM batch_rule_table;
+
+-- Clean up
+DROP FOREIGN TABLE ftable;
+DROP TABLE batch_table;
+DROP TABLE batch_rule_table;
 
 -- Use partitioning
 CREATE TABLE batch_table ( x number(38,0) ) PARTITION BY HASH (x);

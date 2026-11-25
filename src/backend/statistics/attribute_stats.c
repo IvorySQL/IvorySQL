@@ -18,6 +18,7 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
+#include "access/relation.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_operator.h"
@@ -217,6 +218,7 @@ attribute_statistics_update_internal(Oid reloid,
 									 bool inherited, FunctionCallInfo fcinfo)
 {
 	Relation	starel;
+	Relation	targetrel;
 	HeapTuple	statup;
 
 	Oid			atttypid = InvalidOid;
@@ -348,6 +350,16 @@ attribute_statistics_update_internal(Oid reloid,
 		result = false;
 	}
 
+	/*
+	 * Parsing the input arrays below can run user-defined code (such as a
+	 * domain's CHECK constraint) that alters the column's type within our own
+	 * transaction, which our lock does not prevent.  Hold the relation open
+	 * so that such a reentrant ALTER TABLE is rejected by
+	 * CheckTableNotInUse().  NoLock is fine here as we already hold
+	 * ShareUpdateExclusiveLock on it.
+	 */
+	targetrel = relation_open(reloid, NoLock);
+
 	fmgr_info(F_ARRAY_IN, &array_in_fn);
 
 	starel = table_open(StatisticRelationId, RowExclusiveLock);
@@ -387,7 +399,7 @@ attribute_statistics_update_internal(Oid reloid,
 														&array_in_fn,
 														PG_GETARG_DATUM(MOST_COMMON_VALS_ARG),
 														atttypid, atttypmod,
-														&converted);
+														false, &converted);
 
 		if (converted)
 		{
@@ -427,7 +439,7 @@ attribute_statistics_update_internal(Oid reloid,
 											&array_in_fn,
 											PG_GETARG_DATUM(HISTOGRAM_BOUNDS_ARG),
 											atttypid, atttypmod,
-											&converted);
+											false, &converted);
 
 		if (converted)
 		{
@@ -464,7 +476,7 @@ attribute_statistics_update_internal(Oid reloid,
 											&array_in_fn,
 											PG_GETARG_DATUM(MOST_COMMON_ELEMS_ARG),
 											elemtypid, atttypmod,
-											&converted);
+											true, &converted);
 
 		if (converted)
 		{
@@ -506,7 +518,7 @@ attribute_statistics_update_internal(Oid reloid,
 											&array_in_fn,
 											PG_GETARG_DATUM(RANGE_BOUNDS_HISTOGRAM_ARG),
 											bounds_typid, atttypmod,
-											&converted);
+											false, &converted);
 
 		if (converted)
 		{
@@ -533,7 +545,7 @@ attribute_statistics_update_internal(Oid reloid,
 		stavalues = statatt_build_stavalues("range_length_histogram",
 											&array_in_fn,
 											PG_GETARG_DATUM(RANGE_LENGTH_HISTOGRAM_ARG),
-											FLOAT8OID, 0, &converted);
+											FLOAT8OID, 0, true, &converted);
 
 		if (converted)
 		{
@@ -546,11 +558,25 @@ attribute_statistics_update_internal(Oid reloid,
 			result = false;
 	}
 
+	/*
+	 * The user-defined code run while parsing the arrays above can also drop
+	 * the column itself through a dependency (e.g. DROP DOMAIN ... CASCADE),
+	 * which holding the relation open does not prevent.  The column must not
+	 * go away in the middle of restoring its statistics, so error out, which
+	 * also rolls back the drop.
+	 */
+	if (!SearchSysCacheExistsAttName(reloid, attname))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_COLUMN),
+				 errmsg("could not restore statistics for column \"%s\": it was dropped during the import",
+						attname)));
+
 	upsert_pg_statistic(starel, statup, values, nulls, replaces);
 
 	if (HeapTupleIsValid(statup))
 		ReleaseSysCache(statup);
 	table_close(starel, RowExclusiveLock);
+	relation_close(targetrel, NoLock);
 
 	return result;
 }

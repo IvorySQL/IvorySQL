@@ -1476,6 +1476,39 @@ where o.ten = 0;
 (1 row)
 
 --
+-- Test rescan of a hashed subplan that is referenced more than once (here
+-- the equivalence class produces two copies of it in the scan filter)
+--
+explain (costs off)
+select i4.f1, (select count(*) from onek
+               where two = four and two = (0 in (select i4.f1))::int)
+from int4_tbl i4 order by i4.f1;
+                                                                         QUERY PLAN                                                                         
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: i4.f1
+   ->  Seq Scan on int4_tbl i4
+         SubPlan expr_1
+           ->  Aggregate
+                 ->  Seq Scan on onek
+                       Filter: ((two = ((ANY (0 = (hashed SubPlan any_1).col1)))::integer) AND (four = ((ANY (0 = (hashed SubPlan any_1).col1)))::integer))
+                       SubPlan any_1
+                         ->  Result
+(9 rows)
+
+select i4.f1, (select count(*) from onek
+               where two = four and two = (0 in (select i4.f1))::int)
+from int4_tbl i4 order by i4.f1;
+     f1      | count 
+-------------+-------
+ -2147483647 |   250
+     -123456 |   250
+           0 |   250
+      123456 |   250
+  2147483647 |   250
+(5 rows)
+
+--
 -- Test rescan of a hashed SetOp node
 --
 begin;
@@ -1602,6 +1635,37 @@ where o.ten = 1;
 ------+------
  1700 | 5350
 (1 row)
+
+--
+-- Test rescan of an initplan moved to a lower plan node by setrefs.c, here
+-- from a removed single-child Append
+--
+create temp table rescan_ptbl (a int) partition by list (a);
+create temp table rescan_ptbl_1 partition of rescan_ptbl for values in (1);
+insert into rescan_ptbl values (1);
+explain (costs off)
+select v.x, s.y from (values (1), (2)) v(x),
+  lateral (select (select v.x) as y from rescan_ptbl offset 0) s
+  where s.y > 0;
+                    QUERY PLAN                     
+---------------------------------------------------
+ Nested Loop
+   ->  Values Scan on "*VALUES*"
+   ->  Subquery Scan on s
+         Filter: (s.y > 0)
+         ->  Seq Scan on rescan_ptbl_1 rescan_ptbl
+               InitPlan expr_1
+                 ->  Result
+(7 rows)
+
+select v.x, s.y from (values (1), (2)) v(x),
+  lateral (select (select v.x) as y from rescan_ptbl offset 0) s
+  where s.y > 0;
+ x | y 
+---+---
+ 1 | 1
+ 2 | 2
+(2 rows)
 
 --
 -- Check we don't misoptimize a NOT IN where the subquery returns no rows.
@@ -4073,5 +4137,23 @@ WHERE COALESCE(t1.id, -1) NOT IN
  id | val 
 ----+-----
 (0 rows)
+
+-- No ANTI JOIN: the inner operand is coerced by a cast function that can
+-- return NULL for a non-null input
+CREATE FUNCTION int4_to_text_nullable(int4) RETURNS text
+    AS 'SELECT CASE WHEN $1 <> 0 THEN $1::varchar END'
+    LANGUAGE sql IMMUTABLE STRICT;
+CREATE CAST (int4 AS text) WITH FUNCTION int4_to_text_nullable(int4) AS IMPLICIT;
+CREATE TEMP TABLE not_null_text_tab (t text NOT NULL);
+EXPLAIN (COSTS OFF)
+SELECT * FROM not_null_text_tab
+WHERE t NOT IN (SELECT id FROM not_null_tab);
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Seq Scan on not_null_text_tab
+   Filter: (NOT (ANY (t = ((hashed SubPlan any_1).col1)::text)))
+   SubPlan any_1
+     ->  Seq Scan on not_null_tab
+(4 rows)
 
 ROLLBACK;

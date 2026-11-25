@@ -2001,6 +2001,9 @@ recordDependencyOnSingleRelExpr(const ObjectAddress *depender,
 	find_expr_references_context context;
 	RangeTblEntry rte = {0};
 
+	if (expr == NULL)
+		return;
+
 	context.addrs = new_object_addresses();
 
 	/* We gin up a rather bogus rangetable list to handle Vars */
@@ -2014,6 +2017,21 @@ recordDependencyOnSingleRelExpr(const ObjectAddress *depender,
 
 	/* Scan the expression tree for referenceable objects */
 	find_expr_references_walker(expr, &context);
+
+	/* Also add a dependency to the result type */
+	if (IsA(expr, List))
+	{
+		ListCell   *l;
+
+		foreach(l, (List *) expr)
+		{
+			add_object_address(TypeRelationId, exprType(lfirst(l)), 0,
+							   context.addrs);
+		}
+	}
+	else
+		add_object_address(TypeRelationId, exprType(expr), 0,
+						   context.addrs);
 
 	/* Remove any duplicates */
 	eliminate_duplicate_dependencies(context.addrs);
@@ -2140,6 +2158,9 @@ CheckUsageOnTypesInSingleRelExpr(Node *expr, Oid relId, Oid roleid)
 	find_expr_references_context context;
 	RangeTblEntry rte = {0};
 
+	if (expr == NULL)
+		return;
+
 	context.addrs = new_object_addresses();
 
 	/* We gin up a rather bogus rangetable list to handle Vars */
@@ -2151,9 +2172,62 @@ CheckUsageOnTypesInSingleRelExpr(Node *expr, Oid relId, Oid roleid)
 	context.rtables = list_make1(list_make1(&rte));
 
 	find_expr_references_walker(expr, &context);
+
+	/* Also check USAGE on the result type */
+	if (IsA(expr, List))
+	{
+		ListCell   *l;
+
+		foreach(l, (List *) expr)
+		{
+			add_object_address(TypeRelationId, exprType(lfirst(l)), 0,
+							   context.addrs);
+		}
+	}
+	else
+		add_object_address(TypeRelationId, exprType(expr), 0,
+						   context.addrs);
+
 	eliminate_duplicate_dependencies(context.addrs);
 	check_usage_on_types(context.addrs, roleid);
 	free_object_addresses(context.addrs);
+}
+
+/*
+ * CheckTypeDependencyInExpr - does 'expr' depend on the given type?
+ */
+bool
+CheckTypeDependencyInExpr(Node *expr, List *rtable, Oid typeId)
+{
+	ObjectAddresses *addrs = new_object_addresses();
+	ObjectAddress typeAddr;
+	bool		result;
+
+	collectDependenciesOfExpr(addrs, expr, rtable);
+
+	ObjectAddressSet(typeAddr, TypeRelationId, typeId);
+	result = object_address_present(&typeAddr, addrs);
+	free_object_addresses(addrs);
+
+	return result;
+}
+
+/*
+ * CheckTypeDependencyInSingleRelExpr - as above, for a single-rel expression
+ */
+bool
+CheckTypeDependencyInSingleRelExpr(Node *expr, Oid relId, Oid typeId)
+{
+	RangeTblEntry rte = {0};
+
+	/* We gin up a rather bogus rangetable list to handle Vars */
+	rte.type = T_RangeTblEntry;
+	rte.rtekind = RTE_RELATION;
+	rte.relid = relId;
+	rte.relkind = RELKIND_RELATION;
+	rte.rellockmode = AccessShareLock;
+
+	return CheckTypeDependencyInExpr(expr, list_make1(&rte), typeId);
 }
 
 /*

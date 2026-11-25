@@ -25,6 +25,7 @@ begin
         ln := regexp_replace(ln, 'Heap Fetches: \d+', 'Heap Fetches: N');
         ln := regexp_replace(ln, 'loops=\d+', 'loops=N');
         ln := regexp_replace(ln, 'Index Searches: \d+', 'Index Searches: N');
+        ln := regexp_replace(ln, 'Memory: \d+kB', 'Memory: NkB');
         return next ln;
     end loop;
 end;
@@ -455,6 +456,179 @@ WHERE unique1 < 3
        2
 (1 row)
 
+-- Ensure a Param which is buried inside a larger cache key expression is made
+-- a cache key by itself too.
+-- Ensure we get a Memoize plan with both cache keys
+EXPLAIN (COSTS OFF)
+SELECT sum(c) FROM (
+  SELECT (SELECT count(*) FROM tenk1 t1
+          INNER JOIN tenk1 t2 ON t1.unique1 = t2.hundred + t0.ten
+          WHERE t1.twenty = t0.ten) AS c
+  FROM tenk1 t0 WHERE t0.unique1 < 2) s;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Aggregate
+   ->  Index Scan using tenk1_unique1 on tenk1 t0
+         Index Cond: (unique1 < 2)
+   SubPlan expr_1
+     ->  Aggregate
+           ->  Nested Loop
+                 ->  Index Only Scan using tenk1_hundred on tenk1 t2
+                 ->  Memoize
+                       Cache Key: (t2.hundred + t0.ten), t0.ten
+                       Cache Mode: binary
+                       ->  Index Scan using tenk1_unique1 on tenk1 t1
+                             Index Cond: (unique1 = (t2.hundred + t0.ten))
+                             Filter: (twenty = t0.ten)
+(13 rows)
+
+-- Ensure the above query returns the correct result
+SELECT sum(c) FROM (
+  SELECT (SELECT count(*) FROM tenk1 t1
+          INNER JOIN tenk1 t2 ON t1.unique1 = t2.hundred + t0.ten
+          WHERE t1.twenty = t0.ten) AS c
+  FROM tenk1 t0 WHERE t0.unique1 < 2) s;
+ sum  
+------
+ 1000
+(1 row)
+
+-- Ensure a buried Param which can't be made a cache key, here of type point,
+-- still purges the cache when it changes.
+-- Ensure we get a Memoize plan without the Param as a cache key
+EXPLAIN (COSTS OFF)
+SELECT sum(c) FROM (
+  SELECT (SELECT count(*) FROM tenk1 t1
+          INNER JOIN tenk1 t2
+          ON t1.unique1 = t2.hundred + (t0.p <-> point '(0,0)')::int
+          WHERE t1.twenty = (t0.p <-> point '(0,0)')::int) AS c
+  FROM (VALUES (point '(0,0)'), (point '(1,0)')) t0(p)) s;
+                                                          QUERY PLAN                                                           
+-------------------------------------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  Values Scan on "*VALUES*"
+   SubPlan expr_1
+     ->  Aggregate
+           ->  Nested Loop
+                 ->  Index Only Scan using tenk1_hundred on tenk1 t2
+                 ->  Memoize
+                       Cache Key: (t2.hundred + (("*VALUES*".column1 <-> '(0,0)'::point))::pg_catalog.int4)
+                       Cache Mode: logical
+                       ->  Index Scan using tenk1_unique1 on tenk1 t1
+                             Index Cond: (unique1 = (t2.hundred + (("*VALUES*".column1 <-> '(0,0)'::point))::pg_catalog.int4))
+                             Filter: (twenty = (("*VALUES*".column1 <-> '(0,0)'::point))::pg_catalog.int4)
+(12 rows)
+
+-- Ensure the above query returns the correct result
+SELECT sum(c) FROM (
+  SELECT (SELECT count(*) FROM tenk1 t1
+          INNER JOIN tenk1 t2
+          ON t1.unique1 = t2.hundred + (t0.p <-> point '(0,0)')::int
+          WHERE t1.twenty = (t0.p <-> point '(0,0)')::int) AS c
+  FROM (VALUES (point '(0,0)'), (point '(1,0)')) t0(p)) s;
+ sum  
+------
+ 1000
+(1 row)
+
+-- Ensure an external Param inside a cache key isn't mistaken for the executor
+-- Param of the same number.  The initplan takes executor Param 0, so the
+-- point Param gets number 1, the same as $1.
+\set EXECUTE_RUN_PREPARE on
+SET plan_cache_mode TO force_generic_plan;
+PREPARE memoize_extern_param(int) AS
+SELECT sum(c) FROM (
+  SELECT (SELECT sum(t1.unique1) FROM tenk1 t1
+          INNER JOIN tenk1 t2 ON t1.unique1 = t2.hundred + $1
+                              AND t2.hundred >= (SELECT 0)
+          WHERE t1.twenty = (t0.p <-> point '(0,0)')::int) AS c
+  FROM (VALUES (point '(0,0)'), (point '(1,0)')) t0(p)) s;
+-- Ensure we get a Memoize plan with the external Param in the cache key
+EXPLAIN (COSTS OFF) EXECUTE memoize_extern_param(0);
+                                                QUERY PLAN                                                 
+-----------------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  Values Scan on "*VALUES*"
+   SubPlan expr_1
+     ->  Aggregate
+           InitPlan expr_2
+             ->  Result
+           ->  Nested Loop
+                 ->  Index Only Scan using tenk1_hundred on tenk1 t2
+                       Index Cond: (hundred >= (InitPlan expr_2).col1)
+                 ->  Memoize
+                       Cache Key: (t2.hundred + $1)
+                       Cache Mode: logical
+                       ->  Index Scan using tenk1_unique1 on tenk1 t1
+                             Index Cond: (unique1 = (t2.hundred + $1))
+                             Filter: (twenty = (("*VALUES*".column1 <-> '(0,0)'::point))::pg_catalog.int4)
+(15 rows)
+
+-- Ensure the above query returns the correct result
+EXECUTE memoize_extern_param(0);
+  sum  
+-------
+ 40500
+(1 row)
+
+DEALLOCATE memoize_extern_param;
+RESET plan_cache_mode;
+-- Ensure an initplan's output Param isn't made a cache key, as that would run
+-- the initplan where it's not needed.
+-- Ensure we get a Memoize plan without the initplan Param as a cache key
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM tenk1 t1 INNER JOIN tenk1 t2
+  ON t1.unique1 = COALESCE(t2.twenty, (SELECT 1 / unique1 FROM tenk1 WHERE unique1 = 0));
+                                                  QUERY PLAN                                                   
+---------------------------------------------------------------------------------------------------------------
+ Aggregate
+   InitPlan expr_1
+     ->  Index Only Scan using tenk1_unique1 on tenk1
+           Index Cond: (unique1 = 0)
+   ->  Nested Loop
+         Join Filter: ((t1.unique1)::number = COALESCE((t2.twenty)::number, ((InitPlan expr_1).col1)::number))
+         ->  Seq Scan on tenk1 t2
+               Disabled: true
+         ->  Index Only Scan using tenk1_unique1 on tenk1 t1
+(9 rows)
+
+-- Ensure the above query doesn't run the initplan
+SELECT count(*) FROM tenk1 t1 INNER JOIN tenk1 t2
+  ON t1.unique1 = COALESCE(t2.twenty, (SELECT 1 / unique1 FROM tenk1 WHERE unique1 = 0));
+ count 
+-------
+ 10000
+(1 row)
+
+-- Ensure a SubPlan's output Param isn't made a cache key, as it has no value
+-- outside the SubPlan.
+-- Ensure we get a Memoize plan without the SubPlan Param as a cache key
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM tenk1 t1 INNER JOIN tenk1 t2
+  ON t1.unique1 = CASE WHEN t2.twenty < ALL (SELECT 10000) THEN t2.twenty END;
+                                                                  QUERY PLAN                                                                  
+----------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         ->  Seq Scan on tenk1 t2
+               Disabled: true
+         ->  Memoize
+               Cache Key: CASE WHEN (ALL (t2.twenty < (SubPlan all_1).col1)) THEN t2.twenty ELSE NULL::pg_catalog.int4 END
+               Cache Mode: logical
+               ->  Index Only Scan using tenk1_unique1 on tenk1 t1
+                     Index Cond: (unique1 = CASE WHEN (ALL (t2.twenty < (SubPlan all_1).col1)) THEN t2.twenty ELSE NULL::pg_catalog.int4 END)
+                     SubPlan all_1
+                       ->  Result
+(11 rows)
+
+-- Ensure the above query returns the correct result
+SELECT count(*) FROM tenk1 t1 INNER JOIN tenk1 t2
+  ON t1.unique1 = CASE WHEN t2.twenty < ALL (SELECT 10000) THEN t2.twenty END;
+ count 
+-------
+ 10000
+(1 row)
+
 RESET enable_seqscan;
 RESET enable_material;
 RESET enable_mergejoin;
@@ -503,3 +677,62 @@ RESET max_parallel_workers_per_gather;
 RESET parallel_tuple_cost;
 RESET parallel_setup_cost;
 RESET min_parallel_table_scan_size;
+-- Ensure memoize works for ANTI joins
+CREATE TABLE tab_anti (a int, b boolean);
+INSERT INTO tab_anti SELECT i%3, false FROM generate_series(1,100)i;
+ANALYZE tab_anti;
+-- Ensure we get a Memoize plan for ANTI join
+SELECT explain_memoize('
+SELECT COUNT(*) FROM tab_anti t1 LEFT JOIN
+LATERAL (SELECT DISTINCT ON (a) a, b, t1.a AS x FROM tab_anti t2) t2
+ON t1.a+1 = t2.a
+WHERE t2.a IS NULL;', false);
+                                      explain_memoize                                       
+--------------------------------------------------------------------------------------------
+ Aggregate (actual rows=1.00 loops=N)
+   ->  Nested Loop Anti Join (actual rows=33.00 loops=N)
+         ->  Seq Scan on tab_anti t1 (actual rows=100.00 loops=N)
+         ->  Memoize (actual rows=0.67 loops=N)
+               Cache Key: (t1.a + 1), t1.a
+               Cache Mode: binary
+               Hits: 97  Misses: 3  Evictions: Zero  Overflows: 0  Memory Usage: NkB
+               ->  Subquery Scan on t2 (actual rows=0.67 loops=N)
+                     Filter: ((t1.a + 1) = t2.a)
+                     Rows Removed by Filter: 2
+                     ->  Unique (actual rows=2.67 loops=N)
+                           ->  Sort (actual rows=67.33 loops=N)
+                                 Sort Key: t2_1.a
+                                 Sort Method: quicksort  Memory: NkB
+                                 ->  Seq Scan on tab_anti t2_1 (actual rows=100.00 loops=N)
+(15 rows)
+
+-- And check we get the expected results.
+SELECT COUNT(*) FROM tab_anti t1 LEFT JOIN
+LATERAL (SELECT DISTINCT ON (a) a, b, t1.a AS x FROM tab_anti t2) t2
+ON t1.a+1 = t2.a
+WHERE t2.a IS NULL;
+ count 
+-------
+    33
+(1 row)
+
+-- Ensure we do not add memoize node for SEMI join
+EXPLAIN (COSTS OFF)
+SELECT * FROM tab_anti t1 WHERE t1.a IN
+ (SELECT a FROM tab_anti t2 WHERE t2.b IN
+  (SELECT t1.b FROM tab_anti t3 WHERE t2.a > 1 OFFSET 0));
+                    QUERY PLAN                     
+---------------------------------------------------
+ Nested Loop Semi Join
+   ->  Seq Scan on tab_anti t1
+   ->  Nested Loop Semi Join
+         Join Filter: (t1.a = t2.a)
+         ->  Seq Scan on tab_anti t2
+         ->  Subquery Scan on unnamed_subquery
+               Filter: (t2.b = unnamed_subquery.b)
+               ->  Result
+                     One-Time Filter: (t2.a > 1)
+                     ->  Seq Scan on tab_anti t3
+(10 rows)
+
+DROP TABLE tab_anti;

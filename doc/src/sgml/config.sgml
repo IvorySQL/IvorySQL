@@ -4874,6 +4874,8 @@ restore_command = 'copy "C:\\server\\archivedir\\%f" "%p"'  # Windows
          restriction. The default is <literal>'pgoutput, test_decoding'</literal>,
          which are the two logical output plugins included in the standard
          <productname>PostgreSQL</productname> distribution.
+         (<xref linkend="guc-output-plugin-libraries-builtins"/> documents the
+         behavior of the system if they are removed from this list.)
         </para>
         <para>
          The format is a comma-separated list of library names, where each name
@@ -4912,6 +4914,45 @@ HINT:  If it is safe for all REPLICATION users to use this library as an output 
 </programlisting>
          </para>
         </note>
+
+        <table id="guc-output-plugin-libraries-builtins">
+         <title>Plugins Allowed by Default</title>
+         <tgroup cols="2">
+          <colspec colname="col1" colwidth="1*"/>
+          <colspec colname="col2" colwidth="2*"/>
+          <thead>
+           <row>
+            <entry>Plugin</entry>
+            <entry>Description</entry>
+           </row>
+          </thead>
+
+          <tbody>
+           <row>
+            <entry><xref linkend="logicaldecoding-pgoutput"/></entry>
+            <entry>
+             Core plugin for logical replication. Removing <literal>pgoutput</literal>
+             from <literal>output_plugin_libraries</literal> will cause future
+             subscription connections, and maintenance of the replication slots
+             for subscriptions, to fail with an error. (Beware that existing
+             replication tools may not degrade gracefully if the server is
+             configured in this way.)
+            </entry>
+           </row>
+           <row>
+            <entry><xref linkend="test-decoding"/></entry>
+            <entry>
+             Decodes the WAL stream into a human-readable text representation.
+             <xref linkend="app-pgrecvlogical"/> uses this plugin by default, so
+             removing it from <literal>output_plugin_libraries</literal> will
+             prevent the use of that utility unless a replacement plugin is
+             installed and explicitly selected with
+             <link linkend="app-pgrecvlogical-option-plugin"><literal>--plugin</literal></link>.
+            </entry>
+           </row>
+          </tbody>
+         </tgroup>
+        </table>
        </listitem>
       </varlistentry>
 
@@ -9816,7 +9857,12 @@ COPY postgres_log FROM '/full/path/to/logfile.csv' WITH csv;
          per-autovacuum worker equivalent of the <literal>PARALLEL</literal>
          option of the <link linkend="sql-vacuum"><command>VACUUM</command></link>
          command. Setting this value to 0 disables parallel vacuum during autovacuum.
-         The default is 0.
+         The default is 0.  This parameter can only be set in the
+         <filename>postgresql.conf</filename> file or on the server command
+         line; but the setting can be reduced for individual tables by
+         changing the
+         <link linkend="reloption-autovacuum-parallel-workers">corresponding
+         table storage parameter</link>.
         </para>
        </listitem>
      </varlistentry>
@@ -9965,7 +10011,16 @@ COPY postgres_log FROM '/full/path/to/logfile.csv' WITH csv;
        delay is calculated as <varname>vacuum_cost_delay</varname> *
        <varname>accumulated_balance</varname> /
        <varname>vacuum_cost_limit</varname> with a maximum of
-       <varname>vacuum_cost_delay</varname> * 4.
+       <varname>vacuum_cost_delay</varname> * 4 for a non-parallel vacuum.
+       For <xref linkend="parallel-vacuum"/>, each process
+       uses a share of the limit, so the delay is calculated as
+       <varname>vacuum_cost_delay</varname> *
+       <varname>accumulated_balance</varname> *
+       <varname>active_processes</varname> /
+       <varname>vacuum_cost_limit</varname> with a maximum of
+       <varname>vacuum_cost_delay</varname> * 4 *
+       <varname>active_processes</varname>, and never more than one second
+       at once.
       </para>
      </note>
     </sect2>
@@ -10207,10 +10262,7 @@ COPY postgres_log FROM '/full/path/to/logfile.csv' WITH csv;
        </para>
 
        <para>
-        This parameter can only be set in the
-        <filename>postgresql.conf</filename> file or on the server command
-        line; but the setting can be overridden for individual tables by
-        changing the
+        The setting can be overridden for individual tables by changing the
         <link linkend="reloption-vacuum-max-eager-freeze-failure-rate">
         corresponding table storage parameter</link>.
         For more information on tuning vacuum's freezing behavior,
@@ -13277,6 +13329,32 @@ LOG:  CleanUpLock: deleting: lock(0xb7acd844) id(24688,24696,0,0,0,1)
         present in the table if the block header is still sane. If the header is
         corrupt an error will be reported even if this option is enabled. The
         default setting is <literal>off</literal>.
+        Only superusers and users with the appropriate <literal>SET</literal>
+        privilege can change this setting.
+       </para>
+      </listitem>
+     </varlistentry>
+
+    <varlistentry id="guc-composite-type-mismatch" xreflabel="composite_type_mismatch">
+      <term><varname>composite_type_mismatch</varname> (<type>enum</type>)
+      <indexterm>
+       <primary><varname>composite_type_mismatch</varname> configuration parameter</primary>
+      </indexterm>
+      </term>
+      <listitem>
+       <para>
+        Reading a composite value whose row type was altered in an
+        incompatible way after the value was created normally causes
+        <productname>PostgreSQL</productname> to report an error.
+        This parameter controls that behavior.  With the default,
+        <literal>error</literal>, an error is reported, aborting the current
+        transaction.  With <literal>warn</literal>, the system warns about
+        mismatches but allows execution to continue.  With
+        <literal>disabled</literal>, the check is not performed at all.
+       </para>
+       <para>
+        Settings other than <literal>error</literal> may <emphasis>cause
+        crashes, wrong results, or other serious problems</emphasis>.
         Only superusers and users with the appropriate <literal>SET</literal>
         privilege can change this setting.
        </para>

@@ -151,13 +151,15 @@ remove_useless_outer_joins(PlannerInfo *root)
 		 * As in pull_up_simple_subquery, discard no-longer-needed subqueries.
 		 * This is not just an optimization, but is necessary to prevent
 		 * subsequent processing from descending into stale subtrees and
-		 * seeing inconsistent data.  Likewise discard any securityQuals of
-		 * the removed rel.  (Although simple_rte_array[] will be rebuilt
-		 * shortly, we can still use it to find the RTE in the parse tree.)
+		 * seeing inconsistent data.  For the same reason, discard any
+		 * tablesample and securityQuals subtrees of the removed rel.
+		 * (Although simple_rte_array[] will be rebuilt shortly, we can still
+		 * use it to find the RTE in the parse tree.)
 		 */
 		rte = root->simple_rte_array[innerrelid];
 		if (rte->rtekind == RTE_SUBQUERY)
 			rte->subquery = NULL;
+		rte->tablesample = NULL;
 		rte->securityQuals = NIL;
 
 		/*
@@ -1269,6 +1271,13 @@ remove_self_join_rel(PlannerInfo *root,
 		ChangeVarNodes((Node *) root->append_rel_list, toRemove->relid,
 					   toKeep->relid, 0);
 
+	/*
+	 * As in remove_useless_outer_joins, discard the securityQuals of the
+	 * removed rel, so that later passes don't visit them.  We know the kept
+	 * rel has the same quals.  (tablesample is already known NULL.)
+	 */
+	root->simple_rte_array[toRemove->relid]->securityQuals = NIL;
+
 	/* Clean up the quals that the substitution has messed with */
 	fixup_selfjoin_jointree(root, (Node *) root->parse->jointree,
 							toKeep->relid,
@@ -1709,57 +1718,33 @@ split_selfjoin_quals(PlannerInfo *root, List *joinquals, List **selfjoinquals,
 }
 
 /*
- * Check for a case when uniqueness is at least partly derived from a
- * baserestrictinfo clause. In this case, we have a chance to return only
- * one row (if such clauses on both sides of SJ are equal) or nothing (if they
- * are different).
+ * Check that each base restriction used to prove uniqueness of relid has
+ * a matching restriction in outer->baserestrictinfo, after replacing
+ * relid with outer->relid.
+ *
+ * Require equal() clauses, including the operator and input collation.
+ * Formerly this tried to match commuted forms of clauses, but that added
+ * a great deal of extra complication without much extra value.
  */
 static bool
 match_unique_clauses(PlannerInfo *root, RelOptInfo *outer, List *uclauses,
 					 Index relid)
 {
+	Assert(outer->relid > 0 && relid > 0);
+
 	foreach_node(RestrictInfo, rinfo, uclauses)
 	{
 		Expr	   *clause;
-		Node	   *iclause;
-		Node	   *c1;
 		bool		matched = false;
 
-		Assert(outer->relid > 0 && relid > 0);
-
-		/* Only filters like f(R.x1,...,R.xN) == expr we should consider. */
-		Assert(bms_is_empty(rinfo->left_relids) ^
-			   bms_is_empty(rinfo->right_relids));
-
+		/* Convert the clause from uclauses to use outer's Vars */
 		clause = (Expr *) copyObject(rinfo->clause);
 		ChangeVarNodes((Node *) clause, relid, outer->relid, 0);
 
-		iclause = bms_is_empty(rinfo->left_relids) ? get_rightop(clause) :
-			get_leftop(clause);
-		c1 = bms_is_empty(rinfo->left_relids) ? get_leftop(clause) :
-			get_rightop(clause);
-
-		/*
-		 * Compare these left and right sides with the corresponding sides of
-		 * the outer's filters. If no one is detected - return immediately.
-		 */
+		/* Look for a matching restriction on the outer relation */
 		foreach_node(RestrictInfo, orinfo, outer->baserestrictinfo)
 		{
-			Node	   *oclause;
-			Node	   *c2;
-
-			if (orinfo->mergeopfamilies == NIL)
-				/* Don't consider clauses that aren't similar to 'F(X)=G(Y)' */
-				continue;
-
-			Assert(is_opclause(orinfo->clause));
-
-			oclause = bms_is_empty(orinfo->left_relids) ?
-				get_rightop(orinfo->clause) : get_leftop(orinfo->clause);
-			c2 = (bms_is_empty(orinfo->left_relids) ?
-				  get_leftop(orinfo->clause) : get_rightop(orinfo->clause));
-
-			if (equal(iclause, oclause) && equal(c1, c2))
+			if (equal(clause, orinfo->clause))
 			{
 				matched = true;
 				break;
@@ -1970,7 +1955,7 @@ remove_self_joins_recurse(PlannerInfo *root, List *joinlist)
 	int			j;
 	int			numRels;
 
-	/* Collect indexes of base relations of the join tree */
+	/* Collect indexes of possibly-mergeable relations from the joinlist */
 	foreach(jl, joinlist)
 	{
 		Node	   *jlnode = (Node *) lfirst(jl);
@@ -1981,15 +1966,31 @@ remove_self_joins_recurse(PlannerInfo *root, List *joinlist)
 			RangeTblEntry *rte = root->simple_rte_array[varno];
 
 			/*
-			 * We only consider ordinary relations as candidates to be
-			 * removed, and these relations should not have TABLESAMPLE
-			 * clauses specified.  Removing a relation with TABLESAMPLE clause
-			 * could potentially change the semantics of the query. Because of
-			 * UPDATE/DELETE EPQ mechanism, currently Query->resultRelation or
-			 * Query->mergeTargetRelation associated rel cannot be eliminated.
+			 * To be considered for self-join removal, the RTE must:
+			 *
+			 * 1. Be an ordinary relation.  (Someday we might support SJE on
+			 * partitioned tables, but not yet.)
+			 *
+			 * 2. Not have inh set, ie it has no inheritance children (or the
+			 * user wrote ONLY to ignore them).  Under traditional inheritance
+			 * a unique index on a parent table does not establish uniqueness
+			 * across its children.  This rule also keeps us from trying to
+			 * merge an inheritance scan with an ONLY scan, which would be
+			 * wrong.  (preprocess_relation_rtes already cleared the inh flag
+			 * for tables known not to have inheritance children.)
+			 *
+			 * 3. Not have a TABLESAMPLE clause.  Removing a relation with a
+			 * TABLESAMPLE clause would change the semantics of the query,
+			 * even if we merged it with another RTE with an identical
+			 * TABLESAMPLE clause.  (Two such RTEs should represent
+			 * independent samplings of the base table.)
+			 *
+			 * 4. Not be the query's result relation or MERGE target.  Merging
+			 * would cause misbehavior during EPQ.
 			 */
 			if (rte->rtekind == RTE_RELATION &&
 				rte->relkind == RELKIND_RELATION &&
+				!rte->inh &&
 				rte->tablesample == NULL &&
 				varno != root->parse->resultRelation &&
 				varno != root->parse->mergeTargetRelation)

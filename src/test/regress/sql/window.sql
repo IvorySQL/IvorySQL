@@ -587,6 +587,18 @@ from generate_series(9223372036854775804, 9223372036854775806) x;
 select x, last_value(x) over (order by x desc range between current row and 5 following)
 from generate_series(-9223372036854775806, -9223372036854775804) x;
 
+SELECT x,
+       lead(x, -2147483648) over w as respect_nulls,
+       lead(x, -2147483648) ignore nulls over w as ignore_nulls
+from (values (1), (2)) as t(x)
+window w as (order by x);
+
+SELECT x,
+       lag(x, -2147483648) over w as respect_nulls,
+       lag(x, -2147483648) ignore nulls over w as ignore_nulls
+from (values (1), (2)) as t(x)
+window w as (order by x);
+
 -- Test in_range for other numeric datatypes
 
 create temp table numerics(
@@ -2270,6 +2282,26 @@ SELECT x,
        nth_value(x,2) IGNORE NULLS OVER w
 FROM generate_series(1,5) g(x)
 WINDOW w AS (ORDER BY x ROWS BETWEEN 2 PRECEDING AND 2 FOLLOWING);
+
+-- EXCLUDE GROUP/TIES without ORDER BY: every row is a peer of the current
+-- row, so the IGNORE NULLS scan must stop at the end of the partition
+SELECT x,
+       first_value(x) IGNORE NULLS OVER w,
+       nth_value(x, 2) IGNORE NULLS OVER w
+FROM (VALUES (1), (NULL), (3)) v(x)
+WINDOW w AS (ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING EXCLUDE GROUP)
+ORDER BY x;
+SELECT x,
+       first_value(x) IGNORE NULLS OVER w,
+       nth_value(x, 2) IGNORE NULLS OVER w
+FROM (VALUES (1), (NULL), (3)) v(x)
+WINDOW w AS (RANGE BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING EXCLUDE TIES)
+ORDER BY x;
+SELECT p, x,
+       first_value(x) IGNORE NULLS OVER w
+FROM (VALUES (1, 1), (1, NULL), (2, NULL)) v(p, x)
+WINDOW w AS (PARTITION BY p ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING EXCLUDE TIES)
+ORDER BY p, x;
 
 -- volatile arguments cannot use the IGNORE NULLS nullness cache
 CREATE TEMPORARY SEQUENCE null_treatment_seq;

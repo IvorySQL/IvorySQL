@@ -67,6 +67,22 @@ CREATE STATISTICS tst (ndistinct) ON xmin from ext_stats_test;
 CREATE STATISTICS tst (ndistinct) ON (y + z) FROM ext_stats_test;
 -- multivariate statistics without a less-than operator not supported
 CREATE STATISTICS tst (ndistinct) ON x, w from ext_stats_test;
+-- expressions of a pseudo-type (e.g. an anonymous record) not supported, as
+-- such values cannot be interpreted in another session
+CREATE STATISTICS tst ON (row(x, y)) FROM ext_stats_test;
+CREATE STATISTICS tst ON (array[row(x, y)]) FROM ext_stats_test;
+-- nor are types containing a pseudo-type
+CREATE STATISTICS tst ON (array[NULL::pg_statistic]) FROM ext_stats_test;
+CREATE STATISTICS tst ON (array[x::cstring]) FROM ext_stats_test;
+-- expressions without a derivable collation not supported
+CREATE TABLE ext_stats_coll (a text COLLATE "C", b text COLLATE "POSIX");
+CREATE STATISTICS tst ON ((a || b)) FROM ext_stats_coll;
+DROP TABLE ext_stats_coll;
+-- but an expression of a named composite type is fine
+CREATE TYPE ext_stats_rowtype AS (x text, y int);
+CREATE STATISTICS tst ON (row(x, y)::ext_stats_rowtype) FROM ext_stats_test;
+DROP STATISTICS tst;
+DROP TYPE ext_stats_rowtype;
 DROP TABLE ext_stats_test;
 
 -- Ensure stats are dropped sanely, and test IF NOT EXISTS while at it
@@ -1928,3 +1944,13 @@ SELECT range_length_histogram, range_empty_frac, range_bounds_histogram
    FROM pg_stats_ext_exprs
    WHERE statistics_name = 'stats_ext_range';
 DROP TABLE stats_ext_tbl_range;
+
+-- Expression statistics on arrays with no elements
+CREATE TABLE stats_ext_tbl_mcelem (a int[]);
+INSERT INTO stats_ext_tbl_mcelem VALUES ('{}');
+CREATE STATISTICS stats_ext_mcelem ON (a || a) FROM stats_ext_tbl_mcelem;
+ANALYZE stats_ext_tbl_mcelem;
+SELECT most_common_elems, most_common_elem_freqs
+  FROM pg_stats_ext_exprs WHERE statistics_name = 'stats_ext_mcelem';
+SELECT * FROM stats_ext_tbl_mcelem WHERE (a || a) @> '{1}';
+DROP TABLE stats_ext_tbl_mcelem;

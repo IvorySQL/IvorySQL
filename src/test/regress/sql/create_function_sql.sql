@@ -35,6 +35,34 @@ SELECT functest_A_1('abcd', '2020-01-01');
 SELECT functest_A_2(ARRAY['1', '2', '3']);
 SELECT functest_A_3();
 
+-- pseudo-types are rejected as parameter types, output parameters included
+CREATE FUNCTION functest_A_4(x "any") RETURNS int LANGUAGE 'sql'
+       AS 'SELECT 1';
+CREATE FUNCTION functest_A_5(OUT a "any", OUT b int) LANGUAGE 'sql'
+       AS 'SELECT 1, 2';
+CREATE FUNCTION functest_A_6() RETURNS TABLE(a "any", b int) LANGUAGE 'sql'
+       AS 'SELECT 1, 2';
+-- the check does not depend on the function body being validated
+SET check_function_bodies = off;
+CREATE FUNCTION functest_A_7(OUT a cstring, OUT b int) LANGUAGE 'sql'
+       AS 'SELECT ''x'', 2';
+RESET check_function_bodies;
+
+-- polymorphic parameters and record/record[] output columns are allowed
+CREATE FUNCTION functest_A_8(x anyelement, OUT a anyelement, OUT b int)
+       LANGUAGE 'sql' AS 'SELECT $1, 2';
+SELECT * FROM functest_A_8(42);
+CREATE FUNCTION functest_A_9(OUT a record, OUT b int) LANGUAGE 'sql'
+       AS 'SELECT ROW(1, 2), 3';
+SELECT * FROM functest_A_9();
+CREATE FUNCTION functest_A_10(OUT a record[], OUT b int) LANGUAGE 'sql'
+       AS 'SELECT ARRAY[ROW(1, 2)], 3';
+SELECT * FROM functest_A_10();
+-- record is accepted as an output column type, but, unlike in PL/pgSQL, it is
+-- rejected as an input parameter type, for historical reasons
+CREATE FUNCTION functest_A_11(x record) RETURNS int LANGUAGE 'sql'
+       AS 'SELECT 1';
+
 --
 -- IMMUTABLE | STABLE | VOLATILE
 --
@@ -228,6 +256,38 @@ SELECT pg_get_functiondef('functest_S_15'::regproc);
 SELECT pg_get_functiondef('functest_S_16'::regproc);
 
 DROP TABLE functest1 CASCADE;
+
+-- check cases with OUT parameters before IN ones
+
+CREATE FUNCTION functest_out_point(OUT p point, x float8, y float8)
+LANGUAGE sql AS $$ select point(x,y); $$;
+
+SELECT functest_out_point(11,22);
+
+CREATE FUNCTION functest_out_point2(OUT p point, float8, y float8)
+LANGUAGE sql AS $$ select point($1,y); $$;
+
+SELECT functest_out_point2(11,22);
+
+CREATE FUNCTION functest_out_point_sql(OUT p point, x float8, y float8)
+BEGIN ATOMIC SELECT point(x,y); END;
+
+SELECT functest_out_point_sql(11,22);
+
+SELECT pg_get_functiondef('functest_out_point_sql'::regproc);
+
+CREATE FUNCTION functest_out_point2_sql(OUT p point, float8, y float8)
+BEGIN ATOMIC SELECT point($1,y); END;
+
+SELECT functest_out_point2_sql(11,22);
+
+SELECT pg_get_functiondef('functest_out_point2_sql'::regproc);
+
+CREATE FUNCTION functest_out_error(OUT p point, x float8, y float8)
+LANGUAGE sql AS $$ select point(p,x); $$;
+
+CREATE FUNCTION functest_out_error_sql(OUT p point, x float8, y float8)
+BEGIN ATOMIC SELECT point(p,x); END;
 
 -- test with views
 CREATE TABLE functest3 (a int);

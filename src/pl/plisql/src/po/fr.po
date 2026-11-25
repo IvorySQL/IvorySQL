@@ -11,7 +11,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PostgreSQL 15\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2026-03-22 16:09+0000\n"
+"POT-Creation-Date: 2026-10-26 14:09+0000\n"
 "PO-Revision-Date: 2022-04-12 17:29+0200\n"
 "Last-Translator: Guillaume Lelarge <guillaume@lelarge.info>\n"
 "Language-Team: French <guillaume@lelarge.info>\n"
@@ -763,6 +763,11 @@ msgstr "RETURN ne peut pas avoir de paramètre dans une fonction avec des param�
 #, c-format
 msgid "RETURN NEXT cannot have a parameter in function with OUT parameters"
 msgstr "RETURN NEXT ne peut pas avoir de paramètre dans une fonction avec des paramètres OUT"
+
+#: pl_exec.c:8166
+#, c-format
+msgid "cannot cast type %s to %s"
+msgstr "ne peut pas convertir le type %s en %s"
 
 #: pl_gram.y:3441
 #, c-format

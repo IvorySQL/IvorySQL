@@ -1432,6 +1432,17 @@ MERGE INTO pa_target t
     UPDATE SET tid = tid - 1;
 ROLLBACK;
 
+-- bug #19802: UPDATE of partition with SubPlan in targetlist
+BEGIN;
+MERGE INTO pa_target t
+  USING (SELECT true AS c OFFSET 0) s ON t.tid IS NULL
+  WHEN MATCHED THEN
+    UPDATE SET val = (SELECT NULL WHERE s.c)
+  WHEN NOT MATCHED THEN
+    INSERT VALUES (1, 0, 'subplan test');
+SELECT * FROM pa_target WHERE val = 'subplan test';
+ROLLBACK;
+
 DROP TABLE pa_source;
 DROP TABLE pa_target CASCADE;
 
@@ -1771,6 +1782,38 @@ WHEN NOT MATCHED THEN INSERT
    VALUES (city_id - 1, logdate, 25, 200)
 RETURNING merge_action(), m.*;
 
+-- Test WCO/RETURNING list initialization from child with extra columns
+ALTER TABLE measurement_y2007m01 ADD COLUMN extra integer;
+
+BEGIN;
+SET LOCAL constraint_exclusion = on;
+MERGE INTO measurement m
+ USING (VALUES (1, '2007-01-19'::date)) nm(city_id, logdate) ON
+      (m.city_id = nm.city_id AND m.logdate = nm.logdate)
+WHEN NOT MATCHED THEN INSERT
+     (city_id, logdate, peaktemp, unitsales)
+   VALUES (0, nm.logdate, 25, 100); -- ok
+
+MERGE INTO measurement m
+ USING (VALUES (1, '2007-01-19'::date)) nm(city_id, logdate) ON
+      (m.city_id = nm.city_id AND m.logdate = nm.logdate)
+WHEN NOT MATCHED THEN INSERT
+     (city_id, logdate, peaktemp, unitsales)
+   VALUES (0, nm.logdate, NULL, 100); -- should fail
+ROLLBACK;
+
+BEGIN;
+SET LOCAL constraint_exclusion = on;
+ALTER TABLE measurement DISABLE ROW LEVEL SECURITY;
+MERGE INTO measurement m
+ USING (VALUES (1, '2007-01-19'::date)) nm(city_id, logdate) ON
+      (m.city_id = nm.city_id AND m.logdate = nm.logdate)
+WHEN NOT MATCHED THEN INSERT
+     (city_id, logdate, peaktemp, unitsales)
+   VALUES (0, nm.logdate, 25, 100)
+RETURNING m.city_id, m.peaktemp, m;
+ROLLBACK;
+
 DROP TABLE measurement, new_measurement CASCADE;
 DROP FUNCTION measurement_insert_trigger();
 
@@ -1803,15 +1846,41 @@ CREATE VIEW bug18634v AS
 CREATE TABLE bug18634s (a int, b int, c text);
 INSERT INTO bug18634s VALUES (1, 2, 'src1');
 
+BEGIN;
 MERGE INTO bug18634v t USING bug18634s s ON s.a = t.a
   WHEN MATCHED THEN UPDATE SET b = s.b
   WHEN NOT MATCHED BY SOURCE THEN DELETE
   RETURNING merge_action(), s.c, t.*;
 
 SELECT * FROM bug18634t;
+ROLLBACK;
+
+-- as above, but with a join as the source
+CREATE TABLE bug18634s2 (a int, b int, c text NOT NULL);
+INSERT INTO bug18634s2 VALUES (1, 2, 'src2');
+
+BEGIN;
+MERGE INTO bug18634t t
+  USING (bug18634s s JOIN bug18634s2 s2 ON s.a = s2.a) ON s.a = t.a
+  WHEN MATCHED THEN UPDATE SET b = s.b
+  WHEN NOT MATCHED BY SOURCE THEN DELETE
+  RETURNING merge_action(), s.c, s2.c AS c2,
+            s.c IS NULL AS c_null, s2.c IS NULL c2_null, t.*;
+
+SELECT * FROM bug18634t;
+ROLLBACK;
+
+MERGE INTO bug18634v t
+  USING (bug18634s s JOIN bug18634s2 s2 ON s.a = s2.a) ON s.a = t.a
+  WHEN MATCHED THEN UPDATE SET b = s.b
+  WHEN NOT MATCHED BY SOURCE THEN DELETE
+  RETURNING merge_action(), s.c, s2.c AS c2,
+            s.c IS NULL AS c_null, s2.c IS NULL c2_null, t.*;
+
+SELECT * FROM bug18634t;
 
 DROP TABLE bug18634t CASCADE;
-DROP TABLE bug18634s;
+DROP TABLE bug18634s, bug18634s2;
 
 -- prepare
 

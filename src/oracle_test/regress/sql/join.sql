@@ -1018,6 +1018,30 @@ select * from
       left join zv1 on (f3 = f1)
 where f2 = 53;
 
+-- the zt3/zt1b join clause must be kept when zt2/zt3 is commuted into zt1/zt2
+explain (costs off)
+select * from
+  zt1 left join zt2 on (zt1.f1 = f2)
+      left join zt3 on (f2 = f3)
+      left join zt1 zt1b on (f3 = zt1b.f1)
+where zt1.f1 = 53;
+
+select * from
+  zt1 left join zt2 on (zt1.f1 = f2)
+      left join zt3 on (f2 = f3)
+      left join zt1 zt1b on (f3 = zt1b.f1)
+where zt1.f1 = 53;
+
+-- likewise for the zt3/zt2 join clause when zt1b/zt3 is commuted into zt1/zt1b
+explain (costs off)
+select * from
+  zt1 left join zt1 zt1b on (zt1.f1 = zt1b.f1 and zt1b.f1 = 53)
+      left join (zt3 left join zt2 on (f3 = f2)) on (zt1b.f1 = f3);
+
+select * from
+  zt1 left join zt1 zt1b on (zt1.f1 = zt1b.f1 and zt1b.f1 = 53)
+      left join (zt3 left join zt2 on (f3 = f2)) on (zt1b.f1 = f3);
+
 --
 -- regression test for improper extraction of OR indexqual conditions
 -- (as seen in early 8.3.x releases)
@@ -1545,6 +1569,40 @@ select * from (values (1),(2)) v(x)
   left join (select q from (select 7 as q from (select where false) ss1) ss2
              left join (select 8 as z) ss3 on true) ss4 on true;
 
+-- Nor an RTE_RESULT whose PHV is nested in a PHV evaluated at some but not
+-- all of the sibling rels
+explain (verbose, costs off)
+select ss.z
+from (select 1) s1 left join
+  ((select 1) s2 left join (select 1 as x) v on true
+   cross join (lateral (select coalesce(v.x, 0) as z, f1 from int4_tbl) ss
+               cross join lateral (select ss.f1 offset 0) g))
+  on true;
+select ss.z
+from (select 1) s1 left join
+  ((select 1) s2 left join (select 1 as x) v on true
+   cross join (lateral (select coalesce(v.x, 0) as z, f1 from int4_tbl) ss
+               cross join lateral (select ss.f1 offset 0) g))
+  on true;
+
+-- Same, with the PHVs coming from grouping sets
+explain (costs off)
+select s1.x
+from (values (1)) as v(x),
+     lateral (select v.x + 1, 2) as s1(x, y)
+     cross join generate_series(s1.y, s1.y) as g
+group by grouping sets (1, 1);
+select s1.x
+from (values (1)) as v(x),
+     lateral (select v.x + 1, 2) as s1(x, y)
+     cross join generate_series(s1.y, s1.y) as g
+group by grouping sets (1, 1);
+
+-- But we can remove it if the outer PHV covers all of the sibling rels
+explain (costs off)
+select s.y from (values (1)) v(x), lateral (select v.x + f1 as y from int4_tbl) s
+group by grouping sets (1, ());
+
 -- This example demonstrates the folly of our old "have_dangerous_phv" logic
 begin;
 set local from_collapse_limit to 2;
@@ -1579,6 +1637,24 @@ select * from
      lateral (select k as kl limit 1);
 
 rollback;
+
+-- nestloop parameter PHV whose ph_eval_at mentions an outer join that is
+-- computed in the rels supplying the parameters
+explain (verbose, costs off)
+select v.k from (select 1) d
+  left join (select t1.f1, 1 from int4_tbl t1, onerow t2
+               left join onerow t3 on true) s(x, y) on true
+  left join lateral (select s.y from onerow t4) v(k) on true
+where v.k > s.x;
+
+-- likewise, where an upper nestloop could wrongly claim the parameter
+explain (verbose, costs off)
+select v.k, g from (select 1) d
+  left join (select t1.f1, 1 from int4_tbl t1, onerow t2
+               left join onerow t3 on true) s(x, y) on true
+  left join lateral (select s.y from onerow t4) v(k) on true,
+  lateral generate_series(v.k, 1) g
+where v.k > s.x;
 
 -- PHVs containing SubLinks are quite tricky to get right
 explain (verbose, costs off)
@@ -1649,6 +1725,20 @@ select * from int4_tbl left join (
   select text 'foo' union all select text 'bar'
 ) ss(x) on true
 where ss.x is null;
+
+-- Test a join qual referencing a nulled appendrel output only within a PHV
+explain (verbose, costs off)
+select 1 from int4_tbl t1
+  left join (select 1 as x union all select 2) s on true
+  left join lateral (select s.x as y from int4_tbl t2) ss on true
+  left join int4_tbl t3 on ss.y is null;
+
+-- Same, but the join qual's required_relids don't include the nulling OJ
+explain (verbose, costs off)
+select 1 from ((int4_tbl t1 left join (select 1 as x union all select 2) s on t1.f1 < s.x)
+   join lateral (select coalesce(s.x, t2.f1) as y from int4_tbl t2) ss on true)
+  full join int4_tbl t3 on t3.f1 = t1.f1 and ss.y = t3.f1
+  right join int4_tbl t4 on t3.f1 = t4.f1;
 
 -- Test computation of varnullingrels when translating appendrel Var
 begin;
@@ -1904,6 +1994,89 @@ select * from int8_tbl t1 left join int8_tbl t2 on t1.q2 = t2.q1,
 
 select * from int8_tbl t1 left join int8_tbl t2 on t1.q2 = t2.q1,
   lateral (select * from int8_tbl t3 where t2.q1 = t2.q2) ss;
+
+--
+-- check deductions from FULL JOIN clauses and COALESCE() = constant: the
+-- join clause's operands may appear in either order, but must come from
+-- different inputs of the join
+--
+
+-- operands in reverse order: constants are still deduced for both inputs
+explain (costs off)
+select * from int4_tbl a full join int4_tbl c on c.f1 = a.f1
+  where coalesce(c.f1, a.f1) = 0;
+
+select * from int4_tbl a full join int4_tbl c on c.f1 = a.f1
+  where coalesce(c.f1, a.f1) = 0;
+
+-- ... also when the left input is a join
+explain (costs off)
+select * from (int4_tbl a join int4_tbl b on a.f1 = b.f1)
+  full join int4_tbl c on c.f1 = a.f1
+  where coalesce(c.f1, a.f1) = 0;
+
+select * from (int4_tbl a join int4_tbl b on a.f1 = b.f1)
+  full join int4_tbl c on c.f1 = a.f1
+  where coalesce(c.f1, a.f1) = 0;
+
+-- the gating qual must be applied to the join's left input
+explain (costs off)
+select * from (int4_tbl a join int4_tbl b on a.f1 = b.f1 and a.f1 = (select 1))
+  full join int4_tbl c on c.f1 = a.f1
+  where coalesce(c.f1, a.f1) = 0;
+
+select * from (int4_tbl a join int4_tbl b on a.f1 = b.f1 and a.f1 = (select 1))
+  full join int4_tbl c on c.f1 = a.f1
+  where coalesce(c.f1, a.f1) = 0;
+
+-- an operand may be nulled by a lower outer join, in either order
+explain (costs off)
+select * from (int4_tbl a left join int4_tbl b on a.f1 = b.f1)
+  full join int4_tbl c on b.f1 = c.f1
+  where coalesce(b.f1, c.f1) = 0;
+
+select * from (int4_tbl a left join int4_tbl b on a.f1 = b.f1)
+  full join int4_tbl c on b.f1 = c.f1
+  where coalesce(b.f1, c.f1) = 0;
+
+explain (costs off)
+select * from (int4_tbl a left join int4_tbl b on a.f1 = b.f1)
+  full join int4_tbl c on c.f1 = b.f1
+  where coalesce(c.f1, b.f1) = 0;
+
+select * from (int4_tbl a left join int4_tbl b on a.f1 = b.f1)
+  full join int4_tbl c on c.f1 = b.f1
+  where coalesce(c.f1, b.f1) = 0;
+
+-- nothing can be deduced from a clause relating two vars of the same input
+explain (costs off)
+select * from (int4_tbl a cross join int4_tbl b)
+  full join int4_tbl c on a.f1 = b.f1 and a.f1 = c.f1
+  where coalesce(a.f1, b.f1) = 0
+  order by b.f1;
+
+select * from (int4_tbl a cross join int4_tbl b)
+  full join int4_tbl c on a.f1 = b.f1 and a.f1 = c.f1
+  where coalesce(a.f1, b.f1) = 0
+  order by b.f1;
+
+-- ... nor from a clause with an operand that references both inputs
+explain (costs off)
+select * from (int4_tbl a cross join int4_tbl b)
+  full join int4_tbl c on a.f1 - c.f1 = b.f1 and a.f1 = c.f1
+  where coalesce(a.f1 - c.f1, b.f1) = 123456
+  order by a.f1;
+
+select * from (int4_tbl a cross join int4_tbl b)
+  full join int4_tbl c on a.f1 - c.f1 = b.f1 and a.f1 = c.f1
+  where coalesce(a.f1 - c.f1, b.f1) = 123456
+  order by a.f1;
+
+-- if the only join condition relates two vars of the same input, the FULL
+-- JOIN can't be planned, just as without the WHERE condition
+select * from (int4_tbl a cross join int4_tbl b)
+  full join int4_tbl c on a.f1 = b.f1
+  where coalesce(a.f1, b.f1) = 0;
 
 --
 -- check handling of join aliases when flattening multiple levels of subquery
@@ -2168,6 +2341,21 @@ select 1 from t t1
 rollback;
 
 --
+-- check a similar case where the parameterization refers to an outer join
+-- that was pushed down per outer-join identity 3
+--
+
+explain (costs off)
+select 1 from tenk1 t1
+where t1.thousand in
+  (select t2.thousand
+   from tenk1 t2
+     left join tenk1 t3 on t2.thousand = t3.thousand
+     left join (tenk1 t4 left join tenk1 t5 on t4.thousand = t5.thousand)
+       on t3.thousand = t4.thousand
+   where coalesce(t5.tenthous, 0) = t2.tenthous);
+
+--
 -- check a case in which a PlaceHolderVar forces join order
 --
 
@@ -2255,6 +2443,20 @@ select count(*) from int4_tbl t1 left join int4_tbl t2 on true,
 where s2.q2 > t1.f1;
 
 reset from_collapse_limit;
+
+--
+-- check that an outer join is not taken to commute with a lower outer join
+-- when its clause references the lower join's RHS only laterally within a
+-- PlaceHolderVar
+--
+
+explain (costs off)
+select 1 from int4_tbl t1
+  left join int4_tbl t2 on true
+  left join lateral (select t2.f1, 1 from int4_tbl t3) s(x, y) on true
+  left join int4_tbl t4 on t4.f1 = s.x
+  join int4_tbl t5 on true
+where s.y is not null;
 
 --
 -- check that a cloned outer-join qual is not enforced multiple times when
@@ -3760,6 +3962,72 @@ select * from generate_series(100,200) g,
   lateral (select * from int8_tbl a where g = q1 union all
            select * from int8_tbl b where g = q2) ss;
 
+-- lateral with UNION ALL subselect, where a member is a subquery whose
+-- output contains a lateral reference
+explain (costs off)
+  select ss.v from int8_tbl x,
+    lateral (select x.q1 from (select distinct q2 from int8_tbl) s union all
+             select q2 from int8_tbl) ss(v);
+
+-- lateral UNION ALL referencing a join alias Var that needs a PHV; the
+-- appendrel parent and children must share the PHV
+-- Here the Var is a whole-row reference to a nullable join.
+explain (verbose, costs off)
+select ss.j from
+  int4_tbl a left join (int4_tbl b cross join int4_tbl c) j on true,
+  lateral ((select j offset 0) union all select null) ss;
+explain (verbose, costs off)
+select ss.j from
+  int4_tbl a left join (int4_tbl b cross join int4_tbl c) j on true,
+  lateral (select j union all select null) ss;
+-- Here the Var is a merged column of a full join with a non-Var input
+explain (verbose, costs off)
+select ss.c from
+  int4_tbl a left join
+  ((select f1 + 0 as c from int4_tbl) s full join int4_tbl b(c) using (c)) j
+  on true,
+  lateral ((select j.c offset 0) union all select 1) ss;
+explain (verbose, costs off)
+select ss.c from
+  int4_tbl a left join
+  ((select f1 + 0 as c from int4_tbl) s full join int4_tbl b(c) using (c)) j
+  on true,
+  lateral (select j.c union all select 1) ss;
+-- Here the UNION ALL is nested in a pulled-up lateral subquery
+explain (verbose, costs off)
+select ss.j from
+  int4_tbl a left join (int4_tbl b cross join int4_tbl c) j on true,
+  lateral (select * from ((select j offset 0) union all select null) s) ss;
+explain (verbose, costs off)
+select ss.j from
+  int4_tbl a left join (int4_tbl b cross join int4_tbl c) j on true,
+  lateral (select * from (select j union all select null) s) ss;
+
+-- join alias Var needing a PHV, referenced in both the tlist and the quals of
+-- a pulled-up subquery; both references must share the PHV
+explain (verbose, costs off)
+select * from
+  (select v.k from int4_tbl a
+     left join (int4_tbl b cross join int4_tbl c) j on true
+     left join lateral (select j as k from int4_tbl d) v on true
+   where v.k::text is not null) ss;
+
+-- join alias Var needing a PHV, inside the PHV that grouping sets put around
+-- a pulled-up subquery's output; the qual must not compute ROW(NULL, 1)
+explain (verbose, costs off)
+select ss.x, count(*) from
+  int8_tbl a left join (int4_tbl b cross join (select 1 as c) s) j
+  on a.q1 = j.f1
+  cross join lateral (select j as x) ss
+where ss.x::text is not null
+group by rollup (ss.x);
+select ss.x, count(*) from
+  int8_tbl a left join (int4_tbl b cross join (select 1 as c) s) j
+  on a.q1 = j.f1
+  cross join lateral (select j as x) ss
+where ss.x::text is not null
+group by rollup (ss.x);
+
 -- lateral with VALUES
 explain (costs off)
   select count(*) from tenk1 a,
@@ -3864,6 +4132,29 @@ select * from
              lateral (select z.q1 as v union all select y.q1 + z.q1) ss
              on z.q2 = ss.v)
     on y.q1 = 1;
+
+-- check that a clause the UNION ALL members cannot enforce is not dropped
+-- from the join above as already enforced, even through a Materialize
+begin;
+
+set local join_collapse_limit to 1;
+
+explain (costs off)
+select * from int4_tbl t1 join
+  (int4_tbl t2 cross join lateral
+     (select q1 from int8_tbl where q2 < t1.f1
+      union all
+      select q1 from int8_tbl where q2 < t1.f1) s)
+  on t1.f1 = s.q1 + t1.f1;
+
+select * from int4_tbl t1 join
+  (int4_tbl t2 cross join lateral
+     (select q1 from int8_tbl where q2 < t1.f1
+      union all
+      select q1 from int8_tbl where q2 < t1.f1) s)
+  on t1.f1 = s.q1 + t1.f1;
+
+rollback;
 
 -- lateral can result in join conditions appearing below their
 -- real semantic level
@@ -4037,6 +4328,40 @@ from int4_tbl i4,
            where length(j::text) > 3) ss(y) on true
 where i4.f1 = 0
 order by 1, 2;
+
+-- check that lateral references in a sort key added below a mergejoin are
+-- replaced with nestloop params
+set enable_hashjoin to off;
+set enable_nestloop to off;
+
+explain (verbose, costs off)
+select * from int4_tbl t1
+  left join lateral
+    (select t1.f1 from int4_tbl t3 where t3.f1 = 0) s(x) on true
+  join int4_tbl t2 on -s.x = t2.f1
+where t1.f1 = 123456;
+select * from int4_tbl t1
+  left join lateral
+    (select t1.f1 from int4_tbl t3 where t3.f1 = 0) s(x) on true
+  join int4_tbl t2 on -s.x = t2.f1
+where t1.f1 = 123456;
+
+reset enable_nestloop;
+
+-- same, with the sort key computed atop a join
+explain (verbose, costs off)
+select count(*) from int4_tbl t1
+  left join lateral
+    (select t1.f1, t3.g from generate_series(1, 1000) t3(g), int4_tbl t4) s(x, y) on true
+  join tenk1 t2 on s.x + s.y = t2.unique1
+where t1.f1 = 0;
+select count(*) from int4_tbl t1
+  left join lateral
+    (select t1.f1, t3.g from generate_series(1, 1000) t3(g), int4_tbl t4) s(x, y) on true
+  join tenk1 t2 on s.x + s.y = t2.unique1
+where t1.f1 = 0;
+
+reset enable_hashjoin;
 
 -- test some error cases where LATERAL should have been used but wasn't
 select f1,g from int4_tbl a, (select f1 as g) ss;

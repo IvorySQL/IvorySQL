@@ -203,10 +203,6 @@ static const internalPQconninfoOption PQconninfoOptions[] = {
 		"Database-Service", "", 20,
 	offsetof(struct pg_conn, pgservice)},
 
-	{"servicefile", "PGSERVICEFILE", NULL, NULL,
-		"Database-Service-File", "", 64,
-	offsetof(struct pg_conn, pgservicefile)},
-
 	{"user", "PGUSER", NULL, NULL,
 		"Database-User", "", 20,
 	offsetof(struct pg_conn, pguser)},
@@ -3284,7 +3280,8 @@ keep_going:						/* We will come back to here until there is
 						}
 						if (conn->gcred == GSS_C_NO_CREDENTIAL)
 						{
-							if (!pg_GSS_have_cred_cache(&conn->gcred))
+							conn->gcred = pg_GSS_get_cred_cache();
+							if (conn->gcred == GSS_C_NO_CREDENTIAL)
 							{
 								libpq_append_conn_error(conn,
 														"GSSAPI encryption required but no credential cache");
@@ -4839,15 +4836,16 @@ select_next_encryption_method(PGconn *conn, bool have_valid_connection)
 	if ((remaining_methods & ENC_GSSAPI) != 0)
 	{
 		/*
-		 * If GSSAPI encryption is enabled, then call pg_GSS_have_cred_cache()
-		 * which will return true if we can acquire credentials (and give us a
-		 * handle to use in conn->gcred), and then send a packet to the server
+		 * If GSSAPI encryption is enabled, then call pg_GSS_get_cred_cache()
+		 * to try to acquire credentials, and then send a packet to the server
 		 * asking for GSSAPI Encryption (and skip past SSL negotiation and
 		 * regular startup below).
 		 */
 		if (!conn->gctx)
 		{
-			if (!pg_GSS_have_cred_cache(&conn->gcred))
+			if (conn->gcred == GSS_C_NO_CREDENTIAL)
+				conn->gcred = pg_GSS_get_cred_cache();
+			if (conn->gcred == GSS_C_NO_CREDENTIAL)
 			{
 				conn->allowed_enc_methods &= ~ENC_GSSAPI;
 				remaining_methods &= ~ENC_GSSAPI;
@@ -5012,6 +5010,10 @@ pqMakeEmptyPGconn(void)
 	conn->altsock = PGINVALID_SOCKET;
 	conn->Pfdebug = NULL;
 
+#ifdef ENABLE_GSS
+	conn->gcred = GSS_C_NO_CREDENTIAL;	/* let's not assume this is 0 */
+#endif
+
 	/*
 	 * We try to send at least 8K at a time, which is the usual size of pipe
 	 * buffers on Unix systems.  That way, when we are sending a large amount
@@ -5082,7 +5084,6 @@ freePGconn(PGconn *conn)
 	free(conn->dbName);
 	free(conn->replication);
 	free(conn->pgservice);
-	free(conn->pgservicefile);
 	free(conn->pguser);
 	if (conn->pgpass)
 	{
@@ -5960,7 +5961,6 @@ static int
 parseServiceInfo(PQconninfoOption *options, PQExpBuffer errorMessage)
 {
 	const char *service = conninfo_getval(options, "service");
-	const char *service_fname = conninfo_getval(options, "servicefile");
 	char		serviceFile[MAXPGPATH];
 	char	   *env;
 	bool		group_found = false;
@@ -5980,13 +5980,10 @@ parseServiceInfo(PQconninfoOption *options, PQExpBuffer errorMessage)
 		return 0;
 
 	/*
-	 * First, try the "servicefile" option in connection string.  Then, try
-	 * the PGSERVICEFILE environment variable.  Finally, check
-	 * ~/.pg_service.conf (if that exists).
+	 * Try PGSERVICEFILE if specified, else try ~/.pg_service.conf (if that
+	 * exists).
 	 */
-	if (service_fname != NULL)
-		strlcpy(serviceFile, service_fname, sizeof(serviceFile));
-	else if ((env = getenv("PGSERVICEFILE")) != NULL)
+	if ((env = getenv("PGSERVICEFILE")) != NULL)
 		strlcpy(serviceFile, env, sizeof(serviceFile));
 	else
 	{
@@ -6017,18 +6014,6 @@ next_file:
 	status = parseServiceFile(serviceFile, service, options, errorMessage, &group_found);
 	if (status != 0)
 		return status;
-
-	/* Update servicefile to the file that actually supplied the service */
-	if (group_found && service_fname != NULL &&
-		conninfo_storeval(options, "servicefile", serviceFile,
-						  errorMessage, false, false) == NULL)
-	{
-		/*
-		 * conninfo_storeval already set an error message, that could be only
-		 * an OOM.
-		 */
-		return 3;
-	}
 
 last_file:
 	if (!group_found)
@@ -6154,17 +6139,7 @@ parseServiceFile(const char *serviceFile,
 				if (strcmp(key, "service") == 0)
 				{
 					libpq_append_error(errorMessage,
-									   "nested \"service\" specifications not supported in service file \"%s\", line %d",
-									   serviceFile,
-									   linenr);
-					result = 3;
-					goto exit;
-				}
-
-				if (strcmp(key, "servicefile") == 0)
-				{
-					libpq_append_error(errorMessage,
-									   "nested \"servicefile\" specifications not supported in service file \"%s\", line %d",
+									   "nested service specifications not supported in service file \"%s\", line %d",
 									   serviceFile,
 									   linenr);
 					result = 3;
@@ -6207,33 +6182,6 @@ parseServiceFile(const char *serviceFile,
 	}
 
 exit:
-
-	/*
-	 * If a service has been successfully found, set the "servicefile" option
-	 * if not already set.  This matters when we use a default service file or
-	 * PGSERVICEFILE, where we want to be able track the value.
-	 */
-	if (*group_found && result == 0)
-	{
-		for (i = 0; options[i].keyword; i++)
-		{
-			if (strcmp(options[i].keyword, "servicefile") != 0)
-				continue;
-
-			/* If value is already set, nothing to do */
-			if (options[i].val != NULL)
-				break;
-
-			options[i].val = strdup(serviceFile);
-			if (options[i].val == NULL)
-			{
-				libpq_append_error(errorMessage, "out of memory");
-				result = 3;
-			}
-			break;
-		}
-	}
-
 	fclose(f);
 
 	return result;

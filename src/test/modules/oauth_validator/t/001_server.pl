@@ -56,8 +56,11 @@ $node->safe_psql('postgres', 'CREATE USER test;');
 $node->safe_psql('postgres', 'CREATE USER testalt;');
 $node->safe_psql('postgres', 'CREATE USER testparam;');
 
+my $exec_backend = $node->safe_psql('postgres', 'SHOW debug_exec_backend');
+
 # Save a background connection for later configuration changes.
 my $bgconn = $node->background_psql('postgres');
+$bgconn->set_query_timer_restart();
 
 my $webserver = OAuth::Server->new();
 $webserver->run();
@@ -142,6 +145,29 @@ $log_start = $node->wait_for_log(
 	qr/parameter "oauth_validator_libraries" must be set for authentication/,
 	$log_start);
 $bgconn->query_safe('SELECT 1');
+
+# The failed reload leaves the old HBA lines in place, but their validator is
+# no longer allowed.
+SKIP:
+{
+	skip "EXEC_BACKEND builds do not use already loaded configuration", 1
+	  if ($exec_backend =~ /on/ || $windows_os);
+	$node->connect_fails(
+		"user=test dbname=postgres oauth_issuer=$issuer oauth_client_id=f02c6361-0635",
+		"validator removed from oauth_validator_libraries is not used",
+		expected_stderr =>
+		  qr/OAuth bearer authentication failed for user "test"/,
+		log_like => [
+			qr/parameter "oauth_validator_libraries" must be set for authentication method "oauth"/
+		]);
+}
+
+# Test that a quoted empty name is rejected
+$node->append_conf('postgresql.conf', "oauth_validator_libraries = 'validator,\"\"'");
+$node->reload;
+$log_start = $node->wait_for_log(
+	qr/invalid list syntax in parameter "oauth_validator_libraries"/,
+	$log_start);
 
 $node->append_conf('postgresql.conf',
 	"oauth_validator_libraries = 'validator'");

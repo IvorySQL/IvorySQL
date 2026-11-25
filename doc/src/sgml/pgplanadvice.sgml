@@ -503,8 +503,9 @@ NO_GATHER(<replaceable>advice_target</replaceable> [ ... ])
    <para>
     <literal>NO_GATHER</literal> specifies that no <literal>Gather</literal> or
     <literal>Gather Merge</literal> node should appear above any of the
-    targets, but it only constrains the planning of an individual subquery,
-    and outer subquery levels can still use parallel query. For example,
+    targets, but it only constrains planning within a given join problem,
+    and parent tables or outer subquery levels can still use parallel query.
+    For example,
     <literal>NO_GATHER(inner_example@any_1)</literal> precludes using a
     <literal>Parallel Seq Scan</literal> to access the
     <literal>inner_example</literal> table within the <literal>any_1</literal>
@@ -541,6 +542,14 @@ Aggregate
                 -> Parallel Seq Scan on inner_example
                      Filter: (something_else > 100)
 </programlisting>
+
+   <para>
+    Similarly, when <literal>NO_GATHER</literal> is applied to an individual
+    partition, it precludes a parallel scan of that particular partition, but
+    it is still possible for a <literal>Parallel Append</literal> node to use
+    a non-parallel scan of that partition. To rule out that possibility,
+    use <literal>NO_GATHER</literal> on the parent rather than on the child.
+   </para>
 
   </sect3>
  </sect2>
@@ -826,6 +835,18 @@ EXPLAIN (COSTS OFF)
    to disable <acronym>GEQO</acronym> in order to obtain satisfactory results.
    Note that scan advice is not affected by this limitation because it does
    not constrain the join order.
+  </para>
+
+  <para>
+   Plan advice is consulted only when a query is planned. If a prepared
+   statement is re-executed under a different value of
+   <varname>pg_plan_advice.advice</varname>, or with different advice supplied
+   by another module such as <xref linkend="pgstashadvice"/>, it can still
+   make use of a previously cached plan. The same thing can happen when
+   re-executing a statement within a <application>PL/pgSQL</application>
+   block, where plans can also be cached. Sessions that do not wish to reuse
+   previously-cached plans can use
+   <link linkend="sql-discard"><command>DISCARD PLANS</command></link>.
   </para>
  </sect2>
 
