@@ -4055,8 +4055,10 @@ postgres_install_suites = []
 testwrap = files('src/tools/testwrap')
 
 foreach test_dir : tests
-  is_oracle_test = test_dir['sd'].startswith(
-    meson.project_source_root() / 'src/oracle_test/')
+  # Normalize separators: on Windows current_source_dir() returns
+  # backslash-separated paths, while the '/' operator joins with '/'.
+  is_oracle_test = '/'.join(test_dir['sd'].split('\\')).startswith(
+    '/'.join((meson.project_source_root() / 'src/oracle_test/').split('\\')))
   test_group = test_dir['name']
   if is_oracle_test
     test_group = 'oracle_' + test_group
