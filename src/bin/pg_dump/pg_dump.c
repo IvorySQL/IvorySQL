@@ -7320,7 +7320,7 @@ getPackages(Archive *fout, int *numPkgs)
 	int			i_pkgname;
 	int			i_oid;
 	int			i_pkgnamespace;
-	int			i_rolname;
+	int			i_pkgowner;
 	int			i_pkgacl;
 	int			i_acldefault;
 
@@ -7369,7 +7369,7 @@ getPackages(Archive *fout, int *numPkgs)
 	i_pkgname = PQfnumber(res, "pkgname");
 	i_oid = PQfnumber(res, "oid");
 	i_pkgnamespace = PQfnumber(res, "pkgnamespace");
-	i_rolname = PQfnumber(res, "pkgowner");
+	i_pkgowner = PQfnumber(res, "pkgowner");
 	i_pkgacl = PQfnumber(res, "pkgacl");
 	i_acldefault = PQfnumber(res, "acldefault");
 
@@ -7382,7 +7382,7 @@ getPackages(Archive *fout, int *numPkgs)
 		pkginfo[i].dobj.name = pg_strdup(PQgetvalue(res, i, i_pkgname));
 		pkginfo[i].dobj.namespace =
 			findNamespace(atooid(PQgetvalue(res, i, i_pkgnamespace)));
-		pkginfo[i].rolname = pg_strdup(PQgetvalue(res, i, i_rolname));
+		pkginfo[i].rolname = getRoleName(PQgetvalue(res, i, i_pkgowner));
 		pkginfo[i].pkgacl = pg_strdup(PQgetvalue(res, i, i_pkgacl));
 		pkginfo[i].dacl.acldefault = pg_strdup(PQgetvalue(res, i, i_acldefault));
 		pkginfo[i].dacl.privtype = 0;
@@ -7393,9 +7393,6 @@ getPackages(Archive *fout, int *numPkgs)
 		/* Do not try to dump ACL if no ACL exists. */
 		if (!PQgetisnull(res, i, i_pkgacl))
 			pkginfo[i].dobj.dump &= ~DUMP_COMPONENT_ACL;
-		if (strlen(pkginfo[i].rolname) == 0)
-			pg_log_warning("WARNING: owner of package \"%s\" appears to be invalid\n",
-					  pkginfo[i].dobj.name);
 	}
 	PQclear(res);
 	destroyPQExpBuffer(query);
