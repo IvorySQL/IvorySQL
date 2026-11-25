@@ -36,6 +36,14 @@ SELECT TO_CHAR(12345, '9,999') AS grp,
 SELECT TO_CHAR(1234, '99999') AS fits,
        TO_CHAR(1234, '9,999.99') AS fits_dec;
 
+-- The field width does not depend on the input type: int8, float4 and float8
+-- use the same format model, and a value that fits is still rendered normally
+SELECT TO_CHAR(12345::int8, '999') AS int8_over,
+       TO_CHAR(12.5::float8, '9.9') AS float8_over,
+       TO_CHAR(12345::float4, '999') AS float4_over,
+       TO_CHAR(123::int8, '999') AS int8_fits,
+       TO_CHAR(12.5::float8, '99.9') AS float8_fits;
+
 -- Negative values use the same width
 SELECT TO_CHAR(-12345, '9999PR') AS neg_pr,
        TO_CHAR(-12345, '9999MI') AS neg_mi,

@@ -55,6 +55,18 @@ SELECT TO_CHAR(1234, '99999') AS fits,
    1234 |  1,234.00
 (1 row)
 
+-- The field width does not depend on the input type: int8, float4 and float8
+-- use the same format model, and a value that fits is still rendered normally
+SELECT TO_CHAR(12345::int8, '999') AS int8_over,
+       TO_CHAR(12.5::float8, '9.9') AS float8_over,
+       TO_CHAR(12345::float4, '999') AS float4_over,
+       TO_CHAR(123::int8, '999') AS int8_fits,
+       TO_CHAR(12.5::float8, '99.9') AS float8_fits;
+ int8_over | float8_over | float4_over | int8_fits | float8_fits 
+-----------+-------------+-------------+-----------+-------------
+ ####      | ####        | ####        |  123      |  12.5
+(1 row)
+
 -- Negative values use the same width
 SELECT TO_CHAR(-12345, '9999PR') AS neg_pr,
        TO_CHAR(-12345, '9999MI') AS neg_mi,
