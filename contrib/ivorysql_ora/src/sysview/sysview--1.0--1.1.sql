@@ -55,6 +55,29 @@ BEGIN
 	WHERE a.attrelid = 'sys.all_source'::pg_catalog.regclass
 	  AND a.attname = 'name';
 
+	/* Preserve the original DBA_SOURCE.TEXT collation inherited from prosrc. */
+	EXECUTE pg_catalog.format($view$
+CREATE OR REPLACE VIEW sys.dba_source AS
+SELECT
+	sys.ora_case_trans(pg_catalog.pg_get_userbyid(p.proowner)::%1$s)::%1$s(128) AS owner,
+	sys.ora_case_trans(p.proname::%1$s)::%1$s(128) AS name,
+	(CASE WHEN p.prokind = 'f' THEN 'FUNCTION' ELSE 'PROCEDURE' END)::%1$s(12) AS type,
+	l.line::sys.number AS line,
+	l.text::%1$s(4000) COLLATE pg_catalog.U&"C" AS text,
+	0::%1$s(256) AS origin_con_id
+FROM pg_catalog.pg_proc p
+LEFT JOIN pg_catalog.pg_trigger t ON p.oid = t.tgfoid
+CROSS JOIN LATERAL pg_catalog.string_to_table(
+	pg_catalog.substring(pg_catalog.pg_get_functiondef(p.oid),
+		pg_catalog.length('CREATE OR REPLACE ') + 1), pg_catalog.chr(10))
+	WITH ORDINALITY AS l(text, line)
+WHERE p.prokind IN ('p', 'f')
+  AND t.oid IS NULL
+  AND p.pronamespace NOT IN ('pg_catalog'::pg_catalog.regnamespace,
+							 'pg_toast'::pg_catalog.regnamespace,
+							 'information_schema'::pg_catalog.regnamespace)
+	$view$, varchar2_type);
+
 	EXECUTE pg_catalog.format($view$
 CREATE OR REPLACE VIEW sys.all_source WITH (security_barrier = true) AS
 SELECT

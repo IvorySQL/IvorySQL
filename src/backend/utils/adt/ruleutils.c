@@ -3759,8 +3759,8 @@ print_function_arguments(StringInfo buf, HeapTuple proctup,
 	int			i;
 	char	  **argtypenames;
 
-	numargs = get_func_arg_info(proctup,
-								&argtypes, &argnames, &argmodes);
+	/* Print stored type references without looking them up in search_path. */
+	numargs = get_func_arg_info_raw(proctup, &argtypes, &argnames, &argmodes);
 
 	get_func_typename_info(proctup, &argtypenames, NULL);
 

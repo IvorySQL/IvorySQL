@@ -30,6 +30,32 @@ SELECT dummy FROM sys.dual;
 SELECT 1 AS one FROM dual;
 \pset format aligned
 
+-- Source views display stored ROWTYPE signatures, even outside the table's search path.
+BEGIN;
+SET LOCAL search_path TO public, sys, pg_catalog;
+CREATE TABLE rowtype_source_table(id int, name varchar(20));
+CREATE FUNCTION rowtype_source_fun(col rowtype_source_table%ROWTYPE)
+  RETURN rowtype_source_table%ROWTYPE IS
+BEGIN
+  RETURN col;
+END;
+/
+CREATE FUNCTION rowtype_source_qualified(col public.rowtype_source_table%ROWTYPE)
+  RETURN public.rowtype_source_table%ROWTYPE IS
+BEGIN
+  RETURN col;
+END;
+/
+SET LOCAL search_path TO sys, pg_catalog;
+\pset format unaligned
+SELECT rtrim(text) FROM all_source WHERE name = 'ROWTYPE_SOURCE_FUN';
+SELECT line, rtrim(text) FROM dba_source WHERE name = 'ROWTYPE_SOURCE_FUN' ORDER BY line;
+SELECT rtrim(text) FROM user_source WHERE name = 'ROWTYPE_SOURCE_FUN';
+SELECT line, rtrim(text) FROM dba_source WHERE name = 'ROWTYPE_SOURCE_QUALIFIED'
+  AND line IN (1, 2) ORDER BY line;
+\pset format aligned
+ROLLBACK;
+
 -- create a procedure
 CREATE TABLE TB_TODEL(ID INT);
 CREATE OR REPLACE PROCEDURE PROC_DEL_TB(I INT) IS
