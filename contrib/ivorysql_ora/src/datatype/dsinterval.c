@@ -497,7 +497,12 @@ DecodeDsinterval(char **field, int *ftype, int nf, int range,
 							tm->tm_year = 0;
 						tm->tm_year += val;
 						if (fval != 0)
+						{
+							if (tm->tm_mon == INT_MAX)
+								tm->tm_mon = 0;
+
 							tm->tm_mon += fval * MONTHS_PER_YEAR;
+						}
 						tmask = DTK_M(YEAR);
 						break;
 
