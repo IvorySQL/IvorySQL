@@ -6,25 +6,27 @@ if meson.is_cross_build()
   subdir_done()
 endif
 
-pg_regress_ecpg_sources = pg_regress_c + files(
+# The Oracle-mode driver, like the Makefile's: the Oracle-mode pg_regress.c,
+# under its own variable name so it does not replace the PostgreSQL one.
+oracle_pg_regress_ecpg_sources = oracle_pg_regress_c + files(
   'pg_regress_ecpg.c',
 )
 
 if host_system == 'windows'
-  pg_regress_ecpg_sources += rc_bin_gen.process(win32ver_rc, extra_args: [
+  oracle_pg_regress_ecpg_sources += rc_bin_gen.process(win32ver_rc, extra_args: [
     '--NAME', 'pg_regress_ecpg',])
 endif
 
-pg_regress_ecpg = executable('pg_regress_ecpg',
-  pg_regress_ecpg_sources,
-  c_args: pg_regress_cflags,
-  include_directories: [pg_regress_inc, include_directories('.')],
+oracle_pg_regress_ecpg = executable('pg_regress_ecpg',
+  oracle_pg_regress_ecpg_sources,
+  c_args: oracle_pg_regress_cflags,
+  include_directories: [oracle_pg_regress_inc, include_directories('.')],
   dependencies: [frontend_code, libpq],
   kwargs: default_bin_args + {
     'install': false
   },
 )
-testprep_targets += pg_regress_ecpg
+testprep_targets += oracle_pg_regress_ecpg
 
 # create .c files and executables from .pgc files
 ecpg_test_exec_kw = {
