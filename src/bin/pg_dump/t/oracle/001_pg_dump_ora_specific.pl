@@ -342,6 +342,30 @@ foreach my $run (sort keys %pgdump_runs)
 	}
 }
 
+# A custom archive must restore the package to its original owner by name.
+my $package_owner = 'regress_dump_package_owner';
+my $package_archive = "$tempdir/package_owner.dump";
+$node->safe_psql('testdb',
+	"CREATE ROLE $package_owner;
+	 ALTER PACKAGE public.test_pkg OWNER TO $package_owner;",
+	connect_to_oraport => 1);
+$node->command_ok(
+	['pg_dump', '-p', $node->oraport, '-Fc', '-f', $package_archive, 'testdb'],
+	'custom format dump with package ownership');
+$node->safe_psql('postgres', 'CREATE DATABASE package_restore');
+$node->command_ok(
+	['pg_restore', '-p', $node->oraport, '--exit-on-error', '-d',
+	 'package_restore', $package_archive],
+	'custom archive restores package to another database');
+is($node->safe_psql('package_restore',
+	q{SELECT pg_get_userbyid(pkgowner) FROM pg_package
+	    WHERE pkgname = 'test_pkg' AND pkgnamespace = 'public'::regnamespace},
+	connect_to_oraport => 1),
+	$package_owner, 'restored package has the original owner');
+is($node->safe_psql('package_restore',
+	'SELECT public.test_pkg.hello() FROM dual', connect_to_oraport => 1),
+	'Hello from test package', 'function from restored package is callable');
+
 #########################################
 # Stop the database instance, which will be removed at the end of the tests.
 
