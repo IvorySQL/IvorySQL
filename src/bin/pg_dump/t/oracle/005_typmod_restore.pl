@@ -30,6 +30,37 @@ $node->safe_psql($source, q{
 		SELECT address FROM restore_typmods WHERE address = 'US';
 }, connect_to_oraport => 1);
 
+# Defaults carry casts to typmod-less types too: a parameter default and a
+# column default written as plain 'literal' are stored as a cast to varchar2
+# without a length, which must not come back as varchar2(4000).
+$node->safe_psql($source, q{
+CREATE TABLE restore_defaults (
+	code varchar2(10) DEFAULT 'none'
+);
+CREATE FUNCTION typmod_default_fn(a varchar2 DEFAULT 'abc') RETURN varchar2 IS
+BEGIN
+	RETURN a;
+END;
+/
+CREATE PROCEDURE typmod_default_proc(x IN OUT number, z IN varchar2 DEFAULT 'dflt') IS
+BEGIN
+	x := x + length(z);
+END;
+/
+}, connect_to_oraport => 1);
+
+my $default_definitions = q{
+	SELECT p.proname || '|' || pg_get_function_arguments(p.oid)
+	FROM pg_proc p
+	WHERE p.proname IN ('typmod_default_fn', 'typmod_default_proc')
+	UNION ALL
+	SELECT a.attname || '|' || pg_get_expr(d.adbin, d.adrelid)
+	FROM pg_attrdef d
+	JOIN pg_attribute a ON a.attrelid = d.adrelid AND a.attnum = d.adnum
+	WHERE d.adrelid = 'restore_defaults'::regclass
+	ORDER BY 1
+};
+
 my $column_types = q{
 	SELECT a.attname, t.typname, a.atttypmod
 	FROM pg_attribute a JOIN pg_type t ON t.oid = a.atttypid
@@ -47,6 +78,12 @@ my $expected_view = $node->safe_psql($source, $view_definition,
 	connect_to_oraport => 1);
 my $expected_preserved_view = $node->safe_psql($source,
 	$preserved_view_definition, connect_to_oraport => 1);
+my $expected_defaults = $node->safe_psql($source,
+	$preserve . $default_definitions, connect_to_oraport => 1);
+like($expected_defaults, qr/^typmod_default_fn\|a varchar2 DEFAULT 'abc'::sys\.oravarchar(byte|char)$/m,
+	'source parameter default casts to varchar2 without a length');
+like($expected_defaults, qr/^code\|'none'::sys\.oravarchar(byte|char)$/m,
+	'source column default casts to varchar2 without a length');
 
 like($expected_types, qr/^tz\|oratimestamptz\|-1$/m,
 	'source timestamp with time zone has no type modifier');
@@ -125,6 +162,10 @@ foreach my $format ('custom', 'plain')
 			connect_to_oraport => 1),
 		$expected_preserved_view,
 		"qualified view casts survive $format restore");
+	is( $node->safe_psql($target, $preserve . $default_definitions,
+			connect_to_oraport => 1),
+		$expected_defaults,
+		"parameter and column defaults survive $format restore");
 }
 
 # The probe for ivorysql.preserve_absent_typmod must not need any privilege:
@@ -132,7 +173,8 @@ foreach my $format ('custom', 'plain')
 # and its dump restores without adding type modifiers.
 $node->safe_psql($source, q{
 	CREATE ROLE typmod_dumper LOGIN;
-	GRANT SELECT ON restore_typmods, restore_view TO typmod_dumper;
+	GRANT SELECT ON restore_typmods, restore_defaults, restore_view
+		TO typmod_dumper;
 	REVOKE EXECUTE ON FUNCTION pg_catalog.current_setting(text, boolean)
 		FROM PUBLIC;
 });
