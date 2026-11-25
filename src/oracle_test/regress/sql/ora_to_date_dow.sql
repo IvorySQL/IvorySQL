@@ -9,3 +9,5 @@ SELECT to_timestamp('2026-11-01 9', 'YYYY-MM-DD D');
 -- valid values still parse
 SELECT to_char(to_date('2026-11-01 1', 'YYYY-MM-DD D'), 'YYYY-MM-DD');
 SELECT to_char(to_date('2026-11-01 7', 'YYYY-MM-DD D'), 'YYYY-MM-DD');
+-- a soft-error caller (silent jsonpath) gets NULL, not a hard error
+SELECT jsonb_path_exists('"2026-11-01 8"', '$.datetime("YYYY-MM-DD D")', '{}', true);

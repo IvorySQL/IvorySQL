@@ -3948,7 +3948,7 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 				if (from_char_parse_int(&out->d, &s, n, escontext) < 0)
 					return;
 				if (ORA_PARSER == compatible_db && (out->d < 1 || out->d > 7))
-					ereport(ERROR,
+					ereturn(escontext,,
 							(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
 							 errmsg("The day of week value must be between 1 and 7.")));
 				SKIP_THth(s, n->suffix);
