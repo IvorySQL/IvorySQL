@@ -40,3 +40,16 @@ SELECT TO_CHAR(DATE '2024-02-29', 'YYYY SCC') AS combined;
  2024  21
 (1 row)
 
+-- lowercase alias behaves the same
+SELECT TO_CHAR(DATE '2024-02-29', 'scc') AS ad_lower;
+ ad_lower 
+----------
+  21
+(1 row)
+
+SELECT TO_CHAR(DATE '-0044-03-15', 'scc') AS bc_lower;
+ bc_lower 
+----------
+ -01
+(1 row)
+

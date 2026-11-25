@@ -19,3 +19,6 @@ SELECT TO_CHAR(DATE '2024-02-29', 'CC') AS unsigned_cc;
 
 -- combined with other elements
 SELECT TO_CHAR(DATE '2024-02-29', 'YYYY SCC') AS combined;
+-- lowercase alias behaves the same
+SELECT TO_CHAR(DATE '2024-02-29', 'scc') AS ad_lower;
+SELECT TO_CHAR(DATE '-0044-03-15', 'scc') AS bc_lower;
