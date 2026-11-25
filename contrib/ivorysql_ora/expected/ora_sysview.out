@@ -305,34 +305,81 @@ CREATE USER regress_ora_source_owner;
 CREATE USER regress_ora_source_reader;
 CREATE SCHEMA regress_ora_source AUTHORIZATION regress_ora_source_owner;
 SET SESSION AUTHORIZATION regress_ora_source_owner;
+CREATE TABLE regress_ora_source.source_row(id int, label varchar(10));
 CREATE PACKAGE regress_ora_source.source_pkg IS
-  FUNCTION get_value RETURN integer;
+  item regress_ora_source.source_row%ROWTYPE;
+  FUNCTION get_row(item regress_ora_source.source_row%ROWTYPE)
+    RETURN regress_ora_source.source_row%ROWTYPE;
+  PROCEDURE add_row(item regress_ora_source.source_row%ROWTYPE);
 END;
 /
 CREATE PACKAGE BODY regress_ora_source.source_pkg IS
-  FUNCTION get_value RETURN integer IS
+  FUNCTION get_row(item regress_ora_source.source_row%ROWTYPE)
+    RETURN regress_ora_source.source_row%ROWTYPE IS
   BEGIN
-    RETURN 42;
+    RETURN item;
+  END;
+  PROCEDURE add_row(item regress_ora_source.source_row%ROWTYPE) IS
+  BEGIN
+    INSERT INTO regress_ora_source.source_row VALUES item;
   END;
 END;
 /
 SELECT line, text FROM all_source WHERE name = 'source_pkg' AND type = 'package' ORDER BY line;
 line|text
-1|FUNCTION get_value RETURN integer;
-2|END
-(2 rows)
+1|PACKAGE SOURCE_PKG IS
+2|item regress_ora_source.source_row%ROWTYPE;
+3|  FUNCTION get_row(item regress_ora_source.source_row%ROWTYPE)
+4|    RETURN regress_ora_source.source_row%ROWTYPE;
+5|  PROCEDURE add_row(item regress_ora_source.source_row%ROWTYPE);
+6|END;
+(6 rows)
 SELECT line, text FROM all_source WHERE name = 'source_pkg' AND type = 'package body' ORDER BY line;
 line|text
-1|FUNCTION get_value RETURN integer IS
-2|  BEGIN
-3|    RETURN 42;
-4|  END;
-5|END
-(5 rows)
+1|PACKAGE BODY SOURCE_PKG IS
+2|FUNCTION get_row(item regress_ora_source.source_row%ROWTYPE)
+3|    RETURN regress_ora_source.source_row%ROWTYPE IS
+4|  BEGIN
+5|    RETURN item;
+6|  END;
+7|  PROCEDURE add_row(item regress_ora_source.source_row%ROWTYPE) IS
+8|  BEGIN
+9|    INSERT INTO regress_ora_source.source_row VALUES item;
+10|  END;
+11|END;
+(11 rows)
+SELECT 'ALL_SOURCE' AS source_view, count(*) AS lines FROM all_source WHERE name = 'SOURCE_PKG'
+UNION ALL
+SELECT 'DBA_SOURCE', count(*) FROM dba_source WHERE name = 'SOURCE_PKG'
+UNION ALL
+SELECT 'USER_SOURCE', count(*) FROM user_source WHERE 'SOURCE_PKG' = name
+ORDER BY source_view;
+source_view|lines
+ALL_SOURCE|17
+DBA_SOURCE|17
+USER_SOURCE|17
+(3 rows)
+SELECT type, line, text FROM user_source WHERE name = 'SOURCE_PKG' AND line = 1 ORDER BY type;
+type|line|text
+package|1|PACKAGE SOURCE_PKG IS
+package body|1|PACKAGE BODY SOURCE_PKG IS
+(2 rows)
 GRANT EXECUTE ON PACKAGE regress_ora_source.source_pkg TO regress_ora_source_reader;
 RESET SESSION AUTHORIZATION;
+SELECT type, line, text FROM dba_source WHERE name = 'SOURCE_PKG' AND line = 1 ORDER BY type;
+type|line|text
+package|1|PACKAGE SOURCE_PKG IS
+package body|1|PACKAGE BODY SOURCE_PKG IS
+(2 rows)
 SET SESSION AUTHORIZATION regress_ora_source_reader;
-SELECT DISTINCT type FROM all_source WHERE name = 'source_pkg' ORDER BY type;
+SELECT DISTINCT type FROM all_source WHERE name = 'SOURCE_PKG' ORDER BY type;
+type
+(0 rows)
+SELECT DISTINCT type FROM dba_source WHERE name = 'SOURCE_PKG' ORDER BY type;
+type
+package
+(1 row)
+SELECT DISTINCT type FROM user_source WHERE name = 'SOURCE_PKG' ORDER BY type;
 type
 (0 rows)
 RESET SESSION AUTHORIZATION;
@@ -350,6 +397,7 @@ type
 (0 rows)
 RESET SESSION AUTHORIZATION;
 DROP PACKAGE regress_ora_source.source_pkg;
+DROP TABLE regress_ora_source.source_row;
 DROP SCHEMA regress_ora_source;
 DROP USER regress_ora_source_reader;
 DROP USER regress_ora_source_owner;

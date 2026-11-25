@@ -16,7 +16,9 @@
 
 #include "postgres.h"
 
+#include "catalog/namespace.h"
 #include "catalog/pg_aggregate.h"
+#include "catalog/pg_class.h"
 #include "catalog/pg_type.h"
 #include "commands/dbcommands.h"
 #include "miscadmin.h"
@@ -1091,6 +1093,93 @@ relabelOracleLikeChar(Node *arg)
 	return arg;
 }
 
+/*
+ * Oracle source views accept either spelling of a package name, while keeping
+ * the catalog spelling in NAME. Apply this matching only to a direct NAME
+ * equality against a literal or parameter. Other identifiers, comparisons,
+ * and data types retain their normal semantics.
+ */
+static Node *
+transformOracleSourceNameMatch(ParseState *pstate, OpExpr *exact,
+							   Node *left, Node *right)
+{
+	bool		nameOnLeft = IsA(left, Var);
+	Node	   *name = nameOnLeft ? left : right;
+	Node	   *requested = nameOnLeft ? right : left;
+	Var		   *nameVar;
+	RangeTblEntry *rte;
+	const char *viewName;
+	AttrNumber	typeAttno;
+	Oid			typeOid;
+	int32		typeTypmod;
+	Oid			typeCollation;
+	Var		   *typeVar;
+	Oid			funcid;
+	Oid			argTypes[] = {TEXTOID, TEXTOID, TEXTOID};
+	Oid			leftType;
+	Oid			rightType;
+	List	   *args;
+
+	if (!IsA(name, Var) || !(IsA(requested, Const) || IsA(requested, Param)))
+		return (Node *) exact;
+
+	nameVar = castNode(Var, name);
+	if (nameVar->vartype != ORAVARCHARBYTEOID && nameVar->vartype != ORAVARCHARCHAROID)
+		return (Node *) exact;
+
+	rte = GetRTEByRangeTablePosn(pstate, nameVar->varno, nameVar->varlevelsup);
+	if (rte->rtekind != RTE_RELATION || rte->relkind != RELKIND_VIEW)
+		return (Node *) exact;
+
+	viewName = get_rel_name(rte->relid);
+	if (viewName == NULL ||
+		(strcmp(viewName, "all_source") != 0 &&
+		 strcmp(viewName, "dba_source") != 0 &&
+		 strcmp(viewName, "user_source") != 0))
+		return (Node *) exact;
+	if (get_rel_namespace(rte->relid) != get_namespace_oid("sys", true) ||
+		nameVar->varattno != get_attnum(rte->relid, "name"))
+		return (Node *) exact;
+
+	requested = nameOnLeft ? lsecond(exact->args) : linitial(exact->args);
+	if (!IsBinaryCoercible(exprType(requested), TEXTOID))
+		return (Node *) exact;
+
+	leftType = exprType(linitial(exact->args));
+	rightType = exprType(lsecond(exact->args));
+	/* An explicitly selected or user-defined equality keeps its own semantics. */
+	if (exact->opno != OpernameGetOprid(list_make2(makeString("sys"), makeString("=")),
+									   leftType, rightType) &&
+		exact->opno != OpernameGetOprid(list_make2(makeString("pg_catalog"), makeString("=")),
+									   TEXTOID, TEXTOID))
+		return (Node *) exact;
+
+	funcid = LookupFuncName(list_make2(makeString("sys"),
+									  makeString("_ora_source_package_name_matches")),
+							lengthof(argTypes), argTypes, true);
+	if (!OidIsValid(funcid))
+		return (Node *) exact;
+
+	typeAttno = get_attnum(rte->relid, "type");
+	if (typeAttno == InvalidAttrNumber)
+		return (Node *) exact;
+	get_atttypetypmodcoll(rte->relid, typeAttno, &typeOid, &typeTypmod, &typeCollation);
+	if (!IsBinaryCoercible(typeOid, TEXTOID))
+		return (Node *) exact;
+
+	typeVar = makeVar(nameVar->varno, typeAttno, typeOid, typeTypmod,
+					  typeCollation, nameVar->varlevelsup);
+	typeVar->varnullingrels = bms_copy(nameVar->varnullingrels);
+	args = list_make3(makeRelabelType((Expr *) copyObject(nameVar),
+									TEXTOID, -1, nameVar->varcollid, COERCE_IMPLICIT_CAST),
+					  makeRelabelType((Expr *) copyObject(requested),
+									TEXTOID, -1, exprCollation(requested), COERCE_IMPLICIT_CAST),
+					  makeRelabelType((Expr *) typeVar,
+									TEXTOID, -1, typeCollation, COERCE_IMPLICIT_CAST));
+	return (Node *) makeFuncExpr(funcid, BOOLOID, args, InvalidOid, InvalidOid,
+								 COERCE_EXPLICIT_CALL);
+}
+
 static Node *
 transformAExprOp(ParseState *pstate, A_Expr *a)
 {
@@ -1186,6 +1275,10 @@ transformAExprOp(ParseState *pstate, A_Expr *a)
 								  rexpr,
 								  last_srf,
 								  a->location);
+		if (compatible_db == ORA_PARSER && a->kind == AEXPR_OP &&
+			list_length(a->name) == 1 && strcmp(strVal(linitial(a->name)), "=") == 0)
+			result = transformOracleSourceNameMatch(pstate, castNode(OpExpr, result),
+												  lexpr, rexpr);
 	}
 
 	return result;
