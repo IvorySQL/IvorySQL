@@ -48,3 +48,12 @@ AS 'MODULE_PATHNAME', 'ora_replace'
 LANGUAGE C
 CALLED ON NULL INPUT
 IMMUTABLE;
+
+/* HEXTORAW returns bytea, which is also the base type of RAW and BLOB. */
+CREATE FUNCTION sys.to_blob(pg_catalog.bytea)
+RETURNS sys.blob
+AS $$ SELECT $1::sys.blob; $$
+LANGUAGE SQL
+PARALLEL SAFE
+STRICT
+IMMUTABLE;
