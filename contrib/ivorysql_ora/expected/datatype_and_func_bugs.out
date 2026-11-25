@@ -94,3 +94,16 @@ drop function s1.f_alter(arg1 number, arg2 number);
 drop function s1.f_alter(arg1 OUT int);
 drop function s1.f_alter(arg1 text);
 drop function s1.f_alter(arg1 number, arg2 number, arg3 number);
+-- Verify CHAR-to-VARCHAR2 cast helpers are parallel safe.
+SELECT count(*) = 4 AS orachar_to_varchar2_parallel_safe
+FROM pg_catalog.pg_proc
+WHERE oid IN ('sys.orachar_oravarchar(sys.oracharchar)'::regprocedure,
+              'sys.orachar_oravarcharbyte(sys.oracharchar)'::regprocedure,
+              'sys.orachar_oravarchar(sys.oracharbyte)'::regprocedure,
+              'sys.orachar_oravarcharbyte(sys.oracharbyte)'::regprocedure)
+  AND proparallel = 's';
+ orachar_to_varchar2_parallel_safe 
+-----------------------------------
+ t
+(1 row)
+
