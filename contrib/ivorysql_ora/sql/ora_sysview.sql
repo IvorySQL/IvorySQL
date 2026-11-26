@@ -25,6 +25,31 @@ SELECT OBJECT_NAME, OBJECT_TYPE, DETERMINISTIC, PARALLEL, AUTHID
 FROM ALL_PROCEDURES
 WHERE OBJECT_NAME = 'PROC_DEL_TB' OR OBJECT_NAME = 'FUNC_AUTHID';
 
+-- Partition clones share their parent trigger definition.
+BEGIN;
+CREATE TEMP TABLE shipment (month_no integer) PARTITION BY RANGE (month_no);
+CREATE TEMP TABLE shipment_jan PARTITION OF shipment FOR VALUES FROM (1) TO (2);
+CREATE FUNCTION pg_temp.mark_shipment() RETURNS trigger LANGUAGE plpgsql
+AS $$ BEGIN RETURN NEW; END $$
+\g
+CREATE TRIGGER shipment_change BEFORE INSERT ON shipment
+FOR EACH ROW EXECUTE FUNCTION pg_temp.mark_shipment();
+CREATE TEMP TABLE shipment_feb PARTITION OF shipment FOR VALUES FROM (2) TO (3);
+CREATE TRIGGER feb_check BEFORE INSERT ON shipment_feb
+FOR EACH ROW EXECUTE FUNCTION pg_temp.mark_shipment();
+
+WITH listed AS (
+  SELECT 'ALL' AS dictionary, object_name FROM sys.all_procedures WHERE object_type = 'TRIGGER'
+  UNION ALL
+  SELECT 'DBA', object_name FROM sys.dba_procedures WHERE object_type = 'TRIGGER'
+  UNION ALL
+  SELECT 'USER', object_name FROM sys.user_procedures WHERE object_type = 'TRIGGER'
+)
+SELECT dictionary, count(*) FILTER (WHERE object_name = 'SHIPMENT_CHANGE') AS parent_trigger,
+       count(*) FILTER (WHERE object_name = 'FEB_CHECK') AS partition_local
+FROM listed GROUP BY dictionary ORDER BY dictionary;
+ROLLBACK;
+
 -- create a function with all-lowercase name
 CREATE OR REPLACE FUNCTION "func_quotes_lower"(ID INT)
 RETURN VARCHAR2 IS
