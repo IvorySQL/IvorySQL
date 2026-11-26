@@ -491,7 +491,7 @@ static bool oracleJoinOpExists(const Node *expr);
 %type <defelt>	createfunc_opt_item common_func_opt_item dostmt_opt_item
 %type <fun_param> func_arg func_arg_with_default table_func_column aggr_arg
 %type <fun_param_mode> arg_class
-%type <typnam>	func_return func_type
+%type <typnam>	func_return func_type pct_type_name ObjectTypeAttributeType
 
 %type <boolean>  opt_trusted opt_restart_seqs
 %type <ival>	 OptTemp
@@ -9987,12 +9987,7 @@ func_return:
  * is next best choice.
  */
 func_type:	Typename								{ $$ = $1; }
-			| type_function_name attrs '%' TYPE_P
-				{
-					$$ = makeTypeNameFromNameList(lcons(makeString($1), $2));
-					$$->pct_type = true;
-					$$->location = @1;
-				}
+			| pct_type_name							{ $$ = $1; }
 			| type_function_name attrs '%' ROWTYPE
 				{
 					$$ = makeTypeNameFromNameList(lcons(makeString($1), $2));
@@ -10005,12 +10000,19 @@ func_type:	Typename								{ $$ = $1; }
 					$$->row_type = true;
 					$$->location = @1;
 				}
-			| SETOF type_function_name attrs '%' TYPE_P
+			| SETOF pct_type_name
 				{
-					$$ = makeTypeNameFromNameList(lcons(makeString($2), $3));
-					$$->pct_type = true;
+					$$ = $2;
 					$$->setof = true;
-					$$->location = @2;
+				}
+		;
+
+pct_type_name:
+			type_function_name attrs '%' TYPE_P
+				{
+					$$ = makeTypeNameFromNameList(lcons(makeString($1), $2));
+					$$->pct_type = true;
+					$$->location = @1;
 				}
 		;
 
@@ -16709,7 +16711,7 @@ ObjectTypeElementList:
 		;
 
 ObjectTypeElement:
-			ColId Typename opt_collate_clause
+			ColId ObjectTypeAttributeType opt_collate_clause
 				{
 					ColumnDef *n = makeNode(ColumnDef);
 
@@ -16743,6 +16745,11 @@ ObjectTypeElement:
 					$$ = (Node *) n;
 				}
 			| ObjectTypeMethod				{ $$ = $1; }
+		;
+
+ObjectTypeAttributeType:
+			Typename						{ $$ = $1; }
+			| pct_type_name					{ $$ = $1; }
 		;
 
 ObjectTypeMethod:
