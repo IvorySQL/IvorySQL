@@ -598,6 +598,20 @@ alter sequence seq_scale2 maxvalue 9999999999999 noscale;
 select seq_scale2.nextval from dual;
 DROP SEQUENCE seq_scale2;
 
+-- NOSCALE preserves the bounds and unscaled counter of a used sequence.
+CREATE SEQUENCE seq_noscale_up SCALE EXTEND CACHE 3;
+SELECT seq_noscale_up.nextval FROM dual;
+ALTER SEQUENCE seq_noscale_up NOSCALE;
+SELECT seq_noscale_up.nextval FROM dual;
+DROP SEQUENCE seq_noscale_up;
+
+CREATE SEQUENCE seq_noscale_down INCREMENT BY -1 MINVALUE -100 MAXVALUE -1
+    SCALE EXTEND CACHE 3;
+SELECT seq_noscale_down.nextval FROM dual;
+ALTER SEQUENCE seq_noscale_down NOSCALE CACHE 4;
+SELECT seq_noscale_down.nextval FROM dual;
+DROP SEQUENCE seq_noscale_down;
+
 create sequence seq maxvalue -1 minvalue -99999999 start with -2 scale extend;
 select seq.nextval from dual;
 select seq.nextval from dual;
