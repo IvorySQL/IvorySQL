@@ -507,3 +507,31 @@ DROP SCHEMA bug_schema CASCADE;
 
 RESET ivorysql.identifier_case_switch;
 RESET ivorysql.enable_case_switch;
+
+-- GET_ENDIANNESS: SQL calls must return a valid Oracle byte-order code.
+-- Keep the expected output portable across big- and little-endian servers.
+SELECT DBMS_UTILITY.GET_ENDIANNESS() IN (1, 2) AS valid_endianness;
+
+-- The public package function must return NUMBER, not the helper's INTEGER.
+SELECT pg_typeof(DBMS_UTILITY.GET_ENDIANNESS()) =
+       pg_typeof(0::NUMBER) AS returns_number;
+
+-- Exercise both no-argument call forms inside PL/iSQL.
+CREATE OR REPLACE PROCEDURE test_get_endianness AS
+  v_endianness NUMBER;
+BEGIN
+  v_endianness := DBMS_UTILITY.GET_ENDIANNESS;
+  IF v_endianness IS NULL OR v_endianness NOT IN (1, 2) THEN
+    RAISE EXCEPTION 'GET_ENDIANNESS returned an invalid value';
+  END IF;
+
+  IF DBMS_UTILITY.GET_ENDIANNESS() IS DISTINCT FROM v_endianness THEN
+    RAISE EXCEPTION 'GET_ENDIANNESS returned inconsistent values';
+  END IF;
+
+  RAISE INFO 'GET_ENDIANNESS in PL/iSQL: OK';
+END;
+/
+
+CALL test_get_endianness();
+DROP PROCEDURE test_get_endianness;
