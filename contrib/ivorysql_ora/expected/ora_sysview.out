@@ -216,54 +216,54 @@ WHERE owner = SYS.ORA_CASE_TRANS(CURRENT_USER::VARCHAR2)
 ORDER BY table_name, constraint_name, position;
         table_name         |                 constraint_name                 |     column_name     | position 
 ---------------------------+-------------------------------------------------+---------------------+----------
- NULL_SPECIAL              | null_special_id_NOT_NULL                        | ID                  | 1
- NULL_SPECIALBK            | null_specialbk_id_NOT_NULL                      | ID                  | 1
+ NULL_SPECIAL              | NULL_SPECIAL_ID_NOT_NULL                        | ID                  | 1
+ NULL_SPECIALBK            | NULL_SPECIALBK_ID_NOT_NULL                      | ID                  | 1
+ SCHEDULER_JOBS            | SCHEDULER_JOBS_AUTO_DROP_NOT_NULL               | AUTO_DROP           | 1
+ SCHEDULER_JOBS            | SCHEDULER_JOBS_ENABLED_NOT_NULL                 | ENABLED             | 1
+ SCHEDULER_JOBS            | SCHEDULER_JOBS_FAILURE_COUNT_NOT_NULL           | FAILURE_COUNT       | 1
+ SCHEDULER_JOBS            | SCHEDULER_JOBS_JOB_ID_NOT_NULL                  | JOB_ID              | 1
  SCHEDULER_JOBS            | SCHEDULER_JOBS_JOB_TYPE_CHECK                   | JOB_TYPE            | 1
  SCHEDULER_JOBS            | SCHEDULER_JOBS_NUMBER_OF_ARGUMENTS_CHECK        | NUMBER_OF_ARGUMENTS | 1
+ SCHEDULER_JOBS            | SCHEDULER_JOBS_NUMBER_OF_ARGUMENTS_NOT_NULL     | NUMBER_OF_ARGUMENTS | 1
  SCHEDULER_JOBS            | SCHEDULER_JOBS_PKEY                             | JOB_OWNER           | 1
  SCHEDULER_JOBS            | SCHEDULER_JOBS_PKEY                             | JOB_NAME            | 2
+ SCHEDULER_JOBS            | SCHEDULER_JOBS_RUN_COUNT_NOT_NULL               | RUN_COUNT           | 1
  SCHEDULER_JOBS            | SCHEDULER_JOBS_STATE_CHECK                      | STATE               | 1
+ SCHEDULER_JOBS            | SCHEDULER_JOBS_STATE_NOT_NULL                   | STATE               | 1
  SCHEDULER_JOBS            | SCHEDULER_JOBS_STYLE_CHECK                      | JOB_TYPE            | 1
  SCHEDULER_JOBS            | SCHEDULER_JOBS_STYLE_CHECK                      | JOB_ACTION          | 2
  SCHEDULER_JOBS            | SCHEDULER_JOBS_STYLE_CHECK                      | PROGRAM_OWNER       | 3
  SCHEDULER_JOBS            | SCHEDULER_JOBS_STYLE_CHECK                      | PROGRAM_NAME        | 4
  SCHEDULER_JOBS            | SCHEDULER_JOBS_STYLE_CHECK                      | SCHEDULE_OWNER      | 5
  SCHEDULER_JOBS            | SCHEDULER_JOBS_STYLE_CHECK                      | SCHEDULE_NAME       | 6
- SCHEDULER_JOBS            | scheduler_jobs_auto_drop_NOT_NULL               | AUTO_DROP           | 1
- SCHEDULER_JOBS            | scheduler_jobs_enabled_NOT_NULL                 | ENABLED             | 1
- SCHEDULER_JOBS            | scheduler_jobs_failure_count_NOT_NULL           | FAILURE_COUNT       | 1
- SCHEDULER_JOBS            | scheduler_jobs_job_id_NOT_NULL                  | JOB_ID              | 1
- SCHEDULER_JOBS            | scheduler_jobs_number_of_arguments_NOT_NULL     | NUMBER_OF_ARGUMENTS | 1
- SCHEDULER_JOBS            | scheduler_jobs_run_count_NOT_NULL               | RUN_COUNT           | 1
- SCHEDULER_JOBS            | scheduler_jobs_state_NOT_NULL                   | STATE               | 1
  SCHEDULER_JOB_ARGS        | SCHEDULER_JOB_ARGS_ARGUMENT_POSITION_CHECK      | ARGUMENT_POSITION   | 1
  SCHEDULER_JOB_ARGS        | SCHEDULER_JOB_ARGS_FK                           | JOB_OWNER           | 1
  SCHEDULER_JOB_ARGS        | SCHEDULER_JOB_ARGS_FK                           | JOB_NAME            | 2
  SCHEDULER_JOB_ARGS        | SCHEDULER_JOB_ARGS_PKEY                         | JOB_OWNER           | 1
  SCHEDULER_JOB_ARGS        | SCHEDULER_JOB_ARGS_PKEY                         | JOB_NAME            | 2
  SCHEDULER_JOB_ARGS        | SCHEDULER_JOB_ARGS_PKEY                         | ARGUMENT_POSITION   | 3
+ SCHEDULER_JOB_RUN_DETAILS | SCHEDULER_JOB_RUN_DETAILS_JOB_NAME_NOT_NULL     | JOB_NAME            | 1
+ SCHEDULER_JOB_RUN_DETAILS | SCHEDULER_JOB_RUN_DETAILS_JOB_OWNER_NOT_NULL    | JOB_OWNER           | 1
+ SCHEDULER_JOB_RUN_DETAILS | SCHEDULER_JOB_RUN_DETAILS_LOG_DATE_NOT_NULL     | LOG_DATE            | 1
  SCHEDULER_JOB_RUN_DETAILS | SCHEDULER_JOB_RUN_DETAILS_PKEY                  | LOG_ID              | 1
  SCHEDULER_JOB_RUN_DETAILS | SCHEDULER_JOB_RUN_DETAILS_STATUS_CHECK          | STATUS              | 1
- SCHEDULER_JOB_RUN_DETAILS | scheduler_job_run_details_job_name_NOT_NULL     | JOB_NAME            | 1
- SCHEDULER_JOB_RUN_DETAILS | scheduler_job_run_details_job_owner_NOT_NULL    | JOB_OWNER           | 1
- SCHEDULER_JOB_RUN_DETAILS | scheduler_job_run_details_log_date_NOT_NULL     | LOG_DATE            | 1
- SCHEDULER_JOB_RUN_DETAILS | scheduler_job_run_details_status_NOT_NULL       | STATUS              | 1
+ SCHEDULER_JOB_RUN_DETAILS | SCHEDULER_JOB_RUN_DETAILS_STATUS_NOT_NULL       | STATUS              | 1
+ SCHEDULER_PROGRAMS        | SCHEDULER_PROGRAMS_ENABLED_NOT_NULL             | ENABLED             | 1
  SCHEDULER_PROGRAMS        | SCHEDULER_PROGRAMS_NUMBER_OF_ARGUMENTS_CHECK    | NUMBER_OF_ARGUMENTS | 1
+ SCHEDULER_PROGRAMS        | SCHEDULER_PROGRAMS_NUMBER_OF_ARGUMENTS_NOT_NULL | NUMBER_OF_ARGUMENTS | 1
  SCHEDULER_PROGRAMS        | SCHEDULER_PROGRAMS_PKEY                         | PROGRAM_OWNER       | 1
  SCHEDULER_PROGRAMS        | SCHEDULER_PROGRAMS_PKEY                         | PROGRAM_NAME        | 2
+ SCHEDULER_PROGRAMS        | SCHEDULER_PROGRAMS_PROGRAM_ACTION_NOT_NULL      | PROGRAM_ACTION      | 1
  SCHEDULER_PROGRAMS        | SCHEDULER_PROGRAMS_PROGRAM_TYPE_CHECK           | PROGRAM_TYPE        | 1
- SCHEDULER_PROGRAMS        | scheduler_programs_enabled_NOT_NULL             | ENABLED             | 1
- SCHEDULER_PROGRAMS        | scheduler_programs_number_of_arguments_NOT_NULL | NUMBER_OF_ARGUMENTS | 1
- SCHEDULER_PROGRAMS        | scheduler_programs_program_action_NOT_NULL      | PROGRAM_ACTION      | 1
- SCHEDULER_PROGRAMS        | scheduler_programs_program_type_NOT_NULL        | PROGRAM_TYPE        | 1
+ SCHEDULER_PROGRAMS        | SCHEDULER_PROGRAMS_PROGRAM_TYPE_NOT_NULL        | PROGRAM_TYPE        | 1
  SCHEDULER_PROGRAM_ARGS    | SCHEDULER_PROGRAM_ARGS_ARGUMENT_POSITION_CHECK  | ARGUMENT_POSITION   | 1
  SCHEDULER_PROGRAM_ARGS    | SCHEDULER_PROGRAM_ARGS_FK                       | PROGRAM_OWNER       | 1
  SCHEDULER_PROGRAM_ARGS    | SCHEDULER_PROGRAM_ARGS_FK                       | PROGRAM_NAME        | 2
+ SCHEDULER_PROGRAM_ARGS    | SCHEDULER_PROGRAM_ARGS_HAS_DEFAULT_NOT_NULL     | HAS_DEFAULT         | 1
+ SCHEDULER_PROGRAM_ARGS    | SCHEDULER_PROGRAM_ARGS_OUT_ARGUMENT_NOT_NULL    | OUT_ARGUMENT        | 1
  SCHEDULER_PROGRAM_ARGS    | SCHEDULER_PROGRAM_ARGS_PKEY                     | PROGRAM_OWNER       | 1
  SCHEDULER_PROGRAM_ARGS    | SCHEDULER_PROGRAM_ARGS_PKEY                     | PROGRAM_NAME        | 2
  SCHEDULER_PROGRAM_ARGS    | SCHEDULER_PROGRAM_ARGS_PKEY                     | ARGUMENT_POSITION   | 3
- SCHEDULER_PROGRAM_ARGS    | scheduler_program_args_has_default_NOT_NULL     | HAS_DEFAULT         | 1
- SCHEDULER_PROGRAM_ARGS    | scheduler_program_args_out_argument_NOT_NULL    | OUT_ARGUMENT        | 1
  SCHEDULER_SCHEDULES       | SCHEDULER_SCHEDULES_PKEY                        | SCHEDULE_OWNER      | 1
  SCHEDULER_SCHEDULES       | SCHEDULER_SCHEDULES_PKEY                        | SCHEDULE_NAME       | 2
  T_CHECK                   | CHK_AGE                                         | AGE                 | 1
@@ -289,48 +289,48 @@ ORDER BY constraint_name;
  CHK_AGE                                         |            1
  CHK_SALARY_RANGE                                |            1
  FK_CHILD_PARENT                                 |            1
+ NULL_SPECIALBK_ID_NOT_NULL                      |            1
+ NULL_SPECIAL_ID_NOT_NULL                        |            1
  PK_COMPOSITE                                    |            2
  PK_DATA_TYPES                                   |            2
+ SCHEDULER_JOBS_AUTO_DROP_NOT_NULL               |            1
+ SCHEDULER_JOBS_ENABLED_NOT_NULL                 |            1
+ SCHEDULER_JOBS_FAILURE_COUNT_NOT_NULL           |            1
+ SCHEDULER_JOBS_JOB_ID_NOT_NULL                  |            1
  SCHEDULER_JOBS_JOB_TYPE_CHECK                   |            1
  SCHEDULER_JOBS_NUMBER_OF_ARGUMENTS_CHECK        |            1
+ SCHEDULER_JOBS_NUMBER_OF_ARGUMENTS_NOT_NULL     |            1
  SCHEDULER_JOBS_PKEY                             |            2
+ SCHEDULER_JOBS_RUN_COUNT_NOT_NULL               |            1
  SCHEDULER_JOBS_STATE_CHECK                      |            1
+ SCHEDULER_JOBS_STATE_NOT_NULL                   |            1
  SCHEDULER_JOBS_STYLE_CHECK                      |            6
  SCHEDULER_JOB_ARGS_ARGUMENT_POSITION_CHECK      |            1
  SCHEDULER_JOB_ARGS_FK                           |            2
  SCHEDULER_JOB_ARGS_PKEY                         |            3
+ SCHEDULER_JOB_RUN_DETAILS_JOB_NAME_NOT_NULL     |            1
+ SCHEDULER_JOB_RUN_DETAILS_JOB_OWNER_NOT_NULL    |            1
+ SCHEDULER_JOB_RUN_DETAILS_LOG_DATE_NOT_NULL     |            1
  SCHEDULER_JOB_RUN_DETAILS_PKEY                  |            1
  SCHEDULER_JOB_RUN_DETAILS_STATUS_CHECK          |            1
+ SCHEDULER_JOB_RUN_DETAILS_STATUS_NOT_NULL       |            1
+ SCHEDULER_PROGRAMS_ENABLED_NOT_NULL             |            1
  SCHEDULER_PROGRAMS_NUMBER_OF_ARGUMENTS_CHECK    |            1
+ SCHEDULER_PROGRAMS_NUMBER_OF_ARGUMENTS_NOT_NULL |            1
  SCHEDULER_PROGRAMS_PKEY                         |            2
+ SCHEDULER_PROGRAMS_PROGRAM_ACTION_NOT_NULL      |            1
  SCHEDULER_PROGRAMS_PROGRAM_TYPE_CHECK           |            1
+ SCHEDULER_PROGRAMS_PROGRAM_TYPE_NOT_NULL        |            1
  SCHEDULER_PROGRAM_ARGS_ARGUMENT_POSITION_CHECK  |            1
  SCHEDULER_PROGRAM_ARGS_FK                       |            2
+ SCHEDULER_PROGRAM_ARGS_HAS_DEFAULT_NOT_NULL     |            1
+ SCHEDULER_PROGRAM_ARGS_OUT_ARGUMENT_NOT_NULL    |            1
  SCHEDULER_PROGRAM_ARGS_PKEY                     |            3
  SCHEDULER_SCHEDULES_PKEY                        |            2
  T_PARENT_PKEY                                   |            1
  T_PK_SINGLE_PKEY                                |            1
  UK_COL1                                         |            1
  UTL_FILE_DIRECTORY_PKEY                         |            1
- null_special_id_NOT_NULL                        |            1
- null_specialbk_id_NOT_NULL                      |            1
- scheduler_job_run_details_job_name_NOT_NULL     |            1
- scheduler_job_run_details_job_owner_NOT_NULL    |            1
- scheduler_job_run_details_log_date_NOT_NULL     |            1
- scheduler_job_run_details_status_NOT_NULL       |            1
- scheduler_jobs_auto_drop_NOT_NULL               |            1
- scheduler_jobs_enabled_NOT_NULL                 |            1
- scheduler_jobs_failure_count_NOT_NULL           |            1
- scheduler_jobs_job_id_NOT_NULL                  |            1
- scheduler_jobs_number_of_arguments_NOT_NULL     |            1
- scheduler_jobs_run_count_NOT_NULL               |            1
- scheduler_jobs_state_NOT_NULL                   |            1
- scheduler_program_args_has_default_NOT_NULL     |            1
- scheduler_program_args_out_argument_NOT_NULL    |            1
- scheduler_programs_enabled_NOT_NULL             |            1
- scheduler_programs_number_of_arguments_NOT_NULL |            1
- scheduler_programs_program_action_NOT_NULL      |            1
- scheduler_programs_program_type_NOT_NULL        |            1
 (45 rows)
 
 DROP VIEW IF EXISTS v_dummy;
@@ -356,12 +356,10 @@ FROM SYS.USER_CONS_COLUMNS
 WHERE TABLE_NAME = 'TEST_USER_CONS_COLUMNS'
 AND CONSTRAINT_NAME LIKE '%NOT_NULL%'
 ORDER BY CONSTRAINT_NAME, COLUMN_NAME;
-       table_name       |           constraint_name            | column_name | position 
-------------------------+--------------------------------------+-------------+----------
- TEST_USER_CONS_COLUMNS | TEST_USER_CONS_COLUMNS_AGE_NOT_NULL  | AGE         | 1
- TEST_USER_CONS_COLUMNS | TEST_USER_CONS_COLUMNS_ID_NOT_NULL   | ID          | 1
- TEST_USER_CONS_COLUMNS | TEST_USER_CONS_COLUMNS_NAME_NOT_NULL | NAME        | 1
-(3 rows)
+       table_name       |           constraint_name           | column_name | position 
+------------------------+-------------------------------------+-------------+----------
+ TEST_USER_CONS_COLUMNS | TEST_USER_CONS_COLUMNS_AGE_NOT_NULL | AGE         | 1
+(1 row)
 
 SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, POSITION
 FROM SYS.USER_CONS_COLUMNS
@@ -398,7 +396,7 @@ WHERE table_name = 'T_NOTNULL_TEST'
 ORDER BY constraint_name, column_name;
    table_name   |       constraint_name        | column_name | position 
 ----------------+------------------------------+-------------+----------
- T_NOTNULL_TEST | t_notnull_test_name_NOT_NULL | NAME        | 1
+ T_NOTNULL_TEST | T_NOTNULL_TEST_NAME_NOT_NULL | NAME        | 1
 (1 row)
 
 DROP TABLE IF EXISTS t_notnull_test;
@@ -432,6 +430,126 @@ ORDER BY constraint_name, table_name, column_name;
 (2 rows)
 
 DROP TABLE t_dba_cons_cols;
+-- Verify DBA_CONS_COLUMNS, ALL_CONS_COLUMNS and USER_CONS_COLUMNS agree on
+-- constraint names, column positions, NOT NULL handling (no duplicates, no
+-- system columns, no PK-implied NOT NULL rows), dropped columns and partitions.
+CREATE TABLE t_cons_consistency (
+    a INT PRIMARY KEY,
+    b INT NOT NULL,
+    c INT,
+    d INT CONSTRAINT nn_d NOT NULL,
+    e INT CHECK (e > 0)
+);
+SELECT constraint_name, column_name, position
+FROM sys.dba_cons_columns
+WHERE table_name = 'T_CONS_CONSISTENCY'
+ORDER BY constraint_name, position;
+        constraint_name        | column_name | position 
+-------------------------------+-------------+----------
+ NN_D                          | D           | 1
+ T_CONS_CONSISTENCY_B_NOT_NULL | B           | 1
+ T_CONS_CONSISTENCY_E_CHECK    | E           | 1
+ T_CONS_CONSISTENCY_PKEY       | A           | 1
+(4 rows)
+
+-- Symmetric row-set equality across all three *_CONS_COLUMNS views.
+SELECT 'dba_minus_all' AS diff, * FROM (
+    SELECT * FROM sys.dba_cons_columns WHERE table_name = 'T_CONS_CONSISTENCY'
+    EXCEPT
+    SELECT * FROM sys.all_cons_columns WHERE table_name = 'T_CONS_CONSISTENCY'
+) s
+UNION ALL
+SELECT 'all_minus_dba' AS diff, * FROM (
+    SELECT * FROM sys.all_cons_columns WHERE table_name = 'T_CONS_CONSISTENCY'
+    EXCEPT
+    SELECT * FROM sys.dba_cons_columns WHERE table_name = 'T_CONS_CONSISTENCY'
+) s
+UNION ALL
+SELECT 'dba_minus_user' AS diff, * FROM (
+    SELECT * FROM sys.dba_cons_columns WHERE table_name = 'T_CONS_CONSISTENCY'
+    EXCEPT
+    SELECT * FROM sys.user_cons_columns WHERE table_name = 'T_CONS_CONSISTENCY'
+) s
+UNION ALL
+SELECT 'user_minus_dba' AS diff, * FROM (
+    SELECT * FROM sys.user_cons_columns WHERE table_name = 'T_CONS_CONSISTENCY'
+    EXCEPT
+    SELECT * FROM sys.dba_cons_columns WHERE table_name = 'T_CONS_CONSISTENCY'
+) s;
+ diff | owner | constraint_name | table_name | column_name | position 
+------+-------+-----------------+------------+-------------+----------
+(0 rows)
+
+-- Composite PK/UQ positions, dropped NOT NULL column, and partitioned table.
+CREATE TABLE t_cons_comp (
+    k1 INT,
+    k2 INT,
+    v INT NOT NULL,
+    dropme INT NOT NULL,
+    CONSTRAINT pk_cons_comp PRIMARY KEY (k1, k2),
+    CONSTRAINT uq_cons_comp UNIQUE (k2, v)
+);
+ALTER TABLE t_cons_comp DROP COLUMN dropme;
+CREATE TABLE t_cons_part (
+    id INT PRIMARY KEY,
+    label VARCHAR2(20) NOT NULL
+) PARTITION BY RANGE (id);
+CREATE TABLE t_cons_part_1 PARTITION OF t_cons_part FOR VALUES FROM (1) TO (100);
+SELECT table_name, constraint_name, column_name, position
+FROM sys.dba_cons_columns
+WHERE table_name IN ('T_CONS_COMP', 'T_CONS_PART', 'T_CONS_PART_1')
+ORDER BY table_name, constraint_name, position;
+  table_name   |      constraint_name       | column_name | position 
+---------------+----------------------------+-------------+----------
+ T_CONS_COMP   | PK_CONS_COMP               | K1          | 1
+ T_CONS_COMP   | PK_CONS_COMP               | K2          | 2
+ T_CONS_COMP   | T_CONS_COMP_V_NOT_NULL     | V           | 1
+ T_CONS_COMP   | UQ_CONS_COMP               | K2          | 1
+ T_CONS_COMP   | UQ_CONS_COMP               | V           | 2
+ T_CONS_PART   | T_CONS_PART_LABEL_NOT_NULL | LABEL       | 1
+ T_CONS_PART   | T_CONS_PART_PKEY           | ID          | 1
+ T_CONS_PART_1 | T_CONS_PART_1_PKEY         | ID          | 1
+ T_CONS_PART_1 | T_CONS_PART_LABEL_NOT_NULL | LABEL       | 1
+(9 rows)
+
+SELECT 'dba_minus_all' AS diff, * FROM (
+    SELECT * FROM sys.dba_cons_columns
+    WHERE table_name IN ('T_CONS_COMP', 'T_CONS_PART', 'T_CONS_PART_1')
+    EXCEPT
+    SELECT * FROM sys.all_cons_columns
+    WHERE table_name IN ('T_CONS_COMP', 'T_CONS_PART', 'T_CONS_PART_1')
+) s
+UNION ALL
+SELECT 'all_minus_dba' AS diff, * FROM (
+    SELECT * FROM sys.all_cons_columns
+    WHERE table_name IN ('T_CONS_COMP', 'T_CONS_PART', 'T_CONS_PART_1')
+    EXCEPT
+    SELECT * FROM sys.dba_cons_columns
+    WHERE table_name IN ('T_CONS_COMP', 'T_CONS_PART', 'T_CONS_PART_1')
+) s
+UNION ALL
+SELECT 'dba_minus_user' AS diff, * FROM (
+    SELECT * FROM sys.dba_cons_columns
+    WHERE table_name IN ('T_CONS_COMP', 'T_CONS_PART', 'T_CONS_PART_1')
+    EXCEPT
+    SELECT * FROM sys.user_cons_columns
+    WHERE table_name IN ('T_CONS_COMP', 'T_CONS_PART', 'T_CONS_PART_1')
+) s
+UNION ALL
+SELECT 'user_minus_dba' AS diff, * FROM (
+    SELECT * FROM sys.user_cons_columns
+    WHERE table_name IN ('T_CONS_COMP', 'T_CONS_PART', 'T_CONS_PART_1')
+    EXCEPT
+    SELECT * FROM sys.dba_cons_columns
+    WHERE table_name IN ('T_CONS_COMP', 'T_CONS_PART', 'T_CONS_PART_1')
+) s;
+ diff | owner | constraint_name | table_name | column_name | position 
+------+-------+-----------------+------------+-------------+----------
+(0 rows)
+
+DROP TABLE t_cons_part;
+DROP TABLE t_cons_comp;
+DROP TABLE t_cons_consistency;
 -- ALL_TAB_COLUMNS
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
 NOTICE:  table "test_all_tab_columns" does not exist, skipping
