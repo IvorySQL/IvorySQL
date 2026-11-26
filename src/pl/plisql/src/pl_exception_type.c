@@ -86,7 +86,10 @@ plisql_lookup_exception(const char *name)
 
 	nse = plisql_ns_lookup(plisql_ns_top(), false, name, NULL, NULL, NULL);
 
-	if (nse == NULL)
+	if (nse == NULL || nse->itemtype != PLISQL_NSTYPE_VAR)
+		return NULL;
+
+	if (nse->itemno < 0 || nse->itemno >= plisql_nDatums)
 		return NULL;
 
 	if (plisql_Datums[nse->itemno]->dtype != PLISQL_DTYPE_EXCEPTION)
@@ -176,7 +179,9 @@ plisql_process_pragma_exception_init(const char *exc_name, int sqlcode,
 				 plisql_scanner_errposition(location, yyscanner)));
 
 	/* Verify it's an exception variable */
-	if (plisql_Datums[nse->itemno]->dtype != PLISQL_DTYPE_EXCEPTION)
+	if (nse->itemtype != PLISQL_NSTYPE_VAR ||
+		nse->itemno < 0 || nse->itemno >= plisql_nDatums ||
+		plisql_Datums[nse->itemno]->dtype != PLISQL_DTYPE_EXCEPTION)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("\"%s\" is not an exception", exc_name),
