@@ -2246,21 +2246,24 @@ sub psql
 		'--dbname' => $psql_connstr,
 		'--file' => '-');
 
-	# If the caller wants an array and hasn't passed stdout/stderr
-	# references, allocate temporary ones to capture them so we
-	# can return them. Otherwise we won't redirect them at all.
-	if (wantarray)
+	# If the caller hasn't passed stdout/stderr references, allocate
+	# temporary ones to capture them, so that we can return them if the
+	# caller wants an array.  Capture them even if it doesn't: on Windows,
+	# recent IPC::Run versions do not give the child a usable stdout when it
+	# is not redirected, and psql then fails with "could not print result
+	# table: Bad file descriptor".  Output the caller did not ask for is
+	# passed on to our own stdout/stderr afterwards, as before.
+	my $pass_stdout = !defined($stdout) && !wantarray;
+	my $pass_stderr = !defined($stderr) && !wantarray;
+	if (!defined($stdout))
 	{
-		if (!defined($stdout))
-		{
-			my $temp_stdout = "";
-			$stdout = \$temp_stdout;
-		}
-		if (!defined($stderr))
-		{
-			my $temp_stderr = "";
-			$stderr = \$temp_stderr;
-		}
+		my $temp_stdout = "";
+		$stdout = \$temp_stdout;
+	}
+	if (!defined($stderr))
+	{
+		my $temp_stderr = "";
+		$stderr = \$temp_stderr;
 	}
 
 	$params{on_error_stop} = 1 unless defined $params{on_error_stop};
@@ -2302,6 +2305,12 @@ sub psql
 			$ret = $?;
 		};
 		my $exc_save = $@;
+
+		# Pass on the output the caller did not ask for before any of the
+		# croaks below, so that it is not lost when psql fails or times out.
+		print STDOUT $$stdout if $pass_stdout && $$stdout ne '';
+		print STDERR $$stderr if $pass_stderr && $$stderr ne '';
+
 		if ($exc_save)
 		{
 
@@ -2328,13 +2337,18 @@ sub psql
 		}
 	};
 
+	# psql on Windows ends lines with CR LF, and some IPC::Run versions pass
+	# the CR through; standardize line endings so that callers can compare
+	# the output with plain strings.
 	if (defined $$stdout)
 	{
+		$$stdout =~ s/\r\n/\n/g;
 		chomp $$stdout;
 	}
 
 	if (defined $$stderr)
 	{
+		$$stderr =~ s/\r\n/\n/g;
 		chomp $$stderr;
 	}
 
@@ -2807,6 +2821,9 @@ sub poll_query_until
 		  '>' => \$stdout,
 		  '2>' => \$stderr;
 
+		# standardize line endings, as psql() does
+		$stdout =~ s/\r\n/\n/g;
+		$stderr =~ s/\r\n/\n/g;
 		chomp($stdout);
 		chomp($stderr);
 
