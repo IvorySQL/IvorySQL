@@ -42,5 +42,7 @@ endif
 
 include $(top_srcdir)/src/backend/common.mk
 
+guc_tables.o: $(srcdir)/ivy_guc.c
+
 clean:
 	rm -f guc-file.c

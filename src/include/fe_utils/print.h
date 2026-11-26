@@ -221,6 +221,9 @@ extern void printTable(const printTableContent *cont,
 					   FILE *fout, bool is_pager, FILE *flog);
 extern void printQuery(const PGresult *result, const printQueryOpt *opt,
 					   FILE *fout, bool is_pager, FILE *flog);
+extern void printQueryWithNumberDisplay(const PGresult *result, const printQueryOpt *opt,
+										FILE *fout, bool is_pager, FILE *flog,
+										bool oracle_number_display);
 
 extern char column_type_alignment(Oid);
 

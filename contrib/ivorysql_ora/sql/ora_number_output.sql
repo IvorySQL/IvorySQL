@@ -58,3 +58,28 @@ SELECT CAST(5 AS pg_catalog.numeric(5,2)),
        CAST(0 AS pg_catalog.numeric(5,2));
 
 DROP TABLE number_output_test;
+
+-- The default psql table display uses scientific notation for tiny NUMBERs.
+\pset tuples_only on
+SELECT TO_NUMBER(1.23E-100) FROM dual;
+SELECT TO_NUMBER(-1.23E-100) FROM dual;
+SELECT CAST(1.23456789E-100 AS sys.number);
+SELECT CAST(0 AS sys.number);
+SELECT CAST(0.00123 AS sys.number);
+SELECT CAST(1E-62 AS sys.number);
+SELECT CAST(1E-63 AS sys.number);
+
+-- PostgreSQL numeric and machine-readable output keep their decimal text.
+SELECT CAST(1.23E-100 AS pg_catalog.numeric);
+COPY (SELECT CAST(1.23E-100 AS sys.number)) TO STDOUT;
+\pset format unaligned
+SELECT TO_NUMBER(1.23E-100) FROM dual;
+\pset format csv
+SELECT TO_NUMBER(1.23E-100) FROM dual;
+\pset format aligned
+
+SET ivorysql.compatible_mode = pg;
+SELECT CAST(1.23E-100 AS sys.number);
+RESET ivorysql.compatible_mode;
+SELECT TO_NUMBER(1.23E-100) FROM dual;
+\pset tuples_only off
