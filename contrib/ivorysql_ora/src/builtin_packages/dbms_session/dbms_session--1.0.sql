@@ -109,7 +109,7 @@ CREATE OR REPLACE PACKAGE BODY dbms_session IS
 
     PROCEDURE sleep(seconds NUMBER) IS
     BEGIN
-        PERFORM pg_sleep(seconds);
+        PERFORM pg_catalog.pg_sleep(seconds::double precision);
     END;
 
 END dbms_session;
