@@ -50,6 +50,37 @@ SELECT INTERVAL'1-12' YEAR TO MONTH;
 ERROR:  interval field value out of range: "1-12"
 LINE 1: SELECT INTERVAL'1-12' YEAR TO MONTH;
                        ^
+-- Fractional year inputs must not overflow the INT_MAX sentinel in tm->tm_mon
+SELECT '1.5 year'::sys.yminterval;
+  yminterval   
+---------------
+ +000000001-06
+(1 row)
+
+SELECT '0.5 year'::sys.yminterval;
+  yminterval   
+---------------
+ +000000000-06
+(1 row)
+
+SELECT '-1.5 year'::sys.yminterval;
+  yminterval   
+---------------
+ -000000001-06
+(1 row)
+
+SELECT INTERVAL '1.5' YEAR;
+ERROR:  The character string you specified is not a valid interval
+LINE 1: SELECT INTERVAL '1.5' YEAR;
+                        ^
+SELECT INTERVAL '1.5' YEAR TO MONTH;
+ERROR:  The character string you specified is not a valid interval
+LINE 1: SELECT INTERVAL '1.5' YEAR TO MONTH;
+                        ^
+SELECT '1.5 year'::sys.dsinterval;
+ERROR:  The character string you specified is not a valid interval
+LINE 1: SELECT '1.5 year'::sys.dsinterval;
+               ^
 CREATE TABLE TEST_YMINTERVAL(a interval year(4) to month);
 INSERT INTO TEST_YMINTERVAL (a) VALUES ('0-1');
 INSERT INTO TEST_YMINTERVAL (a) VALUES ('1-2');

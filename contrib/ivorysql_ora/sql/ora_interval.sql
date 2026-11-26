@@ -22,6 +22,14 @@ SELECT INTERVAL'1-11' YEAR TO MONTH;
 
 SELECT INTERVAL'1-12' YEAR TO MONTH;	
 
+-- Fractional year inputs must not overflow the INT_MAX sentinel in tm->tm_mon
+SELECT '1.5 year'::sys.yminterval;
+SELECT '0.5 year'::sys.yminterval;
+SELECT '-1.5 year'::sys.yminterval;
+SELECT INTERVAL '1.5' YEAR;
+SELECT INTERVAL '1.5' YEAR TO MONTH;
+SELECT '1.5 year'::sys.dsinterval;
+
 CREATE TABLE TEST_YMINTERVAL(a interval year(4) to month);
 
 INSERT INTO TEST_YMINTERVAL (a) VALUES ('0-1');
