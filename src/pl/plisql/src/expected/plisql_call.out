@@ -574,6 +574,7 @@ BEGIN
 END;
 $$;
 NOTICE:  v_cnt = 
+DROP PROCEDURE p1;
 -- check that we detect change of dependencies in CALL
 -- atomic and non-atomic call sites used to do this differently, so check both
 CREATE PROCEDURE inner_p (f1 int)

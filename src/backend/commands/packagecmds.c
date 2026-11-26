@@ -1550,35 +1550,36 @@ get_functup_bytypenames(Oid namespaceid,
 						Datum allParametertypes)
 {
 	CatCList   *catlist;
-	int 		i;
-	int 		n_match = 0;
+	int			i;
+	int			n_match = 0;
 	Oid			func_oid = InvalidOid;
-	Oid			*all_param_proargtypes = NULL;
+	Oid		   *all_param_proargtypes = NULL;
 	int			n_all_param_types;
 	int			n_param_typenames;
-	Datum		*p_elems;
-	char		**param_argtypenames = NULL;
+	Datum	   *p_elems;
+	bool	   *p_nulls;
+	char	  **param_argtypenames = NULL;
 	HeapTuple	tuple;
 
 	Assert(typenames != PointerGetDatum(NULL));
 
 	deconstruct_array(DatumGetArrayTypeP(typenames),
-							TEXTOID, -1, false, 'i',
-							&p_elems, NULL, &n_param_typenames);
+					  TEXTOID, -1, false, 'i',
+					  &p_elems, &p_nulls, &n_param_typenames);
 	param_argtypenames = (char **) palloc(sizeof(char *) * n_param_typenames);
 	for (i = 0; i < n_param_typenames; i++)
-		param_argtypenames[i] = TextDatumGetCString(p_elems[i]);
+		param_argtypenames[i] = p_nulls[i] ? pstrdup("") : TextDatumGetCString(p_elems[i]);
 
 	if (allParametertypes != PointerGetDatum(NULL))
 	{
 		ArrayType  *arr = DatumGetArrayTypeP(allParametertypes);
 
-		n_all_param_types = ARR_DIMS(arr)[0];
 		if (ARR_NDIM(arr) != 1 ||
-			n_all_param_types < 0 ||
+			ARR_DIMS(arr)[0] < 0 ||
 			ARR_HASNULL(arr) ||
 			ARR_ELEMTYPE(arr) != OIDOID)
 			elog(ERROR, "proallargtypes is not a 1-D Oid array or it contains nulls");
+		n_all_param_types = ARR_DIMS(arr)[0];
 		all_param_proargtypes = (Oid *) ARR_DATA_PTR(arr);
 	}
 	else
@@ -1591,16 +1592,19 @@ get_functup_bytypenames(Oid namespaceid,
 	{
 		HeapTuple	proctup = &catlist->members[i]->tuple;
 		Form_pg_proc procform = (Form_pg_proc) GETSTRUCT(proctup);
-		Oid 	   *proargtypes = procform->proargtypes.values;
-		int 		pronargs = procform->pronargs;
+		Oid		   *proargtypes = procform->proargtypes.values;
+		int			pronargs = procform->pronargs;
 		Datum		argtypedatum;
-		char		**argtypenames = NULL;
+		char	  **argtypenames = NULL;
 		Datum		proallargtypes;
 		bool		isNull;
-		Oid 	   *all_proargtypes = NULL;
+		Oid		   *all_proargtypes = NULL;
 		int			all_pronargs;
-		Datum	   *elems;
+		Datum	   *elems = NULL;
+		bool	   *elem_nulls = NULL;
 		int			n_all_nelems;
+		int			j;
+		bool		matched;
 
 		if (procform->pronamespace != namespaceid)
 			continue;
@@ -1610,24 +1614,25 @@ get_functup_bytypenames(Oid namespaceid,
 			continue;
 
 		argtypedatum = SysCacheGetAttr(PROCNAMEARGSNSP, proctup,
-									Anum_pg_proc_protypenames,
-									&isNull);
+									   Anum_pg_proc_protypenames,
+									   &isNull);
 		if (isNull)
 			continue;
-		else
+
+		deconstruct_array(DatumGetArrayTypeP(argtypedatum),
+						  TEXTOID, -1, false, 'i',
+						  &elems, &elem_nulls, &n_all_nelems);
+
+		/* all typenames not match */
+		if (n_all_nelems != n_param_typenames)
 		{
-			deconstruct_array(DatumGetArrayTypeP(argtypedatum),
-							TEXTOID, -1, false, 'i',
-							&elems, NULL, &n_all_nelems);
-
-			/* all typenames not match */
-			if (n_all_nelems != n_param_typenames)
-				continue;
-			argtypenames = (char **) palloc(sizeof(char *) * n_all_nelems);
-			for (i = 0; i < n_all_nelems; i++)
-				argtypenames[i] = TextDatumGetCString(elems[i]);
+			pfree(elems);
+			pfree(elem_nulls);
+			continue;
 		}
-
+		argtypenames = (char **) palloc(sizeof(char *) * n_all_nelems);
+		for (j = 0; j < n_all_nelems; j++)
+			argtypenames[j] = elem_nulls[j] ? pstrdup("") : TextDatumGetCString(elems[j]);
 
 		proallargtypes = SysCacheGetAttr(PROCNAMEARGSNSP, proctup,
 										 Anum_pg_proc_proallargtypes,
@@ -1636,43 +1641,74 @@ get_functup_bytypenames(Oid namespaceid,
 		{
 			ArrayType  *arr = DatumGetArrayTypeP(proallargtypes);
 
-			all_pronargs = ARR_DIMS(arr)[0];
 			if (ARR_NDIM(arr) != 1 ||
-				all_pronargs < 0 ||
+				ARR_DIMS(arr)[0] < 0 ||
 				ARR_HASNULL(arr) ||
 				ARR_ELEMTYPE(arr) != OIDOID)
 				elog(ERROR, "proallargtypes is not a 1-D Oid array or it contains nulls");
+			all_pronargs = ARR_DIMS(arr)[0];
 			Assert(all_pronargs >= procform->pronargs);
 			all_proargtypes = (Oid *) ARR_DATA_PTR(arr);
 		}
 		else
 			all_pronargs = 0;
 
-		if (all_pronargs != n_all_param_types)
-			continue;
+		matched = (all_pronargs == n_all_param_types);
 
 		/* check typnames match */
-		for (i = 0; i < n_param_typenames; i++)
+		if (matched)
 		{
-			if (strcmp(argtypenames[i], param_argtypenames[i]) != 0)
-				break;
-
-			/* normal argtype should match */
-			if (strcmp(argtypenames[i], "") == 0)
+			for (j = 0; j < n_param_typenames; j++)
 			{
-				if (n_all_param_types != 0 &&
-					all_proargtypes[i] != all_param_proargtypes[i])
+				if (strcmp(argtypenames[j], param_argtypenames[j]) != 0)
+				{
+					matched = false;
 					break;
-				else if (proargtypes[i] != parametertypes->values[i])
-					break;
+				}
+
+				/* normal argtype should match */
+				if (strcmp(argtypenames[j], "") == 0)
+				{
+					if (n_all_param_types != 0)
+					{
+						if (j >= all_pronargs ||
+							all_proargtypes[j] != all_param_proargtypes[j])
+						{
+							matched = false;
+							break;
+						}
+					}
+					else
+					{
+						if (j >= pronargs ||
+							proargtypes[j] != parametertypes->values[j])
+						{
+							matched = false;
+							break;
+						}
+					}
+				}
 			}
 		}
-		if (i != n_param_typenames)
+
+		for (j = 0; j < n_all_nelems; j++)
+			pfree(argtypenames[j]);
+		pfree(argtypenames);
+		pfree(elems);
+		pfree(elem_nulls);
+
+		if (!matched)
 			continue;
 		n_match++;
 		func_oid = procform->oid;
 	}
 	ReleaseSysCacheList(catlist);
+
+	for (i = 0; i < n_param_typenames; i++)
+		pfree(param_argtypenames[i]);
+	pfree(param_argtypenames);
+	pfree(p_elems);
+	pfree(p_nulls);
 
 	/* more than one match raise error ? */
 	if (n_match != 1)

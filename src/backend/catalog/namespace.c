@@ -1346,7 +1346,8 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 		int		   *argnumbers = NULL;
 		FuncCandidateList newResult;
 
-		char		**argtypenames = NULL;
+		char	  **argtypenames = NULL;
+		int			argtypenames_len = 0;
 
 		*fgc_flags |= FGC_NAME_EXISTS;	/* the name is present in pg_proc */
 
@@ -1558,22 +1559,28 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 		/* maybe argtype from a package */
 		if (ORA_PARSER == compatible_db)
 		{
-			Datum protypenames;
-			bool	isNull;
+			Datum		protypenames;
+			bool		isNull;
 			Datum	   *elems;
+			bool	   *elem_nulls;
 			int			nelems;
 
 			protypenames = SysCacheGetAttr(PROCNAMEARGSNSP, proctup,
-										Anum_pg_proc_protypenames,
-										&isNull);
+										   Anum_pg_proc_protypenames,
+										   &isNull);
 			if (!isNull)
 			{
+				int			k;
+
 				deconstruct_array(DatumGetArrayTypeP(protypenames),
-									TEXTOID, -1, false, 'i',
-									&elems, NULL, &nelems);
+								  TEXTOID, -1, false, 'i',
+								  &elems, &elem_nulls, &nelems);
 				argtypenames = (char **) palloc(sizeof(char *) * nelems);
-				for (i = 0; i < nelems; i++)
-					argtypenames[i] = TextDatumGetCString(elems[i]);
+				argtypenames_len = nelems;
+				for (k = 0; k < nelems; k++)
+					argtypenames[k] = elem_nulls[k] ? pstrdup("") : TextDatumGetCString(elems[k]);
+				pfree(elems);
+				pfree(elem_nulls);
 			}
 		}
 
@@ -1582,36 +1589,40 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 			/* Re-order the argument types into call's logical order */
 			for (int j = 0; j < pronargs; j++)
 			{
-				newResult->args[j] = proargtypes[argnumbers[j]];
+				int			argno = argnumbers[j];
 
-				if (argtypenames != NULL && strcmp(argtypenames[argnumbers[i]], "") != 0)
+				newResult->args[j] = proargtypes[argno];
+
+				if (argtypenames != NULL &&
+					argno >= 0 && argno < argtypenames_len &&
+					strcmp(argtypenames[argno], "") != 0)
 				{
-					TypeName	*tname;
-					PkgType *pkgtype;
+					TypeName   *tname;
+					PkgType    *pkgtype;
 
-					tname = (TypeName *) stringToNode(argtypenames[argnumbers[i]]);
+					tname = (TypeName *) stringToNode(argtypenames[argno]);
 
 					pkgtype = LookupPkgTypeByTypename(tname->names, false);
 					if (pkgtype != NULL)
 					{
-						newResult->args[i] = pkgtype->basetypid;
+						newResult->args[j] = pkgtype->basetypid;
 						pfree(pkgtype);
 					}
 					else
 					{
-						Type	typtup;
+						Type		typtup;
 
-						typtup = LookupOraTypeName(NULL, tname, NULL, false);
+						typtup = LookupOraTypeName(NULL, tname, NULL, true);
 
 						if (typtup)
 						{
 							if (!((Form_pg_type) GETSTRUCT(typtup))->typisdefined)
 								ereport(NOTICE,
-									(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-									 errmsg("argument type %s is invalid",
-										TypeNameToString(tname))));
+										(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+										 errmsg("argument type %s is invalid",
+												TypeNameToString(tname))));
 
-							newResult->args[i] = typeTypeId(typtup);
+							newResult->args[j] = typeTypeId(typtup);
 							ReleaseSysCache(typtup);
 						}
 					}
@@ -1625,16 +1636,17 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 			/* Simple positional case, just copy proargtypes as-is */
 			if (argtypenames != NULL)
 			{
-				int j;
+				int			j;
 
 				for (j = 0; j < pronargs; j++)
 				{
 					newResult->args[j] = proargtypes[j];
 
-					if (strcmp(argtypenames[j], "") != 0)
+					if (j < argtypenames_len &&
+						strcmp(argtypenames[j], "") != 0)
 					{
-						TypeName	*tname;
-						PkgType *pkgtype;
+						TypeName   *tname;
+						PkgType    *pkgtype;
 
 						tname = (TypeName *) stringToNode(argtypenames[j]);
 
@@ -1646,7 +1658,7 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 						}
 						else
 						{
-							Type	typtup;
+							Type		typtup;
 
 							typtup = LookupOraTypeName(NULL, tname, NULL, true);
 
@@ -1654,9 +1666,9 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 							{
 								if (!((Form_pg_type) GETSTRUCT(typtup))->typisdefined)
 									ereport(NOTICE,
-										(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-										 errmsg("argument type %s is invalid",
-											TypeNameToString(tname))));
+											(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+											 errmsg("argument type %s is invalid",
+													TypeNameToString(tname))));
 
 								newResult->args[j] = typeTypeId(typtup);
 								ReleaseSysCache(typtup);
@@ -1671,7 +1683,11 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 				memcpy(newResult->args, proargtypes, pronargs * sizeof(Oid));
 		}
 		if (argtypenames != NULL)
+		{
+			for (int k = 0; k < argtypenames_len; k++)
+				pfree(argtypenames[k]);
 			pfree(argtypenames);
+		}
 
 		if (variadic)
 		{
