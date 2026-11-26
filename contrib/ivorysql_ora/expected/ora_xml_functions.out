@@ -1053,3 +1053,42 @@ select insertchildxml(XMLtype('<a>A<b>B</b></a>'), '/', 'c', XMLType('<c>C</c>')
  <a>A<b>B</b><c>C</c></a>
 (1 row)
 
+-- Reject document/root targets regardless of their XPath spelling or count.
+SELECT insertxmlbefore(XMLType('<r><a/></r>'), '/.', XMLType('<b/>'));
+ERROR:  invalid XPath expression
+SELECT insertxmlbefore(XMLType('<r><a/></r>'), '/r/..', XMLType('<b/>'));
+ERROR:  invalid XPath expression
+SELECT insertxmlbefore(XMLType('<r><a/></r>'), '/r | /r/a', XMLType('<b/>'));
+ERROR:  invalid XPath expression
+SELECT insertxmlbefore(XMLType('<r xmlns:p="urn:before"><p:a/></r>'),
+                       '/.', XMLType('<b/>'), 'xmlns:p="urn:before"');
+ERROR:  invalid XPath expression
+SELECT insertxmlbefore(XMLType('<r xmlns:p="urn:before"><p:a/></r>'),
+                       '/r/namespace::p', XMLType('<b/>'));
+ERROR:  invalid XPath expression
+-- An empty selection and multiple ordinary children remain valid.
+SELECT insertxmlbefore(XMLType('<r><a/></r>'), '/r/missing', XMLType('<b/>'));
+ insertxmlbefore 
+-----------------
+ <r>            +
+   <a/>         +
+ </r>
+(1 row)
+
+SELECT insertxmlbefore(XMLType('<r><a/><a/></r>'), '/r/a', XMLType('<b/>'));
+ insertxmlbefore 
+-----------------
+ <r>            +
+   <b/>         +
+   <a/>         +
+   <b/>         +
+   <a/>         +
+ </r>
+(1 row)
+
+-- A valid first match must not hide an unsupported later target.
+SELECT insertxmlbefore(XMLType('<r><a/></r><!--tail-->'), '/r/a | /comment()', XMLType('<b/>'));
+ERROR:  invalid XPath expression
+SELECT insertxmlbefore(XMLType('<p:r xmlns:p="urn:before"><p:a/></p:r><!--tail-->'),
+                       '/p:r/p:a | /comment()', XMLType('<b/>'), 'xmlns:p="urn:before"');
+ERROR:  invalid XPath expression

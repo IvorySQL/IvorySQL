@@ -419,3 +419,20 @@ select insertxmlafter(XMLtype('<a>A<b>B</b></a>'), '/', XMLType('<c>C</c>'));
 select insertchildxml(XMLtype('<a>A<b>B</b></a>'), '/', 'c', XMLType('<c>C</c>'));
 
 
+
+-- Reject document/root targets regardless of their XPath spelling or count.
+SELECT insertxmlbefore(XMLType('<r><a/></r>'), '/.', XMLType('<b/>'));
+SELECT insertxmlbefore(XMLType('<r><a/></r>'), '/r/..', XMLType('<b/>'));
+SELECT insertxmlbefore(XMLType('<r><a/></r>'), '/r | /r/a', XMLType('<b/>'));
+SELECT insertxmlbefore(XMLType('<r xmlns:p="urn:before"><p:a/></r>'),
+                       '/.', XMLType('<b/>'), 'xmlns:p="urn:before"');
+SELECT insertxmlbefore(XMLType('<r xmlns:p="urn:before"><p:a/></r>'),
+                       '/r/namespace::p', XMLType('<b/>'));
+-- An empty selection and multiple ordinary children remain valid.
+SELECT insertxmlbefore(XMLType('<r><a/></r>'), '/r/missing', XMLType('<b/>'));
+SELECT insertxmlbefore(XMLType('<r><a/><a/></r>'), '/r/a', XMLType('<b/>'));
+
+-- A valid first match must not hide an unsupported later target.
+SELECT insertxmlbefore(XMLType('<r><a/></r><!--tail-->'), '/r/a | /comment()', XMLType('<b/>'));
+SELECT insertxmlbefore(XMLType('<p:r xmlns:p="urn:before"><p:a/></p:r><!--tail-->'),
+                       '/p:r/p:a | /comment()', XMLType('<b/>'), 'xmlns:p="urn:before"');
