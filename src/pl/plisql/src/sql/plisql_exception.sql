@@ -354,6 +354,81 @@ SELECT 'SQLERRM with package EXCEPTION test passed (issue #1151)' AS result;
 
 DROP PACKAGE test_sqlerrm_with_exc;
 
+--
+-- Test 13: Reject non-variable namespace items (nested procedures/functions)
+-- in PRAGMA EXCEPTION_INIT and EXCEPTION WHEN clauses without OOB read or
+-- type confusion against plisql_Datums[].
+--
+
+-- Test 13a: PRAGMA EXCEPTION_INIT on subprocedure with itemno >= plisql_nDatums
+-- (previously crashed backend with SIGSEGV via OOB read on plisql_Datums[])
+DO $$
+DECLARE
+  e0 EXCEPTION;
+  PROCEDURE p0 IS BEGIN NULL; END;
+  PROCEDURE p1 IS BEGIN NULL; END;
+  PROCEDURE p2 IS BEGIN NULL; END;
+  PRAGMA EXCEPTION_INIT(p2, -20001);
+BEGIN
+  NULL;
+END;
+$$;
+
+-- Test 13b: PRAGMA EXCEPTION_INIT on subfunction whose itemno collides with an
+-- EXCEPTION datum index (previously silently corrupted e1 instead of erroring)
+DO $$
+DECLARE
+  e1 EXCEPTION;
+  FUNCTION f0 RETURN INTEGER IS BEGIN RETURN 0; END;
+  FUNCTION f1 RETURN INTEGER IS BEGIN RETURN 1; END;
+  PRAGMA EXCEPTION_INIT(f1, -20099);
+BEGIN
+  NULL;
+END;
+$$;
+
+-- Test 13c: EXCEPTION WHEN on subprocedure with itemno >= plisql_nDatums
+-- (previously crashed backend with SIGSEGV via OOB read on plisql_Datums[])
+DO $$
+DECLARE
+  PROCEDURE p0 IS BEGIN NULL; END;
+  PROCEDURE p1 IS BEGIN NULL; END;
+  PROCEDURE p2 IS BEGIN NULL; END;
+  PROCEDURE p3 IS BEGIN NULL; END;
+  PROCEDURE p4 IS BEGIN NULL; END;
+BEGIN
+  NULL;
+EXCEPTION
+  WHEN p4 THEN
+    NULL;
+END;
+$$;
+
+-- Test 13d: EXCEPTION WHEN on subprocedure whose itemno collides with an
+-- EXCEPTION datum index (previously silently caught e1 via type confusion)
+DO $$
+DECLARE
+  e1 EXCEPTION;
+  PROCEDURE p0 IS BEGIN NULL; END;
+  PROCEDURE p1 IS BEGIN NULL; END;
+BEGIN
+  RAISE e1;
+EXCEPTION
+  WHEN p1 THEN
+    RAISE INFO 'should not catch e1 as p1';
+END;
+$$;
+
+-- Test 13e: PRAGMA EXCEPTION_INIT on package subprocedure must fail cleanly
+CREATE OR REPLACE PACKAGE test_exc_subproc_pkg IS
+  e1 EXCEPTION;
+  PROCEDURE p0;
+  PROCEDURE p1;
+  PROCEDURE p2;
+  PRAGMA EXCEPTION_INIT(p2, -20002);
+END test_exc_subproc_pkg;
+/
+
 -- Cleanup
 DROP PACKAGE test_pragma_init;
 DROP PACKAGE test_pragma_raise;
