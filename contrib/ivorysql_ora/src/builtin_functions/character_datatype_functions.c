@@ -57,9 +57,9 @@ PG_FUNCTION_INFO_V1(oravarcharlen);
 PG_FUNCTION_INFO_V1(oravarcharoctetlen);
 PG_FUNCTION_INFO_V1(ora_lengthc);
 PG_FUNCTION_INFO_V1(ora_lengthc_unsupported);
-PG_FUNCTION_INFO_V1(rtrim1);
+PG_FUNCTION_INFO_V1(ora_rtrim1);
 PG_FUNCTION_INFO_V1(rtrim2);
-PG_FUNCTION_INFO_V1(ltrim1);
+PG_FUNCTION_INFO_V1(ora_ltrim1);
 PG_FUNCTION_INFO_V1(ltrim2);
 PG_FUNCTION_INFO_V1(trim1);
 PG_FUNCTION_INFO_V1(trim2);
@@ -401,7 +401,7 @@ ora_lengthc_unsupported(PG_FUNCTION_ARGS)
 }
 
 Datum
-rtrim1(PG_FUNCTION_ARGS)
+ora_rtrim1(PG_FUNCTION_ARGS)
 {
 	VarChar	*string = PG_GETARG_VARCHAR_P(0);
 	VarChar *ret;
@@ -442,7 +442,7 @@ ltrim2(PG_FUNCTION_ARGS)
 }
 
 Datum
-ltrim1(PG_FUNCTION_ARGS)
+ora_ltrim1(PG_FUNCTION_ARGS)
 {
 	VarChar	   *string = PG_GETARG_VARCHAR_P(0);
 	VarChar	   *ret;
