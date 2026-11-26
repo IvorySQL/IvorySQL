@@ -354,6 +354,37 @@ SELECT 'SQLERRM with package EXCEPTION test passed (issue #1151)' AS result;
 
 DROP PACKAGE test_sqlerrm_with_exc;
 
+--
+-- Test 13: Stateless package containing EXCEPTION with PRAGMA EXCEPTION_INIT
+-- An EXCEPTION declaration has no mutable package state, regardless of its
+-- error code (e.g. -256 whose low byte is 0x00).
+--
+CREATE OR REPLACE PACKAGE test_exc_stateless_pkg IS
+  c CONSTANT INT := 42;
+  e1 EXCEPTION;
+  PRAGMA EXCEPTION_INIT(e1, -256);
+END test_exc_stateless_pkg;
+/
+
+BEGIN
+  RAISE INFO 'c = %', test_exc_stateless_pkg.c;
+END;
+/
+
+CREATE OR REPLACE PACKAGE test_exc_stateless_pkg IS
+  c CONSTANT INT := 43;
+  e1 EXCEPTION;
+  PRAGMA EXCEPTION_INIT(e1, -256);
+END test_exc_stateless_pkg;
+/
+
+BEGIN
+  RAISE INFO 'c = %', test_exc_stateless_pkg.c;
+END;
+/
+
+DROP PACKAGE test_exc_stateless_pkg;
+
 -- Cleanup
 DROP PACKAGE test_pragma_init;
 DROP PACKAGE test_pragma_raise;

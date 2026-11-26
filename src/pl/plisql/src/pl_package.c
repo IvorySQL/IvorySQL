@@ -2734,6 +2734,8 @@ plisql_set_package_compile_status(void)
 			continue;
 
 		Assert(nse->itemno >= 0 && nse->itemno < plisql_nDatums);
+		if (plisql_Datums[nse->itemno]->dtype == PLISQL_DTYPE_EXCEPTION)
+			continue;
 		var = (PLiSQL_variable *) plisql_Datums[nse->itemno];
 
 		if (!var->isconst)
