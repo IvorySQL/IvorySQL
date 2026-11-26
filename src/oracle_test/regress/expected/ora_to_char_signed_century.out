@@ -1,0 +1,55 @@
+--
+-- ORA_TO_CHAR_SIGNED_CENTURY
+-- Oracle-compatible SCC (signed century) format element
+--
+-- Oracle prefixes the century with a space for AD dates and with '-' for BC
+-- dates.  FM does not suppress that sign position.
+--
+SELECT TO_CHAR(DATE '2024-02-29', 'SCC') AS ad,
+       TO_CHAR(DATE '0001-01-01', 'SCC') AS first_year;
+ ad  | first_year 
+-----+------------
+  21 |  01
+(1 row)
+
+SELECT TO_CHAR(DATE '-0044-03-15', 'SCC') AS bc,
+       TO_CHAR(DATE '-4712-01-01', 'SCC') AS bc_old;
+ bc  | bc_old 
+-----+--------
+ -01 | -48
+(1 row)
+
+-- the sign position is not affected by FM
+SELECT TO_CHAR(DATE '2024-02-29', 'FMSCC') AS fm;
+ fm  
+-----
+  21
+(1 row)
+
+-- CC itself keeps the unsigned output
+SELECT TO_CHAR(DATE '2024-02-29', 'CC') AS unsigned_cc;
+ unsigned_cc 
+-------------
+ 21
+(1 row)
+
+-- combined with other elements
+SELECT TO_CHAR(DATE '2024-02-29', 'YYYY SCC') AS combined;
+ combined 
+----------
+ 2024  21
+(1 row)
+
+-- lowercase alias behaves the same
+SELECT TO_CHAR(DATE '2024-02-29', 'scc') AS ad_lower;
+ ad_lower 
+----------
+  21
+(1 row)
+
+SELECT TO_CHAR(DATE '-0044-03-15', 'scc') AS bc_lower;
+ bc_lower 
+----------
+ -01
+(1 row)
+

@@ -669,6 +669,7 @@ typedef enum
 	DCH_SSSS,
 	DCH_SS,
 	DCH_SYYYY,
+	DCH_SCC,
 	DCH_TZH,
 	DCH_TZM,
 	DCH_TZ,
@@ -730,6 +731,7 @@ typedef enum
 	DCH_ssss,
 	DCH_ss,
 	DCH_syyyy,
+	DCH_scc,
 	DCH_tzh,
 	DCH_tzm,
 	DCH_tz,
@@ -848,6 +850,7 @@ static const KeyWord DCH_keywords[] = {
 	{"SSSS", 4, DCH_SSSS, true, FROM_CHAR_DATE_NONE},
 	{"SS", 2, DCH_SS, true, FROM_CHAR_DATE_NONE},
 	{"SYYYY", 5, DCH_SYYYY, true, FROM_CHAR_DATE_GREGORIAN},
+	{"SCC", 3, DCH_SCC, true, FROM_CHAR_DATE_GREGORIAN},
 	{"TZH", 3, DCH_TZH, false, FROM_CHAR_DATE_NONE},	/* T */
 	{"TZM", 3, DCH_TZM, true, FROM_CHAR_DATE_NONE},
 	{"TZ", 2, DCH_TZ, false, FROM_CHAR_DATE_NONE},
@@ -909,6 +912,7 @@ static const KeyWord DCH_keywords[] = {
 	{"ssss", 4, DCH_SSSS, true, FROM_CHAR_DATE_NONE},
 	{"ss", 2, DCH_SS, true, FROM_CHAR_DATE_NONE},
 	{"syyyy", 5, DCH_SYYYY, true, FROM_CHAR_DATE_GREGORIAN},
+{"scc", 3, DCH_SCC, true, FROM_CHAR_DATE_GREGORIAN},
 	{"tzh", 3, DCH_tzh, false, FROM_CHAR_DATE_NONE},
 	{"tzm", 3, DCH_tzm, true, FROM_CHAR_DATE_NONE},
 	{"tz", 2, DCH_tz, false, FROM_CHAR_DATE_NONE},
@@ -3094,6 +3098,23 @@ DCH_to_char(FormatNode *node, bool is_interval, TmToChar *in, char *out, Oid col
 						ADJUST_YEAR(tm->tm_year, is_interval) - (i * 1000));
 				if (IS_SUFFIX_THth(n->suffix))
 					str_numth(s, s, SUFFIX_TH_TYPE(n->suffix));
+				s += strlen(s);
+				break;
+			case DCH_SCC:
+				if (is_interval)	/* straight calculation */
+					i = tm->tm_year / 100;
+				else
+				{
+					if (tm->tm_year > 0)
+						i = (tm->tm_year - 1) / 100 + 1;
+					else
+						i = tm->tm_year / 100 - 1;
+				}
+				/* Oracle puts a space for AD and a minus sign for BC here */
+				if (i <= 99 && i >= -99)
+					sprintf(s, "%c%02d", (i < 0) ? '-' : ' ', abs(i));
+				else
+					sprintf(s, "%c%d", (i < 0) ? '-' : ' ', abs(i));
 				s += strlen(s);
 				break;
 			case DCH_SYYYY:
