@@ -129,3 +129,28 @@ END;
 
 SELECT test_bug1124_order() AS result FROM dual;
 DROP FUNCTION test_bug1124_order;
+
+-- Test: unreserved statement-introducing keywords as variable names
+CREATE OR REPLACE FUNCTION test_stmt_start_kw(p_flag integer) RETURN integer AS
+    return integer := 10;
+    raise integer := 20;
+    exit integer := 0;
+BEGIN
+    return := return + raise;
+    LOOP
+        exit := exit + 1;
+        IF exit >= 2 THEN
+            EXIT;
+        END IF;
+    END LOOP;
+    IF p_flag = 1 THEN
+        RETURN return + exit;
+    ELSE
+        RETURN raise;
+    END IF;
+END;
+/
+
+SELECT test_stmt_start_kw(1) AS result FROM dual;
+SELECT test_stmt_start_kw(0) AS result FROM dual;
+DROP FUNCTION test_stmt_start_kw;

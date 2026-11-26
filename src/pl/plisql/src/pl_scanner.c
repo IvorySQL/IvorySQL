@@ -380,7 +380,7 @@ plisql_yylex(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 			if (plisql_parse_word(paramname,
 								  aux1.lval.str,
 								  yyextra->core_yy_extra.scanbuf + aux1.lloc,
-								  (!AT_STMT_START(plisql_yytoken) ||
+								  (!AT_STMT_START(yyextra->plisql_yytoken) ||
 								   (tok2 == '=' || tok2 == COLON_EQUALS ||
 									tok2 == '[')),
 								  &aux1.lval.wdatum,
