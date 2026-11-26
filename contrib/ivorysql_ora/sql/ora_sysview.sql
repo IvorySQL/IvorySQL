@@ -216,6 +216,105 @@ ORDER BY constraint_name, table_name, column_name;
 
 DROP TABLE t_dba_cons_cols;
 
+-- Verify DBA_CONS_COLUMNS, ALL_CONS_COLUMNS and USER_CONS_COLUMNS agree on
+-- constraint names, column positions, NOT NULL handling (no duplicates, no
+-- system columns, no PK-implied NOT NULL rows), dropped columns and partitions.
+CREATE TABLE t_cons_consistency (
+    a INT PRIMARY KEY,
+    b INT NOT NULL,
+    c INT,
+    d INT CONSTRAINT nn_d NOT NULL,
+    e INT CHECK (e > 0)
+);
+
+SELECT constraint_name, column_name, position
+FROM sys.dba_cons_columns
+WHERE table_name = 'T_CONS_CONSISTENCY'
+ORDER BY constraint_name, position;
+
+-- Symmetric row-set equality across all three *_CONS_COLUMNS views.
+SELECT 'dba_minus_all' AS diff, * FROM (
+    SELECT * FROM sys.dba_cons_columns WHERE table_name = 'T_CONS_CONSISTENCY'
+    EXCEPT
+    SELECT * FROM sys.all_cons_columns WHERE table_name = 'T_CONS_CONSISTENCY'
+) s
+UNION ALL
+SELECT 'all_minus_dba' AS diff, * FROM (
+    SELECT * FROM sys.all_cons_columns WHERE table_name = 'T_CONS_CONSISTENCY'
+    EXCEPT
+    SELECT * FROM sys.dba_cons_columns WHERE table_name = 'T_CONS_CONSISTENCY'
+) s
+UNION ALL
+SELECT 'dba_minus_user' AS diff, * FROM (
+    SELECT * FROM sys.dba_cons_columns WHERE table_name = 'T_CONS_CONSISTENCY'
+    EXCEPT
+    SELECT * FROM sys.user_cons_columns WHERE table_name = 'T_CONS_CONSISTENCY'
+) s
+UNION ALL
+SELECT 'user_minus_dba' AS diff, * FROM (
+    SELECT * FROM sys.user_cons_columns WHERE table_name = 'T_CONS_CONSISTENCY'
+    EXCEPT
+    SELECT * FROM sys.dba_cons_columns WHERE table_name = 'T_CONS_CONSISTENCY'
+) s;
+
+-- Composite PK/UQ positions, dropped NOT NULL column, and partitioned table.
+CREATE TABLE t_cons_comp (
+    k1 INT,
+    k2 INT,
+    v INT NOT NULL,
+    dropme INT NOT NULL,
+    CONSTRAINT pk_cons_comp PRIMARY KEY (k1, k2),
+    CONSTRAINT uq_cons_comp UNIQUE (k2, v)
+);
+ALTER TABLE t_cons_comp DROP COLUMN dropme;
+
+CREATE TABLE t_cons_part (
+    id INT PRIMARY KEY,
+    label VARCHAR2(20) NOT NULL
+) PARTITION BY RANGE (id);
+CREATE TABLE t_cons_part_1 PARTITION OF t_cons_part FOR VALUES FROM (1) TO (100);
+
+SELECT table_name, constraint_name, column_name, position
+FROM sys.dba_cons_columns
+WHERE table_name IN ('T_CONS_COMP', 'T_CONS_PART', 'T_CONS_PART_1')
+ORDER BY table_name, constraint_name, position;
+
+SELECT 'dba_minus_all' AS diff, * FROM (
+    SELECT * FROM sys.dba_cons_columns
+    WHERE table_name IN ('T_CONS_COMP', 'T_CONS_PART', 'T_CONS_PART_1')
+    EXCEPT
+    SELECT * FROM sys.all_cons_columns
+    WHERE table_name IN ('T_CONS_COMP', 'T_CONS_PART', 'T_CONS_PART_1')
+) s
+UNION ALL
+SELECT 'all_minus_dba' AS diff, * FROM (
+    SELECT * FROM sys.all_cons_columns
+    WHERE table_name IN ('T_CONS_COMP', 'T_CONS_PART', 'T_CONS_PART_1')
+    EXCEPT
+    SELECT * FROM sys.dba_cons_columns
+    WHERE table_name IN ('T_CONS_COMP', 'T_CONS_PART', 'T_CONS_PART_1')
+) s
+UNION ALL
+SELECT 'dba_minus_user' AS diff, * FROM (
+    SELECT * FROM sys.dba_cons_columns
+    WHERE table_name IN ('T_CONS_COMP', 'T_CONS_PART', 'T_CONS_PART_1')
+    EXCEPT
+    SELECT * FROM sys.user_cons_columns
+    WHERE table_name IN ('T_CONS_COMP', 'T_CONS_PART', 'T_CONS_PART_1')
+) s
+UNION ALL
+SELECT 'user_minus_dba' AS diff, * FROM (
+    SELECT * FROM sys.user_cons_columns
+    WHERE table_name IN ('T_CONS_COMP', 'T_CONS_PART', 'T_CONS_PART_1')
+    EXCEPT
+    SELECT * FROM sys.dba_cons_columns
+    WHERE table_name IN ('T_CONS_COMP', 'T_CONS_PART', 'T_CONS_PART_1')
+) s;
+
+DROP TABLE t_cons_part;
+DROP TABLE t_cons_comp;
+DROP TABLE t_cons_consistency;
+
 -- ALL_TAB_COLUMNS
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
 
