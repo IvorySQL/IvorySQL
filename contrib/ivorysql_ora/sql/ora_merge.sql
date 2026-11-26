@@ -592,7 +592,7 @@ INSERT INTO merge_part_ret VALUES (1, 1, 10), (2, 1, 20), (3, 1, 30);
 MERGE INTO merge_part_ret t
 USING (VALUES (1, 2, -5), (2, 2, 25)) AS s(id, part, val)
 ON (t.id = s.id)
-WHEN MATCHED THEN UPDATE SET part = s.part, val = s.val DELETE WHERE t.val < 0
+WHEN MATCHED THEN UPDATE SET part = s.part, val = s.val DELETE WHERE t.val < -10
 RETURNING tableoid::regclass AS ret_rel, merge_action(), t.id, t.part, t.val;
 
 SELECT tableoid::regclass AS part_rel, id, part, val FROM merge_part_ret ORDER BY id;
@@ -675,3 +675,95 @@ WHEN MATCHED THEN UPDATE SET val = s.val DELETE WHERE t.val < 0
 WHEN NOT MATCHED THEN INSERT VALUES (s.id, s.val)
 WHEN NOT MATCHED THEN INSERT VALUES (s.id, s.val + 1);
 DROP TABLE merge_unreach_t;
+
+--
+-- Test cross-partition UPDATE ... DELETE WHERE when destination partition
+-- BEFORE INSERT trigger returns NULL (skips insert): must not crash on
+-- uninitialized inserted_tuple pointer.
+--
+CREATE TABLE merge_part_skip (id int, part int, val int) PARTITION BY LIST (part);
+CREATE TABLE merge_part_skip_1 PARTITION OF merge_part_skip FOR VALUES IN (1);
+CREATE TABLE merge_part_skip_2 PARTITION OF merge_part_skip FOR VALUES IN (2);
+
+CREATE OR REPLACE FUNCTION merge_part_skip_bi_fn() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.id = 1 THEN
+        RETURN NULL;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+/
+
+CREATE TRIGGER merge_part_skip_bi_trg
+    BEFORE INSERT ON merge_part_skip_2
+    FOR EACH ROW EXECUTE FUNCTION merge_part_skip_bi_fn();
+
+INSERT INTO merge_part_skip VALUES (1, 1, 10), (2, 1, 20);
+
+MERGE INTO merge_part_skip t
+USING (VALUES (1, 2, -5), (2, 2, -6)) AS s(id, part, val)
+ON (t.id = s.id)
+WHEN MATCHED THEN UPDATE SET part = s.part, val = s.val DELETE WHERE t.val < 0;
+
+SELECT tableoid::regclass AS part_rel, id, part, val FROM merge_part_skip ORDER BY id;
+DROP TABLE merge_part_skip;
+DROP FUNCTION merge_part_skip_bi_fn();
+
+--
+-- Test RLS DELETE policy enforcement on Oracle MERGE UPDATE ... DELETE WHERE
+-- (both regular table and cross-partition update).
+--
+CREATE ROLE merge_rls_user;
+CREATE TABLE merge_rls_t (id int PRIMARY KEY, val int, can_del boolean);
+INSERT INTO merge_rls_t VALUES (1, 10, false), (2, 20, true);
+ALTER TABLE merge_rls_t ENABLE ROW LEVEL SECURITY;
+CREATE POLICY merge_rls_sel ON merge_rls_t FOR SELECT TO merge_rls_user USING (true);
+CREATE POLICY merge_rls_upd ON merge_rls_t FOR UPDATE TO merge_rls_user USING (true) WITH CHECK (true);
+CREATE POLICY merge_rls_del ON merge_rls_t FOR DELETE TO merge_rls_user USING (can_del);
+GRANT SELECT, UPDATE, DELETE ON merge_rls_t TO merge_rls_user;
+
+CREATE TABLE merge_rls_part (id int, part int, val int, can_del boolean) PARTITION BY LIST (part);
+CREATE TABLE merge_rls_part_1 PARTITION OF merge_rls_part FOR VALUES IN (1);
+CREATE TABLE merge_rls_part_2 PARTITION OF merge_rls_part FOR VALUES IN (2);
+INSERT INTO merge_rls_part VALUES (1, 1, 10, false), (2, 1, 20, true);
+ALTER TABLE merge_rls_part ENABLE ROW LEVEL SECURITY;
+CREATE POLICY merge_rls_part_sel ON merge_rls_part FOR SELECT TO merge_rls_user USING (true);
+CREATE POLICY merge_rls_part_ins ON merge_rls_part FOR INSERT TO merge_rls_user WITH CHECK (true);
+CREATE POLICY merge_rls_part_upd ON merge_rls_part FOR UPDATE TO merge_rls_user USING (true) WITH CHECK (true);
+CREATE POLICY merge_rls_part_del ON merge_rls_part FOR DELETE TO merge_rls_user USING (can_del);
+GRANT SELECT, INSERT, UPDATE, DELETE ON merge_rls_part TO merge_rls_user;
+
+SET ROLE merge_rls_user;
+
+-- Regular table: DELETE WHERE matches row 1 (can_del = false) -> must fail RLS!
+MERGE INTO merge_rls_t t
+USING (VALUES (1, -5)) AS s(id, val)
+ON (t.id = s.id)
+WHEN MATCHED THEN UPDATE SET val = s.val DELETE WHERE t.val < 0;
+
+-- Regular table: DELETE WHERE matches row 2 (can_del = true) -> allowed!
+MERGE INTO merge_rls_t t
+USING (VALUES (2, -5)) AS s(id, val)
+ON (t.id = s.id)
+WHEN MATCHED THEN UPDATE SET val = s.val DELETE WHERE t.val < 0;
+
+-- Cross-partition: row 1 (can_del = false) -> fails DELETE RLS on partition move/delete!
+MERGE INTO merge_rls_part t
+USING (VALUES (1, 2, -5)) AS s(id, part, val)
+ON (t.id = s.id)
+WHEN MATCHED THEN UPDATE SET part = s.part, val = s.val DELETE WHERE t.val < 0;
+
+-- Cross-partition: row 2 (can_del = true) -> succeeds and deletes row 2!
+MERGE INTO merge_rls_part t
+USING (VALUES (2, 2, -5)) AS s(id, part, val)
+ON (t.id = s.id)
+WHEN MATCHED THEN UPDATE SET part = s.part, val = s.val DELETE WHERE t.val < 0;
+
+RESET ROLE;
+
+SELECT * FROM merge_rls_t ORDER BY id;
+SELECT * FROM merge_rls_part ORDER BY id;
+DROP TABLE merge_rls_t;
+DROP TABLE merge_rls_part;
+DROP ROLE merge_rls_user;

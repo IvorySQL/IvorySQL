@@ -2442,8 +2442,8 @@ lreplace:
 	 */
 	if (partition_constraint_failed)
 	{
-		TupleTableSlot *inserted_tuple,
-				   *retry_slot;
+		TupleTableSlot *inserted_tuple = NULL,
+				   *retry_slot = NULL;
 		ResultRelInfo *insert_destrel = NULL;
 
 		/*

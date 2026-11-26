@@ -27,6 +27,7 @@
 
 #include "access/htup_details.h"
 #include "access/tableam.h"
+#include "access/tupconvert.h"
 #include "access/xact.h"
 #include "access/multixact.h"
 #include "access/subtrans.h"
@@ -212,6 +213,17 @@ IvyExecMergeUpdateDelete(IvyModifyTableContext *context,
 	econtext->ecxt_scantuple = saved_scantuple;
 	if (!qual_matched)
 		return true;
+
+	/*
+	 * Enforce DELETE RLS policies (WCO_RLS_MERGE_DELETE_CHECK) before
+	 * deleting the updated row, covering both regular tables and
+	 * cross-partition destination partitions.
+	 */
+	if (delRelInfo->ri_WithCheckOptions)
+		ExecWithCheckOptions(WCO_RLS_MERGE_DELETE_CHECK,
+							 delRelInfo,
+							 delSlot,
+							 estate);
 
 	if (isView)
 	{
@@ -478,6 +490,33 @@ lmerge_matched:
 							del = (MergeActionState *) lfirst(ld);
 							if (del->mas_action->commandType == CMD_DELETE)
 							{
+								AttrMap    *destToSrcMap;
+
+								/*
+								 * del->mas_whenqual expects resultRelInfo's
+								 * TupleDesc, while crossPartInsertedSlot
+								 * holds the post-BEFORE-INSERT-trigger tuple
+								 * in crossPartDestRel's TupleDesc.  Map the
+								 * inserted tuple back into newslot so DELETE
+								 * WHERE evaluates against the post-trigger
+								 * values even across partitions with
+								 * different column layouts.
+								 */
+								destToSrcMap =
+									build_attrmap_by_name_if_req(RelationGetDescr(updateCxt.crossPartDestRel->ri_RelationDesc),
+																 RelationGetDescr(resultRelInfo->ri_RelationDesc),
+																 false);
+								if (destToSrcMap != NULL)
+								{
+									execute_attr_map_slot(destToSrcMap,
+														  updateCxt.crossPartInsertedSlot,
+														  newslot);
+									free_attrmap(destToSrcMap);
+								}
+								else if (updateCxt.crossPartInsertedSlot != newslot)
+									ExecCopySlot(newslot,
+												 updateCxt.crossPartInsertedSlot);
+
 								if (!IvyExecMergeUpdateDelete(context,
 															  updateCxt.crossPartDestRel,
 															  &updateCxt.crossPartInsertedSlot->tts_tid,
