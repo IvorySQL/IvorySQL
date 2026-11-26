@@ -180,6 +180,11 @@ insert into datetest values (ADD_MONTHS(timestamp '2018-01-23 13:12:14',2));
 insert into datetest values (ADD_MONTHS(timestamp '2018-01-23 12:34:45',13));
 insert into datetest values (ADD_MONTHS(date'2017-1-30',1.1));
 
+-- February 28 is month-end only in a non-leap year.
+insert into datetest values (ADD_MONTHS(date '2023-02-28', 1));
+insert into datetest values (ADD_MONTHS(date '2024-02-28', 1));
+insert into datetest values (ADD_MONTHS(date '2024-02-29', -1));
+
 select * from datetest;
 drop table datetest;
 
