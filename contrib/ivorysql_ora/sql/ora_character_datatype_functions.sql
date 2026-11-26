@@ -833,6 +833,40 @@ DROP TABLE regexp_temp;
 SELECT SUBSTRB('ABCDEFG',5,4.2) "Substring with bytes" FROM DUAL;
 SELECT SUBSTRB('ABCDEFG',5) "Substring with bytes" FROM DUAL;
 
+-- A byte range that falls inside a multibyte character is space-padded, so the
+-- result stays valid in the server encoding; the padded result must still have
+-- the requested byte length.
+-- U&'\6570\636E\5E93' is three 3-byte characters (9 bytes in UTF-8).
+-- The four-byte character is built with decode() because U&'\+...' is not
+-- accepted here; U&'a' || <4-byte> || U&'b' is 6 bytes.
+SELECT LENGTHB(SUBSTRB(U&'\6570\636E\5E93', 1, 2)) AS len,
+       ENCODE(CONVERT_TO(SUBSTRB(U&'\6570\636E\5E93', 1, 2), 'UTF8'), 'hex') AS hex
+FROM DUAL;
+SELECT LENGTHB(SUBSTRB(U&'\6570\636E\5E93', 2, 3)) AS len,
+       ENCODE(CONVERT_TO(SUBSTRB(U&'\6570\636E\5E93', 2, 3), 'UTF8'), 'hex') AS hex
+FROM DUAL;
+-- A range clipped by the end of the string keeps the remaining byte count.
+SELECT LENGTHB(SUBSTRB(U&'\6570\636E\5E93', 8, 5)) AS len,
+       ENCODE(CONVERT_TO(SUBSTRB(U&'\6570\636E\5E93', 8, 5), 'UTF8'), 'hex') AS hex
+FROM DUAL;
+-- A four-byte character: a range that straddles it and one that fits inside it.
+SELECT LENGTHB(SUBSTRB('a' || CONVERT_FROM(DECODE('f09f9880', 'hex'), 'UTF8') || 'b', 1, 3)) AS len,
+       ENCODE(CONVERT_TO(SUBSTRB('a' || CONVERT_FROM(DECODE('f09f9880', 'hex'), 'UTF8') || 'b', 1, 3), 'UTF8'), 'hex') AS hex
+FROM DUAL;
+SELECT LENGTHB(SUBSTRB('a' || CONVERT_FROM(DECODE('f09f9880', 'hex'), 'UTF8') || 'b', 2, 2)) AS len,
+       ENCODE(CONVERT_TO(SUBSTRB('a' || CONVERT_FROM(DECODE('f09f9880', 'hex'), 'UTF8') || 'b', 2, 2), 'UTF8'), 'hex') AS hex
+FROM DUAL;
+-- A range that lands inside the character it skipped must not grow past the
+-- requested length.
+SELECT LENGTHB(SUBSTRB(U&'\6570\636E\5E93', 5, 1)) AS len FROM DUAL;
+-- A negative position whose length still reaches into the string: the range
+-- starts before the string, so the leading bytes are padding, and it ends
+-- inside a character, so the tail is padded too.  Both ends are counted
+-- against the requested length.
+SELECT LENGTHB(SUBSTRB(U&'\6570\636E\5E93', -8, 3)) AS len,
+       ENCODE(CONVERT_TO(SUBSTRB(U&'\6570\636E\5E93', -8, 3), 'UTF8'), 'hex') AS hex
+FROM DUAL;
+
 /*
  * instrb
  */
