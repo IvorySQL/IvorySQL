@@ -76,8 +76,8 @@ extern void get_html_path(const char *my_exec_path, char *ret_path);
 extern void get_man_path(const char *my_exec_path, char *ret_path);
 extern bool get_home_path(char *ret_path);
 extern void get_parent_directory(char *path);
-extern char * down_character(const char * src,int len);
-extern char * upper_character(const char *src, int len);
+extern char *down_character(const char *src, int len);
+extern char *upper_character(const char *src, int len);
 extern bool is_all_lower(const char *src, int len);
 extern bool is_all_upper(const char *src, int len);
 
@@ -148,7 +148,8 @@ extern int	find_other_exec(const char *argv0, const char *target,
 extern char *pipe_read_line(char *cmd);
 
 /* Doesn't belong here, but this is used with find_other_exec(), so... */
-#define PG_BACKEND_VERSIONSTR "postgres (PostgreSQL) " PG_VERSION "\n"
+#define PG_BACKEND_VERSIONSTR "postgres (PostgreSQL) " PG_VERSION \
+	" (IvorySQL " PACKAGE_IVORYSQL_VERSION ")\n"
 
 #ifdef EXEC_BACKEND
 /* Disable ASLR before exec, for developer builds only (in exec.c) */
