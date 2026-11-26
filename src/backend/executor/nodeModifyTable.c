@@ -2462,6 +2462,8 @@ lreplace:
 		{
 			/* success! */
 			updateCxt->crossPartUpdate = true;
+			updateCxt->crossPartDestRel = insert_destrel;
+			updateCxt->crossPartInsertedSlot = inserted_tuple;
 
 			/*
 			 * If the partitioned table being updated is referenced in foreign

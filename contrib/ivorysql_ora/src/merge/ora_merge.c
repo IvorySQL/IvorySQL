@@ -79,6 +79,15 @@
 
 static TM_Result execDelete4Merge(IvyModifyTableContext *context, ResultRelInfo *resultRelInfo,
 							ItemPointer tupleid, bool changingPart);
+static bool IvyExecMergeUpdateDelete(IvyModifyTableContext *context,
+									 ResultRelInfo *delRelInfo,
+									 ItemPointer delTid,
+									 bool isView,
+									 MergeActionState *del,
+									 TupleTableSlot *qualSlot,
+									 TupleTableSlot *delSlot,
+									 TM_Result *result,
+									 bool *deleted);
 static TM_Result heapDelete4Merge(Relation relation, ItemPointer tid,
 							CommandId cid, Snapshot crosscheck, bool wait,
 							TM_FailureData *tmfd, bool changingPart);
@@ -168,6 +177,107 @@ IvyExecProcessReturning(IvyModifyTableContext *context,
 	return ExecProject(projectReturning);
 }
 
+
+/*
+ * IvyExecMergeUpdateDelete:
+ *
+ * Execute the optional DELETE WHERE clause attached to an Oracle MERGE
+ * WHEN MATCHED THEN UPDATE action.  Returns false if a trigger aborted the
+ * delete (with *result == TM_Ok) or a tuple modification conflict occurred
+ * (*result != TM_Ok); returns true otherwise and sets *deleted if the row
+ * was actually deleted.
+ */
+static bool
+IvyExecMergeUpdateDelete(IvyModifyTableContext *context,
+						 ResultRelInfo *delRelInfo,
+						 ItemPointer delTid,
+						 bool isView,
+						 MergeActionState *del,
+						 TupleTableSlot *qualSlot,
+						 TupleTableSlot *delSlot,
+						 TM_Result *result,
+						 bool *deleted)
+{
+	ModifyTableState *mtstate = context->mtstate;
+	EState	   *estate = context->estate;
+	ExprContext *econtext = mtstate->ps.ps_ExprContext;
+	TupleTableSlot *saved_scantuple = econtext->ecxt_scantuple;
+	bool		qual_matched;
+
+	*deleted = false;
+	*result = TM_Ok;
+
+	econtext->ecxt_scantuple = qualSlot;
+	qual_matched = ExecQual(del->mas_whenqual, econtext);
+	econtext->ecxt_scantuple = saved_scantuple;
+	if (!qual_matched)
+		return true;
+
+	if (isView)
+	{
+		if (delRelInfo->ri_TrigDesc &&
+			delRelInfo->ri_TrigDesc->trig_delete_instead_row)
+		{
+			bool		shouldFree;
+			HeapTuple	deltuple;
+			bool		proceed;
+
+			deltuple = ExecFetchSlotHeapTuple(delSlot, true, &shouldFree);
+			proceed = ExecIRDeleteTriggers(estate, delRelInfo, deltuple);
+			if (shouldFree)
+			{
+				ExecClearTuple(ExecGetTriggerOldSlot(estate, delRelInfo));
+				heap_freetuple(deltuple);
+			}
+			if (!proceed)
+				return false;
+			mtstate->mt_merge_action = del;
+			mtstate->mt_merge_deleted += 1;
+			*deleted = true;
+			return true;
+		}
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("cannot delete from view \"%s\"",
+						RelationGetRelationName(delRelInfo->ri_RelationDesc)),
+				 errhint("To enable deleting from the view, provide an INSTEAD OF DELETE trigger or an unconditional ON DELETE DO INSTEAD rule.")));
+	}
+
+	/*
+	 * Fire row-level before delete trigger using the newly updated tuple in
+	 * delSlot.  Passing tupleid here would cause GetTupleForTrigger() to lock
+	 * a tuple created by the current command and fail as invisible.
+	 */
+	if (delRelInfo->ri_TrigDesc &&
+		delRelInfo->ri_TrigDesc->trig_delete_before_row)
+	{
+		bool		shouldFree;
+		HeapTuple	deltuple;
+		bool		proceed;
+
+		deltuple = ExecFetchSlotHeapTuple(delSlot, true, &shouldFree);
+		proceed = ExecDeletePrologue(context, delRelInfo, NULL, deltuple,
+									 NULL, result);
+		if (shouldFree)
+		{
+			ExecClearTuple(ExecGetTriggerOldSlot(estate, delRelInfo));
+			heap_freetuple(deltuple);
+		}
+		if (!proceed)
+			return false;
+	}
+
+	*result = execDelete4Merge(context, delRelInfo, delTid, false);
+	if (*result != TM_Ok)
+		return false;
+
+	/* Fire row-level after delete trigger */
+	ExecDeleteEpilogue(context, delRelInfo, delTid, NULL, false);
+	mtstate->mt_merge_action = del;
+	mtstate->mt_merge_deleted += 1;
+	*deleted = true;
+	return true;
+}
 
 /*
  * IvyExecMergeMatched:
@@ -263,9 +373,21 @@ lmerge_matched:
 	foreach(l, actionStates)
 	{
 		MergeActionState *relaction = (MergeActionState *) lfirst(l);
-		CmdType	 commandType = relaction->mas_action->commandType;
-		TM_Result	 result;
+		CmdType		commandType = relaction->mas_action->commandType;
+		TM_Result	result;
 		IvyUpdateContext updateCxt = {0};
+		bool		deleted_after_update = false;
+		MergeActionState *del;
+		ListCell   *ld;
+
+		/*
+		 * In Oracle MERGE syntax, CMD_DELETE only exists as an attached
+		 * DELETE WHERE clause immediately following its owning CMD_UPDATE.
+		 * Skip it here so an unmatched UPDATE does not fall through into its
+		 * attached DELETE clause.
+		 */
+		if (commandType == CMD_DELETE)
+			continue;
 
 		/*
 		 * Test condition, if any.
@@ -302,9 +424,7 @@ lmerge_matched:
 		switch (commandType)
 		{
 			case CMD_UPDATE:
-			{
-				MergeActionState *del;
-				ListCell		  *ld = lnext(actionStates, l);
+				ld = lnext(actionStates, l);
 
 				/*
 				 * Project the output tuple, and use that to update the table.
@@ -326,49 +446,105 @@ lmerge_matched:
 					break;		/* concurrent update/delete */
 				}
 
-				result = ExecUpdateAct(context, resultRelInfo, tupleid, NULL,
-										 newslot, mtstate->canSetTag, &updateCxt);
+				/* INSTEAD OF ROW UPDATE Triggers */
+				if (resultRelInfo->ri_TrigDesc &&
+					resultRelInfo->ri_TrigDesc->trig_update_instead_row)
+				{
+					if (!ExecIRUpdateTriggers(estate, resultRelInfo,
+											  oldtuple, newslot))
+						goto out;	/* "do nothing" */
+					result = TM_Ok;
+				}
+				else if (oldtuple != NULL)
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+							 errmsg("cannot update view \"%s\"",
+									RelationGetRelationName(resultRelInfo->ri_RelationDesc)),
+							 errhint("To enable updating the view, provide an INSTEAD OF UPDATE trigger or an unconditional ON UPDATE DO INSTEAD rule.")));
+				}
+				else
+				{
+					result = ExecUpdateAct(context, resultRelInfo, tupleid, NULL,
+										   newslot, canSetTag, &updateCxt);
+
+					if (updateCxt.crossPartUpdate)
+					{
+						mtstate->mt_merge_updated += 1;
+
+						if (ld && updateCxt.crossPartDestRel != NULL &&
+							updateCxt.crossPartInsertedSlot != NULL)
+						{
+							del = (MergeActionState *) lfirst(ld);
+							if (del->mas_action->commandType == CMD_DELETE)
+							{
+								if (!IvyExecMergeUpdateDelete(context,
+															  updateCxt.crossPartDestRel,
+															  &updateCxt.crossPartInsertedSlot->tts_tid,
+															  false,
+															  del,
+															  newslot,
+															  updateCxt.crossPartInsertedSlot,
+															  &result,
+															  &deleted_after_update))
+								{
+									if (result == TM_Ok)
+									{
+										rslot = context->cpUpdateReturningSlot;
+										goto out;
+									}
+									break;
+								}
+								if (deleted_after_update)
+								{
+									if (updateCxt.crossPartDestRel->ri_projectReturning)
+										rslot = IvyExecProcessReturning(context,
+																		updateCxt.crossPartDestRel,
+																		CMD_DELETE,
+																		updateCxt.crossPartInsertedSlot,
+																		NULL,
+																		context->planSlot);
+									goto out;
+								}
+							}
+						}
+
+						rslot = context->cpUpdateReturningSlot;
+						goto out;
+					}
+				}
+
 				if (result == TM_Ok)
 				{
 					/* Fire row-level after update trigger */
 					ExecUpdateEpilogue(context, &updateCxt, resultRelInfo,
-										 tupleid, NULL, newslot);
+									   tupleid, NULL, newslot);
 					mtstate->mt_merge_updated += 1;
 
 					if (canSetTag)
 						(estate->es_processed)++;
-				}
 
-				if (ld)
-				{
-					del = (MergeActionState *) lfirst(ld);
-					if (del->mas_action->commandType == CMD_DELETE)
+					if (ld)
 					{
-						econtext->ecxt_scantuple = newslot;
-						if (ExecQual(del->mas_whenqual, econtext))
+						del = (MergeActionState *) lfirst(ld);
+						if (del->mas_action->commandType == CMD_DELETE)
 						{
-							/* Fire row-level before delete trigger */
-							if (!ExecDeletePrologue(context, resultRelInfo, &newslot->tts_tid, NULL, NULL, &result))
+							if (!IvyExecMergeUpdateDelete(context,
+														  resultRelInfo,
+														  &newslot->tts_tid,
+														  oldtuple != NULL,
+														  del,
+														  newslot,
+														  newslot,
+														  &result,
+														  &deleted_after_update))
 							{
-								if (result == TM_Ok)
-									goto out;	/* "do nothing" */
-								break;
+								if (result != TM_Ok)
+									break;
 							}
-							result = execDelete4Merge(context, resultRelInfo, &newslot->tts_tid, false);
-							if (result == TM_Ok)
-							{
-								/* Fire row-level after delete trigger */
-								ExecDeleteEpilogue(context, resultRelInfo, &newslot->tts_tid, NULL, false);
-								mtstate->mt_merge_deleted += 1;
-							}
-						}
-						else
-						{
-							econtext->ecxt_scantuple = resultRelInfo->ri_oldTupleSlot;
 						}
 					}
 				}
-			}
 				break;
 
 			case CMD_DELETE:
@@ -619,12 +795,20 @@ lmerge_matched:
 			switch (commandType)
 			{
 				case CMD_UPDATE:
-					rslot = IvyExecProcessReturning(context,
-													resultRelInfo,
-													CMD_UPDATE,
-													resultRelInfo->ri_oldTupleSlot,
-													newslot,
-													context->planSlot);
+					if (deleted_after_update)
+						rslot = IvyExecProcessReturning(context,
+														resultRelInfo,
+														CMD_DELETE,
+														newslot,
+														NULL,
+														context->planSlot);
+					else
+						rslot = IvyExecProcessReturning(context,
+														resultRelInfo,
+														CMD_UPDATE,
+														resultRelInfo->ri_oldTupleSlot,
+														newslot,
+														context->planSlot);
 
 					break;
 
@@ -679,8 +863,8 @@ IvytransformMergeStmt(ParseState *pstate, MergeStmt *stmt)
 	bool		is_terminal[3];
 	Index		sourceRTI;
 	List	   *mergeActionList;
+	List	   *expandedClauses = NIL;
 	ParseNamespaceItem *nsitem;
-	int			delete_clause = -1;
 
 	/* There can't be any outer WITH to worry about */
 	Assert(pstate->p_ctenamespace == NIL);
@@ -729,14 +913,9 @@ IvytransformMergeStmt(ParseState *pstate, MergeStmt *stmt)
 				delstmt = mergeWhenClause->update_delete;
 				if (delstmt != NULL)
 				{
-					/*
-					 * Here we add the DELETE part of the syntax to MERGE statement's
-					 * WHEN/MATCHED list. Also ensure that the DELETE is added at the
-					 * end of WHEN/MATCHED lists.
-					 */
-					stmt->mergeWhenClauses = lappend(stmt->mergeWhenClauses, mergeWhenClause->update_delete);
+					delstmt->matchKind = mergeWhenClause->matchKind;
 					mergeWhenClause->update_delete = NULL;
-					delete_clause = 1;
+					targetPerms |= ACL_DELETE;
 				}
 				targetPerms |= ACL_UPDATE;
 				break;
@@ -757,9 +936,14 @@ IvytransformMergeStmt(ParseState *pstate, MergeStmt *stmt)
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("unreachable WHEN clause specified after unconditional WHEN clause")));
-		if (mergeWhenClause->condition == NULL && delete_clause == -1)
+		if (mergeWhenClause->condition == NULL)
 			is_terminal[mergeWhenClause->matchKind] = true;
+
+		expandedClauses = lappend(expandedClauses, mergeWhenClause);
+		if (delstmt != NULL)
+			expandedClauses = lappend(expandedClauses, delstmt);
 	}
+	stmt->mergeWhenClauses = expandedClauses;
 
 	/*
 	 * Set up the MERGE target table.  The target table is added to the

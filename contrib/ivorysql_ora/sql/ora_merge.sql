@@ -476,3 +476,202 @@ select * from wq_target_TIMU048170046;
 DROP function merge_when_and_write_TIMU048170046;
 DROP table wq_target_TIMU048170046;
 DROP table wq_source_TIMU048170046;
+
+--
+-- Test MERGE on trigger-updatable views (UPDATE and UPDATE ... DELETE WHERE)
+--
+CREATE TABLE merge_view_base (id int PRIMARY KEY, val int);
+INSERT INTO merge_view_base VALUES (1, 10), (2, 20), (3, 30);
+CREATE VIEW merge_view_upd AS SELECT id, val FROM merge_view_base;
+
+CREATE OR REPLACE FUNCTION merge_view_upd_fn() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP = 'UPDATE' THEN
+        UPDATE merge_view_base SET val = NEW.val WHERE id = OLD.id;
+        RETURN NEW;
+    ELSIF TG_OP = 'DELETE' THEN
+        DELETE FROM merge_view_base WHERE id = OLD.id;
+        RETURN OLD;
+    END IF;
+    RETURN NULL;
+END;
+$$;
+/
+
+CREATE TRIGGER merge_view_upd_trg
+    INSTEAD OF UPDATE ON merge_view_upd
+    FOR EACH ROW EXECUTE FUNCTION merge_view_upd_fn();
+
+-- View with INSTEAD OF UPDATE only: plain UPDATE succeeds
+MERGE INTO merge_view_upd t
+USING (SELECT 1 AS id, 15 AS val) s
+ON (t.id = s.id)
+WHEN MATCHED THEN UPDATE SET val = s.val;
+SELECT * FROM merge_view_base ORDER BY id;
+
+-- View without INSTEAD OF DELETE: DELETE WHERE errors cleanly instead of crashing
+MERGE INTO merge_view_upd t
+USING (SELECT 1 AS id, -5 AS val) s
+ON (t.id = s.id)
+WHEN MATCHED THEN UPDATE SET val = s.val DELETE WHERE t.val < 0;
+SELECT * FROM merge_view_base ORDER BY id;
+
+-- View with both INSTEAD OF UPDATE and INSTEAD OF DELETE: UPDATE + DELETE WHERE works
+CREATE TRIGGER merge_view_del_trg
+    INSTEAD OF DELETE ON merge_view_upd
+    FOR EACH ROW EXECUTE FUNCTION merge_view_upd_fn();
+
+MERGE INTO merge_view_upd t
+USING (VALUES (1, -1), (2, 25)) AS s(id, val)
+ON (t.id = s.id)
+WHEN MATCHED THEN UPDATE SET val = s.val DELETE WHERE s.val < 0
+RETURNING merge_action(), t.id, t.val;
+SELECT * FROM merge_view_base ORDER BY id;
+
+DROP VIEW merge_view_upd;
+DROP FUNCTION merge_view_upd_fn();
+DROP TABLE merge_view_base;
+
+--
+-- Test cross-partition MERGE UPDATE and UPDATE ... DELETE WHERE
+--
+CREATE TABLE merge_part (id int, part int, val int) PARTITION BY LIST (part);
+CREATE TABLE merge_part_1 PARTITION OF merge_part FOR VALUES IN (1);
+CREATE TABLE merge_part_2 PARTITION OF merge_part FOR VALUES IN (2);
+INSERT INTO merge_part VALUES (1, 1, 10), (2, 1, 20), (3, 1, 30);
+
+-- Cross-partition UPDATE without DELETE WHERE (row 2 moves to part 2)
+-- and with DELETE WHERE (row 1 moves to part 2 then gets deleted from part 2;
+-- sibling row 3 in part 1 must remain intact).
+MERGE INTO merge_part t
+USING (VALUES (1, 2, -5), (2, 2, 25)) AS s(id, part, val)
+ON (t.id = s.id)
+WHEN MATCHED THEN UPDATE SET part = s.part, val = s.val DELETE WHERE t.val < 0;
+
+SELECT tableoid::regclass AS part_rel, id, part, val FROM merge_part ORDER BY id;
+DROP TABLE merge_part;
+
+--
+-- Test MERGE UPDATE ... DELETE WHERE with RETURNING merge_action()
+--
+CREATE TABLE merge_ret_t (id int PRIMARY KEY, val int);
+INSERT INTO merge_ret_t VALUES (1, 10), (2, 20);
+MERGE INTO merge_ret_t t
+USING (VALUES (1, -5), (2, 25)) AS s(id, val)
+ON (t.id = s.id)
+WHEN MATCHED THEN UPDATE SET val = s.val DELETE WHERE t.val < 0
+RETURNING merge_action(), t.id, t.val;
+SELECT * FROM merge_ret_t ORDER BY id;
+DROP TABLE merge_ret_t;
+
+--
+-- Test cross-partition MERGE UPDATE ... DELETE WHERE with RETURNING on a
+-- destination partition having a dropped column, reordered columns, and a
+-- BEFORE INSERT trigger.
+--
+CREATE TABLE merge_part_ret (id int, part int, val int) PARTITION BY LIST (part);
+CREATE TABLE merge_part_ret_1 PARTITION OF merge_part_ret FOR VALUES IN (1);
+CREATE TABLE merge_part_ret_2 (extra text, val int, part int, id int);
+ALTER TABLE merge_part_ret_2 DROP COLUMN extra;
+ALTER TABLE merge_part_ret ATTACH PARTITION merge_part_ret_2 FOR VALUES IN (2);
+
+CREATE OR REPLACE FUNCTION merge_part_ret_bi_fn() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    NEW.val := NEW.val * 10;
+    RETURN NEW;
+END;
+$$;
+/
+
+CREATE TRIGGER merge_part_ret_bi_trg
+    BEFORE INSERT ON merge_part_ret_2
+    FOR EACH ROW EXECUTE FUNCTION merge_part_ret_bi_fn();
+
+INSERT INTO merge_part_ret VALUES (1, 1, 10), (2, 1, 20), (3, 1, 30);
+
+MERGE INTO merge_part_ret t
+USING (VALUES (1, 2, -5), (2, 2, 25)) AS s(id, part, val)
+ON (t.id = s.id)
+WHEN MATCHED THEN UPDATE SET part = s.part, val = s.val DELETE WHERE t.val < 0
+RETURNING tableoid::regclass AS ret_rel, merge_action(), t.id, t.part, t.val;
+
+SELECT tableoid::regclass AS part_rel, id, part, val FROM merge_part_ret ORDER BY id;
+DROP TABLE merge_part_ret;
+DROP FUNCTION merge_part_ret_bi_fn();
+
+--
+-- Test multiple WHEN MATCHED clauses: unmatched first UPDATE ... DELETE WHERE
+-- must skip its attached DELETE clause and evaluate subsequent WHEN MATCHED.
+--
+CREATE TABLE merge_multi_when (id int PRIMARY KEY, val int);
+INSERT INTO merge_multi_when VALUES (1, -10), (2, 20), (3, -30);
+
+MERGE INTO merge_multi_when t
+USING (VALUES (1, 100, 2), (2, -1, 1), (3, 200, 2)) AS s(id, val, flag)
+ON (t.id = s.id)
+WHEN MATCHED THEN UPDATE SET val = s.val WHERE s.flag = 1 DELETE WHERE t.val < 0
+WHEN MATCHED THEN UPDATE SET val = s.val + 1000 WHERE s.flag = 2
+RETURNING merge_action(), t.id, t.val;
+
+SELECT * FROM merge_multi_when ORDER BY id;
+DROP TABLE merge_multi_when;
+
+--
+-- Test WHEN NOT MATCHED BY SOURCE THEN UPDATE ... DELETE WHERE preserves
+-- matchKind and does not hijack a preceding WHEN MATCHED THEN UPDATE.
+--
+CREATE TABLE merge_nmbs (id int PRIMARY KEY, val int);
+INSERT INTO merge_nmbs VALUES (1, -20), (2, -5), (3, 50);
+
+MERGE INTO merge_nmbs t
+USING (VALUES (1, -30)) AS s(id, val)
+ON (t.id = s.id)
+WHEN MATCHED THEN UPDATE SET val = s.val
+WHEN NOT MATCHED BY SOURCE THEN UPDATE SET val = t.val - 10 DELETE WHERE t.val < 0
+RETURNING merge_action(), t.id, t.val;
+
+SELECT * FROM merge_nmbs ORDER BY id;
+DROP TABLE merge_nmbs;
+
+--
+-- Test BEFORE DELETE trigger returning NULL aborts DELETE WHERE while keeping
+-- the UPDATE and reporting UPDATE in RETURNING merge_action().
+--
+CREATE TABLE merge_bd_skip (id int PRIMARY KEY, val int);
+INSERT INTO merge_bd_skip VALUES (1, 10), (2, 20);
+
+CREATE OR REPLACE FUNCTION merge_bd_skip_fn() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF OLD.id = 1 THEN
+        RETURN NULL;
+    END IF;
+    RETURN OLD;
+END;
+$$;
+/
+
+CREATE TRIGGER merge_bd_skip_trg
+    BEFORE DELETE ON merge_bd_skip
+    FOR EACH ROW EXECUTE FUNCTION merge_bd_skip_fn();
+
+MERGE INTO merge_bd_skip t
+USING (VALUES (1, -5), (2, -6)) AS s(id, val)
+ON (t.id = s.id)
+WHEN MATCHED THEN UPDATE SET val = s.val DELETE WHERE t.val < 0
+RETURNING merge_action(), t.id, t.val;
+
+SELECT * FROM merge_bd_skip ORDER BY id;
+DROP TABLE merge_bd_skip;
+DROP FUNCTION merge_bd_skip_fn();
+
+--
+-- Test unreachable WHEN clause check is preserved after UPDATE ... DELETE WHERE
+--
+CREATE TABLE merge_unreach_t (id int, val int);
+MERGE INTO merge_unreach_t t
+USING (SELECT 1 AS id, 2 AS val) s
+ON (t.id = s.id)
+WHEN MATCHED THEN UPDATE SET val = s.val DELETE WHERE t.val < 0
+WHEN NOT MATCHED THEN INSERT VALUES (s.id, s.val)
+WHEN NOT MATCHED THEN INSERT VALUES (s.id, s.val + 1);
+DROP TABLE merge_unreach_t;
