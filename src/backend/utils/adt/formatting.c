@@ -1112,6 +1112,7 @@ static bool do_to_timestamp(const text *date_txt, const text *fmt, Oid collid, b
 							struct pg_tm *tm, fsec_t *fsec, struct fmt_tz *tz,
 							int *fprec, uint32 *flags, Node *escontext);
 static char *fill_str(char *str, int c, int max);
+static void ora_fix_blank_zero(char *result, NUMDesc *num, const char *numstr);
 static FormatNode *NUM_cache(int len, NUMDesc *Num, const text *pars_str, bool *shouldFree);
 static char *int_to_roman(int number);
 static int	roman_to_int(NUMProc *Np, size_t input_len);
@@ -5895,6 +5896,34 @@ fill_str(char *str, int c, int max)
 	return str;
 }
 
+/*
+ * Oracle's B format element prints blanks for the integer part of a fixed-point
+ * number when that part is zero.  PostgreSQL has no such element, so the value
+ * arrives here already rendered with a leading zero; replace the rendered field
+ * with blanks when the whole value is zero, as Oracle does.  With FM the field
+ * collapses to nothing, again matching Oracle.
+ */
+static void
+ora_fix_blank_zero(char *result, NUMDesc *num, const char *numstr)
+{
+	const char *p;
+
+	if (ORA_PARSER != compatible_db || num == NULL || !IS_BLANK(num))
+		return;
+
+	/* only a value whose every digit is zero takes the blank form */
+	for (p = numstr; *p; p++)
+	{
+		if (*p >= '1' && *p <= '9')
+			return;
+	}
+
+	if (IS_FILLMODE(num))
+		result[0] = '\0';
+	else
+		memset(result, ' ', strlen(result));
+}
+
 /* This works the same as DCH_prevent_counter_overflow */
 static inline void
 NUM_prevent_counter_overflow(void)
@@ -8104,6 +8133,9 @@ do { \
 	size_t	len; \
 									\
 	NUM_processor(format, &Num, VARDATA(result), numstr, 0, out_pre_spaces, sign, true, PG_GET_COLLATION()); \
+									\
+	/* Oracle's B element prints blanks when the whole value is zero */ \
+	ora_fix_blank_zero(VARDATA(result), &Num, numstr); \
 									\
 	if (shouldFree)					\
 		pfree(format);				\
