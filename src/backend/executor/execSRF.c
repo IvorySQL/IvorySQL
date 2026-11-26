@@ -155,8 +155,8 @@ ExecMakeTableFunctionResult(SetExprState *setexpr,
 			funcexpr->funccollid = chcollationoid;
 		}
 		else if (!FUNC_EXPR_FROM_PG_PROC(funcexpr->function_from) &&
-				funcexpr->function_from != FUNC_FROM_WITH_CLAUSE &&
-				subproc_should_change_return_type(funcexpr,
+				 !FUNC_EXPR_FROM_WITH_CLAUSE(funcexpr->function_from) &&
+				 subproc_should_change_return_type(funcexpr,
 									&resulttype,
 									&chtypmod,
 									&chcollationoid))
@@ -752,7 +752,7 @@ init_sexpr(Oid foid, Oid input_collation, Expr *node,
 		 * through to the PL/iSQL subproc machinery, which would surface a
 		 * confusing internal error.
 		 */
-		if (funcexpr->function_from == FUNC_FROM_WITH_CLAUSE)
+		if (FUNC_EXPR_FROM_WITH_CLAUSE(funcexpr->function_from))
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("WITH clause function cannot be used as a table or set-returning function"),

@@ -767,11 +767,17 @@ typedef enum CoercionForm
 #define FUNC_FROM_PACKAGE		'p'
 #define FUNC_FROM_PACKGE_INITBODY 'b'
 #define FUNC_FROM_WITH_CLAUSE	'w'	/* WITH clause inline function/procedure */
+#define FUNC_FROM_OUTER_WITH_CLAUSE 'W' /* enclosing active WITH function
+										 * frame */
+
+#define FUNC_EXPR_FROM_WITH_CLAUSE(function_from) \
+	((function_from) == FUNC_FROM_WITH_CLAUSE || \
+	 (function_from) == FUNC_FROM_OUTER_WITH_CLAUSE)
 
 #define FUNC_EXPR_FROM_PG_PROC(function_from) \
 	(function_from != FUNC_FROM_SUBPROCFUNC && function_from != FUNC_FROM_PACKAGE \
 	&& function_from != FUNC_FROM_PACKGE_INITBODY \
-	&& function_from != FUNC_FROM_WITH_CLAUSE)
+	&& !FUNC_EXPR_FROM_WITH_CLAUSE(function_from))
 
 #define FUNC_EXPR_FROM_PACKAGE(function_from) \
 	(function_from == FUNC_FROM_PACKAGE)

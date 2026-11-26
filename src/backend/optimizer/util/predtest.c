@@ -1498,6 +1498,7 @@ clause_is_strict_for(Node *clause, Node *subexpr, bool allow_false)
 		return false;
 	}
 	if (is_funcclause(clause) &&
+		FUNC_EXPR_FROM_PG_PROC(((FuncExpr *) clause)->function_from) &&
 		func_strict(((FuncExpr *) clause)->funcid))
 	{
 		foreach(lc, ((FuncExpr *) clause)->args)

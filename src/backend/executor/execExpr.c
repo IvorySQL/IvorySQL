@@ -2769,6 +2769,7 @@ ExecInitFunc(ExprEvalStep *scratch, Expr *node, List *args, Oid funcid,
 	ListCell   *lc;
 	bool		is_subproc_func = false;
 	bool		is_with_func = false;
+	bool		is_outer_with_func = false;
 
 	if (nodeTag(node) == T_FuncExpr)
 	{
@@ -2776,6 +2777,11 @@ ExecInitFunc(ExprEvalStep *scratch, Expr *node, List *args, Oid funcid,
 
 		if (funcexpr->function_from == FUNC_FROM_WITH_CLAUSE)
 			is_with_func = true;
+		else if (funcexpr->function_from == FUNC_FROM_OUTER_WITH_CLAUSE)
+		{
+			is_with_func = true;
+			is_outer_with_func = true;
+		}
 		else if (!FUNC_EXPR_FROM_PG_PROC(funcexpr->function_from))
 			is_subproc_func = true;
 	}
@@ -2814,22 +2820,29 @@ ExecInitFunc(ExprEvalStep *scratch, Expr *node, List *args, Oid funcid,
 	{
 		/*
 		 * WITH-clause inline functions dispatch through the plisql call
-		 * handler.  fn_oid stores the function's index within the WITH clause
-		 * (not a real pg_proc OID), and fn_extra stores the query EState so
-		 * the handler can find/build the WithFuncContainer.
+		 * handler.  fn_oid stores the function's index within its owning
+		 * PlannedStmt->withFuncDefs (not a real pg_proc OID), and fn_extra
+		 * stores the owning EState so the handler can find/build the
+		 * WithFuncContainer.
 		 *
-		 * We must store the EState of the outermost query that owns the WITH
-		 * clause, NOT the EState of any intermediate SPI execution.
-		 * plisql_active_with_func_estate (set by plisql_call_handler before
-		 * invoking each WITH function) always points to the correct EState, so
-		 * use it whenever it is available.  The fallback via state->parent->state
-		 * handles the initial call from the outer query before any WITH function
-		 * has started executing.
+		 * Calls tagged FUNC_FROM_OUTER_WITH_CLAUSE were resolved against an
+		 * enclosing active WITH FUNCTION frame
+		 * (plisql_active_with_func_estate), so they must always bind to that
+		 * outer EState even when the current inner query also defines or
+		 * expands its own WITH functions (e.g. via a view).  Calls tagged
+		 * FUNC_FROM_WITH_CLAUSE belong to the current query's own EState.
 		 */
 		EState	   *qstate;
 
-		if (plisql_active_with_func_estate != NULL)
-			qstate = plisql_active_with_func_estate;
+		if (is_outer_with_func)
+		{
+			if (plisql_active_with_func_estate != NULL)
+				qstate = plisql_active_with_func_estate;
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+						 errmsg("cannot execute WITH clause function outside a query")));
+		}
 		else if (state->parent && state->parent->state)
 			qstate = state->parent->state;
 		else
@@ -5223,7 +5236,7 @@ ExecInitFuncWithOutParams(Expr *node, ExprState *state,
 			rettype = get_func_real_rettype(func_tuple);
 			funcname = NameStr(((Form_pg_proc) GETSTRUCT(func_tuple))->proname);
 		}
-		else if (funcexpr->function_from == FUNC_FROM_WITH_CLAUSE)
+		else if (FUNC_EXPR_FROM_WITH_CLAUSE(funcexpr->function_from))
 		{
 			/* WITH-clause inline functions have no OUT params */
 			return;

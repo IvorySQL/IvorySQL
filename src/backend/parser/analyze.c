@@ -454,6 +454,16 @@ transformStmt(ParseState *pstate, Node *parseTree)
 	result->querySource = QSRC_ORIGINAL;
 	result->canSetTag = true;
 
+	/*
+	 * Attach all inline WITH FUNCTION/PROCEDURE definitions collected across
+	 * the statement (including subqueries, CTEs, and set-operation branches)
+	 * to the root optimizable Query in global funcindex order.
+	 */
+	if (pstate->parentParseState == NULL &&
+		result->commandType != CMD_UTILITY &&
+		pstate->p_all_with_func_defs != NIL)
+		result->withFuncDefs = pstate->p_all_with_func_defs;
+
 	return result;
 }
 
@@ -593,7 +603,6 @@ transformDeleteStmt(ParseState *pstate, DeleteStmt *stmt)
 		qry->hasRecursive = stmt->withClause->recursive;
 		qry->cteList = transformWithClause(pstate, stmt->withClause);
 		qry->hasModifyingCTE = pstate->p_hasModifyingCTE;
-		qry->withFuncDefs = stmt->withClause->plsql_defs;
 	}
 
 	/* set up range table with just the result rel */
@@ -697,7 +706,6 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 		qry->hasRecursive = stmt->withClause->recursive;
 		qry->cteList = transformWithClause(pstate, stmt->withClause);
 		qry->hasModifyingCTE = pstate->p_hasModifyingCTE;
-		qry->withFuncDefs = stmt->withClause->plsql_defs;
 	}
 
 	qry->override = stmt->override;
@@ -1793,7 +1801,6 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt,
 		qry->hasRecursive = stmt->withClause->recursive;
 		qry->cteList = transformWithClause(pstate, stmt->withClause);
 		qry->hasModifyingCTE = pstate->p_hasModifyingCTE;
-		qry->withFuncDefs = stmt->withClause->plsql_defs;
 	}
 
 	/* Complain if we get called from someplace where INTO is not allowed */
@@ -1971,7 +1978,6 @@ transformValuesClause(ParseState *pstate, SelectStmt *stmt)
 		qry->hasRecursive = stmt->withClause->recursive;
 		qry->cteList = transformWithClause(pstate, stmt->withClause);
 		qry->hasModifyingCTE = pstate->p_hasModifyingCTE;
-		qry->withFuncDefs = stmt->withClause->plsql_defs;
 	}
 
 	/*
@@ -2239,7 +2245,6 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 		qry->hasRecursive = withClause->recursive;
 		qry->cteList = transformWithClause(pstate, withClause);
 		qry->hasModifyingCTE = pstate->p_hasModifyingCTE;
-		qry->withFuncDefs = withClause->plsql_defs;
 	}
 
 	/*
@@ -2910,7 +2915,6 @@ transformUpdateStmt(ParseState *pstate, UpdateStmt *stmt)
 		qry->hasRecursive = stmt->withClause->recursive;
 		qry->cteList = transformWithClause(pstate, stmt->withClause);
 		qry->hasModifyingCTE = pstate->p_hasModifyingCTE;
-		qry->withFuncDefs = stmt->withClause->plsql_defs;
 	}
 
 	qry->resultRelation = setTargetTable(pstate, stmt->relation,

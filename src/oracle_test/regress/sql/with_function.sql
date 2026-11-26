@@ -257,3 +257,246 @@ EXPLAIN (COSTS OFF, VERBOSE)
 WITH FUNCTION shows_body(n NUMBER) RETURN NUMBER IS
 BEGIN RETURN n + 100; END;
 SELECT shows_body(5) FROM dual;
+
+-- T21: Nested WITH FUNCTION via EXECUTE (different signatures must not collide or crash)
+WITH
+  FUNCTION outer_fn(x INT) RETURN INT IS
+    v VARCHAR2(100);
+  BEGIN
+    IF x <> 5 THEN
+      RETURN 42;
+    END IF;
+    EXECUTE
+      'WITH FUNCTION inner_fn(s VARCHAR2) RETURN VARCHAR2 IS BEGIN RETURN s || ''!!''; END; SELECT inner_fn(''hello'') FROM dual'
+      INTO v;
+    RETURN length(v);
+  END;
+SELECT outer_fn(5) FROM dual;
+
+-- T22: Nested WITH FUNCTION with more inner functions than outer functions
+WITH
+  FUNCTION outer_only(x NUMBER) RETURN NUMBER IS
+    v NUMBER;
+  BEGIN
+    EXECUTE
+      'WITH FUNCTION inner1(a NUMBER) RETURN NUMBER IS BEGIN RETURN a + 10; END; FUNCTION inner2(a NUMBER) RETURN NUMBER IS BEGIN RETURN a + 20; END; SELECT inner2(5) FROM dual'
+      INTO v;
+    RETURN v;
+  END;
+SELECT outer_only(5) FROM dual;
+
+-- T23: Catalog PL/iSQL function executing its own WITH FUNCTION while called from outer WITH FUNCTION
+CREATE OR REPLACE FUNCTION wf_cat_helper RETURN VARCHAR2 IS
+  v VARCHAR2(100);
+BEGIN
+  EXECUTE
+    'WITH FUNCTION inner_cat(s VARCHAR2) RETURN VARCHAR2 IS BEGIN RETURN s || ''_cat''; END; SELECT inner_cat(''abc'') FROM dual'
+    INTO v;
+  RETURN v;
+END;
+/
+WITH FUNCTION outer_caller(x INT) RETURN INT IS
+  r VARCHAR2(100);
+BEGIN
+  IF x = 999 THEN
+    RETURN 42;
+  END IF;
+  r := wf_cat_helper();
+  RETURN length(r);
+END;
+SELECT outer_caller(1) FROM dual;
+DROP FUNCTION wf_cat_helper;
+
+-- T24: Outer WITH FUNCTION + subquery WITH FUNCTION (different signatures, no index collision)
+WITH FUNCTION outer_f(x INT) RETURN INT IS
+BEGIN RETURN 42; END;
+SELECT outer_f(1),
+  (WITH FUNCTION inner_f(s VARCHAR2) RETURN VARCHAR2 IS
+   BEGIN RETURN s || '!'; END;
+   SELECT inner_f('hello') FROM dual) AS sub_val
+FROM dual;
+
+-- T25: Subquery calling both outer WITH FUNCTION and its own WITH FUNCTION
+WITH FUNCTION outer_f(n NUMBER) RETURN NUMBER IS
+BEGIN RETURN n * 10; END;
+SELECT outer_f(2),
+  (WITH FUNCTION inner_f(n NUMBER) RETURN NUMBER IS
+   BEGIN RETURN n + 1; END;
+   SELECT outer_f(3) + inner_f(4) FROM dual) AS combined
+FROM dual;
+
+-- T26: Subquery shadowing same-named recursive WITH FUNCTION
+WITH FUNCTION f(n NUMBER) RETURN NUMBER IS
+BEGIN RETURN n * 10; END;
+SELECT f(2) AS outer_res,
+  (WITH FUNCTION f(n NUMBER) RETURN NUMBER IS
+   BEGIN
+     IF n <= 1 THEN RETURN 1; END IF;
+     RETURN n + f(n - 1);
+   END;
+   SELECT f(4) FROM dual) AS inner_res
+FROM dual;
+
+-- T27: Sibling subqueries with same-named recursive WITH FUNCTIONs stay isolated
+SELECT
+  (WITH FUNCTION f(n NUMBER) RETURN NUMBER IS
+   BEGIN
+     IF n <= 1 THEN RETURN 1; END IF;
+     RETURN n * f(n - 1);
+   END;
+   SELECT f(4) FROM dual) AS fact4,
+  (WITH FUNCTION f(n NUMBER) RETURN NUMBER IS
+   BEGIN
+     IF n <= 1 THEN RETURN 1; END IF;
+     RETURN n + f(n - 1);
+   END;
+   SELECT f(4) FROM dual) AS sum4
+FROM dual;
+
+-- T28: WITH FUNCTION inside FROM subquery, CTE body, UNION branch, and INSERT subquery
+SELECT * FROM (
+  WITH FUNCTION sub_fn(n NUMBER) RETURN NUMBER IS
+  BEGIN RETURN n + 1; END;
+  SELECT sub_fn(5) AS r FROM dual
+) t;
+
+WITH c AS (
+  WITH FUNCTION cf(n NUMBER) RETURN NUMBER IS
+  BEGIN RETURN n + 100; END;
+  SELECT cf(5) AS v FROM dual
+)
+SELECT v FROM c;
+
+SELECT 1 AS v FROM dual
+UNION ALL
+(WITH FUNCTION uf(n NUMBER) RETURN NUMBER IS
+ BEGIN RETURN n * 2; END;
+ SELECT uf(5) FROM dual);
+
+CREATE TABLE wf_ins_sub (v NUMBER);
+INSERT INTO wf_ins_sub
+  SELECT * FROM (
+    WITH FUNCTION insf(n NUMBER) RETURN NUMBER IS
+    BEGIN RETURN n * 7; END;
+    SELECT insf(3) FROM dual
+  ) s;
+SELECT v FROM wf_ins_sub;
+DROP TABLE wf_ins_sub;
+
+-- T29: Views defined with WITH FUNCTION joined together with an outer WITH FUNCTION
+BEGIN
+  EXECUTE 'CREATE VIEW wf_v1 AS WITH FUNCTION f(n NUMBER) RETURN NUMBER IS BEGIN IF n <= 1 THEN RETURN 1; END IF; RETURN n * f(n - 1); END; SELECT f(4) AS a FROM dual';
+  EXECUTE 'CREATE VIEW wf_v2 AS WITH FUNCTION f(n NUMBER) RETURN NUMBER IS BEGIN IF n <= 1 THEN RETURN 1; END IF; RETURN n + f(n - 1); END; SELECT f(4) AS b FROM dual';
+END;
+/
+WITH FUNCTION f(n NUMBER) RETURN NUMBER IS
+BEGIN RETURN n * 100; END;
+SELECT f(1) AS outer_v, wf_v1.a, wf_v2.b FROM wf_v1, wf_v2;
+DROP VIEW wf_v1, wf_v2;
+
+-- T30: Recursive and sibling WITH FUNCTION calls with DEFAULT parameters and subquery recursion
+WITH FUNCTION rec_def(n NUMBER, step NUMBER DEFAULT 1) RETURN NUMBER IS
+BEGIN
+  IF n <= 0 THEN RETURN 0; END IF;
+  RETURN n + rec_def(n - step);
+END;
+SELECT rec_def(4) FROM dual;
+
+WITH FUNCTION rec_sub(n NUMBER) RETURN NUMBER IS
+  v NUMBER;
+BEGIN
+  IF n <= 1 THEN RETURN 1; END IF;
+  SELECT (SELECT rec_sub(n - 1) FROM dual) INTO v FROM dual;
+  RETURN n * v;
+END;
+SELECT rec_sub(5) FROM dual;
+
+-- T31: Parallel query must treat WITH FUNCTION as parallel-unsafe (no worker crash)
+CREATE TABLE wf_par_test AS SELECT generate_series(1, 200) AS id;
+SET debug_parallel_query = on;
+SET max_parallel_workers_per_gather = 2;
+WITH FUNCTION pf(n INT) RETURN INT IS
+BEGIN RETURN n + 1; END;
+SELECT count(*), sum(pf(id)) FROM wf_par_test;
+RESET max_parallel_workers_per_gather;
+RESET debug_parallel_query;
+DROP TABLE wf_par_test;
+
+-- T32: Security barrier view must not push non-leakproof WITH FUNCTION below barrier
+CREATE TABLE wf_sec_tab (id INT, is_public BOOLEAN, secret TEXT);
+INSERT INTO wf_sec_tab VALUES (1, true, 'ok'), (2, false, 'TOP_SECRET');
+CREATE VIEW wf_sec_view WITH (security_barrier = true) AS
+  SELECT id, secret FROM wf_sec_tab WHERE is_public;
+WITH FUNCTION leak(s TEXT) RETURN INT IS
+BEGIN
+  IF s = 'TOP_SECRET' THEN
+    RAISE EXCEPTION 'LEAKED_SECRET';
+  END IF;
+  RETURN 1;
+END;
+SELECT id FROM wf_sec_view WHERE leak(secret) = 1;
+DROP VIEW wf_sec_view;
+DROP TABLE wf_sec_tab;
+
+-- T33: Partial index / predicate testing must not look up WITH FUNCTION index in pg_proc
+CREATE TABLE wf_partidx (id INT, val INT);
+INSERT INTO wf_partidx VALUES (1, 10), (2, NULL);
+CREATE INDEX wf_partidx_idx ON wf_partidx(id) WHERE val IS NOT NULL;
+ANALYZE wf_partidx;
+WITH FUNCTION f_nonstrict(x INT) RETURN INT IS
+BEGIN
+  RETURN COALESCE(x, 99);
+END;
+SELECT id FROM wf_partidx WHERE f_nonstrict(val) = 99;
+DROP TABLE wf_partidx;
+
+-- T34: Compile error in WITH FUNCTION caught in EXCEPTION WHEN OTHERS keeps error_context_stack valid
+DECLARE
+  v NUMBER;
+BEGIN
+  BEGIN
+    EXECUTE
+      'WITH FUNCTION bad_fn(n NUMBER) RETURN NUMBER IS BEGIN RETURN n + ; END; SELECT bad_fn(1) FROM dual'
+      INTO v;
+  EXCEPTION
+    WHEN OTHERS THEN
+      RAISE NOTICE 'caught: %', SQLERRM;
+  END;
+  RAISE NOTICE 'after catch ok';
+END;
+/
+
+-- T35: Outer WITH FUNCTION static SQL calling both itself and a view with same-typed WITH FUNCTION
+BEGIN
+  EXECUTE 'CREATE VIEW wf_v_int AS WITH FUNCTION vf(n INT) RETURN INT IS BEGIN RETURN n + 999; END; SELECT vf(1) AS v FROM dual';
+END;
+/
+WITH FUNCTION outer_fn(x INT) RETURN INT IS
+  a INT;
+  b INT;
+BEGIN
+  IF x = 0 THEN
+    RETURN 100;
+  END IF;
+  SELECT outer_fn(0), wf_v_int.v INTO a, b FROM wf_v_int;
+  RETURN a * 10000 + b;
+END;
+SELECT outer_fn(1) FROM dual;
+DROP VIEW wf_v_int;
+
+-- T36: Outer WITH FUNCTION static SQL calling both itself (INT) and a view with VARCHAR2 WITH FUNCTION
+BEGIN
+  EXECUTE 'CREATE VIEW wf_v_str AS WITH FUNCTION vf(s VARCHAR2) RETURN VARCHAR2 IS BEGIN RETURN s || ''!''; END; SELECT vf(''hi'') AS s FROM dual';
+END;
+/
+WITH FUNCTION outer_fn(x INT) RETURN INT IS
+  v VARCHAR2(100);
+BEGIN
+  IF x = 0 THEN
+    RETURN 100;
+  END IF;
+  SELECT outer_fn(0) || '_' || wf_v_str.s INTO v FROM wf_v_str;
+  RETURN length(v);
+END;
+SELECT outer_fn(1) FROM dual;
+DROP VIEW wf_v_str;

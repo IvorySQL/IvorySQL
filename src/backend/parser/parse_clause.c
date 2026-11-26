@@ -5344,7 +5344,7 @@ check_funcexpr_outparams(List *funcexprs)
 			if (argmodes == NULL)
 				continue;
 		}
-		else if (func->function_from == FUNC_FROM_WITH_CLAUSE)
+		else if (FUNC_EXPR_FROM_WITH_CLAUSE(func->function_from))
 		{
 			/*
 			 * WITH-clause inline functions never have OUT/IN OUT parameters:

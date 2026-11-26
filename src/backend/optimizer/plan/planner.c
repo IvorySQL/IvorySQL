@@ -350,6 +350,134 @@ planner(Query *parse, const char *query_string, int cursorOptions,
 	return result;
 }
 
+struct WithFuncCollectCtx
+{
+	List	   *all_defs;
+	int			max_scope_id;
+	bool		modified;
+};
+
+static bool
+remap_with_func_exprs_walker(Node *node, int *func_offset)
+{
+	if (node == NULL)
+		return false;
+
+	if (IsA(node, Query))
+	{
+		Query	   *subq = (Query *) node;
+
+		/*
+		 * Do not descend into nested queries that carry their own
+		 * withFuncDefs (e.g. a view referencing another view with WITH
+		 * functions); those will be remapped with their own offset.
+		 */
+		if (subq->withFuncDefs != NIL)
+			return false;
+
+		return query_tree_walker(subq, remap_with_func_exprs_walker,
+								 func_offset, 0);
+	}
+
+	if (IsA(node, FuncExpr))
+	{
+		FuncExpr   *fexpr = (FuncExpr *) node;
+
+		/*
+		 * Only remap calls targeting this query's own withFuncDefs; calls
+		 * marked FUNC_FROM_OUTER_WITH_CLAUSE index an enclosing active frame.
+		 */
+		if (fexpr->function_from == FUNC_FROM_WITH_CLAUSE)
+			fexpr->funcid += (Oid) (*func_offset);
+	}
+
+	return expression_tree_walker(node, remap_with_func_exprs_walker,
+								  func_offset);
+}
+
+static bool
+collect_subquery_with_func_defs_walker(Node *node,
+									   struct WithFuncCollectCtx *ctx)
+{
+	if (node == NULL)
+		return false;
+
+	if (IsA(node, Query))
+	{
+		Query	   *subq = (Query *) node;
+
+		if (subq->withFuncDefs != NIL)
+		{
+			int			func_offset = list_length(ctx->all_defs);
+			int			scope_offset = ctx->max_scope_id;
+			int			local_max_scope = 0;
+			ListCell   *lc;
+
+			if (func_offset != 0)
+				query_tree_walker(subq, remap_with_func_exprs_walker,
+								  &func_offset, 0);
+
+			foreach(lc, subq->withFuncDefs)
+			{
+				InlineFunctionDef *ifd =
+					copyObject((InlineFunctionDef *) lfirst(lc));
+				int			orig_scope = (ifd->scope_id > 0) ? ifd->scope_id : 1;
+
+				if (orig_scope > local_max_scope)
+					local_max_scope = orig_scope;
+
+				ifd->scope_id = orig_scope + scope_offset;
+				if (ifd->parent_scope_id > 0)
+					ifd->parent_scope_id += scope_offset;
+
+				ctx->all_defs = lappend(ctx->all_defs, ifd);
+			}
+
+			ctx->max_scope_id = scope_offset + local_max_scope;
+			subq->withFuncDefs = NIL;
+			ctx->modified = true;
+		}
+
+		return query_tree_walker(subq, collect_subquery_with_func_defs_walker,
+								 ctx, 0);
+	}
+
+	return expression_tree_walker(node, collect_subquery_with_func_defs_walker,
+								  ctx);
+}
+
+/*
+ * Collect any withFuncDefs still attached to nested Queries (for example,
+ * expanded views defined with WITH FUNCTION) into the top-level Query and
+ * remap their FuncExpr indices and lexical scope IDs so they do not collide.
+ */
+static void
+collect_subquery_with_func_defs(Query *parse)
+{
+	struct WithFuncCollectCtx ctx;
+	ListCell   *lc;
+
+	ctx.all_defs = list_copy(parse->withFuncDefs);
+	ctx.max_scope_id = 0;
+	ctx.modified = false;
+
+	foreach(lc, parse->withFuncDefs)
+	{
+		InlineFunctionDef *ifd = (InlineFunctionDef *) lfirst(lc);
+		int			sid = (ifd->scope_id > 0) ? ifd->scope_id : 1;
+
+		if (sid > ctx.max_scope_id)
+			ctx.max_scope_id = sid;
+	}
+
+	query_tree_walker(parse, collect_subquery_with_func_defs_walker, &ctx, 0);
+
+	if (ctx.modified)
+		parse->withFuncDefs = ctx.all_defs;
+	else
+		list_free(ctx.all_defs);
+}
+
 PlannedStmt *
 standard_planner(Query *parse, const char *query_string, int cursorOptions,
 				 ParamListInfo boundParams, ExplainState *es)
@@ -364,6 +492,13 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 	ListCell   *lp,
 			   *lr,
 			   *lc;
+
+	/*
+	 * Hoist any WITH FUNCTION/PROCEDURE definitions left on nested Queries
+	 * (such as expanded views) into the root Query before planning flattens
+	 * or pulls up subqueries.
+	 */
+	collect_subquery_with_func_defs(parse);
 
 	/*
 	 * Set up global state for this planner invocation.  This data is needed
