@@ -43,6 +43,16 @@ RETURNS varchar2
 AS 'MODULE_PATHNAME', 'ora_utl_encode_text_decode'
 LANGUAGE C IMMUTABLE;
 
+CREATE FUNCTION sys.ora_utl_raw_cast_to_varchar2(bytea)
+RETURNS varchar2
+AS 'MODULE_PATHNAME', 'ora_utl_raw_cast_to_varchar2'
+LANGUAGE C IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE FUNCTION sys.utl_encode_mimeheader_decode(buf varchar2)
+RETURNS varchar2
+AS 'MODULE_PATHNAME', 'ora_utl_encode_mimeheader_decode'
+LANGUAGE C IMMUTABLE;
+
 -- PL/iSQL package declaration
 CREATE PACKAGE utl_encode AS
 
@@ -146,7 +156,7 @@ CREATE PACKAGE BODY utl_encode AS
         ELSE
             v_enc := 'Q';
         END IF;
-        v_charset := COALESCE(encode_charset, 'UTF8');
+        v_charset := COALESCE(encode_charset, current_setting('server_encoding'));
 
         -- TEXT_ENCODE converts buf into v_charset and applies the scheme
         v_raw := sys.utl_encode_text_encode(buf, v_charset, NULL);
@@ -159,27 +169,9 @@ CREATE PACKAGE BODY utl_encode AS
     END;
 
     FUNCTION mimeheader_decode(buf IN VARCHAR2) RETURN VARCHAR2 IS
-        v_charset VARCHAR2(100);
-        v_enc VARCHAR2(1);
-        v_text VARCHAR2(4000);
-        v_raw RAW;
     BEGIN
-        v_charset := REGEXP_SUBSTR(buf, '=\?([^?]*)\?([QBq])\?', 1, 1, NULL, 1);
-        v_enc := UPPER(REGEXP_SUBSTR(buf, '=\?[^?]*\?([QBq])\?', 1, 1, NULL, 1));
-        v_text := REGEXP_SUBSTR(buf, '=\?[^?]*\?[QBq]\?(.*)\?=', 1, 1, NULL, 1);
-
-        IF v_text IS NULL THEN
-            RETURN buf;
-        END IF;
-
-        IF v_enc = 'B' THEN
-            v_raw := sys.utl_encode_base64_decode(sys.utl_raw.cast_to_raw(v_text));
-        ELSE
-            v_raw := sys.utl_encode_quoted_printable_decode(sys.utl_raw.cast_to_raw(v_text));
-        END IF;
-
-        -- convert the decoded bytes from the mime charset to the DB encoding
-        RETURN sys.utl_encode_text_decode(v_raw, v_charset, NULL);
+        RETURN sys.utl_encode_mimeheader_decode(buf);
     END;
 
 END utl_encode;
+
