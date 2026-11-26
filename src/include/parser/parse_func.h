@@ -30,6 +30,27 @@ typedef enum
 	FUNCDETAIL_COERCION,		/* it's a type coercion request */
 } FuncDetailCode;
 
+/*
+ * oracle_lob_source_hook_type --- a parse-time hook that gets to see the
+ * argument expressions of a function call before the call is resolved and
+ * before the planner folds any constant away.
+ *
+ * The hook is called with the raw argument list of the call (the expressions
+ * exactly as the caller wrote them, before any coercion is applied), the
+ * parallel argument-name list (NIL when every argument was written
+ * positionally), and the argument types the parser derived for them.  It is
+ * meant for the Oracle compatibility layer to refuse argument types that
+ * Oracle refuses while the call is still being resolved, so that the refusal
+ * does not depend on which overload happens to win the resolution.
+ *
+ * The hook raises an error for a call it refuses and returns normally for
+ * every other call; there is no return value to interpret.
+ */
+typedef void (*oracle_lob_source_hook_type) (List *funcname, List *fargs,
+											  List *fargnames, Oid *argtypes,
+											  int nargs);
+extern PGDLLIMPORT oracle_lob_source_hook_type oracle_lob_source_hook;
+
 
 extern Node *ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 							   Node *last_srf, FuncCall *fn, bool proc_call,

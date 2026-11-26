@@ -68,6 +68,13 @@ static Oid	LookupFuncNameInternal(ObjectType objtype, List *funcname,
 								   bool include_out_arguments, bool missing_ok,
 								   FuncLookupError *lookupError);
 
+/*
+ * Hook for the Oracle compatibility layer to refuse an argument type that
+ * Oracle refuses, while the call is still being resolved.  See
+ * oracle_lob_source_hook_type in parser/parse_func.h.
+ */
+oracle_lob_source_hook_type oracle_lob_source_hook = NULL;
+
 
 /*
  *	Parse a function call
@@ -2153,6 +2160,7 @@ func_get_detail(List *funcname,
 	FuncCandidateList best_candidate;
 
 	/* initialize output arguments to silence compiler warnings */
+	*fgc_flags = 0;
 	*funcid = InvalidOid;
 	*rettype = InvalidOid;
 	*retset = false;
@@ -2161,6 +2169,24 @@ func_get_detail(List *funcname,
 	*true_typeids = NULL;
 	if (argdefaults)
 		*argdefaults = NIL;
+
+	/*
+	 * Give the Oracle compatibility layer a look at the call before it is
+	 * resolved.  The hook sees the argument expressions as the caller wrote
+	 * them, which is the only point at which an argument that carries a
+	 * domain type (Oracle's CLOB and NCLOB, say) is still recognizable
+	 * whatever the rest of the call resolves onto: resolution imposes the
+	 * winning overload's parameter type on the argument, and the optimizer
+	 * then folds a constant -- its domain coercion included -- into a bare
+	 * constant of that type.
+	 *
+	 * The hook decides for itself which calls it cares about, so a call it
+	 * does not know costs it one look at the function name.
+	 */
+	if (oracle_lob_source_hook && ORA_PARSER == compatible_db &&
+		fargs != NIL)
+		(*oracle_lob_source_hook) (funcname, fargs, fargnames,
+								   argtypes, nargs);
 
 	/* Get list of possible candidates from namespace search */
 	raw_candidates = FuncnameGetCandidates(funcname, nargs, fargnames,
