@@ -329,7 +329,8 @@ END;
 --
 BEGIN
   dbms_scheduler.create_job(job_name => 'reg_job_inline', job_type => 'PLSQL_BLOCK',
-      job_action => 'BEGIN INSERT INTO sched_reg_t VALUES (1, ''inline''); END;');
+      job_action => 'BEGIN INSERT INTO sched_reg_t VALUES (1, ''inline''); END;',
+      auto_drop => FALSE);
 END;
 /
 -- jobs, programs and schedules share a namespace
@@ -502,7 +503,8 @@ SELECT id, note FROM sched_reg_t ORDER BY id;
 -- FG_JOB_ID and SCHEDULER_JOB are visible inside the running job
 BEGIN
   dbms_scheduler.create_job(job_name => 'reg_job_ctx', job_type => 'PLSQL_BLOCK',
-      job_action => 'BEGIN INSERT INTO sched_reg_t VALUES (90, ''fg=''||CASE WHEN SYS_CONTEXT(''USERENV'',''FG_JOB_ID'') IS NULL THEN ''unset'' ELSE ''set'' END||'' job=''||SYS_CONTEXT(''USERENV'',''SCHEDULER_JOB'')); END;');
+      job_action => 'BEGIN INSERT INTO sched_reg_t VALUES (90, ''fg=''||CASE WHEN SYS_CONTEXT(''USERENV'',''FG_JOB_ID'') IS NULL THEN ''unset'' ELSE ''set'' END||'' job=''||SYS_CONTEXT(''USERENV'',''SCHEDULER_JOB'')); END;',
+      auto_drop => FALSE);
   dbms_scheduler.run_job('reg_job_ctx');
 END;
 /
@@ -510,9 +512,11 @@ SELECT note FROM sched_reg_t WHERE id = 90;
 -- a nested RUN_JOB puts the caller's identity back when it returns
 BEGIN
   dbms_scheduler.create_job(job_name => 'reg_job_inner', job_type => 'PLSQL_BLOCK',
-      job_action => 'BEGIN INSERT INTO sched_reg_t VALUES (91, ''inner job=''||SYS_CONTEXT(''USERENV'',''SCHEDULER_JOB'')); END;');
+      job_action => 'BEGIN INSERT INTO sched_reg_t VALUES (91, ''inner job=''||SYS_CONTEXT(''USERENV'',''SCHEDULER_JOB'')); END;',
+      auto_drop => FALSE);
   dbms_scheduler.create_job(job_name => 'reg_job_outer', job_type => 'PLSQL_BLOCK',
-      job_action => 'BEGIN dbms_scheduler.run_job(''reg_job_inner''); INSERT INTO sched_reg_t VALUES (92, ''outer job=''||SYS_CONTEXT(''USERENV'',''SCHEDULER_JOB'')); END;');
+      job_action => 'BEGIN dbms_scheduler.run_job(''reg_job_inner''); INSERT INTO sched_reg_t VALUES (92, ''outer job=''||SYS_CONTEXT(''USERENV'',''SCHEDULER_JOB'')); END;',
+      auto_drop => FALSE);
   dbms_scheduler.run_job('reg_job_outer');
 END;
 /
@@ -603,6 +607,116 @@ SELECT job_name, state, run_count FROM user_scheduler_jobs
 SELECT job_name, status FROM user_scheduler_job_run_details
   WHERE job_name IN ('REG_JOB_INLINE', 'REG_JOB_NAMED', 'REG_JOB_CTX')
   ORDER BY log_id;
+
+--
+-- AUTO_DROP
+--
+-- one-shot job with default auto_drop => TRUE is dropped after completion
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_job_ad_once',
+      job_type => 'PLSQL_BLOCK', job_action => 'BEGIN NULL; END;',
+      enabled => FALSE);
+  dbms_scheduler.run_job('reg_job_ad_once');
+END;
+/
+SELECT count(*) AS ad_once_left FROM user_scheduler_jobs
+  WHERE job_name = 'REG_JOB_AD_ONCE';
+
+-- job arguments are cascaded away on auto_drop while run history stays
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_job_ad_args',
+      job_type => 'STORED_PROCEDURE', job_action => 'sched_reg_proc',
+      number_of_arguments => 2, enabled => FALSE);
+  dbms_scheduler.set_job_argument_value('reg_job_ad_args', 1, '94');
+  dbms_scheduler.set_job_argument_value('reg_job_ad_args', 2, 'ad-arg');
+  dbms_scheduler.run_job('reg_job_ad_args');
+END;
+/
+SELECT count(*) AS jobs,
+       (SELECT count(*) FROM user_scheduler_job_args
+         WHERE job_name = 'REG_JOB_AD_ARGS') AS args
+  FROM user_scheduler_jobs WHERE job_name = 'REG_JOB_AD_ARGS';
+SELECT id, note FROM sched_reg_t WHERE id = 94;
+
+-- named-program job with a one-shot schedule is also auto-dropped
+BEGIN
+  dbms_scheduler.create_schedule('reg_sched_once',
+      start_date => TIMESTAMP '2199-01-01 00:00:00 +00:00');
+  dbms_scheduler.create_job(job_name => 'reg_job_ad_named',
+      program_name => 'reg_prog', schedule_name => 'reg_sched_once');
+  dbms_scheduler.set_job_argument_value('reg_job_ad_named', 1, '95');
+  dbms_scheduler.run_job('reg_job_ad_named');
+END;
+/
+SELECT count(*) AS jobs,
+       (SELECT count(*) FROM user_scheduler_job_args
+         WHERE job_name = 'REG_JOB_AD_NAMED') AS args
+  FROM user_scheduler_jobs WHERE job_name = 'REG_JOB_AD_NAMED';
+SELECT id, note FROM sched_reg_t WHERE id = 95;
+BEGIN
+  dbms_scheduler.drop_schedule('reg_sched_once');
+END;
+/
+
+-- run history outlives auto-dropped jobs
+SELECT job_name, status FROM user_scheduler_job_run_details
+  WHERE job_name IN ('REG_JOB_AD_ONCE', 'REG_JOB_AD_ARGS', 'REG_JOB_AD_NAMED')
+  ORDER BY log_id;
+
+-- auto_drop => FALSE retains a completed one-shot job
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_job_ad_keep',
+      job_type => 'PLSQL_BLOCK', job_action => 'BEGIN NULL; END;',
+      auto_drop => FALSE);
+  dbms_scheduler.run_job('reg_job_ad_keep');
+END;
+/
+SELECT job_name, auto_drop, state, run_count FROM user_scheduler_jobs
+  WHERE job_name = 'REG_JOB_AD_KEEP';
+BEGIN
+  dbms_scheduler.drop_job('reg_job_ad_keep');
+END;
+/
+
+-- repeating jobs with default auto_drop => TRUE are not dropped by RUN_JOB
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_job_ad_rep',
+      job_type => 'PLSQL_BLOCK', job_action => 'BEGIN NULL; END;',
+      repeat_interval => 'FREQ=DAILY;BYHOUR=3;BYMINUTE=0;BYSECOND=0');
+  dbms_scheduler.run_job('reg_job_ad_rep');
+END;
+/
+SELECT job_name, auto_drop, state, run_count FROM user_scheduler_jobs
+  WHERE job_name = 'REG_JOB_AD_REP';
+BEGIN
+  dbms_scheduler.drop_job('reg_job_ad_rep');
+END;
+/
+
+-- manual RUN_JOB on an enabled future-scheduled one-shot job leaves it scheduled
+SET client_min_messages TO error;
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_job_ad_sched',
+      job_type => 'PLSQL_BLOCK', job_action => 'BEGIN NULL; END;',
+      start_date => TIMESTAMP '2199-01-01 00:00:00 +00:00',
+      enabled => TRUE);
+END;
+/
+RESET client_min_messages;
+BEGIN
+  dbms_scheduler.run_job('reg_job_ad_sched');
+END;
+/
+SELECT job_name, auto_drop, enabled, state, run_count FROM user_scheduler_jobs
+  WHERE job_name = 'REG_JOB_AD_SCHED';
+BEGIN
+  dbms_scheduler.drop_job('reg_job_ad_sched');
+END;
+/
+
+-- a failed one-shot job with default auto_drop => TRUE is retained
+SELECT job_name, auto_drop FROM user_scheduler_jobs
+  WHERE job_name = 'REG_JOB_FAIL';
 
 --
 -- quoted identifiers keep their case; unquoted ones are upper-cased

@@ -2067,12 +2067,64 @@ sched_log_finish(int64 log_id, bool success, int error_no,
 			  6, argtypes, values, nulls);
 }
 
+/*
+ * Drop a completed one-shot job when auto_drop is enabled, matching Oracle's
+ * CREATE_JOB default.  sys.scheduler_job_args rows are removed by ON DELETE
+ * CASCADE while sys.scheduler_job_run_details retains the run history.
+ *
+ * A job is one-shot when neither its inline definition nor its referenced
+ * schedule carries a repeat_interval.  Both background and foreground paths
+ * require NOT enabled: background runs preserve a one-shot job that was
+ * re-enabled while running, and foreground RUN_JOB preserves an enabled
+ * future-scheduled one-shot job ("manual runs leave the state of enabled
+ * jobs alone").  Foreground RUN_JOB also skips a job whose background run is
+ * still in progress.
+ *
+ * Returns true if the job row was deleted.
+ */
+static bool
+sched_auto_drop_if_completed(const SchedJobDef *def, bool background)
+{
+	Oid			argtypes[2] = {TEXTOID, TEXTOID};
+	Datum		values[2];
+
+	values[0] = CStringGetTextDatum(def->job_owner);
+	values[1] = CStringGetTextDatum(def->job_name);
+
+	return sched_meta_dml(background ?
+						  "DELETE FROM sys.scheduler_jobs j"
+						  " WHERE j.job_owner = $1 AND j.job_name = $2"
+						  "  AND j.auto_drop AND NOT j.enabled"
+						  "  AND ((j.schedule_name IS NULL"
+						  "        AND j.repeat_interval IS NULL)"
+						  "       OR EXISTS ("
+						  "         SELECT 1 FROM sys.scheduler_schedules s"
+						  "          WHERE s.schedule_owner = j.schedule_owner"
+						  "            AND s.schedule_name = j.schedule_name"
+						  "            AND s.repeat_interval IS NULL))" :
+						  "DELETE FROM sys.scheduler_jobs j"
+						  " WHERE j.job_owner = $1 AND j.job_name = $2"
+						  "  AND j.auto_drop AND NOT j.enabled"
+						  "  AND j.state <> 'RUNNING'"
+						  "  AND ((j.schedule_name IS NULL"
+						  "        AND j.repeat_interval IS NULL)"
+						  "       OR EXISTS ("
+						  "         SELECT 1 FROM sys.scheduler_schedules s"
+						  "          WHERE s.schedule_owner = j.schedule_owner"
+						  "            AND s.schedule_name = j.schedule_name"
+						  "            AND s.repeat_interval IS NULL))",
+						  2, argtypes, values, NULL) > 0;
+}
+
 void
 sched_update_job_stats(const SchedJobDef *def, bool success,
 					   TimestampTz actual_start, bool background)
 {
 	Oid			argtypes[5] = {TEXTOID, TEXTOID, TIMESTAMPTZOID, TEXTOID, INT4OID};
 	Datum		values[5];
+
+	if (success && sched_auto_drop_if_completed(def, background))
+		return;
 
 	values[0] = CStringGetTextDatum(def->job_owner);
 	values[1] = CStringGetTextDatum(def->job_name);

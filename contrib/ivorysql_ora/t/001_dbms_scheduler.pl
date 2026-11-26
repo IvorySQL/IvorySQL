@@ -96,19 +96,43 @@ is( $node->safe_psql(
 	'disabled job produces no further runs');
 
 # ---------------------------------------------------------------------
-# one-shot job: runs once, then is disabled with its outcome recorded
+# one-shot job with auto_drop => FALSE: runs once, then is disabled with
+# its outcome recorded
 # ---------------------------------------------------------------------
 ora_sql(q{
 BEGIN
   dbms_scheduler.create_job(job_name => 'tap_oneshot', job_type => 'PLSQL_BLOCK',
     job_action => 'BEGIN INSERT INTO sched_tap_t VALUES (2, ''oneshot''); END;',
-    enabled => TRUE);
+    enabled => TRUE, auto_drop => FALSE);
 END;});
 
 $node->poll_query_until($db,
 	"SELECT state = 'SUCCEEDED' AND NOT enabled AND run_count = 1 FROM sys.scheduler_jobs WHERE job_name = 'TAP_ONESHOT'"
 ) or die "one-shot job did not complete";
-ok(1, 'one-shot job ran exactly once and was disabled');
+ok(1, 'one-shot job with auto_drop => FALSE ran once and was disabled');
+
+# ---------------------------------------------------------------------
+# one-shot job with default auto_drop => TRUE: runs once, then drops
+# itself while retaining its run history
+# ---------------------------------------------------------------------
+ora_sql(q{
+BEGIN
+  dbms_scheduler.create_job(job_name => 'tap_oneshot_autodrop',
+    job_type => 'PLSQL_BLOCK',
+    job_action => 'BEGIN INSERT INTO sched_tap_t VALUES (20, ''oneshot-autodrop''); END;',
+    enabled => TRUE);
+END;});
+
+$node->poll_query_until($db,
+	"SELECT EXISTS (SELECT 1 FROM sys.scheduler_job_run_details WHERE job_name = 'TAP_ONESHOT_AUTODROP' AND status = 's') AND NOT EXISTS (SELECT 1 FROM sys.scheduler_jobs WHERE job_name = 'TAP_ONESHOT_AUTODROP')"
+) or die "auto_drop one-shot job was not dropped after completion";
+ok(1, 'one-shot job with default auto_drop => TRUE is dropped after completion');
+
+is( $node->safe_psql(
+		$db,
+		"SELECT note FROM sched_tap_t WHERE id = 20"),
+	'oneshot-autodrop',
+	'auto-dropped one-shot job executed its action before dropping');
 
 # ---------------------------------------------------------------------
 # a failing job records status 'f' with the error message
