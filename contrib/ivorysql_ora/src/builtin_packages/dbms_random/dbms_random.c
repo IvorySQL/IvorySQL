@@ -42,8 +42,8 @@
 
 #include "../../include/ivorysql_ora.h"
 
-/* Oracle's DBMS_RANDOM.STRING() maximum length */
-#define DBMS_RANDOM_MAX_STRING_LEN	4000
+/* Oracle's DBMS_RANDOM.STRING() maximum length (PL/SQL VARCHAR2 limit) */
+#define DBMS_RANDOM_MAX_STRING_LEN	32767
 
 /* Per-backend generator state */
 static pg_prng_state random_state;
@@ -204,6 +204,7 @@ ora_dbms_random_string(PG_FUNCTION_ARGS)
 	size_t		chrset_size;
 	StringInfoData str;
 	const char *opt;
+	Numeric		len_arg;
 	Numeric		truncated_len;
 	int			len;
 	int			i;
@@ -261,23 +262,32 @@ ora_dbms_random_string(PG_FUNCTION_ARGS)
 			break;
 	}
 
+	len_arg = PG_GETARG_NUMERIC(1);
+	if (numeric_is_nan(len_arg))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("DBMS_RANDOM.STRING length must not be NaN")));
+
 	truncated_len = DatumGetNumeric(DirectFunctionCall2(numeric_trunc,
-															NumericGetDatum(PG_GETARG_NUMERIC(1)),
-															Int32GetDatum(0)));
+														NumericGetDatum(len_arg),
+														Int32GetDatum(0)));
 	if (DatumGetInt32(DirectFunctionCall2(numeric_cmp,
-														NumericGetDatum(truncated_len),
-														DirectFunctionCall1(int4_numeric,
-																			Int32GetDatum(0)))) <= 0)
+										  NumericGetDatum(truncated_len),
+										  DirectFunctionCall1(int4_numeric,
+															  Int32GetDatum(0)))) <= 0)
 		PG_RETURN_NULL();
 
 	if (DatumGetInt32(DirectFunctionCall2(numeric_cmp,
-														NumericGetDatum(truncated_len),
-														DirectFunctionCall1(int4_numeric,
-																			Int32GetDatum(DBMS_RANDOM_MAX_STRING_LEN)))) > 0)
-		len = DBMS_RANDOM_MAX_STRING_LEN;
-	else
-		len = DatumGetInt32(DirectFunctionCall1(numeric_int4,
-														NumericGetDatum(truncated_len)));
+										  NumericGetDatum(truncated_len),
+										  DirectFunctionCall1(int4_numeric,
+															  Int32GetDatum(DBMS_RANDOM_MAX_STRING_LEN)))) > 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("DBMS_RANDOM.STRING length exceeds maximum of %d",
+						DBMS_RANDOM_MAX_STRING_LEN)));
+
+	len = DatumGetInt32(DirectFunctionCall1(numeric_int4,
+											NumericGetDatum(truncated_len)));
 
 	ensure_seeded();
 
