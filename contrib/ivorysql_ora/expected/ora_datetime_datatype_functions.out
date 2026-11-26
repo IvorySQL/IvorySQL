@@ -719,6 +719,31 @@ select round(cast('2051-12-12' as date), 'SCC') from dual;
  2101-01-01 00:00:00
 (1 row)
 
+/* century rounding switches on January 1st of the century's 51st year */
+select round(cast('2050-01-01' as date), 'CC') from dual;
+        round        
+---------------------
+ 2001-01-01 00:00:00
+(1 row)
+
+select round(cast('2050-06-30' as date), 'CC') from dual;
+        round        
+---------------------
+ 2001-01-01 00:00:00
+(1 row)
+
+select round(cast('2050-07-01' as date), 'CC') from dual;
+        round        
+---------------------
+ 2001-01-01 00:00:00
+(1 row)
+
+select round(cast('2050-12-31' as date), 'CC') from dual;
+        round        
+---------------------
+ 2001-01-01 00:00:00
+(1 row)
+
 select round(cast('2050-12-12' as date), 'SYYYY') from dual;
         round        
 ---------------------
@@ -729,6 +754,92 @@ select round(cast('2050-06-12' as date), 'IYYY') from dual;
         round        
 ---------------------
  2050-01-03 00:00:00
+(1 row)
+
+/* ISO week: Thursday is the last day that stays within its own week */
+select round(cast('2004-01-01' as date), 'IW') from dual;
+        round        
+---------------------
+ 2003-12-29 00:00:00
+(1 row)
+
+select round(cast('2022-12-30' as date), 'IW') from dual;
+        round        
+---------------------
+ 2023-01-02 00:00:00
+(1 row)
+
+select round(cast('2022-12-31' as date), 'IW') from dual;
+        round        
+---------------------
+ 2023-01-02 00:00:00
+(1 row)
+
+select round(cast('2023-12-29' as date), 'IW') from dual;
+        round        
+---------------------
+ 2024-01-01 00:00:00
+(1 row)
+
+select round(cast('2023-12-30' as date), 'IW') from dual;
+        round        
+---------------------
+ 2024-01-01 00:00:00
+(1 row)
+
+select round(cast('2023-12-31' as date), 'IW') from dual;
+        round        
+---------------------
+ 2024-01-01 00:00:00
+(1 row)
+
+select round(cast('2027-12-31' as date), 'IW') from dual;
+        round        
+---------------------
+ 2028-01-03 00:00:00
+(1 row)
+
+/* ISO year: the last days of the year round to the nearest ISO year start */
+select round(cast('2003-07-01' as date), 'IYYY') from dual;
+        round        
+---------------------
+ 2003-12-29 00:00:00
+(1 row)
+
+select round(cast('2023-12-30' as date), 'IYYY') from dual;
+        round        
+---------------------
+ 2024-01-01 00:00:00
+(1 row)
+
+select round(cast('2023-12-31' as date), 'IYYY') from dual;
+        round        
+---------------------
+ 2024-01-01 00:00:00
+(1 row)
+
+select round(cast('2024-12-29' as date), 'IYYY') from dual;
+        round        
+---------------------
+ 2024-12-30 00:00:00
+(1 row)
+
+select round(cast('2024-12-30' as date), 'IYYY') from dual;
+        round        
+---------------------
+ 2024-12-30 00:00:00
+(1 row)
+
+select round(cast('2024-12-31' as date), 'IYYY') from dual;
+        round        
+---------------------
+ 2024-12-30 00:00:00
+(1 row)
+
+select round(cast('2023-01-01' as date), 'IYYY') from dual;
+        round        
+---------------------
+ 2022-01-03 00:00:00
 (1 row)
 
 select round(cast('2020-01-1' as date), 'Q') from dual;
@@ -785,6 +896,18 @@ select round(cast('2051-12-12' as sys.oradate), 'SCC') from dual;
  2101-01-01 00:00:00
 (1 row)
 
+select round(cast('2050-07-01' as sys.oradate), 'CC') from dual;
+        round        
+---------------------
+ 2001-01-01 00:00:00
+(1 row)
+
+select round(cast('2050-12-31' as sys.oradate), 'CC') from dual;
+        round        
+---------------------
+ 2001-01-01 00:00:00
+(1 row)
+
 select round(cast('2050-12-12' as sys.oradate), 'SYYYY') from dual;
         round        
 ---------------------
@@ -795,6 +918,18 @@ select round(cast('2050-06-12' as sys.oradate), 'IYYY') from dual;
         round        
 ---------------------
  2050-01-03 00:00:00
+(1 row)
+
+select round(cast('2023-12-31' as sys.oradate), 'IW') from dual;
+        round        
+---------------------
+ 2024-01-01 00:00:00
+(1 row)
+
+select round(cast('2024-12-30' as sys.oradate), 'IYYY') from dual;
+        round        
+---------------------
+ 2024-12-30 00:00:00
 (1 row)
 
 select round(cast('2020-01-1' as sys.oradate), 'Q') from dual;
@@ -842,7 +977,7 @@ select round(cast('2012-12-12 12:00:00' as sys.oratimestamp), 'CC') from dual;
 select round(cast('2050-12-12 12:00:00' as sys.oratimestamp), 'SCC') from dual;
         round        
 ---------------------
- 2101-01-01 00:00:00
+ 2001-01-01 00:00:00
 (1 row)
 
 select round(cast('2050-06-12 19:20:21' as sys.oratimestamp), 'SYYYY') from dual;
@@ -855,6 +990,24 @@ select round(cast('2050-06-12 16:40:55' as sys.oratimestamp), 'IYYY') from dual;
         round        
 ---------------------
  2050-01-03 00:00:00
+(1 row)
+
+select round(cast('2050-07-01 09:00:00' as sys.oratimestamp), 'CC') from dual;
+        round        
+---------------------
+ 2001-01-01 00:00:00
+(1 row)
+
+select round(cast('2023-12-31 22:10:00' as sys.oratimestamp), 'IW') from dual;
+        round        
+---------------------
+ 2024-01-01 00:00:00
+(1 row)
+
+select round(cast('2024-12-30 23:30:00' as sys.oratimestamp), 'IYYY') from dual;
+        round        
+---------------------
+ 2024-12-30 00:00:00
 (1 row)
 
 select round(cast('2020-02-16 19:16:12' as sys.oratimestamp), 'Q') from dual;
@@ -926,7 +1079,7 @@ select round(to_timestamp_tz('2012-12-12 12:00:00 + 08', 'YYYY-MM-DD HH24:MI:SS 
 select round(to_timestamp_tz('2050-12-12 12:00:00 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'SCC') from dual;
         round        
 ---------------------
- 2101-01-01 00:00:00
+ 2001-01-01 00:00:00
 (1 row)
 
 select round(to_timestamp_tz('2051-12-12 12:00:00 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'SCC') from dual;
@@ -945,6 +1098,24 @@ select round(to_timestamp_tz('2050-06-12 16:40:55 + 08', 'YYYY-MM-DD HH24:MI:SS 
         round        
 ---------------------
  2050-01-03 00:00:00
+(1 row)
+
+select round(to_timestamp_tz('2050-07-01 09:00:00 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'CC') from dual;
+        round        
+---------------------
+ 2001-01-01 00:00:00
+(1 row)
+
+select round(to_timestamp_tz('2023-12-31 22:10:00 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'IW') from dual;
+        round        
+---------------------
+ 2024-01-01 00:00:00
+(1 row)
+
+select round(to_timestamp_tz('2024-12-30 23:30:00 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'IYYY') from dual;
+        round        
+---------------------
+ 2024-12-30 00:00:00
 (1 row)
 
 select round(to_timestamp_tz('2020-02-16 19:16:12 + 08', 'YYYY-MM-DD HH24:MI:SS TZH:TZM'), 'Q') from dual;
@@ -1044,6 +1215,18 @@ select trunc(cast('2020-02-28' as pg_catalog.date), 'IW') from dual;
         trunc        
 ---------------------
  2020-02-24 00:00:00
+(1 row)
+
+select trunc(cast('2023-01-01' as pg_catalog.date), 'IYYY') from dual;
+        trunc        
+---------------------
+ 2022-01-03 00:00:00
+(1 row)
+
+select trunc(cast('2024-12-31' as pg_catalog.date), 'IYYY') from dual;
+        trunc        
+---------------------
+ 2024-12-30 00:00:00
 (1 row)
 
 select trunc(cast('2020-02-23' as pg_catalog.date), 'W') from dual;
