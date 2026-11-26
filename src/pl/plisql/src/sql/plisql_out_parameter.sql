@@ -1207,6 +1207,180 @@ begin
 	execute immediate ''declare books integer; begin books := 1000; :x := books + 100;end;'' using out id;
 end;');
 
+-- Test OUT-parameter functions with empty/NULL bodies, conditional RETURN,
+-- EXCEPTION handlers, nested subprocs, and package functions.
+create or replace function f_out_null_body(a out integer) return integer
+as
+begin
+  null;
+end;
+/
+
+declare
+  v_out integer;
+  v_ret integer;
+begin
+  v_ret := f_out_null_body(v_out);
+end;
+/
+
+create or replace function f_out_cond_return(a out integer, x integer) return integer
+as
+begin
+  a := x * 2;
+  if x > 0 then
+    return 10;
+  elsif x = 0 then
+    return 20;
+  end if;
+end;
+/
+
+declare
+  v_out integer;
+  v_ret integer;
+begin
+  v_ret := f_out_cond_return(v_out, 5);
+  raise notice 'pos: out=%, ret=%', v_out, v_ret;
+  v_ret := f_out_cond_return(v_out, 0);
+  raise notice 'zero: out=%, ret=%', v_out, v_ret;
+end;
+/
+
+declare
+  v_out integer;
+  v_ret integer;
+begin
+  v_ret := f_out_cond_return(v_out, -1);
+end;
+/
+
+create or replace function f_out_exc_return(a out integer, mode_flag integer) return integer
+as
+begin
+  a := 42;
+  if mode_flag > 0 then
+    raise division_by_zero;
+  end if;
+  return 99;
+exception
+  when division_by_zero then
+    a := -1;
+    if mode_flag = 1 then
+      return -99;
+    end if;
+end;
+/
+
+declare
+  v_out integer;
+  v_ret integer;
+begin
+  v_ret := f_out_exc_return(v_out, 0);
+  raise notice 'normal: out=%, ret=%', v_out, v_ret;
+  v_ret := f_out_exc_return(v_out, 1);
+  raise notice 'exc_ret: out=%, ret=%', v_out, v_ret;
+end;
+/
+
+declare
+  v_out integer;
+  v_ret integer;
+begin
+  v_ret := f_out_exc_return(v_out, 2);
+end;
+/
+
+-- Nested subproc function with OUT param: NULL body and conditional RETURN
+declare
+  v_out integer;
+  v_ret integer;
+  function sub_null_body(a out integer) return integer is
+  begin
+    null;
+  end;
+  function sub_cond_ret(a out integer, x integer) return integer is
+  begin
+    a := x + 10;
+    if x > 0 then
+      return x * 3;
+    end if;
+  end;
+begin
+  v_ret := sub_cond_ret(v_out, 4);
+  raise notice 'sub_cond pos: out=%, ret=%', v_out, v_ret;
+  begin
+    v_ret := sub_null_body(v_out);
+  exception
+    when sqlstate '2F005' then
+      raise notice 'sub_null_body raised no_return';
+  end;
+  begin
+    v_ret := sub_cond_ret(v_out, -1);
+  exception
+    when sqlstate '2F005' then
+      raise notice 'sub_cond neg raised no_return';
+  end;
+end;
+/
+
+-- Nested subproc function returning first parameter (dno 0) without OUT params
+declare
+  function sub_id(x integer) return integer is
+  begin
+    return x;
+  end;
+begin
+  raise notice 'sub_id=%', sub_id(42);
+end;
+/
+
+-- Package function with OUT param: NULL body and conditional RETURN
+create or replace package pkg_out_ret_test as
+  function fn_null(a out integer) return integer;
+  function fn_cond(a out integer, x integer) return integer;
+end pkg_out_ret_test;
+/
+
+create or replace package body pkg_out_ret_test as
+  function fn_null(a out integer) return integer is
+  begin
+    null;
+  end;
+  function fn_cond(a out integer, x integer) return integer is
+  begin
+    a := x * 5;
+    if x > 0 then
+      return x + 100;
+    else
+      return x - 100;
+    end if;
+  end;
+end pkg_out_ret_test;
+/
+
+declare
+  v_out integer;
+  v_ret integer;
+begin
+  v_ret := pkg_out_ret_test.fn_cond(v_out, 3);
+  raise notice 'pkg pos: out=%, ret=%', v_out, v_ret;
+  v_ret := pkg_out_ret_test.fn_cond(v_out, -2);
+  raise notice 'pkg neg: out=%, ret=%', v_out, v_ret;
+  begin
+    v_ret := pkg_out_ret_test.fn_null(v_out);
+  exception
+    when sqlstate '2F005' then
+      raise notice 'pkg_null raised no_return';
+  end;
+end;
+/
+
+drop package pkg_out_ret_test;
+drop function f_out_null_body(integer);
+drop function f_out_cond_return(integer, integer);
+drop function f_out_exc_return(integer, integer);
+
 --clean data
 drop table books;
 

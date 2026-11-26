@@ -1073,9 +1073,6 @@ typedef struct PLiSQL_function
 	struct PLiSQL_execstate *cur_estate;
 	unsigned long use_count;
 	int		fn_ret_vardno;	/* the variable dno for the function return value */
-	bool		fn_no_return;	/* when the function return type is not VOIDOID, if the body has not a RETURN statment,
-					 * the CREATE FUNCTION can be executed successfully, but when the function is called,
-					 * an error will be reported */
 	bool		do_from_call;
 	char		**paramnames;	/* saved do + using parameter'name */
 	bool		is_with_clause_func;	/* true: body is a WITH FUNCTION/PROCEDURE inline subprogram */
