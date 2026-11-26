@@ -76,6 +76,14 @@ static ParseNamespaceItem *transformRangeFunction(ParseState *pstate,
 												  RangeFunction *r);
 static ParseNamespaceItem *transformRangeTableFunc(ParseState *pstate,
 												   RangeTableFunc *rtf);
+static ParseNamespaceItem *transformRangePivot(ParseState *pstate,
+											   RangePivot *rp);
+static Node *buildPivotSubquery(ParseState *pstate, RangePivot *rp,
+								ParseNamespaceItem *src_nsitem);
+static Node *buildUnpivotSubquery(ParseState *pstate, RangePivot *rp,
+								  ParseNamespaceItem *src_nsitem);
+static List *pivotCollectColumnNames(Node *rawexpr);
+static char *pivotItemName(PivotInItem *item, int idx);
 static ParseNamespaceItem *transformRangeGraphTable(ParseState *pstate,
 													RangeGraphTable *rgt);
 static TableSampleClause *transformRangeTableSample(ParseState *pstate,
@@ -1051,6 +1059,503 @@ transformRangeGraphTable(ParseState *pstate, RangeGraphTable *rgt)
 }
 
 /*
+ * pivotCollectColumnNames
+ *
+ * Collect the names of all simple column references appearing in a raw
+ * expression tree.  Used to determine the implicit grouping columns of a
+ * PIVOT clause (source columns not referenced by the aggregates or the
+ * FOR list).
+ */
+static List *
+pivotCollectColumnNames(Node *node)
+{
+	List	   *names = NIL;
+
+	if (node == NULL)
+		return NIL;
+
+	if (IsA(node, ColumnRef))
+	{
+		ColumnRef  *cr = (ColumnRef *) node;
+
+		if (list_length(cr->fields) == 1 && IsA(linitial(cr->fields), String))
+			names = lappend(names, strVal(linitial(cr->fields)));
+	}
+	else if (IsA(node, FuncCall))
+	{
+		FuncCall   *fc = (FuncCall *) node;
+		ListCell   *lc;
+
+		foreach(lc, fc->args)
+			names = list_concat(names,
+								pivotCollectColumnNames(lfirst(lc)));
+	}
+	else if (IsA(node, A_Expr))
+	{
+		A_Expr	   *a = (A_Expr *) node;
+
+		names = list_concat(names, pivotCollectColumnNames(a->lexpr));
+		names = list_concat(names, pivotCollectColumnNames(a->rexpr));
+	}
+	else if (IsA(node, BoolExpr))
+	{
+		BoolExpr   *b = (BoolExpr *) node;
+		ListCell   *lc;
+
+		foreach(lc, b->args)
+			names = list_concat(names,
+								pivotCollectColumnNames(lfirst(lc)));
+	}
+	else if (IsA(node, TypeCast))
+	{
+		TypeCast  *tc = (TypeCast *) node;
+
+		names = list_concat(names, pivotCollectColumnNames(tc->arg));
+	}
+	else if (IsA(node, CaseExpr))
+	{
+		CaseExpr  *ce = (CaseExpr *) node;
+		ListCell   *lc;
+
+		names = list_concat(names, pivotCollectColumnNames(ce->arg));
+		foreach(lc, ce->args)
+		{
+			CaseWhen   *cw = lfirst_node(CaseWhen, lc);
+
+			names = list_concat(names, pivotCollectColumnNames(cw->expr));
+			names = list_concat(names, pivotCollectColumnNames(cw->result));
+		}
+		names = list_concat(names, pivotCollectColumnNames(ce->defresult));
+	}
+	else if (IsA(node, CoalesceExpr))
+	{
+		CoalesceExpr *ce = (CoalesceExpr *) node;
+		ListCell   *lc;
+
+		foreach(lc, ce->args)
+			names = list_concat(names,
+								pivotCollectColumnNames(lfirst(lc)));
+	}
+	else if (IsA(node, RowExpr))
+	{
+		RowExpr	   *re = (RowExpr *) node;
+		ListCell   *lc;
+
+		foreach(lc, re->args)
+			names = list_concat(names,
+								pivotCollectColumnNames(lfirst(lc)));
+	}
+
+	return names;
+}
+
+static bool
+pivotNameInList(List *names, char *name)
+{
+	ListCell   *lc;
+
+	foreach(lc, names)
+	{
+		if (strcmp(strVal(lfirst(lc)), name) == 0)
+			return true;
+	}
+	return false;
+}
+
+/*
+ * pivotItemName
+ *
+ * Derive the output column name of a PIVOT IN item: the explicit alias if
+ * given, otherwise the literal text of the item value, otherwise a
+ * generated name.
+ */
+static char *
+pivotItemName(PivotInItem *item, int idx)
+{
+	Node	   *val;
+
+	if (item->alias != NULL)
+		return strVal(item->alias);
+
+	if (list_length(item->values) == 1)
+	{
+		val = (Node *) linitial(item->values);
+		if (IsA(val, String))
+			return strVal(val);
+		if (IsA(val, Float))
+			return castNode(Float, val)->fval;
+		if (IsA(val, Integer))
+			return psprintf("%d", intVal(val));
+	}
+
+	return psprintf("pivot_col_%d", idx + 1);
+}
+
+/*
+ * buildPivotSubquery
+ *
+ * Rewrite
+ *
+ *	<sub> PIVOT (agg(expr) AS a, ... FOR for_cols IN (item AS c, ...))
+ *
+ * into
+ *
+ *	SELECT <remaining columns>, agg(expr) FILTER (WHERE for_cols = item), ...
+ *	FROM <sub>
+ *	GROUP BY remaining source columns
+ *
+ * built as a raw SelectStmt that the caller transforms as a subquery.
+ */
+static Node *
+buildPivotSubquery(ParseState *pstate, RangePivot *rp,
+				   ParseNamespaceItem *src_nsitem)
+{
+	SelectStmt *Q = makeNode(SelectStmt);
+	List	   *colnames = src_nsitem->p_rte->eref->colnames;
+	List	   *aggCols = NIL;
+	List	   *groupCols = NIL;
+	ListCell   *lc;
+	int			idx;
+
+	/* columns referenced by the aggregates cannot be pivoted on */
+	foreach(lc, rp->aggs)
+	{
+		PivotAggItem *item = lfirst_node(PivotAggItem, lc);
+
+		aggCols = list_concat(aggCols,
+							  pivotCollectColumnNames(item->aggexpr));
+	}
+	foreach(lc, rp->forCols)
+	{
+		char	   *forCol = strVal(lfirst(lc));
+
+		if (pivotNameInList(aggCols, forCol))
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("pivot aggregate cannot reference the FOR column %s", forCol),
+					 parser_errposition(pstate, rp->location)));
+	}
+
+	/*
+	 * Target list: every source column that is neither a FOR column nor
+	 * referenced by an aggregate becomes a grouping column.
+	 */
+	foreach(lc, colnames)
+	{
+		char	   *colname = strVal(lfirst(lc));
+		ColumnRef  *cr;
+		ResTarget  *rt;
+
+		if (pivotNameInList(rp->forCols, colname) ||
+			pivotNameInList(aggCols, colname))
+			continue;
+
+		cr = makeNode(ColumnRef);
+		cr->fields = list_make1(makeString(colname));
+		cr->location = rp->location;
+
+		rt = makeNode(ResTarget);
+		rt->name = colname;
+		rt->val = (Node *) cr;
+		rt->location = rp->location;
+
+		Q->targetList = lappend(Q->targetList, rt);
+		groupCols = lappend(groupCols, cr);
+	}
+
+	/* one aggregate output column per IN item */
+	idx = 0;
+	foreach(lc, rp->inItems)
+	{
+		PivotInItem *item = lfirst_node(PivotInItem, lc);
+		PivotAggItem *agg = linitial_node(PivotAggItem, rp->aggs);
+		FuncCall   *fc = makeNode(FuncCall);
+		Node	   *filter = NULL;
+		ListCell   *lc2;
+		int			j = 0;
+		ResTarget  *rt;
+
+		fc->funcname = agg->funcname;
+		if (agg->agg_star)
+			fc->agg_star = true;
+		else
+			fc->args = list_make1(copyObject(agg->aggexpr));
+		fc->funcformat = COERCE_EXPLICIT_CALL;
+		fc->location = item->location;
+
+		/* FILTER (WHERE for_col = item_value [, ...]) */
+		foreach(lc2, rp->forCols)
+		{
+			Node	   *forCol = lfirst(lc2);
+			Node	   *val = list_nth(item->values, j);
+			ColumnRef  *cr;
+			Node	   *eq;
+
+			cr = makeNode(ColumnRef);
+			cr->fields = list_make1(makeString(strVal(forCol)));
+			cr->location = item->location;
+			eq = (Node *) makeSimpleA_Expr(AEXPR_OP, "=", cr, val,
+										   item->location);
+			if (filter == NULL)
+				filter = eq;
+			else
+			{
+				BoolExpr   *b = makeNode(BoolExpr);
+
+				b->boolop = AND_EXPR;
+				b->args = list_make2(filter, eq);
+				b->location = item->location;
+				filter = (Node *) b;
+			}
+			j++;
+		}
+		fc->agg_filter = filter;
+
+		rt = makeNode(ResTarget);
+		rt->name = pivotItemName(item, idx);
+		rt->val = (Node *) fc;
+		rt->location = item->location;
+		Q->targetList = lappend(Q->targetList, rt);
+		idx++;
+	}
+
+	Q->fromClause = list_make1(rp->sub);
+	Q->groupClause = groupCols;
+
+	return (Node *) Q;
+}
+
+/*
+ * buildUnpivotSubquery
+ *
+ * Rewrite
+ *
+ *	<sub> UNPIVOT (v1, ... FOR for_col IN (c1 AS 'a', ...))
+ *
+ * into
+ *
+ *	SELECT <remaining columns>, for_col, v1, ...
+ *	FROM <sub>, LATERAL (VALUES ('a', c1, ...), ...) AS up(for_col, v1, ...)
+ *	[WHERE <measures not all NULL>]
+ */
+static Node *
+buildUnpivotSubquery(ParseState *pstate, RangePivot *rp,
+					 ParseNamespaceItem *src_nsitem)
+{
+	SelectStmt *Q = makeNode(SelectStmt);
+	SelectStmt *valuesQ = makeNode(SelectStmt);
+	RangeSubselect *lateralRS = makeNode(RangeSubselect);
+	List	   *colnames = src_nsitem->p_rte->eref->colnames;
+	List	   *srcUnpivotCols = NIL;
+	List	   *valueAliasCols = NIL;
+	List	   *tl = NIL;
+	ListCell   *lc;
+	int			k = list_length(rp->valueNames);
+
+	/* collect the source measure columns referenced by the IN list */
+	foreach(lc, rp->inItems)
+	{
+		PivotInItem *item = lfirst_node(PivotInItem, lc);
+		ListCell   *lc2;
+
+		if (list_length(item->values) != k)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("unpivot IN item must list %d column(s)", k),
+					 parser_errposition(pstate, item->location)));
+		foreach(lc2, item->values)
+		{
+			Node	   *col = lfirst(lc2);
+
+			if (!IsA(col, ColumnRef) || list_length(((ColumnRef *) col)->fields) != 1)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("unpivot IN items must be column references"),
+						 parser_errposition(pstate, item->location)));
+			srcUnpivotCols = lappend(srcUnpivotCols,
+									 strVal(linitial(((ColumnRef *) col)->fields)));
+		}
+	}
+
+	/* the unpivot output column names must not clash with source columns */
+	if (pivotNameInList(colnames, strVal(rp->forName)))
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("unpivot FOR column name %s conflicts with a source column",
+						strVal(rp->forName)),
+					 parser_errposition(pstate, rp->location)));
+	foreach(lc, rp->valueNames)
+	{
+		if (pivotNameInList(colnames, strVal(lfirst(lc))))
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("unpivot measure column name %s conflicts with a source column",
+							strVal(lfirst(lc))),
+					 parser_errposition(pstate, rp->location)));
+	}
+
+	/* VALUES rows: (for value, measure values...) */
+	foreach(lc, rp->inItems)
+	{
+		PivotInItem *item = lfirst_node(PivotInItem, lc);
+		List	   *row = NIL;
+		ListCell   *lc2;
+
+		/* FOR value: explicit alias, else the first source column name */
+		if (item->alias != NULL)
+			row = lappend(row, copyObject(item->alias));
+		else
+			row = lappend(row, makeString(strVal(linitial(item->values))));
+
+		foreach(lc2, item->values)
+			row = lappend(row, copyObject(lfirst(lc2)));
+
+		valuesQ->valuesLists = lappend(valuesQ->valuesLists, row);
+	}
+
+	/* alias column names for the VALUES subquery: for col then measures */
+	valueAliasCols = list_make1(rp->forName);
+	foreach(lc, rp->valueNames)
+		valueAliasCols = lappend(valueAliasCols, lfirst(lc));
+
+	lateralRS->lateral = true;
+	lateralRS->subquery = (Node *) valuesQ;
+	lateralRS->alias = makeAlias("ivory_unpivot", valueAliasCols);
+
+	/*
+	 * Outer query: remaining source columns plus the for/measure columns,
+	 * resolved unqualified (the lateral alias columns shadow nothing).
+	 */
+	foreach(lc, colnames)
+	{
+		char	   *colname = strVal(lfirst(lc));
+		ColumnRef  *cr;
+		ResTarget  *rt;
+
+		if (pivotNameInList(srcUnpivotCols, colname))
+			continue;
+
+		cr = makeNode(ColumnRef);
+		cr->fields = list_make1(makeString(colname));
+		cr->location = rp->location;
+
+		rt = makeNode(ResTarget);
+		rt->name = colname;
+		rt->val = (Node *) cr;
+		rt->location = rp->location;
+
+		tl = lappend(tl, rt);
+	}
+
+	{
+		ColumnRef  *cr;
+		ResTarget  *rt;
+
+		cr = makeNode(ColumnRef);
+		cr->fields = list_make1(rp->forName);
+		cr->location = rp->location;
+		rt = makeNode(ResTarget);
+		rt->name = strVal(rp->forName);
+		rt->val = (Node *) cr;
+		rt->location = rp->location;
+		tl = lappend(tl, rt);
+
+		foreach(lc, rp->valueNames)
+		{
+			char	   *vname = strVal(lfirst(lc));
+
+			cr = makeNode(ColumnRef);
+			cr->fields = list_make1(makeString(vname));
+			cr->location = rp->location;
+			rt = makeNode(ResTarget);
+			rt->name = vname;
+			rt->val = (Node *) cr;
+			rt->location = rp->location;
+			tl = lappend(tl, rt);
+		}
+	}
+	Q->targetList = tl;
+
+	Q->fromClause = list_make2(rp->sub, lateralRS);
+
+	/* EXCLUDE NULLS (the default): drop rows where every measure is NULL */
+	if (!rp->includeNulls)
+	{
+		List	   *isnullargs = NIL;
+
+		foreach(lc, rp->valueNames)
+		{
+			ColumnRef  *cr = makeNode(ColumnRef);
+			NullTest   *nt;
+
+			cr->fields = list_make1(makeString(strVal(lfirst(lc))));
+			cr->location = rp->location;
+			nt = makeNode(NullTest);
+			nt->arg = (Node *) cr;
+			nt->nulltesttype = IS_NULL;
+			nt->location = rp->location;
+			isnullargs = lappend(isnullargs, nt);
+		}
+		if (k == 1)
+		{
+			NullTest   *nt = (NullTest *) linitial(isnullargs);
+
+			nt->nulltesttype = IS_NOT_NULL;
+			Q->whereClause = (Node *) nt;
+		}
+		else
+		{
+			BoolExpr   *allnull = makeNode(BoolExpr);
+			BoolExpr   *notexpr = makeNode(BoolExpr);
+
+			allnull->boolop = AND_EXPR;
+			allnull->args = isnullargs;
+			allnull->location = rp->location;
+
+			notexpr->boolop = NOT_EXPR;
+			notexpr->args = list_make1(allnull);
+			notexpr->location = rp->location;
+			Q->whereClause = (Node *) notexpr;
+		}
+	}
+
+	return (Node *) Q;
+}
+
+/*
+ * transformRangePivot
+ *
+ * Transform the inner source, then rewrite the PIVOT/UNPIVOT clause into an
+ * equivalent subquery and transform it as a RangeSubselect.
+ */
+static ParseNamespaceItem *
+transformRangePivot(ParseState *pstate, RangePivot *rp)
+{
+	Node	   *sub = rp->sub;
+	ParseNamespaceItem *src_nsitem;
+	ParseNamespaceItem *src_namespace;
+	Node	   *rtr;
+	Node	   *subquery;
+	RangeSubselect *rs;
+
+	rtr = transformFromClauseItem(pstate, sub, &src_nsitem, &src_namespace);
+	(void) rtr;					/* the subquery re-transforms the source */
+
+	if (rp->pivotkind == 'p')
+		subquery = buildPivotSubquery(pstate, rp, src_nsitem);
+	else
+		subquery = buildUnpivotSubquery(pstate, rp, src_nsitem);
+
+	rs = makeNode(RangeSubselect);
+	rs->lateral = false;
+	rs->subquery = subquery;
+	rs->alias = rp->alias ? rp->alias :
+		makeAlias(rp->pivotkind == 'p' ? "pivoted" : "unpivoted", NIL);
+
+	return transformRangeSubselect(pstate, rs);
+}
+
+/*
  * transformRangeTableSample --- transform a TABLESAMPLE clause
  *
  * Caller has already transformed rts->relation, we just have to validate
@@ -1279,6 +1784,18 @@ transformFromClauseItem(ParseState *pstate, Node *n,
 		ParseNamespaceItem *nsitem;
 
 		nsitem = transformRangeGraphTable(pstate, (RangeGraphTable *) n);
+		*top_nsitem = nsitem;
+		*namespace = list_make1(nsitem);
+		rtr = makeNode(RangeTblRef);
+		rtr->rtindex = nsitem->p_rtindex;
+		return (Node *) rtr;
+	}
+	else if (IsA(n, RangePivot))
+	{
+		RangeTblRef *rtr;
+		ParseNamespaceItem *nsitem;
+
+		nsitem = transformRangePivot(pstate, (RangePivot *) n);
 		*top_nsitem = nsitem;
 		*namespace = list_make1(nsitem);
 		rtr = makeNode(RangeTblRef);

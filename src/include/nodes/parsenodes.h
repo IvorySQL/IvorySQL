@@ -749,6 +749,51 @@ typedef struct RangeGraphTable
 } RangeGraphTable;
 
 /*
+ * PivotAggItem - one aggregate in a PIVOT clause
+ *
+ * Raw tree only.  aggexpr is the single aggregate argument; agg_star is
+ * set for a COUNT(*) style aggregate with no explicit argument.
+ */
+typedef struct PivotAggItem
+{
+	NodeTag		type;
+	List	   *funcname;		/* possibly-qualified aggregate name */
+	Node	   *aggexpr;		/* aggregate argument (raw expression) */
+	bool		agg_star;		/* aggregate written with '*' */
+	Node	   *alias;			/* optional output column alias (T_String) */
+	ParseLoc	location;		/* token location, or -1 if unknown */
+} PivotAggItem;
+
+/*
+ * PivotInItem - one entry of the PIVOT/UNPIVOT IN list
+ */
+typedef struct PivotInItem
+{
+	NodeTag		type;
+	List	   *values;			/* raw expressions / column references */
+	Node	   *alias;			/* optional item alias (T_String) */
+	ParseLoc	location;		/* token location, or -1 if unknown */
+} PivotInItem;
+
+/*
+ * RangePivot - raw form of the Oracle PIVOT / UNPIVOT clause
+ */
+typedef struct RangePivot
+{
+	NodeTag		type;
+	char		pivotkind;		/* 'p' = PIVOT, 'u' = UNPIVOT */
+	Node	   *sub;			/* the relation or subquery being pivoted */
+	List	   *aggs;			/* PIVOT: list of PivotAggItem */
+	List	   *forCols;		/* PIVOT: FOR column names (T_String list) */
+	List	   *inItems;		/* list of PivotInItem */
+	List	   *valueNames;		/* UNPIVOT: measure column names (T_String) */
+	Node	   *forName;		/* UNPIVOT: FOR output column name (T_String) */
+	bool		includeNulls;	/* UNPIVOT: INCLUDE NULLS */
+	Alias	   *alias;			/* table alias & optional column aliases */
+	ParseLoc	location;		/* token location, or -1 if unknown */
+} RangePivot;
+
+/*
  * RangeTableSample - TABLESAMPLE appearing in a raw FROM clause
  *
  * This node, appearing only in raw parse trees, represents
