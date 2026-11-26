@@ -708,6 +708,19 @@ months_between(PG_FUNCTION_ARGS)
 
 	float8		result;
 
+	/*
+	 * Reject infinite dates before decoding calendar fields.  PostgreSQL
+	 * DATE infinity sentinels can reach us through the supported
+	 * date::oradate cast; interpreting them as calendar values produces
+	 * meaningless numbers, and PostgreSQL's own DATE subtraction also
+	 * rejects infinite operands.  Oracle MONTHS_BETWEEN is defined for
+	 * calendar dates only.
+	 */
+	if (TIMESTAMP_NOT_FINITE(time1) || TIMESTAMP_NOT_FINITE(time2))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("MONTHS_BETWEEN: infinite timestamps are not supported")));
+
 	TMODULO(time1, date1, USECS_PER_DAY);
 	if (time1 < INT64CONST(0))
 	{
