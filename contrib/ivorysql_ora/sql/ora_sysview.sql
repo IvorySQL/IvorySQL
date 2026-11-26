@@ -5,6 +5,34 @@ SHOW IVORYSQL.COMPATIBLE_MODE;
 SET IVORYSQL.IDENTIFIER_CASE_SWITCH = INTERCHANGE;
 SHOW IVORYSQL.IDENTIFIER_CASE_SWITCH;
 
+-- The full definition of a wide view must survive a dictionary export.
+BEGIN;
+SET LOCAL client_min_messages = warning;
+CREATE TEMP TABLE monthly_ledger (account_id integer, amount numeric);
+DO $$
+BEGIN
+  EXECUTE (
+    SELECT 'CREATE TEMP VIEW monthly_totals AS SELECT ' ||
+           string_agg(format('sum(amount) FILTER (WHERE account_id = %s) AS account_%s', n, n),
+                      ', ' ORDER BY n) || ' FROM monthly_ledger'
+    FROM generate_series(1, 100) AS accounts(n)
+  );
+END $$;
+
+WITH definitions AS (
+  SELECT 'ALL' AS dictionary, text_length, text, text_vc FROM sys.all_views WHERE view_name = 'MONTHLY_TOTALS'
+  UNION ALL
+  SELECT 'DBA', text_length, text, text_vc FROM sys.dba_views WHERE view_name = 'MONTHLY_TOTALS'
+  UNION ALL
+  SELECT 'USER', text_length, text, text_vc FROM sys.user_views WHERE view_name = 'MONTHLY_TOTALS'
+)
+SELECT dictionary, text_length > 4000 AS wide,
+       text = pg_get_viewdef('monthly_totals'::regclass) AS complete,
+       text_vc::text = left(pg_get_viewdef('monthly_totals'::regclass), 4000) AS preview_ok
+FROM definitions ORDER BY dictionary;
+
+ROLLBACK;
+
 -- create a procedure
 CREATE TABLE TB_TODEL(ID INT);
 CREATE OR REPLACE PROCEDURE PROC_DEL_TB(I INT) IS
