@@ -52,6 +52,7 @@
 #define int2size(v)			v
 #define size2int(v)			v
 
+#define CHARSETMISMATCH			"CHARSETMISMATCH"
 #define INVALID_FILEHANDLE		"INVALID_FILEHANDLE"
 #define INVALID_MAXLINESIZE		"INVALID_MAXLINESIZE"
 #define INVALID_MODE			"INVALID_MODE"
@@ -64,6 +65,7 @@
 
 /* ora_utl_file functions */
 PG_FUNCTION_INFO_V1(ora_utl_file_fopen);
+PG_FUNCTION_INFO_V1(ora_utl_file_fopen_nchar);
 PG_FUNCTION_INFO_V1(ora_utl_file_is_open);
 PG_FUNCTION_INFO_V1(ora_utl_file_fclose);
 PG_FUNCTION_INFO_V1(ora_utl_file_fclose_all);
@@ -75,10 +77,12 @@ PG_FUNCTION_INFO_V1(ora_utl_file_frename);
 PG_FUNCTION_INFO_V1(ora_utl_file_fseek);
 PG_FUNCTION_INFO_V1(ora_utl_file_ftell);
 PG_FUNCTION_INFO_V1(ora_utl_file_get_line);
+PG_FUNCTION_INFO_V1(ora_utl_file_get_line_nchar);
 PG_FUNCTION_INFO_V1(ora_utl_file_new_line);
 PG_FUNCTION_INFO_V1(ora_utl_file_put);
 PG_FUNCTION_INFO_V1(ora_utl_file_putf);
 PG_FUNCTION_INFO_V1(ora_utl_file_put_line);
+PG_FUNCTION_INFO_V1(ora_utl_file_put_line_nchar);
 PG_FUNCTION_INFO_V1(ora_utl_file_put_raw);
 
 static int	utl_file_umask = 077;
@@ -96,12 +100,15 @@ static void close_all_files(void);
 static int copy_text_file(FILE *srcfile, FILE *dstfile,
 						  int start_line, int end_line);
 static void put_lines(FILE *fd, int lines);
-static FILE *do_put(PG_FUNCTION_ARGS);
+static Datum utl_file_fopen_internal(PG_FUNCTION_ARGS, bool is_nchar);
+static Datum utl_file_get_line_internal(PG_FUNCTION_ARGS, bool expect_nchar);
+static Datum utl_file_put_line_internal(PG_FUNCTION_ARGS, bool expect_nchar);
+static FILE *do_put(PG_FUNCTION_ARGS, bool expect_nchar);
 static size_t
 do_write(PG_FUNCTION_ARGS, int n, FILE *fd,
 	size_t max_linesize, int encoding);
-static FILE *
-get_file_handle_from_slot(uint32 sid, size_t *max_linesize, int *encoding);
+static FILE *get_file_handle_from_slot(uint32 sid, size_t *max_linesize,
+									   int *encoding, bool *is_nchar);
 static void do_flush(FILE *fd);
 static char *
 encode_text(int encoding, text *t, size_t *length);
@@ -118,7 +125,8 @@ resource_cleanup_callback(ResourceReleasePhase phase,
                          bool isTopLevel,
                          void *arg);
 static FILE *free_slot(uint32 sid);
-static uint32 reserve_slot(FILE *fd, int max_linesize, int encoding);
+static uint32 reserve_slot(FILE *fd, int max_linesize, int encoding,
+						   bool is_nchar);
 
 /* Helper macros */
 #define IS_VALID_PTR(d) ((d) != (NULL))
@@ -141,6 +149,9 @@ static uint32 reserve_slot(FILE *fd, int max_linesize, int encoding);
 #define STRERROR_WARNING(msg) \
 	do { char *strerr = strerror(errno); CUSTOM_WARNING(msg, strerr); } while(0);
 
+#define CHARSETMISMATCH_EXCEPTION() \
+	CUSTOM_EXCEPTION(CHARSETMISMATCH, \
+					 "A file was opened using FOPEN_NCHAR, but later I/O operations used non-NCHAR functions, or vice versa.")
 #define INVALID_FILEHANDLE_EXCEPTION()	CUSTOM_EXCEPTION(INVALID_FILEHANDLE, "File handle is invalid.")
 #define INVALID_FILEHANDLE_WARNING()	CUSTOM_WARNING(INVALID_FILEHANDLE, "File handle is invalid.")
 
@@ -188,10 +199,11 @@ static uint32 reserve_slot(FILE *fd, int max_linesize, int encoding);
 
 typedef struct FileSlot
 {
-	FILE	*fd;
-	int		max_linesize;
-	int		encoding;
-	uint32	id;
+	FILE	   *fd;
+	int			max_linesize;
+	int			encoding;
+	bool		is_nchar;
+	uint32		id;
 } FileSlot;
 
 #define MAX_SLOTS		50			/* Oracle 10g supports 50 files */
@@ -216,7 +228,7 @@ next_slotid(void)
  * Returns slot ID or INVALID_SLOTID if no free slot found
  */
 static uint32
-reserve_slot(FILE *fd, int max_linesize, int encoding)
+reserve_slot(FILE *fd, int max_linesize, int encoding, bool is_nchar)
 {
 	if(fd == NULL)
 	{
@@ -233,6 +245,7 @@ reserve_slot(FILE *fd, int max_linesize, int encoding)
 		slots[i].fd = fd;
 		slots[i].max_linesize = max_linesize;
 		slots[i].encoding = encoding;
+		slots[i].is_nchar = is_nchar;
 
 		return slots[i].id;
 	}
@@ -260,6 +273,7 @@ free_slot(uint32 sid)
 			slots[i].fd = NULL;
 			slots[i].max_linesize = 0;
 			slots[i].encoding = 0;
+			slots[i].is_nchar = false;
 
 			return fd;
 		}
@@ -300,18 +314,18 @@ IO_EXCEPTION(void)
  * Exceptions:
  *  INVALID_MODE, INVALID_OPERATION, INVALID_PATH, INVALID_MAXLINESIZE
  */
-Datum
-ora_utl_file_fopen(PG_FUNCTION_ARGS)
+static Datum
+utl_file_fopen_internal(PG_FUNCTION_ARGS, bool is_nchar)
 {
-	text			*open_mode;
-	int				max_linesize;
-	int				encoding;
-	const char		*mode = NULL;
-	FILE			*fd;
-	const char		*fullname;
-	uint32			sid;
-	static bool 	callback_registered = false;
-	mode_t			oldmask;
+	text	   *open_mode;
+	int			max_linesize;
+	int			encoding;
+	const char *mode = NULL;
+	FILE	   *fd;
+	const char *fullname;
+	uint32		sid;
+	static bool callback_registered = false;
+	mode_t		oldmask;
 
 	NOT_NULL_ARG(0);
 	NOT_NULL_ARG(1);
@@ -325,14 +339,17 @@ ora_utl_file_fopen(PG_FUNCTION_ARGS)
 	max_linesize = PG_GETARG_INT32(3);
 	CHECK_LINESIZE(max_linesize);
 
-	if (PG_NARGS() > 4 && !PG_ARGISNULL(4))
+	if (is_nchar)
+		encoding = PG_UTF8;
+	else if (PG_NARGS() > 4 && !PG_ARGISNULL(4))
 	{
 		const char *encname = NameStr(*PG_GETARG_NAME(4));
+
 		encoding = pg_char_to_encoding(encname);
 		if (encoding < 0)
 			ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("invalid encoding name \"%s\"", encname)));
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("invalid encoding name \"%s\"", encname)));
 	}
 	else
 		encoding = GetDatabaseEncoding();
@@ -340,7 +357,7 @@ ora_utl_file_fopen(PG_FUNCTION_ARGS)
 	if (VARSIZE(open_mode) - VARHDRSZ != 1)
 		CUSTOM_EXCEPTION(INVALID_MODE, "The open_mode parameter in FOPEN is invalid.");
 
-	switch (*((char*)VARDATA(open_mode)))
+	switch (*((char *) VARDATA(open_mode)))
 	{
 		case 'a':
 		case 'A':
@@ -364,10 +381,11 @@ ora_utl_file_fopen(PG_FUNCTION_ARGS)
 	fullname = get_safe_path(PG_GETARG_TEXT_P(0), PG_GETARG_TEXT_P(1));
 
 	/*
-	 * PostgreSQL's file management APIs (src/include/storage/fd.h) are not used here
-	 * because functions like AllocateFile perform automatic cleanup at transaction
-	 * commit or abort. Since this module requires files to remain open for Oracle compatibility,
-	 * we implement separate file handling.
+	 * PostgreSQL's file management APIs (src/include/storage/fd.h) are not
+	 * used here because functions like AllocateFile perform automatic cleanup
+	 * at transaction commit or abort. Since this module requires files to
+	 * remain open for Oracle compatibility, we implement separate file
+	 * handling.
 	 */
 
 	oldmask = umask((mode_t) utl_file_umask);
@@ -377,32 +395,44 @@ ora_utl_file_fopen(PG_FUNCTION_ARGS)
 	if (fd == NULL)
 		IO_EXCEPTION();
 
-	sid = reserve_slot(fd, max_linesize, encoding);
+	sid = reserve_slot(fd, max_linesize, encoding, is_nchar);
 	if (sid == INVALID_SLOTID)
 	{
 		fclose(fd);
 		ereport(ERROR,
-		    (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-		     errmsg("program limit exceeded"),
-		     errdetail("Maximum number of open files exceeded"),
-		     errhint("You can have a maximum of %d files open simultaneously.", MAX_SLOTS)));
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("program limit exceeded"),
+				 errdetail("Maximum number of open files exceeded"),
+				 errhint("You can have a maximum of %d files open simultaneously.", MAX_SLOTS)));
 	}
 
 	/* Register cleanup callbacks */
-	if(!callback_registered)
+	if (!callback_registered)
 	{
 		/* Register cleanup callback only once */
 		RegisterResourceReleaseCallback(resource_cleanup_callback, NULL);
 
 		/*
-		* Register before-shmem-exit hook to ensure temp files are dropped while
-		* we can still report stats.
-		*/
+		 * Register before-shmem-exit hook to ensure temp files are dropped
+		 * while we can still report stats.
+		 */
 		before_shmem_exit(BeforeShmemExit_Files, 0);
 		callback_registered = true;
 	}
 
 	PG_RETURN_UINT32(sid);
+}
+
+Datum
+ora_utl_file_fopen(PG_FUNCTION_ARGS)
+{
+	return utl_file_fopen_internal(fcinfo, false);
+}
+
+Datum
+ora_utl_file_fopen_nchar(PG_FUNCTION_ARGS)
+{
+	return utl_file_fopen_internal(fcinfo, true);
 }
 
 Datum
@@ -553,7 +583,7 @@ ora_utl_file_fflush(PG_FUNCTION_ARGS)
 	FILE *fd;
 
 	CHECK_FILE_HANDLE();
-	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL);
+	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL, NULL);
 	do_flush(fd);
 
 	PG_RETURN_VOID();
@@ -685,7 +715,7 @@ ora_utl_file_fseek(PG_FUNCTION_ARGS)
 	long		file_size;
 
 	CHECK_FILE_HANDLE();
-	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL);
+	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL, NULL);
 	if (fd == NULL)
 		INVALID_FILEHANDLE_EXCEPTION();
 
@@ -737,7 +767,7 @@ ora_utl_file_ftell(PG_FUNCTION_ARGS)
 {
 	FILE   *fd;
 	CHECK_FILE_HANDLE();
-	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL);
+	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL, NULL);
 
 	if(fd == NULL)
 		INVALID_FILEHANDLE_EXCEPTION();
@@ -754,22 +784,27 @@ ora_utl_file_ftell(PG_FUNCTION_ARGS)
  * Exceptions:
  *  NO_DATA_FOUND, INVALID_FILEHANDLE, INVALID_OPERATION, READ_ERROR
  */
-Datum
-ora_utl_file_get_line(PG_FUNCTION_ARGS)
+static Datum
+utl_file_get_line_internal(PG_FUNCTION_ARGS, bool expect_nchar)
 {
-	size_t	max_linesize = 0;
-	int		encoding = 0;
-	FILE   *fd;
-	text   *result;
-	bool	iseof;
+	size_t		max_linesize = 0;
+	int			encoding = 0;
+	bool		is_nchar = false;
+	FILE	   *fd;
+	text	   *result;
+	bool		iseof;
 
 	CHECK_FILE_HANDLE();
-	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), &max_linesize, &encoding);
+	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), &max_linesize,
+								   &encoding, &is_nchar);
+	if (is_nchar != expect_nchar)
+		CHARSETMISMATCH_EXCEPTION();
 
 	/* 'len' overwrites max_linesize, but must be smaller than max_linesize */
 	if (PG_NARGS() > 1 && !PG_ARGISNULL(1))
 	{
-		size_t	len = (size_t) PG_GETARG_INT32(1);
+		size_t		len = (size_t) PG_GETARG_INT32(1);
+
 		CHECK_LINESIZE(len);
 		if (max_linesize > len)
 			max_linesize = len;
@@ -778,17 +813,29 @@ ora_utl_file_get_line(PG_FUNCTION_ARGS)
 	result = get_line(fd, max_linesize, encoding, &iseof);
 
 	/*
-	 * Oracle raises NO_DATA_FOUND (ORA-01403) when no text was read
-	 * because of end of file, so PL/iSQL callers can catch it explicitly.
+	 * Oracle raises NO_DATA_FOUND (ORA-01403) when no text was read because
+	 * of end of file, so PL/iSQL callers can catch it explicitly.
 	 */
 	if (iseof)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_NO_DATA_FOUND),
-						errmsg("no data found")));
+				 errmsg("no data found")));
 	}
 
 	PG_RETURN_TEXT_P(result);
+}
+
+Datum
+ora_utl_file_get_line(PG_FUNCTION_ARGS)
+{
+	return utl_file_get_line_internal(fcinfo, false);
+}
+
+Datum
+ora_utl_file_get_line_nchar(PG_FUNCTION_ARGS)
+{
+	return utl_file_get_line_internal(fcinfo, true);
 }
 
 Datum
@@ -798,7 +845,7 @@ ora_utl_file_new_line(PG_FUNCTION_ARGS)
 	int		lines;
 
 	CHECK_FILE_HANDLE();
-	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL);
+	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL, NULL);
 	lines = PG_GETARG_IF_EXISTS(1, INT32, 1);
 
 	put_lines(fd, lines);
@@ -809,7 +856,7 @@ ora_utl_file_new_line(PG_FUNCTION_ARGS)
 Datum
 ora_utl_file_put(PG_FUNCTION_ARGS)
 {
-	do_put(fcinfo);
+	do_put(fcinfo, false);
 	PG_RETURN_BOOL(true);
 }
 
@@ -833,17 +880,21 @@ ora_utl_file_put(PG_FUNCTION_ARGS)
 Datum
 ora_utl_file_putf(PG_FUNCTION_ARGS)
 {
-	FILE   *fd;
-	char   *format;
-	size_t	max_linesize;
-	int		encoding;
-	size_t	format_length;
-	char   *fpt;
-	int		cur_par = 0;
-	size_t	cur_len = 0;
+	FILE	   *fd;
+	char	   *format;
+	size_t		max_linesize;
+	int			encoding;
+	bool		is_nchar = false;
+	size_t		format_length;
+	char	   *fpt;
+	int			cur_par = 0;
+	size_t		cur_len = 0;
 
 	CHECK_FILE_HANDLE();
-	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), &max_linesize, &encoding);
+	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), &max_linesize,
+								   &encoding, &is_nchar);
+	if (is_nchar)
+		CHARSETMISMATCH_EXCEPTION();
 
 	NOT_NULL_ARG(1);
 	format = encode_text(encoding, PG_GETARG_TEXT_P(1), &format_length);
@@ -915,13 +966,13 @@ ora_utl_file_putf(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(true);
 }
 
-Datum
-ora_utl_file_put_line(PG_FUNCTION_ARGS)
+static Datum
+utl_file_put_line_internal(PG_FUNCTION_ARGS, bool expect_nchar)
 {
-	FILE   *fd;
-	bool	autoflush;
+	FILE	   *fd;
+	bool		autoflush;
 
-	fd = do_put(fcinfo);
+	fd = do_put(fcinfo, expect_nchar);
 
 	autoflush = PG_GETARG_IF_EXISTS(2, BOOL, false);
 
@@ -933,13 +984,25 @@ ora_utl_file_put_line(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(true);
 }
 
+Datum
+ora_utl_file_put_line(PG_FUNCTION_ARGS)
+{
+	return utl_file_put_line_internal(fcinfo, false);
+}
+
+Datum
+ora_utl_file_put_line_nchar(PG_FUNCTION_ARGS)
+{
+	return utl_file_put_line_internal(fcinfo, true);
+}
+
 Datum ora_utl_file_put_raw(PG_FUNCTION_ARGS)
 {
 	FILE   *fd;
 	bool    autoflush;
 
 	CHECK_FILE_HANDLE();
-	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL);
+	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), NULL, NULL, NULL);
 
 	NOT_NULL_ARG(1);
 	{
@@ -1143,6 +1206,7 @@ close_all_files(void)
 			slots[i].fd = NULL;
 			slots[i].max_linesize = 0;
 			slots[i].encoding = 0;
+			slots[i].is_nchar = false;
 
 			/* 
 			 * Oracle documentation says: FCLOSE_ALL does not alter the state of the 
@@ -1263,16 +1327,20 @@ put_lines(FILE *fd, int lines)
 }
 
 static FILE *
-do_put(PG_FUNCTION_ARGS)
+do_put(PG_FUNCTION_ARGS, bool expect_nchar)
 {
-	FILE   *fd;
-	size_t	max_linesize = 0;
-	int		encoding = 0;
+	FILE	   *fd;
+	size_t		max_linesize = 0;
+	int			encoding = 0;
+	bool		is_nchar = false;
 
 	if (PG_ARGISNULL(0))
 		INVALID_FILEHANDLE_EXCEPTION();
 
-	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), &max_linesize, &encoding);
+	fd = get_file_handle_from_slot(PG_GETARG_UINT32(0), &max_linesize,
+								   &encoding, &is_nchar);
+	if (is_nchar != expect_nchar)
+		CHARSETMISMATCH_EXCEPTION();
 
 	NOT_NULL_ARG(1);
 	do_write(fcinfo, 1, fd, max_linesize, encoding);
@@ -1300,14 +1368,15 @@ do_write(PG_FUNCTION_ARGS, int n, FILE *fd, size_t max_linesize, int encoding)
 	return len;
 }
 
-/* 
+/*
  * Returns stored FILE handle
- * Also, sets max_linesize and encoding
+ * Also, sets max_linesize, encoding and NCHAR mode
  */
 static FILE *
-get_file_handle_from_slot(uint32 sid, size_t *max_linesize, int *encoding)
+get_file_handle_from_slot(uint32 sid, size_t *max_linesize, int *encoding,
+						  bool *is_nchar)
 {
-	int i;
+	int			i;
 
 	if (sid == INVALID_SLOTID)
 		INVALID_FILEHANDLE_EXCEPTION();
@@ -1320,12 +1389,14 @@ get_file_handle_from_slot(uint32 sid, size_t *max_linesize, int *encoding)
 				*max_linesize = slots[i].max_linesize;
 			if (encoding)
 				*encoding = slots[i].encoding;
+			if (is_nchar)
+				*is_nchar = slots[i].is_nchar;
 			return slots[i].fd;
 		}
 	}
 
 	INVALID_FILEHANDLE_EXCEPTION();
-	pg_unreachable();  /* ereport(ERROR) does not return */
+	pg_unreachable();			/* ereport(ERROR) does not return */
 }
 
 static void

@@ -343,6 +343,98 @@ begin
 end;
 /
 
+-- test CHARSETMISMATCH when mixing NCHAR and non-NCHAR handles
+declare
+    f UTL_FILE.FILE_TYPE;
+    line text;
+begin
+    -- NCHAR write handle rejects non-NCHAR PUT, PUTF, PUT_LINE
+    f := utl_file.fopen_nchar('data_directory', 'regress-nchar-mix.txt', 'w');
+    begin
+        utl_file.put(f, 'x');
+    exception
+        when others then
+            raise notice 'nchar+put: %', sqlerrm;
+    end;
+    begin
+        utl_file.putf(f, '%s', 'x');
+    exception
+        when others then
+            raise notice 'nchar+putf: %', sqlerrm;
+    end;
+    begin
+        utl_file.put_line(f, 'x');
+    exception
+        when others then
+            raise notice 'nchar+put_line: %', sqlerrm;
+    end;
+    raise notice 'nchar write pos after errors: %', utl_file.fgetpos(f);
+    -- matching NCHAR write and encoding-neutral routines succeed
+    utl_file.put_line_nchar(f, 'nchar-ok');
+    utl_file.new_line(f);
+    utl_file.fflush(f);
+    utl_file.fclose(f);
+    -- NCHAR read handle rejects non-NCHAR GET_LINE without advancing position
+    f := utl_file.fopen_nchar('data_directory', 'regress-nchar-mix.txt', 'r');
+    begin
+        utl_file.get_line(f, line);
+    exception
+        when others then
+            raise notice 'nchar+get_line: %', sqlerrm;
+    end;
+    raise notice 'nchar read pos after error: %', utl_file.fgetpos(f);
+    -- tampering with record datatype does not bypass slot-level validation
+    f.datatype := 0;
+    begin
+        utl_file.get_line(f, line);
+    exception
+        when others then
+            raise notice 'nchar tampered+get_line: %', sqlerrm;
+    end;
+    utl_file.get_line_nchar(f, line);
+    raise notice 'nchar+get_line_nchar: >>%<<', line;
+    utl_file.fclose(f);
+    -- non-NCHAR write handle rejects PUT_LINE_NCHAR
+    f := utl_file.fopen('data_directory', 'regress-std-mix.txt', 'w');
+    begin
+        utl_file.put_line_nchar(f, 'x');
+    exception
+        when others then
+            raise notice 'std+put_line_nchar: %', sqlerrm;
+    end;
+    raise notice 'std write pos after error: %', utl_file.fgetpos(f);
+    utl_file.put_line(f, 'std-ok');
+    utl_file.fclose(f);
+    -- non-NCHAR read handle rejects GET_LINE_NCHAR without advancing position
+    f := utl_file.fopen('data_directory', 'regress-std-mix.txt', 'r');
+    begin
+        utl_file.get_line_nchar(f, line);
+    exception
+        when others then
+            raise notice 'std+get_line_nchar: %', sqlerrm;
+    end;
+    raise notice 'std read pos after error: %', utl_file.fgetpos(f);
+    utl_file.get_line(f, line);
+    raise notice 'std+get_line: >>%<<', line;
+    utl_file.fclose(f);
+    -- closed handle raises INVALID_FILEHANDLE before CHARSETMISMATCH
+    begin
+        utl_file.put_line_nchar(f, 'x');
+    exception
+        when others then
+            raise notice 'closed+put_line_nchar: %', sqlerrm;
+    end;
+    begin
+        utl_file.get_line_nchar(f, line);
+    exception
+        when others then
+            raise notice 'closed+get_line_nchar: %', sqlerrm;
+    end;
+    utl_file.fremove('data_directory', 'regress-nchar-mix.txt');
+    utl_file.fremove('data_directory', 'regress-std-mix.txt');
+end;
+/
+
 -- clean up
 delete from sys.utl_file_directory where dirname = 'data_directory';
 /
