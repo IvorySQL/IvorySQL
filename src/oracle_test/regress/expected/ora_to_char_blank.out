@@ -1,0 +1,70 @@
+--
+-- ORA_TO_CHAR_BLANK_ELEMENT
+-- Oracle's B format element prints blanks for the integer part of a
+-- fixed-point number when that part is zero.
+--
+-- A zero value is rendered as blanks, and so is its decimal point
+SELECT '[' || TO_CHAR(0, 'B9999') || ']' AS zero_int;
+ zero_int 
+----------
+ [     ]
+(1 row)
+
+SELECT '[' || TO_CHAR(0, 'B9999.99') || ']' AS zero_with_decimal;
+ zero_with_decimal 
+-------------------
+ [        ]
+(1 row)
+
+-- A non-zero value keeps its digits
+SELECT '[' || TO_CHAR(123, 'B9999') || ']' AS digits;
+ digits  
+---------
+ [  123]
+(1 row)
+
+-- Only the integer part is blank when the value is fractional
+SELECT '[' || TO_CHAR(0.5, 'B9999.99') || ']' AS fraction;
+  fraction  
+------------
+ [     .50]
+(1 row)
+
+SELECT '[' || TO_CHAR(-0.5, 'B9999.99') || ']' AS fraction_neg;
+ fraction_neg 
+--------------
+ [    -.50]
+(1 row)
+
+-- FM collapses the blank field entirely
+SELECT '[' || TO_CHAR(0, 'FMB9999') || ']' AS fill_mode;
+ fill_mode 
+-----------
+ []
+(1 row)
+
+-- The element behaves the same for every numeric input type
+SELECT '[' || TO_CHAR(0::int8, 'B9999') || ']' AS zero_int8,
+       '[' || TO_CHAR(0::numeric, 'B9999') || ']' AS zero_numeric,
+       '[' || TO_CHAR(0::float8, 'B9999') || ']' AS zero_float8;
+ zero_int8 | zero_numeric | zero_float8 
+-----------+--------------+-------------
+ [     ]   | [     ]      | [     ]
+(1 row)
+
+-- Without B the leading zero is still printed
+SELECT '[' || TO_CHAR(0, '9999') || ']' AS no_blank;
+ no_blank 
+----------
+ [    0]
+(1 row)
+
+-- PostgreSQL mode is unaffected
+SET ivorysql.compatible_mode = pg;
+SELECT '[' || TO_CHAR(0, 'B9999') || ']' AS pg_mode;
+ pg_mode 
+---------
+ [    0]
+(1 row)
+
+RESET ivorysql.compatible_mode;
