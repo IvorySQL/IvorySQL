@@ -2305,6 +2305,12 @@ sub psql
 			$ret = $?;
 		};
 		my $exc_save = $@;
+
+		# Pass on the output the caller did not ask for before any of the
+		# croaks below, so that it is not lost when psql fails or times out.
+		print STDOUT $$stdout if $pass_stdout && $$stdout ne '';
+		print STDERR $$stderr if $pass_stderr && $$stderr ne '';
+
 		if ($exc_save)
 		{
 
@@ -2330,9 +2336,6 @@ sub psql
 			}
 		}
 	};
-
-	print STDOUT $$stdout if $pass_stdout && $$stdout ne '';
-	print STDERR $$stderr if $pass_stderr && $$stderr ne '';
 
 	# psql on Windows ends lines with CR LF, and some IPC::Run versions pass
 	# the CR through; standardize line endings so that callers can compare
