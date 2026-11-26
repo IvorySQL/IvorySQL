@@ -1121,7 +1121,14 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 		}
 		
 		if (colDef->is_invisible)
+		{
+			if (relkind == RELKIND_FOREIGN_TABLE)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("foreign tables cannot have invisible columns")));
+
 			attr->attisinvisible = true;
+		}
 		else
 			has_visible_col = true;
 
@@ -8274,6 +8281,11 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		Assert(*cmd != NULL);
 		colDef = castNode(ColumnDef, (*cmd)->def);
 	}
+
+	if (rel->rd_rel->relkind == RELKIND_FOREIGN_TABLE && colDef->is_invisible)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("foreign tables cannot have invisible columns")));
 
 	/*
 	 * Regular inheritance children are independent enough not to inherit the

@@ -115,6 +115,20 @@ CREATE FOREIGN TABLE agg_text (
 ) SERVER file_server
 OPTIONS (format 'text', filename :'filename', delimiter ' ', null '\N');
 GRANT SELECT ON agg_text TO regress_file_fdw_user;
+-- Foreign tables cannot have invisible columns, including inherited ones.
+CREATE FOREIGN TABLE invisible_foreign (a int, b int INVISIBLE)
+SERVER file_server OPTIONS (filename :'filename');
+ERROR:  foreign tables cannot have invisible columns
+ALTER FOREIGN TABLE agg_text ADD COLUMN c int INVISIBLE;
+ERROR:  foreign tables cannot have invisible columns
+ALTER FOREIGN TABLE agg_text MODIFY (b INVISIBLE);
+ERROR:  ALTER action ALTER COLUMN ... SET INVISIBLE cannot be performed on relation "agg_text"
+DETAIL:  This operation is not supported for foreign tables.
+CREATE TABLE invisible_parent (a int, b int INVISIBLE);
+CREATE FOREIGN TABLE invisible_foreign () INHERITS (invisible_parent)
+SERVER file_server OPTIONS (filename :'filename');
+ERROR:  foreign tables cannot have invisible columns
+DROP TABLE invisible_parent;
 \set filename :abs_srcdir '/data/agg.csv'
 CREATE FOREIGN TABLE agg_csv (
 	a	number(38,0),
