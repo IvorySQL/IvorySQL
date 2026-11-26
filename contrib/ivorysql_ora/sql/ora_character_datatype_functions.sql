@@ -1805,3 +1805,32 @@ SELECT SUBSTRC('abcdef', 'NaN'::float8) FROM DUAL;
 SELECT INSTRC('abcabc','b', 'NaN'::float4) FROM DUAL;
 SELECT SUBSTRC('abcdef', 'Infinity'::float8) FROM DUAL;
 SELECT INSTRC('abcabc','b', '-Infinity'::float4) FROM DUAL;
+
+-- Three shapes the LOB-source check used to get wrong: a schema-qualified
+-- routine of the user's own, named notation, and an explicit text cast.
+CREATE SCHEMA app;
+CREATE FUNCTION app.instrc(c sys.clob, p text)
+RETURN int
+IS
+BEGIN
+RETURN 42;
+END;
+/
+CREATE TABLE t2372 (c clob);
+INSERT INTO t2372 VALUES ('abc');
+SELECT app.instrc(c, 'x') FROM t2372;
+-- Named notation: the source is the parameter named str, not the argument
+-- written first.  A LOB pattern is legal; a LOB source is not.
+SELECT sys.instrc(patt => 'b'::sys.clob, str => 'abc'::text) FROM DUAL;
+SELECT sys.instrc(patt => 'b', str => 'abc'::sys.clob) FROM DUAL;
+-- CLOB::text is a conversion the caller asked for; the function receives a
+-- text value and must not look through the cast to refuse it.
+SELECT sys.instrc(c::text, 'b') FROM t2372;
+SELECT sys.substrc(c::text, 2) FROM t2372;
+-- The refusal must still catch a LOB source written as a constant cast, a
+-- column, or a TO_CLOB() expression.
+SELECT sys.instrc(CAST('abc' AS CLOB), 'b') FROM DUAL;
+SELECT sys.instrc(c, 'b') FROM t2372;
+SELECT sys.instrc(TO_CLOB(c), 'b') FROM t2372;
+DROP TABLE t2372;
+DROP SCHEMA app CASCADE;

@@ -359,8 +359,13 @@ ora_lengthc_unsupported(PG_FUNCTION_ARGS)
  * expression the caller wrote.  That matters for the LOB types, which are
  * domains over text: the domain-to-base coercion is a relabel, and a further
  * coercion to one of the Oracle character types stacks a second relabel on
- * top of it, so the coercion chain has to be peeled all the way down before
- * the caller's own type is visible.
+ * top of it, so the implicit coercion chain has to be peeled before the
+ * caller's own type is visible.
+ *
+ * An explicit cast is different.  CLOB::text is a conversion the caller
+ * asked for, and the value the function receives is a text value; peeling
+ * through it would refuse a call Oracle accepts.  Only implicit relabels
+ * are peeled here.
  *
  * Anything we cannot inspect (no expression, not a plain function call, an
  * argument out of range) answers InvalidOid, which no caller treats as a
@@ -372,6 +377,7 @@ ora_call_argtype(FunctionCallInfo fcinfo, int argnum)
 	FmgrInfo   *flinfo = fcinfo->flinfo;
 	FuncExpr   *fexpr;
 	Node	   *arg;
+	Oid			argtype;
 
 	if (flinfo == NULL || flinfo->fn_expr == NULL)
 		return InvalidOid;
@@ -382,17 +388,25 @@ ora_call_argtype(FunctionCallInfo fcinfo, int argnum)
 		return InvalidOid;
 
 	arg = (Node *) list_nth(fexpr->args, argnum);
+	if (arg == NULL)
+		return InvalidOid;
+
+	/* A value that still carries a LOB type needs no peeling at all. */
+	argtype = exprType(arg);
+	if (argtype == CLOBOID || argtype == NCLOBOID)
+		return argtype;
 
 	/*
 	 * An implicit coercion to the declared parameter type wraps the original
-	 * expression; peel the whole stack of binary-coercion relabels off so
-	 * that the caller's own type is what we see.  (This is a backstop for
+	 * expression; peel the stack of implicit binary-coercion relabels so that
+	 * the caller's own type is what we see.  (This is a backstop for
 	 * arguments that reach this function without having gone through the
 	 * parse-time LOB source hook in oracle_lob_source.c; the hook is what
 	 * refuses a LOB source, and it sees the argument's own type before any
 	 * coercion is imposed.)
 	 */
-	while (arg != NULL && IsA(arg, RelabelType))
+	while (arg != NULL && IsA(arg, RelabelType) &&
+		   ((RelabelType *) arg)->relabelformat != COERCE_EXPLICIT_CAST)
 		arg = (Node *) ((RelabelType *) arg)->arg;
 
 	return arg ? exprType(arg) : InvalidOid;

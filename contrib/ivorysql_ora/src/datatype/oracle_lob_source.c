@@ -104,6 +104,41 @@ ora_lob_source_exprtype(Node *arg)
 }
 
 /*
+ * ora_lob_source_index --- the position of the source argument in a call.
+ *
+ * PostgreSQL keeps the named arguments of a call in a compact list that
+ * applies to the last N actual parameters, so argument i is named when
+ * i >= nargs - list_length(fargnames).  INSTRC and SUBSTRC declare their
+ * first parameter as "str".  A call that spells that parameter by name can
+ * write it after other arguments, and linitial(fargs) is then the pattern or
+ * a position rather than the source.  With no named arguments the source is
+ * the first argument as before.
+ */
+static int
+ora_lob_source_index(List *fargnames, int nargs)
+{
+	int			nnamed;
+	int			i;
+
+	if (fargnames == NIL)
+		return 0;
+
+	nnamed = list_length(fargnames);
+	if (nnamed <= 0 || nnamed > nargs)
+		return 0;
+
+	for (i = 0; i < nnamed; i++)
+	{
+		char	   *name = (char *) list_nth(fargnames, i);
+
+		if (name != NULL && pg_strcasecmp(name, "str") == 0)
+			return nargs - nnamed + i;
+	}
+
+	return 0;
+}
+
+/*
  * pg_oracle_lob_source_hook --- refuse a LOB source to the *C string
  * functions while the call is still being resolved.
  *
@@ -113,31 +148,37 @@ ora_lob_source_exprtype(Node *arg)
  * type x pattern type x position type) combination to maintain, and none
  * to add when a new position spelling shows up.
  *
- * Returns true when it has raised the error itself; returning false lets
- * the resolution carry on as usual.
+ * The hook raises an error for a call it refuses and returns normally for
+ * every other call.
  */
-bool
-pg_oracle_lob_source_hook(List *funcname, List *fargs, Oid *argtypes,
-						  int nargs)
+void
+pg_oracle_lob_source_hook(List *funcname, List *fargs, List *fargnames,
+						  Oid *argtypes, int nargs)
 {
 	const char *lower = NULL;
 	const char *upper = NULL;
 	char	   *fname = NULL;
 	char	   *schema = NULL;
-	Node	   *arg0;
+	Node	   *source;
 	Oid			argtype;
 	int			i;
+	int			source_index;
 
-	/*
-	 * Only the first argument is the source; the pattern may be a LOB in
-	 * Oracle, so it is not refused.
-	 */
 	if (nargs < 1 || fargs == NIL)
-		return false;
+		return;
 
 	DeconstructQualifiedName(funcname, &schema, &fname);
 	if (fname == NULL)
-		return false;
+		return;
+
+	/*
+	 * A schema-qualified call to a routine of the user's own is not a call
+	 * to the built-in even when the name is the same.  The hook runs before
+	 * overload resolution, so the qualification written in the call is the
+	 * only information available at this point that tells the two apart.
+	 */
+	if (schema != NULL && strcmp(schema, "sys") != 0)
+		return;
 
 	for (i = 0; ora_lob_source_functions[i].fname != NULL; i++)
 	{
@@ -149,10 +190,17 @@ pg_oracle_lob_source_hook(List *funcname, List *fargs, Oid *argtypes,
 		}
 	}
 	if (upper == NULL)
-		return false;
+		return;
 
-	arg0 = (Node *) linitial(fargs);
-	argtype = ora_lob_source_exprtype(arg0);
+	/*
+	 * Only the source is refused; the pattern may be a LOB in Oracle.  Find
+	 * the source by its parameter name when the call used named notation.
+	 */
+	source_index = ora_lob_source_index(fargnames, nargs);
+	if (source_index >= nargs || source_index >= list_length(fargs))
+		return;
+	source = (Node *) list_nth(fargs, source_index);
+	argtype = ora_lob_source_exprtype(source);
 
 	for (i = 0; ora_lob_source_types[i] != InvalidOid; i++)
 	{
@@ -164,6 +212,4 @@ pg_oracle_lob_source_hook(List *funcname, List *fargs, Oid *argtypes,
 					 errdetail("Oracle's %s accepts only character types, not CLOB or NCLOB.",
 							   upper)));
 	}
-
-	return false;
 }

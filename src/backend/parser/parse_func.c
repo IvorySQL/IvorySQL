@@ -1936,6 +1936,7 @@ func_get_detail(List *funcname,
 	FuncCandidateList best_candidate;
 
 	/* initialize output arguments to silence compiler warnings */
+	*fgc_flags = 0;
 	*funcid = InvalidOid;
 	*rettype = InvalidOid;
 	*retset = false;
@@ -1960,10 +1961,8 @@ func_get_detail(List *funcname,
 	 */
 	if (oracle_lob_source_hook && ORA_PARSER == compatible_db &&
 		fargs != NIL)
-	{
-		if ((*oracle_lob_source_hook) (funcname, fargs, argtypes, nargs))
-			return FUNCDETAIL_NOTFOUND;
-	}
+		(*oracle_lob_source_hook) (funcname, fargs, fargnames,
+								   argtypes, nargs);
 
 	/* Get list of possible candidates from namespace search */
 	raw_candidates = FuncnameGetCandidates(funcname, nargs, fargnames,

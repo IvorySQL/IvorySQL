@@ -38,7 +38,8 @@
 
 /* Hooks */
 extern bool pg_compatible_oracle_precedence(Oid arg1, Oid arg2, char *opname_p, Oid *result_arg1, Oid *result_arg2);
-extern bool pg_oracle_lob_source_hook(List *funcname, List *fargs, Oid *argtypes, int nargs);
+extern void pg_oracle_lob_source_hook(List *funcname, List *fargs,
+									  List *fargnames, Oid *argtypes, int nargs);
 extern TupleTableSlot *IvyExecMergeMatched(IvyModifyTableContext *context,
 										ResultRelInfo *resultRelInfo,
 										ItemPointer tupleid,
