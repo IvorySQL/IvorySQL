@@ -46,5 +46,54 @@ SELECT '{"a":1}'::json#>'{a}' AS json_path_no_space;
 SELECT '{"b":2}'::jsonb#>>'{b}' AS jsonb_path_no_space;
 SELECT '{"a":1,"b":2}'::jsonb#-'{a}' AS jsonb_delete_no_space;
 
+-- Test DECLARE CURSOR with lookahead-keyword cursor names and queued tokens
+-- (verifies ora_base_yylex pushback queue, lookahead_end bounds, and UESCAPE)
+BEGIN;
+DECLARE format CURSOR FOR SELECT 1 AS v;
+FETCH ALL FROM format;
+CLOSE format;
+
+DECLARE type CURSOR FOR SELECT 2 AS v;
+FETCH ALL FROM type;
+CLOSE type;
+
+DECLARE package CURSOR FOR SELECT 3 AS v;
+FETCH ALL FROM package;
+CLOSE package;
+
+DECLARE member CURSOR FOR SELECT 4 AS v;
+FETCH ALL FROM member;
+CLOSE member;
+
+DECLARE static CURSOR FOR SELECT 5 AS v;
+FETCH ALL FROM static;
+CLOSE static;
+
+DECLARE constructor CURSOR FOR SELECT 6 AS v;
+FETCH ALL FROM constructor;
+CLOSE constructor;
+
+DECLARE format NO SCROLL CURSOR WITH HOLD FOR SELECT 7 AS v;
+FETCH ALL FROM format;
+CLOSE format;
+ROLLBACK;
+
+-- Invalid syntax with queued lookahead tokens must report syntax error cleanly
+-- instead of crashing or reading out of bounds
+DECLARE constructor CURSOR FOR;
+BEGIN;
+DECLARE c WITH CURSOR FOR SELECT 1;
+ROLLBACK;
+BEGIN;
+DECLARE c U&'a' UESCAPE '!' CURSOR FOR SELECT 1;
+ROLLBACK;
+
+-- Verify U&'' UESCAPE error cursor points to the string literal, not UESCAPE
+SELECT U&'\d800' UESCAPE '\';
+SELECT U&'!0041' UESCAPE '!' AS uesc_ok;
+
+-- Verify 3-token lookahead combinations: (+) outer join, LONG RAW, WITH LOCAL TIME
+SELECT ( + ( + 1 ) ) AS nested_plus;
+
 -- Clean up
 DROP TABLE test_hash_ident;

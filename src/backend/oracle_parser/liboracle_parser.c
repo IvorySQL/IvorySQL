@@ -231,15 +231,33 @@ forward_token(ora_core_yyscan_t yyscanner, int token, TokenAuxData *auxdata)
 
 	if (yyextra->loc_pushback >= yyextra->num_pushbacks)
 	{
+		yyextra->loc_pushback = 0;
+		yyextra->num_pushbacks = 0;
 		push_back_token(yyscanner, token, auxdata);
 	}
 	else
 	{
 		Assert(yyextra->loc_pushback > 0);
 
-		yyextra->pushback_token[yyextra->loc_pushback-1] = token;
-		yyextra->pushback_auxdata[yyextra->loc_pushback-1] = *auxdata;
+		yyextra->pushback_token[yyextra->loc_pushback - 1] = token;
+		yyextra->pushback_auxdata[yyextra->loc_pushback - 1] = *auxdata;
 		yyextra->loc_pushback--;
+	}
+}
+
+/*
+ * Consume the front token in the pushback cache and reset indices when empty
+ * so repeated multi-token lookaheads do not grow the cache unboundedly.
+ */
+static void
+consume_pushback_token(ora_base_yy_extra_type * yyextra)
+{
+	Assert(yyextra->loc_pushback < yyextra->num_pushbacks);
+	yyextra->loc_pushback++;
+	if (yyextra->loc_pushback >= yyextra->num_pushbacks)
+	{
+		yyextra->loc_pushback = 0;
+		yyextra->num_pushbacks = 0;
 	}
 }
 
@@ -352,17 +370,23 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 	YYLTYPE		cur_yylloc;
 
 	TokenAuxData aux1;
+	bool		from_pushback;
 
-	/* Get next token --- we might already have it */
-	cur_token = internal_yylex(yyscanner, llocp, &aux1);
-
-	lvalp->core_yystype = aux1.lval.core_yystype;
-
+	/*
+	 * Restore any character temporarily overwritten with '\0' for the
+	 * previous token's lookahead before reading the next token.
+	 */
 	if (yyextra->lookahead_end)
 	{
 		*(yyextra->lookahead_end) = yyextra->lookahead_hold_char;
 		yyextra->lookahead_end = NULL;
 	}
+
+	/* Get next token --- we might already have it */
+	from_pushback = (yyextra->loc_pushback < yyextra->num_pushbacks);
+	cur_token = internal_yylex(yyscanner, llocp, &aux1);
+
+	lvalp->core_yystype = aux1.lval.core_yystype;
 
 	if (yyextra->body_style == OraBody_MAYBE_ANONYMOUS_BLOCK_BEGIN)
 	{
@@ -389,10 +413,12 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 
 		if (token_is_col_id(cur_token))
 		{
-			bool has_cursor = false;
+			bool		has_cursor = false;
+			TokenAuxData scan_aux;
 
-			token = ora_internal_yylex(yyscanner, llocp, &aux1);
-			push_back_token(yyscanner, token, &aux1);
+			cur_yylloc = *llocp;
+			token = ora_internal_yylex(yyscanner, llocp, &scan_aux);
+			push_back_token(yyscanner, token, &scan_aux);
 
 			is_def_cursor_stmt = false;
 			while (token != 0 && token != ';')
@@ -414,13 +440,13 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 				if (token == CURSOR)
 					has_cursor = true;
 
-				token = ora_internal_yylex(yyscanner, llocp, &aux1);
-				push_back_token(yyscanner, token, &aux1);
+				token = ora_internal_yylex(yyscanner, llocp, &scan_aux);
+				push_back_token(yyscanner, token, &scan_aux);
 
 				if (has_cursor &&
 					(token == WITH ||
-					token == FOR ||
-					token == WITHOUT))
+					 token == FOR ||
+					 token == WITHOUT))
 				{
 					is_def_cursor_stmt = true;
 					break;
@@ -428,6 +454,7 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 				else if (has_cursor)
 					break;
 			}
+			*llocp = cur_yylloc;
 		}
 
 		if (!is_def_cursor_stmt)
@@ -674,7 +701,7 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 			break;
 		case UIDENT:
 		case USCONST:
-			cur_token_length = strlen(yyextra->core_yy_extra.scanbuf + *llocp);
+			cur_token_length = aux1.leng;
 			break;
 		case WITHOUT:
 			cur_token_length = 7;
@@ -708,13 +735,18 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 	}
 
 	/*
-	 * Identify end+1 of current token.  core_yylex() has temporarily stored a
-	 * '\0' here, and will undo that when we call it again.  We need to redo
-	 * it to fully revert the lookahead call for error reporting purposes.
+	 * Identify end+1 of current token.  When cur_token was just lexed
+	 * directly by core_yylex() with no queued lookahead tokens ahead of it,
+	 * core_yylex() has temporarily stored a '\0' here and will undo that when
+	 * called again. When cur_token came from or was followed by
+	 * pushback_token[] entries, core_yylex() has already restored the
+	 * original byte here; we still save it and store '\0' below for error
+	 * reporting.
 	 */
 	yyextra->lookahead_end = yyextra->core_yy_extra.scanbuf +
 		*llocp + cur_token_length;
-	Assert(*(yyextra->lookahead_end) == '\0');
+	if (!from_pushback && yyextra->loc_pushback >= yyextra->num_pushbacks)
+		Assert(*(yyextra->lookahead_end) == '\0');
 
 	/*
 	 * Save and restore *llocp around the call.  It might look like we could
@@ -817,14 +849,24 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 				case ORDINALITY:
 					cur_token = WITH_LA;
 					break;
-				case LOCAL:	
+				case LOCAL:
 					{
 						/*
-						 * Get third token, if it is TIME return WITH_LA
-						 * otherwise return WITH.
+						 * Get third token (from pushback cache if already
+						 * queued, otherwise from the lexer and append it to
+						 * the cache); if it is TIME return WITH_LA otherwise
+						 * return WITH.
 						 */
-						next_token = ora_internal_yylex(yyscanner, llocp, &aux1);
-						push_back_token(yyscanner, next_token, &aux1);
+						if (yyextra->loc_pushback + 1 < yyextra->num_pushbacks)
+						{
+							next_token = yyextra->pushback_token[yyextra->loc_pushback + 1];
+						}
+						else
+						{
+							next_token = ora_internal_yylex(yyscanner, llocp, &aux1);
+							push_back_token(yyscanner, next_token, &aux1);
+							*llocp = cur_yylloc;
+						}
 
 						if (next_token == TIME)
 							cur_token = WITH_LA;
@@ -845,12 +887,12 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 
 		case LONG_P:
 			switch (next_token)
-				{
+			{
 				case RAW_P:
-					yyextra->loc_pushback++;	/* eat RAW_P token */
+					consume_pushback_token(yyextra);	/* eat RAW_P token */
 					cur_token = LONG_RAW;
 					break;
-				}
+			}
 			break;
 
 		case UIDENT:
@@ -863,19 +905,24 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 
 				/* Un-truncate current token so errors point to third token */
 				*(yyextra->lookahead_end) = yyextra->lookahead_hold_char;
+				yyextra->lookahead_end = NULL;
 
-				/* Get third token using ora_core_yylex() and don't push it into cache arrays */
-				next_token = ora_internal_yylex(yyscanner, llocp, &aux1);
+				/* Consume UESCAPE and fetch third token (honoring cache) */
+				consume_pushback_token(yyextra);
+				next_token = internal_yylex(yyscanner, llocp, &aux1);
 
 				/* If we throw error here, it will point to third token */
 				if (next_token != SCONST)
 					ora_scanner_yyerror("UESCAPE must be followed by a simple string literal",
-									yyscanner);
+										yyscanner);
 
 				escstr = aux1.lval.str;
 				if (strlen(escstr) != 1 || !check_uescapechar(escstr[0]))
 					ora_scanner_yyerror("invalid Unicode escape character",
-									yyscanner);
+										yyscanner);
+
+				/* Restore *llocp so errors point to first token */
+				*llocp = cur_yylloc;
 
 				/* Apply Unicode conversion */
 				lvalp->core_yystype.str =
@@ -883,13 +930,6 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 								  escstr[0],
 								  *llocp,
 								  yyscanner);
-
-				/*
-				 * We don't need to revert the un-truncation of UESCAPE.  What
-				 * we do want to do is  eat one-token within cache array, thereby
-				 * consuming all three tokens.
-				 */
-				yyextra->loc_pushback++;
 			}
 			else
 			{
@@ -924,34 +964,53 @@ ora_base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ora_core_yyscan_t yyscanner)
 			 */
 			if (next_token == '+')
 			{
-				/* fetch the third token directly (not via the cache) */
-				next_token = ora_internal_yylex(yyscanner, llocp, &aux1);
-				if (next_token == ')')
+				if (yyextra->loc_pushback + 1 < yyextra->num_pushbacks)
 				{
-					cur_token = ORAJOINOPR;
-					/*
-					 * Consume the cached '+'; the ')' just fetched is
-					 * simply dropped.  lookahead_end / lookahead_hold_char
-					 * were already set up for '(' by the common lookahead
-					 * code above and still point one past '(' with the real
-					 * character saved, so leave them alone -- recomputing
-					 * lookahead_hold_char here would capture the scanner's
-					 * temporary '\0' after ')' instead of the real byte.
-					 */
-					yyextra->loc_pushback++;
+					/* third token is already queued right after '+' */
+					if (yyextra->pushback_token[yyextra->loc_pushback + 1] == ')')
+					{
+						cur_token = ORAJOINOPR;
+						consume_pushback_token(yyextra);
+						consume_pushback_token(yyextra);
+					}
 				}
 				else
 				{
-					/* not "(+)": keep '(', replay the cached '+' then this token */
-					push_back_token(yyscanner, next_token, &aux1);
-				}
+					/* fetch the third token from the lexer */
+					next_token = ora_internal_yylex(yyscanner, llocp, &aux1);
+					if (next_token == ')')
+					{
+						cur_token = ORAJOINOPR;
 
-				/*
-				 * ora_internal_yylex() above moved *llocp to the third
-				 * token; restore it to '(' so this token is reported at the
-				 * right position (matching the matched and unmatched cases).
-				 */
-				*llocp = cur_yylloc;
+						/*
+						 * Consume the cached '+'; the ')' just fetched is
+						 * simply dropped.  lookahead_end /
+						 * lookahead_hold_char were already set up for '(' by
+						 * the common lookahead code above and still point one
+						 * past '(' with the real character saved, so leave
+						 * them alone -- recomputing lookahead_hold_char here
+						 * would capture the scanner's temporary '\0' after
+						 * ')' instead of the real byte.
+						 */
+						consume_pushback_token(yyextra);
+					}
+					else
+					{
+						/*
+						 * not "(+)": keep '(', replay the cached '+' then
+						 * this token
+						 */
+						push_back_token(yyscanner, next_token, &aux1);
+					}
+
+					/*
+					 * ora_internal_yylex() above moved *llocp to the third
+					 * token; restore it to '(' so this token is reported at
+					 * the right position (matching the matched and unmatched
+					 * cases).
+					 */
+					*llocp = cur_yylloc;
+				}
 			}
 			break;
 	}

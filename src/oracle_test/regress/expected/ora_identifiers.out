@@ -88,5 +88,101 @@ SELECT '{"a":1,"b":2}'::jsonb#-'{a}' AS jsonb_delete_no_space;
  {"b": 2}
 (1 row)
 
+-- Test DECLARE CURSOR with lookahead-keyword cursor names and queued tokens
+-- (verifies ora_base_yylex pushback queue, lookahead_end bounds, and UESCAPE)
+BEGIN;
+DECLARE format CURSOR FOR SELECT 1 AS v;
+FETCH ALL FROM format;
+ v 
+---
+ 1
+(1 row)
+
+CLOSE format;
+DECLARE type CURSOR FOR SELECT 2 AS v;
+FETCH ALL FROM type;
+ v 
+---
+ 2
+(1 row)
+
+CLOSE type;
+DECLARE package CURSOR FOR SELECT 3 AS v;
+FETCH ALL FROM package;
+ v 
+---
+ 3
+(1 row)
+
+CLOSE package;
+DECLARE member CURSOR FOR SELECT 4 AS v;
+FETCH ALL FROM member;
+ v 
+---
+ 4
+(1 row)
+
+CLOSE member;
+DECLARE static CURSOR FOR SELECT 5 AS v;
+FETCH ALL FROM static;
+ v 
+---
+ 5
+(1 row)
+
+CLOSE static;
+DECLARE constructor CURSOR FOR SELECT 6 AS v;
+FETCH ALL FROM constructor;
+ v 
+---
+ 6
+(1 row)
+
+CLOSE constructor;
+DECLARE format NO SCROLL CURSOR WITH HOLD FOR SELECT 7 AS v;
+FETCH ALL FROM format;
+ v 
+---
+ 7
+(1 row)
+
+CLOSE format;
+ROLLBACK;
+-- Invalid syntax with queued lookahead tokens must report syntax error cleanly
+-- instead of crashing or reading out of bounds
+DECLARE constructor CURSOR FOR;
+ERROR:  syntax error at or near ";"
+LINE 1: DECLARE constructor CURSOR FOR;
+                                      ^
+BEGIN;
+DECLARE c WITH CURSOR FOR SELECT 1;
+ERROR:  syntax error at or near "WITH"
+LINE 1: DECLARE c WITH CURSOR FOR SELECT 1;
+                  ^
+ROLLBACK;
+BEGIN;
+DECLARE c U&'a' UESCAPE '!' CURSOR FOR SELECT 1;
+ERROR:  syntax error at or near "U&'a' UESCAPE '!' CURSOR FOR"
+LINE 1: DECLARE c U&'a' UESCAPE '!' CURSOR FOR SELECT 1;
+                  ^
+ROLLBACK;
+-- Verify U&'' UESCAPE error cursor points to the string literal, not UESCAPE
+SELECT U&'\d800' UESCAPE '\';
+ERROR:  invalid Unicode surrogate pair
+LINE 1: SELECT U&'\d800' UESCAPE '\';
+                       ^
+SELECT U&'!0041' UESCAPE '!' AS uesc_ok;
+ uesc_ok 
+---------
+ A
+(1 row)
+
+-- Verify 3-token lookahead combinations: (+) outer join, LONG RAW, WITH LOCAL TIME
+SELECT ( + ( + 1 ) ) AS nested_plus;
+ nested_plus 
+-------------
+           1
+(1 row)
+
 -- Clean up
 DROP TABLE test_hash_ident;
