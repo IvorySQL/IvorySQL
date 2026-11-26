@@ -528,6 +528,7 @@ do { \
 #define DCH_SUFFIX_th	0x04
 #define DCH_SUFFIX_SP	0x08
 #define DCH_SUFFIX_TM	0x10
+#define DCH_SUFFIX_FM_INH 0x20	/* Oracle mode: FM in effect for this node */
 
 /*
  * Suffix tests
@@ -1404,12 +1405,20 @@ parse_format(FormatNode *node, const char *str, const KeyWord *kw,
 			 const KeySuffix *suf, const int *index, uint32 flags, NUMDesc *Num)
 {
 	FormatNode *n;
+	bool		ora_fm;
 
 #ifdef DEBUG_TO_FROM_CHAR
 	elog(DEBUG_elog_output, "to_char/number(): run parser");
 #endif
 
 	n = node;
+
+	/*
+	 * Oracle's FM applies to the elements that follow it until another FM
+	 * toggles it off again, so keep the state in effect across the format.
+	 * Only SSSSS uses it; the other fields keep their node-local behaviour.
+	 */
+	ora_fm = false;
 
 	while (*str)
 	{
@@ -1423,6 +1432,8 @@ parse_format(FormatNode *node, const char *str, const KeyWord *kw,
 			(s = suff_search(str, suf, SUFFTYPE_PREFIX)) != NULL)
 		{
 			suffix |= s->id;
+			if (s->id & DCH_SUFFIX_FM)
+				ora_fm = !ora_fm;
 			if (s->len)
 				str += s->len;
 		}
@@ -1434,6 +1445,8 @@ parse_format(FormatNode *node, const char *str, const KeyWord *kw,
 		{
 			n->type = NODE_TYPE_ACTION;
 			n->suffix = suffix;
+			if ((flags & DCH_FLAG) && ora_fm)
+				n->suffix |= DCH_SUFFIX_FM_INH;
 			if (n->key->len)
 				str += n->key->len;
 
@@ -2706,10 +2719,25 @@ DCH_to_char(FormatNode *node, bool is_interval, TmToChar *in, char *out, Oid col
 				break;
 #undef DCH_to_char_fsec
 			case DCH_SSSS:
-				sprintf(s, "%lld",
-						(long long) (tm->tm_hour * SECS_PER_HOUR +
-									 tm->tm_min * SECS_PER_MINUTE +
-									 tm->tm_sec));
+				{
+					long long	ssss = (long long) (tm->tm_hour * SECS_PER_HOUR +
+												  tm->tm_min * SECS_PER_MINUTE +
+												  tm->tm_sec);
+
+					/*
+					 * Oracle's SSSSS is a five-character field, so pad the
+					 * value with leading zeroes unless FM suppresses the
+					 * padding.  FM is a toggle that carries over to the
+					 * following elements, so only the state in effect for this
+					 * node matters.  SSSS is a PostgreSQL-only alias and keeps
+					 * the unpadded output.
+					 */
+					if (ORA_PARSER == compatible_db && n->key->len == 5 &&
+						(n->suffix & DCH_SUFFIX_FM_INH) == 0)
+						sprintf(s, "%05lld", ssss);
+					else
+						sprintf(s, "%lld", ssss);
+				}
 				if (IS_SUFFIX_THth(n->suffix))
 					str_numth(s, s, SUFFIX_TH_TYPE(n->suffix));
 				s += strlen(s);
