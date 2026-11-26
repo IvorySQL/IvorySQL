@@ -3899,59 +3899,65 @@ pg_get_package_head(PG_FUNCTION_ARGS)
 	{
 		char	   *str;
 		List	   *sourcelist;
-		ListCell   *lc;
-		char	   *access_tag;
-
-		appendStringInfo(&buf, " ACCESSIBLE BY (");
 
 		str = TextDatumGetCString(accesssource);
-		sourcelist = (List *) stringToNode(str);
+		sourcelist = castNode(List, stringToNode(str));
+		pfree(str);
 
-		foreach(lc, sourcelist)
+		if (sourcelist != NIL)
 		{
-			AccessorItem *access = (AccessorItem *) lfirst(lc);
-			char	   *unitname;
+			ListCell   *lc;
 
-			Assert(access->type == T_AccessorItem);
+			appendStringInfoString(&buf, " ACCESSIBLE BY (");
 
-			switch (access->unitkind)
+			foreach(lc, sourcelist)
 			{
-				case ACCESSOR_FUNCTION:
-					access_tag = "FUNCTION";
-					break;
-				case ACCESSOR_PROCEDURE:
-					access_tag = "PROCEDURE";
-					break;
-				case ACCESSOR_PACKAGE:
-					access_tag = "PACKAGE";
-					break;
-				case ACCESSOR_TRIGGER:
-					access_tag = "TRIGGER";
-					break;
-				case ACCESSOR_TYPE:
-					access_tag = "TYPE";
-					break;
-				case ACCESSOR_UNKNOW:
-					access_tag = " ";
-					break;
-				default:
-					elog(ERROR, "unknown proper type %u", access->unitkind);
-					break;
-			}
+				AccessorItem *access = castNode(AccessorItem, lfirst(lc));
+				const char *access_tag;
+				char	   *unitname;
 
-			unitname = NameListToString(access->unitname);
-			appendStringInfo(&buf, "%s %s,",
-							 access_tag,
-							 unitname);
-			pfree(unitname);
+				switch (access->unitkind)
+				{
+					case ACCESSOR_FUNCTION:
+						access_tag = "FUNCTION";
+						break;
+					case ACCESSOR_PROCEDURE:
+						access_tag = "PROCEDURE";
+						break;
+					case ACCESSOR_PACKAGE:
+						access_tag = "PACKAGE";
+						break;
+					case ACCESSOR_TRIGGER:
+						access_tag = "TRIGGER";
+						break;
+					case ACCESSOR_TYPE:
+						access_tag = "TYPE";
+						break;
+					case ACCESSOR_UNKNOW:
+						access_tag = NULL;
+						break;
+					default:
+						elog(ERROR, "unknown proper type %u", access->unitkind);
+						break;
+				}
+
+				if (lc != list_head(sourcelist))
+					appendStringInfoString(&buf, ", ");
+
+				unitname = NameListToQuotedString(access->unitname);
+				if (access_tag != NULL)
+					appendStringInfo(&buf, "%s %s", access_tag, unitname);
+				else
+					appendStringInfoString(&buf, unitname);
+				pfree(unitname);
+			}
+			appendStringInfoChar(&buf, ')');
 		}
-		/* replace last ',' to )' */
-		buf.data[buf.len] = ')';
 	}
 
 	ReleaseSysCache(pkgtup);
 
-	PG_RETURN_TEXT_P(string_to_text(buf.data));
+	PG_RETURN_TEXT_P(cstring_to_text_with_len(buf.data, buf.len));
 }
 
 /*

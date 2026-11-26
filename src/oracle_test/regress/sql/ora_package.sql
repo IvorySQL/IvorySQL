@@ -6256,6 +6256,35 @@ END victim_pkg;
 /
 
 RESET ROLE;
+-- Test pg_get_package_head() with ACCESSIBLE BY clauses (all unit kinds,
+-- untyped accessors, quoted/special identifiers, and combined clauses).
+CREATE OR REPLACE PACKAGE pkg_head_ab_all AUTHID DEFINER
+  ACCESSIBLE BY (FUNCTION fn1, PROCEDURE proc1, PACKAGE pkg1, TRIGGER trg1, TYPE typ1) AS
+  FUNCTION f RETURN INTEGER;
+END pkg_head_ab_all;
+/
+
+CREATE OR REPLACE NONEDITIONABLE PACKAGE pkg_head_ab_quoted AUTHID CURRENT_USER
+  DEFAULT COLLATION USING_NLS_COMP
+  ACCESSIBLE BY (PROCEDURE "MySchema"."My Proc", FUNCTION "select"."a""b", bare_unit) AS
+  FUNCTION f RETURN INTEGER;
+END pkg_head_ab_quoted;
+/
+
+CREATE OR REPLACE PACKAGE pkg_head_no_ab AS
+  FUNCTION f RETURN INTEGER;
+END pkg_head_no_ab;
+/
+
+SELECT pkgname, pg_catalog.pg_get_package_head(oid)
+FROM pg_package
+WHERE pkgname IN ('pkg_head_ab_all', 'pkg_head_ab_quoted', 'pkg_head_no_ab')
+ORDER BY pkgname;
+
+DROP PACKAGE pkg_head_ab_all;
+DROP PACKAGE pkg_head_ab_quoted;
+DROP PACKAGE pkg_head_no_ab;
+
 --clean data
 RESET ivorysql.allow_out_parameter_const;
 DROP FUNCTION test_event_trigger;
