@@ -257,31 +257,73 @@ SELECT program_name, program_type, program_action, number_of_arguments, enabled
 SELECT program_name, argument_position, argument_name, argument_type, default_value
   FROM user_scheduler_program_args ORDER BY argument_position;
 
--- drop argument by position and by name; errors on unknown ones
+-- failed drops do not disable an enabled program
 BEGIN
-  dbms_scheduler.drop_program_argument('reg_prog', 1);
-END;
-/
-BEGIN
-  dbms_scheduler.drop_program_argument('reg_prog', 1);
-END;
-/
-BEGIN
-  dbms_scheduler.drop_program_argument('reg_prog', 'y');
+  dbms_scheduler.drop_program_argument('reg_prog', 99);
 END;
 /
 BEGIN
   dbms_scheduler.drop_program_argument('reg_prog', 'nosucharg');
 END;
 /
+SELECT enabled FROM user_scheduler_programs WHERE program_name = 'REG_PROG';
+
+-- drop argument by position disables the program; cannot re-enable while incomplete
+BEGIN
+  dbms_scheduler.drop_program_argument('reg_prog', 1);
+END;
+/
+SELECT enabled FROM user_scheduler_programs WHERE program_name = 'REG_PROG';
+BEGIN
+  dbms_scheduler.enable('reg_prog');
+END;
+/
+BEGIN
+  dbms_scheduler.drop_program_argument('reg_prog', 1);
+END;
+/
+-- re-defining the argument leaves the program disabled until explicitly enabled
+BEGIN
+  dbms_scheduler.define_program_argument(program_name => 'reg_prog',
+      argument_position => 1, argument_name => 'x', argument_type => 'NUMBER');
+END;
+/
+SELECT enabled FROM user_scheduler_programs WHERE program_name = 'REG_PROG';
+BEGIN
+  dbms_scheduler.enable('reg_prog');
+END;
+/
+SELECT enabled FROM user_scheduler_programs WHERE program_name = 'REG_PROG';
+
+-- drop argument by name also disables the program
+BEGIN
+  dbms_scheduler.drop_program_argument('reg_prog', 'y');
+END;
+/
+SELECT enabled FROM user_scheduler_programs WHERE program_name = 'REG_PROG';
+BEGIN
+  dbms_scheduler.enable('reg_prog');
+END;
+/
+BEGIN
+  dbms_scheduler.drop_program_argument('reg_prog', 'nosucharg');
+END;
+/
+-- dropping from an already-disabled program succeeds and keeps it disabled
+BEGIN
+  dbms_scheduler.drop_program_argument('reg_prog', 1);
+END;
+/
+SELECT enabled FROM user_scheduler_programs WHERE program_name = 'REG_PROG';
 SELECT count(*) AS remaining_args FROM user_scheduler_program_args;
--- put them back for later job tests
+-- put them back and re-enable for later job tests
 BEGIN
   dbms_scheduler.define_program_argument(program_name => 'reg_prog',
       argument_position => 1, argument_name => 'x', argument_type => 'NUMBER');
   dbms_scheduler.define_program_argument(program_name => 'reg_prog',
       argument_position => 2, argument_name => 'y', argument_type => 'VARCHAR2',
       default_value => 'y-default');
+  dbms_scheduler.enable('reg_prog');
 END;
 /
 
