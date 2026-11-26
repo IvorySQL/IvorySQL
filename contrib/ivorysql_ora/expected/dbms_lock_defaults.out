@@ -1,0 +1,26 @@
+-- DBMS_LOCK.REQUEST with omitted mode/timeout defaults to X_MODE and
+-- MAXWAIT (wait forever), and RELEASE must release locks acquired in
+-- any Oracle lock mode (SSX previously returned 3 and stayed held).
+SET ivorysql.compatible_mode = oracle;
+-- single-argument REQUEST(handle): defaults to X_MODE + MAXWAIT
+DECLARE
+    h VARCHAR2(200);
+    r INTEGER;
+BEGIN
+    h := sys.dbms_lock_allocate_unique('t_defaults_single');
+    r := dbms_lock.request(h);
+    DBMS_OUTPUT.PUT_LINE('single-arg request: ' || r);
+    r := dbms_lock.release(h);
+    DBMS_OUTPUT.PUT_LINE('release: ' || r);
+END;
+-- SSX request must be releasable (was returning 3 with the lock held)
+DECLARE
+    h VARCHAR2(200);
+    r INTEGER;
+BEGIN
+    h := sys.dbms_lock_allocate_unique('t_defaults_ssx');
+    r := dbms_lock.request(h, dbms_lock.ssx_mode, 0);
+    DBMS_OUTPUT.PUT_LINE('ssx request: ' || r);
+    r := dbms_lock.release(h);
+    DBMS_OUTPUT.PUT_LINE('ssx release: ' || r);
+END;
