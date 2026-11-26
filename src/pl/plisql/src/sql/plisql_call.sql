@@ -526,6 +526,8 @@ BEGIN
 END;
 $$;
 
+DROP PROCEDURE p1;
+
 
 -- check that we detect change of dependencies in CALL
 -- atomic and non-atomic call sites used to do this differently, so check both

@@ -126,3 +126,104 @@ SELECT test_bug1124_order() AS result FROM dual;
 (1 row)
 
 DROP FUNCTION test_bug1124_order;
+--
+-- Test 6: get_functup_bytypenames() must not clobber outer loop counter or
+-- read past proargtypes[] when replacing overloaded functions/procedures
+-- referencing package %TYPE parameters (including OUT parameters).
+--
+CREATE OR REPLACE PACKAGE pkg_functup_ov IS
+    v1 integer;
+    v2 text;
+    v3 numeric;
+END pkg_functup_ov;
+/
+CREATE OR REPLACE FUNCTION fn_functup_ov(x pkg_functup_ov.v1%TYPE) RETURN integer IS
+BEGIN
+    RETURN x;
+END;
+/
+CREATE OR REPLACE FUNCTION fn_functup_ov(x pkg_functup_ov.v2%TYPE) RETURN integer IS
+BEGIN
+    RETURN 2;
+END;
+/
+-- Change package member types so SearchSysCache3 misses and calls get_functup_bytypenames()
+CREATE OR REPLACE PACKAGE pkg_functup_ov IS
+    v1 bigint;
+    v2 varchar2(100);
+    v3 numeric;
+END pkg_functup_ov;
+/
+-- Adding a third overload previously hung in an infinite loop in get_functup_bytypenames()
+CREATE OR REPLACE FUNCTION fn_functup_ov(x pkg_functup_ov.v3%TYPE) RETURN integer IS
+BEGIN
+    RETURN 3;
+END;
+/
+-- Replacing the second overload must find and replace the existing entry in place
+CREATE OR REPLACE FUNCTION fn_functup_ov(x pkg_functup_ov.v2%TYPE) RETURN integer IS
+BEGIN
+    RETURN 22;
+END;
+/
+SELECT count(*) AS overload_count
+FROM pg_proc
+WHERE proname = 'fn_functup_ov';
+ overload_count 
+----------------
+              3
+(1 row)
+
+SELECT fn_functup_ov('abc'::varchar2(100)) AS res_v2,
+       fn_functup_ov(10::numeric) AS res_v3,
+       fn_functup_ov(x => 'abc'::varchar2(100)) AS res_v2_named,
+       fn_functup_ov(x => 10::numeric) AS res_v3_named
+FROM dual;
+ res_v2 | res_v3 | res_v2_named | res_v3_named 
+--------+--------+--------------+--------------
+     22 |      3 |           22 |            3
+(1 row)
+
+-- OUT parameter + package %TYPE: replacing after package type change must match
+-- via proallargtypes without reading past proargtypes[]
+CREATE OR REPLACE PACKAGE pkg_functup_out IS
+    v1 integer;
+END pkg_functup_out;
+/
+CREATE OR REPLACE PROCEDURE proc_functup_out(x pkg_functup_out.v1%TYPE, y OUT integer) IS
+BEGIN
+    y := x + 1;
+END;
+/
+CREATE OR REPLACE PACKAGE pkg_functup_out IS
+    v1 bigint;
+END pkg_functup_out;
+/
+CREATE OR REPLACE PROCEDURE proc_functup_out(x pkg_functup_out.v1%TYPE, y OUT integer) IS
+BEGIN
+    y := x + 10;
+END;
+/
+SELECT count(*) AS proc_overload_count
+FROM pg_proc
+WHERE proname = 'proc_functup_out';
+ proc_overload_count 
+---------------------
+                   1
+(1 row)
+
+DO $$
+DECLARE
+    res integer;
+BEGIN
+    proc_functup_out(5, res);
+    RAISE NOTICE 'proc_functup_out result = %', res;
+END;
+$$;
+NOTICE:  proc_functup_out result = 15
+DROP PROCEDURE proc_functup_out(bigint, OUT integer);
+DROP FUNCTION fn_functup_ov(bigint);
+DROP FUNCTION fn_functup_ov(varchar2);
+DROP FUNCTION fn_functup_ov(numeric);
+DROP PACKAGE pkg_functup_out;
+DROP PACKAGE pkg_functup_ov;
