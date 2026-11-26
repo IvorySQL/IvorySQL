@@ -1,0 +1,58 @@
+--
+-- ORA_TO_CHAR_DS_TS
+-- Oracle's DS (short date) and TS (time) format elements.
+--
+-- DS prints month/day/year without leading zeroes, TS prints a 12-hour clock
+-- with a bare hour.  Both are accepted in lower case as well.
+--
+SELECT TO_CHAR(DATE '2024-02-29', 'DS') AS ds_feb,
+       TO_CHAR(DATE '2024-01-05', 'DS') AS ds_jan,
+       TO_CHAR(DATE '2024-12-31', 'DS') AS ds_dec;
+  ds_feb   |  ds_jan  |   ds_dec   
+-----------+----------+------------
+ 2/29/2024 | 1/5/2024 | 12/31/2024
+(1 row)
+
+SELECT TO_CHAR(DATE '2024-02-29', 'ds') AS ds_lower;
+ ds_lower  
+-----------
+ 2/29/2024
+(1 row)
+
+SELECT TO_CHAR(TIMESTAMP '2024-02-29 00:00:00', 'TS') AS ts_midnight,
+       TO_CHAR(TIMESTAMP '2024-02-29 12:00:00', 'TS') AS ts_noon;
+ ts_midnight |   ts_noon   
+-------------+-------------
+ 12:00:00 AM | 12:00:00 PM
+(1 row)
+
+SELECT TO_CHAR(TIMESTAMP '2024-02-29 13:45:56', 'TS') AS ts_pm,
+       TO_CHAR(TIMESTAMP '2024-02-29 23:59:59', 'TS') AS ts_last_minute;
+   ts_pm    | ts_last_minute 
+------------+----------------
+ 1:45:56 PM | 11:59:59 PM
+(1 row)
+
+SELECT TO_CHAR(TIMESTAMP '2024-02-29 13:45:56', 'ts') AS ts_lower;
+  ts_lower  
+------------
+ 1:45:56 PM
+(1 row)
+
+-- both elements combine with the ordinary ones
+SELECT TO_CHAR(TIMESTAMP '2024-02-29 13:45:56', 'DS TS') AS combined;
+       combined       
+----------------------
+ 2/29/2024 1:45:56 PM
+(1 row)
+
+-- PostgreSQL mode keeps treating them as literal text
+SET ivorysql.compatible_mode = pg;
+SELECT TO_CHAR(DATE '2024-02-29', 'DS') AS pg_ds,
+       TO_CHAR(TIMESTAMP '2024-02-29 13:45:56', 'TS') AS pg_ts;
+ pg_ds | pg_ts 
+-------+-------
+ DS    | TS
+(1 row)
+
+RESET ivorysql.compatible_mode;
