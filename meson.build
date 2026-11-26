@@ -3718,6 +3718,7 @@ test_install_data = []
 test_install_libs = []
 testprep_targets = []
 subdir('src/oracle_test')
+subdir('src/interfaces/ecpg/oracle_test')
 oracle_test_install_data = test_install_data
 oracle_test_install_libs = test_install_libs
 oracle_testprep_targets = testprep_targets
@@ -4055,8 +4056,12 @@ postgres_install_suites = []
 testwrap = files('src/tools/testwrap')
 
 foreach test_dir : tests
-  is_oracle_test = test_dir['sd'].startswith(
-    meson.project_source_root() / 'src/oracle_test/')
+  # Normalize separators: on Windows current_source_dir() returns
+  # backslash-separated paths, while the '/' operator joins with '/'.
+  test_sd = '/'.join(test_dir['sd'].split('\\'))
+  test_root = '/'.join(meson.project_source_root().split('\\'))
+  is_oracle_test = (test_sd.startswith(test_root / 'src/oracle_test/') or
+    test_sd.startswith(test_root / 'src/interfaces/ecpg/oracle_test'))
   test_group = test_dir['name']
   if is_oracle_test
     test_group = 'oracle_' + test_group
@@ -4100,7 +4105,7 @@ foreach test_dir : tests
         )
         fallback_dbname = 'isolation_regression_@0@'
       elif kind == 'ecpg'
-        runner = pg_regress_ecpg
+        runner = is_oracle_test ? oracle_pg_regress_ecpg : pg_regress_ecpg
         fallback_dbname = 'ecpg_regression_@0@'
       endif
 

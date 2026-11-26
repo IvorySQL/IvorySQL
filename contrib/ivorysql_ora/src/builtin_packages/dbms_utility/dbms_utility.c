@@ -35,10 +35,6 @@
 #include "parser/scansup.h"
 #include "port.h"
 
-#ifndef WIN32
-#include <dlfcn.h>
-#endif
-
 PG_FUNCTION_INFO_V1(ora_format_error_backtrace);
 PG_FUNCTION_INFO_V1(ora_format_error_stack);
 PG_FUNCTION_INFO_V1(ora_format_call_stack);
@@ -72,33 +68,36 @@ lookup_plisql_functions(void)
 	if (lookup_attempted)
 		return;
 
+	/*
+	 * Use load_external_function() rather than dlsym(RTLD_DEFAULT, ...): it
+	 * works on every platform, including Windows, where there is no
+	 * RTLD_DEFAULT.  plisql is normally loaded already when these functions
+	 * are called from within a PL/iSQL context; if a symbol is missing, the
+	 * pointer stays NULL and callers fall back to returning NULL.
+	 *
+	 * Set lookup_attempted only once all lookups have returned: if loading
+	 * the library raises an error (for example because dynamic_library_path
+	 * does not lead to it), the next call should try again rather than
+	 * return NULL for the rest of the session.
+	 */
+	get_exception_context_fn = (plisql_get_context_fn)
+		load_external_function("$libdir/plisql",
+							   "plisql_get_current_exception_context",
+							   false, NULL);
+	get_exception_message_fn = (plisql_get_message_fn)
+		load_external_function("$libdir/plisql",
+							   "plisql_get_current_exception_message",
+							   false, NULL);
+	get_exception_sqlerrcode_fn = (plisql_get_sqlerrcode_fn)
+		load_external_function("$libdir/plisql",
+							   "plisql_get_current_exception_sqlerrcode",
+							   false, NULL);
+	get_call_stack_fn = (plisql_get_call_stack_fn)
+		load_external_function("$libdir/plisql",
+							   "plisql_get_call_stack",
+							   false, NULL);
+
 	lookup_attempted = true;
-
-#ifndef WIN32
-	{
-		/*
-		* Use RTLD_DEFAULT to search all loaded shared objects.
-		* plisql.so should already be loaded when these functions are called
-		* from within a PL/iSQL context.
-		*/
-		void *fn = dlsym(RTLD_DEFAULT, "plisql_get_current_exception_context");
-		if (fn != NULL)
-			get_exception_context_fn = (plisql_get_context_fn) fn;
-
-		fn = dlsym(RTLD_DEFAULT, "plisql_get_current_exception_message");
-		if (fn != NULL)
-			get_exception_message_fn = (plisql_get_message_fn) fn;
-
-		fn = dlsym(RTLD_DEFAULT, "plisql_get_current_exception_sqlerrcode");
-		if (fn != NULL)
-			get_exception_sqlerrcode_fn = (plisql_get_sqlerrcode_fn) fn;
-
-		fn = dlsym(RTLD_DEFAULT, "plisql_get_call_stack");
-		if (fn != NULL)
-			get_call_stack_fn = (plisql_get_call_stack_fn) fn;
-	}
-#endif
-	/* On Windows, function pointers remain NULL - features require plisql */
 }
 
 /*
