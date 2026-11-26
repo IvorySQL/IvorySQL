@@ -292,8 +292,49 @@ BEGIN
 END;
 /
 NOTICE:  Test 4.3 - Max buffer: [Max buffer works]
--- Test 4.4: Buffer size above 1000000 (now allowed, no max limit)
+-- Test 4.4: Buffer size above 1000000 (silently capped to 1000000, Oracle behavior)
 CALL dbms_output.enable(1000001);
+DECLARE
+    chunk TEXT := rpad('X', 10000, 'X');
+    i INTEGER;
+BEGIN
+    dbms_output.disable();
+    dbms_output.enable(1000001);
+    FOR i IN 1..100 LOOP
+        dbms_output.put_line(chunk);
+    END LOOP;
+    BEGIN
+        dbms_output.put_line('Y');
+        RAISE NOTICE 'Test 4.4 - 1000001 cap: unexpected success';
+    EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE 'Test 4.4 - 1000001 capped: %', SQLERRM;
+    END;
+    dbms_output.enable(2147483647);
+    BEGIN
+        dbms_output.put_line('Z');
+        RAISE NOTICE 'Test 4.4 - INT32_MAX cap: unexpected success';
+    EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE 'Test 4.4 - INT32_MAX capped: %', SQLERRM;
+    END;
+    dbms_output.enable(NULL);
+    dbms_output.put_line('Z');
+    RAISE NOTICE 'Test 4.4 - NULL unlimited past 1000000: PASSED';
+    dbms_output.disable();
+    dbms_output.enable(-100);
+    dbms_output.put_line(rpad('A', 2000, 'A'));
+    BEGIN
+        dbms_output.put_line('B');
+        RAISE NOTICE 'Test 4.4 - below-min clamp: unexpected success';
+    EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE 'Test 4.4 - below-min clamped: %', SQLERRM;
+    END;
+    dbms_output.disable();
+END;
+/
+NOTICE:  Test 4.4 - 1000001 capped: ORU-10027: buffer overflow, limit of 1000000 bytes
+NOTICE:  Test 4.4 - INT32_MAX capped: ORU-10027: buffer overflow, limit of 1000000 bytes
+NOTICE:  Test 4.4 - NULL unlimited past 1000000: PASSED
+NOTICE:  Test 4.4 - below-min clamped: ORU-10027: buffer overflow, limit of 2000 bytes
 -- Test 4.5: NULL buffer size uses unlimited (starts at 20000, grows dynamically)
 DECLARE
     line TEXT;
