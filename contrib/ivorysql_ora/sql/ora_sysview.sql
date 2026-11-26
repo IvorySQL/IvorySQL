@@ -270,3 +270,88 @@ SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'TEST_ALL_TAB_
 \set ON_ERROR_STOP on
 
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+
+--
+-- USER_* views and SYS_CONTEXT must work for roles whose names are not
+-- plain lowercase identifiers.  They used to cast CURRENT_USER to regrole,
+-- which parses the name as an identifier (or as an OID if it is all digits).
+--
+CREATE ROLE "1234567" NOLOGIN NOCREATEDB NOCREATEROLE;
+CREATE ROLE "regress_Mixed-Case" LOGIN CREATEDB CREATEROLE;
+GRANT CREATE ON SCHEMA public TO "1234567", "regress_Mixed-Case";
+GRANT "regress_Mixed-Case" TO "1234567";
+-- a table with a constraint, a function and a trigger owned by each role
+SET ROLE "1234567";
+CREATE TABLE test_numeric_role (id int PRIMARY KEY);
+CREATE FUNCTION func_numeric_role(p int) RETURN int IS
+BEGIN
+	RETURN p;
+END;
+/
+CREATE FUNCTION trgfunc_numeric_role() RETURNS trigger AS $$
+BEGIN
+	RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+/
+CREATE TRIGGER trg_numeric_role BEFORE INSERT ON test_numeric_role
+	FOR EACH ROW EXECUTE FUNCTION trgfunc_numeric_role();
+RESET ROLE;
+SET ROLE "regress_Mixed-Case";
+CREATE TABLE test_mixed_role (id int PRIMARY KEY);
+CREATE FUNCTION func_mixed_role(p int) RETURN int IS
+BEGIN
+	RETURN p;
+END;
+/
+CREATE FUNCTION trgfunc_mixed_role() RETURNS trigger AS $$
+BEGIN
+	RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+/
+CREATE TRIGGER trg_mixed_role BEFORE INSERT ON test_mixed_role
+	FOR EACH ROW EXECUTE FUNCTION trgfunc_mixed_role();
+RESET ROLE;
+-- each role sees only its own objects
+SET ROLE "1234567";
+SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, POSITION
+FROM SYS.USER_CONS_COLUMNS ORDER BY 1, 2;
+SELECT OBJECT_NAME, OBJECT_TYPE FROM SYS.USER_PROCEDURES ORDER BY 1;
+SELECT NAME, TYPE, COUNT(*) > 0 AS has_text
+FROM SYS.USER_SOURCE GROUP BY NAME, TYPE ORDER BY 1;
+SELECT SYS_CONTEXT('USERENV', 'CURRENT_USERID') =
+       (SELECT oid::text FROM pg_roles WHERE rolname = '1234567') AS userid_ok,
+       SYS_CONTEXT('SYS_SESSION_ROLES', 'LOGIN') AS can_login,
+       SYS_CONTEXT('SYS_SESSION_ROLES', 'CREATEROLE') AS can_createrole,
+       SYS_CONTEXT('SYS_SESSION_ROLES', 'CREATEDB') AS can_createdb
+FROM DUAL;
+RESET ROLE;
+SET ROLE "regress_Mixed-Case";
+SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, POSITION
+FROM SYS.USER_CONS_COLUMNS ORDER BY 1, 2;
+SELECT OBJECT_NAME, OBJECT_TYPE FROM SYS.USER_PROCEDURES ORDER BY 1;
+SELECT NAME, TYPE, COUNT(*) > 0 AS has_text
+FROM SYS.USER_SOURCE GROUP BY NAME, TYPE ORDER BY 1;
+SELECT SYS_CONTEXT('USERENV', 'CURRENT_USERID') =
+       (SELECT oid::text FROM pg_roles WHERE rolname = 'regress_Mixed-Case') AS userid_ok,
+       SYS_CONTEXT('SYS_SESSION_ROLES', 'LOGIN') AS can_login,
+       SYS_CONTEXT('SYS_SESSION_ROLES', 'CREATEROLE') AS can_createrole,
+       SYS_CONTEXT('SYS_SESSION_ROLES', 'CREATEDB') AS can_createdb
+FROM DUAL;
+RESET ROLE;
+-- session user and current user differ
+SET SESSION AUTHORIZATION "1234567";
+SET ROLE "regress_Mixed-Case";
+SELECT SYS_CONTEXT('USERENV', 'SESSION_USERID') =
+       (SELECT oid::text FROM pg_roles WHERE rolname = '1234567') AS session_userid_ok,
+       SYS_CONTEXT('USERENV', 'PROXY_USERID') =
+       (SELECT oid::text FROM pg_roles WHERE rolname = '1234567') AS proxy_userid_ok,
+       SYS_CONTEXT('USERENV', 'CURRENT_USERID') =
+       (SELECT oid::text FROM pg_roles WHERE rolname = 'regress_Mixed-Case') AS current_userid_ok
+FROM DUAL;
+RESET ROLE;
+RESET SESSION AUTHORIZATION;
+DROP OWNED BY "1234567", "regress_Mixed-Case";
+DROP ROLE "1234567";
+DROP ROLE "regress_Mixed-Case";
