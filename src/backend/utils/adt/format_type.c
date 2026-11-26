@@ -123,6 +123,7 @@ format_type_extended(Oid type_oid, int32 typemod, uint16 flags)
 	bool		is_array;
 	char	   *buf;
 	bool		with_typemod;
+	bool		preserve_no_typemod;
 
 	if (type_oid == InvalidOid)
 	{
@@ -175,6 +176,16 @@ format_type_extended(Oid type_oid, int32 typemod, uint16 flags)
 		is_array = false;
 
 	with_typemod = (flags & FORMAT_TYPE_TYPEMOD_GIVEN) != 0 && (typemod >= 0);
+	/*
+	 * In Oracle mode, bare TIMESTAMP and VARCHAR2 get a default precision or
+	 * length when parsed again.  When ivorysql.preserve_absent_typmod is on
+	 * (pg_dump sets it for its session), print such types schema-qualified
+	 * if the caller says the typmod is known to be absent, so that a dump
+	 * restored through the Oracle port keeps it absent.  Interactive output
+	 * such as psql's \d and view definitions keeps the familiar names.
+	 */
+	preserve_no_typemod = preserve_absent_typmod &&
+		(flags & FORMAT_TYPE_TYPEMOD_GIVEN) != 0 && typemod == -1;
 
 	/*
 	 * See if we want to special-case the output for certain built-in types.
@@ -490,7 +501,9 @@ format_type_extended(Oid type_oid, int32 typemod, uint16 flags)
 
 		case ORAVARCHARCHAROID:
 		case ORAVARCHARBYTEOID:
-			if (typeform->typnamespace == PG_SYS_NAMESPACE && compatible_db == PG_PARSER)
+			/* Bare VARCHAR2 defaults to a length and picks BYTE or CHAR. */
+			if (typeform->typnamespace == PG_SYS_NAMESPACE &&
+				(compatible_db == PG_PARSER || preserve_no_typemod))
 			{
 				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
 				if (with_typemod)
@@ -528,7 +541,9 @@ format_type_extended(Oid type_oid, int32 typemod, uint16 flags)
 			break;
 
 		case ORATIMESTAMPOID:
-			if (typeform->typnamespace == PG_SYS_NAMESPACE && compatible_db == PG_PARSER)
+			/* Bare Oracle TIMESTAMP syntax defaults to precision 6. */
+			if (typeform->typnamespace == PG_SYS_NAMESPACE &&
+				(compatible_db == PG_PARSER || preserve_no_typemod))
 			{
 				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
 				if (with_typemod)
@@ -546,7 +561,8 @@ format_type_extended(Oid type_oid, int32 typemod, uint16 flags)
 			break;
 
 		case ORATIMESTAMPTZOID:
-			if (typeform->typnamespace == PG_SYS_NAMESPACE && compatible_db == PG_PARSER)
+			if (typeform->typnamespace == PG_SYS_NAMESPACE &&
+				(compatible_db == PG_PARSER || preserve_no_typemod))
 			{
 				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
 				if (with_typemod)
@@ -564,7 +580,8 @@ format_type_extended(Oid type_oid, int32 typemod, uint16 flags)
 			break;
 
 		case ORATIMESTAMPLTZOID:
-			if (typeform->typnamespace == PG_SYS_NAMESPACE && compatible_db == PG_PARSER)
+			if (typeform->typnamespace == PG_SYS_NAMESPACE &&
+				(compatible_db == PG_PARSER || preserve_no_typemod))
 			{
 				appendStringInfo(&tmpbuf, "%s.%s", get_namespace_name_or_temp(typeform->typnamespace), typeform->typname.data);
 				if (with_typemod)

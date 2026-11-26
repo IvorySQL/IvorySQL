@@ -332,6 +332,7 @@ extern PGDLLIMPORT bool trace_sort;
 
 extern PGDLLIMPORT int identifier_case_switch;
 extern PGDLLIMPORT bool identifier_case_from_pg_dump;
+extern PGDLLIMPORT bool preserve_absent_typmod;
 extern PGDLLIMPORT bool enable_case_switch;
 
 extern int     database_mode;
