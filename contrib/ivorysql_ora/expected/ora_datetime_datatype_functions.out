@@ -563,6 +563,64 @@ select tz_offset('-12:59') from dual; /* BUG:0000444 */
 
 select tz_offset('+14:05') from dual; /* BUG:0000444 */
 ERROR:  timezone minute between 0 and 59
+-- The offset must be taken at the current instant in the target zone.  Build a
+-- POSIX zone whose DST window contains the current UTC wall-clock fields but
+-- not the current local time in that zone, so decoding the instant as UTC and
+-- re-interpreting those fields as local time would pick the other side of the
+-- transition.
+DO $$
+DECLARE
+    utc_now timestamptz := statement_timestamp();
+    utc_wall timestamp;
+    doy int;
+    mins int;
+    start_mins int;
+    end_mins int;
+    start_doy int;
+    end_doy int;
+    zone text;
+    reported text;
+    actual_secs int;
+    expected text;
+BEGIN
+    utc_wall := utc_now AT TIME ZONE 'UTC';
+    doy := extract(doy from utc_wall)::int - 1;
+    mins := extract(hour from utc_wall)::int * 60 + extract(minute from utc_wall)::int;
+
+    start_mins := mins - 120;
+    start_doy := doy;
+    IF start_mins < 0 THEN
+        start_mins := start_mins + 1440;
+        start_doy := mod(doy + 364, 365);
+    END IF;
+
+    end_mins := mins + 120;
+    end_doy := doy;
+    IF end_mins >= 1440 THEN
+        end_mins := end_mins - 1440;
+        end_doy := mod(doy + 1, 365);
+    END IF;
+
+    zone := format('TST4TDT,%s/%s:%s,%s/%s:%s',
+                   start_doy,
+                   lpad((start_mins / 60)::text, 2, '0'),
+                   lpad((start_mins % 60)::text, 2, '0'),
+                   end_doy,
+                   lpad((end_mins / 60)::text, 2, '0'),
+                   lpad((end_mins % 60)::text, 2, '0'));
+
+    reported := sys.tz_offset(zone);
+    actual_secs := (extract(epoch from (utc_now AT TIME ZONE zone))
+                    - extract(epoch from utc_now))::int;
+    expected := (CASE WHEN actual_secs < 0 THEN '-' ELSE '+' END)
+                || lpad((abs(actual_secs) / 3600)::text, 2, '0') || ':'
+                || lpad((mod(abs(actual_secs), 3600) / 60)::text, 2, '0');
+
+    IF reported <> expected THEN
+        RAISE EXCEPTION 'tz_offset(%) = %, expected %', zone, reported, expected;
+    END IF;
+END
+$$;
 	
 select * from datetest;
    aa   
