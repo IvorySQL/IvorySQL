@@ -152,8 +152,9 @@ utl_url_charset_to_encoding(text *charset)
  *   RETURN VARCHAR2
  * Maps to: (text, bool, text) -> text
  *
- * Not declared STRICT: url_charset is legitimately NULL in the default case,
- * and a STRICT function would then wrongly return NULL for every call.
+ * Not declared STRICT: url_charset may be passed as an explicit NULL to select
+ * the database encoding (while an omitted argument defaults to 'ISO-8859-1' in
+ * the PL/iSQL wrapper), and a STRICT function would then wrongly return NULL.
  */
 PG_FUNCTION_INFO_V1(ivorysql_utl_url_escape);
 Datum

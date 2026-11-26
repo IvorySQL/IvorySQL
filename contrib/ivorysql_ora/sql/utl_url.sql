@@ -78,22 +78,27 @@ SELECT utl_url.escape('中文', FALSE, 'GB18030') AS cjk_gb18030;
 SELECT utl_url.escape('a b', FALSE, 'ISO-8859-1') AS iana_name,
        utl_url.escape('a b', FALSE, 'LATIN1') AS pg_name;
 
--- The url_charset contract: omitting the argument and passing an explicit
--- NULL are the same thing here -- both mean "the database encoding, do not
--- convert".  Oracle makes them different: an omitted url_charset defaults
--- to utl_http.body_charset (ISO-8859-1) while an explicit NULL selects the
--- database character set.  Defaulting to the database encoding instead of
--- ISO-8859-1 is the declared deviation of this port (ISO-8859-1 cannot
--- represent non-Latin text; see the package documentation), and this case
--- pins the contract so the difference stays visible.
+-- The url_charset contract (Oracle-compatible): omitting the argument defaults
+-- to 'ISO-8859-1' (Oracle's default utl_http.body_charset), while passing an
+-- explicit NULL selects the database encoding with no conversion.
 SELECT utl_url.escape('é') AS default_charset,
        utl_url.escape('é', FALSE, NULL) AS explicit_null_charset;
+
+-- Omitting url_charset with explicit escape_reserved_chars (TRUE or NULL)
+-- still defaults url_charset to ISO-8859-1, whereas explicit NULL uses UTF8
+SELECT utl_url.escape('é/a', TRUE) AS omitted_reserved,
+       utl_url.escape('é/a', NULL) AS null_reserved_omitted_charset,
+       utl_url.escape('é/a', TRUE, NULL) AS reserved_explicit_null_charset;
 
 -- An unrecognized character set is rejected
 SELECT utl_url.escape('a b', FALSE, 'NO_SUCH_CHARSET');
 
 -- A character with no representation in the target character set is rejected
 SELECT utl_url.escape('中文', FALSE, 'LATIN1');
+
+-- Omitting url_charset defaults to ISO-8859-1 (LATIN1), so non-Latin1 input
+-- is rejected unless an explicit NULL (database encoding) or 'UTF8' is passed
+SELECT utl_url.escape('中文');
 
 -- ============================================================
 -- Tests for UTL_URL.UNESCAPE
@@ -133,19 +138,21 @@ SELECT utl_url.unescape('%D6%D0%CE%C4', 'GBK') AS cjk_gbk;
 -- url_charset)
 SELECT utl_url.unescape('café%21', 'LATIN1') AS mixed_literal_pct;
 
--- The same contract on the decode side: an omitted and an explicit NULL
--- url_charset both mean "the bytes are already in the database encoding"
+-- The same contract on the decode side: an omitted url_charset defaults to
+-- ISO-8859-1 (%C3%A9 -> two Latin-1 characters), while an explicit NULL uses
+-- the database encoding (UTF8: %C3%A9 -> é).
 SELECT utl_url.unescape('%C3%A9') AS default_charset,
        utl_url.unescape('%C3%A9', NULL) AS explicit_null_charset;
 
 -- A lone LATIN1 %E9 group decodes to é through the explicit charset
 SELECT utl_url.unescape('%E9', 'LATIN1') AS latin1_decode;
 
--- With the database-encoding default, a lone %E9 is not valid UTF8 text,
--- so the call reports an encoding error -- where Oracle's omitted-
--- url_charset default (utl_http.body_charset, ISO-8859-1) would return é.
--- Declared deviation, pinned here so the difference stays visible.
+-- With the Oracle-compatible ISO-8859-1 default, a lone %E9 decodes to é
 SELECT utl_url.unescape('%E9');
+
+-- Passing an explicit NULL selects the database encoding (UTF8), where a lone
+-- %E9 is not valid UTF8 and reports an encoding error
+SELECT utl_url.unescape('%E9', NULL);
 
 -- An unrecognized character set is rejected (Oracle reports ORA-01482)
 SELECT utl_url.unescape('a%20b', 'NO_SUCH_CHARSET');
@@ -154,8 +161,9 @@ SELECT utl_url.unescape('a%20b', 'NO_SUCH_CHARSET');
 -- Round-trip identity: UNESCAPE(ESCAPE(x)) = x
 -- ============================================================
 
-SELECT utl_url.unescape(utl_url.escape('a b/中文')) = 'a b/中文' AS roundtrip_default;
-SELECT utl_url.unescape(utl_url.escape('a b/中文', TRUE)) = 'a b/中文' AS roundtrip_reserved;
+SELECT utl_url.unescape(utl_url.escape('a b/café')) = 'a b/café' AS roundtrip_default;
+SELECT utl_url.unescape(utl_url.escape('a b/café', TRUE)) = 'a b/café' AS roundtrip_reserved;
+SELECT utl_url.unescape(utl_url.escape('a b/中文', FALSE, NULL), NULL) = 'a b/中文' AS roundtrip_db_charset;
 SELECT utl_url.unescape(utl_url.escape('中文测试', FALSE, 'UTF8'), 'UTF8') = '中文测试' AS roundtrip_charset;
 SELECT utl_url.unescape(utl_url.escape('中文', FALSE, 'GB18030'), 'GB18030') = '中文' AS roundtrip_gb18030;
 
@@ -193,17 +201,26 @@ SELECT utl_url.unescape('%E4%B8', 'UTF8');
 
 DECLARE
     v_url     VARCHAR2(200) := 'http://example.com/a b/中文?x=1&y=2';
+    v_latin   VARCHAR2(200) := 'http://example.com/a b/café?x=1&y=2';
     v_escaped VARCHAR2(400);
     line      TEXT;
     status    INTEGER;
 BEGIN
     dbms_output.enable();
-    v_escaped := utl_url.escape(v_url);
+    v_escaped := utl_url.escape(v_url, FALSE, NULL);
     dbms_output.put_line('escaped=' || v_escaped);
     dbms_output.get_line(line, status);
     RAISE NOTICE '%', line;
     dbms_output.put_line('roundtrip=' ||
-        CASE WHEN utl_url.unescape(v_escaped) = v_url THEN 't' ELSE 'f' END);
+        CASE WHEN utl_url.unescape(v_escaped, NULL) = v_url THEN 't' ELSE 'f' END);
+    dbms_output.get_line(line, status);
+    RAISE NOTICE '%', line;
+    v_escaped := utl_url.escape(v_latin);
+    dbms_output.put_line('default_escaped=' || v_escaped);
+    dbms_output.get_line(line, status);
+    RAISE NOTICE '%', line;
+    dbms_output.put_line('default_roundtrip=' ||
+        CASE WHEN utl_url.unescape(v_escaped) = v_latin THEN 't' ELSE 'f' END);
     dbms_output.get_line(line, status);
     RAISE NOTICE '%', line;
 END;
