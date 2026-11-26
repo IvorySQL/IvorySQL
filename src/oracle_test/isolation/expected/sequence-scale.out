@@ -1,0 +1,28 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s1nv s2noextend s1cv s1nv s1nvfunc
+step s1nv: SELECT seq_scale.nextval FROM dual;
+            nextval
+-------------------
+1999990000000000001
+(1 row)
+
+step s2noextend: ALTER SEQUENCE seq_scale SCALE NOEXTEND MAXVALUE 9999999999999;
+step s1cv: SELECT seq_scale.currval FROM dual;
+            currval
+-------------------
+1999990000000000001
+(1 row)
+
+step s1nv: SELECT seq_scale.nextval FROM dual;
+      nextval
+-------------
+1999990000002
+(1 row)
+
+step s1nvfunc: SELECT nextval('seq_scale');
+      nextval
+-------------
+1999990000003
+(1 row)
+

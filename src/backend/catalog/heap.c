@@ -84,6 +84,8 @@ Oid			binary_upgrade_next_heap_pg_class_oid = InvalidOid;
 Oid			binary_upgrade_next_toast_pg_class_oid = InvalidOid;
 RelFileNumber binary_upgrade_next_heap_pg_class_relfilenumber = InvalidRelFileNumber;
 RelFileNumber binary_upgrade_next_toast_pg_class_relfilenumber = InvalidRelFileNumber;
+Oid			binary_upgrade_next_rowid_seq_pg_class_oid = InvalidOid;
+RelFileNumber binary_upgrade_next_rowid_seq_pg_class_relfilenumber = InvalidRelFileNumber;
 
 static void AddNewRelationTuple(Relation pg_class_desc,
 								Relation new_rel_desc,
@@ -1287,6 +1289,20 @@ heap_create_with_catalog(const char *relname,
 					relfilenumber = binary_upgrade_next_toast_pg_class_relfilenumber;
 					binary_upgrade_next_toast_pg_class_relfilenumber = InvalidRelFileNumber;
 				}
+			}
+			else if (relkind == RELKIND_SEQUENCE && tupdesc->tdhasrowid)
+			{
+				/* the ROWID sequence of a table, created along with it */
+				if (!OidIsValid(binary_upgrade_next_rowid_seq_pg_class_oid) ||
+					!RelFileNumberIsValid(binary_upgrade_next_rowid_seq_pg_class_relfilenumber))
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("ROWID sequence OID value not set when in binary upgrade mode")));
+
+				relid = binary_upgrade_next_rowid_seq_pg_class_oid;
+				binary_upgrade_next_rowid_seq_pg_class_oid = InvalidOid;
+				relfilenumber = binary_upgrade_next_rowid_seq_pg_class_relfilenumber;
+				binary_upgrade_next_rowid_seq_pg_class_relfilenumber = InvalidRelFileNumber;
 			}
 			else
 			{

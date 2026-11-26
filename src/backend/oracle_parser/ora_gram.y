@@ -5746,6 +5746,15 @@ SeqOptElem: AS SimpleTypename
 				{
 					$$ = makeDefElem("minvalue", NULL, @1);
 				}
+			/* persistence of an identity sequence, as pg_dump writes it */
+			| LOGGED
+				{
+					$$ = makeDefElem("logged", NULL, @1);
+				}
+			| UNLOGGED
+				{
+					$$ = makeDefElem("unlogged", NULL, @1);
+				}
 			| OWNED BY any_name
 				{
 					$$ = makeDefElem("owned_by", (Node *) $3, @1);

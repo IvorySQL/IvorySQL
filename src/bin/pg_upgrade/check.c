@@ -119,7 +119,13 @@ static DataTypesUsageChecks data_types_usage_checks[] =
 		.base_query =
 		"SELECT t.oid FROM pg_catalog.pg_type t "
 		"LEFT JOIN pg_catalog.pg_namespace n ON t.typnamespace = n.oid "
-		" WHERE typtype = 'c' AND (t.oid < 16384 OR nspname = 'information_schema')",
+		" WHERE typtype = 'c' AND (t.oid < 16384 OR nspname = 'information_schema')"
+
+		/*
+		 * IvorySQL: sys.rowid, sys.urowid and sys.object_ref keep the OIDs
+		 * that pg_type.dat assigns them, so values of them stay readable.
+		 */
+		" AND NOT (nspname = 'sys' AND t.oid IN (9538, 9539, 9541))",
 		.report_text =
 		gettext_noop("Your installation contains system-defined composite types in user tables.\n"
 					 "These type OIDs are not stable across PostgreSQL versions,\n"
@@ -940,6 +946,15 @@ check_cluster_compatibility(void)
 	get_control_data(&old_cluster);
 	get_control_data(&new_cluster);
 	check_control_data(&old_cluster.controldata, &new_cluster.controldata);
+
+	/*
+	 * A cluster in PostgreSQL mode is dumped in PostgreSQL syntax, which only
+	 * the PostgreSQL port of an Oracle-mode cluster accepts.  Restore it
+	 * through that port, as --using-ora-pg does.
+	 */
+	if (!old_cluster.controldata.database_mode_is_oracle &&
+		new_cluster.controldata.database_mode_is_oracle)
+		pg_cluster_within_oracle_mode = true;
 
 	if (user_opts.live_check && old_cluster.port == new_cluster.port)
 		pg_fatal("When checking a live server, "

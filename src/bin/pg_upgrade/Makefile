@@ -3,7 +3,8 @@
 PGFILEDESC = "pg_upgrade - an in-place binary upgrade utility"
 PGAPPICON = win32
 
-EXTRA_INSTALL=contrib/test_decoding src/test/modules/dummy_seclabel src/test/modules/test_extensions
+EXTRA_INSTALL=contrib/test_decoding src/test/modules/dummy_seclabel src/test/modules/test_extensions \
+	contrib/amcheck
 
 subdir = src/bin/pg_upgrade
 top_builddir = ../../..
@@ -38,6 +39,10 @@ LDFLAGS_INTERNAL += -L$(top_builddir)/src/fe_utils -lpgfeutils $(libpq_pgport)
 REGRESS_SHLIB=$(abs_top_builddir)/src/test/regress/regress$(DLSUFFIX)
 export REGRESS_SHLIB
 
+# required for t/oracle/002_regression_upgrade.pl
+ORA_REGRESS_SHLIB=$(abs_top_builddir)/src/oracle_test/regress/regress$(DLSUFFIX)
+export ORA_REGRESS_SHLIB
+
 # required for 008_extension_control_path.pl
 TEST_EXT_LIB=$(abs_top_builddir)/src/test/modules/test_extensions/test_ext$(DLSUFFIX)
 export TEST_EXT_LIB
@@ -69,8 +74,11 @@ check:
 installcheck:
 	$(prove_installcheck)
 
-#oracle-check:
-#	$(oracle_prove_check)
+# Only the t/oracle tests run against Oracle-mode clusters.
+oracle-check oracle-installcheck: PROVE_TESTS ?= $(patsubst $(srcdir)/%,%,$(wildcard $(srcdir)/t/oracle/*.pl))
 
-#oracle-installcheck:
-#	$(oracle_prove_installcheck)
+oracle-check:
+	$(oracle_prove_check)
+
+oracle-installcheck:
+	$(oracle_prove_installcheck)

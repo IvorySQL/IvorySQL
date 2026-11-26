@@ -1458,9 +1458,11 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	}
 
 	/*
-	 * Build a default types index on rowid column, if it exist
+	 * Build a default types index on rowid column, if it exist.  In binary
+	 * upgrade, pg_dump restores that index on its own, with its OIDs.
 	 */
-	if (rel->rd_rel->relhasrowid && rel->rd_rel->relkind == RELKIND_RELATION && !rel->rd_rel->relispartition)
+	if (rel->rd_rel->relhasrowid && rel->rd_rel->relkind == RELKIND_RELATION &&
+		!rel->rd_rel->relispartition && !IsBinaryUpgrade)
 	{
 		IndexElem   *iparam;
 		const FormData_pg_attribute *from;
