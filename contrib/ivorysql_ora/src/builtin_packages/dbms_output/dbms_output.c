@@ -89,6 +89,7 @@ static DbmsOutputBuffer *output_buffer = NULL;
 
 /* Buffer size constants */
 #define DBMS_OUTPUT_MIN_BUFFER_SIZE 2000
+#define DBMS_OUTPUT_MAX_BUFFER_SIZE 1000000
 #define DBMS_OUTPUT_DEFAULT_BUFFER_SIZE 20000
 #define DBMS_OUTPUT_UNLIMITED ((int64) -1)
 
@@ -298,8 +299,9 @@ pop_line_from_buffer(void)
  * - NULL parameter: unlimited buffer (grows dynamically, Oracle behavior)
  * - Default (from SQL wrapper): DEFAULT_BUFFER_SIZE bytes
  * - Minimum: MIN_BUFFER_SIZE bytes (values below are clamped, Oracle behavior)
+ * - Maximum: MAX_BUFFER_SIZE bytes (finite values above are capped, Oracle behavior)
  *
- * Oracle behavior: silently clamps below-min values to MIN_BUFFER_SIZE.
+ * Oracle behavior: silently clamps finite values to [MIN_BUFFER_SIZE, MAX_BUFFER_SIZE].
  */
 Datum
 ora_dbms_output_enable(PG_FUNCTION_ARGS)
@@ -313,9 +315,11 @@ ora_dbms_output_enable(PG_FUNCTION_ARGS)
 	{
 		buffer_size = PG_GETARG_INT32(0);
 
-		/* Oracle behavior: silently clamp below-min values to 2000 */
+		/* Oracle behavior: silently clamp finite sizes to [2000, 1000000] */
 		if (buffer_size < DBMS_OUTPUT_MIN_BUFFER_SIZE)
 			buffer_size = DBMS_OUTPUT_MIN_BUFFER_SIZE;
+		else if (buffer_size > DBMS_OUTPUT_MAX_BUFFER_SIZE)
+			buffer_size = DBMS_OUTPUT_MAX_BUFFER_SIZE;
 	}
 
 	/* Initialize the buffer or update the active buffer's size limit */
