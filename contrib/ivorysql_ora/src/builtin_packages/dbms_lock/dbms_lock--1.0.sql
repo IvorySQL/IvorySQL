@@ -13,7 +13,7 @@ LANGUAGE C STRICT;
 CREATE FUNCTION sys.dbms_lock_request(text, int, int)
 RETURNS int
 AS 'MODULE_PATHNAME', 'ivorysql_dbms_lock_request'
-LANGUAGE C STRICT;
+LANGUAGE C;
 
 CREATE FUNCTION sys.dbms_lock_release(text)
 RETURNS int
@@ -36,6 +36,9 @@ CREATE PACKAGE dbms_lock AS
     ssx_mode  CONSTANT INTEGER := 5;
     x_mode    CONSTANT INTEGER := 6;
 
+    /* Oracle reserved timeout meaning "wait forever" */
+    maxwait   CONSTANT INTEGER := 32767;
+
     -- return codes
     success           CONSTANT INTEGER := 0;
     timeout           CONSTANT INTEGER := 1;
@@ -47,7 +50,7 @@ CREATE PACKAGE dbms_lock AS
     
     PROCEDURE allocate_unique(lockname text, lockname_handle OUT text); 
 
-    FUNCTION request(lockname_handle text, mode integer, timeout integer)
+    FUNCTION request(lockname_handle text, mode integer DEFAULT 6, timeout integer DEFAULT 32767)
         RETURN int;
 
     FUNCTION release(lockname_handle text)
@@ -66,7 +69,7 @@ CREATE PACKAGE BODY dbms_lock AS
        lockname_handle := v_handle;  
     END;
 
-    FUNCTION request(lockname_handle text, mode integer, timeout integer)
+    FUNCTION request(lockname_handle text, mode integer DEFAULT 6, timeout integer DEFAULT 32767)
     RETURN int IS
     BEGIN
         RETURN dbms_lock_request(lockname_handle, mode, timeout);
