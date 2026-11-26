@@ -476,6 +476,95 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 			function_from = FUNC_FROM_PACKAGE;
 	}
 
+	/*
+	 * Resolve object.method(args) as method(object, args) in Oracle mode.
+	 * Member routines use the object's composite value as their first (SELF)
+	 * argument.  Package-qualified lookup has already failed at this point.
+	 * An existing schema still takes precedence over member notation.
+	 *
+	 * The object expression may itself be qualified (for example,
+	 * table_alias.object_column.method()).
+	 */
+	if (fdresult == FUNCDETAIL_NOTFOUND &&
+		ORA_PARSER == compatible_db &&
+		list_length(funcname) >= 2 && list_length(funcname) <= 4 &&
+		agg_order == NIL && agg_filter == NULL &&
+		!agg_star && !agg_distinct && over == NULL &&
+		!func_variadic && nargs < FUNC_MAX_ARGS)
+	{
+		Node	   *self;
+		ColumnRef  *selfref;
+		bool		explicit_namespace;
+
+		explicit_namespace = list_length(funcname) == 2 &&
+			OidIsValid(LookupExplicitNamespace(strVal(linitial(funcname)), true));
+		self = NULL;
+		selfref = NULL;
+		if (!explicit_namespace)
+		{
+			selfref = makeNode(ColumnRef);
+			selfref->fields = list_copy_head(funcname,
+											 list_length(funcname) - 1);
+			selfref->location = location;
+			self = transformColumnRefForObjectMethod(pstate, selfref);
+		}
+		if (self != NULL && ISCOMPLEX(exprType(self)) &&
+			get_typisobject(exprType(self)))
+		{
+			HeapTuple	typeTuple;
+			Form_pg_type typeForm;
+			List	   *methodname;
+			List	   *methodargs = lcons(self, list_copy(fargs));
+			Oid			method_arg_types[FUNC_MAX_ARGS];
+			FuncDetailCode method_result;
+			int			i;
+
+			typeTuple = SearchSysCache1(TYPEOID,
+									ObjectIdGetDatum(exprType(self)));
+			if (!HeapTupleIsValid(typeTuple))
+				elog(ERROR, "cache lookup failed for type %u", exprType(self));
+			typeForm = (Form_pg_type) GETSTRUCT(typeTuple);
+			methodname = list_make3(
+				makeString(get_namespace_name(typeForm->typnamespace)),
+				makeString(pstrdup(NameStr(typeForm->typname))),
+				copyObject(llast(funcname)));
+			ReleaseSysCache(typeTuple);
+
+			method_arg_types[0] = exprType(self);
+			for (i = 0; i < nargs; i++)
+				method_arg_types[i + 1] = actual_arg_types[i];
+
+			method_result = LookupPkgFunc(pstate, methodname, &methodargs,
+											  argnames, nargs + 1,
+											  method_arg_types,
+											  !func_variadic, true, proc_call,
+											  &funcid, &rettype, &retset,
+											  &nvargs, &vatype,
+											  &declared_arg_types, &argdefaults,
+											  &pfunc, &pkgoid, true);
+			if (method_result != FUNCDETAIL_NOTFOUND)
+			{
+				fdresult = method_result;
+				function_from = FUNC_FROM_PACKAGE;
+				funcname = methodname;
+				fargs = methodargs;
+				nargs++;
+				for (i = 0; i < nargs; i++)
+					actual_arg_types[i] = method_arg_types[i];
+				first_arg = self;
+			}
+			else
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_FUNCTION),
+						 errmsg("method \"%s\" does not exist for object type %s",
+								strVal(llast(funcname)),
+								format_type_be(exprType(self))),
+						 parser_errposition(pstate, location)));
+			}
+		}
+	}
+
 	if (fdresult == FUNCDETAIL_NOTFOUND)
 	{
 		Oid			lookup_arg_types[FUNC_MAX_ARGS];
