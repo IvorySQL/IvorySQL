@@ -372,8 +372,7 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 
 		while (ancestor != NULL && fdresult == FUNCDETAIL_NOTFOUND)
 		{
-			if (ancestor->p_subprocfunc_hook == withFuncLookupHook &&
-				ancestor->p_with_func_list != NIL)
+			if (ancestor->p_with_func_list != NIL)
 			{
 				fdresult = withFuncLookupHook(ancestor, funcname, &fargs,
 											  argnames, nargs, actual_arg_types,
@@ -383,7 +382,9 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 											  &declared_arg_types, &argdefaults,
 											  &pfunc);
 				if (fdresult != FUNCDETAIL_NOTFOUND)
-					function_from = FUNC_FROM_WITH_CLAUSE;
+					function_from = (ancestor->p_with_func_scope_id != 0)
+						? FUNC_FROM_WITH_CLAUSE
+						: FUNC_FROM_OUTER_WITH_CLAUSE;
 			}
 			ancestor = ancestor->parentParseState;
 		}
@@ -407,7 +408,9 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 									  &declared_arg_types, &argdefaults,
 									  &pfunc);
 		if (fdresult != FUNCDETAIL_NOTFOUND)
-			function_from = FUNC_FROM_WITH_CLAUSE;
+			function_from = (pstate->p_with_func_scope_id != 0)
+				? FUNC_FROM_WITH_CLAUSE
+				: FUNC_FROM_OUTER_WITH_CLAUSE;
 	}
 
 	if (fdresult == FUNCDETAIL_NOTFOUND)

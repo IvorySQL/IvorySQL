@@ -410,6 +410,15 @@ contain_mutable_functions_walker(Node *node, void *context)
 {
 	if (node == NULL)
 		return false;
+
+	if (IsA(node, FuncExpr))
+	{
+		FuncExpr   *expr = (FuncExpr *) node;
+
+		if (!FUNC_EXPR_FROM_PG_PROC(expr->function_from))
+			return true;
+	}
+
 	/* Check for mutable functions in node itself */
 	if (check_functions_in_node(node, contain_mutable_functions_checker,
 								context))
@@ -735,6 +744,15 @@ contain_volatile_functions_not_nextval_walker(Node *node, void *context)
 {
 	if (node == NULL)
 		return false;
+
+	if (IsA(node, FuncExpr))
+	{
+		FuncExpr   *expr = (FuncExpr *) node;
+
+		if (!FUNC_EXPR_FROM_PG_PROC(expr->function_from))
+			return true;
+	}
+
 	/* Check for volatile functions in node itself */
 	if (check_functions_in_node(node,
 								contain_volatile_functions_not_nextval_checker,
@@ -878,6 +896,23 @@ max_parallel_hazard_walker(Node *node, max_parallel_hazard_context *context)
 {
 	if (node == NULL)
 		return false;
+
+	/*
+	 * Non-pg_proc FuncExprs (WITH-clause inline functions, package functions,
+	 * and nested PL/iSQL subprograms) are skipped by
+	 * check_functions_in_node() and depend on leader-only runtime state; mark
+	 * them parallel-unsafe.
+	 */
+	if (IsA(node, FuncExpr))
+	{
+		FuncExpr   *expr = (FuncExpr *) node;
+
+		if (!FUNC_EXPR_FROM_PG_PROC(expr->function_from))
+		{
+			if (max_parallel_hazard_test(PROPARALLEL_UNSAFE, context))
+				return true;
+		}
+	}
 
 	/* Check for hazardous functions in node itself */
 	if (check_functions_in_node(node, max_parallel_hazard_checker,
@@ -1161,6 +1196,9 @@ contain_nonstrict_functions_walker(Node *node, void *context)
 		return true;
 	if (IsA(node, JsonConstructorExpr))
 		return true;
+	if (IsA(node, FuncExpr) &&
+		!FUNC_EXPR_FROM_PG_PROC(((FuncExpr *) node)->function_from))
+		return true;
 
 	/* Check other function-containing nodes */
 	if (check_functions_in_node(node, contain_nonstrict_functions_checker,
@@ -1356,6 +1394,18 @@ contain_leaked_vars_walker(Node *node, void *context)
 			break;
 
 		case T_FuncExpr:
+
+			/*
+			 * Non-pg_proc functions (WITH-clause, package, subprogram) are
+			 * skipped by check_functions_in_node() and are never leakproof.
+			 */
+			if (!FUNC_EXPR_FROM_PG_PROC(((FuncExpr *) node)->function_from))
+			{
+				if (contain_var_clause(node))
+					return true;
+				break;
+			}
+			pg_fallthrough;
 		case T_OpExpr:
 		case T_DistinctExpr:
 		case T_NullIfExpr:

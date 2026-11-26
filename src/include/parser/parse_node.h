@@ -286,6 +286,12 @@ struct ParseState
 	bool		do_from_call;
 	void	   *p_orajoin_state;	/* OraJoinState * while probing an Oracle (+)
 									 * predicate, else NULL */
+	List	   *p_all_with_func_defs;	/* root pstate: all InlineFunctionDefs
+										 * in stmt */
+	int			p_with_func_scope_id;	/* scope ID of this pstate's WITH
+										 * funcs */
+	int			p_next_with_func_scope_id;	/* root pstate: next scope ID to
+											 * assign */
 };
 
 typedef enum OraJoinType

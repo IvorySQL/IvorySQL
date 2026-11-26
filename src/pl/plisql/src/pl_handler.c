@@ -36,6 +36,7 @@
 #include "oracle_parser/ora_with_function.h"
 #include "executor/executor.h"
 #include "nodes/params.h"
+#include "parser/parse_expr.h"
 #include "parser/parse_type.h"
 #include "utils/typcache.h"
 
@@ -327,20 +328,87 @@ buildParamListForFunc(List *args)
 }
 
 /*
- * buildWithFuncEntries — build a WithFuncEntry list from withFuncDefs.
- *
- * Creates the same descriptor structs that transformWithFuncDefs() builds at
- * parse time, but at execution time from the already-serialised InlineFunctionDef
- * list.  Stored in WithFuncContainer.func_entries so that
- * plisql_active_with_func_entries can be set while each WITH function executes,
- * allowing recursive and mutually-recursive calls (T10).
+ * collectVisibleWithFuncEntries — collect entries from all_entries[0..count-1]
+ * visible from start_scope (walking outward through parent_scope_id, falling
+ * back to start_parent_scope if no entry in start_scope exists yet).
  */
 static List *
+collectVisibleWithFuncEntries(struct WithFuncEntry **all_entries, int count,
+							  int start_scope, int start_parent_scope)
+{
+	List	   *visible = NIL;
+	int			j;
+
+	if (start_scope == 0)
+	{
+		/* Legacy/unscoped definitions: expose all unscoped entries */
+		for (j = 0; j < count; j++)
+		{
+			if (all_entries[j]->def->scope_id == 0)
+				visible = lappend(visible, all_entries[j]);
+		}
+		return visible;
+	}
+
+	{
+		int			cur_scope = start_scope;
+		int			depth = 0;
+
+		/*
+		 * Walk from start_scope outward through enclosing parent scopes so
+		 * inner definitions properly shadow outer ones while unrelated
+		 * sibling scopes remain invisible.
+		 */
+		while (cur_scope != 0 && depth <= count)
+		{
+			int			next_scope = 0;
+			bool		found_in_scope = false;
+
+			for (j = 0; j < count; j++)
+			{
+				if (all_entries[j]->def->scope_id == cur_scope)
+				{
+					visible = lappend(visible, all_entries[j]);
+					next_scope = all_entries[j]->def->parent_scope_id;
+					found_in_scope = true;
+				}
+			}
+			if (!found_in_scope && cur_scope == start_scope)
+				next_scope = start_parent_scope;
+			if (next_scope == cur_scope)
+				break;
+			cur_scope = next_scope;
+			depth++;
+		}
+	}
+
+	return visible;
+}
+
+/*
+ * buildWithFuncEntries — build per-function visible WithFuncEntry lists from
+ * withFuncDefs.
+ *
+ * Creates the same descriptor structs that transformWithFuncDefs() builds at
+ * parse time (including analyzed DEFAULT expressions so recursive and sibling
+ * calls can omit defaulted parameters), and constructs an array of nfuncs
+ * lists ordered innermost lexical scope first so sibling subqueries or
+ * shadowed names never cross-contaminate at execution time.
+ */
+static List **
 buildWithFuncEntries(List *withFuncDefs)
 {
-	List	   *result = NIL;
+	int			nfuncs = list_length(withFuncDefs);
+	WithFuncEntry **all_entries;
+	List	  **per_func;
+	ParseState *pstate;
 	int			funcindex = 0;
+	int			k;
 	ListCell   *lc;
+
+	all_entries = palloc0(nfuncs * sizeof(WithFuncEntry *));
+	per_func = palloc0(nfuncs * sizeof(List *));
+	pstate = make_parsestate(NULL);
 
 	foreach(lc, withFuncDefs)
 	{
@@ -348,7 +416,24 @@ buildWithFuncEntries(List *withFuncDefs)
 		WithFuncEntry *entry;
 		List	   *argtypes = NIL;
 		List	   *analyzeddefaults = NIL;
+		List	   *default_scope_entries = NIL;
+		int			ndefaults = 0;
 		ListCell   *alc;
+
+		/*
+		 * Expose previously declared WITH functions visible from this
+		 * function's lexical scope while re-analyzing DEFAULT expressions.
+		 * Leaving p_with_func_scope_id = 0 and p_subprocfunc_hook = NULL
+		 * ensures any WITH function call inside a DEFAULT expression is
+		 * tagged FUNC_FROM_OUTER_WITH_CLAUSE so it dispatches against the
+		 * active WithFuncContainer even inside simple PL/iSQL expressions.
+		 */
+		if (funcindex > 0)
+			default_scope_entries =
+				collectVisibleWithFuncEntries(all_entries, funcindex,
+											  ifd->scope_id,
+											  ifd->parent_scope_id);
+		pstate->p_with_func_list = default_scope_entries;
 
 		foreach(alc, ifd->args)
 		{
@@ -360,33 +445,47 @@ buildWithFuncEntries(List *withFuncDefs)
 			argtypes = lappend_oid(argtypes,
 								   typenameTypeId(NULL, fp->argType));
 
-			/*
-			 * Default expressions are analyzed only at parse time
-			 * (transformWithFuncDefs) where a real ParseState exists.  Here
-			 * we have none, so record a NULL placeholder positionally aligned
-			 * with argtypes.  withFuncLookupHook indexes analyzeddefaults by
-			 * parameter position when nargs < nentryargs; without this the
-			 * field would be uninitialized and list_nth() would read garbage.
-			 */
-			analyzeddefaults = lappend(analyzeddefaults, NULL);
+			if (fp->defexpr != NULL)
+			{
+				Node	   *expr = transformExpr(pstate,
+												 copyObject(fp->defexpr),
+												 EXPR_KIND_FUNCTION_DEFAULT);
+
+				analyzeddefaults = lappend(analyzeddefaults, expr);
+				ndefaults++;
+			}
+			else
+				analyzeddefaults = lappend(analyzeddefaults, NULL);
 		}
 
+		pstate->p_with_func_list = NIL;
+		list_free(default_scope_entries);
+
 		entry = palloc(sizeof(WithFuncEntry));
-		entry->funcname  = pstrdup(ifd->funcname);
-		entry->argtypes  = argtypes;
-		entry->rettype   = (ifd->rettype != NULL)
-						   ? typenameTypeId(NULL, ifd->rettype)
-						   : InvalidOid;
-		entry->is_proc   = ifd->is_proc;
-		entry->funcindex = funcindex++;
-		entry->def       = ifd;
-		entry->ndefaults = 0;
+		entry->funcname = pstrdup(ifd->funcname);
+		entry->argtypes = argtypes;
+		entry->rettype = (ifd->rettype != NULL)
+			? typenameTypeId(NULL, ifd->rettype)
+			: InvalidOid;
+		entry->is_proc = ifd->is_proc;
+		entry->funcindex = funcindex;
+		entry->def = ifd;
+		entry->ndefaults = ndefaults;
 		entry->analyzeddefaults = analyzeddefaults;
 
-		result = lappend(result, entry);
+		all_entries[funcindex] = entry;
+		funcindex++;
 	}
 
-	return result;
+	free_parsestate(pstate);
+
+	for (k = 0; k < nfuncs; k++)
+		per_func[k] = collectVisibleWithFuncEntries(all_entries, nfuncs,
+													all_entries[k]->def->scope_id,
+													all_entries[k]->def->parent_scope_id);
+
+	pfree(all_entries);
+	return per_func;
 }
 
 /*
@@ -441,6 +540,58 @@ with_func_compile_error_callback(void *arg)
 }
 
 /*
+ * compileOneWithFunc — compile a single InlineFunctionDef with exception-safe
+ * error_context_stack management.
+ *
+ * Isolating PG_TRY/PG_FINALLY in this helper guarantees that error_context_stack
+ * never retains a dangling pointer to a stack-local ErrorContextCallback if
+ * compilation fails and a caller catches the error.
+ */
+static PLiSQL_function *
+compileOneWithFunc(struct InlineFunctionDef *ifd)
+{
+	ErrorContextCallback errcallback;
+	WithFuncCompileErrCtx errctx;
+	PLiSQL_function *volatile compiled = NULL;
+
+	errctx.funcname = ifd->funcname;
+	errctx.is_proc = ifd->is_proc;
+	errcallback.callback = with_func_compile_error_callback;
+	errcallback.arg = &errctx;
+	errcallback.previous = error_context_stack;
+	error_context_stack = &errcallback;
+
+	PG_TRY();
+	{
+		ParamListInfo paramLI = buildParamListForFunc(ifd->args);
+		Oid			rettype = (ifd->rettype != NULL)
+			? typenameTypeId(NULL, ifd->rettype)
+			: InvalidOid;
+		PLiSQL_function *fn;
+
+		fn = plisql_compile_inline(ifd->src, paramLI, false,
+								   rettype, ifd->is_proc);
+		fixupCompiledReturnType(fn, rettype, ifd->is_proc);
+
+		/*
+		 * Tag the compiled function so plisql_parser_setup knows this body is
+		 * a WITH-clause inline subprogram and may see WITH-clause names.
+		 * Without this tag, lexical scope leaks into catalog functions called
+		 * from within a WITH-clause execution frame.
+		 */
+		fn->is_with_clause_func = true;
+		compiled = fn;
+	}
+	PG_FINALLY();
+	{
+		error_context_stack = errcallback.previous;
+	}
+	PG_END_TRY();
+
+	return compiled;
+}
+
+/*
  * buildWithFuncContainer — compile all WITH-clause functions and return a
  * container stored in EState.es_with_func_container.
  *
@@ -451,15 +602,14 @@ with_func_compile_error_callback(void *arg)
 WithFuncContainer *
 buildWithFuncContainer(EState *estate)
 {
-	PlannedStmt    *pstmt = estate->es_plannedstmt;
-	MemoryContext   oldcxt;
-	MemoryContext   mcxt;
-	WithFuncContainer *container;
-	int				nfuncs;
-	int				i;
-	ListCell	   *lc;
+	PlannedStmt *pstmt = estate->es_plannedstmt;
+	MemoryContext volatile oldcxt;
+	MemoryContext mcxt;
+	WithFuncContainer *volatile container = NULL;
+	int			nfuncs;
 
-	Assert(pstmt->withFuncDefs != NIL);
+	if (pstmt == NULL || pstmt->withFuncDefs == NIL)
+		elog(ERROR, "WITH clause function has no definitions in planned statement");
 
 	nfuncs = list_length(pstmt->withFuncDefs);
 
@@ -468,73 +618,44 @@ buildWithFuncContainer(EState *estate)
 								 ALLOCSET_DEFAULT_SIZES);
 	oldcxt = MemoryContextSwitchTo(mcxt);
 
-	container = palloc0(sizeof(WithFuncContainer));
-	container->nfuncs = nfuncs;
-	container->funcs  = palloc0(nfuncs * sizeof(PLiSQL_subproc_function *));
-	container->mcxt   = mcxt;
-	container->func_entries = buildWithFuncEntries(pstmt->withFuncDefs);
-
-	i = 0;
-	foreach(lc, pstmt->withFuncDefs)
+	PG_TRY();
 	{
-		InlineFunctionDef		*ifd = (InlineFunctionDef *) lfirst(lc);
-		ParamListInfo			 paramLI;
-		PLiSQL_function			*compiled;
-		PLiSQL_subproc_function *subprocfunc;
-		Oid						 rettype;
-		ErrorContextCallback	 errcallback;
-		WithFuncCompileErrCtx	 errctx;
+		WithFuncContainer *c = palloc0(sizeof(WithFuncContainer));
+		int			i = 0;
+		ListCell   *lc;
 
-		/*
-		 * Set up error context so compilation errors name the function.
-		 *
-		 * Note: this push/pop pattern matches PG's plisql_compile in
-		 * pl_comp.c (lines 345-1239) which similarly does NOT wrap in
-		 * PG_TRY/PG_FINALLY.  If any of the calls below throws, the pop is
-		 * skipped and error_context_stack carries a dangling pointer until
-		 * postgres.c:4626 resets it at top-level command abort.  An earlier
-		 * attempt to wrap in PG_TRY/PG_FINALLY caused a segfault in T11
-		 * (interaction with PL/iSQL's internal EXCEPTION handler), so we
-		 * follow PG's established convention here.
-		 */
-		errctx.funcname = ifd->funcname;
-		errctx.is_proc  = ifd->is_proc;
-		errcallback.callback = with_func_compile_error_callback;
-		errcallback.arg		 = &errctx;
-		errcallback.previous = error_context_stack;
-		error_context_stack  = &errcallback;
+		c->nfuncs = nfuncs;
+		c->funcs = palloc0(nfuncs * sizeof(PLiSQL_subproc_function *));
+		c->mcxt = mcxt;
+		c->func_entries = buildWithFuncEntries(pstmt->withFuncDefs);
 
-		paramLI  = buildParamListForFunc(ifd->args);
-		rettype = (ifd->rettype != NULL)
-				  ? typenameTypeId(NULL, ifd->rettype)
-				  : InvalidOid;
-		compiled = plisql_compile_inline(ifd->src, paramLI, false,
-										 rettype, ifd->is_proc);
-		fixupCompiledReturnType(compiled, rettype, ifd->is_proc);
+		foreach(lc, pstmt->withFuncDefs)
+		{
+			InlineFunctionDef *ifd = (InlineFunctionDef *) lfirst(lc);
+			PLiSQL_function *compiled;
+			PLiSQL_subproc_function *subprocfunc;
 
-		/*
-		 * Tag the compiled function so plisql_parser_setup knows this body
-		 * is a WITH-clause inline subprogram and may see WITH-clause names.
-		 * Without this tag, lexical scope leaks into catalog functions
-		 * called from within a WITH-clause execution frame.
-		 */
-		compiled->is_with_clause_func = true;
+			compiled = compileOneWithFunc(ifd);
 
-		error_context_stack = errcallback.previous;
+			subprocfunc = palloc0(sizeof(PLiSQL_subproc_function));
+			subprocfunc->fno = i;
+			subprocfunc->func_name = pstrdup(ifd->funcname);
+			subprocfunc->is_proc = ifd->is_proc;
+			subprocfunc->object_method_kind = OBJECT_METHOD_NONE;
+			subprocfunc->function = compiled;
+			subprocfunc->src = pstrdup(ifd->src);
 
-		subprocfunc = palloc0(sizeof(PLiSQL_subproc_function));
-		subprocfunc->fno       = i;
-		subprocfunc->func_name = pstrdup(ifd->funcname);
-		subprocfunc->is_proc   = ifd->is_proc;
-		subprocfunc->object_method_kind = OBJECT_METHOD_NONE;
-		subprocfunc->function  = compiled;
-		subprocfunc->src       = pstrdup(ifd->src);
+			c->funcs[i] = subprocfunc;
+			i++;
+		}
 
-		container->funcs[i] = subprocfunc;
-		i++;
+		container = c;
 	}
-
-	MemoryContextSwitchTo(oldcxt);
+	PG_FINALLY();
+	{
+		MemoryContextSwitchTo(oldcxt);
+	}
+	PG_END_TRY();
 
 	return container;
 }
@@ -592,8 +713,9 @@ plisql_call_handler(PG_FUNCTION_ARGS)
 	char		function_from = plisql_function_from(fcinfo);
 	int			oraparam_top_level = -1;
 	int			oraparam_cur_level = -1;
-	volatile List *save_with_func_entries = NIL;
-	volatile EState *save_with_func_estate = NULL;
+	List	   *volatile save_with_func_entries = NIL;
+	EState	   *volatile save_with_func_estate = NULL;
+	volatile bool with_func_globals_saved = false;
 
 	nonatomic = fcinfo->context &&
 		IsA(fcinfo->context, CallContext) &&
@@ -611,28 +733,8 @@ plisql_call_handler(PG_FUNCTION_ARGS)
 	{
 		func = plisql_get_package_func(fcinfo, false);
 	}
-	else if (function_from == FUNC_FROM_WITH_CLAUSE)
-	{
+	else if (FUNC_EXPR_FROM_WITH_CLAUSE(function_from))
 		func = plisql_get_with_func(fcinfo);
-
-		/*
-		 * Make WITH-clause entries and the owning EState visible during this
-		 * function's execution so that recursive and mutually-recursive calls
-		 * can be resolved.  We save/restore to handle nested WITH-clause
-		 * calls correctly.
-		 */
-		{
-			EState		   *wf_estate = (EState *) fcinfo->flinfo->fn_extra;
-			WithFuncContainer *wc =
-				(WithFuncContainer *) wf_estate->es_with_func_container;
-
-			save_with_func_entries = plisql_active_with_func_entries;
-			plisql_active_with_func_entries = wc->func_entries;
-
-			save_with_func_estate = plisql_active_with_func_estate;
-			plisql_active_with_func_estate = wf_estate;
-		}
-	}
 	else
 		func = plisql_compile(fcinfo, false);
 
@@ -663,6 +765,26 @@ plisql_call_handler(PG_FUNCTION_ARGS)
 	PG_TRY();
 	{
 		/*
+		 * Make this function's lexically visible WITH-clause entries and its
+		 * owning EState visible during execution so recursive and sibling
+		 * calls resolve accurately.  Done inside PG_TRY so PG_FINALLY always
+		 * restores prior values even if an error is raised.
+		 */
+		if (FUNC_EXPR_FROM_WITH_CLAUSE(function_from))
+		{
+			EState	   *wf_estate = (EState *) fcinfo->flinfo->fn_extra;
+			WithFuncContainer *wc =
+				(WithFuncContainer *) wf_estate->es_with_func_container;
+			int			fno = (int) fcinfo->flinfo->fn_oid;
+
+			save_with_func_entries = plisql_active_with_func_entries;
+			save_with_func_estate = plisql_active_with_func_estate;
+			plisql_active_with_func_entries = wc->func_entries[fno];
+			plisql_active_with_func_estate = wf_estate;
+			with_func_globals_saved = true;
+		}
+
+		/*
 		 * Determine if called as function or trigger and call appropriate
 		 * subhandler
 		 */
@@ -686,10 +808,10 @@ plisql_call_handler(PG_FUNCTION_ARGS)
 		pop_oraparam_stack(oraparam_top_level - 1, oraparam_cur_level);
 
 		/* Restore WITH-clause globals saved before WITH function execution */
-		if (function_from == FUNC_FROM_WITH_CLAUSE)
+		if (with_func_globals_saved)
 		{
-			plisql_active_with_func_entries = (List *) save_with_func_entries;
-			plisql_active_with_func_estate  = (EState *) save_with_func_estate;
+			plisql_active_with_func_entries = save_with_func_entries;
+			plisql_active_with_func_estate = save_with_func_estate;
 		}
 
 		/* Decrement use-count, restore cur_estate */

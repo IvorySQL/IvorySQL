@@ -1744,6 +1744,9 @@ typedef struct InlineFunctionDef
 	bool		is_proc;		/* true = procedure, false = function */
 	char	   *src;			/* body source text (IS/AS ... END) */
 	ParseLoc	location pg_node_attr(query_jumble_ignore);
+	int			scope_id;		/* lexical scope ID within statement (1-based) */
+	int			parent_scope_id;	/* enclosing lexical scope ID (0 if
+									 * top-level) */
 } InlineFunctionDef;
 
 /*

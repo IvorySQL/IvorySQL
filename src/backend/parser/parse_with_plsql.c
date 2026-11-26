@@ -213,10 +213,34 @@ checkDuplicateWithFunc(List *func_list, WithFuncEntry * newentry)
 void
 transformWithFuncDefs(ParseState *pstate, List *plsql_defs)
 {
-	int			funcindex = 0;
+	ParseState *root_pstate = pstate;
+	ParseState *anc;
+	int			parent_scope_id = 0;
+	int			scope_id;
 	ListCell   *lc;
 
 	Assert(ORA_PARSER == compatible_db);
+
+	while (root_pstate->parentParseState != NULL)
+		root_pstate = root_pstate->parentParseState;
+
+	/*
+	 * Locate the nearest enclosing ParseState that declared WITH functions so
+	 * runtime compilation of inner WITH subprograms can build an exact
+	 * lexical visibility chain without cross-talk between sibling subqueries.
+	 */
+	for (anc = pstate->parentParseState; anc != NULL; anc = anc->parentParseState)
+	{
+		if (anc->p_with_func_scope_id != 0)
+		{
+			parent_scope_id = anc->p_with_func_scope_id;
+			break;
+		}
+	}
+
+	scope_id = ++root_pstate->p_next_with_func_scope_id;
+	pstate->p_with_func_scope_id = scope_id;
+	pstate->p_with_func_list = NIL;
 
 	foreach(lc, plsql_defs)
 	{
@@ -232,10 +256,13 @@ transformWithFuncDefs(ParseState *pstate, List *plsql_defs)
 		 */
 		rejectNonInParamsInWithFunc(pstate, ifd);
 
+		ifd->scope_id = scope_id;
+		ifd->parent_scope_id = parent_scope_id;
+
 		entry = palloc(sizeof(WithFuncEntry));
 		entry->funcname = ifd->funcname;
 		entry->is_proc = ifd->is_proc;
-		entry->funcindex = funcindex++;
+		entry->funcindex = list_length(root_pstate->p_all_with_func_defs);
 		entry->def = ifd;
 
 		entry->argtypes = resolveWithFuncArgTypes(pstate, ifd->args);
@@ -279,6 +306,8 @@ transformWithFuncDefs(ParseState *pstate, List *plsql_defs)
 		checkDuplicateWithFunc(pstate->p_with_func_list, entry);
 
 		pstate->p_with_func_list = lappend(pstate->p_with_func_list, entry);
+		root_pstate->p_all_with_func_defs =
+			lappend(root_pstate->p_all_with_func_defs, ifd);
 	}
 
 	if (pstate->p_subprocfunc_hook == NULL)

@@ -45,10 +45,10 @@ struct EState;					/* nodes/execnodes.h */
  */
 typedef struct WithFuncContainer
 {
-	int							nfuncs;		/* number of inline functions */
-	struct PLiSQL_subproc_function **funcs;	/* compiled function array */
-	MemoryContext				mcxt;		/* owning memory context */
-	List					   *func_entries; /* WithFuncEntry list, for expr context */
+	int			nfuncs;			/* number of inline functions */
+	struct PLiSQL_subproc_function **funcs; /* compiled function array */
+	MemoryContext mcxt;			/* owning memory context */
+	List	  **func_entries;	/* per-function visible WithFuncEntry lists */
 } WithFuncContainer;
 
 /*

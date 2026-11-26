@@ -1851,7 +1851,7 @@ get_internal_function_result_type(FuncExpr *fexpr,
 	 * call fall through to the PL/iSQL subproc machinery, which would surface
 	 * the confusing internal error "parent_func has not set".
 	 */
-	if (fexpr->function_from == FUNC_FROM_WITH_CLAUSE)
+	if (FUNC_EXPR_FROM_WITH_CLAUSE(fexpr->function_from))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("WITH clause function cannot be used as a table or set-returning function"),
