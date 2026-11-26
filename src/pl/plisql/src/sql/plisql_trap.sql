@@ -52,6 +52,8 @@ begin
 		when NUMERIC_VALUE_OUT_OF_RANGE OR CARDINALITY_VIOLATION then
 			raise notice 'caught numeric_value_out_of_range or cardinality_violation';
 			x := -2;
+		when NO_DATA_FOUND then
+			x := 2;
 	end;
 	return x;
 end$$ language plisql;

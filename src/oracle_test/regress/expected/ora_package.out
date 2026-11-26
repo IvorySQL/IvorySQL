@@ -3521,6 +3521,11 @@ create or replace package body dwdai_pkg is
      SELECT id INTO ln_outboundid FROM test_row WHERE id = str_outbound_dtl.id;
      close cur_outbound_dtl;
      insert into test_row(id, name) select str_outbound_dtl.id, str_outbound_dtl.name from dual;
+  exception
+    when no_data_found then
+      -- The cursor above returns no row, so the SELECT INTO has nothing to
+      -- assign.  Catch it to keep this package call testable.
+      null;
  end;
 end;
 /

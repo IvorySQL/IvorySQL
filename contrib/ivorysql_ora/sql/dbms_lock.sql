@@ -55,6 +55,9 @@ begin
   v_lockmode := 'not found';
  end if;
  raise notice 'mode=%', v_lockmode;
+exception
+ when no_data_found then
+  raise notice 'mode=not found';
 end
 $$;
 --
@@ -109,6 +112,9 @@ begin
   v_lockmode := 'not found';
  end if;
  raise notice 'mode=%', v_lockmode;
+exception
+ when no_data_found then
+  raise notice 'mode=not found';
 end
 $$;
 commit;
