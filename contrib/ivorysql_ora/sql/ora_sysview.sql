@@ -293,6 +293,7 @@ BEGIN
 	RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+/
 CREATE TRIGGER trg_numeric_role BEFORE INSERT ON test_numeric_role
 	FOR EACH ROW EXECUTE FUNCTION trgfunc_numeric_role();
 RESET ROLE;
@@ -308,6 +309,7 @@ BEGIN
 	RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+/
 CREATE TRIGGER trg_mixed_role BEFORE INSERT ON test_mixed_role
 	FOR EACH ROW EXECUTE FUNCTION trgfunc_mixed_role();
 RESET ROLE;
