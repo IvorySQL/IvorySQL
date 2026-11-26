@@ -68,14 +68,17 @@ lookup_plisql_functions(void)
 	if (lookup_attempted)
 		return;
 
-	lookup_attempted = true;
-
 	/*
 	 * Use load_external_function() rather than dlsym(RTLD_DEFAULT, ...): it
 	 * works on every platform, including Windows, where there is no
 	 * RTLD_DEFAULT.  plisql is normally loaded already when these functions
 	 * are called from within a PL/iSQL context; if a symbol is missing, the
 	 * pointer stays NULL and callers fall back to returning NULL.
+	 *
+	 * Set lookup_attempted only once all lookups have returned: if loading
+	 * the library raises an error (for example because dynamic_library_path
+	 * does not lead to it), the next call should try again rather than
+	 * return NULL for the rest of the session.
 	 */
 	get_exception_context_fn = (plisql_get_context_fn)
 		load_external_function("$libdir/plisql",
@@ -93,6 +96,8 @@ lookup_plisql_functions(void)
 		load_external_function("$libdir/plisql",
 							   "plisql_get_call_stack",
 							   false, NULL);
+
+	lookup_attempted = true;
 }
 
 /*
