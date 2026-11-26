@@ -168,17 +168,18 @@ DROP FUNCTION IF EXISTS FUNC_WITH_DEFAULT;
  pname      | varchar2(30)  |           |          | 
  background | varchar2(1)   |           |          | 
 
+-- Use an internal setting instead of the server-specific listen_addresses.
 SELECT * 
 FROM SYS.V$PARAMETER 
-WHERE NAME IN ('listen_addresses','application_name','archive_command','archive_mode','block_size')
+WHERE NAME IN ('max_identifier_length','application_name','archive_command','archive_mode','block_size')
 ORDER BY NAME;
-       name       | type |         value          | default_value | isdefault | isses_modifiable | issys_modifiable |                            description                            
-------------------+------+------------------------+---------------+-----------+------------------+------------------+-------------------------------------------------------------------
- application_name | 2    | pg_regress/ora_sysview |               | FALSE     | TRUE             | IMMEDIATE        | Sets the application name to be reported in statistics and logs.
- archive_command  | 2    | (disabled)             |               | FALSE     | FALSE            | IMMEDIATE        | Sets the shell command that will be called to archive a WAL file.
- archive_mode     | 2    | off                    | off           | TRUE      | FALSE            | FALSE            | Allows archiving of WAL files using "archive_command".
- block_size       | 3    | 8192                   | 8192          | TRUE      | FALSE            | FALSE            | Shows the size of a disk block.
- listen_addresses | 2    |                        | localhost     | FALSE     | FALSE            | FALSE            | Sets the host name or IP address(es) to listen to.
+         name          | type |         value          | default_value | isdefault | isses_modifiable | issys_modifiable |                            description                            
+-----------------------+------+------------------------+---------------+-----------+------------------+------------------+-------------------------------------------------------------------
+ application_name      | 2    | pg_regress/ora_sysview |               | FALSE     | TRUE             | IMMEDIATE        | Sets the application name to be reported in statistics and logs.
+ archive_command       | 2    | (disabled)             |               | FALSE     | FALSE            | IMMEDIATE        | Sets the shell command that will be called to archive a WAL file.
+ archive_mode          | 2    | off                    | off           | TRUE      | FALSE            | FALSE            | Allows archiving of WAL files using "archive_command".
+ block_size            | 3    | 8192                   | 8192          | TRUE      | FALSE            | FALSE            | Shows the size of a disk block.
+ max_identifier_length | 3    | 63                     | 63            | TRUE      | FALSE            | FALSE            | Shows the maximum identifier length.
 (5 rows)
 
 CREATE TABLE t_pk_single (id NUMBER PRIMARY KEY, name VARCHAR2(50));

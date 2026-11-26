@@ -86,9 +86,10 @@ DROP FUNCTION IF EXISTS FUNC_WITH_DEFAULT;
 -- Oracle dynamic views
 \d SYS.V$SESSION
 \d SYS.V$PROCESS
+-- Use an internal setting instead of the server-specific listen_addresses.
 SELECT * 
 FROM SYS.V$PARAMETER 
-WHERE NAME IN ('listen_addresses','application_name','archive_command','archive_mode','block_size')
+WHERE NAME IN ('max_identifier_length','application_name','archive_command','archive_mode','block_size')
 ORDER BY NAME;
 
 CREATE TABLE t_pk_single (id NUMBER PRIMARY KEY, name VARCHAR2(50));
