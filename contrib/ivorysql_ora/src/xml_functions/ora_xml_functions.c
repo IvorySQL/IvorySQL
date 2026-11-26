@@ -2036,9 +2036,7 @@ ivy_insertchildxmlbefore(PG_FUNCTION_ARGS)
 		 PG_RETURN_XML_P(data);
 
 	initStringInfo(&result);
-	appendStringInfoString(&result, xpath_expr);
-	appendStringInfoString(&result, "/");
-	appendStringInfoString(&result, c_expr);
+	appendStringInfo(&result, "(%s)/%s", xpath_expr, c_expr);
 
 	full_path = cstring_to_text(result.data);
 	pfree(result.data);
@@ -2118,9 +2116,7 @@ ivy_insertchildxmlbefore2(PG_FUNCTION_ARGS)
 	}
 
 	initStringInfo(&result);
-	appendStringInfoString(&result, xpath_expr);
-	appendStringInfoString(&result, "/");
-	appendStringInfoString(&result, c_expr);
+	appendStringInfo(&result, "(%s)/%s", xpath_expr, c_expr);
 
 	full_path = cstring_to_text(result.data);
 	pfree(result.data);
@@ -2195,9 +2191,7 @@ ivy_insertchildxmlafter(PG_FUNCTION_ARGS)
 		PG_RETURN_XML_P(data);
 
 	initStringInfo(&result);
-	appendStringInfoString(&result, xpath_expr);
-	appendStringInfoString(&result, "/");
-	appendStringInfoString(&result, c_expr);
+	appendStringInfo(&result, "(%s)/%s", xpath_expr, c_expr);
 
 	full_path = cstring_to_text(result.data);
 	pfree(result.data);
@@ -2277,9 +2271,7 @@ ivy_insertchildxmlafter2(PG_FUNCTION_ARGS)
 	}
 
 	initStringInfo(&result);
-	appendStringInfoString(&result, xpath_expr);
-	appendStringInfoString(&result, "/");
-	appendStringInfoString(&result, c_expr);
+	appendStringInfo(&result, "(%s)/%s", xpath_expr, c_expr);
 
 	full_path = cstring_to_text(result.data);
 	pfree(result.data);

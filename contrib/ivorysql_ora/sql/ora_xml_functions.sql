@@ -236,6 +236,36 @@ SELECT insertchildxmlbefore(XMLType('<a><b>100</b><b>200</b></a>'), '/a/b[1]', '
 SELECT insertchildxmlbefore(data, 'soapenv:Envelope/soapenv:Body/web:BBB','typ:FFF', XMLType('<typ:IVY xmlns:typ="http://www.def.com">Ivory</typ:IVY>'), 'xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"') from xmlnstest where id = 1;
 
 --
+-- Apply the child step to every parent selected by the union.
+WITH shipment(doc) AS (
+  VALUES (XMLType('<Shipment><Open><Item>A</Item></Open><Closed><Item>B</Item></Closed></Shipment>'))
+)
+SELECT insertchildxmlbefore(doc, '/Shipment/Open | /Shipment/Closed',
+                            'Item[1]', XMLType('<Item>new</Item>')) FROM shipment;
+
+WITH shipment(doc) AS (
+  VALUES (XMLType('<s xmlns="urn:ship"><open><i>A</i></open><closed><i>B</i></closed></s>'))
+)
+SELECT insertchildxmlafter(doc, '/p:s/p:open | /p:s/p:closed', 'p:i[1]',
+                           XMLType('<i xmlns="urn:ship">new</i>'),
+                           'xmlns:p="urn:ship"') FROM shipment;
+
+-- A selected parent without a matching child must not gain a sibling.
+WITH shipment(doc) AS (
+  VALUES (XMLType('<s><open/><closed><i/></closed></s>'))
+)
+SELECT existsnode(insertchildxmlafter(doc, '/s/open | /s/closed', 'i',
+                                     XMLType('<i/>')), '/s/i') AS stray_after
+FROM shipment;
+
+WITH shipment(doc) AS (
+  VALUES (XMLType('<s xmlns="urn:ship"><open/><closed><i/></closed></s>'))
+)
+SELECT existsnode(insertchildxmlbefore(doc, '/p:s/p:open | /p:s/p:closed', 'p:i',
+                                       XMLType('<i xmlns="urn:ship"/>'), 'xmlns:p="urn:ship"'),
+                  '/p:s/p:i', 'xmlns:p="urn:ship"') AS stray_before
+FROM shipment;
+
 -- insertchildxmlafter
 --
 SELECT insertchildxmlafter(XMLType('<a><b>100</b></a>'), '/a/b', 'b', XMLType('<c>88</c>')) from dual;
