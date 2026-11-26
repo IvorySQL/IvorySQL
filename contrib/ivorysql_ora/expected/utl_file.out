@@ -418,9 +418,9 @@ from dual;
  accepted | accepted | accepted      | rejected  | rejected      | rejected            | rejected
 (1 row)
 
--- file names are case-insensitive on Windows only
+-- file names are case-insensitive on Windows (native or MinGW builds) only
 select regress_path_check(upper(current_setting('data_directory') || '/regress_dir'), 'a.txt') =
-       case when current_setting('data_directory') ~ '^[A-Za-z]:' then 'accepted' else 'rejected' end
+       case when version() ~ ' on [^ ,]*(windows|mingw)' then 'accepted' else 'rejected' end
        as case_handling_ok
 from dual;
  case_handling_ok 

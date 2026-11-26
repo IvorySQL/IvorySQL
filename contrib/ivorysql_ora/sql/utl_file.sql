@@ -393,9 +393,9 @@ select regress_path_check(current_setting('data_directory') || '/regress_dir', '
        regress_path_check(current_setting('data_directory') || '/regress_dir2', 'a.txt') as same_prefix_sibling,
        regress_path_check(current_setting('data_directory') || '/regress_dir', '../a.txt') as parent
 from dual;
--- file names are case-insensitive on Windows only
+-- file names are case-insensitive on Windows (native or MinGW builds) only
 select regress_path_check(upper(current_setting('data_directory') || '/regress_dir'), 'a.txt') =
-       case when current_setting('data_directory') ~ '^[A-Za-z]:' then 'accepted' else 'rejected' end
+       case when version() ~ ' on [^ ,]*(windows|mingw)' then 'accepted' else 'rejected' end
        as case_handling_ok
 from dual;
 -- a root directory ("/", or "C:/" on Windows) contains every path
