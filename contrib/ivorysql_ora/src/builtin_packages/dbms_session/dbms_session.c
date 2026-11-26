@@ -41,12 +41,13 @@
 #include "../../include/ivorysql_ora.h"
 
 /*
- * Oracle limits namespace/attribute to identifier length (30 bytes) and the
- * value to 4000 bytes.  We use generous fixed-size key buffers and reject
- * oversized names rather than silently truncating (truncation would corrupt
- * the hash key).
+ * Oracle limits namespace and attribute names to 30 bytes and the value to
+ * 4000 bytes.  Reserve one extra byte for the NUL terminator in the fixed-size
+ * key buffers and reject oversized names rather than silently truncating
+ * (truncation would corrupt the hash key).
  */
-#define DBMS_SESSION_NAME_LEN		256
+#define DBMS_SESSION_MAX_NAME_LEN	30
+#define DBMS_SESSION_NAME_LEN		(DBMS_SESSION_MAX_NAME_LEN + 1)
 #define DBMS_SESSION_MAX_VALUE_LEN	4000
 #define DBMS_SESSION_HASH_INIT_SIZE	64
 
@@ -73,6 +74,7 @@ static MemoryContext DbmsSessionContext = NULL;
 
 /* Internal helpers */
 static void dbms_session_init(void);
+static void validate_name_len(const char *name, const char *kind);
 static void make_key(CtxKey *key, const char *ns, const char *attr);
 static void clear_namespace(const char *ns);
 
@@ -112,6 +114,20 @@ dbms_session_init(void)
 }
 
 /*
+ * validate_name_len - enforce Oracle's 30-byte limit on namespace and
+ * attribute names before inserting or clearing context entries.
+ */
+static void
+validate_name_len(const char *name, const char *kind)
+{
+	if (strlen(name) >= DBMS_SESSION_NAME_LEN)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("DBMS_SESSION %s too long (max %d bytes)",
+						kind, DBMS_SESSION_NAME_LEN - 1)));
+}
+
+/*
  * make_key - build a zero-filled hash key from namespace/attribute names.
  *
  * Oracle treats namespace and attribute names case-insensitively (it folds
@@ -124,16 +140,8 @@ make_key(CtxKey *key, const char *ns, const char *attr)
 {
 	int			i;
 
-	if (strlen(ns) >= DBMS_SESSION_NAME_LEN)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("DBMS_SESSION namespace too long (max %d bytes)",
-						DBMS_SESSION_NAME_LEN - 1)));
-	if (strlen(attr) >= DBMS_SESSION_NAME_LEN)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("DBMS_SESSION attribute too long (max %d bytes)",
-						DBMS_SESSION_NAME_LEN - 1)));
+	validate_name_len(ns, "namespace");
+	validate_name_len(attr, "attribute");
 
 	/* MemSet first: HASH_BLOBS compares the whole struct as bytes. */
 	MemSet(key, 0, sizeof(CtxKey));
@@ -160,6 +168,8 @@ clear_namespace(const char *ns)
 	char		ns_up[DBMS_SESSION_NAME_LEN];
 	int			i;
 
+	validate_name_len(ns, "namespace");
+
 	if (DbmsSessionHash == NULL)
 		return;
 
@@ -169,11 +179,8 @@ clear_namespace(const char *ns)
 
 	/*
 	 * Stored keys are upper-cased (see make_key), so upper-case the namespace
-	 * here too before comparing.  An over-long namespace cannot match any
-	 * stored key (those are length-checked at insert time).
+	 * here too before comparing.
 	 */
-	if (strlen(ns) >= DBMS_SESSION_NAME_LEN)
-		return;
 	for (i = 0; ns[i] != '\0'; i++)
 		ns_up[i] = pg_toupper((unsigned char) ns[i]);
 	ns_up[i] = '\0';
@@ -220,6 +227,7 @@ ora_dbms_session_set_context(PG_FUNCTION_ARGS)
 
 	ns = text_to_cstring(PG_GETARG_TEXT_PP(0));
 	attr = text_to_cstring(PG_GETARG_TEXT_PP(1));
+	make_key(&key, ns, attr);
 
 	if (!PG_ARGISNULL(2))
 	{
@@ -233,8 +241,6 @@ ora_dbms_session_set_context(PG_FUNCTION_ARGS)
 
 	if (DbmsSessionHash == NULL)
 		dbms_session_init();
-
-	make_key(&key, ns, attr);
 
 	entry = (CtxEntry *) hash_search(DbmsSessionHash, &key, HASH_ENTER, &found);
 
@@ -271,10 +277,8 @@ ora_dbms_session_clear_context(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
 				 errmsg("DBMS_SESSION.CLEAR_CONTEXT namespace must not be NULL")));
 
-	if (DbmsSessionHash == NULL)
-		PG_RETURN_VOID();
-
 	ns = text_to_cstring(PG_GETARG_TEXT_PP(0));
+	validate_name_len(ns, "namespace");
 
 	if (PG_ARGISNULL(1))
 	{
@@ -288,6 +292,9 @@ ora_dbms_session_clear_context(PG_FUNCTION_ARGS)
 		bool		found;
 
 		make_key(&key, ns, attr);
+		if (DbmsSessionHash == NULL)
+			PG_RETURN_VOID();
+
 		entry = (CtxEntry *) hash_search(DbmsSessionHash, &key, HASH_FIND, &found);
 		if (found)
 		{
@@ -314,9 +321,6 @@ ora_dbms_session_clear_all_context(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
 				 errmsg("DBMS_SESSION.CLEAR_ALL_CONTEXT namespace must not be NULL")));
-
-	if (DbmsSessionHash == NULL)
-		PG_RETURN_VOID();
 
 	ns = text_to_cstring(PG_GETARG_TEXT_PP(0));
 	clear_namespace(ns);

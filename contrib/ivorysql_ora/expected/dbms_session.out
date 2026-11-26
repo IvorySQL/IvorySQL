@@ -77,8 +77,20 @@ select sys_context('ns2', 'a') is null as ns2_cleared;
  t
 (1 row)
 
--- read path: an over-long name (>= 256 bytes) cannot match any stored key,
+-- read path: an over-long name (> 30 bytes) cannot match any stored key,
 -- so SYS_CONTEXT returns NULL instead of raising an error (usable in predicates)
+select sys_context(repeat('x', 31), 'attr') is null as overlong_ns_31_is_null;
+ overlong_ns_31_is_null 
+------------------------
+ t
+(1 row)
+
+select sys_context('app_ctx', repeat('y', 31)) is null as overlong_attr_31_is_null;
+ overlong_attr_31_is_null 
+--------------------------
+ t
+(1 row)
+
 select sys_context(repeat('x', 300), 'attr') is null as overlong_ns_is_null;
  overlong_ns_is_null 
 ---------------------
@@ -265,3 +277,157 @@ select sys_context('rp_ns', 'key') as ctx_after_reset;
 (1 row)
 
 DROP PACKAGE rp_pkg;
+--
+-- Oracle 30-byte limit on context namespace and attribute names (byte count)
+--
+-- First test CLEAR_CONTEXT / CLEAR_ALL_CONTEXT on an uninitialized session
+-- context store (after DISCARD ALL) to confirm length validation runs before
+-- the empty-hash early return.
+discard all;
+call dbms_session.clear_context(repeat('n', 31));
+ERROR:  DBMS_SESSION namespace too long (max 30 bytes)
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_session_clear_context(namespace, attribute)"
+PL/iSQL function sys.dbms_session.clear_context line 8 at PERFORM
+call dbms_session.clear_context('valid_ns', repeat('a', 31));
+ERROR:  DBMS_SESSION attribute too long (max 30 bytes)
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_session_clear_context(namespace, attribute)"
+PL/iSQL function sys.dbms_session.clear_context line 8 at PERFORM
+call dbms_session.clear_all_context(repeat('n', 31));
+ERROR:  DBMS_SESSION namespace too long (max 30 bytes)
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_session_clear_all_context(namespace)"
+PL/iSQL function sys.dbms_session.clear_all_context line 13 at PERFORM
+-- Verify exact 30-byte ASCII names and 4000-byte value limit succeed.
+call dbms_session.set_context(repeat('n', 30), repeat('a', 30), repeat('v', 4000));
+select octet_length(sys_context(repeat('n', 30), repeat('a', 30))) as max_val_bytes;
+ max_val_bytes 
+---------------
+          4000
+(1 row)
+
+select namespace, attribute, octet_length(value) as val_bytes
+from sys.dbms_session_list_context()
+order by namespace, attribute;
+           namespace            |           attribute            | val_bytes 
+--------------------------------+--------------------------------+-----------
+ NNNNNNNNNNNNNNNNNNNNNNNNNNNNNN | AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA |      4000
+(1 row)
+
+-- 4001-byte value limit remains unchanged.
+call dbms_session.set_context('valid_ns', 'valid_attr', repeat('v', 4001));
+ERROR:  DBMS_SESSION.SET_CONTEXT value too long (max 4000 bytes)
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_session_set_context(namespace, attribute, value)"
+PL/iSQL function sys.dbms_session.set_context line 3 at PERFORM
+-- 31-byte ASCII namespace and attribute names are rejected across SET/CLEAR/CLEAR_ALL.
+call dbms_session.set_context(repeat('n', 31), 'attr', 'value');
+ERROR:  DBMS_SESSION namespace too long (max 30 bytes)
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_session_set_context(namespace, attribute, value)"
+PL/iSQL function sys.dbms_session.set_context line 3 at PERFORM
+call dbms_session.set_context('namespace', repeat('a', 31), 'value');
+ERROR:  DBMS_SESSION attribute too long (max 30 bytes)
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_session_set_context(namespace, attribute, value)"
+PL/iSQL function sys.dbms_session.set_context line 3 at PERFORM
+call dbms_session.clear_context(repeat('n', 31));
+ERROR:  DBMS_SESSION namespace too long (max 30 bytes)
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_session_clear_context(namespace, attribute)"
+PL/iSQL function sys.dbms_session.clear_context line 8 at PERFORM
+call dbms_session.clear_context(repeat('n', 31), 'attr');
+ERROR:  DBMS_SESSION namespace too long (max 30 bytes)
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_session_clear_context(namespace, attribute)"
+PL/iSQL function sys.dbms_session.clear_context line 8 at PERFORM
+call dbms_session.clear_context('namespace', repeat('a', 31));
+ERROR:  DBMS_SESSION attribute too long (max 30 bytes)
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_session_clear_context(namespace, attribute)"
+PL/iSQL function sys.dbms_session.clear_context line 8 at PERFORM
+call dbms_session.clear_all_context(repeat('n', 31));
+ERROR:  DBMS_SESSION namespace too long (max 30 bytes)
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_session_clear_all_context(namespace)"
+PL/iSQL function sys.dbms_session.clear_all_context line 13 at PERFORM
+-- Confirm SQLSTATE is invalid_parameter_value (22023), not an untyped error.
+do $$
+declare
+    caught int := 0;
+begin
+    begin
+        call dbms_session.set_context(repeat('n', 31), 'attr', 'value');
+    exception when invalid_parameter_value then
+        caught := caught + 1;
+    end;
+    begin
+        call dbms_session.clear_context(repeat('n', 31));
+    exception when invalid_parameter_value then
+        caught := caught + 1;
+    end;
+    begin
+        call dbms_session.clear_context('namespace', repeat('a', 31));
+    exception when invalid_parameter_value then
+        caught := caught + 1;
+    end;
+    begin
+        call dbms_session.clear_all_context(repeat('n', 31));
+    exception when invalid_parameter_value then
+        caught := caught + 1;
+    end;
+    if caught <> 4 then
+        raise exception 'expected 4 invalid_parameter_value errors, got %', caught;
+    end if;
+end $$;
+-- Existing 30-byte entry is untouched by rejected calls and clears cleanly.
+select octet_length(sys_context(repeat('n', 30), repeat('a', 30))) as still_present;
+ still_present 
+---------------
+          4000
+(1 row)
+
+call dbms_session.clear_context(repeat('n', 30), repeat('a', 30));
+select sys_context(repeat('n', 30), repeat('a', 30)) is null as cleared_30b;
+ cleared_30b 
+-------------
+ t
+(1 row)
+
+-- Multibyte UTF-8: limit is measured in bytes, not characters.
+-- 10 x 3-byte UTF-8 chars = 30 bytes (accepted); 28 ASCII + 2-byte UTF-8 = 30 bytes (accepted).
+call dbms_session.set_context(repeat('你', 10), repeat('a', 28) || 'é', 'mb_ok');
+select sys_context(repeat('你', 10), repeat('A', 28) || 'é') as mb_30b_read;
+ mb_30b_read 
+-------------
+ mb_ok
+(1 row)
+
+select namespace, attribute, value from sys.dbms_session_list_context();
+      namespace       |           attribute           | value 
+----------------------+-------------------------------+-------
+ 你你你你你你你你你你 | AAAAAAAAAAAAAAAAAAAAAAAAAAAAé | mb_ok
+(1 row)
+
+-- 11 x 3-byte UTF-8 chars = 33 bytes (rejected); 29 ASCII + 2-byte UTF-8 = 31 bytes (rejected).
+call dbms_session.set_context(repeat('你', 11), 'attr', 'value');
+ERROR:  DBMS_SESSION namespace too long (max 30 bytes)
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_session_set_context(namespace, attribute, value)"
+PL/iSQL function sys.dbms_session.set_context line 3 at PERFORM
+call dbms_session.set_context('namespace', repeat('a', 29) || 'é', 'value');
+ERROR:  DBMS_SESSION attribute too long (max 30 bytes)
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_session_set_context(namespace, attribute, value)"
+PL/iSQL function sys.dbms_session.set_context line 3 at PERFORM
+call dbms_session.clear_context(repeat('你', 11));
+ERROR:  DBMS_SESSION namespace too long (max 30 bytes)
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_session_clear_context(namespace, attribute)"
+PL/iSQL function sys.dbms_session.clear_context line 8 at PERFORM
+call dbms_session.clear_context('namespace', repeat('a', 29) || 'é');
+ERROR:  DBMS_SESSION attribute too long (max 30 bytes)
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_session_clear_context(namespace, attribute)"
+PL/iSQL function sys.dbms_session.clear_context line 8 at PERFORM
+select sys_context(repeat('你', 11), 'attr') is null as mb_overlong_ns_is_null,
+       sys_context('namespace', repeat('a', 29) || 'é') is null as mb_overlong_attr_is_null;
+ mb_overlong_ns_is_null | mb_overlong_attr_is_null 
+------------------------+--------------------------
+ t                      | t
+(1 row)
+
+call dbms_session.clear_all_context(repeat('你', 10));
+select count(*) as final_remaining from sys.dbms_session_list_context();
+ final_remaining 
+-----------------
+               0
+(1 row)
+
