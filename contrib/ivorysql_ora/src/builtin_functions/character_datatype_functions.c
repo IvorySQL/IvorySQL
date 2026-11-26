@@ -36,6 +36,7 @@
 #include "lib/stringinfo.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
+#include "nodes/miscnodes.h"
 #include "regex/regex.h"
 #include "utils/builtins.h"
 #include "utils/fmgrprotos.h"
@@ -71,6 +72,8 @@ PG_FUNCTION_INFO_V1(ora_regexp_like_no_flags);
 PG_FUNCTION_INFO_V1(ora_regexp_count);
 PG_FUNCTION_INFO_V1(ora_substr_no_length);
 PG_FUNCTION_INFO_V1(ora_substr);
+PG_FUNCTION_INFO_V1(ora_substr_num_no_length);
+PG_FUNCTION_INFO_V1(ora_substr_num);
 PG_FUNCTION_INFO_V1(ora_substrb_no_length);
 PG_FUNCTION_INFO_V1(ora_substrb);
 PG_FUNCTION_INFO_V1(ora_replace);
@@ -1141,6 +1144,88 @@ ora_substr_no_length(PG_FUNCTION_ARGS)
 
 	result = ora_substr_internal(PG_GETARG_DATUM(0), PG_GETARG_INT32(1),
 								0, true);
+	if (result == NULL)
+		PG_RETURN_NULL();
+
+	PG_RETURN_TEXT_P(result);
+}
+
+/*
+ * Truncate a Numeric position/length argument toward zero and convert it to
+ * int32, reporting whether a finite value falls below PG_INT32_MIN (-1) or
+ * above PG_INT32_MAX (+1).  NaN and Infinity raise an error matching
+ * numeric_int4_safe().
+ */
+static int
+ora_substr_numeric_to_int32(Datum num_datum, int32 *out)
+{
+	Numeric		num = DatumGetNumeric(num_datum);
+	Numeric		truncated;
+	ErrorSaveContext escontext = {T_ErrorSaveContext};
+	int32		val;
+
+	if (numeric_is_nan(num))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot convert NaN to integer")));
+	if (numeric_is_inf(num))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot convert infinity to integer")));
+
+	truncated = DatumGetNumeric(DirectFunctionCall2(numeric_trunc,
+													NumericGetDatum(num),
+													Int32GetDatum(0)));
+	val = numeric_int4_safe(truncated, (Node *) &escontext);
+	if (!escontext.error_occurred)
+	{
+		*out = val;
+		return 0;
+	}
+
+	if (DatumGetInt32(DirectFunctionCall2(numeric_cmp,
+										  NumericGetDatum(truncated),
+										  NumericGetDatum(int64_to_numeric(0)))) < 0)
+		return -1;
+
+	return 1;
+}
+
+Datum
+ora_substr_num(PG_FUNCTION_ARGS)
+{
+	int32		start = 0;
+	int32		length = 0;
+	int			start_cmp;
+	int			len_cmp;
+	text	   *result;
+
+	start_cmp = ora_substr_numeric_to_int32(PG_GETARG_DATUM(1), &start);
+	len_cmp = ora_substr_numeric_to_int32(PG_GETARG_DATUM(2), &length);
+
+	if (start_cmp != 0 || len_cmp < 0)
+		PG_RETURN_NULL();
+
+	result = ora_substr_internal(PG_GETARG_DATUM(0), start, length,
+								 len_cmp > 0);
+	if (result == NULL)
+		PG_RETURN_NULL();
+
+	PG_RETURN_TEXT_P(result);
+}
+
+Datum
+ora_substr_num_no_length(PG_FUNCTION_ARGS)
+{
+	int32		start = 0;
+	int			start_cmp;
+	text	   *result;
+
+	start_cmp = ora_substr_numeric_to_int32(PG_GETARG_DATUM(1), &start);
+	if (start_cmp != 0)
+		PG_RETURN_NULL();
+
+	result = ora_substr_internal(PG_GETARG_DATUM(0), start, 0, true);
 	if (result == NULL)
 		PG_RETURN_NULL();
 
