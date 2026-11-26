@@ -621,3 +621,44 @@ SELECT 123.456 * interval'365 11:11:11' day(3) to second;
 -- The operator "<=" supports a comparison between the "number" type and the "varchar2" type.
 SET NLS_DATE_FORMAT = 'YYYY-MM-DD';
 select 25::number <= to_char('1990-01-01'::oradate, 'yyyy');
+
+-- Oracle date/timestamp +/- number overflow and range boundary checks
+SET TIMEZONE = 'UTC';
+
+-- Upper bound overflow (both operand orders, all Oracle datetime types)
+SELECT (timestamp '294276-12-31 23:59:59.999999'::sys.oradate + 1);
+SELECT (1 + timestamp '294276-12-31 23:59:59.999999'::sys.oradate);
+SELECT (timestamp '294276-12-31 23:59:59.999999'::sys.oradate - (-1));
+SELECT (timestamp '294276-12-31 23:59:59.999999'::sys.oratimestamp + 1);
+SELECT (1 + timestamp '294276-12-31 23:59:59.999999'::sys.oratimestamp);
+SELECT (timestamp '294276-12-31 23:59:59.999999'::sys.oratimestamp - (-1));
+SELECT (timestamp '294276-12-31 23:59:59.999999'::sys.oratimestamptz + 1);
+SELECT (1 + timestamp '294276-12-31 23:59:59.999999'::sys.oratimestamptz);
+SELECT (timestamp '294276-12-31 23:59:59.999999'::sys.oratimestamptz - (-1));
+SELECT (timestamp '294276-12-31 23:59:59.999999'::sys.oratimestampltz + 1);
+SELECT (1 + timestamp '294276-12-31 23:59:59.999999'::sys.oratimestampltz);
+SELECT (timestamp '294276-12-31 23:59:59.999999'::sys.oratimestampltz - (-1));
+
+-- Lower bound overflow (both operand orders, all Oracle datetime types)
+SELECT (timestamp '4714-11-24 00:00:00 BC'::sys.oradate - 1);
+SELECT ((-1) + timestamp '4714-11-24 00:00:00 BC'::sys.oradate);
+SELECT (timestamp '4714-11-24 00:00:00 BC'::sys.oratimestamp - 1);
+SELECT ((-1) + timestamp '4714-11-24 00:00:00 BC'::sys.oratimestamp);
+SELECT (timestamp '4714-11-24 00:00:00 BC'::sys.oratimestamptz - 1);
+SELECT ((-1) + timestamp '4714-11-24 00:00:00 BC'::sys.oratimestamptz);
+SELECT (timestamp '4714-11-24 00:00:00 BC'::sys.oratimestampltz - 1);
+SELECT ((-1) + timestamp '4714-11-24 00:00:00 BC'::sys.oratimestampltz);
+
+-- Huge, NaN, and infinite numeric day offsets must raise out-of-range
+SELECT (date '2020-01-01' + 1e20::number);
+SELECT (date '2020-01-01' - 1e20::number);
+SELECT (date '2020-01-01' + 'NaN'::number);
+SELECT (date '2020-01-01' + 'Infinity'::number);
+SELECT (date '2020-01-01' - 'Infinity'::number);
+
+-- Valid exact boundary arithmetic remains accepted
+SELECT (timestamp '294276-12-30 23:59:59'::sys.oradate + 1) = timestamp '294276-12-31 23:59:59'::sys.oradate AS upper_ok;
+SELECT (1 + timestamp '294276-12-30 23:59:59'::sys.oratimestamp) = timestamp '294276-12-31 23:59:59'::sys.oradate AS upper_rev_ok;
+SELECT (timestamp '4714-11-25 00:00:00 BC'::sys.oradate - 1) = timestamp '4714-11-24 00:00:00 BC'::sys.oradate AS lower_ok;
+SELECT ((-1) + timestamp '4714-11-25 00:00:00 BC'::sys.oratimestamp) = timestamp '4714-11-24 00:00:00 BC'::sys.oradate AS lower_rev_ok;
+RESET TIMEZONE;
