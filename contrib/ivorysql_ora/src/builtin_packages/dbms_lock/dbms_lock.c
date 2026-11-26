@@ -190,21 +190,28 @@ lockname_to_key(text *lockname)
     return key;
 }
 
+/*
+ * Validate a DBMS_LOCK mode and report whether it requires an exclusive lock.
+ *
+ * Returns false for unsupported or invalid lock modes so callers can return
+ * DBMS_LOCK_PARAM_ERROR instead of raising an exception.
+ */
 static bool
-is_exclusive_mode(int mode)
+resolve_lock_mode(int mode, bool *exclusive)
 {
-    switch (mode)
-    {
-        case DBMS_LOCK_X_MODE:
-            return true;
+	switch (mode)
+	{
+		case DBMS_LOCK_X_MODE:
+			*exclusive = true;
+			return true;
 
-        case DBMS_LOCK_S_MODE:
-            return false;
+		case DBMS_LOCK_S_MODE:
+			*exclusive = false;
+			return true;
 
-        default:
-            ereport(ERROR,
-                    (errmsg("invalid DBMS_LOCK mode")));
-    }
+		default:
+			return false;
+	}
 }
 
 /*
@@ -250,17 +257,20 @@ ivorysql_dbms_lock_request(PG_FUNCTION_ARGS)
     text *lockhandle = PG_GETARG_TEXT_PP(0);
     int lockmode = PG_GETARG_INT32(1);     /* Oracle lock mode S=4, X=6 */
     int timeout = PG_GETARG_INT32(2);  /* seconds */
-    int64 key = lockname_to_key(lockhandle);
-    bool exclusive = is_exclusive_mode(lockmode);
-    TimestampTz start = GetCurrentTimestamp();
+	int64		key;
+	bool		exclusive = false;
+	TimestampTz start;
     bool acquired = false;
     bool hash_enter_is_ok = false;
 
+	if (!resolve_lock_mode(lockmode, &exclusive) || timeout < 0)
+		PG_RETURN_INT32(DBMS_LOCK_PARAM_ERROR);
+
+	key = lockname_to_key(lockhandle);
+	start = GetCurrentTimestamp();
+
     if (dbms_lock_hash_table == NULL)
 	    dbms_lock_init_hash_table();
-
-    if (timeout < 0)
-        PG_RETURN_INT32(DBMS_LOCK_PARAM_ERROR);
 
     while (true)
     {
