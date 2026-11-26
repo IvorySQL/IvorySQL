@@ -419,3 +419,20 @@ select insertxmlafter(XMLtype('<a>A<b>B</b></a>'), '/', XMLType('<c>C</c>'));
 select insertchildxml(XMLtype('<a>A<b>B</b></a>'), '/', 'c', XMLType('<c>C</c>'));
 
 
+
+-- Attribute and text values must not be parsed as replacement elements.
+SELECT updatexml(XMLType('<r a="old"/>'), '/r/@a', 'new');
+SELECT updatexml(XMLType('<r a="old"/>'), '/r/@a', '<new/>&');
+SELECT updatexml(XMLType('<r a="old"/>'), '/r/@a', NULL);
+SELECT updatexml(XMLType('<r>old</r>'), '/r/node()', 'new');
+SELECT updatexml(XMLType('<r>old</r>'), '/r/text()', '<new/>');
+SELECT updatexml(XMLType('<r><a v="1"/><a v="2"/></r>'), '/r/a/@v', '3');
+SELECT updatexml(XMLType('<r a="old"/>'), '/r/@missing', 'new');
+
+-- Empty text, CDATA and namespace-aware attribute replacements.
+SELECT updatexml(XMLType('<r>old</r>'), '/r/text()', NULL);
+SELECT updatexml(XMLType('<r>old</r>'), '/r/text()', '');
+SELECT updatexml(XMLType('<r><![CDATA[old]]></r>'), '/r/node()', '<new/>&');
+SELECT updatexml(XMLType('<r xmlns:p="urn:attr" p:a="old"/>'),
+                 '/r/@p:a', 'new', 'xmlns:p="urn:attr"');
+SELECT updatexml(XMLType('<r a="old"/>'), '/r/@a', E'"line1\nline2');

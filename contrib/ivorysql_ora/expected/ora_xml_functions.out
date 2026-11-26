@@ -1053,3 +1053,81 @@ select insertchildxml(XMLtype('<a>A<b>B</b></a>'), '/', 'c', XMLType('<c>C</c>')
  <a>A<b>B</b><c>C</c></a>
 (1 row)
 
+-- Attribute and text values must not be parsed as replacement elements.
+SELECT updatexml(XMLType('<r a="old"/>'), '/r/@a', 'new');
+  updatexml   
+--------------
+ <r a="new"/>
+(1 row)
+
+SELECT updatexml(XMLType('<r a="old"/>'), '/r/@a', '<new/>&');
+         updatexml          
+----------------------------
+ <r a="&lt;new/&gt;&amp;"/>
+(1 row)
+
+SELECT updatexml(XMLType('<r a="old"/>'), '/r/@a', NULL);
+ updatexml 
+-----------
+ <r a=""/>
+(1 row)
+
+SELECT updatexml(XMLType('<r>old</r>'), '/r/node()', 'new');
+ updatexml  
+------------
+ <r>new</r>
+(1 row)
+
+SELECT updatexml(XMLType('<r>old</r>'), '/r/text()', '<new/>');
+      updatexml      
+---------------------
+ <r>&lt;new/&gt;</r>
+(1 row)
+
+SELECT updatexml(XMLType('<r><a v="1"/><a v="2"/></r>'), '/r/a/@v', '3');
+  updatexml   
+--------------
+ <r>         +
+   <a v="3"/>+
+   <a v="3"/>+
+ </r>
+(1 row)
+
+SELECT updatexml(XMLType('<r a="old"/>'), '/r/@missing', 'new');
+  updatexml   
+--------------
+ <r a="old"/>
+(1 row)
+
+-- Empty text, CDATA and namespace-aware attribute replacements.
+SELECT updatexml(XMLType('<r>old</r>'), '/r/text()', NULL);
+ updatexml 
+-----------
+ <r></r>
+(1 row)
+
+SELECT updatexml(XMLType('<r>old</r>'), '/r/text()', '');
+ updatexml 
+-----------
+ <r></r>
+(1 row)
+
+SELECT updatexml(XMLType('<r><![CDATA[old]]></r>'), '/r/node()', '<new/>&');
+         updatexml          
+----------------------------
+ <r><![CDATA[<new/>&]]></r>
+(1 row)
+
+SELECT updatexml(XMLType('<r xmlns:p="urn:attr" p:a="old"/>'),
+                 '/r/@p:a', 'new', 'xmlns:p="urn:attr"');
+             updatexml             
+-----------------------------------
+ <r xmlns:p="urn:attr" p:a="new"/>
+(1 row)
+
+SELECT updatexml(XMLType('<r a="old"/>'), '/r/@a', E'"line1\nline2');
+           updatexml            
+--------------------------------
+ <r a="&quot;line1&#10;line2"/>
+(1 row)
+
