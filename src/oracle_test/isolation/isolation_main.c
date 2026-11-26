@@ -44,24 +44,13 @@ isolation_start_test(const char *testname,
 	/* need to do the path lookup here, check isolation_init() for details */
 	if (!looked_up_isolation_exec)
 	{
-			/* windows has change isolationtester to ora_isolationtester */
-#ifdef WIN32
-		if (find_other_exec(saved_argv0, "ora_isolationtester",
-			PG_ISOLATION_VERSIONSTR, isolation_exec) != 0)
-		{
-			fprintf(stderr, _("could not find proper ora_isolationtester binary\n"));
-			exit(2);
-		}
-#else
-		/* look for isolationtester binary */
+		/* Look for the sibling built by both Meson and GNU make. */
 		if (find_other_exec(saved_argv0, "isolationtester",
 							PG_ISOLATION_VERSIONSTR, isolation_exec) != 0)
 		{
 			fprintf(stderr, _("could not find proper isolationtester binary\n"));
 			exit(2);
 		}
-#endif
-
 		looked_up_isolation_exec = true;
 	}
 
