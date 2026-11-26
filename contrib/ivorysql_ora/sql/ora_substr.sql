@@ -34,6 +34,24 @@ SELECT substr('hello'::varchar2, -3) AS varchar2_value,
        substr('hello'::clob, -3, 2) AS clob_value,
        substr('hello'::nclob, -3) AS nclob_value;
 
+-- Numeric input becomes text, and fractional positions and lengths truncate.
+\pset format unaligned
+SELECT substr(12345.6789::double precision, 2.9::float8, 3.9::float8) AS float_value,
+       substr(12345.6789::pg_catalog.numeric, 2.9::float8, 3.9::float8) AS numeric_value,
+       pg_typeof(substr(12345::double precision, 2::float8, 3::float8)) AS result_type;
+SELECT substr(12345::double precision, -3.9::float8, 2.9::float8) AS from_end,
+       substr(12345::pg_catalog.numeric, 0.9::float8, 2.9::float8) AS from_start,
+       substr(12345::pg_catalog.numeric, 2::float8, 0.9::float8) IS NULL AS short_length,
+       substr(NULL::double precision, 2::float8, 3::float8) IS NULL AS null_value,
+       substr(12345::pg_catalog.numeric, NULL::float8, 3::float8) IS NULL AS null_position,
+       substr(12345::double precision, 2::float8, NULL::float8) IS NULL AS null_length;
+SELECT substr('hello', 2.9::float8, 3.9::float8) AS word,
+       substr('00012', 2.9::float8, 3.9::float8) AS leading_zeroes,
+       substr('hello', 2, 3) AS integer_arguments;
+SELECT substr(9007199254740993::pg_catalog.numeric, 16::float8, 1::float8) AS numeric_digit,
+       substr(9007199254740993::number, 16::float8, 1::float8) AS number_digit;
+\pset format aligned
+
 -- Exercise the function with external TOAST values rather than only constants.
 CREATE TABLE substr_toast(id integer, val text);
 ALTER TABLE substr_toast ALTER COLUMN val SET STORAGE EXTERNAL;
