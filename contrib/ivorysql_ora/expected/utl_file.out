@@ -116,6 +116,145 @@ NOTICE:  fexists = t, file_length = 75, block_size = 4096
 NOTICE:  fexists = t, file_length = 75, block_size = 4096
 NOTICE:  fexists = f, file_length = <NULL>, block_size = <NULL>
 NOTICE:  fexists = t, file_length = 75, block_size = 4096
+-- test FCOPY line range validation (reversed, non-positive, equal, NULL defaults)
+declare
+    f UTL_FILE.FILE_TYPE;
+    line text;
+    fexists boolean;
+    file_length number;
+    block_size integer;
+begin
+    f := utl_file.fopen('data_directory', 'regress_fcopy_src.txt', 'w');
+    utl_file.put_line(f, 'l1');
+    utl_file.put_line(f, 'l2');
+    utl_file.put_line(f, 'l3');
+    utl_file.put_line(f, 'l4');
+    utl_file.fclose(f);
+    -- reversed range must raise INVALID_OFFSET without creating destination
+    begin
+        utl_file.fcopy('data_directory', 'regress_fcopy_src.txt',
+                       'data_directory', 'regress_fcopy_rev.txt', 3, 2);
+    exception
+        when others then
+            raise notice 'reversed range: %', sqlerrm;
+    end;
+    utl_file.fgetattr('data_directory', 'regress_fcopy_rev.txt',
+                      fexists, file_length, block_size);
+    raise notice 'reversed dest exists = %', fexists;
+    -- reversed range must not truncate an existing destination file
+    f := utl_file.fopen('data_directory', 'regress_fcopy_keep.txt', 'w');
+    utl_file.put_line(f, 'keep');
+    utl_file.fclose(f);
+    begin
+        utl_file.fcopy('data_directory', 'regress_fcopy_src.txt',
+                       'data_directory', 'regress_fcopy_keep.txt', 4, 1);
+    exception
+        when others then
+            raise notice 'reversed existing dest: %', sqlerrm;
+    end;
+    f := utl_file.fopen('data_directory', 'regress_fcopy_keep.txt', 'r');
+    utl_file.get_line(f, line);
+    raise notice 'existing dest content = >>%<<', line;
+    utl_file.fclose(f);
+    -- non-positive line numbers remain rejected without creating destination
+    begin
+        utl_file.fcopy('data_directory', 'regress_fcopy_src.txt',
+                       'data_directory', 'regress_fcopy_rev.txt', 0, 2);
+    exception
+        when others then
+            raise notice 'zero start_line: %', sqlerrm;
+    end;
+    begin
+        utl_file.fcopy('data_directory', 'regress_fcopy_src.txt',
+                       'data_directory', 'regress_fcopy_rev.txt', 1, 0);
+    exception
+        when others then
+            raise notice 'zero end_line: %', sqlerrm;
+    end;
+    begin
+        utl_file.fcopy('data_directory', 'regress_fcopy_src.txt',
+                       'data_directory', 'regress_fcopy_rev.txt', 2, -1);
+    exception
+        when others then
+            raise notice 'negative end_line: %', sqlerrm;
+    end;
+    -- equal start_line and end_line copies that single line
+    utl_file.fcopy('data_directory', 'regress_fcopy_src.txt',
+                   'data_directory', 'regress_fcopy_eq.txt', 2, 2);
+    f := utl_file.fopen('data_directory', 'regress_fcopy_eq.txt', 'r');
+    begin
+        loop
+            utl_file.get_line(f, line);
+            raise notice 'eq: >>%<<', line;
+        end loop;
+    exception
+        when NO_DATA_FOUND then
+            null;
+    end;
+    utl_file.fclose(f);
+    -- valid subrange copies lines 2..3
+    utl_file.fcopy('data_directory', 'regress_fcopy_src.txt',
+                   'data_directory', 'regress_fcopy_sub.txt', 2, 3);
+    f := utl_file.fopen('data_directory', 'regress_fcopy_sub.txt', 'r');
+    begin
+        loop
+            utl_file.get_line(f, line);
+            raise notice 'sub: >>%<<', line;
+        end loop;
+    exception
+        when NO_DATA_FOUND then
+            null;
+    end;
+    utl_file.fclose(f);
+    -- NULL end_line copies from start_line to EOF; NULL start_line starts at 1
+    utl_file.fcopy('data_directory', 'regress_fcopy_src.txt',
+                   'data_directory', 'regress_fcopy_tail.txt', 3, NULL);
+    f := utl_file.fopen('data_directory', 'regress_fcopy_tail.txt', 'r');
+    begin
+        loop
+            utl_file.get_line(f, line);
+            raise notice 'tail: >>%<<', line;
+        end loop;
+    exception
+        when NO_DATA_FOUND then
+            null;
+    end;
+    utl_file.fclose(f);
+    utl_file.fcopy('data_directory', 'regress_fcopy_src.txt',
+                   'data_directory', 'regress_fcopy_head.txt', NULL, 2);
+    f := utl_file.fopen('data_directory', 'regress_fcopy_head.txt', 'r');
+    begin
+        loop
+            utl_file.get_line(f, line);
+            raise notice 'head: >>%<<', line;
+        end loop;
+    exception
+        when NO_DATA_FOUND then
+            null;
+    end;
+    utl_file.fclose(f);
+    utl_file.fremove('data_directory', 'regress_fcopy_src.txt');
+    utl_file.fremove('data_directory', 'regress_fcopy_keep.txt');
+    utl_file.fremove('data_directory', 'regress_fcopy_eq.txt');
+    utl_file.fremove('data_directory', 'regress_fcopy_sub.txt');
+    utl_file.fremove('data_directory', 'regress_fcopy_tail.txt');
+    utl_file.fremove('data_directory', 'regress_fcopy_head.txt');
+end;
+/
+NOTICE:  reversed range: INVALID_OFFSET
+NOTICE:  reversed dest exists = f
+NOTICE:  reversed existing dest: INVALID_OFFSET
+NOTICE:  existing dest content = >>keep<<
+NOTICE:  zero start_line: start_line must be positive (0 passed)
+NOTICE:  zero end_line: end_line must be positive (0 passed)
+NOTICE:  negative end_line: end_line must be positive (-1 passed)
+NOTICE:  eq: >>l2<<
+NOTICE:  sub: >>l2<<
+NOTICE:  sub: >>l3<<
+NOTICE:  tail: >>l3<<
+NOTICE:  tail: >>l4<<
+NOTICE:  head: >>l1<<
+NOTICE:  head: >>l2<<
 -- test fflush, fseek
 declare
     f UTL_FILE.FILE_TYPE;
