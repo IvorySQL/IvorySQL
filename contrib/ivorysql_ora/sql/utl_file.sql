@@ -343,6 +343,71 @@ begin
 end;
 /
 
+-- directories are compared in canonical form: trailing and duplicate
+-- separators and "." components (and, on Windows, backslashes) do not
+-- matter.  Keep only the non-canonical entry, since any matching row
+-- would do.
+delete from sys.utl_file_directory where dirname = 'data_directory';
+insert into sys.utl_file_directory(dirname, dir)
+select 'data_directory_alt', current_setting('data_directory') || '//./';
+declare
+    f UTL_FILE.FILE_TYPE;
+begin
+    f := utl_file.fopen('data_directory_alt', 'regress_alt.txt', 'w');
+    utl_file.put_line(f, 'ok');
+    utl_file.fclose(f);
+    utl_file.fremove('data_directory_alt', 'regress_alt.txt');
+    raise notice 'non-canonical directory entry accepted';
+end;
+/
+delete from sys.utl_file_directory where dirname = 'data_directory_alt';
+
+-- containment boundaries.  regress_path_check() reports whether a path is
+-- rejected by the directory check (whose error has the hint below) or gets
+-- past it; the files do not exist, so an accepted path then fails to open,
+-- which does not matter here.  The table holds only the entries below.
+create or replace function regress_path_check(loc varchar2, fname varchar2)
+return varchar2 is
+    f UTL_FILE.FILE_TYPE;
+    hint text;
+begin
+    f := utl_file.fopen(loc, fname, 'r');
+    utl_file.fclose(f);
+    return 'accepted';
+exception
+    when others then
+        get stacked diagnostics hint = pg_exception_hint;
+        if hint = 'locality is not found in sys.utl_file_directory table' then
+            return 'rejected';
+        end if;
+        return 'accepted';
+end;
+/
+insert into sys.utl_file_directory(dirname, dir)
+select 'regress_dir', current_setting('data_directory') || '/regress_dir';
+select regress_path_check(current_setting('data_directory') || '/regress_dir', 'a.txt') as inside,
+       regress_path_check(current_setting('data_directory') || '/regress_dir/sub', 'a.txt') as below,
+       regress_path_check(current_setting('data_directory') || '/regress_dir//.', 'a.txt') as non_canonical,
+       regress_path_check(current_setting('data_directory'), 'regress_dir') as exact_dir,
+       regress_path_check(current_setting('data_directory') || '/regress_dir', '.') as exact_dir_dot,
+       regress_path_check(current_setting('data_directory') || '/regress_dir2', 'a.txt') as same_prefix_sibling,
+       regress_path_check(current_setting('data_directory') || '/regress_dir', '../a.txt') as parent
+from dual;
+-- file names are case-insensitive on Windows (native or MinGW builds) only;
+-- change the case of our own suffix only, so that the data directory's name
+-- (which may contain non-ASCII characters) does not matter
+select regress_path_check(current_setting('data_directory') || '/REGRESS_DIR', 'a.txt') =
+       case when version() ~ ' on [^ ,]*(windows|mingw)' then 'accepted' else 'rejected' end
+       as case_handling_ok
+from dual;
+-- a root directory ("/", or "C:/" on Windows) contains every path
+insert into sys.utl_file_directory(dirname, dir)
+select 'regress_root', regexp_replace(current_setting('data_directory'), '^([A-Za-z]:)?/.*$', '\1/');
+select regress_path_check(current_setting('data_directory') || '/regress_dir2', 'a.txt') as under_root
+from dual;
+delete from sys.utl_file_directory where dirname in ('regress_dir', 'regress_root');
+drop function regress_path_check;
+
 -- clean up
 delete from sys.utl_file_directory where dirname = 'data_directory';
 /
