@@ -1147,17 +1147,26 @@ SELECT '' AS to_char_22, to_char(val, 'FM9999999999999999.999999999999999')	FROM
 SELECT '' AS to_char_23, to_char(val, '9.999EEEE') FROM num_data;
  to_char_23 |  to_char   
 ------------+------------
-            |  0.000e+00
-            |  0.000e+00
-            | -3.434e+07
-            |  4.310e+00
-            |  7.799e+06
-            |  1.640e+04
-            |  9.390e+04
-            | -8.303e+07
-            |  7.488e+04
-            | -2.493e+07
+            |  0.000E+00
+            |  0.000E+00
+            | -3.434E+07
+            |  4.310E+00
+            |  7.799E+06
+            |  1.640E+04
+            |  9.390E+04
+            | -8.303E+07
+            |  7.488E+04
+            | -2.493E+07
 (10 rows)
+
+-- Oracle writes the EEEE exponent marker in upper case
+SELECT to_char(123.456, '9.9EEEE'), to_char(1E+123, '9.9EEEE'),
+       to_char(-0.00012, '9.99EEEE'), to_char(123.456::binary_double, '9.9EEEE'),
+       to_char(123.456::binary_float, '9.9EEEE'), to_char(123, '9.9EEEE');
+ to_char  |  to_char  |  to_char  | to_char  | to_char  | to_char  
+----------+-----------+-----------+----------+----------+----------
+  1.2E+02 |  1.0E+123 | -1.20E-04 |  1.2E+02 |  1.2E+02 |  1.2E+02
+(1 row)
 
 SELECT '' AS to_char_24, to_char('100'::number, 'FM999.9');
  to_char_24 | to_char 
