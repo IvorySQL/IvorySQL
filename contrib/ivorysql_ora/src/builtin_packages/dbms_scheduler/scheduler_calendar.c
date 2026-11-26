@@ -64,7 +64,8 @@ typedef enum SchedFreq
 typedef struct SchedByDay
 {
 	int			dow;			/* 0 = Sunday .. 6 = Saturday */
-	int			ord;			/* 0 = every, else 1..5 / -1..-5 within month */
+	int			ord;			/* 0 = every, else 1..5 / -1..-5 within month (MONTHLY)
+				 * or 1..53 / -1..-53 within year (YEARLY) */
 } SchedByDay;
 
 typedef struct SchedByDate
@@ -285,8 +286,8 @@ byday_cb(const char *calendar, const char *item, int len, CalendarRule *rule)
 
 	if (len > 3)
 	{
-		if (!parse_int(item, len - 3, &ord) || ord == 0 || ord < -5 || ord > 5)
-			calendar_error(calendar, "BYDAY ordinal must be -5 through -1 or 1 through 5.");
+		if (!parse_int(item, len - 3, &ord) || ord == 0 || ord < -53 || ord > 53)
+			calendar_error(calendar, "BYDAY ordinal must be -53 through -1 or 1 through 53.");
 		item += len - 3;
 		len = 3;
 	}
@@ -535,6 +536,18 @@ parse_calendar(const char *calendar, CalendarRule *rule)
 		rule->freq != FREQ_YEARLY && rule->freq != FREQ_MONTHLY)
 		calendar_error(calendar, "BYDAY ordinals are only supported with FREQ=YEARLY or FREQ=MONTHLY.");
 
+	/* MONTHLY counts ordinals within one month, where a weekday occurs at most 5 times. */
+	if (rule->byday_has_ord && rule->freq == FREQ_MONTHLY)
+	{
+		int			mi;
+
+		for (mi = 0; mi < rule->n_byday; mi++)
+		{
+			if (rule->byday[mi].ord < -5 || rule->byday[mi].ord > 5)
+				calendar_error(calendar, "BYDAY ordinal must be -5 through -1 or 1 through 5 with FREQ=MONTHLY.");
+		}
+	}
+
 	pfree(norm);
 }
 
@@ -645,22 +658,40 @@ month_day_list(const CalendarRule *rule, int year, int mon, int fallback_mday,
 					if (ord == 0)
 						break;	/* every such weekday qualifies */
 
-					/*
-					 * An ordinal narrows the filter to one occurrence, so
-					 * BYMONTHDAY=1,8,15 with BYDAY=2MON keeps a day only when
-					 * it is also the second Monday.  Counting from the first
-					 * matching weekday of the month gives its position;
-					 * negative ordinals count back from the last one.
-					 */
-					first_match = 1 + ((dow - j2day(date2j(year, mon, 1))) + 7) % 7;
-					nth = (d - first_match) / 7 + 1;
-					if (ord > 0)
+					if (rule->freq == FREQ_YEARLY)
 					{
-						if (nth == ord)
+						/*
+						 * FREQ=YEARLY counts weekday ordinals over the
+						 * whole year: 26FRI is the year's 26th Friday,
+						 * -1FRI its last one.
+						 */
+						int			jd = date2j(year, 1, 1);
+						int			first = 1 + ((dow - j2day(jd)) + 7) % 7;
+						int			count = (date2j(year, 12, 31) - jd + 1 - first) / 7 + 1;
+						int			pos = (date2j(year, mon, d) - jd + 1 - first) / 7 + 1;
+
+						if (ord > 0 ? pos == ord : pos == count + ord + 1)
 							break;
 					}
-					else if (nth == (dim - first_match) / 7 + 1 + ord + 1)
-						break;
+					else
+					{
+						/*
+						 * An ordinal narrows the filter to one occurrence, so
+						 * BYMONTHDAY=1,8,15 with BYDAY=2MON keeps a day only when
+						 * it is also the second Monday.  Counting from the first
+						 * matching weekday of the month gives its position;
+						 * negative ordinals count back from the last one.
+						 */
+						first_match = 1 + ((dow - j2day(date2j(year, mon, 1))) + 7) % 7;
+						nth = (d - first_match) / 7 + 1;
+						if (ord > 0)
+						{
+							if (nth == ord)
+								break;
+						}
+						else if (nth == (dim - first_match) / 7 + 1 + ord + 1)
+							break;
+					}
 				}
 				if (i >= rule->n_byday)
 					mark[d] = false;
@@ -673,6 +704,36 @@ month_day_list(const CalendarRule *rule, int year, int mon, int fallback_mday,
 		{
 			int			dow = rule->byday[i].dow;
 			int			ord = rule->byday[i].ord;
+
+			if (ord != 0 && rule->freq == FREQ_YEARLY)
+			{
+				/*
+				 * FREQ=YEARLY counts weekday ordinals over the whole year,
+				 * not the month: 26FRI is the year's 26th Friday and -1FRI
+				 * its last one.  Compute the matching day-of-year and mark
+				 * it only when it falls into the month being expanded.
+				 */
+				int			jd = date2j(year, 1, 1);
+				int			first = 1 + ((dow - j2day(jd)) + 7) % 7;
+				int			count = (date2j(year, 12, 31) - jd + 1 - first) / 7 + 1;
+				int			nth = ord > 0 ? ord : count + ord + 1;
+
+				if (nth >= 1 && nth <= count)
+				{
+					int			doy = first + (nth - 1) * 7;
+					int			m = 1;
+
+					while (doy > days_in_month(year, m))
+					{
+						doy -= days_in_month(year, m);
+						m++;
+		}
+					if (m == mon)
+						mark[doy] = true;
+				}
+			}
+			else
+			{
 			int			first_dow = j2day(date2j(year, mon, 1));
 			int			first_match = 1 + ((dow - first_dow) + 7) % 7;
 			int			count = (dim - first_match) / 7 + 1;
@@ -691,6 +752,7 @@ month_day_list(const CalendarRule *rule, int year, int mon, int fallback_mday,
 			{
 				if (-ord <= count)
 					mark[first_match + (count + ord) * 7] = true;
+			}
 			}
 		}
 	}
@@ -969,6 +1031,20 @@ eval_calendar(const CalendarRule *rule, TimestampTz start, TimestampTz after,
 						 */
 						for (nmon = 0; nmon < 12; nmon++)
 							months[nmon] = nmon + 1;
+					}
+					else if (rule->byday_has_ord)
+					{
+						/*
+						 * A yearly BYDAY ordinal counts across the whole
+						 * year (26FRI can land in June), so every month of
+						 * the year has to be expanded, not just the month
+						 * of start_date.
+						 */
+						int			mi;
+
+						for (mi = 0; mi < 12; mi++)
+							months[mi] = mi + 1;
+						nmon = 12;
 					}
 					else
 					{
