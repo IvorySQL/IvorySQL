@@ -625,6 +625,7 @@ typedef enum
 	DCH_DAY,
 	DCH_DDD,
 	DCH_DD,
+	DCH_DS,
 	DCH_DY,
 	DCH_Day,
 	DCH_Dy,
@@ -672,6 +673,7 @@ typedef enum
 	DCH_TZH,
 	DCH_TZM,
 	DCH_TZ,
+	DCH_TS,
 	DCH_US,
 	DCH_WW,
 	DCH_W,
@@ -690,6 +692,7 @@ typedef enum
 	DCH_day,
 	DCH_ddd,
 	DCH_dd,
+	DCH_ds,
 	DCH_dy,
 	DCH_d,
 	DCH_ff1,
@@ -733,6 +736,7 @@ typedef enum
 	DCH_tzh,
 	DCH_tzm,
 	DCH_tz,
+	DCH_ts,
 	DCH_us,
 	DCH_ww,
 	DCH_w,
@@ -804,6 +808,7 @@ static const KeyWord DCH_keywords[] = {
 	{"DAY", 3, DCH_DAY, false, FROM_CHAR_DATE_NONE},	/* D */
 	{"DDD", 3, DCH_DDD, true, FROM_CHAR_DATE_GREGORIAN},
 	{"DD", 2, DCH_DD, true, FROM_CHAR_DATE_GREGORIAN},
+	{"DS", 2, DCH_DS, false, FROM_CHAR_DATE_NONE},
 	{"DY", 2, DCH_DY, false, FROM_CHAR_DATE_NONE},
 	{"Day", 3, DCH_Day, false, FROM_CHAR_DATE_NONE},
 	{"Dy", 2, DCH_Dy, false, FROM_CHAR_DATE_NONE},
@@ -851,6 +856,7 @@ static const KeyWord DCH_keywords[] = {
 	{"TZH", 3, DCH_TZH, false, FROM_CHAR_DATE_NONE},	/* T */
 	{"TZM", 3, DCH_TZM, true, FROM_CHAR_DATE_NONE},
 	{"TZ", 2, DCH_TZ, false, FROM_CHAR_DATE_NONE},
+	{"TS", 2, DCH_TS, false, FROM_CHAR_DATE_NONE},
 	{"US", 2, DCH_US, true, FROM_CHAR_DATE_NONE},	/* U */
 	{"WW", 2, DCH_WW, true, FROM_CHAR_DATE_GREGORIAN},	/* W */
 	{"W", 1, DCH_W, true, FROM_CHAR_DATE_GREGORIAN},
@@ -869,6 +875,7 @@ static const KeyWord DCH_keywords[] = {
 	{"day", 3, DCH_day, false, FROM_CHAR_DATE_NONE},	/* d */
 	{"ddd", 3, DCH_DDD, true, FROM_CHAR_DATE_GREGORIAN},
 	{"dd", 2, DCH_DD, true, FROM_CHAR_DATE_GREGORIAN},
+	{"ds", 2, DCH_DS, false, FROM_CHAR_DATE_NONE},
 	{"dy", 2, DCH_dy, false, FROM_CHAR_DATE_NONE},
 	{"d", 1, DCH_D, true, FROM_CHAR_DATE_GREGORIAN},
 	{"ff1", 3, DCH_FF1, true, FROM_CHAR_DATE_NONE},	/* f */
@@ -912,6 +919,7 @@ static const KeyWord DCH_keywords[] = {
 	{"tzh", 3, DCH_tzh, false, FROM_CHAR_DATE_NONE},
 	{"tzm", 3, DCH_tzm, true, FROM_CHAR_DATE_NONE},
 	{"tz", 2, DCH_tz, false, FROM_CHAR_DATE_NONE},
+	{"ts", 2, DCH_TS, false, FROM_CHAR_DATE_NONE},
 	{"us", 2, DCH_US, true, FROM_CHAR_DATE_NONE},	/* u */
 	{"ww", 2, DCH_WW, true, FROM_CHAR_DATE_GREGORIAN},	/* w */
 	{"w", 1, DCH_W, true, FROM_CHAR_DATE_GREGORIAN},
@@ -3030,6 +3038,39 @@ DCH_to_char(FormatNode *node, bool is_interval, TmToChar *in, char *out, Oid col
 				sprintf(s, "%0*d", IS_SUFFIX_FM(n->suffix) ? 0 : 2, tm->tm_mday);
 				if (IS_SUFFIX_THth(n->suffix))
 					str_numth(s, s, SUFFIX_TH_TYPE(n->suffix));
+				s += strlen(s);
+				break;
+			case DCH_DS:
+				/*
+				 * Oracle's short date: month and day without leading zeroes.
+				 * PostgreSQL mode treats an unknown element as literal text, so
+				 * keep that output there.
+				 */
+				INVALID_FOR_INTERVAL;
+				if (ORA_PARSER != compatible_db)
+					strcpy(s, "DS");
+				else
+					sprintf(s, "%d/%d/%d",
+							tm->tm_mon,
+							tm->tm_mday,
+							ADJUST_YEAR(tm->tm_year, is_interval));
+				s += strlen(s);
+				break;
+			case DCH_TS:
+				/* Oracle's time format: 12-hour clock with a bare hour */
+				INVALID_FOR_INTERVAL;
+				if (ORA_PARSER != compatible_db)
+					strcpy(s, "TS");
+				else
+				{
+					int			hour12 = tm->tm_hour % 12;
+
+					if (hour12 == 0)
+						hour12 = 12;
+					sprintf(s, "%d:%02d:%02d %s",
+							hour12, tm->tm_min, tm->tm_sec,
+							(tm->tm_hour < 12) ? "AM" : "PM");
+				}
 				s += strlen(s);
 				break;
 			case DCH_D:
