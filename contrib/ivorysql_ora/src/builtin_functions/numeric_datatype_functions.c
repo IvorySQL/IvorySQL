@@ -608,6 +608,7 @@ ora_to_char_number(PG_FUNCTION_ARGS)
 	StringInfoData scidig;		/* digits kept by the scientific rounding */
 	StringInfoData fixdig;		/* digits kept by the fixed rounding */
 	StringInfoData render;		/* whichever candidate wins */
+	VarChar    *result;
 	const char *mant;
 	bool		neg;
 	bool		hasdot;
@@ -643,7 +644,11 @@ ora_to_char_number(PG_FUNCTION_ARGS)
 
 	/* inside the budget the fixed-point text is the answer */
 	if (w.len <= TM9_BUDGET)
-		PG_RETURN_VARCHAR_P(tm9_make_result(w.data));
+	{
+		result = tm9_make_result(w.data);
+		pfree(w.data);
+		PG_RETURN_VARCHAR_P(result);
+	}
 
 	/* drop the sign, then locate and squeeze out the point */
 	neg = (w.data[0] == '-');
@@ -783,5 +788,11 @@ ora_to_char_number(PG_FUNCTION_ARGS)
 	if (render.len > TM9_BUDGET || (!same && fixklen < scisig))
 		tm9_render_sci(&render, mant, mantlen, neg, e_sci);
 
-	PG_RETURN_VARCHAR_P(tm9_make_result(render.data));
+	result = tm9_make_result(render.data);
+	pfree(w.data);
+	pfree(sig.data);
+	pfree(scidig.data);
+	pfree(fixdig.data);
+	pfree(render.data);
+	PG_RETURN_VARCHAR_P(result);
 }

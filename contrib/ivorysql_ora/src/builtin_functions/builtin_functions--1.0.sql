@@ -1572,24 +1572,10 @@ AS 'select sys.to_date($1::text, $2)'
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
 --to_char
--- Without a format model Oracle converts a NUMBER to a VARCHAR2 value
--- "exactly long enough to hold its significant digits": trailing zeros
--- in the fraction are dropped and the integer digit is omitted for
--- values between -1 and 1 (e.g. 0.5 -> '.5', 1.50 -> '1.5', 100.0 -> '100').
--- The default model is TM9.  Its actual shape was established by probing
--- Oracle Database 23ai Free directly, because the 64-character wording
--- in the manual does not match what the server does.  The normalized
--- fixed-point text, sign included, is kept while it fits in 40
--- characters: 1e39 and a run of 40 nines stay fixed-point, while 1e40
--- (41 characters) returns '1.0000000000000000000000000000000000E+40' and
--- -1e39 (41 characters with the sign) switches as well; on the small
--- side 1e-39, an exactly 40-character fraction, stays fixed while 1e-40
--- switches.  Beyond the budget the two renderings compete, and the one
--- losing less precision wins; when both represent the same rounded
--- value, fixed notation wins.  The rule lives in the C function
--- ora_to_char_number; see the comment there for the details, and the
--- ora_to_char_default regression suite for the shapes pinned against
--- the real server.
+-- Oracle's default model is TM9: trailing fraction zeros are dropped and
+-- the integer digit is omitted for values between -1 and 1.  The layout
+-- rule (including the 40-character budget measured on Oracle 23ai) lives
+-- in ora_to_char_number; see its comment and ora_to_char_default.
 CREATE FUNCTION sys.to_char(number)
 RETURNS sys.oravarcharchar
 AS 'MODULE_PATHNAME','ora_to_char_number'
