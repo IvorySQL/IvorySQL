@@ -393,8 +393,10 @@ select regress_path_check(current_setting('data_directory') || '/regress_dir', '
        regress_path_check(current_setting('data_directory') || '/regress_dir2', 'a.txt') as same_prefix_sibling,
        regress_path_check(current_setting('data_directory') || '/regress_dir', '../a.txt') as parent
 from dual;
--- file names are case-insensitive on Windows (native or MinGW builds) only
-select regress_path_check(upper(current_setting('data_directory') || '/regress_dir'), 'a.txt') =
+-- file names are case-insensitive on Windows (native or MinGW builds) only;
+-- change the case of our own suffix only, so that the data directory's name
+-- (which may contain non-ASCII characters) does not matter
+select regress_path_check(current_setting('data_directory') || '/REGRESS_DIR', 'a.txt') =
        case when version() ~ ' on [^ ,]*(windows|mingw)' then 'accepted' else 'rejected' end
        as case_handling_ok
 from dual;
