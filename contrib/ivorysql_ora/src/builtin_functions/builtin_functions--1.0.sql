@@ -679,6 +679,22 @@ STRICT
 IMMUTABLE
 PARALLEL SAFE;
 
+CREATE FUNCTION sys.substr(sys.oravarcharchar, sys.number)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substr_num_no_length'
+LANGUAGE C
+STRICT
+IMMUTABLE
+PARALLEL SAFE;
+
+CREATE FUNCTION sys.substr(sys.oravarcharchar, sys.number, sys.number)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_substr_num'
+LANGUAGE C
+STRICT
+IMMUTABLE
+PARALLEL SAFE;
+
 /* SR */
 CREATE FUNCTION sys.substrb(varchar, number)
 RETURNS text
