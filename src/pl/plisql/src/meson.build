@@ -73,28 +73,42 @@ install_headers(
   install_dir: dir_include_server
 )
 
-# IvorySQL: plisql is Oracle-compatible procedural language, not needed in meson test
-# Use 'make oracle-check' to run plisql tests
-# tests += {
-#   'name': 'plisql',
-#   'sd': meson.current_source_dir(),
-#   'bd': meson.current_build_dir(),
-#   'regress': {
-#     'sql': [
-#       'plisql_array',
-#       'plisql_call',
-#       'plisql_control',
-#       'plisql_copy',
-#       'plisql_domain',
-#       'plisql_record',
-#       'plisql_cache',
-#       'plisql_simple',
-#       'plisql_transaction',
-#       'plisql_trap',
-#       'plisql_trigger',
-#       'plisql_varprops',
-#     ],
-#   },
-# }
+# The PL/iSQL suite: the same list as REGRESS in the Makefile, run with the
+# Oracle-mode driver and template, which the 'oracle' flag selects.  The
+# tests use dblink, installed with the rest of contrib into the temporary
+# installation.
+tests += {
+  'name': 'plisql',
+  'oracle': true,
+  'sd': meson.current_source_dir(),
+  'bd': meson.current_build_dir(),
+  'regress': {
+    'sql': [
+      'plisql_array',
+      'plisql_call',
+      'plisql_control',
+      'plisql_copy',
+      'plisql_domain',
+      'plisql_record',
+      'plisql_cache',
+      'plisql_simple',
+      'plisql_transaction',
+      'plisql_trap',
+      'plisql_trigger',
+      'plisql_varprops',
+      'plisql_nested_subproc',
+      'plisql_nested_subproc2',
+      'plisql_out_parameter',
+      'plisql_type_rowtype',
+      'plisql_exception',
+      'plisql_for_loop_implicit',
+      'plisql_autonomous',
+      'plisql_bugs',
+      'plisql_rownum',
+      'plisql_package_type_record',
+    ],
+    'dbname': 'pl_regression',
+  },
+}
 
 subdir('po', if_found: libintl)
