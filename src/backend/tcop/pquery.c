@@ -114,6 +114,7 @@ plan_contains_rownum(Plan *plan)
 		case T_SubqueryScan:
 			{
 				SubqueryScan *splan = (SubqueryScan *) plan;
+
 				if (plan_contains_rownum(splan->subplan))
 					return true;
 			}
@@ -121,7 +122,8 @@ plan_contains_rownum(Plan *plan)
 
 		case T_Append:
 			{
-				Append *aplan = (Append *) plan;
+				Append	   *aplan = (Append *) plan;
+
 				foreach(lc, aplan->appendplans)
 				{
 					if (plan_contains_rownum((Plan *) lfirst(lc)))
@@ -133,6 +135,7 @@ plan_contains_rownum(Plan *plan)
 		case T_MergeAppend:
 			{
 				MergeAppend *mplan = (MergeAppend *) plan;
+
 				foreach(lc, mplan->mergeplans)
 				{
 					if (plan_contains_rownum((Plan *) lfirst(lc)))
@@ -708,12 +711,12 @@ PortalStart(Portal portal, ParamListInfo params,
 				portal->tupDesc = NULL;
 
 				/* DoStmt has OUT parameters, build output tupdesc */
-				if (portal->stmts!= NIL)
+				if (portal->stmts != NIL)
 				{
-					Node *node = linitial(portal->stmts);
+					Node	   *node = linitial(portal->stmts);
 
 					if (nodeTag(node) == T_RawStmt &&
-						nodeTag(((RawStmt *)node)->stmt) == T_DoStmt)
+						nodeTag(((RawStmt *) node)->stmt) == T_DoStmt)
 					{
 						portal->tupDesc = CreateTupleDescFromParams(params);
 					}
@@ -1015,11 +1018,11 @@ PortalRunSelect(Portal portal,
 	Assert(queryDesc || portal->holdStore);
 
 	/*
-	 * For scroll cursors with ROWNUM in the plan, we need to materialize
-	 * all results on first execution. This ensures that FETCH PRIOR/NEXT
-	 * return the same ROWNUM values that were computed during the initial
-	 * forward scan, rather than re-evaluating ROWNUM (which would give
-	 * incorrect incrementing values).
+	 * For scroll cursors with ROWNUM in the plan, we need to materialize all
+	 * results on first execution. This ensures that FETCH PRIOR/NEXT return
+	 * the same ROWNUM values that were computed during the initial forward
+	 * scan, rather than re-evaluating ROWNUM (which would give incorrect
+	 * incrementing values).
 	 */
 	if (queryDesc != NULL &&
 		portal->holdStore == NULL &&
@@ -1344,22 +1347,22 @@ PortalRunMulti(Portal portal,
 
 	/* check if anonymous block has OUT parameters */
 	if (portal->stmts != NIL &&
-	   list_length(portal->stmts) == 1)
+		list_length(portal->stmts) == 1)
 	{
-		Node *node = (Node *) linitial(portal->stmts);
+		Node	   *node = (Node *) linitial(portal->stmts);
 
 		if (nodeTag(node) == T_PlannedStmt &&
-			((PlannedStmt*)node)->utilityStmt != NULL &&
-			nodeTag(((PlannedStmt*)node)->utilityStmt) == T_DoStmt &&
+			((PlannedStmt *) node)->utilityStmt != NULL &&
+			nodeTag(((PlannedStmt *) node)->utilityStmt) == T_DoStmt &&
 			portal->portalParams != NULL &&
 			portal->portalParams->haveout)
 		{
 			anonymous_has_outparamter = true;
 		}
 		else if (nodeTag(node) == T_RawStmt &&
-			nodeTag(((RawStmt *)node)->stmt) == T_DoStmt &&
-			portal->portalParams != NULL &&
-			portal->portalParams->haveout)
+				 nodeTag(((RawStmt *) node)->stmt) == T_DoStmt &&
+				 portal->portalParams != NULL &&
+				 portal->portalParams->haveout)
 		{
 			anonymous_has_outparamter = true;
 		}
@@ -1630,6 +1633,14 @@ PortalRunFetch(Portal portal,
 
 	/* Mark portal not active */
 	portal->status = PORTAL_READY;
+
+	/* MOVE 只改变位置，游标属性记录实际取数。 */
+	if (dest->mydest != DestNone)
+	{
+		portal->rowsFetched += result;
+		portal->fetchAttempted = true;
+		portal->lastFetchFound = (result != 0);
+	}
 
 	ActivePortal = saveActivePortal;
 	CurrentResourceOwner = saveResourceOwner;
@@ -1967,15 +1978,15 @@ EnsurePortalSnapshotExists(void)
 }
 
 /*
- * build tupledesc from params. 
+ * build tupledesc from params.
  */
 static TupleDesc
 CreateTupleDescFromParams(ParamListInfo params)
 {
-	int i = 0;
-	int j = 0;
-	int natts = 0;
-	TupleDesc desc = NULL;
+	int			i = 0;
+	int			j = 0;
+	int			natts = 0;
+	TupleDesc	desc = NULL;
 
 	if (params == NULL || !params->haveout)
 		return NULL;
@@ -1994,16 +2005,16 @@ CreateTupleDescFromParams(ParamListInfo params)
 	{
 		for (; j < params->numParams; j++)
 		{
-			char buf[23];
+			char		buf[23];
 
 			if (params->params[j].pflags & PARAM_FLAG_OUT)
 			{
 				snprintf(buf, 23, "$%d", j + 1);
 				TupleDescInitEntry(desc, i + 1,
-							buf,
-							params->params[j].ptype,
-							-1,
-							0);
+								   buf,
+								   params->params[j].ptype,
+								   -1,
+								   0);
 				break;
 			}
 		}
@@ -2011,4 +2022,3 @@ CreateTupleDescFromParams(ParamListInfo params)
 
 	return desc;
 }
-

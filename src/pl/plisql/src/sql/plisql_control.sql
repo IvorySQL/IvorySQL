@@ -517,3 +517,112 @@ $$ language plisql immutable;
 /
 
 select case_comment(1);
+
+-- 显式游标属性的生命周期和引用游标的共享状态。
+declare
+  c cursor is select n from generate_series(1, 2) as t(n) order by n;
+  n integer := 8;
+  found integer := 3;
+  fetched integer;
+  twice_count bigint;
+begin
+  raise notice 'before open: %, modulo: %', c%isopen, n%found;
+  begin
+    twice_count := c%rowcount;
+  exception when invalid_cursor_state then
+    raise notice 'rowcount needs an open cursor';
+  end;
+
+  open c;
+  raise notice 'after open: %, %, %, %',
+    c%ISOPEN, c%FOUND is null, c%NOTFOUND is null, c%ROWCOUNT;
+  loop
+    fetch c into fetched;
+    exit when c%notfound;
+    twice_count := 2*c%rowcount;
+    raise notice 'fetch: %, %, %, %', fetched, c%found, c%notfound, twice_count;
+  end loop;
+  raise notice 'after exhaustion: %, %, %', c%found, c%notfound, c%rowcount;
+  close c;
+  raise notice 'after close: %', c%isopen;
+  begin
+    raise notice 'closed found: %', c%found;
+  exception when invalid_cursor_state then
+    raise notice 'found needs an open cursor';
+  end;
+  open c;
+  raise notice 'after reopen: %, %', c%found is null, c%rowcount;
+  move next from c;
+  raise notice 'after move: %, %', c%found is null, c%rowcount;
+  close c;
+end;
+/
+
+declare
+  c refcursor;
+  alias_c refcursor;
+  fetched integer;
+begin
+  raise notice 'null refcursor: %', c%isopen;
+  open c for select 1 from dual where false;
+  alias_c := c;
+  fetch alias_c into fetched;
+  raise notice 'empty alias: %, %, %, %',
+    c%isopen, c%found, c%notfound, c%rowcount;
+  close alias_c;
+  raise notice 'closed alias: %', c%isopen;
+  open c for select 1 from dual;
+  alias_c := c;
+  fetch alias_c into fetched;
+  raise notice 'alias fetch: %, %, %', fetched, c%found, c%rowcount;
+  close c;
+end;
+/
+
+create package cursor_attrs_pkg as
+  c cursor is select 7 from dual;
+  initially_open boolean := c%isopen;
+end;
+/
+
+declare
+  fetched integer;
+begin
+  raise notice 'package before open: %, %',
+    cursor_attrs_pkg.c%isopen, cursor_attrs_pkg.initially_open;
+  open cursor_attrs_pkg.c;
+  fetch cursor_attrs_pkg.c into fetched;
+  raise notice 'package fetch: %, %, %',
+    fetched, cursor_attrs_pkg.c%found, cursor_attrs_pkg.c%rowcount;
+  close cursor_attrs_pkg.c;
+  raise notice 'package after close: %', cursor_attrs_pkg.c%isopen;
+  dbms_session.reset_package;
+  raise notice 'package after reset: %', cursor_attrs_pkg.initially_open;
+end;
+/
+
+drop package cursor_attrs_pkg;
+
+-- 循环、嵌套过程和 CASE 表达式中的游标属性。
+declare
+  c cursor is select n from generate_series(1, 2) as t(n) order by n;
+  was_open boolean := c%isopen;
+  procedure print_count(n bigint) is
+  begin
+    raise notice 'initial open: %, rowcount: %, cursor rowcount: %',
+      was_open, n, c%rowcount;
+  end;
+begin
+  for r in c loop
+    print_count(c%rowcount);
+    case c%rowcount
+      when c%rowcount then null;
+      else raise exception 'unexpected case result';
+    end case;
+  end loop;
+  raise notice 'loop closed cursor: %', not c%isopen;
+  open c;
+  call print_count(c%rowcount);
+  close c;
+end;
+/
