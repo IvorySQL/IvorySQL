@@ -96,6 +96,16 @@ CREATE FOREIGN TABLE agg_text (
 OPTIONS (format 'text', filename :'filename', delimiter ' ', null '\N');
 GRANT SELECT ON agg_text TO regress_file_fdw_user;
 
+-- Foreign tables cannot have invisible columns, including inherited ones.
+CREATE FOREIGN TABLE invisible_foreign (a int, b int INVISIBLE)
+SERVER file_server OPTIONS (filename :'filename');
+ALTER FOREIGN TABLE agg_text ADD COLUMN c int INVISIBLE;
+ALTER FOREIGN TABLE agg_text MODIFY (b INVISIBLE);
+CREATE TABLE invisible_parent (a int, b int INVISIBLE);
+CREATE FOREIGN TABLE invisible_foreign () INHERITS (invisible_parent)
+SERVER file_server OPTIONS (filename :'filename');
+DROP TABLE invisible_parent;
+
 \set filename :abs_srcdir '/data/agg.csv'
 CREATE FOREIGN TABLE agg_csv (
 	a	number(38,0),
