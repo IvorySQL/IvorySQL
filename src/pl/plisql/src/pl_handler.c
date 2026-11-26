@@ -328,6 +328,64 @@ buildParamListForFunc(List *args)
 }
 
 /*
+ * collectVisibleWithFuncEntries — collect entries from all_entries[0..count-1]
+ * visible from start_scope (walking outward through parent_scope_id, falling
+ * back to start_parent_scope if no entry in start_scope exists yet).
+ */
+static List *
+collectVisibleWithFuncEntries(struct WithFuncEntry **all_entries, int count,
+							  int start_scope, int start_parent_scope)
+{
+	List	   *visible = NIL;
+	int			j;
+
+	if (start_scope == 0)
+	{
+		/* Legacy/unscoped definitions: expose all unscoped entries */
+		for (j = 0; j < count; j++)
+		{
+			if (all_entries[j]->def->scope_id == 0)
+				visible = lappend(visible, all_entries[j]);
+		}
+		return visible;
+	}
+
+	{
+		int			cur_scope = start_scope;
+		int			depth = 0;
+
+		/*
+		 * Walk from start_scope outward through enclosing parent scopes so
+		 * inner definitions properly shadow outer ones while unrelated
+		 * sibling scopes remain invisible.
+		 */
+		while (cur_scope != 0 && depth <= count)
+		{
+			int			next_scope = 0;
+			bool		found_in_scope = false;
+
+			for (j = 0; j < count; j++)
+			{
+				if (all_entries[j]->def->scope_id == cur_scope)
+				{
+					visible = lappend(visible, all_entries[j]);
+					next_scope = all_entries[j]->def->parent_scope_id;
+					found_in_scope = true;
+				}
+			}
+			if (!found_in_scope && cur_scope == start_scope)
+				next_scope = start_parent_scope;
+			if (next_scope == cur_scope)
+				break;
+			cur_scope = next_scope;
+			depth++;
+		}
+	}
+
+	return visible;
+}
+
+/*
  * buildWithFuncEntries — build per-function visible WithFuncEntry lists from
  * withFuncDefs.
  *
@@ -358,8 +416,24 @@ buildWithFuncEntries(List *withFuncDefs)
 		WithFuncEntry *entry;
 		List	   *argtypes = NIL;
 		List	   *analyzeddefaults = NIL;
+		List	   *default_scope_entries = NIL;
 		int			ndefaults = 0;
 		ListCell   *alc;
+
+		/*
+		 * Expose previously declared WITH functions visible from this
+		 * function's lexical scope while re-analyzing DEFAULT expressions.
+		 * Leaving p_with_func_scope_id = 0 and p_subprocfunc_hook = NULL
+		 * ensures any WITH function call inside a DEFAULT expression is
+		 * tagged FUNC_FROM_OUTER_WITH_CLAUSE so it dispatches against the
+		 * active WithFuncContainer even inside simple PL/iSQL expressions.
+		 */
+		if (funcindex > 0)
+			default_scope_entries =
+				collectVisibleWithFuncEntries(all_entries, funcindex,
+											  ifd->scope_id,
+											  ifd->parent_scope_id);
+		pstate->p_with_func_list = default_scope_entries;
 
 		foreach(alc, ifd->args)
 		{
@@ -384,6 +458,9 @@ buildWithFuncEntries(List *withFuncDefs)
 				analyzeddefaults = lappend(analyzeddefaults, NULL);
 		}
 
+		pstate->p_with_func_list = NIL;
+		list_free(default_scope_entries);
+
 		entry = palloc(sizeof(WithFuncEntry));
 		entry->funcname = pstrdup(ifd->funcname);
 		entry->argtypes = argtypes;
@@ -403,50 +480,9 @@ buildWithFuncEntries(List *withFuncDefs)
 	free_parsestate(pstate);
 
 	for (k = 0; k < nfuncs; k++)
-	{
-		List	   *visible = NIL;
-		int			cur_scope = all_entries[k]->def->scope_id;
-		int			j;
-
-		if (cur_scope == 0)
-		{
-			/* Legacy/unscoped definitions: expose all unscoped entries */
-			for (j = 0; j < nfuncs; j++)
-			{
-				if (all_entries[j]->def->scope_id == 0)
-					visible = lappend(visible, all_entries[j]);
-			}
-		}
-		else
-		{
-			int			depth = 0;
-
-			/*
-			 * Walk from this function's own scope outward through enclosing
-			 * parent scopes so inner definitions properly shadow outer ones
-			 * while unrelated sibling scopes remain invisible.
-			 */
-			while (cur_scope != 0 && depth <= nfuncs)
-			{
-				int			next_scope = 0;
-
-				for (j = 0; j < nfuncs; j++)
-				{
-					if (all_entries[j]->def->scope_id == cur_scope)
-					{
-						visible = lappend(visible, all_entries[j]);
-						next_scope = all_entries[j]->def->parent_scope_id;
-					}
-				}
-				if (next_scope == cur_scope)
-					break;
-				cur_scope = next_scope;
-				depth++;
-			}
-		}
-
-		per_func[k] = visible;
-	}
+		per_func[k] = collectVisibleWithFuncEntries(all_entries, nfuncs,
+													all_entries[k]->def->scope_id,
+													all_entries[k]->def->parent_scope_id);
 
 	pfree(all_entries);
 	return per_func;
@@ -677,8 +713,8 @@ plisql_call_handler(PG_FUNCTION_ARGS)
 	char		function_from = plisql_function_from(fcinfo);
 	int			oraparam_top_level = -1;
 	int			oraparam_cur_level = -1;
-	volatile List *save_with_func_entries = NIL;
-	volatile EState *save_with_func_estate = NULL;
+	List	   *volatile save_with_func_entries = NIL;
+	EState	   *volatile save_with_func_estate = NULL;
 	volatile bool with_func_globals_saved = false;
 
 	nonatomic = fcinfo->context &&
@@ -774,8 +810,8 @@ plisql_call_handler(PG_FUNCTION_ARGS)
 		/* Restore WITH-clause globals saved before WITH function execution */
 		if (with_func_globals_saved)
 		{
-			plisql_active_with_func_entries = (List *) save_with_func_entries;
-			plisql_active_with_func_estate = (EState *) save_with_func_estate;
+			plisql_active_with_func_entries = save_with_func_entries;
+			plisql_active_with_func_estate = save_with_func_estate;
 		}
 
 		/* Decrement use-count, restore cur_estate */

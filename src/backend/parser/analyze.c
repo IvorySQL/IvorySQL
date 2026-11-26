@@ -457,12 +457,21 @@ transformStmt(ParseState *pstate, Node *parseTree)
 	/*
 	 * Attach all inline WITH FUNCTION/PROCEDURE definitions collected across
 	 * the statement (including subqueries, CTEs, and set-operation branches)
-	 * to the root optimizable Query in global funcindex order.
+	 * to the root optimizable Query in global funcindex order.  Clear any
+	 * local withFuncDefs on non-root Queries (e.g. a MERGE CTE handled by a
+	 * merge-statement hook) so the planner does not collect and offset them a
+	 * second time.
 	 */
-	if (pstate->parentParseState == NULL &&
-		result->commandType != CMD_UTILITY &&
-		pstate->p_all_with_func_defs != NIL)
-		result->withFuncDefs = pstate->p_all_with_func_defs;
+	if (result->commandType != CMD_UTILITY)
+	{
+		if (pstate->parentParseState == NULL)
+		{
+			if (pstate->p_all_with_func_defs != NIL)
+				result->withFuncDefs = pstate->p_all_with_func_defs;
+		}
+		else
+			result->withFuncDefs = NIL;
+	}
 
 	return result;
 }

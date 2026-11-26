@@ -411,10 +411,14 @@ BEGIN
 END;
 SELECT rec_sub(5) FROM dual;
 
--- T31: Parallel query must treat WITH FUNCTION as parallel-unsafe (no worker crash)
+-- T31: Parallel query must treat WITH FUNCTION as parallel-unsafe (no Gather / worker crash)
 CREATE TABLE wf_par_test AS SELECT generate_series(1, 200) AS id;
 SET debug_parallel_query = on;
 SET max_parallel_workers_per_gather = 2;
+EXPLAIN (COSTS OFF)
+WITH FUNCTION pf(n INT) RETURN INT IS
+BEGIN RETURN n + 1; END;
+SELECT count(*), sum(pf(id)) FROM wf_par_test;
 WITH FUNCTION pf(n INT) RETURN INT IS
 BEGIN RETURN n + 1; END;
 SELECT count(*), sum(pf(id)) FROM wf_par_test;
@@ -422,7 +426,7 @@ RESET max_parallel_workers_per_gather;
 RESET debug_parallel_query;
 DROP TABLE wf_par_test;
 
--- T32: Security barrier view must not push non-leakproof WITH FUNCTION below barrier
+-- T32: Security barrier view and RLS policy must not push non-leakproof WITH FUNCTION below barrier
 CREATE TABLE wf_sec_tab (id INT, is_public BOOLEAN, secret TEXT);
 INSERT INTO wf_sec_tab VALUES (1, true, 'ok'), (2, false, 'TOP_SECRET');
 CREATE VIEW wf_sec_view WITH (security_barrier = true) AS
@@ -435,8 +439,23 @@ BEGIN
   RETURN 1;
 END;
 SELECT id FROM wf_sec_view WHERE leak(secret) = 1;
+CREATE ROLE wf_rls_user;
+ALTER TABLE wf_sec_tab ENABLE ROW LEVEL SECURITY;
+CREATE POLICY wf_rls_pol ON wf_sec_tab FOR SELECT TO wf_rls_user USING (is_public);
+GRANT SELECT ON wf_sec_tab TO wf_rls_user;
+SET ROLE wf_rls_user;
+WITH FUNCTION leak(s TEXT) RETURN INT IS
+BEGIN
+  IF s = 'TOP_SECRET' THEN
+    RAISE EXCEPTION 'LEAKED_SECRET_RLS';
+  END IF;
+  RETURN 1;
+END;
+SELECT id FROM wf_sec_tab WHERE leak(secret) = 1;
+RESET ROLE;
 DROP VIEW wf_sec_view;
 DROP TABLE wf_sec_tab;
+DROP ROLE wf_rls_user;
 
 -- T33: Partial index / predicate testing must not look up WITH FUNCTION index in pg_proc
 CREATE TABLE wf_partidx (id INT, val INT);
@@ -489,14 +508,69 @@ BEGIN
   EXECUTE 'CREATE VIEW wf_v_str AS WITH FUNCTION vf(s VARCHAR2) RETURN VARCHAR2 IS BEGIN RETURN s || ''!''; END; SELECT vf(''hi'') AS s FROM dual';
 END;
 /
-WITH FUNCTION outer_fn(x INT) RETURN INT IS
+WITH FUNCTION outer_fn(x INT) RETURN VARCHAR2 IS
   v VARCHAR2(100);
 BEGIN
   IF x = 0 THEN
-    RETURN 100;
+    RETURN '100';
   END IF;
   SELECT outer_fn(0) || '_' || wf_v_str.s INTO v FROM wf_v_str;
-  RETURN length(v);
+  RETURN v;
 END;
 SELECT outer_fn(1) FROM dual;
 DROP VIEW wf_v_str;
+
+-- T37: Nested WITH FUNCTION raising runtime error caught by outer EXCEPTION restores outer state
+WITH FUNCTION outer_catch(n NUMBER) RETURN NUMBER IS
+  v NUMBER;
+BEGIN
+  IF n = 0 THEN
+    RETURN 77;
+  END IF;
+  EXECUTE
+    'WITH FUNCTION boom(x NUMBER) RETURN NUMBER IS BEGIN RETURN 1 / x; END; SELECT boom(0) FROM dual'
+    INTO v;
+  RETURN v;
+EXCEPTION
+  WHEN OTHERS THEN
+    RETURN outer_catch(0) + n;
+END;
+SELECT outer_catch(5) FROM dual;
+
+-- T38: DEFAULT parameter calling a previously declared WITH FUNCTION (same scope and outer scope)
+WITH
+  FUNCTION base_step RETURN NUMBER IS
+  BEGIN RETURN 2; END;
+  FUNCTION add_step(n NUMBER, step NUMBER DEFAULT base_step()) RETURN NUMBER IS
+  BEGIN RETURN n + step; END;
+  FUNCTION caller(n NUMBER) RETURN NUMBER IS
+  BEGIN RETURN add_step(n); END;
+SELECT add_step(10), caller(10) FROM dual;
+
+WITH FUNCTION outer_def RETURN NUMBER IS
+BEGIN RETURN 3; END;
+SELECT (
+  WITH
+    FUNCTION inner_add(n NUMBER, step NUMBER DEFAULT outer_def()) RETURN NUMBER IS
+    BEGIN RETURN n + step; END;
+    FUNCTION inner_caller(n NUMBER) RETURN NUMBER IS
+    BEGIN RETURN inner_add(n); END;
+  SELECT inner_caller(20) FROM dual
+) AS sub_def FROM dual;
+
+-- T39: Volatile WITH FUNCTION (nextval not folded) and UPDATE scalar subquery with WITH FUNCTION
+CREATE SEQUENCE wf_vol_seq;
+WITH FUNCTION next_id RETURN NUMBER IS
+BEGIN RETURN nextval('wf_vol_seq'); END;
+SELECT next_id() FROM generate_series(1, 3) AS g;
+DROP SEQUENCE wf_vol_seq;
+
+CREATE TABLE wf_upd_sub (id INT, val NUMBER);
+INSERT INTO wf_upd_sub VALUES (1, 10), (2, 20);
+UPDATE wf_upd_sub SET val = (
+  WITH FUNCTION inc5(n NUMBER) RETURN NUMBER IS
+  BEGIN RETURN n + 5; END;
+  SELECT inc5(wf_upd_sub.val) FROM dual
+);
+SELECT id, val FROM wf_upd_sub ORDER BY id;
+DROP TABLE wf_upd_sub;
