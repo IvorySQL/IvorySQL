@@ -1572,10 +1572,15 @@ AS 'select sys.to_date($1::text, $2)'
 LANGUAGE SQL STABLE PARALLEL SAFE STRICT;
 
 --to_char
-CREATE OR REPLACE FUNCTION sys.to_char(number)
+-- Oracle's default model is TM9: trailing fraction zeros are dropped and
+-- the integer digit is omitted for values between -1 and 1.  The layout
+-- rule (including the 40-character budget measured on Oracle 23ai) lives
+-- in ora_to_char_number; see its comment and ora_to_char_default.
+CREATE FUNCTION sys.to_char(number)
 RETURNS sys.oravarcharchar
-AS 'select sys.to_char($1::text)'
-LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+AS 'MODULE_PATHNAME','ora_to_char_number'
+LANGUAGE C
+IMMUTABLE PARALLEL SAFE STRICT;
 
 --to_number
 CREATE OR REPLACE FUNCTION sys.to_number(number)
