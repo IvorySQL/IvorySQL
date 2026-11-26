@@ -20371,27 +20371,27 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 
 	if (seq->minv != default_minv)
 		appendPQExpBuffer(query, "    MINVALUE " INT64_FORMAT "\n", seq->minv);
-	else if (db_mode == DB_ORACLE)
+	else if (db_mode == DB_ORACLE || is_ora_identity)
 		appendPQExpBufferStr(query, "    NOMINVALUE\n");
 	else
 		appendPQExpBufferStr(query, "    NO MINVALUE\n");
 
 	if (seq->maxv != default_maxv)
 		appendPQExpBuffer(query, "    MAXVALUE " INT64_FORMAT "\n", seq->maxv);
-	else if (db_mode == DB_ORACLE)
+	else if (db_mode == DB_ORACLE || is_ora_identity)
 		appendPQExpBufferStr(query, "    NOMAXVALUE\n");
 	else
-        appendPQExpBufferStr(query, "    NO MAXVALUE\n");
+		appendPQExpBufferStr(query, "    NO MAXVALUE\n");
 
 
-	if ( seq->cache && db_mode == DB_ORACLE)
+	if (seq->cache == 1 && (db_mode == DB_ORACLE || is_ora_identity))
 		appendPQExpBuffer(query,
-						"    NOCACHE %s",
-						(seq->cycled ? "\n    CYCLE" : ""));
+						  "    NOCACHE%s",
+						  (seq->cycled ? "\n    CYCLE" : ""));
 	else
 		appendPQExpBuffer(query,
-					  "    CACHE " INT64_FORMAT "%s",
-					  seq->cache, (seq->cycled ? "\n    CYCLE" : ""));
+						  "    CACHE " INT64_FORMAT "%s",
+						  seq->cache, (seq->cycled ? "\n    CYCLE" : ""));
 	is_scale = (seq->flags & SCALE_FLAG) == SCALE_FLAG ? true : false;
 	if(is_scale)
 		is_extend = (seq->flags & EXTEND_FLAG) == EXTEND_FLAG ? true : false;

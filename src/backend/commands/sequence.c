@@ -2374,12 +2374,16 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 			*reset_state = true;
 		}
 	}
+	else if (no_cache_flag)
+	{
+		seqform->seqcache = 1;
+		*reset_state = true;
+	}
 	else if (isInit)
 	{
-		if (no_cache_flag)
-			seqform->seqcache = 1;
-		else if (seq_type == ATTRIBUTE_IDENTITY_DEFAULT_ON_NULL || seq_type == ATTRIBUTE_ORA_IDENTITY_ALWAYS
-						|| seq_type == ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT)
+		if (seq_type == ATTRIBUTE_IDENTITY_DEFAULT_ON_NULL ||
+			seq_type == ATTRIBUTE_ORA_IDENTITY_ALWAYS ||
+			seq_type == ATTRIBUTE_ORA_IDENTITY_BY_DEFAULT)
 			seqform->seqcache = 20;
 		else if (compatible_db == ORA_PARSER && !for_identity)
 			seqform->seqcache = 20;
