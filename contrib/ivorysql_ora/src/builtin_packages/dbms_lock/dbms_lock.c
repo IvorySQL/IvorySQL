@@ -260,8 +260,8 @@ Datum
 ivorysql_dbms_lock_request(PG_FUNCTION_ARGS)
 {
     text *lockhandle = PG_GETARG_TEXT_PP(0);
-    int lockmode = PG_GETARG_INT32(1);     /* Oracle lock mode S=4, X=6 */
-    int timeout = PG_GETARG_INT32(2);  /* seconds */
+    int lockmode = PG_ARGISNULL(1) ? DBMS_LOCK_X_MODE : PG_GETARG_INT32(1);
+    int timeout = PG_ARGISNULL(2) ? DBMS_LOCK_WAIT_FOREVER : PG_GETARG_INT32(2);
     int64 key = lockname_to_key(lockhandle);
     bool exclusive = is_exclusive_mode(lockmode);
     TimestampTz start = GetCurrentTimestamp();
@@ -325,19 +325,39 @@ ivorysql_dbms_lock_release(PG_FUNCTION_ARGS)
     if (dbms_lock_hash_table == NULL)
 	    dbms_lock_init_hash_table();
 	
-    lock_s_held = dbms_lock_check(key, DBMS_LOCK_S_MODE);
-    if (lock_s_held) {
-       lockmode = DBMS_LOCK_S_MODE;
-       released = DatumGetBool(DirectFunctionCall1(pg_advisory_unlock_shared_int8, Int64GetDatum(key)));
-	elog(DEBUG1, "unlock S: key="INT64_FORMAT"  mode=%d released=%d", key, lockmode, released);
-    } else {
-      lock_x_held = dbms_lock_check(key, DBMS_LOCK_X_MODE);
-      if (lock_x_held) {
-       lockmode = DBMS_LOCK_X_MODE;
-       released = DatumGetBool(DirectFunctionCall1(pg_advisory_unlock_int8, Int64GetDatum(key)));
-       elog(DEBUG1, "unlock X: key="INT64_FORMAT" mode=%d released=%d", key, lockmode, released);
-      }
-    };
+    /* Look up the mode actually recorded for this handle: RELEASE must
+     * release the same advisory-lock level REQUEST acquired, otherwise
+     * modes such as SSX stay held (Oracle return 3). */
+    if (dbms_lock_check(key, DBMS_LOCK_S_MODE))
+    {
+        lockmode = DBMS_LOCK_S_MODE;
+        released = DatumGetBool(DirectFunctionCall1(pg_advisory_unlock_shared_int8, Int64GetDatum(key)));
+    }
+    else if (dbms_lock_check(key, DBMS_LOCK_X_MODE))
+    {
+        lockmode = DBMS_LOCK_X_MODE;
+        released = DatumGetBool(DirectFunctionCall1(pg_advisory_unlock_int8, Int64GetDatum(key)));
+    }
+    else if (dbms_lock_check(key, DBMS_LOCK_SSX_MODE))
+    {
+        lockmode = DBMS_LOCK_SSX_MODE;
+        released = DatumGetBool(DirectFunctionCall1(pg_advisory_unlock_int8, Int64GetDatum(key)));
+    }
+    else if (dbms_lock_check(key, DBMS_LOCK_SX_MODE))
+    {
+        lockmode = DBMS_LOCK_SX_MODE;
+        released = DatumGetBool(DirectFunctionCall1(pg_advisory_unlock_shared_int8, Int64GetDatum(key)));
+    }
+    else if (dbms_lock_check(key, DBMS_LOCK_SS_MODE))
+    {
+        lockmode = DBMS_LOCK_SS_MODE;
+        released = DatumGetBool(DirectFunctionCall1(pg_advisory_unlock_shared_int8, Int64GetDatum(key)));
+    }
+    else if (dbms_lock_check(key, DBMS_LOCK_NL_MODE))
+    {
+        lockmode = DBMS_LOCK_NL_MODE;
+        released = true;
+    }
 
     if (released) {
 	elog(DEBUG1, "dbms_lock_release: key="INT64_FORMAT" mode=%d", key, lockmode);
