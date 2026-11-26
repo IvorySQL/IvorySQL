@@ -932,6 +932,25 @@ sched_enable_program(const SchedName *prog)
 			  2, argtypes, values, NULL);
 }
 
+/*
+ * Disable a program.  Used by DISABLE and by DROP_PROGRAM_ARGUMENT once an
+ * argument definition has been removed, since a program with undefined
+ * arguments must not remain enabled (matching Oracle Scheduler).
+ */
+static void
+sched_disable_program(const SchedName *prog)
+{
+	Oid			argtypes[2] = {TEXTOID, TEXTOID};
+	Datum		values[2];
+
+	values[0] = CStringGetTextDatum(prog->owner);
+	values[1] = CStringGetTextDatum(prog->name);
+	sched_meta_dml("UPDATE sys.scheduler_programs SET enabled = false"
+				   " WHERE program_owner = $1 AND program_name = $2"
+				   " AND enabled",
+				   2, argtypes, values, NULL);
+}
+
 /* ------------------------------------------------------------------
  * CREATE_JOB / CREATE_PROGRAM / CREATE_SCHEDULE
  * ------------------------------------------------------------------
@@ -1343,6 +1362,8 @@ ora_dbms_scheduler_drop_program_argument_pos(PG_FUNCTION_ARGS)
 				 errmsg("argument %d of program \"%s\".\"%s\" is not defined",
 						position, prog.owner, prog.name)));
 
+	sched_disable_program(&prog);
+
 	SPI_finish();
 	PG_RETURN_VOID();
 }
@@ -1378,6 +1399,8 @@ ora_dbms_scheduler_drop_program_argument_name(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("argument \"%s\" of program \"%s\".\"%s\" is not defined",
 						argument_name, prog.owner, prog.name)));
+
+	sched_disable_program(&prog);
 
 	SPI_finish();
 	PG_RETURN_VOID();
@@ -1625,9 +1648,7 @@ ora_dbms_scheduler_disable(PG_FUNCTION_ARGS)
 					  2, argtypes, values, NULL);
 			break;
 		case SCHED_KIND_PROGRAM:
-			sched_meta_dml("UPDATE sys.scheduler_programs SET enabled = false"
-					  " WHERE program_owner = $1 AND program_name = $2",
-					  2, argtypes, values, NULL);
+			sched_disable_program(&obj);
 			break;
 		case SCHED_KIND_SCHEDULE:
 			ereport(ERROR,
