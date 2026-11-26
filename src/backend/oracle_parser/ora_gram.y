@@ -4509,7 +4509,7 @@ columnDef:	ColId Typename opt_column_storage opt_column_compression create_gener
 			| ColId REF_LA RefTypeName opt_column_storage opt_column_compression create_generic_options ColQualList column_invisible
 				{
 					ColumnDef *n = makeNode(ColumnDef);
-					TypeName *t = makeNode(TypeName);
+					TypeName *t = makeTypeNameFromNameList(NIL);
 
 					t->refTypeName = makeTypeNameFromNameList($3);
 					t->location = @2;
@@ -16731,7 +16731,7 @@ ObjectTypeElement:
 			| ColId REF_LA RefTypeName
 				{
 					ColumnDef *n = makeNode(ColumnDef);
-					TypeName *t = makeNode(TypeName);
+					TypeName *t = makeTypeNameFromNameList(NIL);
 
 					n->colname = $1;
 					t->refTypeName = makeTypeNameFromNameList($3);
