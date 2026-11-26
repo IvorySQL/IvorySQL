@@ -73,8 +73,26 @@ select length(dbms_random.string('U', '12')) as text_len;
 select length(dbms_random.string('U', 1e2)) as exponent_len;
 select length(dbms_random.string('U', '1e2')) as text_exponent_len;
 select length(dbms_random.string('U', 11.22)) as fractional_len;
-select length(dbms_random.string('U', '32767')) as capped_text_len;
-select length(dbms_random.string('U', '32768')) as capped_text_len_over;
+select length(dbms_random.string('U', 5000)) as actual_length from dual;
+select length(dbms_random.string('U', '32767')) as max_text_len;
+select length(dbms_random.string('U', '32768')) as max_text_len_over;
+select length(dbms_random.string('U', 'NaN'::number)) as nan_len;
+select length(dbms_random.string('U', 'Infinity'::number)) as inf_len;
+declare
+ v_str varchar2(32767);
+begin
+ v_str := dbms_random.string('U', 5000);
+ raise notice 'plisql len 5000=%', length(v_str);
+ v_str := dbms_random.string('U', 32767);
+ raise notice 'plisql len 32767=%', length(v_str);
+ begin
+  v_str := dbms_random.string('U', 32768);
+  raise notice 'plisql len 32768: unexpected success';
+ exception when others then
+  raise notice 'plisql len 32768 err=%', sqlerrm;
+ end;
+end;
+/
 
 -- unknown character classes default to uppercase; malformed input is rejected
 select dbms_random.string('Z', 4) ~ '^[A-Z]{4}$' as unknown_class_is_upper from dual;

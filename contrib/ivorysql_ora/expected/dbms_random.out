@@ -184,18 +184,45 @@ select length(dbms_random.string('U', 11.22)) as fractional_len;
              11
 (1 row)
 
-select length(dbms_random.string('U', '32767')) as capped_text_len;
- capped_text_len 
------------------
-            4000
+select length(dbms_random.string('U', 5000)) as actual_length from dual;
+ actual_length 
+---------------
+          5000
 (1 row)
 
-select length(dbms_random.string('U', '32768')) as capped_text_len_over;
- capped_text_len_over 
-----------------------
-                 4000
+select length(dbms_random.string('U', '32767')) as max_text_len;
+ max_text_len 
+--------------
+        32767
 (1 row)
 
+select length(dbms_random.string('U', '32768')) as max_text_len_over;
+ERROR:  DBMS_RANDOM.STRING length exceeds maximum of 32767
+CONTEXT:  PL/iSQL function sys.dbms_random.string line 33 at RETURN
+select length(dbms_random.string('U', 'NaN'::number)) as nan_len;
+ERROR:  DBMS_RANDOM.STRING length must not be NaN
+CONTEXT:  PL/iSQL function sys.dbms_random.string line 33 at RETURN
+select length(dbms_random.string('U', 'Infinity'::number)) as inf_len;
+ERROR:  DBMS_RANDOM.STRING length exceeds maximum of 32767
+CONTEXT:  PL/iSQL function sys.dbms_random.string line 33 at RETURN
+declare
+ v_str varchar2(32767);
+begin
+ v_str := dbms_random.string('U', 5000);
+ raise notice 'plisql len 5000=%', length(v_str);
+ v_str := dbms_random.string('U', 32767);
+ raise notice 'plisql len 32767=%', length(v_str);
+ begin
+  v_str := dbms_random.string('U', 32768);
+  raise notice 'plisql len 32768: unexpected success';
+ exception when others then
+  raise notice 'plisql len 32768 err=%', sqlerrm;
+ end;
+end;
+/
+NOTICE:  plisql len 5000=5000
+NOTICE:  plisql len 32767=32767
+NOTICE:  plisql len 32768 err=DBMS_RANDOM.STRING length exceeds maximum of 32767
 -- unknown character classes default to uppercase; malformed input is rejected
 select dbms_random.string('Z', 4) ~ '^[A-Z]{4}$' as unknown_class_is_upper from dual;
  unknown_class_is_upper 
