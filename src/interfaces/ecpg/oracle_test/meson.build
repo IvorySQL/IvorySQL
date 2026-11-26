@@ -26,7 +26,6 @@ oracle_pg_regress_ecpg = executable('pg_regress_ecpg',
     'install': false
   },
 )
-testprep_targets += oracle_pg_regress_ecpg
 
 # create .c files and executables from .pgc files
 ecpg_test_exec_kw = {
@@ -54,6 +53,10 @@ ecpg_preproc_test_command_end = [
 ]
 
 ecpg_test_dependencies = []
+
+# The tests run the driver, so make it a test dependency, as
+# src/interfaces/ecpg/test does; it reaches testprep_targets with the rest.
+ecpg_test_dependencies += oracle_pg_regress_ecpg
 
 subdir('compat_informix')
 subdir('compat_oracle')
