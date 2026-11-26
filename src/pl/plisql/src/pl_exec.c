@@ -3607,35 +3607,37 @@ exec_stmt_return(PLiSQL_execstate * estate, PLiSQL_stmt_return * stmt)
 		retvar = plisql_get_datum(estate, estate->datums[stmt->retvarno]);
 		estate->retpkgvar = (OidIsValid(retvar->pkgoid));
 
-		if (estate->func &&
-			stmt->retvarno == estate->func->fn_ret_vardno)
+		if (estate->func && estate->func->fn_ret_vardno >= 0)
 		{
-			/*
-			 * assign stmt->expr expression value to the function returned
-			 * variable
-			 */
-			exec_assign_expr(estate, retvar, stmt->expr);
+			if (stmt->retvarno == estate->func->fn_ret_vardno)
+			{
+				/*
+				 * Explicit RETURN <expr> in a non-VOID function with OUT
+				 * parameters: assign the return expression into _RETVAL_,
+				 * then evaluate the composite out_param_varno row combining
+				 * all OUT parameters and _RETVAL_.
+				 */
+				exec_assign_expr(estate, retvar, stmt->expr);
 
-			/* the return stmt is constructed combinding all OUT parameters and function return value */
-			return exec_stmt_return(estate, (PLiSQL_stmt_return *)
-									llast(estate->func->action->body));
-		}
-
-		/*
-		 * When compile a function with out arguments and the return type is
-		 * not VOIDIID, build a RETURN statment which combinds all OUT
-		 * parameters and function return value, and put it as the last
-		 * statment of function body. If there is no explicit RETURN statement
-		 * in function body, raise error.
-		 */
-		if (estate->func &&
-			stmt->retvarno != estate->func->fn_ret_vardno &&
-			estate->func->fn_no_return)
-		{
-			estate->err_text = NULL;
-			ereport(ERROR,
-					(errcode(ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT),
-					 errmsg("Function returned without value")));
+				Assert(estate->func->out_param_varno >= 0);
+				retvar = plisql_get_datum(estate,
+										  estate->datums[estate->func->out_param_varno]);
+				estate->retpkgvar = (OidIsValid(retvar->pkgoid));
+			}
+			else if (estate->func->action != NULL &&
+					 estate->func->action->body != NIL &&
+					 stmt == (PLiSQL_stmt_return *) llast(estate->func->action->body))
+			{
+				/*
+				 * Control reached the implicit dummy RETURN at the end of a
+				 * non-VOID function with OUT parameters without executing an
+				 * explicit RETURN statement.
+				 */
+				estate->err_text = NULL;
+				ereport(ERROR,
+						(errcode(ERRCODE_S_R_E_FUNCTION_EXECUTED_NO_RETURN_STATEMENT),
+						 errmsg("Function returned without value")));
+			}
 		}
 
 		switch (retvar->dtype)

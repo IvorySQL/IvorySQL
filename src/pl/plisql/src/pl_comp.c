@@ -411,7 +411,6 @@ do_compile(FunctionCallInfo fcinfo,
 	function->has_exception_block = false;
 
 	function->fn_ret_vardno = -1;
-	function->fn_no_return = false;
 
 	if (function->fn_prokind == PROKIND_FUNCTION &&
 		LANG_PLISQL_OID == procStruct->prolang)
@@ -1041,14 +1040,6 @@ do_compile(FunctionCallInfo fcinfo,
 	}
 	PG_END_TRY();
 
-	if (num_out_args > 0 &&
-		is_plisql_function &&
-		procStruct->prorettype != VOIDOID &&
-		((PLiSQL_stmt *) llast(function->action->body))->cmd_type != PLISQL_STMT_RETURN)
-	{
-		function->fn_no_return = true;
-	}
-
 	/*
 	 * If it has OUT parameters or returns VOID or returns a set, we allow
 	 * control to fall off the end without an explicit RETURN statement. The
@@ -1328,7 +1319,6 @@ plisql_compile_inline(char *proc_source, ParamListInfo inparams, bool fromcall,
 	function->requires_procedure_resowner = false;
 	function->has_exception_block = false;
 	function->fn_ret_vardno = -1;
-	function->fn_no_return = false;
 
 	function->namelabel = NULL;
 	function->do_from_call = fromcall;
@@ -3981,7 +3971,6 @@ plisql_compile_inline_internal(char *proc_source)
 
 	function->nstatements = 0;
 	function->fn_ret_vardno = -1;
-	function->fn_no_return = false;
 	function->requires_procedure_resowner = false;
 
 	plisql_ns_init();

@@ -1256,6 +1256,7 @@ package_doCompile(HeapTuple pkgTup, bool forValidator)
 	function->fn_xmin = HeapTupleHeaderGetRawXmin(pkgTup->t_data);
 	function->fn_tid = pkgTup->t_self;
 	function->out_param_varno = -1; /* set up for no OUT param */
+	function->fn_ret_vardno = -1;
 	function->resolve_option = plisql_variable_conflict;
 	function->print_strict_params = plisql_print_strict_params;
 	/* only promote extra warnings and errors at CREATE FUNCTION time */

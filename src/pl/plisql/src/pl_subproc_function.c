@@ -727,11 +727,6 @@ plisql_set_subprocfunc_action(PLiSQL_subproc_function * subprocfunc,
 
 	subprocfunc->function->action = action;
 
-	if (subprocfunc->noutargs > 0 &&
-		subprocfunc->rettype != NULL &&
-		((PLiSQL_stmt *) llast(subprocfunc->function->action->body))->cmd_type != PLISQL_STMT_RETURN)
-		subprocfunc->function->fn_no_return = true;
-
 	/* Add implicit RETURN when appropriate */
 
 	/*
@@ -1850,6 +1845,7 @@ plisql_build_subproc_function_internal(char *funcname, List *args,
 	function->fn_input_collation = plisql_curr_compile->fn_input_collation;
 	function->fn_cxt = func_cxt;
 	function->out_param_varno = -1; /* initialize as no OUT parameter */
+	function->fn_ret_vardno = -1;
 	function->resolve_option = plisql_curr_compile->resolve_option;
 	function->print_strict_params = plisql_curr_compile->print_strict_params;
 	/* Promote extra warnings and errors only at CREATE FUNCTION time */
@@ -3090,6 +3086,7 @@ plisql_dynamic_compile_subproc(FunctionCallInfo fcinfo,
 	function->fn_input_collation = fcinfo->fncollation;
 	function->fn_cxt = func_cxt;
 	function->out_param_varno = -1; /* set up for no OUT param */
+	function->fn_ret_vardno = -1;
 	function->resolve_option = plisql_variable_conflict;
 	function->print_strict_params = plisql_print_strict_params;
 	/* only promote extra warnings and errors at CREATE FUNCTION time */
