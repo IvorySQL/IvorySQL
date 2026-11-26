@@ -419,3 +419,8 @@ select insertxmlafter(XMLtype('<a>A<b>B</b></a>'), '/', XMLType('<c>C</c>'));
 select insertchildxml(XMLtype('<a>A<b>B</b></a>'), '/', 'c', XMLType('<c>C</c>'));
 
 
+
+-- Overlapping replacement targets must stay alive until all are visited.
+SELECT updatexml(XMLType('<r><a><b>old</b></a></r>'),
+                 '/r/a | /r/a/b', XMLType('<new/>')) FROM dual;
+SELECT updatexml(XMLType('<r><a/><a/></r>'), '/r/a', XMLType('<new/>')) FROM dual;
