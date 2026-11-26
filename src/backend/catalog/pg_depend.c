@@ -1142,6 +1142,21 @@ getOwnedSequences(Oid relid)
 	return getOwnedSequences_internal(relid, 0, 0);
 }
 
+/* Get the sequence with the specified dependency on a table attribute. */
+Oid
+getOwnedSequence(Oid relid, AttrNumber attnum, char deptype)
+{
+	List	   *seqlist;
+
+	seqlist = getOwnedSequences_internal(relid, attnum, deptype);
+	if (list_length(seqlist) > 1)
+		elog(ERROR, "more than one owned sequence found");
+	if (seqlist == NIL)
+		return InvalidOid;
+
+	return linitial_oid(seqlist);
+}
+
 /*
  * Get owned identity sequence, error if not exactly one.
  */
