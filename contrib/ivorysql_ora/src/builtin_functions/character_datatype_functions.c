@@ -1839,6 +1839,18 @@ text_instring(text *str, text *search_str, int32 position, int32 occurrence, boo
 	}
 
 	/*
+	 * Oracle returns 0 when the position is specified as zero.
+	 * ora_instrb() applies the same rule; without this check a zero
+	 * position would fall into the negative-position code path below
+	 * and produce a wrong match position.
+	 */
+	if (position == 0)
+	{
+		text_position_cleanup(&state);
+		return 0;
+	}
+
+	/*
 	 * If occurrence is greater than 1, then the database searches for the
 	 * second occurrence beginning with the second character in the first
 	 * occurrence of string. So, if position is positive, then the maxinum
