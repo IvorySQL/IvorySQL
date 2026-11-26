@@ -127,15 +127,32 @@ begin;
 call dbms_transaction.rollback_savepoint(NULL);
 rollback;
 
--- savepoint name length boundary: 255 bytes is accepted, 256 is rejected
--- (DBMS_TRANSACTION_SAVEPOINT_NAME_LEN in dbms_transaction.c is 256, so the
--- longest accepted name is 255 bytes).
+-- savepoint name length boundary: Oracle 12.2+ limits savepoint identifiers
+-- to 128 bytes (counted in bytes, not characters).  128 bytes is accepted,
+-- 129 bytes is rejected for both SAVEPOINT and ROLLBACK_SAVEPOINT.
 begin;
-call dbms_transaction.savepoint(repeat('x', 255));
-call dbms_transaction.rollback_savepoint(repeat('x', 255));
+call dbms_transaction.savepoint(repeat('x', 128));
+call dbms_transaction.rollback_savepoint(repeat('x', 128));
 rollback;
 begin;
-call dbms_transaction.savepoint(repeat('x', 256));
+call dbms_transaction.savepoint(repeat('x', 129));
+rollback;
+begin;
+call dbms_transaction.rollback_savepoint(repeat('x', 129));
+rollback;
+
+-- multibyte UTF-8 names are checked by byte length: 64 two-byte characters
+-- (128 bytes) are accepted, while 43 three-byte characters (129 bytes) are
+-- rejected for both SAVEPOINT and ROLLBACK_SAVEPOINT.
+begin;
+call dbms_transaction.savepoint(repeat('é', 64));
+call dbms_transaction.rollback_savepoint(repeat('é', 64));
+rollback;
+begin;
+call dbms_transaction.savepoint(repeat('中', 43));
+rollback;
+begin;
+call dbms_transaction.rollback_savepoint(repeat('中', 43));
 rollback;
 
 -- an empty-string savepoint name hits the same "must not be NULL" error as

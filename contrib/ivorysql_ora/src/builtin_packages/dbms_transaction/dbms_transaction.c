@@ -99,13 +99,15 @@
 #include "executor/spi.h"
 #include "fmgr.h"
 #include "utils/builtins.h"
+#include "varatt.h"
 
 /*
- * Oracle limits a savepoint identifier to 30 bytes; we are more generous but
- * still reject absurdly long names up front rather than let them flow into
- * TopTransactionContext-allocated savepoint bookkeeping.
+ * Oracle 12.2+ limits a savepoint identifier to 128 bytes (counted in bytes,
+ * not characters).  Enforce that byte limit up front for both SAVEPOINT and
+ * ROLLBACK_SAVEPOINT before passing the name into TopTransactionContext-
+ * allocated savepoint bookkeeping.
  */
-#define DBMS_TRANSACTION_SAVEPOINT_NAME_LEN	256
+#define DBMS_TRANSACTION_SAVEPOINT_MAX_BYTES	128
 
 PG_FUNCTION_INFO_V1(ora_dbms_transaction_savepoint);
 PG_FUNCTION_INFO_V1(ora_dbms_transaction_rollback_savepoint);
@@ -113,22 +115,22 @@ PG_FUNCTION_INFO_V1(ora_dbms_transaction_rollback_savepoint);
 static char *
 get_savepoint_name(FunctionCallInfo fcinfo)
 {
-	char	   *name;
+	text	   *arg;
 
 	if (PG_ARGISNULL(0))
 		ereport(ERROR,
 				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
 				 errmsg("DBMS_TRANSACTION savepoint name must not be NULL")));
 
-	name = text_to_cstring(PG_GETARG_TEXT_PP(0));
+	arg = PG_GETARG_TEXT_PP(0);
 
-	if (strlen(name) >= DBMS_TRANSACTION_SAVEPOINT_NAME_LEN)
+	if (VARSIZE_ANY_EXHDR(arg) > DBMS_TRANSACTION_SAVEPOINT_MAX_BYTES)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("DBMS_TRANSACTION savepoint name too long (max %d bytes)",
-						DBMS_TRANSACTION_SAVEPOINT_NAME_LEN - 1)));
+						DBMS_TRANSACTION_SAVEPOINT_MAX_BYTES)));
 
-	return name;
+	return text_to_cstring(arg);
 }
 
 /*

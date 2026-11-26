@@ -185,18 +185,43 @@ ERROR:  DBMS_TRANSACTION savepoint name must not be NULL
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_transaction_rollback_savepoint(savept)"
 PL/iSQL function sys.dbms_transaction.rollback_savepoint line 18 at PERFORM
 rollback;
--- savepoint name length boundary: 255 bytes is accepted, 256 is rejected
--- (DBMS_TRANSACTION_SAVEPOINT_NAME_LEN in dbms_transaction.c is 256, so the
--- longest accepted name is 255 bytes).
+-- savepoint name length boundary: Oracle 12.2+ limits savepoint identifiers
+-- to 128 bytes (counted in bytes, not characters).  128 bytes is accepted,
+-- 129 bytes is rejected for both SAVEPOINT and ROLLBACK_SAVEPOINT.
 begin;
-call dbms_transaction.savepoint(repeat('x', 255));
-call dbms_transaction.rollback_savepoint(repeat('x', 255));
+call dbms_transaction.savepoint(repeat('x', 128));
+call dbms_transaction.rollback_savepoint(repeat('x', 128));
 rollback;
 begin;
-call dbms_transaction.savepoint(repeat('x', 256));
-ERROR:  DBMS_TRANSACTION savepoint name too long (max 255 bytes)
+call dbms_transaction.savepoint(repeat('x', 129));
+ERROR:  DBMS_TRANSACTION savepoint name too long (max 128 bytes)
 CONTEXT:  SQL statement "SELECT sys.ora_dbms_transaction_savepoint(savept)"
 PL/iSQL function sys.dbms_transaction.savepoint line 13 at PERFORM
+rollback;
+begin;
+call dbms_transaction.rollback_savepoint(repeat('x', 129));
+ERROR:  DBMS_TRANSACTION savepoint name too long (max 128 bytes)
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_transaction_rollback_savepoint(savept)"
+PL/iSQL function sys.dbms_transaction.rollback_savepoint line 18 at PERFORM
+rollback;
+-- multibyte UTF-8 names are checked by byte length: 64 two-byte characters
+-- (128 bytes) are accepted, while 43 three-byte characters (129 bytes) are
+-- rejected for both SAVEPOINT and ROLLBACK_SAVEPOINT.
+begin;
+call dbms_transaction.savepoint(repeat('é', 64));
+call dbms_transaction.rollback_savepoint(repeat('é', 64));
+rollback;
+begin;
+call dbms_transaction.savepoint(repeat('中', 43));
+ERROR:  DBMS_TRANSACTION savepoint name too long (max 128 bytes)
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_transaction_savepoint(savept)"
+PL/iSQL function sys.dbms_transaction.savepoint line 13 at PERFORM
+rollback;
+begin;
+call dbms_transaction.rollback_savepoint(repeat('中', 43));
+ERROR:  DBMS_TRANSACTION savepoint name too long (max 128 bytes)
+CONTEXT:  SQL statement "SELECT sys.ora_dbms_transaction_rollback_savepoint(savept)"
+PL/iSQL function sys.dbms_transaction.rollback_savepoint line 18 at PERFORM
 rollback;
 -- an empty-string savepoint name hits the same "must not be NULL" error as
 -- an explicit NULL: VARCHAR2 treats '' as NULL, and savept is declared
