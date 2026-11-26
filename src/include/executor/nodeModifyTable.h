@@ -62,6 +62,8 @@ typedef struct IvyModifyTableContext
 typedef struct IvyUpdateContext
 {
 	bool		crossPartUpdate;	/* was it a cross-partition update? */
+	ResultRelInfo *crossPartDestRel;	/* destination partition after move */
+	TupleTableSlot *crossPartInsertedSlot;	/* inserted slot in dest partition */
 	TU_UpdateIndexes updateIndexes;	/* Which index updates are required? */
 
 	/*

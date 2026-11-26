@@ -2442,8 +2442,8 @@ lreplace:
 	 */
 	if (partition_constraint_failed)
 	{
-		TupleTableSlot *inserted_tuple,
-				   *retry_slot;
+		TupleTableSlot *inserted_tuple = NULL,
+				   *retry_slot = NULL;
 		ResultRelInfo *insert_destrel = NULL;
 
 		/*
@@ -2462,6 +2462,8 @@ lreplace:
 		{
 			/* success! */
 			updateCxt->crossPartUpdate = true;
+			updateCxt->crossPartDestRel = insert_destrel;
+			updateCxt->crossPartInsertedSlot = inserted_tuple;
 
 			/*
 			 * If the partitioned table being updated is referenced in foreign
