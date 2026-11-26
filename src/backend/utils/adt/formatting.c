@@ -1112,6 +1112,7 @@ static bool do_to_timestamp(const text *date_txt, const text *fmt, Oid collid, b
 							struct pg_tm *tm, fsec_t *fsec, struct fmt_tz *tz,
 							int *fprec, uint32 *flags, Node *escontext);
 static char *fill_str(char *str, int c, int max);
+static void ora_fix_shifted_zero(char *result, NUMDesc *num, FormatNode *format);
 static FormatNode *NUM_cache(int len, NUMDesc *Num, const text *pars_str, bool *shouldFree);
 static char *int_to_roman(int number);
 static int	roman_to_int(NUMProc *Np, size_t input_len);
@@ -5895,6 +5896,109 @@ fill_str(char *str, int c, int max)
 	return str;
 }
 
+/*
+ * Oracle's V format element shifts the value left by the number of digits that
+ * follow it.  When the value has no significant integer digit of its own (its
+ * magnitude is below one) Oracle pads the shifted digits with zeroes; when it
+ * does have one, the ordinary blank padding applies.
+ *
+ * PostgreSQL has no such element, so the digits are already rendered; rebuild
+ * the digit field with leading zeroes in the zero-padding case.  FM keeps its
+ * meaning: it drops the reserved sign position, not the zeroes.
+ *
+ * The adjustment is skipped when the model carries other number decorations
+ * (decimal point, group separators); Oracle itself rejects V together with a
+ * group separator, and those models keep the generic padding.
+ */
+static void
+ora_fix_shifted_zero(char *result, NUMDesc *num, FormatNode *format)
+{
+	char		digits[128];
+	char		out[160];
+	int			width = 0;
+	int			len = 0;
+	int			pos = 0;
+	int			i;
+	bool		neg = false;
+	FormatNode *n;
+
+	if (ORA_PARSER != compatible_db || num == NULL || !IS_MULTI(num) || IS_EEEE(num))
+		return;
+
+
+	for (n = format; n->type != NODE_TYPE_END; n++)
+	{
+		if (n->type != NODE_TYPE_ACTION || n->key == NULL)
+			continue;
+
+		switch (n->key->id)
+		{
+			case NUM_9:
+			case NUM_0:
+				width++;
+				break;
+			case NUM_D:
+			case NUM_DEC:
+			case NUM_G:
+			case NUM_COMMA:
+				return;
+			default:
+				break;
+		}
+	}
+
+	if (width <= 0 || width >= (int) sizeof(digits) || width + 1 >= (int) sizeof(out))
+		return;
+
+	for (i = 0; result[i] != '\0'; i++)
+	{
+		/* an overflowed field is filled with '#' and is not ours to rewrite */
+		if (result[i] == '#')
+			return;
+
+		if (result[i] == '-')
+			neg = true;
+		else if (result[i] >= '0' && result[i] <= '9')
+		{
+			if (len >= (int) sizeof(digits) - 1)
+				return;
+			digits[len++] = result[i];
+		}
+	}
+	digits[len] = '\0';
+
+	/* a value wider than the model overflows, and that path owns the field */
+	if (len > width)
+		return;
+
+	/*
+	 * Oracle only zero-fills when the value itself has no significant integer
+	 * digit, i.e. when the shifted number has no more digits than the number of
+	 * positions introduced by V.  TO_CHAR(0.001, 'V9999') is ' 0010', while
+	 * TO_CHAR(1234.56, '99999V99') is blank-padded.
+	 */
+	if (len > num->multi)
+		return;
+
+	if (!IS_FILLMODE(num))
+		out[pos++] = neg ? '-' : ' ';
+	else if (neg)
+		out[pos++] = '-';
+
+	memset(out + pos, '0', width - len);
+	pos += width - len;
+	memcpy(out + pos, digits, len);
+	pos += len;
+	out[pos] = '\0';
+
+	/*
+	 * The caller sized the field with NUM_TOCHAR_prepare(), which reserves
+	 * NUM_MAX_ITEM_SIZ characters per element of the format model, so a field
+	 * of at most width + 1 characters always fits.
+	 */
+	memcpy(result, out, pos + 1);
+}
+
 /* This works the same as DCH_prevent_counter_overflow */
 static inline void
 NUM_prevent_counter_overflow(void)
@@ -8104,6 +8208,9 @@ do { \
 	size_t	len; \
 									\
 	NUM_processor(format, &Num, VARDATA(result), numstr, 0, out_pre_spaces, sign, true, PG_GET_COLLATION()); \
+									\
+	/* Oracle's V element pads the shifted digits with zeroes */ \
+	ora_fix_shifted_zero(VARDATA(result), &Num, format); \
 									\
 	if (shouldFree)					\
 		pfree(format);				\
