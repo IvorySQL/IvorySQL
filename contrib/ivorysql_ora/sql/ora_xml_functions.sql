@@ -419,3 +419,16 @@ select insertxmlafter(XMLtype('<a>A<b>B</b></a>'), '/', XMLType('<c>C</c>'));
 select insertchildxml(XMLtype('<a>A<b>B</b></a>'), '/', 'c', XMLType('<c>C</c>'));
 
 
+
+-- EXTRACT returns XML content, including escaped characters and text whitespace.
+SELECT sys.extract(XMLType('<r>&lt;x&gt;&amp;</r>'), '/r/text()') FROM dual;
+SELECT length(sys.extract(XMLType('<r>a&#10;</r>'), '/r/text()')::text) FROM dual;
+SELECT sys.extract(XMLType('<r><a>x&amp;</a><a>&lt;y&gt;</a></r>'), '/r/a/text()') FROM dual;
+SELECT sys.extract(XMLType('<p:r xmlns:p="urn:extract">&amp;</p:r>'),
+                   '/p:r/text()', 'xmlns:p="urn:extract"') FROM dual;
+
+-- Markup nodes get separators only between results, never after the last.
+SELECT sys.extract(XMLType('<r><a/></r>'), '/r/a')::text = '<a/>' AS one_node;
+SELECT sys.extract(XMLType('<r><a/><b/></r>'), '/r/*')::text = E'<a/>\n<b/>' AS two_nodes;
+SELECT length(sys.extract(XMLType('<p:r xmlns:p="urn:extract">a&#10;</p:r>'),
+                          '/p:r/text()', 'xmlns:p="urn:extract"')::text) AS text_length FROM dual;
