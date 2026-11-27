@@ -285,6 +285,16 @@ typedef struct TM_IndexDeleteOp
 #define TABLE_INSERT_FROZEN			0x0004
 #define TABLE_INSERT_NO_LOGICAL		0x0008
 
+/*
+ * TABLE_INSERT_KEEP_ROWID tells the access method that the caller has
+ * already assigned the Oracle-compatible ROWID of the tuple (an IvorySQL
+ * extension) and that the AM must not assign a new one.  The table-rewrite
+ * paths use it to keep ROWIDs stable, so that ROWIDs cached by applications
+ * keep locating the same rows.  Access methods that do not support ROWIDs
+ * simply ignore the flag.
+ */
+#define TABLE_INSERT_KEEP_ROWID		0x0020
+
 /* "options" flag bits for table_tuple_delete */
 #define TABLE_DELETE_CHANGING_PARTITION			(1 << 0)
 #define TABLE_DELETE_NO_LOGICAL					(1 << 1)
