@@ -38,6 +38,7 @@
 #include "utils/syscache.h"
 #include "utils/lsyscache.h"
 #include "utils/guc.h"
+#include "utils/errcodes.h"
 #include "utils/ora_compatible.h"
 #include "utils/rel.h"
 #include "utils/regproc.h"
@@ -473,6 +474,7 @@ DefineView(ViewStmt *stmt, const char *queryString,
 	ListCell   *cell;
 	bool		check_option;
 	bool		compile_failed = false;
+	MemoryContext oldcontext = CurrentMemoryContext;
 	ObjectAddress address;
 	ObjectAddress temp_object;
 
@@ -491,13 +493,26 @@ DefineView(ViewStmt *stmt, const char *queryString,
 	}
 	PG_CATCH();
 	{
-		if (ORA_PARSER == compatible_db && stmt->force)
-		{
-			compile_failed = true;
-			FlushErrorState();
-		}
-		else
+		ErrorData  *edata;
+
+		if (!(ORA_PARSER == compatible_db && stmt->force))
 			PG_RE_THROW();
+
+		/*
+		 * Query cancellation and session termination are not compile
+		 * failures: the placeholder view must not be created for a statement
+		 * the user cancelled, and the error must propagate instead of being
+		 * swallowed into an invalid FORCE VIEW.
+		 */
+		MemoryContextSwitchTo(oldcontext);
+		edata = CopyErrorData();
+		if (edata->sqlerrcode == ERRCODE_QUERY_CANCELED ||
+			edata->sqlerrcode == ERRCODE_ADMIN_SHUTDOWN)
+			PG_RE_THROW();
+		FreeErrorData(edata);
+		FlushErrorState();
+
+		compile_failed = true;
 	}
 	PG_END_TRY();
 
