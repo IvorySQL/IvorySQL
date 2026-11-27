@@ -37,6 +37,7 @@ bool		enable_case_switch = true;
 static char	   *nls_territory = "AMERICA";
 static char	   *nls_currency = "$";
 static char	   *nls_iso_currency = "AMERICA";
+static char	   *nls_date_language = "AMERICAN";
 
 bool		enable_emptystring_to_NULL = false;
 

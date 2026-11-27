@@ -1682,7 +1682,7 @@ BEGIN
 		  WHEN 'NLS_DATE_FORMAT' THEN
 			SELECT current_setting('nls_date_format') INTO res;
 		  WHEN 'NLS_DATE_LANGUAGE' THEN
-			SELECT null INTO res;
+			SELECT current_setting('nls_date_language') INTO res;
 		  WHEN 'NLS_SORT' THEN
 			SELECT null INTO res;
 		  WHEN 'NLS_TERRITORY' THEN
