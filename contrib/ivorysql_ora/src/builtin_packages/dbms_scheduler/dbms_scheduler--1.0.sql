@@ -715,3 +715,30 @@ CREATE OR REPLACE PACKAGE BODY dbms_scheduler IS
 END dbms_scheduler;
 
 GRANT EXECUTE ON PACKAGE dbms_scheduler TO PUBLIC;
+
+/*
+ * ALL_SCHEDULER_JOB_LOG: the per-run history of every scheduler job, with
+ * Oracle's JOB_LOG column names.  DBA_/USER_ variants are provided by the
+ * dictionary-view work; this view is the missing ALL_ member of the family.
+ */
+CREATE OR REPLACE VIEW sys.all_scheduler_job_log AS
+SELECT
+    log_id::numeric                                                AS log_id,
+    log_date,
+    job_owner                                                      AS owner,
+    job_name,
+    NULL::varchar2(128)                                            AS job_subname,
+    CASE status
+        WHEN 's' THEN 'SUCCEEDED'::varchar2(32)
+        WHEN 'f' THEN 'FAILED'::varchar2(32)
+        WHEN 'r' THEN 'RUNNING'::varchar2(32)
+        ELSE status::varchar2(32)
+    END                                                            AS status,
+    error_no::numeric                                              AS error_num,
+    req_start_date,
+    actual_start_date,
+    run_duration,
+    error_message::varchar2(4000)                                  AS additional_info
+FROM sys.scheduler_job_run_details;
+
+GRANT SELECT ON sys.all_scheduler_job_log TO PUBLIC;

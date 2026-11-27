@@ -1,0 +1,18 @@
+--
+-- ALL_SCHEDULER_JOB_LOG
+--
+SET IVORYSQL.COMPATIBLE_MODE TO ORACLE;
+
+INSERT INTO sys.scheduler_job_run_details
+    (job_owner, job_name, status, error_no, error_message)
+  VALUES
+    (current_user, 'ALL_JOB_LOG_TEST', 's', NULL, NULL),
+    (current_user, 'ALL_JOB_LOG_TEST', 'f', 20000, 'failed run'),
+    (current_user, 'ALL_JOB_LOG_TEST', 'r', NULL, NULL);
+
+SELECT job_name, job_subname, status, error_num, additional_info
+FROM sys.all_scheduler_job_log
+WHERE job_name = 'ALL_JOB_LOG_TEST'
+ORDER BY status;
+
+DELETE FROM sys.scheduler_job_run_details WHERE job_name = 'ALL_JOB_LOG_TEST';
