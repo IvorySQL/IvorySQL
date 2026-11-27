@@ -2464,3 +2464,16 @@ reset default_text_search_config;
 -- should throw errors, because dummy_config is not a valid configuration name
 set ivorysql.dummy_config to dummy;
 reset ivorysql.dummy_config;
+
+
+-- Verify sys.round(number, integer) is parallel safe.
+SELECT count(*) = 1 AS round_number_parallel_safe
+FROM pg_catalog.pg_proc
+WHERE oid = 'sys.round(sys.number,integer)'::regprocedure
+  AND proparallel = 's';
+
+-- Verify sys.to_char(text) is parallel safe.
+SELECT count(*) = 1 AS to_char_text_parallel_safe
+FROM pg_catalog.pg_proc
+WHERE oid = 'sys.to_char(text)'::regprocedure
+  AND proparallel = 's';

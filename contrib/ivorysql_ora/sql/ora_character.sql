@@ -186,3 +186,17 @@ explain (costs off) SELECT * FROM TEST_ORAVARCHAR WHERE a='111';
 -- drop table
 DROP TABLE TEST_ORACHAR;
 DROP TABLE TEST_ORAVARCHAR;
+
+
+-- Verify VARCHAR2 concatenation helpers are parallel safe.
+SELECT count(*) = 2 AS varchar2_concat_parallel_safe
+FROM pg_catalog.pg_proc
+WHERE oid IN ('sys.oravarcharcat(sys.oravarcharchar,sys.oravarcharchar)'::regprocedure,
+              'sys.concat(sys.oravarcharchar,sys.oravarcharchar)'::regprocedure)
+  AND proparallel = 's';
+
+-- Verify boolean-to-oracharchar cast helper is parallel safe.
+SELECT count(*) = 1 AS bool_orachar_parallel_safe
+FROM pg_catalog.pg_proc
+WHERE oid = 'sys.bool_orachar(boolean)'::regprocedure
+  AND proparallel = 's';

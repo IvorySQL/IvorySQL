@@ -64,6 +64,11 @@ ivorysql_ora = shared_module('ivorysql_ora',
 contrib_targets += ivorysql_ora
 
 install_data(
+  'ivorysql_ora--1.0--1.1.sql',
+  kwargs: contrib_data_args,
+)
+
+install_data(
   'ivorysql_ora.control',
   kwargs: contrib_data_args,
 )
