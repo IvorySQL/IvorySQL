@@ -117,14 +117,20 @@ SELECT * FROM htest3_1;
 \d+ htest3_1
 DROP TABLE htest3_1, htest3;
 
+-- Qualify the fixtures so setup and cleanup cannot touch same-named tables.
+-- The temporary tables shadow unqualified references to k1 and k2.
+CREATE SCHEMA invisible_test;
+CREATE TEMP TABLE k1 (unrelated int);
+CREATE TEMP TABLE k2 (unrelated int);
+
 -- Ordering do not include the invisible column
-CREATE TABLE t1 (col1 integer NOT NULL INVISIBLE, col2 integer);
-INSERT INTO t1 (col1, col2) VALUES (1, 6), (3, 4);
-SELECT * FROM t1 ORDER BY 1 DESC;
-SELECT col1,col2 FROM t1 ORDER BY 2 DESC;
+CREATE TABLE invisible_test.k1 (col1 integer NOT NULL INVISIBLE, col2 integer);
+INSERT INTO invisible_test.k1 (col1, col2) VALUES (1, 6), (3, 4);
+SELECT * FROM invisible_test.k1 ORDER BY 1 DESC;
+SELECT col1,col2 FROM invisible_test.k1 ORDER BY 2 DESC;
 -- unless it is called explicitly
-SELECT * FROM t1 ORDER BY col1 DESC;
-DROP TABLE t1;
+SELECT * FROM invisible_test.k1 ORDER BY col1 DESC;
+DROP TABLE invisible_test.k1;
 
 -- A table can be partitioned by an invisible column
 CREATE TABLE measurement (
@@ -180,25 +186,28 @@ DROP TABLE htest4;
 DROP TYPE compfoo;
 
 -- Foreign key constraints can be defined on invisible columns, or invisible columns can be referenced.
-CREATE TABLE t1 (col1 integer UNIQUE INVISIBLE, col2 integer);
-CREATE TABLE t2 (col1 integer PRIMARY KEY INVISIBLE, col2 integer);
-ALTER TABLE t1 ADD CONSTRAINT fk_t1_col1 FOREIGN KEY (col1) REFERENCES t2(col1);
-ALTER TABLE t2 ADD CONSTRAINT fk_t2_col1 FOREIGN KEY (col1) REFERENCES t1(col1);
-DROP TABLE t1, t2 CASCADE;
+CREATE TABLE invisible_test.k1 (col1 integer UNIQUE INVISIBLE, col2 integer);
+CREATE TABLE invisible_test.k2 (col1 integer PRIMARY KEY INVISIBLE, col2 integer);
+ALTER TABLE invisible_test.k1 ADD CONSTRAINT fk_k1_col1 FOREIGN KEY (col1) REFERENCES invisible_test.k2(col1);
+ALTER TABLE invisible_test.k2 ADD CONSTRAINT fk_k2_col1 FOREIGN KEY (col1) REFERENCES invisible_test.k1(col1);
+DROP TABLE invisible_test.k1, invisible_test.k2;
 
 -- CHECK constraints can be defined on invisible columns.
-CREATE TABLE t1 (col1 integer CHECK (col1 > 2) INVISIBLE, col2 integer NOT NULL);
-ALTER TABLE t1 MODIFY col1 INVISIBLE;
-INSERT INTO t1 (col1, col2) VALUES (1, 6); -- error
-INSERT INTO t1 (col1, col2) VALUES (3, 6);
+CREATE TABLE invisible_test.k1 (col1 integer CHECK (col1 > 2) INVISIBLE, col2 integer NOT NULL);
+ALTER TABLE invisible_test.k1 MODIFY col1 INVISIBLE;
+INSERT INTO invisible_test.k1 (col1, col2) VALUES (1, 6); -- error
+INSERT INTO invisible_test.k1 (col1, col2) VALUES (3, 6);
 -- An index can reference a invisible column
-CREATE INDEX ON t1 (col1);
-ALTER TABLE t1
+CREATE INDEX ON invisible_test.k1 (col1);
+ALTER TABLE invisible_test.k1
   ALTER COLUMN col1 TYPE bigint,
   ALTER COLUMN col1 DROP INVISIBLE,
   MODIFY col2 INVISIBLE;
-\d+ t1
-DROP TABLE t1;
+\d+ invisible_test.k1
+DROP TABLE invisible_test.k1;
+DROP SCHEMA invisible_test;
+-- These must still exist after the fixture cleanup.
+DROP TABLE pg_temp.k1, pg_temp.k2;
 
 -- View must not include the invisible column when not explicitly listed
 CREATE VIEW viewt1 AS SELECT * FROM htest1;
