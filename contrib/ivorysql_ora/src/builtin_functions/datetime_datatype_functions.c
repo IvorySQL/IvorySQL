@@ -650,6 +650,7 @@ ora_tz_offset(PG_FUNCTION_ARGS)
 			   *tm = &tt;
 	fsec_t		fsec;
 	int64		tz;
+	int			tzoff;
 	int			hourdat,
 				mindate;
 	char	   *reschar = (char *) palloc(8);
@@ -673,12 +674,20 @@ ora_tz_offset(PG_FUNCTION_ARGS)
 				 errmsg("timezone is not ok")));
 	}
 
-	if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) != 0)
+	/*
+	 * Break the statement timestamp down in the requested zone.  Passing the
+	 * zone is required: timestamp2tm() with a NULL zone argument leaves UTC
+	 * calendar fields in tm, and DetermineTimeZoneOffset() would then treat
+	 * those UTC fields as local civil time.  The two disagree for a few hours
+	 * around a daylight-saving transition.  The offset returned here is the
+	 * one actually in effect at this UTC instant.
+	 */
+	if (timestamp2tm(timestamp, &tzoff, tm, &fsec, NULL, timezonedat) != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("timestamp out of range")));
 
-	tz = DetermineTimeZoneOffset(tm, timezonedat);
+	tz = tzoff;
 	if (tz <= 0)
 	{
 		tz = tz * (-1);

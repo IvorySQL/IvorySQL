@@ -587,6 +587,33 @@ ERROR:  functions in index expression must be marked IMMUTABLE
 LINE 1: create index tz_imm_test_i on tz_imm_test (tz_offset('GMT'))...
                                                    ^
 drop table tz_imm_test;
+-- tz_offset must use the offset in effect at the statement timestamp.
+-- Treating the UTC calendar fields as local time disagrees with that offset
+-- for a few hours around a daylight-saving transition.  Oracle mode has no
+-- extract(epoch), so format the day-to-second difference the same way
+-- tz_offset prints it (±HH:MM).
+SELECT zone,
+       tz_offset(zone) =
+       (SELECT CASE WHEN left(t, 1) = '-' THEN '-' ELSE '+' END
+               || substring(split_part(t, ' ', 2) from 1 for 5)
+        FROM (SELECT ((statement_timestamp() AT TIME ZONE zone)
+                    - (statement_timestamp() AT TIME ZONE 'UTC'))::text AS t) s)
+         AS matches_statement_ts
+FROM (VALUES ('America/New_York'),
+             ('Europe/London'),
+             ('Pacific/Auckland'),
+             ('Asia/Kolkata'),
+             ('UTC')) v(zone)
+ORDER BY zone;
+       zone       | matches_statement_ts 
+------------------+----------------------
+ America/New_York | t
+ Asia/Kolkata     | t
+ Europe/London    | t
+ Pacific/Auckland | t
+ UTC              | t
+(5 rows)
+
 --from_tz
 SELECT FROM_TZ(TIMESTAMP '2000-03-28 08:00:00', '3:00') FROM DUAL;
                from_tz                
