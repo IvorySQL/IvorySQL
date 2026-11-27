@@ -201,7 +201,7 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location, YYSTYPE *yylv
 		AccessProperItemType access_proper_kind;
 }
 
-%type <declhdr> decl_sect
+%type <declhdr> decl_sect explicit_decl_sect
 %type <varname> decl_varname
 %type <boolean>	decl_const decl_notnull exit_type
 %type <expr>	decl_defval decl_cursor_query
@@ -222,12 +222,15 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location, YYSTYPE *yylv
 %type <stmt>	for_control
 
 %type <str>		any_identifier opt_block_label opt_loop_label opt_label
+%type <str>		explicit_block_label explicit_loop_label
 %type <str>		option_value
 
-%type <list>	proc_sect stmt_elsifs stmt_else
+%type <list>	proc_sect stmt_elsifs stmt_else stmt_labels
 %type <loop_body>	loop_body
-%type <stmt>	proc_stmt pl_block
-%type <stmt>	stmt_assign stmt_if stmt_loop stmt_while stmt_exit
+%type <stmt>	proc_stmt pl_block explicit_pl_block
+%type <stmt>	non_labeled_proc_stmt labeled_follow_stmt
+%type <stmt>	explicit_stmt_loop explicit_stmt_while explicit_stmt_for explicit_stmt_foreach_a
+%type <stmt>	stmt_assign stmt_if stmt_loop stmt_while stmt_exit stmt_goto stmt_label
 %type <stmt>	stmt_return stmt_raise stmt_assert stmt_execsql
 %type <stmt>	stmt_dynexecute stmt_for stmt_perform stmt_call stmt_getdiag
 %type <stmt>	stmt_open stmt_fetch stmt_move stmt_close stmt_null
@@ -365,6 +368,7 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location, YYSTYPE *yylv
 %token <keyword>	K_FROM
 %token <keyword>	K_FUNCTION
 %token <keyword>	K_GET
+%token <keyword>	K_GOTO
 %token <keyword>	K_HINT
 %token <keyword>	K_IF
 %token <keyword>	K_IMPORT
@@ -539,6 +543,8 @@ ora_outermost_pl_block		: ora_decl_sect K_BEGIN proc_sect exception_sect K_END o
 			 */
 			if ($1.popname)
 				plisql_ns_pop();
+
+			plisql_check_goto_labels(new);
 
 			$$ = (PLiSQL_stmt *)new;
 		}
@@ -729,6 +735,50 @@ decl_sect		: opt_block_label
 						plisql_IdentifierLookup = IDENTIFIER_LOOKUP_NORMAL;
 						$$.label	  = $1;
 						/* Remember variables declared in decl_stmts */
+						$$.n_initvars = plisql_add_initdatums(&($$.initvarnos));
+					}
+				;
+
+explicit_pl_block : explicit_decl_sect K_BEGIN proc_sect exception_sect K_END opt_label
+					{
+						PLiSQL_stmt_block *new;
+
+						new = palloc0_object(PLiSQL_stmt_block);
+
+						new->cmd_type	= PLISQL_STMT_BLOCK;
+						new->lineno		= plisql_location_to_lineno(@2, yyscanner);
+						new->stmtid		= ++plisql_curr_compile->nstatements;
+						new->label		= $1.label;
+						new->n_initvars = $1.n_initvars;
+						new->initvarnos = $1.initvarnos;
+						new->body		= $3;
+						new->exceptions	= $4;
+
+						check_labels($1.label, $6, @6, yyscanner);
+						plisql_ns_pop();
+
+						$$ = (PLiSQL_stmt *)new;
+					}
+				;
+
+explicit_decl_sect : explicit_block_label
+					{
+						plisql_IdentifierLookup = IDENTIFIER_LOOKUP_NORMAL;
+						$$.label	  = $1;
+						$$.n_initvars = 0;
+						$$.initvarnos = NULL;
+					}
+				| explicit_block_label decl_start
+					{
+						plisql_IdentifierLookup = IDENTIFIER_LOOKUP_NORMAL;
+						$$.label	  = $1;
+						$$.n_initvars = 0;
+						$$.initvarnos = NULL;
+					}
+				| explicit_block_label decl_start decl_stmts
+					{
+						plisql_IdentifierLookup = IDENTIFIER_LOOKUP_NORMAL;
+						$$.label	  = $1;
 						$$.n_initvars = plisql_add_initdatums(&($$.initvarnos));
 					}
 				;
@@ -1753,15 +1803,49 @@ proc_sect		:
 						else
 							$$ = lappend($1, $2);
 					}
+				| proc_sect stmt_labels labeled_follow_stmt
+					{
+						$$ = list_concat($1, $2);
+						if ($3 != NULL)
+							$$ = lappend($$, $3);
+					}
+				;
+
+stmt_labels		: stmt_label
+						{ $$ = list_make1($1); }
+				| stmt_labels stmt_label
+						{ $$ = lappend($1, $2); }
+				;
+
+stmt_label		: LESS_LESS any_identifier GREATER_GREATER
+					{
+						PLiSQL_stmt_label *new;
+
+						new = palloc0_object(PLiSQL_stmt_label);
+						new->cmd_type = PLISQL_STMT_LABEL;
+						new->lineno	  = plisql_location_to_lineno(@1, yyscanner);
+						new->stmtid	  = ++plisql_curr_compile->nstatements;
+						new->label	  = $2;
+
+						$$ = (PLiSQL_stmt *) new;
+					}
+				;
+
+labeled_follow_stmt : non_labeled_proc_stmt
+						{ $$ = $1; }
+				| explicit_pl_block ';'
+						{ $$ = $1; }
+				| explicit_stmt_loop
+						{ $$ = $1; }
+				| explicit_stmt_while
+						{ $$ = $1; }
+				| explicit_stmt_for
+						{ $$ = $1; }
+				| explicit_stmt_foreach_a
+						{ $$ = $1; }
 				;
 
 proc_stmt		: pl_block ';'
-						{ $$ = $1; }
-				| stmt_assign
-						{ $$ = $1; }
-				| stmt_if
-						{ $$ = $1; }
-				| stmt_case
 						{ $$ = $1; }
 				| stmt_loop
 						{ $$ = $1; }
@@ -1771,7 +1855,19 @@ proc_stmt		: pl_block ';'
 						{ $$ = $1; }
 				| stmt_foreach_a
 						{ $$ = $1; }
+				| non_labeled_proc_stmt
+						{ $$ = $1; }
+				;
+
+non_labeled_proc_stmt : stmt_assign
+						{ $$ = $1; }
+				| stmt_if
+						{ $$ = $1; }
+				| stmt_case
+						{ $$ = $1; }
 				| stmt_exit
+						{ $$ = $1; }
+				| stmt_goto
 						{ $$ = $1; }
 				| stmt_return
 						{ $$ = $1; }
@@ -2653,6 +2749,110 @@ stmt_foreach_a	: opt_loop_label K_FOREACH for_variable foreach_slice K_IN K_ARRA
 					}
 				;
 
+explicit_stmt_loop : explicit_loop_label K_LOOP loop_body
+					{
+						PLiSQL_stmt_loop *new;
+
+						new = palloc0_object(PLiSQL_stmt_loop);
+						new->cmd_type = PLISQL_STMT_LOOP;
+						new->lineno   = plisql_location_to_lineno(@2, yyscanner);
+						new->stmtid   = ++plisql_curr_compile->nstatements;
+						new->label	  = $1;
+						new->body	  = $3.stmts;
+
+						check_labels($1, $3.end_label, $3.end_label_location, yyscanner);
+						plisql_ns_pop();
+
+						$$ = (PLiSQL_stmt *)new;
+					}
+				;
+
+explicit_stmt_while : explicit_loop_label K_WHILE expr_until_loop loop_body
+					{
+						PLiSQL_stmt_while *new;
+
+						new = palloc0_object(PLiSQL_stmt_while);
+						new->cmd_type = PLISQL_STMT_WHILE;
+						new->lineno   = plisql_location_to_lineno(@2, yyscanner);
+						new->stmtid	  = ++plisql_curr_compile->nstatements;
+						new->label	  = $1;
+						new->cond	  = $3;
+						new->body	  = $4.stmts;
+
+						check_labels($1, $4.end_label, $4.end_label_location, yyscanner);
+						plisql_ns_pop();
+
+						$$ = (PLiSQL_stmt *)new;
+					}
+				;
+
+explicit_stmt_for : explicit_loop_label K_FOR for_control loop_body
+					{
+						if ($3->cmd_type == PLISQL_STMT_FORI)
+						{
+							PLiSQL_stmt_fori *new = (PLiSQL_stmt_fori *) $3;
+
+							new->lineno = plisql_location_to_lineno(@2, yyscanner);
+							new->label  = $1;
+							new->body   = $4.stmts;
+							$$ = (PLiSQL_stmt *) new;
+						}
+						else
+						{
+							PLiSQL_stmt_forq *new = (PLiSQL_stmt_forq *) $3;
+
+							Assert($3->cmd_type == PLISQL_STMT_FORS ||
+								   $3->cmd_type == PLISQL_STMT_FORC ||
+								   $3->cmd_type == PLISQL_STMT_DYNFORS);
+							new->lineno = plisql_location_to_lineno(@2, yyscanner);
+							new->label  = $1;
+							new->body   = $4.stmts;
+							$$ = (PLiSQL_stmt *) new;
+						}
+
+						check_labels($1, $4.end_label, $4.end_label_location, yyscanner);
+						plisql_ns_pop();
+					}
+				;
+
+explicit_stmt_foreach_a : explicit_loop_label K_FOREACH for_variable foreach_slice K_IN K_ARRAY expr_until_loop loop_body
+					{
+						PLiSQL_stmt_foreach_a *new;
+
+						new = palloc0_object(PLiSQL_stmt_foreach_a);
+						new->cmd_type = PLISQL_STMT_FOREACH_A;
+						new->lineno = plisql_location_to_lineno(@2, yyscanner);
+						new->stmtid = ++plisql_curr_compile->nstatements;
+						new->label = $1;
+						new->slice = $4;
+						new->expr = $7;
+						new->body = $8.stmts;
+
+						if ($3.row)
+						{
+							new->varno = $3.row->dno;
+							check_assignable($3.row, @3, yyscanner);
+						}
+						else if ($3.scalar)
+						{
+							new->varno = $3.scalar->dno;
+							check_assignable($3.scalar, @3, yyscanner);
+						}
+						else
+						{
+							ereport(ERROR,
+									(errcode(ERRCODE_SYNTAX_ERROR),
+									 errmsg("loop variable of FOREACH must be a known variable or list of variables"),
+									 parser_errposition(@3)));
+						}
+
+						check_labels($1, $8.end_label, $8.end_label_location, yyscanner);
+						plisql_ns_pop();
+
+						$$ = (PLiSQL_stmt *) new;
+					}
+				;
+
 foreach_slice	:
 					{
 						$$ = 0;
@@ -2723,6 +2923,20 @@ exit_type		: K_EXIT
 				| K_CONTINUE
 					{
 						$$ = false;
+					}
+				;
+
+stmt_goto		: K_GOTO any_identifier ';'
+					{
+						PLiSQL_stmt_goto *new;
+
+						new = palloc0_object(PLiSQL_stmt_goto);
+						new->cmd_type = PLISQL_STMT_GOTO;
+						new->lineno	  = plisql_location_to_lineno(@1, yyscanner);
+						new->stmtid	  = ++plisql_curr_compile->nstatements;
+						new->label	  = $2;
+
+						$$ = (PLiSQL_stmt *) new;
 					}
 				;
 
@@ -3488,6 +3702,20 @@ opt_loop_label	:
 						$$ = NULL;
 					}
 				| LESS_LESS any_identifier GREATER_GREATER
+					{
+						plisql_ns_push($2, PLISQL_LABEL_LOOP);
+						$$ = $2;
+					}
+				;
+
+explicit_block_label : LESS_LESS any_identifier GREATER_GREATER
+					{
+						plisql_ns_push($2, PLISQL_LABEL_BLOCK);
+						$$ = $2;
+					}
+				;
+
+explicit_loop_label : LESS_LESS any_identifier GREATER_GREATER
 					{
 						plisql_ns_push($2, PLISQL_LABEL_LOOP);
 						$$ = $2;
