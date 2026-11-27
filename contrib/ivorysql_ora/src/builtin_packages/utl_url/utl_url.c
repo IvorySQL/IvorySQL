@@ -334,6 +334,8 @@ ivorysql_utl_url_unescape(PG_FUNCTION_ARGS)
 											 source_encoding);
 				converted_len = strlen(converted);
 				appendBinaryStringInfo(&out, converted, converted_len);
+				if (converted != pending)
+					pfree(converted);
 				pending_len = 0;
 			}
 			appendStringInfoChar(&out, src[i]);
@@ -352,6 +354,8 @@ ivorysql_utl_url_unescape(PG_FUNCTION_ARGS)
 									 source_encoding);
 		converted_len = strlen(converted);
 		appendBinaryStringInfo(&out, converted, converted_len);
+		if (converted != pending)
+			pfree(converted);
 	}
 
 	PG_RETURN_TEXT_P(cstring_to_text_with_len(out.data, out.len));
