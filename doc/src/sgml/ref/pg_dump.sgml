@@ -1533,6 +1533,20 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
+      <term><option>-m <replaceable class="parameter">mode</replaceable></option></term>
+      <term><option>--mode=<replaceable class="parameter">mode</replaceable></option></term>
+      <listitem>
+       <para>
+        Selects the default connection port. <literal>oracle</literal> uses
+        the compiled-in Oracle port (normally 1521), and <literal>pg</literal>
+        uses the regular libpq default. A port specified using
+        <option>--port</option>, a connection string, a service, or
+        <envar>PGPORT</envar> takes precedence.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option>-p <replaceable class="parameter">port</replaceable></option></term>
       <term><option>--port=<replaceable class="parameter">port</replaceable></option></term>
       <listitem>
