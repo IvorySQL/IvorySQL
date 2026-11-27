@@ -138,6 +138,7 @@ ProcedureCreate(const char *procedureName,
 	int			allParamCount;
 	Oid		   *allParams;
 	char	   *paramModes = NULL;
+	bool		hasInOut = false;
 	Oid			variadicType = InvalidOid;
 	Acl		   *proacl = NULL;
 	Relation	rel;
@@ -285,8 +286,10 @@ ProcedureCreate(const char *procedureName,
 		{
 			switch (paramModes[i])
 			{
-				case PROARGMODE_IN:
 				case PROARGMODE_INOUT:
+					hasInOut = true;
+					/* FALLTHROUGH */
+				case PROARGMODE_IN:
 					if (OidIsValid(variadicType))
 						elog(ERROR, "variadic parameter must be last");
 					break;
@@ -445,6 +448,7 @@ ProcedureCreate(const char *procedureName,
 		Form_pg_proc oldproc = (Form_pg_proc) GETSTRUCT(oldtup);
 		Datum		proargnames;
 		bool		isnull;
+		bool		adding_out_parameters;
 		const char *dropcmd;
 
 		if (!replace)
@@ -487,6 +491,11 @@ ProcedureCreate(const char *procedureName,
 				   prokind == PROKIND_AGGREGATE ? "DROP AGGREGATE" :
 				   "DROP FUNCTION");
 
+		/* Oracle procedures can gain their first OUT parameters in place. */
+		adding_out_parameters = ORA_PARSER == compatible_db &&
+			prokind == PROKIND_PROCEDURE && oldproc->prorettype == VOIDOID &&
+			returnType == RECORDOID && !hasInOut;
+
 		/*
 		 * Not okay to change the return type of the existing proc, since
 		 * existing rules, views, etc may depend on the return type.
@@ -496,7 +505,7 @@ ProcedureCreate(const char *procedureName,
 		 * user visible return type, we produce a more specific error message.
 		 */
 		if ((returnType != oldproc->prorettype &&
-			!package_update_rettype) || 
+			 !package_update_rettype && !adding_out_parameters) ||
 			returnsSet != oldproc->proretset)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
@@ -516,7 +525,7 @@ ProcedureCreate(const char *procedureName,
 		 * If it returns RECORD, check for possible change of record type
 		 * implied by OUT parameters
 		 */
-		if (returnType == RECORDOID)
+		if (returnType == RECORDOID && !adding_out_parameters)
 		{
 			TupleDesc	olddesc;
 			TupleDesc	newdesc;
