@@ -121,6 +121,7 @@ typedef enum SeqType
 	SEQTYPE_SMALLINT,
 	SEQTYPE_INTEGER,
 	SEQTYPE_BIGINT,
+	SEQTYPE_NUMBER,
 } SeqType;
 
 static const char *const SeqTypeNames[] =
@@ -128,6 +129,7 @@ static const char *const SeqTypeNames[] =
 	[SEQTYPE_SMALLINT] = "smallint",
 	[SEQTYPE_INTEGER] = "integer",
 	[SEQTYPE_BIGINT] = "bigint",
+	[SEQTYPE_NUMBER] = "number",
 };
 
 static const char *const SeqTypeInternalNames[] =
@@ -135,9 +137,10 @@ static const char *const SeqTypeInternalNames[] =
 	[SEQTYPE_SMALLINT] = "int2",
 	[SEQTYPE_INTEGER] = "int4",
 	[SEQTYPE_BIGINT] = "int8",
+	[SEQTYPE_NUMBER] = "number",
 };
 
-StaticAssertDecl(lengthof(SeqTypeNames) == (SEQTYPE_BIGINT + 1),
+StaticAssertDecl(lengthof(SeqTypeNames) == (SEQTYPE_NUMBER + 1),
 				 "array length mismatch");
 
 typedef struct
@@ -469,6 +472,7 @@ main(int argc, char **argv)
 	bool		no_data = false;
 	bool		no_schema = false;
 	bool		no_statistics = false;
+	bool		use_oracle_port = false;
 
 	static DumpOptions dopt;
 
@@ -486,6 +490,7 @@ main(int argc, char **argv)
 		{"format", required_argument, NULL, 'F'},
 		{"host", required_argument, NULL, 'h'},
 		{"jobs", 1, NULL, 'j'},
+		{"mode", required_argument, NULL, 'm'},
 		{"no-reconnect", no_argument, NULL, 'R'},
 		{"no-owner", no_argument, NULL, 'O'},
 		{"port", required_argument, NULL, 'p'},
@@ -586,7 +591,7 @@ main(int argc, char **argv)
 
 	InitDumpOptions(&dopt);
 
-	while ((c = getopt_long(argc, argv, "abBcCd:e:E:f:F:h:j:n:N:Op:RsS:t:T:U:vwWxXZ:",
+	while ((c = getopt_long(argc, argv, "abBcCd:e:E:f:F:h:j:m:n:N:Op:RsS:t:T:U:vwWxXZ:",
 							long_options, &optindex)) != -1)
 	{
 		switch (c)
@@ -641,6 +646,15 @@ main(int argc, char **argv)
 									  PG_MAX_JOBS,
 									  &numWorkers))
 					exit_nicely(1);
+				break;
+
+			case 'm':			/* default connection port for this mode */
+				if (pg_strcasecmp(optarg, "oracle") == 0)
+					use_oracle_port = true;
+				else if (pg_strcasecmp(optarg, "pg") == 0)
+					use_oracle_port = false;
+				else
+					pg_fatal("unrecognized database mode: %s", optarg);
 				break;
 
 			case 'n':			/* include schema(s) */
@@ -1003,6 +1017,16 @@ main(int argc, char **argv)
 	fout->maxRemoteVersion = (PG_VERSION_NUM / 100) * 100 + 99;
 
 	fout->numWorkers = numWorkers;
+
+	if (use_oracle_port && dopt.cparams.pgport == NULL)
+	{
+		const char *port = getenv("PGPORT");
+
+		/* Use libpq's environment fallback so service and conninfo ports win. */
+		if ((port == NULL || port[0] == '\0') &&
+			setenv("PGPORT", DEF_ORAPORT_STR, 1) != 0)
+			pg_fatal("could not set environment variable \"%s\": %m", "PGPORT");
+	}
 
 	/*
 	 * Open the database using the Archiver, so it knows about it. Errors mean
@@ -1404,6 +1428,7 @@ help(const char *progname)
 	printf(_("\nConnection options:\n"));
 	printf(_("  -d, --dbname=DBNAME      database to dump\n"));
 	printf(_("  -h, --host=HOSTNAME      database server host or socket directory\n"));
+	printf(_("  -m, --mode=MODE          use the default port for pg or oracle\n"));
 	printf(_("  -p, --port=PORT          database server port number\n"));
 	printf(_("  -U, --username=NAME      connect as specified database user\n"));
 	printf(_("  -w, --no-password        never prompt for password\n"));
@@ -20305,7 +20330,7 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 		default_minv = is_ascending ? 1 : PG_INT32_MIN;
 		default_maxv = is_ascending ? PG_INT32_MAX : -1;
 	}
-	else if (seq->seqtype == SEQTYPE_BIGINT)
+	else if (seq->seqtype == SEQTYPE_BIGINT || seq->seqtype == SEQTYPE_NUMBER)
 	{
 		default_minv = is_ascending ? 1 : PG_INT64_MIN;
 		default_maxv = is_ascending ? PG_INT64_MAX : -1;
