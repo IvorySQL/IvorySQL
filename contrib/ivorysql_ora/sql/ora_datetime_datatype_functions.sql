@@ -397,12 +397,14 @@ drop role dbtz_owner;
 set timezone = 'Asia/Hong_Kong';
 
 /*
- * time_zone is a GUC name alias of TimeZone, not a second parameter, so
- * SET, SHOW, RESET, current_setting('time_zone'), and set_config() share
- * that record with SESSIONTIMEZONE.  LOCAL and DEFAULT reset it to its
- * configured default.  DBTIMEZONE copies the current ivorysql.dbtimezone
- * value into the session time zone and does not change the database
- * setting.  The PostgreSQL spelling SET TIME ZONE stays accepted.
+ * In Oracle mode, time_zone is a GUC name alias of TimeZone (map_oracle_guc),
+ * not a second parameter, so SET, SHOW, RESET, current_setting('time_zone'),
+ * and set_config() share that record with SESSIONTIMEZONE.  The alias is
+ * not consulted in PostgreSQL mode or while reading startup configuration.
+ * LOCAL and DEFAULT reset it to its configured default.  DBTIMEZONE copies
+ * the current ivorysql.dbtimezone value into the session time zone and does
+ * not change the database setting.  The PostgreSQL spelling SET TIME ZONE
+ * stays accepted.
  */
 reset timezone;
 select sessiontimezone() as server_default \gset
@@ -463,6 +465,21 @@ select case
 	when sessiontimezone() = 'Europe/Paris'
 	 and current_setting('time_zone') = sessiontimezone()
 	then 'yes' else 'no' end as set_config_matches from dual;
+
+/*
+ * PostgreSQL compatibility mode does not recognize time_zone.  SET, SHOW,
+ * RESET, current_setting(), and set_config() fail as unrecognized.
+ */
+SET ivorysql.compatible_mode = pg;
+SET time_zone = 'UTC';
+SHOW time_zone;
+RESET time_zone;
+SELECT current_setting('time_zone');
+SELECT set_config('time_zone', 'UTC', false);
+RESET ivorysql.compatible_mode;
+select case
+	when sessiontimezone() = current_setting('time_zone')
+	then 'yes' else 'no' end as oracle_alias_again from dual;
 
 /* time_zone remains an identifier, not a reserved word */
 create table ora_tz_ident(time_zone varchar2(10));

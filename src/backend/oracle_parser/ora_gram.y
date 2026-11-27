@@ -24402,8 +24402,10 @@ static void determineLanguage(List *options)
  * ora_time_zone_value_is_reset
  *		True when a generic SET value is Oracle's LOCAL.
  *
- *		The name time_zone is an alias of TimeZone (map_old_guc_names), so
- *		SET, SHOW, and RESET need no rename.  SET TIME ZONE zone_value
+ *		In an Oracle session, time_zone is an alias of TimeZone
+ *		(map_oracle_guc, consulted by find_option).  SET, SHOW, and RESET
+ *		need no rename.  The alias is not applied in PostgreSQL mode.
+ *		SET TIME ZONE zone_value
  *		compiles LOCAL and DEFAULT to VAR_SET_DEFAULT.  generic_set has
  *		already turned LOCAL into an A_Const, so recognize it here and take
  *		that same reset path.  A quoted 'local' is indistinguishable from
