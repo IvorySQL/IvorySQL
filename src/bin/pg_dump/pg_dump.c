@@ -20179,25 +20179,30 @@ collectSequences(Archive *fout)
 	 *
 	 * Since version 18, we can gather the sequence data in this query with
 	 * pg_get_sequence_data(), but we only do so for non-schema-only dumps.
+	 *
+	 * Use the internal type name because Oracle mode can schema-qualify
+	 * the display name returned by format_type().
 	 */
 	if (fout->remoteVersion < 100000)
 		return;
 	else if (fout->remoteVersion < 180000 ||
 			 (!fout->dopt->dumpData && !fout->dopt->sequence_data))
-		query = "SELECT seqrelid, format_type(seqtypid, NULL), "
+		query = "SELECT seqrelid, t.typname, "
 			"seqstart, seqincrement, "
 			"seqmax, seqmin, "
 			"seqcache, seqcycle, "
 			"NULL, 'f' "
 			"FROM pg_catalog.pg_sequence "
+			"JOIN pg_catalog.pg_type t ON t.oid = seqtypid "
 			"ORDER BY seqrelid";
 	else
-		query = "SELECT seqrelid, format_type(seqtypid, NULL), "
+		query = "SELECT seqrelid, t.typname, "
 			"seqstart, seqincrement, "
 			"seqmax, seqmin, "
 			"seqcache, seqcycle, "
 			"last_value, is_called "
-			"FROM pg_catalog.pg_sequence, "
+			"FROM pg_catalog.pg_sequence "
+			"JOIN pg_catalog.pg_type t ON t.oid = seqtypid, "
 			"pg_get_sequence_data(seqrelid) "
 			"ORDER BY seqrelid;";
 
