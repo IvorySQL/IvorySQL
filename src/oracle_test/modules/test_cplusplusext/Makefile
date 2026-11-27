@@ -14,6 +14,8 @@ REGRESS = test_cplusplusext
 # Use C++ compiler for linking because this module includes C++ files
 override COMPILER = $(CXX) $(CXXFLAGS)
 
+ORA_REGRESS = $(REGRESS)
+
 ifdef USE_PGXS
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)

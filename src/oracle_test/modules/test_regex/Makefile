@@ -12,6 +12,8 @@ DATA = test_regex--1.0.sql
 
 REGRESS = test_regex test_regex_utf8
 
+ORA_REGRESS = $(REGRESS)
+
 ifdef USE_PGXS
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
