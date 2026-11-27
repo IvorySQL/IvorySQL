@@ -39,22 +39,22 @@ SELECT count(*) FROM binary_floattmp WHERE a <> -179.0;
 (1 row)
 
 SELECT a, a <-> '-179.0' FROM binary_floattmp ORDER BY a <-> '-179.0' LIMIT 3;
-     a      | ?column?  
-------------+-----------
- -179       | 0
- -189.02386 | 10.023865
- -158.17741 | 20.822586
+        a         |    ?column?     
+------------------+-----------------
+ -1.79E+002       | 0
+ -1.89023865E+002 | 1.00238647E+001
+ -1.58177414E+002 | 2.08225861E+001
 (3 rows)
 
 CREATE INDEX binary_floatidx ON binary_floattmp USING gist ( a );
 SET enable_seqscan=off;
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM binary_floattmp WHERE a <  -179.0::binary_float;
-                          QUERY PLAN                          
---------------------------------------------------------------
+                             QUERY PLAN                             
+--------------------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on binary_floattmp
-         Filter: ((a)::binary_double < '-179'::binary_double)
+         Filter: ((a)::binary_double < '-1.79E+002'::binary_double)
          ->  Bitmap Index Scan on binary_floatidx
 (4 rows)
 
@@ -66,11 +66,11 @@ SELECT count(*) FROM binary_floattmp WHERE a <  -179.0::binary_float;
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM binary_floattmp WHERE a <= -179.0::binary_float;
-                          QUERY PLAN                           
----------------------------------------------------------------
+                             QUERY PLAN                              
+---------------------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on binary_floattmp
-         Filter: ((a)::binary_double <= '-179'::binary_double)
+         Filter: ((a)::binary_double <= '-1.79E+002'::binary_double)
          ->  Bitmap Index Scan on binary_floatidx
 (4 rows)
 
@@ -82,11 +82,11 @@ SELECT count(*) FROM binary_floattmp WHERE a <= -179.0::binary_float;
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM binary_floattmp WHERE a  = -179.0::binary_float;
-                          QUERY PLAN                          
---------------------------------------------------------------
+                             QUERY PLAN                             
+--------------------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on binary_floattmp
-         Filter: ((a)::binary_double = '-179'::binary_double)
+         Filter: ((a)::binary_double = '-1.79E+002'::binary_double)
          ->  Bitmap Index Scan on binary_floatidx
 (4 rows)
 
@@ -98,11 +98,11 @@ SELECT count(*) FROM binary_floattmp WHERE a  = -179.0::binary_float;
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM binary_floattmp WHERE a >= -179.0::binary_float;
-                          QUERY PLAN                           
----------------------------------------------------------------
+                             QUERY PLAN                              
+---------------------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on binary_floattmp
-         Filter: ((a)::binary_double >= '-179'::binary_double)
+         Filter: ((a)::binary_double >= '-1.79E+002'::binary_double)
          ->  Bitmap Index Scan on binary_floatidx
 (4 rows)
 
@@ -114,11 +114,11 @@ SELECT count(*) FROM binary_floattmp WHERE a >= -179.0::binary_float;
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM binary_floattmp WHERE a >  -179.0::binary_float;
-                          QUERY PLAN                          
---------------------------------------------------------------
+                             QUERY PLAN                             
+--------------------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on binary_floattmp
-         Filter: ((a)::binary_double > '-179'::binary_double)
+         Filter: ((a)::binary_double > '-1.79E+002'::binary_double)
          ->  Bitmap Index Scan on binary_floatidx
 (4 rows)
 
@@ -130,11 +130,11 @@ SELECT count(*) FROM binary_floattmp WHERE a >  -179.0::binary_float;
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM binary_floattmp WHERE a <> -179.0::binary_float;
-                          QUERY PLAN                           
----------------------------------------------------------------
+                             QUERY PLAN                              
+---------------------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on binary_floattmp
-         Filter: ((a)::binary_double <> '-179'::binary_double)
+         Filter: ((a)::binary_double <> '-1.79E+002'::binary_double)
          ->  Bitmap Index Scan on binary_floatidx
 (4 rows)
 
@@ -150,14 +150,14 @@ SELECT a, a <-> '-179.0' FROM binary_floattmp ORDER BY a <-> '-179.0' LIMIT 3;
 ----------------------------------------------------------------
  Limit
    ->  Index Only Scan using binary_floatidx on binary_floattmp
-         Order By: (a <-> '-179'::binary_float)
+         Order By: (a <-> '-1.79E+002'::binary_float)
 (3 rows)
 
 SELECT a, a <-> '-179.0' FROM binary_floattmp ORDER BY a <-> '-179.0' LIMIT 3;
-     a      | ?column?  
-------------+-----------
- -179       | 0
- -189.02386 | 10.023865
- -158.17741 | 20.822586
+        a         |    ?column?     
+------------------+-----------------
+ -1.79E+002       | 0
+ -1.89023865E+002 | 1.00238647E+001
+ -1.58177414E+002 | 2.08225861E+001
 (3 rows)
 

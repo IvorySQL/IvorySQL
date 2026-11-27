@@ -1032,7 +1032,7 @@ select c1, rank(c1, c2) within group (order by c1, c2) from ft1 group by c1, c2 
 -- User defined function for user defined aggregate, VARIADIC
 create function least_accum(anyelement, variadic anyarray)
 returns anyelement language sql as
-  'select least($1, min($2[i])) from generate_subscripts($2,1) g(i)';
+  'select min(v) from unnest(array_prepend($1, $2)) as elems(v)';
 create aggregate least_agg(variadic items anyarray) (
   stype = anyelement, sfunc = least_accum
 );

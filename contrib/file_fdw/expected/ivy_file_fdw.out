@@ -210,26 +210,26 @@ CREATE FOREIGN TABLE tbl () SERVER file_server OPTIONS (force_null '*'); -- ERRO
 ERROR:  invalid option "force_null"
 -- basic query tests
 SELECT * FROM agg_text WHERE b > 10.0 ORDER BY a;
-  a  |   b    
------+--------
- 42  | 324.78
- 100 | 99.097
+  a  |        b        
+-----+-----------------
+ 42  | 3.24779999E+002
+ 100 | 9.90970001E+001
 (2 rows)
 
 SELECT * FROM agg_csv ORDER BY a;
-  a  |    b    
------+---------
- 0   | 0.09561
- 42  | 324.78
- 100 | 99.097
+  a  |        b        
+-----+-----------------
+ 0   | 9.56100002E-002
+ 42  | 3.24779999E+002
+ 100 | 9.90970001E+001
 (3 rows)
 
 SELECT * FROM agg_csv c JOIN agg_text t ON (t.a = c.a) ORDER BY c.a;
-  a  |    b    |  a  |    b    
------+---------+-----+---------
- 0   | 0.09561 | 0   | 0.09561
- 42  | 324.78  | 42  | 324.78
- 100 | 99.097  | 100 | 99.097
+  a  |        b        |  a  |        b        
+-----+-----------------+-----+-----------------
+ 0   | 9.56100002E-002 | 0   | 9.56100002E-002
+ 42  | 3.24779999E+002 | 42  | 3.24779999E+002
+ 100 | 9.90970001E+001 | 100 | 9.90970001E+001
 (3 rows)
 
 -- error context report tests
@@ -266,25 +266,25 @@ SELECT explain_filter('EXPLAIN (VERBOSE, COSTS FALSE) SELECT * FROM agg_csv');
 \t off
 PREPARE st(int) AS SELECT * FROM agg_csv WHERE a = $1;
 EXECUTE st(100);
-  a  |   b    
------+--------
- 100 | 99.097
+  a  |        b        
+-----+-----------------
+ 100 | 9.90970001E+001
 (1 row)
 
 EXECUTE st(100);
-  a  |   b    
------+--------
- 100 | 99.097
+  a  |        b        
+-----+-----------------
+ 100 | 9.90970001E+001
 (1 row)
 
 DEALLOCATE st;
 -- tableoid
 SELECT tableoid::regclass, b FROM agg_csv;
- tableoid |    b    
-----------+---------
- agg_csv  | 99.097
- agg_csv  | 0.09561
- agg_csv  | 324.78
+ tableoid |        b        
+----------+-----------------
+ agg_csv  | 9.90970001E+001
+ agg_csv  | 9.56100002E-002
+ agg_csv  | 3.24779999E+002
 (3 rows)
 
 -- updates aren't supported
@@ -298,11 +298,11 @@ TRUNCATE agg_csv;
 ERROR:  cannot truncate foreign table "agg_csv"
 -- but this should be allowed
 SELECT * FROM agg_csv FOR UPDATE;
-  a  |    b    
------+---------
- 100 | 99.097
- 0   | 0.09561
- 42  | 324.78
+  a  |        b        
+-----+-----------------
+ 100 | 9.90970001E+001
+ 0   | 9.56100002E-002
+ 42  | 3.24779999E+002
 (3 rows)
 
 -- copy from isn't supported either
@@ -341,19 +341,19 @@ RESET constraint_exclusion;
 CREATE TABLE agg (a number(38,0), b binary_float);
 ALTER FOREIGN TABLE agg_csv INHERIT agg;
 SELECT tableoid::regclass, * FROM agg;
- tableoid |  a  |    b    
-----------+-----+---------
- agg_csv  | 100 | 99.097
- agg_csv  | 0   | 0.09561
- agg_csv  | 42  | 324.78
+ tableoid |  a  |        b        
+----------+-----+-----------------
+ agg_csv  | 100 | 9.90970001E+001
+ agg_csv  | 0   | 9.56100002E-002
+ agg_csv  | 42  | 3.24779999E+002
 (3 rows)
 
 SELECT tableoid::regclass, * FROM agg_csv;
- tableoid |  a  |    b    
-----------+-----+---------
- agg_csv  | 100 | 99.097
- agg_csv  | 0   | 0.09561
- agg_csv  | 42  | 324.78
+ tableoid |  a  |        b        
+----------+-----+-----------------
+ agg_csv  | 100 | 9.90970001E+001
+ agg_csv  | 0   | 9.56100002E-002
+ agg_csv  | 42  | 3.24779999E+002
 (3 rows)
 
 SELECT tableoid::regclass, * FROM ONLY agg;
@@ -368,11 +368,11 @@ DELETE FROM agg WHERE a = 100;
 ERROR:  cannot delete from foreign table "agg_csv"
 -- but this should be allowed
 SELECT tableoid::regclass, * FROM agg FOR UPDATE;
- tableoid |  a  |    b    
-----------+-----+---------
- agg_csv  | 100 | 99.097
- agg_csv  | 0   | 0.09561
- agg_csv  | 42  | 324.78
+ tableoid |  a  |        b        
+----------+-----+-----------------
+ agg_csv  | 100 | 9.90970001E+001
+ agg_csv  | 0   | 9.56100002E-002
+ agg_csv  | 42  | 3.24779999E+002
 (3 rows)
 
 ALTER FOREIGN TABLE agg_csv NO INHERIT agg;
@@ -495,22 +495,22 @@ DROP FOREIGN TABLE copy_default;
 -- privilege tests
 SET ROLE regress_file_fdw_superuser;
 SELECT * FROM agg_text ORDER BY a;
-  a  |    b    
------+---------
- 0   | 0.09561
- 42  | 324.78
- 56  | 7.8
- 100 | 99.097
+  a  |        b        
+-----+-----------------
+ 0   | 9.56100002E-002
+ 42  | 3.24779999E+002
+ 56  | 7.80000019E+000
+ 100 | 9.90970001E+001
 (4 rows)
 
 SET ROLE regress_file_fdw_user;
 SELECT * FROM agg_text ORDER BY a;
-  a  |    b    
------+---------
- 0   | 0.09561
- 42  | 324.78
- 56  | 7.8
- 100 | 99.097
+  a  |        b        
+-----+-----------------
+ 0   | 9.56100002E-002
+ 42  | 3.24779999E+002
+ 56  | 7.80000019E+000
+ 100 | 9.90970001E+001
 (4 rows)
 
 SET ROLE regress_no_priv_user;
@@ -528,12 +528,12 @@ SELECT explain_filter('EXPLAIN (VERBOSE, COSTS FALSE) SELECT * FROM agg_text WHE
 -- file FDW allows foreign tables to be accessed without user mapping
 DROP USER MAPPING FOR regress_file_fdw_user SERVER file_server;
 SELECT * FROM agg_text ORDER BY a;
-  a  |    b    
------+---------
- 0   | 0.09561
- 42  | 324.78
- 56  | 7.8
- 100 | 99.097
+  a  |        b        
+-----+-----------------
+ 0   | 9.56100002E-002
+ 42  | 3.24779999E+002
+ 56  | 7.80000019E+000
+ 100 | 9.90970001E+001
 (4 rows)
 
 -- privilege tests for object
