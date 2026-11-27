@@ -854,6 +854,22 @@ PrintNotifications(void)
 
 
 /*
+ * Use the server-reported parser mode so SET and SET LOCAL affect display
+ * immediately. Older servers have only psql's cached compatibility mode.
+ */
+static void
+PrintQueryWithDisplayOptions(const PGresult *result, const printQueryOpt *opt,
+							 FILE *fout, bool is_pager)
+{
+	const char *mode = PQparameterStatus(pset.db, "ivorysql.compatible_mode");
+	bool		oracle_number_display =
+		mode ? strcmp(mode, "oracle") == 0 : db_mode == DB_ORACLE;
+
+	printQueryWithNumberDisplay(result, opt, fout, is_pager, pset.logfile,
+								oracle_number_display);
+}
+
+/*
  * PrintQueryTuples: assuming query result is OK, print its tuples
  *
  * We use the options given by opt unless that's NULL, in which case
@@ -871,7 +887,7 @@ PrintQueryTuples(const PGresult *result, const printQueryOpt *opt,
 	bool		ok = true;
 	FILE	   *fout = printQueryFout ? printQueryFout : pset.queryFout;
 
-	printQuery(result, opt ? opt : &pset.popt, fout, false, pset.logfile);
+	PrintQueryWithDisplayOptions(result, opt ? opt : &pset.popt, fout, false);
 	fflush(fout);
 	if (ferror(fout))
 	{
@@ -2090,7 +2106,7 @@ ExecQueryAndProcessResults(const char *query,
 				 */
 				if (success && !flush_error && !cancel_pressed)
 				{
-					printQuery(result, &my_popt, tuples_fout, is_pager, pset.logfile);
+					PrintQueryWithDisplayOptions(result, &my_popt, tuples_fout, is_pager);
 					flush_error = fflush(tuples_fout);
 				}
 
@@ -2118,7 +2134,7 @@ ExecQueryAndProcessResults(const char *query,
 				if (success && !flush_error && !cancel_pressed)
 				{
 					my_popt.topt.stop_table = true;
-					printQuery(result, &my_popt, tuples_fout, is_pager, pset.logfile);
+					PrintQueryWithDisplayOptions(result, &my_popt, tuples_fout, is_pager);
 					fflush(tuples_fout);
 				}
 
@@ -3076,7 +3092,7 @@ ExecQueryUsingCursor(const char *query, double *elapsed_msec)
 			is_pager = true;
 		}
 
-		printQuery(results, &my_popt, fout, is_pager, pset.logfile);
+		PrintQueryWithDisplayOptions(results, &my_popt, fout, is_pager);
 
 		ClearOrSaveResult(results);
 
@@ -3223,7 +3239,7 @@ IvyPrintQueryTuples(const PGresult *results)
 		if (is_pipe)
 			disable_sigpipe_trap();
 
-		printQuery(results, &pset.popt, fout, false, pset.logfile);
+		PrintQueryWithDisplayOptions(results, &pset.popt, fout, false);
 		if (ferror(fout))
 		{
 			pg_log_error("could not print result table: %m");
@@ -3240,7 +3256,7 @@ IvyPrintQueryTuples(const PGresult *results)
 	}
 	else
 	{
-		printQuery(results, &pset.popt, pset.queryFout, false, pset.logfile);
+		PrintQueryWithDisplayOptions(results, &pset.popt, pset.queryFout, false);
 		if (ferror(pset.queryFout))
 		{
 			pg_log_error("could not print result table: %m");

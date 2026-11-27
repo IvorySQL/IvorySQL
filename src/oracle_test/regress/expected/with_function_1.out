@@ -25,9 +25,9 @@ WITH
   BEGIN RETURN amt * 0.1; END;
   orders AS (SELECT 100 AS amount FROM dual)
 SELECT amount, tax(amount) FROM orders;
- amount | tax  
---------+------
-    100 | 10.0
+ amount | tax 
+--------+-----
+    100 | 10
 (1 row)
 
 -- T04: Multiple WITH FUNCTION definitions composed
@@ -146,9 +146,9 @@ EXCEPTION
   WHEN OTHERS THEN RETURN NULL;
 END;
 SELECT safe_div(10, 2), safe_div(10, 0) FROM dual;
-      safe_div      | safe_div 
---------------------+----------
- 5.0000000000000000 | 
+ safe_div | safe_div 
+----------+----------
+ 5        | 
 (1 row)
 
 -- T12: Runtime error propagation (unhandled exception reaches caller)
@@ -182,11 +182,11 @@ WITH FUNCTION halve(n NUMBER) RETURN NUMBER IS
 BEGIN RETURN n / 2; END;
 UPDATE wf_upd_test SET val = halve(val);
 SELECT id, val FROM wf_upd_test ORDER BY id;
- id |         val         
-----+---------------------
-  1 | 5.0000000000000000
-  2 | 10.0000000000000000
-  3 | 15.0000000000000000
+ id | val 
+----+-----
+  1 | 5
+  2 | 10
+  3 | 15
 (3 rows)
 
 DROP TABLE wf_upd_test;

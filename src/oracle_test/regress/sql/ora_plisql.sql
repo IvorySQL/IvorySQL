@@ -1495,4 +1495,76 @@ END;
 
 -- Cleanup (may fail if function wasn't created)
 DROP FUNCTION IF EXISTS test_rownum_param;
+-- Preserve comments between IS or AS and the first token in the routine body.
+\pset format unaligned
+CREATE PROCEDURE proc_leading_comment(result OUT NUMBER)
+IS
+  /* before the first declaration */
+  value_to_return NUMBER := 11;
+BEGIN
+  result := value_to_return;
+END;
+/
+CALL proc_leading_comment(NULL);
+SELECT strpos(prosrc, '/* before the first declaration */') = 1 AS keeps_comment,
+       strpos(pg_get_functiondef(oid), '/* before the first declaration */') > 0 AS shows_comment
+FROM pg_proc WHERE oid = 'proc_leading_comment'::regproc;
 
+CREATE OR REPLACE PROCEDURE proc_leading_comment(result OUT NUMBER)
+AS /* before BEGIN */
+-- another leading comment
+BEGIN
+  result := 12;
+END;
+/
+CALL proc_leading_comment(NULL);
+SELECT strpos(prosrc, '/* before BEGIN */') = 1 AS keeps_block_comment,
+       strpos(prosrc, '-- another leading comment') > 0 AS keeps_line_comment
+FROM pg_proc WHERE oid = 'proc_leading_comment'::regproc;
+DROP PROCEDURE proc_leading_comment;
+\pset format aligned
+
+-- Replace an Oracle procedure with its first OUT parameter.
+\pset format unaligned
+CREATE ROLE regress_proc_out_exec;
+CREATE PROCEDURE p_nout(arg1 number) IS
+BEGIN
+  NULL;
+END;
+/
+REVOKE EXECUTE ON PROCEDURE p_nout(number) FROM PUBLIC;
+GRANT EXECUTE ON PROCEDURE p_nout(number) TO regress_proc_out_exec;
+SELECT 'p_nout'::regproc::oid AS p_nout_oid \gset
+
+CREATE PROCEDURE p_nout_caller(arg1 number) IS
+BEGIN
+  CALL p_nout(arg1);
+END;
+/
+CALL p_nout_caller(1);
+
+CREATE OR REPLACE PROCEDURE p_nout(arg1 number, arg2 OUT number) IS
+BEGIN
+  arg2 := arg1 + 10;
+END;
+/
+SELECT 'p_nout'::regproc::oid = :'p_nout_oid'::oid AS same_oid,
+       has_function_privilege('regress_proc_out_exec', :'p_nout_oid'::oid, 'EXECUTE') AS keeps_grant;
+SET ROLE regress_proc_out_exec;
+CALL p_nout(1, NULL);
+RESET ROLE;
+
+CALL p_nout_caller(1); -- error, the call is missing the new OUT argument
+CREATE OR REPLACE PROCEDURE p_nout_caller(arg1 number) IS
+  result number;
+BEGIN
+  CALL p_nout(arg1, result);
+  RAISE NOTICE 'result=%', result;
+END;
+/
+CALL p_nout_caller(1);
+
+DROP PROCEDURE p_nout_caller(number);
+DROP PROCEDURE p_nout(number, number);
+DROP ROLE regress_proc_out_exec;
+\pset format aligned

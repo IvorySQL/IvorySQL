@@ -53,6 +53,8 @@ static print_list *merge_print_list(print_list *list1, print_list *list2);
 }
 
 %type <psqlplus_cmd> variable_stmt variable_spec print_stmt exec_stmt
+%type <psqlplus_cmd> colinvisible_stmt colinvisible_prefix
+%type <ival> colinvisible_value
 %type <bindvartype> bind_vartype
 %type <print_item_list> print_items_list print_items
 %type <keyword> unreserved_keyword
@@ -62,6 +64,7 @@ static print_list *merge_print_list(print_list *list1, print_list *list2);
 
 %token <keyword>	K_VAR K_VARIABLE K_CHAR K_BYTE K_NCHAR K_VARCHAR2 K_NVARCHAR2
 	K_NUMBER K_BINARY_FLOAT K_BINARY_DOUBLE K_PRINT K_EXECUTE K_EXEC
+	K_SET K_COLINVISIBLE K_ON K_OFF
 %token <str>	IDENT FCONST LITERAL DQCONST SQCONST
 %token <ival>	ICONST
 %token <str>	SINGLE_QUOTE_NO_END DOUBLE_QUOTE_NO_END
@@ -83,6 +86,44 @@ psqlplus_toplevel_stmt:
 			{
 				psql_yyget_extra(yyscanner)->psqlpluscmd = $1;
 			}
+		| colinvisible_stmt opt_semi
+			{
+				psql_yyget_extra(yyscanner)->psqlpluscmd = $1;
+			}
+	;
+
+colinvisible_stmt:
+	colinvisible_prefix opt_colinvisible_equals colinvisible_value
+		{
+			psqlplus_cmd_colinvisible *cmd = (psqlplus_cmd_colinvisible *) $1;
+
+			cmd->enabled = $3;
+			$$ = $1;
+		}
+	;
+
+colinvisible_prefix:
+	K_SET K_COLINVISIBLE
+		{
+			PsqlScanState state = psql_yyget_extra(yyscanner);
+			psqlplus_cmd_colinvisible *cmd = pg_malloc0(sizeof(*cmd));
+
+			cmd->cmd_type = PSQLPLUS_CMD_COLINVISIBLE;
+			$$ = (psqlplus_cmd *) cmd;
+			/* Recognize this prefix without intercepting other SQL SET commands. */
+			state->psqlpluscmd = $$;
+			state->is_sqlplus_cmd = true;
+		}
+	;
+
+opt_colinvisible_equals:
+		'='
+		| /* empty */
+	;
+
+colinvisible_value:
+		K_ON	{ $$ = true; }
+		| K_OFF	{ $$ = false; }
 	;
 
 /*
@@ -449,12 +490,16 @@ unreserved_keyword:
 		| K_BINARY_FLOAT
 		| K_BYTE
 		| K_CHAR
+		| K_COLINVISIBLE
 		| K_EXEC
 		| K_EXECUTE
 		| K_NCHAR
 		| K_NUMBER
 		| K_NVARCHAR2
+		| K_OFF
+		| K_ON
 		| K_PRINT
+		| K_SET
 		| K_VAR
 		| K_VARCHAR2
 		| K_VARIABLE

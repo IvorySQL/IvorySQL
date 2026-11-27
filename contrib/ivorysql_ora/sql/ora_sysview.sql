@@ -5,6 +5,57 @@ SHOW IVORYSQL.COMPATIBLE_MODE;
 SET IVORYSQL.IDENTIFIER_CASE_SWITCH = INTERCHANGE;
 SHOW IVORYSQL.IDENTIFIER_CASE_SWITCH;
 
+-- Protect SYS.DUAL from writes by both superusers and ordinary users.
+\pset format unaligned
+INSERT INTO dual VALUES ('a');
+UPDATE sys.dual SET dummy = 'a';
+DELETE FROM sys.dual;
+TRUNCATE TABLE sys.dual;
+SET session_replication_role = replica;
+INSERT INTO sys.dual VALUES ('a');
+RESET session_replication_role;
+
+CREATE USER regress_ora_dual;
+SET SESSION AUTHORIZATION regress_ora_dual;
+SELECT dummy FROM dual;
+INSERT INTO dual VALUES ('a');
+RESET SESSION AUTHORIZATION;
+DROP USER regress_ora_dual;
+
+CREATE TEMP TABLE dual (dummy char(1));
+INSERT INTO pg_temp.dual VALUES ('a');
+SELECT dummy FROM pg_temp.dual;
+DROP TABLE pg_temp.dual;
+SELECT dummy FROM sys.dual;
+SELECT 1 AS one FROM dual;
+\pset format aligned
+
+-- Source views display stored ROWTYPE signatures, even outside the table's search path.
+BEGIN;
+SET LOCAL search_path TO public, sys, pg_catalog;
+CREATE TABLE rowtype_source_table(id int, name varchar(20));
+CREATE FUNCTION rowtype_source_fun(col rowtype_source_table%ROWTYPE)
+  RETURN rowtype_source_table%ROWTYPE IS
+BEGIN
+  RETURN col;
+END;
+/
+CREATE FUNCTION rowtype_source_qualified(col public.rowtype_source_table%ROWTYPE)
+  RETURN public.rowtype_source_table%ROWTYPE IS
+BEGIN
+  RETURN col;
+END;
+/
+SET LOCAL search_path TO sys, pg_catalog;
+\pset format unaligned
+SELECT rtrim(text) FROM all_source WHERE name = 'ROWTYPE_SOURCE_FUN';
+SELECT line, rtrim(text) FROM dba_source WHERE name = 'ROWTYPE_SOURCE_FUN' ORDER BY line;
+SELECT rtrim(text) FROM user_source WHERE name = 'ROWTYPE_SOURCE_FUN';
+SELECT line, rtrim(text) FROM dba_source WHERE name = 'ROWTYPE_SOURCE_QUALIFIED'
+  AND line IN (1, 2) ORDER BY line;
+\pset format aligned
+ROLLBACK;
+
 -- create a procedure
 CREATE TABLE TB_TODEL(ID INT);
 CREATE OR REPLACE PROCEDURE PROC_DEL_TB(I INT) IS
@@ -270,3 +321,112 @@ SELECT COLLATION_NAME FROM SYS.ALL_TAB_COLUMNS WHERE TABLE_NAME = 'TEST_ALL_TAB_
 \set ON_ERROR_STOP on
 
 DROP TABLE IF EXISTS TEST_ALL_TAB_COLUMNS;
+-- ALL_SEQUENCES must follow the current user's schema and sequence privileges.
+\pset format unaligned
+CREATE USER regress_ora_seq_1;
+CREATE USER regress_ora_seq_2;
+CREATE SCHEMA regress_ora_seq_1 AUTHORIZATION regress_ora_seq_1;
+CREATE SCHEMA regress_ora_seq_2 AUTHORIZATION regress_ora_seq_2;
+
+SET SESSION AUTHORIZATION regress_ora_seq_1;
+CREATE SEQUENCE regress_ora_seq_1.visible_seq_1 START WITH 101 NOCACHE;
+SELECT nextval('regress_ora_seq_1.visible_seq_1');
+RESET SESSION AUTHORIZATION;
+
+SET SESSION AUTHORIZATION regress_ora_seq_2;
+CREATE SEQUENCE regress_ora_seq_2.visible_seq_2 START WITH 201 NOCACHE;
+SELECT nextval('regress_ora_seq_2.visible_seq_2');
+SELECT sequence_owner, sequence_name, last_number FROM all_sequences
+WHERE sequence_name IN ('visible_seq_1', 'visible_seq_2') ORDER BY sequence_name;
+RESET SESSION AUTHORIZATION;
+
+SET SESSION AUTHORIZATION regress_ora_seq_1;
+SELECT sequence_owner, sequence_name, last_number FROM all_sequences
+WHERE sequence_name IN ('visible_seq_1', 'visible_seq_2') ORDER BY sequence_name;
+GRANT SELECT ON SEQUENCE regress_ora_seq_1.visible_seq_1 TO regress_ora_seq_2;
+RESET SESSION AUTHORIZATION;
+
+SET SESSION AUTHORIZATION regress_ora_seq_2;
+SELECT sequence_name FROM all_sequences
+WHERE sequence_name = 'visible_seq_1';
+RESET SESSION AUTHORIZATION;
+
+GRANT USAGE ON SCHEMA regress_ora_seq_1 TO regress_ora_seq_2;
+SET SESSION AUTHORIZATION regress_ora_seq_2;
+SELECT sequence_owner, sequence_name, last_number FROM all_sequences
+WHERE sequence_name IN ('visible_seq_1', 'visible_seq_2') ORDER BY sequence_name;
+RESET SESSION AUTHORIZATION;
+
+REVOKE SELECT ON SEQUENCE regress_ora_seq_1.visible_seq_1 FROM regress_ora_seq_2;
+SET SESSION AUTHORIZATION regress_ora_seq_2;
+SELECT sequence_name FROM all_sequences
+WHERE sequence_name IN ('visible_seq_1', 'visible_seq_2') ORDER BY sequence_name;
+RESET SESSION AUTHORIZATION;
+
+DROP SEQUENCE regress_ora_seq_1.visible_seq_1;
+DROP SEQUENCE regress_ora_seq_2.visible_seq_2;
+DROP SCHEMA regress_ora_seq_1;
+DROP SCHEMA regress_ora_seq_2;
+DROP USER regress_ora_seq_1;
+DROP USER regress_ora_seq_2;
+
+-- Package source is available line by line, subject to schema and package access.
+CREATE USER regress_ora_source_owner;
+CREATE USER regress_ora_source_reader;
+CREATE SCHEMA regress_ora_source AUTHORIZATION regress_ora_source_owner;
+SET SESSION AUTHORIZATION regress_ora_source_owner;
+CREATE TABLE regress_ora_source.source_row(id int, label varchar(10));
+CREATE PACKAGE regress_ora_source.source_pkg IS
+  item regress_ora_source.source_row%ROWTYPE;
+  FUNCTION get_row(item regress_ora_source.source_row%ROWTYPE)
+    RETURN regress_ora_source.source_row%ROWTYPE;
+  PROCEDURE add_row(item regress_ora_source.source_row%ROWTYPE);
+END;
+/
+CREATE PACKAGE BODY regress_ora_source.source_pkg IS
+  FUNCTION get_row(item regress_ora_source.source_row%ROWTYPE)
+    RETURN regress_ora_source.source_row%ROWTYPE IS
+  BEGIN
+    RETURN item;
+  END;
+  PROCEDURE add_row(item regress_ora_source.source_row%ROWTYPE) IS
+  BEGIN
+    INSERT INTO regress_ora_source.source_row VALUES item;
+  END;
+END;
+/
+SELECT line, text FROM all_source WHERE name = 'source_pkg' AND type = 'package' ORDER BY line;
+SELECT line, text FROM all_source WHERE name = 'source_pkg' AND type = 'package body' ORDER BY line;
+SELECT 'ALL_SOURCE' AS source_view, count(*) AS lines FROM all_source WHERE name = 'SOURCE_PKG'
+UNION ALL
+SELECT 'DBA_SOURCE', count(*) FROM dba_source WHERE name = 'SOURCE_PKG'
+UNION ALL
+SELECT 'USER_SOURCE', count(*) FROM user_source WHERE 'SOURCE_PKG' = name
+ORDER BY source_view;
+SELECT type, line, text FROM user_source WHERE name = 'SOURCE_PKG' AND line = 1 ORDER BY type;
+GRANT EXECUTE ON PACKAGE regress_ora_source.source_pkg TO regress_ora_source_reader;
+RESET SESSION AUTHORIZATION;
+SELECT type, line, text FROM dba_source WHERE name = 'SOURCE_PKG' AND line = 1 ORDER BY type;
+
+SET SESSION AUTHORIZATION regress_ora_source_reader;
+SELECT DISTINCT type FROM all_source WHERE name = 'SOURCE_PKG' ORDER BY type;
+SELECT DISTINCT type FROM dba_source WHERE name = 'SOURCE_PKG' ORDER BY type;
+SELECT DISTINCT type FROM user_source WHERE name = 'SOURCE_PKG' ORDER BY type;
+RESET SESSION AUTHORIZATION;
+
+GRANT USAGE ON SCHEMA regress_ora_source TO regress_ora_source_reader;
+SET SESSION AUTHORIZATION regress_ora_source_reader;
+SELECT DISTINCT type FROM all_source WHERE name = 'source_pkg' ORDER BY type;
+RESET SESSION AUTHORIZATION;
+
+REVOKE EXECUTE ON PACKAGE regress_ora_source.source_pkg FROM regress_ora_source_reader;
+SET SESSION AUTHORIZATION regress_ora_source_reader;
+SELECT DISTINCT type FROM all_source WHERE name = 'source_pkg' ORDER BY type;
+RESET SESSION AUTHORIZATION;
+
+DROP PACKAGE regress_ora_source.source_pkg;
+DROP TABLE regress_ora_source.source_row;
+DROP SCHEMA regress_ora_source;
+DROP USER regress_ora_source_reader;
+DROP USER regress_ora_source_owner;
+\pset format aligned

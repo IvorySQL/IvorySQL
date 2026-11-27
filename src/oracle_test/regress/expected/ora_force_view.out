@@ -321,3 +321,43 @@ select * from vtest193;
 
 drop view vtest193;
 drop table test193;
+-- NOFORCE has the same semantics as NO FORCE and remains unreserved.
+\pset format unaligned
+CREATE TABLE noforce (noforce int);
+INSERT INTO noforce VALUES (1), (2);
+CREATE NOFORCE VIEW noforce_plain AS SELECT noforce noforce FROM noforce;
+SELECT * FROM noforce_plain ORDER BY noforce;
+noforce
+1
+2
+(2 rows)
+CREATE OR REPLACE NOFORCE VIEW noforce_view AS SELECT * FROM noforce;
+CREATE ROLE regress_noforce_reader;
+GRANT SELECT ON noforce_view TO regress_noforce_reader;
+SELECT 'noforce_view'::regclass::oid AS noforce_view_oid \gset
+CREATE OR REPLACE NOFORCE VIEW noforce_view AS SELECT * FROM noforce WHERE noforce = 2;
+SELECT * FROM noforce_view;
+noforce
+2
+(1 row)
+SELECT 'noforce_view'::regclass::oid = :'noforce_view_oid'::oid AS same_oid,
+       has_table_privilege('regress_noforce_reader', 'noforce_view', 'SELECT') AS keeps_grant;
+same_oid|keeps_grant
+t|t
+(1 row)
+CREATE NOFORCE VIEW noforce_missing AS SELECT * FROM noforce_absent;
+ERROR:  relation "noforce_absent" does not exist
+LINE 1: ...ATE NOFORCE VIEW noforce_missing AS SELECT * FROM noforce_ab...
+                                                             ^
+CREATE OR REPLACE NOFORCE VIEW noforce_view AS SELECT * FROM noforce_absent;
+ERROR:  relation "noforce_absent" does not exist
+LINE 1: ...EPLACE NOFORCE VIEW noforce_view AS SELECT * FROM noforce_ab...
+                                                             ^
+SELECT * FROM noforce_view;
+noforce
+2
+(1 row)
+DROP VIEW noforce_plain, noforce_view;
+DROP TABLE noforce;
+DROP ROLE regress_noforce_reader;
+\pset format aligned

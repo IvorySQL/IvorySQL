@@ -2288,6 +2288,9 @@ ExecInitExprRec(Expr *node, ExprState *state,
 				FmgrInfo   *finfo;
 				FunctionCallInfo fcinfo;
 				ListCell   *lc;
+				List	   *null_jumps = NIL;
+				bool		is_oracle = minmaxexpr->op == IS_ORACLE_GREATEST ||
+					minmaxexpr->op == IS_ORACLE_LEAST;
 				int			off;
 
 				/* Look up the btree comparison function for the datatype */
@@ -2333,11 +2336,39 @@ ExecInitExprRec(Expr *node, ExprState *state,
 					ExecInitExprRec(e, state,
 									&scratch.d.minmax.values[off],
 									&scratch.d.minmax.nulls[off]);
+					if (is_oracle)
+					{
+						ExprEvalStep nullcheck = scratch;
+
+						/* Oracle stops evaluating arguments at the first NULL. */
+						nullcheck.opcode = EEOP_JUMP_IF_NULL;
+						nullcheck.resnull = &scratch.d.minmax.nulls[off];
+						nullcheck.d.jump.jumpdone = -1;
+						null_jumps = lappend_int(null_jumps, state->steps_len);
+						ExprEvalPushStep(state, &nullcheck);
+					}
 					off++;
 				}
 
 				/* and push the final comparison */
 				ExprEvalPushStep(state, &scratch);
+				if (is_oracle)
+				{
+					int			endjump;
+
+					/* The normal result skips the NULL-result step. */
+					scratch.opcode = EEOP_JUMP;
+					scratch.d.jump.jumpdone = -1;
+					endjump = state->steps_len;
+					ExprEvalPushStep(state, &scratch);
+					foreach(lc, null_jumps)
+						state->steps[lfirst_int(lc)].d.jump.jumpdone = state->steps_len;
+					scratch.opcode = EEOP_CONST;
+					scratch.d.constval.value = (Datum) 0;
+					scratch.d.constval.isnull = true;
+					ExprEvalPushStep(state, &scratch);
+					state->steps[endjump].d.jump.jumpdone = state->steps_len;
+				}
 				break;
 			}
 

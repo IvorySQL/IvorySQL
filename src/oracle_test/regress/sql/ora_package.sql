@@ -769,6 +769,69 @@ end;
 
 drop package pkg;
 
+-- A package body without an edition clause uses the specification's property.
+CREATE NONEDITIONABLE PACKAGE regress_pkg_body_edition IS
+  FUNCTION f RETURN integer;
+END;
+/
+CREATE PACKAGE BODY regress_pkg_body_edition IS
+  FUNCTION f RETURN integer IS BEGIN RETURN 1; END;
+END;
+/
+CREATE OR REPLACE PACKAGE BODY regress_pkg_body_edition IS
+  FUNCTION f RETURN integer IS BEGIN RETURN 2; END;
+END;
+/
+CREATE OR REPLACE EDITIONABLE PACKAGE BODY regress_pkg_body_edition IS
+  FUNCTION f RETURN integer IS BEGIN RETURN 3; END;
+END;
+/
+BEGIN
+  RAISE NOTICE 'package function = %', regress_pkg_body_edition.f();
+END;
+/
+DROP PACKAGE regress_pkg_body_edition;
+
+-- Oracle-style explicit cursor definitions in package specifications and bodies.
+CREATE PACKAGE regress_cursor_prefix IS
+  CURSOR c IS SELECT 18 AS n FROM dual;
+  CURSOR c_arg(p_n integer) IS SELECT p_n AS n FROM dual;
+  FUNCTION fetch_private RETURN integer;
+END;
+/
+CREATE PACKAGE BODY regress_cursor_prefix IS
+  CURSOR c_private(p_n integer) IS SELECT p_n + 1 AS n FROM dual;
+  FUNCTION fetch_private RETURN integer IS
+    cursor varchar(20) := 'unchanged';
+    n integer;
+  BEGIN
+    OPEN c_private(length(cursor));
+    FETCH c_private INTO n;
+    CLOSE c_private;
+    RETURN n;
+  END;
+END;
+/
+DECLARE
+  n integer;
+BEGIN
+  OPEN regress_cursor_prefix.c;
+  FETCH regress_cursor_prefix.c INTO n;
+  CLOSE regress_cursor_prefix.c;
+  RAISE NOTICE 'public cursor = %', n;
+  OPEN regress_cursor_prefix.c_arg(25);
+  FETCH regress_cursor_prefix.c_arg INTO n;
+  CLOSE regress_cursor_prefix.c_arg;
+  RAISE NOTICE 'public cursor with argument = %', n;
+  OPEN regress_cursor_prefix.c_arg(26);
+  FETCH regress_cursor_prefix.c_arg INTO n;
+  CLOSE regress_cursor_prefix.c_arg;
+  RAISE NOTICE 'public cursor reopened = %', n;
+  RAISE NOTICE 'private cursor = %', regress_cursor_prefix.fetch_private();
+END;
+/
+DROP PACKAGE regress_cursor_prefix;
+
 --test pg cursor
 insert into mds values(1,'xiexie');
 insert into mds values(2,'welcome to be');

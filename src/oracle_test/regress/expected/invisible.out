@@ -10,7 +10,7 @@ INSERT INTO htest0 (a, b) VALUES (1, 'htest0 one');
 INSERT INTO htest0 (a, b) VALUES (2, 'htest0 two');
 -- we allow that all columns of a relation be invisible
 ALTER TABLE htest0 MODIFY a INVISIBLE;
-ERROR:  relation "htest0" can not have all columns invisible
+ERROR:  table must have at least one column that is not invisible
 SELECT * FROM htest0;
  a 
 ---
@@ -131,15 +131,32 @@ SELECT * FROM htest1_1;
 ---
 (0 rows)
 
+\pset format unaligned
 \d htest1_1
-                               Table "public.htest1_1"
- Column |      Type       | Collation | Nullable |              Default              
---------+-----------------+-----------+----------+-----------------------------------
- a      | pg_catalog.int8 |           | not null | nextval('htest1_a_seq'::regclass)
- b      | text            |           |          | 
+Table "public.htest1_1"
+Column|Type|Collation|Nullable|Default
+b|text|||
 Inherits:
     htest1
-
+SET COLINVISIBLE ON
+\d htest1_1
+Table "public.htest1_1"
+Column|Type|Collation|Nullable|Default|Invisible
+a|pg_catalog.int8||not null|nextval('htest1_a_seq'::regclass)|invisible
+b|text||||
+Inherits:
+    htest1
+SELECT * FROM htest1_1;
+b
+(0 rows)
+SET colinvisible = off;
+\d htest1_1
+Table "public.htest1_1"
+Column|Type|Collation|Nullable|Default
+b|text|||
+Inherits:
+    htest1
+\pset format aligned
 INSERT INTO htest1_1 VALUES ('htest1 three');
 SELECT * FROM htest1_1;
       b       
@@ -266,8 +283,30 @@ CREATE TABLE htest3 (a serial, b int);
 ALTER TABLE htest3
     ALTER COLUMN a SET INVISIBLE,
     MODIFY b INVISIBLE; -- error
-ERROR:  relation "htest3" can not have all columns invisible
+ERROR:  table must have at least one column that is not invisible
 DROP TABLE htest3;
+-- Parenthesized visibility changes are applied as one ALTER TABLE statement.
+\pset format unaligned
+CREATE TABLE htest3_modify (id int, name varchar2(30), age int);
+INSERT INTO htest3_modify VALUES (1, 'Alice', 30);
+ALTER TABLE htest3_modify MODIFY (id INVISIBLE, name INVISIBLE, age INVISIBLE); -- error
+ERROR:  table must have at least one column that is not invisible
+SELECT * FROM htest3_modify;
+id|name|age
+1|Alice|30
+(1 row)
+ALTER TABLE htest3_modify MODIFY (name INVISIBLE, age INVISIBLE);
+SELECT * FROM htest3_modify;
+id
+1
+(1 row)
+ALTER TABLE htest3_modify MODIFY (name VISIBLE, age VISIBLE);
+SELECT * FROM htest3_modify;
+id|name|age
+1|Alice|30
+(1 row)
+DROP TABLE htest3_modify;
+\pset format aligned
 -- inheritance with an additional single invisible column is possible
 CREATE TABLE htest3 (a serial INVISIBLE, b int);
 SELECT * FROM htest3;

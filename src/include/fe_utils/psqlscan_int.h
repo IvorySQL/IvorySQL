@@ -83,9 +83,10 @@ typedef enum PLSQL_endSymbolState
  */
 typedef enum psqlplus_cmd_type
 {
-    PSQLPLUS_CMD_VARIABLE, /* VARIABLE command */
-    PSQLPLUS_CMD_EXECUTE,  /* EXECUTE command */
-    PSQLPLUS_CMD_PRINT     /* PRINT command */
+	PSQLPLUS_CMD_VARIABLE,		/* VARIABLE command */
+	PSQLPLUS_CMD_EXECUTE,		/* EXECUTE command */
+	PSQLPLUS_CMD_PRINT,			/* PRINT command */
+	PSQLPLUS_CMD_COLINVISIBLE
 } psqlplus_cmd_type;
 
 /*
@@ -173,6 +174,12 @@ typedef struct psqlplus_cmd_execute
 	psqlplus_cmd_type	cmd_type;
 	char				*plisqlstmts;	/* plisql statements text */
 } psqlplus_cmd_execute;
+
+typedef struct psqlplus_cmd_colinvisible
+{
+	psqlplus_cmd_type	cmd_type;
+	bool				enabled;
+} psqlplus_cmd_colinvisible;
 
 /*
  * All working state of the lexer must be stored in PsqlScanStateData

@@ -17,6 +17,7 @@
 #include "postgres.h"
 
 #include "access/htup_details.h"
+#include "catalog/namespace.h"
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_type.h"
@@ -56,6 +57,7 @@ bool		Transform_null_equals = false;
 static Node *transformExprRecurse(ParseState *pstate, Node *expr);
 static Node *transformParamRef(ParseState *pstate, ParamRef *pref);
 static Node *transformOraParamRef(ParseState *pstate, OraParamRef *pref);
+static Node *relabelOracleLikeChar(Node *arg);
 static Node *transformAExprOp(ParseState *pstate, A_Expr *a);
 static Node *transformAExprOpAny(ParseState *pstate, A_Expr *a);
 static Node *transformAExprOpAll(ParseState *pstate, A_Expr *a);
@@ -75,6 +77,11 @@ static Node *transformArrayExpr(ParseState *pstate, A_ArrayExpr *a,
 static Node *transformRowExpr(ParseState *pstate, RowExpr *r, bool allowDefault);
 static Node *transformCoalesceExpr(ParseState *pstate, CoalesceExpr *c);
 static Node *transformMinMaxExpr(ParseState *pstate, MinMaxExpr *m);
+static Oid oracleMinMaxNumericType(Oid type);
+static Oid selectOracleMinMaxType(ParseState *pstate, List *args,
+								 const char *funcname);
+static Node *coerceOracleMinMaxArg(ParseState *pstate, Node *arg,
+								  Oid target, const char *funcname);
 static Node *transformSQLValueFunction(ParseState *pstate,
 									   SQLValueFunction *svf);
 static Node *transformXmlExpr(ParseState *pstate, XmlExpr *x);
@@ -1206,6 +1213,111 @@ exprIsNullConstant(Node *arg)
 	return false;
 }
 
+/*
+ * Oracle LIKE treats CHAR padding as part of the value and pattern.  The
+ * normal CHAR-to-text cast trims it, so use the binary cast to PG bpchar.
+ * That cast also survives deparsing, unlike a direct relabel to text.
+ * An explicit text cast already present in arg keeps its normal semantics.
+ */
+static Node *
+relabelOracleLikeChar(Node *arg)
+{
+	Oid			typeid = getBaseType(exprType(arg));
+
+	if (typeid == ORACHARBYTEOID || typeid == ORACHARCHAROID)
+		return (Node *) makeRelabelType((Expr *) arg, BPCHAROID, -1,
+									   exprCollation(arg), COERCE_IMPLICIT_CAST);
+
+	return arg;
+}
+
+/*
+ * Oracle source views accept either spelling of a package name, while keeping
+ * the catalog spelling in NAME. Apply this matching only to a direct NAME
+ * equality against a literal or parameter. Other identifiers, comparisons,
+ * and data types retain their normal semantics.
+ */
+static Node *
+transformOracleSourceNameMatch(ParseState *pstate, OpExpr *exact,
+							   Node *left, Node *right)
+{
+	bool		nameOnLeft = IsA(left, Var);
+	Node	   *name = nameOnLeft ? left : right;
+	Node	   *requested = nameOnLeft ? right : left;
+	Var		   *nameVar;
+	RangeTblEntry *rte;
+	const char *viewName;
+	AttrNumber	typeAttno;
+	Oid			typeOid;
+	int32		typeTypmod;
+	Oid			typeCollation;
+	Var		   *typeVar;
+	Oid			funcid;
+	Oid			argTypes[] = {TEXTOID, TEXTOID, TEXTOID};
+	Oid			leftType;
+	Oid			rightType;
+	List	   *args;
+
+	if (!IsA(name, Var) || !(IsA(requested, Const) || IsA(requested, Param)))
+		return (Node *) exact;
+
+	nameVar = castNode(Var, name);
+	if (nameVar->vartype != ORAVARCHARBYTEOID && nameVar->vartype != ORAVARCHARCHAROID)
+		return (Node *) exact;
+
+	rte = GetRTEByRangeTablePosn(pstate, nameVar->varno, nameVar->varlevelsup);
+	if (rte->rtekind != RTE_RELATION || rte->relkind != RELKIND_VIEW)
+		return (Node *) exact;
+
+	viewName = get_rel_name(rte->relid);
+	if (viewName == NULL ||
+		(strcmp(viewName, "all_source") != 0 &&
+		 strcmp(viewName, "dba_source") != 0 &&
+		 strcmp(viewName, "user_source") != 0))
+		return (Node *) exact;
+	if (get_rel_namespace(rte->relid) != get_namespace_oid("sys", true) ||
+		nameVar->varattno != get_attnum(rte->relid, "name"))
+		return (Node *) exact;
+
+	requested = nameOnLeft ? lsecond(exact->args) : linitial(exact->args);
+	if (!IsBinaryCoercible(exprType(requested), TEXTOID))
+		return (Node *) exact;
+
+	leftType = exprType(linitial(exact->args));
+	rightType = exprType(lsecond(exact->args));
+	/* An explicitly selected or user-defined equality keeps its own semantics. */
+	if (exact->opno != OpernameGetOprid(list_make2(makeString("sys"), makeString("=")),
+									   leftType, rightType) &&
+		exact->opno != OpernameGetOprid(list_make2(makeString("pg_catalog"), makeString("=")),
+									   TEXTOID, TEXTOID))
+		return (Node *) exact;
+
+	funcid = LookupFuncName(list_make2(makeString("sys"),
+									  makeString("_ora_source_package_name_matches")),
+							lengthof(argTypes), argTypes, true);
+	if (!OidIsValid(funcid))
+		return (Node *) exact;
+
+	typeAttno = get_attnum(rte->relid, "type");
+	if (typeAttno == InvalidAttrNumber)
+		return (Node *) exact;
+	get_atttypetypmodcoll(rte->relid, typeAttno, &typeOid, &typeTypmod, &typeCollation);
+	if (!IsBinaryCoercible(typeOid, TEXTOID))
+		return (Node *) exact;
+
+	typeVar = makeVar(nameVar->varno, typeAttno, typeOid, typeTypmod,
+					  typeCollation, nameVar->varlevelsup);
+	typeVar->varnullingrels = bms_copy(nameVar->varnullingrels);
+	args = list_make3(makeRelabelType((Expr *) copyObject(nameVar),
+									TEXTOID, -1, nameVar->varcollid, COERCE_IMPLICIT_CAST),
+					  makeRelabelType((Expr *) copyObject(requested),
+									TEXTOID, -1, exprCollation(requested), COERCE_IMPLICIT_CAST),
+					  makeRelabelType((Expr *) typeVar,
+									TEXTOID, -1, typeCollation, COERCE_IMPLICIT_CAST));
+	return (Node *) makeFuncExpr(funcid, BOOLOID, args, InvalidOid, InvalidOid,
+								 COERCE_EXPLICIT_CALL);
+}
+
 static Node *
 transformAExprOp(ParseState *pstate, A_Expr *a)
 {
@@ -1289,12 +1401,22 @@ transformAExprOp(ParseState *pstate, A_Expr *a)
 		else
 			rexpr = transformExprRecurse(pstate, rexpr);
 
+		if (compatible_db == ORA_PARSER && a->kind == AEXPR_LIKE)
+		{
+			lexpr = relabelOracleLikeChar(lexpr);
+			rexpr = relabelOracleLikeChar(rexpr);
+		}
+
 		result = (Node *) make_op(pstate,
 								  a->name,
 								  lexpr,
 								  rexpr,
 								  last_srf,
 								  a->location);
+		if (compatible_db == ORA_PARSER && a->kind == AEXPR_OP &&
+			list_length(a->name) == 1 && strcmp(strVal(linitial(a->name)), "=") == 0)
+			result = transformOracleSourceNameMatch(pstate, castNode(OpExpr, result),
+												  lexpr, rexpr);
 	}
 
 	return result;
@@ -1752,6 +1874,13 @@ transformFuncCall(ParseState *pstate, FuncCall *fn)
 	Node	   *last_srf = pstate->p_last_srf;
 	List	   *targs;
 	ListCell   *args;
+	bool		oracle_like_escape;
+
+	/* Preserve padding before LIKE's pattern/escape conversion, too. */
+	oracle_like_escape = compatible_db == ORA_PARSER &&
+		list_length(fn->funcname) == 2 &&
+		strcmp(strVal(linitial(fn->funcname)), "sys") == 0 &&
+		strcmp(strVal(lsecond(fn->funcname)), "like_escape") == 0;
 
 	if (compatible_db == ORA_PARSER &&
 		list_length(fn->funcname) == 1 &&
@@ -1830,8 +1959,11 @@ transformFuncCall(ParseState *pstate, FuncCall *fn)
 	targs = NIL;
 	foreach(args, fn->args)
 	{
-		targs = lappend(targs, transformExprRecurse(pstate,
-													(Node *) lfirst(args)));
+		Node	   *arg = transformExprRecurse(pstate, (Node *) lfirst(args));
+
+		if (oracle_like_escape)
+			arg = relabelOracleLikeChar(arg);
+		targs = lappend(targs, arg);
 	}
 
 	if (compatible_db == ORA_PARSER &&
@@ -3092,16 +3224,124 @@ transformCoalesceExpr(ParseState *pstate, CoalesceExpr *c)
 	return (Node *) newc;
 }
 
+/* Normalize the native numeric types accepted by the Oracle parser. */
+static Oid
+oracleMinMaxNumericType(Oid type)
+{
+	switch (getBaseType(type))
+	{
+		case INT2OID:
+		case INT4OID:
+		case INT8OID:
+		case NUMERICOID:
+		case NUMBEROID:
+			return NUMBEROID;
+		case FLOAT4OID:
+		case BINARY_FLOATOID:
+			return BINARY_FLOATOID;
+		case FLOAT8OID:
+		case BINARY_DOUBLEOID:
+			return BINARY_DOUBLEOID;
+		default:
+			return InvalidOid;
+	}
+}
+
+static Oid
+selectOracleMinMaxType(ParseState *pstate, List *args, const char *funcname)
+{
+	Oid			first = getBaseType(exprType(linitial(args)));
+	Oid			result = oracleMinMaxNumericType(first);
+	ListCell   *lc;
+
+	if (OidIsValid(result))
+	{
+		/* Only numeric arguments affect NUMBER < BINARY_FLOAT < BINARY_DOUBLE. */
+		foreach(lc, args)
+		{
+			Oid type = oracleMinMaxNumericType(exprType(lfirst(lc)));
+
+			if (type == BINARY_DOUBLEOID ||
+				(type == BINARY_FLOATOID && result == NUMBEROID))
+				result = type;
+		}
+		return result;
+	}
+
+	/* Character comparisons are nonpadded and return VARCHAR2. */
+	switch (first)
+	{
+		case ORACHARBYTEOID:
+		case ORAVARCHARBYTEOID:
+			return ORAVARCHARBYTEOID;
+		case ORACHARCHAROID:
+		case ORAVARCHARCHAROID:
+			return ORAVARCHARCHAROID;
+		case UNKNOWNOID:
+		case TEXTOID:
+		case VARCHAROID:
+		case BPCHAROID:
+			return nls_length_semantics == NLS_LENGTH_CHAR ?
+				ORAVARCHARCHAROID : ORAVARCHARBYTEOID;
+		case ORADATEOID:
+		case ORATIMESTAMPOID:
+		case ORATIMESTAMPTZOID:
+		case ORATIMESTAMPLTZOID:
+		case YMINTERVALOID:
+		case DSINTERVALOID:
+			return first;
+		default:
+			/* Retain support for PostgreSQL-only types in Oracle sessions. */
+			return select_common_type(pstate, args, funcname, NULL);
+	}
+}
+
+static Node *
+coerceOracleMinMaxArg(ParseState *pstate, Node *arg,
+					 Oid target, const char *funcname)
+{
+	Oid			source = getBaseType(exprType(arg));
+
+	if ((target == ORAVARCHARBYTEOID || target == ORAVARCHARCHAROID) &&
+		(source == ORACHARBYTEOID || source == ORACHARCHAROID ||
+		 source == BPCHAROID))
+	{
+		/* A normal CHAR-to-VARCHAR2 cast would discard significant padding. */
+		return (Node *) makeRelabelType((Expr *) arg, target, -1,
+									   exprCollation(arg), COERCE_IMPLICIT_CAST);
+	}
+
+	if (OidIsValid(oracleMinMaxNumericType(target)) &&
+		(source == UNKNOWNOID || TypeCategory(source) == TYPCATEGORY_STRING))
+	{
+		/*
+		 * Resolve strings as VARCHAR2 before using its numeric I/O cast.  Do
+		 * not parse an unknown numeric string eagerly: an earlier NULL may
+		 * make that conversion unreachable.
+		 */
+		Oid varchar_type = nls_length_semantics == NLS_LENGTH_CHAR ?
+			ORAVARCHARCHAROID : ORAVARCHARBYTEOID;
+
+		arg = coerce_to_common_type(pstate, arg, varchar_type, funcname);
+	}
+
+	return coerce_to_common_type(pstate, arg, target, funcname);
+}
+
 static Node *
 transformMinMaxExpr(ParseState *pstate, MinMaxExpr *m)
 {
 	MinMaxExpr *newm = makeNode(MinMaxExpr);
 	List	   *newargs = NIL;
 	List	   *newcoercedargs = NIL;
-	const char *funcname = (m->op == IS_GREATEST) ? "GREATEST" : "LEAST";
+	bool		is_greatest = m->op == IS_GREATEST ||
+		m->op == IS_ORACLE_GREATEST;
+	bool		is_oracle = compatible_db == ORA_PARSER;
+	const char *funcname = is_greatest ? "GREATEST" : "LEAST";
 	ListCell   *args;
 
-	newm->op = m->op;
+	newm->op = is_oracle ?
+		(is_greatest ? IS_ORACLE_GREATEST : IS_ORACLE_LEAST) : m->op;
 	foreach(args, m->args)
 	{
 		Node	   *e = (Node *) lfirst(args);
@@ -3111,7 +3351,9 @@ transformMinMaxExpr(ParseState *pstate, MinMaxExpr *m)
 		newargs = lappend(newargs, newe);
 	}
 
-	newm->minmaxtype = select_common_type(pstate, newargs, funcname, NULL);
+	newm->minmaxtype = is_oracle ?
+		selectOracleMinMaxType(pstate, newargs, funcname) :
+		select_common_type(pstate, newargs, funcname, NULL);
 	/* minmaxcollid and inputcollid will be set by parse_collate.c */
 
 	/* Convert arguments if necessary */
@@ -3120,9 +3362,10 @@ transformMinMaxExpr(ParseState *pstate, MinMaxExpr *m)
 		Node	   *e = (Node *) lfirst(args);
 		Node	   *newe;
 
-		newe = coerce_to_common_type(pstate, e,
-									 newm->minmaxtype,
-									 funcname);
+		if (is_oracle)
+			newe = coerceOracleMinMaxArg(pstate, e, newm->minmaxtype, funcname);
+		else
+			newe = coerce_to_common_type(pstate, e, newm->minmaxtype, funcname);
 		newcoercedargs = lappend(newcoercedargs, newe);
 	}
 

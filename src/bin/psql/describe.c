@@ -1655,6 +1655,8 @@ describeOneTableDetails(const char *schemaname,
 		char	   *relam;
 	}			tableinfo;
 	bool		show_column_details = false;
+	bool		has_column_visibility;
+	bool		show_invisible_columns;
 
 	myopt.default_footer = false;
 	/* This output looks confusing in expanded mode. */
@@ -2057,6 +2059,12 @@ describeOneTableDetails(const char *schemaname,
 		tableinfo.relkind == RELKIND_PARTITIONED_TABLE)
 		show_column_details = true;
 
+	has_column_visibility = db_mode == DB_ORACLE &&
+		(tableinfo.relkind == RELKIND_RELATION ||
+		 tableinfo.relkind == RELKIND_PARTITIONED_TABLE);
+	show_invisible_columns = has_column_visibility &&
+		(verbose || pset.show_invisible_columns);
+
 	/*
 	 * Get per-column info
 	 *
@@ -2161,19 +2169,17 @@ describeOneTableDetails(const char *schemaname,
 			appendPQExpBufferStr(&buf, ",\n  pg_catalog.col_description(a.attrelid, a.attnum)");
 			attdescr_col = cols++;
 		}
-
-		/* column visibility in a SELECT *, if relevant to relkind */
-		if ((db_mode == DB_ORACLE) &&
-			(tableinfo.relkind == RELKIND_RELATION ||
-			tableinfo.relkind == RELKIND_PARTITIONED_TABLE))
-		{
-			appendPQExpBufferStr(&buf, ",\n  a.attisinvisible AS attisinvisible");
-			attisinvisible_col = cols++;
-		}
+	}
+	if (show_invisible_columns)
+	{
+		appendPQExpBufferStr(&buf, ",\n  a.attisinvisible AS attisinvisible");
+		attisinvisible_col = cols++;
 	}
 
 	appendPQExpBufferStr(&buf, "\nFROM pg_catalog.pg_attribute a");
 	appendPQExpBuffer(&buf, "\nWHERE a.attrelid = '%s' AND a.attnum > 0 AND NOT a.attisdropped", oid);
+	if (has_column_visibility && !show_invisible_columns)
+		appendPQExpBufferStr(&buf, "\n  AND NOT a.attisinvisible");
 	appendPQExpBufferStr(&buf, "\nORDER BY a.attnum;");
 
 	res = PSQLexec(buf.data);
@@ -2253,7 +2259,7 @@ describeOneTableDetails(const char *schemaname,
 		headers[cols++] = gettext_noop("Nullable");
 		headers[cols++] = gettext_noop("Default");
 	}
-	if ((attisinvisible_col >= 0) && (db_mode == DB_ORACLE) )
+	if (attisinvisible_col >= 0)
 		headers[cols++] = gettext_noop("Invisible");
 	if (isindexkey_col >= 0)
 		headers[cols++] = gettext_noop("Key?");
@@ -2338,7 +2344,7 @@ describeOneTableDetails(const char *schemaname,
 			printTableAddCell(&cont, PQgetvalue(res, i, fdwopts_col), false, false);
 
 		/* Column invisible in SELECT *, if relevant */
-		if ((attisinvisible_col >= 0) && (db_mode == DB_ORACLE))
+		if (attisinvisible_col >= 0)
 			printTableAddCell(&cont,
 						  strcmp(PQgetvalue(res, i, attisinvisible_col), "t") == 0 ? "invisible" : "",
 						  false, false);
