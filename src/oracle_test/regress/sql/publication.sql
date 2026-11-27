@@ -253,6 +253,27 @@ RESET client_min_messages;
 SELECT pubname, puballtables, puballsequences FROM pg_publication WHERE pubname = 'regress_pub_for_allsequences_alltables';
 \dRp+ regress_pub_for_allsequences_alltables
 
+-- The tables and sequences of ivorysql_ora, which initdb installs, are not published
+SELECT count(*) FROM pg_publication_tables
+  WHERE pubname = 'regress_pub_for_allsequences_alltables' AND schemaname = 'sys';
+SELECT count(*) FROM pg_publication_sequences
+  WHERE pubname = 'regress_pub_for_allsequences_alltables' AND schemaname = 'sys';
+-- but a table and a sequence created in sys are
+CREATE TABLE sys.regress_pub_sys_tbl (a int);
+CREATE SEQUENCE sys.regress_pub_sys_seq;
+SELECT schemaname, tablename FROM pg_publication_tables
+  WHERE pubname = 'regress_pub_for_allsequences_alltables' AND schemaname = 'sys';
+SELECT schemaname, sequencename FROM pg_publication_sequences
+  WHERE pubname = 'regress_pub_for_allsequences_alltables' AND schemaname = 'sys';
+DROP TABLE sys.regress_pub_sys_tbl;
+DROP SEQUENCE sys.regress_pub_sys_seq;
+-- naming a table of ivorysql_ora in FOR TABLE is accepted, but it is not published
+SET client_min_messages = 'ERROR';
+CREATE PUBLICATION regress_pub_ora_tbl FOR TABLE sys.scheduler_jobs;
+RESET client_min_messages;
+SELECT count(*) FROM pg_publication_tables WHERE pubname = 'regress_pub_ora_tbl';
+DROP PUBLICATION regress_pub_ora_tbl;
+
 DROP SEQUENCE regress_pub_seq0, pub_test.regress_pub_seq1;
 DROP PUBLICATION regress_pub_forallsequences1;
 DROP PUBLICATION regress_pub_forallsequences2;
