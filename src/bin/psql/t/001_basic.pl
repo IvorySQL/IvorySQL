@@ -560,6 +560,16 @@ psql_fails_like(
 		'\\sf public.slash_semicolon_test ;',
 		qr/CREATE OR REPLACE FUNCTION public\.slash_semicolon_test\(\)/,
 		'Oracle \\sf strips a trailing semicolon');
+	psql_like(
+		$oracle_node,
+		"\\set myvar hello_oracle\n\\echo `echo :myvar`",
+		qr/^hello_oracle$/,
+		'Oracle slash backtick expands defined variable');
+	psql_like(
+		$oracle_node,
+		'\\echo `echo :unset_backtick_var`',
+		qr/^:unset_backtick_var$/,
+		'Oracle slash backtick preserves undefined variable');
 }
 
 done_testing();
