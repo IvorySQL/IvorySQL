@@ -609,6 +609,7 @@ int			nls_length_semantics = NLS_LENGTH_BYTE;
 char	   *nls_date_format = "YYYY-MM-DD";
 char	   *nls_timestamp_format = "YYYY-MM-DD HH24:MI:SS.FF6";
 char	   *nls_timestamp_tz_format = "YYYY-MM-DD HH24:MI:SS.FF6 TZH:TZM";
+char	   *nls_numeric_characters = ".,";
 int			datetime_ignore_nls_mask = 0;
 
 int			tcp_keepalives_idle;
