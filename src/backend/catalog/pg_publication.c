@@ -30,6 +30,7 @@
 #include "catalog/pg_publication_namespace.h"
 #include "catalog/pg_publication_rel.h"
 #include "catalog/pg_type.h"
+#include "commands/extension.h"
 #include "commands/publicationcmds.h"
 #include "funcapi.h"
 #include "utils/array.h"
@@ -130,6 +131,27 @@ check_publication_add_schema(Oid schemaid)
 }
 
 /*
+ * The tables and sequences of the ivorysql_ora extension, which initdb
+ * installs in Oracle mode, hold its own state, such as DBMS_SCHEDULER's jobs.
+ * Like the other objects initdb creates, they are not published, but their
+ * OIDs can exceed FirstNormalObjectId; see is_ora_builtin_expr_function().
+ * The extension keeps its relations in the sys schema, so look up extension
+ * membership only for those.
+ */
+static bool
+is_ora_extension_relation(Oid relid, Oid relnamespace)
+{
+	Oid			extoid;
+
+	if (relnamespace != PG_SYS_NAMESPACE)
+		return false;
+
+	extoid = getExtensionOfObject(RelationRelationId, relid);
+	return OidIsValid(extoid) &&
+		extoid == get_extension_oid("ivorysql_ora", true);
+}
+
+/*
  * Returns if relation represented by oid and Form_pg_class entry
  * is publishable.
  *
@@ -158,7 +180,8 @@ is_publishable_class(Oid relid, Form_pg_class reltuple)
 			reltuple->relkind == RELKIND_SEQUENCE) &&
 		!IsCatalogRelationOid(relid) &&
 		reltuple->relpersistence == RELPERSISTENCE_PERMANENT &&
-		relid >= FirstNormalObjectId;
+		relid >= FirstNormalObjectId &&
+		!is_ora_extension_relation(relid, reltuple->relnamespace);
 }
 
 /*
@@ -1490,6 +1513,16 @@ pg_get_publication_tables(FunctionCallInfo fcinfo, ArrayType *pubnames,
 															 pub_elem->pubviaroot ?
 															 PUBLICATION_PART_ROOT :
 															 PUBLICATION_PART_LEAF);
+
+					/*
+					 * A relation of ivorysql_ora named in FOR TABLE is not
+					 * published, so leave it out of the initial sync too.
+					 */
+					foreach_oid(relid, relids)
+					{
+						if (is_ora_extension_relation(relid, get_rel_namespace(relid)))
+							relids = foreach_delete_current(relids, relid);
+					}
 					schemarelids = GetAllSchemaPublicationRelations(pub_elem->oid,
 																	pub_elem->pubviaroot ?
 																	PUBLICATION_PART_ROOT :
