@@ -121,6 +121,8 @@ static char *ivy_escape_xml(const char *str);
 static xmltype *ivy_stringinfo_to_xmltype(StringInfo buf);
 static void cleanup_ws(xpath_ws *ws);
 static xmlXPathObjectPtr ivy_xml_xpath(xpath_ws *ws, text *xpath_expr_text, xmltype *data, char *namespace);
+static xmlXPathObjectPtr ivy_xml_child_xpath(xpath_ws *ws, text *xpath_expr_text, xmltype *data,
+					char *namespace, text *child_expr_text);
 static xmlXPathObjectPtr ivy_xml_xpath2(xpath_ws *ws, text *xpath_expr_text, xmlDocPtr doc, char *namespace);
 static void init_ws_doc(xpath_ws *ws, xmltype *data);
 static void register_ns_from_csting(xmlXPathContextPtr xpathCtx, char* nsList);
@@ -201,11 +203,87 @@ cleanup_ws(xpath_ws *ws)
 }
 
 /*
+ * Evaluate the child expression with each selected parent as its context
+ * node. Collect the union before inserting siblings, so an insertion cannot
+ * change a later positional match or visit a shared target twice.
+ */
+static void
+select_child_nodes(xpath_ws * ws, text *child_expr_text)
+{
+	xmlXPathObjectPtr parents = ws->xpathobj;
+	xmlXPathObjectPtr volatile matches = NULL;
+	char	   *expr = text_to_cstring(child_expr_text);
+	int			nparents = ivy_xpathobjnode_nr(parents);
+
+	if (parents->type != XPATH_NODESET)
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("parent XPath expression must return a node set")));
+
+	/* A leading slash used to form a descendant step with the path separator. */
+	if (expr[0] == '/')
+		expr = psprintf("./%s", expr);
+
+	xmlXPathFreeCompExpr(ws->xpathcomp);
+	ws->xpathcomp = xmlXPathCompile((const xmlChar *) expr);
+	if (ws->xpathcomp == NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("invalid XPath expression")));
+
+	/* The caller's error handler owns the result in ws from here on. */
+	ws->xpathobj = NULL;
+	PG_TRY();
+	{
+		ws->xpathobj = xmlXPathNewNodeSet(NULL);
+		if (ws->xpathobj == NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_OUT_OF_MEMORY),
+					 errmsg("could not allocate XPath node set")));
+
+		for (int i = 0; i < nparents; i++)
+		{
+			ws->xpathctx->node = parents->nodesetval->nodeTab[i];
+			matches = xmlXPathCompiledEval(ws->xpathcomp, ws->xpathctx);
+			if (matches == NULL || matches->type != XPATH_NODESET)
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("child XPath expression must return a node set")));
+
+			if (matches->nodesetval != NULL &&
+				xmlXPathNodeSetMerge(ws->xpathobj->nodesetval,
+									 matches->nodesetval) == NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_OUT_OF_MEMORY),
+						 errmsg("could not merge XPath node sets")));
+			xmlXPathFreeObject(matches);
+			matches = NULL;
+		}
+		xmlXPathNodeSetSort(ws->xpathobj->nodesetval);
+	}
+	PG_FINALLY();
+	{
+		ws->xpathctx->node = (xmlNodePtr) ws->doc;
+		if (matches)
+			xmlXPathFreeObject(matches);
+		xmlXPathFreeObject(parents);
+	}
+	PG_END_TRY();
+}
+
+/*
  * ivy_xml_xpath
  *	build the xpath and return the xpath object
  */
 static xmlXPathObjectPtr
 ivy_xml_xpath(xpath_ws *ws, text *xpath_expr_text, xmltype *data, char *namespace)
+{
+	return ivy_xml_child_xpath(ws, xpath_expr_text, data, namespace, NULL);
+}
+
+static xmlXPathObjectPtr
+ivy_xml_child_xpath(xpath_ws * ws, text *xpath_expr_text, xmltype *data,
+					char *namespace, text *child_expr_text)
 {
 	PgXmlErrorContext *xmlerrcxt;
 	char	   *datastr;
@@ -255,6 +333,9 @@ ivy_xml_xpath(xpath_ws *ws, text *xpath_expr_text, xmltype *data, char *namespac
 			if (ws->xpathobj == NULL)
 				ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 						errmsg("could not create XPath object")));
+
+			if (child_expr_text != NULL)
+				select_child_nodes(ws, child_expr_text);
 		}
 		else
 			ereport(ERROR,(errcode(ERRCODE_INVALID_XML_DOCUMENT),
@@ -1991,17 +2072,12 @@ ivy_insertchildxmlbefore(PG_FUNCTION_ARGS)
 	text	   *xpath_expr_text = NULL;
 	text	   *child_expr_text = NULL;
 	xmltype    *var = NULL;
-	char	   *c_expr = NULL;
-	char	   *xpath_expr = NULL;
 	xmltype    *ret = NULL;
-	text	   *full_path = NULL;
 	char	   *cnodestr = NULL;
 	int 		len;
 	xpath_ws	ws;
 	xmlChar	   *nodestring = NULL;
 	xmlXPathObjectPtr res;
-
-	StringInfoData result;
 
 	if (fcinfo->args[0].isnull)
 		PG_RETURN_NULL();
@@ -2011,16 +2087,10 @@ ivy_insertchildxmlbefore(PG_FUNCTION_ARGS)
 	if (fcinfo->args[1].isnull)
 		PG_RETURN_NULL();
 	else
-	{
 		xpath_expr_text = PG_GETARG_TEXT_PP(1);
-		xpath_expr = text_to_cstring(xpath_expr_text);
-	}
 
 	if (!fcinfo->args[2].isnull)
-	{
 		child_expr_text = PG_GETARG_TEXT_PP(2);
-		c_expr = text_to_cstring(child_expr_text);
-	}
 	else
 		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
 				 errmsg("The document being inserted does not conform to specified child name")));
@@ -2035,15 +2105,7 @@ ivy_insertchildxmlbefore(PG_FUNCTION_ARGS)
 	else
 		 PG_RETURN_XML_P(data);
 
-	initStringInfo(&result);
-	appendStringInfoString(&result, xpath_expr);
-	appendStringInfoString(&result, "/");
-	appendStringInfoString(&result, c_expr);
-
-	full_path = cstring_to_text(result.data);
-	pfree(result.data);
-
-	res = ivy_xml_xpath(&ws, full_path, data, NULL);
+	res = ivy_xml_child_xpath(&ws, xpath_expr_text, data, NULL, child_expr_text);
 	ivy_xml_addprevsiblingnode(res, nodestring);
 	ret = (xmltype *)ivy_xml_xmlnode2xmltype((xmlNodePtr)ws.doc);
 	ret = (xmltype *)rv_newline((text *)ret);
@@ -2067,17 +2129,12 @@ ivy_insertchildxmlbefore2(PG_FUNCTION_ARGS)
 	xmltype    *var = NULL;
 	text	   *ns = NULL;
 	xmltype    *ret = NULL;
-	char	   *c_expr = NULL;
-	char	   *xpath_expr = NULL;
 	char	   *cns = NULL;
-	text	   *full_path = NULL;
 	char	   *cnodestr = NULL;
 	int 		len;
 	xpath_ws	ws;
 	xmlChar	   *nodestring = NULL;
 	xmlXPathObjectPtr res;
-
-	StringInfoData result;
 
 	if (fcinfo->args[0].isnull)
 		PG_RETURN_NULL();
@@ -2087,16 +2144,10 @@ ivy_insertchildxmlbefore2(PG_FUNCTION_ARGS)
 	if (fcinfo->args[1].isnull)
 		PG_RETURN_NULL();
 	else
-	{
 		xpath_expr_text = PG_GETARG_TEXT_PP(1);
-		xpath_expr = text_to_cstring(xpath_expr_text);
-	}
 
 	if (!fcinfo->args[2].isnull)
-	{
 		child_expr_text = PG_GETARG_TEXT_PP(2);
-		c_expr = text_to_cstring(child_expr_text);
-	}
 	else
 		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
 				errmsg("The document being inserted does not conform to specified child name")));
@@ -2117,15 +2168,7 @@ ivy_insertchildxmlbefore2(PG_FUNCTION_ARGS)
 		cns = text_to_cstring(ns);
 	}
 
-	initStringInfo(&result);
-	appendStringInfoString(&result, xpath_expr);
-	appendStringInfoString(&result, "/");
-	appendStringInfoString(&result, c_expr);
-
-	full_path = cstring_to_text(result.data);
-	pfree(result.data);
-
-	res = ivy_xml_xpath(&ws, full_path, data, cns);
+	res = ivy_xml_child_xpath(&ws, xpath_expr_text, data, cns, child_expr_text);
 	ivy_xml_addprevsiblingnode(res, nodestring);
 	ret = (xmltype *)ivy_xml_xmlnode2xmltype((xmlNodePtr)ws.doc);
 	ret = (xmltype *)rv_newline((text *)ret);
@@ -2151,16 +2194,11 @@ ivy_insertchildxmlafter(PG_FUNCTION_ARGS)
 	text	   *child_expr_text = NULL;
 	xmltype    *var= NULL;
 	xmltype    *ret = NULL;
-	char	   *c_expr = NULL;
-	char	   *xpath_expr = NULL;
-	text	   *full_path = NULL;
 	char	   *cnodestr = NULL;
 	int 		len;
 	xpath_ws	ws;
 	xmlChar	   *nodestring = NULL;
 	xmlXPathObjectPtr res;
-
-	StringInfoData result;
 
 	if (fcinfo->args[0].isnull)
 		PG_RETURN_NULL();
@@ -2170,16 +2208,10 @@ ivy_insertchildxmlafter(PG_FUNCTION_ARGS)
 	if (fcinfo->args[1].isnull)
 		PG_RETURN_NULL();
 	else
-	{
 		xpath_expr_text = PG_GETARG_TEXT_PP(1);
-		xpath_expr = text_to_cstring(xpath_expr_text);
-	}
 
 	if (!fcinfo->args[2].isnull)
-	{
 		child_expr_text = PG_GETARG_TEXT_PP(2);
-		c_expr = text_to_cstring(child_expr_text);
-	}
 	else
 		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
 				 errmsg("The document being inserted does not conform to specified child name")));
@@ -2194,15 +2226,7 @@ ivy_insertchildxmlafter(PG_FUNCTION_ARGS)
 	else
 		PG_RETURN_XML_P(data);
 
-	initStringInfo(&result);
-	appendStringInfoString(&result, xpath_expr);
-	appendStringInfoString(&result, "/");
-	appendStringInfoString(&result, c_expr);
-
-	full_path = cstring_to_text(result.data);
-	pfree(result.data);
-
-	res = ivy_xml_xpath(&ws, full_path, data, NULL);
+	res = ivy_xml_child_xpath(&ws, xpath_expr_text, data, NULL, child_expr_text);
 	ivy_xml_addnextsiblingnode(res, nodestring);
 	ret = (xmltype *)ivy_xml_xmlnode2xmltype((xmlNodePtr)ws.doc);
 	ret = (xmltype *)rv_newline((text *)ret);
@@ -2226,17 +2250,12 @@ ivy_insertchildxmlafter2(PG_FUNCTION_ARGS)
 	xmltype    *var = NULL;
 	text	   *ns = NULL;
 	xmltype    *ret = NULL;
-	char	   *c_expr = NULL;
-	char	   *xpath_expr = NULL;
 	char	   *cns = NULL;
-	text	   *full_path = NULL;
 	char	   *cnodestr = NULL;
 	int 		len;
 	xpath_ws	ws;
 	xmlChar	   *nodestring = NULL;
 	xmlXPathObjectPtr res;
-
-	StringInfoData result;
 
 	if (fcinfo->args[0].isnull)
 		PG_RETURN_NULL();
@@ -2246,16 +2265,10 @@ ivy_insertchildxmlafter2(PG_FUNCTION_ARGS)
 	if (fcinfo->args[1].isnull)
 		PG_RETURN_NULL();
 	else
-	{
 		xpath_expr_text = PG_GETARG_TEXT_PP(1);
-		xpath_expr = text_to_cstring(xpath_expr_text);
-	}
 
 	if (!fcinfo->args[2].isnull)
-	{
 		child_expr_text = PG_GETARG_TEXT_PP(2);
-		c_expr = text_to_cstring(child_expr_text);
-	}
 	else
 		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
 				errmsg("The document being inserted does not conform to specified child name")));
@@ -2276,15 +2289,7 @@ ivy_insertchildxmlafter2(PG_FUNCTION_ARGS)
 		cns = text_to_cstring(ns);
 	}
 
-	initStringInfo(&result);
-	appendStringInfoString(&result, xpath_expr);
-	appendStringInfoString(&result, "/");
-	appendStringInfoString(&result, c_expr);
-
-	full_path = cstring_to_text(result.data);
-	pfree(result.data);
-
-	res = ivy_xml_xpath(&ws, full_path, data, cns);
+	res = ivy_xml_child_xpath(&ws, xpath_expr_text, data, cns, child_expr_text);
 	ivy_xml_addnextsiblingnode(res, nodestring);
 	ret = (xmltype *)ivy_xml_xmlnode2xmltype((xmlNodePtr)ws.doc);
 	ret = (xmltype *)rv_newline((text *)ret);

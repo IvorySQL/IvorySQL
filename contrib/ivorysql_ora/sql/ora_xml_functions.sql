@@ -236,6 +236,40 @@ SELECT insertchildxmlbefore(XMLType('<a><b>100</b><b>200</b></a>'), '/a/b[1]', '
 SELECT insertchildxmlbefore(data, 'soapenv:Envelope/soapenv:Body/web:BBB','typ:FFF', XMLType('<typ:IVY xmlns:typ="http://www.def.com">Ivory</typ:IVY>'), 'xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.def.com" xmlns:web="http://www.abc.com"') from xmlnstest where id = 1;
 
 --
+-- Evaluate both arms of the child union for each selected parent.
+WITH shipment(doc) AS (
+  VALUES (XMLType('<s><open><i>A</i><i>B</i></open><closed><i>C</i><i>D</i></closed></s>'))
+)
+SELECT insertchildxmlbefore(doc, '/s/open | /s/closed', 'i[1] | i[2]',
+                            XMLType('<i>new</i>')) FROM shipment;
+
+WITH shipment(doc) AS (
+  VALUES (XMLType('<s xmlns="urn:ship"><open><i>A</i><i>B</i></open><closed><i>C</i><i>D</i></closed></s>'))
+)
+SELECT insertchildxmlafter(doc, '/p:s/p:open | /p:s/p:closed', 'p:i[1] | p:i[2]',
+                           XMLType('<i xmlns="urn:ship">new</i>'),
+                           'xmlns:p="urn:ship"') FROM shipment;
+
+-- Only the parent with a matching child should change.
+WITH changed(doc) AS (
+  SELECT insertchildxmlafter(XMLType('<s><open/><closed><i/></closed></s>'),
+                             '/s/open | /s/closed', 'i', XMLType('<i/>'))
+)
+SELECT existsnode(doc, '/s[not(i) and open[not(i)] and closed[count(i) = 2]]')
+       AS correct_after FROM changed;
+
+WITH changed(doc) AS (
+  SELECT insertchildxmlbefore(XMLType('<s xmlns="urn:ship"><open/><closed><i/></closed></s>'),
+                              '/p:s/p:open | /p:s/p:closed', 'p:i',
+                              XMLType('<i xmlns="urn:ship"/>'), 'xmlns:p="urn:ship"')
+)
+SELECT existsnode(doc, '/p:s[not(p:i) and p:open[not(p:i)] and p:closed[count(p:i) = 2]]',
+                  'xmlns:p="urn:ship"') AS correct_before FROM changed;
+
+-- Overlapping parent selections can reach the same child.
+SELECT insertchildxmlbefore(XMLType('<s><a><i/></a></s>'), '/s | /s/a',
+                            './/i', XMLType('<marker/>'));
+
 -- insertchildxmlafter
 --
 SELECT insertchildxmlafter(XMLType('<a><b>100</b></a>'), '/a/b', 'b', XMLType('<c>88</c>')) from dual;

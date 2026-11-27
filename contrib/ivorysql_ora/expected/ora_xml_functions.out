@@ -690,6 +690,91 @@ SELECT insertchildxmlbefore(data, 'soapenv:Envelope/soapenv:Body/web:BBB','typ:F
 (1 row)
 
 --
+-- Evaluate both arms of the child union for each selected parent.
+WITH shipment(doc) AS (
+  VALUES (XMLType('<s><open><i>A</i><i>B</i></open><closed><i>C</i><i>D</i></closed></s>'))
+)
+SELECT insertchildxmlbefore(doc, '/s/open | /s/closed', 'i[1] | i[2]',
+                            XMLType('<i>new</i>')) FROM shipment;
+ insertchildxmlbefore 
+----------------------
+ <s>                 +
+   <open>            +
+     <i>new</i>      +
+     <i>A</i>        +
+     <i>new</i>      +
+     <i>B</i>        +
+   </open>           +
+   <closed>          +
+     <i>new</i>      +
+     <i>C</i>        +
+     <i>new</i>      +
+     <i>D</i>        +
+   </closed>         +
+ </s>
+(1 row)
+
+WITH shipment(doc) AS (
+  VALUES (XMLType('<s xmlns="urn:ship"><open><i>A</i><i>B</i></open><closed><i>C</i><i>D</i></closed></s>'))
+)
+SELECT insertchildxmlafter(doc, '/p:s/p:open | /p:s/p:closed', 'p:i[1] | p:i[2]',
+                           XMLType('<i xmlns="urn:ship">new</i>'),
+                           'xmlns:p="urn:ship"') FROM shipment;
+       insertchildxmlafter       
+---------------------------------
+ <s xmlns="urn:ship">           +
+   <open>                       +
+     <i>A</i>                   +
+     <i xmlns="urn:ship">new</i>+
+     <i>B</i>                   +
+     <i xmlns="urn:ship">new</i>+
+   </open>                      +
+   <closed>                     +
+     <i>C</i>                   +
+     <i xmlns="urn:ship">new</i>+
+     <i>D</i>                   +
+     <i xmlns="urn:ship">new</i>+
+   </closed>                    +
+ </s>
+(1 row)
+
+-- Only the parent with a matching child should change.
+WITH changed(doc) AS (
+  SELECT insertchildxmlafter(XMLType('<s><open/><closed><i/></closed></s>'),
+                             '/s/open | /s/closed', 'i', XMLType('<i/>'))
+)
+SELECT existsnode(doc, '/s[not(i) and open[not(i)] and closed[count(i) = 2]]')
+       AS correct_after FROM changed;
+ correct_after 
+---------------
+             1
+(1 row)
+
+WITH changed(doc) AS (
+  SELECT insertchildxmlbefore(XMLType('<s xmlns="urn:ship"><open/><closed><i/></closed></s>'),
+                              '/p:s/p:open | /p:s/p:closed', 'p:i',
+                              XMLType('<i xmlns="urn:ship"/>'), 'xmlns:p="urn:ship"')
+)
+SELECT existsnode(doc, '/p:s[not(p:i) and p:open[not(p:i)] and p:closed[count(p:i) = 2]]',
+                  'xmlns:p="urn:ship"') AS correct_before FROM changed;
+ correct_before 
+----------------
+              1
+(1 row)
+
+-- Overlapping parent selections can reach the same child.
+SELECT insertchildxmlbefore(XMLType('<s><a><i/></a></s>'), '/s | /s/a',
+                            './/i', XMLType('<marker/>'));
+ insertchildxmlbefore 
+----------------------
+ <s>                 +
+   <a>               +
+     <marker/>       +
+     <i/>            +
+   </a>              +
+ </s>
+(1 row)
+
 -- insertchildxmlafter
 --
 SELECT insertchildxmlafter(XMLType('<a><b>100</b></a>'), '/a/b', 'b', XMLType('<c>88</c>')) from dual;
