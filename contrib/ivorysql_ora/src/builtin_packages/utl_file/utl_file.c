@@ -610,6 +610,18 @@ ora_utl_file_fcopy(PG_FUNCTION_ARGS)
 		 */
 	}
 
+	/*
+	 * Both attempts may still leave no usable destination stream (for
+	 * example, a dangling symlink at the destination path).  Never hand a
+	 * NULL stream to copy_text_file(), and do not leak the source stream.
+	 */
+	if (dstfile == NULL)
+	{
+		fclose(srcfile);
+		CUSTOM_EXCEPTION(INVALID_OPERATION,
+						 "Could not open the destination file.");
+	}
+
 	copy_result = copy_text_file(srcfile, dstfile, start_line, end_line);
 
 	fclose(srcfile);
