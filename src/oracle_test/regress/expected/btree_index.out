@@ -191,7 +191,7 @@ SELECT proname, proargtypes, pronamespace
 ORDER BY proname DESC, proargtypes DESC, pronamespace DESC LIMIT 1;
  proname | proargtypes | pronamespace 
 ---------+-------------+--------------
- abs     | 1700        |           11
+ abs     | 9520        |         9900
 (1 row)
 
 --
