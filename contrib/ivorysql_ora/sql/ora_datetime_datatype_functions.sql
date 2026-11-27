@@ -818,3 +818,12 @@ drop table ds_tb;
 reset NLS_TIMESTAMP_FORMAT;
 reset NLS_TIMESTAMP_TZ_FORMAT;
 reset NLS_DATE_FORMAT;
+
+-- a picture without a month defaults the month to the current month
+-- (provided months, including one derived from DDD, must be kept)
+SELECT extract(month from to_date('15', 'DD')) = extract(month from sysdate) AS dd_month_default;
+SELECT extract(month from to_date('2026', 'YYYY')) = extract(month from sysdate) AS yyyy_month_default;
+SELECT extract(day from to_date('15', 'DD')) AS dd_day_kept;
+SELECT extract(month from to_date('01-15', 'MM-DD')) AS mm_month_kept;
+SELECT extract(month from to_date('2026 100', 'YYYY DDD')) AS ddd_month_derived;
+SELECT to_char(to_date('02-15', 'MM-DD'), 'MM-DD') AS mm_dd_roundtrip;
