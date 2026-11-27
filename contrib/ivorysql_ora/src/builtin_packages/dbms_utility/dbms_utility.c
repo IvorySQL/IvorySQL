@@ -135,6 +135,29 @@ apply_identifier_case_switch(const char *ident)
 	return pstrdup(ident);
 }
 
+/* Find a signature delimiter outside double-quoted SQL identifiers. */
+static const char *
+find_signature_delimiter(const char *str, const char *delimiter)
+{
+	bool		quoted = false;
+	size_t		delimiter_len = strlen(delimiter);
+
+	for (; *str; str++)
+	{
+		if (*str == '"')
+		{
+			/* A doubled quote is part of the identifier, not its end. */
+			if (quoted && str[1] == '"')
+				str++;
+			else
+				quoted = !quoted;
+		}
+		else if (!quoted && strncmp(str, delimiter, delimiter_len) == 0)
+			return str;
+	}
+	return NULL;
+}
+
 /*
  * Transform a single line from PostgreSQL error context format to Oracle format.
  *
@@ -157,6 +180,7 @@ transform_and_append_line(StringInfo result, const char *line)
 	const char *func_start;
 	const char *func_end;
 	const char *line_num_start;
+	const char *args_end;
 	const char *line_marker;
 	int line_num;
 	char *func_name;
@@ -179,11 +203,11 @@ transform_and_append_line(StringInfo result, const char *line)
 	func_start = p;
 
 	/* Find the end of the function name (before the opening parenthesis or space for inline blocks) */
-	func_end = strchr(p, '(');
+	func_end = find_signature_delimiter(p, "(");
 	if (!func_end)
 	{
 		/* No parenthesis - might be inline_code_block which has format "inline_code_block line N" */
-		func_end = strstr(p, " line ");
+		func_end = find_signature_delimiter(p, " line ");
 		if (!func_end)
 			return false;
 	}
@@ -211,9 +235,13 @@ transform_and_append_line(StringInfo result, const char *line)
 		return true;
 	}
 
-	/* For named functions/procedures, lookup schema */
-	/* Find " line " */
-	line_marker = strstr(func_end, " line ");
+	/*
+	 * Skip the complete argument list before looking for the line number.
+	 * Quoted type names can themselves contain parentheses or " line ".
+	 */
+	args_end = *func_end == '(' ?
+		find_signature_delimiter(func_end + 1, ")") : func_end;
+	line_marker = args_end ? strstr(args_end, " line ") : NULL;
 	if (!line_marker)
 	{
 		pfree(func_name);
