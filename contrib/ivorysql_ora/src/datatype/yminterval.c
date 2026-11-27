@@ -43,6 +43,7 @@
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
+#include "nodes/miscnodes.h"
 #include "nodes/nodeFuncs.h"
 #include "parser/scansup.h"
 #include "utils/array.h"
@@ -1789,26 +1790,34 @@ yminterval_mul(PG_FUNCTION_ARGS)
 {
 	Interval   *span = PG_GETARG_INTERVAL_P(0);
 	Numeric		num = PG_GETARG_NUMERIC(1);
-	float8		factor;
-	double		result_double;
+	Numeric		months;
+	Numeric		product;
+	Numeric		truncated;
+	ErrorSaveContext escontext = {T_ErrorSaveContext};
 	Interval   *result;
 
-	factor = DatumGetFloat8(DirectFunctionCall1(numeric_float8, NumericGetDatum(num)));
-	result = (Interval *) palloc(sizeof(Interval));
-
-	result_double = span->month * factor;
-	if (isnan(result_double) || !FLOAT8_FITS_IN_INT32(result_double))
+	/*
+	 * Keep NUMBER arithmetic exact until truncating fractional months.  A
+	 * float8 intermediate can turn 100 * 0.29 into 28.999999999999996,
+	 * losing a whole month when converted to int32.
+	 */
+	months = int64_to_numeric(span->month);
+	product = DatumGetNumeric(DirectFunctionCall2(numeric_mul,
+												 NumericGetDatum(months),
+												 NumericGetDatum(num)));
+	truncated = DatumGetNumeric(DirectFunctionCall2(numeric_trunc,
+												   NumericGetDatum(product),
+												   Int32GetDatum(0)));
+	result = (Interval *) palloc0(sizeof(Interval));
+	result->month = numeric_int4_safe(truncated, (Node *) &escontext);
+	if (escontext.error_occurred)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("interval out of range")));
-	result->month = (int32) result_double;
 
-	/*
-	 * compatible oracle For Interval year to month, the field of datetime
-	 * 'DAY' 'HOUR' 'MINUTE' 'SECOND' will be truncated.
-	 */
-	result->day = 0;
-	result->time = 0;
+	pfree(months);
+	pfree(product);
+	pfree(truncated);
 
 	PG_RETURN_INTERVAL_P(result);
 }
@@ -1821,30 +1830,8 @@ yminterval_mul(PG_FUNCTION_ARGS)
 Datum
 mul_d_yminterval(PG_FUNCTION_ARGS)
 {
-	Numeric		num = PG_GETARG_NUMERIC(0);
-	Interval   *span = PG_GETARG_INTERVAL_P(1);
-	float8		factor;
-	double		result_double;
-	Interval   *result;
-
-	factor = DatumGetFloat8(DirectFunctionCall1(numeric_float8, NumericGetDatum(num)));
-	result = (Interval *) palloc(sizeof(Interval));
-
-	result_double = span->month * factor;
-	if (isnan(result_double) || !FLOAT8_FITS_IN_INT32(result_double))
-		ereport(ERROR,
-				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("interval out of range")));
-	result->month = (int32) result_double;
-
-	/*
-	 * compatible oracle For Interval year to month, the field of datetime
-	 * 'DAY' 'HOUR' 'MINUTE' 'SECOND' will be truncated.
-	 */
-	result->day = 0;
-	result->time = 0;
-
-	PG_RETURN_INTERVAL_P(result);
+	return DirectFunctionCall2(yminterval_mul,
+							   PG_GETARG_DATUM(1), PG_GETARG_DATUM(0));
 }
 
 /*
