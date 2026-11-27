@@ -1318,6 +1318,15 @@ STRICT
 PARALLEL SAFE
 IMMUTABLE;
 
+/* RAW and LONG RAW use bytea as their base representation. */
+CREATE OR REPLACE FUNCTION sys.to_blob(bytea)
+RETURNS sys.blob
+AS $$ SELECT $1::sys.blob; $$
+LANGUAGE SQL
+STRICT
+PARALLEL SAFE
+IMMUTABLE;
+
 /* support hextoraw function for oracle compatibility */
 CREATE or REPLACE FUNCTION sys.hextoraw(text)
 RETURNS bytea
