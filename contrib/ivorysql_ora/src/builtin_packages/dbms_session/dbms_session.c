@@ -146,17 +146,15 @@ make_key(CtxKey *key, const char *ns, const char *attr)
 /*
  * clear_namespace - remove every attribute belonging to a namespace.
  *
- * Matching keys are collected first and removed afterwards, because dynahash
- * forbids removing entries other than the current one during a seq scan.
+ * dynahash allows deleting the current entry during a sequential scan, so
+ * no temporary array of keys is needed, even for a large context store.
  */
 static void
 clear_namespace(const char *ns)
 {
 	HASH_SEQ_STATUS seq;
 	CtxEntry   *entry;
-	CtxKey	   *victims;
 	long		nentries;
-	int			nvictims = 0;
 	char		ns_up[DBMS_SESSION_NAME_LEN];
 	int			i;
 
@@ -178,8 +176,6 @@ clear_namespace(const char *ns)
 		ns_up[i] = pg_toupper((unsigned char) ns[i]);
 	ns_up[i] = '\0';
 
-	victims = (CtxKey *) palloc(sizeof(CtxKey) * nentries);
-
 	hash_seq_init(&seq, DbmsSessionHash);
 	while ((entry = (CtxEntry *) hash_seq_search(&seq)) != NULL)
 	{
@@ -187,14 +183,11 @@ clear_namespace(const char *ns)
 		{
 			if (entry->value != NULL)
 				pfree(entry->value);
-			victims[nvictims++] = entry->key;
+			/* Do not access entry after removing it from the hash table. */
+			hash_search(DbmsSessionHash, &entry->key, HASH_REMOVE, NULL);
 		}
 	}
 
-	for (i = 0; i < nvictims; i++)
-		hash_search(DbmsSessionHash, &victims[i], HASH_REMOVE, NULL);
-
-	pfree(victims);
 }
 
 /*
