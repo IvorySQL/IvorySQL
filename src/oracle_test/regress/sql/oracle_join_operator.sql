@@ -132,6 +132,63 @@ SELECT count(*) FROM t2, t1 WHERE t1.c1(+) IN (10, 20);
 SELECT count(*) FROM t2, t1 WHERE t2.c3 = t1.c1(+) AND t1.c1(+) NOT BETWEEN 1 AND 5;
 SELECT t1.c2, t2.c2, t3.c3 FROM t1, t2, t3 WHERE t1.c1 = t2.c3(+) AND t3.c1 = t2.c1(+) ORDER BY 1, 2, 3;
 
+-- UNATTACHED (+) FILTER TESTS
+-- A one-table (+) predicate belongs in the ON clause of the join that has
+-- its table on the nullable side.  With no such join the operator marks
+-- nothing, and Oracle rejects the query (ORA-01719) instead of evaluating
+-- the predicate as a plain filter -- doing the latter would silently drop
+-- the NULL-extended rows the user asked for.
+
+-- Test: one-table (+) comparison with no outer join to attach to
+SELECT * FROM t1 WHERE t1.c1(+) = 10;
+
+-- Test: one-table (+) IS NULL with no outer join to attach to
+SELECT * FROM t1 WHERE t1.c1(+) IS NULL;
+
+-- Test: (+) filter on a table that is preserved, never nullable
+SELECT t2.c2 FROM t2, t1 WHERE t2.c3 = t1.c1(+) AND t2.c2(+) = 't2_a';
+
+-- Test: (+) filter that does attach, on the other side of the same query
+-- Counting the nullable side as well as the rows tells a folded filter from
+-- a dropped one: without the comparison the second count would be 5, not 2.
+SELECT count(*), count(t1.c1) FROM t2, t1
+WHERE t2.c3 = t1.c1(+) AND t1.c1(+) = 10;
+
+-- Test: IN value list names a column, so (+) sits in an operand of IN
+SELECT count(*) FROM t2, t1 WHERE t2.c3 = t1.c1(+) AND t1.c1(+) IN (t2.c1, 5);
+
+-- Test: NOT BETWEEN bounds name a column, same rejection
+SELECT count(*) FROM t2, t1 WHERE t2.c3 = t1.c1(+)
+AND t1.c1(+) NOT BETWEEN t2.c1 AND t2.c1 + 1;
+
+-- Test: a scalar subquery in the bounds of a marked NOT BETWEEN is
+-- rejected too (ORA-01799: a column may not be outer-joined to a
+-- subquery), whether the subquery is correlated to the query block ...
+SELECT count(*) FROM t1 a, t2 b
+WHERE b.c3 = a.c1(+) AND a.c1(+) NOT BETWEEN (SELECT 10 WHERE b.c3 = 10) AND 20;
+
+-- ... hides a correlated reference behind its own FROM clause ...
+SELECT count(*) FROM t1 a, t2 b
+WHERE b.c3 = a.c1(+) AND a.c1(+) NOT BETWEEN (SELECT 10 FROM t3 x WHERE x.c1 = b.c3) AND 20;
+
+-- ... or references only its own relations (the guard fires before the
+-- bounds are even examined, so no subquery form can slip a marked bound
+-- into the outer-join qualification).
+SELECT count(*) FROM t1 a, t2 b
+WHERE b.c3 = a.c1(+) AND a.c1(+) NOT BETWEEN (SELECT x.c1 * 5 FROM t3 x WHERE x.c1 = 3) AND 20;
+
+-- Test: Oracle rejects (+) in an IN operand even with a constant-only value
+-- list, and even though the marked column could attach to the outer join of
+-- the same block (ORA-01719), so no result set is produced for this query.
+SELECT count(*) FROM t2, t1 WHERE t2.c3 = t1.c1(+) AND t1.c1(+) IN (10, 20);
+
+-- Test: (+) filter still attaches when the nullable table is shared by two
+-- preserved tables (both predicates fold into the same ON clause, so the
+-- filter must not remove the NULL-extended rows: 25 pairs, 5 of them with an
+-- equal key, 4 of those passing the filter)
+SELECT count(*), count(a.c1) FROM t1 a, t2 b, t2 c
+WHERE b.c3 = a.c1(+) AND c.c3 = a.c1(+) AND a.c2(+) = 't1_a';
+
 -- NON-RELATION FROM ITEM TESTS
 -- These exercise get_orajoin_fromclause_node(): the (+) join operand is
 -- a CTE / VALUES list / subquery / set-returning function, none of which
