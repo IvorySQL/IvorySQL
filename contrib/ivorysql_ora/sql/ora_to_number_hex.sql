@@ -67,8 +67,62 @@ SELECT to_number('15', '99') AS decimal_format,
        to_number('12.34', '99.99') AS decimal_fraction,
        to_number('-1122.34') AS no_format;
 
+-- TO_BINARY_FLOAT and TO_BINARY_DOUBLE must accept the same hexadecimal X formats.
+SELECT to_binary_float('f', 'xx') AS bf_hex,
+       to_binary_double('f', 'xx') AS bd_hex,
+       pg_typeof(to_binary_float('f', 'xx')) AS bf_type,
+       pg_typeof(to_binary_double('f', 'xx')) AS bd_type
+FROM dual;
+
+SELECT to_binary_float(CAST('aB' AS char(4)), 'XXXX') AS bf_char,
+       to_binary_float(CAST('  0f  ' AS varchar2(10)), '0X') AS bf_zero,
+       to_binary_float('ff', 'FMXXXX') AS bf_fm,
+       to_binary_double(CAST('aB' AS char(4)), 'xX') AS bd_char,
+       to_binary_double('00ff', 'fm0xxx') AS bd_fm0,
+       to_binary_double('0', 'X') AS bd_zero
+FROM dual;
+
+-- Large hexadecimal values: 40 hex 'f' digits overflow BINARY_FLOAT to Inf
+-- in Oracle mode while remaining finite in BINARY_DOUBLE.
+SELECT to_binary_float('ffffffffffffffffffffffffffffffffffffffff',
+                       'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX') AS bf_overflow_inf,
+       to_binary_double('ffffffffffffffffffffffffffffffffffffffff',
+                        'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX') AS bd_large_finite
+FROM dual;
+
+-- NULL and empty inputs preserve strict/empty-format behavior.
+SELECT to_binary_float(NULL, 'XX') IS NULL AS bf_null_val,
+       to_binary_float('ff', NULL) IS NULL AS bf_null_fmt,
+       to_binary_float('', 'XX') IS NULL AS bf_empty_val,
+       to_binary_float('ff', '') IS NULL AS bf_empty_fmt,
+       to_binary_double(NULL, 'XX') IS NULL AS bd_null_val,
+       to_binary_double('ff', NULL) IS NULL AS bd_null_fmt,
+       to_binary_double('', 'XX') IS NULL AS bd_empty_val,
+       to_binary_double('ff', '') IS NULL AS bd_empty_fmt
+FROM dual;
+
+-- Invalid hexadecimal inputs raise "invalid number".
+SELECT to_binary_float('g', 'XX') FROM dual;
+SELECT to_binary_float('-f', 'XX') FROM dual;
+SELECT to_binary_float('0xf', 'XXX') FROM dual;
+SELECT to_binary_float('fff', 'XX') FROM dual;
+SELECT to_binary_double('g', 'XX') FROM dual;
+SELECT to_binary_double('+f', 'XX') FROM dual;
+SELECT to_binary_double('0xf', 'XXX') FROM dual;
+SELECT to_binary_double('fff', 'XX') FROM dual;
+
+-- Prepared statements exercise runtime format evaluation.
+PREPARE ora_hex_bfloat(text, text) AS
+    SELECT to_binary_float($1, $2) AS bf, to_binary_double($1, $2) AS bd;
+SELECT $$EXECUTE ora_hex_bfloat('ff', 'XX');$$ \gexec
+SELECT $$EXECUTE ora_hex_bfloat('g', 'XX');$$ \gexec
+SELECT $$EXECUTE ora_hex_bfloat('12.5', '99.9');$$ \gexec
+DEALLOCATE ora_hex_bfloat;
+
 SET ivorysql.compatible_mode = pg;
 -- Only the Oracle implementation gains hexadecimal format support.
 SELECT pg_catalog.to_number('15', '99') AS pg_decimal;
 SELECT pg_catalog.to_number('f', 'xx');
 SELECT sys.to_number('f', 'xx') AS oracle_hex;
+SELECT sys.to_binary_float('ff', 'xx') AS oracle_bf_hex,
+       sys.to_binary_double('ff', 'xx') AS oracle_bd_hex;

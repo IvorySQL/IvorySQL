@@ -1,12 +1,12 @@
 /*-------------------------------------------------------------------------
  * Copyright 2025 IvorySQL Global Development Team
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -49,7 +49,7 @@ PG_FUNCTION_INFO_V1(binary_double_nanvl);
 PG_FUNCTION_INFO_V1(ora_to_binary_float);
 PG_FUNCTION_INFO_V1(ora_to_binary_double);
 
-static int ora_to_number_hex_width(text *fmt);
+static int	ora_to_number_hex_width(text *fmt);
 static Numeric ora_to_number_hex(text *value, int width);
 
 /*
@@ -126,9 +126,9 @@ ora_to_number_hex(text *value, int width)
 	memcpy(hexstr + 2, start, len);
 	hexstr[len + 2] = '\0';
 	result = DatumGetNumeric(DirectFunctionCall3(numeric_in,
-											   CStringGetDatum(hexstr),
-											   ObjectIdGetDatum(InvalidOid),
-											   Int32GetDatum(-1)));
+												 CStringGetDatum(hexstr),
+												 ObjectIdGetDatum(InvalidOid),
+												 Int32GetDatum(-1)));
 	pfree(hexstr);
 
 	return result;
@@ -276,7 +276,13 @@ ora_to_binary_float_internal(text *value, text *fmt, bool *isnull)
 
 	if (fmt)
 	{
-		Numeric		num = ora_to_number_internal(value, fmt);
+		int			hex_width = ora_to_number_hex_width(fmt);
+		Numeric		num;
+
+		if (hex_width > 0)
+			num = ora_to_number_hex(value, hex_width);
+		else
+			num = ora_to_number_internal(value, fmt);
 
 		if (num == NULL)
 		{
@@ -317,7 +323,13 @@ ora_to_binary_double_internal(text *value, text *fmt, bool *isnull)
 
 	if (fmt)
 	{
-		Numeric		num = ora_to_number_internal(value, fmt);
+		int			hex_width = ora_to_number_hex_width(fmt);
+		Numeric		num;
+
+		if (hex_width > 0)
+			num = ora_to_number_hex(value, hex_width);
+		else
+			num = ora_to_number_internal(value, fmt);
 
 		if (num == NULL)
 		{
