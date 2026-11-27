@@ -1341,7 +1341,7 @@ SELECT 'abc' LIKE 'abc' COLLATE ctest_nondet;
 SELECT 'abc' LIKE 'a\bc' COLLATE ctest_nondet;
  ?column? 
 ----------
- t
+ f
 (1 row)
 
 CREATE TABLE test6 (a int, b text);
@@ -1497,22 +1497,22 @@ SELECT 'AB' LIKE 'ab' COLLATE case_insensitive AS t;
  t
 (1 row)
 
-SELECT 'AB' LIKE 'a\b' COLLATE case_insensitive AS t;
- t 
+SELECT 'AB' LIKE 'a\b' COLLATE case_insensitive AS f;
+ f 
 ---
- t
+ f
 (1 row)
 
-SELECT 'AB' LIKE '\ab' COLLATE case_insensitive AS t;
- t 
+SELECT 'AB' LIKE '\ab' COLLATE case_insensitive AS f;
+ f 
 ---
- t
+ f
 (1 row)
 
-SELECT 'AB' LIKE '\a%' COLLATE case_insensitive AS t;
- t 
+SELECT 'AB' LIKE '\a%' COLLATE case_insensitive AS f;
+ f 
 ---
- t
+ f
 (1 row)
 
 SELECT 'AB' LIKE '\a\%' COLLATE case_insensitive AS f;
@@ -3282,7 +3282,6 @@ SELECT 'back\slash' COLLATE ignore_accents LIKE 'back\slash%' ESCAPE '#';
 
 SELECT 'aäb' COLLATE ignore_accents LIKE 'a#äb' ESCAPE '#' AS multibyte_escape;
 ERROR:  missing or illegal character following the escape character
-
 SELECT 'a\äb' COLLATE ignore_accents LIKE 'a\äb%' ESCAPE '#' AS backslash_multibyte;
  backslash_multibyte 
 ---------------------
@@ -3291,7 +3290,6 @@ SELECT 'a\äb' COLLATE ignore_accents LIKE 'a\äb%' ESCAPE '#' AS backslash_mult
 
 SELECT 'a\b%c' COLLATE ignore_accents LIKE 'a#\b#%%c' ESCAPE '#' AS mixed_escapes;
 ERROR:  missing or illegal character following the escape character
-
 SELECT 'backslash' COLLATE ignore_accents LIKE 'back\\slash%';
  ?column? 
 ----------
