@@ -818,3 +818,6 @@ $$;
 -- =============================================================================
 DROP PROCEDURE test_output_proc;
 DROP FUNCTION test_output_func;
+
+-- a NULL line count is rejected instead of reading an undefined argument
+SELECT sys.ora_dbms_output_get_lines(NULL);

@@ -399,7 +399,7 @@ add_months(PG_FUNCTION_ARGS)
 				d = 0;
 	int			days;
 	Timestamp	result;
-	div_t		v;
+	int64		total;
 	bool		last_day;
 	int64		n;
 	Numeric		num = PG_GETARG_NUMERIC(1);
@@ -417,11 +417,21 @@ add_months(PG_FUNCTION_ARGS)
 	j2date((int) date, &y, &m, &d);
 	last_day = (d == days_of_month(y, m));
 
-	v = div(y * 12 + m - 1 + n, 12);
-	y = v.quot;
-	if (y < 0)
-		y += 1;
-	m = v.rem + 1;
+	/*
+	 * Split the month total with floor semantics so the remainder is always
+	 * non-negative and m lands in 1..12 even when the total is negative.
+	 * Plain C division truncates toward zero, which used to leave m at 0 or
+	 * negative for results before year one.
+	 */
+	total = (int64) y * 12 + m - 1 + n;
+	y = (int) (total / 12);
+	m = (int) (total % 12);
+	if (m < 0)
+	{
+		m += 12;
+		y -= 1;
+	}
+	m += 1;
 
 	days = days_of_month(y, m);
 	if (last_day || d > days)
@@ -1670,7 +1680,7 @@ days_of_month(int y, int m)
 {
 	int			days;
 
-	if (m < 0 || 12 < m)
+	if (m < 1 || 12 < m)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("date out of range")));

@@ -2282,6 +2282,7 @@ dsinterval_mul(PG_FUNCTION_ARGS)
 	double		month_remainder_days,
 				sec_remainder,
 				result_double;
+	int64		new_day;
 	int32		orig_month = span->month,
 				orig_day = span->day;
 	Interval   *result;
@@ -2356,11 +2357,12 @@ dsinterval_mul(PG_FUNCTION_ARGS)
 	 * For Interval day to second, the field of datetime 'year' 'month' will be truncated.
 	 */
 	result->month = 0;
-	result->day += result->time / USECS_PER_DAY;
-	if (result->day > INT_MAX || result->day < INT_MIN)
+	new_day = (int64) result->day + result->time / USECS_PER_DAY;
+	if (new_day > PG_INT32_MAX || new_day < PG_INT32_MIN)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("interval out of range")));
+	result->day = (int32) new_day;
 	result->time = result->time % USECS_PER_DAY;
 
 	PG_RETURN_INTERVAL_P(result);
@@ -2395,6 +2397,7 @@ dsinterval_div(PG_FUNCTION_ARGS)
 	double		month_remainder_days,
 				sec_remainder,
 				result_double;
+	int64		new_day;
 	int32		orig_month = span->month,
 				orig_day = span->day;
 	Interval   *result;
@@ -2454,11 +2457,12 @@ dsinterval_div(PG_FUNCTION_ARGS)
 	 * For Interval day to second, the field of datetime 'year' 'month' will be truncated.
 	 */
 	result->month = 0;
-	result->day += result->time / USECS_PER_DAY;
-	if (result->day > INT_MAX || result->day < INT_MIN)
+	new_day = (int64) result->day + result->time / USECS_PER_DAY;
+	if (new_day > PG_INT32_MAX || new_day < PG_INT32_MIN)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("interval out of range")));
+	result->day = (int32) new_day;
 	result->time = result->time % USECS_PER_DAY;
 
 	PG_RETURN_INTERVAL_P(result);
