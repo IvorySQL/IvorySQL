@@ -265,3 +265,55 @@ select sys_context('rp_ns', 'key') as ctx_after_reset;
 (1 row)
 
 DROP PACKAGE rp_pkg;
+-- Namespace-wide deletion must not skip entries while scanning the hash table.
+-- Grow past the initial hash size, mix namespaces and include NULL values.
+SELECT count(sys.ora_dbms_session_set_context(
+    CASE WHEN i % 2 = 0 THEN 'bulk_clear' ELSE 'bulk_keep' END,
+    'key' || i, CASE WHEN i % 3 = 0 THEN NULL ELSE 'value' || i END))
+FROM generate_series(1, 2048) AS g(i);
+ count 
+-------
+  2048
+(1 row)
+
+CALL dbms_session.clear_context('BuLk_ClEaR');
+SELECT count(*) FILTER (WHERE namespace = 'BULK_CLEAR') AS cleared,
+       count(*) FILTER (WHERE namespace = 'BULK_KEEP') AS preserved,
+       count(*) FILTER (WHERE namespace = 'BULK_KEEP' AND value IS NULL) AS null_values
+FROM sys.dbms_session_list_context();
+ cleared | preserved | null_values 
+---------+-----------+-------------
+       0 |      1024 |         341
+(1 row)
+
+-- Missing and repeated clears preserve the remaining namespace.
+CALL dbms_session.clear_all_context('bulk_missing');
+CALL dbms_session.clear_all_context('bulk_clear');
+SELECT count(*) FROM sys.dbms_session_list_context() WHERE namespace = 'BULK_KEEP';
+ count 
+-------
+  1024
+(1 row)
+
+CALL dbms_session.clear_all_context('bulk_keep');
+SELECT count(*) FROM sys.dbms_session_list_context() WHERE namespace LIKE 'BULK_%';
+ count 
+-------
+     0
+(1 row)
+
+-- Removed entries can be reused by subsequent inserts and clears.
+CALL dbms_session.set_context('bulk_clear', 'key2', 'reinserted');
+SELECT sys_context('bulk_clear', 'key2') AS reinserted;
+ reinserted 
+------------
+ reinserted
+(1 row)
+
+CALL dbms_session.clear_all_context('bulk_clear');
+SELECT sys_context('bulk_clear', 'key2') IS NULL AS cleared_again;
+ cleared_again 
+---------------
+ t
+(1 row)
+
