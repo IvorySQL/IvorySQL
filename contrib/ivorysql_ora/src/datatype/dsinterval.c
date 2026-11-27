@@ -271,12 +271,61 @@ AdjustFractDays(double frac, struct tm *tm, fsec_t *fsec, int scale)
 }
 
 /*
+ * Leading field of an Oracle day-to-second qualifier. A lone fractional
+ * literal is applied to this field: INTERVAL '1.5' DAY TO SECOND is 1.5
+ * days, not 1.5 seconds.
+ */
+static int
+dsinterval_leading_type(int range)
+{
+	if (range & INTERVAL_MASK(DAY))
+		return DTK_DAY;
+	if (range & INTERVAL_MASK(HOUR))
+		return DTK_HOUR;
+	if (range & INTERVAL_MASK(MINUTE))
+		return DTK_MINUTE;
+	return DTK_SECOND;
+}
+
+/*
+ * A single fractional leading field was parsed. Year and month are never
+ * valid here. Fields above the leading field must be absent; fields below
+ * it may be unset or may hold the still-unnormalized fraction (AdjustFract*
+ * leaves that remainder in tm_sec / fsec).
+ */
+static bool
+dsinterval_fractional_leading_ok(int range, const struct tm *tm)
+{
+	if (abs(tm->tm_year) != INT_MAX || abs(tm->tm_mon) != INT_MAX)
+		return false;
+
+	if (range & INTERVAL_MASK(DAY))
+		return abs(tm->tm_mday) != INT_MAX;
+
+	if (range & INTERVAL_MASK(HOUR))
+		return abs(tm->tm_mday) == INT_MAX &&
+			abs(tm->tm_hour) != INT_MAX;
+
+	if (range & INTERVAL_MASK(MINUTE))
+		return abs(tm->tm_mday) == INT_MAX &&
+			abs(tm->tm_hour) == INT_MAX &&
+			abs(tm->tm_min) != INT_MAX;
+
+	return false;
+}
+
+/*
  * The same as function 'Decodeinterval' except that we don`t care
  * about year field and month field.
+ *
+ * *fractional_leading is set when the literal is a single fractional
+ * DAY, HOUR or MINUTE value. The caller must not apply the exact-match
+ * or trailing-field range checks to units produced by that fraction.
  */
 static int
 DecodeDsinterval(char **field, int *ftype, int nf, int range,
-				 int *dtype, struct tm *tm, fsec_t *fsec)
+				 int *dtype, struct tm *tm, fsec_t *fsec,
+				 bool *fractional_leading)
 {
 	bool		is_before = false;
 	char	   *cp;
@@ -289,6 +338,7 @@ DecodeDsinterval(char **field, int *ftype, int nf, int range,
 	double		fval;
 
 	*dtype = DTK_DELTA;
+	*fractional_leading = false;
 	type = IGNORE_DTF;
 	ClearPgTm(tm, fsec);
 
@@ -352,35 +402,53 @@ DecodeDsinterval(char **field, int *ftype, int nf, int range,
 			case DTK_NUMBER:
 				if (type == IGNORE_DTF)
 				{
-					/* use typmod to decide what rightmost field is */
-					switch (range)
+					/*
+					 * Oracle accepts a decimal point in a lone leading field
+					 * and normalizes the fraction into smaller units.
+					 * INTERVAL '1.5' DAY is 1 day 12 hours, and INTERVAL
+					 * '1.5' DAY TO SECOND is likewise 1.5 days, not 1.5
+					 * seconds. An integer lone number still uses the
+					 * rightmost field, so multi-field literals keep their
+					 * exact-match rules.
+					 */
+					if (nf == 1 && strchr(field[i], '.') != NULL)
 					{
-						case INTERVAL_MASK(YEAR):
-						case INTERVAL_MASK(MONTH):
-						case INTERVAL_MASK(YEAR) | INTERVAL_MASK(MONTH):
-							return DTERR_BAD_FORMAT;
+						type = dsinterval_leading_type(range);
+						if (type != DTK_SECOND)
+							*fractional_leading = true;
+					}
+					else
+					{
+						/* use typmod to decide what rightmost field is */
+						switch (range)
+						{
+							case INTERVAL_MASK(YEAR):
+							case INTERVAL_MASK(MONTH):
+							case INTERVAL_MASK(YEAR) | INTERVAL_MASK(MONTH):
+								return DTERR_BAD_FORMAT;
 
-						case INTERVAL_MASK(DAY):
-							type = DTK_DAY;
-							break;
-						case INTERVAL_MASK(HOUR):
-						case INTERVAL_MASK(DAY) | INTERVAL_MASK(HOUR):
-							type = DTK_HOUR;
-							break;
-						case INTERVAL_MASK(MINUTE):
-						case INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE):
-						case INTERVAL_MASK(DAY) | INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE):
-							type = DTK_MINUTE;
-							break;
-						case INTERVAL_MASK(SECOND):
-						case INTERVAL_MASK(MINUTE) | INTERVAL_MASK(SECOND):
-						case INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE) | INTERVAL_MASK(SECOND):
-						case INTERVAL_MASK(DAY) | INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE) | INTERVAL_MASK(SECOND):
-							type = DTK_SECOND;
-							break;
-						default:
-							type = DTK_SECOND;
-							break;
+							case INTERVAL_MASK(DAY):
+								type = DTK_DAY;
+								break;
+							case INTERVAL_MASK(HOUR):
+							case INTERVAL_MASK(DAY) | INTERVAL_MASK(HOUR):
+								type = DTK_HOUR;
+								break;
+							case INTERVAL_MASK(MINUTE):
+							case INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE):
+							case INTERVAL_MASK(DAY) | INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE):
+								type = DTK_MINUTE;
+								break;
+							case INTERVAL_MASK(SECOND):
+							case INTERVAL_MASK(MINUTE) | INTERVAL_MASK(SECOND):
+							case INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE) | INTERVAL_MASK(SECOND):
+							case INTERVAL_MASK(DAY) | INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE) | INTERVAL_MASK(SECOND):
+								type = DTK_SECOND;
+								break;
+							default:
+								type = DTK_SECOND;
+								break;
+						}
 					}
 				}
 
@@ -846,7 +914,8 @@ EncodeDsinterval(struct pg_tm *tm, fsec_t fsec, int style, char *str, int day_pr
  *	range and sub-second precision.
  */
 static void
-AdjustIntervalForTypmod(Interval *interval, int32 typmod)
+AdjustIntervalForTypmod(Interval *interval, int32 typmod,
+						bool preserve_fraction)
 {
 #ifdef HAVE_INT64_TIMESTAMP
 	static const int64 IntervalScales[MAX_INTERVAL_PRECISION + 1] = {
@@ -888,6 +957,15 @@ AdjustIntervalForTypmod(Interval *interval, int32 typmod)
 	{
 		int			range = INTERVAL_RANGE(typmod);
 		int			second_precision = INTERVAL_SECOND_PRECISION(typmod);
+
+		/*
+		 * Oracle keeps the normalized fraction of a leading field (INTERVAL
+		 * '1.5' HOUR is 1 hour 30 minutes). Truncating to the qualifier would
+		 * discard that fraction. Explicit multi-field values and typmod casts
+		 * still truncate.
+		 */
+		if (preserve_fraction)
+			range = INTERVAL_FULL_RANGE;
 
 		if (range == INTERVAL_FULL_RANGE)
 		{
@@ -1147,7 +1225,8 @@ ora_ParseISO8601Number(const char *str, char **endptr, int *ipart, double *fpart
 	return 0;
 }
 
-/* copy&pasted from .../src/backend/utils/adt/datetime.c
+/*
+ * copy&pasted from .../src/backend/utils/adt/datetime.c
  *
  * * changed struct pg_tm to struct tm
  *
@@ -1353,7 +1432,8 @@ ora_DecodeISO8601Interval(char *str,
 	return 0;
 }
 
-/* interval2tm()
+/*
+ * interval2tm()
  * Convert an interval data type to a tm structure.
  */
 static int
@@ -1442,7 +1522,8 @@ dsinterval_cmp_internal(Interval *interval1, Interval *interval2)
  *	 Base I/O function
  *****************************************************************************/
 
-/* dsinterval_in()
+/*
+ * dsinterval_in()
  * Convert a string to internal form.
  *
  * External format(s):
@@ -1469,6 +1550,7 @@ dsinterval_in(PG_FUNCTION_ARGS)
 	int			ftype[MAXDATEFIELDS];
 	char		workbuf[256];
 	bool		isiso = false;
+	bool		fractional_leading = false;
 	char	   *strsrc;
 	char	   *strold;
 	DateTimeErrorExtra extra;
@@ -1547,7 +1629,9 @@ dsinterval_in(PG_FUNCTION_ARGS)
 
 	if (dterr == 0)
 		dterr = DecodeDsinterval(field, ftype, nf, range,
-								 &dtype, tm, &fsec);
+								 &dtype, tm, &fsec, &fractional_leading);
+	if (dterr != 0)
+		fractional_leading = false;
 
 	/* if those functions think it's a bad format, try ISO8601 style */
 	if (dterr == DTERR_BAD_FORMAT)
@@ -1576,176 +1660,192 @@ dsinterval_in(PG_FUNCTION_ARGS)
 	 */
 	if (!isiso)
 	{
-		switch (range)
+		if (fractional_leading)
 		{
-			case INTERVAL_MASK(DAY):
-				if (abs(tm->tm_year) != INT_MAX ||
-					abs(tm->tm_mon) != INT_MAX ||
-					abs(tm->tm_min) != INT_MAX ||
-					abs(tm->tm_sec) != INT_MAX ||
-					abs(tm->tm_hour) != INT_MAX ||
-					abs(tm->tm_mday) == INT_MAX)
-					ereport(ERROR,
-							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-							 errmsg("The character string you specified is not a valid interval")));
-				break;
-
-			case INTERVAL_MASK(DAY) | INTERVAL_MASK(HOUR):
-				if (abs(tm->tm_year) != INT_MAX ||
-					abs(tm->tm_mon) != INT_MAX ||
-					abs(tm->tm_min) != INT_MAX ||
-					abs(tm->tm_sec) != INT_MAX ||
-					abs(tm->tm_hour) == INT_MAX ||
-					abs(tm->tm_mday) == INT_MAX)
-					ereport(ERROR,
-							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-							 errmsg("The character string you specified is not a valid interval")));
-
-				if (abs(tm->tm_hour) < 0 || abs(tm->tm_hour) > 23)
-					ereport(ERROR,
-							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-							 errmsg("hour must be between 0 and 23")));
-				break;
-
-			case INTERVAL_MASK(DAY) | INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE):
-				if (abs(tm->tm_year) != INT_MAX ||
-					abs(tm->tm_mon) != INT_MAX ||
-					abs(tm->tm_sec) != INT_MAX ||
-					abs(tm->tm_mday) == INT_MAX ||
-					abs(tm->tm_hour) == INT_MAX ||
-					abs(tm->tm_min) == INT_MAX)
-					ereport(ERROR,
-							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-							 errmsg("The character string you specified is not a valid interval")));
-
-				if (abs(tm->tm_hour) < 0 || abs(tm->tm_hour) > 23)
-					ereport(ERROR,
-							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-							 errmsg("hour must be between 0 and 23")));
-
-				if (abs(tm->tm_min) < 0 || abs(tm->tm_min) > 59)
-					ereport(ERROR,
-							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-							 errmsg("minutes must be between 0 and 59")));
-				break;
-
-			case INTERVAL_FULL_RANGE:
-			case INTERVAL_MASK(DAY) | INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE) | INTERVAL_MASK(SECOND):
-				if (abs(tm->tm_year) != INT_MAX ||
-					abs(tm->tm_mon) != INT_MAX ||
-					abs(tm->tm_mday) == INT_MAX ||
-					abs(tm->tm_hour) == INT_MAX ||
-					abs(tm->tm_min) == INT_MAX ||
-					abs(tm->tm_sec) == INT_MAX)
-					ereport(ERROR,
-							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-							 errmsg("The character string you specified is not a valid interval")));
-
-				if (abs(tm->tm_hour) < 0 || abs(tm->tm_hour) > 23)
-					ereport(ERROR,
-							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-							 errmsg("hour must be between 0 and 23")));
-
-				if (abs(tm->tm_min) < 0 || abs(tm->tm_min) > 59)
-					ereport(ERROR,
-							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-							 errmsg("minutes must be between 0 and 59")));
-
-				if (abs(tm->tm_sec) < 0 || abs(tm->tm_sec) > 59)
-					ereport(ERROR,
-							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-							 errmsg("seconds must be between 0 and 59")));
-				break;
-			case INTERVAL_MASK(HOUR):
-				if (abs(tm->tm_year) != INT_MAX ||
-					abs(tm->tm_mon) != INT_MAX ||
-					abs(tm->tm_mday) != INT_MAX ||
-					abs(tm->tm_min) != INT_MAX ||
-					abs(tm->tm_sec) != INT_MAX ||
-					abs(tm->tm_hour) == INT_MAX)
-					ereport(ERROR,
-							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-							 errmsg("The character string you specified is not a valid interval")));
-				break;
-			case INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE):
-				if (abs(tm->tm_year) != INT_MAX ||
-					abs(tm->tm_mon) != INT_MAX ||
-					abs(tm->tm_mday) != INT_MAX ||
-					abs(tm->tm_sec) != INT_MAX ||
-					abs(tm->tm_hour) == INT_MAX ||
-					abs(tm->tm_min) == INT_MAX)
-					ereport(ERROR,
-							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-							 errmsg("The character string you specified is not a valid interval")));
-
-				if (abs(tm->tm_min) < 0 || abs(tm->tm_min) > 59)
-					ereport(ERROR,
-							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-							 errmsg("minutes must be between 0 and 59")));
-				break;
-			case INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE) | INTERVAL_MASK(SECOND):
-				if (abs(tm->tm_year) != INT_MAX ||
-					abs(tm->tm_mon) != INT_MAX ||
-					abs(tm->tm_mday) != INT_MAX ||
-					abs(tm->tm_hour) == INT_MAX ||
-					abs(tm->tm_min) == INT_MAX ||
-					abs(tm->tm_sec) == INT_MAX)
-					ereport(ERROR,
-							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-							 errmsg("The character string you specified is not a valid interval")));
-
-				if (abs(tm->tm_min) < 0 || abs(tm->tm_min) > 59)
-					ereport(ERROR,
-							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-							 errmsg("minutes must be between 0 and 59")));
-
-				if (abs(tm->tm_sec) < 0 || abs(tm->tm_sec) > 59)
-					ereport(ERROR,
-							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-							 errmsg("seconds must be between 0 and 59")));
-				break;
-			case INTERVAL_MASK(MINUTE):
-				if (abs(tm->tm_year) != INT_MAX ||
-					abs(tm->tm_mon) != INT_MAX ||
-					abs(tm->tm_mday) != INT_MAX ||
-					abs(tm->tm_hour) != INT_MAX ||
-					abs(tm->tm_sec) != INT_MAX ||
-					abs(tm->tm_min) == INT_MAX)
-					ereport(ERROR,
-							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-							 errmsg("The character string you specified is not a valid interval")));
-				break;
-			case INTERVAL_MASK(MINUTE) | INTERVAL_MASK(SECOND):
-				if (abs(tm->tm_year) != INT_MAX ||
-					abs(tm->tm_mon) != INT_MAX ||
-					abs(tm->tm_mday) != INT_MAX ||
-					abs(tm->tm_hour) != INT_MAX ||
-					abs(tm->tm_min) == INT_MAX ||
-					abs(tm->tm_sec) == INT_MAX)
-					ereport(ERROR,
-							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-							 errmsg("The character string you specified is not a valid interval")));
-
-				if (abs(tm->tm_sec) < 0 || abs(tm->tm_sec) > 59)
-					ereport(ERROR,
-							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-							 errmsg("seconds must be between 0 and 59")));
-				break;
-			case INTERVAL_MASK(SECOND):
-				if (abs(tm->tm_year) != INT_MAX ||
-					abs(tm->tm_mon) != INT_MAX ||
-					abs(tm->tm_mday) != INT_MAX ||
-					abs(tm->tm_hour) != INT_MAX ||
-					abs(tm->tm_min) != INT_MAX ||
-					abs(tm->tm_sec) == INT_MAX)
-					ereport(ERROR,
-							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-							 errmsg("The character string you specified is not a valid interval")));
-				break;
-			default:
+			/*
+			 * The fraction of a lone leading field is not an extra literal
+			 * field. Skip the exact-match and trailing-field range checks;
+			 * those fields hold the un-normalized fraction (often entirely in
+			 * tm_sec), not separate fields from the input.
+			 */
+			if (!dsinterval_fractional_leading_ok(range, tm))
 				ereport(ERROR,
 						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("missing or invalid datetime field")));
+						 errmsg("The character string you specified is not a valid interval")));
+		}
+		else
+		{
+			switch (range)
+			{
+				case INTERVAL_MASK(DAY):
+					if (abs(tm->tm_year) != INT_MAX ||
+						abs(tm->tm_mon) != INT_MAX ||
+						abs(tm->tm_min) != INT_MAX ||
+						abs(tm->tm_sec) != INT_MAX ||
+						abs(tm->tm_hour) != INT_MAX ||
+						abs(tm->tm_mday) == INT_MAX)
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+								 errmsg("The character string you specified is not a valid interval")));
+					break;
+
+				case INTERVAL_MASK(DAY) | INTERVAL_MASK(HOUR):
+					if (abs(tm->tm_year) != INT_MAX ||
+						abs(tm->tm_mon) != INT_MAX ||
+						abs(tm->tm_min) != INT_MAX ||
+						abs(tm->tm_sec) != INT_MAX ||
+						abs(tm->tm_hour) == INT_MAX ||
+						abs(tm->tm_mday) == INT_MAX)
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+								 errmsg("The character string you specified is not a valid interval")));
+
+					if (abs(tm->tm_hour) < 0 || abs(tm->tm_hour) > 23)
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+								 errmsg("hour must be between 0 and 23")));
+					break;
+
+				case INTERVAL_MASK(DAY) | INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE):
+					if (abs(tm->tm_year) != INT_MAX ||
+						abs(tm->tm_mon) != INT_MAX ||
+						abs(tm->tm_sec) != INT_MAX ||
+						abs(tm->tm_mday) == INT_MAX ||
+						abs(tm->tm_hour) == INT_MAX ||
+						abs(tm->tm_min) == INT_MAX)
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+								 errmsg("The character string you specified is not a valid interval")));
+
+					if (abs(tm->tm_hour) < 0 || abs(tm->tm_hour) > 23)
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+								 errmsg("hour must be between 0 and 23")));
+
+					if (abs(tm->tm_min) < 0 || abs(tm->tm_min) > 59)
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+								 errmsg("minutes must be between 0 and 59")));
+					break;
+
+				case INTERVAL_FULL_RANGE:
+				case INTERVAL_MASK(DAY) | INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE) | INTERVAL_MASK(SECOND):
+					if (abs(tm->tm_year) != INT_MAX ||
+						abs(tm->tm_mon) != INT_MAX ||
+						abs(tm->tm_mday) == INT_MAX ||
+						abs(tm->tm_hour) == INT_MAX ||
+						abs(tm->tm_min) == INT_MAX ||
+						abs(tm->tm_sec) == INT_MAX)
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+								 errmsg("The character string you specified is not a valid interval")));
+
+					if (abs(tm->tm_hour) < 0 || abs(tm->tm_hour) > 23)
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+								 errmsg("hour must be between 0 and 23")));
+
+					if (abs(tm->tm_min) < 0 || abs(tm->tm_min) > 59)
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+								 errmsg("minutes must be between 0 and 59")));
+
+					if (abs(tm->tm_sec) < 0 || abs(tm->tm_sec) > 59)
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+								 errmsg("seconds must be between 0 and 59")));
+					break;
+				case INTERVAL_MASK(HOUR):
+					if (abs(tm->tm_year) != INT_MAX ||
+						abs(tm->tm_mon) != INT_MAX ||
+						abs(tm->tm_mday) != INT_MAX ||
+						abs(tm->tm_min) != INT_MAX ||
+						abs(tm->tm_sec) != INT_MAX ||
+						abs(tm->tm_hour) == INT_MAX)
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+								 errmsg("The character string you specified is not a valid interval")));
+					break;
+				case INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE):
+					if (abs(tm->tm_year) != INT_MAX ||
+						abs(tm->tm_mon) != INT_MAX ||
+						abs(tm->tm_mday) != INT_MAX ||
+						abs(tm->tm_sec) != INT_MAX ||
+						abs(tm->tm_hour) == INT_MAX ||
+						abs(tm->tm_min) == INT_MAX)
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+								 errmsg("The character string you specified is not a valid interval")));
+
+					if (abs(tm->tm_min) < 0 || abs(tm->tm_min) > 59)
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+								 errmsg("minutes must be between 0 and 59")));
+					break;
+				case INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE) | INTERVAL_MASK(SECOND):
+					if (abs(tm->tm_year) != INT_MAX ||
+						abs(tm->tm_mon) != INT_MAX ||
+						abs(tm->tm_mday) != INT_MAX ||
+						abs(tm->tm_hour) == INT_MAX ||
+						abs(tm->tm_min) == INT_MAX ||
+						abs(tm->tm_sec) == INT_MAX)
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+								 errmsg("The character string you specified is not a valid interval")));
+
+					if (abs(tm->tm_min) < 0 || abs(tm->tm_min) > 59)
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+								 errmsg("minutes must be between 0 and 59")));
+
+					if (abs(tm->tm_sec) < 0 || abs(tm->tm_sec) > 59)
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+								 errmsg("seconds must be between 0 and 59")));
+					break;
+				case INTERVAL_MASK(MINUTE):
+					if (abs(tm->tm_year) != INT_MAX ||
+						abs(tm->tm_mon) != INT_MAX ||
+						abs(tm->tm_mday) != INT_MAX ||
+						abs(tm->tm_hour) != INT_MAX ||
+						abs(tm->tm_sec) != INT_MAX ||
+						abs(tm->tm_min) == INT_MAX)
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+								 errmsg("The character string you specified is not a valid interval")));
+					break;
+				case INTERVAL_MASK(MINUTE) | INTERVAL_MASK(SECOND):
+					if (abs(tm->tm_year) != INT_MAX ||
+						abs(tm->tm_mon) != INT_MAX ||
+						abs(tm->tm_mday) != INT_MAX ||
+						abs(tm->tm_hour) != INT_MAX ||
+						abs(tm->tm_min) == INT_MAX ||
+						abs(tm->tm_sec) == INT_MAX)
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+								 errmsg("The character string you specified is not a valid interval")));
+
+					if (abs(tm->tm_sec) < 0 || abs(tm->tm_sec) > 59)
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+								 errmsg("seconds must be between 0 and 59")));
+					break;
+				case INTERVAL_MASK(SECOND):
+					if (abs(tm->tm_year) != INT_MAX ||
+						abs(tm->tm_mon) != INT_MAX ||
+						abs(tm->tm_mday) != INT_MAX ||
+						abs(tm->tm_hour) != INT_MAX ||
+						abs(tm->tm_min) != INT_MAX ||
+						abs(tm->tm_sec) == INT_MAX)
+						ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+								 errmsg("The character string you specified is not a valid interval")));
+					break;
+				default:
+					ereport(ERROR,
+							(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+							 errmsg("missing or invalid datetime field")));
+			}
 		}
 
 		/* reset the initial value to '0' */
@@ -1796,7 +1896,7 @@ dsinterval_in(PG_FUNCTION_ARGS)
 				 dtype, str);
 	}
 
-	AdjustIntervalForTypmod(result, typmod);
+	AdjustIntervalForTypmod(result, typmod, fractional_leading);
 	AdjustTypmodForDay(result, typmod);
 
 	PG_RETURN_INTERVAL_P(result);
@@ -1887,7 +1987,7 @@ dsinterval_recv(PG_FUNCTION_ARGS)
 	interval->day = pq_getmsgint(buf, sizeof(interval->day));
 	interval->month = pq_getmsgint(buf, sizeof(interval->month));
 
-	AdjustIntervalForTypmod(interval, typmod);
+	AdjustIntervalForTypmod(interval, typmod, false);
 	AdjustTypmodForDay(interval, typmod);
 
 	PG_RETURN_INTERVAL_P(interval);
@@ -2117,7 +2217,7 @@ dsinterval(PG_FUNCTION_ARGS)
 	result = palloc(sizeof(Interval));
 	*result = *interval;
 
-	AdjustIntervalForTypmod(result, typmod);
+	AdjustIntervalForTypmod(result, typmod, false);
 	AdjustTypmodForDay(result, typmod);
 
 	PG_RETURN_INTERVAL_P(result);
@@ -2352,8 +2452,8 @@ dsinterval_mul(PG_FUNCTION_ARGS)
 #endif
 
 	/*
-	 * compatible oracle
-	 * For Interval day to second, the field of datetime 'year' 'month' will be truncated.
+	 * compatible oracle For Interval day to second, the field of datetime
+	 * 'year' 'month' will be truncated.
 	 */
 	result->month = 0;
 	result->day += result->time / USECS_PER_DAY;
@@ -2450,8 +2550,8 @@ dsinterval_div(PG_FUNCTION_ARGS)
 #endif
 
 	/*
-	 * compatible oracle
-	 * For Interval day to second, the field of datetime 'year' 'month' will be truncated.
+	 * compatible oracle For Interval day to second, the field of datetime
+	 * 'year' 'month' will be truncated.
 	 */
 	result->month = 0;
 	result->day += result->time / USECS_PER_DAY;

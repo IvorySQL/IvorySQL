@@ -106,6 +106,57 @@ SELECT INTERVAL '120' HOUR(3);
 
 SELECT INTERVAL '30.12345' SECOND(2,4);
 
+-- Fractional leading field. Oracle normalizes the fraction into smaller
+-- units: 1.5 days is 1 day 12 hours, 1.5 hours is 1 hour 30 minutes,
+-- 1.5 minutes is 1 minute 30 seconds. A lone number on a multi-field
+-- qualifier is the leading field, so DAY TO SECOND is 1.5 days as well.
+-- INTERVAL '1.5' SECOND already accepted the fraction and must not change.
+SELECT INTERVAL '1.5' DAY;
+SELECT INTERVAL '1.5' HOUR;
+SELECT INTERVAL '1.5' MINUTE;
+SELECT INTERVAL '1.5' SECOND;
+SELECT INTERVAL '1.5' DAY TO SECOND;
+SELECT INTERVAL '1.5' DAY TO HOUR;
+SELECT INTERVAL '1.5' DAY TO MINUTE;
+SELECT INTERVAL '1.5' HOUR TO MINUTE;
+SELECT INTERVAL '1.5' HOUR TO SECOND;
+SELECT INTERVAL '1.5' MINUTE TO SECOND;
+SELECT INTERVAL '0.5' DAY;
+SELECT INTERVAL '0.25' HOUR;
+SELECT INTERVAL '0.25' MINUTE;
+SELECT INTERVAL '1.0625' DAY;
+SELECT INTERVAL '1.0625' HOUR;
+SELECT INTERVAL '1.0625' DAY TO HOUR;
+SELECT INTERVAL '25.5' HOUR;
+SELECT INTERVAL '.5' HOUR;
+SELECT INTERVAL '1.0' DAY;
+SELECT INTERVAL '1.0' DAY TO SECOND;
+SELECT INTERVAL '99.5' DAY;
+SELECT INTERVAL '-1.5' DAY;
+SELECT INTERVAL '-1.5' HOUR;
+SELECT INTERVAL '-1.5' MINUTE;
+SELECT INTERVAL '-1.5' DAY TO SECOND;
+SELECT INTERVAL '+1.5' DAY;
+
+-- Same normalization NUMTODSINTERVAL already implements.
+SELECT INTERVAL '1.5' DAY = NUMTODSINTERVAL(1.5, 'DAY');
+SELECT INTERVAL '1.5' HOUR = NUMTODSINTERVAL(1.5, 'HOUR');
+SELECT INTERVAL '1.5' MINUTE = NUMTODSINTERVAL(1.5, 'MINUTE');
+SELECT INTERVAL '1.5' SECOND = NUMTODSINTERVAL(1.5, 'SECOND');
+SELECT INTERVAL '1.5' DAY TO SECOND = NUMTODSINTERVAL(1.5, 'DAY');
+SELECT INTERVAL '-1.5' DAY = NUMTODSINTERVAL(-1.5, 'DAY');
+SELECT INTERVAL '0.25' HOUR = NUMTODSINTERVAL(0.25, 'HOUR');
+
+-- Leading precision still applies to the integer part of the leading field.
+SELECT INTERVAL '100.5' DAY;	--ERROR
+
+-- A fractional leading field does not relax exact-match when other
+-- fields are written explicitly, and a non-fractional multi-field
+-- literal is unchanged.
+SELECT INTERVAL '1.5 2' DAY TO HOUR;	--ERROR
+SELECT INTERVAL '1:1' HOUR TO SECOND;	--ERROR
+SELECT INTERVAL '1' DAY TO SECOND;		--ERROR
+
 
 -- The valid range of values for the trailing field are as follows:
 -- HOUR: 0 to 23
