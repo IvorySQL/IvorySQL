@@ -6864,6 +6864,15 @@ ora_NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("\"EEEE\" not supported for input")));
+		/* Oracle: the exponent separator is uppercase E */
+		if (ORA_PARSER == compatible_db)
+		{
+			char	   *p;
+
+			for (p = number; *p; p++)
+				if (*p == 'e')
+					*p = 'E';
+		}
 		return strcpy(inout, number);
 	}
 
@@ -7637,6 +7646,15 @@ NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("\"EEEE\" not supported for input")));
+		/* Oracle: the exponent separator is uppercase E */
+		if (ORA_PARSER == compatible_db)
+		{
+			char	   *p;
+
+			for (p = number; *p; p++)
+				if (*p == 'e')
+					*p = 'E';
+		}
 		return strcpy(inout, number);
 	}
 

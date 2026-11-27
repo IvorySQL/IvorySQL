@@ -1,0 +1,41 @@
+-- Tests for EEEE exponent-casing behavior of to_char() in both
+-- compatibility modes: in oracle mode the exponent separator is
+-- uppercase E, in pg mode the native lowercase form is preserved.
+SET ivorysql.compatible_mode = oracle;
+SELECT to_char(1.234e+10, '9.999EEEE') AS ora_pos;
+  ora_pos   
+------------
+  1.234E+10
+(1 row)
+
+SELECT to_char(1.234e-10, '9.999EEEE') AS ora_neg;
+  ora_neg   
+------------
+  1.234E-10
+(1 row)
+
+SELECT to_char(0, '9.9EEEE') AS ora_zero;
+ ora_zero 
+----------
+  0.0E+00
+(1 row)
+
+SET ivorysql.compatible_mode = pg;
+SELECT to_char(1.234e+10, '9.999EEEE') AS pg_pos;
+   pg_pos   
+------------
+  1.234e+10
+(1 row)
+
+SELECT to_char(1.234e-10, '9.999EEEE') AS pg_neg;
+   pg_neg   
+------------
+  1.234e-10
+(1 row)
+
+SELECT to_char(0, '9.9EEEE') AS pg_zero;
+ pg_zero  
+----------
+  0.0e+00
+(1 row)
+
