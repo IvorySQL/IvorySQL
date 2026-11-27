@@ -101,6 +101,7 @@ tests += {
       't/030_pager.pl',
       't/040_prompt.pl',
       't/050_oracle_multiline.pl',
+      't/050_compatible_mode_sync.pl',
     ],
   },
 }
