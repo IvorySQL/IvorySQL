@@ -335,3 +335,56 @@ DROP TABLE t_48;
 
 RESET ivorysql.identifier_case_switch;
 RESET ivorysql.enable_case_switch;
+
+-- Replay a function call qualified by an uppercase catalog schema name.
+SET ivorysql.identifier_case_switch = interchange;
+SET quote_all_identifiers = off;
+CREATE SCHEMA "oracle_index_functions";
+CREATE SCHEMA "ORACLE_INDEX_FUNCTIONS";
+CREATE FUNCTION "oracle_index_functions"."replay"(integer) RETURNS integer
+    LANGUAGE sql IMMUTABLE AS 'SELECT $1 + 1';
+CREATE FUNCTION "ORACLE_INDEX_FUNCTIONS"."REPLAY"(integer) RETURNS integer
+    LANGUAGE sql IMMUTABLE AS 'SELECT $1 + 2';
+CREATE TEMP TABLE oracle_index_bindings (value integer);
+CREATE INDEX oracle_index_binding_orig ON oracle_index_bindings
+    ("oracle_index_functions"."replay"(7));
+SELECT format('CREATE INDEX oracle_index_binding_copy ON oracle_index_bindings (%s)',
+              pg_get_expr(indexprs, indrelid))
+  FROM pg_index WHERE indexrelid = 'oracle_index_binding_orig'::regclass
+    \gexec
+SET quote_all_identifiers = on;
+SELECT format('CREATE INDEX oracle_index_binding_quoted ON oracle_index_bindings (%s)',
+              pg_get_expr(indexprs, indrelid))
+  FROM pg_index WHERE indexrelid = 'oracle_index_binding_orig'::regclass
+    \gexec
+RESET quote_all_identifiers;
+SELECT count(*) = 3 AND count(DISTINCT p.oid) = 1
+       AND bool_and(n.nspname = 'ORACLE_INDEX_FUNCTIONS' AND p.proname = 'REPLAY')
+       AS same_binding
+  FROM pg_depend AS d
+  JOIN pg_proc AS p ON p.oid = d.refobjid
+  JOIN pg_namespace AS n ON n.oid = p.pronamespace
+ WHERE d.classid = 'pg_class'::regclass AND d.refclassid = 'pg_proc'::regclass
+   AND d.objid IN ('oracle_index_binding_orig'::regclass,
+                   'oracle_index_binding_copy'::regclass,
+                   'oracle_index_binding_quoted'::regclass);
+DROP TABLE oracle_index_bindings;
+DROP FUNCTION "oracle_index_functions"."replay"(integer);
+DROP FUNCTION "ORACLE_INDEX_FUNCTIONS"."REPLAY"(integer);
+DROP SCHEMA "oracle_index_functions";
+DROP SCHEMA "ORACLE_INDEX_FUNCTIONS";
+RESET ivorysql.identifier_case_switch;
+
+-- Replay a deparsed expression index under Oracle interchange rules.
+SET ivorysql.identifier_case_switch = interchange;
+CREATE TEMP TABLE oracle_index_probe (payload text, "MiXeD" text, "MiX""ed" text);
+CREATE INDEX oracle_index_orig ON oracle_index_probe
+    (left(payload, 10), "MiXeD", "MiX""ed");
+SELECT replace(pg_get_indexdef('oracle_index_orig'::regclass),
+               'INDEX oracle_index_orig', 'INDEX oracle_index_copy')
+    \gexec
+SELECT replace(pg_get_indexdef('oracle_index_orig'::regclass),
+               'INDEX oracle_index_orig', 'INDEX oracle_index_copy') =
+       pg_get_indexdef('oracle_index_copy'::regclass) AS same_definition;
+DROP TABLE oracle_index_probe;
+RESET ivorysql.identifier_case_switch;

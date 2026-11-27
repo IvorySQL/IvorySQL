@@ -41,6 +41,7 @@
 #include "utils/ora_compatible.h"
 #include "utils/rel.h"
 #include "utils/regproc.h"
+#include "utils/ruleutils.h"
 
 static void checkViewColumns(TupleDesc newdesc, TupleDesc olddesc);
 
@@ -1050,6 +1051,7 @@ compile_force_view(Oid viewoid)
 	bool		isnull;
 	char		*fview_querystring;
 	Datum		view_source;
+	Datum		stored_case;
 	List	   *raw_parsetree_list;
 	RawStmt    *rs;
 	Node		*node;
@@ -1069,11 +1071,36 @@ compile_force_view(Oid viewoid)
 	if (isnull)
 		elog(ERROR, "the definition of force view %u is lost", viewoid);
 
+	stored_case = SysCacheGetAttr(FORCEVIEWOID, tup,
+								 Anum_pg_force_view_ident_case, &isnull);
+	if (isnull)
+		elog(ERROR, "the identifier case of force view %u is lost", viewoid);
+
 	fview_querystring = TextDatumGetCString(view_source);
 	ReleaseSysCache(tup);
 
-	/* Parse the SQL into a raw parse tree. */
-	raw_parsetree_list = raw_parser(fview_querystring, RAW_PARSE_DEFAULT);
+	/*
+	 * Deparsed definitions and definitions stored in normal mode use
+	 * catalog case.  Parse them the same way as pg_dump restores them.
+	 */
+	if (DatumGetChar(stored_case) == IDENT_CASE_UNDEFINE ||
+		DatumGetChar(stored_case) == IDENT_CASE_NORMAL)
+	{
+		int			saved_case = identifier_case_switch;
+
+		PG_TRY();
+		{
+			identifier_case_switch = NORMAL;
+			raw_parsetree_list = raw_parser(fview_querystring, RAW_PARSE_DEFAULT);
+		}
+		PG_FINALLY();
+		{
+			identifier_case_switch = saved_case;
+		}
+		PG_END_TRY();
+	}
+	else
+		raw_parsetree_list = raw_parser(fview_querystring, RAW_PARSE_DEFAULT);
 	if (list_length(raw_parsetree_list) != 1)
 		elog(ERROR, "The definition of force view is wrong");
 
@@ -1107,7 +1134,7 @@ make_view_invalid(Oid viewid)
 	HeapTuple	tuple;
 	StringInfo	buf;
 	Form_pg_class classForm;
-	Datum		viewdef;
+	char	   *viewdef;
 	Oid			ruleoid = InvalidOid;
 	bool		isnull;
 
@@ -1120,7 +1147,7 @@ make_view_invalid(Oid viewid)
 	 * of this view must be with a schema, otherwise other sessions
 	 * cannot compile the view, except the session that created the view.
 	 */
-	viewdef = DirectFunctionCall1(pg_get_viewdef, ObjectIdGetDatum(viewid));
+	viewdef = get_viewdef_for_storage(viewid);
 	viewrel = relation_open(viewid, AccessExclusiveLock);
 	CheckTableNotInUse(viewrel, "INVALID VIEW");
 
@@ -1184,13 +1211,11 @@ make_view_invalid(Oid viewid)
 	appendStringInfoChar(buf, '.');
 	appendStringInfoString(buf, quote_identifier(get_rel_name(viewid)));
 	appendStringInfoString(buf, " AS \n");
-	appendStringInfoString(buf, TextDatumGetCString(viewdef));
+	appendStringInfoString(buf, viewdef);
 
 	/*
-	 * When invalidating the view, we do not obtain the view definition directly
-	 * from the query text entered by the user, but obtain it through pg_get_viewdef.
-	 * Therefore, the correctness of the meaning of double quotes in obtaining the view
-	 * definition should depend on pg_get_viewdef, so we use IDENT_CASE_UNDEFINE directly.
+	 * The definition was generated from catalog names.  There is no
+	 * original user input case mode to preserve.
 	 */
 	StoreForceViewQuery(viewid, false, IDENT_CASE_UNDEFINE, buf->data);
 
