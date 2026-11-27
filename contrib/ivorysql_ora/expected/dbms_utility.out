@@ -476,3 +476,70 @@ DETAIL:  drop cascades to function bug_schema.schema_error()
 drop cascades to function bug_schema.schema_caller()
 RESET ivorysql.identifier_case_switch;
 RESET ivorysql.enable_case_switch;
+-- Quoted delimiters in routine names must not truncate backtrace frames.
+SET ivorysql.identifier_case_switch = normal;
+CREATE OR REPLACE PROCEDURE "trace("" line 99 (" AS
+  trace_text varchar2(4000);
+BEGIN
+  RAISE EXCEPTION 'quoted name';
+EXCEPTION WHEN OTHERS THEN
+  trace_text := dbms_utility.format_error_backtrace;
+  RAISE INFO 'quoted routine name preserved: %',
+    strpos(trace_text, '"trace("" line 99 ("') > 0;
+  RAISE INFO 'backtrace line preserved: %',
+    strpos(trace_text, ', line 3') > 0;
+END;
+/
+CALL "trace("" line 99 ("();
+INFO:  quoted routine name preserved: t
+INFO:  backtrace line preserved: t
+DROP PROCEDURE "trace("" line 99 (";
+RESET ivorysql.identifier_case_switch;
+-- A quoted argument type must not supply the reported line number.
+SET ivorysql.identifier_case_switch = normal;
+CREATE TYPE "arg) line 99 (" AS (value integer);
+CREATE OR REPLACE FUNCTION trace_type_error(arg "arg) line 99 (") RETURN integer AS
+  trace_text varchar2(4000);
+BEGIN
+  RAISE EXCEPTION 'quoted type';
+EXCEPTION WHEN OTHERS THEN
+  trace_text := dbms_utility.format_error_backtrace;
+  RAISE INFO 'quoted type line preserved: %',
+    strpos(trace_text, ', line 3') > 0;
+  RETURN 1;
+END;
+/
+SELECT trace_type_error(NULL);
+INFO:  quoted type line preserved: t
+ trace_type_error 
+------------------
+                1
+(1 row)
+
+DROP FUNCTION trace_type_error;
+DROP TYPE "arg) line 99 (";
+RESET ivorysql.identifier_case_switch;
+SET ivorysql.identifier_case_switch = normal;
+CREATE OR REPLACE PACKAGE "pkg line 99 (" IS
+  PROCEDURE fail;
+END;
+/
+CREATE OR REPLACE PACKAGE BODY "pkg line 99 (" IS
+  PROCEDURE fail IS
+    trace_text varchar2(4000);
+  BEGIN
+    RAISE EXCEPTION 'package name';
+  EXCEPTION WHEN OTHERS THEN
+    trace_text := dbms_utility.format_error_backtrace;
+    RAISE INFO 'quoted package name preserved: %',
+      strpos(trace_text, '"pkg line 99 ("') > 0;
+    RAISE INFO 'package line preserved: %',
+      strpos(trace_text, ', line 4') > 0;
+  END;
+END;
+/
+CALL "pkg line 99 (".fail();
+INFO:  quoted package name preserved: t
+INFO:  package line preserved: t
+DROP PACKAGE "pkg line 99 (";
+RESET ivorysql.identifier_case_switch;
