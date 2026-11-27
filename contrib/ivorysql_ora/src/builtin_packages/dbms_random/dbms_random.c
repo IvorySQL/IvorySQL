@@ -202,7 +202,8 @@ ora_dbms_random_string(PG_FUNCTION_ARGS)
 							" \\~";
 	const char *charset;
 	size_t		chrset_size;
-	StringInfoData str;
+	text	   *result;
+	char	   *data;
 	const char *opt;
 	Numeric		truncated_len;
 	int			len;
@@ -281,7 +282,10 @@ ora_dbms_random_string(PG_FUNCTION_ARGS)
 
 	ensure_seeded();
 
-	initStringInfo(&str);
+	/* The validated length is known, so fill the result directly. */
+	result = (text *) palloc(VARHDRSZ + len);
+	SET_VARSIZE(result, VARHDRSZ + len);
+	data = VARDATA(result);
 	for (i = 0; i < len; i++)
 	{
 		size_t		pos = (size_t) (pg_prng_double(&random_state) * chrset_size);
@@ -289,10 +293,10 @@ ora_dbms_random_string(PG_FUNCTION_ARGS)
 		/* pg_prng_double() returns [0,1); guard the 1-in-2^53 clamp case */
 		if (pos >= chrset_size)
 			pos = chrset_size - 1;
-		appendStringInfoChar(&str, charset[pos]);
+		data[i] = charset[pos];
 	}
 
-	PG_RETURN_TEXT_P(cstring_to_text(str.data));
+	PG_RETURN_TEXT_P(result);
 }
 
 /*

@@ -104,3 +104,14 @@ select dbms_random.value() >= 0 as works_after_terminate;
 call dbms_random.seed(cast(1 as number));
 discard all;
 select dbms_random.value() >= 0 as works_after_discard;
+
+-- Seeded results must be unchanged across buffer-growth boundaries.
+CALL dbms_random.seed(12345::number);
+SELECT n, md5(dbms_random.string('U', n)) AS upper_digest,
+       md5(dbms_random.string('L', n)) AS lower_digest,
+       md5(dbms_random.string('A', n)) AS mixed_digest,
+       md5(dbms_random.string('X', n)) AS alnum_digest,
+       md5(dbms_random.string('P', n)) AS printable_digest
+FROM (VALUES (1), (1023), (1024), (2047), (2048), (3999), (4000)) AS sizes(n);
+-- Check that the number of PRNG draws is preserved for the next call too.
+SELECT dbms_random.string('U', 12) AS following_string;
