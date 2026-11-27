@@ -1496,3 +1496,20 @@ END;
 -- Cleanup (may fail if function wasn't created)
 DROP FUNCTION IF EXISTS test_rownum_param;
 
+--
+-- A DO block cannot take more USING parameters than FUNC_MAX_ARGS (100):
+-- the inline handler allocates one argument slot per parameter on its own
+-- stack, so a longer list overflows the frame and kills the backend.
+--
+-- (temporarily hide query, to avoid the long block query)
+\set ECHO none
+SELECT 'DO $$
+DECLARE
+' || string_agg('  v' || g || ' int := :p' || g || ';', E'\n') || '
+BEGIN
+  NULL;
+END;
+$$ LANGUAGE plisql USING ' || string_agg(':p' || g || ' IN', ', ') || ';'
+FROM generate_series(1, 200) g \gexec
+
+\set ECHO all

@@ -744,6 +744,19 @@ plisql_inline_handler(PG_FUNCTION_ARGS)
 	MemoryContext oldcontext = CurrentMemoryContext;
 
 	/*
+	 * The fake_fcinfo set up below is sized for FUNC_MAX_ARGS arguments on
+	 * the stack.  Bail out before touching it if the caller hands us more
+	 * USING parameters than that, rather than writing past the end of the
+	 * stack frame.
+	 */
+	if (codeblock->params != NULL &&
+		codeblock->params->numParams > FUNC_MAX_ARGS)
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("DO block has too many parameters: %d, the maximum is %d",
+						codeblock->params->numParams, FUNC_MAX_ARGS)));
+
+	/*
 	 * Connect to SPI manager
 	 */
 	SPI_connect_ext(codeblock->atomic ? 0 : SPI_OPT_NONATOMIC);
