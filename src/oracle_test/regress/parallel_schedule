@@ -19,6 +19,11 @@ test: test_setup
 test: oracle_builtin_oid
 
 # ----------
+# Oracle TO_CHAR(number) TM element
+# ----------
+test: ora_to_char_tm
+
+# ----------
 # The first group of parallel tests
 # ----------
 test: boolean char name varchar text int2 int4 int8 oid float4 float8 bit numeric txid uuid enum money rangetypes pg_lsn regproc
