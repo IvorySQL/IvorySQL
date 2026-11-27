@@ -438,3 +438,58 @@ SELECT interval '1' month * -2147483648.5 = interval '-178956970-8' year(9) to m
  t
 (1 row)
 
+-- Division must truncate the exact quotient, not a rounded float8 value.
+SELECT interval '7' month / 0.07 = interval '100' month AS exact_months;
+ exact_months 
+--------------
+ t
+(1 row)
+
+SELECT interval '-7' month / 0.07 = interval '-100' month AS exact_months;
+ exact_months 
+--------------
+ t
+(1 row)
+
+SELECT interval '7' month / -0.07 = interval '-100' month AS exact_months;
+ exact_months 
+--------------
+ t
+(1 row)
+
+SELECT interval '1' month / 1.00000000000000000001 = interval '0' month AS exact_months;
+ exact_months 
+--------------
+ t
+(1 row)
+
+SELECT interval '-1' month / 1.00000000000000000001 = interval '0' month AS exact_months;
+ exact_months 
+--------------
+ t
+(1 row)
+
+SELECT interval '5' month / 2 = interval '2' month AS exact_months;
+ exact_months 
+--------------
+ t
+(1 row)
+
+SELECT interval '-5' month / 2 = interval '-2' month AS exact_months;
+ exact_months 
+--------------
+ t
+(1 row)
+
+SELECT interval '1' month / 'Infinity'::number = interval '0' month AS exact_months;
+ exact_months 
+--------------
+ t
+(1 row)
+
+SELECT interval '1' month / 0;
+ERROR:  division by zero
+SELECT interval '1' month / 'NaN'::number;
+ERROR:  interval out of range
+SELECT interval '1' month / 0.0000000001;
+ERROR:  interval out of range

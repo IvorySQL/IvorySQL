@@ -192,3 +192,16 @@ SELECT interval '1' month * 'NaN'::number;
 SELECT interval '1' month * 'Infinity'::number;
 SELECT '-Infinity'::number * interval '1' month;
 SELECT interval '1' month * -2147483648.5 = interval '-178956970-8' year(9) to month AS exact_months;
+
+-- Division must truncate the exact quotient, not a rounded float8 value.
+SELECT interval '7' month / 0.07 = interval '100' month AS exact_months;
+SELECT interval '-7' month / 0.07 = interval '-100' month AS exact_months;
+SELECT interval '7' month / -0.07 = interval '-100' month AS exact_months;
+SELECT interval '1' month / 1.00000000000000000001 = interval '0' month AS exact_months;
+SELECT interval '-1' month / 1.00000000000000000001 = interval '0' month AS exact_months;
+SELECT interval '5' month / 2 = interval '2' month AS exact_months;
+SELECT interval '-5' month / 2 = interval '-2' month AS exact_months;
+SELECT interval '1' month / 'Infinity'::number = interval '0' month AS exact_months;
+SELECT interval '1' month / 0;
+SELECT interval '1' month / 'NaN'::number;
+SELECT interval '1' month / 0.0000000001;

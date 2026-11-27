@@ -1908,31 +1908,25 @@ yminterval_div(PG_FUNCTION_ARGS)
 {
 	Interval   *span = PG_GETARG_INTERVAL_P(0);
 	Numeric		num = PG_GETARG_NUMERIC(1);
-	float8		factor;
-	double		result_double;
+	Numeric		months;
+	Numeric		quotient;
+	ErrorSaveContext escontext = {T_ErrorSaveContext};
 	Interval   *result;
 
-	factor = DatumGetFloat8(DirectFunctionCall1(numeric_float8, NumericGetDatum(num)));
-	result = (Interval *) palloc(sizeof(Interval));
-
-	if (factor == 0.0)
-		ereport(ERROR,
-				(errcode(ERRCODE_DIVISION_BY_ZERO),
-				 errmsg("division by zero")));
-
-	result_double = span->month / factor;
-	if (isnan(result_double) || !FLOAT8_FITS_IN_INT32(result_double))
+	/* Truncate the exact quotient directly, without float8 rounding. */
+	months = int64_to_numeric(span->month);
+	quotient = DatumGetNumeric(DirectFunctionCall2(numeric_div_trunc,
+												  NumericGetDatum(months),
+												  NumericGetDatum(num)));
+	result = (Interval *) palloc0(sizeof(Interval));
+	result->month = numeric_int4_safe(quotient, (Node *) &escontext);
+	if (escontext.error_occurred)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("interval out of range")));
-	result->month = (int32) result_double;
 
-	/*
-	 * compatible oracle For Interval year to month, the field of datetime
-	 * 'DAY' 'HOUR' 'MINUTE' 'SECOND' will be zero.
-	 */
-	result->day = 0;
-	result->time = 0;
+	pfree(months);
+	pfree(quotient);
 
 	PG_RETURN_INTERVAL_P(result);
 }
