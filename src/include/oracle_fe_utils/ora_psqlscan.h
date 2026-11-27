@@ -86,8 +86,6 @@ extern Ora_PsqlScanResult ora_psql_scan(PsqlScanState state,
 
 extern void ora_psql_scan_reset(PsqlScanState state);
 
-extern void ora_psql_scan_reselect_sql_lexer(PsqlScanState state);
-
 extern bool ora_psql_scan_in_quote(PsqlScanState state);
 extern bool is_oracle_slash(PsqlScanState state, const char *line, int offset);
 
