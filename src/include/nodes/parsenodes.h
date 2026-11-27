@@ -287,7 +287,7 @@ typedef struct Query
  * If pct_type is true, then names is actually a field name and we look up
  * the type of that field.  If row_type is true, then names is actually a
  * relation name and we look up the type of that relation.
- * Otherwise (the normal case), names is a type name possibly qualified 
+ * Otherwise (the normal case), names is a type name possibly qualified
  * with the schema and database name.
  */
 typedef struct TypeName
@@ -299,10 +299,11 @@ typedef struct TypeName
 	bool		pct_type;		/* %TYPE specified? */
 	bool		row_type;		/* %ROWTYPE specified? */
 	List	   *typmods;		/* type modifier expression(s) */
-	struct TypeName *refTypeName; /* target of Oracle REF target-type syntax */
+	struct TypeName *refTypeName;	/* target of Oracle REF target-type syntax */
 	int32		typemod;		/* prespecified type modifier */
 	List	   *arrayBounds;	/* array bounds */
 	ParseLoc	location;		/* token location, or -1 if unknown */
+	bool		nchar;			/* Oracle NATIONAL character type */
 } TypeName;
 
 /*
@@ -323,7 +324,7 @@ typedef struct ColumnRef
 	NodeTag		type;
 	List	   *fields;			/* field names (String nodes) or A_Star */
 	ParseLoc	location;		/* token location, or -1 if unknown */
-	bool		ora_join_op_exists;	/* If Oracle Join operator was used (+) */
+	bool		ora_join_op_exists; /* If Oracle Join operator was used (+) */
 } ColumnRef;
 
 /*
@@ -343,9 +344,9 @@ typedef struct OraParamRef
 {
 	NodeTag		type;
 	int			number;			/* the number of the parameter */
-	ParseLoc		location;		/* token location, or -1 if unknown */	
-	char			*name;			/* placeholder variable name */	
-} OraParamRef;
+	ParseLoc	location;		/* token location, or -1 if unknown */
+	char	   *name;			/* placeholder variable name */
+}			OraParamRef;
 
 /*
  * A_Expr - infix, prefix, and postfix expressions
@@ -674,6 +675,35 @@ typedef struct RangeSubselect
 } RangeSubselect;
 
 /*
+ * RangeUnpivot - raw form of an Oracle-compatible UNPIVOT clause
+ */
+typedef struct RangeUnpivot
+{
+	pg_node_attr(nodetag_number(601))
+	NodeTag		type;
+	Node	   *source;			/* table reference */
+	bool		include_nulls;	/* INCLUDE NULLS rather than EXCLUDE NULLS */
+	List	   *measure_names;	/* output measure columns */
+	List	   *descriptor_names;	/* output descriptor columns */
+	List	   *items;			/* list of RangeUnpivotInItem */
+	Alias	   *alias;			/* table alias & optional column aliases */
+	ParseLoc	location;		/* token location, or -1 if unknown */
+} RangeUnpivot;
+
+/*
+ * RangeUnpivotInItem - one input column and optional descriptor label
+ */
+typedef struct RangeUnpivotInItem
+{
+	pg_node_attr(nodetag_number(602))
+	NodeTag		type;
+	List	   *value_columns;	/* list of ColumnRef */
+	List	   *labels;			/* constant expressions, or NIL for implicit
+								 * labels */
+	ParseLoc	location;		/* token location, or -1 if unknown */
+} RangeUnpivotInItem;
+
+/*
  * RangeFunction - function call appearing in a FROM clause
  *
  * functions is a List because we use this to represent the construct
@@ -809,8 +839,8 @@ typedef struct ColumnDef
 	List	   *constraints;	/* other constraints on column */
 	List	   *fdwoptions;		/* per-column FDW options */
 	ParseLoc	location;		/* parse location, or -1 if none/unknown */
-	bool	is_invisible;		/* column is not included in star expansion?
-						   				(invisible column) */
+	bool		is_invisible;	/* column is not included in star expansion?
+								 * (invisible column) */
 } ColumnDef;
 
 /*
@@ -1744,7 +1774,7 @@ typedef struct InlineFunctionDef
 	bool		is_proc;		/* true = procedure, false = function */
 	char	   *src;			/* body source text (IS/AS ... END) */
 	ParseLoc	location pg_node_attr(query_jumble_ignore);
-} InlineFunctionDef;
+}			InlineFunctionDef;
 
 /*
  * ForPortionOfClause
@@ -1909,7 +1939,7 @@ typedef struct MergeWhenClause
 	List	   *targetList;		/* INSERT/UPDATE targetlist */
 	/* the following members are only used in INSERT actions */
 	List	   *values;			/* VALUES to INSERT, or NULL */
-	struct MergeWhenClause *update_delete; /* ora_merge delete clause */
+	struct MergeWhenClause *update_delete;	/* ora_merge delete clause */
 } MergeWhenClause;
 
 /*
@@ -2365,7 +2395,7 @@ typedef struct SelectStmt
 	 */
 	List	   *valuesLists;	/* untransformed list of expression lists */
 
-	bool	valuesIsrow;	/* values clause is of ROW type */
+	bool		valuesIsrow;	/* values clause is of ROW type */
 
 	/*
 	 * These fields are used in both "leaf" SelectStmts and upper-level
@@ -2668,7 +2698,7 @@ typedef struct AlterTableCmd	/* one subcommand of an ALTER TABLE */
 	DropBehavior behavior;		/* RESTRICT or CASCADE for DROP cases */
 	bool		missing_ok;		/* skip error if missing? */
 	bool		recurse;		/* exec-time recursion */
-	bool        is_rowid;
+	bool		is_rowid;
 } AlterTableCmd;
 
 /* Ad-hoc node for AT_AlterConstraint */
@@ -3403,7 +3433,7 @@ typedef struct CreateSeqStmt
 	bool		for_identity;
 	bool		if_not_exists;	/* just do nothing if it already exists? */
 	bool		with_rowid;		/* created by create table ... with rowid */
-	char		seq_type;	/* is oracle compatible type or original type */
+	char		seq_type;		/* is oracle compatible type or original type */
 } CreateSeqStmt;
 
 typedef struct AlterSeqStmt
@@ -3789,8 +3819,8 @@ typedef struct DoStmt
 {
 	NodeTag		type;
 	List	   *args;			/* List of DefElem nodes */
-	List		*paramsmode;	/* List of parameter mode */
-	List		*paramslen;		/* List of length for parameter datatypes */
+	List	   *paramsmode;		/* List of parameter mode */
+	List	   *paramslen;		/* List of length for parameter datatypes */
 	bool		do_from_call;	/* T if DoStmt is come from CallStmt */
 } DoStmt;
 
@@ -3804,7 +3834,7 @@ typedef struct InlineCodeBlock
 	bool		langIsTrusted;	/* trusted property of the language */
 	bool		atomic;			/* atomic execution context */
 	bool		do_from_call;
-	ParamListInfo params;		
+	ParamListInfo params;
 } InlineCodeBlock;
 
 /* ----------------------
@@ -3825,7 +3855,7 @@ typedef struct CallStmt
 	FuncExpr   *funcexpr;
 	/* transformed output-argument expressions */
 	List	   *outargs;
-	OraParamRef	*hostvariable;	/* only used for get_parameter_descr() */
+	OraParamRef *hostvariable;	/* only used for get_parameter_descr() */
 	char	   *callinto;		/* rewrite CALL INTO to a PL assign stmt */
 } CallStmt;
 
@@ -4023,7 +4053,7 @@ typedef enum ObjectTypeMethodKind
 	OBJECT_METHOD_CONSTRUCTOR,
 	OBJECT_METHOD_MAP,
 	OBJECT_METHOD_ORDER
-} ObjectTypeMethodKind;
+}			ObjectTypeMethodKind;
 
 /* A routine declaration embedded in an Oracle object type specification. */
 typedef struct ObjectTypeMethod
@@ -4037,7 +4067,7 @@ typedef struct ObjectTypeMethod
 	ParseLoc	location;
 	ParseLoc	end_location;	/* first byte after the declaration */
 	char	   *source;			/* original declaration text */
-} ObjectTypeMethod;
+}			ObjectTypeMethod;
 
 /* CREATE [OR REPLACE] TYPE name BODY AS ... END */
 typedef struct CreateTypeBodyStmt
@@ -4046,7 +4076,7 @@ typedef struct CreateTypeBodyStmt
 	bool		replace;
 	List	   *typeName;
 	char	   *body;
-} CreateTypeBodyStmt;
+}			CreateTypeBodyStmt;
 
 /* ----------------------
  *		Create Type Statement, enum types
@@ -4095,8 +4125,8 @@ typedef enum ViewCheckOption
 	LOCAL_CHECK_OPTION,
 	CASCADED_CHECK_OPTION,
 	READ_ONLY_OPTION,			/* WITH READ ONLY (Oracle compat); only set
-								 * transiently in grammar actions, never stored
-								 * in ViewStmt.withCheckOption */
+								 * transiently in grammar actions, never
+								 * stored in ViewStmt.withCheckOption */
 } ViewCheckOption;
 
 typedef struct ViewStmt
@@ -4107,7 +4137,8 @@ typedef struct ViewStmt
 	Node	   *query;			/* the SELECT query (as a raw parse tree) */
 	bool		replace;		/* replace an existing view? */
 	bool		force;			/* force view */
-	char	   *stmt_literal;	/* the original text that defines the force view */
+	char	   *stmt_literal;	/* the original text that defines the force
+								 * view */
 	List	   *options;		/* options from WITH clause */
 	ViewCheckOption withCheckOption;	/* WITH CHECK OPTION */
 	bool		readOnly;		/* WITH READ ONLY (Oracle compat) */
@@ -4374,7 +4405,7 @@ typedef struct OraAlterIndexRebuildStmt
 	NodeTag		type;
 	RangeVar   *relation;		/* index to rebuild */
 	List	   *options;		/* List of DefElem */
-} OraAlterIndexRebuildStmt;
+}			OraAlterIndexRebuildStmt;
 
 /* ----------------------
  *		Oracle-compatible ALTER INDEX ... UNUSABLE Statement
@@ -4388,7 +4419,7 @@ typedef struct OraAlterIndexUnusableStmt
 {
 	NodeTag		type;
 	RangeVar   *relation;		/* index to mark unusable */
-} OraAlterIndexUnusableStmt;
+}			OraAlterIndexUnusableStmt;
 
 /* ----------------------
  *		CREATE CONVERSION Statement
@@ -4763,20 +4794,20 @@ typedef enum AccessorItemUnitKind
 	ACCESSOR_TRIGGER,
 	ACCESSOR_TYPE,
 	ACCESSOR_UNKNOW
-} AccessorItemUnitKind;
+}			AccessorItemUnitKind;
 
 typedef struct AccessorItem
 {
 	NodeTag		type;
-	List		*unitname;			/* qualified name (list of Value strings) */
+	List	   *unitname;		/* qualified name (list of Value strings) */
 	AccessorItemUnitKind unitkind;	/* ACCESSOR_FUNCTION, etc */
-} AccessorItem;
+}			AccessorItem;
 
 typedef struct AccessibleByClause
 {
 	NodeTag		type;
-	List		*accessors;		/* List of AccessorItem nodes */
-} AccessibleByClause;
+	List	   *accessors;		/* List of AccessorItem nodes */
+}			AccessibleByClause;
 
 /*
  * support alter a function like:
@@ -4793,17 +4824,17 @@ typedef struct CompileFunctionStmt
 	NodeTag		type;
 	ObjectType	objtype;
 	ObjectWithArgs *func;		/* name and args of function */
-	bool		is_compile;		
+	bool		is_compile;
 	bool		editable;
-	List		*parameters;
-} CompileFunctionStmt;
+	List	   *parameters;
+}			CompileFunctionStmt;
 
 typedef struct ColumnRefOrFuncCall
 {
 	NodeTag		type;
-	ColumnRef	*cref;
-	FuncCall	*func;
-} ColumnRefOrFuncCall;
+	ColumnRef  *cref;
+	FuncCall   *func;
+}			ColumnRefOrFuncCall;
 
 /* ----------------------
  *		Create Package Statement
@@ -4813,21 +4844,22 @@ typedef struct CreatePackageStmt
 {
 	NodeTag		type;
 	bool		replace;		/* T => replace if already exists */
-	List		*pkgname;
-	List		*propers;		/* invok rigth or access by or default collation */
+	List	   *pkgname;
+	List	   *propers;		/* invok rigth or access by or default
+								 * collation */
 	bool		editable;		/* EDITIONABLE */
-	char		*pkgsrc;
-} CreatePackageStmt;
+	char	   *pkgsrc;
+}			CreatePackageStmt;
 
 
 typedef struct CreatePackageBodyStmt
 {
 	NodeTag		type;
 	bool		replace;
-	List		*pkgname;
+	List	   *pkgname;
 	bool		editable;
-	char		*bodysrc;
-} CreatePackageBodyStmt;
+	char	   *bodysrc;
+}			CreatePackageBodyStmt;
 
 typedef enum package_alter_flag
 {
@@ -4837,15 +4869,15 @@ typedef enum package_alter_flag
 	alter_compile_package,
 	alter_compile_specification,
 	alter_compile_parameter
-} package_alter_flag;
+}			package_alter_flag;
 
 typedef struct AlterPackageStmt
 {
-	NodeTag					type;
-	List					*pkgname;
-	package_alter_flag		alter_flag;
-	bool					editable;
-	List					*parameters;
-} AlterPackageStmt;
+	NodeTag		type;
+	List	   *pkgname;
+	package_alter_flag alter_flag;
+	bool		editable;
+	List	   *parameters;
+}			AlterPackageStmt;
 
 #endif							/* PARSENODES_H */

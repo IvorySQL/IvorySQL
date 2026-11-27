@@ -32,6 +32,7 @@ OBJS = \
 	parse_relation.o \
 	parse_target.o \
 	parse_type.o \
+	parse_unpivot.o \
 	parse_utilcmd.o \
 	parser.o \
 	scan.o \

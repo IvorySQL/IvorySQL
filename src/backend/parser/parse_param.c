@@ -52,27 +52,27 @@ typedef struct VarParamState
 {
 	Oid		  **paramTypes;		/* array of parameter type OIDs */
 	int		   *numParams;		/* number of array entries */
-	Oid		  *paramTypeWithMask; 	/* array of parameter type OIDs with mask */
+	Oid		   *paramTypeWithMask;	/* array of parameter type OIDs with mask */
 } VarParamState;
 
 typedef struct OraParamNumber
 {
-	int 	number;
-	char*	name;
-}OraParamNumber;
+	int			number;
+	char	   *name;
+}			OraParamNumber;
 
 typedef struct OraParamNumbers
 {
-	int  			param_max;
-	int   			param_count;
-	int             level;
-	OraParamNumber* params;
-	MemoryContext   mcontext;
-	struct OraParamNumbers* prev;
-}OraParamNumbers;
+	int			param_max;
+	int			param_count;
+	int			level;
+	OraParamNumber *params;
+	MemoryContext mcontext;
+	struct OraParamNumbers *prev;
+}			OraParamNumbers;
 
-static OraParamNumbers *TopOraParamNode = NULL;
-static OraParamNumbers *CurrentOraParamNode = NULL;
+static OraParamNumbers * TopOraParamNode = NULL;
+static OraParamNumbers * CurrentOraParamNode = NULL;
 
 /*
  * dynamic sql stmt parse information
@@ -85,22 +85,22 @@ static OraParamNumbers *CurrentOraParamNode = NULL;
  * IsBindByName: the paramter is bound by name.
  * When compile DoStmt, DoStmt always gets compiled after other stmt.
  */
-static bool			IsParseDynSql = false;
-static bool			IsParseDynDoStmt = true;
-static bool			HasPgParam = false;
-static bool			DoStmtCheckVar = false;
-static bool			IsBindByName = false;
-static bool			IsDynCallStmt = false;
+static bool IsParseDynSql = false;
+static bool IsParseDynDoStmt = true;
+static bool HasPgParam = false;
+static bool DoStmtCheckVar = false;
+static bool IsBindByName = false;
+static bool IsDynCallStmt = false;
 
 /*
  * store the OraParam name and position
  */
 typedef struct OraParamState
 {
-	int maxparams;		/* max size of paramNames */
-	int numParams;		/* real size of params */
-	char **paramNames;	/* store the parameter'name */
-}OraParamState;
+	int			maxparams;		/* max size of paramNames */
+	int			numParams;		/* real size of params */
+	char	  **paramNames;		/* store the parameter'name */
+}			OraParamState;
 
 
 static Node *fixed_paramref_hook(ParseState *pstate, ParamRef *pref);
@@ -112,8 +112,8 @@ static bool check_parameter_resolution_walker(Node *node, ParseState *pstate);
 static bool query_contains_extern_params_walker(Node *node, void *context);
 static bool calculate_oraparamnumbers_walker(Node *node, void *context);
 static bool raw_calculate_oraparamnumbers_walker(Node *node,
-							tree_walker_callback walker,
-							void *context);
+												 tree_walker_callback walker,
+												 void *context);
 static bool calculate_oraparamname_walker(Node *node, void *state);
 
 
@@ -145,8 +145,8 @@ setup_parse_variable_parameters(ParseState *pstate,
 	/*
 	 * get the real paramTypes(reset 32nd-30nd bit of 32 bit Oid)
 	 */
-	Oid 		  *paramTypeWithMask = NULL;
-	int 		   i;
+	Oid		   *paramTypeWithMask = NULL;
+	int			i;
 
 	if (*numParams > 0)
 		paramTypeWithMask = palloc0(sizeof(Oid) * (*numParams));
@@ -181,7 +181,7 @@ fixed_paramref_hook(ParseState *pstate, ParamRef *pref)
 		!OidIsValid(parstate->paramTypes[paramno - 1]))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_PARAMETER),
-				IsA(pref, OraParamRef) ? errmsg("there is no parameter %s", ((OraParamRef*)pref)->name) :
+				 IsA(pref, OraParamRef) ? errmsg("there is no parameter %s", ((OraParamRef *) pref)->name) :
 				 errmsg("there is no parameter $%d", pref->number),
 				 parser_errposition(pstate, pref->location)));
 
@@ -437,7 +437,8 @@ query_contains_extern_params_walker(Node *node, void *context)
 Node *
 ParseParamVariable(Node *arg)
 {
-	Node *result = arg;
+	Node	   *result = arg;
+
 	if (IsA(arg, Param))
 	{
 		return result;
@@ -445,24 +446,25 @@ ParseParamVariable(Node *arg)
 
 	if (IsA(arg, RelabelType))
 	{
-		result = (Node *)((RelabelType *)arg)->arg;
+		result = (Node *) ((RelabelType *) arg)->arg;
 		return ParseParamVariable(result);
 	}
 
 	if (IsA(arg, FuncExpr))
 	{
-		List *args = ((FuncExpr *)arg)->args;
-		if (((FuncExpr*)arg)->funcformat != COERCE_EXPLICIT_CALL)
-			return ParseParamVariable((Node *)linitial(args));
+		List	   *args = ((FuncExpr *) arg)->args;
+
+		if (((FuncExpr *) arg)->funcformat != COERCE_EXPLICIT_CALL)
+			return ParseParamVariable((Node *) linitial(args));
 	}
 	else if (IsA(arg, CoerceViaIO))
 	{
-		result = (Node *) ((CoerceViaIO *)arg)->arg;
+		result = (Node *) ((CoerceViaIO *) arg)->arg;
 		return ParseParamVariable(result);
 	}
 	else if (IsA(arg, ArrayCoerceExpr))
 	{
-		result = (Node *) ((ArrayCoerceExpr *)arg)->arg;
+		result = (Node *) ((ArrayCoerceExpr *) arg)->arg;
 		return ParseParamVariable(result);
 	}
 
@@ -470,12 +472,12 @@ ParseParamVariable(Node *arg)
 }
 
 /*
- * get the parameter type mode 
+ * get the parameter type mode
  */
 void
 GetParamMode(Oid *paramTypes, int numParams, char *modes)
 {
-	int	i;
+	int			i;
 
 	for (i = 0; i < numParams; i++)
 	{
@@ -492,12 +494,12 @@ GetParamMode(Oid *paramTypes, int numParams, char *modes)
 
 void
 ParseVarParamState(void *arg, Node *param, bool *isOut,
-			bool *isIn, bool *isLeftCall)
+				   bool *isIn, bool *isLeftCall)
 {
-	int 		   index;
-	Oid 		   type;
-	VarParamState 	*vps = (VarParamState *) arg;
-	Oid 	  	*ptypes = vps->paramTypeWithMask;
+	int			index;
+	Oid			type;
+	VarParamState *vps = (VarParamState *) arg;
+	Oid		   *ptypes = vps->paramTypeWithMask;
 
 	if (!ptypes)
 		return;
@@ -566,7 +568,7 @@ push_oraparam_stack(void)
 	OraParamNumbers *new;
 
 	new = palloc0(sizeof(OraParamNumbers));
-	new->params = palloc0(sizeof(OraParamNumber)* 8);
+	new->params = palloc0(sizeof(OraParamNumber) * 8);
 	new->param_max = 8;
 	new->mcontext = CurrentMemoryContext;
 
@@ -597,26 +599,27 @@ pop_oraparam_stack(int top, int cur)
 
 	while (TopOraParamNode != NULL && top >= 0 && TopOraParamNode->level > top)
 	{
-		int i;
+		int			i;
 		OraParamNumbers *node = TopOraParamNode;
+
 		TopOraParamNode = TopOraParamNode->prev;
 
 		for (i = 0; i < node->param_count; ++i)
 		{
 			pfree(node->params[i].name);
 		}
-		
+
 		pfree(node->params);
-		pfree(node);		
+		pfree(node);
 	}
 
 	CurrentOraParamNode = TopOraParamNode;
 
 	while (CurrentOraParamNode != NULL && cur >= 0 && CurrentOraParamNode->level > cur)
-	{		
-		CurrentOraParamNode = CurrentOraParamNode->prev;		
+	{
+		CurrentOraParamNode = CurrentOraParamNode->prev;
 	}
-	
+
 	return;
 }
 
@@ -635,7 +638,7 @@ forward_oraparam_stack(void)
 
 void
 backward_oraparam_stack(void)
-{	
+{
 	if (CurrentOraParamNode != NULL)
 	{
 		CurrentOraParamNode = CurrentOraParamNode->prev;
@@ -645,60 +648,60 @@ backward_oraparam_stack(void)
 }
 
 int
-calculate_oraparamnumber(const char* name)
+calculate_oraparamnumber(const char *name)
 {
-	 int i = 0;
-	 int number = 0;
-	 MemoryContext oldcontext;
+	int			i = 0;
+	int			number = 0;
+	MemoryContext oldcontext;
 
-	 if (CurrentOraParamNode == NULL)
-		 return 0;
-	 
-	 if (IsParseDynDoStmt)
-	 {
-		 for (i = 0; i < CurrentOraParamNode->param_count; ++i)
-		 {
-			 if (strcmp(CurrentOraParamNode->params[i].name, name) == 0)
-			 {
+	if (CurrentOraParamNode == NULL)
+		return 0;
+
+	if (IsParseDynDoStmt)
+	{
+		for (i = 0; i < CurrentOraParamNode->param_count; ++i)
+		{
+			if (strcmp(CurrentOraParamNode->params[i].name, name) == 0)
+			{
 				/* ORA-06578: output parameter cannot be a duplicate bind */
-			 	if (IsDynCallStmt)
+				if (IsDynCallStmt)
 					ereport(ERROR,
 							(errcode(ERRCODE_AMBIGUOUS_PARAMETER),
 							 errmsg("output parameter cannot be a duplicate bind")));
 				else
 					return CurrentOraParamNode->params[i].number;
-			 }
-		 }
-	 }
-	 
-	 if (CurrentOraParamNode->param_count >= CurrentOraParamNode->param_max)
-	 {
-		 CurrentOraParamNode->params = (OraParamNumber*) repalloc(CurrentOraParamNode->params, 
-							sizeof(OraParamNumber)*CurrentOraParamNode->param_max * 2);
-		 CurrentOraParamNode->param_max *= 2;
-	 }
-	 
-	 number = CurrentOraParamNode->param_count + 1;
-	 
-	 oldcontext = MemoryContextSwitchTo(CurrentOraParamNode->mcontext);
-	 CurrentOraParamNode->params[CurrentOraParamNode->param_count].name = pstrdup(name);
-	 MemoryContextSwitchTo(oldcontext);
-	 
-	 CurrentOraParamNode->params[CurrentOraParamNode->param_count++].number = number;	 
-	 return number;  
+			}
+		}
+	}
+
+	if (CurrentOraParamNode->param_count >= CurrentOraParamNode->param_max)
+	{
+		CurrentOraParamNode->params = (OraParamNumber *) repalloc(CurrentOraParamNode->params,
+																  sizeof(OraParamNumber) * CurrentOraParamNode->param_max * 2);
+		CurrentOraParamNode->param_max *= 2;
+	}
+
+	number = CurrentOraParamNode->param_count + 1;
+
+	oldcontext = MemoryContextSwitchTo(CurrentOraParamNode->mcontext);
+	CurrentOraParamNode->params[CurrentOraParamNode->param_count].name = pstrdup(name);
+	MemoryContextSwitchTo(oldcontext);
+
+	CurrentOraParamNode->params[CurrentOraParamNode->param_count++].number = number;
+	return number;
 }
 
 bool
 calculate_oraparamnumbers(List *parsetree_list)
 {
-	ListCell *parsetree_item = NULL;
+	ListCell   *parsetree_item = NULL;
 
 	foreach(parsetree_item, parsetree_list)
 	{
-		Node *parsetree = (Node *)lfirst(parsetree_item);
+		Node	   *parsetree = (Node *) lfirst(parsetree_item);
 
 		if (nodeTag(parsetree) == T_RawStmt &&
-			nodeTag(((RawStmt *)parsetree)->stmt) == T_CallStmt &&
+			nodeTag(((RawStmt *) parsetree)->stmt) == T_CallStmt &&
 			CurrentOraParamNode &&
 			CurrentOraParamNode->param_count == 0)
 			setdynamic_callparser(true);
@@ -720,9 +723,9 @@ calculate_oraparamnumbers_walker(Node *node, void *context)
 		return false;
 
 	if (IsA(node, OraParamRef))
-	{	
-		OraParamRef *pref = (OraParamRef*)node;
-		int number = calculate_oraparamnumber(pref->name);
+	{
+		OraParamRef *pref = (OraParamRef *) node;
+		int			number = calculate_oraparamnumber(pref->name);
 
 		if (pref->number <= 0)
 		{
@@ -734,7 +737,7 @@ calculate_oraparamnumbers_walker(Node *node, void *context)
 		}
 
 		return false;
-	
+
 	}
 	else if (!HasPgParam && IsA(node, ParamRef))
 	{
@@ -742,9 +745,9 @@ calculate_oraparamnumbers_walker(Node *node, void *context)
 	}
 	else
 	{
-		return raw_calculate_oraparamnumbers_walker(node, 
-				calculate_oraparamnumbers_walker,
-				context);
+		return raw_calculate_oraparamnumbers_walker(node,
+													calculate_oraparamnumbers_walker,
+													context);
 	}
 
 	return false;
@@ -752,16 +755,16 @@ calculate_oraparamnumbers_walker(Node *node, void *context)
 
 static bool
 raw_calculate_oraparamnumbers_walker(Node *node,
-					tree_walker_callback walker,
-					void *context)
+									 tree_walker_callback walker,
+									 void *context)
 {
 	ListCell   *temp = NULL;
 
 #define WALK(n) walker((Node *) (n), context)
 
 	/*
-	* recurse into any sub-nodes that current node has.
-	*/
+	 * recurse into any sub-nodes that current node has.
+	 */
 	if (node == NULL)
 		return false;
 
@@ -770,1763 +773,1799 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 	switch (nodeTag(node))
 	{
 		case T_CreateDomainStmt:
-		{
-			CreateDomainStmt    *stmt = (CreateDomainStmt *)node;
-			if (WALK(stmt->domainname))
-				return true;
-			if (WALK(stmt->typeName))
-				return true;
-			if (WALK(stmt->constraints))
-				return true;
-		}
+			{
+				CreateDomainStmt *stmt = (CreateDomainStmt *) node;
+
+				if (WALK(stmt->domainname))
+					return true;
+				if (WALK(stmt->typeName))
+					return true;
+				if (WALK(stmt->constraints))
+					return true;
+			}
 			break;
 		case T_AlterDomainStmt:
-		{
-			AlterDomainStmt    *stmt = (AlterDomainStmt *)node;
-			if (WALK(stmt->typeName))
-				return true;
-			if (WALK(stmt->def))
-				return true;
-		}	
+			{
+				AlterDomainStmt *stmt = (AlterDomainStmt *) node;
+
+				if (WALK(stmt->typeName))
+					return true;
+				if (WALK(stmt->def))
+					return true;
+			}
 			break;
 		case T_CreatePolicyStmt:
-		{
-			CreatePolicyStmt    *stmt = (CreatePolicyStmt *)node;
-			if (WALK(stmt->table))
-				return true;
-			if (WALK(stmt->roles))
-				return true;
-			if (WALK(stmt->qual))
-				return true;
-			if (WALK(stmt->with_check))
-				return true;
-		}
+			{
+				CreatePolicyStmt *stmt = (CreatePolicyStmt *) node;
+
+				if (WALK(stmt->table))
+					return true;
+				if (WALK(stmt->roles))
+					return true;
+				if (WALK(stmt->qual))
+					return true;
+				if (WALK(stmt->with_check))
+					return true;
+			}
 			break;
 		case T_AlterPolicyStmt:
-		{
-			AlterPolicyStmt    *stmt = (AlterPolicyStmt *)node;
-			if (WALK(stmt->table))
-				return true;
-			if (WALK(stmt->roles))
-				return true;
-			if (WALK(stmt->qual))
-				return true;
-			if (WALK(stmt->with_check))
-				return true;
-		}
+			{
+				AlterPolicyStmt *stmt = (AlterPolicyStmt *) node;
+
+				if (WALK(stmt->table))
+					return true;
+				if (WALK(stmt->roles))
+					return true;
+				if (WALK(stmt->qual))
+					return true;
+				if (WALK(stmt->with_check))
+					return true;
+			}
 			break;
 		case T_CreateTrigStmt:
-		{
-			CreateTrigStmt    *stmt = (CreateTrigStmt *)node;
-			if (WALK(stmt->relation))
-				return true;
-			if (WALK(stmt->whenClause))
-				return true;
-			if (WALK(stmt->funcname))
-				return true;
-			if (WALK(stmt->args))
-				return true;
-			if (WALK(stmt->columns))
-				return true;
-			if (WALK(stmt->constrrel))
-				return true;
-		
-		}
+			{
+				CreateTrigStmt *stmt = (CreateTrigStmt *) node;
+
+				if (WALK(stmt->relation))
+					return true;
+				if (WALK(stmt->whenClause))
+					return true;
+				if (WALK(stmt->funcname))
+					return true;
+				if (WALK(stmt->args))
+					return true;
+				if (WALK(stmt->columns))
+					return true;
+				if (WALK(stmt->constrrel))
+					return true;
+
+			}
 			break;
 		case T_IndexStmt:
-		{
-			IndexStmt    *stmt = (IndexStmt *)node;
-			if (WALK(stmt->relation))
-				return true;
-			if (WALK(stmt->indexParams))
-				return true;
-			if (WALK(stmt->options))
-				return true;
-			if (WALK(stmt->whereClause))
-				return true;
-			if (WALK(stmt->excludeOpNames))
-				return true;		
-		}
+			{
+				IndexStmt  *stmt = (IndexStmt *) node;
+
+				if (WALK(stmt->relation))
+					return true;
+				if (WALK(stmt->indexParams))
+					return true;
+				if (WALK(stmt->options))
+					return true;
+				if (WALK(stmt->whereClause))
+					return true;
+				if (WALK(stmt->excludeOpNames))
+					return true;
+			}
 			break;
 		case T_RuleStmt:
-		{
-			RuleStmt    *stmt = (RuleStmt *)node;
-			if (WALK(stmt->relation))
-				return true;
-			if (WALK(stmt->whereClause))
-				return true;
-			if (WALK(stmt->actions))
-				return true;		
-		}
+			{
+				RuleStmt   *stmt = (RuleStmt *) node;
+
+				if (WALK(stmt->relation))
+					return true;
+				if (WALK(stmt->whereClause))
+					return true;
+				if (WALK(stmt->actions))
+					return true;
+			}
 			break;
 		case T_DeleteStmt:
-		{
-			DeleteStmt    *stmt = (DeleteStmt *)node;
-			if (WALK(stmt->relation))
-				return true;
-			if (WALK(stmt->usingClause))
-				return true;
-			if (WALK(stmt->whereClause))
-				return true;
-			if (WALK(stmt->returningClause))
-				return true;		
-			if (WALK(stmt->withClause))
-				return true;		
-		}
+			{
+				DeleteStmt *stmt = (DeleteStmt *) node;
+
+				if (WALK(stmt->relation))
+					return true;
+				if (WALK(stmt->usingClause))
+					return true;
+				if (WALK(stmt->whereClause))
+					return true;
+				if (WALK(stmt->returningClause))
+					return true;
+				if (WALK(stmt->withClause))
+					return true;
+			}
 			break;
 		case T_UpdateStmt:
-		{
-			UpdateStmt    *stmt = (UpdateStmt *)node;
-			if (WALK(stmt->relation))
-				return true;
-			if (WALK(stmt->targetList))
-				return true;
-			if (WALK(stmt->fromClause))
-				return true;
-			if (WALK(stmt->whereClause))
-				return true;		
-			if (WALK(stmt->returningClause))
-				return true;		
-			if (WALK(stmt->withClause))
-				return true;		
-		}
+			{
+				UpdateStmt *stmt = (UpdateStmt *) node;
+
+				if (WALK(stmt->relation))
+					return true;
+				if (WALK(stmt->targetList))
+					return true;
+				if (WALK(stmt->fromClause))
+					return true;
+				if (WALK(stmt->whereClause))
+					return true;
+				if (WALK(stmt->returningClause))
+					return true;
+				if (WALK(stmt->withClause))
+					return true;
+			}
 			break;
 		case T_AlterTableStmt:
-		{
-			AlterTableStmt    *stmt = (AlterTableStmt *)node;
-			if (WALK(stmt->relation))
-				return true;
-			if (WALK(stmt->cmds))
-				return true;			
-		}
+			{
+				AlterTableStmt *stmt = (AlterTableStmt *) node;
+
+				if (WALK(stmt->relation))
+					return true;
+				if (WALK(stmt->cmds))
+					return true;
+			}
 			break;
 		case T_AlterTableCmd:
-		{
-			AlterTableCmd    *stmt = (AlterTableCmd *)node;
-			if (WALK(stmt->newowner))
-				return true;
-			if (WALK(stmt->def))
-				return true;
-			
-		}
+			{
+				AlterTableCmd *stmt = (AlterTableCmd *) node;
+
+				if (WALK(stmt->newowner))
+					return true;
+				if (WALK(stmt->def))
+					return true;
+
+			}
 			break;
 		case T_CreateFunctionStmt:
-		{
-			CreateFunctionStmt *stmt = (CreateFunctionStmt*)node;
-			if (WALK(stmt->funcname))
-				return true;
-			if (WALK(stmt->parameters))
-				return true;
-			if (WALK(stmt->returnType))
-				return true;
-			if (WALK(stmt->options))
-				return true;
-		}
+			{
+				CreateFunctionStmt *stmt = (CreateFunctionStmt *) node;
+
+				if (WALK(stmt->funcname))
+					return true;
+				if (WALK(stmt->parameters))
+					return true;
+				if (WALK(stmt->returnType))
+					return true;
+				if (WALK(stmt->options))
+					return true;
+			}
 			break;
 		case T_SelectStmt:
-		{
-			 SelectStmt *stmt = (SelectStmt *)node;
+			{
+				SelectStmt *stmt = (SelectStmt *) node;
 
-			 if (WALK(stmt->distinctClause))
-				 return true;
-			 if (WALK(stmt->intoClause))
-				 return true;
-			 if (WALK(stmt->targetList))
-				 return true;
-			 if (WALK(stmt->fromClause))
-				 return true;
-			 if (WALK(stmt->whereClause))
-				 return true;		 
-			 if (WALK(stmt->groupClause))
-				 return true;		 
-			 if (WALK(stmt->havingClause))
-				 return true;
-			 if (WALK(stmt->windowClause))
-				 return true;
-			 if (WALK(stmt->valuesLists))
-				 return true;
-			 if (WALK(stmt->sortClause))
-				 return true;
-			 if (WALK(stmt->limitOffset))
-				 return true;
-			 if (WALK(stmt->lockingClause))
-				 return true;
-			 if (WALK(stmt->withClause))
-				 return true;
-			 if (WALK(stmt->larg))
-				 return true;
-			 if (WALK(stmt->rarg))
-				 return true;
-		}
+				if (WALK(stmt->distinctClause))
+					return true;
+				if (WALK(stmt->intoClause))
+					return true;
+				if (WALK(stmt->targetList))
+					return true;
+				if (WALK(stmt->fromClause))
+					return true;
+				if (WALK(stmt->whereClause))
+					return true;
+				if (WALK(stmt->groupClause))
+					return true;
+				if (WALK(stmt->havingClause))
+					return true;
+				if (WALK(stmt->windowClause))
+					return true;
+				if (WALK(stmt->valuesLists))
+					return true;
+				if (WALK(stmt->sortClause))
+					return true;
+				if (WALK(stmt->limitOffset))
+					return true;
+				if (WALK(stmt->lockingClause))
+					return true;
+				if (WALK(stmt->withClause))
+					return true;
+				if (WALK(stmt->larg))
+					return true;
+				if (WALK(stmt->rarg))
+					return true;
+			}
 			break;
 		case T_InsertStmt:
-		{
-			 InsertStmt *stmt = (InsertStmt *)node;
+			{
+				InsertStmt *stmt = (InsertStmt *) node;
 
-			 if (WALK(stmt->relation))
-				 return true;
-			 if (WALK(stmt->cols))
-				 return true;
-			 if (WALK(stmt->selectStmt))
-				 return true;
-			 if (WALK(stmt->onConflictClause))
-				 return true;
-			 if (WALK(stmt->returningClause))
-				 return true;
-			 if (WALK(stmt->withClause))
-				 return true;
-		}
+				if (WALK(stmt->relation))
+					return true;
+				if (WALK(stmt->cols))
+					return true;
+				if (WALK(stmt->selectStmt))
+					return true;
+				if (WALK(stmt->onConflictClause))
+					return true;
+				if (WALK(stmt->returningClause))
+					return true;
+				if (WALK(stmt->withClause))
+					return true;
+			}
 			break;
 		case T_CreateSchemaStmt:
-		{
-			 CreateSchemaStmt *stmt = (CreateSchemaStmt *)node;
-	
-			 if (WALK(stmt->authrole))
-		  		 return true;
-			 if (WALK(stmt->schemaElts))
-				 return true;
-		}
+			{
+				CreateSchemaStmt *stmt = (CreateSchemaStmt *) node;
+
+				if (WALK(stmt->authrole))
+					return true;
+				if (WALK(stmt->schemaElts))
+					return true;
+			}
 			break;
 		case T_AlterObjectSchemaStmt:
-		{
-			 AlterObjectSchemaStmt *stmt = (AlterObjectSchemaStmt *)node;
-	
-			if (WALK(stmt->relation))
-				return true;
-			 if (WALK(stmt->object))
-				 return true;
-		}
+			{
+				AlterObjectSchemaStmt *stmt = (AlterObjectSchemaStmt *) node;
+
+				if (WALK(stmt->relation))
+					return true;
+				if (WALK(stmt->object))
+					return true;
+			}
 			break;
 		case T_ExecuteStmt:
-			return WALK(((ExecuteStmt *)node)->params);
+			return WALK(((ExecuteStmt *) node)->params);
 		case T_CreateTableAsStmt:
-		{
-			 CreateTableAsStmt *stmt = (CreateTableAsStmt *)node;
-	
-			 if (WALK(stmt->query))
-				 return true;
-			 if (WALK(stmt->into))
-				 return true;
-		}
+			{
+				CreateTableAsStmt *stmt = (CreateTableAsStmt *) node;
+
+				if (WALK(stmt->query))
+					return true;
+				if (WALK(stmt->into))
+					return true;
+			}
 			break;
 		case T_CreateStmt:
-		{
-			 CreateStmt *stmt = (CreateStmt *)node;
+			{
+				CreateStmt *stmt = (CreateStmt *) node;
 
-			 if (WALK(stmt->relation))
-				 return true;
-			 if (WALK(stmt->tableElts))
-				 return true;
-			 if (WALK(stmt->inhRelations))
-				 return true;
-			 if (WALK(stmt->ofTypename))
-				 return true;
-			 if (WALK(stmt->constraints))
-				 return true;
-			 if (WALK(stmt->options))
-				 return true;
-		}
-			break;			
+				if (WALK(stmt->relation))
+					return true;
+				if (WALK(stmt->tableElts))
+					return true;
+				if (WALK(stmt->inhRelations))
+					return true;
+				if (WALK(stmt->ofTypename))
+					return true;
+				if (WALK(stmt->constraints))
+					return true;
+				if (WALK(stmt->options))
+					return true;
+			}
+			break;
 		case T_CreateForeignTableStmt:
-		{
-			 CreateForeignTableStmt *stmt = (CreateForeignTableStmt *)node;
+			{
+				CreateForeignTableStmt *stmt = (CreateForeignTableStmt *) node;
 
-			 if (WALK(stmt->base.relation))
-				 return true;
-			 if (WALK(stmt->base.tableElts))
-				 return true;
-			 if (WALK(stmt->base.inhRelations))
-				 return true;
-			 if (WALK(stmt->base.ofTypename))
-				 return true;
-			 if (WALK(stmt->base.constraints))
-				 return true;
-			 if (WALK(stmt->base.options))
-				 return true;
-			 if (WALK(stmt->options))
-				 return true;
-		}
-			break;			
+				if (WALK(stmt->base.relation))
+					return true;
+				if (WALK(stmt->base.tableElts))
+					return true;
+				if (WALK(stmt->base.inhRelations))
+					return true;
+				if (WALK(stmt->base.ofTypename))
+					return true;
+				if (WALK(stmt->base.constraints))
+					return true;
+				if (WALK(stmt->base.options))
+					return true;
+				if (WALK(stmt->options))
+					return true;
+			}
+			break;
 		case T_AlterExtensionContentsStmt:
-		{
-			 AlterExtensionContentsStmt *stmt = (AlterExtensionContentsStmt *)node;
+			{
+				AlterExtensionContentsStmt *stmt = (AlterExtensionContentsStmt *) node;
 
-			 if (WALK(stmt->object))
-				 return true;
-		}
-			break;			
+				if (WALK(stmt->object))
+					return true;
+			}
+			break;
 		case T_CreateOpClassStmt:
-		{
-			 CreateOpClassStmt *stmt = (CreateOpClassStmt *)node;
+			{
+				CreateOpClassStmt *stmt = (CreateOpClassStmt *) node;
 
-			 if (WALK(stmt->opclassname))
-				 return true;
-			 if (WALK(stmt->datatype))
-				 return true;
-			 if (WALK(stmt->opfamilyname))
-				 return true;
-			 if (WALK(stmt->items))
-				 return true;
-		}
-			break;			
+				if (WALK(stmt->opclassname))
+					return true;
+				if (WALK(stmt->datatype))
+					return true;
+				if (WALK(stmt->opfamilyname))
+					return true;
+				if (WALK(stmt->items))
+					return true;
+			}
+			break;
 		case T_AlterOpFamilyStmt:
-		{
-			 AlterOpFamilyStmt *stmt = (AlterOpFamilyStmt *)node;
+			{
+				AlterOpFamilyStmt *stmt = (AlterOpFamilyStmt *) node;
 
-			 if (WALK(stmt->opfamilyname))
-				 return true;
-			 if (WALK(stmt->items))
-				 return true;
-		}
-			break;			
+				if (WALK(stmt->opfamilyname))
+					return true;
+				if (WALK(stmt->items))
+					return true;
+			}
+			break;
 		case T_DropStmt:
-		{
-			 DropStmt *stmt = (DropStmt *)node;
+			{
+				DropStmt   *stmt = (DropStmt *) node;
 
-			 if (WALK(stmt->objects))
-				 return true;
-		}
-			break;			
+				if (WALK(stmt->objects))
+					return true;
+			}
+			break;
 		case T_CommentStmt:
-		{
-			 CommentStmt *stmt = (CommentStmt *)node;
+			{
+				CommentStmt *stmt = (CommentStmt *) node;
 
-			 if (WALK(stmt->object))
-				 return true;
-		}
-			break;			
+				if (WALK(stmt->object))
+					return true;
+			}
+			break;
 		case T_SecLabelStmt:
-		{
-			 SecLabelStmt *stmt = (SecLabelStmt *)node;
+			{
+				SecLabelStmt *stmt = (SecLabelStmt *) node;
 
-			 if (WALK(stmt->object))
-				 return true;
-		}
-			break;			
+				if (WALK(stmt->object))
+					return true;
+			}
+			break;
 		case T_CreateCastStmt:
-		{
-			 CreateCastStmt *stmt = (CreateCastStmt *)node;
+			{
+				CreateCastStmt *stmt = (CreateCastStmt *) node;
 
-			 if (WALK(stmt->sourcetype))
-				 return true;
-			 if (WALK(stmt->targettype))
-				 return true;
-			 if (WALK(stmt->func))
-				 return true;
-		}
-			break;			
+				if (WALK(stmt->sourcetype))
+					return true;
+				if (WALK(stmt->targettype))
+					return true;
+				if (WALK(stmt->func))
+					return true;
+			}
+			break;
 		case T_CreateTransformStmt:
-		{
-			 CreateTransformStmt *stmt = (CreateTransformStmt *)node;
+			{
+				CreateTransformStmt *stmt = (CreateTransformStmt *) node;
 
-			 if (WALK(stmt->type_name))
-				 return true;
-			 if (WALK(stmt->fromsql))
-				 return true;
-			 if (WALK(stmt->tosql))
-				 return true;
-		}
-			break;			
+				if (WALK(stmt->type_name))
+					return true;
+				if (WALK(stmt->fromsql))
+					return true;
+				if (WALK(stmt->tosql))
+					return true;
+			}
+			break;
 		case T_DefineStmt:
-		{
-			 DefineStmt *stmt = (DefineStmt *)node;
+			{
+				DefineStmt *stmt = (DefineStmt *) node;
 
-			 if (WALK(stmt->defnames))
-				 return true;
-			 if (WALK(stmt->args))
-				 return true;
-			 if (WALK(stmt->definition))
-				 return true;
-		}
-			break;			
+				if (WALK(stmt->defnames))
+					return true;
+				if (WALK(stmt->args))
+					return true;
+				if (WALK(stmt->definition))
+					return true;
+			}
+			break;
 		case T_AlterOwnerStmt:
-		{
-			 AlterOwnerStmt *stmt = (AlterOwnerStmt *)node;
+			{
+				AlterOwnerStmt *stmt = (AlterOwnerStmt *) node;
 
-			if (WALK(stmt->relation))
-				 return true;
-			 if (WALK(stmt->object))
-				 return true;
-			 if (WALK(stmt->newowner))
-				 return true;
-		}
-			break;			
+				if (WALK(stmt->relation))
+					return true;
+				if (WALK(stmt->object))
+					return true;
+				if (WALK(stmt->newowner))
+					return true;
+			}
+			break;
 		case T_PrepareStmt:
-		{
-			 PrepareStmt *stmt = (PrepareStmt *)node;
+			{
+				PrepareStmt *stmt = (PrepareStmt *) node;
 
-			 if (WALK(stmt->argtypes))
-				 return true;
-			 if (WALK(stmt->query))
-				 return true;
-		}
-			break;			
+				if (WALK(stmt->argtypes))
+					return true;
+				if (WALK(stmt->query))
+					return true;
+			}
+			break;
 		case T_CreateTableSpaceStmt:
-		{
-			 CreateTableSpaceStmt *stmt = (CreateTableSpaceStmt *)node;
+			{
+				CreateTableSpaceStmt *stmt = (CreateTableSpaceStmt *) node;
 
-			 if (WALK(stmt->owner))
-				 return true;
-			 if (WALK(stmt->options))
-				 return true;
-		}
-			break;					
+				if (WALK(stmt->owner))
+					return true;
+				if (WALK(stmt->options))
+					return true;
+			}
+			break;
 		case T_ViewStmt:
-		{
-			 ViewStmt *stmt = (ViewStmt *)node;
+			{
+				ViewStmt   *stmt = (ViewStmt *) node;
 
-			if (WALK(stmt->view))
-				 return true;
-			 if (WALK(stmt->aliases))
-				 return true;
-			 if (WALK(stmt->query))
-				 return true;
-			 if (WALK(stmt->options))
-				 return true;
-		}
-			break;			
+				if (WALK(stmt->view))
+					return true;
+				if (WALK(stmt->aliases))
+					return true;
+				if (WALK(stmt->query))
+					return true;
+				if (WALK(stmt->options))
+					return true;
+			}
+			break;
 		case T_RenameStmt:
-		{
-			 RenameStmt *stmt = (RenameStmt *)node;
+			{
+				RenameStmt *stmt = (RenameStmt *) node;
 
-			if (WALK(stmt->relation))
-				 return true;
-			 if (WALK(stmt->object))
-				 return true;
-		}
-			break;			
+				if (WALK(stmt->relation))
+					return true;
+				if (WALK(stmt->object))
+					return true;
+			}
+			break;
 		case T_AlterFunctionStmt:
-		{
-			 AlterFunctionStmt *stmt = (AlterFunctionStmt *)node;
+			{
+				AlterFunctionStmt *stmt = (AlterFunctionStmt *) node;
 
-			 if (WALK(stmt->func))
-				 return true;
-			 if (WALK(stmt->actions))
-				 return true;
-		}
-			break;			
+				if (WALK(stmt->func))
+					return true;
+				if (WALK(stmt->actions))
+					return true;
+			}
+			break;
 		case T_AlterTableSpaceOptionsStmt:
-		{
-			 AlterTableSpaceOptionsStmt *stmt = (AlterTableSpaceOptionsStmt *)node;
+			{
+				AlterTableSpaceOptionsStmt *stmt = (AlterTableSpaceOptionsStmt *) node;
 
-			 if (WALK(stmt->options))
-				 return true;
-		}
-			break;			
+				if (WALK(stmt->options))
+					return true;
+			}
+			break;
 		case T_AlterTSDictionaryStmt:
-		{
-			 AlterTSDictionaryStmt *stmt = (AlterTSDictionaryStmt *)node;
+			{
+				AlterTSDictionaryStmt *stmt = (AlterTSDictionaryStmt *) node;
 
-			 if (WALK(stmt->dictname))
-				 return true;
-			 if (WALK(stmt->options))
-				 return true;
-		}
-			break;			
+				if (WALK(stmt->dictname))
+					return true;
+				if (WALK(stmt->options))
+					return true;
+			}
+			break;
 		case T_GrantStmt:
-		{
-			 GrantStmt *stmt = (GrantStmt *)node;
+			{
+				GrantStmt  *stmt = (GrantStmt *) node;
 
-			 if (WALK(stmt->objects))
-				 return true;
-			 if (WALK(stmt->privileges))
-				 return true;
-			 if (WALK(stmt->grantees))
-				 return true;
-		}
-			break;		
+				if (WALK(stmt->objects))
+					return true;
+				if (WALK(stmt->privileges))
+					return true;
+				if (WALK(stmt->grantees))
+					return true;
+			}
+			break;
 		case T_GrantRoleStmt:
-		{
-			 GrantRoleStmt *stmt = (GrantRoleStmt *)node;
+			{
+				GrantRoleStmt *stmt = (GrantRoleStmt *) node;
 
-			 if (WALK(stmt->granted_roles))
-				 return true;
-			 if (WALK(stmt->grantee_roles))
-				 return true;
-			 if (WALK(stmt->grantor))
-				 return true;
-		}
-			break;	
+				if (WALK(stmt->granted_roles))
+					return true;
+				if (WALK(stmt->grantee_roles))
+					return true;
+				if (WALK(stmt->grantor))
+					return true;
+			}
+			break;
 		case T_AlterDefaultPrivilegesStmt:
-		{
-			 AlterDefaultPrivilegesStmt *stmt = (AlterDefaultPrivilegesStmt *)node;
+			{
+				AlterDefaultPrivilegesStmt *stmt = (AlterDefaultPrivilegesStmt *) node;
 
-			 if (WALK(stmt->options))
-				 return true;
-			 if (WALK(stmt->action))
-				 return true;		
-		}
-			break;			
+				if (WALK(stmt->options))
+					return true;
+				if (WALK(stmt->action))
+					return true;
+			}
+			break;
 		case T_AccessPriv:
-		{
-			 AccessPriv *stmt = (AccessPriv *)node;
-	
-			 if (WALK(stmt->cols))
-				 return true;
-		}
-			break;		
-		case T_GroupingFunc:
-		{
-			 GroupingFunc *stmt = (GroupingFunc *)node;
-	
-			 if (WALK(stmt->args))
-				 return true;
-			 if (WALK(stmt->refs))
-				 return true;
-			 if (WALK(stmt->cols))
-				 return true;
-		}
-			break;	
-		case T_Query:
-		{
-			Query *stmt = (Query*)node;
+			{
+				AccessPriv *stmt = (AccessPriv *) node;
 
-			if (WALK(stmt->utilityStmt))
-				return true;
-			 if (WALK(stmt->cteList))
-				 return true;
-			 if (WALK(stmt->rtable))
-				 return true;
-			 if (WALK(stmt->jointree))
-				 return true;		
-			if (WALK(stmt->targetList))
-				return true;
-			if (WALK(stmt->onConflict))
-				return true;
-			if (WALK(stmt->returningList))
-				return true;
-			if (WALK(stmt->groupClause))
-				return true;
-			if (WALK(stmt->groupingSets))
-				return true;
-			if (WALK(stmt->havingQual))
-				return true;
-			if (WALK(stmt->windowClause))
-				return true;
-			if (WALK(stmt->distinctClause))
-				return true;
-			if (WALK(stmt->sortClause))
-				return true;
-			if (WALK(stmt->limitOffset))
-				return true;
-			if (WALK(stmt->limitCount))
-				return true;		
-			if (WALK(stmt->rowMarks))
-				return true;
-			if (WALK(stmt->setOperations))
-				return true;
-			if (WALK(stmt->constraintDeps))
-				return true;
-			if (WALK(stmt->withCheckOptions))
-				return true;
-		}
+				if (WALK(stmt->cols))
+					return true;
+			}
+			break;
+		case T_GroupingFunc:
+			{
+				GroupingFunc *stmt = (GroupingFunc *) node;
+
+				if (WALK(stmt->args))
+					return true;
+				if (WALK(stmt->refs))
+					return true;
+				if (WALK(stmt->cols))
+					return true;
+			}
+			break;
+		case T_Query:
+			{
+				Query	   *stmt = (Query *) node;
+
+				if (WALK(stmt->utilityStmt))
+					return true;
+				if (WALK(stmt->cteList))
+					return true;
+				if (WALK(stmt->rtable))
+					return true;
+				if (WALK(stmt->jointree))
+					return true;
+				if (WALK(stmt->targetList))
+					return true;
+				if (WALK(stmt->onConflict))
+					return true;
+				if (WALK(stmt->returningList))
+					return true;
+				if (WALK(stmt->groupClause))
+					return true;
+				if (WALK(stmt->groupingSets))
+					return true;
+				if (WALK(stmt->havingQual))
+					return true;
+				if (WALK(stmt->windowClause))
+					return true;
+				if (WALK(stmt->distinctClause))
+					return true;
+				if (WALK(stmt->sortClause))
+					return true;
+				if (WALK(stmt->limitOffset))
+					return true;
+				if (WALK(stmt->limitCount))
+					return true;
+				if (WALK(stmt->rowMarks))
+					return true;
+				if (WALK(stmt->setOperations))
+					return true;
+				if (WALK(stmt->constraintDeps))
+					return true;
+				if (WALK(stmt->withCheckOptions))
+					return true;
+			}
 			break;
 		case T_TypeName:
-		{
-			TypeName *stmt = (TypeName*)node;
+			{
+				TypeName   *stmt = (TypeName *) node;
 
-			if (WALK(stmt->names))
-				return true;
-			 if (WALK(stmt->typmods))
-				 return true;
-			 if (WALK(stmt->arrayBounds))
-				 return true;
-		}
+				if (WALK(stmt->names))
+					return true;
+				if (WALK(stmt->typmods))
+					return true;
+				if (WALK(stmt->arrayBounds))
+					return true;
+			}
 			break;
 		case T_ColumnRef:
-		{
-			ColumnRef *stmt = (ColumnRef*)node;
+			{
+				ColumnRef  *stmt = (ColumnRef *) node;
 
-			if (WALK(stmt->fields))
-				return true;		 
-		}
+				if (WALK(stmt->fields))
+					return true;
+			}
 			break;
 		case T_A_Expr:
-		{
-			A_Expr *stmt = (A_Expr*)node;
+			{
+				A_Expr	   *stmt = (A_Expr *) node;
 
-			if (WALK(stmt->name))
-				return true;
-			if (WALK(stmt->lexpr))
-				return true;
-			if (WALK(stmt->rexpr))
-				return true;		 
-		}
+				if (WALK(stmt->name))
+					return true;
+				if (WALK(stmt->lexpr))
+					return true;
+				if (WALK(stmt->rexpr))
+					return true;
+			}
 			break;
 		case T_TypeCast:
-		{
-		   TypeCast   *stmt = (TypeCast *)node;
+			{
+				TypeCast   *stmt = (TypeCast *) node;
 
-		   if (WALK(stmt->arg))
-			   return true;
-		   if (WALK(stmt->typeName))
-			   return true;
-		}
+				if (WALK(stmt->arg))
+					return true;
+				if (WALK(stmt->typeName))
+					return true;
+			}
 			break;
 		case T_CollateClause:
-		{
-		   CollateClause   *stmt = (CollateClause *)node;
-	
-		   if (WALK(stmt->arg))
-			   return true;
-		   if (WALK(stmt->collname))
-			   return true;
-		}
+			{
+				CollateClause *stmt = (CollateClause *) node;
+
+				if (WALK(stmt->arg))
+					return true;
+				if (WALK(stmt->collname))
+					return true;
+			}
 			break;
 		case T_FuncCall:
-		{
-			FuncCall   *stmt = (FuncCall *)node;
-	
-			if (WALK(stmt->funcname))
-				return true;
-			if (WALK(stmt->args))
-				return true;
-			if (WALK(stmt->agg_order))
-				return true;
-			if (WALK(stmt->agg_filter))
-				return true;
-			if (WALK(stmt->over))
-				return true;
-		}
+			{
+				FuncCall   *stmt = (FuncCall *) node;
+
+				if (WALK(stmt->funcname))
+					return true;
+				if (WALK(stmt->args))
+					return true;
+				if (WALK(stmt->agg_order))
+					return true;
+				if (WALK(stmt->agg_filter))
+					return true;
+				if (WALK(stmt->over))
+					return true;
+			}
 			break;
 		case T_A_Indices:
-		{
-		   A_Indices   *stmt = (A_Indices *)node;
-	
-		   if (WALK(stmt->lidx))
-			   return true;
-		   if (WALK(stmt->uidx))
-			   return true;
-		}
+			{
+				A_Indices  *stmt = (A_Indices *) node;
+
+				if (WALK(stmt->lidx))
+					return true;
+				if (WALK(stmt->uidx))
+					return true;
+			}
 			break;
 		case T_A_Indirection:
-		{
-		   A_Indirection   *stmt = (A_Indirection *)node;
-	
-		   if (WALK(stmt->arg))
-			   return true;
-		   if (WALK(stmt->indirection))
-			   return true;
-		}
+			{
+				A_Indirection *stmt = (A_Indirection *) node;
+
+				if (WALK(stmt->arg))
+					return true;
+				if (WALK(stmt->indirection))
+					return true;
+			}
 			break;
 		case T_A_ArrayExpr:
-		{
-		   A_ArrayExpr   *stmt = (A_ArrayExpr *)node;
-	
-		   if (WALK(stmt->elements))
-			   return true;
-		}
+			{
+				A_ArrayExpr *stmt = (A_ArrayExpr *) node;
+
+				if (WALK(stmt->elements))
+					return true;
+			}
 			break;
 		case T_ResTarget:
-		{
-		   ResTarget   *stmt = (ResTarget *)node;
-	
-		   if (WALK(stmt->indirection))
-			   return true;
-		   if (WALK(stmt->val))
-			   return true;
-		}
+			{
+				ResTarget  *stmt = (ResTarget *) node;
+
+				if (WALK(stmt->indirection))
+					return true;
+				if (WALK(stmt->val))
+					return true;
+			}
 			break;
 		case T_MultiAssignRef:
-		{
-		   MultiAssignRef   *stmt = (MultiAssignRef *)node;
-	
-		   if (WALK(stmt->source))
-			   return true;	   
-		}
+			{
+				MultiAssignRef *stmt = (MultiAssignRef *) node;
+
+				if (WALK(stmt->source))
+					return true;
+			}
 			break;
 		case T_SortBy:
-		{
-		   SortBy   *stmt = (SortBy *)node;
-	
-		   if (WALK(stmt->node))
-			   return true;
-		   if (WALK(stmt->useOp))
-			   return true;
-		}
+			{
+				SortBy	   *stmt = (SortBy *) node;
+
+				if (WALK(stmt->node))
+					return true;
+				if (WALK(stmt->useOp))
+					return true;
+			}
 			break;
 		case T_WindowDef:
-		{
-		   WindowDef   *stmt = (WindowDef *)node;
-	
-		   if (WALK(stmt->partitionClause))
-			   return true;
-		   if (WALK(stmt->orderClause))
-			   return true;
-		   if (WALK(stmt->startOffset))
-			   return true;
-		   if (WALK(stmt->endOffset))
-			   return true;
-		}
+			{
+				WindowDef  *stmt = (WindowDef *) node;
+
+				if (WALK(stmt->partitionClause))
+					return true;
+				if (WALK(stmt->orderClause))
+					return true;
+				if (WALK(stmt->startOffset))
+					return true;
+				if (WALK(stmt->endOffset))
+					return true;
+			}
 			break;
 		case T_RangeSubselect:
-		{
-			 RangeSubselect *rs = (RangeSubselect *)node;
+			{
+				RangeSubselect *rs = (RangeSubselect *) node;
 
-			 if (WALK(rs->subquery))
-				 return true;
-			 if (WALK(rs->alias))
-				 return true;
-		}
+				if (WALK(rs->subquery))
+					return true;
+				if (WALK(rs->alias))
+					return true;
+			}
+			break;
+		case T_RangeUnpivot:
+			{
+				RangeUnpivot *ru = (RangeUnpivot *) node;
+
+				if (WALK(ru->source))
+					return true;
+				if (WALK(ru->items))
+					return true;
+				if (WALK(ru->alias))
+					return true;
+			}
+			break;
+		case T_RangeUnpivotInItem:
+			{
+				RangeUnpivotInItem *item = (RangeUnpivotInItem *) node;
+
+				if (WALK(item->value_columns))
+					return true;
+				if (WALK(item->labels))
+					return true;
+			}
 			break;
 		case T_RangeFunction:
-		{
-			RangeFunction *rf = (RangeFunction *)node;
+			{
+				RangeFunction *rf = (RangeFunction *) node;
 
-			if (WALK(rf->functions))
-				return true;
-			if (WALK(rf->alias))
-				return true;
-			if (WALK(rf->coldeflist))
-				return true;
-		}
+				if (WALK(rf->functions))
+					return true;
+				if (WALK(rf->alias))
+					return true;
+				if (WALK(rf->coldeflist))
+					return true;
+			}
 			break;
 		case T_RangeTableSample:
-		{
-			RangeTableSample *rts = (RangeTableSample *)node;
+			{
+				RangeTableSample *rts = (RangeTableSample *) node;
 
-			if (WALK(rts->relation))
-				return true;
-			/* method name is deemed uninteresting */
-			if (WALK(rts->method))
-				return true;
-			if (WALK(rts->args))
-				return true;
-			if (WALK(rts->repeatable))
-				return true;
-		}
+				if (WALK(rts->relation))
+					return true;
+				/* method name is deemed uninteresting */
+				if (WALK(rts->method))
+					return true;
+				if (WALK(rts->args))
+					return true;
+				if (WALK(rts->repeatable))
+					return true;
+			}
 			break;
 		case T_ColumnDef:
-		{
-			ColumnDef  *coldef = (ColumnDef *)node;
+			{
+				ColumnDef  *coldef = (ColumnDef *) node;
 
-			if (WALK(coldef->typeName))
-				return true;
-			if (WALK(coldef->raw_default))
-				return true;
-			if (WALK(coldef->cooked_default))
-				return true;
-			if (WALK(coldef->collClause))
-				return true;
-			if (WALK(coldef->constraints))
-				return true;
-			if (WALK(coldef->fdwoptions))
-				return true;							
-		}
+				if (WALK(coldef->typeName))
+					return true;
+				if (WALK(coldef->raw_default))
+					return true;
+				if (WALK(coldef->cooked_default))
+					return true;
+				if (WALK(coldef->collClause))
+					return true;
+				if (WALK(coldef->constraints))
+					return true;
+				if (WALK(coldef->fdwoptions))
+					return true;
+			}
 			break;
 		case T_TableLikeClause:
-		{
-			TableLikeClause  *stmt = (TableLikeClause *)node;
+			{
+				TableLikeClause *stmt = (TableLikeClause *) node;
 
-			if (WALK(stmt->relation))
-				return true;						
-		}
+				if (WALK(stmt->relation))
+					return true;
+			}
 			break;
 		case T_IndexElem:
-		{
-			IndexElem  *stmt = (IndexElem *)node;
+			{
+				IndexElem  *stmt = (IndexElem *) node;
 
-			if (WALK(stmt->expr))
-				return true;
-			if (WALK(stmt->collation))
-				return true;
-			if (WALK(stmt->opclass))
-				return true;		
-		}
+				if (WALK(stmt->expr))
+					return true;
+				if (WALK(stmt->collation))
+					return true;
+				if (WALK(stmt->opclass))
+					return true;
+			}
 			break;
 		case T_DefElem:
-		{
-			DefElem  *stmt = (DefElem *)node;
+			{
+				DefElem    *stmt = (DefElem *) node;
 
-			if (WALK(stmt->arg))
-				return true;						
-		}
+				if (WALK(stmt->arg))
+					return true;
+			}
 			break;
 		case T_LockingClause:
-		{
-			LockingClause  *stmt = (LockingClause *)node;
+			{
+				LockingClause *stmt = (LockingClause *) node;
 
-			if (WALK(stmt->lockedRels))
-				return true;						
-		}
+				if (WALK(stmt->lockedRels))
+					return true;
+			}
 			break;
 		case T_XmlSerialize:
-		{
-			XmlSerialize  *stmt = (XmlSerialize *)node;
+			{
+				XmlSerialize *stmt = (XmlSerialize *) node;
 
-			if (WALK(stmt->expr))
-				return true;
-			if (WALK(stmt->typeName))
-				return true;						
-		}
+				if (WALK(stmt->expr))
+					return true;
+				if (WALK(stmt->typeName))
+					return true;
+			}
 			break;
 		case T_RangeTblEntry:
-		{
-			RangeTblEntry  *stmt = (RangeTblEntry *)node;
-	
-			if (WALK(stmt->tablesample))
-				return true;
-			if (WALK(stmt->subquery))
-				return true;
-			if (WALK(stmt->joinaliasvars))
-				return true;
-			if (WALK(stmt->functions))
-				return true;
-			if (WALK(stmt->values_lists))
-				return true;
-			if (WALK(stmt->coltypes))
-				return true;
-			if (WALK(stmt->coltypmods))
-				return true;
-			if (WALK(stmt->colcollations))
-				return true;
-			if (WALK(stmt->alias))
-				return true;
-			if (WALK(stmt->eref))
-				return true;
-			if (WALK(stmt->securityQuals))
-				return true;
-		}
+			{
+				RangeTblEntry *stmt = (RangeTblEntry *) node;
+
+				if (WALK(stmt->tablesample))
+					return true;
+				if (WALK(stmt->subquery))
+					return true;
+				if (WALK(stmt->joinaliasvars))
+					return true;
+				if (WALK(stmt->functions))
+					return true;
+				if (WALK(stmt->values_lists))
+					return true;
+				if (WALK(stmt->coltypes))
+					return true;
+				if (WALK(stmt->coltypmods))
+					return true;
+				if (WALK(stmt->colcollations))
+					return true;
+				if (WALK(stmt->alias))
+					return true;
+				if (WALK(stmt->eref))
+					return true;
+				if (WALK(stmt->securityQuals))
+					return true;
+			}
 			break;
 		case T_RangeTblFunction:
-		{
-			RangeTblFunction  *stmt = (RangeTblFunction *)node;
-	
-			if (WALK(stmt->funcexpr))
-				return true;
-			if (WALK(stmt->funccolnames))
-				return true;
-			if (WALK(stmt->funccoltypes))
-				return true;
-			if (WALK(stmt->funccoltypmods))
-				return true;
-			if (WALK(stmt->funccolcollations))
-				return true;
-		}
+			{
+				RangeTblFunction *stmt = (RangeTblFunction *) node;
+
+				if (WALK(stmt->funcexpr))
+					return true;
+				if (WALK(stmt->funccolnames))
+					return true;
+				if (WALK(stmt->funccoltypes))
+					return true;
+				if (WALK(stmt->funccoltypmods))
+					return true;
+				if (WALK(stmt->funccolcollations))
+					return true;
+			}
 			break;
 		case T_TableSampleClause:
-		{
-			TableSampleClause  *stmt = (TableSampleClause *)node;
-	
-			if (WALK(stmt->args))
-				return true;
-			if (WALK(stmt->repeatable))
-				return true;
-		}
+			{
+				TableSampleClause *stmt = (TableSampleClause *) node;
+
+				if (WALK(stmt->args))
+					return true;
+				if (WALK(stmt->repeatable))
+					return true;
+			}
 			break;
 		case T_WithCheckOption:
-		{
-			WithCheckOption  *stmt = (WithCheckOption *)node;
-	
-			if (WALK(stmt->qual))
-				return true;
-		}
-			break;		
+			{
+				WithCheckOption *stmt = (WithCheckOption *) node;
+
+				if (WALK(stmt->qual))
+					return true;
+			}
+			break;
 		case T_GroupingSet:
-			return WALK(((GroupingSet *)node)->content);
+			return WALK(((GroupingSet *) node)->content);
 		case T_WindowClause:
-		{
-			WindowClause  *stmt = (WindowClause *)node;
-	
-			if (WALK(stmt->partitionClause))
-				return true;
-			if (WALK(stmt->orderClause))
-				return true;
-			if (WALK(stmt->startOffset))
-				return true;
-			if (WALK(stmt->endOffset))
-				return true;		
-		}
+			{
+				WindowClause *stmt = (WindowClause *) node;
+
+				if (WALK(stmt->partitionClause))
+					return true;
+				if (WALK(stmt->orderClause))
+					return true;
+				if (WALK(stmt->startOffset))
+					return true;
+				if (WALK(stmt->endOffset))
+					return true;
+			}
 			break;
 		case T_WithClause:
-		{
-			WithClause *stmt = (WithClause *)node;
+			{
+				WithClause *stmt = (WithClause *) node;
 
-			if (WALK(stmt->ctes))
-				return true;
-		}
-			break;	
+				if (WALK(stmt->ctes))
+					return true;
+			}
+			break;
 		case T_InferClause:
-		{
-			InferClause *stmt = (InferClause *)node;
+			{
+				InferClause *stmt = (InferClause *) node;
 
-			if (WALK(stmt->indexElems))
-				return true;
-			if (WALK(stmt->whereClause))
-				return true;
-		}
+				if (WALK(stmt->indexElems))
+					return true;
+				if (WALK(stmt->whereClause))
+					return true;
+			}
 			break;
 		case T_OnConflictClause:
-		{
-			OnConflictClause *stmt = (OnConflictClause *)node;
+			{
+				OnConflictClause *stmt = (OnConflictClause *) node;
 
-			if (WALK(stmt->infer))
-				return true;
-			if (WALK(stmt->targetList))
-				return true;
-			if (WALK(stmt->whereClause))
-				return true;
-		}
+				if (WALK(stmt->infer))
+					return true;
+				if (WALK(stmt->targetList))
+					return true;
+				if (WALK(stmt->whereClause))
+					return true;
+			}
 			break;
 		case T_CommonTableExpr:
-		{
-			CommonTableExpr *stmt = (CommonTableExpr *)node;
+			{
+				CommonTableExpr *stmt = (CommonTableExpr *) node;
 
-			if (WALK(stmt->aliascolnames))
-				return true;
-			if (WALK(stmt->ctequery))
-				return true;
-			if (WALK(stmt->ctecolnames))
-				return true;
-			if (WALK(stmt->ctecoltypes))
-				return true;
-			if (WALK(stmt->ctecoltypmods))
-				return true;
-			if (WALK(stmt->ctecolcollations))
-				return true;
-		}
-			break;		
+				if (WALK(stmt->aliascolnames))
+					return true;
+				if (WALK(stmt->ctequery))
+					return true;
+				if (WALK(stmt->ctecolnames))
+					return true;
+				if (WALK(stmt->ctecoltypes))
+					return true;
+				if (WALK(stmt->ctecoltypmods))
+					return true;
+				if (WALK(stmt->ctecolcollations))
+					return true;
+			}
+			break;
 		case T_SetOperationStmt:
-		{
-		   SetOperationStmt *stmt = (SetOperationStmt *)node;	
-						
-			if (WALK(stmt->larg))
-				return true;
-			if (WALK(stmt->rarg))
-				return true;
-			if (WALK(stmt->colTypes))
-				return true;
-			if (WALK(stmt->colTypmods))
-				return true;
-			if (WALK(stmt->colCollations))
-				return true;
-			if (WALK(stmt->groupClauses))
-				return true;		
-		}
-			break;		
-		case T_CopyStmt:
-		{
-		   CopyStmt *stmt = (CopyStmt *)node;
-						
-			if (WALK(stmt->relation))
-				return true;
-			if (WALK(stmt->query))
-				return true;
-			if (WALK(stmt->attlist))
-				return true;
-			if (WALK(stmt->options))
-				return true;
-		}
-			break;				
-		case T_VariableSetStmt:
-		{
-		   VariableSetStmt *stmt = (VariableSetStmt *)node;	
-						
-			if (WALK(stmt->args))
-				return true;	
-		}
-			break;				
-		case T_Constraint:
-		{
-		   Constraint *stmt = (Constraint *)node;	
-						
-			if (WALK(stmt->raw_expr))
-				return true;
-			if (WALK(stmt->keys))
-				return true;
-			if (WALK(stmt->exclusions))
-				return true;
-			if (WALK(stmt->options))
-				return true;	
-			if (WALK(stmt->where_clause))
-				return true;
-			if (WALK(stmt->pktable))
-				return true;
-			if (WALK(stmt->fk_attrs))
-				return true;
-			if (WALK(stmt->pk_attrs))
-				return true;
-			if (WALK(stmt->old_conpfeqop))
-				return true;
-		}
-			break;	
-		case T_AlterTableMoveAllStmt:
-		{
-		   AlterTableMoveAllStmt *stmt = (AlterTableMoveAllStmt *)node;	
-						
-			if (WALK(stmt->roles))
-				return true;		
-		}
-			break;	
-		case T_CreateExtensionStmt:
-		{
-		   CreateExtensionStmt *stmt = (CreateExtensionStmt *)node;	
-						
-			if (WALK(stmt->options))
-				return true;		
-		}
-			break;	
-		case T_AlterExtensionStmt:
-		{
-		   AlterExtensionStmt *stmt = (AlterExtensionStmt *)node;	
-						
-			if (WALK(stmt->options))
-				return true;		
-		}
-			break;	
-		case T_CreateFdwStmt:
-		{
-		   CreateFdwStmt *stmt = (CreateFdwStmt *)node;	
-						
-			if (WALK(stmt->func_options))
-				return true;
-			if (WALK(stmt->options))
-				return true;		
-		}
-			break;	
-		case T_AlterFdwStmt:
-		{
-		   AlterFdwStmt *stmt = (AlterFdwStmt *)node;	
-						
-			if (WALK(stmt->func_options))
-				return true;
-			if (WALK(stmt->options))
-				return true;		
-		}
-			break;				
-		case T_CreateForeignServerStmt:
-		{
-		   CreateForeignServerStmt *stmt = (CreateForeignServerStmt *)node;	
-						
-			if (WALK(stmt->options))
-				return true;		
-		}
-			break;	
-		case T_AlterForeignServerStmt:
-		{
-		   AlterForeignServerStmt *stmt = (AlterForeignServerStmt *)node;	
-						
-			if (WALK(stmt->options))
-				return true;		
-		}
-			break;	
-		case T_CreateUserMappingStmt:
-		{
-		   CreateUserMappingStmt *stmt = (CreateUserMappingStmt *)node;						
+			{
+				SetOperationStmt *stmt = (SetOperationStmt *) node;
 
-			if (WALK(stmt->user))
-				return true;
-			if (WALK(stmt->options))
-				return true;		
-		}
-			break;		
+				if (WALK(stmt->larg))
+					return true;
+				if (WALK(stmt->rarg))
+					return true;
+				if (WALK(stmt->colTypes))
+					return true;
+				if (WALK(stmt->colTypmods))
+					return true;
+				if (WALK(stmt->colCollations))
+					return true;
+				if (WALK(stmt->groupClauses))
+					return true;
+			}
+			break;
+		case T_CopyStmt:
+			{
+				CopyStmt   *stmt = (CopyStmt *) node;
+
+				if (WALK(stmt->relation))
+					return true;
+				if (WALK(stmt->query))
+					return true;
+				if (WALK(stmt->attlist))
+					return true;
+				if (WALK(stmt->options))
+					return true;
+			}
+			break;
+		case T_VariableSetStmt:
+			{
+				VariableSetStmt *stmt = (VariableSetStmt *) node;
+
+				if (WALK(stmt->args))
+					return true;
+			}
+			break;
+		case T_Constraint:
+			{
+				Constraint *stmt = (Constraint *) node;
+
+				if (WALK(stmt->raw_expr))
+					return true;
+				if (WALK(stmt->keys))
+					return true;
+				if (WALK(stmt->exclusions))
+					return true;
+				if (WALK(stmt->options))
+					return true;
+				if (WALK(stmt->where_clause))
+					return true;
+				if (WALK(stmt->pktable))
+					return true;
+				if (WALK(stmt->fk_attrs))
+					return true;
+				if (WALK(stmt->pk_attrs))
+					return true;
+				if (WALK(stmt->old_conpfeqop))
+					return true;
+			}
+			break;
+		case T_AlterTableMoveAllStmt:
+			{
+				AlterTableMoveAllStmt *stmt = (AlterTableMoveAllStmt *) node;
+
+				if (WALK(stmt->roles))
+					return true;
+			}
+			break;
+		case T_CreateExtensionStmt:
+			{
+				CreateExtensionStmt *stmt = (CreateExtensionStmt *) node;
+
+				if (WALK(stmt->options))
+					return true;
+			}
+			break;
+		case T_AlterExtensionStmt:
+			{
+				AlterExtensionStmt *stmt = (AlterExtensionStmt *) node;
+
+				if (WALK(stmt->options))
+					return true;
+			}
+			break;
+		case T_CreateFdwStmt:
+			{
+				CreateFdwStmt *stmt = (CreateFdwStmt *) node;
+
+				if (WALK(stmt->func_options))
+					return true;
+				if (WALK(stmt->options))
+					return true;
+			}
+			break;
+		case T_AlterFdwStmt:
+			{
+				AlterFdwStmt *stmt = (AlterFdwStmt *) node;
+
+				if (WALK(stmt->func_options))
+					return true;
+				if (WALK(stmt->options))
+					return true;
+			}
+			break;
+		case T_CreateForeignServerStmt:
+			{
+				CreateForeignServerStmt *stmt = (CreateForeignServerStmt *) node;
+
+				if (WALK(stmt->options))
+					return true;
+			}
+			break;
+		case T_AlterForeignServerStmt:
+			{
+				AlterForeignServerStmt *stmt = (AlterForeignServerStmt *) node;
+
+				if (WALK(stmt->options))
+					return true;
+			}
+			break;
+		case T_CreateUserMappingStmt:
+			{
+				CreateUserMappingStmt *stmt = (CreateUserMappingStmt *) node;
+
+				if (WALK(stmt->user))
+					return true;
+				if (WALK(stmt->options))
+					return true;
+			}
+			break;
 		case T_AlterUserMappingStmt:
-		{
-		   AlterUserMappingStmt *stmt = (AlterUserMappingStmt *)node;						
-	
-			if (WALK(stmt->user))
-				return true;
-			if (WALK(stmt->options))
-				return true;		
-		}
-			break;		
+			{
+				AlterUserMappingStmt *stmt = (AlterUserMappingStmt *) node;
+
+				if (WALK(stmt->user))
+					return true;
+				if (WALK(stmt->options))
+					return true;
+			}
+			break;
 		case T_DropUserMappingStmt:
-		{
-		   DropUserMappingStmt *stmt = (DropUserMappingStmt *)node;						
-	
-			if (WALK(stmt->user))
-				return true;	
-		}
-			break;		
+			{
+				DropUserMappingStmt *stmt = (DropUserMappingStmt *) node;
+
+				if (WALK(stmt->user))
+					return true;
+			}
+			break;
 		case T_ImportForeignSchemaStmt:
-		{
-		   ImportForeignSchemaStmt *stmt = (ImportForeignSchemaStmt *)node;						
-	
-			if (WALK(stmt->table_list))
-				return true;
-			if (WALK(stmt->options))
-				return true;		
-		}
-			break;	
+			{
+				ImportForeignSchemaStmt *stmt = (ImportForeignSchemaStmt *) node;
+
+				if (WALK(stmt->table_list))
+					return true;
+				if (WALK(stmt->options))
+					return true;
+			}
+			break;
 		case T_CreateEventTrigStmt:
-		{
-		   CreateEventTrigStmt *stmt = (CreateEventTrigStmt *)node;						
-	
-			if (WALK(stmt->whenclause))
-				return true;
-			if (WALK(stmt->funcname))
-				return true;		
-		}
-			break;	
+			{
+				CreateEventTrigStmt *stmt = (CreateEventTrigStmt *) node;
+
+				if (WALK(stmt->whenclause))
+					return true;
+				if (WALK(stmt->funcname))
+					return true;
+			}
+			break;
 		case T_CreatePLangStmt:
-		{
-		   CreatePLangStmt *stmt = (CreatePLangStmt *)node;						
-	
-			if (WALK(stmt->plhandler))
-				return true;
-			if (WALK(stmt->plinline))
-				return true;
-			if (WALK(stmt->plvalidator))
-				return true;	
-		}
-			break;	
+			{
+				CreatePLangStmt *stmt = (CreatePLangStmt *) node;
+
+				if (WALK(stmt->plhandler))
+					return true;
+				if (WALK(stmt->plinline))
+					return true;
+				if (WALK(stmt->plvalidator))
+					return true;
+			}
+			break;
 		case T_CreateRoleStmt:
-		{
-		   CreateRoleStmt *stmt = (CreateRoleStmt *)node;	
-						
-			if (WALK(stmt->options))
-				return true;		
-		}
-			break;	
+			{
+				CreateRoleStmt *stmt = (CreateRoleStmt *) node;
+
+				if (WALK(stmt->options))
+					return true;
+			}
+			break;
 		case T_AlterRoleStmt:
-		{
-		   AlterRoleStmt *stmt = (AlterRoleStmt *)node;	
-						
-			if (WALK(stmt->role))
-				return true;
-			if (WALK(stmt->options))
-				return true;		
-		}
-			break;	
+			{
+				AlterRoleStmt *stmt = (AlterRoleStmt *) node;
+
+				if (WALK(stmt->role))
+					return true;
+				if (WALK(stmt->options))
+					return true;
+			}
+			break;
 		case T_AlterRoleSetStmt:
-		{
-		   AlterRoleSetStmt *stmt = (AlterRoleSetStmt *)node;						
-	
-			if (WALK(stmt->role))
-				return true;
-			if (WALK(stmt->setstmt))
-				return true;		
-		}
-			break;	
+			{
+				AlterRoleSetStmt *stmt = (AlterRoleSetStmt *) node;
+
+				if (WALK(stmt->role))
+					return true;
+				if (WALK(stmt->setstmt))
+					return true;
+			}
+			break;
 		case T_DropRoleStmt:
-		{
-		   DropRoleStmt *stmt = (DropRoleStmt *)node;						
-	
-			if (WALK(stmt->roles))
-				return true;	
-		}
-			break;			
+			{
+				DropRoleStmt *stmt = (DropRoleStmt *) node;
+
+				if (WALK(stmt->roles))
+					return true;
+			}
+			break;
 		case T_CreateSeqStmt:
-		{
-		   CreateSeqStmt *stmt = (CreateSeqStmt *)node;	
-						
-			if (WALK(stmt->sequence))
-				return true;
-			if (WALK(stmt->options))
-				return true;		
-		}
-			break;		
+			{
+				CreateSeqStmt *stmt = (CreateSeqStmt *) node;
+
+				if (WALK(stmt->sequence))
+					return true;
+				if (WALK(stmt->options))
+					return true;
+			}
+			break;
 		case T_CreateOpClassItem:
-		{
-		   CreateOpClassItem *stmt = (CreateOpClassItem *)node;	
-						
-			if (WALK(stmt->name))
-				return true;
-			if (WALK(stmt->order_family))
-				return true;
-			if (WALK(stmt->class_args))
-				return true;
-			if (WALK(stmt->storedtype))
-				return true;		
-		}
-			break;		
+			{
+				CreateOpClassItem *stmt = (CreateOpClassItem *) node;
+
+				if (WALK(stmt->name))
+					return true;
+				if (WALK(stmt->order_family))
+					return true;
+				if (WALK(stmt->class_args))
+					return true;
+				if (WALK(stmt->storedtype))
+					return true;
+			}
+			break;
 		case T_CreateOpFamilyStmt:
-		{
-		   CreateOpFamilyStmt *stmt = (CreateOpFamilyStmt *)node;	
-						
-			if (WALK(stmt->opfamilyname))
-				return true;	
-		}
-			break;			
+			{
+				CreateOpFamilyStmt *stmt = (CreateOpFamilyStmt *) node;
+
+				if (WALK(stmt->opfamilyname))
+					return true;
+			}
+			break;
 		case T_TruncateStmt:
-		{
-		   TruncateStmt *stmt = (TruncateStmt *)node;	
-						
-			if (WALK(stmt->relations))
-				return true;
-		}
-			break;		
+			{
+				TruncateStmt *stmt = (TruncateStmt *) node;
+
+				if (WALK(stmt->relations))
+					return true;
+			}
+			break;
 		case T_DeclareCursorStmt:
-		{
-		   DeclareCursorStmt *stmt = (DeclareCursorStmt *)node;	
-						
-			if (WALK(stmt->query))
-				return true;		
-		}
-			break;		
+			{
+				DeclareCursorStmt *stmt = (DeclareCursorStmt *) node;
+
+				if (WALK(stmt->query))
+					return true;
+			}
+			break;
 		case T_FunctionParameter:
-		{
-			FunctionParameter *stmt = (FunctionParameter*)node;
-			if (WALK(stmt->defexpr))
-				return true;
-		}
+			{
+				FunctionParameter *stmt = (FunctionParameter *) node;
+
+				if (WALK(stmt->defexpr))
+					return true;
+			}
 			break;
 		case T_DoStmt:
-		{
-		   DoStmt *stmt = (DoStmt *)node;	
-						
-			if (WALK(stmt->args))
-				return true;
-		}
-			break;		
+			{
+				DoStmt	   *stmt = (DoStmt *) node;
+
+				if (WALK(stmt->args))
+					return true;
+			}
+			break;
 		case T_InlineCodeBlock:
-		{
-		   InlineCodeBlock *stmt = (InlineCodeBlock *)node;	
-						
-			if (WALK(stmt->params))
-				return true;		
-		}
-			break;		
+			{
+				InlineCodeBlock *stmt = (InlineCodeBlock *) node;
+
+				if (WALK(stmt->params))
+					return true;
+			}
+			break;
 		case T_TransactionStmt:
-		{
-		   TransactionStmt *stmt = (TransactionStmt *)node;	
+			{
+				TransactionStmt *stmt = (TransactionStmt *) node;
 
-			if (WALK(stmt->options))
-				return true;		
-		}
-			break;		
+				if (WALK(stmt->options))
+					return true;
+			}
+			break;
 		case T_CompositeTypeStmt:
-		{
-		   CompositeTypeStmt *stmt = (CompositeTypeStmt *)node;	
-	
-			if (WALK(stmt->typevar))
-				return true;
-			if (WALK(stmt->coldeflist))
-				return true;
-			if (WALK(stmt->methods))
-				return true;
-		}
-			break;		
-		case T_ObjectTypeMethod:
-		{
-			ObjectTypeMethod *stmt = (ObjectTypeMethod *) node;
+			{
+				CompositeTypeStmt *stmt = (CompositeTypeStmt *) node;
 
-			if (WALK(stmt->parameters))
-				return true;
-			if (WALK(stmt->returnType))
-				return true;
-		}
+				if (WALK(stmt->typevar))
+					return true;
+				if (WALK(stmt->coldeflist))
+					return true;
+				if (WALK(stmt->methods))
+					return true;
+			}
+			break;
+		case T_ObjectTypeMethod:
+			{
+				ObjectTypeMethod *stmt = (ObjectTypeMethod *) node;
+
+				if (WALK(stmt->parameters))
+					return true;
+				if (WALK(stmt->returnType))
+					return true;
+			}
 			break;
 		case T_CreateTypeBodyStmt:
-		{
-			CreateTypeBodyStmt *stmt = (CreateTypeBodyStmt *) node;
+			{
+				CreateTypeBodyStmt *stmt = (CreateTypeBodyStmt *) node;
 
-			if (WALK(stmt->typeName))
-				return true;
-		}
+				if (WALK(stmt->typeName))
+					return true;
+			}
 			break;
 		case T_CreateEnumStmt:
-		{
-		   CreateEnumStmt *stmt = (CreateEnumStmt *)node;	
-	
-			if (WALK(stmt->typeName))
-				return true;
-			if (WALK(stmt->vals))
-				return true;		
-		}
-			break;		
+			{
+				CreateEnumStmt *stmt = (CreateEnumStmt *) node;
+
+				if (WALK(stmt->typeName))
+					return true;
+				if (WALK(stmt->vals))
+					return true;
+			}
+			break;
 		case T_CreateRangeStmt:
-		{
-		   CreateRangeStmt *stmt = (CreateRangeStmt *)node;	
-	
-			if (WALK(stmt->typeName))
-				return true;
-			if (WALK(stmt->params))
-				return true;		
-		}
-			break;		
+			{
+				CreateRangeStmt *stmt = (CreateRangeStmt *) node;
+
+				if (WALK(stmt->typeName))
+					return true;
+				if (WALK(stmt->params))
+					return true;
+			}
+			break;
 		case T_AlterEnumStmt:
-		{
-		   AlterEnumStmt *stmt = (AlterEnumStmt *)node;	
-	
-			if (WALK(stmt->typeName))
-				return true;		
-		}
-			break;		
+			{
+				AlterEnumStmt *stmt = (AlterEnumStmt *) node;
+
+				if (WALK(stmt->typeName))
+					return true;
+			}
+			break;
 		case T_CreatedbStmt:
-		{
-		   CreatedbStmt *stmt = (CreatedbStmt *)node;	
-	
-			if (WALK(stmt->options))
-				return true;		
-		}
-			break;		
+			{
+				CreatedbStmt *stmt = (CreatedbStmt *) node;
+
+				if (WALK(stmt->options))
+					return true;
+			}
+			break;
 		case T_AlterDatabaseStmt:
-		{
-		   AlterDatabaseStmt *stmt = (AlterDatabaseStmt *)node;	
-	
-			if (WALK(stmt->options))
-				return true;		
-		}
-			break;		
+			{
+				AlterDatabaseStmt *stmt = (AlterDatabaseStmt *) node;
+
+				if (WALK(stmt->options))
+					return true;
+			}
+			break;
 		case T_AlterDatabaseSetStmt:
-		{
-		   AlterDatabaseSetStmt *stmt = (AlterDatabaseSetStmt *)node;	
-	
-			if (WALK(stmt->setstmt))
-				return true;		
-		}
-			break;		
+			{
+				AlterDatabaseSetStmt *stmt = (AlterDatabaseSetStmt *) node;
+
+				if (WALK(stmt->setstmt))
+					return true;
+			}
+			break;
 		case T_AlterSystemStmt:
-		{
-		   AlterSystemStmt *stmt = (AlterSystemStmt *)node;	
-	
-			if (WALK(stmt->setstmt))
-				return true;		
-		}
-			break;		
+			{
+				AlterSystemStmt *stmt = (AlterSystemStmt *) node;
+
+				if (WALK(stmt->setstmt))
+					return true;
+			}
+			break;
 		case T_RepackStmt:
-		{
-		   RepackStmt *stmt = (RepackStmt *)node;	
-	
-			if (WALK(stmt->relation))
-				return true;		
-		}
-			break;		
+			{
+				RepackStmt *stmt = (RepackStmt *) node;
+
+				if (WALK(stmt->relation))
+					return true;
+			}
+			break;
 		case T_VacuumStmt:
-		{
-		   VacuumStmt *stmt = (VacuumStmt *)node;	
-	
-			if (WALK(stmt->options))
-				return true;
-			if (WALK(stmt->rels))
-				return true;		
-		}
-			break;		
+			{
+				VacuumStmt *stmt = (VacuumStmt *) node;
+
+				if (WALK(stmt->options))
+					return true;
+				if (WALK(stmt->rels))
+					return true;
+			}
+			break;
 		case T_ExplainStmt:
-		{
-		   ExplainStmt *stmt = (ExplainStmt *)node;	
-	
-			if (WALK(stmt->query))
-				return true;
-			if (WALK(stmt->options))
-				return true;		
-		}
-			break;		
+			{
+				ExplainStmt *stmt = (ExplainStmt *) node;
+
+				if (WALK(stmt->query))
+					return true;
+				if (WALK(stmt->options))
+					return true;
+			}
+			break;
 		case T_RefreshMatViewStmt:
-		{
-		   RefreshMatViewStmt *stmt = (RefreshMatViewStmt *)node;	
-	
-			if (WALK(stmt->relation))
-				return true;
-		}
-			break;		
+			{
+				RefreshMatViewStmt *stmt = (RefreshMatViewStmt *) node;
+
+				if (WALK(stmt->relation))
+					return true;
+			}
+			break;
 
 		case T_LockStmt:
-		{
-		   LockStmt *stmt = (LockStmt *)node;	
-	
-			if (WALK(stmt->relations))
-				return true;
-		}
-			break;		
+			{
+				LockStmt   *stmt = (LockStmt *) node;
+
+				if (WALK(stmt->relations))
+					return true;
+			}
+			break;
 
 		case T_ConstraintsSetStmt:
-		{
-		   ConstraintsSetStmt *stmt = (ConstraintsSetStmt *)node;	
-	
-			if (WALK(stmt->constraints))
-				return true;		
-		}
-			break;	
+			{
+				ConstraintsSetStmt *stmt = (ConstraintsSetStmt *) node;
+
+				if (WALK(stmt->constraints))
+					return true;
+			}
+			break;
 		case T_ReindexStmt:
-		{
-		   ReindexStmt *stmt = (ReindexStmt *)node;	
-	
-			if (WALK(stmt->relation))
-				return true;	
-		}
-			break;				
-		
+			{
+				ReindexStmt *stmt = (ReindexStmt *) node;
+
+				if (WALK(stmt->relation))
+					return true;
+			}
+			break;
+
 		case T_CreateConversionStmt:
-		{
-		   CreateConversionStmt *stmt = (CreateConversionStmt *)node;	
-	
-			if (WALK(stmt->conversion_name))
-				return true;
-			if (WALK(stmt->func_name))
-				return true;
-		}
-			break;					
+			{
+				CreateConversionStmt *stmt = (CreateConversionStmt *) node;
+
+				if (WALK(stmt->conversion_name))
+					return true;
+				if (WALK(stmt->func_name))
+					return true;
+			}
+			break;
 		case T_DropOwnedStmt:
-		{
-		   DropOwnedStmt *stmt = (DropOwnedStmt *)node;	
-	
-			if (WALK(stmt->roles))
-				return true;	
-		}
-			break;					
+			{
+				DropOwnedStmt *stmt = (DropOwnedStmt *) node;
+
+				if (WALK(stmt->roles))
+					return true;
+			}
+			break;
 		case T_ReassignOwnedStmt:
-		{
-		   ReassignOwnedStmt *stmt = (ReassignOwnedStmt *)node;	
-	
-			if (WALK(stmt->roles))
-				return true;
-			if (WALK(stmt->newrole))
-				return true;	
-		}
-			break;		
+			{
+				ReassignOwnedStmt *stmt = (ReassignOwnedStmt *) node;
+
+				if (WALK(stmt->roles))
+					return true;
+				if (WALK(stmt->newrole))
+					return true;
+			}
+			break;
 		case T_AlterTSConfigurationStmt:
-		{
-		   AlterTSConfigurationStmt *stmt = (AlterTSConfigurationStmt *)node;	
-	
-			if (WALK(stmt->cfgname))
-				return true;
-			if (WALK(stmt->tokentype))
-				return true;
-			if (WALK(stmt->dicts))
-				return true;	
-		}
-			break;					
+			{
+				AlterTSConfigurationStmt *stmt = (AlterTSConfigurationStmt *) node;
+
+				if (WALK(stmt->cfgname))
+					return true;
+				if (WALK(stmt->tokentype))
+					return true;
+				if (WALK(stmt->dicts))
+					return true;
+			}
+			break;
 		case T_Alias:
-		{
-		   Alias *stmt = (Alias *)node;	
-	
-			if (WALK(stmt->colnames))
-				return true;
-		}
-			break;		
+			{
+				Alias	   *stmt = (Alias *) node;
+
+				if (WALK(stmt->colnames))
+					return true;
+			}
+			break;
 		case T_RangeVar:
-		{
-		   RangeVar *stmt = (RangeVar *)node;	
-	
-			if (WALK(stmt->alias))
-				return true;
-		}
-			break;		
+			{
+				RangeVar   *stmt = (RangeVar *) node;
+
+				if (WALK(stmt->alias))
+					return true;
+			}
+			break;
 		case T_Aggref:
-		{
-		   Aggref *stmt = (Aggref *)node;	
-	
-			if (WALK(stmt->aggdirectargs))
-				return true;
-			if (WALK(stmt->args))
-				return true;
-			if (WALK(stmt->aggorder))
-				return true;
-			if (WALK(stmt->aggdistinct))
-				return true;
-			if (WALK(stmt->aggfilter))
-				return true;
-		}
-			break;		
+			{
+				Aggref	   *stmt = (Aggref *) node;
+
+				if (WALK(stmt->aggdirectargs))
+					return true;
+				if (WALK(stmt->args))
+					return true;
+				if (WALK(stmt->aggorder))
+					return true;
+				if (WALK(stmt->aggdistinct))
+					return true;
+				if (WALK(stmt->aggfilter))
+					return true;
+			}
+			break;
 		case T_WindowFunc:
-		{
-		   WindowFunc *stmt = (WindowFunc *)node;
+			{
+				WindowFunc *stmt = (WindowFunc *) node;
 
-			if (WALK(stmt->args))
-				return true;
-			if (WALK(stmt->aggfilter))
-				return true;
-		}
-			break;		
+				if (WALK(stmt->args))
+					return true;
+				if (WALK(stmt->aggfilter))
+					return true;
+			}
+			break;
 		case T_SubscriptingRef:
-		{
-		   SubscriptingRef *stmt = (SubscriptingRef *)node;
+			{
+				SubscriptingRef *stmt = (SubscriptingRef *) node;
 
-			if (WALK(stmt->refupperindexpr))
-				return true;
-			if (WALK(stmt->reflowerindexpr))
-				return true;
-			if (WALK(stmt->refexpr))
-				return true;
-			if (WALK(stmt->refassgnexpr))
-				return true;
-		}
-			break;		
+				if (WALK(stmt->refupperindexpr))
+					return true;
+				if (WALK(stmt->reflowerindexpr))
+					return true;
+				if (WALK(stmt->refexpr))
+					return true;
+				if (WALK(stmt->refassgnexpr))
+					return true;
+			}
+			break;
 		case T_NamedArgExpr:
-		{
-			NamedArgExpr *stmt = (NamedArgExpr *)node;
+			{
+				NamedArgExpr *stmt = (NamedArgExpr *) node;
 
-			if (WALK(stmt->arg))
-				return true;		
-		}
-			break;		
+				if (WALK(stmt->arg))
+					return true;
+			}
+			break;
 		case T_FuncExpr:
-		{
-		   FuncExpr *stmt = (FuncExpr *)node;
+			{
+				FuncExpr   *stmt = (FuncExpr *) node;
 
-			if (WALK(stmt->args))
-				return true;
-		}
-			break;		
+				if (WALK(stmt->args))
+					return true;
+			}
+			break;
 		case T_OpExpr:
-		{
-			OpExpr *stmt = (OpExpr *)node;
+			{
+				OpExpr	   *stmt = (OpExpr *) node;
 
-			 if (WALK(stmt->args))
-				 return true;
-		}
-			break;		
+				if (WALK(stmt->args))
+					return true;
+			}
+			break;
 		case T_ScalarArrayOpExpr:
-		{
-			ScalarArrayOpExpr *stmt = (ScalarArrayOpExpr *)node;
+			{
+				ScalarArrayOpExpr *stmt = (ScalarArrayOpExpr *) node;
 
-			 if (WALK(stmt->args))
-				 return true;
-		}
-			break;		
+				if (WALK(stmt->args))
+					return true;
+			}
+			break;
 		case T_BoolExpr:
-		{
-			BoolExpr *stmt = (BoolExpr *)node;
-		
-			 if (WALK(stmt->args))
-				 return true;
-		}
-			break;		
-		case T_SubLink:
-		{
-			SubLink    *sublink = (SubLink *)node;
+			{
+				BoolExpr   *stmt = (BoolExpr *) node;
 
-			if (WALK(sublink->testexpr))
-				return true;
-			if (WALK(sublink->operName))
-				return true;
-			if (WALK(sublink->subselect))
-				return true;
-		}
+				if (WALK(stmt->args))
+					return true;
+			}
+			break;
+		case T_SubLink:
+			{
+				SubLink    *sublink = (SubLink *) node;
+
+				if (WALK(sublink->testexpr))
+					return true;
+				if (WALK(sublink->operName))
+					return true;
+				if (WALK(sublink->subselect))
+					return true;
+			}
 			break;
 		case T_SubPlan:
-		{
-		   SubPlan *stmt = (SubPlan *)node;
-	
-			if (WALK(stmt->testexpr))
-				return true;
-			if (WALK(stmt->paramIds))
-				return true;
-			if (WALK(stmt->setParam))
-				return true;
-			if (WALK(stmt->parParam))
-				return true;
-			if (WALK(stmt->args))
-				return true;
-		}
-			break;		
+			{
+				SubPlan    *stmt = (SubPlan *) node;
+
+				if (WALK(stmt->testexpr))
+					return true;
+				if (WALK(stmt->paramIds))
+					return true;
+				if (WALK(stmt->setParam))
+					return true;
+				if (WALK(stmt->parParam))
+					return true;
+				if (WALK(stmt->args))
+					return true;
+			}
+			break;
 		case T_AlternativeSubPlan:
-		{
-		   AlternativeSubPlan *stmt = (AlternativeSubPlan *)node;
+			{
+				AlternativeSubPlan *stmt = (AlternativeSubPlan *) node;
 
-			if (WALK(stmt->subplans))
-				return true;
-		}
-			break;		
+				if (WALK(stmt->subplans))
+					return true;
+			}
+			break;
 		case T_FieldSelect:
-		{
-		   FieldSelect *stmt = (FieldSelect *)node;
+			{
+				FieldSelect *stmt = (FieldSelect *) node;
 
-			if (WALK(stmt->arg))
-				return true;
-		}
-			break;		
+				if (WALK(stmt->arg))
+					return true;
+			}
+			break;
 		case T_FieldStore:
-		{
-		   FieldStore *stmt = (FieldStore *)node;
-	
-			if (WALK(stmt->arg))
-				return true;
-			if (WALK(stmt->newvals))
-				return true;
-			if (WALK(stmt->fieldnums))
-				return true;
-		}
-			break;		
-		case T_RelabelType:
-		{
-		   RelabelType *stmt = (RelabelType *)node;
-	
-			if (WALK(stmt->arg))
-				return true;
-		}
-			break;		
-		case T_CoerceViaIO:
-		{
-		   CoerceViaIO *stmt = (CoerceViaIO *)node;
-	
-			if (WALK(stmt->arg))
-				return true;
-		}
-			break;		
-		case T_ArrayCoerceExpr:
-		{
-		   ArrayCoerceExpr *stmt = (ArrayCoerceExpr *)node;
-	
-			if (WALK(stmt->arg))
-				return true;
-		}
-			break;		
-		case T_ConvertRowtypeExpr:
-		{
-		   ConvertRowtypeExpr *stmt = (ConvertRowtypeExpr *)node;
-	
-			if (WALK(stmt->arg))
-				return true;
-		}
-			break;		
-		case T_CollateExpr:
-		{
-		   CollateExpr *stmt = (CollateExpr *)node;
-	
-			if (WALK(stmt->arg))
-				return true;
-		}
-			break;		
-		case T_CaseWhen:
-		{
-			CaseWhen   *when = (CaseWhen *)node;
-		  
-		   if (WALK(when->expr))
-			   return true;
-		   if (WALK(when->result))
-			   return true;
-		}
-			break;		
-		case T_CaseExpr:
-		{
-		   CaseExpr   *caseexpr = (CaseExpr *)node;
+			{
+				FieldStore *stmt = (FieldStore *) node;
 
-		   if (WALK(caseexpr->arg))
-			   return true;
-		   if (WALK(caseexpr->args))
-			   return true;
-		   if (WALK(caseexpr->defresult))
-			   return true;
-		}
+				if (WALK(stmt->arg))
+					return true;
+				if (WALK(stmt->newvals))
+					return true;
+				if (WALK(stmt->fieldnums))
+					return true;
+			}
+			break;
+		case T_RelabelType:
+			{
+				RelabelType *stmt = (RelabelType *) node;
+
+				if (WALK(stmt->arg))
+					return true;
+			}
+			break;
+		case T_CoerceViaIO:
+			{
+				CoerceViaIO *stmt = (CoerceViaIO *) node;
+
+				if (WALK(stmt->arg))
+					return true;
+			}
+			break;
+		case T_ArrayCoerceExpr:
+			{
+				ArrayCoerceExpr *stmt = (ArrayCoerceExpr *) node;
+
+				if (WALK(stmt->arg))
+					return true;
+			}
+			break;
+		case T_ConvertRowtypeExpr:
+			{
+				ConvertRowtypeExpr *stmt = (ConvertRowtypeExpr *) node;
+
+				if (WALK(stmt->arg))
+					return true;
+			}
+			break;
+		case T_CollateExpr:
+			{
+				CollateExpr *stmt = (CollateExpr *) node;
+
+				if (WALK(stmt->arg))
+					return true;
+			}
+			break;
+		case T_CaseWhen:
+			{
+				CaseWhen   *when = (CaseWhen *) node;
+
+				if (WALK(when->expr))
+					return true;
+				if (WALK(when->result))
+					return true;
+			}
+			break;
+		case T_CaseExpr:
+			{
+				CaseExpr   *caseexpr = (CaseExpr *) node;
+
+				if (WALK(caseexpr->arg))
+					return true;
+				if (WALK(caseexpr->args))
+					return true;
+				if (WALK(caseexpr->defresult))
+					return true;
+			}
 			break;
 		case T_RowExpr:
-		{
-		   RowExpr   *stmt = (RowExpr *)node;
-	
-		   if (WALK(stmt->args))
-			   return true;
-		   if (WALK(stmt->colnames))
-			   return true;
-		}
+			{
+				RowExpr    *stmt = (RowExpr *) node;
+
+				if (WALK(stmt->args))
+					return true;
+				if (WALK(stmt->colnames))
+					return true;
+			}
 			break;
 		case T_RowCompareExpr:
-		{
-		   RowCompareExpr *stmt = (RowCompareExpr *)node;
-	
-			if (WALK(stmt->opnos))
-				return true;
-			if (WALK(stmt->opfamilies))
-				return true;
-			if (WALK(stmt->inputcollids))
-				return true;
-			if (WALK(stmt->largs))
-				return true;
-			if (WALK(stmt->rargs))
-				return true;
-		}
-			break;		
-		case T_CoalesceExpr:
-			return WALK(((CoalesceExpr *)node)->args);
-		case T_MinMaxExpr:
-			return WALK(((MinMaxExpr *)node)->args);
-		case T_XmlExpr:
-		{
-			XmlExpr    *xexpr = (XmlExpr *)node;
+			{
+				RowCompareExpr *stmt = (RowCompareExpr *) node;
 
-			if (WALK(xexpr->named_args))
-				return true;
-			if (WALK(xexpr->arg_names))
-				return true;
-			if (WALK(xexpr->args))
-				return true;
-		}
+				if (WALK(stmt->opnos))
+					return true;
+				if (WALK(stmt->opfamilies))
+					return true;
+				if (WALK(stmt->inputcollids))
+					return true;
+				if (WALK(stmt->largs))
+					return true;
+				if (WALK(stmt->rargs))
+					return true;
+			}
+			break;
+		case T_CoalesceExpr:
+			return WALK(((CoalesceExpr *) node)->args);
+		case T_MinMaxExpr:
+			return WALK(((MinMaxExpr *) node)->args);
+		case T_XmlExpr:
+			{
+				XmlExpr    *xexpr = (XmlExpr *) node;
+
+				if (WALK(xexpr->named_args))
+					return true;
+				if (WALK(xexpr->arg_names))
+					return true;
+				if (WALK(xexpr->args))
+					return true;
+			}
 			break;
 		case T_NullTest:
-			return WALK(((NullTest *)node)->arg);
+			return WALK(((NullTest *) node)->arg);
 		case T_BooleanTest:
-			return WALK(((BooleanTest *)node)->arg);
+			return WALK(((BooleanTest *) node)->arg);
 		case T_CoerceToDomain:
-			return WALK(((CoerceToDomain *)node)->arg);
+			return WALK(((CoerceToDomain *) node)->arg);
 		case T_InferenceElem:
-			return WALK(((InferenceElem *)node)->expr);
+			return WALK(((InferenceElem *) node)->expr);
 		case T_TargetEntry:
-			return WALK(((TargetEntry *)node)->expr);
+			return WALK(((TargetEntry *) node)->expr);
 		case T_FromExpr:
-		{
-  		    FromExpr *stmt = (FromExpr *)node;
-			if (WALK(stmt->fromlist))
-				return true;
-			if (WALK(stmt->quals))
-				return true;
-		}
-			break;				
-		case T_JoinExpr:
-		{
-		   JoinExpr   *join = (JoinExpr *)node;
+			{
+				FromExpr   *stmt = (FromExpr *) node;
 
-		   if (WALK(join->larg))
-			   return true;
-		   if (WALK(join->rarg))
-			   return true;
-		   if (WALK(join->usingClause))
-			   return true;
-		   if (WALK(join->quals))
-			   return true;
-		   if (WALK(join->alias))
-			   return true;
-		}
+				if (WALK(stmt->fromlist))
+					return true;
+				if (WALK(stmt->quals))
+					return true;
+			}
+			break;
+		case T_JoinExpr:
+			{
+				JoinExpr   *join = (JoinExpr *) node;
+
+				if (WALK(join->larg))
+					return true;
+				if (WALK(join->rarg))
+					return true;
+				if (WALK(join->usingClause))
+					return true;
+				if (WALK(join->quals))
+					return true;
+				if (WALK(join->alias))
+					return true;
+			}
 			break;
 		case T_OnConflictExpr:
-		{
-		   OnConflictExpr *stmt = (OnConflictExpr *)node;
-	
-			if (WALK(stmt->arbiterElems))
-				return true;
-			if (WALK(stmt->arbiterWhere))
-				return true;
-			if (WALK(stmt->onConflictSet))
-				return true;
-			if (WALK(stmt->onConflictWhere))
-				return true;
-			if (WALK(stmt->exclRelTlist))
-				return true;
-		}
-			break;				
-		case T_IntoClause:
-		{
-			IntoClause *into = (IntoClause *)node;
+			{
+				OnConflictExpr *stmt = (OnConflictExpr *) node;
 
-			if (WALK(into->rel))
-				return true;
-			if (WALK(into->colNames))
-				return true;
-			if (WALK(into->options))
-				return true;
-			if (WALK(into->viewQuery))
-				return true;
-		}
+				if (WALK(stmt->arbiterElems))
+					return true;
+				if (WALK(stmt->arbiterWhere))
+					return true;
+				if (WALK(stmt->onConflictSet))
+					return true;
+				if (WALK(stmt->onConflictWhere))
+					return true;
+				if (WALK(stmt->exclRelTlist))
+					return true;
+			}
+			break;
+		case T_IntoClause:
+			{
+				IntoClause *into = (IntoClause *) node;
+
+				if (WALK(into->rel))
+					return true;
+				if (WALK(into->colNames))
+					return true;
+				if (WALK(into->options))
+					return true;
+				if (WALK(into->viewQuery))
+					return true;
+			}
 			break;
 		case T_List:
-		foreach(temp, (List *)node)
-		{
-			if (WALK((Node *) lfirst(temp)))
-				return true;
-		}
+			foreach(temp, (List *) node)
+			{
+				if (WALK((Node *) lfirst(temp)))
+					return true;
+			}
 			break;
 		case T_RawStmt:
-		{
-			RawStmt *raw = (RawStmt *)node;
+			{
+				RawStmt    *raw = (RawStmt *) node;
 
-			if (WALK(raw->stmt))
-				return true;
-		}
+				if (WALK(raw->stmt))
+					return true;
+			}
 			break;
 		case T_PLAssignStmt:
-		{
-			PLAssignStmt *assign = (PLAssignStmt *)node;
+			{
+				PLAssignStmt *assign = (PLAssignStmt *) node;
 
-			if (WALK(assign->indirection))
-				return true;
-			if (WALK(assign->val))
-				return true;
-		}
+				if (WALK(assign->indirection))
+					return true;
+				if (WALK(assign->val))
+					return true;
+			}
 			break;
 		case T_CallStmt:
 			{
-				CallStmt *callstmt = (CallStmt *)node;
+				CallStmt   *callstmt = (CallStmt *) node;
 
 				if (WALK(callstmt->funccall))
 					return true;
@@ -2535,7 +2574,7 @@ raw_calculate_oraparamnumbers_walker(Node *node,
 			}
 			break;
 
-		default:		
+		default:
 			break;
 	}
 	return false;
@@ -2561,8 +2600,8 @@ check_variables_does_match(int variables)
 		HasPgParam)
 	{
 		ereport(ERROR,
-			(errcode(ERRCODE_SYNTAX_ERROR),
-			errmsg("$n and :x bindvar model cannot be used at the same time")));
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("$n and :x bindvar model cannot be used at the same time")));
 	}
 
 	if (!HasPgParam)
@@ -2571,20 +2610,20 @@ check_variables_does_match(int variables)
 		{
 			if (variables > 0)
 				ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					errmsg("bind variable does not exist")));
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("bind variable does not exist")));
 		}
 		else if (CurrentOraParamNode->param_count > variables)
 		{
 			ereport(ERROR,
-				(errcode(ERRCODE_SYNTAX_ERROR),
-				errmsg("not all variables bound")));
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("not all variables bound")));
 		}
 		else if (CurrentOraParamNode->param_count < variables)
 		{
 			ereport(ERROR,
-				(errcode(ERRCODE_SYNTAX_ERROR),
-				errmsg("bind variable does not exist")));
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("bind variable does not exist")));
 		}
 	}
 
@@ -2640,7 +2679,7 @@ int
 calculate_oraparamname_position(Node *parsetree, char ***paramnames)
 {
 	OraParamState state;
-	int	i;
+	int			i;
 
 	/* init parameters */
 	state.numParams = 0;
@@ -2650,8 +2689,8 @@ calculate_oraparamname_position(Node *parsetree, char ***paramnames)
 	calculate_oraparamname_walker(parsetree, &state);
 
 	/*
-	 * Check if the parameter is correct,
-	 * make sure all the parameters should have a name.
+	 * Check if the parameter is correct, make sure all the parameters should
+	 * have a name.
 	 */
 	for (i = 1; i <= state.numParams; i++)
 	{
@@ -2673,12 +2712,12 @@ calculate_oraparamname_walker(Node *node, void *state)
 
 	if (IsA(node, OraParamRef))
 	{
-		OraParamRef *pref = (OraParamRef*)node;
+		OraParamRef *pref = (OraParamRef *) node;
 		OraParamState *orastate = (OraParamState *) state;
 
 		if (pref->number >= orastate->maxparams)
 		{
-			int i;
+			int			i;
 
 			orastate->maxparams = orastate->maxparams * 2;
 			orastate->paramNames = repalloc(orastate->paramNames, sizeof(char *) * orastate->maxparams);
@@ -2705,9 +2744,9 @@ calculate_oraparamname_walker(Node *node, void *state)
 	}
 	else
 	{
-		return raw_calculate_oraparamnumbers_walker(node, 
-					calculate_oraparamname_walker,
-					state);
+		return raw_calculate_oraparamnumbers_walker(node,
+													calculate_oraparamname_walker,
+													state);
 	}
 
 	return false;
@@ -2717,7 +2756,7 @@ int
 calculate_oraparamname(char ***paramnames)
 {
 	OraParamState state;
-	int	i;
+	int			i;
 
 	state.numParams = CurrentOraParamNode->param_count;
 	state.maxparams = CurrentOraParamNode->param_count;

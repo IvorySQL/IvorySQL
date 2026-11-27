@@ -3478,8 +3478,8 @@ transformPLAssignStmtTarget(ParseState *pstate, List *tlist,
 
 		if (pstate->do_from_call &&
 			(((type_id == ORACHARCHAROID || type_id == ORACHARBYTEOID) &&
-				(targettype == ORACHARCHAROID || targettype == ORACHARBYTEOID)) ||
-			((targettype == ORAVARCHARCHAROID || targettype == ORAVARCHARBYTEOID))))
+			  (targettype == ORACHARCHAROID || targettype == ORACHARBYTEOID)) ||
+			 ((targettype == ORAVARCHARCHAROID || targettype == ORAVARCHARBYTEOID))))
 			tle->expr = (Expr *)
 				coerce_to_target_type(pstate,
 									  orig_expr, type_id,
@@ -3488,7 +3488,7 @@ transformPLAssignStmtTarget(ParseState *pstate, List *tlist,
 									  COERCE_IMPLICIT_CAST,
 									  -1);
 		else
-		/* End - ReqID:SRS-SQL-CALL */
+			/* End - ReqID:SRS-SQL-CALL */
 			tle->expr = (Expr *)
 				coerce_to_target_type(pstate,
 									  orig_expr, type_id,
@@ -3679,6 +3679,9 @@ transformCreateTableAsStmt(ParseState *pstate, CreateTableAsStmt *stmt)
 	/* transform contained query, not allowing SELECT INTO */
 	query = transformStmt(pstate, stmt->query);
 	stmt->query = (Node *) query;
+
+	if (compatible_db == ORA_PARSER)
+		checkUnpivotZeroLengthColumns(query);
 
 	/* additional work needed for CREATE MATERIALIZED VIEW */
 	if (stmt->objtype == OBJECT_MATVIEW)

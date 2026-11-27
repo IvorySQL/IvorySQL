@@ -38,6 +38,7 @@ extern char *TypeNameToQuoteString(const TypeName *typeName);
 extern char *TypeNameListToString(List *typenames);
 
 extern Oid	LookupCollation(ParseState *pstate, List *collnames, int location);
+extern Oid	get_oracle_nchar_collation_oid(bool missing_ok);
 extern Oid	GetColumnDefCollation(ParseState *pstate, const ColumnDef *coldef, Oid typeOid);
 
 extern Type typeidType(Oid id);
@@ -61,10 +62,10 @@ extern bool parseTypeString(const char *str, Oid *typeid_p, int32 *typmod_p,
 #define ISCOMPLEX(typeid) (typeOrDomainTypeRelid(typeid) != InvalidOid)
 
 extern Type LookupOraTypeName(ParseState *pstate, const TypeName *typeName,
-			   int32 *typmod_p, bool missing_ok);
+							  int32 *typmod_p, bool missing_ok);
 extern Type LookupOraTypeNameExtended(ParseState *pstate,
-					   const TypeName *typeName, int32 *typmod_p,
-					   bool temp_ok, bool missing_ok);
+									  const TypeName *typeName, int32 *typmod_p,
+									  bool temp_ok, bool missing_ok);
 
 
 #endif							/* PARSE_TYPE_H */
