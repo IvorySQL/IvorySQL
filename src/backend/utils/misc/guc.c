@@ -193,11 +193,17 @@ static const unit_conversion time_unit_conversion_table[] =
  * the following mappings to any unrecognized name.  Note that an old name
  * should be mapped to a new one only if the new variable has very similar
  * semantics to the old.
+ *
+ * "time_zone" is not a deprecated PostgreSQL name.  It is the Oracle
+ * TIME_ZONE synonym for the canonical TimeZone parameter, so both names
+ * share one GUC record (one assign hook, show hook, default, and stack).
  */
 static const char *const map_old_guc_names[] = {
 	"sort_mem", "work_mem",
 	"vacuum_mem", "maintenance_work_mem",
 	"ssl_ecdh_curve", "ssl_groups",
+	/* Oracle TIME_ZONE synonym, not a retired PostgreSQL name */
+	"time_zone", "TimeZone",
 	NULL
 };
 

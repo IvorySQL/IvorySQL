@@ -397,12 +397,12 @@ drop role dbtz_owner;
 set timezone = 'Asia/Hong_Kong';
 
 /*
- * Oracle ALTER SESSION SET TIME_ZONE = <value> updates the session time
- * zone read by SESSIONTIMEZONE.  TIME_ZONE is not a keyword; it is an alias
- * of the timezone GUC.  The PostgreSQL spelling SET TIME ZONE stays accepted.
- * LOCAL and DEFAULT reset that GUC to its configured default.  DBTIMEZONE
- * copies the current ivorysql.dbtimezone value into the session time zone
- * and does not change the database setting.
+ * time_zone is a GUC name alias of TimeZone, not a second parameter, so
+ * SET, SHOW, RESET, current_setting('time_zone'), and set_config() share
+ * that record with SESSIONTIMEZONE.  LOCAL and DEFAULT reset it to its
+ * configured default.  DBTIMEZONE copies the current ivorysql.dbtimezone
+ * value into the session time zone and does not change the database
+ * setting.  The PostgreSQL spelling SET TIME ZONE stays accepted.
  */
 reset timezone;
 select sessiontimezone() as server_default \gset
@@ -452,6 +452,17 @@ select case when :'db_tz_after' = :'db_tz' then 'yes' else 'no' end
 
 alter session set time_zone = 'Asia/Shanghai';
 show time_zone;
+select case
+	when sessiontimezone() = current_setting('time_zone')
+	 and current_setting('time_zone') = current_setting('TimeZone')
+	then 'yes' else 'no' end as current_setting_matches from dual;
+select count(*) as time_zone_guc_rows
+	from pg_settings where name = 'time_zone';
+select set_config('time_zone', 'Europe/Paris', false) as set_config_time_zone from dual;
+select case
+	when sessiontimezone() = 'Europe/Paris'
+	 and current_setting('time_zone') = sessiontimezone()
+	then 'yes' else 'no' end as set_config_matches from dual;
 
 /* time_zone remains an identifier, not a reserved word */
 create table ora_tz_ident(time_zone varchar2(10));

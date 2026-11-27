@@ -218,7 +218,6 @@ static AlterTableCmd *makeModifyColumnTypeOrVisibilityCmd(char *colname,
 												  int location);
 static bool oracleJoinOpExists(const Node *expr);
 static void ora_finish_time_zone_set(VariableSetStmt *n);
-static char *ora_map_time_zone_guc(char *name);
 
 %}
 
@@ -1969,7 +1968,6 @@ generic_set:
 					n->kind = VAR_SET_DEFAULT;
 					n->name = $1;
 					n->location = -1;
-					ora_finish_time_zone_set(n);
 					$$ = n;
 				}
 			| var_name '=' DEFAULT
@@ -1979,7 +1977,6 @@ generic_set:
 					n->kind = VAR_SET_DEFAULT;
 					n->name = $1;
 					n->location = -1;
-					ora_finish_time_zone_set(n);
 					$$ = n;
 				}
 		;
@@ -1993,7 +1990,6 @@ set_rest_more:	/* Generic SET syntaxes: */
 					n->kind = VAR_SET_CURRENT;
 					n->name = $1;
 					n->location = -1;
-					ora_finish_time_zone_set(n);
 					$$ = n;
 				}
 			/* Special syntaxes mandated by SQL standard: */
@@ -2231,7 +2227,6 @@ generic_reset:
 					n->kind = VAR_RESET;
 					n->name = $1;
 					n->location = -1;
-					ora_finish_time_zone_set(n);
 					$$ = n;
 				}
 			| ALL
@@ -2262,7 +2257,7 @@ VariableShowStmt:
 				{
 					VariableShowStmt *n = makeNode(VariableShowStmt);
 
-					n->name = ora_map_time_zone_guc($2);
+					n->name = $2;
 					$$ = (Node *) n;
 				}
 			| SHOW TIME ZONE
@@ -24404,33 +24399,14 @@ static void determineLanguage(List *options)
 }
 
 /*
- * ora_map_time_zone_guc
- *		Oracle's session parameter is TIME_ZONE.  It is not a keyword, so
- *		SET / ALTER SESSION SET parse it as the GUC name "time_zone", which
- *		does not exist.  SESSIONTIMEZONE reads the "timezone" GUC.
- *
- *		Only the exact name is rewritten.  A qualified custom variable such
- *		as extension.time_zone is left alone, and the PostgreSQL spelling
- *		SET TIME ZONE is a separate production that already targets
- *		"timezone".
- */
-static char *
-ora_map_time_zone_guc(char *name)
-{
-	if (pg_strcasecmp(name, "time_zone") == 0)
-		return "timezone";
-	return name;
-}
-
-/*
  * ora_time_zone_value_is_reset
  *		True when a generic SET value is Oracle's LOCAL.
  *
- *		SET TIME ZONE zone_value compiles LOCAL and DEFAULT to
- *		VAR_SET_DEFAULT.  generic_set has already turned the word into an
- *		A_Const string, so recognize it here and reset the session
- *		"timezone" GUC to its configured default (the same path as
- *		SET TIME ZONE LOCAL).  A quoted 'local' is indistinguishable from
+ *		The name time_zone is an alias of TimeZone (map_old_guc_names), so
+ *		SET, SHOW, and RESET need no rename.  SET TIME ZONE zone_value
+ *		compiles LOCAL and DEFAULT to VAR_SET_DEFAULT.  generic_set has
+ *		already turned LOCAL into an A_Const, so recognize it here and take
+ *		that same reset path.  A quoted 'local' is indistinguishable from
  *		the keyword once generic_set has built the A_Const.
  *
  *		DBTIMEZONE is not handled here.  It stays the string "dbtimezone"
@@ -24455,15 +24431,14 @@ ora_time_zone_value_is_reset(List *args)
 
 /*
  * ora_finish_time_zone_set
- *		Apply the TIME_ZONE alias to a generic variable SET or RESET.
+ *		Turn Oracle SET TIME_ZONE = LOCAL into a reset of TimeZone.
+ *		The name itself is resolved by the GUC alias, not rewritten here.
  */
 static void
 ora_finish_time_zone_set(VariableSetStmt *n)
 {
 	if (pg_strcasecmp(n->name, "time_zone") != 0)
 		return;
-
-	n->name = "timezone";
 
 	if (n->kind == VAR_SET_VALUE &&
 		ora_time_zone_value_is_reset(n->args))
