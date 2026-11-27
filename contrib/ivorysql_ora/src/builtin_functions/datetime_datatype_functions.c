@@ -656,7 +656,7 @@ ora_tz_offset(PG_FUNCTION_ARGS)
 	text	   *txtimezone1 = PG_GETARG_TEXT_PP(0);
 
 	char	   *strtimezone1 = text_to_cstring(txtimezone1);
-	TimestampTz timestamp = GetCurrentTimestamp();
+	TimestampTz timestamp = GetCurrentStatementStartTimestamp();
 
 	/* to get pg_tz struct data of char */
 	if ((timezonedat = ora_make_timezone(&strtimezone1)) == NULL)
