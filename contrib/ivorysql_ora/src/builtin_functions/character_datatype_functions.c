@@ -37,6 +37,7 @@
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "regex/regex.h"
+#include "utils/ascii.h"
 #include "utils/builtins.h"
 #include "utils/fmgrprotos.h"
 #include "utils/memutils.h"
@@ -1543,6 +1544,34 @@ text_substring_byte(Datum str, int32 start, int32 length, bool length_not_specif
 }
 
 /*
+ * Test a length-delimited string without reading past its varlena payload.
+ * Reject NUL as well as non-ASCII so unusual text values retain the existing
+ * conversion path.  The core helper handles full SIMD (or fallback) chunks.
+ */
+static bool
+text_position_is_ascii(const char *str, int len)
+{
+	int			bulk = len - len % sizeof(Vector8);
+	int			i;
+
+	/* Reject common mixed-text cases before scanning a long ASCII prefix. */
+	if (len > 0 &&
+		(str[0] == '\0' || IS_HIGHBIT_SET(str[0]) ||
+		 str[len - 1] == '\0' || IS_HIGHBIT_SET(str[len - 1])))
+		return false;
+
+	if (!is_valid_ascii((const unsigned char *) str, bulk))
+		return false;
+
+	for (i = bulk; i < len; i++)
+	{
+		if (str[i] == '\0' || IS_HIGHBIT_SET(str[i]))
+			return false;
+	}
+	return true;
+}
+
+/*
  * text_position_setup, text_position_next, text_position_cleanup -
  * Component steps of text_position()
  *
@@ -1563,9 +1592,12 @@ text_position_setup(text *t1, text *t2, TextPositionState *state, bool isbyte)
 	int			len2 = VARSIZE_ANY_EXHDR(t2);
 
 	if (pg_database_encoding_max_length() == 1 ||
-		isbyte)
+		isbyte ||
+		(GetDatabaseEncoding() == PG_UTF8 &&
+		 text_position_is_ascii(VARDATA_ANY(t2), len2) &&
+		 text_position_is_ascii(VARDATA_ANY(t1), len1)))
 	{
-		/* simple case - single byte encoding */
+		/* Byte offsets are character offsets for ASCII-only UTF-8 too. */
 		state->use_wchar = false;
 		state->str1 = VARDATA_ANY(t1);
 		state->str2 = VARDATA_ANY(t2);
