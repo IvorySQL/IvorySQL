@@ -1,6 +1,6 @@
-# src/interface/libpq/ivytest/Makefile
+# src/interfaces/libpq/ivytest/Makefile
 
-PGFILEDESC = "ivytest - an in-place binary upgrade utility"
+PGFILEDESC = "ivytest - IvorySQL libpq test programs"
 PGAPPICON = win32
 
 subdir = src/interfaces/libpq/ivytest
