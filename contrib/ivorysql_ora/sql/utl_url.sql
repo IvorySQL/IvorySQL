@@ -234,3 +234,17 @@ BEGIN
     RAISE NOTICE 'should not get here: %', v_out;
 END;
 /
+
+-- Exercise every non-NUL ASCII byte, including controls and both hex digits.
+SELECT bool_and(utl_url.escape(chr(i), TRUE, 'UTF8') =
+    CASE WHEN strpos('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*''()', chr(i)) > 0
+         THEN chr(i) ELSE '%' || upper(lpad(to_hex(i), 2, '0')) END) AS ascii_hex_ok
+FROM generate_series(1, 127) AS g(i);
+-- Force buffer growth and exercise all-escaped, unchanged and mixed inputs.
+SELECT n,
+       utl_url.escape(repeat(' ', n), TRUE, 'UTF8') = repeat('%20', n) AS spaces,
+       utl_url.escape(repeat('a', n), TRUE, 'UTF8') = repeat('a', n) AS unchanged,
+       utl_url.escape(repeat('a/?%', n), FALSE, 'UTF8') = repeat('a/?%25', n) AS mixed
+FROM (VALUES (1), (341), (1023), (1024), (2048), (4000)) AS sizes(n);
+SELECT utl_url.escape('é中文', TRUE, 'UTF8') AS utf8_hex,
+       utl_url.escape('é', TRUE, 'LATIN1') AS latin1_hex;

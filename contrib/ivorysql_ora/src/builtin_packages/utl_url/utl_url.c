@@ -196,7 +196,15 @@ ivorysql_utl_url_escape(PG_FUNCTION_ARGS)
 			(!escape_reserved && utl_url_is_reserved(c)))
 			appendStringInfoChar(&buf, (char) c);
 		else
-			appendStringInfo(&buf, "%%%02X", c);
+		{
+			static const char hex[] = "0123456789ABCDEF";
+			char		escaped[3];
+
+			escaped[0] = '%';
+			escaped[1] = hex[c >> 4];
+			escaped[2] = hex[c & 0x0F];
+			appendBinaryStringInfo(&buf, escaped, sizeof(escaped));
+		}
 	}
 
 	/* The result is pure ASCII, hence valid in every server encoding */
