@@ -204,8 +204,8 @@ static const char *const map_old_guc_names[] = {
 
 /*
  * Oracle compatibility synonyms.  These are not retired PostgreSQL names.
- * find_option() consults this table only while an Oracle-mode session is
- * running (see oracle_guc_alias_active).  Each synonym shares the canonical
+ * find_option() consults this table only when ivorysql.compatible_mode is
+ * oracle (compatible_db == ORA_PARSER).  Each synonym shares the canonical
  * record: one assign hook, show hook, default, and stack, and one
  * pg_settings row.
  *
@@ -216,12 +216,6 @@ static const char *const map_oracle_guc[] = {
 	"time_zone", "TimeZone",
 	NULL
 };
-
-/*
- * Nonzero while ProcessConfigFileInternal() is reading postgresql.conf or
- * postgresql.auto.conf.  Oracle synonyms stay hidden for that read.
- */
-static int	config_file_processing_depth = 0;
 
 
 /* Memory context holding all GUC-related data */
@@ -299,44 +293,17 @@ static bool call_string_check_hook(const struct config_generic *conf, char **new
 								   void **extra, GucSource source, int elevel);
 static bool call_enum_check_hook(const struct config_generic *conf, int *newval,
 								 void **extra, GucSource source, int elevel);
-static bool oracle_guc_alias_active(void);
-static const char *map_oracle_guc_name(const char *name);
-static ConfigVariable *ProcessConfigFileInternalBody(GucContext context,
-													 bool applySettings,
-													 int elevel);
 
 
 /*
- * Read and apply configuration files, or just validate them for
- * show_all_file_settings() (the pg_file_settings view).  In the latter case
- * applySettings is false: no setting is changed, but the usual validity
- * checks still run and the ConfigVariable list is returned for display.
- *
- * Oracle GUC synonyms are suppressed for the duration of this call so a
- * name such as time_zone in postgresql.conf is not accepted just because
- * the process that reloads the file happens to be an Oracle session.
+ * This function handles both actual config file (re)loads and execution of
+ * show_all_file_settings() (i.e., the pg_file_settings view).  In the latter
+ * case we don't apply any of the settings, but we make all the usual validity
+ * checks, and we return the ConfigVariable list so that it can be printed out
+ * by show_all_file_settings().
  */
 ConfigVariable *
 ProcessConfigFileInternal(GucContext context, bool applySettings, int elevel)
-{
-	ConfigVariable *result = NULL;
-
-	config_file_processing_depth++;
-	PG_TRY();
-	{
-		result = ProcessConfigFileInternalBody(context, applySettings, elevel);
-	}
-	PG_FINALLY();
-	{
-		config_file_processing_depth--;
-	}
-	PG_END_TRY();
-
-	return result;
-}
-
-static ConfigVariable *
-ProcessConfigFileInternalBody(GucContext context, bool applySettings, int elevel)
 {
 	bool		error = false;
 	bool		applying = false;
@@ -1150,47 +1117,6 @@ add_placeholder_variable(const char *name, int elevel)
 }
 
 /*
- * True when map_oracle_guc may rename a parameter.
- *
- * compatible_db is ivorysql.compatible_mode.  It stays PG_PARSER until
- * InitIvorysql assigns it from the connection port (or a later SET).  That
- * GUC cannot be set from postgresql.conf.  Postmaster boot, the
- * configuration file, and command-line options all run before
- * NormalProcessing with a selected database, so they never consult the
- * table.  A reload of postgresql.conf is also excluded via
- * config_file_processing_depth, including a reload inside an Oracle
- * session.
- */
-static bool
-oracle_guc_alias_active(void)
-{
-	return config_file_processing_depth == 0 &&
-		IsNormalProcessingMode() &&
-		OidIsValid(MyDatabaseId) &&
-		compatible_db == ORA_PARSER;
-}
-
-/*
- * If name is an active Oracle synonym, return the canonical GUC name.
- * Otherwise return NULL.  The caller looks that name up; this does not
- * create a second GUC record.
- */
-static const char *
-map_oracle_guc_name(const char *name)
-{
-	if (!oracle_guc_alias_active())
-		return NULL;
-
-	for (int i = 0; map_oracle_guc[i] != NULL; i += 2)
-	{
-		if (guc_name_compare(name, map_oracle_guc[i]) == 0)
-			return map_oracle_guc[i + 1];
-	}
-
-	return NULL;
-}
-
-/*
  * Look up option "name".  If it exists, return a pointer to its record.
  * Otherwise, if create_placeholders is true and name is a valid-looking
  * custom variable name, we'll create and return a placeholder record.
@@ -1234,14 +1160,18 @@ find_option(const char *name, bool create_placeholders, bool skip_errors,
 	}
 
 	/*
-	 * Oracle-mode synonyms share the canonical record.  The mapping is off
-	 * in PostgreSQL mode and during startup; see oracle_guc_alias_active().
+	 * Oracle synonyms, same shape as map_old_guc_names.  Applied only when
+	 * ivorysql.compatible_mode is oracle.  The hit is the canonical record,
+	 * not a second GUC.
 	 */
+	if (compatible_db == ORA_PARSER)
 	{
-		const char *canon = map_oracle_guc_name(name);
-
-		if (canon != NULL)
-			return find_option(canon, false, skip_errors, elevel);
+		for (int i = 0; map_oracle_guc[i] != NULL; i += 2)
+		{
+			if (guc_name_compare(name, map_oracle_guc[i]) == 0)
+				return find_option(map_oracle_guc[i + 1], false,
+								   skip_errors, elevel);
+		}
 	}
 
 	if (create_placeholders)
@@ -1370,16 +1300,20 @@ convert_GUC_name_for_parameter_acl(const char *name)
 	}
 
 	/*
-	 * Apply the same Oracle synonym as find_option(), and only while that
-	 * alias is active.  pg_parameter_acl stores one canonical name, so a
-	 * GRANT on time_zone in an Oracle session covers TimeZone.  PostgreSQL
-	 * mode and startup configuration leave the spelled name unchanged.
+	 * Same Oracle synonym as find_option(), and only in Oracle mode.
+	 * pg_parameter_acl stores the canonical name, so GRANT on time_zone
+	 * covers TimeZone.  PostgreSQL mode leaves the spelled name unchanged.
 	 */
+	if (compatible_db == ORA_PARSER)
 	{
-		const char *canon = map_oracle_guc_name(name);
-
-		if (canon != NULL)
-			name = canon;
+		for (int i = 0; map_oracle_guc[i] != NULL; i += 2)
+		{
+			if (guc_name_compare(name, map_oracle_guc[i]) == 0)
+			{
+				name = map_oracle_guc[i + 1];
+				break;
+			}
+		}
 	}
 
 	/* Apply case-folding that matches guc_name_compare(). */

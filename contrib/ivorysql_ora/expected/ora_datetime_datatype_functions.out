@@ -705,11 +705,11 @@ set timezone = 'Asia/Hong_Kong';
  * In Oracle mode, time_zone is a GUC name alias of TimeZone (map_oracle_guc),
  * not a second parameter, so SET, SHOW, RESET, current_setting('time_zone'),
  * and set_config() share that record with SESSIONTIMEZONE.  The alias is
- * not consulted in PostgreSQL mode or while reading startup configuration.
- * LOCAL and DEFAULT reset it to its configured default.  DBTIMEZONE copies
- * the current ivorysql.dbtimezone value into the session time zone and does
- * not change the database setting.  The PostgreSQL spelling SET TIME ZONE
- * stays accepted.
+ * applied only when ivorysql.compatible_mode is oracle.  LOCAL and DEFAULT
+ * reset it to its configured default.  DBTIMEZONE copies the current
+ * ivorysql.dbtimezone value into the session time zone and does not change
+ * the database setting.  The PostgreSQL spelling SET TIME ZONE stays
+ * accepted.
  */
 reset timezone;
 select sessiontimezone() as server_default \gset
