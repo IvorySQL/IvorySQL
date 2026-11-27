@@ -20,4 +20,4 @@ clean distclean maintainer-clean:
 
 # These behave like installcheck targets.
 oracle-check-%: all
-	@$(MAKE) -C `echo $@ | sed 's/^check-//'` test
+	@$(MAKE) -C $(patsubst oracle-check-%,%,$@) test
