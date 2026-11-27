@@ -540,7 +540,8 @@ ora_utl_file_fcopy(PG_FUNCTION_ARGS)
 	 */
 	for (dst_attempts = 0; dst_attempts < 2; dst_attempts++)
 	{
-		dstfile = fopen(dstpath, "rt+");
+		/* "r+t": pgwin32_fopen() matches "r+" only when it precedes 't'. */
+		dstfile = fopen(dstpath, "r+t");
 
 		if (dstfile != NULL)
 		{
