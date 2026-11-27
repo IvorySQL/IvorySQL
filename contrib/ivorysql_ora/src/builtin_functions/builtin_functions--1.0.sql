@@ -1410,7 +1410,7 @@ END;
 $$ LANGUAGE plpgsql STRICT SET client_min_messages to error;
 
 /* TERMINAL */
-CREATE OR REPLACE FUNCTION sys.get_terminal() RETURNS number AS $$
+CREATE OR REPLACE FUNCTION sys.get_terminal() RETURNS text AS $$
 DECLARE
 BEGIN
 	RETURN NULL;
