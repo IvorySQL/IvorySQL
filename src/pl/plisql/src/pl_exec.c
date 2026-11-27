@@ -122,7 +122,7 @@ static ResourceOwner shared_simple_eval_resowner = NULL;
  * DBMS_UTILITY.FORMAT_ERROR_BACKTRACE to access the exception context from
  * within the exception handler, even when nested function calls occur.
  */
-static PLiSQL_execstate *exception_handling_estate = NULL;
+static PLiSQL_execstate * exception_handling_estate = NULL;
 
 /*
  * Memory management within a plisql function generally works with three
@@ -225,9 +225,9 @@ static HTAB *shared_cast_hash = NULL;
  * estate->exitlabel is examined and possibly updated.
  */
 #define LOOP_RC_PROCESSING(looplabel, exit_action) \
-	if (rc == PLISQL_RC_RETURN) \
+	if (rc == PLISQL_RC_RETURN || rc == PLISQL_RC_GOTO) \
 	{ \
-		/* RETURN, so propagate RC_RETURN out */ \
+		/* RETURN or outward GOTO, so propagate rc out */ \
 		exit_action; \
 	} \
 	else if (rc == PLISQL_RC_EXIT) \
@@ -337,6 +337,8 @@ static int	exec_stmt_close(PLiSQL_execstate * estate,
 							PLiSQL_stmt_close * stmt);
 static int	exec_stmt_exit(PLiSQL_execstate * estate,
 						   PLiSQL_stmt_exit * stmt);
+static int	exec_stmt_goto(PLiSQL_execstate * estate,
+						   PLiSQL_stmt_goto * stmt);
 static int	exec_stmt_return(PLiSQL_execstate * estate,
 							 PLiSQL_stmt_return * stmt);
 static int	exec_stmt_return_next(PLiSQL_execstate * estate,
@@ -699,17 +701,18 @@ plisql_exec_function(PLiSQL_function * func, FunctionCallInfo fcinfo,
 		((*plisql_plugin_ptr)->func_beg) (&estate, func);
 
 	/*
-	 * If this is an autonomous transaction function, delegate to dblink.
-	 * Skip if we're already inside an autonomous transaction (prevents recursion).
-	 * Also skip if we're being called during procedure compilation/validation.
+	 * If this is an autonomous transaction function, delegate to dblink. Skip
+	 * if we're already inside an autonomous transaction (prevents recursion).
+	 * Also skip if we're being called during procedure
+	 * compilation/validation.
 	 */
 	if (func->fn_is_autonomous &&
 		!plisql_inside_autonomous_transaction &&
 		fcinfo != NULL &&
 		fcinfo->flinfo != NULL &&
-		fcinfo->flinfo->fn_oid == func->fn_oid)  /* Real call, not validation */
+		fcinfo->flinfo->fn_oid == func->fn_oid) /* Real call, not validation */
 	{
-		Datum result;
+		Datum		result;
 
 		result = plisql_exec_autonomous_function(func, fcinfo,
 												 simple_eval_estate,
@@ -1436,7 +1439,7 @@ plisql_exec_event_trigger(PLiSQL_function * func, EventTriggerData *trigdata)
  * directly: the package identity is now in the text they already parse.
  */
 static char *
-plisql_package_qualified_signature(PLiSQL_function *func)
+plisql_package_qualified_signature(PLiSQL_function * func)
 {
 	HeapTuple	pkgTup;
 	Form_pg_package pkgStruct;
@@ -1657,6 +1660,7 @@ copy_plisql_datums(PLiSQL_execstate * estate,
 				break;
 
 			case PLISQL_DTYPE_EXCEPTION:
+
 				/*
 				 * Exception variables - nothing to do
 				 */
@@ -2062,6 +2066,7 @@ exec_stmt_block(PLiSQL_execstate * estate, PLiSQL_stmt_block * block)
 				break;
 
 			case PLISQL_DTYPE_EXCEPTION:
+
 				/*
 				 * Exception variables - nothing to do
 				 */
@@ -2249,7 +2254,8 @@ exec_stmt_block(PLiSQL_execstate * estate, PLiSQL_stmt_block * block)
 					rc = exec_stmts(estate, exception->action);
 
 					/*
-					 * Restore exception_handling_estate after handler execution.
+					 * Restore exception_handling_estate after handler
+					 * execution.
 					 */
 					exception_handling_estate = save_exception_handling_estate;
 
@@ -2298,6 +2304,7 @@ exec_stmt_block(PLiSQL_execstate * estate, PLiSQL_stmt_block * block)
 		case PLISQL_RC_OK:
 		case PLISQL_RC_RETURN:
 		case PLISQL_RC_CONTINUE:
+		case PLISQL_RC_GOTO:
 			return rc;
 
 		case PLISQL_RC_EXIT:
@@ -2340,7 +2347,7 @@ exec_stmts(PLiSQL_execstate * estate, List *stmts)
 		return PLISQL_RC_OK;
 	}
 
-	foreach(s, stmts)
+	for (s = list_head(stmts); s != NULL;)
 	{
 		PLiSQL_stmt *stmt = (PLiSQL_stmt *) lfirst(s);
 		int			rc;
@@ -2411,6 +2418,14 @@ exec_stmts(PLiSQL_execstate * estate, List *stmts)
 				rc = exec_stmt_exit(estate, (PLiSQL_stmt_exit *) stmt);
 				break;
 
+			case PLISQL_STMT_GOTO:
+				rc = exec_stmt_goto(estate, (PLiSQL_stmt_goto *) stmt);
+				break;
+
+			case PLISQL_STMT_LABEL:
+				rc = PLISQL_RC_OK;
+				break;
+
 			case PLISQL_STMT_RETURN:
 				rc = exec_stmt_return(estate, (PLiSQL_stmt_return *) stmt);
 				break;
@@ -2474,11 +2489,40 @@ exec_stmts(PLiSQL_execstate * estate, List *stmts)
 		if (*plisql_plugin_ptr && (*plisql_plugin_ptr)->stmt_end)
 			((*plisql_plugin_ptr)->stmt_end) (estate, stmt);
 
-		if (rc != PLISQL_RC_OK)
+		if (rc == PLISQL_RC_OK)
 		{
-			estate->err_stmt = save_estmt;
-			return rc;
+			s = lnext(stmts, s);
+			continue;
 		}
+
+		if (rc == PLISQL_RC_GOTO)
+		{
+			ListCell   *target_cell = NULL;
+			ListCell   *lc;
+
+			Assert(estate->gotolabel != NULL);
+			foreach(lc, stmts)
+			{
+				const		PLiSQL_stmt *cand = (const PLiSQL_stmt *) lfirst(lc);
+				const char *cand_lbl = plisql_stmt_get_label(cand);
+
+				if (cand_lbl != NULL && strcmp(cand_lbl, estate->gotolabel) == 0)
+				{
+					target_cell = lc;
+					break;
+				}
+			}
+
+			if (target_cell != NULL)
+			{
+				estate->gotolabel = NULL;
+				s = target_cell;
+				continue;
+			}
+		}
+
+		estate->err_stmt = save_estmt;
+		return rc;
 	}							/* end of loop over statements */
 
 	estate->err_stmt = save_estmt;
@@ -2704,8 +2748,8 @@ make_callstmt_target(PLiSQL_execstate * estate, PLiSQL_expr * expr)
 			Node	   *n = list_nth(stmt->outargs, nfields);
 
 			/*
-			 * I'm not sure if this is a bug, so I'm only temporarily
-			 * fixing it for scenarios that I care about.
+			 * I'm not sure if this is a bug, so I'm only temporarily fixing
+			 * it for scenarios that I care about.
 			 */
 			if (estate->func && estate->func->do_from_call &&
 				strcmp(estate->func->fn_signature, "inline_code_block") == 0)
@@ -2936,12 +2980,11 @@ exec_stmt_case(PLiSQL_execstate * estate, PLiSQL_stmt_case * stmt)
 			MemoryContext oldctx = NULL;
 
 			/*
-			 * package'var doesn't use plisql_copy_datum, 
-			 * so we should switch its function memory context.
-			 * maybe save origin datatype, but no place
-			 * to store it and when to recover, 
-			 * we must not free its origin datatype, maybe it
-			 * is referenced by other place like user defined type.
+			 * package'var doesn't use plisql_copy_datum, so we should switch
+			 * its function memory context. maybe save origin datatype, but no
+			 * place to store it and when to recover, we must not free its
+			 * origin datatype, maybe it is referenced by other place like
+			 * user defined type.
 			 */
 			if (OidIsValid(t_var->pkgoid))
 			{
@@ -3561,6 +3604,18 @@ exec_stmt_exit(PLiSQL_execstate * estate, PLiSQL_stmt_exit * stmt)
 
 
 /* ----------
+ * exec_stmt_goto			Implements GOTO statement
+ * ----------
+ */
+static int
+exec_stmt_goto(PLiSQL_execstate * estate, PLiSQL_stmt_goto * stmt)
+{
+	estate->gotolabel = stmt->label;
+	return PLISQL_RC_GOTO;
+}
+
+
+/* ----------
  * exec_stmt_return			Evaluate an expression and start
  *					returning from the function.
  *
@@ -3616,7 +3671,10 @@ exec_stmt_return(PLiSQL_execstate * estate, PLiSQL_stmt_return * stmt)
 			 */
 			exec_assign_expr(estate, retvar, stmt->expr);
 
-			/* the return stmt is constructed combinding all OUT parameters and function return value */
+			/*
+			 * the return stmt is constructed combinding all OUT parameters
+			 * and function return value
+			 */
 			return exec_stmt_return(estate, (PLiSQL_stmt_return *)
 									llast(estate->func->action->body));
 		}
@@ -3684,9 +3742,9 @@ exec_stmt_return(PLiSQL_execstate * estate, PLiSQL_stmt_return * stmt)
 				}
 				break;
 
-			/*
-			 * there may return a package.var.id, handle it specially.
-			 */
+				/*
+				 * there may return a package.var.id, handle it specially.
+				 */
 			case PLISQL_DTYPE_RECFIELD:
 				{
 					int32		rettypmod;
@@ -3701,6 +3759,7 @@ exec_stmt_return(PLiSQL_execstate * estate, PLiSQL_stmt_return * stmt)
 				break;
 
 			case PLISQL_DTYPE_EXCEPTION:
+
 				/*
 				 * Exception variables - nothing to do
 				 */
@@ -3885,6 +3944,7 @@ exec_stmt_return_next(PLiSQL_execstate * estate,
 				break;
 
 			case PLISQL_DTYPE_EXCEPTION:
+
 				/*
 				 * Exception variables - nothing to do
 				 */
@@ -4221,7 +4281,7 @@ exec_stmt_raise(PLiSQL_execstate * estate, PLiSQL_stmt_raise * stmt)
 		/* If no custom message, use Oracle default */
 		if (!stmt->message && stmt->options == NIL)
 			err_message = MemoryContextStrdup(stmt_mcontext,
-												 "User-Defined Exception");
+											  "User-Defined Exception");
 	}
 	else if (stmt->condname)
 	{
@@ -4476,6 +4536,7 @@ plisql_estate_setup(PLiSQL_execstate * estate,
 	estate->atomic = true;
 
 	estate->exitlabel = NULL;
+	estate->gotolabel = NULL;
 	estate->cur_error = NULL;
 
 	estate->tuple_store = NULL;
@@ -5913,6 +5974,7 @@ exec_assign_value(PLiSQL_execstate * estate,
 			}
 
 		case PLISQL_DTYPE_EXCEPTION:
+
 			/*
 			 * Exception variables - nothing to do
 			 */
@@ -6100,6 +6162,7 @@ exec_eval_datum(PLiSQL_execstate * estate,
 			}
 
 		case PLISQL_DTYPE_EXCEPTION:
+
 			/*
 			 * Exception variables - nothing to do
 			 */
@@ -6200,6 +6263,7 @@ plisql_exec_get_datum_type(PLiSQL_execstate * estate,
 			}
 
 		case PLISQL_DTYPE_EXCEPTION:
+
 			/*
 			 * Exception variables - nothing to do
 			 */
@@ -6315,6 +6379,7 @@ plisql_exec_get_datum_type_info(PLiSQL_execstate * estate,
 			}
 
 		case PLISQL_DTYPE_EXCEPTION:
+
 			/*
 			 * Exception variables - nothing to do
 			 */
@@ -6332,10 +6397,10 @@ plisql_exec_get_datum_type_info(PLiSQL_execstate * estate,
 }
 
 /*
-* plisql_assign_in_global_var is similar to
-* exec_assign_value, we assign subproc global var
-* with its parents'var
-*/
+ * plisql_assign_in_global_var is similar to
+ * exec_assign_value, we assign subproc global var
+ * with its parents'var
+ */
 void
 plisql_assign_in_global_var(PLiSQL_execstate * estate,
 							PLiSQL_execstate * parestate,
@@ -6367,20 +6432,20 @@ plisql_assign_in_global_var(PLiSQL_execstate * estate,
 	 */
 	if (parestate->datums[dno]->dtype == PLISQL_DTYPE_VAR)
 		value = MakeExpandedObjectReadOnly(value,
-							isnull,
-							((PLiSQL_var *) parestate->datums[dno])->datatype->typlen);
+										   isnull,
+										   ((PLiSQL_var *) parestate->datums[dno])->datatype->typlen);
 	else if (parestate->datums[dno]->dtype == PLISQL_DTYPE_REC)
 		value = MakeExpandedObjectReadOnly(value,
-							isnull,
-							-1);
+										   isnull,
+										   -1);
 
 	exec_assign_value(estate, estate->datums[dno],
 					  value, isnull, typeid, typetypmod);
 }
 
 /*
-* assign value from estate to parestate
-*/
+ * assign value from estate to parestate
+ */
 void
 plisql_assign_out_global_var(PLiSQL_execstate * estate,
 							 PLiSQL_execstate * parestate,
@@ -6412,12 +6477,12 @@ plisql_assign_out_global_var(PLiSQL_execstate * estate,
 	 */
 	if (estate->datums[dno]->dtype == PLISQL_DTYPE_VAR)
 		value = MakeExpandedObjectReadOnly(value,
-							isnull,
-							((PLiSQL_var *) estate->datums[dno])->datatype->typlen);
- else if (estate->datums[dno]->dtype == PLISQL_DTYPE_REC)
-	 value = MakeExpandedObjectReadOnly(value,
-						isnull,
-						-1);
+										   isnull,
+										   ((PLiSQL_var *) estate->datums[dno])->datatype->typlen);
+	else if (estate->datums[dno]->dtype == PLISQL_DTYPE_REC)
+		value = MakeExpandedObjectReadOnly(value,
+										   isnull,
+										   -1);
 
 	oldctx = MemoryContextSwitchTo(SPI_get_proccxt(spi_level));
 
@@ -7328,9 +7393,9 @@ plisql_param_compile(ParamListInfo params, Param *param,
 		 * namespace, not the calling function's.  plisql_param_eval_var_check
 		 * (below) indexes estate->datums[dno] directly without regard to
 		 * pkgoid, so comparing this dno against expr->target_param (a dno in
-		 * the calling function's namespace) is only meaningful when the
-		 * datum isn't package-qualified; otherwise a coincidental numeric
-		 * match causes it to read an unrelated local variable at runtime.
+		 * the calling function's namespace) is only meaningful when the datum
+		 * isn't package-qualified; otherwise a coincidental numeric match
+		 * causes it to read an unrelated local variable at runtime.
 		 */
 		if (isvarlena && dno == expr->target_param && expr->expr_simple_expr &&
 			!OidIsValid(((PLiSQL_var *) datum)->pkgoid))
@@ -7612,10 +7677,10 @@ plisql_param_eval_var_ro(ExprState *state, ExprEvalStep *op,
 	 * objects, we must make a copy of the value into the eval_mcontext,
 	 * rather than just returning a pointer to the variable's storage. This is
 	 * because nested function calls (a PL/iSQL feature) can happen during
-	 * expression evaluation, and when they return, they copy back their global
-	 * variables to the parent. This copy-back operation frees the parent's old
-	 * variable storage, which would leave us with a dangling pointer if we had
-	 * just returned var->value directly.
+	 * expression evaluation, and when they return, they copy back their
+	 * global variables to the parent. This copy-back operation frees the
+	 * parent's old variable storage, which would leave us with a dangling
+	 * pointer if we had just returned var->value directly.
 	 *
 	 * For expanded objects (like composite types), we use
 	 * MakeExpandedObjectReadOnly which handles them properly.
@@ -7629,6 +7694,7 @@ plisql_param_eval_var_ro(ExprState *state, ExprEvalStep *op,
 	{
 		/* Non-expanded varlena type - make a copy in eval_mcontext */
 		MemoryContext oldcxt = MemoryContextSwitchTo(get_eval_mcontext(estate));
+
 		*op->resvalue = datumCopy(var->value, false, -1);
 		MemoryContextSwitchTo(oldcxt);
 	}
@@ -9060,10 +9126,11 @@ get_cast_hashentry(PLiSQL_execstate * estate,
 		else
 		{
 			/*
-			 * The SQL CALL statement compatible with Oracle is implicitly converted to
-			 * DoStmt on the client side (libpq). According to the behavior of Oracle 21c,
-			 * if the parameter type declared by the subprogram is the same as the datatype
-			 * of the bind variable, the behavior of exceeding precision is truncated, 
+			 * The SQL CALL statement compatible with Oracle is implicitly
+			 * converted to DoStmt on the client side (libpq). According to
+			 * the behavior of Oracle 21c, if the parameter type declared by
+			 * the subprogram is the same as the datatype of the bind
+			 * variable, the behavior of exceeding precision is truncated,
 			 * otherwise an error will be reported.
 			 */
 			if (estate->func &&
@@ -10411,7 +10478,7 @@ plisql_get_call_stack(void)
 {
 	ErrorContextCallback *context;
 	StringInfoData buf;
-	bool found_any = false;
+	bool		found_any = false;
 
 	initStringInfo(&buf);
 
@@ -10422,9 +10489,9 @@ plisql_get_call_stack(void)
 		if (context->callback == plisql_exec_error_callback)
 		{
 			PLiSQL_execstate *estate = (PLiSQL_execstate *) context->arg;
-			int lineno = 0;
-			char *signature;
-			char *qualified_signature;
+			int			lineno = 0;
+			char	   *signature;
+			char	   *qualified_signature;
 
 			/* Get current line number */
 			if (estate->err_var != NULL)
@@ -10434,14 +10501,14 @@ plisql_get_call_stack(void)
 
 			/*
 			 * Package members' fn_signature is only ever the bare routine
-			 * name (see plisql_build_subproc_function_internal()); qualify
-			 * it with the owning package's schema/name, same as the
-			 * error-context callback above, so callers of this function
-			 * don't have to re-derive package identity themselves.
+			 * name (see plisql_build_subproc_function_internal()); qualify it
+			 * with the owning package's schema/name, same as the
+			 * error-context callback above, so callers of this function don't
+			 * have to re-derive package identity themselves.
 			 *
-			 * qualified_signature, when non-NULL, is a fresh palloc'd
-			 * string we own and must free below; the fn_signature fallback
-			 * is borrowed from the long-lived function cache.
+			 * qualified_signature, when non-NULL, is a fresh palloc'd string
+			 * we own and must free below; the fn_signature fallback is
+			 * borrowed from the long-lived function cache.
 			 */
 			qualified_signature = plisql_package_qualified_signature(estate->func);
 			signature = qualified_signature != NULL ? qualified_signature : estate->func->fn_signature;

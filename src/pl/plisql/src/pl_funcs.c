@@ -112,11 +112,27 @@ plisql_ns_additem(PLiSQL_nsitem_type itemtype, int itemno, const char *name)
 	nse->itemtype = itemtype;
 	nse->itemno = itemno;
 	nse->subprocfunc = NIL;
+	nse->label_aliases = NIL;
 	nse->prev = ns_top;
 	strcpy(nse->name, name);
 	ns_top = nse;
 }
 
+
+static bool
+ns_label_matches(const PLiSQL_nsitem * label, const char *name)
+{
+	ListCell   *lc;
+
+	if (strcmp(label->name, name) == 0)
+		return true;
+	foreach(lc, label->label_aliases)
+	{
+		if (strcmp(lfirst(lc), name) == 0)
+			return true;
+	}
+	return false;
+}
 
 /* ----------
  * plisql_ns_lookup		Lookup an identifier in the given namespace chain
@@ -166,8 +182,7 @@ plisql_ns_lookup(PLiSQL_nsitem * ns_cur, bool localmode,
 		}
 
 		/* Check this level for qualified match to variable name */
-		if (name2 != NULL &&
-			strcmp(nsitem->name, name1) == 0)
+		if (name2 != NULL && ns_label_matches(nsitem, name1))
 		{
 			for (nsitem = ns_cur;
 				 nsitem->itemtype != PLISQL_NSTYPE_LABEL;
@@ -209,7 +224,7 @@ plisql_ns_lookup_label(PLiSQL_nsitem * ns_cur, const char *name)
 	while (ns_cur != NULL)
 	{
 		if (ns_cur->itemtype == PLISQL_NSTYPE_LABEL &&
-			strcmp(ns_cur->name, name) == 0)
+			ns_label_matches(ns_cur, name))
 			return ns_cur;
 		ns_cur = ns_cur->prev;
 	}
@@ -267,6 +282,10 @@ plisql_stmt_typename(PLiSQL_stmt * stmt)
 			return _("FOREACH over array");
 		case PLISQL_STMT_EXIT:
 			return ((PLiSQL_stmt_exit *) stmt)->is_exit ? "EXIT" : "CONTINUE";
+		case PLISQL_STMT_GOTO:
+			return "GOTO";
+		case PLISQL_STMT_LABEL:
+			return _("statement label");
 		case PLISQL_STMT_RETURN:
 			return "RETURN";
 		case PLISQL_STMT_RETURN_NEXT:
@@ -488,6 +507,12 @@ plisql_statement_tree_walker_impl(PLiSQL_stmt * stmt,
 				PLiSQL_stmt_exit *estmt = (PLiSQL_stmt_exit *) stmt;
 
 				E_WALK(estmt->cond);
+				break;
+			}
+		case PLISQL_STMT_GOTO:
+		case PLISQL_STMT_LABEL:
+			{
+				/* no interesting sub-structure */
 				break;
 			}
 		case PLISQL_STMT_RETURN:
@@ -796,8 +821,8 @@ plisql_free_function_memory(PLiSQL_function * func,
 			subprocfunc->poly_tab == NULL)
 		{
 			/*
-			 * if there is no action, the lastoutvardno and lastoutinlinefno must be invalid,
-			 * we should not free its context.
+			 * if there is no action, the lastoutvardno and lastoutinlinefno
+			 * must be invalid, we should not free its context.
 			 */
 			if (subprocfunc->function->action != NULL)
 				plisql_free_function_memory(subprocfunc->function, subprocfunc->lastoutvardno,
@@ -812,8 +837,8 @@ plisql_free_function_memory(PLiSQL_function * func,
 			Assert(subprocfunc->poly_tab != NULL);
 
 			/*
-			 * if there is no action, the lastoutvardno and lastoutinlinefno must be invalid,
-			 * we should not free its context.
+			 * if there is no action, the lastoutvardno and lastoutinlinefno
+			 * must be invalid, we should not free its context.
 			 */
 			if (subprocfunc->function->action != NULL)
 			{
@@ -863,6 +888,8 @@ static void dump_fors(PLiSQL_stmt_fors * stmt);
 static void dump_forc(PLiSQL_stmt_forc * stmt);
 static void dump_foreach_a(PLiSQL_stmt_foreach_a * stmt);
 static void dump_exit(PLiSQL_stmt_exit * stmt);
+static void dump_goto(PLiSQL_stmt_goto * stmt);
+static void dump_label(PLiSQL_stmt_label * stmt);
 static void dump_return(PLiSQL_stmt_return * stmt);
 static void dump_return_next(PLiSQL_stmt_return_next * stmt);
 static void dump_return_query(PLiSQL_stmt_return_query * stmt);
@@ -930,6 +957,12 @@ dump_stmt(PLiSQL_stmt * stmt)
 			break;
 		case PLISQL_STMT_EXIT:
 			dump_exit((PLiSQL_stmt_exit *) stmt);
+			break;
+		case PLISQL_STMT_GOTO:
+			dump_goto((PLiSQL_stmt_goto *) stmt);
+			break;
+		case PLISQL_STMT_LABEL:
+			dump_label((PLiSQL_stmt_label *) stmt);
 			break;
 		case PLISQL_STMT_RETURN:
 			dump_return((PLiSQL_stmt_return *) stmt);
@@ -1396,6 +1429,20 @@ dump_exit(PLiSQL_stmt_exit * stmt)
 }
 
 static void
+dump_goto(PLiSQL_stmt_goto * stmt)
+{
+	dump_ind();
+	printf("GOTO label='%s'\n", stmt->label);
+}
+
+static void
+dump_label(PLiSQL_stmt_label * stmt)
+{
+	dump_ind();
+	printf("LABEL <<%s>>\n", stmt->label);
+}
+
+static void
 dump_return(PLiSQL_stmt_return * stmt)
 {
 	dump_ind();
@@ -1806,4 +1853,464 @@ plisql_dumptree(PLiSQL_function * func, int start_datum, int start_subprocfunc)
 
 	printf("\nEnd of execution tree of function %s\n\n", func->fn_signature);
 	fflush(stdout);
+}
+
+/* ----------
+ * GOTO statement label inspection and compile-time scope validation
+ * ----------
+ */
+typedef struct GotoScopeStack
+{
+	List	   *stmts;
+	List	   *block_labels;
+	const struct GotoScopeStack *parent;
+}			GotoScopeStack;
+
+const char *
+plisql_stmt_get_label(const PLiSQL_stmt * stmt)
+{
+	if (stmt == NULL)
+		return NULL;
+
+	switch (stmt->cmd_type)
+	{
+		case PLISQL_STMT_LABEL:
+			return ((const PLiSQL_stmt_label *) stmt)->label;
+		case PLISQL_STMT_BLOCK:
+			return ((const PLiSQL_stmt_block *) stmt)->label;
+		case PLISQL_STMT_LOOP:
+			return ((const PLiSQL_stmt_loop *) stmt)->label;
+		case PLISQL_STMT_WHILE:
+			return ((const PLiSQL_stmt_while *) stmt)->label;
+		case PLISQL_STMT_FORI:
+			return ((const PLiSQL_stmt_fori *) stmt)->label;
+		case PLISQL_STMT_FORS:
+		case PLISQL_STMT_FORC:
+		case PLISQL_STMT_DYNFORS:
+			return ((const PLiSQL_stmt_forq *) stmt)->label;
+		case PLISQL_STMT_FOREACH_A:
+			return ((const PLiSQL_stmt_foreach_a *) stmt)->label;
+		default:
+			return NULL;
+	}
+}
+
+static bool
+label_list_contains(List *labels, const char *name)
+{
+	ListCell   *lc;
+
+	foreach(lc, labels)
+	{
+		if (strcmp((const char *) lfirst(lc), name) == 0)
+			return true;
+	}
+	return false;
+}
+
+static void
+			collect_labels_in_stmts(List *stmts, List **stmt_labels, List **structured_labels,
+									List **all_labels);
+
+static void
+collect_labels_in_block(PLiSQL_stmt_block * block, List **all_labels)
+{
+	List	   *stmt_labels = NIL;
+	List	   *structured_labels = NIL;
+
+	if (block->label != NULL)
+		*all_labels = lappend(*all_labels, block->label);
+
+	collect_labels_in_stmts(block->body, &stmt_labels, &structured_labels,
+							all_labels);
+
+	if (block->exceptions != NULL)
+	{
+		ListCell   *lc;
+
+		foreach(lc, block->exceptions->exc_list)
+		{
+			PLiSQL_exception *exc = (PLiSQL_exception *) lfirst(lc);
+
+			collect_labels_in_stmts(exc->action, &stmt_labels,
+									&structured_labels, all_labels);
+		}
+	}
+
+	list_free(stmt_labels);
+	list_free(structured_labels);
+}
+
+static void
+collect_labels_in_stmts(List *stmts, List **stmt_labels, List **structured_labels,
+						List **all_labels)
+{
+	ListCell   *lc;
+
+	foreach(lc, stmts)
+	{
+		PLiSQL_stmt *stmt = (PLiSQL_stmt *) lfirst(lc);
+		const char *lbl = plisql_stmt_get_label(stmt);
+
+		if (stmt->cmd_type == PLISQL_STMT_LABEL)
+		{
+			if (label_list_contains(*stmt_labels, lbl) ||
+				label_list_contains(*structured_labels, lbl))
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("duplicate label \"%s\"", lbl)));
+			*stmt_labels = lappend(*stmt_labels, (void *) lbl);
+			*all_labels = lappend(*all_labels, (void *) lbl);
+			continue;
+		}
+
+		if (lbl != NULL)
+		{
+			if (label_list_contains(*stmt_labels, lbl) ||
+				label_list_contains(*structured_labels, lbl))
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("duplicate label \"%s\"", lbl)));
+			*structured_labels = lappend(*structured_labels, (void *) lbl);
+			*all_labels = lappend(*all_labels, (void *) lbl);
+		}
+
+		switch (stmt->cmd_type)
+		{
+			case PLISQL_STMT_BLOCK:
+				collect_labels_in_block((PLiSQL_stmt_block *) stmt, all_labels);
+				break;
+			case PLISQL_STMT_IF:
+				{
+					PLiSQL_stmt_if *ifstmt = (PLiSQL_stmt_if *) stmt;
+					ListCell   *elc;
+
+					collect_labels_in_stmts(ifstmt->then_body, stmt_labels,
+											structured_labels, all_labels);
+					foreach(elc, ifstmt->elsif_list)
+					{
+						PLiSQL_if_elsif *elif = (PLiSQL_if_elsif *) lfirst(elc);
+
+						collect_labels_in_stmts(elif->stmts, stmt_labels,
+												structured_labels, all_labels);
+					}
+					collect_labels_in_stmts(ifstmt->else_body, stmt_labels,
+											structured_labels, all_labels);
+					break;
+				}
+			case PLISQL_STMT_CASE:
+				{
+					PLiSQL_stmt_case *cstmt = (PLiSQL_stmt_case *) stmt;
+					ListCell   *wlc;
+
+					foreach(wlc, cstmt->case_when_list)
+					{
+						PLiSQL_case_when *cwt = (PLiSQL_case_when *) lfirst(wlc);
+
+						collect_labels_in_stmts(cwt->stmts, stmt_labels,
+												structured_labels, all_labels);
+					}
+					collect_labels_in_stmts(cstmt->else_stmts, stmt_labels,
+											structured_labels, all_labels);
+					break;
+				}
+			case PLISQL_STMT_LOOP:
+				collect_labels_in_stmts(((PLiSQL_stmt_loop *) stmt)->body,
+										stmt_labels, structured_labels, all_labels);
+				break;
+			case PLISQL_STMT_WHILE:
+				collect_labels_in_stmts(((PLiSQL_stmt_while *) stmt)->body,
+										stmt_labels, structured_labels, all_labels);
+				break;
+			case PLISQL_STMT_FORI:
+				collect_labels_in_stmts(((PLiSQL_stmt_fori *) stmt)->body,
+										stmt_labels, structured_labels, all_labels);
+				break;
+			case PLISQL_STMT_FORS:
+			case PLISQL_STMT_FORC:
+			case PLISQL_STMT_DYNFORS:
+				collect_labels_in_stmts(((PLiSQL_stmt_forq *) stmt)->body,
+										stmt_labels, structured_labels, all_labels);
+				break;
+			case PLISQL_STMT_FOREACH_A:
+				collect_labels_in_stmts(((PLiSQL_stmt_foreach_a *) stmt)->body,
+										stmt_labels, structured_labels, all_labels);
+				break;
+			default:
+				break;
+		}
+	}
+}
+
+static void
+collect_direct_block_labels(List *stmts, List **block_labels)
+{
+	ListCell   *lc;
+
+	foreach(lc, stmts)
+	{
+		PLiSQL_stmt *stmt = (PLiSQL_stmt *) lfirst(lc);
+		const char *lbl = plisql_stmt_get_label(stmt);
+
+		if (lbl != NULL)
+			*block_labels = lappend(*block_labels, (void *) lbl);
+
+		switch (stmt->cmd_type)
+		{
+			case PLISQL_STMT_BLOCK:
+				/* Nested block owns its own inner label scope */
+				break;
+			case PLISQL_STMT_IF:
+				{
+					PLiSQL_stmt_if *ifstmt = (PLiSQL_stmt_if *) stmt;
+					ListCell   *elc;
+
+					collect_direct_block_labels(ifstmt->then_body, block_labels);
+					foreach(elc, ifstmt->elsif_list)
+					{
+						PLiSQL_if_elsif *elif = (PLiSQL_if_elsif *) lfirst(elc);
+
+						collect_direct_block_labels(elif->stmts, block_labels);
+					}
+					collect_direct_block_labels(ifstmt->else_body, block_labels);
+					break;
+				}
+			case PLISQL_STMT_CASE:
+				{
+					PLiSQL_stmt_case *cstmt = (PLiSQL_stmt_case *) stmt;
+					ListCell   *wlc;
+
+					foreach(wlc, cstmt->case_when_list)
+					{
+						PLiSQL_case_when *cwt = (PLiSQL_case_when *) lfirst(wlc);
+
+						collect_direct_block_labels(cwt->stmts, block_labels);
+					}
+					collect_direct_block_labels(cstmt->else_stmts, block_labels);
+					break;
+				}
+			case PLISQL_STMT_LOOP:
+				collect_direct_block_labels(((PLiSQL_stmt_loop *) stmt)->body,
+											block_labels);
+				break;
+			case PLISQL_STMT_WHILE:
+				collect_direct_block_labels(((PLiSQL_stmt_while *) stmt)->body,
+											block_labels);
+				break;
+			case PLISQL_STMT_FORI:
+				collect_direct_block_labels(((PLiSQL_stmt_fori *) stmt)->body,
+											block_labels);
+				break;
+			case PLISQL_STMT_FORS:
+			case PLISQL_STMT_FORC:
+			case PLISQL_STMT_DYNFORS:
+				collect_direct_block_labels(((PLiSQL_stmt_forq *) stmt)->body,
+											block_labels);
+				break;
+			case PLISQL_STMT_FOREACH_A:
+				collect_direct_block_labels(((PLiSQL_stmt_foreach_a *) stmt)->body,
+											block_labels);
+				break;
+			default:
+				break;
+		}
+	}
+}
+
+static void
+			validate_goto_in_block(PLiSQL_stmt_block * block,
+								   const GotoScopeStack * parent_scope,
+								   List *all_labels);
+
+static void
+validate_goto_in_stmts(List *stmts, const GotoScopeStack * parent_scope,
+					   List *block_labels, List *all_labels)
+{
+	GotoScopeStack scope;
+	ListCell   *lc;
+
+	if (stmts == NIL)
+		return;
+
+	scope.stmts = stmts;
+	scope.block_labels = block_labels;
+	scope.parent = parent_scope;
+
+	foreach(lc, stmts)
+	{
+		PLiSQL_stmt *stmt = (PLiSQL_stmt *) lfirst(lc);
+
+		switch (stmt->cmd_type)
+		{
+			case PLISQL_STMT_GOTO:
+				{
+					PLiSQL_stmt_goto *gstmt = (PLiSQL_stmt_goto *) stmt;
+					const		GotoScopeStack *cur;
+					bool		found = false;
+
+					for (cur = &scope; cur != NULL; cur = cur->parent)
+					{
+						ListCell   *slc;
+						int			matches = 0;
+
+						foreach(slc, cur->stmts)
+						{
+							const		PLiSQL_stmt *cand = (const PLiSQL_stmt *) lfirst(slc);
+							const char *cand_lbl = plisql_stmt_get_label(cand);
+
+							if (cand_lbl != NULL && strcmp(cand_lbl, gstmt->label) == 0)
+								matches++;
+						}
+
+						if (matches > 1)
+							ereport(ERROR,
+									(errcode(ERRCODE_SYNTAX_ERROR),
+									 errmsg("duplicate label \"%s\"", gstmt->label)));
+						if (matches == 1)
+						{
+							found = true;
+							break;
+						}
+
+						/*
+						 * A label declared anywhere within the current
+						 * BEGIN...END block (including inside an IF/CASE/LOOP
+						 * branch or across the BEGIN/EXCEPTION boundary)
+						 * hides any same-named label in enclosing blocks
+						 * (Oracle PLS-00375).
+						 */
+						if (cur->block_labels != NIL &&
+							label_list_contains(cur->block_labels, gstmt->label))
+							break;
+					}
+
+					if (!found)
+					{
+						if (label_list_contains(all_labels, gstmt->label))
+							ereport(ERROR,
+									(errcode(ERRCODE_SYNTAX_ERROR),
+									 errmsg("illegal GOTO statement; cannot branch to label \"%s\"",
+											gstmt->label)));
+						else
+							ereport(ERROR,
+									(errcode(ERRCODE_SYNTAX_ERROR),
+									 errmsg("label \"%s\" does not exist",
+											gstmt->label)));
+					}
+					break;
+				}
+			case PLISQL_STMT_BLOCK:
+				validate_goto_in_block((PLiSQL_stmt_block *) stmt, &scope,
+									   all_labels);
+				break;
+			case PLISQL_STMT_IF:
+				{
+					PLiSQL_stmt_if *ifstmt = (PLiSQL_stmt_if *) stmt;
+					ListCell   *elc;
+
+					validate_goto_in_stmts(ifstmt->then_body, &scope, NIL, all_labels);
+					foreach(elc, ifstmt->elsif_list)
+					{
+						PLiSQL_if_elsif *elif = (PLiSQL_if_elsif *) lfirst(elc);
+
+						validate_goto_in_stmts(elif->stmts, &scope, NIL, all_labels);
+					}
+					validate_goto_in_stmts(ifstmt->else_body, &scope, NIL, all_labels);
+					break;
+				}
+			case PLISQL_STMT_CASE:
+				{
+					PLiSQL_stmt_case *cstmt = (PLiSQL_stmt_case *) stmt;
+					ListCell   *wlc;
+
+					foreach(wlc, cstmt->case_when_list)
+					{
+						PLiSQL_case_when *cwt = (PLiSQL_case_when *) lfirst(wlc);
+
+						validate_goto_in_stmts(cwt->stmts, &scope, NIL, all_labels);
+					}
+					validate_goto_in_stmts(cstmt->else_stmts, &scope, NIL, all_labels);
+					break;
+				}
+			case PLISQL_STMT_LOOP:
+				validate_goto_in_stmts(((PLiSQL_stmt_loop *) stmt)->body,
+									   &scope, NIL, all_labels);
+				break;
+			case PLISQL_STMT_WHILE:
+				validate_goto_in_stmts(((PLiSQL_stmt_while *) stmt)->body,
+									   &scope, NIL, all_labels);
+				break;
+			case PLISQL_STMT_FORI:
+				validate_goto_in_stmts(((PLiSQL_stmt_fori *) stmt)->body,
+									   &scope, NIL, all_labels);
+				break;
+			case PLISQL_STMT_FORS:
+			case PLISQL_STMT_FORC:
+			case PLISQL_STMT_DYNFORS:
+				validate_goto_in_stmts(((PLiSQL_stmt_forq *) stmt)->body,
+									   &scope, NIL, all_labels);
+				break;
+			case PLISQL_STMT_FOREACH_A:
+				validate_goto_in_stmts(((PLiSQL_stmt_foreach_a *) stmt)->body,
+									   &scope, NIL, all_labels);
+				break;
+			default:
+				break;
+		}
+	}
+}
+
+static void
+validate_goto_in_block(PLiSQL_stmt_block * block,
+					   const GotoScopeStack * parent_scope,
+					   List *all_labels)
+{
+	List	   *block_labels = NIL;
+
+	if (block == NULL)
+		return;
+
+	collect_direct_block_labels(block->body, &block_labels);
+	if (block->exceptions != NULL)
+	{
+		ListCell   *lc;
+
+		foreach(lc, block->exceptions->exc_list)
+		{
+			PLiSQL_exception *exc = (PLiSQL_exception *) lfirst(lc);
+
+			collect_direct_block_labels(exc->action, &block_labels);
+		}
+	}
+
+	validate_goto_in_stmts(block->body, parent_scope, block_labels, all_labels);
+
+	if (block->exceptions != NULL)
+	{
+		ListCell   *lc;
+
+		foreach(lc, block->exceptions->exc_list)
+		{
+			PLiSQL_exception *exc = (PLiSQL_exception *) lfirst(lc);
+
+			validate_goto_in_stmts(exc->action, parent_scope, block_labels,
+								   all_labels);
+		}
+	}
+
+	list_free(block_labels);
+}
+
+void
+plisql_check_goto_labels(PLiSQL_stmt_block * root)
+{
+	List	   *all_labels = NIL;
+
+	if (root == NULL)
+		return;
+
+	collect_labels_in_block(root, &all_labels);
+	validate_goto_in_block(root, NULL, all_labels);
+
+	list_free(all_labels);
 }

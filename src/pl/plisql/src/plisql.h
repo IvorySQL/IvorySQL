@@ -120,6 +120,8 @@ typedef enum PLiSQL_stmt_type
 	PLISQL_STMT_FORC,
 	PLISQL_STMT_FOREACH_A,
 	PLISQL_STMT_EXIT,
+	PLISQL_STMT_GOTO,
+	PLISQL_STMT_LABEL,
 	PLISQL_STMT_RETURN,
 	PLISQL_STMT_RETURN_NEXT,
 	PLISQL_STMT_RETURN_QUERY,
@@ -143,7 +145,8 @@ typedef enum PLiSQL_stmt_type
  */
 enum
 {
-	PLISQL_RC_OK, PLISQL_RC_EXIT, PLISQL_RC_RETURN, PLISQL_RC_CONTINUE
+	PLISQL_RC_OK, PLISQL_RC_EXIT, PLISQL_RC_RETURN, PLISQL_RC_CONTINUE,
+	PLISQL_RC_GOTO
 };
 
 /*
@@ -218,9 +221,10 @@ typedef struct PLiSQL_type
 	Oid			collation;		/* from pg_type, but can be overridden */
 	bool		typisarray;		/* is "true" array, or domain over one */
 	int32		atttypmod;		/* typmod (taken from someplace else) */
-	bool		notnull;		/* the type is built by variable%type,
-						 * isnull or notnull of the variable */
-	TypeName   *pctrowtypname;	/* type name only for the types that use %TYPE or %ROWTYPE */
+	bool		notnull;		/* the type is built by variable%type, isnull
+								 * or notnull of the variable */
+	TypeName   *pctrowtypname;	/* type name only for the types that use %TYPE
+								 * or %ROWTYPE */
 	/* Remaining fields are used only for named composite types (not RECORD) */
 	TypeName   *origtypname;	/* type name as written by user */
 	TypeCacheEntry *tcache;		/* typcache entry for composite type */
@@ -357,8 +361,9 @@ typedef struct PLiSQL_var
 	int			cursor_explicit_argrow;
 	int			cursor_options;
 
-	char		info; /* record the argument mode which may be IN, OUT or IN OUT.
-			       * If variable is built in plisql block locally, it is empty */
+	char		info;			/* record the argument mode which may be IN,
+								 * OUT or IN OUT. If variable is built in
+								 * plisql block locally, it is empty */
 
 	/* Fields below here can change at runtime */
 
@@ -442,8 +447,9 @@ typedef struct PLiSQL_rec
 	/* RECFIELDs for this record are chained together for easy access */
 	int			firstfield;		/* dno of first RECFIELD, or -1 if none */
 
-	char		info;  /* record the argument mode which may be IN, OUT or IN OUT.
-				* If variable is built in plisql block locally, it is empty */
+	char		info;			/* record the argument mode which may be IN,
+								 * OUT or IN OUT. If variable is built in
+								 * plisql block locally, it is empty */
 
 	/* Fields below here can change at runtime */
 
@@ -484,6 +490,7 @@ typedef struct PLiSQL_nsitem
 	int			itemno;
 	struct PLiSQL_nsitem *prev;
 	List	   *subprocfunc;
+	List	   *label_aliases;	/* Additional names of this namespace level */
 	char		name[FLEXIBLE_ARRAY_MEMBER];	/* nul-terminated string */
 }			PLiSQL_nsitem;
 
@@ -858,6 +865,28 @@ typedef struct PLiSQL_stmt_exit
 }			PLiSQL_stmt_exit;
 
 /*
+ * GOTO statement
+ */
+typedef struct PLiSQL_stmt_goto
+{
+	PLiSQL_stmt_type cmd_type;
+	int			lineno;
+	unsigned int stmtid;
+	char	   *label;
+}			PLiSQL_stmt_goto;
+
+/*
+ * Statement label (<<label>>)
+ */
+typedef struct PLiSQL_stmt_label
+{
+	PLiSQL_stmt_type cmd_type;
+	int			lineno;
+	unsigned int stmtid;
+	char	   *label;
+}			PLiSQL_stmt_label;
+
+/*
  * RETURN statement
  */
 typedef struct PLiSQL_stmt_return
@@ -907,7 +936,8 @@ typedef struct PLiSQL_stmt_raise
 	char	   *message;		/* old-style message format literal, or NULL */
 	List	   *params;			/* list of expressions for old-style message */
 	List	   *options;		/* list of PLiSQL_raise_option */
-	struct PLiSQL_exception_var *exception_var;	/* user-defined exception, or NULL */
+	struct PLiSQL_exception_var *exception_var; /* user-defined exception, or
+												 * NULL */
 }			PLiSQL_stmt_raise;
 
 /*
@@ -1072,14 +1102,20 @@ typedef struct PLiSQL_function
 	/* these fields change when the function is used */
 	struct PLiSQL_execstate *cur_estate;
 	unsigned long use_count;
-	int		fn_ret_vardno;	/* the variable dno for the function return value */
-	bool		fn_no_return;	/* when the function return type is not VOIDOID, if the body has not a RETURN statment,
-					 * the CREATE FUNCTION can be executed successfully, but when the function is called,
-					 * an error will be reported */
+	int			fn_ret_vardno;	/* the variable dno for the function return
+								 * value */
+	bool		fn_no_return;	/* when the function return type is not
+								 * VOIDOID, if the body has not a RETURN
+								 * statment, the CREATE FUNCTION can be
+								 * executed successfully, but when the
+								 * function is called, an error will be
+								 * reported */
 	bool		do_from_call;
-	char		**paramnames;	/* saved do + using parameter'name */
-	bool		is_with_clause_func;	/* true: body is a WITH FUNCTION/PROCEDURE inline subprogram */
-} PLiSQL_function;
+	char	  **paramnames;		/* saved do + using parameter'name */
+	bool		is_with_clause_func;	/* true: body is a WITH
+										 * FUNCTION/PROCEDURE inline
+										 * subprogram */
+}			PLiSQL_function;
 
 typedef struct plisql_hashent
 {
@@ -1111,6 +1147,8 @@ typedef struct PLiSQL_execstate
 
 	char	   *exitlabel;		/* the "target" label of the current EXIT or
 								 * CONTINUE stmt, if any */
+	char	   *gotolabel;		/* the "target" label of the current GOTO
+								 * stmt, if any */
 	ErrorData  *cur_error;		/* current exception handler's error */
 
 	Tuplestorestate *tuple_store;	/* SRFs accumulate results here */
@@ -1328,8 +1366,8 @@ extern List *plisql_active_with_func_entries;
 extern PGDLLEXPORT PLiSQL_function * plisql_compile(FunctionCallInfo fcinfo,
 													bool forValidator);
 
-extern PLiSQL_function *plisql_compile_inline(char *proc_source, ParamListInfo inparams, bool fromcall,
-											  Oid initial_rettype, bool initial_is_proc);
+extern PLiSQL_function * plisql_compile_inline(char *proc_source, ParamListInfo inparams, bool fromcall,
+											   Oid initial_rettype, bool initial_is_proc);
 extern PGDLLEXPORT void plisql_parser_setup(struct ParseState *pstate,
 											PLiSQL_expr * expr);
 extern bool plisql_parse_word(char *paramname, char *word1, const char *yytxt,
@@ -1434,6 +1472,8 @@ extern const char *plisql_getdiag_kindname(PLiSQL_getdiag_kind kind);
 extern void plisql_free_function_memory(PLiSQL_function * func, int start_datum,
 										int start_inlinefunc);
 extern void plisql_mark_local_assignment_targets(PLiSQL_function * func);
+extern const char *plisql_stmt_get_label(const PLiSQL_stmt * stmt);
+extern void plisql_check_goto_labels(PLiSQL_stmt_block * root);
 extern void plisql_dumptree(PLiSQL_function * func, int start_datum,
 							int start_subprocfunc);
 
