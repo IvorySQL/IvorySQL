@@ -27,6 +27,7 @@
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
+#include "utils/varlena.h"
 
 #include "plisql.h"
 #include "pl_autonomous.h"
@@ -419,6 +420,137 @@ execute_autonomous_function(char *connstr, char *sql, Oid rettype, FunctionCallI
 	return result;
 }
 
+/*
+ * Append a key='value' parameter to a libpq conninfo string, escaping single
+ * quotes and backslashes.
+ */
+static void
+append_libpq_conn_param(StringInfo buf, const char *key, const char *val)
+{
+	if (buf->len > 0)
+		appendStringInfoChar(buf, ' ');
+	appendStringInfo(buf, "%s='", key);
+	for (const char *p = val; *p; p++)
+	{
+		if (*p == '\'' || *p == '\\')
+			appendStringInfoChar(buf, '\\');
+		appendStringInfoChar(buf, *p);
+	}
+	appendStringInfoChar(buf, '\'');
+}
+
+/*
+ * Choose a reachable local host (TCP address or Unix socket directory) for
+ * dblink self-connection based on listen_addresses and unix_socket_directories.
+ * Returns a palloc'd string, or NULL to let libpq use its default.
+ */
+static char *
+resolve_autonomous_host(void)
+{
+	const char *listen_str;
+	char	   *first_sock_dir = NULL;
+	char	   *loopback_addr = NULL;
+	char	   *first_specific = NULL;
+	bool		has_wildcard = false;
+	char	   *result = NULL;
+
+	{
+		const char *sock_str = GetConfigOption("unix_socket_directories", false, false);
+
+		if (sock_str && sock_str[0] != '\0')
+		{
+			char	   *sock_copy = pstrdup(sock_str);
+			List	   *sock_list = NIL;
+
+			if (SplitDirectoriesString(sock_copy, ',', &sock_list))
+			{
+				ListCell   *lc;
+
+				foreach(lc, sock_list)
+				{
+					const char *dir = (const char *) lfirst(lc);
+
+					if (dir && dir[0] != '\0')
+					{
+						first_sock_dir = pstrdup(dir);
+						break;
+					}
+				}
+			}
+			list_free(sock_list);
+			pfree(sock_copy);
+		}
+	}
+
+	listen_str = GetConfigOption("listen_addresses", false, false);
+	if (listen_str && listen_str[0] != '\0')
+	{
+		char	   *listen_copy = pstrdup(listen_str);
+		List	   *listen_list = NIL;
+
+		if (SplitGUCList(listen_copy, ',', &listen_list))
+		{
+			ListCell   *lc;
+
+			foreach(lc, listen_list)
+			{
+				const char *addr = (const char *) lfirst(lc);
+
+				if (addr == NULL || addr[0] == '\0')
+					continue;
+				if (strcmp(addr, "*") == 0 ||
+					strcmp(addr, "0.0.0.0") == 0 ||
+					strcmp(addr, "::") == 0)
+				{
+					has_wildcard = true;
+				}
+				else if (strcmp(addr, "localhost") == 0 ||
+						 strcmp(addr, "127.0.0.1") == 0 ||
+						 strcmp(addr, "::1") == 0)
+				{
+					if (loopback_addr == NULL)
+						loopback_addr = pstrdup(addr);
+				}
+				else if (first_specific == NULL)
+				{
+					first_specific = pstrdup(addr);
+				}
+			}
+		}
+		list_free(listen_list);
+		pfree(listen_copy);
+	}
+
+	if (loopback_addr != NULL)
+		result = loopback_addr;
+	else if (first_specific != NULL)
+		result = (first_sock_dir != NULL) ? first_sock_dir : first_specific;
+	else if (has_wildcard)
+	{
+		if (first_sock_dir != NULL)
+		{
+			if (getenv("PGHOST") == NULL &&
+				strcmp(first_sock_dir, DEFAULT_PGSOCKET_DIR) != 0)
+				result = first_sock_dir;
+		}
+		else
+			result = pstrdup("localhost");
+	}
+	else if (first_sock_dir != NULL &&
+			 getenv("PGHOST") == NULL &&
+			 strcmp(first_sock_dir, DEFAULT_PGSOCKET_DIR) != 0)
+		result = first_sock_dir;
+
+	if (first_sock_dir != NULL && result != first_sock_dir)
+		pfree(first_sock_dir);
+	if (loopback_addr != NULL && result != loopback_addr)
+		pfree(loopback_addr);
+	if (first_specific != NULL && result != first_specific)
+		pfree(first_specific);
+
+	return result;
+}
+
 /**
  * Execute a PL/iSQL function or procedure in an autonomous transaction.
  *
@@ -484,22 +616,14 @@ plisql_exec_autonomous_function(PLiSQL_function *func, FunctionCallInfo fcinfo,
 	port_str = GetConfigOption("port", false, false);
 	initStringInfo(&connstr_buf);
 
-	/* Append dbname with single-quote escaping for libpq */
-	appendStringInfoString(&connstr_buf, "dbname='");
-	for (const char *p = dbname; *p; p++)
-	{
-		if (*p == '\'' || *p == '\\')
-			appendStringInfoChar(&connstr_buf, '\\');
-		appendStringInfoChar(&connstr_buf, *p);
-	}
-	appendStringInfoChar(&connstr_buf, '\'');
+	append_libpq_conn_param(&connstr_buf, "dbname", dbname);
 
-	/* Add host if configured */
-	host_str = GetConfigOption("listen_addresses", false, false);
-	if (host_str && strcmp(host_str, "*") != 0 && strcmp(host_str, "") != 0)
+	/* Resolve reachable host from listen_addresses / unix_socket_directories */
+	host_str = resolve_autonomous_host();
+	if (host_str != NULL)
 	{
-		/* Use localhost for local connections */
-		appendStringInfoString(&connstr_buf, " host=localhost");
+		append_libpq_conn_param(&connstr_buf, "host", host_str);
+		pfree((char *) host_str);
 	}
 
 	/* Add port if configured */
