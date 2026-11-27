@@ -399,14 +399,14 @@ UPDATE BINARY_DOUBLE_TBL
    SET f1 = BINARY_DOUBLE_TBL.f1 * '-1'
    WHERE BINARY_DOUBLE_TBL.f1 > '0.0';
 SELECT '' AS bad, f.f1 * '1e200' from BINARY_DOUBLE_TBL f;
- bad |     ?column?     
------+------------------
+ bad |         ?column?         
+-----+--------------------------
      | 0
-     | -3.484e+201
+     | -3.484E+201
      | 
-     | -1.0043e+203
+     | -1.0042999999999999E+203
      | -Inf
-     | -1.2345678901234
+     | -1.2345678901234001E+000
 (6 rows)
 
 SELECT '' AS bad, f.f1 ^ '1e200' from BINARY_DOUBLE_TBL f;
@@ -598,40 +598,40 @@ SELECT to_binary_double('0.0');
 (1 row)
 
 SELECT to_binary_double('3.14');
- to_binary_double 
-------------------
- 3.14
+    to_binary_double     
+-------------------------
+ 3.1400000000000001E+000
 (1 row)
 
 SELECT to_binary_double('   -34.84   ');
- to_binary_double 
-------------------
- -34.84
+     to_binary_double     
+--------------------------
+ -3.4840000000000003E+001
 (1 row)
 
 SELECT to_binary_double('1.2345678901234e+200');
    to_binary_double   
 ----------------------
- 1.2345678901234e+200
+ 1.2345678901234E+200
 (1 row)
 
 SELECT to_binary_double('1.2345678901234e-200');
    to_binary_double   
 ----------------------
- 1.2345678901234e-200
+ 1.2345678901234E-200
 (1 row)
 
 -- Two-argument form with a number format model
 SELECT to_binary_double('1,234.5', '9,999.9');
  to_binary_double 
 ------------------
- 1234.5
+ 1.2345E+003
 (1 row)
 
 SELECT to_binary_double('  1234.5', '9999.9');
  to_binary_double 
 ------------------
- 1234.5
+ 1.2345E+003
 (1 row)
 
 -- Empty format model returns NULL instead of crashing
@@ -682,19 +682,19 @@ SELECT to_binary_double('-inf');
 SELECT to_binary_double(42::numeric);
  to_binary_double 
 ------------------
- 42
+ 4.2E+001
 (1 row)
 
 SELECT to_binary_double(42::sys.binary_double);
  to_binary_double 
 ------------------
- 42
+ 4.2E+001
 (1 row)
 
 SELECT to_binary_double(42::sys.binary_float);
  to_binary_double 
 ------------------
- 42
+ 4.2E+001
 (1 row)
 
 --
@@ -766,13 +766,13 @@ SELECT 0d / 0d;
 SELECT 2d * 3d;
  ?column? 
 ----------
- 6
+ 6.0E+000
 (1 row)
 
 SELECT 7d / 2d;
  ?column? 
 ----------
- 3.5
+ 3.5E+000
 (1 row)
 
 SELECT (0d - 1e308d) * 10;

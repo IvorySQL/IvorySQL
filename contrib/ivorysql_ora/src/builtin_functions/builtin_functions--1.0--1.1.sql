@@ -98,3 +98,14 @@ CREATE FUNCTION sys.substr(sys.number, pg_catalog.float8, pg_catalog.float8)
 RETURNS pg_catalog.text
 LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE
 RETURN sys.substr($1::pg_catalog.text, $2, $3);
+
+/* Keep integer arguments from widening to BINARY_DOUBLE before conversion. */
+CREATE FUNCTION sys.lengthc(pg_catalog.int2)
+RETURNS pg_catalog.int4
+LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE
+RETURN sys.lengthc($1::pg_catalog.text);
+
+CREATE FUNCTION sys.lengthc(pg_catalog.int8)
+RETURNS pg_catalog.int4
+LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE
+RETURN sys.lengthc($1::pg_catalog.text);
