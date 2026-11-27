@@ -17124,6 +17124,9 @@ dumpDefaultACL(Archive *fout, const DefaultACLInfo *daclinfo)
 		case DEFACLOBJ_FUNCTION:
 			type = "FUNCTIONS";
 			break;
+		case DEFACLOBJ_PACKAGE:
+			type = "PACKAGES";
+			break;
 		case DEFACLOBJ_TYPE:
 			type = "TYPES";
 			break;
