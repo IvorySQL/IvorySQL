@@ -118,8 +118,47 @@ utl_url_hexval(unsigned char c)
 static int
 utl_url_charset_to_encoding(text *charset)
 {
+	/*
+	 * Oracle documents that url_charset accepts the Oracle naming
+	 * conventions as well as IANA names.  Map the common Oracle names for
+	 * the encodings PostgreSQL knows (server encodings and conversion
+	 * encodings alike); names for encodings PostgreSQL does not have are
+	 * absent and still report the unrecognized-set error.
+	 */
+	static const struct
+	{
+		const char *ora_name;
+		const char *pg_name;
+	}			utl_url_charset_aliases[] = {
+		{"AL32UTF8", "UTF8"},
+		{"WE8ISO8859P1", "LATIN1"},
+		{"WE8ISO8859P15", "LATIN9"},
+		{"WE8MSWIN1252", "WIN1252"},
+		{"EE8ISO8859P2", "LATIN2"},
+		{"JA16SJIS", "SJIS"},
+		{"JA16EUC", "EUC_JP"},
+		{"ZHS16GBK", "GBK"},
+		{"ZHT16BIG5", "BIG5"},
+		{"KO16KSC5601", "EUC_KR"},
+		{"KO16MSWIN949", "UHC"},
+		{"CL8ISO8859P5", "ISO_8859_5"},
+	};
+
 	char	   *name = text_to_cstring(charset);
 	int			encoding = pg_char_to_encoding(name);
+	int			i;
+
+	if (encoding < 0)
+	{
+		for (i = 0; i < lengthof(utl_url_charset_aliases); i++)
+		{
+			if (pg_strcasecmp(name, utl_url_charset_aliases[i].ora_name) == 0)
+			{
+				encoding = pg_char_to_encoding(utl_url_charset_aliases[i].pg_name);
+				break;
+			}
+		}
+	}
 
 	if (encoding < 0)
 		ereport(ERROR,
