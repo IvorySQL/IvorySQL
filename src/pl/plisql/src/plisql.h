@@ -490,6 +490,7 @@ typedef struct PLiSQL_nsitem
 	int			itemno;
 	struct PLiSQL_nsitem *prev;
 	List	   *subprocfunc;
+	List	   *label_aliases;	/* Additional names of this namespace level */
 	char		name[FLEXIBLE_ARRAY_MEMBER];	/* nul-terminated string */
 }			PLiSQL_nsitem;
 

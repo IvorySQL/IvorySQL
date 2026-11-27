@@ -124,6 +124,7 @@ static	void			 check_sql_expr(const char *stmt,
 										RawParseMode parseMode, int location, yyscan_t yyscanner);
 static	void			 plisql_sql_error_callback(void *arg);
 static	PLiSQL_type	*parse_datatype(const char *string, int location, yyscan_t yyscanner);
+static void push_stacked_namespace(const char *label, PLiSQL_label_type type, List *aliases);
 static	void			 check_labels(const char *start_label,
 									  const char *end_label,
 									  int end_location,
@@ -2888,6 +2889,7 @@ stmt_exit		: exit_type opt_label opt_exitcond
 												"attached to any block or loop enclosing this statement",
 												$2),
 										 parser_errposition(@2)));
+							new->label = label->name;
 							/* CONTINUE only allows loop labels */
 							if (label->itemno != PLISQL_LABEL_LOOP && !new->is_exit)
 								ereport(ERROR,
@@ -3710,14 +3712,14 @@ opt_loop_label	:
 
 explicit_block_label : LESS_LESS any_identifier GREATER_GREATER
 					{
-						plisql_ns_push($2, PLISQL_LABEL_BLOCK);
+						push_stacked_namespace($2, PLISQL_LABEL_BLOCK, $<list>0);
 						$$ = $2;
 					}
 				;
 
 explicit_loop_label : LESS_LESS any_identifier GREATER_GREATER
 					{
-						plisql_ns_push($2, PLISQL_LABEL_LOOP);
+						push_stacked_namespace($2, PLISQL_LABEL_LOOP, $<list>0);
 						$$ = $2;
 					}
 				;
@@ -5547,6 +5549,26 @@ parse_datatype(const char *string, int location, yyscan_t yyscanner)
 }
 
 /*
+ * An explicit structured label follows stmt_labels in the enclosing
+ * proc_sect production. Keep those GOTO targets as namespace aliases too.
+ */
+static void
+push_stacked_namespace(const char *label, PLiSQL_label_type type, List *aliases)
+{
+	PLiSQL_nsitem *level;
+	ListCell   *lc;
+
+	plisql_ns_push(label, type);
+	level = plisql_ns_top();
+	foreach(lc, aliases)
+	{
+		PLiSQL_stmt_label *alias = lfirst(lc);
+
+		level->label_aliases = lappend(level->label_aliases, alias->label);
+	}
+}
+
+/*
  * Check block starting and ending labels match.
  */
 static void
@@ -5562,11 +5584,20 @@ check_labels(const char *start_label, const char *end_label, int end_location, y
 					 parser_errposition(end_location)));
 
 		if (strcmp(start_label, end_label) != 0)
+		{
+			PLiSQL_nsitem *level = plisql_ns_top();
+
+			while (level && level->itemtype != PLISQL_NSTYPE_LABEL)
+				level = level->prev;
+			if (level && strcmp(level->name, start_label) == 0 &&
+				plisql_ns_lookup_label(level, end_label) == level)
+				return;
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("end label \"%s\" differs from block's label \"%s\"",
 							end_label, start_label),
 					 parser_errposition(end_location)));
+		}
 	}
 }
 

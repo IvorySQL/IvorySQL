@@ -112,11 +112,27 @@ plisql_ns_additem(PLiSQL_nsitem_type itemtype, int itemno, const char *name)
 	nse->itemtype = itemtype;
 	nse->itemno = itemno;
 	nse->subprocfunc = NIL;
+	nse->label_aliases = NIL;
 	nse->prev = ns_top;
 	strcpy(nse->name, name);
 	ns_top = nse;
 }
 
+
+static bool
+ns_label_matches(const PLiSQL_nsitem * label, const char *name)
+{
+	ListCell   *lc;
+
+	if (strcmp(label->name, name) == 0)
+		return true;
+	foreach(lc, label->label_aliases)
+	{
+		if (strcmp(lfirst(lc), name) == 0)
+			return true;
+	}
+	return false;
+}
 
 /* ----------
  * plisql_ns_lookup		Lookup an identifier in the given namespace chain
@@ -166,8 +182,7 @@ plisql_ns_lookup(PLiSQL_nsitem * ns_cur, bool localmode,
 		}
 
 		/* Check this level for qualified match to variable name */
-		if (name2 != NULL &&
-			strcmp(nsitem->name, name1) == 0)
+		if (name2 != NULL && ns_label_matches(nsitem, name1))
 		{
 			for (nsitem = ns_cur;
 				 nsitem->itemtype != PLISQL_NSTYPE_LABEL;
@@ -209,7 +224,7 @@ plisql_ns_lookup_label(PLiSQL_nsitem * ns_cur, const char *name)
 	while (ns_cur != NULL)
 	{
 		if (ns_cur->itemtype == PLISQL_NSTYPE_LABEL &&
-			strcmp(ns_cur->name, name) == 0)
+			ns_label_matches(ns_cur, name))
 			return ns_cur;
 		ns_cur = ns_cur->prev;
 	}
@@ -1951,7 +1966,8 @@ collect_labels_in_stmts(List *stmts, List **stmt_labels, List **structured_label
 
 		if (lbl != NULL)
 		{
-			if (label_list_contains(*stmt_labels, lbl))
+			if (label_list_contains(*stmt_labels, lbl) ||
+				label_list_contains(*structured_labels, lbl))
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("duplicate label \"%s\"", lbl)));

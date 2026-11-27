@@ -102,8 +102,8 @@ BEGIN
     DECLARE
         local_v VARCHAR2(20) := '->in_sub_blk';
     BEGIN
-        trace := trace || local_v;
-    END sub_blk;
+        trace := trace || outer_alias.local_v;
+    END outer_alias;
 
     <<loop_lbl>>
     FOR k IN 1..2 LOOP
@@ -132,12 +132,14 @@ CREATE TABLE goto_cur_tab(id INTEGER, val VARCHAR2(20));
 INSERT INTO goto_cur_tab VALUES (1, 'one'), (2, 'two'), (3, 'three');
 
 CREATE OR REPLACE FUNCTION fn_goto_cursor_cleanup() RETURN VARCHAR2 IS
+    portal_name TEXT;
     c_items CURSOR IS SELECT id, val FROM goto_cur_tab ORDER BY id;
     v_id  INTEGER;
     v_val VARCHAR2(20);
     seen  VARCHAR2(100) := '';
 BEGIN
     FOR rec IN c_items LOOP
+        portal_name := c_items;
         seen := seen || rec.val || ',';
         IF rec.id = 2 THEN
             GOTO after_cursor_loop;
@@ -145,6 +147,9 @@ BEGIN
     END LOOP;
 
     <<after_cursor_loop>>
+    IF portal_name IS NULL OR EXISTS (SELECT 1 FROM pg_catalog.pg_cursors WHERE name = portal_name) THEN
+        RETURN 'cursor cleanup failed';
+    END IF;
     -- Cursor c_items must have been closed when GOTO exited the FOR loop,
     -- so opening it explicitly here must succeed without "cursor already in use".
     OPEN c_items;
@@ -390,6 +395,14 @@ BEGIN
 END;
 /
 
+-- Duplicate structured labels are invalid even without a GOTO reference.
+CREATE OR REPLACE FUNCTION goto_err_dup_loop() RETURN VOID IS
+BEGIN
+    <<a>> <<same_name>> LOOP EXIT; END LOOP;
+    <<b>> <<same_name>> LOOP EXIT; END LOOP;
+END;
+/
+
 -- 9k. Dangling label at end of block with no statement following it
 CREATE OR REPLACE FUNCTION goto_err_dangling_label() RETURN VOID IS
 BEGIN
@@ -407,6 +420,7 @@ DROP FUNCTION goto_err_into_exc;
 DROP FUNCTION goto_err_exc_to_body;
 DROP FUNCTION goto_err_top_label;
 DROP FUNCTION goto_err_dup_label;
+DROP FUNCTION goto_err_dup_loop;
 DROP FUNCTION goto_err_dangling_label;
 
 -- 9l. Anonymous DO block compile-time errors (direct ERROR reporting)
