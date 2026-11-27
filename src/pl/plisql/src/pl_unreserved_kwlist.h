@@ -54,6 +54,9 @@ PG_KEYWORD("constructor", K_CONSTRUCTOR)
 PG_KEYWORD("continue", K_CONTINUE)
 PG_KEYWORD("current", K_CURRENT)
 PG_KEYWORD("current_user", K_CURRENT_USER)
+/* deliberately absent from pl_gram.y's unreserved_keyword: "cursor" must stay
+ * a dedicated token so it can start an Oracle-style
+ * "CURSOR name [(cur_param_decl[, ...])] IS query" declaration */
 PG_KEYWORD("cursor", K_CURSOR)
 PG_KEYWORD("datatype", K_DATATYPE)
 PG_KEYWORD("debug", K_DEBUG)

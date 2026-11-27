@@ -1,0 +1,147 @@
+--
+-- PL/iSQL explicit cursor declarations: both spellings
+--
+-- Oracle's canonical keyword-first spelling
+--     CURSOR name [(arg [, ...])] IS | FOR query
+-- used to be rejected with a misleading "type ... does not exist" error,
+-- because "cursor" was parsed as the variable name and the cursor's own
+-- name as its type name.  It is accepted next to the historical name-first
+-- spelling "name CURSOR FOR query"; an unquoted variable named "cursor"
+-- is now rejected, as it is in Oracle PL/SQL.
+--
+CREATE TABLE cursor_decl_t(unique1 int, t text);
+INSERT INTO cursor_decl_t VALUES (1, 'one'), (2, 'two');
+-- keyword-first in an anonymous block, with and without parameters
+DECLARE
+  CURSOR c1 IS SELECT unique1 FROM cursor_decl_t ORDER BY unique1;
+  CURSOR c2(key integer) IS SELECT t FROM cursor_decl_t WHERE unique1 = key;
+  v integer;
+  s text;
+BEGIN
+  OPEN c1;
+  FETCH c1 INTO v;
+  raise notice 'c1 first = %', v;
+  CLOSE c1;
+  OPEN c2(2);
+  FETCH c2 INTO s;
+  raise notice 'c2(2) = %', s;
+  CLOSE c2;
+END;
+/
+NOTICE:  c1 first = 1
+NOTICE:  c2(2) = two
+-- keyword-first with FOR, in a procedure
+CREATE OR REPLACE PROCEDURE cursor_decl_proc() AS
+  CURSOR c FOR SELECT count(*) FROM cursor_decl_t;
+  n integer;
+BEGIN
+  OPEN c;
+  FETCH c INTO n;
+  raise notice 'count = %', n;
+  CLOSE c;
+END;
+/
+CALL cursor_decl_proc();
+NOTICE:  count = 2
+-- keyword-first with parameters and FOR, in a function
+CREATE OR REPLACE FUNCTION cursor_decl_func(key integer) RETURN text AS
+  CURSOR c(key integer) FOR SELECT t FROM cursor_decl_t WHERE unique1 = key;
+  s text;
+BEGIN
+  OPEN c(key);
+  FETCH c INTO s;
+  CLOSE c;
+  RETURN s;
+END;
+/
+SELECT cursor_decl_func(2);
+ cursor_decl_func 
+------------------
+ two
+(1 row)
+
+-- keyword-first in a package spec and in a package body; the body-declared
+-- cursor must stay private to the body
+CREATE OR REPLACE PACKAGE cursor_decl_pkg AS
+  CURSOR pub_c IS SELECT unique1 FROM cursor_decl_t ORDER BY unique1;
+  PROCEDURE open_pub;
+  PROCEDURE read_priv;
+END;
+/
+CREATE OR REPLACE PACKAGE BODY cursor_decl_pkg AS
+  CURSOR priv_c IS SELECT t FROM cursor_decl_t ORDER BY unique1;
+  s text;
+  PROCEDURE open_pub IS
+  BEGIN
+    OPEN pub_c;
+  END;
+  PROCEDURE read_priv IS
+  BEGIN
+    OPEN priv_c;
+    FETCH priv_c INTO s;
+    raise notice 'priv_c first = %', s;
+    CLOSE priv_c;
+  END;
+END;
+/
+DECLARE
+  v integer;
+BEGIN
+  OPEN cursor_decl_pkg.pub_c;
+  FETCH cursor_decl_pkg.pub_c INTO v;
+  raise notice 'pub_c first = %', v;
+  CLOSE cursor_decl_pkg.pub_c;
+  CALL cursor_decl_pkg.read_priv();
+END;
+/
+NOTICE:  pub_c first = 1
+NOTICE:  priv_c first = one
+-- the body-private cursor must stay hidden after the body has been compiled
+DECLARE
+  s text;
+BEGIN
+  OPEN cursor_decl_pkg.priv_c;
+END;
+/
+ERROR:  "priv_c" doesn't exist in package "cursor_decl_pkg"
+CONTEXT:  compilation of PL/iSQL function "inline_code_block" near line 2
+DROP PACKAGE cursor_decl_pkg;
+DROP PROCEDURE cursor_decl_proc();
+DROP FUNCTION cursor_decl_func(integer);
+DROP TABLE cursor_decl_t;
+-- the name-first spelling keeps working
+DECLARE
+  c1 CURSOR IS SELECT 1 AS v;
+  r integer;
+BEGIN
+  OPEN c1;
+  FETCH c1 INTO r;
+  raise notice 'name-first = %', r;
+  CLOSE c1;
+END;
+/
+NOTICE:  name-first = 1
+-- "cursor" now starts a declaration, so an unquoted variable of that name
+-- is rejected with a syntax error, as in Oracle PL/SQL
+DECLARE
+  cursor integer := 5;
+BEGIN
+  NULL;
+END;
+/
+ERROR:  syntax error at or near ":="
+LINE 2:   cursor integer := 5;
+                         ^
+QUERY:  DECLARE
+  cursor integer := 5;
+BEGIN
+  NULL;
+END
+-- ... while a quoted identifier is still usable
+DECLARE
+  "cursor" integer := 5;
+BEGIN
+  raise notice 'quoted = %', "cursor";
+END;
+/
+NOTICE:  quoted = 5
