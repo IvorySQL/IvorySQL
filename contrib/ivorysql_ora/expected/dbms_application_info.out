@@ -1,0 +1,58 @@
+SET
+SET
+CALL
+ after_set_module  
+-------------------
+ (payroll,monthly)
+(1 row)
+
+CALL
+  after_set_action   
+---------------------
+ (payroll,quarterly)
+(1 row)
+
+CALL
+ after_set_client_info 
+-----------------------
+ (client-xyz)
+(1 row)
+
+CALL
+CALL
+ module_len | action_len 
+------------+------------
+         48 |         32
+(1 row)
+
+ client_len 
+------------
+         64
+(1 row)
+
+CALL
+ module_multibyte_len 
+----------------------
+                   47
+(1 row)
+
+CALL
+ module_is_null | action_is_null 
+----------------+----------------
+ t              | t
+(1 row)
+
+psql:sql/dbms_application_info.sql:67: NOTICE:  plisql: batch/load/etl-1
+psql:sql/dbms_application_info.sql:67: NOTICE:  progress: 40/100
+DO
+DO
+ rindex | slno | opname | target_desc  | sofar | totalwork | units  | tr_null |        message         
+--------+------+--------+--------------+-------+-----------+--------+---------+------------------------
+      1 |    2 | backup | daily rollup |   100 |       100 | blocks | t       | backup: 100/100 blocks
+(1 row)
+
+ rows_after_clear 
+------------------
+                1
+(1 row)
+
