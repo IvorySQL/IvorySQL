@@ -18,10 +18,10 @@ permissions:
 
 jobs:
   check-waiting-on-author:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Scan open PRs
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           DAYS_THRESHOLD: ${{ github.event.inputs.days_threshold || '15' }}
         with:

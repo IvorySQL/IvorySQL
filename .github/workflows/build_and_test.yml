@@ -5,13 +5,13 @@ on:
 
 jobs:
   regression:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         container-os: [centos-7, centos-8]
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - name: Build ${{ matrix.container-os }} Docker
       if: ${{ matrix.container-os == 'centos-7' }}
       run: |
