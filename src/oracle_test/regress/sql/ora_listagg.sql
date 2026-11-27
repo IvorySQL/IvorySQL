@@ -1,7 +1,7 @@
 --
 -- ORA_LISTAGG
 -- Test Oracle-compatible LISTAGG aggregate function
--- Syntax: LISTAGG(measure_expr [, 'delimiter']) WITHIN GROUP (ORDER BY sort_expr)
+-- Syntax: LISTAGG([DISTINCT] measure_expr [, 'delimiter']) WITHIN GROUP (ORDER BY sort_expr)
 --
 
 -- Setup
@@ -87,6 +87,20 @@ SELECT deptno,
 FROM listagg_test
 GROUP BY deptno
 ORDER BY deptno;
+
+-- DISTINCT skips duplicate and NULL measures and respects sort order per group.
+INSERT INTO listagg_test VALUES (10, 'CLARK', 900), (20, 'FORD', 800), (40, NULL, 700);
+\pset format unaligned
+SELECT LISTAGG(DISTINCT ename, ',') WITHIN GROUP (ORDER BY ename) AS employees,
+       LISTAGG(DISTINCT ename) WITHIN GROUP (ORDER BY ename) AS no_delimiter
+FROM listagg_test WHERE deptno = 10;
+
+SELECT deptno, LISTAGG(DISTINCT ename, '|') WITHIN GROUP (ORDER BY ename DESC) AS employees
+FROM listagg_test WHERE deptno IN (10, 20) GROUP BY deptno ORDER BY deptno;
+
+SELECT LISTAGG(DISTINCT ename, ',') WITHIN GROUP (ORDER BY ename) IS NULL AS all_null
+FROM listagg_test WHERE deptno = 40;
+\pset format aligned
 
 -- Cleanup
 DROP TABLE listagg_test;

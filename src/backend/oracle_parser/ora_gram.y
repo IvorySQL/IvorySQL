@@ -553,6 +553,7 @@ static bool oracleJoinOpExists(const Node *expr);
 %type <list>	ExclusionConstraintList ExclusionConstraintElem
 %type <list>	func_arg_list func_arg_list_opt
 %type <node>	func_arg_expr
+%type <boolean> opt_listagg_distinct
 %type <list>	row explicit_row implicit_row type_list array_expr_list
 %type <node>	case_expr case_arg when_clause case_default
 %type <list>	when_clause_list
@@ -18822,40 +18823,40 @@ func_expr: func_application within_group_clause filter_clause null_treatment ove
 				}
 			| func_expr_common_subexpr
 				{ $$ = $1; }
+			| LISTAGG '(' opt_listagg_distinct func_arg_list ')' within_group_clause filter_clause over_clause
+				{
+					FuncCall   *string_agg_n;
+					FuncCall   *check_n;
 
-
-                        | LISTAGG '(' func_arg_list ')' within_group_clause filter_clause over_clause 
-                	{
-	                    FuncCall *string_agg_n;
-	                    FuncCall *check_n;
-
-                            if ($5 == NIL)
+					if ($6 == NIL)
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
 								 errmsg("LISTAGG requires WITHIN GROUP (ORDER BY ...)"),
 								 parser_errposition(@1)));
-						/*
-						* If no delimiter provided (single arg), append empty string
-						* so string_agg always receives exactly 2 arguments.
-						*/
-						if (list_length($3) == 1)
-							$3 = lappend($3, makeStringConst("", @3));
 
-						string_agg_n = makeFuncCall(SystemFuncName("string_agg"),
-													$3,
-													COERCE_EXPLICIT_CALL, @1);
-	                    string_agg_n->agg_order = $5;
-                            string_agg_n->agg_filter = $6;
-                            string_agg_n->over = $7;
+					/* Supply an empty delimiter for the single-argument form. */
+					if (list_length($4) == 1)
+						$4 = lappend($4, makeStringConst("", @4));
 
-			    /* Wrap with sys.listagg_check to enforce the 4000-byte limit */
-			    check_n = makeFuncCall(OracleSystemFuncName("ora_listagg_check"),
-			    			   list_make1((Node *) string_agg_n),
-						 COERCE_EXPLICIT_CALL, @1);
-			    $$ = (Node *) check_n;
+					string_agg_n = makeFuncCall(SystemFuncName("string_agg"),
+												$4, COERCE_EXPLICIT_CALL, @1);
+					string_agg_n->agg_distinct = $3;
+					string_agg_n->agg_order = $6;
+					string_agg_n->agg_filter = $7;
+					string_agg_n->over = $8;
 
-			  }
+					/* Enforce Oracle's 4000-byte result limit. */
+					check_n = makeFuncCall(OracleSystemFuncName("ora_listagg_check"),
+										   list_make1((Node *) string_agg_n),
+										   COERCE_EXPLICIT_CALL, @1);
+					$$ = (Node *) check_n;
+				}
 
+		;
+
+opt_listagg_distinct:
+			DISTINCT		{ $$ = true; }
+			| /*EMPTY*/		{ $$ = false; }
 		;
 
 /*
