@@ -8084,6 +8084,217 @@ NUM_processor(FormatNode *node, NUMDesc *Num, char *inout,
 }
 
 /*
+ * Recognize Oracle hexadecimal number formats: optional FM/fm, optional 0,
+ * followed by one or more X/x characters.  Returns the total digit width
+ * (including any leading 0) or 0 if fmt is not a hexadecimal format.
+ */
+static int
+ora_parse_hex_format(text *fmt, bool *fill_mode, bool *zero_pad, bool *uppercase)
+{
+	const char *p = VARDATA_ANY(fmt);
+	const char *end = p + VARSIZE_ANY_EXHDR(fmt);
+	const char *first_x;
+	int			width = 0;
+
+	*fill_mode = false;
+	*zero_pad = false;
+	*uppercase = true;
+
+	if (end - p >= 2 && pg_strncasecmp(p, "FM", 2) == 0)
+	{
+		*fill_mode = true;
+		p += 2;
+	}
+	if (p < end && *p == '0')
+	{
+		*zero_pad = true;
+		width++;
+		p++;
+	}
+	first_x = p;
+	while (p < end && (*p == 'X' || *p == 'x'))
+	{
+		width++;
+		p++;
+	}
+
+	if (p != end || p == first_x)
+		return 0;
+
+	*uppercase = (*first_x == 'X');
+	return width;
+}
+
+static text *
+ora_hex_overflow_text(int width)
+{
+	text	   *result = (text *) palloc(VARHDRSZ + width + 1);
+
+	SET_VARSIZE(result, VARHDRSZ + width + 1);
+	memset(VARDATA(result), '#', width + 1);
+	return result;
+}
+
+static text *
+ora_format_hex_digits(const char *digits_lsb, int hexlen, int width,
+					  bool fill_mode, bool zero_pad)
+{
+	int			pad = width - hexlen;
+	int			outlen = fill_mode ? (zero_pad ? width : hexlen) : (width + 1);
+	text	   *result = (text *) palloc(VARHDRSZ + outlen);
+	char	   *out = VARDATA(result);
+	int			i;
+
+	SET_VARSIZE(result, VARHDRSZ + outlen);
+
+	if (!fill_mode)
+		*out++ = ' ';
+
+	if (!fill_mode || zero_pad)
+	{
+		char		padch = zero_pad ? '0' : ' ';
+
+		for (i = 0; i < pad; i++)
+			*out++ = padch;
+	}
+
+	for (i = hexlen - 1; i >= 0; i--)
+		*out++ = digits_lsb[i];
+
+	return result;
+}
+
+static text *
+ora_try_to_char_hex_int64(int64 value, text *fmt)
+{
+	bool		fill_mode;
+	bool		zero_pad;
+	bool		uppercase;
+	int			width = ora_parse_hex_format(fmt, &fill_mode, &zero_pad, &uppercase);
+	const char *hexdigits;
+	char	   *buf;
+	uint64		u;
+	int			hexlen = 0;
+	text	   *res;
+
+	if (width <= 0)
+		return NULL;
+
+	if (value < 0)
+		return ora_hex_overflow_text(width);
+
+	hexdigits = uppercase ? "0123456789ABCDEF" : "0123456789abcdef";
+	buf = (char *) palloc(width);
+	u = (uint64) value;
+
+	do
+	{
+		if (hexlen >= width)
+		{
+			pfree(buf);
+			return ora_hex_overflow_text(width);
+		}
+		buf[hexlen++] = hexdigits[u & 0xF];
+		u >>= 4;
+	} while (u > 0);
+
+	res = ora_format_hex_digits(buf, hexlen, width, fill_mode, zero_pad);
+	pfree(buf);
+	return res;
+}
+
+static text *
+ora_try_to_char_hex_numeric(Numeric value, text *fmt)
+{
+	bool		fill_mode;
+	bool		zero_pad;
+	bool		uppercase;
+	int			width = ora_parse_hex_format(fmt, &fill_mode, &zero_pad, &uppercase);
+	const char *hexdigits;
+	Numeric		rounded;
+	Numeric		zero;
+	Numeric		sixteen;
+	int			cmp;
+	char	   *buf;
+	int			hexlen = 0;
+	text	   *res;
+
+	if (width <= 0)
+		return NULL;
+
+	if (numeric_is_nan(value) || numeric_is_inf(value))
+		return ora_hex_overflow_text(width);
+
+	rounded = DatumGetNumeric(DirectFunctionCall2(numeric_round,
+												  NumericGetDatum(value),
+												  Int32GetDatum(0)));
+	zero = int64_to_numeric(0);
+	cmp = DatumGetInt32(DirectFunctionCall2(numeric_cmp,
+											NumericGetDatum(rounded),
+											NumericGetDatum(zero)));
+	if (cmp < 0)
+		return ora_hex_overflow_text(width);
+
+	hexdigits = uppercase ? "0123456789ABCDEF" : "0123456789abcdef";
+	buf = (char *) palloc(width);
+
+	if (cmp == 0)
+	{
+		buf[hexlen++] = '0';
+	}
+	else
+	{
+		sixteen = int64_to_numeric(16);
+		for (;;)
+		{
+			int32		rem;
+
+			if (hexlen >= width)
+			{
+				pfree(buf);
+				return ora_hex_overflow_text(width);
+			}
+			rem = DatumGetInt32(DirectFunctionCall1(numeric_int4,
+													DirectFunctionCall2(numeric_mod,
+																		NumericGetDatum(rounded),
+																		NumericGetDatum(sixteen))));
+			buf[hexlen++] = hexdigits[rem];
+			rounded = DatumGetNumeric(DirectFunctionCall2(numeric_div_trunc,
+														  NumericGetDatum(rounded),
+														  NumericGetDatum(sixteen)));
+			if (DatumGetInt32(DirectFunctionCall2(numeric_cmp,
+												  NumericGetDatum(rounded),
+												  NumericGetDatum(zero))) == 0)
+				break;
+		}
+	}
+
+	res = ora_format_hex_digits(buf, hexlen, width, fill_mode, zero_pad);
+	pfree(buf);
+	return res;
+}
+
+static text *
+ora_try_to_char_hex_float8(float8 value, text *fmt)
+{
+	bool		fill_mode;
+	bool		zero_pad;
+	bool		uppercase;
+	int			width = ora_parse_hex_format(fmt, &fill_mode, &zero_pad, &uppercase);
+	Numeric		num;
+
+	if (width <= 0)
+		return NULL;
+
+	if (isnan(value) || isinf(value))
+		return ora_hex_overflow_text(width);
+
+	num = DatumGetNumeric(DirectFunctionCall1(float8_numeric,
+											  Float8GetDatum(value)));
+	return ora_try_to_char_hex_numeric(num, fmt);
+}
+
+/*
  * MACRO: Start part of NUM - for all NUM's to_char variants
  *	(sorry, but I hate copy same code - macro is better..)
  */
@@ -8192,6 +8403,10 @@ numeric_to_char(PG_FUNCTION_ARGS)
 	char	   *numstr,
 			   *orgnum,
 			   *p;
+
+	if (ORA_PARSER == compatible_db &&
+		(result = ora_try_to_char_hex_numeric(value, fmt)) != NULL)
+		PG_RETURN_TEXT_P(result);
 
 	NUM_TOCHAR_prepare;
 
@@ -8319,6 +8534,10 @@ int4_to_char(PG_FUNCTION_ARGS)
 	char	   *numstr,
 			   *orgnum;
 
+	if (ORA_PARSER == compatible_db &&
+		(result = ora_try_to_char_hex_int64((int64) value, fmt)) != NULL)
+		PG_RETURN_TEXT_P(result);
+
 	NUM_TOCHAR_prepare;
 
 	/*
@@ -8411,6 +8630,10 @@ int8_to_char(PG_FUNCTION_ARGS)
 				sign = 0;
 	char	   *numstr,
 			   *orgnum;
+
+	if (ORA_PARSER == compatible_db &&
+		(result = ora_try_to_char_hex_int64(value, fmt)) != NULL)
+		PG_RETURN_TEXT_P(result);
 
 	NUM_TOCHAR_prepare;
 
@@ -8523,6 +8746,10 @@ float4_to_char(PG_FUNCTION_ARGS)
 	char	   *numstr,
 			   *p;
 
+	if (ORA_PARSER == compatible_db &&
+		(result = ora_try_to_char_hex_float8((float8) value, fmt)) != NULL)
+		PG_RETURN_TEXT_P(result);
+
 	NUM_TOCHAR_prepare;
 
 	if (IS_ROMAN(&Num))
@@ -8634,6 +8861,10 @@ float8_to_char(PG_FUNCTION_ARGS)
 				sign = 0;
 	char	   *numstr,
 			   *p;
+
+	if (ORA_PARSER == compatible_db &&
+		(result = ora_try_to_char_hex_float8(value, fmt)) != NULL)
+		PG_RETURN_TEXT_P(result);
 
 	NUM_TOCHAR_prepare;
 
