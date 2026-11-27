@@ -5276,19 +5276,22 @@ expr_is_nonnullable(PlannerInfo *root, Expr *expr, NotNullSource source)
 			break;
 		case T_MinMaxExpr:
 			{
-				/*
-				 * Like CoalesceExpr, a MinMaxExpr returns NULL only if all
-				 * its arguments evaluate to NULL.
-				 */
 				MinMaxExpr *minmaxexpr = (MinMaxExpr *) expr;
+				bool		is_oracle = minmaxexpr->op == IS_ORACLE_GREATEST ||
+					minmaxexpr->op == IS_ORACLE_LEAST;
 
+				/* Oracle returns NULL if any argument is NULL. */
 				foreach_ptr(Expr, arg, minmaxexpr->args)
 				{
-					if (expr_is_nonnullable(root, arg, source))
+					bool		nonnullable = expr_is_nonnullable(root, arg, source);
+
+					if (is_oracle && !nonnullable)
+						return false;
+					if (!is_oracle && nonnullable)
 						return true;
 				}
+				return is_oracle;
 			}
-			break;
 		case T_CaseExpr:
 			{
 				/*

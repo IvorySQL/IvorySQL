@@ -1919,7 +1919,7 @@ CALL p_nout_caller(1); -- error, the call is missing the new OUT argument
 ERROR:  procedure p_nout(number) does not exist
 LINE 1: CALL p_nout(arg1)
              ^
-HINT:  No procedure matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No procedure of that name accepts the given number of arguments.
 QUERY:  CALL p_nout(arg1)
 CONTEXT:  PL/iSQL function p_nout_caller(number) line 2 at CALL
 CREATE OR REPLACE PROCEDURE p_nout_caller(arg1 number) IS

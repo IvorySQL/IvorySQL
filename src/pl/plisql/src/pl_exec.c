@@ -4694,6 +4694,9 @@ exec_stmt_execsql(PLiSQL_execstate * estate,
 	int			rc;
 	PLiSQL_expr *expr = stmt->sqlstmt;
 	int			too_many_rows_level = 0;
+	bool		package_arg_row = stmt->into &&
+		stmt->target->dtype == PLISQL_DTYPE_ROW &&
+		OidIsValid(stmt->target->pkgoid);
 
 	if (plisql_extra_errors & PLISQL_XCHECK_TOOMANYROWS)
 		too_many_rows_level = ERROR;
@@ -4744,9 +4747,10 @@ exec_stmt_execsql(PLiSQL_execstate * estate,
 	 * might return more or less than one row, complicating matters greatly.
 	 * The potential performance win is small if it's non-simple, and any
 	 * errors we might issue would likely look different, so avoid using this
-	 * code path for non-simple cases.)
+	 * code path for non-simple cases.)  A package cursor's argument row
+	 * uses the package's datum indexes, so it also needs the general path.
 	 */
-	if (expr->expr_simple_expr && stmt->into)
+	if (expr->expr_simple_expr && stmt->into && !package_arg_row)
 	{
 		PLiSQL_datum *target = estate->datums[stmt->target->dno];
 
@@ -4920,7 +4924,7 @@ exec_stmt_execsql(PLiSQL_execstate * estate,
 					 errmsg("INTO used with a command that cannot return data")));
 
 		/* A package cursor's argument row has already been resolved by OPEN. */
-		if (stmt->target->dtype == PLISQL_DTYPE_ROW && OidIsValid(stmt->target->pkgoid))
+		if (package_arg_row)
 			target = stmt->target;
 		else
 			target = (PLiSQL_variable *) plisql_get_datum(estate, estate->datums[stmt->target->dno]);
