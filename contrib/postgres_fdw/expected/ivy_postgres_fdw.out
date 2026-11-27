@@ -3082,18 +3082,18 @@ SELECT t1c1, avg(t1c1 + t2c1) FROM (SELECT t1.c1, t2.c1 FROM ft1 t1 JOIN ft2 t2 
 (34 rows)
 
 SELECT t1c1, avg(t1c1 + t2c1) FROM (SELECT t1.c1, t2.c1 FROM ft1 t1 JOIN ft2 t2 ON (t1.c1 = t2.c1) UNION SELECT t1.c1, t2.c1 FROM ft1 t1 JOIN ft2 t2 ON (t1.c1 = t2.c1)) AS t (t1c1, t2c1) GROUP BY t1c1 ORDER BY t1c1 OFFSET 100 LIMIT 10;
- t1c1 |         avg          
-------+----------------------
- 101  | 202.0000000000000000
- 102  | 204.0000000000000000
- 103  | 206.0000000000000000
- 104  | 208.0000000000000000
- 105  | 210.0000000000000000
- 106  | 212.0000000000000000
- 107  | 214.0000000000000000
- 108  | 216.0000000000000000
- 109  | 218.0000000000000000
- 110  | 220.0000000000000000
+ t1c1 | avg 
+------+-----
+ 101  | 202
+ 102  | 204
+ 103  | 206
+ 104  | 208
+ 105  | 210
+ 106  | 212
+ 107  | 214
+ 108  | 216
+ 109  | 218
+ 110  | 220
 (10 rows)
 
 -- join with lateral reference
@@ -3699,13 +3699,13 @@ select count(c6), sum(c1), avg(c1), min(c2), max(c1), stddev(c2), sum(c1) * (ran
 (12 rows)
 
 select count(c6), sum(c1), avg(c1), min(c2), max(c1), stddev(c2), sum(c1) * (random() <= 1)::int as sum2 from ft1 where c2 < 5 group by c2 order by 1, 2;
- count |  sum  |         avg          | min | max  | stddev | sum2  
--------+-------+----------------------+-----+------+--------+-------
-   100 | 49600 | 496.0000000000000000 | 1   | 991  | 0      | 49600
-   100 | 49700 | 497.0000000000000000 | 2   | 992  | 0      | 49700
-   100 | 49800 | 498.0000000000000000 | 3   | 993  | 0      | 49800
-   100 | 49900 | 499.0000000000000000 | 4   | 994  | 0      | 49900
-   100 | 50500 | 505.0000000000000000 | 0   | 1000 | 0      | 50500
+ count |  sum  | avg | min | max  | stddev | sum2  
+-------+-------+-----+-----+------+--------+-------
+   100 | 49600 | 496 | 1   | 991  | 0      | 49600
+   100 | 49700 | 497 | 2   | 992  | 0      | 49700
+   100 | 49800 | 498 | 3   | 993  | 0      | 49800
+   100 | 49900 | 499 | 4   | 994  | 0      | 49900
+   100 | 50500 | 505 | 0   | 1000 | 0      | 50500
 (5 rows)
 
 explain (verbose, costs off)
@@ -3729,9 +3729,9 @@ select count(c6), sum(c1), avg(c1), min(c2), max(c1), stddev(c2), sum(c1) * (ran
 (14 rows)
 
 select count(c6), sum(c1), avg(c1), min(c2), max(c1), stddev(c2), sum(c1) * (random() <= 1)::int as sum2 from ft1 where c2 < 5 group by c2 order by 1, 2 limit 1;
- count |  sum  |         avg          | min | max | stddev | sum2  
--------+-------+----------------------+-----+-----+--------+-------
-   100 | 49600 | 496.0000000000000000 | 1   | 991 | 0      | 49600
+ count |  sum  | avg | min | max | stddev | sum2  
+-------+-------+-----+-----+-----+--------+-------
+   100 | 49600 | 496 | 1   | 991 | 0      | 49600
 (1 row)
 
 -- Aggregate is not pushed down as aggregation contains random()
@@ -3768,22 +3768,22 @@ select count(*), sum(t1.c1), avg(t2.c1) from ft1 t1 inner join ft1 t2 on (t1.c2 
 (14 rows)
 
 select count(*), sum(t1.c1), avg(t2.c1) from ft1 t1 inner join ft1 t2 on (t1.c2 = t2.c2) where t1.c2 = 6;
- count |   sum   |         avg          
--------+---------+----------------------
- 10000 | 5010000 | 501.0000000000000000
+ count |   sum   | avg 
+-------+---------+-----
+ 10000 | 5010000 | 501
 (1 row)
 
 -- Not pushed down due to local conditions present in underneath input rel
 explain (verbose, costs off)
 select sum(t1.c1), count(t2.c1) from ft1 t1 inner join ft2 t2 on (t1.c1 = t2.c1) where ((t1.c1 * t2.c1)/(t1.c1 * t2.c1)) * random() <= 1;
-                                                           QUERY PLAN                                                            
----------------------------------------------------------------------------------------------------------------------------------
+                                                               QUERY PLAN                                                               
+----------------------------------------------------------------------------------------------------------------------------------------
  Aggregate
    Output: sum(t1.c1), count(*)
    ->  Hash Join
          Output: t1.c1
          Hash Cond: (t2.c1 = t1.c1)
-         Join Filter: (((((t1.c1 * t2.c1) / (t1.c1 * t2.c1)))::binary_double * (random())::binary_double) <= '1'::binary_double)
+         Join Filter: (((((t1.c1 * t2.c1) / (t1.c1 * t2.c1)))::binary_double * (random())::binary_double) <= '1.0E+000'::binary_double)
          ->  Foreign Scan on public.ft2 t2
                Output: t2.c1
                Remote SQL: SELECT "C 1" FROM "S 1"."T 1"
@@ -3811,18 +3811,18 @@ select c2/2, sum(c2) * (c2/2) from ft1 group by c2/2 order by c2/2;
 (9 rows)
 
 select c2/2, sum(c2) * (c2/2) from ft1 group by c2/2 order by c2/2;
-        ?column?        |         ?column?         
-------------------------+--------------------------
- 0.00000000000000000000 | 0.00000000000000000000
- 0.50000000000000000000 | 50.00000000000000000000
- 1.00000000000000000000 | 200.00000000000000000000
- 1.5000000000000000     | 450.0000000000000000
- 2.0000000000000000     | 800.0000000000000000
- 2.5000000000000000     | 1250.0000000000000000
- 3.0000000000000000     | 1800.0000000000000000
- 3.5000000000000000     | 2450.0000000000000000
- 4.0000000000000000     | 3200.0000000000000000
- 4.5000000000000000     | 4050.0000000000000000
+ ?column? | ?column? 
+----------+----------
+ 0        | 0
+ 0.5      | 50
+ 1        | 200
+ 1.5      | 450
+ 2        | 800
+ 2.5      | 1250
+ 3        | 1800
+ 3.5      | 2450
+ 4        | 3200
+ 4.5      | 4050
 (10 rows)
 
 -- Aggregates in subquery are pushed down.
@@ -3980,14 +3980,14 @@ select c2, sum(c1) from ft2 group by c2 having avg(c1) < 500 and sum(c1) < 49800
 -- Unshippable HAVING clause will be evaluated locally, and other qual in HAVING clause is pushed down
 explain (verbose, costs off)
 select count(*) from (select c5, count(c1) from ft1 group by c5, sqrt(c2) having (avg(c1) / avg(c1)) * random() <= 1 and avg(c1) < 500) x;
-                                                                       QUERY PLAN                                                                       
---------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                          QUERY PLAN                                                                           
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
  Aggregate
    Output: count(*)
    ->  HashAggregate
          Output: ft1.c5, NULL::pg_catalog.int8, (sqrt((ft1.c2)::pg_catalog.float8))
          Group Key: ft1.c5, sqrt((ft1.c2)::pg_catalog.float8)
-         Filter: ((avg(ft1.c1) < '500'::number) AND ((((avg(ft1.c1) / avg(ft1.c1)))::binary_double * (random())::binary_double) <= '1'::binary_double))
+         Filter: ((avg(ft1.c1) < '500'::number) AND ((((avg(ft1.c1) / avg(ft1.c1)))::binary_double * (random())::binary_double) <= '1.0E+000'::binary_double))
          ->  Foreign Scan on public.ft1
                Output: ft1.c5, sqrt((ft1.c2)::pg_catalog.float8), ft1.c1
                Remote SQL: SELECT "C 1", c2, c5 FROM "S 1"."T 1"
@@ -4329,13 +4329,13 @@ select distinct (select count(t1.c1) filter (where t2.c2 = 6 and t2.c1 < 10) fro
 -- Aggregate not pushed down as FILTER condition is not pushable
 explain (verbose, costs off)
 select sum(c1) filter (where (c1 / c1) * random() <= 1) from ft1 group by c2 order by 1;
-                                                            QUERY PLAN                                                             
------------------------------------------------------------------------------------------------------------------------------------
+                                                                QUERY PLAN                                                                
+------------------------------------------------------------------------------------------------------------------------------------------
  Sort
-   Output: (sum(c1) FILTER (WHERE ((((c1 / c1))::binary_double * (random())::binary_double) <= '1'::binary_double))), c2
-   Sort Key: (sum(ft1.c1) FILTER (WHERE ((((ft1.c1 / ft1.c1))::binary_double * (random())::binary_double) <= '1'::binary_double)))
+   Output: (sum(c1) FILTER (WHERE ((((c1 / c1))::binary_double * (random())::binary_double) <= '1.0E+000'::binary_double))), c2
+   Sort Key: (sum(ft1.c1) FILTER (WHERE ((((ft1.c1 / ft1.c1))::binary_double * (random())::binary_double) <= '1.0E+000'::binary_double)))
    ->  HashAggregate
-         Output: sum(c1) FILTER (WHERE ((((c1 / c1))::binary_double * (random())::binary_double) <= '1'::binary_double)), c2
+         Output: sum(c1) FILTER (WHERE ((((c1 / c1))::binary_double * (random())::binary_double) <= '1.0E+000'::binary_double)), c2
          Group Key: ft1.c2
          ->  Foreign Scan on public.ft1
                Output: c1, c2
@@ -4412,7 +4412,7 @@ select c1, rank(c1, c2) within group (order by c1, c2) from ft1 group by c1, c2 
 -- User defined function for user defined aggregate, VARIADIC
 create function least_accum(anyelement, variadic anyarray)
 returns anyelement language sql as
-  'select least($1, min($2[i])) from generate_subscripts($2,1) g(i)';
+  'select min(v) from unnest(array_prepend($1, $2)) as elems(v)';
 create aggregate least_agg(variadic items anyarray) (
   stype = anyelement, sfunc = least_accum
 );
@@ -4724,11 +4724,11 @@ select avg(t1.c1), sum(t2.c1) from ft4 t1 full join ft5 t2 on (t1.c1 = t2.c1) gr
 (21 rows)
 
 select avg(t1.c1), sum(t2.c1) from ft4 t1 full join ft5 t2 on (t1.c1 = t2.c1) group by t2.c1 having (avg(t1.c1) is null and sum(t2.c1) < 10) or sum(t2.c1) is null order by 1 nulls last, 2;
-         avg         | sum 
----------------------+-----
- 51.0000000000000000 | 
-                     | 3
-                     | 9
+ avg | sum 
+-----+-----
+ 51  | 
+     | 3
+     | 9
 (3 rows)
 
 -- Aggregate over FULL join needing to deparse the joining relations as
@@ -4755,9 +4755,9 @@ select count(*), sum(t1.c1), avg(t2.c1) from (select c1 from ft4 where c1 betwee
 (15 rows)
 
 select count(*), sum(t1.c1), avg(t2.c1) from (select c1 from ft4 where c1 between 50 and 60) t1 full join (select c1 from ft5 where c1 between 50 and 60) t2 on (t1.c1 = t2.c1);
- count | sum |         avg         
--------+-----+---------------------
-     8 | 330 | 55.5000000000000000
+ count | sum | avg  
+-------+-----+------
+     8 | 330 | 55.5
 (1 row)
 
 -- ORDER BY expression is part of the target list but not pushed down to
@@ -5086,14 +5086,14 @@ select distinct sum(c1)/1000 s from ft2 where c2 < 6 group by c2 order by 1;
 (12 rows)
 
 select distinct sum(c1)/1000 s from ft2 where c2 < 6 group by c2 order by 1;
-          s          
----------------------
- 49.6000000000000000
- 49.7000000000000000
- 49.8000000000000000
- 49.9000000000000000
- 50.0000000000000000
- 50.5000000000000000
+  s   
+------
+ 49.6
+ 49.7
+ 49.8
+ 49.9
+ 50
+ 50.5
 (6 rows)
 
 -- WindowAgg
