@@ -104,6 +104,12 @@
  * Maximal length of one node
  */
 #define DCH_MAX_ITEM_SIZ	   12	/* max localized day name		*/
+/*
+ * Some Oracle elements expand to a whole phrase rather than a single token
+ * (DL is the long date, which reaches about thirty characters), so the output
+ * buffer keeps this much headroom beyond the per-element allowance.
+ */
+#define DCH_MAX_COMPOSITE_SIZ	   64
 #define NUM_MAX_ITEM_SIZ		8	/* roman number (RN has 15 chars)	*/
 
 
@@ -625,6 +631,7 @@ typedef enum
 	DCH_DAY,
 	DCH_DDD,
 	DCH_DD,
+	DCH_DL,
 	DCH_DY,
 	DCH_Day,
 	DCH_Dy,
@@ -690,6 +697,7 @@ typedef enum
 	DCH_day,
 	DCH_ddd,
 	DCH_dd,
+	DCH_dl,
 	DCH_dy,
 	DCH_d,
 	DCH_ff1,
@@ -804,6 +812,7 @@ static const KeyWord DCH_keywords[] = {
 	{"DAY", 3, DCH_DAY, false, FROM_CHAR_DATE_NONE},	/* D */
 	{"DDD", 3, DCH_DDD, true, FROM_CHAR_DATE_GREGORIAN},
 	{"DD", 2, DCH_DD, true, FROM_CHAR_DATE_GREGORIAN},
+	{"DL", 2, DCH_DL, false, FROM_CHAR_DATE_NONE},
 	{"DY", 2, DCH_DY, false, FROM_CHAR_DATE_NONE},
 	{"Day", 3, DCH_Day, false, FROM_CHAR_DATE_NONE},
 	{"Dy", 2, DCH_Dy, false, FROM_CHAR_DATE_NONE},
@@ -869,6 +878,7 @@ static const KeyWord DCH_keywords[] = {
 	{"day", 3, DCH_day, false, FROM_CHAR_DATE_NONE},	/* d */
 	{"ddd", 3, DCH_DDD, true, FROM_CHAR_DATE_GREGORIAN},
 	{"dd", 2, DCH_DD, true, FROM_CHAR_DATE_GREGORIAN},
+	{"dl", 2, DCH_DL, false, FROM_CHAR_DATE_NONE},
 	{"dy", 2, DCH_dy, false, FROM_CHAR_DATE_NONE},
 	{"d", 1, DCH_D, true, FROM_CHAR_DATE_GREGORIAN},
 	{"ff1", 3, DCH_FF1, true, FROM_CHAR_DATE_NONE},	/* f */
@@ -3032,6 +3042,23 @@ DCH_to_char(FormatNode *node, bool is_interval, TmToChar *in, char *out, Oid col
 					str_numth(s, s, SUFFIX_TH_TYPE(n->suffix));
 				s += strlen(s);
 				break;
+			case DCH_DL:
+				/*
+				 * Oracle's long date: day name, month name, zero-padded day and the
+				 * year.  PostgreSQL mode echoes an unknown element literally, so it
+				 * keeps that output here as well.
+				 */
+				INVALID_FOR_INTERVAL;
+				if (ORA_PARSER != compatible_db)
+					strcpy(s, "DL");
+				else
+					sprintf(s, "%s, %s %02d, %d",
+							days[tm->tm_wday],
+							months_full[tm->tm_mon - 1],
+							tm->tm_mday,
+							ADJUST_YEAR(tm->tm_year, is_interval));
+				s += strlen(s);
+				break;
 			case DCH_D:
 				INVALID_FOR_INTERVAL;
 				sprintf(s, "%d", tm->tm_wday + 1);
@@ -4539,7 +4566,7 @@ datetime_to_char_body(TmToChar *tmtc, const text *fmt, bool is_interval, Oid col
 	/*
 	 * Allocate workspace for result as C string
 	 */
-	result = palloc(mul_size(fmt_len, DCH_MAX_ITEM_SIZ) + 1);
+	result = palloc(mul_size(fmt_len, DCH_MAX_ITEM_SIZ) + DCH_MAX_COMPOSITE_SIZ + 1);
 	*result = '\0';
 
 	if (fmt_len > DCH_CACHE_SIZE)
