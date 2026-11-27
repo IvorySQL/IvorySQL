@@ -18,10 +18,8 @@
  *
  * This file provides a string case conversion function
  *
- * upper_character() 	-- transform lowercase letters to uppercase
  * down_character() 	-- transform uppercase letters to lowercase
  * is_all_upper() 	-- Determine whether the letters in the string are all uppercase letters
- * is_all_lower() 	-- Determine whether the letters in the string are all lowercase letters
  *
  *
  * Portions Copyright (c) 2023-2026, IvorySQL Global Development Team
@@ -67,54 +65,6 @@ down_character(const char *src, int len)
 	}
 
 	return res;
-}
-/*
- * transform lower to upper
- */
-char *
-upper_character(const char *src, int len)
-{
-	char	*res;
-	char	*s ;
-	int		i;
-	Assert(src != NULL);
-	Assert(len >= 0);
-
-	res = ALLOC(len + 1);
-	memcpy(res, src, len);
-	res[len] = '\0';
-	s = res;
-
-	/* transform */
-	for (i = 0; i < len ; i++)
-	{
-		*s = toupper(*s);
-
-		s++;
-	}
-
-	return res;
-}
-
-/*
- * Determine whether the letters in the string are all lowercase letters
- */
-bool
-is_all_lower(const char *src, int len)
-{
-	int		i;
-	const char	*s;
-
-	s = src;
-
-	for (i = 0; i < len; i++)
-	{
-		if (isalpha(*s) && isupper(*s))
-			return false;
-		s++;
-	}
-
-	return true;
 }
 
 /*
