@@ -28,10 +28,52 @@
 
 #include "postgres.h"
 
+#include <math.h>
+
 #include "mb/pg_wchar.h"
 #include "utils/builtins.h"
 
 #include "../include/common_datatypes.h"
+
+/*
+ * Oracle's default binary floating-point representation uses enough digits
+ * to round-trip the value, an uppercase E, and a three-digit exponent.
+ * Retain one fractional digit even for integral mantissas.  This is shared
+ * by type output (including implicit casts) and the default TO_CHAR overloads.
+ */
+char *
+ora_binary_float_to_cstring(double value, int precision)
+{
+	char	   *result;
+	char	   *exponent;
+	char	   *end;
+	int			exp;
+
+	Assert(precision == ORACLE_BINARY_FLOAT_DIGITS ||
+		   precision == ORACLE_BINARY_DOUBLE_DIGITS);
+
+	if (isnan(value))
+		return pstrdup("Nan");
+	if (isinf(value))
+		return pstrdup(value < 0 ? "-Inf" : "Inf");
+	if (value == 0)
+		return pstrdup("0");
+
+	/* Sign, 17 significant digits, decimal point, E+nnn, and terminator fit. */
+	result = palloc(32);
+	snprintf(result, 32, "%.*E", precision - 1, value);
+	exponent = strchr(result, 'E');
+	Assert(exponent != NULL);
+	exp = (int) strtol(exponent + 1, NULL, 10);
+
+	end = exponent - 1;
+	while (*end == '0' && end[-1] != '.')
+		end--;
+	end++;
+	snprintf(end, 32 - (end - result), "E%+04d", exp);
+
+	return result;
+}
 
 /*
  * Common implementation for btrim, ltrim, rtrim.

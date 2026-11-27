@@ -545,6 +545,20 @@ MainLoop(FILE *source)
 		                    PrintBindVariables(pset.vars, pb->print_items);
 		                }
 		                break;
+					case PSQLPLUS_CMD_COLINVISIBLE:
+						{
+							psqlplus_cmd_colinvisible *cmd = (psqlplus_cmd_colinvisible *) psqlpluscmd;
+
+							if (conditional_active(cond_stack))
+							{
+								pset.show_invisible_columns = cmd->enabled;
+								if (!pset.quiet)
+									printf("colinvisible %s\n", cmd->enabled ? "ON" : "OFF");
+							}
+							pg_free(cmd);
+							pstate->psqlpluscmd = NULL;
+						}
+						break;
 					case PSQLPLUS_CMD_EXECUTE:
 						{
 							psqlplus_cmd_execute *exec = (psqlplus_cmd_execute *) pstate->psqlpluscmd;
@@ -630,6 +644,20 @@ psqlplus_next:
 		    {
 		        char	*token;
 		        const char	*whitespace = " \t\n\r";
+
+				if (pstate->psqlpluscmd &&
+					pstate->psqlpluscmd->cmd_type == PSQLPLUS_CMD_COLINVISIBLE)
+				{
+					if (conditional_active(cond_stack))
+					{
+						pg_log_error("Usage: SET COLINVISIBLE [=] {ON | OFF}");
+						if (pset.on_error_stop && !pset.cur_cmd_interactive)
+							successResult = EXIT_USER;
+					}
+					pg_free(pstate->psqlpluscmd);
+					pstate->psqlpluscmd = NULL;
+					goto psqlplus_next;
+				}
 
 		        // Get the first token of the command (e.g., VARIABLE or PRINT)
 		        token = strtokx(pstate->scanline, whitespace, NULL, NULL,

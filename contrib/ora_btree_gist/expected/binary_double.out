@@ -39,24 +39,24 @@ SELECT count(*) FROM binary_doubletmp WHERE a <> -1890.0;
 (1 row)
 
 SELECT a, a <-> '-1890.0' FROM binary_doubletmp ORDER BY a <-> '-1890.0' LIMIT 3;
-      a       |      ?column?      
---------------+--------------------
- -1890        | 0
- -2003.634512 | 113.63451200000009
- -1769.73634  | 120.26366000000007
+            a             |        ?column?         
+--------------------------+-------------------------
+ -1.89E+003               | 0
+ -2.0036345120000001E+003 | 1.1363451200000009E+002
+ -1.7697363399999999E+003 | 1.2026366000000007E+002
 (3 rows)
 
 CREATE INDEX binary_doubleidx ON binary_doubletmp USING gist ( a );
 SET enable_seqscan=off;
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM binary_doubletmp WHERE a <  -1890.0::binary_double;
-                       QUERY PLAN                       
---------------------------------------------------------
+                         QUERY PLAN                          
+-------------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on binary_doubletmp
-         Recheck Cond: (a < '-1890'::binary_double)
+         Recheck Cond: (a < '-1.89E+003'::binary_double)
          ->  Bitmap Index Scan on binary_doubleidx
-               Index Cond: (a < '-1890'::binary_double)
+               Index Cond: (a < '-1.89E+003'::binary_double)
 (5 rows)
 
 SELECT count(*) FROM binary_doubletmp WHERE a <  -1890.0::binary_double;
@@ -67,13 +67,13 @@ SELECT count(*) FROM binary_doubletmp WHERE a <  -1890.0::binary_double;
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM binary_doubletmp WHERE a <= -1890.0::binary_double;
-                       QUERY PLAN                        
----------------------------------------------------------
+                          QUERY PLAN                          
+--------------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on binary_doubletmp
-         Recheck Cond: (a <= '-1890'::binary_double)
+         Recheck Cond: (a <= '-1.89E+003'::binary_double)
          ->  Bitmap Index Scan on binary_doubleidx
-               Index Cond: (a <= '-1890'::binary_double)
+               Index Cond: (a <= '-1.89E+003'::binary_double)
 (5 rows)
 
 SELECT count(*) FROM binary_doubletmp WHERE a <= -1890.0::binary_double;
@@ -84,13 +84,13 @@ SELECT count(*) FROM binary_doubletmp WHERE a <= -1890.0::binary_double;
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM binary_doubletmp WHERE a  = -1890.0::binary_double;
-                       QUERY PLAN                       
---------------------------------------------------------
+                         QUERY PLAN                          
+-------------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on binary_doubletmp
-         Recheck Cond: (a = '-1890'::binary_double)
+         Recheck Cond: (a = '-1.89E+003'::binary_double)
          ->  Bitmap Index Scan on binary_doubleidx
-               Index Cond: (a = '-1890'::binary_double)
+               Index Cond: (a = '-1.89E+003'::binary_double)
 (5 rows)
 
 SELECT count(*) FROM binary_doubletmp WHERE a  = -1890.0::binary_double;
@@ -101,13 +101,13 @@ SELECT count(*) FROM binary_doubletmp WHERE a  = -1890.0::binary_double;
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM binary_doubletmp WHERE a >= -1890.0::binary_double;
-                       QUERY PLAN                        
----------------------------------------------------------
+                          QUERY PLAN                          
+--------------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on binary_doubletmp
-         Recheck Cond: (a >= '-1890'::binary_double)
+         Recheck Cond: (a >= '-1.89E+003'::binary_double)
          ->  Bitmap Index Scan on binary_doubleidx
-               Index Cond: (a >= '-1890'::binary_double)
+               Index Cond: (a >= '-1.89E+003'::binary_double)
 (5 rows)
 
 SELECT count(*) FROM binary_doubletmp WHERE a >= -1890.0::binary_double;
@@ -118,13 +118,13 @@ SELECT count(*) FROM binary_doubletmp WHERE a >= -1890.0::binary_double;
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM binary_doubletmp WHERE a >  -1890.0::binary_double;
-                       QUERY PLAN                       
---------------------------------------------------------
+                         QUERY PLAN                          
+-------------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on binary_doubletmp
-         Recheck Cond: (a > '-1890'::binary_double)
+         Recheck Cond: (a > '-1.89E+003'::binary_double)
          ->  Bitmap Index Scan on binary_doubleidx
-               Index Cond: (a > '-1890'::binary_double)
+               Index Cond: (a > '-1.89E+003'::binary_double)
 (5 rows)
 
 SELECT count(*) FROM binary_doubletmp WHERE a >  -1890.0::binary_double;
@@ -139,7 +139,7 @@ SELECT count(*) FROM binary_doubletmp WHERE a <> -1890.0::binary_double;
 ------------------------------------------------------------------
  Aggregate
    ->  Index Only Scan using binary_doubleidx on binary_doubletmp
-         Index Cond: (a <> '-1890'::binary_double)
+         Index Cond: (a <> '-1.89E+003'::binary_double)
 (3 rows)
 
 SELECT count(*) FROM binary_doubletmp WHERE a <> -1890.0::binary_double;
@@ -154,14 +154,14 @@ SELECT a, a <-> '-1890.0' FROM binary_doubletmp ORDER BY a <-> '-1890.0' LIMIT 3
 ------------------------------------------------------------------
  Limit
    ->  Index Only Scan using binary_doubleidx on binary_doubletmp
-         Order By: (a <-> '-1890'::binary_double)
+         Order By: (a <-> '-1.89E+003'::binary_double)
 (3 rows)
 
 SELECT a, a <-> '-1890.0' FROM binary_doubletmp ORDER BY a <-> '-1890.0' LIMIT 3;
-      a       |      ?column?      
---------------+--------------------
- -1890        | 0
- -2003.634512 | 113.63451200000009
- -1769.73634  | 120.26366000000007
+            a             |        ?column?         
+--------------------------+-------------------------
+ -1.89E+003               | 0
+ -2.0036345120000001E+003 | 1.1363451200000009E+002
+ -1.7697363399999999E+003 | 1.2026366000000007E+002
 (3 rows)
 

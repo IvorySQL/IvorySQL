@@ -43,6 +43,13 @@ typedef enum OraBodyStyle
 	OraBody_MAYBE_ANONYMOUS_BLOCK_DECLARE
 }OraBodyStyle;
 
+typedef enum OraInsertTargetState
+{
+	ORA_INSERT_TARGET_NONE,
+	ORA_INSERT_TARGET_NAME,
+	ORA_INSERT_TARGET_AFTER_NAME
+} OraInsertTargetState;
+
 /* Auxiliary data about a token (other than the token type) */
 typedef struct
 {
@@ -74,6 +81,7 @@ typedef struct ora_base_yy_extra_type
 	YYLTYPE		lookahead_yylloc;	/* yylloc for lookahead token */
 	char	   *lookahead_end;	/* end of current token */
 	char		lookahead_hold_char;	/* to be put back at *lookahead_end */
+	OraInsertTargetState insert_target_state;
 
 	/*
 	 * State variables that belong to the grammar.

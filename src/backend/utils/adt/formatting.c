@@ -5584,6 +5584,15 @@ static void
 final_datetime_check(TmFromChar *out)
 {
 	/*
+	 * Oracle types can still use NLS formats in PG mode, where DCH_from_char
+	 * skips its month range check. Zero represents an unspecified month.
+	 */
+	if (out->mm != 0 && (out->mm < 1 || out->mm > MONTHS_PER_YEAR))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
+				 errmsg("The value of month is invalid.")));
+
+	/*
 	 * Final check for valid day of month
 	 * now that we know for sure the month and year.
 	 * for 'DD-MM-YYYY' 'MM-DD-YYYY' format, when

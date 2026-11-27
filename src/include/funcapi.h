@@ -238,6 +238,9 @@ extern bool resolve_polymorphic_argtypes(int numargs, Oid *argtypes,
 extern int	get_func_arg_info(HeapTuple procTup,
 							  Oid **p_argtypes, char ***p_argnames,
 							  char **p_argmodes);
+extern int	get_func_arg_info_raw(HeapTuple procTup,
+								  Oid **p_argtypes, char ***p_argnames,
+								  char **p_argmodes);
 
 extern int	get_func_input_arg_names(Datum proargnames, Datum proargmodes,
 									 char ***arg_names);

@@ -1121,7 +1121,14 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 		}
 		
 		if (colDef->is_invisible)
+		{
+			if (relkind == RELKIND_FOREIGN_TABLE)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("foreign tables cannot have invisible columns")));
+
 			attr->attisinvisible = true;
+		}
 		else
 			has_visible_col = true;
 
@@ -1451,6 +1458,8 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 		IndexElem   *iparam;
 		const FormData_pg_attribute *from;
 		StringInfoData rowid_seq_name;
+		ObjectAddress index_address;
+		ObjectAddress table_address;
 
 		initStringInfo(&rowid_seq_name);
 		appendStringInfo(&rowid_seq_name, "%u", relationId);
@@ -1470,13 +1479,21 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 
 		rowid_index->indexParams = lappend(rowid_index->indexParams, iparam);
 
-		DefineIndex(NULL, relationId,
-					rowid_index,
-					InvalidOid,
-					InvalidOid,
-					InvalidOid,
-					-1, 
-					true, true, false, false, false);
+		index_address = DefineIndex(NULL, relationId,
+								   rowid_index,
+								   InvalidOid,
+								   InvalidOid,
+								   InvalidOid,
+								   -1,
+								   true, true, false, false, false);
+
+		/*
+		 * A plain user-created ROWID index depends on the column.  Also
+		 * depend on the whole table here so pg_dump can recognize the index
+		 * created by WITH ROWID even if its name changes.
+		 */
+		ObjectAddressSet(table_address, RelationRelationId, relationId);
+		recordDependencyOn(&index_address, &table_address, DEPENDENCY_AUTO);
 		pfree(rowid_seq_name.data);
 	}
 
@@ -8265,6 +8282,11 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		colDef = castNode(ColumnDef, (*cmd)->def);
 	}
 
+	if (rel->rd_rel->relkind == RELKIND_FOREIGN_TABLE && colDef->is_invisible)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("foreign tables cannot have invisible columns")));
+
 	/*
 	 * Regular inheritance children are independent enough not to inherit the
 	 * identity column from parent hence cannot recursively add identity
@@ -8859,8 +8881,7 @@ ATExecSetInvisible(Relation rel, const char *colName, LOCKMODE lockmode)
 		if (!has_visible_cols)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("relation \"%s\" can not have all columns invisible",
-							RelationGetRelationName(rel))));
+					 errmsg("table must have at least one column that is not invisible")));
 
 
 		/* Now we can update the catalog */

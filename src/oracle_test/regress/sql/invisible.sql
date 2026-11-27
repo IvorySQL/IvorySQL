@@ -54,7 +54,14 @@ SELECT row_to_json(t) FROM htest0 t;
 -- inheritance, the invisible attribute is inherited
 CREATE TABLE htest1_1 () INHERITS (htest1);
 SELECT * FROM htest1_1;
+\pset format unaligned
 \d htest1_1
+SET COLINVISIBLE ON
+\d htest1_1
+SELECT * FROM htest1_1;
+SET colinvisible = off;
+\d htest1_1
+\pset format aligned
 INSERT INTO htest1_1 VALUES ('htest1 three');
 SELECT * FROM htest1_1;
 SELECT * FROM htest1;
@@ -108,6 +115,19 @@ ALTER TABLE htest3
     ALTER COLUMN a SET INVISIBLE,
     MODIFY b INVISIBLE; -- error
 DROP TABLE htest3;
+
+-- Parenthesized visibility changes are applied as one ALTER TABLE statement.
+\pset format unaligned
+CREATE TABLE htest3_modify (id int, name varchar2(30), age int);
+INSERT INTO htest3_modify VALUES (1, 'Alice', 30);
+ALTER TABLE htest3_modify MODIFY (id INVISIBLE, name INVISIBLE, age INVISIBLE); -- error
+SELECT * FROM htest3_modify;
+ALTER TABLE htest3_modify MODIFY (name INVISIBLE, age INVISIBLE);
+SELECT * FROM htest3_modify;
+ALTER TABLE htest3_modify MODIFY (name VISIBLE, age VISIBLE);
+SELECT * FROM htest3_modify;
+DROP TABLE htest3_modify;
+\pset format aligned
 
 -- inheritance with an additional single invisible column is possible
 CREATE TABLE htest3 (a serial INVISIBLE, b int);

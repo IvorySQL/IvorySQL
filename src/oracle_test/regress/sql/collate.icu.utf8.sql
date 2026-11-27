@@ -580,9 +580,9 @@ SELECT 'abc' <= 'ABC' COLLATE case_sensitive, 'abc' >= 'ABC' COLLATE case_sensit
 SELECT 'abc' <= 'ABC' COLLATE case_insensitive, 'abc' >= 'ABC' COLLATE case_insensitive;
 
 SELECT 'AB' LIKE 'ab' COLLATE case_insensitive AS t;
-SELECT 'AB' LIKE 'a\b' COLLATE case_insensitive AS t;
-SELECT 'AB' LIKE '\ab' COLLATE case_insensitive AS t;
-SELECT 'AB' LIKE '\a%' COLLATE case_insensitive AS t;
+SELECT 'AB' LIKE 'a\b' COLLATE case_insensitive AS f;
+SELECT 'AB' LIKE '\ab' COLLATE case_insensitive AS f;
+SELECT 'AB' LIKE '\a%' COLLATE case_insensitive AS f;
 SELECT 'AB' LIKE '\a\%' COLLATE case_insensitive AS f;
 
 -- tests with array_sort

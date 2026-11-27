@@ -1396,6 +1396,22 @@ get_type_func_class(Oid typid, Oid *base_typeid)
 /*
  * get_func_arg_info
  *
+ * Fetch the argument information and resolve stored type references.
+ */
+int
+get_func_arg_info(HeapTuple procTup,
+				  Oid **p_argtypes, char ***p_argnames, char **p_argmodes)
+{
+	int			numargs;
+
+	numargs = get_func_arg_info_raw(procTup, p_argtypes, p_argnames, p_argmodes);
+	repl_func_real_argtype(procTup, *p_argtypes, numargs);
+	return numargs;
+}
+
+/*
+ * get_func_arg_info_raw
+ *
  * Fetch info about the argument types, names, and IN/OUT modes from the
  * pg_proc tuple.  Return value is the total number of arguments.
  * Other results are palloc'd.  *p_argtypes is always filled in, but
@@ -1405,12 +1421,12 @@ get_type_func_class(Oid typid, Oid *base_typeid)
  * If there are both named and unnamed arguments, p_argnames[] will
  * contain empty strings (not NULLs) for the unnamed ones.
  *
- * Note that this function simply fetches what is in the pg_proc tuple;
- * it doesn't do any interpretation of polymorphic types.
+ * This function returns the stored OIDs without resolving type references
+ * such as %ROWTYPE or interpreting polymorphic types.
  */
 int
-get_func_arg_info(HeapTuple procTup,
-				  Oid **p_argtypes, char ***p_argnames, char **p_argmodes)
+get_func_arg_info_raw(HeapTuple procTup,
+					  Oid **p_argtypes, char ***p_argnames, char **p_argmodes)
 {
 	Form_pg_proc procStruct = (Form_pg_proc) GETSTRUCT(procTup);
 	Datum		proallargtypes;
@@ -1493,9 +1509,6 @@ get_func_arg_info(HeapTuple procTup,
 		memcpy(*p_argmodes, ARR_DATA_PTR(arr),
 			   numargs * sizeof(char));
 	}
-
-	/* maybe argtype from a package */
-	repl_func_real_argtype(procTup, *p_argtypes, numargs);
 
 	return numargs;
 }

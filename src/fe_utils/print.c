@@ -390,6 +390,40 @@ format_numeric_locale(const char *my_str)
 	return new_str;
 }
 
+/*
+ * Use scientific notation for small Oracle NUMBER values whose fixed-point
+ * representation exceeds the SQL*Plus TM9 limit of 64 characters.  Display at
+ * least four significant digits and retain any additional digits verbatim.
+ * Return NULL when the original representation should be used.
+ */
+static char *
+format_small_oracle_number(const char *value)
+{
+	bool		negative = value[0] == '-';
+	const char *number = value + negative;
+	const char *fraction;
+	const char *digits;
+	size_t		digit_count;
+	int			padding;
+
+	if (number[0] != '0' || number[1] != '.' || strlen(value) <= 64)
+		return NULL;
+
+	fraction = number + 2;
+	digits = fraction + strspn(fraction, "0");
+	if (*digits < '1' || *digits > '9')
+		return NULL;
+
+	digit_count = strspn(digits, "0123456789");
+	if (digits[digit_count] != '\0')
+		return NULL;
+
+	padding = digit_count < 4 ? 4 - (int) digit_count : 0;
+	return psprintf("%s%c.%s%.*sE-%02zu", negative ? "-" : "",
+					digits[0], digits + 1, padding, "000",
+					(size_t) (digits - fraction) + 1);
+}
+
 
 static void
 print_separator(struct separator sep, FILE *fout)
@@ -3759,6 +3793,14 @@ void
 printQuery(const PGresult *result, const printQueryOpt *opt,
 		   FILE *fout, bool is_pager, FILE *flog)
 {
+	printQueryWithNumberDisplay(result, opt, fout, is_pager, flog, false);
+}
+
+void
+printQueryWithNumberDisplay(const PGresult *result, const printQueryOpt *opt,
+							FILE *fout, bool is_pager, FILE *flog,
+							bool oracle_number_display)
+{
 	printTableContent cont;
 	int			i,
 				r,
@@ -3766,6 +3808,9 @@ printQuery(const PGresult *result, const printQueryOpt *opt,
 
 	if (cancel_pressed)
 		return;
+
+	oracle_number_display = oracle_number_display &&
+		(opt->topt.format == PRINT_ALIGNED || opt->topt.format == PRINT_WRAPPED);
 
 	printTableInit(&cont, &opt->topt, opt->title,
 				   PQnfields(result), PQntuples(result));
@@ -3803,6 +3848,16 @@ printQuery(const PGresult *result, const printQueryOpt *opt,
 				{
 					cell = format_numeric_locale(cell);
 					mustfree = true;
+				}
+				else if (oracle_number_display && PQftype(result, c) == NUMBEROID)
+				{
+					char	   *formatted = format_small_oracle_number(cell);
+
+					if (formatted != NULL)
+					{
+						cell = formatted;
+						mustfree = true;
+					}
 				}
 			}
 

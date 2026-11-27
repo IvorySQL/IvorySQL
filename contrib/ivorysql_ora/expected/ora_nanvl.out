@@ -11,21 +11,21 @@
 -- normal values (BINARY_FLOAT / BINARY_DOUBLE)
 --
 SELECT NANVL(CAST(1.5 AS BINARY_FLOAT), CAST(2.5 AS BINARY_FLOAT)) FROM DUAL;
- nanvl 
--------
- 1.5
+  nanvl   
+----------
+ 1.5E+000
 (1 row)
 
 SELECT NANVL(CAST(1.5 AS BINARY_DOUBLE), CAST(2.5 AS BINARY_DOUBLE)) FROM DUAL;
- nanvl 
--------
- 1.5
+  nanvl   
+----------
+ 1.5E+000
 (1 row)
 
 SELECT NANVL(CAST(-1.5 AS BINARY_FLOAT), CAST(2.5 AS BINARY_FLOAT)) FROM DUAL;
- nanvl 
--------
- -1.5
+   nanvl   
+-----------
+ -1.5E+000
 (1 row)
 
 SELECT NANVL(CAST(0 AS BINARY_DOUBLE), CAST(2.5 AS BINARY_DOUBLE)) FROM DUAL;
@@ -38,15 +38,15 @@ SELECT NANVL(CAST(0 AS BINARY_DOUBLE), CAST(2.5 AS BINARY_DOUBLE)) FROM DUAL;
 -- NaN path (core behavior)
 --
 SELECT NANVL(CAST('NAN' AS BINARY_FLOAT), CAST(2.5 AS BINARY_FLOAT)) FROM DUAL;
- nanvl 
--------
- 2.5
+  nanvl   
+----------
+ 2.5E+000
 (1 row)
 
 SELECT NANVL(CAST('NAN' AS BINARY_DOUBLE), CAST(2.5 AS BINARY_DOUBLE)) FROM DUAL;
- nanvl 
--------
- 2.5
+  nanvl   
+----------
+ 2.5E+000
 (1 row)
 
 -- expr2 is also NaN: only expr1 is checked
@@ -85,9 +85,9 @@ SELECT NANVL(CAST(NULL AS BINARY_FLOAT), CAST(2.5 AS BINARY_FLOAT)) FROM DUAL;
 (1 row)
 
 SELECT NANVL(CAST(1.5 AS BINARY_FLOAT), CAST(NULL AS BINARY_FLOAT)) FROM DUAL;
- nanvl 
--------
- 1.5
+  nanvl   
+----------
+ 1.5E+000
 (1 row)
 
 SELECT NANVL(CAST(NULL AS BINARY_FLOAT), CAST(NULL AS BINARY_FLOAT)) FROM DUAL;
@@ -103,9 +103,9 @@ SELECT NANVL(CAST('NAN' AS BINARY_FLOAT), CAST(NULL AS BINARY_FLOAT)) FROM DUAL;
 (1 row)
 
 SELECT NANVL(CAST(1.5 AS BINARY_DOUBLE), CAST(NULL AS BINARY_DOUBLE)) FROM DUAL;
- nanvl 
--------
- 1.5
+  nanvl   
+----------
+ 1.5E+000
 (1 row)
 
 SELECT NANVL(CAST('NAN' AS BINARY_DOUBLE), CAST(NULL AS BINARY_DOUBLE)) FROM DUAL;
@@ -124,21 +124,21 @@ INSERT INTO nanvl_test_tbl VALUES (CAST(1.1 AS BINARY_FLOAT), CAST(2.2 AS BINARY
 INSERT INTO nanvl_test_tbl VALUES (CAST(NULL AS BINARY_FLOAT), CAST(NULL AS BINARY_DOUBLE));
 INSERT INTO nanvl_test_tbl VALUES (CAST('INF' AS BINARY_FLOAT), CAST('-INF' AS BINARY_DOUBLE));
 SELECT f1, NANVL(f1, 0) FROM nanvl_test_tbl ORDER BY f1;
- f1  | nanvl 
------+-------
- 1.1 | 1.1
- Inf | Inf
- Nan | 0
-     | 
+       f1        |      nanvl      
+-----------------+-----------------
+ 1.10000002E+000 | 1.10000002E+000
+ Inf             | Inf
+ Nan             | 0
+                 | 
 (4 rows)
 
 SELECT d1, NANVL(d1, 0) FROM nanvl_test_tbl ORDER BY d1;
-  d1  | nanvl 
-------+-------
- -Inf | -Inf
- 2.2  | 2.2
- Nan  | 0
-      | 
+           d1            |          nanvl          
+-------------------------+-------------------------
+ -Inf                    | -Inf
+ 2.2000000000000002E+000 | 2.2000000000000002E+000
+ Nan                     | 0
+                         | 
 (4 rows)
 
 DROP TABLE nanvl_test_tbl;
@@ -186,21 +186,21 @@ SELECT NANVL(CAST('NAN' AS NUMBER), CAST(NULL AS NUMBER)) FROM DUAL;
 -- (IvorySQL-specific behavior; Oracle would also use numeric precedence)
 --
 SELECT NANVL(1, 2) FROM DUAL;
- nanvl 
--------
- 1
+  nanvl   
+----------
+ 1.0E+000
 (1 row)
 
 SELECT NANVL(1.5, 2.5) FROM DUAL;
- nanvl 
--------
- 1.5
+  nanvl   
+----------
+ 1.5E+000
 (1 row)
 
 SELECT NANVL('NAN', 100) FROM DUAL;
- nanvl 
--------
- 100
+  nanvl   
+----------
+ 1.0E+002
 (1 row)
 
 --
@@ -208,9 +208,9 @@ SELECT NANVL('NAN', 100) FROM DUAL;
 -- Mixing BINARY_FLOAT and BINARY_DOUBLE yields BINARY_DOUBLE
 --
 SELECT NANVL(CAST(1.5 AS BINARY_FLOAT), CAST(2.5 AS BINARY_DOUBLE)) FROM DUAL;
- nanvl 
--------
- 1.5
+  nanvl   
+----------
+ 1.5E+000
 (1 row)
 
 --
@@ -232,16 +232,16 @@ SELECT NANVL(CAST(-0.0 AS BINARY_DOUBLE), CAST(99.0 AS BINARY_DOUBLE)) FROM DUAL
 SELECT NANVL(CAST(-0.0 AS NUMBER), CAST(99.0 AS NUMBER)) FROM DUAL;
  nanvl 
 -------
- 0.0
+ 0
 (1 row)
 
 --
 -- replacement with computed expression (not just constants)
 --
 SELECT NANVL(CAST('NAN' AS BINARY_FLOAT), CAST(1.0 AS BINARY_FLOAT) + CAST(2.0 AS BINARY_FLOAT)) FROM DUAL;
- nanvl 
--------
- 3
+  nanvl   
+----------
+ 3.0E+000
 (1 row)
 
 SELECT NANVL(CAST('NAN' AS NUMBER), 10 * 10) FROM DUAL;
@@ -260,10 +260,10 @@ INSERT INTO float_point_demo VALUES (1234.56,
   CAST(1.235e+003 AS BINARY_DOUBLE), CAST(1.235e+003 AS BINARY_FLOAT));
 INSERT INTO float_point_demo VALUES (0, CAST('NAN' AS BINARY_DOUBLE), CAST('NAN' AS BINARY_FLOAT));
 SELECT bin_float, NANVL(bin_float, 0) FROM float_point_demo;
- bin_float | nanvl 
------------+-------
- 1235      | 1235
- Nan       | 0
+ bin_float  |   nanvl    
+------------+------------
+ 1.235E+003 | 1.235E+003
+ Nan        | 0
 (2 rows)
 
 DROP TABLE float_point_demo;
