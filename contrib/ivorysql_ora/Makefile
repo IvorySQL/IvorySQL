@@ -34,6 +34,7 @@ OBJS = \
 	src/builtin_packages/dbms_lock/dbms_lock.o \
 	src/builtin_packages/utl_encode/utl_encode.o \
 	src/builtin_packages/utl_url/utl_url.o \
+	src/builtin_packages/utl_raw/utl_raw.o \
 	src/builtin_packages/dbms_session/dbms_session.o \
 	src/builtin_packages/dbms_transaction/dbms_transaction.o \
 	src/builtin_packages/dbms_random/dbms_random.o \
@@ -101,7 +102,9 @@ ORA_REGRESS = \
 	utl_file \
 	utl_file_putf \
 	utl_raw \
+	utl_raw_pkg \
 	utl_encode \
+	utl_encode_qp \
 	utl_url \
 	dbms_session \
 	dbms_transaction \
