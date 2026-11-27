@@ -54,3 +54,13 @@ SELECT sys.rawtohex(NULL) IS NULL;
 SELECT sys.rawtohex('') IS NULL;
 SELECT sys.rawtohex('\x'::bytea) IS NULL;
 
+
+-- TO_BLOB accepts binary RAW input without text encoding conversion.
+SELECT encode(sys.to_blob(sys.hextoraw('00ff7d80')), 'hex') = '00ff7d80' AS blob_ok;
+SELECT pg_typeof(sys.to_blob(sys.hextoraw('ff'))) = 'sys.blob'::regtype AS blob_ok;
+SELECT sys.to_blob(NULL::bytea) IS NULL AS blob_ok;
+SELECT octet_length(sys.to_blob('\x'::bytea)) = 0 AS blob_ok;
+SELECT encode(sys.to_blob(CAST(sys.hextoraw('ff') AS raw(1))), 'hex') = 'ff' AS blob_ok;
+SELECT encode(sys.to_blob(CAST(sys.hextoraw('7d') AS long raw)), 'hex') = '7d' AS blob_ok;
+SELECT sys.to_blob('abc') = sys.to_blob('abc'::varchar2) AS blob_ok;
+SELECT encode(sys.to_blob('abc'::varchar2), 'hex') = '616263' AS blob_ok;
