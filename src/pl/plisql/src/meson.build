@@ -70,6 +70,9 @@ install_data(
 
 install_headers(
   'plisql.h',
+  'pl_subproc_function.h',
+  'pl_package.h',
+  'pl_autonomous.h',
   install_dir: dir_include_server
 )
 
