@@ -257,3 +257,29 @@ select dbms_random.value() >= 0 as works_after_discard;
  t
 (1 row)
 
+-- Seeded results must be unchanged across buffer-growth boundaries.
+CALL dbms_random.seed(12345::number);
+SELECT n, md5(dbms_random.string('U', n)) AS upper_digest,
+       md5(dbms_random.string('L', n)) AS lower_digest,
+       md5(dbms_random.string('A', n)) AS mixed_digest,
+       md5(dbms_random.string('X', n)) AS alnum_digest,
+       md5(dbms_random.string('P', n)) AS printable_digest
+FROM (VALUES (1), (1023), (1024), (2047), (2048), (3999), (4000)) AS sizes(n);
+  n   |           upper_digest           |           lower_digest           |           mixed_digest           |           alnum_digest           |         printable_digest         
+------+----------------------------------+----------------------------------+----------------------------------+----------------------------------+----------------------------------
+    1 | f186217753c37b9b9f958d906208506e | 6f8f57715090da2632453988d9a1501b | b9ece18c950afbfa6b0fdbfa4ff731d3 | d20caec3b48a1eef164cb4ca81ba2587 | 0fbd1776e1ad22c59a7080d35c7fd4db
+ 1023 | 4b2b944abcfc1641ee1a4f8f2651902d | 5e61991bc647afea4088eec5f2a61072 | 217e9af437beb43ad47c35e00a7e6b74 | 6c947c7eaf4ba8f917cf013a2e133fb9 | 7b52947903f621748bf5b19c1c7484b9
+ 1024 | f64b48e17ccee978830fa21a9cde7955 | cc3ea86b2df0245b2ddaf2f4718366d7 | a8876efbcbae047f76cfcde6b3e52e1c | 19299b374565132b2ae2892984e6513f | 56492e4b932f8e87993b725366450f93
+ 2047 | 9a55415bd3404e928b1fd524edb47738 | fa17a072c3f9dc4e5473fdb79f8868ed | 8dff79ec521451e68fb3210f23c66b04 | 4c0ecc7bbeaa910b98683259031225dd | 71db8e5346a245664f2466a73dd0dee3
+ 2048 | 3b5bd5a97b645aaed910fd01550ba3b3 | 048106f66c8db607cef237a2affbccab | 67443e3efc59bf80b95d7f25b7b3b4e5 | 39485e4a3a9a17cac948bde5b5773085 | 014d0c87769c0daae82bc50233d20d29
+ 3999 | 4d637ddadfd03f3f6911fa7ffef30b33 | 467337854f95af1999f0e8aed4c7833d | 4114ea9bc29c22cd978b6ce72c7ec38b | 9775cf67d2f74979c415bfa65d711c9b | 9e93aa419743e168816660f9c4d5fd6c
+ 4000 | eaa6e56c14c24f7e3c35da9f3eac16d3 | 764edddd58e8d2a0de99e1fa54e52576 | f66b3fb0e0a87dd126cc697e8efd6c12 | 9e234c4f4f1baee2bd1da53562756934 | 7b7ce2351615d51edcb28a32a4a399fc
+(7 rows)
+
+-- Check that the number of PRNG draws is preserved for the next call too.
+SELECT dbms_random.string('U', 12) AS following_string;
+ following_string 
+------------------
+ ZLYRYYTGVPGQ
+(1 row)
+
