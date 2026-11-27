@@ -1640,7 +1640,7 @@ PARALLEL SAFE
 IMMUTABLE;
 
 /* Begin - SYS_CONTEXT */
-CREATE OR REPLACE FUNCTION sys.sys_context(a varchar2, b varchar2)
+CREATE OR REPLACE FUNCTION sys.sys_context(a varchar2, b varchar2, c number)
 RETURNS varchar2 AS $$
 DECLARE
 	res varchar2;
@@ -1789,18 +1789,16 @@ BEGIN
 	    SELECT current_setting(a||'.'||b, true) INTO res;
 	  END IF;
 	END IF;
-	RETURN res;
+	RETURN left(res, c::integer);
 END;
 $$ LANGUAGE plisql SECURITY INVOKER;
 
 
-CREATE or REPLACE FUNCTION sys.sys_context(a varchar2, b varchar2, c number)
+CREATE OR REPLACE FUNCTION sys.sys_context(a varchar2, b varchar2)
 RETURNS varchar2 AS $$
-DECLARE
-	res varchar2;
 BEGIN
-	SELECT left(sys.sys_context(a, b), c::integer) INTO res;
-	RETURN res;
+	/* The omitted length defaults to 256 bytes, not characters. */
+	RETURN sys.substrb(sys.sys_context(a, b, 256), 1, 256);
 END;
 $$ LANGUAGE plisql SECURITY INVOKER;
 /* End - SYS_CONTEXT */

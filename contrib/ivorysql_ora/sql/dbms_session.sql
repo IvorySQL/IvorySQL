@@ -156,3 +156,25 @@ call dbms_session.reset_package();
 select sys_context('rp_ns', 'key') as ctx_after_reset;
 
 DROP PACKAGE rp_pkg;
+
+-- SYS_CONTEXT defaults to 256 bytes without limiting explicit longer reads.
+call dbms_session.set_context('length_ctx', 'v255', repeat('x', 255));
+call dbms_session.set_context('length_ctx', 'v256', repeat('x', 256));
+call dbms_session.set_context('length_ctx', 'v300', repeat('x', 300));
+select octet_length(sys_context('length_ctx', 'v255')) as bytes_255,
+       octet_length(sys_context('length_ctx', 'v256')) as bytes_256,
+       octet_length(sys_context('length_ctx', 'v300')) as default_bytes,
+       octet_length(sys_context('length_ctx', 'v300', 300)) as explicit_bytes;
+-- The default limit is in bytes, not characters; stored values are unchanged.
+call dbms_session.set_context('length_ctx', 'utf8', repeat('é', 150));
+select sys_context('length_ctx', 'utf8') = repeat('é', 128) as byte_limit,
+       sys_context('length_ctx', 'utf8', 300) = repeat('é', 150) as full_value;
+call dbms_session.set_context('length_ctx', 'split', repeat('界', 100));
+select octet_length(sys_context('length_ctx', 'split')) <= 256 as within_limit;
+select sys_context('length_ctx', 'missing') is null as missing_is_null;
+-- The legacy GUC fallback must use the same default limit.
+select set_config('length_ctx.fallback', repeat('y', 300), false) is not null as guc_set;
+select octet_length(sys_context('length_ctx', 'fallback')) as default_bytes,
+       octet_length(sys_context('length_ctx', 'fallback', 300)) as explicit_bytes;
+reset length_ctx.fallback;
+call dbms_session.clear_all_context('length_ctx');
