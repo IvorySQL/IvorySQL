@@ -1048,3 +1048,8 @@ SELECT unistr('wrong: \udb99\u0061');
 SELECT unistr('wrong: \U0000db99\U00000061');
 SELECT unistr('wrong: \U002FFFFF');
 SELECT unistr('wrong: \xyz');
+
+-- PostgreSQL keeps the empty string result of the trim functions.
+SELECT length(btrim('   ')) = 0 AS pg_btrim_blank_is_empty;
+SELECT length(ltrim('   ')) = 0 AS pg_ltrim_blank_is_empty;
+SELECT length(rtrim('   ')) = 0 AS pg_rtrim_blank_is_empty;

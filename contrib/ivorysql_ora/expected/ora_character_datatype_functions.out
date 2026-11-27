@@ -409,6 +409,150 @@ select trim('35' from id) from test_trim;
 --clean data
 drop table test_trim;
 /*
+ * Oracle has no distinct empty string, so its TRIM/LTRIM/RTRIM return NULL
+ * once the whole input is trimmed away.  The conversion lives in the
+ * Oracle-side sys.* wrappers, leaving the pg_catalog trim functions
+ * mode-independent so expression indexes on them stay valid across a
+ * compatible_mode switch.
+ */
+select trim('   ') is null as trim_blank_is_null;
+ trim_blank_is_null 
+--------------------
+ t
+(1 row)
+
+select trim('x' from 'xxx') is null as trim_set_is_null;
+ trim_set_is_null 
+------------------
+ t
+(1 row)
+
+select trim(both 'x' from 'xxx') is null as trim_both_set_is_null;
+ trim_both_set_is_null 
+-----------------------
+ t
+(1 row)
+
+select trim(leading 'x' from 'xxx') is null as trim_leading_set_is_null;
+ trim_leading_set_is_null 
+--------------------------
+ t
+(1 row)
+
+select trim(trailing 'x' from 'xxx') is null as trim_trailing_set_is_null;
+ trim_trailing_set_is_null 
+---------------------------
+ t
+(1 row)
+
+select sys.trim('   ') is null as sys_trim_blank_is_null;
+ sys_trim_blank_is_null 
+------------------------
+ t
+(1 row)
+
+select sys.trim('x','xxx') is null as sys_trim_set_is_null;
+ sys_trim_set_is_null 
+----------------------
+ t
+(1 row)
+
+select sys.ltrim('   ') is null as sys_ltrim_blank_is_null;
+ sys_ltrim_blank_is_null 
+-------------------------
+ t
+(1 row)
+
+select sys.ltrim('xxx','x') is null as sys_ltrim_set_is_null;
+ sys_ltrim_set_is_null 
+-----------------------
+ t
+(1 row)
+
+select sys.rtrim('   ') is null as sys_rtrim_blank_is_null;
+ sys_rtrim_blank_is_null 
+-------------------------
+ t
+(1 row)
+
+select sys.rtrim('xxx','x') is null as sys_rtrim_set_is_null;
+ sys_rtrim_set_is_null 
+-----------------------
+ t
+(1 row)
+
+-- values that still have content are not affected
+select trim('  hi  ') = 'hi' as trim_keeps_content;
+ trim_keeps_content 
+--------------------
+ t
+(1 row)
+
+select ltrim('  hi  ') = 'hi  ' as ltrim_keeps_content;
+ ltrim_keeps_content 
+---------------------
+ t
+(1 row)
+
+select rtrim('  hi  ') = '  hi' as rtrim_keeps_content;
+ rtrim_keeps_content 
+---------------------
+ t
+(1 row)
+
+select trim('abc') = 'abc' as trim_without_blanks;
+ trim_without_blanks 
+---------------------
+ t
+(1 row)
+
+-- pg_catalog trim keeps the empty string in every mode
+select length(btrim('   ')) = 0 as pg_btrim_stays_empty;
+ pg_btrim_stays_empty 
+----------------------
+ t
+(1 row)
+
+-- the same holds for a varchar2 column
+create table test_trim_blank(v varchar2(10));
+insert into test_trim_blank values('   ');
+select trim(v) is null as trim_varchar2_blank_is_null from test_trim_blank;
+ trim_varchar2_blank_is_null 
+-----------------------------
+ t
+(1 row)
+
+drop table test_trim_blank;
+-- an expression index on pg_catalog trim agrees with a sequential scan
+-- before and after a compatible_mode switch
+create table test_trim_index(v text);
+insert into test_trim_index values ('   '), ('  hi  ');
+create index on test_trim_index (length(btrim(v)));
+set enable_seqscan = off;
+select count(*) as idx_oracle from test_trim_index where length(btrim(v)) = 0;
+ idx_oracle 
+------------
+          1
+(1 row)
+
+set ivorysql.compatible_mode = pg;
+select count(*) as idx_pg from test_trim_index where length(btrim(v)) = 0;
+ idx_pg 
+--------
+      1
+(1 row)
+
+set enable_seqscan = on;
+select count(*) as seq_pg from test_trim_index where length(btrim(v)) = 0;
+ seq_pg 
+--------
+      1
+(1 row)
+
+reset ivorysql.compatible_mode;
+reset enable_seqscan;
+drop table test_trim_index;
+/*
  * regexp_replace
  */
 set ivorysql.enable_emptystring_to_null to on;

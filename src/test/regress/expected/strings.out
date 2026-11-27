@@ -3295,3 +3295,22 @@ ERROR:  invalid Unicode code point: 2FFFFF
 SELECT unistr('wrong: \xyz');
 ERROR:  invalid Unicode escape
 HINT:  Unicode escapes must be \XXXX, \+XXXXXX, \uXXXX, or \UXXXXXXXX.
+-- PostgreSQL keeps the empty string result of the trim functions.
+SELECT length(btrim('   ')) = 0 AS pg_btrim_blank_is_empty;
+ pg_btrim_blank_is_empty 
+-------------------------
+ t
+(1 row)
+
+SELECT length(ltrim('   ')) = 0 AS pg_ltrim_blank_is_empty;
+ pg_ltrim_blank_is_empty 
+-------------------------
+ t
+(1 row)
+
+SELECT length(rtrim('   ')) = 0 AS pg_rtrim_blank_is_empty;
+ pg_rtrim_blank_is_empty 
+-------------------------
+ t
+(1 row)
+

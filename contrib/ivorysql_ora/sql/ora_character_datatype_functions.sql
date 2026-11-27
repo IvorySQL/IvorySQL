@@ -260,6 +260,51 @@ select trim('35' from id) from test_trim;
 drop table test_trim;
 
 /*
+ * Oracle has no distinct empty string, so its TRIM/LTRIM/RTRIM return NULL
+ * once the whole input is trimmed away.  The conversion lives in the
+ * Oracle-side sys.* wrappers, leaving the pg_catalog trim functions
+ * mode-independent so expression indexes on them stay valid across a
+ * compatible_mode switch.
+ */
+select trim('   ') is null as trim_blank_is_null;
+select trim('x' from 'xxx') is null as trim_set_is_null;
+select trim(both 'x' from 'xxx') is null as trim_both_set_is_null;
+select trim(leading 'x' from 'xxx') is null as trim_leading_set_is_null;
+select trim(trailing 'x' from 'xxx') is null as trim_trailing_set_is_null;
+select sys.trim('   ') is null as sys_trim_blank_is_null;
+select sys.trim('x','xxx') is null as sys_trim_set_is_null;
+select sys.ltrim('   ') is null as sys_ltrim_blank_is_null;
+select sys.ltrim('xxx','x') is null as sys_ltrim_set_is_null;
+select sys.rtrim('   ') is null as sys_rtrim_blank_is_null;
+select sys.rtrim('xxx','x') is null as sys_rtrim_set_is_null;
+-- values that still have content are not affected
+select trim('  hi  ') = 'hi' as trim_keeps_content;
+select ltrim('  hi  ') = 'hi  ' as ltrim_keeps_content;
+select rtrim('  hi  ') = '  hi' as rtrim_keeps_content;
+select trim('abc') = 'abc' as trim_without_blanks;
+-- pg_catalog trim keeps the empty string in every mode
+select length(btrim('   ')) = 0 as pg_btrim_stays_empty;
+-- the same holds for a varchar2 column
+create table test_trim_blank(v varchar2(10));
+insert into test_trim_blank values('   ');
+select trim(v) is null as trim_varchar2_blank_is_null from test_trim_blank;
+drop table test_trim_blank;
+-- an expression index on pg_catalog trim agrees with a sequential scan
+-- before and after a compatible_mode switch
+create table test_trim_index(v text);
+insert into test_trim_index values ('   '), ('  hi  ');
+create index on test_trim_index (length(btrim(v)));
+set enable_seqscan = off;
+select count(*) as idx_oracle from test_trim_index where length(btrim(v)) = 0;
+set ivorysql.compatible_mode = pg;
+select count(*) as idx_pg from test_trim_index where length(btrim(v)) = 0;
+set enable_seqscan = on;
+select count(*) as seq_pg from test_trim_index where length(btrim(v)) = 0;
+reset ivorysql.compatible_mode;
+reset enable_seqscan;
+drop table test_trim_index;
+
+/*
  * regexp_replace
  */
 set ivorysql.enable_emptystring_to_null to on;
