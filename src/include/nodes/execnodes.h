@@ -2770,6 +2770,14 @@ typedef struct SetOpState
 	SetOpStatePerInput rightInput;	/* current inner-relation input state */
 	bool		need_init;		/* have we read the first tuples yet? */
 
+	/*
+	 * Oracle ROWNUM compatibility: each side of an INTERSECT/EXCEPT has its own
+	 * independent ROWNUM counter, so we save one per input.  These are used by
+	 * both the sorted and the hashed strategies.
+	 */
+	int64		left_rownum;	/* ROWNUM counter for the outer (left) input */
+	int64		right_rownum;	/* ROWNUM counter for the inner (right) input */
+
 	/* these fields are used in SETOP_HASHED mode: */
 	Oid		   *eqfuncoids;		/* per-grouping-field equality fns */
 	FmgrInfo   *hashfunctions;	/* per-grouping-field hash fns */
