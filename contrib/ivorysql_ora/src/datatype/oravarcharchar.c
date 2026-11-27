@@ -687,24 +687,9 @@ oravarchar_regclass(PG_FUNCTION_ARGS)
 Datum
 char_oravarchar(PG_FUNCTION_ARGS)
 {
-	char		arg1 = PG_GETARG_CHAR(0);
-	text	   *result = palloc(VARHDRSZ + 1);
-
-	/*
-	 * Convert \0 to an empty string, for consistency with charout (and
-	 * because the text stuff doesn't like embedded nulls all that well).
-	 */
-	if (arg1 != '\0')
-	{
-		SET_VARSIZE(result, VARHDRSZ + 1);
-		*(VARDATA(result)) = arg1;
-	}
-	else
-		SET_VARSIZE(result, VARHDRSZ);
-
-	PG_RETURN_TEXT_P(result);
+	/* Use the encoding-safe octal representation for high-bit bytes. */
+	return DirectFunctionCall1(char_text, PG_GETARG_DATUM(0));
 }
-
 
 /*
  * oravarchar_char: convert varchar2 to "char"
@@ -712,20 +697,8 @@ char_oravarchar(PG_FUNCTION_ARGS)
 Datum
 oravarchar_char(PG_FUNCTION_ARGS)
 {
-	text	   *arg1 = PG_GETARG_TEXT_P(0);
-	char		result;
-
-	/*
-	 * An empty input string is converted to \0 (for consistency with charin).
-	 * If the input is longer than one character, the excess data is silently
-	 * discarded.
-	 */
-	if (VARSIZE(arg1) > VARHDRSZ)
-		result = *(VARDATA(arg1));
-	else
-		result = '\0';
-
-	PG_RETURN_CHAR(result);
+	/* Match charin(), including its backslash-and-three-octal-digits form. */
+	return DirectFunctionCall1(text_char, PG_GETARG_DATUM(0));
 }
 
 /* name_oravarchar()

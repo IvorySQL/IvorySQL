@@ -186,3 +186,12 @@ explain (costs off) SELECT * FROM TEST_ORAVARCHAR WHERE a='111';
 -- drop table
 DROP TABLE TEST_ORACHAR;
 DROP TABLE TEST_ORAVARCHAR;
+
+-- Internal "char" conversions must use its encoding-safe octal representation.
+SET ivorysql.identifier_case_switch = normal;
+SELECT bool_and(pg_catalog.textsend(c::sys.oravarcharchar::text) = pg_catalog.textsend(c::text)) AS char_ok FROM (SELECT i::pg_catalog."char" AS c FROM generate_series(-128, 127) AS g(i)) s;
+SELECT bool_and(pg_catalog.textsend(c::sys.oravarcharbyte::text) = pg_catalog.textsend(c::text)) AS char_ok FROM (SELECT i::pg_catalog."char" AS c FROM generate_series(-128, 127) AS g(i)) s;
+SELECT bool_and(c::text::sys.oravarcharchar::pg_catalog."char" IS NOT DISTINCT FROM c) AS char_ok FROM (SELECT i::pg_catalog."char" AS c FROM generate_series(-128, 127) AS g(i)) s;
+SELECT bool_and(c::text::sys.oravarcharbyte::pg_catalog."char" IS NOT DISTINCT FROM c) AS char_ok FROM (SELECT i::pg_catalog."char" AS c FROM generate_series(-128, 127) AS g(i)) s;
+SELECT ('\101'::sys.oravarcharchar::pg_catalog."char")::integer = 65 AND ('\000'::sys.oravarcharbyte::pg_catalog."char")::integer = 0 AS char_ok;
+RESET ivorysql.identifier_case_switch;
