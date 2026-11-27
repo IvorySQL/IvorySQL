@@ -2488,6 +2488,16 @@ regression_main(int argc, char *argv[],
 		fputs("log_temp_files = 128kB\n", pg_conf);
 		fputs("max_prepared_transactions = 2\n", pg_conf);
 
+		/*
+		 * In Unix-socket mode the Oracle listener has its own socket in
+		 * the same directory as the PostgreSQL listener.  Avoid binding a
+		 * shared TCP port when parallel regression instances run with
+		 * private socket directories.  An explicit --temp-config can
+		 * still enable the Oracle TCP listener.
+		 */
+		if (hostname == NULL)
+			fputs("ivorysql.listen_addresses = ''\n", pg_conf);
+
 		for (sl = temp_configs; sl != NULL; sl = sl->next)
 		{
 			char	   *temp_config = sl->str;
