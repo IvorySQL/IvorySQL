@@ -487,9 +487,9 @@ SELECT ROUND(UTL_MATCH.JARO_WINKLER('你好','您好')::numeric, 4);
 
 -- full precision (BINARY_DOUBLE return value, unrounded)
 SELECT UTL_MATCH.JARO_WINKLER('MARTHA','MARHTA');
-    jaro_winkler    
---------------------
- 0.9611111111111111
+      jaro_winkler       
+-------------------------
+ 9.6111111111111114E-001
 (1 row)
 
 -- ============================================================
@@ -716,7 +716,7 @@ BEGIN
                  UTL_MATCH.JARO_WINKLER_SIMILARITY('中文测试', '中文测试');
 END;
 $$;
-NOTICE:  ed=2, eds=82, jw=0.9818181818181818, jws=98
+NOTICE:  ed=2, eds=82, jw=9.8181818181818181E-001, jws=98
 NOTICE:  null: ed=-1, eds=100
 NOTICE:  jw null=0, jws null=0
 NOTICE:  kitten vs sitting: ed=3

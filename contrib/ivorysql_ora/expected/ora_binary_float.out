@@ -475,38 +475,38 @@ SELECT to_binary_float('0.0');
 SELECT to_binary_float('1.23');
  to_binary_float 
 -----------------
- 1.23
+ 1.23000002E+000
 (1 row)
 
 SELECT to_binary_float('   -34.84   ');
- to_binary_float 
------------------
- -34.84
+ to_binary_float  
+------------------
+ -3.48400002E+001
 (1 row)
 
 SELECT to_binary_float('1.2345678901234e+20');
  to_binary_float 
 -----------------
- 1.23457e+20
+ 1.2345679E+020
 (1 row)
 
 SELECT to_binary_float('1.2345678901234e-20');
  to_binary_float 
 -----------------
- 1.23457e-20
+ 1.23456787E-020
 (1 row)
 
 -- Two-argument form with a number format model
 SELECT to_binary_float('1,234.5', '9,999.9');
  to_binary_float 
 -----------------
- 1234.5
+ 1.2345E+003
 (1 row)
 
 SELECT to_binary_float('  1234.5', '9999.9');
  to_binary_float 
 -----------------
- 1234.5
+ 1.2345E+003
 (1 row)
 
 -- Empty format model returns NULL instead of crashing
@@ -557,19 +557,19 @@ SELECT to_binary_float('-inf');
 SELECT to_binary_float(42::numeric);
  to_binary_float 
 -----------------
- 42
+ 4.2E+001
 (1 row)
 
 SELECT to_binary_float(42::sys.binary_float);
  to_binary_float 
 -----------------
- 42
+ 4.2E+001
 (1 row)
 
 SELECT to_binary_float(42::sys.binary_double);
  to_binary_float 
 -----------------
- 42
+ 4.2E+001
 (1 row)
 
 --
@@ -646,13 +646,13 @@ SELECT (0f - 1f) / 0f;
 SELECT 1.5f + 2.5f;
  ?column? 
 ----------
- 4
+ 4.0E+000
 (1 row)
 
 SELECT 1f + 1d;
  ?column? 
 ----------
- 2
+ 2.0E+000
 (1 row)
 
 -- Mixed precision in both operand orders. BINARY_DOUBLE outranks BINARY_FLOAT,
@@ -686,20 +686,20 @@ SELECT pg_typeof(1f / 1d), pg_typeof(1d / 1f);
 -- labelled with the type. A binary_float result would overflow the first two,
 -- and would round the third to exactly 1.
 SELECT 3.4e38f * 10d;
-       ?column?       
-----------------------
- 3.39999995214436e+39
+        ?column?         
+-------------------------
+ 3.3999999521443642E+039
 (1 row)
 
 SELECT 10d * 3.4e38f;
-       ?column?       
-----------------------
- 3.39999995214436e+39
+        ?column?         
+-------------------------
+ 3.3999999521443642E+039
 (1 row)
 
 SELECT 1f + 1e-10d;
-   ?column?   
---------------
- 1.0000000001
+     ?column?      
+-------------------
+ 1.0000000001E+000
 (1 row)
 
