@@ -1558,3 +1558,36 @@ select to_single_byte('１．２');
 select to_single_byte(１．２);
 select to_single_byte(3.4);
 select to_single_byte(NULL);
+
+-- ASCII fast paths must preserve overlapping matches and character/byte offsets.
+SET ivorysql.identifier_case_switch = normal;
+WITH cases(h, n, p, k, expected) AS (VALUES
+ ('aaaaa', 'aaa', -1, 1, 3), ('aaaaa', 'aaa', -1, 2, 2),
+ ('aaaaa', 'aaa', -1, 3, 1), ('aaaaa', 'aaa', -1, 4, 0),
+ ('abcabc', 'abc', -4, 1, 1), ('abcabc', 'abc', -3, 1, 4),
+ ('abc', 'abcd', -1, 1, 0), ('abc', 'z', -1, 1, 0),
+ ('abcabc', 'a', -1, 2, 1), ('abc', 'abc', -3, 1, 1),
+ ('中文中文中', '中文中', -1, 2, 1), ('甲乙😀甲乙😀', '甲乙😀', -1, 1, 4),
+ ('abcabc', 'abc', 1, 2, 4), ('aaaaa', 'aaa', 1, 3, 3),
+ ('aeaeae', 'aea', -1, 2, 1), ('aš𐁡aš𐁡', 'aš𐁡', -1, 2, 1))
+SELECT bool_and(sys.instr(h::text, n::text, p, k) = expected) AS search_ok FROM cases;
+WITH cases(h, n, p, k, expected) AS (VALUES
+ ('aaaaa', 'aaa', -1, 2, 2), ('abcabc', 'abc', -4, 1, 1),
+ ('abc', 'abcd', -1, 1, 0), ('abc', 'z', -1, 1, 0),
+ ('abcabc', 'a', -1, 2, 1), ('abc', 'abc', -3, 1, 1),
+ ('中文中文中', '中文中', -1, 1, 7), ('中文中文中', '中文中', -1, 2, 1),
+ ('甲乙😀甲乙😀', '甲乙😀', -1, 1, 11), ('甲乙😀甲乙😀', '甲乙😀', -11, 1, 1),
+ ('aeaeae', 'aea', -1, 2, 1), ('abcabc', 'abc', 1, 2, 4))
+SELECT bool_and(sys.instrb(h::varchar2, n::varchar2, p::number, k::number) = expected) AS search_ok FROM cases;
+-- Exercise ASCII chunks/tails and non-ASCII fallback in shared search setup.
+SELECT bool_and(sys.instr((repeat('a', n) || 'xyz')::text, 'xyz'::text, -1, 1) = n + 1
+                AND sys.instr((repeat('a', n) || '中xyz')::text, 'xyz'::text, -1, 1) = n + 2
+                AND sys.instr((repeat('a', n) || '中')::text, '中'::text, -1, 1) = n + 1)
+       AS search_ok FROM generate_series(1, 65) AS g(n);
+SELECT bool_and(sys.replace((repeat('a', n) || 'xyxy')::text, 'xy'::text, '中文'::text)
+                = (repeat('a', n) || '中文中文')::text) AS search_ok
+FROM generate_series(1, 65) AS g(n);
+SELECT sys.instr(repeat('a', 2048)::text, (repeat('a', 127) || 'b')::text, -1, 1) = 0
+       AND sys.instr(('aba' || repeat('a', 2048))::text, 'aba'::text, -1, 1) = 1
+       AS search_ok;
+RESET ivorysql.identifier_case_switch;
