@@ -47,6 +47,7 @@
 #include "utils/snapmgr.h"
 #include "utils/timeout.h"
 #include "utils/timestamp.h"
+#include "utils/varlena.h"
 
 #include "dbms_scheduler.h"
 
@@ -54,6 +55,66 @@
 int64		sched_bg_job_id = 0;
 int64		sched_fg_job_id = 0;
 char		sched_job_name[SCHED_MAX_NAME_LEN + 1] = "";
+
+/*
+ * sched_append_procedure_name - validate and safely quote a STORED_PROCEDURE
+ * job_action (up to 3 dot-separated identifiers: [schema.][pkg.]proc) into buf.
+ */
+static void
+sched_append_procedure_name(StringInfo buf, const char *action)
+{
+	char	   *raw;
+	List	   *namelist;
+	ListCell   *lc;
+	int			nparts;
+	bool		first = true;
+
+	if (action == NULL || action[0] == '\0')
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_NAME),
+				 errmsg("invalid stored procedure name \"%s\"",
+						action ? action : "")));
+
+	raw = pstrdup(action);
+	if (!SplitIdentifierString(raw, '.', &namelist))
+	{
+		pfree(raw);
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_NAME),
+				 errmsg("invalid stored procedure name \"%s\"", action)));
+	}
+
+	nparts = list_length(namelist);
+	if (nparts < 1 || nparts > 3)
+	{
+		list_free(namelist);
+		pfree(raw);
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_NAME),
+				 errmsg("invalid stored procedure name \"%s\"", action)));
+	}
+
+	foreach(lc, namelist)
+	{
+		const char *ident = (const char *) lfirst(lc);
+
+		if (ident[0] == '\0')
+		{
+			list_free(namelist);
+			pfree(raw);
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_NAME),
+					 errmsg("invalid stored procedure name \"%s\"", action)));
+		}
+		if (!first)
+			appendStringInfoChar(buf, '.');
+		appendStringInfoString(buf, quote_identifier(ident));
+		first = false;
+	}
+
+	list_free(namelist);
+	pfree(raw);
+}
 
 /*
  * sched_execute_job - render and execute a job action through SPI.
@@ -91,7 +152,9 @@ sched_execute_job(SchedJobDef *job)
 		}
 
 		initStringInfo(&buf);
-		appendStringInfo(&buf, "CALL %s(", job->job_action);
+		appendStringInfoString(&buf, "CALL ");
+		sched_append_procedure_name(&buf, job->job_action);
+		appendStringInfoChar(&buf, '(');
 		for (i = 0; i < job->number_of_arguments; i++)
 		{
 			char	   *typename = job->arg_types ? job->arg_types[i] : NULL;
