@@ -594,17 +594,34 @@ ORDER BY rn;
 
 --
 -- LATERAL join with ROWNUM
--- NOTE: Oracle resets ROWNUM for each outer row in LATERAL/CROSS APPLY.
--- Current IvorySQL implementation does not reset, counter continues across outer rows.
+-- A subquery in the FROM clause is a query block of its own, so its ROWNUM
+-- restarts at 1 for every outer row of a LATERAL join.
 --
 
 CREATE TABLE lat_test (id int);
 INSERT INTO lat_test VALUES (1), (2), (3);
 
 -- LATERAL subquery with ROWNUM
--- Oracle produces: (1,1), (2,1), (2,2), (3,1), (3,2), (3,3) - resets for each outer row
--- IvorySQL produces: (1,1), (2,2), (2,3), (3,4), (3,5), (3,6) - counter continues
+-- Expected: (1,1), (2,1), (2,2), (3,1), (3,2), (3,3) - resets for each outer row
 SELECT t.id as outer_id, sub.rn
+FROM lat_test t,
+LATERAL (SELECT ROWNUM as rn FROM lat_test lt WHERE lt.id <= t.id) sub
+ORDER BY t.id, sub.rn;
+
+-- Same, but with LIMIT so the subquery stays a subquery scan node
+SELECT t.id as outer_id, sub.rn
+FROM lat_test t,
+LATERAL (SELECT ROWNUM as rn FROM lat_test lt WHERE lt.id <= t.id LIMIT 10) sub
+ORDER BY t.id, sub.rn;
+
+-- Same, but with OFFSET 0
+SELECT t.id as outer_id, sub.rn
+FROM lat_test t,
+LATERAL (SELECT ROWNUM as rn FROM lat_test lt WHERE lt.id <= t.id OFFSET 0) sub
+ORDER BY t.id, sub.rn;
+
+-- The ROWNUM of the outer query block still counts the join output rows
+SELECT ROWNUM as outer_rn, t.id as outer_id, sub.rn
 FROM lat_test t,
 LATERAL (SELECT ROWNUM as rn FROM lat_test lt WHERE lt.id <= t.id) sub
 ORDER BY t.id, sub.rn;
