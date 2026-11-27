@@ -82,6 +82,7 @@ CREATE OR REPLACE PACKAGE dbms_session IS
     PROCEDURE clear_context(namespace VARCHAR2, attribute VARCHAR2 DEFAULT NULL);
     PROCEDURE clear_all_context(namespace VARCHAR2);
     PROCEDURE reset_package;
+    PROCEDURE sleep(seconds NUMBER);
 END dbms_session;
 
 CREATE OR REPLACE PACKAGE BODY dbms_session IS
@@ -104,6 +105,11 @@ CREATE OR REPLACE PACKAGE BODY dbms_session IS
     PROCEDURE reset_package IS
     BEGIN
         PERFORM sys.ora_dbms_session_reset_package();
+    END;
+
+    PROCEDURE sleep(seconds NUMBER) IS
+    BEGIN
+        PERFORM pg_catalog.pg_sleep(seconds::double precision);
     END;
 
 END dbms_session;

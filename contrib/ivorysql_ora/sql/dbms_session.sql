@@ -156,3 +156,10 @@ call dbms_session.reset_package();
 select sys_context('rp_ns', 'key') as ctx_after_reset;
 
 DROP PACKAGE rp_pkg;
+
+-- DBMS_SESSION.SLEEP with a fractional delay must wait at least that long
+CREATE TEMP TABLE sleep_timing(t0 timestamptz);
+INSERT INTO sleep_timing VALUES (clock_timestamp());
+CALL dbms_session.sleep(0.5);
+SELECT clock_timestamp() - (SELECT t0 FROM sleep_timing) >= numtodsinterval(0.5, 'second') FROM sleep_timing LIMIT 1;
+DROP TABLE sleep_timing;
