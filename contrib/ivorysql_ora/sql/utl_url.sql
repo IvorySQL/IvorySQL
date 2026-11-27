@@ -234,3 +234,16 @@ BEGIN
     RAISE NOTICE 'should not get here: %', v_out;
 END;
 /
+
+-- ASCII-looking trail bytes belong to the multibyte character, not the URL.
+SELECT utl_url.escape('テ/a', FALSE, 'SJIS') AS sjis_trail_letter,
+       utl_url.escape('テ/a', TRUE, 'SJIS') AS sjis_reserved;
+SELECT utl_url.escape('丂@a', FALSE, 'GBK') AS gbk_trail_delimiter,
+       utl_url.escape('丂@a', TRUE, 'GBK') AS gbk_reserved;
+SELECT utl_url.escape('𐀀/a', FALSE, 'GB18030') AS gb18030_trail_digits;
+SELECT utl_url.unescape(utl_url.escape('テ/a', FALSE, 'SJIS'), 'SJIS') = 'テ/a'
+         AS sjis_roundtrip,
+       utl_url.unescape(utl_url.escape('丂@a', FALSE, 'GBK'), 'GBK') = '丂@a'
+         AS gbk_roundtrip,
+       utl_url.unescape(utl_url.escape('𐀀/a', FALSE, 'GB18030'), 'GB18030') = '𐀀/a'
+         AS gb18030_roundtrip;
