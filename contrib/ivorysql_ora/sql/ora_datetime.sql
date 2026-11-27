@@ -621,3 +621,27 @@ SELECT 123.456 * interval'365 11:11:11' day(3) to second;
 -- The operator "<=" supports a comparison between the "number" type and the "varchar2" type.
 SET NLS_DATE_FORMAT = 'YYYY-MM-DD';
 select 25::number <= to_char('1990-01-01'::oradate, 'yyyy');
+
+-- Binary DATE input must discard fractional seconds, just like the cast.
+SET ivorysql.identifier_case_switch = normal;
+CREATE TEMP TABLE date_recv_source (id integer, v sys.oratimestamp);
+CREATE TEMP TABLE date_recv_target (id integer, v sys.oradate);
+INSERT INTO date_recv_source VALUES
+  (1, '2000-01-01 00:00:00.5'),
+  (2, '1999-12-31 23:59:59.5'),
+  (3, '2024-02-29 12:34:56.999999'),
+  (4, '1990-01-01 00:00:00.000001'),
+  (5, '2000-01-01 00:00:00'),
+  (6, 'infinity'::pg_catalog.timestamp::sys.oratimestamp),
+  (7, '-infinity'::pg_catalog.timestamp::sys.oratimestamp), (8, NULL);
+\getenv abs_builddir PG_ABS_BUILDDIR
+\set date_recv_file :abs_builddir '/results/date_recv.data'
+COPY date_recv_source TO :'date_recv_file' (FORMAT binary);
+COPY date_recv_target FROM :'date_recv_file' (FORMAT binary);
+SELECT bool_and(t.v IS NOT DISTINCT FROM s.v::sys.oradate) AS date_ok
+FROM date_recv_source s JOIN date_recv_target t USING (id);
+SELECT bool_and(sys.oradate_send(t.v) IS NOT DISTINCT FROM
+                sys.oradate_send(s.v::sys.oradate)) AS date_ok
+FROM date_recv_source s JOIN date_recv_target t USING (id);
+DROP TABLE date_recv_source, date_recv_target;
+RESET ivorysql.identifier_case_switch;

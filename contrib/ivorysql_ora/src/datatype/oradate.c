@@ -248,7 +248,9 @@ oradate_recv(PG_FUNCTION_ARGS)
 	/* rangecheck: see if timestamp_out would like it */
 	if (TIMESTAMP_NOT_FINITE(timestamp))
 		 /* ok */ ;
-	else if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) != 0)
+	else if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) != 0 ||
+			 /* DATE has whole-second precision, including binary input. */
+			 tm2timestamp(tm, 0, NULL, &timestamp) != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("date out of range")));
