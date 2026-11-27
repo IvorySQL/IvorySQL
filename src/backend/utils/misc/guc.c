@@ -51,6 +51,7 @@
 #include "utils/conffiles.h"
 #include "utils/guc_tables.h"
 #include "utils/memutils.h"
+#include "utils/ora_compatible.h"
 #include "utils/timestamp.h"
 
 #include "executor/nodeModifyTable.h"
@@ -198,6 +199,21 @@ static const char *const map_old_guc_names[] = {
 	"sort_mem", "work_mem",
 	"vacuum_mem", "maintenance_work_mem",
 	"ssl_ecdh_curve", "ssl_groups",
+	NULL
+};
+
+/*
+ * Oracle compatibility synonyms.  These are not retired PostgreSQL names.
+ * find_option() consults this table only when ivorysql.compatible_mode is
+ * oracle (compatible_db == ORA_PARSER).  Each synonym shares the canonical
+ * record: one assign hook, show hook, default, and stack, and one
+ * pg_settings row.
+ *
+ * "time_zone" is the Oracle TIME_ZONE synonym for the canonical TimeZone
+ * parameter.
+ */
+static const char *const map_oracle_guc[] = {
+	"time_zone", "TimeZone",
 	NULL
 };
 
@@ -1143,6 +1159,21 @@ find_option(const char *name, bool create_placeholders, bool skip_errors,
 							   skip_errors, elevel);
 	}
 
+	/*
+	 * Oracle synonyms, same shape as map_old_guc_names.  Applied only when
+	 * ivorysql.compatible_mode is oracle.  The hit is the canonical record,
+	 * not a second GUC.
+	 */
+	if (compatible_db == ORA_PARSER)
+	{
+		for (int i = 0; map_oracle_guc[i] != NULL; i += 2)
+		{
+			if (guc_name_compare(name, map_oracle_guc[i]) == 0)
+				return find_option(map_oracle_guc[i + 1], false,
+								   skip_errors, elevel);
+		}
+	}
+
 	if (create_placeholders)
 	{
 		/*
@@ -1265,6 +1296,23 @@ convert_GUC_name_for_parameter_acl(const char *name)
 		{
 			name = map_old_guc_names[i + 1];
 			break;
+		}
+	}
+
+	/*
+	 * Same Oracle synonym as find_option(), and only in Oracle mode.
+	 * pg_parameter_acl stores the canonical name, so GRANT on time_zone
+	 * covers TimeZone.  PostgreSQL mode leaves the spelled name unchanged.
+	 */
+	if (compatible_db == ORA_PARSER)
+	{
+		for (int i = 0; map_oracle_guc[i] != NULL; i += 2)
+		{
+			if (guc_name_compare(name, map_oracle_guc[i]) == 0)
+			{
+				name = map_oracle_guc[i + 1];
+				break;
+			}
 		}
 	}
 

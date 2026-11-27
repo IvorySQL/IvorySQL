@@ -395,6 +395,100 @@ drop role dbtz_owner;
 
 /* restore previous values */
 set timezone = 'Asia/Hong_Kong';
+
+/*
+ * In Oracle mode, time_zone is a GUC name alias of TimeZone (map_oracle_guc),
+ * not a second parameter, so SET, SHOW, RESET, current_setting('time_zone'),
+ * and set_config() share that record with SESSIONTIMEZONE.  The alias is
+ * applied only when ivorysql.compatible_mode is oracle.  LOCAL and DEFAULT
+ * reset it to its configured default.  DBTIMEZONE copies the current
+ * ivorysql.dbtimezone value into the session time zone and does not change
+ * the database setting.  The PostgreSQL spelling SET TIME ZONE stays
+ * accepted.
+ */
+reset timezone;
+select sessiontimezone() as server_default \gset
+select dbtimezone() as db_tz \gset
+
+alter session set time_zone = '-05:00';
+select sessiontimezone() from dual;
+alter session set time_zone = 'Asia/Shanghai';
+select sessiontimezone() from dual;
+alter session set time zone '-08:00';
+select sessiontimezone() from dual;
+alter session set time_zone = UTC;
+select sessiontimezone() from dual;
+alter session set time_zone to 'Europe/Paris';
+select sessiontimezone() from dual;
+
+alter session set time_zone = 'Not/AZone';
+select sessiontimezone() from dual;
+
+alter session set time_zone = 'Pacific/Honolulu';
+select sessiontimezone() from dual;
+alter session set time_zone = local;
+select sessiontimezone() as after_local \gset
+select case when :'after_local' = :'server_default' then 'yes' else 'no' end
+	as local_restored from dual;
+alter session set time_zone = 'Pacific/Honolulu';
+alter session set time_zone = default;
+select sessiontimezone() as after_default \gset
+select case when :'after_default' = :'server_default' then 'yes' else 'no' end
+	as default_restored from dual;
+alter session set time_zone = 'Pacific/Honolulu';
+reset time_zone;
+select sessiontimezone() as after_reset \gset
+select case when :'after_reset' = :'server_default' then 'yes' else 'no' end
+	as reset_restored from dual;
+
+alter session set time_zone = 'Pacific/Honolulu';
+alter session set time_zone = dbtimezone;
+select sessiontimezone() as via_keyword \gset
+alter session set time_zone = :'db_tz';
+select sessiontimezone() as via_literal \gset
+select case when :'via_keyword' = :'via_literal' then 'yes' else 'no' end
+	as dbtimezone_copied_to_session from dual;
+select dbtimezone() as db_tz_after \gset
+select case when :'db_tz_after' = :'db_tz' then 'yes' else 'no' end
+	as dbtimezone_unchanged from dual;
+
+alter session set time_zone = 'Asia/Shanghai';
+show time_zone;
+select case
+	when sessiontimezone() = current_setting('time_zone')
+	 and current_setting('time_zone') = current_setting('TimeZone')
+	then 'yes' else 'no' end as current_setting_matches from dual;
+select count(*) as time_zone_guc_rows
+	from pg_settings where name = 'time_zone';
+select set_config('time_zone', 'Europe/Paris', false) as set_config_time_zone from dual;
+select case
+	when sessiontimezone() = 'Europe/Paris'
+	 and current_setting('time_zone') = sessiontimezone()
+	then 'yes' else 'no' end as set_config_matches from dual;
+
+/*
+ * PostgreSQL compatibility mode does not recognize time_zone.  SET, SHOW,
+ * RESET, current_setting(), and set_config() fail as unrecognized.
+ */
+SET ivorysql.compatible_mode = pg;
+SET time_zone = 'UTC';
+SHOW time_zone;
+RESET time_zone;
+SELECT current_setting('time_zone');
+SELECT set_config('time_zone', 'UTC', false);
+RESET ivorysql.compatible_mode;
+select case
+	when sessiontimezone() = current_setting('time_zone')
+	then 'yes' else 'no' end as oracle_alias_again from dual;
+
+/* time_zone remains an identifier, not a reserved word */
+create table ora_tz_ident(time_zone varchar2(10));
+insert into ora_tz_ident values ('ok');
+select time_zone from ora_tz_ident;
+drop table ora_tz_ident;
+
+/* later tests in this file expect the zone set above */
+set timezone = 'Asia/Hong_Kong';
 SET NLS_TIMESTAMP_TZ_FORMAT = 'MM-DD-YYYY HH24:MI:SS.FF9 TZH:TZM';
 
 alter session set nls_date_format='YYYY-MM-DD HH24:MI:SS';

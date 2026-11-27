@@ -217,6 +217,7 @@ static AlterTableCmd *makeModifyColumnTypeOrVisibilityCmd(char *colname,
 												  TypeName *typeName,
 												  int location);
 static bool oracleJoinOpExists(const Node *expr);
+static void ora_finish_time_zone_set(VariableSetStmt *n);
 
 %}
 
@@ -1946,6 +1947,7 @@ generic_set:
 					n->name = $1;
 					n->args = $3;
 					n->location = @3;
+					ora_finish_time_zone_set(n);
 					$$ = n;
 				}
 			| var_name '=' var_list
@@ -1956,6 +1958,7 @@ generic_set:
 					n->name = $1;
 					n->args = $3;
 					n->location = @3;
+					ora_finish_time_zone_set(n);
 					$$ = n;
 				}
 			| var_name TO DEFAULT
@@ -24392,6 +24395,58 @@ static void determineLanguage(List *options)
 	if (language_item == NULL)
 	{
 		options = lappend(options,  makeDefElem("language", (Node *)makeString("plisql"), -1));
+	}
+}
+
+/*
+ * ora_time_zone_value_is_reset
+ *		True when a generic SET value is Oracle's LOCAL.
+ *
+ *		In an Oracle session, time_zone is an alias of TimeZone
+ *		(map_oracle_guc, consulted by find_option).  SET, SHOW, and RESET
+ *		need no rename.  The alias is not applied in PostgreSQL mode.
+ *		SET TIME ZONE zone_value
+ *		compiles LOCAL and DEFAULT to VAR_SET_DEFAULT.  generic_set has
+ *		already turned LOCAL into an A_Const, so recognize it here and take
+ *		that same reset path.  A quoted 'local' is indistinguishable from
+ *		the keyword once generic_set has built the A_Const.
+ *
+ *		DBTIMEZONE is not handled here.  It stays the string "dbtimezone"
+ *		and check_timezone() copies ivorysql.dbtimezone into the session
+ *		time zone at assignment time.  That does not modify
+ *		ivorysql.dbtimezone and is not ALTER DATABASE.
+ */
+static bool
+ora_time_zone_value_is_reset(List *args)
+{
+	A_Const    *con;
+
+	if (list_length(args) != 1)
+		return false;
+
+	con = linitial_node(A_Const, args);
+	if (con->isnull || !IsA(&con->val, String))
+		return false;
+
+	return pg_strcasecmp(strVal(&con->val), "local") == 0;
+}
+
+/*
+ * ora_finish_time_zone_set
+ *		Turn Oracle SET TIME_ZONE = LOCAL into a reset of TimeZone.
+ *		The name itself is resolved by the GUC alias, not rewritten here.
+ */
+static void
+ora_finish_time_zone_set(VariableSetStmt *n)
+{
+	if (pg_strcasecmp(n->name, "time_zone") != 0)
+		return;
+
+	if (n->kind == VAR_SET_VALUE &&
+		ora_time_zone_value_is_reset(n->args))
+	{
+		n->kind = VAR_SET_DEFAULT;
+		n->args = NIL;
 	}
 }
 

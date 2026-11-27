@@ -267,6 +267,37 @@ check_timezone(char **newval, void **extra, GucSource source)
 	char	   *endptr;
 	double		hours;
 
+	/*
+	 * Oracle SET TIME_ZONE = DBTIMEZONE copies the database time zone into
+	 * the session time zone.  TIME_ZONE is not a keyword, so the parser
+	 * passes the string "dbtimezone".  Resolve it when the GUC is assigned
+	 * rather than while parsing.  This reads ivorysql.dbtimezone and does
+	 * not modify it.  ALTER DATABASE remains the only way to change that
+	 * parameter, and the new value is picked up by later sessions.
+	 * PostgreSQL mode keeps the ordinary time zone lookup.
+	 */
+	if (compatible_db == ORA_PARSER &&
+		pg_strcasecmp(*newval, "dbtimezone") == 0)
+	{
+		const char *dbtz;
+		char	   *copy;
+
+		dbtz = GetConfigOption("ivorysql.dbtimezone", true, false);
+		if (dbtz == NULL || dbtz[0] == '\0')
+		{
+			GUC_check_errmsg("database time zone is not available");
+			GUC_check_errdetail("Parameter \"ivorysql.dbtimezone\" is not set.");
+			return false;
+		}
+
+		copy = guc_strdup(LOG, dbtz);
+		if (copy == NULL)
+			return false;
+
+		guc_free(*newval);
+		*newval = copy;
+	}
+
 	if (pg_strncasecmp(*newval, "interval", 8) == 0)
 	{
 		/*
