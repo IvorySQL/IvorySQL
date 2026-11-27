@@ -1942,6 +1942,26 @@ end;
 
 DROP FUNCTION f1(int);
 
+-- INSERT targets can use bare aliases with both record and scalar values.
+\pset format unaligned
+CREATE TEMP TABLE rowtype_insert_alias(id int, name varchar(5));
+DECLARE
+  rt rowtype_insert_alias%ROWTYPE;
+BEGIN
+  rt.id := 1;
+  rt.name := 'sam';
+  INSERT INTO rowtype_insert_alias a VALUES rt;
+END;
+/
+INSERT INTO rowtype_insert_alias b VALUES (2, 'bob') RETURNING b.id;
+INSERT INTO pg_temp.rowtype_insert_alias "alias x" (id, name) VALUES (3, 'leo');
+INSERT INTO rowtype_insert_alias AS a VALUES (4, 'jo');
+INSERT INTO rowtype_insert_alias (id, name) VALUES (5, 'kai');
+INSERT INTO rowtype_insert_alias c SELECT 6, 'tom' FROM dual;
+SELECT id, name FROM rowtype_insert_alias ORDER BY id;
+DROP TABLE rowtype_insert_alias;
+\pset format aligned
+
 --not support record inserts using the EXECUTE statement.
 declare
   r  t1%ROWTYPE;

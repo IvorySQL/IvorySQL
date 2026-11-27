@@ -3724,6 +3724,10 @@ ExecEvalMinMax(ExprState *state, ExprEvalStep *op)
 	bool	   *nulls = op->d.minmax.nulls;
 	FunctionCallInfo fcinfo = op->d.minmax.fcinfo_data;
 	MinMaxOp	operator = op->d.minmax.op;
+	bool		is_greatest = operator == IS_GREATEST ||
+		operator == IS_ORACLE_GREATEST;
+	bool		null_propagates = operator == IS_ORACLE_GREATEST ||
+		operator == IS_ORACLE_LEAST;
 
 	/* set at initialization */
 	Assert(fcinfo->args[0].isnull == false);
@@ -3734,9 +3738,16 @@ ExecEvalMinMax(ExprState *state, ExprEvalStep *op)
 
 	for (int off = 0; off < op->d.minmax.nelems; off++)
 	{
-		/* ignore NULL inputs */
+		/* Oracle propagates NULL; PostgreSQL ignores NULL inputs. */
 		if (nulls[off])
+		{
+			if (null_propagates)
+			{
+				*op->resnull = true;
+				return;
+			}
 			continue;
+		}
 
 		if (*op->resnull)
 		{
@@ -3757,9 +3768,9 @@ ExecEvalMinMax(ExprState *state, ExprEvalStep *op)
 			if (fcinfo->isnull) /* probably should not happen */
 				continue;
 
-			if (cmpresult > 0 && operator == IS_LEAST)
+			if (cmpresult > 0 && !is_greatest)
 				*op->resvalue = values[off];
-			else if (cmpresult < 0 && operator == IS_GREATEST)
+			else if (cmpresult < 0 && is_greatest)
 				*op->resvalue = values[off];
 		}
 	}

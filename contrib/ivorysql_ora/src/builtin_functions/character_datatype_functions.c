@@ -99,7 +99,6 @@ static void text_position_cleanup(TextPositionState *state);
 static int	text_position_next(int start_pos, TextPositionState *state);
 static int text_instring(text *str, text *search_str, int32 position, int32 occurrence, bool isByte);
 static int	text_position_prev(int start_pos, TextPositionState *state);
-static void appendStringInfoText(StringInfo str, const text *t);
 static int getindex(const char **map, char *mbchar, int mblen);
 
 /*
@@ -649,113 +648,63 @@ ora_regexp_instr(PG_FUNCTION_ARGS)
 
 /*
  * ora_regexp_like()
- * if source string matched by a regular expression return true or return false;
+ * Test for a match using Oracle match_param semantics.  A NULL match_param
+ * means the default options, whereas a NULL source or pattern is unknown.
  */
 Datum
 ora_regexp_like(PG_FUNCTION_ARGS)
 {
-	text		*s = PG_ARGISNULL(0) ? NULL :PG_GETARG_TEXT_P(0);
-	text		*p = PG_ARGISNULL(1) ? NULL :PG_GETARG_TEXT_P(1);
-	text		*in_flag = PG_ARGISNULL(2) ? PG_STR_GET_TEXT("") : PG_GETARG_TEXT_P(2);
-	char		*in_flag_p = NULL;
-	int			in_flag_len, i, out_flag;
+	text	   *s;
+	text	   *p;
+	text	   *in_flag = NULL;
+	pg_re_flags flags;
 	bool		match;
-	regmatch_t	pmatch[2];
 
-	if ((NULL == s) || (NULL == p))
+	if (PG_NARGS() > 2 && !PG_ARGISNULL(2))
+		in_flag = PG_GETARG_TEXT_PP(2);
+
+	/* Reject PostgreSQL-only options before entering the shared parser. */
+	if (in_flag != NULL)
 	{
-		PG_RETURN_BOOL(false);
-	}
+		const char *opt_p = VARDATA_ANY(in_flag);
+		int			opt_len = VARSIZE_ANY_EXHDR(in_flag);
 
-	in_flag_p = VARDATA(in_flag);
-	in_flag_len = (VARSIZE(in_flag) - VARHDRSZ);
-
-	/* parse flag options */
-	out_flag = REG_ADVANCED;
-	for (i = 0; i <in_flag_len; i++)
-	{
-		switch (in_flag_p[i])
+		for (int i = 0; i < opt_len; i++)
 		{
-			case 'i':
-				out_flag  |=  REG_ICASE;
-				break;
-			case 'n':
-				out_flag |= REG_NEWLINE;
-				break;
-			case 'c':
-				out_flag  &=  ~REG_ICASE;
-				break;
-			case 'x':
-				out_flag |= REG_EXPANDED;
-				break;
-			default:
+			if (!MATCHPARAM(opt_p[i]))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("invalid option of regexp_like: %c",
-						 in_flag_p[i])));
-				break;
+						 errmsg("illegal argument for function")));
 		}
 	}
 
-	/*
-	 * We pass two regmatch_t structs to get info about the overall match and
-	 * the match for the first parenthesized subexpression (if any). If there
-	 * is a parenthesized subexpression, we return what it matched; else
-	 * return what the whole regexp matched.
-	 */
-	match = RE_compile_and_execute(p,
-								VARDATA(s),
-								VARSIZE(s) - VARHDRSZ,
-								out_flag,
-								PG_GET_COLLATION(),
-								2, pmatch);
+	if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
+		PG_RETURN_NULL();
 
-	/* match? then return the substring matching the pattern */
-	if (match)
-		PG_RETURN_BOOL(true);
-	else
-		PG_RETURN_BOOL(false);
+	s = PG_GETARG_TEXT_PP(0);
+	p = PG_GETARG_TEXT_PP(1);
+
+	/* This helper implements independent Oracle m/n options and defaults. */
+	ora_parse_re_flags(&flags, in_flag);
+	match = RE_compile_and_execute(p,
+								   VARDATA_ANY(s),
+								   VARSIZE_ANY_EXHDR(s),
+								   flags.cflags,
+								   PG_GET_COLLATION(),
+								   0, NULL);
+
+	PG_FREE_IF_COPY(s, 0);
+	PG_FREE_IF_COPY(p, 1);
+	if (in_flag != NULL)
+		PG_FREE_IF_COPY(in_flag, 2);
+	PG_RETURN_BOOL(match);
 }
 
-/*
- * ora_regexp_like_no_flag()
- * if source string matched by a regular expression return true or return false;
- * the flag defalut is PATTERN_FLAG;
- */
+/* Keep the two-argument entry point on the same default-options path. */
 Datum
 ora_regexp_like_no_flags(PG_FUNCTION_ARGS)
 {
-	text		*s = PG_ARGISNULL(0) ? NULL :PG_GETARG_TEXT_P(0);
-	text		*p = PG_ARGISNULL(1) ? NULL :PG_GETARG_TEXT_P(1);
-	int			out_flag;
-	bool		match;
-	regmatch_t	pmatch[2];
-
-	if ((NULL == s) || (NULL == p) )
-	{
-		PG_RETURN_BOOL(false);
-	}
-	/* parse flag options */
-	out_flag = REG_ADVANCED;
-
-	/*
-	 * We pass two regmatch_t structs to get info about the overall match and
-	 * the match for the first parenthesized subexpression (if any). If there
-	 * is a parenthesized subexpression, we return what it matched; else
-	 * return what the whole regexp matched.
-	 */
-	match = RE_compile_and_execute(p,
-								VARDATA(s),
-								VARSIZE(s) - VARHDRSZ,
-								out_flag,
-								PG_GET_COLLATION(),
-								2, pmatch);
-
-	/* match? then return the substring matching the pattern */
-	if (match)
-		PG_RETURN_BOOL(true);
-	else
-		PG_RETURN_BOOL(false);
+	return ora_regexp_like(fcinfo);
 }
 
 /********************************************************************
@@ -1021,7 +970,7 @@ ora_substrb_no_length(PG_FUNCTION_ARGS)
  *
  * Purpose:
  *	 Replace all occurrences of 'from_sub_text' in 'src_text' with
- *	 'to_sub_text'.
+ *	 'to_sub_text', using PostgreSQL's collation-aware implementation.
  *
  * Modify:
  * 	1. Change the 'strict' property of the function from 'true' to
@@ -1029,99 +978,48 @@ ora_substrb_no_length(PG_FUNCTION_ARGS)
  *	2. Returns 'src_text' if 'from_sub_text' == NULL or 'src_text' == NULL.
  *	3. If 'to_sub_text' is omitted or null, then all occurrences of 
  *	   'from_sub_text' are removed.
+ *	4. Empty source and result strings are returned as NULL.
  *
  ********************************************************************/
 Datum
 ora_replace(PG_FUNCTION_ARGS)
 {
-	text	   *src_text = NULL;
-	text	   *from_sub_text = NULL;
-	text	   *to_sub_text = NULL;
-	int			src_text_len;
-	int			from_sub_text_len;
-	TextPositionState state;
-	text	   *ret_text;
-	int			start_posn;
-	int			curr_posn;
-	int			chunk_len;
-	char	   *start_ptr;
-	StringInfoData str;
+	text	   *src_text;
+	text	   *from_sub_text;
+	text	   *to_sub_text;
+	text	   *result;
 
-	/*
-	 * Compatible with oracle, if arg1 or agr2 is null return 'src_text'.
-	 * if arg3 is null, then all occurrences of arg2 are removed.
-	 */
+	/* A NULL search leaves the source unchanged; a NULL replacement deletes. */
 	if (PG_ARGISNULL(0))
 		PG_RETURN_NULL();
-	else if (PG_ARGISNULL(1))
-		PG_RETURN_TEXT_P(PG_GETARG_TEXT_PP(0));
-	
+
 	src_text = PG_GETARG_TEXT_PP(0);
+	if (VARSIZE_ANY_EXHDR(src_text) == 0)
+		PG_RETURN_NULL();
+	if (PG_ARGISNULL(1))
+		PG_RETURN_TEXT_P(src_text);
+
 	from_sub_text = PG_GETARG_TEXT_PP(1);
-	if (!PG_ARGISNULL(2))
+	if (PG_ARGISNULL(2))
+		to_sub_text = cstring_to_text("");
+	else
 		to_sub_text = PG_GETARG_TEXT_PP(2);
 
-	text_position_setup(src_text, from_sub_text, &state, false);
+	/* Retain PostgreSQL's handling of deterministic and ICU collations. */
+	result = DatumGetTextP(DirectFunctionCall3Coll(replace_text,
+												PG_GET_COLLATION(),
+												PointerGetDatum(src_text),
+												PointerGetDatum(from_sub_text),
+												PointerGetDatum(to_sub_text)));
 
-	/*
-	 * Note: we check the converted string length, not the original, because
-	 * they could be different if the input contained invalid encoding.
-	 */
-	src_text_len = state.len1;
-	from_sub_text_len = state.len2;
-
-	/* Return unmodified source string if empty source or pattern */
-	if (src_text_len < 1 || from_sub_text_len < 1)
+	/* Deleting the entire source produces Oracle's NULL string. */
+	if (VARSIZE_ANY_EXHDR(result) == 0)
 	{
-		text_position_cleanup(&state);
-		PG_RETURN_TEXT_P(src_text);
+		pfree(result);
+		PG_RETURN_NULL();
 	}
 
-	start_posn = 1;
-	curr_posn = text_position_next(1, &state);
-
-	/* When the from_sub_text is not found, there is nothing to do. */
-	if (curr_posn == 0)
-	{
-		text_position_cleanup(&state);
-		PG_RETURN_TEXT_P(src_text);
-	}
-
-	/* start_ptr points to the start_posn'th character of src_text */
-	start_ptr = VARDATA_ANY(src_text);
-
-	initStringInfo(&str);
-
-	do
-	{
-		CHECK_FOR_INTERRUPTS();
-
-		/* copy the data skipped over by last text_position_next() */
-		chunk_len = charlen_to_bytelen(start_ptr, curr_posn - start_posn);
-		appendBinaryStringInfo(&str, start_ptr, chunk_len);
-
-		if (to_sub_text != NULL)
-			appendStringInfoText(&str, to_sub_text);
-
-		start_posn = curr_posn;
-		start_ptr += chunk_len;
-		start_posn += from_sub_text_len;
-		start_ptr += charlen_to_bytelen(start_ptr, from_sub_text_len);
-
-		curr_posn = text_position_next(start_posn, &state);
-	}
-	while (curr_posn > 0);
-
-	/* copy trailing data */
-	chunk_len = ((char *) src_text + VARSIZE_ANY(src_text)) - start_ptr;
-	appendBinaryStringInfo(&str, start_ptr, chunk_len);
-
-	text_position_cleanup(&state);
-
-	ret_text = cstring_to_text_with_len(str.data, str.len);
-	pfree(str.data);
-
-	PG_RETURN_TEXT_P(ret_text);
+	PG_RETURN_TEXT_P(result);
 }
 
 /**********************************************************************
@@ -1641,7 +1539,7 @@ text_instring(text *str, text *search_str, int32 position, int32 occurrence, boo
 	int32	src_text_len;	/* length of src text */
 	int32	sub_text_len;	/* length of search_str text */
 	int32	result;
-	TextPositionState	state;
+	TextPositionState	state = {0};
 
 	text_position_setup(str, search_str, &state, isByte);
 
@@ -1707,18 +1605,6 @@ text_instring(text *str, text *search_str, int32 position, int32 occurrence, boo
 	text_position_cleanup(&state);
 
 	return result;
-}
-
-/*
- * appendStringInfoText
- *
- * Append a text to str.
- * Like appendStringInfoString(str, text_to_cstring(t)) but faster.
- */
-static void
-appendStringInfoText(StringInfo str, const text *t)
-{
-	appendBinaryStringInfo(str, VARDATA_ANY(t), VARSIZE_ANY_EXHDR(t));
 }
 
 /*

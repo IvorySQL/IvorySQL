@@ -342,6 +342,100 @@ foreach my $run (sort keys %pgdump_runs)
 	}
 }
 
+# A custom archive must restore the package owner and the body's edition property.
+my $package_owner = 'regress_dump_package_owner';
+my $package_archive = "$tempdir/package_owner.dump";
+$node->safe_psql('testdb',
+	"CREATE ROLE $package_owner;
+	 ALTER PACKAGE public.test_pkg NONEDITIONABLE;
+	 ALTER PACKAGE public.test_pkg OWNER TO $package_owner;",
+	connect_to_oraport => 1);
+$node->command_ok(
+	['pg_dump', '-p', $node->oraport, '-Fc', '-f', $package_archive, 'testdb'],
+	'custom format dump with package ownership');
+$node->safe_psql('postgres', 'CREATE DATABASE package_restore');
+$node->command_ok(
+	['pg_restore', '-p', $node->oraport, '--exit-on-error', '-d',
+	 'package_restore', $package_archive],
+	'custom archive restores package to another database');
+is($node->safe_psql('package_restore',
+	q{SELECT pg_get_userbyid(pkgowner) FROM pg_package
+	    WHERE pkgname = 'test_pkg' AND pkgnamespace = 'public'::regnamespace},
+	connect_to_oraport => 1),
+	$package_owner, 'restored package has the original owner');
+is($node->safe_psql('package_restore',
+	q{SELECT p.editable FROM pg_package p
+	    JOIN pg_package_body b ON b.pkgoid = p.oid
+	    WHERE p.pkgname = 'test_pkg' AND p.pkgnamespace = 'public'::regnamespace},
+	connect_to_oraport => 1),
+	'f', 'restored package body inherits NONEDITIONABLE');
+is($node->safe_psql('package_restore',
+	'SELECT public.test_pkg.hello() FROM dual', connect_to_oraport => 1),
+	'Hello from test package', 'function from restored package is callable');
+
+command_fails_like(
+	[ 'pg_dump', '-m', 'invalid' ],
+	qr/unrecognized database mode: invalid/,
+	'pg_dump rejects an unrecognized connection mode');
+
+$node->safe_psql('testdb',
+	q{CREATE TABLE public.test_identity_always (
+		id number GENERATED ALWAYS AS IDENTITY (START WITH 10 INCREMENT BY 5),
+		payload varchar2(20)
+	  );
+	  INSERT INTO public.test_identity_always(payload) VALUES ('first'), ('second');},
+	connect_to_oraport => 1);
+my $next_identity = $node->safe_psql('testdb',
+	'SELECT last_value + 5 FROM public.test_identity_always_id_seq',
+	connect_to_oraport => 1);
+
+foreach my $format ('p', 'c')
+{
+	my $target = "identity_restore_$format";
+	my $dumpfile = "$tempdir/$target.dump";
+	$node->safe_psql('postgres', "CREATE DATABASE $target");
+
+	if ($format eq 'p')
+	{
+		local $ENV{PGHOST} = $node->host;
+		local $ENV{PGPORT} = $node->oraport;
+		command_ok(
+			['pg_dump', '-m', 'oracle', '-Fp', '-t', 'public.test_identity_always',
+			 '-f', $dumpfile, 'testdb'],
+			'plain Oracle identity dump uses the configured PGPORT');
+		$node->command_ok(
+			['psql', '-X', '-v', 'ON_ERROR_STOP=1', '-p', $node->oraport, '-d',
+			 $target, '-f', $dumpfile],
+			'plain Oracle identity dump restores');
+	}
+	else
+	{
+		$node->command_ok(
+			['pg_dump', '--mode=oracle', '-p', $node->oraport, '-Fc',
+			 '-t', 'public.test_identity_always', '-f', $dumpfile, 'testdb'],
+			'custom Oracle identity dump honors an explicit port');
+		$node->command_ok(
+			['pg_restore', '--exit-on-error', '-p', $node->oraport, '-d',
+			 $target, $dumpfile],
+			'custom Oracle identity dump restores');
+	}
+
+	is($node->safe_psql($target,
+		'SELECT id, payload FROM public.test_identity_always ORDER BY id',
+		connect_to_oraport => 1), "10|first\n15|second",
+		"$target preserves existing identity values");
+	is($node->safe_psql($target,
+		q{INSERT INTO public.test_identity_always(payload) VALUES ('restored') RETURNING id},
+		connect_to_oraport => 1), $next_identity,
+		"$target continues the identity sequence from the saved state");
+	my ($result, undef, $stderr) = $node->psql($target,
+		q{INSERT INTO public.test_identity_always VALUES (999, 'explicit')},
+		connect_to_oraport => 1);
+	is($result, 3, "$target rejects an explicit identity value");
+	like($stderr, qr/cannot insert a generated always identity column "id"/,
+		"$target preserves GENERATED ALWAYS behavior");
+}
+
 #########################################
 # Stop the database instance, which will be removed at the end of the tests.
 

@@ -174,6 +174,7 @@ typedef struct PLiSQL_yylex_global_proper
 /* Internal functions */
 static int	internal_yylex(TokenAuxData *auxdata, yyscan_t yyscanner);
 static void push_back_token(int token, TokenAuxData *auxdata, yyscan_t yyscanner);
+static bool is_cursor_definition(yyscan_t yyscanner);
 static void location_lineno_init(yyscan_t yyscanner);
 
 /*
@@ -412,6 +413,10 @@ plisql_yylex(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner)
 		 */
 	}
 
+	if (tok1 == K_CURSOR && plisql_IdentifierLookup == IDENTIFIER_LOOKUP_DECLARE &&
+		is_cursor_definition(yyscanner))
+		tok1 = K_CURSOR_PREFIX;
+
 	*yylvalp = aux1.lval;
 	*yyllocp = aux1.lloc;
 	yyextra->plisql_yyleng = aux1.leng;
@@ -497,6 +502,48 @@ push_back_token(int token, TokenAuxData *auxdata, yyscan_t yyscanner)
 	yyextra->pushback_token[yyextra->num_pushbacks] = token;
 	yyextra->pushback_auxdata[yyextra->num_pushbacks] = *auxdata;
 	yyextra->num_pushbacks++;
+}
+
+/*
+ * Distinguish CURSOR name IS or CURSOR name (arg type ... from declarations
+ * of a variable named cursor, including types with modifiers such as
+ * cursor varchar(20).  The core scanner returns the unreserved IS as IDENT.
+ */
+static bool
+is_cursor_definition(yyscan_t yyscanner)
+{
+	TokenAuxData aux[4];
+	int			tokens[4];
+	int			count = 1;
+	bool		is_definition = false;
+
+	tokens[0] = internal_yylex(&aux[0], yyscanner);
+	if (tokens[0] == IDENT)
+	{
+		tokens[1] = internal_yylex(&aux[1], yyscanner);
+		count = 2;
+		if (tokens[1] == IDENT)
+			is_definition = strcmp(aux[1].lval.str, "is") == 0 &&
+				yyextra->scanorig[aux[1].lloc] != '"';
+		else if (tokens[1] == '(')
+		{
+			tokens[2] = internal_yylex(&aux[2], yyscanner);
+			count = 3;
+			if (tokens[2] == IDENT)
+			{
+				tokens[3] = internal_yylex(&aux[3], yyscanner);
+				count = 4;
+				is_definition = tokens[3] == IDENT;
+			}
+		}
+	}
+
+	while (count > 0)
+	{
+		count--;
+		push_back_token(tokens[count], &aux[count], yyscanner);
+	}
+	return is_definition;
 }
 
 /*

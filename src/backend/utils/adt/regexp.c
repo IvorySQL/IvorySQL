@@ -1684,13 +1684,10 @@ ora_build_regexp_instr_matches_result(regexp_matches_ctx *matchctx ,int ret_opt,
 		else if (matchctx->npatterns == 1)
 		{
 			so = matchctx->match_locs[loc];
-			eo = matchctx->match_locs[loc + matchctx->npatterns * 2 -1] - 1;
-			if(eo < 0)
-				eo = 0;
-			if(so == eo)
-				return false;
+			eo = matchctx->match_locs[loc + 1];
 		}
 
+		/* Equal endpoints describe a valid zero-length match. */
 		if (so < 0 || eo < 0)
 		{
 			return false;
@@ -1704,7 +1701,8 @@ ora_build_regexp_instr_matches_result(regexp_matches_ctx *matchctx ,int ret_opt,
 			}
 			else
 			{
-				sprintf(ret_str_val,"%d",eo + 2);
+				/* The regex engine already stores the exclusive end. */
+				sprintf(ret_str_val,"%d",eo + 1);
 				*subpattern = PointerGetDatum(cstring_to_text(ret_str_val));
 			}
 		}
@@ -1741,6 +1739,10 @@ ora_setup_regexp_instr_matches(text *src_text,
 	int			search_start;
 	bool		use_subpatterns;
 
+	/* A requested capture must exist, even when the pattern has no groups. */
+	if (subexpr_pos > re->re_nsub)
+		return false;
+
 	/* save original string --- we'll extract result substrings from it */
 	matchctx->orig_str = src_text;
 
@@ -1749,7 +1751,8 @@ ora_setup_regexp_instr_matches(text *src_text,
 	{
 		use_subpatterns = true;
 		matchctx->use_subpatterns = true;
-		matchctx->npatterns = re->re_nsub;
+		/* pmatch holds the overall match and Oracle's first nine captures. */
+		matchctx->npatterns = Min(re->re_nsub, lengthof(pmatch) - 1);
 	}
 	else
 	{
@@ -1772,6 +1775,10 @@ ora_setup_regexp_instr_matches(text *src_text,
 
 	if(start_posn > 1)
 		search_start = start_posn - 1;
+	/* Oracle does not search when position is past the last character. */
+	if (search_start >= data_len)
+		return false;
+
 	while (RE_wchar_execute(re, data, data_len, search_start,
 							10, pmatch))
 	{

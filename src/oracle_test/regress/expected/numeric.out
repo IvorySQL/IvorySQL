@@ -2250,7 +2250,7 @@ SELECT to_number('.01', 'FM9.99');
 SELECT to_number('.0', '99999999.99999999');
  to_number 
 -----------
- 0.0
+ 0
 (1 row)
 
 SELECT to_number('0', '99.99');

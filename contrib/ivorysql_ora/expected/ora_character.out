@@ -171,9 +171,9 @@ SELECT '123'::char(3) * '123'::char(3);
 (1 row)
 
 SELECT '123'::char(3) / '123'::char(3);
-        ?column?        
-------------------------
- 1.00000000000000000000
+ ?column? 
+----------
+ 1
 (1 row)
 
 -- char/varchar2
@@ -196,9 +196,9 @@ SELECT '123'::char(3) * '123'::varchar2(3);
 (1 row)
 
 SELECT '123'::char(3) / '123'::varchar2(3);
-        ?column?        
-------------------------
- 1.00000000000000000000
+ ?column? 
+----------
+ 1
 (1 row)
 
 -- char/unknown
@@ -221,9 +221,9 @@ SELECT '123'::char(3) * '123';
 (1 row)
 
 SELECT '123'::char(3) / '123';
-        ?column?        
-------------------------
- 1.00000000000000000000
+ ?column? 
+----------
+ 1
 (1 row)
 
 -- varchar2/varchar2
@@ -246,9 +246,9 @@ SELECT '123'::varchar2(3) * '123'::varchar2(3);
 (1 row)
 
 SELECT '123'::varchar2(3) / '123'::varchar2(3);
-        ?column?        
-------------------------
- 1.00000000000000000000
+ ?column? 
+----------
+ 1
 (1 row)
 
 -- varchar2/char
@@ -271,9 +271,9 @@ SELECT '123'::varchar2(3) * '123'::char(3);
 (1 row)
 
 SELECT '123'::varchar2(3) / '123'::char(3);
-        ?column?        
-------------------------
- 1.00000000000000000000
+ ?column? 
+----------
+ 1
 (1 row)
 
 -- varchar2/unknown
@@ -296,9 +296,9 @@ SELECT '123'::varchar2(3) * '123';
 (1 row)
 
 SELECT '123'::varchar2(3) / '123';
-        ?column?        
-------------------------
- 1.00000000000000000000
+ ?column? 
+----------
+ 1
 (1 row)
 
 -- unknown/unknown	 
@@ -321,9 +321,9 @@ SELECT '123' * '123';
 (1 row)
 
 SELECT '123' / '123';
-        ?column?        
-------------------------
- 1.00000000000000000000
+ ?column? 
+----------
+ 1
 (1 row)
 
 -- Spaces are ignored when CHAR compared with CHAR

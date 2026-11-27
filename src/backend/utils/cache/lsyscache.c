@@ -2381,11 +2381,12 @@ func_volatile(Oid funcid)
  * ivorysql_ora functions have dynamically assigned OIDs, which can exceed
  * FirstNormalObjectId even when they are installed by initdb.
  *
- * For now, only length(text) is supported.  Extension membership alone is not
- * sufficient: an extension can contain arbitrary SQL and mutable functions,
- * and CREATE OR REPLACE can change a member's implementation.  Check the exact
- * signature and C implementation as well.  Do not cache the result, since the
- * definition and extension membership can change within the same transaction.
+ * Only length(text) and replace(text, text, text) are supported.  Extension
+ * membership alone is not sufficient: an extension can contain arbitrary SQL
+ * and mutable functions, and CREATE OR REPLACE can change a member's
+ * implementation.  Check the exact signature and C implementation as well.
+ * Do not cache the result, since the definition and extension membership can
+ * change within the same transaction.
  * This permission does not make the function pinned or exempt it from normal
  * dependency tracking and plan invalidation.
  */
@@ -2397,6 +2398,7 @@ is_ora_builtin_expr_function(Oid funcid)
 	Oid			extoid;
 	char	   *prosrc;
 	char	   *probin;
+	const char *expected_prosrc = NULL;
 	bool		result = false;
 
 	if (compatible_db != ORA_PARSER)
@@ -2407,15 +2409,27 @@ is_ora_builtin_expr_function(Oid funcid)
 		elog(ERROR, "cache lookup failed for function %u", funcid);
 	procform = (Form_pg_proc) GETSTRUCT(tp);
 
-	if (procform->pronamespace == PG_SYS_NAMESPACE &&
-		strcmp(NameStr(procform->proname), "length") == 0 &&
-		procform->pronargs == 1 &&
-		procform->proargtypes.values[0] == TEXTOID &&
-		procform->prorettype == INT4OID &&
+	if (procform->pronamespace == PG_SYS_NAMESPACE)
+	{
+		if (strcmp(NameStr(procform->proname), "length") == 0 &&
+			procform->pronargs == 1 &&
+			procform->proargtypes.values[0] == TEXTOID &&
+			procform->prorettype == INT4OID && procform->proisstrict)
+			expected_prosrc = "oracharlen";
+		else if (strcmp(NameStr(procform->proname), "replace") == 0 &&
+				 procform->pronargs == 3 &&
+				 procform->proargtypes.values[0] == TEXTOID &&
+				 procform->proargtypes.values[1] == TEXTOID &&
+				 procform->proargtypes.values[2] == TEXTOID &&
+				 procform->prorettype == TEXTOID && !procform->proisstrict)
+			expected_prosrc = "ora_replace";
+	}
+
+	if (expected_prosrc != NULL &&
 		procform->prokind == PROKIND_FUNCTION &&
 		procform->prolang == ClanguageId &&
 		procform->provolatile == PROVOLATILE_IMMUTABLE &&
-		procform->proisstrict && !procform->proretset &&
+		!procform->proretset &&
 		!procform->prosecdef &&
 		!OidIsValid(procform->prosupport))
 	{
@@ -2423,7 +2437,7 @@ is_ora_builtin_expr_function(Oid funcid)
 														 Anum_pg_proc_prosrc));
 		probin = TextDatumGetCString(SysCacheGetAttrNotNull(PROCOID, tp,
 														 Anum_pg_proc_probin));
-		if (strcmp(prosrc, "oracharlen") == 0 &&
+		if (strcmp(prosrc, expected_prosrc) == 0 &&
 			strcmp(probin, "$libdir/ivorysql_ora") == 0)
 		{
 			extoid = get_extension_oid("ivorysql_ora", true);

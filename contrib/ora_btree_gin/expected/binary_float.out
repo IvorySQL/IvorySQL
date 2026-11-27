@@ -36,13 +36,13 @@ CREATE INDEX binary_floatidx ON binary_float_test USING gin ( a );
 SET enable_seqscan=off;
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM binary_float_test WHERE a <  179.0::binary_float;
-                     QUERY PLAN                      
------------------------------------------------------
+                        QUERY PLAN                         
+-----------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on binary_float_test
-         Recheck Cond: (a < '179'::binary_float)
+         Recheck Cond: (a < '1.79E+002'::binary_float)
          ->  Bitmap Index Scan on binary_floatidx
-               Index Cond: (a < '179'::binary_float)
+               Index Cond: (a < '1.79E+002'::binary_float)
 (5 rows)
 
 SELECT count(*) FROM binary_float_test WHERE a <  179.0::binary_float;
@@ -53,13 +53,13 @@ SELECT count(*) FROM binary_float_test WHERE a <  179.0::binary_float;
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM binary_float_test WHERE a <= 179.0::binary_float;
-                      QUERY PLAN                      
-------------------------------------------------------
+                         QUERY PLAN                         
+------------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on binary_float_test
-         Recheck Cond: (a <= '179'::binary_float)
+         Recheck Cond: (a <= '1.79E+002'::binary_float)
          ->  Bitmap Index Scan on binary_floatidx
-               Index Cond: (a <= '179'::binary_float)
+               Index Cond: (a <= '1.79E+002'::binary_float)
 (5 rows)
 
 SELECT count(*) FROM binary_float_test WHERE a <= 179.0::binary_float;
@@ -70,13 +70,13 @@ SELECT count(*) FROM binary_float_test WHERE a <= 179.0::binary_float;
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM binary_float_test WHERE a  = 179.0::binary_float;
-                     QUERY PLAN                      
------------------------------------------------------
+                        QUERY PLAN                         
+-----------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on binary_float_test
-         Recheck Cond: (a = '179'::binary_float)
+         Recheck Cond: (a = '1.79E+002'::binary_float)
          ->  Bitmap Index Scan on binary_floatidx
-               Index Cond: (a = '179'::binary_float)
+               Index Cond: (a = '1.79E+002'::binary_float)
 (5 rows)
 
 SELECT count(*) FROM binary_float_test WHERE a  = 179.0::binary_float;
@@ -87,13 +87,13 @@ SELECT count(*) FROM binary_float_test WHERE a  = 179.0::binary_float;
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM binary_float_test WHERE a >= 179.0::binary_float;
-                      QUERY PLAN                      
-------------------------------------------------------
+                         QUERY PLAN                         
+------------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on binary_float_test
-         Recheck Cond: (a >= '179'::binary_float)
+         Recheck Cond: (a >= '1.79E+002'::binary_float)
          ->  Bitmap Index Scan on binary_floatidx
-               Index Cond: (a >= '179'::binary_float)
+               Index Cond: (a >= '1.79E+002'::binary_float)
 (5 rows)
 
 SELECT count(*) FROM binary_float_test WHERE a >= 179.0::binary_float;
@@ -104,13 +104,13 @@ SELECT count(*) FROM binary_float_test WHERE a >= 179.0::binary_float;
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM binary_float_test WHERE a >  179.0::binary_float;
-                     QUERY PLAN                      
------------------------------------------------------
+                        QUERY PLAN                         
+-----------------------------------------------------------
  Aggregate
    ->  Bitmap Heap Scan on binary_float_test
-         Recheck Cond: (a > '179'::binary_float)
+         Recheck Cond: (a > '1.79E+002'::binary_float)
          ->  Bitmap Index Scan on binary_floatidx
-               Index Cond: (a > '179'::binary_float)
+               Index Cond: (a > '1.79E+002'::binary_float)
 (5 rows)
 
 SELECT count(*) FROM binary_float_test WHERE a >  179.0::binary_float;

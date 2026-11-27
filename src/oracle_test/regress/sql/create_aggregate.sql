@@ -102,9 +102,10 @@ create aggregate least_agg(int8) (
 drop function least_accum(anycompatible, anycompatible) cascade;
 
 -- variadic aggregates
+-- Oracle LEAST propagates NULL; initialize and retain the state explicitly.
 create function least_accum(anyelement, variadic anyarray)
 returns anyelement language sql as
-  'select least($1, min($2[i])) from generate_subscripts($2,1) g(i)';
+  'select coalesce(least($1, min($2[i])), $1, min($2[i])) from generate_subscripts($2,1) g(i)';
 /
 
 create aggregate least_agg(variadic items anyarray) (
@@ -113,7 +114,7 @@ create aggregate least_agg(variadic items anyarray) (
 
 create function cleast_accum(anycompatible, variadic anycompatiblearray)
 returns anycompatible language sql as
-  'select least($1, min($2[i])) from generate_subscripts($2,1) g(i)';
+  'select coalesce(least($1, min($2[i])), $1, min($2[i])) from generate_subscripts($2,1) g(i)';
 /
 
 create aggregate cleast_agg(variadic items anycompatiblearray) (

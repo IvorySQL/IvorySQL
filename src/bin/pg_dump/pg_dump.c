@@ -120,6 +120,7 @@ typedef enum SeqType
 	SEQTYPE_INTEGER,
 	SEQTYPE_BIGINT,
 	SEQTYPE_CUSTINT,
+	SEQTYPE_NUMBER,
 } SeqType;
 
 static const char *const SeqTypeNames[] =
@@ -128,9 +129,10 @@ static const char *const SeqTypeNames[] =
 	[SEQTYPE_INTEGER] = "integer",
 	[SEQTYPE_BIGINT] = "bigint",
 	[SEQTYPE_CUSTINT] = "pg_catalog.int8",
+	[SEQTYPE_NUMBER] = "number",
 };
 
-StaticAssertDecl(lengthof(SeqTypeNames) == (SEQTYPE_CUSTINT + 1),
+StaticAssertDecl(lengthof(SeqTypeNames) == (SEQTYPE_NUMBER + 1),
 				 "array length mismatch");
 
 typedef struct
@@ -463,6 +465,7 @@ main(int argc, char **argv)
 	bool		no_data = false;
 	bool		no_schema = false;
 	bool		no_statistics = false;
+	bool		use_oracle_port = false;
 
 	static DumpOptions dopt;
 
@@ -480,6 +483,7 @@ main(int argc, char **argv)
 		{"format", required_argument, NULL, 'F'},
 		{"host", required_argument, NULL, 'h'},
 		{"jobs", 1, NULL, 'j'},
+		{"mode", required_argument, NULL, 'm'},
 		{"no-reconnect", no_argument, NULL, 'R'},
 		{"no-owner", no_argument, NULL, 'O'},
 		{"port", required_argument, NULL, 'p'},
@@ -580,7 +584,7 @@ main(int argc, char **argv)
 
 	InitDumpOptions(&dopt);
 
-	while ((c = getopt_long(argc, argv, "abBcCd:e:E:f:F:h:j:n:N:Op:RsS:t:T:U:vwWxXZ:",
+	while ((c = getopt_long(argc, argv, "abBcCd:e:E:f:F:h:j:m:n:N:Op:RsS:t:T:U:vwWxXZ:",
 							long_options, &optindex)) != -1)
 	{
 		switch (c)
@@ -635,6 +639,15 @@ main(int argc, char **argv)
 									  PG_MAX_JOBS,
 									  &numWorkers))
 					exit_nicely(1);
+				break;
+
+			case 'm':			/* default connection port for this mode */
+				if (pg_strcasecmp(optarg, "oracle") == 0)
+					use_oracle_port = true;
+				else if (pg_strcasecmp(optarg, "pg") == 0)
+					use_oracle_port = false;
+				else
+					pg_fatal("unrecognized database mode: %s", optarg);
 				break;
 
 			case 'n':			/* include schema(s) */
@@ -1013,6 +1026,16 @@ main(int argc, char **argv)
 
 	fout->numWorkers = numWorkers;
 
+	if (use_oracle_port && dopt.cparams.pgport == NULL)
+	{
+		const char *port = getenv("PGPORT");
+
+		/* Use libpq's environment fallback so service and conninfo ports win. */
+		if ((port == NULL || port[0] == '\0') &&
+			setenv("PGPORT", DEF_ORAPORT_STR, 1) != 0)
+			pg_fatal("could not set environment variable \"%s\": %m", "PGPORT");
+	}
+
 	/*
 	 * Open the database using the Archiver, so it knows about it. Errors mean
 	 * death.
@@ -1377,6 +1400,7 @@ help(const char *progname)
 	printf(_("\nConnection options:\n"));
 	printf(_("  -d, --dbname=DBNAME      database to dump\n"));
 	printf(_("  -h, --host=HOSTNAME      database server host or socket directory\n"));
+	printf(_("  -m, --mode=MODE          use the default port for pg or oracle\n"));
 	printf(_("  -p, --port=PORT          database server port number\n"));
 	printf(_("  -U, --username=NAME      connect as specified database user\n"));
 	printf(_("  -w, --no-password        never prompt for password\n"));
@@ -7002,7 +7026,7 @@ getPackages(Archive *fout, int *numPkgs)
 	int			i_pkgname;
 	int			i_oid;
 	int			i_pkgnamespace;
-	int			i_rolname;
+	int			i_pkgowner;
 	int			i_pkgacl;
 	int			i_acldefault;
 
@@ -7049,7 +7073,7 @@ getPackages(Archive *fout, int *numPkgs)
 	i_pkgname = PQfnumber(res, "pkgname");
 	i_oid = PQfnumber(res, "oid");
 	i_pkgnamespace = PQfnumber(res, "pkgnamespace");
-	i_rolname = PQfnumber(res, "pkgowner");
+	i_pkgowner = PQfnumber(res, "pkgowner");
 	i_pkgacl = PQfnumber(res, "pkgacl");
 	i_acldefault = PQfnumber(res, "acldefault");
 
@@ -7062,7 +7086,7 @@ getPackages(Archive *fout, int *numPkgs)
 		pkginfo[i].dobj.name = pg_strdup(PQgetvalue(res, i, i_pkgname));
 		pkginfo[i].dobj.namespace =
 			findNamespace(atooid(PQgetvalue(res, i, i_pkgnamespace)));
-		pkginfo[i].rolname = pg_strdup(PQgetvalue(res, i, i_rolname));
+		pkginfo[i].rolname = getRoleName(PQgetvalue(res, i, i_pkgowner));
 		pkginfo[i].pkgacl = pg_strdup(PQgetvalue(res, i, i_pkgacl));
 		pkginfo[i].dacl.acldefault = pg_strdup(PQgetvalue(res, i, i_acldefault));
 		pkginfo[i].dacl.privtype = 0;
@@ -7073,9 +7097,6 @@ getPackages(Archive *fout, int *numPkgs)
 		/* Do not try to dump ACL if no ACL exists. */
 		if (!PQgetisnull(res, i, i_pkgacl))
 			pkginfo[i].dobj.dump &= ~DUMP_COMPONENT_ACL;
-		if (strlen(pkginfo[i].rolname) == 0)
-			pg_log_warning("WARNING: owner of package \"%s\" appears to be invalid\n",
-					  pkginfo[i].dobj.name);
 	}
 	PQclear(res);
 	destroyPQExpBuffer(query);
@@ -8036,9 +8057,47 @@ getIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 						  "LEFT JOIN pg_catalog.pg_inherits inh "
 						  "ON (inh.inhrelid = indexrelid) "
 						  "WHERE (i.indisvalid OR t2.relkind = 'p') "
-						  "AND i.indisready "
-						  "ORDER BY i.indrelid, indexname",
+						  "AND i.indisready ",
 						  tbloids->data);
+
+		/*
+		 * CREATE TABLE ... WITH ROWID builds its default ROWID index.
+		 * Only skip indexes with the default definition and properties.
+		 * Older servers did not record the whole-table dependency, so
+		 * also check the generated name for those indexes.  Cast to name
+		 * with the suffix first to clip the table name on a character
+		 * boundary using the server's identifier length limit.
+		 */
+		if (!fout->dopt->binary_upgrade)
+			appendPQExpBufferStr(query,
+							 "AND NOT (t2.relkind = 'r' AND NOT t2.relispartition "
+							 "AND i.indnatts = 1 AND i.indkey[0] = " CppAsString2(RowIdAttributeNumber) " "
+							 "AND NOT i.indisunique AND NOT i.indisclustered "
+							 "AND NOT i.indisreplident AND i.indpred IS NULL "
+							 "AND i.indoption[0] = 0 AND t.reltablespace = 0 "
+							 "AND t.reloptions IS NULL AND c.oid IS NULL "
+							 "AND EXISTS (SELECT 1 FROM pg_catalog.pg_opclass opc "
+							 "JOIN pg_catalog.pg_am am ON am.oid = opc.opcmethod "
+							 "WHERE opc.oid = i.indclass[0] AND opc.opcdefault "
+							 "AND am.amname = 'btree') "
+							 "AND pg_catalog.obj_description(t.oid, 'pg_class') IS NULL "
+							 "AND COALESCE((SELECT d.objid = t.oid "
+							 "FROM pg_catalog.pg_depend d "
+							 "JOIN pg_catalog.pg_index marked ON marked.indexrelid = d.objid "
+							 "WHERE d.classid = t.tableoid AND marked.indrelid = t2.oid "
+							 "AND d.objsubid = 0 AND d.refclassid = t2.tableoid "
+							 "AND d.refobjid = t2.oid AND d.refobjsubid = 0 "
+							 "AND d.deptype = 'a' AND marked.indisvalid "
+							 "AND marked.indnatts = 1 AND marked.indpred IS NULL "
+							 "AND marked.indkey[0] = " CppAsString2(RowIdAttributeNumber) " "
+							 "LIMIT 1), "
+							 "EXISTS (SELECT 1 FROM "
+							 "(SELECT '_' || t2.oid::text || '_rowid_idx' AS suffix) s "
+							 "WHERE t.relname::text = "
+							 "pg_catalog.substr((s.suffix || t2.relname)::pg_catalog.name::text, "
+							 "pg_catalog.length(s.suffix) + 1) || s.suffix))) ");
+
+		appendPQExpBufferStr(query, "ORDER BY i.indrelid, indexname");
 	}
 	else
 	{
@@ -19409,7 +19468,7 @@ dumpSequence(Archive *fout, const TableInfo *tbinfo)
 		default_minv = is_ascending ? 1 : PG_INT32_MIN;
 		default_maxv = is_ascending ? PG_INT32_MAX : -1;
 	}
-	else if (seq->seqtype == SEQTYPE_BIGINT)
+	else if (seq->seqtype == SEQTYPE_BIGINT || seq->seqtype == SEQTYPE_NUMBER)
 	{
 		default_minv = is_ascending ? 1 : PG_INT64_MIN;
 		default_maxv = is_ascending ? PG_INT64_MAX : -1;

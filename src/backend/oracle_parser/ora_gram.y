@@ -327,9 +327,9 @@ static void determineLanguage(List *options);
 %type <node>	alter_column_default opclass_item opclass_drop alter_using
 %type <ival>	add_drop opt_asc_desc opt_nulls_order
 
-%type <node>	alter_table_cmd alter_type_cmd opt_collate_clause
+%type <node>	alter_table_cmd alter_type_cmd modify_column_visibility opt_collate_clause
 	   replica_identity partition_cmd index_partition_cmd
-%type <list>	alter_table_cmds alter_type_cmds
+%type <list>	alter_table_cmds alter_type_cmds modify_column_visibility_list
 %type <list>    alter_identity_column_option_list
 %type <defelt>  alter_identity_column_option
 %type <node>	set_statistics_value
@@ -535,6 +535,7 @@ static void determineLanguage(List *options);
 %type <list>	ExclusionConstraintList ExclusionConstraintElem
 %type <list>	func_arg_list func_arg_list_opt
 %type <node>	func_arg_expr
+%type <boolean> opt_listagg_distinct
 %type <list>	row explicit_row implicit_row type_list array_expr_list
 %type <node>	case_expr case_arg when_clause case_default
 %type <list>	when_clause_list
@@ -771,7 +772,7 @@ static void determineLanguage(List *options);
 
 	NAME_P NAMES NATIONAL NATURAL NCHAR NESTED NEW NEXT NFC NFD NFKC NFKD NO NOCACHE NOCYCLE
 	NOMAXVALUE NOMINVALUE NONE NOORDER
-	NOEXTEND NOKEEP NORMALIZE NORMALIZED NOSCALE NOSHARD	
+	NOEXTEND NOFORCE NOKEEP NORMALIZE NORMALIZED NOSCALE NOSHARD
 	NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLIF
 	NULLS_P NUMBER_P NUMERIC NVL NVL2
 
@@ -832,6 +833,7 @@ static void determineLanguage(List *options);
 %type <ival>	opt_unit_kind
 %type <str>	any_identifier
 %type <boolean> opt_ora_editioned ora_editioned
+%type <ival>	opt_package_body_edition
 
 %type <node>	ivy_routine_body accessor_item sql_macro_options implementation_package_type
 							ora_streaming_type opt_parallel_enable_partiton_clause
@@ -895,6 +897,7 @@ static void determineLanguage(List *options);
 %token          MODE_PLISQL_ASSIGN1
 %token          MODE_PLISQL_ASSIGN2
 %token          MODE_PLISQL_ASSIGN3
+%token <str>	INSERT_TARGET_ALIAS
 
 
 /* Precedence: lowest to highest */
@@ -2493,6 +2496,34 @@ alter_table_cmds:
 			alter_table_cmd							{ $$ = list_make1($1); }
 			| alter_table_cmds ',' alter_table_cmd	{ $$ = lappend($1, $3); }
 			| MODIFY identity_clause				{ $$ = $2; }
+			| MODIFY '(' modify_column_visibility_list ')'	{ $$ = $3; }
+			| alter_table_cmds ',' MODIFY '(' modify_column_visibility_list ')'
+													{ $$ = list_concat($1, $5); }
+		;
+
+modify_column_visibility_list:
+			modify_column_visibility				{ $$ = list_make1($1); }
+			| modify_column_visibility_list ',' modify_column_visibility
+													{ $$ = lappend($1, $3); }
+		;
+
+modify_column_visibility:
+			ColId INVISIBLE
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+
+					n->subtype = AT_SetInvisible;
+					n->name = $1;
+					$$ = (Node *) n;
+				}
+			| ColId VISIBLE
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+
+					n->subtype = AT_DropInvisible;
+					n->name = $1;
+					$$ = (Node *) n;
+				}
 		;
 
 ora_alter_view_cmds:
@@ -2666,20 +2697,7 @@ alter_table_cmd:
 					n->name = $3;
 					$$ = (Node *)n;
 				}
-			| MODIFY ColId INVISIBLE
-				{
-					AlterTableCmd *n = makeNode(AlterTableCmd);
-					n->subtype = AT_SetInvisible;
-					n->name = $2;
-					$$ = (Node *)n;
-				}
-			| MODIFY ColId VISIBLE
-				{
-					AlterTableCmd *n = makeNode(AlterTableCmd);
-					n->subtype = AT_DropInvisible;
-					n->name = $2;
-					$$ = (Node *)n;
-				}
+			| MODIFY modify_column_visibility		{ $$ = $2; }
 			/* ALTER TABLE <name> ALTER [COLUMN] <colname> DROP NOT NULL */
 			| ALTER opt_column ColId DROP NOT NULL_P
 				{
@@ -9677,10 +9695,12 @@ ora_func_is_or_as:
 			IS
 				{
 					set_oracle_plsql_body(yyscanner, OraBody_FUNC);
+					set_oracle_plsql_bodystart(yyscanner, @1 + 2, 0);
 				}
 			| AS
 				{
 					set_oracle_plsql_body(yyscanner, OraBody_FUNC);
+					set_oracle_plsql_bodystart(yyscanner, @1 + 2, 0);
 				}
 		;
 
@@ -10196,16 +10216,20 @@ package_is_or_as:
 package_src:	Sconst	{ $$ = $1; }
 		;
 CreatePackageBodyStmt:
-			CREATE opt_or_replace opt_ora_editioned PACKAGE_BODY BODY package_names
+			CREATE opt_or_replace opt_package_body_edition PACKAGE_BODY BODY package_names
 			opt_ora_sharing_clause package_body_is_or_as package_src
 				{
 					CreatePackageBodyStmt *n = makeNode(CreatePackageBodyStmt);
 					n->replace = $2;
-					n->editable = $3;
+					n->edition = $3;
 					n->pkgname = $6;
 					n->bodysrc = $9;
 					$$ = (Node *)n;
 				}
+			;
+opt_package_body_edition:
+			ora_editioned		{ $$ = $1 ? PACKAGE_BODY_EDITIONABLE : PACKAGE_BODY_NONEDITIONABLE; }
+			| /* EMPTY */		{ $$ = PACKAGE_BODY_EDITION_INHERIT; }
 			;
 package_body_is_or_as:
 				IS	{ set_oracle_plsql_body(yyscanner, OraBody_PACKAGEBODY); }
@@ -12602,6 +12626,7 @@ opt_check_option:
 
 OptViewForce:
 		NO FORCE				{ $$ = false; }
+		| NOFORCE				{ $$ = false; }
 		| FORCE					{ $$ = true; }
 		| /* EMPTY */			{ $$ = false; }
 		;
@@ -13476,23 +13501,20 @@ DeallocateStmt: DEALLOCATE name
  *****************************************************************************/
 
 InsertStmt:
-			opt_with_clause INSERT INTO insert_target insert_rest
+			opt_with_clause INSERT INTO
+				{ pg_yyget_extra(yyscanner)->insert_target_state = ORA_INSERT_TARGET_NAME; }
+			insert_target insert_rest
 			opt_on_conflict returning_clause
 				{
-					$5->relation = $4;
-					$5->onConflictClause = $6;
-					$5->returningClause = $7;
-					$5->withClause = $1;
-					$$ = (Node *) $5;
+					$6->relation = $5;
+					$6->onConflictClause = $7;
+					$6->returningClause = $8;
+					$6->withClause = $1;
+					$$ = (Node *) $6;
 				}
 		;
 
-/*
- * Can't easily make AS optional here, because VALUES in insert_rest would
- * have a shift/reduce conflict with VALUES as an optional alias.  We could
- * easily allow unreserved_keywords as optional aliases, but that'd be an odd
- * divergence from other places.  So just require AS for now.
- */
+/* The lexer marks a bare alias separately to avoid grammar conflicts. */
 insert_target:
 			qualified_name
 				{
@@ -13501,6 +13523,11 @@ insert_target:
 			| qualified_name AS ColId
 				{
 					$1->alias = makeAlias($3, NIL);
+					$$ = $1;
+				}
+			| qualified_name INSERT_TARGET_ALIAS
+				{
+					$1->alias = makeAlias($2, NIL);
 					$$ = $1;
 				}
 		;
@@ -17898,26 +17925,27 @@ func_expr: func_application within_group_clause filter_clause over_clause
 				}
 			| func_expr_common_subexpr
 				{ $$ = $1; }
-			| LISTAGG '(' func_arg_list ')' within_group_clause filter_clause over_clause
+			| LISTAGG '(' opt_listagg_distinct func_arg_list ')' within_group_clause filter_clause over_clause
 				{
 					FuncCall   *string_agg_n;
 					FuncCall   *check_n;
 
-					if ($5 == NIL)
+					if ($6 == NIL)
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
 								 errmsg("LISTAGG requires WITHIN GROUP (ORDER BY ...)"),
 								 parser_errposition(@1)));
 
 					/* Supply an empty delimiter for the single-argument form. */
-					if (list_length($3) == 1)
-						$3 = lappend($3, makeStringConst("", @3));
+					if (list_length($4) == 1)
+						$4 = lappend($4, makeStringConst("", @4));
 
 					string_agg_n = makeFuncCall(SystemFuncName("string_agg"),
-												$3, COERCE_EXPLICIT_CALL, @1);
-					string_agg_n->agg_order = $5;
-					string_agg_n->agg_filter = $6;
-					string_agg_n->over = $7;
+												$4, COERCE_EXPLICIT_CALL, @1);
+					string_agg_n->agg_distinct = $3;
+					string_agg_n->agg_order = $6;
+					string_agg_n->agg_filter = $7;
+					string_agg_n->over = $8;
 
 					/* Enforce Oracle's 4000-byte result limit. */
 					check_n = makeFuncCall(OracleSystemFuncName("ora_listagg_check"),
@@ -17926,6 +17954,11 @@ func_expr: func_application within_group_clause filter_clause over_clause
 					$$ = (Node *) check_n;
 				}
 
+		;
+
+opt_listagg_distinct:
+			DISTINCT		{ $$ = true; }
+			| /*EMPTY*/		{ $$ = false; }
 		;
 
 /*
@@ -20375,6 +20408,7 @@ unreserved_keyword:
 			| NO
 			| NOCACHE
 			| NOEXTEND
+			| NOFORCE
 			| NOKEEP
 			| NOMAXVALUE
 			| NOMINVALUE
@@ -21074,6 +21108,7 @@ bare_label_keyword:
 			| NOCOPY
 			| NOCYCLE
 			| NOEXTEND
+			| NOFORCE
 			| NOKEEP
 			| NOMAXVALUE
 			| NOMINVALUE

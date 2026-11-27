@@ -41,7 +41,7 @@ SELECT * FROM foo;
 DELETE FROM foo WHERE f1 > 2 RETURNING f3, f2, f1, least(f1,f3);
  f3 |  f2  | f1 | least 
 ----+------+----+-------
- 42 | more |  3 |     3
+ 42 | more |  3 | 3
 (1 row)
 
 SELECT * FROM foo;

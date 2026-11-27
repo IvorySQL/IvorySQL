@@ -666,9 +666,9 @@ SELECT t1.id1, t1.result, t2.expected
 -- ******************************
 -- number AVG used to fail on some platforms
 SELECT AVG(val) FROM num_data;
-          avg           
-------------------------
- -13430913.592242320700
+         avg          
+----------------------
+ -13430913.5922423207
 (1 row)
 
 SELECT STDDEV(val) FROM num_data;
@@ -700,11 +700,11 @@ INSERT INTO fract_only VALUES (8, '0.00017');
 SELECT * FROM fract_only;
  id |   val   
 ----+---------
-  1 | 0.0000
-  2 | 0.1000
+  1 | 0
+  2 | 0.1
   4 | -0.9999
   5 | 0.9999
-  7 | 0.0000
+  7 | 0
   8 | 0.0002
 (6 rows)
 
@@ -725,7 +725,7 @@ SELECT a, ceil(a), ceiling(a), floor(a), round(a) FROM ceil_floor_round;
  -5.499999 |   -5 |      -5 |    -6 |    -5
  9.5       |   10 |      10 |     9 |    10
  9.4999999 |   10 |      10 |     9 |     9
- 0.0       |    0 |       0 |     0 |     0
+ 0         |    0 |       0 |     0 |     0
  0.0000001 |    1 |       1 |     0 |     0
  -0.000001 |   -0 |      -0 |    -1 |    -0
 (7 rows)
@@ -1218,7 +1218,7 @@ SELECT '' AS to_number_8,  to_number('.01', 'FM9.99');
 SELECT '' AS to_number_9,  to_number('.0', '99999999.99999999');
  to_number_9 | to_number 
 -------------+-----------
-             | 0.0
+             | 0
 (1 row)
 
 SELECT '' AS to_number_10, to_number('0', '99.99');
@@ -1305,8 +1305,8 @@ SELECT * FROM num_input_test;
  123
  3245874
  -93853
- 555.50
- -555.50
+ 555.5
+ -555.5
  NaN
  NaN
  
@@ -1343,9 +1343,9 @@ select 4769999999999999999999999999999999999999999999999999999999999999999999999
 -- Test some corner cases for division
 --
 select 999999999999999999999::number/1000000000000000000000;
-        ?column?        
-------------------------
- 1.00000000000000000000
+ ?column? 
+----------
+ 1
 (1 row)
 
 select div(999999999999999999999::number,1000000000000000000000);

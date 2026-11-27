@@ -4444,13 +4444,19 @@ typedef struct CreatePackageStmt
 	char		*pkgsrc;
 } CreatePackageStmt;
 
+typedef enum PackageBodyEdition
+{
+	PACKAGE_BODY_EDITION_INHERIT,
+	PACKAGE_BODY_EDITIONABLE,
+	PACKAGE_BODY_NONEDITIONABLE
+} PackageBodyEdition;
 
 typedef struct CreatePackageBodyStmt
 {
 	NodeTag		type;
 	bool		replace;
 	List		*pkgname;
-	bool		editable;
+	PackageBodyEdition edition;
 	char		*bodysrc;
 } CreatePackageBodyStmt;
 

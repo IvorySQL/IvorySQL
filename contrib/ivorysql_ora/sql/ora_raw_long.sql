@@ -6,6 +6,18 @@ INSERT INTO RW_TEXT VALUES(3,'\xFF');
 INSERT INTO RW_TEXT VALUES(4,'\xFFFF');
 INSERT INTO RW_TEXT VALUES(5,'\xFFFF');
 INSERT INTO RW_TEXT VALUES(6,'\xFFFE');
+
+-- TO_BLOB accepts binary input and keeps the VARCHAR2 overload.
+\pset format unaligned
+SELECT TO_BLOB(HEXTORAW('ff')) FROM dual;
+SELECT pg_typeof(TO_BLOB(HEXTORAW('00ff80'))) AS result_type,
+       pg_catalog.encode(TO_BLOB(HEXTORAW('00ff80'))::bytea, 'hex') AS binary_value;
+SELECT pg_catalog.encode(TO_BLOB(a)::bytea, 'hex') AS raw_column FROM RW_TEXT WHERE ii = 1;
+SELECT TO_BLOB(NULL::bytea) IS NULL AS null_result,
+       pg_catalog.encode(TO_BLOB('ff')::bytea, 'hex') AS literal_value,
+       pg_catalog.encode(TO_BLOB('ff'::varchar2)::bytea, 'hex') AS varchar2_value;
+\pset format aligned
+
 SELECT * FROM RW_TEXT WHERE a = '\xFFFF';
 SELECT * FROM RW_TEXT WHERE a <> '\xFFFF';
 SELECT * FROM RW_TEXT WHERE a > '\xFFFF';

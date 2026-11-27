@@ -90,6 +90,9 @@ static	PLiSQL_expr	*read_sql_expression2(int until, int until2,
 											  const char *expected, int *endtoken,
 											  YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
 static	PLiSQL_expr	*read_sql_stmt(YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
+static void			 declare_explicit_cursor(const char *name, int lineno,
+											 PLiSQL_datum *args, PLiSQL_expr *query,
+											 int options);
 static	PLiSQL_type	*read_datatype(int tok, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
 static	PLiSQL_stmt	*make_execsql_stmt(int firsttoken, int location,
 										   PLword *word, YYSTYPE *yylvalp, YYLTYPE *yyllocp, yyscan_t yyscanner);
@@ -429,6 +432,7 @@ static	PLiSQL_expr		*build_call_expr(int firsttoken, int location, YYSTYPE *yylv
 %token <keyword>	K_WARNING
 %token <keyword>	K_WHEN
 %token <keyword>	K_WHILE
+%token				K_CURSOR_PREFIX
 
 %%
 
@@ -900,25 +904,13 @@ decl_statement	: K_TYPE decl_varname K_IS K_RECORD '('
 					{ plisql_ns_push($1.name, PLISQL_LABEL_OTHER); }
 				  decl_cursor_args decl_is_for decl_cursor_query
 					{
-						PLiSQL_var *new;
-
-						/* pop local namespace for cursor args */
-						plisql_ns_pop();
-
-						new = (PLiSQL_var *)
-							plisql_build_variable($1.name, $1.lineno,
-												   plisql_build_datatype(REFCURSOROID,
-																		  -1,
-																		  InvalidOid,
-																		  NULL),
-												   true);
-
-						new->cursor_explicit_expr = $7;
-						if ($5 == NULL)
-							new->cursor_explicit_argrow = -1;
-						else
-							new->cursor_explicit_argrow = $5->dno;
-						new->cursor_options = CURSOR_OPT_FAST_PLAN | $2;
+						declare_explicit_cursor($1.name, $1.lineno, $5, $7, $2);
+					}
+				| K_CURSOR_PREFIX decl_varname
+					{ plisql_ns_push($2.name, PLISQL_LABEL_OTHER); }
+				  decl_cursor_args K_IS decl_cursor_query
+					{
+						declare_explicit_cursor($2.name, $2.lineno, $4, $6, 0);
 					}
 				/* function or procedure declare or define */
 				| function_heading function_properties ';'
@@ -3576,6 +3568,25 @@ unit_name_keyword:
 
 
 %%
+
+static void
+declare_explicit_cursor(const char *name, int lineno, PLiSQL_datum *args,
+						PLiSQL_expr *query, int options)
+{
+	PLiSQL_type *type;
+	PLiSQL_var *cursor;
+
+	/* The query retains its namespace, including any cursor arguments. */
+	plisql_ns_pop();
+	type = plisql_build_datatype(REFCURSOROID, -1, InvalidOid, NULL);
+	cursor = (PLiSQL_var *) plisql_build_variable(name, lineno, type, true);
+	cursor->cursor_explicit_expr = query;
+	cursor->cursor_explicit_argrow = args == NULL ? -1 : args->dno;
+	cursor->cursor_options = CURSOR_OPT_FAST_PLAN | options;
+	/* A package-level cursor's arguments belong to the package namespace. */
+	if (args != NULL && cur_compile_func_level == 0)
+		args->pkgoid = cursor->pkgoid;
+}
 
 /*
  * Check whether a token represents an "unreserved keyword".

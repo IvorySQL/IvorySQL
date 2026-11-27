@@ -16,6 +16,7 @@ ivorysql_ora_sources = files(
   'src/datatype/dsinterval.c',
   'src/datatype/compatible_oracle_precedence.c',
   'src/datatype/common_datatypes.c',
+  'src/datatype/number.c',
   'src/datatype/raw_long.c',
   'src/datatype/binary_float.c',
   'src/datatype/binary_double.c',
@@ -35,13 +36,20 @@ if host_system == 'windows'
     '--FILEDESC', 'ivorysql_ora - Oracle Compatible extenison on Postgres Database',])
 endif
 
-custom_target('ivorysql_ora--1.0.sql',
-  output: 'ivorysql_ora--1.0.sql',
-  command: [perl, '../contrib/ivorysql_ora/gensql.pl', 'meson', '1.0'],
-  capture: true,
-  install: true,
-  install_dir: contrib_data_args['install_dir'],
-)
+foreach version : ['1.0', '1.0--1.1']
+  custom_target('ivorysql_ora--' + version + '.sql',
+    output: 'ivorysql_ora--' + version + '.sql',
+    command: [perl, '../contrib/ivorysql_ora/gensql.pl', 'meson', version],
+    depend_files: version == '1.0--1.1' ? files(
+      'src/builtin_functions/builtin_functions--1.0--1.1.sql',
+      'src/sysview/sysview--1.0--1.1.sql',
+      'src/sysview/dual--1.0--1.1.sql',
+    ) : [],
+    capture: true,
+    install: true,
+    install_dir: contrib_data_args['install_dir'],
+  )
+endforeach
 
 ivorysql_ora = shared_module('ivorysql_ora',
   ivorysql_ora_sources,
