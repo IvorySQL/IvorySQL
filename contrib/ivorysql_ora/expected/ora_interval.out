@@ -349,3 +349,147 @@ CREATE INDEX test_dsinterval_brin on TEST_DSINTERVAL USING brin (a);
 -- drop table
 DROP TABLE TEST_YMINTERVAL;
 DROP TABLE TEST_DSINTERVAL;
+-- NUMBER multiplication must not lose whole months through float8 rounding.
+SELECT interval '100' month * 0.29 = interval '29' month AS exact_months;
+ exact_months 
+--------------
+ t
+(1 row)
+
+SELECT 0.29 * interval '100' month = interval '29' month AS exact_months;
+ exact_months 
+--------------
+ t
+(1 row)
+
+SELECT interval '-100' month * 0.29 = interval '-29' month AS exact_months;
+ exact_months 
+--------------
+ t
+(1 row)
+
+SELECT interval '100' month * -0.29 = interval '-29' month AS exact_months;
+ exact_months 
+--------------
+ t
+(1 row)
+
+SELECT interval '1' month * 0.99999999999999999999 = interval '0' month AS exact_months;
+ exact_months 
+--------------
+ t
+(1 row)
+
+SELECT interval '1' month * -0.99999999999999999999 = interval '0' month AS exact_months;
+ exact_months 
+--------------
+ t
+(1 row)
+
+SELECT interval '10' month * 0.25 = interval '2' month AS exact_months;
+ exact_months 
+--------------
+ t
+(1 row)
+
+SELECT interval '-10' month * 0.25 = interval '-2' month AS exact_months;
+ exact_months 
+--------------
+ t
+(1 row)
+
+SELECT interval '1' month * 2147483647 = interval '178956970-7' year(9) to month AS exact_months;
+ exact_months 
+--------------
+ t
+(1 row)
+
+SELECT interval '1' month * -2147483648 = interval '-178956970-8' year(9) to month AS exact_months;
+ exact_months 
+--------------
+ t
+(1 row)
+
+SELECT interval '100' month * 0 = interval '0' month AS exact_months;
+ exact_months 
+--------------
+ t
+(1 row)
+
+SELECT interval '100' month * NULL::number IS NULL AS exact_months;
+ exact_months 
+--------------
+ t
+(1 row)
+
+SELECT interval '1' month * 2147483648;
+ERROR:  interval out of range
+SELECT -2147483649 * interval '1' month;
+ERROR:  interval out of range
+SELECT interval '1' month * 'NaN'::number;
+ERROR:  interval out of range
+SELECT interval '1' month * 'Infinity'::number;
+ERROR:  interval out of range
+SELECT '-Infinity'::number * interval '1' month;
+ERROR:  interval out of range
+SELECT interval '1' month * -2147483648.5 = interval '-178956970-8' year(9) to month AS exact_months;
+ exact_months 
+--------------
+ t
+(1 row)
+
+-- Division must truncate the exact quotient, not a rounded float8 value.
+SELECT interval '7' month / 0.07 = interval '100' month AS exact_months;
+ exact_months 
+--------------
+ t
+(1 row)
+
+SELECT interval '-7' month / 0.07 = interval '-100' month AS exact_months;
+ exact_months 
+--------------
+ t
+(1 row)
+
+SELECT interval '7' month / -0.07 = interval '-100' month AS exact_months;
+ exact_months 
+--------------
+ t
+(1 row)
+
+SELECT interval '1' month / 1.00000000000000000001 = interval '0' month AS exact_months;
+ exact_months 
+--------------
+ t
+(1 row)
+
+SELECT interval '-1' month / 1.00000000000000000001 = interval '0' month AS exact_months;
+ exact_months 
+--------------
+ t
+(1 row)
+
+SELECT interval '5' month / 2 = interval '2' month AS exact_months;
+ exact_months 
+--------------
+ t
+(1 row)
+
+SELECT interval '-5' month / 2 = interval '-2' month AS exact_months;
+ exact_months 
+--------------
+ t
+(1 row)
+
+SELECT interval '1' month / 'Infinity'::number = interval '0' month AS exact_months;
+ exact_months 
+--------------
+ t
+(1 row)
+
+SELECT interval '1' month / 0;
+ERROR:  division by zero
+SELECT interval '1' month / 'NaN'::number;
+ERROR:  interval out of range
+SELECT interval '1' month / 0.0000000001;
+ERROR:  interval out of range
