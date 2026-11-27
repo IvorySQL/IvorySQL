@@ -47,7 +47,7 @@
 
 /* Per-backend generator state */
 static pg_prng_state random_state;
-static bool		state_seeded = false;
+static bool state_seeded = false;
 
 /* SQL-callable function declarations */
 PG_FUNCTION_INFO_V1(ora_dbms_random_initialize);
@@ -75,6 +75,28 @@ ensure_seeded(void)
 					 (uint64) GetCurrentTimestamp() ^ ((uint64) MyProcPid << 32));
 		state_seeded = true;
 	}
+}
+
+/* Build an exact 38-place fraction from two unbiased 19-digit draws. */
+static Numeric
+random_fraction(void)
+{
+	char		buf[41];
+	uint64		first;
+	uint64		second;
+
+	ensure_seeded();
+	first = pg_prng_uint64_range(&random_state, 0,
+								 UINT64CONST(9999999999999999999));
+	second = pg_prng_uint64_range(&random_state, 0,
+								  UINT64CONST(9999999999999999999));
+	snprintf(buf, sizeof(buf), "0.%019" PRIu64 "%019" PRIu64,
+			 first, second);
+
+	return DatumGetNumeric(DirectFunctionCall3(numeric_in,
+											   CStringGetDatum(buf),
+											   ObjectIdGetDatum(InvalidOid),
+											   Int32GetDatum(-1)));
 }
 
 /*
@@ -198,8 +220,8 @@ ora_dbms_random_string(PG_FUNCTION_ARGS)
 	const char *lower_only = "abcdefghijklmnopqrstuvwxyz";
 	const char *upper_only = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 	const char *printable = "`1234567890-=qwertyuiop[]asdfghjkl;'zxcvbnm,./"
-							"!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:\"ZXCVBNM<>?"
-							" \\~";
+		"!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:\"ZXCVBNM<>?"
+		" \\~";
 	const char *charset;
 	size_t		chrset_size;
 	StringInfoData str;
@@ -262,22 +284,22 @@ ora_dbms_random_string(PG_FUNCTION_ARGS)
 	}
 
 	truncated_len = DatumGetNumeric(DirectFunctionCall2(numeric_trunc,
-															NumericGetDatum(PG_GETARG_NUMERIC(1)),
-															Int32GetDatum(0)));
+														NumericGetDatum(PG_GETARG_NUMERIC(1)),
+														Int32GetDatum(0)));
 	if (DatumGetInt32(DirectFunctionCall2(numeric_cmp,
-														NumericGetDatum(truncated_len),
-														DirectFunctionCall1(int4_numeric,
-																			Int32GetDatum(0)))) <= 0)
+										  NumericGetDatum(truncated_len),
+										  DirectFunctionCall1(int4_numeric,
+															  Int32GetDatum(0)))) <= 0)
 		PG_RETURN_NULL();
 
 	if (DatumGetInt32(DirectFunctionCall2(numeric_cmp,
-														NumericGetDatum(truncated_len),
-														DirectFunctionCall1(int4_numeric,
-																			Int32GetDatum(DBMS_RANDOM_MAX_STRING_LEN)))) > 0)
+										  NumericGetDatum(truncated_len),
+										  DirectFunctionCall1(int4_numeric,
+															  Int32GetDatum(DBMS_RANDOM_MAX_STRING_LEN)))) > 0)
 		len = DBMS_RANDOM_MAX_STRING_LEN;
 	else
 		len = DatumGetInt32(DirectFunctionCall1(numeric_int4,
-														NumericGetDatum(truncated_len)));
+												NumericGetDatum(truncated_len)));
 
 	ensure_seeded();
 
@@ -303,13 +325,7 @@ ora_dbms_random_string(PG_FUNCTION_ARGS)
 Datum
 ora_dbms_random_value(PG_FUNCTION_ARGS)
 {
-	double		val;
-
-	ensure_seeded();
-	val = pg_prng_double(&random_state);
-
-	PG_RETURN_DATUM(DirectFunctionCall1(float8_numeric,
-										Float8GetDatum(val)));
+	PG_RETURN_NUMERIC(random_fraction());
 }
 
 /*
@@ -335,22 +351,20 @@ ora_dbms_random_value_range(PG_FUNCTION_ARGS)
 	high = PG_GETARG_NUMERIC(1);
 
 	if (DatumGetInt32(DirectFunctionCall2(numeric_cmp,
-													NumericGetDatum(low),
-													NumericGetDatum(high))) == 0)
+										  NumericGetDatum(low),
+										  NumericGetDatum(high))) == 0)
 		PG_RETURN_NUMERIC(low);
 
-	ensure_seeded();
-	fraction = DatumGetNumeric(DirectFunctionCall1(float8_numeric,
-													Float8GetDatum(pg_prng_double(&random_state))));
+	fraction = random_fraction();
 	range = DatumGetNumeric(DirectFunctionCall2(numeric_sub,
-													NumericGetDatum(high),
-													NumericGetDatum(low)));
+												NumericGetDatum(high),
+												NumericGetDatum(low)));
 	offset = DatumGetNumeric(DirectFunctionCall2(numeric_mul,
-													 NumericGetDatum(range),
-													 NumericGetDatum(fraction)));
+												 NumericGetDatum(range),
+												 NumericGetDatum(fraction)));
 	result = DatumGetNumeric(DirectFunctionCall2(numeric_add,
-													NumericGetDatum(low),
-													NumericGetDatum(offset)));
+												 NumericGetDatum(low),
+												 NumericGetDatum(offset)));
 
 	PG_RETURN_NUMERIC(result);
 }
