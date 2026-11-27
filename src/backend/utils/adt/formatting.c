@@ -4210,6 +4210,15 @@ DCH_from_char(FormatNode *node, const char *in, TmFromChar *out,
 					n->sep = true;
 				if (from_char_parse_int(&out->j, &s, n, escontext) < 0)
 					return;
+				/*
+				 * tmfc.j == 0 means "not given", so a julian day of 0 would
+				 * otherwise be ignored and the default date returned.
+				 */
+				if (ORA_PARSER == compatible_db &&
+					(out->j < 1 || out->j > 5373484))
+					ereturn(escontext,,
+							(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
+							 errmsg("julian date must be between 1 and 5373484")));
 				SKIP_THth(s, n->suffix);
 				break;
 		}
