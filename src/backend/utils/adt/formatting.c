@@ -1112,6 +1112,8 @@ static bool do_to_timestamp(const text *date_txt, const text *fmt, Oid collid, b
 							struct pg_tm *tm, fsec_t *fsec, struct fmt_tz *tz,
 							int *fprec, uint32 *flags, Node *escontext);
 static char *fill_str(char *str, int c, int max);
+static bool ora_format_is_tm(const text *fmt);
+static text *ora_tm_text(const char *num);
 static FormatNode *NUM_cache(int len, NUMDesc *Num, const text *pars_str, bool *shouldFree);
 static char *int_to_roman(int number);
 static int	roman_to_int(NUMProc *Np, size_t input_len);
@@ -5895,6 +5897,55 @@ fill_str(char *str, int c, int max)
 	return str;
 }
 
+/*
+ * Oracle's TM (text minimum) format element prints a number in the shortest
+ * form possible: no padding, no trailing fractional zeroes and no leading zero
+ * before the decimal point.  It takes precedence over any other element in the
+ * model, so the caller can short-circuit as soon as it sees one.
+ */
+static bool
+ora_format_is_tm(const text *fmt)
+{
+	const char *p = VARDATA_ANY(fmt);
+	int			len = VARSIZE_ANY_EXHDR(fmt);
+	int			i;
+
+	for (i = 0; i + 1 < len; i++)
+	{
+		if ((p[i] == 'T' || p[i] == 't') &&
+			(p[i + 1] == 'M' || p[i + 1] == 'm'))
+			return true;
+	}
+	return false;
+}
+
+static text *
+ora_tm_text(const char *num)
+{
+	char	   *buf = pstrdup(num);
+	char	   *dot = strchr(buf, '.');
+	char	   *res = buf;
+
+	/* strip trailing zeroes of the fraction, then a bare decimal point */
+	if (dot != NULL && strpbrk(buf, "eE") == NULL)
+	{
+		char	   *end = buf + strlen(buf) - 1;
+
+		while (end > dot && *end == '0')
+			*end-- = '\0';
+		if (end == dot)
+			*end = '\0';
+	}
+
+	/* Oracle drops the leading zero of a pure fraction: 0.5 is printed as .5 */
+	if (res[0] == '0' && res[1] == '.')
+		res++;
+	else if (res[0] == '-' && res[1] == '0' && res[2] == '.')
+		memmove(res + 1, res + 2, strlen(res + 2) + 1);
+
+	return cstring_to_text(res);
+}
+
 /* This works the same as DCH_prevent_counter_overflow */
 static inline void
 NUM_prevent_counter_overflow(void)
@@ -8193,6 +8244,8 @@ numeric_to_char(PG_FUNCTION_ARGS)
 			   *orgnum,
 			   *p;
 
+		if (ORA_PARSER == compatible_db && ora_format_is_tm(fmt))
+		PG_RETURN_TEXT_P(ora_tm_text(DatumGetCString(DirectFunctionCall1(numeric_out, NumericGetDatum(value)))));
 	NUM_TOCHAR_prepare;
 
 	/*
@@ -8319,6 +8372,8 @@ int4_to_char(PG_FUNCTION_ARGS)
 	char	   *numstr,
 			   *orgnum;
 
+		if (ORA_PARSER == compatible_db && ora_format_is_tm(fmt))
+		PG_RETURN_TEXT_P(ora_tm_text(DatumGetCString(DirectFunctionCall1(int4out, Int32GetDatum(value)))));
 	NUM_TOCHAR_prepare;
 
 	/*
@@ -8412,6 +8467,8 @@ int8_to_char(PG_FUNCTION_ARGS)
 	char	   *numstr,
 			   *orgnum;
 
+		if (ORA_PARSER == compatible_db && ora_format_is_tm(fmt))
+		PG_RETURN_TEXT_P(ora_tm_text(DatumGetCString(DirectFunctionCall1(int8out, Int64GetDatum(value)))));
 	NUM_TOCHAR_prepare;
 
 	/*
@@ -8523,6 +8580,8 @@ float4_to_char(PG_FUNCTION_ARGS)
 	char	   *numstr,
 			   *p;
 
+		if (ORA_PARSER == compatible_db && ora_format_is_tm(fmt))
+		PG_RETURN_TEXT_P(ora_tm_text(DatumGetCString(DirectFunctionCall1(float4out, Float4GetDatum(value)))));
 	NUM_TOCHAR_prepare;
 
 	if (IS_ROMAN(&Num))
@@ -8635,6 +8694,8 @@ float8_to_char(PG_FUNCTION_ARGS)
 	char	   *numstr,
 			   *p;
 
+		if (ORA_PARSER == compatible_db && ora_format_is_tm(fmt))
+		PG_RETURN_TEXT_P(ora_tm_text(DatumGetCString(DirectFunctionCall1(float8out, Float8GetDatum(value)))));
 	NUM_TOCHAR_prepare;
 
 	if (IS_ROMAN(&Num))
