@@ -287,7 +287,7 @@ ProcedureCreate(const char *procedureName,
 			{
 				case PROARGMODE_INOUT:
 					hasInOut = true;
-					/* FALLTHROUGH */
+					pg_fallthrough;
 				case PROARGMODE_IN:
 					if (OidIsValid(variadicType))
 						elog(ERROR, "variadic parameter must be last");
