@@ -202,3 +202,9 @@ test: alter_index create_index_online
 # ----------
 
 test: with_function
+
+# ----------
+# Oracle TO_DATE / TO_TIMESTAMP day-of-year validation (ORA-01848)
+# ----------
+
+test: ora_to_date_invalid_ddd
