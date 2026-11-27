@@ -736,3 +736,43 @@ FROM utl_match_equal_input;
 (1 row)
 
 DROP TABLE utl_match_equal_input;
+-- Stored inputs exercise short scans and indexed matching around the cutoff.
+-- Cover repeated bytes, expired/out-of-window occurrences and both argument
+-- orders; UTF8 inputs still use the existing byte-based comparison semantics.
+CREATE TEMP TABLE utl_match_window_inputs (label text, a text, b text);
+INSERT INTO utl_match_window_inputs VALUES
+    ('below', repeat('ab', 31) || 'x', repeat('ba', 31) || 'y'),
+    ('at', repeat('ab', 32), repeat('ba', 32)),
+    ('above', repeat('ab', 32) || 'x', repeat('ba', 32) || 'y'),
+    ('disjoint', repeat('a', 128), repeat('b', 128)),
+    ('repeated', repeat('a', 255) || 'b', 'b' || repeat('a', 255)),
+    ('window_edge', repeat('a', 64) || repeat('b', 64), repeat('b', 64) || repeat('a', 64)),
+    ('unequal', repeat('abcd', 16), repeat('dcba', 80)),
+    ('one_short', repeat('a', 63), repeat('ba', 256)),
+    ('utf8', repeat('中文', 16) || '甲', '乙' || repeat('文中', 16)),
+    ('ratio_at', repeat('a', 64), repeat('a', 512)),
+    ('ratio_above', repeat('a', 64), repeat('a', 513)),
+    ('identical', repeat('abcd', 64), repeat('abcd', 64));
+SELECT label,
+       sys.ora_utl_match_jaro_winkler(a, b) AS jw,
+       sys.ora_utl_match_jaro_winkler_similarity(a, b) AS jws,
+       sys.ora_utl_match_jaro_winkler(b, a) AS reverse_jw,
+       sys.ora_utl_match_jaro_winkler_similarity(b, a) AS reverse_jws
+FROM utl_match_window_inputs ORDER BY label;
+    label    |         jw         | jws |     reverse_jw     | reverse_jws 
+-------------+--------------------+-----+--------------------+-------------
+ above       | 0.8230769230769232 |  82 | 0.8230769230769232 |          82
+ at          | 0.8333333333333334 |  83 | 0.8333333333333334 |          83
+ below       | 0.8227513227513228 |  82 | 0.8227513227513228 |          82
+ disjoint    |                  0 |   0 |                  0 |           0
+ identical   |                  1 | 100 |                  1 |         100
+ one_short   | 0.7076822916666666 |  71 | 0.7076822916666666 |          71
+ ratio_above | 0.8249512670565302 |  82 | 0.8249512670565302 |          82
+ ratio_at    | 0.8250000000000001 |  83 | 0.8250000000000001 |          83
+ repeated    | 0.9973958333333334 | 100 | 0.9973958333333334 |         100
+ unequal     | 0.5666666666666667 |  57 | 0.5666666666666667 |          57
+ utf8        | 0.8349431818181818 |  83 | 0.8349431818181818 |          83
+ window_edge | 0.8229166666666666 |  82 | 0.8229166666666666 |          82
+(12 rows)
+
+DROP TABLE utl_match_window_inputs;
