@@ -5519,9 +5519,14 @@ final_datetime_check_for_conv_func(struct pg_tm *out)
 
 	if (ORA_PARSER == compatible_db)
 	{
-		int year = out->tm_year;
+		/*
+		 * The tm has already been assembled, so tm_year is the internal
+		 * representation, where year 0 means 1 BC and is a valid year.
+		 * Oracle's earliest date is 4712-01-01 BC, i.e. internal -4711.
+		 */
+		int			year = out->tm_year;
 
-		if (year == 0 || year > 9999 || year <= -4713)
+		if (year > 9999 || year < -4711)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_DATETIME_FIELD_OVERFLOW),
