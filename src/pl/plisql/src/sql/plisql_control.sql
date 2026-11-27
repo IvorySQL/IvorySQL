@@ -23,16 +23,16 @@ begin
     raise notice '1..0 by 3: i = %', i;
   end loop;
   -- REVERSE
-  for i in reverse 10..0 by 3 loop
-    raise notice 'reverse 10..0 by 3: i = %', i;
+  for i in reverse 0..10 by 3 loop
+    raise notice 'reverse 0..10 by 3: i = %', i;
   end loop;
   -- potential overflow
   for i in 2147483620..2147483647 by 10 loop
     raise notice '2147483620..2147483647 by 10: i = %', i;
   end loop;
   -- potential overflow, reverse direction
-  for i in reverse -2147483620..-2147483647 by 10 loop
-    raise notice 'reverse -2147483620..-2147483647 by 10: i = %', i;
+  for i in reverse -2147483647..-2147483620 by 10 loop
+    raise notice 'reverse -2147483647..-2147483620 by 10: i = %', i;
   end loop;
 end$$;
 
@@ -58,6 +58,65 @@ begin
   end loop;
 end$$;
 
+
+-- REVERSE loops use Oracle bound ordering: bounds are written in ascending
+-- order and iteration runs from the upper bound down to the lower bound
+do $$
+declare n integer;
+begin
+  -- ascending bounds iterate downward
+  n := 0;
+  for i in reverse 1..3 loop
+    raise notice 'reverse 1..3: i = %', i;
+    n := n + 1;
+  end loop;
+  raise notice 'reverse 1..3 iterations: %', n;
+
+  -- lower bound above upper bound: no iterations
+  n := 0;
+  for i in reverse 3..1 loop
+    raise notice 'reverse 3..1: i = %', i;
+    n := n + 1;
+  end loop;
+  raise notice 'reverse 3..1 iterations: %', n;
+
+  -- equal bounds: one iteration
+  n := 0;
+  for i in reverse 2..2 loop
+    raise notice 'reverse 2..2: i = %', i;
+    n := n + 1;
+  end loop;
+  raise notice 'reverse 2..2 iterations: %', n;
+
+  -- step larger than the range: one iteration
+  n := 0;
+  for i in reverse 1..3 by 10 loop
+    raise notice 'reverse 1..3 by 10: i = %', i;
+    n := n + 1;
+  end loop;
+  raise notice 'reverse 1..3 by 10 iterations: %', n;
+
+  -- decrement down to INT32_MIN
+  for i in reverse (-2147483647 - 1)..-2147483646 loop
+    raise notice 'reverse min..min+1: i = %', i;
+  end loop;
+
+  -- decrement from INT32_MAX
+  for i in reverse 2147483645..2147483647 loop
+    raise notice 'reverse max-2..max: i = %', i;
+  end loop;
+end$$;
+
+-- bounds are evaluated once each, in written order
+create sequence fori_reverse_seq;
+do $$
+begin
+  for i in reverse nextval('fori_reverse_seq')..nextval('fori_reverse_seq') loop
+    raise notice 'reverse seq: i = %', i;
+  end loop;
+end$$;
+select currval('fori_reverse_seq');
+drop sequence fori_reverse_seq;
 
 -- CONTINUE statement
 
