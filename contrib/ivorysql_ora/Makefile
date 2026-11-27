@@ -48,22 +48,6 @@ EXTENSION = ivorysql_ora
 # SQL(s) which need to be generated only if which is specified here.
 DATA_built = ivorysql_ora--1.0.sql
 
-install: install-data
-
-clean: cleansql
-
-# SQL(s) merge using perl
-$(DATA_built): gensql.pl
-	$(PERL) $< gcc_build $(patsubst ivorysql_ora--%.sql, %,$@)
-
-# Preload the compatible oracle misc sql script
-install-data:
-	$(INSTALL_DATA) $(srcdir)/preload_ora_misc.sql '$(DESTDIR)$(datadir)/preload_ora_misc.sql'
-
-# Clean the generated SQL(s).
-cleansql:
-	rm -f $(DATA_built)
-
 # REGRESS_OPTS mainly used for installcheck or debug.
 #REGRESS_OPTS = --port=1521
 # The utl_url regression tests exercise multibyte input and charset
@@ -124,6 +108,26 @@ top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
 endif
+
+# These rules must come after the includes above: the first rule in the file
+# is make's default goal, and it has to be "all" from Makefile.global/pgxs,
+# not "install".
+
+install: install-data
+
+clean: cleansql
+
+# SQL(s) merge using perl
+$(DATA_built): gensql.pl
+	$(PERL) $< gcc_build $(patsubst ivorysql_ora--%.sql, %,$@)
+
+# Preload the compatible oracle misc sql script
+install-data:
+	$(INSTALL_DATA) $(srcdir)/preload_ora_misc.sql '$(DESTDIR)$(datadir)/preload_ora_misc.sql'
+
+# Clean the generated SQL(s).
+cleansql:
+	rm -f $(DATA_built)
 
 ifeq ($(with_libxml),yes)
 SHLIB_LINK += -lxml2
