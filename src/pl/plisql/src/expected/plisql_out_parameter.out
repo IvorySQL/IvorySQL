@@ -886,10 +886,10 @@ begin
   raise info '%',binary4;
 end;
 /
-INFO:  213.256
-INFO:  [0:2]={3.1415925,4.1415925,5.1415925}
-INFO:  24.12
-INFO:  24.12
+INFO:  2.13255997E+002
+INFO:  [0:2]={3.1415925E+000,4.1415925E+000,5.1415925E+000}
+INFO:  2.41200008E+001
+INFO:  2.41200008E+001
 --test out paramater which datatype is binary_double
 create or replace function test_binary_double(id integer,binary1 out binary_double, binary2 out binary_double[],binary3 binary_double) return binary_double as
 declare
@@ -919,10 +919,10 @@ begin
   raise info '%',binary4;
 end;
 /
-INFO:  213.256
-INFO:  [0:2]={3.1415926,4.1415926,5.1415926}
-INFO:  24.12
-INFO:  24.12
+INFO:  2.13256E+002
+INFO:  [0:2]={3.1415926000000001E+000,4.1415926000000001E+000,5.1415926000000001E+000}
+INFO:  2.4120000000000001E+001
+INFO:  2.4120000000000001E+001
 drop function test_interval(integer,interval year to month, interval year to month[], interval year to month);
 drop function test_interval(integer,interval day to second, interval day to second[], interval day to second);
 drop function test_number(integer,number,number[],number);
@@ -1044,12 +1044,12 @@ NOTICE:  Inside procedure p:
 NOTICE:  IN a = 1
 NOTICE:  IN b = 20
 NOTICE:  OUT c = <NULL>
-NOTICE:  IN OUT d =5
+NOTICE:  IN OUT d =5.0E+000
 NOTICE:  after procedure p:
 NOTICE:  IN aa = 1
 NOTICE:  IN bb = 2
 NOTICE:  OUT ee = 11
-NOTICE:  IN OUT ff =2
+NOTICE:  IN OUT ff =2.0E+000
 drop procedure p(integer, integer, integer, BINARY_FLOAT);
 --function out
 create or replace function f1 (
@@ -1097,12 +1097,12 @@ NOTICE:  Inside procedure p:
 NOTICE:  IN a = 1
 NOTICE:  IN b = 20
 NOTICE:  OUT c = <NULL>
-NOTICE:  IN OUT d =5
+NOTICE:  IN OUT d =5.0E+000
 NOTICE:  after procedure p:
 NOTICE:  IN aa = 1
 NOTICE:  IN bb = 2
 NOTICE:  OUT ee = 11
-NOTICE:  IN OUT ff =2
+NOTICE:  IN OUT ff =2.0E+000
 drop function f1(integer, integer, integer, BINARY_FLOAT);
 --if function's return type is non-void, the function body must has RETURN statement
 --if there is no RETURN statement, the function can be created, but when it is called, 
