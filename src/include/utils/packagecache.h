@@ -40,8 +40,8 @@
  * we don't compile package and body tid and xid
  * we only use three bits at current,
  * first bit set for package specifications
- * the second bit set for wether it has a body
- * the three bit set for its body is updateed or not
+ * the second bit set for whether it has a body
+ * the three bit set for its body is updated or not
  */
 typedef char PackageCacheStatus;
 

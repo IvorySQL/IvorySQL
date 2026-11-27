@@ -3,7 +3,7 @@
  * File: gb18030_and_gbk.c
  *
  * Abstract:
- * 		This file was add for compatable windows use gb18030 as server_encoding,
+ * 		This file was add for compatible windows use gb18030 as server_encoding,
  * 		cause the default codepage was 936(gbk) on windows,without this conversion it will not
  * 		work right on windows.
  *

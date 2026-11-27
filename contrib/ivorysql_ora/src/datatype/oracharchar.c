@@ -382,7 +382,7 @@ oracharchar(PG_FUNCTION_ARGS)
 
 	/*
 	 * Report error for implicit conversion
-	 * Truncate string for exlicit conversion
+	 * Truncate string for explicit conversion
 	 */
 	if (charlen > maxlen)
 	{

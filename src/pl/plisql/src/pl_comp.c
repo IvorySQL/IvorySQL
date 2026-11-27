@@ -646,7 +646,7 @@ do_compile(FunctionCallInfo fcinfo,
 			else
 				rettypeid = procStruct->prorettype;
 
-			/* Build a '_retval_' varaible for the function return value */
+			/* Build a '_retval_' variable for the function return value */
 			if (num_out_args > 0 && is_plisql_function)
 			{
 				if (procStruct->prorettype != VOIDOID)
@@ -714,7 +714,7 @@ do_compile(FunctionCallInfo fcinfo,
 			/*
 			 * If there's at least one OUT parameter in a procedure, build a
 			 * row that holds all of them.  If there's at least one OUT
-			 * parameter in a function, and the return type is VOID, alos
+			 * parameter in a function, and the return type is VOID, also
 			 * build a row that holds all of them.
 			 *
 			 * If the function return type is not VOID, build a row that
@@ -1166,8 +1166,8 @@ do_compile(FunctionCallInfo fcinfo,
 				bool		isduplicate = false;
 
 				/*
-				 * Check duplicate dependencies that alreay been built in
-				 * CREATE FUNCTION/PROCEDURE statment
+				 * Check duplicate dependencies that already been built in
+				 * CREATE FUNCTION/PROCEDURE statement
 				 */
 				ScanKeyInit(&key[0],
 							Anum_pg_depend_refclassid,
@@ -4060,9 +4060,9 @@ plisql_compile_inline_internal(char *proc_source)
 
 /*
  * dynamic_build_func_vars
- * Build the variables dynamiclly.
+ * Build the variables dynamically.
  * If find a ORAPARAM token, and the function is PROKIND_ANONYMOUS_BLOCK_ONLY_PARSE,
- * Build the variables dynamiclly.
+ * Build the variables dynamically.
  * For example, :x and :y are ORAPARAM,  build two variables, $1 and $2.
  *
  * select * from get_parameter_description('

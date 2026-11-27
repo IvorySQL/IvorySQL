@@ -743,7 +743,7 @@ plisql_exec_function(PLiSQL_function * func, FunctionCallInfo fcinfo,
 		plisql_assign_out_subprocfunc_globalvar(&estate, fcinfo);
 
 	/*
-	 * Anonymous block has out paramters
+	 * Anonymous block has out parameters
 	 */
 	if (func->fn_prokind == PROKIND_ANONYMOUS_BLOCK &&
 		func->fn_nargs > 0)
@@ -3623,9 +3623,9 @@ exec_stmt_return(PLiSQL_execstate * estate, PLiSQL_stmt_return * stmt)
 
 		/*
 		 * When compile a function with out arguments and the return type is
-		 * not VOIDIID, build a RETURN statment which combinds all OUT
+		 * not VOIDOID, build a RETURN statement which combines all OUT
 		 * parameters and function return value, and put it as the last
-		 * statment of function body. If there is no explicit RETURN statement
+		 * statement of function body. If there is no explicit RETURN statement
 		 * in function body, raise error.
 		 */
 		if (estate->func &&

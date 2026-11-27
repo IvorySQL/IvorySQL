@@ -140,7 +140,7 @@ ora_fmtId(const char *rawid)
 	return id_return->data;
 }
 
-/* get specificed database compatibility mode of current session */
+/* get specified database compatibility mode of current session */
 void
 getDbCompatibleMode(PGconn *conn)
 {
