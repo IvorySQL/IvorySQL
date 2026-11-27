@@ -150,8 +150,8 @@ edit_distance(const unsigned char *s1, int n1, const unsigned char *s2, int n2)
 			 * Check for interrupts while walking the DP matrix so that huge
 			 * inputs can still be cancelled or honor statement_timeout.
 			 * progress accumulates across both loop dimensions, so highly
-			 * unequal inputs (n1 >> n2) are covered by the outer-loop path
-			 * as well.
+			 * unequal inputs (n1 >> n2) are covered by the outer-loop path as
+			 * well.
 			 */
 			if (++progress == UTL_MATCH_CHECK_INTERVAL)
 			{
@@ -191,6 +191,83 @@ edit_distance_similarity(const unsigned char *s1, int n1, const unsigned char *s
 	return round_to_int(sim);
 }
 
+/*
+ * Match longer Jaro inputs using per-byte occurrence chains rather than
+ * repeatedly scanning the search window.  Reuse s2match for the links while
+ * matching, then convert it back to the flags expected by the caller.
+ */
+static long
+jaro_match_indexed(const unsigned char *s1, int n1,
+				   const unsigned char *s2, int n2, int window,
+				   int *s1match, int *s2match)
+{
+	int			heads[256];
+	int			i,
+				j;
+	long		m = 0,
+				progress = 0;
+
+	for (i = 0; i < 256; i++)
+		heads[i] = -1;
+	for (j = n2 - 1; j >= 0; j--)
+	{
+		s2match[j] = heads[s2[j]];
+		heads[s2[j]] = j;
+		if (++progress == UTL_MATCH_CHECK_INTERVAL)
+		{
+			CHECK_FOR_INTERRUPTS();
+			progress = 0;
+		}
+	}
+
+	for (i = 0; i < n1; i++)
+	{
+		int			lo = i > window ? i - window : 0;
+		int			hi = Min(i + window + 1, n2);
+		int			c = s1[i];
+
+		/*
+		 * The lower bound never decreases, so expired positions stay
+		 * unusable.
+		 */
+		j = heads[c];
+		while (j >= 0 && j < lo)
+		{
+			j = s2match[j];
+			if (++progress == UTL_MATCH_CHECK_INTERVAL)
+			{
+				CHECK_FOR_INTERRUPTS();
+				progress = 0;
+			}
+		}
+		heads[c] = j;
+		/* Select the same leftmost unused occurrence as the original scan. */
+		if (j >= 0 && j < hi)
+		{
+			heads[c] = s2match[j];
+			s1match[i] = 1;
+			s2match[j] = -2;
+			m++;
+		}
+		if (++progress == UTL_MATCH_CHECK_INTERVAL)
+		{
+			CHECK_FOR_INTERRUPTS();
+			progress = 0;
+		}
+	}
+
+	for (j = 0; j < n2; j++)
+	{
+		s2match[j] = (s2match[j] == -2);
+		if (++progress == UTL_MATCH_CHECK_INTERVAL)
+		{
+			CHECK_FOR_INTERRUPTS();
+			progress = 0;
+		}
+	}
+	return m;
+}
+
 /* Jaro similarity (standard definition, range 0..1), byte-based. */
 static double
 jaro(const unsigned char *s1, int n1, const unsigned char *s2, int n2)
@@ -222,33 +299,41 @@ jaro(const unsigned char *s1, int n1, const unsigned char *s2, int n2)
 	s2match = (int *) palloc0(n2 * sizeof(int));
 
 	/*
-	 * Count matching bytes: each byte of s1 can match a not yet used byte
-	 * of s2 within the search window.
+	 * Count matching bytes: each byte of s1 can match a not yet used byte of
+	 * s2 within the search window.
+	 *
+	 * Avoid index setup for short strings or when the second string is much
+	 * longer: the original scan may find all matches near its beginning.
 	 */
-	for (i = 0; i < n1; i++)
+	if (n1 >= 64 && n2 >= 64 && (int64) n2 <= (int64) n1 * 8)
+		m = jaro_match_indexed(s1, n1, s2, n2, window, s1match, s2match);
+	else
 	{
-		int			lo = i > window ? i - window : 0;
-		int			hi = i + window + 1;
-
-		if (hi > n2)
-			hi = n2;
-		for (j = lo; j < hi; j++)
+		for (i = 0; i < n1; i++)
 		{
-			/*
-			 * Same interrupt discipline as edit_distance(): keep huge
-			 * quadratic matching loops cancellable and timeout-aware.
-			 */
-			if (++progress == UTL_MATCH_CHECK_INTERVAL)
+			int			lo = i > window ? i - window : 0;
+			int			hi = i + window + 1;
+
+			if (hi > n2)
+				hi = n2;
+			for (j = lo; j < hi; j++)
 			{
-				CHECK_FOR_INTERRUPTS();
-				progress = 0;
-			}
-			if (!s2match[j] && s1[i] == s2[j])
-			{
-				s1match[i] = 1;
-				s2match[j] = 1;
-				m++;
-				break;
+				/*
+				 * Same interrupt discipline as edit_distance(): keep huge
+				 * quadratic matching loops cancellable and timeout-aware.
+				 */
+				if (++progress == UTL_MATCH_CHECK_INTERVAL)
+				{
+					CHECK_FOR_INTERRUPTS();
+					progress = 0;
+				}
+				if (!s2match[j] && s1[i] == s2[j])
+				{
+					s1match[i] = 1;
+					s2match[j] = 1;
+					m++;
+					break;
+				}
 			}
 		}
 	}

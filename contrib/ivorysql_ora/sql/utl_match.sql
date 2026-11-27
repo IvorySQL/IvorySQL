@@ -235,3 +235,28 @@ SELECT sys.ora_utl_match_edit_distance(left_value, right_value) = 0 AS ed,
        sys.ora_utl_match_jaro_winkler_similarity(left_value, right_value) = 100 AS jws
 FROM utl_match_equal_input;
 DROP TABLE utl_match_equal_input;
+
+-- Stored inputs exercise short scans and indexed matching around the cutoff.
+-- Cover repeated bytes, expired/out-of-window occurrences and both argument
+-- orders; UTF8 inputs still use the existing byte-based comparison semantics.
+CREATE TEMP TABLE utl_match_window_inputs (label text, a text, b text);
+INSERT INTO utl_match_window_inputs VALUES
+    ('below', repeat('ab', 31) || 'x', repeat('ba', 31) || 'y'),
+    ('at', repeat('ab', 32), repeat('ba', 32)),
+    ('above', repeat('ab', 32) || 'x', repeat('ba', 32) || 'y'),
+    ('disjoint', repeat('a', 128), repeat('b', 128)),
+    ('repeated', repeat('a', 255) || 'b', 'b' || repeat('a', 255)),
+    ('window_edge', repeat('a', 64) || repeat('b', 64), repeat('b', 64) || repeat('a', 64)),
+    ('unequal', repeat('abcd', 16), repeat('dcba', 80)),
+    ('one_short', repeat('a', 63), repeat('ba', 256)),
+    ('utf8', repeat('中文', 16) || '甲', '乙' || repeat('文中', 16)),
+    ('ratio_at', repeat('a', 64), repeat('a', 512)),
+    ('ratio_above', repeat('a', 64), repeat('a', 513)),
+    ('identical', repeat('abcd', 64), repeat('abcd', 64));
+SELECT label,
+       sys.ora_utl_match_jaro_winkler(a, b) AS jw,
+       sys.ora_utl_match_jaro_winkler_similarity(a, b) AS jws,
+       sys.ora_utl_match_jaro_winkler(b, a) AS reverse_jw,
+       sys.ora_utl_match_jaro_winkler_similarity(b, a) AS reverse_jws
+FROM utl_match_window_inputs ORDER BY label;
+DROP TABLE utl_match_window_inputs;
