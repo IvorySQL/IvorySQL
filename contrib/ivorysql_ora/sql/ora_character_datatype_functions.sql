@@ -1558,3 +1558,41 @@ select to_single_byte('１．２');
 select to_single_byte(１．２);
 select to_single_byte(3.4);
 select to_single_byte(NULL);
+
+/*
+ * Regression coverage for the Oracle REGEXP_SUBSTR/REGEXP_INSTR helpers when
+ * the pattern contains many capture groups.  The match array handed to the
+ * regex engine is sized from re_nsub, so patterns with ten or more groups
+ * must not read past its end.
+ */
+-- REGEXP_SUBSTR with ten capture groups.
+select regexp_substr('abcdefghijklmnopqrstuvwxyz', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)', 1, 1, 'i', 0) from dual;
+select regexp_substr('abcdefghijklmnopqrstuvwxyz', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)', 1, 1, 'i', 1) from dual;
+select regexp_substr('abcdefghijklmnopqrstuvwxyz', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)', 1, 1, 'i', 9) from dual;
+-- A subexpr above the Oracle maximum of nine returns NULL.
+select regexp_substr('abcdefghijklmnopqrstuvwxyz', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)', 1, 1, 'i', 10) from dual;
+select regexp_substr('abcdefghijklmnopqrstuvwxyz', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)(l)', 1, 1, 'i', 0) from dual;
+select regexp_substr('abcdefghijklmnopqrstuvwxyz', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)(l)', 1, 1, 'i', 1) from dual;
+select regexp_substr('abcdefghijklmnopqrstuvwxyz', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)(l)', 1, 1, 'i', 9) from dual;
+select regexp_substr('abcdefghijklmnopqrstuvwxyz', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)(l)', 1, 1, 'i', 12) from dual;
+-- REGEXP_SUBSTR with thirty-two capture groups.
+select regexp_substr('abcdefghijklmnopqrstuvwxyz012345', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)(l)(m)(n)(o)(p)(q)(r)(s)(t)(u)(v)(w)(x)(y)(z)(0)(1)(2)(3)(4)(5)', 1, 1, 'i', 0) from dual;
+select regexp_substr('abcdefghijklmnopqrstuvwxyz012345', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)(l)(m)(n)(o)(p)(q)(r)(s)(t)(u)(v)(w)(x)(y)(z)(0)(1)(2)(3)(4)(5)', 1, 1, 'i', 1) from dual;
+select regexp_substr('abcdefghijklmnopqrstuvwxyz012345', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)(l)(m)(n)(o)(p)(q)(r)(s)(t)(u)(v)(w)(x)(y)(z)(0)(1)(2)(3)(4)(5)', 1, 1, 'i', 9) from dual;
+-- A subexpr larger than the number of groups returns NULL.
+select regexp_substr('abcdef', '(a)(b)(c)', 1, 1, 'i', 5) from dual;
+-- REGEXP_INSTR with ten capture groups.
+select regexp_instr('abcdefghijklmnopqrstuvwxyz', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)', 1, 1, 0, 'i', 0) from dual;
+select regexp_instr('abcdefghijklmnopqrstuvwxyz', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)', 1, 1, 0, 'i', 1) from dual;
+select regexp_instr('abcdefghijklmnopqrstuvwxyz', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)', 1, 1, 0, 'i', 9) from dual;
+select regexp_instr('abcdefghijklmnopqrstuvwxyz', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)', 1, 1, 0, 'i', 10) from dual;
+-- REGEXP_INSTR with twelve capture groups.
+select regexp_instr('abcdefghijklmnopqrstuvwxyz', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)(l)', 1, 1, 0, 'i', 0) from dual;
+select regexp_instr('abcdefghijklmnopqrstuvwxyz', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)(l)', 1, 1, 0, 'i', 1) from dual;
+select regexp_instr('abcdefghijklmnopqrstuvwxyz', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)(l)', 1, 1, 0, 'i', 9) from dual;
+-- REGEXP_INSTR with thirty-two capture groups.
+select regexp_instr('abcdefghijklmnopqrstuvwxyz012345', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)(l)(m)(n)(o)(p)(q)(r)(s)(t)(u)(v)(w)(x)(y)(z)(0)(1)(2)(3)(4)(5)', 1, 1, 0, 'i', 1) from dual;
+select regexp_instr('abcdefghijklmnopqrstuvwxyz012345', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)(l)(m)(n)(o)(p)(q)(r)(s)(t)(u)(v)(w)(x)(y)(z)(0)(1)(2)(3)(4)(5)', 1, 1, 0, 'i', 9) from dual;
+select regexp_instr('abcdefghijklmnopqrstuvwxyz012345', '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)(l)(m)(n)(o)(p)(q)(r)(s)(t)(u)(v)(w)(x)(y)(z)(0)(1)(2)(3)(4)(5)', 1, 1, 0, 'i', 32) from dual;
+-- A subexpr larger than the number of groups returns zero.
+select regexp_instr('abcdef', '(a)(b)(c)', 1, 1, 0, 'i', 5) from dual;
