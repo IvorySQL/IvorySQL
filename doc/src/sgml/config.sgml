@@ -4948,6 +4948,30 @@ restore_command = 'copy "C:\\server\\archivedir\\%f" "%p"'  # Windows
       </listitem>
      </varlistentry>
 
+     <varlistentry id="guc-wal-sender-max-rate-total" xreflabel="wal_sender_max_rate_total">
+      <term><varname>wal_sender_max_rate_total</varname> (<type>integer</type>)
+      <indexterm>
+       <primary><varname>wal_sender_max_rate_total</varname> configuration parameter</primary>
+      </indexterm>
+      </term>
+      <listitem>
+       <para>
+        Limits physical WAL payload transmission to the specified aggregate
+        number of kilobytes per second across all WAL sender connections.
+        Protocol overhead is not counted. The default value of zero
+        disables the limit. Changes made in the configuration file take effect
+        on existing connections after a configuration reload. This setting
+        does not limit logical replication or base backups.
+       </para>
+       <para>
+        A low limit can increase replication lag, delay synchronous commits,
+        and cause a standby to fall behind the WAL retained by the primary.
+        A sender may transmit up to one WAL block at once, so short intervals
+        can exceed the configured average rate.
+       </para>
+      </listitem>
+     </varlistentry>
+
      <varlistentry id="guc-wal-sender-timeout" xreflabel="wal_sender_timeout">
       <term><varname>wal_sender_timeout</varname> (<type>integer</type>)
       <indexterm>
