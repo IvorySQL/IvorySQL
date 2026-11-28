@@ -1399,3 +1399,51 @@ DROP PROCEDURE sched_reg_proc;
 DELETE FROM sys.scheduler_job_run_details;
 DROP ROLE regress_dbms_scheduler;
 RESET timezone;
+-- Oracle-compatible DBA_JOBS / USER_JOBS over the scheduler
+BEGIN
+  dbms_scheduler.create_job(job_name => 'reg_jobs_view', job_type => 'PLSQL_BLOCK',
+      job_action => 'BEGIN NULL; END;', enabled => false);
+END;
+/
+SELECT broken, what, failures
+FROM user_jobs
+WHERE lower(log_user) = lower(current_user) AND what = 'BEGIN NULL; END;';
+ broken |       what       | failures 
+--------+------------------+----------
+ Y      | BEGIN NULL; END; |        0
+(1 row)
+
+SELECT COUNT(*) = 1 AS dba_has
+FROM dba_jobs
+WHERE lower(log_user) = lower(current_user) AND what = 'BEGIN NULL; END;';
+ dba_has 
+---------
+ t
+(1 row)
+
+BEGIN
+  dbms_scheduler.drop_job('reg_jobs_view');
+END;
+/
+-- Oracle-compatible scheduler job log views
+-- The table has defaults for log_id/log_date, so one history row is enough to
+-- exercise both views.
+INSERT INTO sys.scheduler_job_run_details (job_owner, job_name, status)
+VALUES (CURRENT_USER, 'reg_job_log_test', 's');
+SELECT job_name, status
+FROM sys.user_scheduler_job_log
+WHERE lower(job_name) = 'reg_job_log_test';
+     job_name     |  status   
+------------------+-----------
+ REG_JOB_LOG_TEST | SUCCEEDED
+(1 row)
+
+SELECT COUNT(*) = 1 AS dba_has
+FROM sys.dba_scheduler_job_log
+WHERE lower(job_name) = 'reg_job_log_test' AND status = 'SUCCEEDED';
+ dba_has 
+---------
+ t
+(1 row)
+
+DELETE FROM sys.scheduler_job_run_details WHERE job_name = 'reg_job_log_test';
