@@ -142,6 +142,7 @@ int			max_wal_senders = 10;	/* the maximum number of concurrent
 									 * walsenders */
 int			wal_sender_timeout = 60 * 1000; /* maximum time to send one WAL
 											 * data message */
+int			wal_sender_max_rate_total = 0;	/* aggregate physical WAL kB/s */
 
 int			wal_sender_shutdown_timeout = -1;	/* maximum time to wait during
 												 * shutdown for WAL
@@ -188,6 +189,8 @@ static XLogRecPtr sendTimeLineValidUpto = InvalidXLogRecPtr;
  * MyWalSnd->sentPtr.  (Actually, this is the next WAL location to send.)
  */
 static XLogRecPtr sentPtr = InvalidXLogRecPtr;
+static TimestampTz next_wal_send_time = 0;
+static bool wal_send_rate_limited = false;
 
 /* Buffers for constructing outgoing messages and processing reply messages. */
 static StringInfoData output_message;
@@ -288,6 +291,7 @@ static void InitWalSenderSlot(void);
 static void WalSndKill(int code, Datum arg);
 pg_noreturn static void WalSndShutdown(void);
 static void XLogSendPhysical(void);
+static bool WalSndReserveRateLimit(Size nbytes);
 static void XLogSendLogical(void);
 pg_noreturn static void WalSndDoneImmediate(void);
 static void WalSndDone(WalSndSendDataCallback send_data);
@@ -3030,6 +3034,7 @@ static void
 WalSndLoop(WalSndSendDataCallback send_data)
 {
 	TimestampTz last_flush = 0;
+	int			last_max_rate = wal_sender_max_rate_total;
 
 	/*
 	 * Initialize the last reply timestamp. That enables timeout processing
@@ -3044,6 +3049,8 @@ WalSndLoop(WalSndSendDataCallback send_data)
 	 */
 	for (;;)
 	{
+		bool		rate_limited = false;
+
 		/* Clear any already-pending wakeups */
 		ResetLatch(MyLatch);
 
@@ -3051,6 +3058,17 @@ WalSndLoop(WalSndSendDataCallback send_data)
 
 		/* Process any requests or signals received recently */
 		WalSndHandleConfigReload();
+		if (last_max_rate != wal_sender_max_rate_total)
+		{
+			TimestampTz now = GetCurrentTimestamp();
+
+			/* Discard the old schedule, including when limiting is disabled. */
+			SpinLockAcquire(&WalSndCtl->rate_limit_mutex);
+			WalSndCtl->rate_limit_kb = wal_sender_max_rate_total;
+			WalSndCtl->next_send_time = now;
+			SpinLockRelease(&WalSndCtl->rate_limit_mutex);
+			last_max_rate = wal_sender_max_rate_total;
+		}
 
 		/* Check for input from the client */
 		ProcessRepliesIfAny();
@@ -3071,7 +3089,11 @@ WalSndLoop(WalSndSendDataCallback send_data)
 		 * caught up.
 		 */
 		if (!pq_is_send_pending())
+		{
+			wal_send_rate_limited = false;
 			send_data();
+			rate_limited = wal_send_rate_limited;
+		}
 		else
 			WalSndCaughtUp = false;
 
@@ -3131,7 +3153,8 @@ WalSndLoop(WalSndSendDataCallback send_data)
 		 * The IO statistics are reported in WalSndWaitForWal() for the
 		 * logical WAL senders.
 		 */
-		if ((WalSndCaughtUp && send_data != XLogSendLogical &&
+		if (rate_limited ||
+			(WalSndCaughtUp && send_data != XLogSendLogical &&
 			 !streamingDoneSending) ||
 			pq_is_send_pending())
 		{
@@ -3150,6 +3173,10 @@ WalSndLoop(WalSndSendDataCallback send_data)
 			 */
 			now = GetCurrentTimestamp();
 			sleeptime = WalSndComputeSleeptime(now);
+			if (rate_limited)
+				sleeptime = Min(sleeptime,
+								TimestampDifferenceMilliseconds(now,
+																next_wal_send_time));
 
 			if (pq_is_send_pending())
 				wakeEvents |= WL_SOCKET_WRITEABLE;
@@ -3331,6 +3358,40 @@ WalSndSegmentOpen(XLogReaderState *state, XLogSegNo nextSegNo,
 }
 
 /*
+ * Reserve one send turn from the aggregate physical WAL payload budget.
+ * Never wait or perform I/O while holding the shared spinlock.
+ */
+static bool
+WalSndReserveRateLimit(Size nbytes)
+{
+	TimestampTz now = GetCurrentTimestamp();
+	uint64		rate_bytes_per_second;
+	uint64		interval;
+	bool		can_send;
+
+	Assert(wal_sender_max_rate_total > 0);
+	rate_bytes_per_second = (uint64) wal_sender_max_rate_total * 1024;
+	interval = ((uint64) nbytes * USECS_PER_SEC +
+				rate_bytes_per_second - 1) / rate_bytes_per_second;
+
+	SpinLockAcquire(&WalSndCtl->rate_limit_mutex);
+	if (WalSndCtl->rate_limit_kb != wal_sender_max_rate_total)
+	{
+		WalSndCtl->rate_limit_kb = wal_sender_max_rate_total;
+		WalSndCtl->next_send_time = now;
+	}
+
+	can_send = now >= WalSndCtl->next_send_time;
+	if (can_send)
+		WalSndCtl->next_send_time = now + interval;
+	else
+		next_wal_send_time = WalSndCtl->next_send_time;
+	SpinLockRelease(&WalSndCtl->rate_limit_mutex);
+
+	return can_send;
+}
+
+/*
  * Send out the WAL in its normal physical/stored form.
  *
  * Read up to MAX_SEND_SIZE bytes of WAL that's been flushed to disk,
@@ -3346,6 +3407,7 @@ XLogSendPhysical(void)
 	XLogRecPtr	SendRqstPtr;
 	XLogRecPtr	startptr;
 	XLogRecPtr	endptr;
+	Size		max_send_size = MAX_SEND_SIZE;
 	Size		nbytes;
 	XLogSegNo	segno;
 	WALReadError errinfo;
@@ -3525,9 +3587,15 @@ XLogSendPhysical(void)
 	 * page boundary is always a safe cut-off point. We also assume that
 	 * SendRqstPtr never points to the middle of a WAL record.
 	 */
+	/* Keep bursts small when the configured rate is below MAX_SEND_SIZE/s. */
+	if (wal_sender_max_rate_total > 0)
+		max_send_size = (Size) Min((uint64) max_send_size,
+								   Max((uint64) XLOG_BLCKSZ,
+									   (uint64) wal_sender_max_rate_total * 1024 / 8));
+
 	startptr = sentPtr;
 	endptr = startptr;
-	endptr += MAX_SEND_SIZE;
+	endptr += max_send_size;
 
 	/* if we went beyond SendRqstPtr, back off */
 	if (SendRqstPtr <= endptr)
@@ -3547,6 +3615,12 @@ XLogSendPhysical(void)
 
 	nbytes = endptr - startptr;
 	Assert(nbytes <= MAX_SEND_SIZE);
+	if (wal_sender_max_rate_total > 0 && !WalSndReserveRateLimit(nbytes))
+	{
+		wal_send_rate_limited = true;
+		WalSndCaughtUp = false;
+		return;
+	}
 
 	/*
 	 * OK to read and send the slice.
@@ -4000,6 +4074,10 @@ WalSndShmemRequest(void *arg)
 static void
 WalSndShmemInit(void *arg)
 {
+	SpinLockInit(&WalSndCtl->rate_limit_mutex);
+	WalSndCtl->next_send_time = 0;
+	WalSndCtl->rate_limit_kb = 0;
+
 	for (int i = 0; i < NUM_SYNC_REP_WAIT_MODE; i++)
 		dlist_init(&(WalSndCtl->SyncRepQueue[i]));
 

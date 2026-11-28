@@ -3726,6 +3726,15 @@
   check_hook => 'check_wal_segment_size',
 },
 
+{ name => 'wal_sender_max_rate_total', type => 'int', context => 'PGC_SIGHUP', group => 'REPLICATION_SENDING',
+  short_desc => 'Limits the aggregate physical WAL payload rate.',
+  flags => 'GUC_UNIT_KB',
+  variable => 'wal_sender_max_rate_total',
+  boot_val => '0',
+  min => '0',
+  max => 'MAX_KILOBYTES',
+},
+
 { name => 'wal_sender_shutdown_timeout', type => 'int', context => 'PGC_USERSET', group => 'REPLICATION_SENDING',
   short_desc => 'Sets the maximum time the server waits during shutdown for all WAL data to be replicated to the receiver.',
   long_desc => '-1 disables the timeout',

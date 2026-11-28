@@ -113,6 +113,11 @@ typedef struct
 	 */
 	ConditionVariable wal_confirm_rcv_cv;
 
+	/* Aggregate physical WAL send budget, protected by rate_limit_mutex. */
+	slock_t		rate_limit_mutex;
+	TimestampTz next_send_time;
+	int			rate_limit_kb;
+
 	WalSnd		walsnds[FLEXIBLE_ARRAY_MEMBER];
 } WalSndCtlData;
 
