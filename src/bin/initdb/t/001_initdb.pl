@@ -12,6 +12,7 @@ use File::Copy qw(copy);
 use File::Find qw(find);
 use File::Path qw(make_path);
 use File::Spec;
+use File::Spec::Win32;
 use File::stat qw{lstat};
 use FindBin;
 use PostgreSQL::Test::Cluster;
@@ -89,13 +90,16 @@ command_fails([ 'initdb', $datadir ], 'existing data directory');
 # with other tests. Preserve the layout so the copied binaries relocate.
 {
 	my $node = PostgreSQL::Test::Cluster->new('missing_uuid_ossp');
-	my ($bindir, $sharedir) = $node->config_data(qw(--bindir --sharedir));
-	my ($test_bin, $test_share) = map {
-		my (undef, $dir) = File::Spec->splitpath($_, 1);
+	my ($bindir, $sharedir, $pkglibdir, $includedir) =
+	  $node->config_data(qw(--bindir --sharedir --pkglibdir --includedir));
+	# pg_config can return native drive letters even when Perl runs on MSYS.
+	my $path_spec = $windows_os ? 'File::Spec::Win32' : 'File::Spec';
+	my ($test_bin, $test_share, $test_lib) = map {
+		my (undef, $dir) = $path_spec->splitpath($_, 1);
 		File::Spec->catdir("$tempdir/uuid_install", $dir);
-	} ($bindir, $sharedir);
+	} ($bindir, $sharedir, $pkglibdir);
 	my $test_ext = "$test_share/extension";
-	make_path($test_bin, $test_ext);
+	make_path($test_bin, $test_ext, $test_lib);
 	my $exe = -f "$bindir/initdb.exe" ? '.exe' : '';
 	for my $program ("initdb$exe", "postgres$exe")
 	{
@@ -104,7 +108,6 @@ command_fails([ 'initdb', $datadir ], 'existing data directory');
 		chmod(0755, "$test_bin/$program") or die "chmod $program: $!"
 		  unless $windows_os;
 	}
-	my $source_ext_dir = File::Spec->catdir($sharedir, 'extension');
 	find(
 		{
 			no_chdir => 1,
@@ -115,7 +118,7 @@ command_fails([ 'initdb', $datadir ], 'existing data directory');
 
 				if (-d $source)
 				{
-					$File::Find::prune = 1 if $source eq $source_ext_dir;
+					$File::Find::prune = 1 if $relative eq 'extension';
 					make_path($destination);
 				}
 				elsif (-f $source)
@@ -138,8 +141,21 @@ command_fails([ 'initdb', $datadir ], 'existing data directory');
 
 	command_fails_like(\@init, qr/$required.*\Q$control\E.*$hint/s,
 		'default mode reports missing uuid-ossp control file');
+	command_fails_like([ @init, '-L', $sharedir ],
+		qr/$required.*uuid_install.*\Q$control\E.*$hint/s,
+		'-L does not redirect the extension preflight');
 	ok(!-e $test_data && !-e $test_wal,
 		'missing control file leaves no directories');
+
+	# A custom configuration can provide its own extension search path.
+	# Use the existing cluster to check that we reach directory validation.
+	for my $setting ("extension_control_path=$sharedir",
+		"config_file=$test_share/postgresql.conf.sample")
+	{
+		command_fails_like([ $test_initdb, '--set', $setting, $datadir ],
+			qr/exists but is not empty/,
+			"extension preflight defers to --set $setting");
+	}
 
 	mkdir "$test_ext/$control" or die "mkdir $control: $!";
 	command_fails_like(\@init, qr/$required.*\Q$control\E" is not a regular file/s,
@@ -154,7 +170,12 @@ command_fails([ 'initdb', $datadir ], 'existing data directory');
 	copy("$source_ext/$script", "$test_ext/$script")
 	  or die "copy $script: $!";
 
-	command_fails_like(\@init, qr/$required.*uuid-ossp\.[[:alnum:]]+".*$hint/s,
+	my ($dlsuffix) = slurp_file("$includedir/pg_config.h") =~
+	  /^#define DLSUFFIX "([^"]+)"/m;
+	die "DLSUFFIX not found in pg_config.h" unless defined $dlsuffix;
+	my $library = "uuid-ossp$dlsuffix";
+
+	command_fails_like(\@init, qr/$required.*\Q$library\E".*$hint/s,
 		'Oracle mode reports missing uuid-ossp shared library');
 	ok(!-e $test_data && !-e $test_wal, 'missing library leaves no directories');
 
@@ -163,6 +184,19 @@ command_fails([ 'initdb', $datadir ], 'existing data directory');
 	command_fails_like([ $test_initdb, '-m', 'pg', $datadir ],
 		qr/exists but is not empty/,
 		'PostgreSQL mode does not require uuid-ossp');
+
+	# The files stand in for libraries; directory validation stops initdb
+	# before either could be loaded.
+	copy("$test_ext/$script", "$test_lib/lib$library")
+	  or die "copy lib$library: $!";
+	command_fails_like([ $test_initdb, $datadir ],
+		qr{$required.*\Q/$library\E"}s,
+		'a prefixed library does not satisfy the preflight');
+
+	copy("$test_ext/$script", "$test_lib/uuid-ossp")
+	  or die "copy suffixless library: $!";
+	command_fails_like([ $test_initdb, $datadir ], qr/exists but is not empty/,
+		'a suffixless library satisfies the preflight');
 }
 
 if ($supports_syncfs)

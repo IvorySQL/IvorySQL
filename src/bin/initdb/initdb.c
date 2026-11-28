@@ -1071,46 +1071,26 @@ check_uuid_ossp_file(const char *path)
 	exit(1);
 }
 
-static bool
-uuid_ossp_library_exists(const char *pkglib_path)
-{
-	static const char *const library_names[] =
-	{
-		"uuid-ossp",
-		"libuuid-ossp",
-		"cyguuid-ossp",
-	};
-	char	   *path;
-	struct stat statbuf;
-	int		i;
-
-	/*
-	 * The prefixes cover the names produced by the Unix, Win32, and Cygwin
-	 * module build rules; the backend accepts the unprefixed name on Unix.
-	 */
-	for (i = 0; i < lengthof(library_names); i++)
-	{
-		path = psprintf("%s/%s%s", pkglib_path, library_names[i], DLSUFFIX);
-		if (stat(path, &statbuf) == 0 && S_ISREG(statbuf.st_mode))
-		{
-			pg_free(path);
-			return true;
-		}
-		pg_free(path);
-	}
-
-	return false;
-}
-
 static void
 check_uuid_ossp(void)
 {
 	char		installed_share_path[MAXPGPATH];
 	char		pkglib_path[MAXPGPATH];
 	char	   *path;
+	struct stat statbuf;
+	bool		found;
 
-	/* Use the backend installation because CREATE EXTENSION resolves $libdir
-	 * and the default extension control path from that executable. */
+	/*
+	 * The default control path and $libdir come from the backend, not -L.
+	 * Leave explicit configuration overrides to the backend so an extension
+	 * installed outside the default path is not rejected.
+	 */
+	for (_stringlist *name = extra_guc_names; name; name = name->next)
+	{
+		if (pg_strcasecmp(name->str, "extension_control_path") == 0 ||
+			pg_strcasecmp(name->str, "config_file") == 0)
+			return;
+	}
 	get_share_path(backend_exec, installed_share_path);
 
 	path = psprintf("%s/extension/uuid-ossp.control", installed_share_path);
@@ -1122,14 +1102,17 @@ check_uuid_ossp(void)
 	check_uuid_ossp_file(path);
 	pg_free(path);
 
-	/* The bundled control file refers to $libdir/uuid-ossp. */
+	/* The loader tries $libdir/uuid-ossp before appending DLSUFFIX. */
 	get_pkglib_path(backend_exec, pkglib_path);
-	if (!uuid_ossp_library_exists(pkglib_path))
-	{
-		path = psprintf("%s/uuid-ossp%s", pkglib_path, DLSUFFIX);
-		check_uuid_ossp_file(path);
-		pg_free(path);
-	}
+	path = psprintf("%s/uuid-ossp", pkglib_path);
+	found = stat(path, &statbuf) == 0 && S_ISREG(statbuf.st_mode);
+	pg_free(path);
+	if (found)
+		return;
+
+	path = psprintf("%s/uuid-ossp%s", pkglib_path, DLSUFFIX);
+	check_uuid_ossp_file(path);
+	pg_free(path);
 }
 
 /*
