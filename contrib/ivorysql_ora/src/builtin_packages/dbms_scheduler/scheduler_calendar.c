@@ -231,7 +231,7 @@ parse_list(const char *calendar, const char *value, CalendarRule *rule,
 		const char *comma = strchr(p, ',');
 		int			len = comma ? (int) (comma - p) : (int) strlen(p);
 
-		if (len == 0)
+		if (len == 0 || (comma && comma[1] == '\0'))
 			calendar_error(calendar, "empty element in value list.");
 		cb(calendar, p, len, rule);
 		p += len;

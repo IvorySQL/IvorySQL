@@ -115,6 +115,10 @@ SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
 
 -- calendar errors
 SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=DAILY;BYHOUR=9,', '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00');
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
+  'FREQ=WEEKLY;BYDAY=MON,FRI, ;BYHOUR=9', '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00');
+SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
   'BYHOUR=9', '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00');
 SELECT sys.ora_dbms_scheduler_evaluate_calendar_string(
   'FREQ=FORTNIGHTLY', '2026-01-01 00:00:00+00', '2026-07-01 00:00:00+00');
