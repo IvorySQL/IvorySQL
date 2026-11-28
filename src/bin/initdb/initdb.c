@@ -1051,6 +1051,70 @@ check_input(char *path)
 	}
 }
 
+static void
+check_uuid_ossp_file(const char *path)
+{
+	struct stat statbuf;
+	int			result = stat(path, &statbuf);
+
+	if (result == 0 && S_ISREG(statbuf.st_mode))
+		return;
+
+	pg_log_error("Oracle-compatible mode requires the \"%s\" extension",
+				 "uuid-ossp");
+	if (result != 0)
+		pg_log_error_detail("Could not access file \"%s\": %m", path);
+	else
+		pg_log_error_detail("File \"%s\" is not a regular file.", path);
+	pg_log_error_hint("Install the \"%s\" extension, or use %s to initialize in PostgreSQL mode.",
+					  "uuid-ossp", "-m pg");
+	exit(1);
+}
+
+static void
+check_uuid_ossp(void)
+{
+	char		installed_share_path[MAXPGPATH];
+	char		pkglib_path[MAXPGPATH];
+	char	   *path;
+	struct stat statbuf;
+	bool		found;
+
+	/*
+	 * The default control path and $libdir come from the backend, not -L.
+	 * Leave explicit configuration overrides to the backend so an extension
+	 * installed outside the default path is not rejected.
+	 */
+	for (_stringlist *name = extra_guc_names; name; name = name->next)
+	{
+		if (pg_strcasecmp(name->str, "extension_control_path") == 0 ||
+			pg_strcasecmp(name->str, "config_file") == 0)
+			return;
+	}
+	get_share_path(backend_exec, installed_share_path);
+
+	path = psprintf("%s/extension/uuid-ossp.control", installed_share_path);
+	check_uuid_ossp_file(path);
+	pg_free(path);
+
+	/* Match the default version in contrib/uuid-ossp/uuid-ossp.control. */
+	path = psprintf("%s/extension/uuid-ossp--1.1.sql", installed_share_path);
+	check_uuid_ossp_file(path);
+	pg_free(path);
+
+	/* The loader tries $libdir/uuid-ossp before appending DLSUFFIX. */
+	get_pkglib_path(backend_exec, pkglib_path);
+	path = psprintf("%s/uuid-ossp", pkglib_path);
+	found = stat(path, &statbuf) == 0 && S_ISREG(statbuf.st_mode);
+	pg_free(path);
+	if (found)
+		return;
+
+	path = psprintf("%s/uuid-ossp%s", pkglib_path, DLSUFFIX);
+	check_uuid_ossp_file(path);
+	pg_free(path);
+}
+
 /*
  * write out the PG_VERSION file in the data dir, or its subdirectory
  * if extrapath is not NULL
@@ -2998,6 +3062,9 @@ setup_data_file_paths(void)
 	{
 		check_input(ora_conf_file);
 		check_input(preload_ora_misc);
+
+		/* Detect an incomplete installation before creating PGDATA or WAL. */
+		check_uuid_ossp();
 	}
 }
 

@@ -8,7 +8,13 @@
 use strict;
 use warnings FATAL => 'all';
 use Fcntl ':mode';
+use File::Copy qw(copy);
+use File::Find qw(find);
+use File::Path qw(make_path);
+use File::Spec;
+use File::Spec::Win32;
 use File::stat qw{lstat};
+use FindBin;
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
@@ -79,6 +85,119 @@ command_ok([ 'initdb', '--sync-only', $datadir ], 'sync only');
 command_ok([ 'initdb', '--sync-only', '--no-sync-data-files', $datadir ],
 	'--no-sync-data-files');
 command_fails([ 'initdb', $datadir ], 'existing data directory');
+
+# Test incomplete uuid-ossp installations without modifying files shared
+# with other tests. Preserve the layout so the copied binaries relocate.
+{
+	my $node = PostgreSQL::Test::Cluster->new('missing_uuid_ossp');
+	my ($bindir, $sharedir, $pkglibdir, $includedir) =
+	  $node->config_data(qw(--bindir --sharedir --pkglibdir --includedir));
+	# pg_config can return native drive letters even when Perl runs on MSYS.
+	my $path_spec = $windows_os ? 'File::Spec::Win32' : 'File::Spec';
+	my ($test_bin, $test_share, $test_lib) = map {
+		my (undef, $dir) = $path_spec->splitpath($_, 1);
+		File::Spec->catdir("$tempdir/uuid_install", $dir);
+	} ($bindir, $sharedir, $pkglibdir);
+	my $test_ext = "$test_share/extension";
+	make_path($test_bin, $test_ext, $test_lib);
+	my $exe = -f "$bindir/initdb.exe" ? '.exe' : '';
+	for my $program ("initdb$exe", "postgres$exe")
+	{
+		copy("$bindir/$program", "$test_bin/$program")
+		  or die "copy $program: $!";
+		chmod(0755, "$test_bin/$program") or die "chmod $program: $!"
+		  unless $windows_os;
+	}
+	find(
+		{
+			no_chdir => 1,
+			wanted => sub {
+				my $source = $File::Find::name;
+				my $relative = File::Spec->abs2rel($source, $sharedir);
+				my $destination = File::Spec->catfile($test_share, $relative);
+
+				if (-d $source)
+				{
+					$File::Find::prune = 1 if $relative eq 'extension';
+					make_path($destination);
+				}
+				elsif (-f $source)
+				{
+					copy($source, $destination) or die "copy $relative: $!";
+				}
+			},
+		},
+		$sharedir);
+
+	my $test_initdb = "$test_bin/initdb$exe";
+	my $test_data = "$tempdir/uuid_data";
+	my $test_wal = "$tempdir/uuid_wal";
+	my @init = ($test_initdb, '--no-clean', '-D', $test_data, '-X', $test_wal);
+	my $control = 'uuid-ossp.control';
+	my $script = 'uuid-ossp--1.1.sql';
+	my $source_ext = "$FindBin::Bin/../../../../contrib/uuid-ossp";
+	my $required = qr/Oracle-compatible mode requires the "uuid-ossp" extension/;
+	my $hint = qr/Install the "uuid-ossp" extension, or use -m pg/;
+
+	command_fails_like(\@init, qr/$required.*\Q$control\E.*$hint/s,
+		'default mode reports missing uuid-ossp control file');
+	command_fails_like([ @init, '-L', $sharedir ],
+		qr/$required.*uuid_install.*\Q$control\E.*$hint/s,
+		'-L does not redirect the extension preflight');
+	ok(!-e $test_data && !-e $test_wal,
+		'missing control file leaves no directories');
+
+	# A custom configuration can provide its own extension search path.
+	# Use the existing cluster to check that we reach directory validation.
+	for my $setting ("extension_control_path=$sharedir",
+		"config_file=$test_share/postgresql.conf.sample")
+	{
+		command_fails_like([ $test_initdb, '--set', $setting, $datadir ],
+			qr/exists but is not empty/,
+			"extension preflight defers to --set $setting");
+	}
+
+	mkdir "$test_ext/$control" or die "mkdir $control: $!";
+	command_fails_like(\@init, qr/$required.*\Q$control\E" is not a regular file/s,
+		'a directory cannot substitute for the control file');
+	rmdir "$test_ext/$control" or die "rmdir $control: $!";
+	copy("$source_ext/$control", "$test_ext/$control")
+	  or die "copy $control: $!";
+
+	command_fails_like([ @init, '-m', 'oracle' ], qr/$required.*\Q$script\E.*$hint/s,
+		'explicit Oracle mode reports missing uuid-ossp installation script');
+	ok(!-e $test_data && !-e $test_wal, 'missing script leaves no directories');
+	copy("$source_ext/$script", "$test_ext/$script")
+	  or die "copy $script: $!";
+
+	my ($dlsuffix) = slurp_file("$includedir/pg_config.h") =~
+	  /^#define DLSUFFIX "([^"]+)"/m;
+	die "DLSUFFIX not found in pg_config.h" unless defined $dlsuffix;
+	my $library = "uuid-ossp$dlsuffix";
+
+	command_fails_like(\@init, qr/$required.*\Q$library\E".*$hint/s,
+		'Oracle mode reports missing uuid-ossp shared library');
+	ok(!-e $test_data && !-e $test_wal, 'missing library leaves no directories');
+
+	# Use an existing cluster to tell that PG mode reaches the data directory
+	# check without doing another bootstrap in this partial installation.
+	command_fails_like([ $test_initdb, '-m', 'pg', $datadir ],
+		qr/exists but is not empty/,
+		'PostgreSQL mode does not require uuid-ossp');
+
+	# The files stand in for libraries; directory validation stops initdb
+	# before either could be loaded.
+	copy("$test_ext/$script", "$test_lib/lib$library")
+	  or die "copy lib$library: $!";
+	command_fails_like([ $test_initdb, $datadir ],
+		qr{$required.*\Q/$library\E"}s,
+		'a prefixed library does not satisfy the preflight');
+
+	copy("$test_ext/$script", "$test_lib/uuid-ossp")
+	  or die "copy suffixless library: $!";
+	command_fails_like([ $test_initdb, $datadir ], qr/exists but is not empty/,
+		'a suffixless library satisfies the preflight');
+}
 
 if ($supports_syncfs)
 {
